@@ -25,9 +25,10 @@ Approved wave plan (lavish review, 2026-07-20). Spec files are authored at wave-
 
 - **Wave 2 — Model B + consolidation:** model-b skill (role param + references incl. sandesh + sub-agent procedure) · crucible skill rewrite (real surfaces + envelope contract, absorbs report skills + agent-protocol) · cr-authoring skill (+ project-management split) · git-workflow + chezmoi skills (+ git-multi-account / chezmoi-integration / devops merges, orphan wiring, deletions) · "Plan B"→"Model B" sweep.
 - **Wave 3 — Generator:** templates + stack params + build.py; regenerate 16 agents; side-by-side diff review; `--check` drift gate wired to `skill-release-gate.py`.
-- **Wave 4 — AXI tooling:** `axi_envelope.py` + envelope on all clients; plan/cycle verbs everywhere (bun-crucible = reference impl); NEW `vscode-crucible.py`; extend `arduino-crucible.py`; `worktree-flow.py` AXI output; `contracts/` specs (crucible-envelope, sandesh-cli, mail-axi, lean-ctx).
+- **Wave 4 — AXI tooling:** fleet TOON-AXI client conversion (python/rust/mvn/arduino) — **CR-CRU-030 handed off from Crucible v2 to Model B 2026-07-20** (envelope `{axi:{verb,ok,…,context,warnings[]}}` stdout + human stderr, no-cycle-id/no-wave guards, append-cycle verb, golden fixtures; reference: bun-crucible envelope slice CR-CRU-013 c51 + clients/toon.py; awaiting full spec from Mainline - Crucible, thread #1322); plus Model-B-native scope: NEW `vscode-crucible.py`; plan/cycle verbs everywhere; `worktree-flow.py` AXI output; `contracts/` specs (crucible-envelope, sandesh-cli, mail-axi, lean-ctx).
 - **Wave 5 — Close-out (tasks):** `archive/mapping.md`; chezmoi source commits; full verification suite (PRD §4).
 
 ## Footer notes
 
 - 2026-07-20 — Queue opened. Wave plan + 11 design decisions locked via lavish review of `plans/2026-07-20-rationalization-plan.md`; PRD filed. Structural waves (1–3) run with no live Model B orchestrator sessions elsewhere.
+- 2026-07-20 — Cross-project handoff ACCEPTED (Sandesh thread #1322/#1324): Crucible v2 descoped CR-CRU-030 (fleet TOON-AXI client conversion) to Model B; folds into Wave 4. Wave-4 CR specs will cite the CR-CRU-030 contract once received; PRD §D7 to be aligned verbatim to the shipped envelope schema.
