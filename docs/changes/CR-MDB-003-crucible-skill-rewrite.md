@@ -1,6 +1,6 @@
 # CR-MDB-003 — crucible skill rewrite: real surfaces, absorb report skills + agent-protocol
 
-**Status:** PENDING
+**Status:** COMPLETED (shipped 2026-07-20 on develop)
 **Type:** feature
 **Priority:** P1
 **Depends on:** CR-MDB-001
