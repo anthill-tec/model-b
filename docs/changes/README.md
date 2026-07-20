@@ -21,7 +21,7 @@ Queue rows enumerate the whole delivery (structure only). **Live status lives on
 | CR-MODELB-010 | worktree-flow.py AXI output: TOON envelope for status/next/finish + lane boards | 3 | 009 |
 | CR-MODELB-011 | crucible skill final docs: shipped client surfaces (fleet envelope, vscode, arduino, plan verbs) | 3 | 003, 009 + EXTERNAL (Crucible deliveries, thread #1322) |
 
-## Wave 0 — Safety rails (tasks, no CR)
+## Setup tasks (pre-wave — not a wave; a wave is a grouping of CRs)
 
 - [x] `git init` + `git flow init` (master/develop; on develop) — 2026-07-20
 - [x] Workspace scaffold — 2026-07-20
@@ -29,6 +29,8 @@ Queue rows enumerate the whole delivery (structure only). **Live status lives on
 - [x] Register project in Crucible (`Model B`, key above) — 2026-07-20
 - [x] Record chezmoi source baseline commit → `archive/BASELINE.md` — 2026-07-20
 - [x] Prove chezmoi delete round-trip on a scratch file — PASSED 2026-07-20 (see `archive/BASELINE.md`)
+
+**Wave (definition, user 2026-07-20):** a grouping of CRs marking an execution boundary — in single-orchestrator projects, where major redesign can take place between groups; in multi-orchestrator projects, the sync boundary of CRs. Setup tasks and the release are not waves.
 
 ## External dependency (Wave 3)
 

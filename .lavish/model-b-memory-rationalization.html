@@ -402,15 +402,16 @@ flowchart LR
 <!-- ============ WAVES ============ -->
 <section class="rz-anchor" id="waves">
   <h2 class="text-2xl font-bold mb-4">Execution waves — review gate after each</h2>
+  <div class="alert alert-info mb-4"><span><b>Wave (definition):</b> a grouping of CRs marking a boundary during execution — in a single-orchestrator project (this one) the point where major redesign can take place between groups; in multi-orchestrator projects, the sync boundary of CRs during execution. Setup tasks and the release are NOT waves.</span></div>
   <ul class="steps steps-vertical lg:steps-horizontal w-full mb-4">
-    <li class="step step-primary">Safety</li>
-    <li class="step step-primary">Core split</li>
-    <li class="step">Model B</li>
-    <li class="step">Generator + AXI</li>
+    <li class="step step-primary">Setup</li>
+    <li class="step step-primary">Wave 1 — Core split</li>
+    <li class="step">Wave 2 — Model B</li>
+    <li class="step">Wave 3 — Generator + AXI</li>
     <li class="step">Release</li>
   </ul>
   <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-    <div class="card card-border bg-base-100"><div class="card-body p-4"><h3 class="card-title text-sm">Wave 0 — Safety rails</h3><p class="text-sm">git init this repo · <code>archive/</code> scaffold + chezmoi source commit hash · <b>prove</b> a chezmoi deletion survives <code>apply</code> on a scratch file.</p></div></div>
+    <div class="card card-border bg-base-100"><div class="card-body p-4"><h3 class="card-title text-sm">Setup (pre-wave tasks — not a wave)</h3><p class="text-sm">git init this repo · <code>archive/</code> scaffold + chezmoi source commit hash · <b>prove</b> a chezmoi deletion survives <code>apply</code> on a scratch file.</p></div></div>
     <div class="card card-border bg-base-100"><div class="card-body p-4"><h3 class="card-title text-sm">Wave 1 — Core split</h3><p class="text-sm">Rewrite AGENTS.md as the frugal ~100-line core (CLAUDE.md symlink KEPT) · sub-agent procedure → model-b references · repoint ALL inbound refs (17 agents, rust/java-orch, cr-prd-dn) · delete both shims.</p></div></div>
     <div class="card card-border bg-base-100"><div class="card-body p-4"><h3 class="card-title text-sm">Wave 2 — Model B + consolidation</h3><p class="text-sm">model-b · crucible rewrite · cr-authoring · git-workflow merge · chezmoi skill · memory merges/deletes · “Plan B”→“Model B” sweep.</p></div></div>
     <div class="card card-border bg-base-100"><div class="card-body p-4"><h3 class="card-title text-sm">Wave 3 — Generator + AXI (combined)</h3><p class="text-sm">CR-008: templates + stack params · regenerate 16 agents · <code>--check</code> drift gate. CR-009/010/011: <code>contracts/</code> specs · worktree-flow AXI output · crucible-skill docs of Crucible-shipped clients (external dependency, thread #1322).</p></div></div>
