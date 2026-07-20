@@ -21,10 +21,10 @@ Executable gates in `tests/test_core_split.py` (pytest), asserting the §S2–§
 Rewrite `~/.claude/AGENTS.md` to ≤100 lines containing exactly: (a) the non-negotiables as one-liners — no AI attribution in commits; import hygiene (no fully-qualified inline names, zero unused imports); TDD mandatory (RED→GREEN→clean→commit, never commit failing tests); clean build before commit; destructive-op confirmation; lean-ctx tool preference; (b) the topic → skill/memory trigger table (one row per topic: Model B workflow → `model-b` skill; Crucible/testing → `crucible` skill; CR/PRD/DN authoring → `cr-authoring`; git → `git-workflow`; dotfiles → `chezmoi`; per-stack references → `memory/` entries); (c) project-classification pointers (microservice / library / GitOps / Rust-crucible indicators, ≤10 lines). The `CLAUDE.md → AGENTS.md` symlink is untouched.
 
 ### §S3 — Sub-agent procedure relocation
-Create `~/.claude/skills/model-b/references/sub-agent-procedure.md` carrying the current AGENTS.md `# AGENTS` tail (worktree boundary, Crucible lifecycle, exact TDD, report-every-run, scope discipline, code quality, consequences) verbatim-modulo: "Plan B" → "Model B", `agent-baseline.md` references removed. (The full `model-b` SKILL.md body is Wave 2 — this CR seeds only the references dir.)
+Create `~/.claude/skills/model-b/references/sub-agent-procedure.md` carrying the current AGENTS.md `# AGENTS` tail (worktree boundary, Crucible lifecycle, exact TDD, report-every-run, scope discipline, code quality, consequences) verbatim-modulo: "Plan B" → "Model B", `agent-baseline.md` references removed. Also seed `~/.claude/skills/model-b/SKILL.md` as a MINIMAL stub — frontmatter (`name: model-b`, one-line workflow-scoped description) + a pointer to `references/` — so the skill dir is well-formed; the full SKILL.md body remains Wave 2.
 
 ### §S4 — Repoint inbound references
-**Surfaces (verified 2026-07-20):** 17 agent defs in `~/.claude/agents/` citing `memory/agent-baseline.md`; `memory/rust-orchestration.md` L3; `memory/java-orchestration.md` L3; `memory/cr-prd-dn-conventions.md` ~L63 (`orchestration-universal.md` deferred-items pointer → `orchestration-mainline.md`).
+**Surfaces (verified 2026-07-20, gap-analysis re-verified):** 17 agent defs in `~/.claude/agents/` citing `memory/agent-baseline.md`; `memory/rust-orchestration.md` L3–L4 (both shims); `memory/java-orchestration.md` L3–L4 (both shims); `memory/cr-prd-dn-conventions.md` L63 (`orchestration-universal.md` deferred-items pointer → `orchestration-mainline.md`). Zero shim refs anywhere in `~/.claude/skills/`.
 Replace: `memory/agent-baseline.md` → `AGENTS.md` + `skills/model-b/references/sub-agent-procedure.md`; `orchestration-universal.md` → the `orchestration-common.md`/`-mainline.md`/`-track.md` split (per referencing context).
 
 ### §S5 — Shim deletion via chezmoi
@@ -42,6 +42,7 @@ Copy `memory/agent-baseline.md` + `memory/orchestration-universal.md` to `archiv
 
 ### §S3
 - [ ] `~/.claude/skills/model-b/references/sub-agent-procedure.md` exists; contains `git rev-parse --show-toplevel`, `Register immediately on startup`, and `A compile failure IS a RED`; contains zero occurrences of `Plan B` and zero of `agent-baseline`.
+- [ ] `~/.claude/skills/model-b/SKILL.md` exists with frontmatter `name: model-b` and a non-empty `description:` line.
 
 ### §S4
 - [ ] `grep -rl "agent-baseline" ~/.claude/agents/` returns 0 files.
