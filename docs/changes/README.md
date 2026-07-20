@@ -17,9 +17,9 @@ Queue rows enumerate the whole delivery (structure only). **Live status lives on
 | CR-MODELB-006 | Memory consolidation: devops→java-testing merge, orphan wiring, stale deletions | 2 | 002, 003, 004, 005 |
 | CR-MODELB-007 | "Plan B" → "Model B" naming sweep across skills + memory | 2 | 002 |
 | CR-MODELB-008 | Agent generator: role templates + stack params + build.py --check gate; regenerate 16 agents | 3 | 002, 006 |
-| CR-MODELB-009 | contracts/: crucible-envelope mirror, sandesh-cli, mail-axi, lean-ctx specs | 4 | — |
-| CR-MODELB-010 | worktree-flow.py AXI output: TOON envelope for status/next/finish + lane boards | 4 | 009 |
-| CR-MODELB-011 | crucible skill final docs: shipped client surfaces (fleet envelope, vscode, arduino, plan verbs) | 4 | 003, 009 + EXTERNAL (Crucible deliveries, thread #1322) |
+| CR-MODELB-009 | contracts/: crucible-envelope mirror, sandesh-cli, mail-axi, lean-ctx specs | 3 | — |
+| CR-MODELB-010 | worktree-flow.py AXI output: TOON envelope for status/next/finish + lane boards | 3 | 009 |
+| CR-MODELB-011 | crucible skill final docs: shipped client surfaces (fleet envelope, vscode, arduino, plan verbs) | 3 | 003, 009 + EXTERNAL (Crucible deliveries, thread #1322) |
 
 ## Wave 0 — Safety rails (tasks, no CR)
 
@@ -30,7 +30,7 @@ Queue rows enumerate the whole delivery (structure only). **Live status lives on
 - [x] Record chezmoi source baseline commit → `archive/BASELINE.md` — 2026-07-20
 - [x] Prove chezmoi delete round-trip on a scratch file — PASSED 2026-07-20 (see `archive/BASELINE.md`)
 
-## External dependency (Wave 4)
+## External dependency (Wave 3)
 
 ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answered #1326): fleet TOON-AXI conversion = CR-CRU-030 (+ client READ verb), NEW vscode client (own CR, unscheduled), arduino verb extension, plan-verb client coverage — scheduled after their 0.1.0 patch cluster, OPEN ETA, per-delivery intimations threaded under #1322. CR-MODELB-011 closes only as those land.
 
@@ -41,4 +41,5 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
 - 2026-07-20 — Naming standard set (header). CR-MB-001 → CR-MODELB-001 (spec, branch, Crucible plan 15; plan 14 superseded, both plans now closed at merge `4fd2fca`).
 - 2026-07-20 — CR-MODELB-001 shipped: RED 3/11/14 → GREEN 14/14 → VERIFY(FIX_REQUIRED→APPROVE) → regression 14/14; core 621→42 lines; chezmoi source `b89f936`+`efe71e6`.
 - 2026-07-20 — Full CR decomposition enumerated in the queue (user directive: the queue lists the whole delivery with dependency edges upfront; spec files still authored at wave-open). `plans/` folder removed — the standard PRD/CR model under `docs/` is the delivery model; the lavish-reviewed plan record moved to `docs/research/DN-rationalization-plan-review.md`.
+- 2026-07-20 — Waves 3 and 4 COMBINED into wave 3 (user directive via lavish): generator + AXI tooling + contracts ship together; close-out becomes wave 4.
 - 2026-07-20 — DEFERRED (next SCRUM): (a) chezmoi v2.71 `diff <dir>` silently empty for drifted children (dry-run gate covers recursion); (b) pre-existing SOURCE-AHEAD chezmoi drift on 6 agent defs + `orchestration-common/track.md`, `project-management.md` — reconcile deliberately, never blind apply; (c) `bun-fix-agent.md` 2-line source delta.

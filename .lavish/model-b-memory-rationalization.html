@@ -349,9 +349,9 @@ flowchart LR
         <tr><td><code>CR-MODELB-006</code></td><td>Memory consolidation: devops merge, orphan wiring, stale deletions</td><td>2</td><td><code>002, 003, 004, 005</code></td></tr>
         <tr><td><code>CR-MODELB-007</code></td><td>"Plan B" → "Model B" naming sweep</td><td>2</td><td><code>002</code></td></tr>
         <tr><td><code>CR-MODELB-008</code></td><td>Agent generator: templates + stack params + drift gate; regenerate 16 agents</td><td>3</td><td><code>002, 006</code></td></tr>
-        <tr><td><code>CR-MODELB-009</code></td><td>contracts/: crucible-envelope, sandesh-cli, mail-axi, lean-ctx specs</td><td>4</td><td>—</td></tr>
-        <tr><td><code>CR-MODELB-010</code></td><td>worktree-flow.py AXI output: envelope for status/next/finish + lane boards</td><td>4</td><td><code>009</code></td></tr>
-        <tr><td><code>CR-MODELB-011</code></td><td>crucible skill final docs: shipped client surfaces</td><td>4</td><td><code>003, 009</code> + external: Crucible (#1322)</td></tr>
+        <tr><td><code>CR-MODELB-009</code></td><td>contracts/: crucible-envelope, sandesh-cli, mail-axi, lean-ctx specs</td><td>3</td><td>—</td></tr>
+        <tr><td><code>CR-MODELB-010</code></td><td>worktree-flow.py AXI output: envelope for status/next/finish + lane boards</td><td>3</td><td><code>009</code></td></tr>
+        <tr><td><code>CR-MODELB-011</code></td><td>crucible skill final docs: shipped client surfaces</td><td>3</td><td><code>003, 009</code> + external: Crucible (#1322)</td></tr>
       </tbody>
     </table>
   </div>
@@ -405,18 +405,16 @@ flowchart LR
   <ul class="steps steps-vertical lg:steps-horizontal w-full mb-4">
     <li class="step step-primary">Safety</li>
     <li class="step step-primary">Core split</li>
-    <li class="step step-primary">Model B</li>
-    <li class="step">Generator</li>
-    <li class="step">AXI tooling</li>
+    <li class="step">Model B</li>
+    <li class="step">Generator + AXI</li>
     <li class="step">Close-out</li>
   </ul>
   <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
     <div class="card card-border bg-base-100"><div class="card-body p-4"><h3 class="card-title text-sm">Wave 0 — Safety rails</h3><p class="text-sm">git init this repo · <code>archive/</code> scaffold + chezmoi source commit hash · <b>prove</b> a chezmoi deletion survives <code>apply</code> on a scratch file.</p></div></div>
     <div class="card card-border bg-base-100"><div class="card-body p-4"><h3 class="card-title text-sm">Wave 1 — Core split</h3><p class="text-sm">Rewrite AGENTS.md as the frugal ~100-line core (CLAUDE.md symlink KEPT) · sub-agent procedure → model-b references · repoint ALL inbound refs (17 agents, rust/java-orch, cr-prd-dn) · delete both shims.</p></div></div>
     <div class="card card-border bg-base-100"><div class="card-body p-4"><h3 class="card-title text-sm">Wave 2 — Model B + consolidation</h3><p class="text-sm">model-b · crucible rewrite · cr-authoring · git-workflow merge · chezmoi skill · memory merges/deletes · “Plan B”→“Model B” sweep.</p></div></div>
-    <div class="card card-border bg-base-100"><div class="card-body p-4"><h3 class="card-title text-sm">Wave 3 — Generator</h3><p class="text-sm">Templates + stack params · regenerate 16 agents · side-by-side diff review vs originals · install via chezmoi · <code>--check</code> drift gate.</p></div></div>
-    <div class="card card-border bg-base-100"><div class="card-body p-4"><h3 class="card-title text-sm">Wave 4 — AXI tooling</h3><p class="text-sm">axi_envelope.py · align ALL clients to the bun-crucible reference API (plan/cycle verbs + envelope) · NEW vscode client · extend arduino · worktree-flow AXI migration · finalize crucible skill · <code>contracts/</code> specs.</p></div></div>
-    <div class="card card-border bg-base-100"><div class="card-body p-4"><h3 class="card-title text-sm">Wave 5 — Close-out</h3><p class="text-sm">archive/mapping.md · chezmoi source commits · full verification suite (below).</p></div></div>
+    <div class="card card-border bg-base-100"><div class="card-body p-4"><h3 class="card-title text-sm">Wave 3 — Generator + AXI (combined)</h3><p class="text-sm">CR-008: templates + stack params · regenerate 16 agents · <code>--check</code> drift gate. CR-009/010/011: <code>contracts/</code> specs · worktree-flow AXI output · crucible-skill docs of Crucible-shipped clients (external dependency, thread #1322).</p></div></div>
+    <div class="card card-border bg-base-100"><div class="card-body p-4"><h3 class="card-title text-sm">Wave 4 — Close-out</h3><p class="text-sm">archive/mapping.md · chezmoi source commits · full verification suite (below).</p></div></div>
   </div>
   <h3 class="text-lg font-semibold mt-6 mb-2">Verification</h3>
   <div class="card card-border bg-base-100"><div class="card-body p-5 text-sm">
