@@ -33,7 +33,7 @@ Move (content-preserving; "Plan B"→"Model B"; shim refs already gone): `orches
 Copy the four §S3 source files to `<repo>/archive/wave2/`, then delete from `~/.claude/memory/` — managed files via `chezmoi destroy --force` (no-auto config), unmanaged via `rm`; `chezmoi add` the new references; manual source commit.
 
 ### §S5 — repoint consumers
-**Surfaces (verified via grep at gap-analysis):** `skills/bootstrap/SKILL.md`, `skills/shutdown/SKILL.md`, `skills/code-health/SKILL.md`, `skills/status-report/SKILL.md` references to `memory/orchestration-*` / `memory/sandesh.md` → the model-b references paths; `~/.claude/AGENTS.md` trigger-table row drops the "until Wave 2" caveat and points solely at the `model-b` skill.
+**Surfaces (gap-analysis verified 2026-07-20):** `skills/bootstrap/SKILL.md`, `skills/shutdown/SKILL.md`, `skills/agent-protocol/SKILL.md` (transitional — deleted by CR-MDB-003, repointed here so this CR's grep gate holds) references to `memory/orchestration-*` / `memory/sandesh.md` → the model-b references paths; the model-b stub's own mention is replaced wholesale by §S2; `~/.claude/AGENTS.md` trigger-table row drops the "until Wave 2" caveat and points solely at the `model-b` skill.
 
 ## Acceptance criteria
 
@@ -46,7 +46,7 @@ Copy the four §S3 source files to `<repo>/archive/wave2/`, then delete from `~/
 - [ ] Body contains zero occurrences of "Plan B" and zero of "orchestration-universal".
 
 ### §S3
-- [ ] All four files exist under `~/.claude/skills/model-b/references/`; each retains its distinctive anchor: common → "MODE-MAP", mainline → grep-able mainline-role content, track → "HOLDS", sandesh → "PRIME DIRECTIVE".
+- [ ] All four files exist under `~/.claude/skills/model-b/references/`; each retains its distinctive anchor (gap-analysis verified): common → "MODE-MAP", mainline → "shutdown", track → "NEVER self-schedule", sandesh → "PRIME DIRECTIVE".
 - [ ] Zero occurrences of "Plan B" across `~/.claude/skills/model-b/`.
 
 ### §S4
