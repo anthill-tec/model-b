@@ -73,3 +73,7 @@ Filed by the orchestrator (bun client today, promoting to all clients):
   mirror is updated on each intimation (never ahead of it).
 - No divergent requests filed: Model B consumes the contract as specified; drift found
   during reconciliation goes upstream as a Crucible CR, not a local fork.
+
+## Non-client adopters
+
+Tools that adopt this envelope convention without being Crucible clients (e.g. `worktree-flow.py`) MAY flatten `context` to a minimal shape (e.g. a flat `project` field) — they perform no run ingestion, so the classification object does not apply. Reconciliation passes must not read this as drift.
