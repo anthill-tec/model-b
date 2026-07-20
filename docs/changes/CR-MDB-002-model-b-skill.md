@@ -46,7 +46,7 @@ Copy the four §S3 source files to `<repo>/archive/wave2/`, then delete from `~/
 - [ ] Body contains zero occurrences of "Plan B" and zero of "orchestration-universal".
 
 ### §S3
-- [ ] All four files exist under `~/.claude/skills/model-b/references/`; each retains its distinctive anchor (gap-analysis verified): common → "MODE-MAP", mainline → "shutdown", track → "NEVER self-schedule", sandesh → "PRIME DIRECTIVE".
+- [ ] All four files exist under `~/.claude/skills/model-b/references/`; each retains its distinctive anchor (gap-analysis verified): common → "MODE-MAP", mainline → "SCRUM", track → "NEVER self-schedule", sandesh → "PRIME DIRECTIVE".
 - [ ] Zero occurrences of "Plan B" across `~/.claude/skills/model-b/`.
 
 ### §S4
