@@ -47,10 +47,10 @@ Kept: `java-modern-syntax`, `java-coding-standards` (trimmed), `java-testing-pra
 - `build.py --check` (regenerate + diff) is the drift gate; hand-edits to generated files fail it.
 
 ### D7 — Crucible V2 client contract (AXI)
-- **`bun-crucible.py` is the reference implementation.** Its plan/cycle verbs (`plan-file`, `cycle-activate`, `cycle-done`, `cr-close`) are universal V2 API (live-verified: `/api/v2/plans` active), to be adopted by every stack client.
-- Every client emits a **TOON-AXI envelope** on stdout: `verb`, `ok`, run counts, `warnings[]`, `help` (next-step command). Shared emitter (`axi_envelope.py`).
-- New `vscode-crucible.py` (Vitest+Mocha JUnit, lcov, tsc → `/api/v2/runs/*`); `arduino-crucible.py` extended (regression, auto-ingest, check, pre-merge-gate); `worktree-flow.py` migrates to AXI output (envelope for `status`/`next`/`finish`).
-- `hw-crucible.py` stays a shim to anthill-forge; the forge client must conform to the same contract.
+- **Ownership (corrected 2026-07-20): ALL `*-crucible.py` client implementation is the CRUCIBLE project's responsibility.** Model B requests it (Sandesh thread #1322/#1325), tracks it as an external dependency, and documents/consumes what Crucible ships. Model B implements no client code.
+- The contract Model B tracks: `bun-crucible.py` is the reference implementation; its plan/cycle verbs (`plan-file`, `cycle-activate`, `cycle-done`, `cr-close`) are universal V2 API (live-verified: `/api/v2/plans` active); every client emits a TOON-AXI envelope on stdout (`{axi:{verb,ok,…,context,warnings[]}}`) with the human line on stderr, with no-cycle-id/no-wave guards, an `append-cycle` verb, and golden fixtures.
+- Requested of Crucible: fleet conversion (python/rust/mvn/arduino), new `vscode-crucible.py`, arduino verb-surface extension, universal plan/cycle adoption. `hw-crucible.py` conformance rides the anthill-forge toolset.
+- Model B retains: `worktree-flow.py` AXI output migration; `contracts/crucible-envelope.md` mirroring Crucible's shipped schema; the crucible-skill rewrite documenting the shipped surfaces.
 - Endpoints: `/api/v2/agents/{register,unregister}`, `/api/v2/runs/{parsed,compile}`, `/api/v2/plans` (+ cycles PATCH). TOON is served via `?fmt=toon`.
 
 ### D8 — MCP holdouts: contracts only
@@ -71,5 +71,5 @@ The `model-b` repo is the permanent authoring workspace: `audits/`, `contracts/`
 2. Zero references (outside `archive/`) to: `agent-baseline.md`, `orchestration-universal.md`, `Plan B`, `/api/ingest/`, `heartbeat.sh`, `/agents/heartbeat`.
 3. `memory/` = the D5 reference library exactly; every skill/agent reference resolves.
 4. `build.py --check` idempotent; 16 agents generated, 13 bespoke intact.
-5. Every crucible client (incl. new vscode, extended arduino) passes a register→test→unregister smoke against `localhost:3849` emitting a parseable envelope; plan verbs work cross-stack.
+5. Every crucible client passes a register→test→unregister smoke against `localhost:3849` emitting a parseable envelope; plan verbs work cross-stack. (Client delivery is Crucible's, per D7 — this criterion gates Model B's DOCUMENTATION of them and closes only when Crucible ships.)
 6. `chezmoi diff` clean after every wave; deleted files stay deleted after fresh `apply`.
