@@ -341,17 +341,17 @@ flowchart LR
     <table class="table table-zebra table-sm">
       <thead><tr><th>CR</th><th>Title</th><th>Wave</th><th>Depends on</th></tr></thead>
       <tbody>
-        <tr><td><code>CR-MODELB-001</code></td><td>Core split: frugal AGENTS.md + procedure relocation + shim removal</td><td>1</td><td>—</td></tr>
-        <tr><td><code>CR-MODELB-002</code></td><td>model-b skill body: orchestration trio + sandesh + canonical definition</td><td>2</td><td><code>001</code></td></tr>
-        <tr><td><code>CR-MODELB-003</code></td><td>crucible skill rewrite: real client surfaces, absorb report skills + agent-protocol</td><td>2</td><td><code>001</code></td></tr>
-        <tr><td><code>CR-MODELB-004</code></td><td>cr-authoring skill: cr-prd-dn-conventions + project-management split</td><td>2</td><td><code>001</code></td></tr>
-        <tr><td><code>CR-MODELB-005</code></td><td>git-workflow + chezmoi skills: memory-twin merges + delete/rename procedure</td><td>2</td><td><code>001</code></td></tr>
-        <tr><td><code>CR-MODELB-006</code></td><td>Memory consolidation: devops merge, orphan wiring, stale deletions</td><td>2</td><td><code>002, 003, 004, 005</code></td></tr>
-        <tr><td><code>CR-MODELB-007</code></td><td>"Plan B" → "Model B" naming sweep</td><td>2</td><td><code>002</code></td></tr>
-        <tr><td><code>CR-MODELB-008</code></td><td>Agent generator: templates + stack params + drift gate; regenerate 16 agents</td><td>3</td><td><code>002, 006</code></td></tr>
-        <tr><td><code>CR-MODELB-009</code></td><td>contracts/: crucible-envelope, sandesh-cli, mail-axi, lean-ctx specs</td><td>3</td><td>—</td></tr>
-        <tr><td><code>CR-MODELB-010</code></td><td>worktree-flow.py AXI output: envelope for status/next/finish + lane boards</td><td>3</td><td><code>009</code></td></tr>
-        <tr><td><code>CR-MODELB-011</code></td><td>crucible skill final docs: shipped client surfaces</td><td>3</td><td><code>003, 009</code> + external: Crucible (#1322)</td></tr>
+        <tr><td><code>CR-MDB-001</code></td><td>Core split: frugal AGENTS.md + procedure relocation + shim removal</td><td>1</td><td>—</td></tr>
+        <tr><td><code>CR-MDB-002</code></td><td>model-b skill body: orchestration trio + sandesh + canonical definition</td><td>2</td><td><code>001</code></td></tr>
+        <tr><td><code>CR-MDB-003</code></td><td>crucible skill rewrite: real client surfaces, absorb report skills + agent-protocol</td><td>2</td><td><code>001</code></td></tr>
+        <tr><td><code>CR-MDB-004</code></td><td>cr-authoring skill: cr-prd-dn-conventions + project-management split</td><td>2</td><td><code>001</code></td></tr>
+        <tr><td><code>CR-MDB-005</code></td><td>git-workflow + chezmoi skills: memory-twin merges + delete/rename procedure</td><td>2</td><td><code>001</code></td></tr>
+        <tr><td><code>CR-MDB-006</code></td><td>Memory consolidation: devops merge, orphan wiring, stale deletions</td><td>2</td><td><code>002, 003, 004, 005</code></td></tr>
+        <tr><td><code>CR-MDB-007</code></td><td>"Plan B" → "Model B" naming sweep</td><td>2</td><td><code>002</code></td></tr>
+        <tr><td><code>CR-MDB-008</code></td><td>Agent generator: templates + stack params + drift gate; regenerate 16 agents</td><td>3</td><td><code>002, 006</code></td></tr>
+        <tr><td><code>CR-MDB-009</code></td><td>contracts/: crucible-envelope, sandesh-cli, mail-axi, lean-ctx specs</td><td>3</td><td>—</td></tr>
+        <tr><td><code>CR-MDB-010</code></td><td>worktree-flow.py AXI output: envelope for status/next/finish + lane boards</td><td>3</td><td><code>009</code></td></tr>
+        <tr><td><code>CR-MDB-011</code></td><td>crucible skill final docs: shipped client surfaces</td><td>3</td><td><code>003, 009</code> + external: Crucible (#1322)</td></tr>
       </tbody>
     </table>
   </div>
@@ -379,7 +379,7 @@ flowchart LR
 │   ├── model-b/                 #   (model-b, crucible, cr-authoring, git-workflow, chezmoi)
 │   └── ...                      #   synced → chezmoi source → ~/.claude/skills/
 ├── docs/                        # STANDARD doc model — same across all stacks/projects
-│   ├── changes/                 #   README.md = the CR queue · CR-MODELB-NNN-*.md specs
+│   ├── changes/                 #   README.md = the CR queue · CR-MDB-NNN-*.md specs
 │   └── research/                #   PRD-*.md design contracts · DN-*.md design notes
 ├── archive/                     # retired legacy files + mapping.md (old path → new home)
 ├── scripts/                     # sync + verification: chezmoi round-trip, grep gates, token budget

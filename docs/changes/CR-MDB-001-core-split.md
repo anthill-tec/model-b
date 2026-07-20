@@ -1,4 +1,4 @@
-# CR-MODELB-001 — Core split: frugal AGENTS.md, procedure relocation, shim removal
+# CR-MDB-001 — Core split: frugal AGENTS.md, procedure relocation, shim removal
 
 **Status:** COMPLETED (shipped 2026-07-20 on develop)
 **Type:** maintenance

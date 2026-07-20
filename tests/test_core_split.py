@@ -1,9 +1,9 @@
-"""RED-phase tests for CR-MODELB-001 (Model B core split).
+"""RED-phase tests for CR-MDB-001 (Model B core split).
 
-These tests assert the acceptance criteria of CR-MODELB-001 §S2-§S5 against the
+These tests assert the acceptance criteria of CR-MDB-001 §S2-§S5 against the
 LIVE ~/.claude tree on this machine. They are intentionally written before
 the GREEN-phase reorganization runs, so most of them are expected to FAIL
-against the current (pre-CR-MODELB-001) state of ~/.claude.
+against the current (pre-CR-MDB-001) state of ~/.claude.
 
 Stdlib only (unittest + subprocess + pathlib + re + shutil).
 """
@@ -253,7 +253,7 @@ class CoreSplitS5ShimRemovalAndArchiveTest(unittest.TestCase):
 
     def test_s5_chezmoi_diff_clean_on_cr_touched_paths(self):
         """chezmoi's source state must exactly match the live state of the
-        specific paths CR-MODELB-001 touches (AGENTS.md, CLAUDE.md, agents/,
+        specific paths CR-MDB-001 touches (AGENTS.md, CLAUDE.md, agents/,
         memory/, skills/). Pre-existing, out-of-scope drift elsewhere in the
         dotfiles tree (e.g. .bashrc) is NOT part of this AC and is excluded
         by scoping the diff to these five target args."""
@@ -295,7 +295,7 @@ class CoreSplitS5ShimRemovalAndArchiveTest(unittest.TestCase):
 
     def test_s5_chezmoi_apply_dry_run_no_shim_mentions(self):
         """A non-interactive `chezmoi apply --dry-run --verbose` scoped to the
-        five CR-MODELB-001-touched paths (AGENTS.md, CLAUDE.md, agents/,
+        five CR-MDB-001-touched paths (AGENTS.md, CLAUDE.md, agents/,
         memory/, skills/ — never whole-home) must exit 0 AND must not mention
         either retired shim path form ('memory/agent-baseline.md',
         'memory/orchestration-universal.md'). The returncode assertion makes
