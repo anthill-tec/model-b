@@ -1,6 +1,6 @@
 # CR-MDB-002 — model-b skill body: canonical definition + universal conventions
 
-**Status:** PENDING
+**Status:** COMPLETED (shipped 2026-07-20 on develop)
 **Type:** feature
 **Priority:** P1 (wave-2 keystone — 006/007 depend on it)
 **Depends on:** CR-MDB-001
