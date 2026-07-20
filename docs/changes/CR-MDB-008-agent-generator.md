@@ -1,6 +1,6 @@
 # CR-MDB-008 — agent generator: templates + stack params + drift gate
 
-**Status:** PENDING
+**Status:** COMPLETED (shipped 2026-07-21 on develop)
 **Type:** feature
 **Priority:** P1 (scaffold gatekeeper — 013 depends)
 **Depends on:** CR-MDB-002, CR-MDB-006
