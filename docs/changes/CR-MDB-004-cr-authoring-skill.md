@@ -22,10 +22,10 @@ SKILL.md (triggers: CR, PRD, DN, acceptance criteria, spec, queue, CReq, CRes): 
 `references/creq-cres.md`: the CReq/CRes INBOX/OUTBOX library-communication pattern extracted from `project-management.md`.
 
 ### §S3 — project-management.md split + deletion
-Extract into §S2's references what is still true and unique (CReq/CRes; any surviving practice not already in AGENTS.md/PRD/other skills — enumerate at gap-analysis); archive the whole file to `<repo>/archive/wave2/`; delete `memory/cr-prd-dn-conventions.md` AND `memory/project-management.md` (chezmoi discipline).
+**Triage (gap-analysis enumerated 2026-07-20):** KEEP → `references/creq-cres.md`: L121–~500 (Intra/Inter Project Communication Pattern; CReq/CRes structures; ONE condensed example pair — the full example bodies stay only in the archive). DROP (archived, not carried): L1–120 legacy Architecture/Implementation templates; L501–512 CR Workflow (superseded by the skill body); L513–540 Dev Best Practices, L820–842 Compilation Checks (AGENTS.md one-liners); L541–690 Critical Documentation Files, L843–877 Architecture/Implementation separation + Memory Triggers (legacy); L691–721 Project Structure (stack refs); L722–752 Logging (java-coding-standards owns it); L753–819 Web Search + Reading-Before-Implementing (read-the-damn-docs territory). Archive the whole file to `<repo>/archive/wave2/`; delete `memory/cr-prd-dn-conventions.md` AND `memory/project-management.md` (chezmoi discipline).
 
 ### §S4 — repoint consumers
-**Surfaces (verified at gap-analysis):** `~/.claude/AGENTS.md` trigger row (cr-prd-dn-conventions → `cr-authoring` skill); references inside `skills/gap-analysis/SKILL.md`, `skills/check-cr-close/`, `skills/git-flow-release/SKILL.md`, and any memory file citing either deleted file.
+**Surfaces (gap-analysis verified 2026-07-20):** `~/.claude/AGENTS.md` trigger row (cr-prd-dn-conventions → `cr-authoring` skill); memory `QUICK_REFERENCE.md` (dies in 006 — repoint for the gate), `chezmoi-integration.md` (dies in 005 — repoint for the gate), `rust-orchestration.md`, `java-orchestration.md`. (gap-analysis found NO hits in gap-analysis/check-cr-close/git-flow-release skills — the speculative list was wrong; the grep gate governs.)
 
 ## Acceptance criteria
 
