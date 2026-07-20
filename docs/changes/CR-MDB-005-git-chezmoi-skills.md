@@ -27,7 +27,7 @@
 `memory/git-workflow.md`, `memory/git-multi-account.md`, `memory/chezmoi-integration.md`: archive to `<repo>/archive/wave2/`, delete via chezmoi discipline.
 
 ### §S5 — repoint consumers
-**Surfaces (verified at gap-analysis):** `skills/git-flow-release/SKILL.md` citations of `memory/git-workflow.md` → the skill; `~/.claude/AGENTS.md` trigger rows (git row already points at the skill; chezmoi row → `chezmoi` skill, dropping "until Wave 2"); any other `grep -rl` hits on the three deleted basenames.
+**Surfaces (gap-analysis verified 2026-07-20):** `skills/git-flow-release/SKILL.md` citations of `memory/git-workflow.md` → the skill; `memory/QUICK_REFERENCE.md` (dies in 006 — repoint for the gate); `~/.claude/AGENTS.md` chezmoi trigger row → `chezmoi` skill, dropping "until Wave 2" (git row already points at the skill — verified). All three memory files chezmoi-managed → destroy path.
 
 ## Acceptance criteria
 
