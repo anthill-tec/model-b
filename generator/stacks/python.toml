@@ -1,0 +1,114 @@
+# Stack parameters — Python (unittest/pytest + xmlrunner via python-crucible.py)
+# Distilled from the pre-CR-MDB-008 agent originals (archive/wave3/agents/python-*).
+
+display_name = "Python"
+test_command = "python3 ~/.claude/scripts/python-crucible.py test --tests tests.test_<feature>[.<Class>[.<method>]] --agent YOUR_AGENT_ID"
+register_command = "python3 ~/.claude/scripts/python-crucible.py register --agent YOUR_AGENT_ID"
+unregister_command = "python3 ~/.claude/scripts/python-crucible.py unregister --agent YOUR_AGENT_ID"
+crucible_reference = "~/.claude/skills/crucible/references/python.md"
+
+mechanics = '''
+- **Framework/client:** unittest (or pytest) + xmlrunner, driven through `python-crucible.py` (`register` / `test` / `check` / `unregister`). `test` runs xmlrunner, wipes stale `TEST-*.xml` so only THIS run's results ingest, parses + ingests the JUnit XML, and routes collection/import failures through too (a collection error is never lost). It prints `ingest junit: ok=True ... failed=N` — confirm it.
+- **Interpreter (NON-NEGOTIABLE):** use the project venv (`<project>/.venv/bin/python`), not bare `python3` — the SUT and test deps (`xmlrunner`, optional `mcp`, etc.) live there. `python-crucible.py` auto-resolves it; honour `PY_CRUCIBLE_PYTHON` if the prompt sets it. A wrong interpreter gives phantom `ModuleNotFoundError` or a false "0 tests".
+- **Importability:** know HOW tests find the code (a `sys.path.insert` in the test, a `src/` layout, an installed editable package, or `conftest.py`). If imports fail for a path reason — not a missing SUT symbol — fix the path setup; that is not a real RED.
+- **Stale reports give false greens:** if you ever run xmlrunner by hand, clear the reports dir first (the client does this for you).
+- **`__pycache__`:** rarely the culprit, but a renamed/moved module can leave a stale `.pyc` shadowing it — if an import resolves to something impossible, clear `__pycache__`.
+- **Quick syntax gate:** `python-crucible.py check` (py_compile) — or a quick import — after each file change.
+- **Third-party API sources:** `opensrc fetch pypi:<pkg>` then `rg "def <name>" $(opensrc path pypi:<pkg>)/...`, or read the installed copy under `<project>/.venv/lib/python*/site-packages/<pkg>/`. Confirm the exact installed version with `<venv>/bin/python -m pip show <pkg>` — APIs differ across versions. For async APIs, confirm whether the call is a coroutine (needs `await`) and its real return shape.
+- **Stdlib-only runtime is a common project constraint** (see CLAUDE.md): third-party deps belong only in the modules/venv that need them, never leaked into the pure runtime path.
+'''
+
+[description]
+red = "RED phase agent — test specialist for Python projects (unittest/pytest + xmlrunner). Two modes. (1) Write NEW failing tests for a CR spec. (2) Fix BROKEN test collection/imports so existing tests can run. Does NOT write production code."
+green = "GREEN phase agent — implements production Python code to make failing tests pass. Works step-by-step, one module at a time. Does NOT modify tests unless explicitly approved by the orchestrator. Used after RED tests are committed."
+verify = "VERIFY agent — reviews a Python feature branch after implementation is complete. Read-only analysis of CR compliance, wiring completeness, test-coverage adequacy, layer-boundary adherence, and code quality. Does NOT modify code."
+fix = "FIX agent — addresses specific findings from a VERIFY agent report in Python projects. Fixes only what is listed and approved. Does NOT decide what to fix — the orchestrator tells it which findings to address."
+
+[frontmatter]
+red = '''
+model: sonnet
+effort: high
+color: red
+maxTurns: 300
+skills:
+  - reviewer-coverage
+'''
+green = '''
+model: inherit
+effort: medium
+color: green
+maxTurns: 500
+skills:
+  - reviewer-coverage
+'''
+verify = '''
+model: sonnet
+color: purple
+effort: medium
+tools: Read, Grep, Glob, Bash
+maxTurns: 500
+skills:
+  - reviewer
+  - reviewer-coverage
+  - reviewer-architecture
+  - reviewer-security
+  - reviewer-style
+  - reviewer-syntax
+'''
+fix = '''
+model: inherit
+effort: high
+color: yellow
+maxTurns: 300
+skills:
+  - reviewer-coverage
+'''
+
+[gotchas]
+red = '''
+- An `ImportError`/`ModuleNotFoundError`/`AttributeError` from a not-yet-existing SUT symbol counts as RED (Python surfaces it at collection time, captured in the JUnit XML).
+- **Verify the test COUNT increased.** If you wrote N new tests but the total stayed the same, they were silently skipped (wrong target, collection error). Never trust a 0-failure result without checking the count.
+- **Exception asserts:** use the context manager AND check message/type — `with self.assertRaises(ValueError) as ctx: ...` then `self.assertIn("...", str(ctx.exception))`.
+- **Mock verification:** assert what the `unittest.mock` RECEIVED — `mock.send.assert_called_once_with(...)` / inspect `mock.method.call_args`.
+- **Async tests:** if the SUT is async, use `unittest.IsolatedAsyncioTestCase` with `async def test_...`, or wrap with `asyncio.run(...)` in a sync `TestCase`. Do NOT call a coroutine without awaiting — an un-awaited coroutine "passes" vacuously (and warns). For SDK calls returning a converted/wrapped result (e.g. MCP `call_tool` → content blocks / structuredContent), assert the **unwrapped** value, per the CR spec.
+- **Timing-dependent tests:** never assert `count >= N` without an upper bound — use `N <= count <= M`. Prefer polling with a timeout over a fixed `time.sleep`. For liveness/heartbeat logic, drive the clock via the seam the code exposes (injected time, monkeypatched `time.time`), not real sleeps.
+- **Conventions:** unit/behaviour tests in `tests/test_<feature>.py`; class `<Feature>Test(unittest.TestCase)`; method `test_<behaviour>_<scenario>`; fixtures via `setUp`/`tearDown` with `tempfile.mkdtemp` + `XDG_DATA_HOME` override (match existing tests); match the existing import bootstrap (e.g. `sys.path.insert(0, .../app)`).
+- **Prohibited:** `@unittest.skip` / `@unittest.expectedFailure` on new tests; bare `except:` or `time.sleep`-based synchronization in tests (targeted excepts + polling/timeouts instead); calling a coroutine without `await`; introducing a third-party runtime import into a stdlib-only package.
+'''
+green = '''
+**Python Code Quality Rules (NON-NEGOTIABLE)** — these prevent recurring VERIFY findings:
+1. **No bare `except:` and no silent swallowing.** `except Exception: pass` is forbidden. Catch the specific exception and re-raise, wrap, or log+act visibly.
+2. **Raise specific, typed exceptions** with actionable messages (`ValueError`, `PermissionError`, or a project error class) — not bare `Exception`. Match the messages the RED tests assert on.
+3. **No mutable default arguments** (`def f(x=[])`) — use `None` + initialise inside.
+4. **Close resources** — context managers (`with open(...)`, `with sqlite3.connect(...)` patterns the codebase uses); don't leak file handles / connections.
+5. **No unused imports / names.** Remove them; prefix a genuinely-unused binding with `_`. No leftover `print()`/debug.
+6. **Type hints + docstrings** consistent with the surrounding module.
+7. **Respect the runtime dependency constraint** — never import a third-party package into a stdlib-only runtime path.
+8. **Self-check before commit:** bare/over-broad except? swallowed errors? mutable defaults? unused imports? leaked resources? a third-party import in the pure runtime? Fix first.
+
+**Implementation conventions:**
+- **Module organization:** module docstring → imports (stdlib, then third-party, then local — each group sorted) → public API → private helpers; tests live in `tests/`, not inline. Re-export the public API from the package `__init__`/entrypoint as the codebase does.
+- **Error handling:** let fallible functions raise rather than returning sentinel `None` that hides failure (unless the spec says `None`). Match the exact exception type + message the RED tests assert.
+- **Async:** if the tests `await` an API, define `async def` and `await` inner awaitables; never block the loop with sync I/O in a hot path. Keep the sync API sync.
+- **Boundaries:** keep a pure library module free of I/O loops and of third-party imports; presentation (CLI), the blocking loop, and any protocol/adapter layer stay in their own modules. Don't relocate logic across these layers to pass a test.
+'''
+verify = '''
+- **Stack read-only tool lists:** ALLOWED — `python -m unittest`/`pytest`/`python-crucible.py test` (run-only), `coverage` analysis of an existing report, `ruff`/`flake8`/`mypy` in **check** mode (no `--fix`). FORBIDDEN — `black`, `ruff --fix`, `autopep8`, `isort -w`, or any writer.
+- **Stdlib-only test path:** if it needs checking, run `python3 tests/test_*.py` directly (no third-party) and confirm it still works.
+- **Layer / dependency boundaries:** pure library stays pure (no I/O loop, no third-party imports it shouldn't have); runtime stays stdlib-only where the project requires it (`grep`/import-scan the runtime path — third-party confined to its own module/venv); presentation (CLI), blocking loop, and protocol/adapter live in their own modules.
+- **Quality checklist:** no bare `except:`/over-broad `except Exception: pass`; specific exception types, no swallowed errors, messages match contracts; resources closed via context managers; PEP8 naming (`snake_case` funcs/vars, `PascalCase` classes, `UPPER_SNAKE` constants); no unused imports / wildcard `from x import *` in production; no dead code / leftover `print`; no mutable defaults (`def f(x=[])`); type hints/docstrings consistent with the module convention; coroutines awaited, no sync blocking I/O in async hot paths.
+- **Test quality:** one behaviour per test; descriptive `test_<behaviour>` names; positive + bound + exception + mock-received assertions; tests in `tests/test_<feature>.py`, never CR/cycle-named.
+- **Config wiring example:** new config/env (e.g. a `SANDESH_PROJECT`-style variable) traced file/env → parse → constructor → behaviour.
+'''
+fix = '''
+**Common Python fixes:**
+- **Bare/over-broad except** → catch the specific exception; re-raise/wrap/log+act. Never `except: pass`.
+- **Swallowed error** (`try: x() except Exception: pass`) → propagate or handle visibly.
+- **Unused import / name** → remove, or `_`-prefix a genuinely-unused binding.
+- **Mutable default arg** (`def f(x=[])`) → `x=None` + init inside.
+- **Un-awaited coroutine** → `await` it / drive via `asyncio.run`; make the caller `async` if needed.
+- **Leaked resource** → wrap in a `with` / context manager.
+- **Wrong exception type/message** → raise the exact type+message the test/AC expects.
+- **Third-party leak into a stdlib-only runtime** → move the import into the module/entrypoint that owns it; keep the runtime path clean.
+Detect the project venv interpreter first (the SUT + test deps live in `<project>/.venv`; `python-crucible.py` resolves it).
+'''

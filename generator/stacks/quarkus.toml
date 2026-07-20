@@ -1,0 +1,125 @@
+# Stack parameters — Quarkus/Java (Maven surefire/failsafe via mvn-crucible.py)
+# Distilled from the pre-CR-MDB-008 agent originals (archive/wave3/agents/quarkus-*).
+
+display_name = "Quarkus/Java"
+test_command = "python3 ~/.claude/scripts/mvn-crucible.py unit --test <TestClass> --agent YOUR_AGENT_ID [--module m] [--maven-dir backend]"
+register_command = "python3 ~/.claude/scripts/mvn-crucible.py register --agent YOUR_AGENT_ID"
+unregister_command = "python3 ~/.claude/scripts/mvn-crucible.py unregister --agent YOUR_AGENT_ID"
+crucible_reference = "~/.claude/skills/crucible/references/java.md"
+
+mechanics = '''
+- **Framework/client:** JUnit 5 via Maven surefire/failsafe, driven through `mvn-crucible.py` (tiers `unit` / `module` / `e2e` / `regression`, plus `compile`; `clean` is built in). `unit --test <Class>` runs + parses + ingests in one call and auto-routes: surefire XML → `/api/ingest`; compile-fail → `mvn test-compile` → `/api/ingest/compile`. A compile failure IS a valid RED — it is ingested, never skipped.
+- **Detect the Maven layout:** `./mvnw` vs `mvn`; single-module vs reactor (`-pl`); monorepo backend (set `--maven-dir`). Read root + module `pom.xml` for surefire/failsafe/jacoco config.
+- **Always `clean` on test runs** — wipes stale `target/surefire-reports/` so only the SUT's XML is ingested (stale reports → false green). The client does this for you.
+- **Don't parse the mvn console for results** — after a run, read `target/surefire-reports/*.txt`/`*.xml`. Use `--log <file>` then grep; never re-run a multi-minute suite just to "see" output.
+- **DevServices/TestContainers** auto-provision infra for `@QuarkusTest`; use `restrictToAnnotatedClass = true`. **`@Nested` + continuous testing** → `ClassCastException`; run via `mvn`, not dev mode.
+- **Third-party API sources:** verify the method/field exists in the EXACT resolved version — read `~/.m2/repository/...` for the resolved jar/sources, or `opensrc fetch maven:<group>:<artifact>` then `rg` over `$(opensrc path maven:<group>:<artifact>)`. Never assume from IDE autocomplete or a different version; match the pattern sibling code uses.
+- **Companion memory (read as directed by the project):** the project's instantiated orchestration memory (template: model-b repo `skills-src/memory-templates/java-orchestration.md`) — Maven mechanics, `mvn-crucible.py` tiers, the gate sequence, Quarkus gotchas; `~/.claude/memory/java-testing-practices.md` — Quarkus test conventions, JaCoCo, `@TempDir`, naming, review gates; `~/.claude/memory/java-coding-standards.md` — imports, naming, error handling, DTO records, no full-namespace.
+- **Test file naming:** unit → `<Feature>Test.java` (surefire); integration/E2E → `<Feature>IT.java` (failsafe).
+'''
+
+[description]
+red = "RED phase agent — test specialist for Quarkus/Java projects. Two modes. (1) Write NEW failing tests for a CR spec. (2) Fix BROKEN test compilation so existing tests can run. Does NOT write production code. Uses the refactorer-java skill when mechanical rewrites are applicable."
+green = "GREEN phase agent — implements production code to make failing tests pass in Quarkus/Java projects. Works step-by-step, one class at a time. Does NOT modify tests unless explicitly approved by the orchestrator."
+verify = "VERIFY agent — reviews a Quarkus/Java feature branch after implementation is complete. Read-only analysis of CR compliance, wiring completeness, test coverage adequacy, layer-boundary adherence, and code quality. Does NOT modify code. Used when an orchestrator dispatches a verification task after GREEN."
+fix = "FIX agent — addresses specific findings from a VERIFY agent report in Quarkus/Java projects. Fixes only what is listed and approved. Does NOT decide what to fix — the orchestrator tells it which findings to address."
+
+[frontmatter]
+red = '''
+model: inherit
+effort: high
+color: red
+maxTurns: 200
+skills:
+  - crucible
+  - refactorer-java
+  - reviewer-coverage
+'''
+green = '''
+model: inherit
+effort: high
+color: green
+maxTurns: 200
+skills:
+  - crucible
+  - refactorer-java
+  - reviewer-coverage
+'''
+verify = '''
+model: inherit
+color: blue
+maxTurns: 150
+skills:
+  - reviewer
+  - reviewer-coverage
+  - reviewer-quarkus
+  - reviewer-architecture
+  - reviewer-security
+  - reviewer-style
+  - reviewer-syntax
+'''
+fix = '''
+model: inherit
+effort: high
+color: yellow
+maxTurns: 150
+skills:
+  - crucible
+  - refactorer-java
+  - reviewer-coverage
+'''
+
+[gotchas]
+red = '''
+- **Refactoring test code (Mode 2):** use the `refactorer-java` skill (OpenRewrite + tool-first) for cross-file mechanical changes; `Edit` only for trivial known old→new in one file; avoid `sed`.
+- **Quarkus test annotations:** `@QuarkusTest` — CDI beans, services, REST endpoints with full DI container; `@QuarkusIntegrationTest` — the packaged app (failsafe after `mvn package`, the E2E tier); plain JUnit 5 `@Test` — pure POJO/utility/mapper unit tests, no CDI.
+- **CDI:** `@Inject` real bean; `@InjectMock` Mockito mock into CDI. **NEVER `@Mock` + `@InjectMocks`** (standalone Mockito). NEVER `new MyService()` in a `@QuarkusTest` — let CDI inject.
+- **REST Assured:** `given().contentType(JSON).body(b).when().post("/api/x").then().statusCode(200).body("field", equalTo(v))`; static-import `io.restassured.RestAssured.given`, `org.hamcrest.Matchers.*`. Assert exact status codes (200/201/204/400/404) and body shape.
+- **Reactive (CRITICAL):** `@RunOnVertxContext` + `UniAsserter` — `asserter.execute(() -> svc.op()); asserter.assertThat(() -> repo.findById(id), e -> assertNotNull(e));`. NEVER `.await().indefinitely()` in assertions.
+- **Panache/Mongo:** repositories/entities are CDI beans — inject normally; test against DevServices/TestContainers. Isolation via `@QuarkusTestResource(value = X.class, restrictToAnnotatedClass = true)`.
+- `@TempDir` with `@QuarkusTest` → method-parameter form only (field-level NPEs) — see java-testing-practices.md.
+- **Resource-layer/IT tests:** drive endpoints through a type-safe `@RegisterRestClient` client (`@Inject @RestClient` + `UniAsserter`) for contract tests, or RestAssured for raw HTTP status/body/SSE. E2E `*IT.java` are black-box against the packaged app — HTTP surface only, no internal CDI access; smoke / flow-based / load kinds; external infra via DevServices/TestContainers + the config-driven state-setup utility. See java-testing-practices.md "E2E test kinds" + "REST client integration test pattern" — don't reinvent inline.
+- **Timing:** NEVER `Thread.sleep()` — Awaitility (`await().atMost(...).until(...)`) or `UniAsserter`; bound rate/time assertions (`n >= 5 && n <= 15`).
+- **Prohibited:** `UUID.randomUUID()` → `UuidV7Generator.generate()`; `@Disabled`/`@Ignore` on new tests.
+'''
+green = '''
+**Code quality (NON-NEGOTIABLE):** no unused imports; no full-namespace inline names (import the type); rename unused lambda params to `_`; no empty catch blocks / swallowed exceptions (never `catch (Exception e) {}`); **fully reactive — no blocking in production** (service methods return `Uni<T>`/`Multi<T>`; NEVER `.await().indefinitely()` in production — tests only via `UniAsserter`); no `@SuppressWarnings` without a justification comment; no dead/commented-out code; records for DTOs, non-empty `@BsonProperty` (java-coding-standards.md).
+
+**Quarkus implementation conventions:**
+- **Reactive service pattern:** `@ApplicationScoped` service returns `Uni<T>` via `validate(...).flatMap(this::process).flatMap(this::persist).map(this::toResponse)`. Use `.call()` (not `.invoke()`) for `Uni`-returning side effects (e.g. event emission). Operators: `flatMap`/`chain`/`map`/`onItem`/`onFailure`.
+- **Layering (bottom-up, one class at a time):** Model (`ReactivePanacheMongoEntity`) → Repository (`ReactivePanacheMongoRepository<T>`, data access ONLY) → Service (`@ApplicationScoped`, business logic + event emission) → Resource (`@Path`, HTTP only). Respect the order.
+- **CDI:** `@ApplicationScoped` stateless, `@RequestScoped` per-request; inject via `@Inject`, never `new`.
+- **REST Resource:** `@Path`/`@Produces`/`@Consumes`; inject the Service, never call repositories directly; reactive endpoints return `Uni<Response>` mapping success + failure (`onItem().transform(...)` / `onFailure().recoverWithItem(...)`); exact status codes; `@Valid` request bodies; OpenAPI annotations (`@Operation`, `@APIResponse`); inter-service calls via `@RegisterRestClient(configKey = "...")` reactive clients.
+- **Messaging/events:** SmallRye `@Incoming`/`@Outgoing`, `Emitter<T>`, CDI `Event<T>.fireAsync()`. SSE: `eventBus.emit(type, pk, data, from, to)` — NEVER `new ServerEvent(...)`.
+- **Shared libraries:** check project CLAUDE.md (e.g. store-utils) — reuse library components before creating new ones.
+- **Quick gates:** after each file `mvn-crucible.py compile --agent YOUR_AGENT_ID` (or `mvn -q clean test-compile`); module regression before finishing: `mvn-crucible.py module [--module m] --agent YOUR_AGENT_ID`.
+- **Quality checks before completion:** enum comparison uses `==`, not `.equals()`; `.call()` for Uni-returning emits; no blocking; layer order respected.
+- **Prohibited:** `Thread.sleep()` → Awaitility / `Uni.delayIt()`; `UUID.randomUUID()` → `UuidV7Generator.generate()`; `@Mock`+`@InjectMocks`; manual JSON serialization (use Jackson annotations); `new ServerEvent(...)`.
+- Use `refactorer-java` for mechanical multi-file changes; avoid `sed`.
+'''
+verify = '''
+- **Stack read-only tool lists:** ALLOWED — `mvn test`/`verify`/`test-compile` (verification runs), targeted `mvn-crucible.py module [--module m]` runs. FORBIDDEN — `mvn ... -Drewrite` / OpenRewrite apply, or any writer.
+- **Targeted regression = affected module(s) only** via `mvn-crucible.py module`; the full-reactor `regression` (with JaCoCo coverage) is the ORCHESTRATOR's pre-merge gate — if you suspect cross-module breakage, flag it, don't run it.
+- **Layer-boundary checks:** Repository = data only; Service = logic + events; Resource = HTTP only — no business logic in resources, no HTTP in services. Reactive: no blocking / `.await().indefinitely()` in production; `Uni`/`Multi` returns; `.call()` (not `.invoke()`) for Uni side effects. Enum compare `==`, not `.equals()`. SSE via `eventBus.emit(type, pk, data, from, to)`, not `new ServerEvent(...)`. No unused imports / full-namespace names / empty catches / dead code.
+- **Wiring (stack flavour):** new methods/beans used outside `src/test` (`grep -rn 'methodName(' src/main/java`); `application.properties`/`@ConfigProperty` keys traced properties → injected field → behaviour; events/SSE actually fired in production; persisted state round-trips.
+- **Per-layer deep review** (`reviewer-quarkus`/`reviewer-architecture`): Model — field types + nullability, validation annotations (`@NotNull`/`@NotBlank`/`@Size`), Panache patterns, non-empty `@BsonProperty`; Service — `Uni`/`Multi` returns, scope annotations, transaction boundaries, idempotency, no N+1 queries, no blocking, visible error handling; Resource — exact status codes (200/201/204/400/404/500), `@Valid`, DTO mapping (no entity leak), OpenAPI, SSE/WebSocket; Cross-cutting — no circular CDI deps, consistent naming, no dead code.
+- **Security review (OWASP backend; `reviewer-security` skill)** — run the red-flag greps, trace each finding, BLOCK MERGE on any Critical/High: Injection (NoSQL filters from unsanitized input; `Runtime.exec`/`ProcessBuilder` with user args; log forging; SSRF); Auth (missing `@RolesAllowed`/`@Authenticated`; JWT expiry/validation); Misconfiguration (`%prod` vs `%dev` leakage; Swagger/dev-services in prod; CORS `*`; stack traces in responses); Sensitive data (hardcoded secrets/keys/tokens; creds in `application.properties` without env substitution; secrets in logs; `.env` not git-ignored — `grep -rn 'password\|secret\|api.key\|token\|credential' --include=*.java --include=*.properties`); Dependencies (known-CVE versions — `./mvnw versions:display-dependency-updates`); Input validation (missing `@Valid`; unbounded payloads; path traversal); Business logic (IDOR; mass assignment — bind to a DTO, not the entity; rate limiting on sensitive endpoints). Frontend security is out of scope.
+- **Coverage:** read an existing `target/jacoco-report/jacoco.csv` if present to spot I/O-backed service classes < 80% instruction — flag as findings; never run a fresh full coverage pass.
+- **Test quality:** I/O-backed service tests are integration (no `@InjectMock` on them); error/edge/idempotency covered; `*Test`/`*IT` naming; descriptive method names (java-testing-practices.md "Reviewer checklist").
+- Report the independent gate results with real counts; include Security PASS/WARN/BLOCK in the report.
+'''
+fix = '''
+**Common Quarkus/Java fixes:**
+| Finding | Fix |
+|---|---|
+| Unused imports | Remove the import line (don't fully-qualify elsewhere). |
+| Empty/swallowed catch | Log + rethrow, or propagate; never `catch (Exception e) {}`. |
+| Blocking in production | Convert to reactive (`Uni`/`Multi`); remove `.await().indefinitely()`. |
+| `.invoke()` for Uni side effect | `.call()` instead (e.g. event emission). |
+| `enum.equals(X)` | `enum == X`. |
+| `new ServerEvent(...)` | `eventBus.emit(type, pk, data, from, to)`. |
+| `@Mock`+`@InjectMocks` | Quarkus `@InjectMock`. |
+| Missing layer separation | Move logic to Service, data to Repository, HTTP to Resource. |
+| Test-quality finding | Add error/edge/mock-verification assertions per java-testing-practices.md. |
+Use the `refactorer-java` skill for cross-file mechanical changes (renames, import rewrites, signature updates) — tool-first, do NOT improvise; `Edit` for trivial known old→new; avoid `sed`. Coverage NEVER on targeted runs — full coverage is the orchestrator's gate.
+'''

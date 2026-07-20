@@ -1,0 +1,101 @@
+# Stack parameters — Bun/TypeScript (`bun test` via bun-crucible.py)
+# Distilled from the pre-CR-MDB-008 agent originals (archive/wave3/agents/bun-*).
+
+display_name = "Bun/TypeScript"
+test_command = "python3 ~/.claude/scripts/bun-crucible.py test --tests <path/to/feature.test.ts> --agent YOUR_AGENT_ID"
+register_command = "python3 ~/.claude/scripts/bun-crucible.py register --agent YOUR_AGENT_ID"
+unregister_command = "python3 ~/.claude/scripts/bun-crucible.py unregister --agent YOUR_AGENT_ID"
+crucible_reference = "~/.claude/skills/crucible/references/bun.md"
+
+mechanics = '''
+- **Framework/client:** `bun test` driven through `bun-crucible.py` (`register` / `test` / `check` / `unregister`). `test` runs `bun test` on the given file(s), wipes the stale `test-reports/junit.xml` so only THIS run ingests, parses + ingests the JUnit XML, and prints `ingest: ok=True ... failed=N` — confirm it.
+- **Run tests in the bun package dir** (default `integrations/pi/`), not the repo root. `bun-crucible.py` sets the cwd via `--package-dir`/`$BUN_CRUCIBLE_PACKAGE_DIR`; a wrong cwd gives "0 tests" or phantom missing-module errors. Read the package's `package.json`/`tsconfig.json`; tests are `*.test.ts` (colocated or `src/**/__tests__/`).
+- **Imports:** use `bun:test` (`import { test, expect, describe, mock, spyOn, beforeEach } from "bun:test"`). Import the code under test by its real relative path. If a test errors for a PATH/typing reason (not a missing SUT symbol), fix the import — that is not a real RED.
+- **Quick typecheck gate:** `bun-crucible.py check` (tsc) after each file change.
+- **Third-party / Pi API sources:** the Pi extension API (`@earendil-works/pi-coding-agent` — `ExtensionAPI`, `registerTool`, `exec`, `sendMessage`, `sendUserMessage`; TypeBox `Type.*` from `typebox`) — read the real source via `opensrc fetch earendil-works/pi` then `rg "<name>" $(opensrc path earendil-works/pi)/packages/coding-agent/src/core/extensions/types.ts`, or the installed `integrations/pi/node_modules/@earendil-works/...`. Confirm the pinned version in `package.json`. (`@earendil-works/pi-*` are type-only devDeps.)
+- **The SUT is a thin TS shim that shells to the `sandesh` CLI** — tests mock `pi.exec` and assert the argv built + the result mapping; they never run the real CLI or Sandesh-core. **Sandesh-core stays Python-pure (PE3)** — the TS extension never imports it.
+'''
+
+[description]
+red = "RED phase agent — test specialist for Bun/TypeScript projects (`bun test`). Two modes. (1) Write NEW failing tests for a CR spec. (2) Fix BROKEN test compilation/imports so existing tests can run. Does NOT write production code."
+green = "GREEN phase agent — implements production TypeScript code to make failing Bun tests pass. Works step-by-step, one module/tool at a time. Does NOT modify tests unless explicitly approved by the orchestrator. Used after RED tests are committed."
+verify = "VERIFY agent — reviews a Bun/TypeScript feature branch after implementation is complete. Read-only analysis of CR compliance, wiring completeness, test-coverage adequacy, boundary adherence, and code quality. Does NOT modify code."
+fix = "FIX agent — addresses specific findings from a VERIFY agent report in Bun/TypeScript projects. Fixes only what is listed and approved. Does NOT decide what to fix — the orchestrator tells it which findings to address."
+
+[frontmatter]
+red = '''
+model: sonnet
+effort: high
+color: red
+maxTurns: 300
+'''
+green = '''
+model: inherit
+effort: medium
+color: green
+maxTurns: 500
+'''
+verify = '''
+model: sonnet
+color: purple
+effort: medium
+tools: Read, Grep, Glob, Bash
+maxTurns: 500
+skills:
+  - reviewer
+  - reviewer-coverage
+  - reviewer-security
+  - reviewer-style
+'''
+fix = '''
+model: inherit
+effort: high
+color: yellow
+maxTurns: 300
+'''
+
+[gotchas]
+red = '''
+- A `TypeError`/missing-export/compile error from a not-yet-existing SUT symbol counts as RED (`bun test` surfaces it in the JUnit XML).
+- **Verify the test COUNT increased.** N new tests but the total didn't move = silently skipped (wrong file glob, compile error). Never trust a 0-failure result without checking the count.
+- **No `.only`/`.skip`/`.todo` left on new tests** — they vacuously "pass".
+- **Assertion patterns:** POSITIVE with exact argv — `expect(args).toEqual(["--project","P","send","--from","A","--to","b,c","--subject","S"])`; NEGATIVE — assert the wrong flag is NOT present (no `--resolves`/`--all` on reply; no `--peek` when `mark` is true); ERROR path — the tool returns an error `AgentToolResult` carrying `stderr` when `pi.exec` resolves a non-zero `code` (or rejects), checked via `expect(result.content[0].text).toContain(...)`; MOCK — `expect(execMock).toHaveBeenCalledWith("sandesh", [..exact argv..], expect.anything())` or inspect `execMock.mock.calls[0]`.
+- **Mocking `pi` (the harness):** build a fake `ExtensionAPI` per test — a `registerTool` spy that captures the registered tool defs (assert names/`label`/`parameters`, invoke `execute`), and an `exec` mock (`mock(async () => ({ stdout, stderr, code, killed:false }))`) scripted per case. Do NOT spin a real Pi runtime.
+- **For a CLI-mapping CR** read the tool-param → CLI-flag mapping table in the spec — it is the exact argv contract (flags, comma-joining, inverted flags like `unread_only:false`→`--all`).
+- **Conventions:** `describe("<tool/feature>")` + `test("<behaviour> <scenario>")`; async test bodies as `async () =>` (bun awaits).
+- **Prohibited:** running the real `sandesh` CLI / Sandesh-core from a unit test (mock `pi.exec`); embedding messaging logic in tests (the SUT is a shim).
+'''
+green = '''
+**TypeScript Code Quality Rules (NON-NEGOTIABLE):**
+1. **`strict` TypeScript.** No implicit `any`; type params + returns. No `// @ts-ignore`/`as any` to silence real errors — fix the type.
+2. **No swallowed errors.** Don't `catch {}` and drop it; surface failures as an error `AgentToolResult` (`{content:[{type:"text",text:...}], isError?}`) or rethrow — match what the tests assert.
+3. **Build argv exactly per the mapping table** — comma-join `to`/`cc`; map `parent_id`→`--to-msg`, `msg_id`→`--id`; inverted flags (`unread_only:false`→`--all`, `mark:false`→`--peek`); honour `project_id`→`$SANDESH_PROJECT` fallback. Off-by-one argv = a real bug.
+4. **No unused imports/vars** (TS `noUnusedLocals`); no leftover `console.log`.
+5. **Keep the shim thin & pure.** No embedded messaging logic; no import of Sandesh-core; only `pi.exec("sandesh", ...)`.
+6. **TypeBox schemas** for `parameters` (`Type.Object/String/Array/Optional` from `typebox`; `StringEnum` from `@earendil-works/pi-ai` for `kind`); every `registerTool` needs `name`, `label`, `description`, `parameters`, `execute`.
+7. **Self-check before commit:** swallowed errors? `any` leaks? wrong argv? unused imports? logic leaking into the shim? Fix first.
+
+**Implementation conventions:**
+- **Module organization:** imports (node/bun builtins, then `@earendil-works/*` + `typebox`, then local) → exports → helpers. The extension entry is `export default function (pi: ExtensionAPI) { ... }`.
+- **Error handling:** map a non-zero `pi.exec` `code` to an error result carrying `stderr`; a zero `code` to `{content:[{type:"text",text:stdout}]}` — exactly as the tests assert; don't invent a different shape.
+- **Async:** `execute` is `async`; `await pi.exec(...)`; pass the `signal` through to `pi.exec` for cancellation.
+- **Boundaries:** the shim only translates params↔CLI and shells out — no business logic, no Sandesh-core import.
+'''
+verify = '''
+- **Stack read-only tool lists:** ALLOWED — `bun test` / `bun-crucible.py test` (run-only), `tsc --noEmit`, `eslint`/`biome` in CHECK mode. FORBIDDEN — `prettier -w`, `eslint --fix`, `biome ... --write`, or any writer.
+- **Wiring checks (stack flavour):** each verb/tool the CR lists is actually `pi.registerTool`-ed (not just defined) — count the registered tools against the AC; each tool's `execute` builds the CLI argv per the mapping table (spot-check the trickier ones: comma-joined `to`/`cc`; `parent_id`→`--to-msg`; inverted `--all`/`--peek`); `project_id`/address env fallback (`$SANDESH_PROJECT`/`$SANDESH_ADDRESS`) actually read; lifecycle wired where applicable (`session_start` starts the loop, `session_shutdown` stops it, exit-code branches all handled); the `export default function (pi) {...}` is the real entry and registers everything.
+- **Boundaries:** shim stays thin (tools only translate params↔CLI and shell to `sandesh`); no Sandesh-core import — `git diff <base>..HEAD -- sandesh/` is EMPTY; deps confined (`@earendil-works/*`/`typebox` devDeps/type-only as intended; no stray runtime deps).
+- **Quality checklist:** `strict`, no implicit `any`, no `@ts-ignore`/`as any` masking real errors, `tsc --noEmit` clean; no swallowed `catch {}`; a non-zero `pi.exec` code maps to an error result; camelCase funcs/vars, PascalCase types; no unused imports / stray `console.log`; `execute` awaits `pi.exec`, `signal` passed through, no floating promises.
+- **Test quality:** one behaviour per test; descriptive names; positive + bound + error + mock-received (argv) assertions; `*.test.ts`, never CR/cycle-named.
+'''
+fix = '''
+**Common Bun/TS fixes:**
+- **Swallowed error** (`catch {}`) → surface as an error `AgentToolResult` or rethrow.
+- **`any`/`@ts-ignore` masking a real error** → fix the type.
+- **Wrong CLI argv** → correct per the mapping table (comma-join, `--to-msg`, inverted `--all`/`--peek`, `$SANDESH_PROJECT` fallback).
+- **Unused import/var** → remove (or `_`-prefix). Stray `console.log` → remove.
+- **Floating promise / missing `await`** → await it; pass `signal` through to `pi.exec`.
+- **Missing `label` on a tool / wrong result shape** → align with the Pi `ToolDefinition` + the tests.
+- **Logic leaking into the shim / Sandesh-core import** → remove; the shim only shells to the CLI.
+Keep the shim thin & Sandesh-core untouched.
+'''
