@@ -13,6 +13,7 @@ Project-level conventions for every session/agent working this repo. `CLAUDE.md`
 - **Wave** = a grouping of CRs marking an execution boundary (solo: redesign point between groups). Setup tasks and the release are NOT waves; a release CR bundles the final gates.
 - Queue (`docs/changes/README.md`) holds STRUCTURE only (CR/Title/Wave/Depends-on + dated Notes); live status is DERIVED on the Crucible board (plans/cycles/milestones; close via `cr-close --commit`).
 - Plans: filed at CR start via the source-of-truth client (`crucible:clients/bun-crucible.py`) with `--wave <n> --orchestrator vidushi-mdb`; cycle ids are SERVER-ASSIGNED — never guessed; cycle labels `C<n> <label> (§S…)`.
+- **Timeline markers (orchestrator duty): post a `milestone` at every workflow moment — `--type gap-analysis` when gap-analysis completes, `--type stage-flip --label "<CR> <cycle> done"` at every cycle-done, `cr-merged` fires automatically from cr-close.** `cycle-done` alone updates plan state only; without milestones the timeline shows nothing.
 - **Test runs go ONLY through the context wrapper `/tmp/claude-1000/modelb-crucible`** (injects `WORKFLOW_CYCLE_ID/CYCLE/WAVE`; `WORKFLOW_ROLE` absent in solo). Recreate it at session start if `/tmp` was cleared (see project memory).
 - Chezmoi discipline for every `~/.claude` mutation: no-auto temp config + manual source commits; deletions via `chezmoi destroy`/`forget` (plain `rm` resurrects); NEVER `apply`, NEVER push the source repo.
 - Structural waves run with NO other live Model B orchestrator sessions.
