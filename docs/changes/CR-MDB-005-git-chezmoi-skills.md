@@ -1,6 +1,6 @@
 # CR-MDB-005 — git-workflow + chezmoi skills: memory-twin merges + delete procedure
 
-**Status:** PENDING
+**Status:** COMPLETED (shipped 2026-07-20 on develop)
 **Type:** feature
 **Priority:** P2
 **Depends on:** CR-MDB-001
