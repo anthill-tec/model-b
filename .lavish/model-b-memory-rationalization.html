@@ -29,6 +29,7 @@
       <li><a href="#agents">Agents</a></li>
       <li><a href="#axi">Crucible/AXI</a></li>
       <li><a href="#queue">CR Queue</a></li>
+      <li><a href="#ecosystem">Ecosystem</a></li>
       <li><a href="#workspace">Workspace</a></li>
       <li><a href="#waves">Waves</a></li>
       <li><a href="#risks">Risks</a></li>
@@ -354,12 +355,38 @@ flowchart LR
         <tr><td><code>CR-MDB-011</code></td><td>crucible skill final docs: shipped client surfaces</td><td>3</td><td><code>003, 009</code> + external: Crucible (#1322)</td></tr>
         <tr><td><code>CR-MDB-013</code></td><td>Model B scaffold CLI (<code>modelb-axi init</code>): project initializer (PRD §D10)</td><td>3</td><td><code>002, 008</code></td></tr>
         <tr><td><code>CR-MDB-014</code></td><td>Scaffold packaging + deployment (DN → implementation)</td><td>3</td><td><code>013</code></td></tr>
+        <tr><td><code>CR-MDB-015</code></td><td>Harness-agnostic hooks: neutral schema + emitters + shared script protocol (DN)</td><td>3</td><td><code>013</code></td></tr>
         <tr><td><code>CR-MDB-012</code></td><td>Release 0.1.0: verification suite + archive mapping + master tag</td><td>—</td><td><code>006–011, 013, 014</code></td></tr>
       </tbody>
     </table>
   </div>
   <p class="text-xs text-base-content/60 mb-4">External (Wave 4): all <code>*-crucible.py</code> client implementation is Crucible's — requested #1325, scheduled after their 0.1.0 patch cluster, open ETA. Deferred to next SCRUM: chezmoi <code>diff &lt;dir&gt;</code> quirk · source-ahead drift on 9 files · bun-fix-agent sync.</p>
   <div class="alert alert-success"><span><b>Wave 1 shipped:</b> always-loaded core 621 → 42 lines; sub-agent procedure loads on demand via the <code>model-b</code> skill; 22 files repointed; shims archived + destroyed with resurrection proven impossible; CLAUDE.md symlink now correctly captured in chezmoi source.</span></div>
+</section>
+
+<!-- ============ ECOSYSTEM ============ -->
+<section class="rz-anchor" id="ecosystem">
+  <h2 class="text-2xl font-bold mb-2">Ecosystem architecture — post-wave-1 decisions (PRD §D3/D5/D8/D10)</h2>
+  <p class="text-sm text-base-content/70 mb-4">The Model B ecosystem is <b>agentic-harness agnostic</b>: AGENTS.md is canonical everywhere; CLAUDE.md is a Claude Code compatibility symlink. Every future project — solo or multi-track, monorepo or not — initializes via the scaffold CLI.</p>
+  <div class="overflow-x-auto rounded-box border border-base-content/5 bg-base-100 mb-4">
+    <table class="table table-zebra table-sm">
+      <thead><tr><th>Concern</th><th>Scope</th><th>Mechanism</th></tr></thead>
+      <tbody>
+        <tr><td>Language/stack references</td><td>Global user</td><td><code>~/.claude/memory/</code> — the ONLY global memory (D5)</td></tr>
+        <tr><td>All other memory</td><td><b>Project</b></td><td>scaffold-instantiated from stack/mode templates; session pays only for its project</td></tr>
+        <tr><td>Skills</td><td>Global user, shared</td><td>ONE copy, bundled per the <b>Vercel skills standard</b> (~/.agents/skills store); invoked per-project via the AGENTS.md skill-freeze</td></tr>
+        <tr><td>Hook scripts</td><td>Shared once</td><td>Claude-contract protocol scripts (stdin JSON, exit 0/2) — written once, unit-testable</td></tr>
+        <tr><td>Hook wiring</td><td><b>Project</b></td><td>scaffold-emitted per stack/mode + per harness (neutral schema → native configs)</td></tr>
+        <tr><td>Identity / naming registry</td><td><b>Project</b></td><td><code>.env</code> at (sub-)project root: PROJECT_NAME / TOKEN / ACRONYM / ORCHESTRATOR_LABEL (monorepo: one per sub-project)</td></tr>
+        <tr><td>Docs + queue</td><td><b>Project</b></td><td>standard <code>docs/changes</code> + <code>docs/research</code>; structure-only queue; status on the Crucible board</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-4">
+    <div class="card card-border bg-base-100"><div class="card-body p-4"><h3 class="card-title text-sm">Scaffold CLI (<code>modelb-axi init</code>) — CR-MDB-013</h3><p class="text-sm">Inputs: name/token/acronym · solo|multi · repo shape · stacks. Emits per (sub-)project: .env registry · docs model · <b>AGENTS.md skill-freeze</b> · CLAUDE.md symlink · git-flow · Crucible registration · Sandesh (multi) · project memory · hook wiring. Correct-by-construction replaces convention-by-memory. Packaging/deployment via DN (CR-MDB-014).</p></div></div>
+    <div class="card card-border bg-base-100"><div class="card-body p-4"><h3 class="card-title text-sm">Harness-agnostic hooks — CR-MDB-015 (researched, primary docs)</h3><p class="text-sm">All 5 subprocess harnesses (Claude/Codex/Gemini/Cursor/Copilot) support project-level config + stdin-JSON/exit-2; opencode + Amp need generated TS shims. Universal event core: pre/post-tool-use · session-start · stop. Strategy: neutral schema compiled per harness + shared Claude-contract scripts; security hooks state fail-direction intent and are REFUSED where unhonorable. Full survey: <code>DN-harness-agnostic-hooks.md</code>.</p></div></div>
+  </div>
+  <div class="alert alert-info"><span><b>Collaboration model (D8):</b> Crucible (tracking) and Sandesh (messaging) are the upstream tool providers for Model B skills/memory; requests + contracts flow over Sandesh; provider defects file with the owning project.</span></div>
 </section>
 
 <!-- ============ WORKSPACE ============ -->

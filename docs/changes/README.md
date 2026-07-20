@@ -22,6 +22,7 @@ Queue rows enumerate the whole delivery (structure only). **Live status lives on
 | CR-MDB-011 | crucible skill final docs: shipped client surfaces (fleet envelope, vscode, arduino, plan verbs) | 3 | 003, 009 + EXTERNAL (Crucible deliveries, thread #1322) |
 | CR-MDB-013 | Model B scaffold CLI (`modelb-axi init`): project initializer per PRD §D10 | 3 | 002, 008 |
 | CR-MDB-014 | Scaffold packaging + deployment (DN-scaffold-packaging → implementation) | 3 | 013 |
+| CR-MDB-015 | Harness-agnostic hooks: neutral schema + per-harness emitters + shared script protocol (DN-harness-agnostic-hooks) | 3 | 013 |
 | CR-MDB-012 | Release 0.1.0: full verification suite (PRD §4) + archive/mapping.md + master tag | — | 006, 007, 008, 010, 011, 013, 014 |
 
 **— v0.1.0 ships here —** (release CR bundles the final gates; no close-out wave)
