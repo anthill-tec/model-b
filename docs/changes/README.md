@@ -9,7 +9,7 @@ Single source of truth for CR process state. Pick the next `PENDING` by wave + `
 
 | CR | Title | Wave | Type | Status | Depends on | Notes |
 |---|---|---|---|---|---|---|
-| CR-MODELB-001 | Core split — frugal AGENTS.md + procedure relocation + shim removal | 1 | maintenance | IN_PROGRESS | — | spec: `CR-MODELB-001-core-split.md` · RED ingested 2026-07-20 |
+| CR-MODELB-001 | Core split — frugal AGENTS.md + procedure relocation + shim removal | 1 | maintenance | COMPLETED | — | spec: `CR-MODELB-001-core-split.md` · shipped 2026-07-20 |
 
 ## Wave 0 — Safety rails (tasks, no CR)
 

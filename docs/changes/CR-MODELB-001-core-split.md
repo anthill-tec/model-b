@@ -1,6 +1,6 @@
 # CR-MODELB-001 — Core split: frugal AGENTS.md, procedure relocation, shim removal
 
-**Status:** PENDING
+**Status:** COMPLETED (shipped 2026-07-20 on develop)
 **Type:** maintenance
 **Priority:** P1 (unblocks all later waves)
 **Depends on:** — (Wave 0 tasks: chezmoi baseline + delete-proof must be checked off first)
