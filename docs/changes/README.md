@@ -1,6 +1,6 @@
 # Model B — CR queue
 
-**Project:** Model B (solo orchestrator) · **Crucible projectKey:** `019f7eb8-8cad-7000-9838-854eca8e7c20` · **Design contract:** `docs/research/PRD-model-b-rationalization.md`
+**Project:** Model B (solo orchestrator: vidushi) · **Crucible projectKey:** `019f7eb8-8cad-7000-9838-854eca8e7c20` · **Design contract:** `docs/research/PRD-model-b-rationalization.md` · **Evidence base:** `audits/2026-07-20-*.md` + `docs/research/DN-rationalization-plan-review.md` · **Ontology:** `crucible:docs/research/DN-model-b-language.md` · **Target release:** 0.1.0
 **Naming standard (canonical token `MODELB`/`modelb`, user-set 2026-07-20):** CR ids `CR-MODELB-NNN` · Crucible agentId per agent-protocol `<agent-type>-<project>` = **`python-modelb`** (ONE identity; the client's `--phase RED|GREEN|VERIFY|REGRESSION` field carries the role — NEVER embed the phase in the id) · Sandesh project/address `ModelB` / `Mainline - ModelB` · repo dir `model-b`.
 
 Queue rows enumerate the whole delivery (structure only). **Live status lives on the Crucible board** (plans/cycles/milestones — we file every run and transition there); `Type` lives in each spec's front matter. Pick the next CR by wave + `Depends on` against the board. Spec files are authored at wave-open.
@@ -20,6 +20,9 @@ Queue rows enumerate the whole delivery (structure only). **Live status lives on
 | CR-MODELB-009 | contracts/: crucible-envelope mirror, sandesh-cli, mail-axi, lean-ctx specs | 3 | — |
 | CR-MODELB-010 | worktree-flow.py AXI output: TOON envelope for status/next/finish + lane boards | 3 | 009 |
 | CR-MODELB-011 | crucible skill final docs: shipped client surfaces (fleet envelope, vscode, arduino, plan verbs) | 3 | 003, 009 + EXTERNAL (Crucible deliveries, thread #1322) |
+| CR-MODELB-012 | Release 0.1.0: full verification suite (PRD §4) + archive/mapping.md + master tag | — | 006, 007, 008, 010, 011 |
+
+**— v0.1.0 ships here —** (release CR bundles the final gates; no close-out wave)
 
 ## Setup tasks (pre-wave — not a wave; a wave is a grouping of CRs)
 
