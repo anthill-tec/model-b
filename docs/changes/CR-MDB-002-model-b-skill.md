@@ -1,6 +1,6 @@
 # CR-MDB-002 — model-b skill body: canonical definition + universal conventions
 
-**Status:** PENDING
+**Status:** COMPLETED (shipped 2026-07-20 on develop)
 **Type:** feature
 **Priority:** P1 (wave-2 keystone — 006/007 depend on it)
 **Depends on:** CR-MDB-001
@@ -46,7 +46,7 @@ Copy the four §S3 source files to `<repo>/archive/wave2/`, then delete from `~/
 - [ ] Body contains zero occurrences of "Plan B" and zero of "orchestration-universal".
 
 ### §S3
-- [ ] All four files exist under `~/.claude/skills/model-b/references/`; each retains its distinctive anchor (gap-analysis verified): common → "MODE-MAP", mainline → "shutdown", track → "NEVER self-schedule", sandesh → "PRIME DIRECTIVE".
+- [ ] All four files exist under `~/.claude/skills/model-b/references/`; each retains its distinctive anchor (gap-analysis verified): common → "MODE-MAP", mainline → "SCRUM", track → "NEVER self-schedule", sandesh → "PRIME DIRECTIVE".
 - [ ] Zero occurrences of "Plan B" across `~/.claude/skills/model-b/`.
 
 ### §S4

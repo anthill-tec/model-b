@@ -1,7 +1,7 @@
 # Model B — CR queue
 
 **Project:** Model B (acronym: MDB · solo orchestrator: `vidushi-mdb`) · **Crucible projectKey:** `019f7eb8-8cad-7000-9838-854eca8e7c20` · **Design contract:** `docs/research/PRD-model-b-rationalization.md` · **Evidence base:** `audits/2026-07-20-*.md` + `docs/research/DN-rationalization-plan-review.md` · **Ontology:** `crucible:docs/research/DN-model-b-language.md` · **Target release:** 0.1.0
-**Naming standard (canonical token `MODELB`/`modelb`, user-set 2026-07-20):** CR ids `CR-MDB-NNN` · Crucible agentId per agent-protocol `<agent-type>-<project>` = **`python-modelb`** (ONE identity; the client's `--phase RED|GREEN|VERIFY|REGRESSION` field carries the role — NEVER embed the phase in the id) · Sandesh project/address `ModelB` / `Mainline - ModelB` · repo dir `model-b`.
+Conventions (naming, agentIds, workflow rules) live in the project `AGENTS.md` — not here.
 
 Queue rows enumerate the whole delivery (structure only). **Live status lives on the Crucible board** (plans/cycles/milestones — we file every run and transition there); `Type` lives in each spec's front matter. Pick the next CR by wave + `Depends on` against the board. Spec files are authored at wave-open.
 
@@ -36,8 +36,6 @@ Queue rows enumerate the whole delivery (structure only). **Live status lives on
 - [x] Record chezmoi source baseline commit → `archive/BASELINE.md` — 2026-07-20
 - [x] Prove chezmoi delete round-trip on a scratch file — PASSED 2026-07-20 (see `archive/BASELINE.md`)
 
-**Wave (definition, user 2026-07-20):** a grouping of CRs marking an execution boundary — in single-orchestrator projects, where major redesign can take place between groups; in multi-orchestrator projects, the sync boundary of CRs. Setup tasks and the release are not waves.
-
 ## External dependency (Wave 3)
 
 ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answered #1326): fleet TOON-AXI conversion = CR-CRU-030 (+ client READ verb), NEW vscode client (own CR, unscheduled), arduino verb extension, plan-verb client coverage — scheduled after their 0.1.0 patch cluster, OPEN ETA, per-delivery intimations threaded under #1322. CR-MDB-011 closes only as those land.
@@ -51,4 +49,5 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
 - 2026-07-20 — Full CR decomposition enumerated in the queue (user directive: the queue lists the whole delivery with dependency edges upfront; spec files still authored at wave-open). `plans/` folder removed — the standard PRD/CR model under `docs/` is the delivery model; the lavish-reviewed plan record moved to `docs/research/DN-rationalization-plan-review.md`.
 - 2026-07-20 — Waves 3 and 4 COMBINED into wave 3 (user directive via lavish): generator + AXI tooling + contracts ship together. There is NO close-out wave — delivery ends in a standard git-flow RELEASE (verification suite + archive/mapping.md ride the release; master tagged).
 - 2026-07-20 — ELECTRONICS EXCLUDED (user): anthill-forge dead/deprecated; hw-crucible.py shim + 4 electronics agents + electronics skills under revision — ignored this delivery (PRD §D7 note). Wave-2/3 CRs must not touch them.
+- 2026-07-20 — VERIFY CR-MDB-002 routed forward: rust-orchestration.md L19 dangling ref to deleted memory/sandesh.md → fold into CR-MDB-006; agent-protocol prose roughness dies with CR-MDB-003.
 - 2026-07-20 — DEFERRED (next SCRUM): (a) chezmoi v2.71 `diff <dir>` silently empty for drifted children (dry-run gate covers recursion); (b) pre-existing SOURCE-AHEAD chezmoi drift on 6 agent defs + `orchestration-common/track.md`, `project-management.md` — reconcile deliberately, never blind apply; (c) `bun-fix-agent.md` 2-line source delta.
