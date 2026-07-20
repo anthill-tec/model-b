@@ -30,6 +30,7 @@
       <li><a href="#axi">Crucible/AXI</a></li>
       <li><a href="#queue">CR Queue</a></li>
       <li><a href="#ecosystem">Ecosystem</a></li>
+      <li><a href="#setup-split">Setup split ⚡</a></li>
       <li><a href="#workspace">Workspace</a></li>
       <li><a href="#waves">Waves</a></li>
       <li><a href="#risks">Risks</a></li>
@@ -354,8 +355,8 @@ flowchart LR
         <tr><td><code>CR-MDB-009</code></td><td>contracts/: crucible-envelope, sandesh-cli, mail-axi, lean-ctx specs</td><td>3</td><td>—</td></tr>
         <tr><td><code>CR-MDB-010</code></td><td>worktree-flow.py AXI output: envelope for status/next/finish + lane boards</td><td>3</td><td><code>009</code></td></tr>
         <tr><td><code>CR-MDB-011</code></td><td>crucible skill final docs: shipped client surfaces</td><td>3</td><td><code>003, 009</code> + external: Crucible (#1322)</td></tr>
-        <tr><td><code>CR-MDB-013</code></td><td>Model B scaffold CLI (<code>modelb-axi init</code>): project initializer (PRD §D10)</td><td>3</td><td><code>002, 008</code></td></tr>
-        <tr><td><code>CR-MDB-014</code></td><td>Scaffold packaging + deployment (DN → implementation)</td><td>3</td><td><code>013</code></td></tr>
+        <tr><td><code>CR-MDB-013</code></td><td>Model B scaffold CLI (<code>modelb-axi init</code>): PROJECT-SPECIFIC initializer — stack + overrides (PRD §D10)</td><td>3</td><td><code>002, 008</code></td></tr>
+        <tr><td><code>CR-MDB-014</code></td><td>Universal installer + packaging: deploys USER-LOCAL files per targeted harness (DN → implementation)</td><td>3</td><td><code>013</code></td></tr>
         <tr><td><code>CR-MDB-015</code></td><td>Harness-agnostic hooks: neutral schema + emitters + shared script protocol (DN)</td><td>3</td><td><code>013</code></td></tr>
         <tr><td><code>CR-MDB-012</code></td><td>Release 0.1.0: verification suite + archive mapping + master tag</td><td>—</td><td><code>006–011, 013, 014</code></td></tr>
       </tbody>
@@ -384,10 +385,59 @@ flowchart LR
     </table>
   </div>
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-4">
-    <div class="card card-border bg-base-100"><div class="card-body p-4"><h3 class="card-title text-sm">Scaffold CLI (<code>modelb-axi init</code>) — CR-MDB-013</h3><p class="text-sm">Inputs: name/token/acronym · solo|multi · repo shape · stacks. Emits per (sub-)project: .env registry · docs model · <b>AGENTS.md skill-freeze</b> · CLAUDE.md symlink · git-flow · Crucible registration · Sandesh (multi) · project memory · hook wiring. Correct-by-construction replaces convention-by-memory. Packaging/deployment via DN (CR-MDB-014).</p></div></div>
+    <div class="card card-border bg-base-100"><div class="card-body p-4"><h3 class="card-title text-sm">Scaffold CLI (<code>modelb-axi init</code>) — CR-MDB-013</h3><p class="text-sm">Inputs: name/token/acronym · solo|multi · repo shape · stacks. Emits per (sub-)project: .env registry · docs model · <b>AGENTS.md skill-freeze</b> · CLAUDE.md symlink · git-flow · Crucible registration · Sandesh (multi) · project memory · hook wiring. Correct-by-construction replaces convention-by-memory. <b>Scope narrowed 2026-07-21 — see “Setup split” below:</b> user-local deployment moved to the universal installer (CR-MDB-014).</p></div></div>
     <div class="card card-border bg-base-100"><div class="card-body p-4"><h3 class="card-title text-sm">Harness-agnostic hooks — CR-MDB-015 (researched, primary docs)</h3><p class="text-sm">All 5 subprocess harnesses (Claude/Codex/Gemini/Cursor/Copilot) support project-level config + stdin-JSON/exit-2; opencode + Amp need generated TS shims. Universal event core: pre/post-tool-use · session-start · stop. Strategy: neutral schema compiled per harness + shared Claude-contract scripts; security hooks state fail-direction intent and are REFUSED where unhonorable. Full survey: <code>DN-harness-agnostic-hooks.md</code>.</p></div></div>
   </div>
   <div class="alert alert-info"><span><b>Collaboration model (D8):</b> Crucible (tracking) and Sandesh (messaging) are the upstream tool providers for Model B skills/memory; requests + contracts flow over Sandesh; provider defects file with the owning project.</span></div>
+</section>
+
+<section class="rz-anchor" id="setup-split">
+  <h2 class="text-2xl font-bold mb-2">Setup architecture — universal installer vs scaffold <span class="badge badge-warning align-middle">UNDER DISCUSSION</span></h2>
+  <p class="text-sm text-base-content/70 mb-4"><b>Directive (2026-07-21):</b> user-local files (memory, hooks, scripts) that deploy per targeted harness are installed by the <b>UNIVERSAL INSTALLER</b>. The scaffold is <b>very project-specific</b>: targeted stack + project-level overrides and specifics. <b>Status:</b> the premature CR-MDB-013 start was undone (feature branch deleted, plan-27 cycles skipped, milestone posted); execution resumes only after this section is settled.</p>
+
+  <div class="mockup-code text-xs mb-4"><pre><code>Release (Vercel-standard bundles + package)          — CR-MDB-014 packaging
+      │
+      ▼
+UNIVERSAL INSTALLER  · machine/user scope · run ONCE per machine (re-run = upgrade)
+      │  deploys user-local files per TARGETED HARNESS; writes the installation config
+      ▼
+SCAFFOLD `modelb-axi init` · project scope · run once per (sub-)project
+      │  stack + overrides only; READS the installation config (never re-asks harnesses)
+      ▼
+Project sessions (any installed harness)</code></pre></div>
+
+  <div class="overflow-x-auto rounded-box border border-base-content/5 bg-base-100 mb-4">
+    <table class="table table-zebra table-sm">
+      <thead><tr><th>Artifact</th><th>Scope</th><th>Deployed by</th></tr></thead>
+      <tbody>
+        <tr><td>Global memory (the 6 language refs)</td><td>user</td><td><b>Installer</b> (014)</td></tr>
+        <tr><td>Skill bundles (Vercel standard, shared store)</td><td>user</td><td><b>Installer</b> (014)</td></tr>
+        <tr><td>Hook SCRIPTS (Claude-contract protocol, shared once)</td><td>user</td><td><b>Installer</b> (014); compiled wiring schema from 015</td></tr>
+        <tr><td>Deployed scripts (<code>toon.py</code> codec, <code>worktree-flow.py</code>, wrappers)</td><td>user</td><td><b>Installer</b> (014)</td></tr>
+        <tr><td>Generated agents (16) / generator assets</td><td>user</td><td><b>Installer</b> (014) — see Q3</td></tr>
+        <tr><td>Per-harness USER-level wiring (each harness = a FEATURE)</td><td>user</td><td><b>Installer</b> (014) — harness selection lives HERE</td></tr>
+        <tr><td><b>Installation config</b> (targeted harnesses, asset root, version)</td><td>user</td><td><b>Installer WRITES · scaffold READS</b> — the seam</td></tr>
+        <tr><td><code>.env</code> naming registry (+ <code>.env.local</code>)</td><td>project</td><td><b>Scaffold</b> (013)</td></tr>
+        <tr><td>Docs model (<code>docs/changes</code> queue, <code>docs/research</code>)</td><td>project</td><td><b>Scaffold</b> (013)</td></tr>
+        <tr><td>AGENTS.md override + skill freeze (stack-derived)</td><td>project</td><td><b>Scaffold</b> (013)</td></tr>
+        <tr><td>Project-level harness anchors (CLAUDE.md symlink, …)</td><td>project</td><td><b>Scaffold</b> (013) — for the INSTALLED harness set</td></tr>
+        <tr><td>In-repo <code>docs/memory/</code> (stack-filtered templates)</td><td>project</td><td><b>Scaffold</b> (013)</td></tr>
+        <tr><td>git init + git-flow + <code>.gitignore</code>; registrations (<code>--register</code>)</td><td>project</td><td><b>Scaffold</b> (013)</td></tr>
+        <tr><td>Project hook WIRING (neutral schema → native configs)</td><td>project</td><td><b>Scaffold</b> seam → <b>015</b> compiler</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3 class="text-lg font-semibold mb-2">Open questions — annotate to decide</h3>
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-4">
+    <div class="card card-border bg-base-100"><div class="card-body p-4"><h3 class="card-title text-sm">Q1 · Installation config — the seam contract</h3><p class="text-sm">Proposal: <code>$MODELB_HOME/install.toml</code> — <code>harnesses=[…]</code>, <code>version</code>, <code>asset_root</code>. Scaffold resolves it via <code>$MODELB_HOME</code> → package data → repo fallback; <code>--harnesses</code> demoted to a dev-only override. Define the schema NOW (contract or PRD §D10 amendment) so 013 codes against it before 014 ships the installer.</p></div></div>
+    <div class="card card-border bg-base-100"><div class="card-body p-4"><h3 class="card-title text-sm">Q2 · Harness selection UX at install</h3><p class="text-sm">Installer DETECTS installed harnesses (probe <code>claude</code>/<code>codex</code>/<code>gemini</code>/<code>cursor-agent</code>/<code>copilot</code>/<code>opencode</code>/<code>amp</code> binaries) and proposes; user confirms/edits; non-interactive <code>--harnesses</code> flag for CI. Per-harness support stays a FEATURE — installable independently, re-runnable to add one later.</p></div></div>
+    <div class="card card-border bg-base-100"><div class="card-body p-4"><h3 class="card-title text-sm">Q3 · Agents under which feature?</h3><p class="text-sm">The 16 generated agents + generator are Claude-Code-shaped today (<code>~/.claude/agents/</code>). Options: (a) deploy under the Claude harness feature, generator assets shipped and rendered at install; (b) pre-rendered in the package. Other harnesses gain agent equivalents only when their feature defines them. Leaning (a) — keeps <code>build.py --check</code> as the live drift gate.</p></div></div>
+    <div class="card card-border bg-base-100"><div class="card-body p-4"><h3 class="card-title text-sm">Q4 · Sequencing 013 ↔ 014</h3><p class="text-sm">013 stays first (scaffold, dev-mode asset root + config fallback), 014 follows (packaging + installer honoring the same config schema)? Or swap so the installer exists first? Leaning: keep 013 → 014 with Q1's schema fixed up front; dogfood machine keeps chezmoi as its deployment channel, fresh machines use the installer.</p></div></div>
+    <div class="card card-border bg-base-100"><div class="card-body p-4"><h3 class="card-title text-sm">Q5 · Upgrade story</h3><p class="text-sm">Installer re-run = idempotent upgrade: refresh user-local files for the recorded harness set, preserve user edits? (Policy needed: overwrite-managed vs three-way merge vs chezmoi-style source of truth per machine.) Scaffolded projects are NOT touched by upgrades — project files evolve via their own CRs.</p></div></div>
+    <div class="card card-border bg-base-100"><div class="card-body p-4"><h3 class="card-title text-sm">Q6 · Skill freeze ↔ installed skills</h3><p class="text-sm">Confirm: skills deploy ONCE user-scope by the installer; the scaffold's AGENTS.md skill-freeze only REFERENCES them per stack — no per-project skill copies ever. A project targeting a stack whose skills aren't installed ⇒ scaffold warns (installer re-run needed), never emits its own copy.</p></div></div>
+  </div>
+  <div class="alert alert-warning"><span><b>Blocked on this discussion:</b> CR-MDB-013 re-plan (RED not dispatched), CR-MDB-014 DN authoring, and the 015 hook-deployment boundary (scripts = installer, wiring = project).</span></div>
 </section>
 
 <!-- ============ WORKSPACE ============ -->
