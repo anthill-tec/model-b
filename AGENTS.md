@@ -17,6 +17,7 @@ Project-level conventions for every session/agent working this repo. `CLAUDE.md`
 - **Test runs go ONLY through the context wrapper `/tmp/claude-1000/modelb-crucible`** (injects `WORKFLOW_CYCLE_ID/CYCLE/WAVE`; `WORKFLOW_ROLE` absent in solo). Recreate it at session start if `/tmp` was cleared (see project memory).
 - Chezmoi discipline for every `~/.claude` mutation: no-auto temp config + manual source commits; deletions via `chezmoi destroy`/`forget` (plain `rm` resurrects); NEVER `apply`, NEVER push the source repo.
 - Structural waves run with NO other live Model B orchestrator sessions.
+- Wave-boundary gate: no-mistakes, ingested as gate evidence. No remote → ESCALATE to the user for remote setup; local substitute gate only on explicit denial.
 - **Electronics stack is EXCLUDED** (anthill-forge dead; agents/skills under revision) — never migrate/document/generate it.
 
 ## Authoritative docs
