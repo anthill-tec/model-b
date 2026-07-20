@@ -48,7 +48,7 @@
       <div class="flex flex-wrap justify-center gap-2">
         <span class="badge badge-success badge-soft">3 audits complete</span>
         <span class="badge badge-success badge-soft">11 decisions locked</span>
-        <span class="badge badge-success">Wave 1 SHIPPED 2026-07-20 — core 621 → 42 lines</span>
+        <span class="badge badge-success">WAVE 2 CLOSED 2026-07-20 — 002–006 shipped · 007 superseded · memory 24 → 6</span>
       </div>
     </div>
   </div>
@@ -63,19 +63,19 @@
       <div class="stat-desc">CLAUDE.md is a <b>symlink</b> to AGENTS.md — one file loads everywhere</div>
     </div>
     <div class="stat">
-      <div class="stat-title">Target core</div>
-      <div class="stat-value text-success">≤100 lines</div>
-      <div class="stat-desc">one frugal AGENTS.md core — CLAUDE.md stays a symlink to it</div>
+      <div class="stat-title">Core — ACHIEVED</div>
+      <div class="stat-value text-success">41 lines</div>
+      <div class="stat-desc">frugal AGENTS.md live; CLAUDE.md symlink intact</div>
     </div>
     <div class="stat">
-      <div class="stat-title">Memory files</div>
-      <div class="stat-value">24 → 10</div>
-      <div class="stat-desc">7 orphans today; end-state = reference library only</div>
+      <div class="stat-title">Memory — ACHIEVED</div>
+      <div class="stat-value text-success">24 → 6</div>
+      <div class="stat-desc">exactly the six language refs (PRD §D5 end-state)</div>
     </div>
     <div class="stat">
-      <div class="stat-title">Agents on legacy alias</div>
-      <div class="stat-value">17 → 0</div>
-      <div class="stat-desc">all repoint to lean AGENTS.md; 16 become generated</div>
+      <div class="stat-title">Skills consolidated</div>
+      <div class="stat-value text-success">10 → 5</div>
+      <div class="stat-desc">absorbed into model-b · crucible · cr-authoring · git-workflow · chezmoi</div>
     </div>
   </div>
 </section>
@@ -215,7 +215,8 @@ flowchart TB
 <!-- ============ MEMORY MAP ============ -->
 <section class="rz-anchor" id="memory-map">
   <h2 class="text-2xl font-bold mb-2">Memory disposition — all 24 files</h2>
-  <p class="text-sm text-base-content/70 mb-4">Every current memory file and where its content lands. Annotate any row you disagree with.</p>
+  <div class="alert alert-success mb-4"><span><b>EXECUTED (waves 1–2):</b> this disposition table is now reality — global memory holds exactly the six "keep" rows (language references); every "→ skill" row landed in its skill, every merge/split/delete completed with archive copies under <code>archive/wave1–2/</code> and chezmoi-proofed deletions. Orchestration/operational files live on as scaffold templates in <code>skills-src/memory-templates/</code>.</span></div>
+  <p class="text-sm text-base-content/70 mb-4">The original plan table, kept for the record:</p>
   <div class="overflow-x-auto rounded-box border border-base-content/5 bg-base-100">
     <table class="table table-zebra table-sm">
       <thead><tr><th>File</th><th>Lines</th><th>Verdict</th><th>Content lands in</th></tr></thead>
@@ -337,7 +338,7 @@ flowchart LR
 <!-- ============ CR QUEUE ============ -->
 <section class="rz-anchor" id="queue">
   <h2 class="text-2xl font-bold mb-2">CR queue</h2>
-  <p class="text-sm text-base-content/70 mb-4">Mirrors <code>docs/changes/README.md</code> — the whole delivery as CRs with dependency edges. Spec files are authored at wave-open. <b>Live status lives on the Crucible board</b> (plans + cycles + milestones), not here — 001 is closed there at merge <code>4fd2fca</code>.</p>
+  <p class="text-sm text-base-content/70 mb-4">Mirrors <code>docs/changes/README.md</code> — structure only; <b>live status on the Crucible board</b>. Board state 2026-07-20: plans 15–22 CLOSED (001–006 merged with cr-merged milestones; 007 SUPERSEDED — zero "Plan B" hits, absorbed by 002–006). <b>Wave 2 closed.</b> Next: wave-boundary no-mistakes gate + wave-3 design review.</p>
   <div class="overflow-x-auto rounded-box border border-base-content/5 bg-base-100 mb-4">
     <table class="table table-zebra table-sm">
       <thead><tr><th>CR</th><th>Title</th><th>Wave</th><th>Depends on</th></tr></thead>
@@ -436,7 +437,7 @@ flowchart LR
   <ul class="steps steps-vertical lg:steps-horizontal w-full mb-4">
     <li class="step step-primary">Setup</li>
     <li class="step step-primary">Wave 1 — Core split</li>
-    <li class="step">Wave 2 — Model B</li>
+    <li class="step step-primary">Wave 2 — Model B</li>
     <li class="step">Wave 3 — Generator + AXI</li>
     <li class="step">Release</li>
   </ul>
