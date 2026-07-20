@@ -1,4 +1,4 @@
-# CR-MB-001 — Core split: frugal AGENTS.md, procedure relocation, shim removal
+# CR-MODELB-001 — Core split: frugal AGENTS.md, procedure relocation, shim removal
 
 **Status:** PENDING
 **Type:** maintenance
@@ -50,7 +50,10 @@ Copy `memory/agent-baseline.md` + `memory/orchestration-universal.md` to `archiv
 
 ### §S5
 - [ ] `~/.claude/memory/agent-baseline.md` and `~/.claude/memory/orchestration-universal.md` do not exist; copies exist under `archive/wave1/` in this repo.
-- [ ] `chezmoi diff` output is empty; after `chezmoi apply`, both deleted files still do not exist.
+- [ ] `chezmoi diff ~/.claude/AGENTS.md ~/.claude/CLAUDE.md ~/.claude/agents ~/.claude/memory ~/.claude/skills` exits 0 WITH empty output (CR-touched paths only; exit 0 required — an unmanaged-path abort is a FAIL, so AGENTS.md and the CLAUDE.md symlink must be brought under chezmoi management); `chezmoi apply --dry-run --verbose ~/.claude` mentions neither shim.
+
+## Implementation Notes
+- 2026-07-20 (RED-surfaced, scope reconciliation): `chezmoi diff` is non-empty today from drift UNRELATED to this CR (e.g. `.bashrc`), so the S5 chezmoi-clean AC is scoped to the CR-touched paths. RED also exposed that the chezmoi SOURCE stores `CLAUDE.md` as a plain file while the live tree has the symlink — a live `apply` would destroy the symlink invariant. §S5 therefore includes `chezmoi add ~/.claude/CLAUDE.md` (capturing the symlink) alongside `AGENTS.md`. Files not currently under chezmoi management (`chezmoi managed` miss) are deleted with plain `rm` — nothing exists in the source to resurrect them.
 
 ## Estimated size
 S–M. One RED→GREEN cycle (gate tests + restructure), heavy on mechanical repoints.

@@ -1,6 +1,7 @@
 # Model B — CR queue
 
 **Project:** Model B (solo orchestrator) · **Crucible projectKey:** `019f7eb8-8cad-7000-9838-854eca8e7c20` · **Design contract:** `docs/research/PRD-model-b-rationalization.md`
+**Naming standard (canonical token `MODELB`/`modelb`, user-set 2026-07-20):** CR ids `CR-MODELB-NNN` · Crucible agentIds `<agent-type>-modelb` · Sandesh project/address `ModelB` / `Mainline - ModelB` · repo dir `model-b`.
 
 Single source of truth for CR process state. Pick the next `PENDING` by wave + `Depends on`.
 
@@ -8,7 +9,7 @@ Single source of truth for CR process state. Pick the next `PENDING` by wave + `
 
 | CR | Title | Wave | Type | Status | Depends on | Notes |
 |---|---|---|---|---|---|---|
-| CR-MB-001 | Core split — frugal AGENTS.md + procedure relocation + shim removal | 1 | maintenance | PENDING | — | spec: `CR-MB-001-core-split.md` |
+| CR-MODELB-001 | Core split — frugal AGENTS.md + procedure relocation + shim removal | 1 | maintenance | IN_PROGRESS | — | spec: `CR-MODELB-001-core-split.md` · RED ingested 2026-07-20 |
 
 ## Wave 0 — Safety rails (tasks, no CR)
 
@@ -29,6 +30,8 @@ Approved wave plan (lavish review, 2026-07-20). Spec files are authored at wave-
 - **Wave 5 — Close-out (tasks):** `archive/mapping.md`; chezmoi source commits; full verification suite (PRD §4).
 
 ## Footer notes
+
+- 2026-07-20 — Naming standard set (header). CR-MB-001 renamed CR-MODELB-001 (spec file, branch, Crucible plan). Crucible plan 14 (filed under the old id) is SUPERSEDED by plan 15; plan 14 is inert (no close verb without a commit).
 
 - 2026-07-20 — Queue opened. Wave plan + 11 design decisions locked via lavish review of `plans/2026-07-20-rationalization-plan.md`; PRD filed. Structural waves (1–3) run with no live Model B orchestrator sessions elsewhere.
 - 2026-07-20 — CORRECTED (supersedes the earlier "handoff accepted" note): the crucible-client work was never Model B's to own. Model B REQUESTED Crucible perform all `*-crucible.py` client work (request #1325 withdrawing the erroneous acceptance #1324); Crucible consults its execution plan and informs if/when it will deliver. Wave 4 tracks it as an external dependency.
