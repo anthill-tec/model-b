@@ -1,6 +1,6 @@
 # CR-MDB-009 — contracts/: the AXI evolution interface
 
-**Status:** PENDING
+**Status:** COMPLETED (shipped 2026-07-21 on develop)
 **Type:** docs
 **Priority:** P1 (unblocks 010; anchors 011)
 **Depends on:** —
