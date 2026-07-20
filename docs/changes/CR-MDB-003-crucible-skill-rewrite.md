@@ -28,10 +28,10 @@ The `crucible` skill promises a client-side TOON-AXI envelope no client emits, d
 `references/{rust,java,bun,python,vscode}.md` absorbing each `crucible-report-*` skill's still-true content, corrected against the audit (e.g. rust's undocumented gates, bun's plan verbs, vscode's interim procedure).
 
 ### §S4 — deletions
-Skills `crucible-report-{rust,java,bun,python,vscode}` (5 dirs) + `agent-protocol` (dir) + `memory/crucible-ingest.md`: archive copies to `<repo>/archive/wave2/`, then delete (chezmoi discipline: managed → destroy, unmanaged → rm; add new references; source commit).
+Skills `crucible-report-{rust,java,bun,python,vscode}` (5 dirs) + `agent-protocol` + **the four TDD-phase skills `bun-red-testing`, `bun-green-testing`, `bun-regression-testing`, `quarkus-regression-testing`** (gap-analysis: PRD §D4 removal list completed — their procedure content folds into §S2's who-runs-what + §S3 stack references) + `memory/crucible-ingest.md`: archive copies to `<repo>/archive/wave2/`, then delete (chezmoi discipline: managed → destroy, unmanaged → rm; add new references; source commit).
 
 ### §S5 — repoint consumers
-**Surfaces (verified at gap-analysis):** references to `crucible-report-*` / `agent-protocol` / `crucible-ingest` in `~/.claude/memory/rust-orchestration.md`, `java-orchestration.md`, remaining skills, and `~/.claude/AGENTS.md` → the `crucible` skill (+ stack reference file where specific).
+**Surfaces (gap-analysis verified 2026-07-20 — 20 consumer files):** memory: `rust-orchestration.md`, `java-orchestration.md`, `java-testing-practices.md`, `stack-detection.md` (dies in 006; repoint anyway for the gate); skills: `reviewer`, `refactorer-rust`, `refactorer-java` (+ any hits inside files being deleted are moot); agents: `rust-{red,green,verify,fix}`, `vscode-{red,green,verify,fix}`, `arduino-green` (9 defs — context-aware line rewrites to the `crucible` skill + stack reference). `~/.claude/AGENTS.md` crucible row already clean (verified).
 
 ## Acceptance criteria
 
@@ -47,11 +47,11 @@ Skills `crucible-report-{rust,java,bun,python,vscode}` (5 dirs) + `agent-protoco
 - [ ] All five `references/{rust,java,bun,python,vscode}.md` exist; rust contains "workspace-regression"; bun contains "cycle-activate"; vscode contains "no client" (or equivalent) and "interim".
 
 ### §S4
-- [ ] The 6 skill dirs + `memory/crucible-ingest.md` do not exist; archive copies exist under `<repo>/archive/wave2/`.
+- [ ] The 10 skill dirs (5 report + agent-protocol + 4 TDD-phase) + `memory/crucible-ingest.md` do not exist; archive copies exist under `<repo>/archive/wave2/`.
 - [ ] Scoped `chezmoi diff` (the 5 standard paths) exits 0 empty.
 
 ### §S5
-- [ ] `grep -rl "crucible-report\|agent-protocol\|crucible-ingest" ~/.claude/memory/ ~/.claude/skills/ ~/.claude/AGENTS.md ~/.claude/agents/` returns 0 files.
+- [ ] `grep -rl "crucible-report\|agent-protocol\|crucible-ingest\|bun-red-testing\|bun-green-testing\|bun-regression-testing\|quarkus-regression-testing" ~/.claude/memory/ ~/.claude/skills/ ~/.claude/AGENTS.md ~/.claude/agents/` returns 0 files.
 
 ## Estimated size
 M–L (five absorptions + rewrite).
