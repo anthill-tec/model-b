@@ -28,6 +28,7 @@
       <li><a href="#skills">Skills</a></li>
       <li><a href="#agents">Agents</a></li>
       <li><a href="#axi">Crucible/AXI</a></li>
+      <li><a href="#queue">CR Queue</a></li>
       <li><a href="#workspace">Workspace</a></li>
       <li><a href="#waves">Waves</a></li>
       <li><a href="#risks">Risks</a></li>
@@ -46,7 +47,7 @@
       <div class="flex flex-wrap justify-center gap-2">
         <span class="badge badge-success badge-soft">3 audits complete</span>
         <span class="badge badge-success badge-soft">11 decisions locked</span>
-        <span class="badge badge-warning badge-soft">Plan — awaiting your review</span>
+        <span class="badge badge-success">Wave 1 SHIPPED 2026-07-20 — core 621 → 42 lines</span>
       </div>
     </div>
   </div>
@@ -332,6 +333,32 @@ flowchart LR
   <p class="text-sm text-base-content/70 mt-2"><b>Crucible V2 is under active development</b> — the API contract in <code>contracts/crucible-envelope.md</code> tracks it, with <code>bun-crucible.py</code> as the reference implementation all clients converge on. Doc fixes riding along: heartbeat = <code>register</code> verb (phantom endpoint removed) · <code>/api/ingest/*</code> → <code>/api/v2/runs/*</code> · rust clippy/smoke/workspace gates documented. <code>contracts/</code> also specs the future sandesh message-verb CLI and <code>mail-axi</code> — docs only, per decision 6.</p>
 </section>
 
+<!-- ============ CR QUEUE ============ -->
+<section class="rz-anchor" id="queue">
+  <h2 class="text-2xl font-bold mb-2">CR queue</h2>
+  <p class="text-sm text-base-content/70 mb-4">Mirrors <code>docs/changes/README.md</code> — the whole delivery as CRs with dependency edges. Spec files are authored at wave-open. <b>Live status lives on the Crucible board</b> (plans + cycles + milestones), not here — 001 is closed there at merge <code>4fd2fca</code>.</p>
+  <div class="overflow-x-auto rounded-box border border-base-content/5 bg-base-100 mb-4">
+    <table class="table table-zebra table-sm">
+      <thead><tr><th>CR</th><th>Title</th><th>Wave</th><th>Depends on</th></tr></thead>
+      <tbody>
+        <tr><td><code>CR-MODELB-001</code></td><td>Core split: frugal AGENTS.md + procedure relocation + shim removal</td><td>1</td><td>—</td></tr>
+        <tr><td><code>CR-MODELB-002</code></td><td>model-b skill body: orchestration trio + sandesh + canonical definition</td><td>2</td><td><code>001</code></td></tr>
+        <tr><td><code>CR-MODELB-003</code></td><td>crucible skill rewrite: real client surfaces, absorb report skills + agent-protocol</td><td>2</td><td><code>001</code></td></tr>
+        <tr><td><code>CR-MODELB-004</code></td><td>cr-authoring skill: cr-prd-dn-conventions + project-management split</td><td>2</td><td><code>001</code></td></tr>
+        <tr><td><code>CR-MODELB-005</code></td><td>git-workflow + chezmoi skills: memory-twin merges + delete/rename procedure</td><td>2</td><td><code>001</code></td></tr>
+        <tr><td><code>CR-MODELB-006</code></td><td>Memory consolidation: devops merge, orphan wiring, stale deletions</td><td>2</td><td><code>002, 003, 004, 005</code></td></tr>
+        <tr><td><code>CR-MODELB-007</code></td><td>"Plan B" → "Model B" naming sweep</td><td>2</td><td><code>002</code></td></tr>
+        <tr><td><code>CR-MODELB-008</code></td><td>Agent generator: templates + stack params + drift gate; regenerate 16 agents</td><td>3</td><td><code>002, 006</code></td></tr>
+        <tr><td><code>CR-MODELB-009</code></td><td>contracts/: crucible-envelope, sandesh-cli, mail-axi, lean-ctx specs</td><td>4</td><td>—</td></tr>
+        <tr><td><code>CR-MODELB-010</code></td><td>worktree-flow.py AXI output: envelope for status/next/finish + lane boards</td><td>4</td><td><code>009</code></td></tr>
+        <tr><td><code>CR-MODELB-011</code></td><td>crucible skill final docs: shipped client surfaces</td><td>4</td><td><code>003, 009</code> + external: Crucible (#1322)</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="text-xs text-base-content/60 mb-4">External (Wave 4): all <code>*-crucible.py</code> client implementation is Crucible's — requested #1325, scheduled after their 0.1.0 patch cluster, open ETA. Deferred to next SCRUM: chezmoi <code>diff &lt;dir&gt;</code> quirk · source-ahead drift on 9 files · bun-fix-agent sync.</p>
+  <div class="alert alert-success"><span><b>Wave 1 shipped:</b> always-loaded core 621 → 42 lines; sub-agent procedure loads on demand via the <code>model-b</code> skill; 22 files repointed; shims archived + destroyed with resurrection proven impossible; CLAUDE.md symlink now correctly captured in chezmoi source.</span></div>
+</section>
+
 <!-- ============ WORKSPACE ============ -->
 <section class="rz-anchor" id="workspace">
   <h2 class="text-2xl font-bold mb-2">Project workspace — this repo's standing structure</h2>
@@ -351,9 +378,11 @@ flowchart LR
 ├── skills-src/                  # authored sources of the maintained skills
 │   ├── model-b/                 #   (model-b, crucible, cr-authoring, git-workflow, chezmoi)
 │   └── ...                      #   synced → chezmoi source → ~/.claude/skills/
+├── docs/                        # STANDARD doc model — same across all stacks/projects
+│   ├── changes/                 #   README.md = the CR queue · CR-MODELB-NNN-*.md specs
+│   └── research/                #   PRD-*.md design contracts · DN-*.md design notes
 ├── archive/                     # retired legacy files + mapping.md (old path → new home)
 ├── scripts/                     # sync + verification: chezmoi round-trip, grep gates, token budget
-├── plans/                       # wave plans + close-out reports
 └── .lavish/                     # review artifacts (this page)</div>
   </div></div>
   <div class="card card-border bg-base-100 mt-4"><div class="card-body">
