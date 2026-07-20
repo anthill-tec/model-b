@@ -1,7 +1,7 @@
 # Model B — CR queue
 
 **Project:** Model B (acronym: MDB · solo orchestrator: `vidushi-mdb`) · **Crucible projectKey:** `019f7eb8-8cad-7000-9838-854eca8e7c20` · **Design contract:** `docs/research/PRD-model-b-rationalization.md` · **Evidence base:** `audits/2026-07-20-*.md` + `docs/research/DN-rationalization-plan-review.md` · **Ontology:** `crucible:docs/research/DN-model-b-language.md` · **Target release:** 0.1.0
-**Naming standard (canonical token `MODELB`/`modelb`, acronym `MDB`):** CR ids `CR-MDB-NNN` · **Crucible agentIds per the client's documented agent-naming: TDD-PHASE agents = `CR-MDB-NNN-<cycle>-<PHASE>` (e.g. `CR-MDB-002-C1-RED`); ORCHESTRATOR-level ops (gates/regression) = `vidushi-mdb`** · Sandesh `ModelB` / `Mainline - ModelB` · repo dir `model-b`.
+Conventions (naming, agentIds, workflow rules) live in the project `AGENTS.md` — not here.
 
 Queue rows enumerate the whole delivery (structure only). **Live status lives on the Crucible board** (plans/cycles/milestones — we file every run and transition there); `Type` lives in each spec's front matter. Pick the next CR by wave + `Depends on` against the board. Spec files are authored at wave-open.
 
@@ -35,8 +35,6 @@ Queue rows enumerate the whole delivery (structure only). **Live status lives on
 - [x] Register project in Crucible (`Model B`, key above) — 2026-07-20
 - [x] Record chezmoi source baseline commit → `archive/BASELINE.md` — 2026-07-20
 - [x] Prove chezmoi delete round-trip on a scratch file — PASSED 2026-07-20 (see `archive/BASELINE.md`)
-
-**Wave (definition, user 2026-07-20):** a grouping of CRs marking an execution boundary — in single-orchestrator projects, where major redesign can take place between groups; in multi-orchestrator projects, the sync boundary of CRs. Setup tasks and the release are not waves.
 
 ## External dependency (Wave 3)
 
