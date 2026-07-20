@@ -1,0 +1,75 @@
+# PRD — Model B Rationalization (memory → dynamic skill tree, AXI-complete tooling)
+
+**Author:** Antony (antonyj)
+**Co-author:** Claude Fable 5 (solo orchestrator — Model B)
+**Status:** ACTIVE (design contract)
+**Sources:** audits/2026-07-20-{memory-corpus,crucible-drift,skills-agents-inventory}.md · lavish-reviewed plan (plans/2026-07-20-rationalization-plan.md) · live Crucible verification 2026-07-20
+
+## 1. Problem
+
+The `~/.claude` user space grew organically into 24 memory files, ~50 skills, 29 agent definitions and ~20 scripts with four systemic defects:
+
+1. **Always-loaded bloat.** `CLAUDE.md` → `AGENTS.md` is one 621-line file serving as config index AND sub-agent procedure; every session and every dispatched sub-agent ingests all of it.
+2. **No canonical Model B definition.** The workflow model is scattered across `orchestration-*`, `sandesh.md`, a broken `plan_b_workflow_model.md` (verbatim mis-paste), and four skills — under two names ("Plan B" / "Model-B").
+3. **Duplicated foundations.** The same SE principles are restated per stack: fix/verify agents 52–54% verbatim-identical across small stacks; per-stack TDD/crucible skills repeat one procedure five ways; skill↔memory twins (git-workflow ×2, crucible ×3, orchestration ×5).
+4. **Doc↔tool drift.** The crucible skill promises a client-side TOON-AXI envelope no client emits; `agent-protocol` documents a phantom `/api/v2/agents/heartbeat` and a nonexistent `heartbeat.sh`; `java-orchestration.md` uses dead `/api/ingest/*` paths; vscode has no crucible client; arduino has only `unit`/`compile`.
+
+## 2. Design contract
+
+### D1 — Frugal always-loaded core
+- `AGENTS.md` is THE core file: ≤100 lines. Content: the non-negotiables as one-liners (no AI attribution; import hygiene; TDD discipline; clean-build-before-commit; destructive-op confirmation; lean-ctx tool preference) + the **topic → skill/memory trigger table** + project-classification pointers.
+- **Invariant: `CLAUDE.md` is ALWAYS a symlink to `AGENTS.md`.** One physical file serves both entrypoint names.
+- The universal sub-agent procedure (worktree boundary, Crucible lifecycle, exact TDD, report-every-run, scope, quality) relocates to `skills/model-b/references/sub-agent-procedure.md`; dispatched sub-agents load it from there.
+
+### D2 — Three-tier dynamic loading with per-project containment
+- Tier 0: the ≤100-line core (always loaded). Tier 1: skill descriptions (session list) — stack-neutral, workflow-scoped only. Tier 2: `SKILL.md` bodies on keyword trigger, parameterized (role, stack). Tier 3: skill `references/` + the `memory/` reference library, read on demand.
+- **Containment rule: language/stack references are NOT skills.** A skill description leaks into every session of every project. Stack content lives in `memory/` and loads only via the stack-parameterized skills, generated agents, or a project's own CLAUDE.md.
+
+### D3 — Canonical Model B
+- Canonical name: **Model B** (all "Plan B" occurrences renamed).
+- One home: the `model-b` skill, role-parameterized `mainline | track | solo`. Absorbs `orchestration-common/mainline/track.md`, a rewritten Model B overview (replacing `plan_b_workflow_model.md`), the single- vs multi-track variation (a lane-label model, not a mode switch), `sandesh.md` usage, and the sub-agent procedure (D1) — as reference files.
+- `bootstrap` / `shutdown` / `code-health` / `status-report` reference `model-b`; they do not restate it.
+
+### D4 — Skill consolidation
+- `crucible` (rewrite): stack-parameterized; absorbs the five `crucible-report-*` skills, `agent-protocol`, and `memory/crucible-ingest.md`; documents the REAL per-stack CLI surfaces and the envelope contract (D7). Heartbeat is the `register` verb; the phantom endpoint and `heartbeat.sh` references are removed.
+- `cr-authoring` (new): from `cr-prd-dn-conventions.md` + the CR/CReq/CRes half of `project-management.md` + the AC-precision rules.
+- `git-workflow` (rewrite): single home for branch/commit/release discipline, absorbing its memory twin + `git-multi-account.md`.
+- `chezmoi` (new): the add/apply cycle PLUS the previously missing **delete/rename procedure** (`chezmoi destroy` / `forget`; a deletion not mirrored to the source resurrects on `apply`).
+- Removed skill entries (10): `crucible-report-{rust,java,bun,python,vscode}`, `agent-protocol`, `bun-red/green/regression-testing`, `quarkus-regression-testing`.
+
+### D5 — Memory end-state (reference library only)
+Kept: `java-modern-syntax`, `java-coding-standards` (trimmed), `java-testing-practices` (absorbs `devops-environment`), `maven-best-practices` (trimmed), `quarkus-patterns`, `java-orchestration` (endpoints fixed), `rust-orchestration` (repointed), `convex-client-server`, `operational-commands` (hand-rolled curl-ingest removed). Everything else merges into skills or is deleted per the disposition table in the reviewed plan.
+
+### D6 — Generated per-stack agents
+- Role templates (`red/green/verify/fix`) + per-stack parameter files generate the arduino/bun/python/quarkus agent set (16 files). SE principles are written once — in the templates.
+- Bespoke (not generated): rust ×4, vscode ×4, electronics ×4, `inbox-analyst` (similarity data shows templating would destroy real content).
+- Every agent references `AGENTS.md` (+ the D1 procedure reference), never `memory/agent-baseline.md`.
+- `build.py --check` (regenerate + diff) is the drift gate; hand-edits to generated files fail it.
+
+### D7 — Crucible V2 client contract (AXI)
+- **`bun-crucible.py` is the reference implementation.** Its plan/cycle verbs (`plan-file`, `cycle-activate`, `cycle-done`, `cr-close`) are universal V2 API (live-verified: `/api/v2/plans` active), to be adopted by every stack client.
+- Every client emits a **TOON-AXI envelope** on stdout: `verb`, `ok`, run counts, `warnings[]`, `help` (next-step command). Shared emitter (`axi_envelope.py`).
+- New `vscode-crucible.py` (Vitest+Mocha JUnit, lcov, tsc → `/api/v2/runs/*`); `arduino-crucible.py` extended (regression, auto-ingest, check, pre-merge-gate); `worktree-flow.py` migrates to AXI output (envelope for `status`/`next`/`finish`).
+- `hw-crucible.py` stays a shim to anthill-forge; the forge client must conform to the same contract.
+- Endpoints: `/api/v2/agents/{register,unregister}`, `/api/v2/runs/{parsed,compile}`, `/api/v2/plans` (+ cycles PATCH). TOON is served via `?fmt=toon`.
+
+### D8 — MCP holdouts: contracts only
+This effort ships AXI CLI **contracts** (specs in `contracts/`), not implementations: sandesh message verbs (send/reply/fetch/inbox/addressbook/register/unregister — wake + admin are already CLI), `mail-axi` (Fastmail/Gmail/Calendar), lean-ctx CLI preference. Implementations live in their own repos.
+
+### D9 — The workshop pipeline (this repo)
+The `model-b` repo is the permanent authoring workspace: `audits/`, `contracts/`, `generator/`, `skills-src/`, `archive/`, `scripts/`, `plans/`, `docs/`. Single-source rule: generated or contract-derived artifacts are authored here and synced into the chezmoi source (a deployment target for them); hand-authored one-offs keep the classic edit-in-place → `chezmoi add` flow. Every `~/.claude` deletion goes through `chezmoi destroy`/`forget` (D4 chezmoi skill); legacy content is archived under `archive/` with an old→new mapping before deletion.
+
+## 3. Invariants & constraints
+- `CLAUDE.md` symlink invariant (D1) — never de-symlinked.
+- No AI attribution in commits; conventional commits.
+- Structural waves execute with **no live Model B orchestrator sessions** (they cache old paths).
+- Envelope changes must not break existing consumers (hooks parse today's output) — envelope wraps, one-line summaries retained.
+- This project runs as a **single-orchestrator (solo) Model B project**, registered in Crucible (project "Model B", key `019f7eb8-8cad-7000-9838-854eca8e7c20`) — tests AND workflow (plans/cycles) tracked there. Dogfood: AC gates are executable pytest checks in this repo, run + ingested via `python-crucible.py`.
+
+## 4. Success criteria
+1. Always-loaded context: 621 → ≤100 lines, one file.
+2. Zero references (outside `archive/`) to: `agent-baseline.md`, `orchestration-universal.md`, `Plan B`, `/api/ingest/`, `heartbeat.sh`, `/agents/heartbeat`.
+3. `memory/` = the D5 reference library exactly; every skill/agent reference resolves.
+4. `build.py --check` idempotent; 16 agents generated, 13 bespoke intact.
+5. Every crucible client (incl. new vscode, extended arduino) passes a register→test→unregister smoke against `localhost:3849` emitting a parseable envelope; plan verbs work cross-stack.
+6. `chezmoi diff` clean after every wave; deleted files stay deleted after fresh `apply`.
