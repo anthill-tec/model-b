@@ -29,6 +29,13 @@ The `~/.claude` user space grew organically into 24 memory files, ~50 skills, 29
 - Canonical name: **Model B** (all "Plan B" occurrences renamed).
 - One home: the `model-b` skill, role-parameterized `mainline | track | solo`. Absorbs `orchestration-common/mainline/track.md`, a rewritten Model B overview (replacing `plan_b_workflow_model.md`), the single- vs multi-track variation (a lane-label model, not a mode switch), `sandesh.md` usage, and the sub-agent procedure (D1) — as reference files.
 - `bootstrap` / `shutdown` / `code-health` / `status-report` reference `model-b`; they do not restate it.
+- **The skill carries the UNIVERSAL Model B conventions, parameterized per project (user directive 2026-07-20)** — every project instantiates them from its canonical token + acronym:
+  1. *Naming registry:* one canonical token + one acronym per project; derived forms are fixed — CR ids `CR-<ACRONYM>-NNN`, Crucible agentId `<agent-type>-<project>` (ONE identity; phase via the client's `--phase` field, never embedded in the id), orchestrator label `vidushi-<projectshortname>`, Sandesh `<Project>` / `Mainline - <Project>`, repo dir kebab-case. No other renderings may be minted.
+  2. *Queue idiom:* `docs/changes/README.md` holds structure ONLY (CR / Title / Wave / Depends-on) + header (Design contract · Evidence base · Ontology · Target release) + dated footer Notes log + a release-boundary row; live status is DERIVED on the Crucible board (no plan / open plan / closed+merge).
+  3. *Wave:* a grouping of CRs marking an execution boundary — redesign point (solo) / sync boundary (multi). Setup tasks and releases are NOT waves; a RELEASE CR bundles the final gates.
+  4. *Plan/cycle idiom:* full plan filed at CR start (`plan-file --cr --title --cycles --wave <n> --orchestrator vidushi-<short>`); server-assigned cycle ids only; labels `C<n> <label> (§S…)`; kinds `red-green|verify|fix`; a cycle closes only on orchestrator confirm; every ingest carries `WORKFLOW_*` context (`WORKFLOW_ROLE` = `track-<n>`, ABSENT in solo).
+  5. *Docs model:* `docs/changes/` + `docs/research/` everywhere; no ad-hoc folders (`plans/` etc.).
+  Source ontology: `crucible:docs/research/DN-model-b-language.md` (LOCKED) — the skill cites it, never forks it.
 
 ### D4 — Skill consolidation
 - `crucible` (rewrite): stack-parameterized; absorbs the five `crucible-report-*` skills, `agent-protocol`, and `memory/crucible-ingest.md`; documents the REAL per-stack CLI surfaces and the envelope contract (D7). Heartbeat is the `register` verb; the phantom endpoint and `heartbeat.sh` references are removed.

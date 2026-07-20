@@ -10,7 +10,7 @@ Queue rows enumerate the whole delivery (structure only). **Live status lives on
 | CR | Title | Wave | Depends on |
 |---|---|---|---|
 | CR-MDB-001 | Core split: frugal AGENTS.md + procedure relocation + shim removal | 1 | — |
-| CR-MDB-002 | model-b skill body: orchestration trio + sandesh + canonical Model B definition | 2 | 001 |
+| CR-MDB-002 | model-b skill body: orchestration trio + sandesh + canonical definition + universal conventions (PRD §D3) | 2 | 001 |
 | CR-MDB-003 | crucible skill rewrite: real client surfaces, absorb report skills + agent-protocol | 2 | 001 |
 | CR-MDB-004 | cr-authoring skill: cr-prd-dn-conventions + project-management split | 2 | 001 |
 | CR-MDB-005 | git-workflow + chezmoi skills: memory-twin merges + delete/rename procedure | 2 | 001 |
