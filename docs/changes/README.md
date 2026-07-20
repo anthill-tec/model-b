@@ -1,7 +1,7 @@
 # Model B — CR queue
 
 **Project:** Model B (solo orchestrator) · **Crucible projectKey:** `019f7eb8-8cad-7000-9838-854eca8e7c20` · **Design contract:** `docs/research/PRD-model-b-rationalization.md`
-**Naming standard (canonical token `MODELB`/`modelb`, user-set 2026-07-20):** CR ids `CR-MODELB-NNN` · Crucible agentIds `<agent-type>-modelb` · Sandesh project/address `ModelB` / `Mainline - ModelB` · repo dir `model-b`.
+**Naming standard (canonical token `MODELB`/`modelb`, user-set 2026-07-20):** CR ids `CR-MODELB-NNN` · Crucible agentId per agent-protocol `<agent-type>-<project>` = **`python-modelb`** (ONE identity; the client's `--phase RED|GREEN|VERIFY|REGRESSION` field carries the role — NEVER embed the phase in the id) · Sandesh project/address `ModelB` / `Mainline - ModelB` · repo dir `model-b`.
 
 Single source of truth for CR process state. Pick the next `PENDING` by wave + `Depends on`.
 
@@ -32,6 +32,7 @@ Approved wave plan (lavish review, 2026-07-20). Spec files are authored at wave-
 ## Footer notes
 
 - 2026-07-20 — Naming standard set (header). CR-MB-001 renamed CR-MODELB-001 (spec file, branch, Crucible plan). Crucible plan 14 (filed under the old id) is SUPERSEDED by plan 15; plan 14 is inert (no close verb without a commit).
+- 2026-07-20 — DEFERRED items (triage at next SCRUM): (a) chezmoi v2.71 `diff <dir>` silently emits nothing for drifted files inside (makes dir-arg diff checks weak; the scoped `apply --dry-run` gate covers recursion) — candidate upstream report + test hardening; (b) pre-existing SOURCE-AHEAD chezmoi drift on 6 agent defs (`bun-fix/bun-red/python-fix/vscode-fix/vscode-green/vscode-red`) + `orchestration-common/track.md`, `project-management.md` — reconcile deliberately, NEVER via blind apply; (c) `bun-fix-agent.md` 2-line source delta (same family as b).
 
 - 2026-07-20 — Queue opened. Wave plan + 11 design decisions locked via lavish review of `plans/2026-07-20-rationalization-plan.md`; PRD filed. Structural waves (1–3) run with no live Model B orchestrator sessions elsewhere.
 - 2026-07-20 — CORRECTED (supersedes the earlier "handoff accepted" note): the crucible-client work was never Model B's to own. Model B REQUESTED Crucible perform all `*-crucible.py` client work (request #1325 withdrawing the erroneous acceptance #1324); Crucible consults its execution plan and informs if/when it will deliver. Wave 4 tracks it as an external dependency.
