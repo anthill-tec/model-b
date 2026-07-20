@@ -292,26 +292,36 @@ class ModelBSkillS5Test(unittest.TestCase):
         )
 
     def test_s5_agents_md_trigger_table_model_b_row_has_no_until_wave_2_caveat(self):
+        """The Model B WORKFLOW trigger-table row (topic cell starts with
+        'Model B workflow', target `model-b` skill) must exist exactly once
+        and carry no transitional "until Wave 2" caveat. Selects by the
+        topic cell -- not by any-row-containing-"model-b" -- so other rows
+        that merely mention the model-b repo (e.g. the memory-templates
+        row added by CR-MDB-006) don't trip the exactly-one bound."""
         self.assertTrue(
             (CLAUDE_DIR / "AGENTS.md").is_file(),
             f"{CLAUDE_DIR / 'AGENTS.md'} must exist",
         )
         content = _read(CLAUDE_DIR / "AGENTS.md")
         lines = content.splitlines()
-        model_b_table_rows = [
+        model_b_workflow_rows = [
             ln for ln in lines
-            if ln.strip().startswith("|") and "model-b" in ln
+            if ln.strip().startswith("|")
+            and ln.strip().lstrip("|").strip().startswith("Model B workflow")
         ]
-        # POSITIVE -- the trigger table must still carry a model-b row after repointing.
+        # POSITIVE -- the trigger table must still carry the Model B workflow
+        # row after repointing.
         self.assertEqual(
-            len(model_b_table_rows), 1,
-            f"expected exactly one model-b trigger-table row, found {len(model_b_table_rows)}: {model_b_table_rows}",
+            len(model_b_workflow_rows), 1,
+            f"expected exactly one 'Model B workflow' trigger-table row, "
+            f"found {len(model_b_workflow_rows)}: {model_b_workflow_rows}",
         )
         # NEGATIVE/EXACT bound -- that row must no longer carry the
         # transitional "until Wave 2" caveat.
         self.assertNotIn(
-            "until Wave 2", model_b_table_rows[0],
-            f"model-b trigger-table row must not contain 'until Wave 2': {model_b_table_rows[0]!r}",
+            "until Wave 2", model_b_workflow_rows[0],
+            f"'Model B workflow' trigger-table row must not contain "
+            f"'until Wave 2': {model_b_workflow_rows[0]!r}",
         )
 
 

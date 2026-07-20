@@ -1,6 +1,6 @@
 # CR-MDB-006 — memory model: global→project-level migration
 
-**Status:** PENDING
+**Status:** COMPLETED (shipped 2026-07-20 on develop)
 **Type:** maintenance
 **Priority:** P1 (wave-2 closer with 007)
 **Depends on:** CR-MDB-002, 003, 004, 005
