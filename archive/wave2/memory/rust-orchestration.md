@@ -1,0 +1,112 @@
+# Rust Orchestration — Cargo + Crucible + worktree-flow (orchestrator-side)
+
+Rust-stack embodiment of `orchestration-common.md` (workflow, approval gates,
+dispatch, verify-independently — not restated here) and
+`~/.claude/skills/model-b/references/sub-agent-procedure.md` (sub-agent procedure). This file is the Rust mechanics: the scripts, the gate sequence, disk policy.
+
+> CR / PRD / DN doc conventions → the `cr-authoring` skill (universal). The NAI project's `ORCHESTRATOR-NAI.md` carries the NAI-specific deltas on top.
+
+## Tooling (the workflow is embodied here — don't hand-roll)
+- **`~/.claude/scripts/rust-crucible.py`** — single entry for cargo runs + Crucible ingest. Subcommands: `register`/`unregister`, `test --crate <c> [--features ..] [--log <f>] --agent <id>`, `check`, `clippy [--deny-warnings]`, `smoke-test [--all-features] [--clean] [--with-docker]`, `workspace-regression [--all-features]`, `pre-merge-gate` (docker-FREE, `-P ci`), `docker-e2e-gate` (docker up, `-P e2e`, docker-infra tier only), `docker-up`/`docker-down`. `--log <path>` captures full output for debugging. **Raw `cargo test/nextest/build/llvm-cov` is PreToolUse-hook-blocked** — always go through the script.
+- **`~/.claude/scripts/worktree-flow.py`** — parallel-CR isolation: `start`/`status`/`sync`/`finish`/`abort`. `finish` = `merge --no-ff` → `worktree remove` → `branch -d`; on a non-removable folder (root-owned docker bind-mount leftover) it reports the PARTIAL state + the `sudo rm -rf` recovery. Stack-agnostic but Rust CRs use it.
+  - **ChangeSet DB extension (NAI-piloted 2026-06-06, shared lib `schedule_db.py`; gitignored `.nai-schedule.db`):** the per-track lane plan is a SQLite store driven through `worktree-flow.py`. **A track finds + advances its queue state ONLY through these commands — never by parsing a schedule md:**
+    ```
+    worktree-flow.py next   --track "Track N - …"   # WHERE AM I / WHAT'S NEXT → NEXT <cr> | HOLD <cr> (deps not all COMPLETED) | DRAINED
+    worktree-flow.py start  --cr CR-XXX             # claim it → IN_PROGRESS  (slug auto-derived from the row heading)
+    worktree-flow.py finish --cr CR-XXX             # done    → COMPLETED, then PRINTS the next line (same as `next`)
+    worktree-flow.py status                         # full board: worktrees + lane plan + inbox
+    worktree-flow.py reconcile                      # validate the changeset store ⟺ git (the ONLY git consult)
+    # on HOLD/DRAINED: do NOT self-poll (wait + escalation protocol: see orchestration-track.md + ~/.claude/memory/sandesh.md)
+    # Mainline-only (queue authoring): worktree-flow.py cs --cr CR-X --heading "…" --track "Track N - …" --seq K --depends "CR-Y" --trigger "quiet"
+    ```
+    **Loop semantics (`next → start → finish`, HOLD/DRAINED) are stack-agnostic — see `orchestration-track.md`.** Rust mechanics: `next`/`finish` evaluate readiness against the **store state** (a CR is ready ⟺ every `depends_on` CR is COMPLETED; extra `--trigger` clauses like `quiet` ⟺ none IN_PROGRESS AND) — **no git scan**; `start`/`finish` auto-transition state as the **last step** after the git op succeeds (no-op when no row → additive). Pilot detail in NAI `MEMORY.md` § "ChangeSet DB"; generalise to other stacks only after NAI adoption.
+    **CR typing + ledger auto-link (2026-07-03):** rows carry `cr_type` (feature | maintenance | bugfix | docs; set via `cs --type`, MIRRORED as CR-spec front-matter `**Type:**` per the `cr-authoring` skill). For MAINTENANCE CRs the audit-cull ledger is the planning SOURCE: `cs --findings <ids>` stamps each ledger row's `slice` at filing (implies `--type maintenance`); `schedule_db.set_state` (the single choke point — start/finish/abort AND reconcile) auto-mirrors every maintenance transition into the ledger via `rust-code-health.py ledger sync` (IN_PROGRESS → IN_PROGRESS; COMPLETED → COMPLETED + merge sha; ABORTED/SUPERSEDED → findings return to the APPROVED pool). Best-effort: never fails the board op; no-op without a ledger. DB file is now `.wf-schedule.db` (legacy `.nai-schedule.db` honored when present). **Mirror-write commit discipline (REVISED per user 2026-07-03):** the ledger write routine AUTO-COMMITS immediately on every mutation (`chore(ledger): …`, scoped `git add+commit -- <ledger>` with index.lock retry ×3, best-effort — never fails the caller). Safe because state transitions fire as the LAST step AFTER the git op completes; the commit is pathspec-scoped so it can never sweep unrelated dirt. `--no-commit` for batching callers; Mainline eager-commit remains the backstop for any auto-commit failure. No uncommitted mirror-write windows remain.
+- **`~/.claude/scripts/rust-crate-map.py`** — Cargo-workspace crate map + LOC metrics generator (fully parameterized, NOTHING project-hardcoded — `--project-dir` defaults to the git toplevel, `--name` to the root dir name). Collects per-crate prod / test-gated / tests-dir LOC, test counts, audit signals (`allow(dead_code)`, `#[ignore]`, `#[deprecated]`, TODO/FIXME), workspace-internal dep edges + fan-in; emits `crate_map_baseline.{json,md}` + a clustered Graphviz map (`<name>_crate_map.{dot,svg}`) into `<project>/docs/research/assets/` (override `--out` — default follows the docs convention in the `cr-authoring` skill). Project specifics live ONLY in an optional per-repo `crate_map.toml` in the out-dir (curated clusters/aggregates/omitted-fan-in-edges); without it, crates cluster by top-level member dir. **Mainline use-cases:** (1) design-phase orientation + architecture guidance — the map IS the current-architecture picture; embed/refresh it in DNs/PRDs; (2) audit/cull baselines + close-out DELTA reports — pin a baseline at a HEAD in a DN, rerun per slice, diff the totals; (3) wave planning — LOC weight + fan-in blast-radius inform CR carving. Regenerate + recommit the artifacts whenever the member set or crate boundaries change (they ride the doc that cites them).
+- **`~/.claude/scripts/rust-dead-scan.py`** — layered dead-code detection (fully parameterized, nothing project-hardcoded). Modes: `inventory` (allow/expect(dead_code) + deprecated sites — src-prod vs test split, reason extraction, class buckets) · `pub-scan` (classified cross-crate reference scan → dead-pub / test-coat / internal-only tiers; regex v1 — collisions, common names, and macro-generated refs need lean-ctx verification before any CULL) · `deps` (cargo-machete + unused-feature audit; feature-gated deps and `testing = []` marker features false-positive BY DESIGN — verify first) · `reconcile` (every `#[expect(dead_code)]` mark ↔ retention-register entry, both directions) · `boundaries` (declarative per-repo `boundary_rules.toml`: per-crate forbid/allow dep rules, `version.workspace = true` lockstep, ≥N-declarers hoisting rule — turns prose crate-boundary invariants into machine-checked findings every scan) · `lift-lint` (opt-in, BUILDS: scratch-copy strip + cargo check = the compiler's own dead verdicts). Emits `dead_scan_report.{json,md}` with STABLE `DS-*` finding ids. Rationale: rustc treats every plain-`pub` item as live, so a multi-crate workspace stays lint-clean while carrying dead public API — only the classified reference scan sees it; coverage MASKS deadness (self-tested dead code shows covered).
+- **`~/.claude/scripts/rust-code-health.py` + the `code-health` skill** — code-health snapshots + queries over { crate map + dead scan + machine ledger + retention register }. A snapshot pins a git commit (sha/branch/cleanliness in the manifest) and is IMMUTABLE under `docs/research/assets/health/`; the ledger is `audit-cull-ledger.jsonl` (schema v2: one JSON object per finding; status lifecycle `PROPOSED → APPROVED → IN_PROGRESS → COMPLETED` + terminal `STRUCK`; keys join crate→module→site, snapshot dirs, git commits, the register, and the schedule-DB slice; `slice` = single ACTIVE owning CR — one live CR per finding, ever — while `slice_history[]` `{cr, assigned, outcome, closed}` embeds the across-time CR lineage in the row, git-diffable, auto-maintained by assign/sync). Deliberate persistence split: ChangeSet DB = SQLite+gitignored (rebuildable coordination state) vs ledger = JSONL+committed (non-rebuildable audit record); if SQL-style queries are ever needed, build a DERIVED gitignored SQLite index FROM the JSONL — never make SQLite the source. **Snapshot-taking is MAINLINE's responsibility** at defined points: audit baseline · PRE (slice dispatch) / POST (after merge) of EVERY cull run, on the integration tree — POST emits `health_delta.md`, the slice's effect report · wave boundaries · ad-hoc decision support. `query trend|crate|delta|ledger` gives the up-to-date health picture; the whole dataset is git-committed and indexable (RAG-able anytime). The `code-health` skill runs the tools and renders the user-facing report. **RATIFICATION (Mainline-EXCLUSIVE, via the skill):** a POST snapshot compares the slice's COMPLETED ledger rows against the fresh scan — stable id still present ⇒ NOT-RATIFIED ⇒ block sign-off (the board state is not the truth; the scan is); MANUAL verdicts (seed findings) are hand-verified by Mainline. Ledger + PRE/POST snapshots together ratify that a maintenance run is actually complete — never a track's call.
+- **`crucible` skill + its `references/rust.md`** — nextest junit + llvm-cov lcov + rustc compile-error parser. Load `crucible` (read `references/rust.md`) before any ingesting run.
+
+**Use the CLI, NEVER inline python.** Standard Crucible ops (register/unregister/heartbeat/ingest/regression) go through `rust-crucible.py` — a stable signature gets one-time permission approval; per-call inline `ctx_execute(python=...)` re-prompts every run. Inline python is reserved for one-off computations the CLI doesn't cover. `rust-crucible.py` subcommands: `register`/`unregister`; `test`/`check`/`clippy`/`auto-ingest` (all take `--agent` for inline ingest, `--crate`, `--features`, `--test <bin>`); `regression-ingest --crates a,b` (per-crate coverage); `workspace-regression --all-features` (the canonical docker-free coverage gate); `pre-merge-gate` (docker-free `-P ci`); `docker-e2e-gate` (docker-infra tier, `-P e2e`). No project hardcoded — defaults to the git repo of CWD, override via `--project-dir` / `RUST_CRUCIBLE_PROJECT_DIR`; reads `CRUCIBLE_PROJECT_KEY` from `<project-dir>/.env`.
+
+**Crucible ingest routing** (the skill/CLI handles this automatically, but know it): compile-fail → `/api/ingest/compile` `format: rustc` (raw stderr) → Compile panel; compiled+ran → `/api/ingest` `format: junit` → Test panel. Coverage is published ONLY on a full-green `--all-features` workspace run; per-crate/per-cycle runs never carry coverage.
+
+**`worktree-flow.py` subcommands (5 core + 3 ChangeSet `cs`/`next`/`reconcile`)** — `start --cr <id> [--slug <s>] [--track <label> | $WF_TRACK]` (slug optional — derived from the CS `heading` when omitted, see ChangeSet DB above) (worktree + `feature/<cr>-<slug>` off LOCAL develop; `--track`/`$WF_TRACK` stamps a human session/track label as git config `wf.track.<cr>`, shown in `status`, unset on finish/abort — terminals/Claude do NOT expose the renamed session title to subprocesses, so this one-time-per-session label is how a track names itself); `status` (dashboard: worktrees, ahead/behind, rebase-need, merge lock, **+ latest committed Crucible phase** — RED/GREEN/RED-fix/close-out + cycle, inferred per-worktree from the commit-message convention; **+ track label**; git-derived, no sidecar); `sync --cr <id>` (rebase onto develop, aborts cleanly on conflict); `finish --cr <id> [--push]` (lock → rebase-if-behind → `merge --no-ff` → `worktree remove` → `branch -d`); `abort --cr <id> [--delete-branch]`. `finish` MUST run from the integration tree, not inside the worktree (it hard-errors otherwise — `ExitWorktree` first); takes an atomic `.git/worktree-flow-merge.lock` so parallel finishes serialize. **Always `--dry-run` first** when unsure. Does NOT replace `git flow feature start` for sequential single-CR work — parallel-mode only.
+
+## Test scope
+- **Per cycle = targeted** (only the affected crates, with the project's test feature set). **Per CR = full workspace.** Running `--workspace` every cycle wastes 10-15 min builds.
+- Exact per-crate feature flags are project-specific → see the project's orchestration notes.
+
+## Pre-merge gate — two tiers (docker-free default + opt-in docker-e2e)
+The default gate is **docker-free**. The `-P ci`/`-P default` profiles carry a
+`default-filter` (in the project's `.config/nextest.toml`) that excludes the
+**docker-infra tier** (`E2E_SET`: kafka connector e2e, dockerfile-build, bridge
+docker tests). This boundary is "needs-docker", **NOT** "is-end-to-end":
+**in-process full-boot e2e** (NaiApp/DevApp boot tests) are docker-free, are NOT in
+`E2E_SET`, and run in EVERY regression — they are the wiring-gap detectors (the
+CR-NAI-248 AC-6 wiring miss was caught by a docker-free `*_e2e.rs` boot test, not a
+docker test). `E2E_SET` is a deny-LIST of named binaries/tests, so any NEW
+full-boot test lands in the default gate by default; dropping one requires a
+deliberate addition there.
+
+**Tier 1 — default gate (`pre-merge-gate`, no docker), every CR:**
+1. `cargo clean`
+2. **Raw workspace smoke ×2** (`smoke-test --all-features --clean`), clean between, BOTH pass. No llvm-cov — instrumentation masks contention races; the raw path surfaces them.
+3. `cargo clean`
+4. **Coverage:** `pre-merge-gate` / `workspace-regression --all-features` (llvm-cov, `-P ci`). Coverage published ONLY from a full-green `--all-features` run.
+5. Ingest each run; close-out (universal) before merge.
+
+**Tier 2 — `docker-e2e-gate` (docker up, `-P e2e`, raw nextest, junit only):**
+Runs ONLY `E2E_SET`. **Mandatory** when gap-analysis flags the CR touches NaiApp
+boot / connector registration / Bridge / provider wiring — only real infra
+surfaces those gaps — and **always at pre-release** as the catch-all. NOT
+per-cycle, NOT in Tier 1. No coverage (e2e runs connector subprocesses llvm-cov
+can't reach → ~0 signal + instrumentation masks races). The script owns
+docker-up → run → docker-down; some e2e tests self-provision their own compose —
+confirm per project. `[profile.e2e]` re-declares the `kafka-e2e-serial` group so
+the shared-stack binaries serialize there too.
+
+- **Gate sizing:** with deterministic proof (a RED test that forces the race, or fix-by-construction), 2-run smoke suffices. Without proof, sample N× to close a flake.
+- **Report skipped/ignored tests explicitly** — every regression. Under `-P ci` the docker-infra tier is *filtered* (won't appear at all, not "skipped"); remaining skips are real `#[ignore]` holes or runtime-skips — a bare count hides them.
+
+## RED that won't compile
+Rust RED frequently fails to **compile** (the target type/field/fn doesn't exist yet) — that is a valid RED. Ingest it via the rustc-compile path (the `crucible` skill, `references/rust.md`), never as empty junit.
+
+## Disk hygiene (orchestrator-only)
+A full `--all-features`/llvm-cov run leaves 100-200G+ of `target/`. Guards are **embodied in tooling** (don't rely on recall):
+- `rust-crucible.py` `_disk_precheck()` prints `df /home` + reclaim nudge (<50G) at the start of `workspace-regression`/`pre-merge-gate`/`smoke-test --all-features`.
+- `post-test-crucible-reminder.sh` (PostToolUse) emits a disk reminder after a full regression command.
+- `worktree-flow.py finish` reports root-owned partial-deletion with the `sudo rm -rf` recovery.
+
+Recovery (orchestrator runs these — agents do NOT have `cargo sweep`/`cargo cache`; disk policy is orchestrator-side):
+| Command | Effect | When |
+|---|---|---|
+| `cargo sweep --time 7` | drop `target/` artifacts >7 days | between cycles; never mid-build |
+| `cargo cache --autoclean` | `~/.cargo` registry hygiene | close-out + weekly |
+| `cargo clean` | full wipe | severe pressure / before final regression |
+
+- **btrfs/snapper** can pin freed blocks after a delete — if `df` doesn't move after `cargo clean`, old snapshots are the cause (`sudo snapper -c home list` → delete).
+- Docker (root) creates bind-mount target dirs as root-owned; clean stale ones before e2e runs; leftovers need `sudo rm -rf`.
+- **Close-out hygiene:** `cargo cache --autoclean` ; `df -h /home`. **🚨 NEVER run registry-MUTATING hygiene (`cargo cache --autoclean`, registry prunes) while ANY track's heavy gate is live** — the shared `~/.cargo/registry/src` extraction can be deleted out from under a concurrent build (observed 2026-07-03: librocksdb-sys vendored `.cc` sources vanished mid-llvm-cov during another track's close-out autoclean; archive intact, src gone, build died). Check the gate lock is ABSENT before autoclean; `cargo sweep`/`cargo clean` on your OWN target/ are safe anytime.
+
+## CARGO_BUILD_JOBS cap (dev workstation — mandatory before any heavy build)
+Default cargo spawns one rustc per core; instrument-coverage doubles compile memory. On the 24-core / 31 GiB-RAM dev box, `cargo llvm-cov nextest --workspace --all-features`, a cold/partially-invalidated `--workspace` build, or `--features e2e` after a partial target clean all OOM the machine (kernel watchdog reset, ~1 min unclean reboot). **Prefix heavy builds with `CARGO_BUILD_JOBS=12`** (one rustc per 2 cores, halves peak working set; ~1.5× wall time, no crash). Verified safe at 12 (~11.8 GiB zram peak); drop to 8 for heavier feature sets. `rust-crucible.py` gates embed this — only matters for ad-hoc raw runs. Do NOT skip it (two confirmed crashes 2026-05-19 from forgetting).
+
+## Flaky-test investigation principle (timing/parallel-load failures)
+Logical sequence + data integrity preserved = OK to serialize; otherwise fix the root cause. Ask whether the failure means (a) the SYSTEM produces wrong results (data lost/reordered/duplicated/corrupted, invalid state transitions) → real bug, fix the code; or (b) the TEST asserts wall-clock timing for its own sake while the system still completes correctly with eventual consistency → flawed test: rewrite to assert semantic correctness (data integrity, ordering), or — only if the timing observation is genuinely the sole detection path — accept a `#[serial]` / nextest serial-group with explicit justification naming the preserved invariant. `#[serial]` without root-cause investigation accrues debt.
+
+**Gate sizing follow-on:** deterministic proof (a RED test that forces the race, or fix-by-construction that removes the shared mutable state) makes statistical "N consecutive runs" redundant — 2-run smoke suffices. N× sampling is only for fixes WITHOUT proof.
+
+## E2E / docker / nextest-concurrency gotchas
+Re-read before any CR touching `deploy/docker-compose.*` or adding a `tests/e2e_*.rs` binary.
+- **Container UID owns bind-mount writes.** Images often run non-root (otel-collector 10001, postgres 70); files written into a HOST bind-mount are owned by the container UID → host-user harness gets EACCES even on 0777 dirs. Add `user: "${UID:-1000}:${GID:-1000}"` to the compose service; export `UID=$(id -u) GID=$(id -g)` before `docker compose up`.
+- **`docker compose down -v` does NOT touch host bind-mounts** (only named volumes). Stale files from a prior run survive teardown → "same test fails the second time" mysteries. Harness must `rm -f` stale bind-mount files in `ensure_compose_up` BEFORE `up`; if owned by a prior container UID, use a throwaway `docker run --rm -v <bind>:/data alpine sh -c 'chmod 0777 /data && rm -f /data/<file>'`.
+- **`docker compose up --wait` only waits on services WITH a healthcheck.** No healthcheck → returns the instant `docker start` succeeds, before the listener binds → early events dropped. Add an explicit harness readiness poll (`http_client.head(&url).send().await.is_ok()` proves the listener is bound — any HTTP response beats connection-refused).
+- **nextest runs each test in its OWN process**, so `Drop`/`Box::leak`'d teardown fires per test → up/down/up/down per test. Treat process-per-test + Drop teardown as a stress test: every readiness wait / cleanup / chmod must be idempotent, fast, and tolerant of "previous test left X in state Y".
+- **`#[serial]` only serializes WITHIN a binary.** Two binaries (`e2e_kafka`, `e2e_telemetry`) run concurrently even if both use `#[serial]` internally. To serialize ACROSS binaries sharing a resource (the docker stack), use nextest `test-groups` in `.config/nextest.toml` (`max-threads = 1` + a `binary(...)` filter override per binary). Adding a new e2e binary that shares the stack → add a matching filter to the same group.
+- **Half-stack vs full-stack `up` profiles cause silent cross-binary breakage.** `docker compose down -v` tears down the FULL project (the project is the unit), so half-stack→full-stack transitions surface races + ownership mismatches pure-isolation never hits. Canonical CR gate = pure isolation (`-E 'binary(my_e2e)'`); workspace runs include cross-binary failures that aren't production defects.
+- **Cross-binary failures ≠ production defects (usually).** An e2e suite that passes 8/8 in isolation but fails under workspace regression = harness cross-binary race. Investigate test-infra; do NOT modify production code; capture the limitation + propose a harness-hardening follow-up CR.
+- **One invariant per e2e test.** A "span exported" test must not also assert `total_acked >= N` (ack path is barrier-gated and orthogonal to the telemetry path); conflating them fails the test on a different subsystem's defect. To prove "events processed" use a non-ack signal (a span/hop with the matching trace_id).
+- **Zero-cost-when-off assertions are no signal.** "≤0 spans when off" passes trivially when the production emission path is silently dead (0 spans for any reason satisfies it). When triaging a partial-pass e2e suite, always check an always-on positive assertion too — all-positive-fail + zero-cost-pass = the whole emission path is dead.
+
+## Test naming
+Test function names describe the invariant under test in plain English — never CR-ordinal positions. Smell: `t22_sink_e2e_codec_encode`, `test_33`, `s5_test_14` (those `tN_` / `sN_` prefixes are CR-internal task numbers that lose all meaning once the CR closes). Rename to e.g. `sink_encodes_three_codecs_with_sr_wire_prefix`, `source_consumes_json_kafka_and_emits_cloudevent`. (Test FILES likewise: name by feature, never by CR ID.)
