@@ -1,6 +1,6 @@
 # CR-MDB-010 — worktree-flow.py AXI output
 
-**Status:** PENDING
+**Status:** COMPLETED (shipped 2026-07-21 on develop)
 **Type:** feature
 **Priority:** P1
 **Depends on:** CR-MDB-009
@@ -54,3 +54,6 @@ M (one script, three verbs converted + codec deployment).
 ## Non-goals
 - Converting the six remaining verbs (follow-up rides the fleet delivery).
 - Any `*-crucible.py` client change (Crucible's).
+
+## Implementation Notes
+- 2026-07-21 (GREEN design choice, VERIFY-ratified): the no-schedule-DB path of `next`/`progress` changed from hard `sys.exit` to a graceful envelope (`DRAINED` / empty rows, warning "schedule_db unavailable — queue-only project", exit 0) — the ontology's graceful-degradation principle applied; `cs` keeps its error path (unconverted scope).
