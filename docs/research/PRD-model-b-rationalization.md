@@ -60,11 +60,23 @@ Kept: `java-modern-syntax`, `java-coding-standards` (trimmed), `java-testing-pra
 - Model B retains: `worktree-flow.py` AXI output migration; `contracts/crucible-envelope.md` mirroring Crucible's shipped schema; the crucible-skill rewrite documenting the shipped surfaces.
 - Endpoints: `/api/v2/agents/{register,unregister}`, `/api/v2/runs/{parsed,compile}`, `/api/v2/plans` (+ cycles PATCH). TOON is served via `?fmt=toon`.
 
-### D8 — MCP holdouts: contracts only
+### D8 — MCP holdouts: contracts only, via the collaboration model
 This effort ships AXI CLI **contracts** (specs in `contracts/`), not implementations: sandesh message verbs (send/reply/fetch/inbox/addressbook/register/unregister — wake + admin are already CLI), `mail-axi` (Fastmail/Gmail/Calendar), lean-ctx CLI preference. Implementations live in their own repos.
+**Collaboration model (user directive 2026-07-20): Model B collaborates with the CRUCIBLE project (tracking: plans/cycles/gates/clients) and the SANDESH project (messaging: mailbox/wake/addressing) as the upstream providers of the tools Model B's skills and memory definitions require.** Requests and contracts flow over Sandesh cross-project channels; Model B skills reference the providers' SHIPPED surfaces (never fork them); provider-side defects found while dogfooding (e.g. the space-named-project zombie, the display-name-update gap) are filed WITH the owning project.
 
 ### D9 — The workshop pipeline (this repo)
 The `model-b` repo is the permanent authoring workspace: `audits/`, `contracts/`, `generator/`, `skills-src/`, `archive/`, `scripts/`, `plans/`, `docs/`. Single-source rule: generated or contract-derived artifacts are authored here and synced into the chezmoi source (a deployment target for them); hand-authored one-offs keep the classic edit-in-place → `chezmoi add` flow. Every `~/.claude` deletion goes through `chezmoi destroy`/`forget` (D4 chezmoi skill); legacy content is archived under `archive/` with an old→new mapping before deletion.
+
+### D10 — The Model B scaffold CLI (project initializer)
+- **Deliverable:** an AXI-conventions CLI (working name `modelb-axi`; final name settled in the packaging DN) whose `init` verb scaffolds a Model B-driven project from inputs. **Going forward, EVERY Model B project — single or multi orchestrator, monorepo or not — is initialized through this tool** (correct-by-construction replaces convention-by-memory).
+- **Inputs:** project name / canonical token / acronym; orchestration mode (`solo` | `multi <N tracks>`); repo shape (standalone | monorepo with named sub-projects); stack(s) per (sub-)project; target harness (informational only — the ecosystem is harness-agnostic).
+- **Outputs per (sub-)project:**
+  1. `.env` static naming registry (D3.1) — including the Crucible `projectKey` captured from live registration.
+  2. The standard docs model: `docs/changes/README.md` queue template (header slots: Design contract · Evidence base · Ontology · Target release; empty CR table; Notes footer) + `docs/research/`.
+  3. **A project-level `AGENTS.md` override that FREEZES the skills accessible to the project** based on its stack(s) etc. — the per-project instrument of the D2 containment rule (context optimization: only stack-relevant skills/references are exposed; project-level overrides live here).
+  4. **`CLAUDE.md` as a plain symlink to `AGENTS.md`** — Claude Code compatibility only. `AGENTS.md` is the canonical file because the **Model B ecosystem is agentic-harness agnostic**.
+  5. `git init` + git-flow branches; Crucible project registration; for multi-orchestrator mode: Sandesh setup + `Mainline - <Project>` / track address registrations; the run-context wrapper plumbing (D7/WORKFLOW_*).
+- **Packaging & deployment strategy (REQUIRED, undecided):** how the tool ships and updates (packaging form, install channel, version/update flow, relation to the chezmoi-managed user space) is settled in `docs/research/DN-scaffold-packaging.md` BEFORE implementation — options-considered belongs in the DN, not here.
 
 ## 3. Invariants & constraints
 - `CLAUDE.md` symlink invariant (D1) — never de-symlinked.
