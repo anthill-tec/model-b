@@ -60,7 +60,8 @@ The `~/.claude` user space grew organically into 24 memory files, ~50 skills, 29
 ### D7 — Crucible V2 client contract (AXI)
 - **Ownership (corrected 2026-07-20): ALL `*-crucible.py` client implementation is the CRUCIBLE project's responsibility.** Model B requests it (Sandesh thread #1322/#1325), tracks it as an external dependency, and documents/consumes what Crucible ships. Model B implements no client code.
 - The contract Model B tracks: `bun-crucible.py` is the reference implementation; its plan/cycle verbs (`plan-file`, `cycle-activate`, `cycle-done`, `cr-close`) are universal V2 API (live-verified: `/api/v2/plans` active); every client emits a TOON-AXI envelope on stdout (`{axi:{verb,ok,…,context,warnings[]}}`) with the human line on stderr, with no-cycle-id/no-wave guards, an `append-cycle` verb, and golden fixtures.
-- Requested of Crucible: fleet conversion (python/rust/mvn/arduino), new `vscode-crucible.py`, arduino verb-surface extension, universal plan/cycle adoption. `hw-crucible.py` conformance rides the anthill-forge toolset.
+- Requested of Crucible: fleet conversion (python/rust/mvn/arduino), new `vscode-crucible.py`, arduino verb-surface extension, universal plan/cycle adoption.
+- **ELECTRONICS STACK EXCLUDED (user 2026-07-20): anthill-forge is DEAD/DEPRECATED; `hw-crucible.py` (a shim to it), the four electronics agents, and the electronics skills are under revision — IGNORED in this delivery** (not migrated, not documented, not generated; revisit when their revision lands).
 - Model B retains: `worktree-flow.py` AXI output migration; `contracts/crucible-envelope.md` mirroring Crucible's shipped schema; the crucible-skill rewrite documenting the shipped surfaces.
 - Endpoints: `/api/v2/agents/{register,unregister}`, `/api/v2/runs/{parsed,compile}`, `/api/v2/plans` (+ cycles PATCH). TOON is served via `?fmt=toon`.
 
