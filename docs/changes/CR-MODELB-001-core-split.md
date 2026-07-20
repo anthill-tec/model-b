@@ -26,6 +26,7 @@ Create `~/.claude/skills/model-b/references/sub-agent-procedure.md` carrying the
 ### §S4 — Repoint inbound references
 **Surfaces (verified 2026-07-20, gap-analysis re-verified):** 17 agent defs in `~/.claude/agents/` citing `memory/agent-baseline.md`; `memory/rust-orchestration.md` L3–L4 (both shims); `memory/java-orchestration.md` L3–L4 (both shims); `memory/cr-prd-dn-conventions.md` L63 (`orchestration-universal.md` deferred-items pointer → `orchestration-mainline.md`). Zero shim refs anywhere in `~/.claude/skills/`.
 Replace: `memory/agent-baseline.md` → `AGENTS.md` + `skills/model-b/references/sub-agent-procedure.md`; `orchestration-universal.md` → the `orchestration-common.md`/`-mainline.md`/`-track.md` split (per referencing context).
+(VERIFY-surfaced, added 2026-07-20) Five additional files referencing RELOCATED AGENTS.md content repoint to `skills/model-b/references/sub-agent-procedure.md`: `memory/crucible-ingest.md` L8 (§Crucible-lifecycle), `skills/crucible/SKILL.md` L54 ("step 6"), `skills/bootstrap/SKILL.md` L98 (procedure location), `memory/git-workflow.md` L29 + `memory/java-testing-practices.md` L17 (§TDD "compile failure IS a RED" attribution).
 
 ### §S5 — Shim deletion via chezmoi
 Copy `memory/agent-baseline.md` + `memory/orchestration-universal.md` to `archive/wave1/` in this repo, then delete both from `~/.claude` AND the chezmoi source (`chezmoi destroy`); mirror every §S2–§S4 edit with `chezmoi add`; end state `chezmoi diff` clean.
@@ -50,10 +51,12 @@ Copy `memory/agent-baseline.md` + `memory/orchestration-universal.md` to `archiv
 
 ### §S5
 - [ ] `~/.claude/memory/agent-baseline.md` and `~/.claude/memory/orchestration-universal.md` do not exist; copies exist under `archive/wave1/` in this repo.
-- [ ] `chezmoi diff ~/.claude/AGENTS.md ~/.claude/CLAUDE.md ~/.claude/agents ~/.claude/memory ~/.claude/skills` exits 0 WITH empty output (CR-touched paths only; exit 0 required — an unmanaged-path abort is a FAIL, so AGENTS.md and the CLAUDE.md symlink must be brought under chezmoi management); `chezmoi apply --dry-run --verbose ~/.claude` mentions neither shim.
+- [ ] `chezmoi diff ~/.claude/AGENTS.md ~/.claude/CLAUDE.md ~/.claude/agents ~/.claude/memory ~/.claude/skills` exits 0 WITH empty output (CR-touched paths only; exit 0 required — an unmanaged-path abort is a FAIL, so AGENTS.md and the CLAUDE.md symlink must be brought under chezmoi management); `chezmoi apply --dry-run --verbose` (non-interactive config, scoped to the five CR-touched paths) exits 0 and mentions neither `memory/agent-baseline.md` nor `memory/orchestration-universal.md` (path forms; the whole-home unscoped dry-run both TTY-aborts on unrelated drift and false-hits unrelated project files).
 
 ## Implementation Notes
 - 2026-07-20 (RED-surfaced, scope reconciliation): `chezmoi diff` is non-empty today from drift UNRELATED to this CR (e.g. `.bashrc`), so the S5 chezmoi-clean AC is scoped to the CR-touched paths. RED also exposed that the chezmoi SOURCE stores `CLAUDE.md` as a plain file while the live tree has the symlink — a live `apply` would destroy the symlink invariant. §S5 therefore includes `chezmoi add ~/.claude/CLAUDE.md` (capturing the symlink) alongside `AGENTS.md`. Files not currently under chezmoi management (`chezmoi managed` miss) are deleted with plain `rm` — nothing exists in the source to resurrect them.
+
+- 2026-07-20 (VERIFY reconciliation): §S4 gains the five dangling-pointer files above; the S5 dry-run AC strengthened (scoped, exit-0, path-form matching) after VERIFY proved the original test vacuous. DISCLOSURE: chezmoi source commit `b89f936` swept pre-existing live-vs-source drift on the re-added agent files (stale source entries for skill lists; electronics agents newly managed) — unavoidable with `chezmoi add` of live files; contents verified to match the live tree. `~/.claude/agents/bun-fix-agent.md` remains out of source sync (pre-existing, 2-line delta) — DEFERRED, not this CR.
 
 ## Estimated size
 S–M. One RED→GREEN cycle (gate tests + restructure), heavy on mechanical repoints.

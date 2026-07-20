@@ -294,28 +294,69 @@ class CoreSplitS5ShimRemovalAndArchiveTest(unittest.TestCase):
         )
 
     def test_s5_chezmoi_apply_dry_run_no_shim_mentions(self):
+        """A non-interactive `chezmoi apply --dry-run --verbose` scoped to the
+        five CR-MODELB-001-touched paths (AGENTS.md, CLAUDE.md, agents/,
+        memory/, skills/ — never whole-home) must exit 0 AND must not mention
+        either retired shim path form ('memory/agent-baseline.md',
+        'memory/orchestration-universal.md'). The returncode assertion makes
+        this non-vacuous: an 'unmanaged path' abort no longer passes silently.
+        Uses a /tmp copy of the chezmoi config with autoCommit/autoPush forced
+        off so the dry-run can never mutate the source repo."""
         chezmoi = shutil.which("chezmoi")
         if chezmoi is None:
             self.skipTest("chezmoi binary not found on PATH — cannot verify dry-run apply output")
+        # Ensure the non-interactive config exists (autoCommit/autoPush = false),
+        # derived from the live chezmoi config. Create it if missing.
+        noauto_config = Path("/tmp/claude-1000/chezmoi-noauto.toml")
+        if not noauto_config.is_file():
+            live_config = Path.home() / ".config" / "chezmoi" / "chezmoi.toml"
+            self.assertTrue(
+                live_config.is_file(),
+                f"{live_config} must exist to derive the non-interactive config",
+            )
+            noauto_content = (
+                _read(live_config)
+                .replace("autoCommit = true", "autoCommit = false")
+                .replace("autoPush = true", "autoPush = false")
+            )
+            noauto_config.parent.mkdir(parents=True, exist_ok=True)
+            noauto_config.write_text(noauto_content, encoding="utf-8")
         result = subprocess.run(
-            [chezmoi, "apply", "--dry-run", "--verbose", str(CLAUDE_DIR)],
+            [
+                chezmoi, "--config", str(noauto_config),
+                "apply", "--dry-run", "--verbose",
+                str(CLAUDE_DIR / "AGENTS.md"),
+                str(CLAUDE_DIR / "CLAUDE.md"),
+                str(CLAUDE_DIR / "agents"),
+                str(CLAUDE_DIR / "memory"),
+                str(CLAUDE_DIR / "skills"),
+            ],
             capture_output=True,
             text=True,
             timeout=60,
         )
         combined = result.stdout + result.stderr
-        agent_baseline_mentions = combined.count("agent-baseline")
-        orch_universal_mentions = combined.count("orchestration-universal")
+        # EXACT bound — a clean exit is required. An 'unmanaged path' abort
+        # (exit 1, empty output) would otherwise pass the mention checks
+        # vacuously without chezmoi ever evaluating the CR-touched paths.
+        self.assertEqual(
+            result.returncode, 0,
+            "chezmoi apply --dry-run on the CR-touched paths must exit 0 — a "
+            "non-zero exit means chezmoi never actually evaluated the paths. "
+            f"stderr:\n{result.stderr[:2000]}",
+        )
+        agent_baseline_mentions = combined.count("memory/agent-baseline.md")
+        orch_universal_mentions = combined.count("memory/orchestration-universal.md")
         # EXACT bounds — a non-mutating dry-run apply must not attempt to
         # resurrect either retired shim file.
         self.assertEqual(
             agent_baseline_mentions, 0,
-            f"dry-run apply output must not mention 'agent-baseline', found {agent_baseline_mentions} "
-            f"time(s) (showing first 2000 chars):\n{combined[:2000]}",
+            f"dry-run apply output must not mention 'memory/agent-baseline.md', found "
+            f"{agent_baseline_mentions} time(s) (showing first 2000 chars):\n{combined[:2000]}",
         )
         self.assertEqual(
             orch_universal_mentions, 0,
-            f"dry-run apply output must not mention 'orchestration-universal', found "
+            f"dry-run apply output must not mention 'memory/orchestration-universal.md', found "
             f"{orch_universal_mentions} time(s) (showing first 2000 chars):\n{combined[:2000]}",
         )
 
