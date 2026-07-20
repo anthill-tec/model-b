@@ -21,7 +21,7 @@ Queue rows enumerate the whole delivery (structure only). **Live status lives on
 | CR-MDB-010 | worktree-flow.py AXI output: TOON envelope for status/next/finish + lane boards | 3 | 009 |
 | CR-MDB-011 | crucible skill final docs: shipped client surfaces (fleet envelope, vscode, arduino, plan verbs) | 3 | 003, 009 + EXTERNAL (Crucible deliveries, thread #1322) |
 | CR-MDB-013 | Model B scaffold CLI (`modelb-axi init`): project initializer per PRD §D10 | 3 | 002, 008 |
-| CR-MDB-014 | Scaffold packaging + deployment (DN-scaffold-packaging → implementation) | 3 | 013 |
+| CR-MDB-014 | Universal installer + packaging: deploy user-local files per targeted harness (DN → implementation) | 3 | 013 |
 | CR-MDB-015 | Harness-agnostic hooks: neutral schema + per-harness emitters + shared script protocol (DN-harness-agnostic-hooks) | 3 | 013 |
 | CR-MDB-012 | Release 0.1.0: full verification suite (PRD §4) + archive/mapping.md + master tag | — | 006, 007, 008, 010, 011, 013, 014 |
 

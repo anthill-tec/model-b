@@ -10,7 +10,7 @@
 
 ## Context
 
-Every rule this project forged — the registry, docs model, skill freeze, memory instantiation, git+git-flow, registrations — is convention enforced by discipline. The scaffold makes it correct-by-construction: `modelb-axi init` interrogates the user and emits a complete Model B project. v1 emits for ALL researched harnesses (Claude Code, pi, Codex CLI, Gemini CLI, Cursor, Copilot CLI, opencode/Amp) — file/symlink/settings emission here; per-harness HOOK wiring delegates to the CR-MDB-015 compiler (plug-in seam, stub emitting a "hooks pending 015" marker until it lands).
+Every rule this project forged — the registry, docs model, skill freeze, memory instantiation, git+git-flow, registrations — is convention enforced by discipline. The scaffold makes it correct-by-construction: `modelb-axi init` interrogates the user and emits a complete Model B project. SCOPE SPLIT (user 2026-07-21): the UNIVERSAL INSTALLER (CR-MDB-014) owns deploying user-local files per targeted harness; the scaffold is PROJECT-SPECIFIC — stack + overrides. Its harness awareness: emit project-level anchor files for the harnesses the INSTALLATION declares (installation config at the asset root; dev fallback: `--harnesses` flag). Hook wiring delegates to the CR-MDB-015 compiler (seam stub).
 
 ## Scope
 
