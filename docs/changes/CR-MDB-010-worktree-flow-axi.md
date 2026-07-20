@@ -1,6 +1,6 @@
 # CR-MDB-010 — worktree-flow.py AXI output
 
-**Status:** PENDING
+**Status:** COMPLETED (shipped 2026-07-21 on develop)
 **Type:** feature
 **Priority:** P1
 **Depends on:** CR-MDB-009
