@@ -1,0 +1,486 @@
+<!doctype html>
+<html lang="en" data-theme="luxury">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claude Memory Rationalization — Model B Unification Plan</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/daisyui.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/themes.css">
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.2.4/dist/index.global.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  :where(.grid, .flex) > * { min-width: 0; }
+  :where(p, h1, h2, h3, h4, h5, h6, li, dd, blockquote, figcaption, td, th, .badge, .label) { overflow-wrap: anywhere; }
+  :where(img, svg, video, canvas, iframe) { max-width: 100%; height: auto; }
+  .rz-tree { font-family: ui-monospace, monospace; font-size: 0.8rem; line-height: 1.5; white-space: pre; overflow-x: auto; }
+  .rz-anchor { scroll-margin-top: 5rem; }
+</style>
+</head>
+<body class="bg-base-100 text-base-content">
+
+<div class="navbar bg-base-200 sticky top-0 z-40 shadow-sm">
+  <div class="navbar-start"><span class="btn btn-ghost text-lg">Memory Rationalization</span></div>
+  <div class="navbar-end hidden lg:flex">
+    <ul class="menu menu-horizontal px-1 text-sm">
+      <li><a href="#findings">Findings</a></li>
+      <li><a href="#architecture">Architecture</a></li>
+      <li><a href="#memory-map">Memory Map</a></li>
+      <li><a href="#skills">Skills</a></li>
+      <li><a href="#agents">Agents</a></li>
+      <li><a href="#axi">Crucible/AXI</a></li>
+      <li><a href="#workspace">Workspace</a></li>
+      <li><a href="#waves">Waves</a></li>
+      <li><a href="#risks">Risks</a></li>
+    </ul>
+  </div>
+</div>
+
+<main class="mx-auto max-w-6xl p-6 lg:p-10 space-y-12">
+
+<!-- ============ HERO ============ -->
+<section class="hero bg-base-200 rounded-box">
+  <div class="hero-content text-center py-10">
+    <div class="max-w-3xl">
+      <h1 class="text-3xl md:text-4xl font-bold px-2 leading-tight">Claude Memory Rationalization</h1>
+      <p class="py-4 text-base-content/80">Unify the workflow model under <b>Model B</b>, collapse duplicated per-stack memory into a dynamic skill tree, and finish the AXI migration of the Crucible 2 clients — all round-tripped through chezmoi.</p>
+      <div class="flex flex-wrap justify-center gap-2">
+        <span class="badge badge-success badge-soft">3 audits complete</span>
+        <span class="badge badge-success badge-soft">11 decisions locked</span>
+        <span class="badge badge-warning badge-soft">Plan — awaiting your review</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ HEADLINE NUMBERS ============ -->
+<section>
+  <div class="stats stats-vertical lg:stats-horizontal shadow w-full">
+    <div class="stat">
+      <div class="stat-title">Always-loaded context</div>
+      <div class="stat-value text-error">621 lines</div>
+      <div class="stat-desc">CLAUDE.md is a <b>symlink</b> to AGENTS.md — one file loads everywhere</div>
+    </div>
+    <div class="stat">
+      <div class="stat-title">Target core</div>
+      <div class="stat-value text-success">≤100 lines</div>
+      <div class="stat-desc">one frugal AGENTS.md core — CLAUDE.md stays a symlink to it</div>
+    </div>
+    <div class="stat">
+      <div class="stat-title">Memory files</div>
+      <div class="stat-value">24 → 10</div>
+      <div class="stat-desc">7 orphans today; end-state = reference library only</div>
+    </div>
+    <div class="stat">
+      <div class="stat-title">Agents on legacy alias</div>
+      <div class="stat-value">17 → 0</div>
+      <div class="stat-desc">all repoint to lean AGENTS.md; 16 become generated</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ DECISIONS LOCKED ============ -->
+<section class="rz-anchor" id="decisions">
+  <h2 class="text-2xl font-bold mb-4">Decisions locked (from our Q&amp;A)</h2>
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+    <div class="card card-border bg-base-100"><div class="card-body p-4"><h3 class="card-title text-sm">1 · Scope</h3><p class="text-sm">Everything, phased — 6 waves with a review gate after each.</p></div></div>
+    <div class="card card-border bg-base-100"><div class="card-body p-4"><h3 class="card-title text-sm">2 · Canonical name</h3><p class="text-sm"><b>Model B</b>. Every “Plan B” occurrence renamed.</p></div></div>
+    <div class="card card-border bg-base-100"><div class="card-body p-4"><h3 class="card-title text-sm">3 · Per-stack artifacts</h3><p class="text-sm">Generated from templates + per-stack parameter files kept in this repo.</p></div></div>
+    <div class="card card-border bg-base-100"><div class="card-body p-4"><h3 class="card-title text-sm">4 · Lagging clients</h3><p class="text-sm">Build <code>vscode-crucible.py</code>; extend <code>arduino-crucible.py</code>.</p></div></div>
+    <div class="card card-border bg-base-100"><div class="card-body p-4"><h3 class="card-title text-sm">5 · AXI envelope</h3><p class="text-sm"><b>Upgrade clients</b> to emit the TOON-AXI envelope the crucible skill already promises.</p></div></div>
+    <div class="card card-border bg-base-100"><div class="card-body p-4"><h3 class="card-title text-sm">6 · MCP holdouts</h3><p class="text-sm">sandesh / lean-ctx / mail: <b>docs + AXI CLI contract only</b>; rewrites live in their own repos.</p></div></div>
+    <div class="card card-border bg-base-100"><div class="card-body p-4"><h3 class="card-title text-sm">7 · Legacy files</h3><p class="text-sm">Archive into this repo (<code>archive/</code> + mapping), then delete via chezmoi.</p></div></div>
+    <div class="card card-border bg-base-100"><div class="card-body p-4"><h3 class="card-title text-sm">8 · Big references</h3><p class="text-sm">Deep reference docs stay in <code>memory/</code>; skills hold procedure and route to them.</p></div></div>
+    <div class="card card-border border-primary bg-base-100"><div class="card-body p-4"><h3 class="card-title text-sm">9 · Containment rule</h3><p class="text-sm"><b>Language references are NOT skills.</b> Skill descriptions leak into every session of every project; stack refs load only via stack-scoped skills / project CLAUDE.md.</p></div></div>
+    <div class="card card-border border-primary bg-base-100"><div class="card-body p-4"><h3 class="card-title text-sm">10 · Core file</h3><p class="text-sm"><b>CLAUDE.md is always a symlink to AGENTS.md.</b> One frugal core serves both entrypoints; the sub-agent procedure moves to <code>model-b</code> references.</p></div></div>
+    <div class="card card-border border-primary bg-base-100"><div class="card-body p-4"><h3 class="card-title text-sm">11 · Crucible V2 API</h3><p class="text-sm"><b><code>bun-crucible.py</code> is the reference implementation.</b> Plan/cycle verbs are universal V2 API; every stack client adopts the same API + AXI standards. <code>worktree-flow.py</code> migrates to AXI too.</p></div></div>
+  </div>
+</section>
+
+<!-- ============ FINDINGS ============ -->
+<section class="rz-anchor" id="findings">
+  <h2 class="text-2xl font-bold mb-4">What the audits found</h2>
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+    <div class="card card-border bg-base-100">
+      <div class="card-body p-5">
+        <h3 class="card-title text-base">Memory corpus</h3>
+        <ul class="list-disc ms-4 text-sm space-y-1">
+          <li><code>CLAUDE.md → AGENTS.md</code> symlink: config + sub-agent procedure fused into one 621-line always-loaded file.</li>
+          <li><code>plan_b_workflow_model.md</code> is a broken mis-paste (verbatim copy of <code>project-management.md</code> L1–95). Model B has <b>no canonical home</b>.</li>
+          <li>2 redirect shims (<code>agent-baseline</code>, <code>orchestration-universal</code>) with 5+ dangling inbound refs.</li>
+          <li>7 orphan files missing from the index; heavy overlap pairs (devops↔java-testing, coding-standards↔modern-syntax, git-workflow↔maven…).</li>
+          <li><b>chezmoi gap:</b> documented workflow has no delete/rename step — deletions resurrect on <code>chezmoi apply</code>.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="card card-border bg-base-100">
+      <div class="card-body p-5">
+        <h3 class="card-title text-base">Crucible 2 drift</h3>
+        <ul class="list-disc ms-4 text-sm space-y-1">
+          <li>Skill claims clients emit a TOON-AXI envelope — <b>no client does</b>; TOON exists server-side only (<code>?fmt=toon</code>).</li>
+          <li><code>agent-protocol</code> documents a phantom <code>/agents/heartbeat</code> endpoint + nonexistent <code>heartbeat.sh</code> (heartbeat is really the <code>register</code> verb).</li>
+          <li><code>java-orchestration.md</code> uses dead <code>/api/ingest/*</code> paths (real: <code>/api/v2/runs/*</code>).</li>
+          <li><b>vscode: no client at all</b> — the skill hand-rolls inline Python, violating its own rule. <b>arduino: only unit/compile.</b></li>
+          <li>Undocumented: bun's plan/cycle verbs + plans API; rust's clippy/smoke/workspace gates.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="card card-border bg-base-100">
+      <div class="card-body p-5">
+        <h3 class="card-title text-base">Skills &amp; agents</h3>
+        <ul class="list-disc ms-4 text-sm space-y-1">
+          <li>29 agents: fix/verify are <b>52–54% verbatim-identical</b> across small stacks; rust (470–814 lines) &amp; vscode are bespoke outliers.</li>
+          <li>17 agents cite the legacy <code>agent-baseline.md</code> alias; none cite AGENTS.md.</li>
+          <li>Naming split: “Plan B” (agent-protocol, crucible) vs “Model-B” (bootstrap, shutdown, code-health).</li>
+          <li>MCP surface: mail cluster (Fastmail/Gmail/Calendar), sandesh <i>message</i> verbs (wake+admin already CLI), lean-ctx (already dual). <code>sys-toolbox-mcp</code>: referenced by nothing.</li>
+          <li>Skill↔memory twins: git-workflow ×2, crucible ×3, orchestration ×5.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ TARGET ARCHITECTURE ============ -->
+<section class="rz-anchor" id="architecture">
+  <h2 class="text-2xl font-bold mb-2">Target architecture — three loading tiers</h2>
+  <p class="text-sm text-base-content/70 mb-4">How does context reach a session? A frugal always-loaded core routes by keyword into skills, which route into references — so stack content is contained to projects of that stack.</p>
+  <div class="card card-border bg-base-100"><div class="card-body">
+  <pre class="mermaid">
+flowchart TB
+  subgraph T0["Tier 0 — always loaded (~100 lines)"]
+    A["AGENTS.md (CLAUDE.md = symlink)<br/>non-negotiables + trigger table"]
+  end
+  subgraph T1["Tier 1 — skill descriptions (session list)"]
+    SD["stack-neutral, workflow-scoped descriptions"]
+  end
+  subgraph T2["Tier 2 — SKILL.md on keyword trigger"]
+    MB["model-b (role param)"]
+    CR["crucible (stack param)"]
+    CA["cr-authoring"]
+    GW["git-workflow"]
+    CZ["chezmoi"]
+  end
+  subgraph T3["Tier 3 — on-demand references"]
+    RF["skill references/"]
+    MEM["memory/ reference library<br/>(java, quarkus, maven, rust, convex...)"]
+    PC["project CLAUDE.md<br/>(per-project stack routing)"]
+  end
+  A --> SD
+  SD --> MB & CR & CA & GW & CZ
+  MB --> RF
+  CR --> RF
+  PC --> MEM
+  RF --> MEM
+  A -.->|"sub-agents load procedure from"| MB
+  </pre>
+  </div></div>
+
+  <div class="alert alert-info mt-4"><span><b>Containment rule (your #9):</b> nothing stack-specific gets a global skill description. Java/Quarkus/Rust reference docs live in <code>memory/</code> and are pulled in only by the crucible skill's stack parameter, the generated agents, or a project's own CLAUDE.md — a Rust project never pays for Quarkus context.</span></div>
+
+  <h3 class="text-lg font-semibold mt-6 mb-2">End-state tree of <code>~/.claude</code></h3>
+  <div class="card card-border bg-base-200"><div class="card-body p-4">
+<div class="rz-tree">~/.claude/
+├── CLAUDE.md → AGENTS.md      # symlink KEPT — one core file serves both entrypoints
+├── AGENTS.md                  # ~100 lines — non-negotiables (one-liners) + topic→skill trigger table  [rewritten frugal]
+├── memory/                    # reference library — loaded per-project, never globally
+│   ├── java-modern-syntax.md          # kept (wired into index)
+│   ├── java-coding-standards.md       # kept, trimmed (overlap → modern-syntax)
+│   ├── java-testing-practices.md      # kept + absorbs devops-environment.md
+│   ├── maven-best-practices.md        # kept, trimmed (release overlap → git-workflow skill)
+│   ├── quarkus-patterns.md            # kept
+│   ├── java-orchestration.md          # kept — endpoints fixed to /api/v2/runs/*
+│   ├── rust-orchestration.md          # kept — repointed to model-b + AGENTS.md
+│   ├── convex-client-server.md        # kept
+│   └── operational-commands.md        # kept, trimmed — hand-rolled curl-ingest removed
+├── skills/
+│   ├── model-b/               # NEW — canonical Model B (role: mainline|track|solo)
+│   │   └── references/        #   ← orchestration common/mainline/track + sandesh + single/multi-track
+│                          #   ← sub-agent RED/GREEN/VERIFY/FIX procedure (was AGENTS.md tail)
+│   ├── crucible/              # REWRITE — stack param; absorbs crucible-report-*×5 + agent-protocol + crucible-ingest
+│   │   └── references/        #   ← per-stack client surfaces (incl. bun plan/cycle, rust gates)
+│   ├── cr-authoring/          # NEW — CR/PRD/DN + CReq/CRes + AC-precision rules
+│   ├── git-workflow/          # REWRITE — absorbs memory git-workflow + git-multi-account
+│   ├── chezmoi/               # NEW — add/apply + delete/rename/forget procedure
+│   └── (bootstrap, shutdown, code-health, status-report … repointed to model-b)
+├── agents/                    # 16 GENERATED (arduino/bun/python/quarkus × 4 roles) + 13 bespoke
+└── scripts/
+    ├── axi_envelope.py        # NEW — shared TOON-AXI envelope emitter
+    ├── vscode-crucible.py     # NEW client
+    ├── arduino-crucible.py    # EXTENDED (regression, auto-ingest, check, pre-merge-gate)
+    └── {rust,mvn,bun,python}-crucible.py   # UPGRADED — envelope on stdout</div>
+  </div></div>
+</section>
+
+<!-- ============ MEMORY MAP ============ -->
+<section class="rz-anchor" id="memory-map">
+  <h2 class="text-2xl font-bold mb-2">Memory disposition — all 24 files</h2>
+  <p class="text-sm text-base-content/70 mb-4">Every current memory file and where its content lands. Annotate any row you disagree with.</p>
+  <div class="overflow-x-auto rounded-box border border-base-content/5 bg-base-100">
+    <table class="table table-zebra table-sm">
+      <thead><tr><th>File</th><th>Lines</th><th>Verdict</th><th>Content lands in</th></tr></thead>
+      <tbody>
+        <tr><td><code>CLAUDE.md</code> (symlink)</td><td>621</td><td><span class="badge badge-success badge-soft">keep</span></td><td>Stays a symlink → AGENTS.md — always</td></tr>
+        <tr><td><code>AGENTS.md</code></td><td>621</td><td><span class="badge badge-warning badge-soft">rewrite</span></td><td>Frugal ~100-line core: non-negotiables + trigger table; sub-agent procedure → <code>model-b</code> references</td></tr>
+        <tr><td><code>agent-baseline.md</code></td><td>10</td><td><span class="badge badge-error badge-soft">delete</span></td><td>Shim — repoint 17 agents → AGENTS.md</td></tr>
+        <tr><td><code>orchestration-universal.md</code></td><td>8</td><td><span class="badge badge-error badge-soft">delete</span></td><td>Shim — repoint 5 inbound refs</td></tr>
+        <tr><td><code>orchestration-common.md</code></td><td>76</td><td><span class="badge badge-info badge-soft">→ skill</span></td><td><code>model-b</code> references/</td></tr>
+        <tr><td><code>orchestration-mainline.md</code></td><td>50</td><td><span class="badge badge-info badge-soft">→ skill</span></td><td><code>model-b</code> references/ (role: mainline)</td></tr>
+        <tr><td><code>orchestration-track.md</code></td><td>60</td><td><span class="badge badge-info badge-soft">→ skill</span></td><td><code>model-b</code> references/ (role: track)</td></tr>
+        <tr><td><code>plan_b_workflow_model.md</code></td><td>110</td><td><span class="badge badge-error badge-soft">delete</span></td><td>Broken mis-paste; rewritten as <code>model-b</code> SKILL.md core</td></tr>
+        <tr><td><code>sandesh.md</code></td><td>35</td><td><span class="badge badge-info badge-soft">→ skill</span></td><td><code>model-b</code> references/sandesh.md</td></tr>
+        <tr><td><code>crucible-ingest.md</code></td><td>9</td><td><span class="badge badge-error badge-soft">delete</span></td><td>Fully subsumed by <code>crucible</code> skill</td></tr>
+        <tr><td><code>stack-detection.md</code></td><td>93</td><td><span class="badge badge-error badge-soft">delete</span></td><td>Routing → crucible/model-b; stale curl-ingest dropped</td></tr>
+        <tr><td><code>QUICK_REFERENCE.md</code></td><td>299</td><td><span class="badge badge-error badge-soft">delete</span></td><td>Superseded by CLAUDE.md trigger table</td></tr>
+        <tr><td><code>cr-prd-dn-conventions.md</code></td><td>120</td><td><span class="badge badge-info badge-soft">→ skill</span></td><td><code>cr-authoring</code> SKILL.md</td></tr>
+        <tr><td><code>project-management.md</code></td><td>877</td><td><span class="badge badge-warning badge-soft">split</span></td><td>CR/CReq/CRes → <code>cr-authoring</code>; practices → CLAUDE.md one-liners; legacy GC'd</td></tr>
+        <tr><td><code>git-workflow.md</code></td><td>367</td><td><span class="badge badge-info badge-soft">→ skill</span></td><td><code>git-workflow</code> skill (merged with its twin)</td></tr>
+        <tr><td><code>git-multi-account.md</code></td><td>267</td><td><span class="badge badge-info badge-soft">→ skill</span></td><td><code>git-workflow</code> + <code>chezmoi</code> skills</td></tr>
+        <tr><td><code>chezmoi-integration.md</code></td><td>594</td><td><span class="badge badge-info badge-soft">→ skill</span></td><td><code>chezmoi</code> skill — <b>+ delete/rename procedure</b></td></tr>
+        <tr><td><code>devops-environment.md</code></td><td>451</td><td><span class="badge badge-warning badge-soft">merge</span></td><td><code>java-testing-practices.md</code> (TestContainers/DevServices)</td></tr>
+        <tr><td><code>java-coding-standards.md</code></td><td>222</td><td><span class="badge badge-success badge-soft">keep</span></td><td>memory/ — trimmed of modern-syntax overlap</td></tr>
+        <tr><td><code>java-modern-syntax.md</code></td><td>875</td><td><span class="badge badge-success badge-soft">keep</span></td><td>memory/ — wired into index (orphan today)</td></tr>
+        <tr><td><code>java-testing-practices.md</code></td><td>792</td><td><span class="badge badge-success badge-soft">keep</span></td><td>memory/ — absorbs devops-environment</td></tr>
+        <tr><td><code>maven-best-practices.md</code></td><td>919</td><td><span class="badge badge-success badge-soft">keep</span></td><td>memory/ — release overlap trimmed</td></tr>
+        <tr><td><code>quarkus-patterns.md</code></td><td>1253</td><td><span class="badge badge-success badge-soft">keep</span></td><td>memory/ — unchanged</td></tr>
+        <tr><td><code>java-orchestration.md</code></td><td>84</td><td><span class="badge badge-success badge-soft">keep</span></td><td>memory/ — endpoints fixed, repointed</td></tr>
+        <tr><td><code>rust-orchestration.md</code></td><td>112</td><td><span class="badge badge-success badge-soft">keep</span></td><td>memory/ — repointed to model-b + AGENTS.md</td></tr>
+        <tr><td><code>convex-client-server.md</code></td><td>236</td><td><span class="badge badge-success badge-soft">keep</span></td><td>memory/ — unchanged</td></tr>
+        <tr><td><code>operational-commands.md</code></td><td>374</td><td><span class="badge badge-success badge-soft">keep</span></td><td>memory/ — curl-ingest removed (superseded by clients)</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============ SKILLS ============ -->
+<section class="rz-anchor" id="skills">
+  <h2 class="text-2xl font-bold mb-2">Skill consolidation</h2>
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+    <div class="card card-border bg-base-100"><div class="card-body p-5">
+      <h3 class="card-title text-base">Removed — 10 skills fold away</h3>
+      <ul class="list-disc ms-4 text-sm space-y-1">
+        <li><code>crucible-report-{rust,java,bun,python,vscode}</code> → <code>crucible</code> stack references</li>
+        <li><code>agent-protocol</code> → <code>crucible</code> (lifecycle section; phantom heartbeat endpoint dropped)</li>
+        <li><code>bun-red-testing</code>, <code>bun-green-testing</code>, <code>bun-regression-testing</code>, <code>quarkus-regression-testing</code> → <code>crucible</code> phases + generated agents</li>
+      </ul>
+      <p class="text-xs text-base-content/60 mt-2">Net skill list: ~50 → ~43 entries; every removed entry was a per-stack leak into all sessions.</p>
+    </div></div>
+    <div class="card card-border bg-base-100"><div class="card-body p-5">
+      <h3 class="card-title text-base">New / rewritten — 5 skills</h3>
+      <ul class="list-disc ms-4 text-sm space-y-1">
+        <li><b><code>model-b</code></b> (new) — canonical workflow model; role param <code>mainline|track|solo</code>; carries the sub-agent procedure reference; triggers: model b, orchestration, mainline, track, CR queue, worktree-flow</li>
+        <li><b><code>crucible</code></b> (rewrite) — stack param; documents the REAL CLI surfaces + envelope contract</li>
+        <li><b><code>cr-authoring</code></b> (new) — CR/PRD/DN, CReq/CRes, AC-precision gates</li>
+        <li><b><code>git-workflow</code></b> (rewrite) — single home for branch/commit/release + multi-account</li>
+        <li><b><code>chezmoi</code></b> (new) — incl. the missing delete/rename/forget procedure</li>
+      </ul>
+    </div></div>
+  </div>
+</section>
+
+<!-- ============ AGENTS ============ -->
+<section class="rz-anchor" id="agents">
+  <h2 class="text-2xl font-bold mb-2">Agent generator — drift becomes impossible</h2>
+  <p class="text-sm text-base-content/70 mb-4">Foundational principles are written once in templates; stacks contribute only mechanics. Rust and vscode stay bespoke (audit showed ≤28% overlap — templating would destroy real content).</p>
+  <div class="card card-border bg-base-100"><div class="card-body">
+  <pre class="mermaid">
+flowchart LR
+  subgraph REPO["claude-optimization repo"]
+    T["templates/<br/>red · green · verify · fix"]
+    P["stacks/<br/>arduino.yaml · bun.yaml<br/>python.yaml · quarkus.yaml"]
+    B["build.py<br/>(--check = drift gate)"]
+  end
+  subgraph SRC["chezmoi source"]
+    G["16 generated agent .md"]
+  end
+  subgraph HOME["~/.claude/agents/"]
+    OUT["16 generated"]
+    BES["13 bespoke kept:<br/>rust ×4 · vscode ×4<br/>electronics ×4 · inbox-analyst"]
+  end
+  T --> B
+  P --> B
+  B --> G
+  G -->|"chezmoi apply"| OUT
+  </pre>
+  </div></div>
+  <div class="alert mt-3"><span>Every agent (generated <i>and</i> bespoke) gets one mechanical fix: <code>memory/agent-baseline.md</code> → <code>AGENTS.md</code>. <code>build.py --check</code> wires into <code>skill-release-gate.py</code> so hand-edits to generated files fail the gate.</span></div>
+</section>
+
+<!-- ============ CRUCIBLE / AXI ============ -->
+<section class="rz-anchor" id="axi">
+  <h2 class="text-2xl font-bold mb-2">Crucible 2 clients — completing the AXI migration</h2>
+  <div class="overflow-x-auto rounded-box border border-base-content/5 bg-base-100">
+    <table class="table table-sm">
+      <thead><tr><th>Client</th><th>Today</th><th>Target</th></tr></thead>
+      <tbody>
+        <tr><td><code>rust-crucible.py</code></td><td><span class="badge badge-success badge-soft">full surface</span> plain-text out</td><td>+ envelope + plan/cycle verbs (bun-parity)</td></tr>
+        <tr><td><code>mvn-crucible.py</code></td><td><span class="badge badge-success badge-soft">full surface</span> plain-text out</td><td>+ envelope + plan/cycle verbs (bun-parity)</td></tr>
+        <tr><td><code>bun-crucible.py</code></td><td><span class="badge badge-success badge-soft">full + plan verbs</span> plain-text out</td><td><b>REFERENCE IMPLEMENTATION</b> for the Crucible V2 API — envelope added; its plan/cycle verbs become the blueprint every client adopts</td></tr>
+        <tr><td><code>python-crucible.py</code></td><td><span class="badge badge-success badge-soft">full surface</span> plain-text out</td><td>+ envelope + plan/cycle verbs (bun-parity)</td></tr>
+        <tr><td><code>arduino-crucible.py</code></td><td><span class="badge badge-warning badge-soft">unit + compile only</span></td><td>EXTEND: regression · auto-ingest · check · pre-merge-gate + envelope + plan/cycle verbs</td></tr>
+        <tr><td>vscode</td><td><span class="badge badge-error badge-soft">no client</span> — skill hand-rolls inline Python</td><td>NEW <code>vscode-crucible.py</code>: Vitest+Mocha JUnit, lcov, tsc → <code>/api/v2/runs/*</code> + envelope + plan/cycle verbs</td></tr>
+        <tr><td><code>worktree-flow.py</code></td><td><span class="badge badge-warning badge-soft">plain-text boards</span> next-step lines</td><td>AXI migration: TOON envelope for <code>status</code>/<code>next</code>/<code>finish</code> + machine-readable lane boards</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <h3 class="text-lg font-semibold mt-5 mb-2">Envelope contract (shared <code>axi_envelope.py</code>)</h3>
+  <div class="mockup-code text-xs">
+    <pre data-prefix="$"><code>rust-crucible.py test --crate nai-core</code></pre>
+    <pre data-prefix=">"><code>axi{verb:test,ok:true}</code></pre>
+    <pre data-prefix=">"><code>  runs[1]{suite,passed,failed,total}: nai-core,42,0,42</code></pre>
+    <pre data-prefix=">"><code>  warnings[1]: coverage lcov not ingested for this run</code></pre>
+    <pre data-prefix=">"><code>  help: next → rust-crucible.py regression-ingest --crates nai-core</code></pre>
+  </div>
+  <p class="text-sm text-base-content/70 mt-2"><b>Crucible V2 is under active development</b> — the API contract in <code>contracts/crucible-envelope.md</code> tracks it, with <code>bun-crucible.py</code> as the reference implementation all clients converge on. Doc fixes riding along: heartbeat = <code>register</code> verb (phantom endpoint removed) · <code>/api/ingest/*</code> → <code>/api/v2/runs/*</code> · rust clippy/smoke/workspace gates documented. <code>contracts/</code> also specs the future sandesh message-verb CLI and <code>mail-axi</code> — docs only, per decision 6.</p>
+</section>
+
+<!-- ============ WORKSPACE ============ -->
+<section class="rz-anchor" id="workspace">
+  <h2 class="text-2xl font-bold mb-2">Project workspace — this repo's standing structure</h2>
+  <p class="text-sm text-base-content/70 mb-4">The <b>model-b</b> repo is not a one-shot migration script — it is the permanent workshop. As Crucible V2 and Model B evolve, changes are authored HERE (contracts, templates, skill sources), then built and synced into the chezmoi source and applied to <code>~/.claude</code>.</p>
+  <div class="card card-border bg-base-200"><div class="card-body p-4">
+<div class="rz-tree">model-b/
+├── audits/                      # audit reports + re-audit snapshots (drift watch over time)
+├── contracts/                   # AXI contracts — the evolution interface
+│   ├── crucible-envelope.md     #   TOON-AXI envelope + universal verb set (incl. plan/cycle) — tracks Crucible V2
+│   ├── sandesh-cli.md           #   message-verb CLI spec (MCP replacement, implemented in sandesh repo)
+│   ├── mail-axi.md              #   Fastmail/Gmail/Calendar CLI spec (implemented separately)
+│   └── lean-ctx.md              #   CLI-preference contract (already dual MCP/CLI)
+├── generator/
+│   ├── templates/               # red/green/verify/fix role templates — SE principles written ONCE
+│   ├── stacks/                  # arduino.yaml · bun.yaml · python.yaml · quarkus.yaml (+ future stacks)
+│   └── build.py                 # emits agents into chezmoi source; --check = drift gate
+├── skills-src/                  # authored sources of the maintained skills
+│   ├── model-b/                 #   (model-b, crucible, cr-authoring, git-workflow, chezmoi)
+│   └── ...                      #   synced → chezmoi source → ~/.claude/skills/
+├── archive/                     # retired legacy files + mapping.md (old path → new home)
+├── scripts/                     # sync + verification: chezmoi round-trip, grep gates, token budget
+├── plans/                       # wave plans + close-out reports
+└── .lavish/                     # review artifacts (this page)</div>
+  </div></div>
+  <div class="card card-border bg-base-100 mt-4"><div class="card-body">
+  <pre class="mermaid">
+flowchart LR
+  CRU["Crucible V2 evolution"] -.-> DEV
+  MB2["Model B evolution"] -.-> DEV
+  DEV["model-b repo<br/>(author change here)"] --> BUILD["build.py / sync scripts"]
+  BUILD --> SRC["chezmoi source (git)"]
+  SRC -->|"chezmoi apply"| HOME["~/.claude"]
+  HOME --> SESS["every Claude session"]
+  </pre>
+  </div></div>
+  <div class="alert alert-info mt-3"><span><b>Single-source rule:</b> anything generated or contract-derived is authored in this repo; the chezmoi source is a deployment target, never hand-edited for those files. Hand-authored one-offs (bespoke agents, big memory references) keep the classic edit-in-place → <code>chezmoi add</code> flow.</span></div>
+</section>
+
+<!-- ============ WAVES ============ -->
+<section class="rz-anchor" id="waves">
+  <h2 class="text-2xl font-bold mb-4">Execution waves — review gate after each</h2>
+  <ul class="steps steps-vertical lg:steps-horizontal w-full mb-4">
+    <li class="step step-primary">Safety</li>
+    <li class="step step-primary">Core split</li>
+    <li class="step step-primary">Model B</li>
+    <li class="step">Generator</li>
+    <li class="step">AXI tooling</li>
+    <li class="step">Close-out</li>
+  </ul>
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+    <div class="card card-border bg-base-100"><div class="card-body p-4"><h3 class="card-title text-sm">Wave 0 — Safety rails</h3><p class="text-sm">git init this repo · <code>archive/</code> scaffold + chezmoi source commit hash · <b>prove</b> a chezmoi deletion survives <code>apply</code> on a scratch file.</p></div></div>
+    <div class="card card-border bg-base-100"><div class="card-body p-4"><h3 class="card-title text-sm">Wave 1 — Core split</h3><p class="text-sm">Rewrite AGENTS.md as the frugal ~100-line core (CLAUDE.md symlink KEPT) · sub-agent procedure → model-b references · repoint ALL inbound refs (17 agents, rust/java-orch, cr-prd-dn) · delete both shims.</p></div></div>
+    <div class="card card-border bg-base-100"><div class="card-body p-4"><h3 class="card-title text-sm">Wave 2 — Model B + consolidation</h3><p class="text-sm">model-b · crucible rewrite · cr-authoring · git-workflow merge · chezmoi skill · memory merges/deletes · “Plan B”→“Model B” sweep.</p></div></div>
+    <div class="card card-border bg-base-100"><div class="card-body p-4"><h3 class="card-title text-sm">Wave 3 — Generator</h3><p class="text-sm">Templates + stack params · regenerate 16 agents · side-by-side diff review vs originals · install via chezmoi · <code>--check</code> drift gate.</p></div></div>
+    <div class="card card-border bg-base-100"><div class="card-body p-4"><h3 class="card-title text-sm">Wave 4 — AXI tooling</h3><p class="text-sm">axi_envelope.py · align ALL clients to the bun-crucible reference API (plan/cycle verbs + envelope) · NEW vscode client · extend arduino · worktree-flow AXI migration · finalize crucible skill · <code>contracts/</code> specs.</p></div></div>
+    <div class="card card-border bg-base-100"><div class="card-body p-4"><h3 class="card-title text-sm">Wave 5 — Close-out</h3><p class="text-sm">archive/mapping.md · chezmoi source commits · full verification suite (below).</p></div></div>
+  </div>
+  <h3 class="text-lg font-semibold mt-6 mb-2">Verification</h3>
+  <div class="card card-border bg-base-100"><div class="card-body p-5 text-sm">
+    <ul class="list-disc ms-4 space-y-1">
+      <li><b>Token budget:</b> always-loaded 621 → ≤100 lines (single AGENTS.md core), measured before/after.</li>
+      <li><b>Chezmoi round-trip:</b> <code>chezmoi diff</code> clean; deleted files STAY deleted after a fresh <code>apply</code>.</li>
+      <li><b>Grep gates</b> (zero hits outside archive/): <code>agent-baseline.md</code> · <code>orchestration-universal.md</code> · <code>Plan B</code> · <code>/api/ingest/</code> · <code>heartbeat.sh</code> · <code>/agents/heartbeat</code>.</li>
+      <li><b>Crucible smoke per stack:</b> register → test → unregister against <code>localhost:3849</code>; envelope parses; run visible server-side.</li>
+      <li><b>Generator idempotence:</b> second <code>build.py --check</code> run produces no diff.</li>
+      <li><b>Skill loads:</b> /model-b, /crucible &lt;stack&gt;, /cr-authoring, /chezmoi load; every referenced path exists.</li>
+    </ul>
+  </div></div>
+</section>
+
+<!-- ============ RISKS ============ -->
+<section class="rz-anchor" id="risks">
+  <h2 class="text-2xl font-bold mb-4">Risks &amp; open questions</h2>
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+    <div role="alert" class="alert alert-warning alert-vertical sm:alert-horizontal"><span><b>Chezmoi resurrection.</b> Any delete not mirrored into the source comes back on <code>apply</code>. Mitigation: Wave 0 proves the delete procedure before any real deletion; every wave ends with <code>chezmoi diff</code> clean.</span></div>
+    <div role="alert" class="alert alert-warning alert-vertical sm:alert-horizontal"><span><b>Live orchestrators mid-migration.</b> A running Mainline/Track session caches old paths (e.g. deleted orchestration files). Mitigation: execute Waves 1–2 with no active Model B sessions; /shutdown first.</span></div>
+    <div role="alert" class="alert alert-warning alert-vertical sm:alert-horizontal"><span><b>Agent regeneration drift.</b> Generated agents could silently lose stack-tuned nuance. Mitigation: Wave 3 gate = side-by-side diff of all 16 vs originals before install.</span></div>
+    <div role="alert" class="alert alert-warning alert-vertical sm:alert-horizontal"><span><b>Envelope breaks consumers.</b> Hooks/orchestration prose parse today's plain-text lines. Mitigation: envelope wraps, keeps one-line summaries; grep for parsers before switch (e.g. <code>block-direct-cargo-test.sh</code>).</span></div>
+    <div role="alert" class="alert alert-info alert-vertical sm:alert-horizontal"><span><b>Resolved — plan verbs are universal:</b> Crucible V2's plan/cycle API (<code>plan-file</code> · <code>cycle-activate</code> · <code>cycle-done</code> · <code>cr-close</code>) ships to ALL clients in Wave 4, modeled on the <code>bun-crucible.py</code> reference implementation.</span></div>
+    <div role="alert" class="alert alert-info alert-vertical sm:alert-horizontal"><span><b>What is <code>hw-crucible.py</code>?</b> A 21-line shim that delegates to <code>anthill_forge.shared.crucible.main</code> — the electronics stack's real client lives inside the anthill-forge package (<code>forge crucible unit|ingest|register|unregister</code>), not in <code>~/.claude/scripts</code>. Plan: keep the shim (implementation belongs to forge), but the forge client must conform to the same V2 API + envelope contract, tracked in <code>contracts/crucible-envelope.md</code> and documented in the crucible skill's electronics reference.</span></div>
+  </div>
+</section>
+
+<footer class="footer footer-center text-base-content/50 text-xs py-6">
+  <p>Claude Memory Rationalization · plan artifact · annotate anything — every section, row, and diagram is a valid target</p>
+</footer>
+
+</main>
+
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.15.0/dist/mermaid.esm.min.mjs";
+  const darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
+  const paint = document.createElement("canvas").getContext("2d");
+  function toRgba(color) {
+    paint.clearRect(0, 0, 1, 1);
+    paint.fillStyle = "#000";
+    paint.fillStyle = color;
+    paint.fillRect(0, 0, 1, 1);
+    return paint.getImageData(0, 0, 1, 1).data;
+  }
+  function compositeRgba(fg, bg) {
+    const fa = fg[3] / 255, ba = bg[3] / 255;
+    const a = fa + ba * (1 - fa);
+    if (a === 0) return [0, 0, 0, 0];
+    return [
+      (fg[0] * fa + bg[0] * ba * (1 - fa)) / a,
+      (fg[1] * fa + bg[1] * ba * (1 - fa)) / a,
+      (fg[2] * fa + bg[2] * ba * (1 - fa)) / a,
+      a * 255,
+    ];
+  }
+  function pageIsDark() {
+    const root = document.documentElement;
+    const rootBg = toRgba(getComputedStyle(root).backgroundColor);
+    const bodyBg = document.body ? toRgba(getComputedStyle(document.body).backgroundColor) : [0, 0, 0, 0];
+    const [r, g, b, a] = compositeRgba(bodyBg, rootBg);
+    if (a > 0) return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 < 0.5;
+    const cs = getComputedStyle(root).colorScheme;
+    if (cs.includes("dark") && !cs.includes("light")) return true;
+    if (cs.includes("light") && !cs.includes("dark")) return false;
+    return darkQuery.matches;
+  }
+  const diagrams = [...document.querySelectorAll(".mermaid")].map((el) => ({ el, src: el.textContent }));
+  let applied, rendering = false, queued = false;
+  function queueRender() { queued = true; if (!rendering) void render(); }
+  async function render() {
+    rendering = true;
+    try {
+      while (queued) {
+        queued = false;
+        const theme = pageIsDark() ? "dark" : "default";
+        if (theme === applied) continue;
+        mermaid.initialize({ startOnLoad: false, theme, securityLevel: "strict" });
+        for (const { el, src } of diagrams) { el.removeAttribute("data-processed"); el.textContent = src; }
+        try { await mermaid.run({ nodes: diagrams.map((d) => d.el) }); }
+        catch (e) { console.error("Mermaid diagram render failed:", e); return; }
+        applied = theme;
+      }
+    } finally { rendering = false; if (queued) queueRender(); }
+  }
+  if (document.readyState === "complete") queueRender();
+  else window.addEventListener("load", queueRender, { once: true });
+  const obs = new MutationObserver(queueRender);
+  for (const el of [document.documentElement, document.body]) {
+    if (el) obs.observe(el, { attributes: true, attributeFilter: ["data-theme", "class", "style"] });
+  }
+  document.addEventListener("change", queueRender, true);
+  document.addEventListener("transitionend", ({ propertyName }) => { if (propertyName === "background-color") queueRender(); }, true);
+  darkQuery.addEventListener("change", queueRender);
+</script>
+</body>
+</html>
