@@ -23,7 +23,9 @@ The `~/.claude` user space grew organically into 24 memory files, ~50 skills, 29
 
 ### D2 — Three-tier dynamic loading with per-project containment
 - Tier 0: the ≤100-line core (always loaded). Tier 1: skill descriptions (session list) — stack-neutral, workflow-scoped only. Tier 2: `SKILL.md` bodies on keyword trigger, parameterized (role, stack). Tier 3: skill `references/` + the `memory/` reference library, read on demand.
-- **Containment rule: language/stack references are NOT skills.** A skill description leaks into every session of every project. Stack content lives in `memory/` and loads only via the stack-parameterized skills, generated agents, or a project's own CLAUDE.md.
+- **Containment rule: language/stack references are NOT skills.** A skill description leaks into every session of every project. Stack content lives in reference memory (global language refs per D5; project-level otherwise) and loads only via the stack-parameterized skills, generated agents, or a project's own AGENTS.md.
+- **Skills are SHARED USER-SCOPE (user directive 2026-07-20): one copy, never duplicated per project.** Per-project containment comes from GATING, not relocation — a skill is called only when appropriate to the project's stack, enforced by the scaffold-emitted project-level `AGENTS.md` skill-freeze (D10.3).
+- **Skills are BUNDLED per the Vercel skills standard (user directive 2026-07-20)** — the harness-neutral cross-agent store (`~/.agents/skills/`, symlinked into harness dirs like `~/.claude/skills/`) already used by `gh-axi`/`lavish`/`find-skills`. The `model-b`, `crucible`, `cr-authoring`, `git-workflow`, and `chezmoi` skills ship as such bundles; exact packaging fields/layout are verified against the standard's current docs at CR authoring time (wave 2) and the distribution flow lands in `DN-scaffold-packaging.md` (D10).
 
 ### D3 — Canonical Model B
 - Canonical name: **Model B** (all "Plan B" occurrences renamed).
