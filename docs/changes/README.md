@@ -14,7 +14,7 @@ Queue rows enumerate the whole delivery (structure only). **Live status lives on
 | CR-MDB-003 | crucible skill rewrite: real client surfaces, absorb report skills + agent-protocol | 2 | 001 |
 | CR-MDB-004 | cr-authoring skill: cr-prd-dn-conventions + project-management split | 2 | 001 |
 | CR-MDB-005 | git-workflow + chezmoi skills: memory-twin merges + delete/rename procedure | 2 | 001 |
-| CR-MDB-006 | Memory consolidation: devops→java-testing merge, orphan wiring, stale deletions | 2 | 002, 003, 004, 005 |
+| CR-MDB-006 | Memory model: global→project-level migration (D5) — only language refs stay global; merges + deletions | 2 | 002, 003, 004, 005 |
 | CR-MDB-007 | "Plan B" → "Model B" naming sweep across skills + memory | 2 | 002 |
 | CR-MDB-008 | Agent generator: role templates + stack params + build.py --check gate; regenerate 16 agents | 3 | 002, 006 |
 | CR-MDB-009 | contracts/: crucible-envelope mirror, sandesh-cli, mail-axi, lean-ctx specs | 3 | — |

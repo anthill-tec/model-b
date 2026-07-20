@@ -44,8 +44,10 @@ The `~/.claude` user space grew organically into 24 memory files, ~50 skills, 29
 - `chezmoi` (new): the add/apply cycle PLUS the previously missing **delete/rename procedure** (`chezmoi destroy` / `forget`; a deletion not mirrored to the source resurrects on `apply`).
 - Removed skill entries (10): `crucible-report-{rust,java,bun,python,vscode}`, `agent-protocol`, `bun-red/green/regression-testing`, `quarkus-regression-testing`.
 
-### D5 — Memory end-state (reference library only)
-Kept: `java-modern-syntax`, `java-coding-standards` (trimmed), `java-testing-practices` (absorbs `devops-environment`), `maven-best-practices` (trimmed), `quarkus-patterns`, `java-orchestration` (endpoints fixed), `rust-orchestration` (repointed), `convex-client-server`, `operational-commands` (hand-rolled curl-ingest removed). Everything else merges into skills or is deleted per the disposition table in the reviewed plan.
+### D5 — Memory end-state: global = language references ONLY; the rest is project-level (user recommendation 2026-07-20, adopted)
+- **Global user scope (`~/.claude/memory/`) keeps ONLY cross-project language/stack reference material**: `java-modern-syntax`, `java-coding-standards` (trimmed), `java-testing-practices` (absorbs `devops-environment`), `maven-best-practices` (trimmed), `quarkus-patterns`, `convex-client-server`.
+- **Everything else migrates to PROJECT-level memory, instantiated by the scaffold (D10) at init** from the project's stack + mode inputs: stack orchestration mechanics (`rust-orchestration`, `java-orchestration`), operational command references, project-management practices — each project receives only the slices its stacks/mode need, with project-level overrides possible. Token efficiency: a session pays only for its own project's memory, never the whole corpus.
+- Procedural/workflow content still consolidates into skills (D3/D4); the remaining global files merge or delete per the disposition table in the reviewed plan.
 
 ### D6 — Generated per-stack agents
 - Role templates (`red/green/verify/fix`) + per-stack parameter files generate the arduino/bun/python/quarkus agent set (16 files). SE principles are written once — in the templates.
@@ -76,6 +78,7 @@ The `model-b` repo is the permanent authoring workspace: `audits/`, `contracts/`
   3. **A project-level `AGENTS.md` override that FREEZES the skills accessible to the project** based on its stack(s) etc. — the per-project instrument of the D2 containment rule (context optimization: only stack-relevant skills/references are exposed; project-level overrides live here).
   4. **`CLAUDE.md` as a plain symlink to `AGENTS.md`** — Claude Code compatibility only. `AGENTS.md` is the canonical file because the **Model B ecosystem is agentic-harness agnostic**.
   5. `git init` + git-flow branches; Crucible project registration; for multi-orchestrator mode: Sandesh setup + `Mainline - <Project>` / track address registrations; the run-context wrapper plumbing (D7/WORKFLOW_*).
+  6. **Project-level memory, instantiated from stack/mode-based templates (D5)** — the scaffold emits only the memory slices this project's stacks and orchestration mode require; global user scope contributes language references only.
 - **Packaging & deployment strategy (REQUIRED, undecided):** how the tool ships and updates (packaging form, install channel, version/update flow, relation to the chezmoi-managed user space) is settled in `docs/research/DN-scaffold-packaging.md` BEFORE implementation — options-considered belongs in the DN, not here.
 
 ## 3. Invariants & constraints
