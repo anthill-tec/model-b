@@ -15,8 +15,9 @@ Checks the three ecosystem dependencies in order against the CURRENT
    ``absent`` — never hand-deploy their assets.
 
 Emits the machine-greppable ``deps: uv=... sandesh=... crucible=...``
-line on stdout. ``[deps]`` persistence into ``install.toml`` lands with
-§S6 in C3 — this module writes nothing to disk.
+line on stdout and returns the final verdicts for ``[deps]``
+persistence into ``install.toml`` (§S6) — this module itself writes
+nothing to disk.
 
 Stdlib only.
 """
@@ -59,17 +60,18 @@ def _install_sandesh(uv_path: str) -> str:
     return "installed"
 
 
-def run_preflight(confirm: Callable[[str], bool]) -> int:
+def run_preflight(confirm: Callable[[str], bool]) -> tuple[int, dict[str, str]]:
     """Run the §S4 dependency pre-flight (installer-flow stage 1).
 
     ``confirm`` is the CLI's prompt seam, pre-bound to the run's
-    interactivity (always-True under ``--yes``). Returns the process
-    exit code: 0 on success, non-zero when ``uv`` is absent.
+    interactivity (always-True under ``--yes``). Returns ``(exit_code,
+    verdicts)``: exit 0 on success (with the final per-dep verdicts for
+    ``[deps]`` persistence), non-zero when ``uv`` is absent.
     """
     uv_path = shutil.which("uv")
     if uv_path is None:
         print(_UV_BOOTSTRAP_MESSAGE, file=sys.stderr)
-        return 1
+        return 1, {}
 
     sandesh_verdict = "detected" if shutil.which("sandesh") is not None else "absent"
     if shutil.which("crucible") is not None:
@@ -90,4 +92,8 @@ def run_preflight(confirm: Callable[[str], bool]) -> int:
             # Updated deps line reflecting the proactive install.
             print(f"deps: uv=detected sandesh=installed crucible={crucible_verdict}")
 
-    return 0
+    return 0, {
+        "uv": "detected",
+        "sandesh": sandesh_verdict,
+        "crucible": crucible_verdict,
+    }

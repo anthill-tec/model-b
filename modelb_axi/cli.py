@@ -1,12 +1,13 @@
-"""Command-line entrypoint for ``modelb-axi`` (CR-MDB-014 §S3).
+"""Command-line entrypoint for ``modelb-axi`` (CR-MDB-014 §S3/§S5/§S6).
 
 State detection + adaptive TUI shell: resolve ``$MODELB_HOME``
 (``--modelb-home`` flag > ``MODELB_HOME`` env > XDG data default), then
 branch on the presence of ``install.toml`` there — absent enters the
-INSTALLER flow (stage stubs in C1; pre-flight/deploy arrive in C2/C3),
-present enters SCAFFOLD mode (v1 stub naming CR-MDB-013).
+INSTALLER flow (pre-flight → harness targeting → deploy + config
+write), present enters SCAFFOLD mode (v1 stub naming CR-MDB-013) unless
+``--reinstall`` forces the installer flow back on.
 
-Stdlib only in C1; the rich-style prompt layer (DN §4) grows in C3.
+Stdlib only.
 """
 
 import argparse
@@ -15,6 +16,14 @@ import sys
 from pathlib import Path
 
 from modelb_axi import __version__
+from modelb_axi.config import load_manifest_hashes, write_install_toml
+from modelb_axi.deploy import DeployError, default_asset_root, deploy_assets
+from modelb_axi.harness import (
+    UnknownHarnessError,
+    detect_harnesses,
+    parse_harnesses,
+    select_harnesses,
+)
 from modelb_axi.preflight import run_preflight
 
 INSTALL_TOML_NAME = "install.toml"
@@ -37,11 +46,25 @@ def resolve_modelb_home(flag_value: str | None) -> Path:
     return _default_modelb_home()
 
 
-def _parse_harnesses(raw: str | None) -> list[str]:
-    """Split a comma-separated ``--harnesses`` value into a clean list."""
-    if not raw:
-        return []
-    return [item.strip() for item in raw.split(",") if item.strip()]
+def resolve_target_root(flag_value: str | None) -> Path | None:
+    """Resolve the deploy target root: ``--target-root`` flag >
+    ``MODELB_TARGET_ROOT`` env > ``None``.
+
+    ``None`` means "not explicitly supplied": the DOCUMENTED default is
+    the real user home (``Path.home()`` — the live ``~/.claude`` /
+    ``~/.agents`` trees), but v1 only executes the deploy stage against
+    an EXPLICIT target root. The C2 pre-flight contract pins that a run
+    without ``--target-root`` writes neither deployed files nor
+    ``install.toml`` (and the repo-local rule / AC7 guard forbids the
+    test suite from ever touching the real trees), so the real-home
+    default is deliberately never exercised by tests — deploying to it
+    is deferred until the flow gains its own confirmation step."""
+    if flag_value:
+        return Path(flag_value).expanduser()
+    env_value = os.environ.get("MODELB_TARGET_ROOT", "").strip()
+    if env_value:
+        return Path(env_value).expanduser()
+    return None  # documented default: Path.home() — see docstring
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -62,43 +85,144 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--harnesses", metavar="LIST",
-        help="comma-separated harness targets (e.g. claude-code,hermes)",
+        help="comma/space-separated harness targets (e.g. claude-code,hermes)",
     )
     parser.add_argument(
         "--modelb-home", metavar="DIR",
         help="override $MODELB_HOME (default: ${XDG_DATA_HOME:-~/.local/share}/modelb)",
     )
+    parser.add_argument(
+        "--target-root", metavar="DIR",
+        help=(
+            "root for deployed assets (.agents/skills store + per-harness "
+            "skills dirs); default: the real user home"
+        ),
+    )
+    parser.add_argument(
+        "--reinstall", action="store_true",
+        help="re-enter the installer flow even when install.toml exists",
+    )
+    parser.add_argument(
+        "--force-managed", action="store_true",
+        help="overwrite hand-modified managed files and refresh their manifest entries",
+    )
     return parser
 
 
 def _confirm(prompt: str, interactive: bool) -> bool:
-    """Thin prompt seam (grows rich-style in C3). Only ever reads stdin
-    when `interactive` is True — never under --yes or without a TTY."""
+    """Thin prompt seam. Only ever reads stdin when `interactive` is
+    True — never under --yes or without a TTY."""
     if not interactive:
         return True
     answer = input(f"{prompt} [Y/n] ").strip().lower()
     return answer in ("", "y", "yes")
 
 
-def _run_installer_flow(home: Path, harnesses: list[str], interactive: bool) -> int:
-    """INSTALLER flow entry (§S3 shell): banner + ordered stage stubs."""
+def _select_harnesses_stage(requested: list[str], interactive: bool) -> list[str] | None:
+    """Stage 2 (§S5): probe the roster, resolve the selection, print the
+    machine-greppable ``harnesses selected:`` line. Returns None on a
+    rejected selection (unknown id or user abort)."""
+    print("  [stage 2/3] harness targeting: roster probe + selection")
+    detected = detect_harnesses()
+    try:
+        selected = select_harnesses(requested, detected)
+    except UnknownHarnessError as exc:
+        print(f"modelb-axi: error: {exc}", file=sys.stderr)
+        return None
+    if not requested and not _confirm(
+        f"Install for detected harnesses ({', '.join(selected) or 'none'})?",
+        interactive,
+    ):
+        print("modelb-axi: installer flow aborted by user")
+        return None
+    print(f"harnesses selected: {', '.join(selected)}")
+    return selected
+
+
+def _deploy_stage(
+    home: Path,
+    target_root: Path,
+    selected: list[str],
+    deps_verdicts: dict[str, str],
+    reinstall: bool,
+    force_managed: bool,
+) -> int:
+    """Stage 3 (§S6): manifest-driven deploy, then the config write LAST
+    — any deploy failure exits non-zero with NO install.toml written."""
+    asset_root = default_asset_root()
+    prior_hashes = load_manifest_hashes(home) if reinstall else {}
+    try:
+        manifest, skipped = deploy_assets(
+            asset_root, target_root, selected,
+            prior_hashes=prior_hashes, force_managed=force_managed,
+        )
+    except DeployError as exc:
+        print(f"modelb-axi: error: {exc}", file=sys.stderr)
+        return 1
+    for rel in skipped:
+        print(
+            f"modelb-axi: warning: skipping hand-modified managed file "
+            f"{rel} (hash mismatch; re-run with --force-managed to overwrite)",
+            file=sys.stderr,
+        )
+    write_install_toml(
+        home,
+        install={
+            "version": __version__,
+            "harnesses": selected,
+            "asset_root": str(asset_root),
+        },
+        deps=deps_verdicts,
+        files=manifest,
+    )
+    print(f"  wrote {home / INSTALL_TOML_NAME} ({len(manifest)} managed files)")
+    return 0
+
+
+def _run_installer_flow(
+    home: Path,
+    harnesses: list[str],
+    interactive: bool,
+    target_root: Path | None,
+    reinstall: bool,
+    force_managed: bool,
+) -> int:
+    """INSTALLER flow entry (§S3 shell): banner + ordered stages."""
     print("modelb-axi: entering installer flow")
-    print(f"  MODELB_HOME: {home} (no {INSTALL_TOML_NAME} found)")
+    print(f"  MODELB_HOME: {home}")
     if harnesses:
         print(f"  harnesses requested: {', '.join(harnesses)}")
     if not _confirm("Proceed with installation?", interactive):
         print("modelb-axi: installer flow aborted by user")
         return 1
-    # Stage 1 — dependency pre-flight (§S4, C2). Runs (and reports its
+    # Stage 1 — dependency pre-flight (§S4). Runs (and reports its
     # `deps:` line) BEFORE any later stage announcement.
     print("  [stage 1/3] pre-flight: dependency checks (uv / Sandesh / Crucible)")
-    preflight_exit = run_preflight(lambda prompt: _confirm(prompt, interactive))
+    preflight_exit, deps_verdicts = run_preflight(
+        lambda prompt: _confirm(prompt, interactive)
+    )
     if preflight_exit != 0:
         return preflight_exit
-    # Stages 2/3 — announcements only; §S5/§S6 arrive in C3.
-    print("  [stage 2/3] harness targeting: roster probe + selection — arrives in C3")
-    print("  [stage 3/3] deploy: manifest-driven asset deploy + install.toml write — arrives in C3")
-    print("modelb-axi: installer flow complete (deploy arrives in C3)")
+    # Stage 2 — harness targeting (§S5).
+    selected = _select_harnesses_stage(harnesses, interactive)
+    if selected is None:
+        return 1
+    # Stage 3 — deploy + config write (§S6): only executes against an
+    # EXPLICIT target root — see resolve_target_root for why the
+    # real-home default is deferred in v1.
+    if target_root is not None:
+        print("  [stage 3/3] deploy: manifest-driven asset deploy + install.toml write")
+        deploy_exit = _deploy_stage(
+            home, target_root, selected, deps_verdicts, reinstall, force_managed,
+        )
+        if deploy_exit != 0:
+            return deploy_exit
+    else:
+        print(
+            "  [stage 3/3] deploy: skipped — no --target-root/"
+            "MODELB_TARGET_ROOT given (real-home deploy deferred in v1)"
+        )
+    print("modelb-axi: installer flow complete")
     return 0
 
 
@@ -113,11 +237,15 @@ def _run_scaffold_stub(home: Path) -> int:
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     home = resolve_modelb_home(args.modelb_home)
-    harnesses = _parse_harnesses(args.harnesses)
+    harnesses = parse_harnesses(args.harnesses)
+    target_root = resolve_target_root(args.target_root)
     interactive = not args.yes and sys.stdin.isatty()
-    if (home / INSTALL_TOML_NAME).is_file():
+    if (home / INSTALL_TOML_NAME).is_file() and not args.reinstall:
         return _run_scaffold_stub(home)
-    return _run_installer_flow(home, harnesses, interactive)
+    return _run_installer_flow(
+        home, harnesses, interactive, target_root,
+        args.reinstall, args.force_managed,
+    )
 
 
 if __name__ == "__main__":
