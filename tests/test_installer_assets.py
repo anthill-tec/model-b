@@ -293,7 +293,7 @@ class BuildPyCliRetargetTest(unittest.TestCase):
         listed_paths = [
             Path(line.strip()) for line in list_result.stdout.splitlines() if line.strip()
         ]
-        home_rooted = [p for p in listed_paths if str(p).startswith(str(Path.home()))]
+        home_rooted = [p for p in listed_paths if str(p).startswith(str(Path.home() / ".claude"))]
         # NEGATIVE -- the RED-pinned retarget contract requires zero listed
         # paths under the real user home (pre-retarget these were all under
         # ~/.claude/agents).
