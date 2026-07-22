@@ -22,7 +22,7 @@ from pathlib import Path
 CLAUDE_DIR = Path.home() / ".claude"
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-SKILL_DIR = CLAUDE_DIR / "skills" / "crucible"
+SKILL_DIR = REPO_ROOT / "skills-src" / "crucible"
 SKILL_MD = SKILL_DIR / "SKILL.md"
 REFERENCES_DIR = SKILL_DIR / "references"
 ARCHIVE_WAVE2 = REPO_ROOT / "archive" / "wave2"
@@ -451,6 +451,32 @@ class CrucibleSkillCRMDB011Test(unittest.TestCase):
         self.assertEqual(
             count, 0,
             f"expected zero 'WORKFLOW_CYCLE_ID' occurrences in {agents_md}, found {count}",
+        )
+
+    def test_ac8_zero_claude_scripts_client_path_mentions_in_authored_skill(self):
+        self.assertTrue(SKILL_MD.is_file(), f"{SKILL_MD} must exist")
+        offending = {}
+
+        skill_content = _read(SKILL_MD)
+        skill_count = skill_content.count(".claude/scripts")
+        if skill_count:
+            offending[str(SKILL_MD)] = skill_count
+
+        self.assertTrue(REFERENCES_DIR.is_dir(), f"{REFERENCES_DIR} must exist")
+        for ref_path in sorted(REFERENCES_DIR.glob("*.md")):
+            ref_content = _read(ref_path)
+            count = ref_content.count(".claude/scripts")
+            if count:
+                offending[str(ref_path)] = count
+
+        # EXACT bound -- the authored copy must route every client-path
+        # mention to the Crucible repo's own clients/ directory, never the
+        # deployed ~/.claude/scripts/ location (deployment is the
+        # installer's job, CR-MDB-014).
+        self.assertEqual(
+            offending, {},
+            f"expected zero '.claude/scripts' occurrences across skills-src/crucible/ "
+            f"(SKILL.md + references/*.md), found: {offending}",
         )
 
 
