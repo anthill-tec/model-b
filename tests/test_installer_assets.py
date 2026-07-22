@@ -427,5 +427,134 @@ class DeployEngineSevenBundlesEndToEndTest(unittest.TestCase):
         )
 
 
+class InstalledPackageAssetRootEndToEndTest(unittest.TestCase):
+    """CR-MDB-014 F1 (VERIFY blocking #1 coverage gap) -- AC1's own
+    install mechanism, end to end: `uv tool install <repo> --force` into
+    a fully sandboxed UV_TOOL_DIR/UV_TOOL_BIN_DIR (the AC1-probe helper
+    pattern), then a full sandboxed installer run of the INSTALLED
+    `modelb-axi` binary -- never the PYTHONPATH dev-mode module. Proves
+    the wheel's force-included package data (modelb_axi/_assets/) is what
+    a genuinely-installed deploy resolves and deploys from; the dev-mode
+    tests mask this because they resolve the repo root."""
+
+    def setUp(self):
+        self._tmp_dirs = []
+        self._uv_tool_dir = self._mkdtemp("modelb-axi-e2e-uvtool-")
+        self._uv_tool_bin_dir = self._mkdtemp("modelb-axi-e2e-uvbin-")
+        self._tmp_home = self._mkdtemp("modelb-axi-e2e-home-")
+        self._tmp_bin = self._mkdtemp("modelb-axi-e2e-fakebin-")
+        self._tmp_target_root = self._mkdtemp("modelb-axi-e2e-target-")
+        _write_fake_executable(self._tmp_bin, "uv", _FAKE_UV_SCRIPT)
+        _write_fake_executable(self._tmp_bin, "sandesh", _FAKE_SANDESH_SCRIPT)
+
+    def _mkdtemp(self, prefix: str) -> str:
+        path = tempfile.mkdtemp(prefix=prefix)
+        self._tmp_dirs.append(path)
+        return path
+
+    def tearDown(self):
+        for root in self._tmp_dirs:
+            shutil.rmtree(root, ignore_errors=True)
+
+    def test_installed_package_deploys_from_packaged_assets(self):
+        uv = shutil.which("uv")
+        if uv is None:
+            self.fail(
+                "installed-package e2e: `uv` binary not found on PATH -- "
+                "cannot verify installability (guarded, not skipped)"
+            )
+        install_env = dict(os.environ)
+        install_env["UV_TOOL_DIR"] = self._uv_tool_dir
+        install_env["UV_TOOL_BIN_DIR"] = self._uv_tool_bin_dir
+        install = subprocess.run(
+            [uv, "tool", "install", str(REPO_ROOT), "--force"],
+            capture_output=True, text=True, timeout=240, env=install_env,
+        )
+        # POSITIVE -- the sandboxed real install must succeed.
+        self.assertEqual(
+            install.returncode, 0,
+            f"`uv tool install {REPO_ROOT} --force` must exit 0 into the "
+            f"sandboxed UV_TOOL_DIR/UV_TOOL_BIN_DIR; got "
+            f"exit={install.returncode}\nstdout={install.stdout[-2000:]}"
+            f"\nstderr={install.stderr[-2000:]}",
+        )
+        installed_bin = Path(self._uv_tool_bin_dir) / "modelb-axi"
+        self.assertTrue(
+            installed_bin.exists(),
+            f"installed console script {installed_bin} must exist after "
+            f"`uv tool install`",
+        )
+
+        run_env = dict(os.environ)
+        # The dev-mode repo copy of modelb_axi must never shadow the
+        # installed package -- that shadowing is exactly the masking this
+        # test exists to kill.
+        run_env.pop("PYTHONPATH", None)
+        # Fakes-only PATH (the same composition the sandboxed dev-mode
+        # e2e above uses): pre-flight must FIND the fake uv/sandesh and
+        # nothing real; the installed script needs no PATH entry for its
+        # own interpreter -- its shebang pins the tool venv's python by
+        # absolute path (the AC1 probe runs it with no PATH restriction
+        # at all, so this is strictly tighter).
+        run_env["PATH"] = self._tmp_bin
+        result = subprocess.run(
+            [str(installed_bin), "--yes", "--harnesses", "claude-code",
+             "--modelb-home", self._tmp_home,
+             "--target-root", self._tmp_target_root],
+            capture_output=True, text=True, timeout=60,
+            stdin=subprocess.DEVNULL, env=run_env,
+        )
+        # POSITIVE -- the INSTALLED binary's full sandboxed install run
+        # must succeed (pre-F1 this failed: no skills-src/ in
+        # site-packages -> DeployError).
+        self.assertEqual(
+            result.returncode, 0,
+            f"installed `modelb-axi` end-to-end sandboxed install must "
+            f"exit 0; got exit={result.returncode} stdout={result.stdout!r} "
+            f"stderr={result.stderr!r}",
+        )
+
+        install_toml = Path(self._tmp_home) / "install.toml"
+        self.assertTrue(
+            install_toml.is_file(),
+            f"{install_toml} must be written by the installed binary's run",
+        )
+        with open(install_toml, "rb") as fh:
+            data = tomllib.load(fh)
+        asset_root = Path(str(data.get("install", {}).get("asset_root", "")))
+        # POSITIVE/EXACT -- the recorded asset root is the force-included
+        # package-data dir INSIDE the installed package, never the repo.
+        self.assertEqual(
+            asset_root.parts[-2:], ("modelb_axi", "_assets"),
+            f"[install].asset_root must point inside the installed package "
+            f"(.../modelb_axi/_assets); got {asset_root}",
+        )
+        self.assertTrue(
+            str(asset_root).startswith(str(Path(self._uv_tool_dir).resolve())),
+            f"[install].asset_root must live under the sandboxed "
+            f"UV_TOOL_DIR ({Path(self._uv_tool_dir).resolve()}); got "
+            f"{asset_root}",
+        )
+        self.assertNotEqual(
+            asset_root, REPO_ROOT,
+            "[install].asset_root must NOT be the repo root when running "
+            "the installed package",
+        )
+
+        store_root = Path(self._tmp_target_root) / ".agents" / "skills"
+        missing_store = [
+            name for name in sorted(ALL_SEVEN_BUNDLE_NAMES)
+            if not (store_root / name / "SKILL.md").is_file()
+        ]
+        # POSITIVE/EXACT -- every bundle (crucible included) physically
+        # deployed into the sandbox Vercel store FROM THE PACKAGED ASSETS.
+        self.assertEqual(
+            missing_store, [],
+            f"Vercel store must contain SKILL.md for every bundle under "
+            f"{store_root} when deployed from the installed package; "
+            f"missing: {missing_store}",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -11,11 +11,26 @@ requires-python = ">=3.11"
 [project.scripts]
 modelb-axi = "modelb_axi.cli:main"
 
-# Flat layout next to unrelated repo dirs (tests/, docs/, audits/, skills-src/,
-# generator/, ...): ship ONLY the modelb_axi package as code. Asset roots ride
-# as package data in cycle C4 (CR-MDB-014 §S2 tail), not in C1.
+# Flat layout next to unrelated repo dirs (tests/, docs/, audits/, ...): ship
+# the modelb_axi package as code, plus the asset roots (CR-MDB-014 §S2 tail)
+# force-included INSIDE the package under modelb_axi/_assets/ so an installed
+# wheel resolves default_asset_root() to real package data. Hatchling prunes
+# __pycache__/.venv from force-include walks by default (EXCLUDED_DIRECTORIES).
 [tool.hatch.build.targets.wheel]
 packages = ["modelb_axi"]
 
+[tool.hatch.build.targets.wheel.force-include]
+"skills-src" = "modelb_axi/_assets/skills-src"
+"generator" = "modelb_axi/_assets/generator"
+"contracts" = "modelb_axi/_assets/contracts"
+"scripts" = "modelb_axi/_assets/scripts"
+
 [tool.hatch.build.targets.sdist]
-only-include = ["modelb_axi", "pyproject.toml"]
+only-include = [
+    "modelb_axi",
+    "pyproject.toml",
+    "skills-src",
+    "generator",
+    "contracts",
+    "scripts",
+]

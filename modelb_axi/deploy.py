@@ -42,10 +42,18 @@ class DeployError(Exception):
 
 
 def default_asset_root() -> Path:
-    """Asset root = the directory containing the ``modelb_axi`` package:
-    a repo checkout resolves to the repo root (``skills-src/`` sibling,
-    as the tests pin); an installed package resolves to the package-data
-    root wired in by §S2."""
+    """Asset root resolution (§S2):
+
+    - Installed package: the wheel force-includes the asset roots under
+      ``modelb_axi/_assets/`` — when that directory exists it IS the
+      asset root (``skills-src/`` etc. live inside it).
+    - Repo checkout (dev / PYTHONPATH runs): no ``_assets/`` dir exists
+      in the tree, so fall back to the directory containing the
+      ``modelb_axi`` package — the repo root (``skills-src/`` sibling,
+      as the dev-mode tests pin)."""
+    packaged_assets = Path(__file__).resolve().parent / "_assets"
+    if packaged_assets.is_dir():
+        return packaged_assets
     return Path(__file__).resolve().parent.parent
 
 
