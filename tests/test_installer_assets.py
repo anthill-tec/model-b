@@ -40,11 +40,10 @@ and for the whole test suite (repo-local authoring rule / AC7). Instead:
     assets -- exactly the pattern `tests/test_agent_generator.py` already
     uses for the live `~/.claude/agents/` tree pre-S7).
 
-Stdlib only: unittest + subprocess + sys + shutil + tempfile + hashlib +
+Stdlib only: unittest + subprocess + sys + shutil + tempfile +
 tomllib + importlib.util + pathlib.
 """
 
-import hashlib
 import importlib.util
 import os
 import shutil
@@ -79,10 +78,6 @@ ALL_SEVEN_BUNDLE_NAMES = frozenset(IMPORTED_BUNDLE_NAMES) | {CRUCIBLE_BUNDLE_NAM
 
 STACKS = ("arduino", "bun", "python", "quarkus")
 ROLES = ("red", "green", "verify", "fix")
-
-
-def _sha256_file(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def _relative_file_set(root: Path) -> set:
@@ -136,11 +131,20 @@ def _run_module(*args, env_overrides=None, timeout=20):
 
 
 class ImportedSkillBundleFidelityTest(unittest.TestCase):
-    """AC6 pin #1 -- the six imported bundles exist under skills-src/ as a
-    faithful (byte-identical, same file set) read-only copy of the
-    currently-deployed ~/.claude/skills/<name>/ tree."""
+    """AC6 pin #1 (amended, CR-MDB-013 F1 orchestrator disposition) -- the
+    six imported bundles exist under skills-src/ with a SKILL.md, and each
+    bundle's relative-path file set is a SUPERSET of the deployed
+    ~/.claude/skills/<name>/ set (a deletion would break deployed
+    consumers; evolution/additions are fine).
 
-    def test_each_imported_bundle_exists_and_matches_deployed_tree_byte_for_byte(self):
+    Byte-for-byte fidelity was an IMPORT-TIME property, verified at
+    CR-MDB-014 C4 (2026-07-22). Under the repo-local authoring rule the
+    repo copy deliberately evolves AHEAD of the deployed tree between
+    installer deploys (e.g. CR-MDB-013 §S5 evolved
+    skills-src/model-b/SKILL.md), so per-file sha256 equality no longer
+    holds by design and is no longer asserted here."""
+
+    def test_each_imported_bundle_exists_and_covers_deployed_file_set(self):
         failures = []
         for name in IMPORTED_BUNDLE_NAMES:
             deployed_dir = CLAUDE_SKILLS_DIR / name
@@ -150,7 +154,7 @@ class ImportedSkillBundleFidelityTest(unittest.TestCase):
             if not deployed_dir.is_dir():
                 failures.append(
                     f"{name}: deployed dir {deployed_dir} does not exist -- "
-                    f"cannot verify the import is faithful"
+                    f"cannot verify the import covers it"
                 )
                 continue
             if not (imported_dir / "SKILL.md").is_file():
@@ -161,25 +165,15 @@ class ImportedSkillBundleFidelityTest(unittest.TestCase):
                 continue
             deployed_files = _relative_file_set(deployed_dir)
             imported_files = _relative_file_set(imported_dir)
-            if deployed_files != imported_files:
-                missing = sorted(deployed_files - imported_files)
-                extra = sorted(imported_files - deployed_files)
+            missing = sorted(deployed_files - imported_files)
+            if missing:
                 failures.append(
-                    f"{name}: file SET mismatch against {deployed_dir} -- "
-                    f"missing from import: {missing}; extra in import: {extra}"
+                    f"{name}: repo bundle must cover every deployed file "
+                    f"(superset of {deployed_dir}); missing from "
+                    f"skills-src/{name}/: {missing}"
                 )
-                continue
-            for rel in sorted(deployed_files):
-                deployed_hash = _sha256_file(deployed_dir / rel)
-                imported_hash = _sha256_file(imported_dir / rel)
-                if deployed_hash != imported_hash:
-                    failures.append(
-                        f"{name}/{rel}: sha256 mismatch -- deployed="
-                        f"{deployed_hash} imported={imported_hash} "
-                        f"(import must be byte-identical)"
-                    )
-        # POSITIVE/EXACT -- every one of the six bundles is a faithful,
-        # complete, byte-identical read-only copy; zero mismatches.
+        # POSITIVE/EXACT -- every one of the six bundles exists and covers
+        # the deployed file set completely; zero deletions.
         self.assertEqual(failures, [], "\n".join(failures))
 
 
