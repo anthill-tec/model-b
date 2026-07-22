@@ -293,7 +293,14 @@ class StateDetectionTest(unittest.TestCase):
             f"stderr={result.stderr!r}",
         )
 
-    def test_valid_install_toml_enters_scaffold_mode_naming_cr_mdb_013(self):
+    def test_valid_install_toml_enters_scaffold_mode_proposing_init(self):
+        """CR-MDB-013 sanctioned 014-gate amendment: retargets the C1 v1
+        stub pin (which named CR-MDB-013 literally) to the real
+        scaffold-mode entry contract pinned by CR-MDB-013 §S2 --
+        tests/test_scaffold.py::ScaffoldModeEntryTest -- a scaffold-mode
+        banner on stdout that PROPOSES running `init`, exiting 0
+        non-interactively. The literal "CR-MDB-013" stub string is
+        dropped: the real banner is not required to name the CR."""
         install_toml = Path(self._tmp_home) / "install.toml"
         install_toml.write_text(
             '[install]\n'
@@ -308,18 +315,23 @@ class StateDetectionTest(unittest.TestCase):
             encoding="utf-8",
         )
         result = _run_module("--yes", "--modelb-home", self._tmp_home)
-        # POSITIVE -- v1 scaffold stub exits 0 and names CR-MDB-013.
+        # POSITIVE -- scaffold-mode entry exits 0 when install.toml is
+        # present.
         self.assertEqual(
             result.returncode, 0,
-            "AC3: scaffold-mode v1 stub must exit 0 when install.toml is "
+            "AC3/S2: scaffold-mode entry must exit 0 when install.toml is "
             f"present; got exit={result.returncode} stdout={result.stdout!r} "
             f"stderr={result.stderr!r}",
         )
         self.assertIn(
-            "CR-MDB-013", result.stdout,
-            "AC3: with install.toml present, launch must enter scaffold "
-            f"mode and name CR-MDB-013 in stdout; got "
-            f"stdout={result.stdout!r} stderr={result.stderr!r}",
+            "scaffold", result.stdout.lower(),
+            "AC3/S2: with install.toml present, launch must banner scaffold "
+            f"mode; got stdout={result.stdout!r} stderr={result.stderr!r}",
+        )
+        self.assertIn(
+            "init", result.stdout.lower(),
+            "AC3/S2: the scaffold-mode banner must propose running `init`; "
+            f"got stdout={result.stdout!r} stderr={result.stderr!r}",
         )
         # NEGATIVE -- must NOT re-run the installer flow once scaffolded.
         self.assertNotIn(
