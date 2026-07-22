@@ -116,6 +116,36 @@ WRITE_GUARD_CLOSED = {
     "fail_direction": "closed",
 }
 
+# F1 (VERIFY B2): pi event-map instances. turn-stop/prompt-submit are SOURCED
+# pi events (`turn_end`/`input`, DN §2 roster addendum event-map citations);
+# pre-compact has NO pi counterpart -- declared gap, never silently dropped.
+TURN_STOP_HOOK = {
+    "event": "turn-stop",
+    "matcher": "*",
+    "command": "post-regression-disk-reminder",
+    "tier": "core",
+    "timeout": 3,
+    "fail_direction": None,
+}
+
+PROMPT_SUBMIT_HOOK = {
+    "event": "prompt-submit",
+    "matcher": "*",
+    "command": "ambient-board-status",
+    "tier": "core",
+    "timeout": 3,
+    "fail_direction": None,
+}
+
+PRE_COMPACT_HOOK = {
+    "event": "pre-compact",
+    "matcher": "*",
+    "command": "post-regression-disk-reminder",
+    "tier": "core",
+    "timeout": 3,
+    "fail_direction": None,
+}
+
 
 class HooksCompilerTestCase(unittest.TestCase):
     """Common tmp-target fixture; never writes outside `tempfile.mkdtemp()`."""
@@ -215,6 +245,37 @@ class OpenCodeEmitterTest(HooksCompilerTestCase):
         self.assertIn("2", ts_text)
         self.assertIn("{ block: true", ts_text)
 
+    def test_closed_guard_emitted_for_opencode_with_spawn_failure_block_path(self):
+        """F1 (VERIFY B1): opencode honors fail-closed -- the closed guard is
+        EMITTED (not refused) and the generated shim BLOCKS on spawn failure
+        (status null / thrown), mirroring the pi spawn-shim semantics."""
+        from modelb_axi.hooks import compile_wiring
+
+        report = compile_wiring(
+            schema_instances=[WRITE_GUARD_CLOSED],
+            harnesses=["opencode"],
+            target=self.target,
+            scripts_root=SCRIPTS_ROOT,
+        )
+
+        oc_report = report["opencode"]
+        self.assertEqual(oc_report["refusals"], [])
+        self.assertTrue(
+            oc_report["emitted_files"],
+            "fail-closed guard must be emitted for opencode, not dropped",
+        )
+
+        ts_text = ""
+        for rel in oc_report["emitted_files"]:
+            ts_text += (self.target / rel).read_text(encoding="utf-8")
+
+        expected_guard_path = str(SCRIPTS_ROOT / "block-write-outside-worktree")
+        self.assertIn(expected_guard_path, ts_text)
+        # The failure-path block marker: spawn failure -> BLOCK with a reason
+        # naming the spawn failure (fail-closed honored, never silently open).
+        self.assertIn("fail-closed guard: hook spawn failed", ts_text)
+        self.assertIn("{ block: true", ts_text)
+
 
 class PiExtensionEmitterTest(HooksCompilerTestCase):
     """AC4 pi: `.pi/extensions/<name>.ts` -- full TS-extension emitter."""
@@ -273,6 +334,63 @@ class PiExtensionEmitterTest(HooksCompilerTestCase):
         combined = "".join(p.read_text(encoding="utf-8") for p in ts_files)
         expected_guard_path = str(SCRIPTS_ROOT / "block-write-outside-worktree")
         self.assertIn(expected_guard_path, combined)
+
+    def test_turn_stop_and_prompt_submit_map_to_sourced_pi_events(self):
+        """F1 (VERIFY B2): turn-stop -> `turn_end`, prompt-submit -> `input`
+        (DN §2 roster addendum event-map citations; both SOURCED)."""
+        from modelb_axi.hooks import compile_wiring
+
+        report = compile_wiring(
+            schema_instances=[TURN_STOP_HOOK, PROMPT_SUBMIT_HOOK],
+            harnesses=["pi"],
+            target=self.target,
+            scripts_root=SCRIPTS_ROOT,
+        )
+
+        pi_report = report["pi"]
+        self.assertEqual(pi_report["refusals"], [])
+        self.assertEqual(len(pi_report["emitted_files"]), 2)
+
+        extensions_dir = self.target / ".pi" / "extensions"
+        combined = "".join(
+            p.read_text(encoding="utf-8") for p in extensions_dir.glob("*.ts")
+        )
+        self.assertIn('pi.on("turn_end"', combined)
+        self.assertIn('pi.on("input"', combined)
+
+    def test_pre_compact_is_a_declared_gap_for_pi_not_emitted_not_refused(self):
+        """F1 (VERIFY B2): pre-compact has NO pi counterpart -- no extension
+        file emitted, NOT a refusal, and the report note names the gap (same
+        declared-degradation idiom as hermes)."""
+        from modelb_axi.hooks import compile_wiring
+
+        report = compile_wiring(
+            schema_instances=[PRE_COMPACT_HOOK],
+            harnesses=["pi"],
+            target=self.target,
+            scripts_root=SCRIPTS_ROOT,
+        )
+
+        pi_report = report["pi"]
+        # Missing event, not a fail-direction conflict: never a refusal.
+        self.assertEqual(pi_report["refusals"], [])
+        self.assertEqual(pi_report["emitted_files"], [])
+        gap_file = (
+            self.target / ".pi" / "extensions" / "post-regression-disk-reminder.ts"
+        )
+        self.assertFalse(
+            gap_file.exists(), "pre-compact hook must not be emitted for pi"
+        )
+        # Declared, never silent: a note names both the event and the hook.
+        gap_notes = [
+            n
+            for n in pi_report["notes"]
+            if "pre-compact" in n and "post-regression-disk-reminder" in n
+        ]
+        self.assertTrue(
+            gap_notes,
+            f"expected a declared-gap note naming the event and hook: {pi_report['notes']!r}",
+        )
 
 
 class HermesDegradationTest(HooksCompilerTestCase):
