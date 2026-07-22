@@ -15,16 +15,9 @@ import sys
 from pathlib import Path
 
 from modelb_axi import __version__
+from modelb_axi.preflight import run_preflight
 
 INSTALL_TOML_NAME = "install.toml"
-
-# Ordered installer-flow stages (§S3 shell). C1 ships announcements only;
-# C2 fills pre-flight (§S4), C3 fills harness targeting + deploy (§S5/§S6).
-_INSTALLER_STAGES = (
-    ("pre-flight", "dependency checks (uv / Sandesh / Crucible) — arrives in C2"),
-    ("harness targeting", "roster probe + selection — arrives in C3"),
-    ("deploy", "manifest-driven asset deploy + install.toml write — arrives in C3"),
-)
 
 
 def _default_modelb_home() -> Path:
@@ -96,10 +89,16 @@ def _run_installer_flow(home: Path, harnesses: list[str], interactive: bool) -> 
     if not _confirm("Proceed with installation?", interactive):
         print("modelb-axi: installer flow aborted by user")
         return 1
-    total = len(_INSTALLER_STAGES)
-    for index, (name, note) in enumerate(_INSTALLER_STAGES, start=1):
-        print(f"  [stage {index}/{total}] {name}: {note}")
-    print("modelb-axi: installer flow shell complete (C1 skeleton)")
+    # Stage 1 — dependency pre-flight (§S4, C2). Runs (and reports its
+    # `deps:` line) BEFORE any later stage announcement.
+    print("  [stage 1/3] pre-flight: dependency checks (uv / Sandesh / Crucible)")
+    preflight_exit = run_preflight(lambda prompt: _confirm(prompt, interactive))
+    if preflight_exit != 0:
+        return preflight_exit
+    # Stages 2/3 — announcements only; §S5/§S6 arrive in C3.
+    print("  [stage 2/3] harness targeting: roster probe + selection — arrives in C3")
+    print("  [stage 3/3] deploy: manifest-driven asset deploy + install.toml write — arrives in C3")
+    print("modelb-axi: installer flow complete (deploy arrives in C3)")
     return 0
 
 
