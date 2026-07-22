@@ -1,6 +1,6 @@
 # CR-MDB-013 — Model B scaffold flow (`modelb-axi` TUI)
 
-**Status:** PENDING
+**Status:** COMPLETED
 **Type:** feature
 **Priority:** P1 (the keystone deliverable)
 **Depends on:** CR-MDB-002, CR-MDB-008, CR-MDB-014
