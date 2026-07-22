@@ -73,14 +73,30 @@ class ContractsS2Test(unittest.TestCase):
             f"{CRUCIBLE_ENVELOPE_MD} missing required anchor terms: {missing}",
         )
 
-        # POSITIVE -- "REFUSED" OR "400" per the AC's own tolerant
-        # alternative for the unknown-cycleId refusal rule.
-        refusal_variants = ("REFUSED", "400")
-        has_refusal_marker = any(v in content for v in refusal_variants)
-        self.assertTrue(
-            has_refusal_marker,
-            f"{CRUCIBLE_ENVELOPE_MD} must contain 'REFUSED' or '400', "
-            f"tried {refusal_variants}",
+        # NEGATIVE -- the final contract has NO refusal rule; the
+        # unknown-cycleId REFUSED/(400) anchor is gone.
+        self.assertNotIn(
+            "REFUSED", content,
+            f"{CRUCIBLE_ENVELOPE_MD} must not contain 'REFUSED' -- the refusal rule is gone",
+        )
+        self.assertNotIn(
+            "(400)", content,
+            f"{CRUCIBLE_ENVELOPE_MD} must not reference the '(400)' refusal status",
+        )
+
+        # POSITIVE -- server-resolved cycle-attach + no-active-cycle
+        # withhold semantics, and DELIVERED status.
+        self.assertIn(
+            "resolve_attach_cycle", content,
+            f"{CRUCIBLE_ENVELOPE_MD} must contain 'resolve_attach_cycle'",
+        )
+        self.assertIn(
+            "no-active-cycle", content,
+            f"{CRUCIBLE_ENVELOPE_MD} must contain 'no-active-cycle'",
+        )
+        self.assertIn(
+            "DELIVERED", content,
+            f"{CRUCIBLE_ENVELOPE_MD} must contain 'DELIVERED' (status)",
         )
 
         # NEGATIVE/bound -- not a stub: the file must carry real content,
@@ -88,6 +104,20 @@ class ContractsS2Test(unittest.TestCase):
         self.assertGreater(
             len(content.strip()), 0,
             f"{CRUCIBLE_ENVELOPE_MD} must not be empty",
+        )
+
+    def test_ac1_zero_workflow_cycle_id_occurrences_in_crucible_envelope(self):
+        self.assertTrue(
+            CRUCIBLE_ENVELOPE_MD.is_file(),
+            f"{CRUCIBLE_ENVELOPE_MD} must exist",
+        )
+        content = _read(CRUCIBLE_ENVELOPE_MD)
+        count = content.count("WORKFLOW_CYCLE_ID")
+        # EXACT bound -- zero occurrences of the retired env carrier.
+        self.assertEqual(
+            count, 0,
+            f"expected zero 'WORKFLOW_CYCLE_ID' occurrences in {CRUCIBLE_ENVELOPE_MD}, "
+            f"found {count}",
         )
 
 

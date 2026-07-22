@@ -157,15 +157,27 @@ class CrucibleSkillS2Test(unittest.TestCase):
             f"SKILL.md missing required identity/per-stack-verb terms: {missing}",
         )
 
-        # POSITIVE -- the incoming-contract markers must be present.
-        has_incoming_cycle_marker = ("REFUSED" in content) or ("400" in content)
-        self.assertTrue(
-            has_incoming_cycle_marker,
-            "SKILL.md must contain 'REFUSED' or '400' (incoming unknown-cycleId contract)",
+        # NEGATIVE -- the final contract has NO refusal rule; the CR-024
+        # unknown-cycleId REFUSED/(400) text must be gone per §S2(b).
+        self.assertNotIn(
+            "REFUSED", content,
+            "SKILL.md must not contain 'REFUSED' -- the CR-024 refusal rule is gone",
         )
+        self.assertNotIn(
+            "(400)", content,
+            "SKILL.md must not reference the '(400)' refusal status",
+        )
+        # POSITIVE -- the CR-CRU-030 client-contract token must still be
+        # present, now in DELIVERED context (CR-CRU-030 shipped).
         self.assertIn(
             "CR-CRU-030", content,
-            "SKILL.md must contain 'CR-CRU-030' (envelope contract marked incoming)",
+            "SKILL.md must contain 'CR-CRU-030' (delivered client contract)",
+        )
+        # NEGATIVE -- the envelope section must no longer mark the contract
+        # as "INCOMING" -- CR-CRU-030 shipped.
+        self.assertNotIn(
+            "INCOMING", content,
+            "SKILL.md must not contain 'INCOMING' -- CR-CRU-030 shipped, envelope is DELIVERED",
         )
 
     def test_s2_zero_plan_b_and_same_across_stacks_mentions(self):
@@ -329,6 +341,116 @@ class CrucibleSkillS5Test(unittest.TestCase):
             matched_files, [],
             f"grep gate must return 0 files referencing crucible-report/agent-protocol/"
             f"crucible-ingest/bun-*-testing/quarkus-regression-testing, found: {matched_files}",
+        )
+
+
+class CrucibleSkillCRMDB011Test(unittest.TestCase):
+    """CR-MDB-011 SS1 -- AC gate tests for the FINAL Crucible client contract
+    (post CR-CRU-030/036): server-resolved cycle attach, no-active-cycle
+    withhold semantics, and routing to Crucible-bundled per-stack skill docs.
+    """
+
+    def test_ac1_zero_workflow_cycle_id_in_skill_md_and_all_references(self):
+        self.assertTrue(SKILL_MD.is_file(), f"{SKILL_MD} must exist")
+        skill_content = _read(SKILL_MD)
+        skill_count = skill_content.count("WORKFLOW_CYCLE_ID")
+        # EXACT bound -- zero occurrences in SKILL.md.
+        self.assertEqual(
+            skill_count, 0,
+            f"expected zero 'WORKFLOW_CYCLE_ID' occurrences in {SKILL_MD}, found {skill_count}",
+        )
+
+        self.assertTrue(REFERENCES_DIR.is_dir(), f"{REFERENCES_DIR} must exist")
+        offending = {}
+        for ref_path in sorted(REFERENCES_DIR.glob("*.md")):
+            ref_content = _read(ref_path)
+            count = ref_content.count("WORKFLOW_CYCLE_ID")
+            if count:
+                offending[ref_path.name] = count
+        # EXACT bound -- zero occurrences across every references/*.md.
+        self.assertEqual(
+            offending, {},
+            f"expected zero 'WORKFLOW_CYCLE_ID' occurrences across references/*.md, "
+            f"found: {offending}",
+        )
+
+    def test_ac2_no_active_cycle_withhold_and_cycle_activate_present(self):
+        self.assertTrue(SKILL_MD.is_file(), f"{SKILL_MD} must exist")
+        content = _read(SKILL_MD)
+
+        # POSITIVE -- server-driven no-active-cycle warn/withhold semantics.
+        self.assertIn(
+            "no-active-cycle", content,
+            "SKILL.md must contain 'no-active-cycle'",
+        )
+        self.assertIn(
+            "withhold", content.lower(),
+            "SKILL.md must contain 'withhold' (case-insensitive)",
+        )
+        # POSITIVE -- cycle-activate named as the orchestrator's only cycle
+        # input.
+        self.assertIn(
+            "cycle-activate", content,
+            "SKILL.md must contain 'cycle-activate' (orchestrator's only cycle input)",
+        )
+
+    def test_ac3_bundled_doc_route_and_arduino_client_row_present(self):
+        self.assertTrue(SKILL_MD.is_file(), f"{SKILL_MD} must exist")
+        content = _read(SKILL_MD)
+
+        # POSITIVE -- routes to the bundled per-stack skill docs.
+        self.assertIn(
+            "clients/skills/crucible-report-", content,
+            "SKILL.md must route to the bundled per-stack skill docs "
+            "('clients/skills/crucible-report-')",
+        )
+        # POSITIVE -- the per-stack table gains an arduino row (full surface).
+        self.assertIn(
+            "arduino-crucible.py", content,
+            "SKILL.md must contain an 'arduino-crucible.py' per-stack row",
+        )
+
+    def test_ac4_each_reference_routes_to_its_crucible_report_bundle(self):
+        stacks = ("rust", "java", "bun", "python", "vscode")
+        missing_route = []
+        for stack in stacks:
+            path = REFERENCES_DIR / f"{stack}.md"
+            self.assertTrue(path.is_file(), f"{path} must exist")
+            content = _read(path)
+            if "crucible-report-" not in content:
+                missing_route.append(stack)
+        # POSITIVE -- every reference doc routes to its bundled skill.
+        self.assertEqual(
+            missing_route, [],
+            f"expected every references/{{stack}}.md to route to its "
+            f"'crucible-report-<stack>' bundle, missing route in: {missing_route}",
+        )
+
+    def test_ac6_all_five_reference_files_still_exist(self):
+        stacks = ("rust", "java", "bun", "python", "vscode")
+        missing_files = [
+            str(REFERENCES_DIR / f"{stack}.md")
+            for stack in stacks
+            if not (REFERENCES_DIR / f"{stack}.md").is_file()
+        ]
+        # POSITIVE -- consumer constraint: 22 agents + 2 refactorer skills
+        # reference these exact paths, so they must keep resolving.
+        self.assertEqual(
+            missing_files, [],
+            f"expected all five references/{{rust,java,bun,python,vscode}}.md paths "
+            f"to still exist (consumer constraint), missing: {missing_files}",
+        )
+
+    def test_ac7_repo_agents_md_no_longer_claims_workflow_cycle_id_injection(self):
+        agents_md = REPO_ROOT / "AGENTS.md"
+        self.assertTrue(agents_md.is_file(), f"{agents_md} must exist")
+        content = _read(agents_md)
+        count = content.count("WORKFLOW_CYCLE_ID")
+        # EXACT bound -- the wrapper sentence must no longer claim
+        # WORKFLOW_CYCLE_ID injection.
+        self.assertEqual(
+            count, 0,
+            f"expected zero 'WORKFLOW_CYCLE_ID' occurrences in {agents_md}, found {count}",
         )
 
 
