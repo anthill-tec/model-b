@@ -1,6 +1,6 @@
 # CR-MDB-015 — Harness-agnostic hooks: neutral schema + per-harness emitters + shared script protocol
 
-**Status:** IN_PROGRESS
+**Status:** COMPLETED
 **Type:** feature
 **Priority:** P1 (last wave-3 CR before the release)
 **Depends on:** CR-MDB-013, CR-MDB-014
