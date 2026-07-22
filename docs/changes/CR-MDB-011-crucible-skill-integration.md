@@ -1,6 +1,6 @@
 # CR-MDB-011 — crucible skill integration: route to Crucible-bundled skill docs
 
-**Status:** IN_PROGRESS
+**Status:** COMPLETED
 **Type:** docs
 **Priority:** P1 (final-contract sync; last doc CR before the 014/013 execution arc)
 **Depends on:** CR-MDB-003, CR-MDB-009 (external dependency DELIVERED: CR-CRU-030 #1330 + CR-CRU-036 #1332, crucible develop `949a2f4`)
