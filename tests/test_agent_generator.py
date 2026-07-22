@@ -14,6 +14,23 @@ tree today (e.g. no agent currently references a retired artifact, and the
 13 bespoke agents are currently untouched by this CR) -- that is still
 correct behaviour, not a test bug.
 
+CR-MDB-014 §S7 AMENDMENT (sanctioned follow-up, cycle C4): build.py's
+generated-output target is superseded from the real ``Path.home() /
+".claude" / "agents"`` to the repo-local package asset dir
+``<repo>/generator/agents/`` (the ``AGENTS_DIR`` retarget contract pinned in
+``tests/test_installer_assets.py``). Every assertion below that checks
+build.py's OWN generated-output location (the mutation-detection probe, the
+frontmatter/description/citation/anchor content checks, and the
+retired-artifact grep gate) now targets ``GENERATOR_AGENTS_DIR`` instead of
+the live ``AGENTS_DIR``. The 13 BESPOKE defs were never part of build.py's
+target list and still live ONLY in the real deployed ``~/.claude/agents/``
+tree -- ``BespokeUntouchedS4Test`` is UNCHANGED (still ``AGENTS_DIR``). A
+new ``DeployedAgentsConsumerConstraintTest`` (§S7 addition) pins the
+opposite-direction guarantee: the DEPLOYED ``~/.claude/agents/`` tree still
+carries the 16 generated files (existence only, no content coupling) until
+the installer (CR-MDB-014) actually redeploys them there -- mirroring the
+CR-MDB-011 AC6 "already-deployed content must remain reachable" pattern.
+
 Stdlib only (unittest + subprocess + pathlib + shutil + sys + tomllib). No
 production-module import: build.py is invoked as a subprocess per the CR's
 own mechanics (`python3 generator/build.py --check`), matching how the spec
@@ -29,12 +46,17 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CLAUDE_DIR = Path.home() / ".claude"
+# The real DEPLOYED tree: still used by BespokeUntouchedS4Test (the 13
+# bespoke defs never move) and by the new §S7 consumer-constraint test.
 AGENTS_DIR = CLAUDE_DIR / "agents"
 
 GENERATOR_DIR = REPO_ROOT / "generator"
 TEMPLATES_DIR = GENERATOR_DIR / "templates"
 STACKS_DIR = GENERATOR_DIR / "stacks"
 BUILD_PY = GENERATOR_DIR / "build.py"
+# CR-MDB-014 §S7 retarget contract: build.py's OWN generated-output dir,
+# superseding the live AGENTS_DIR as the target for content/drift checks.
+GENERATOR_AGENTS_DIR = GENERATOR_DIR / "agents"
 
 ARCHIVE_WAVE3_AGENTS = REPO_ROOT / "archive" / "wave3" / "agents"
 
@@ -197,7 +219,7 @@ class BuildPyIdempotenceS3Test(unittest.TestCase):
 
     def test_s3_check_flag_exits_one_and_names_the_mutated_file(self):
         self.assertTrue(BUILD_PY.is_file(), f"{BUILD_PY} must exist to run --check")
-        target = AGENTS_DIR / "python-red-agent.md"
+        target = GENERATOR_AGENTS_DIR / "python-red-agent.md"
         self.assertTrue(target.is_file(), f"{target} must exist to be mutated")
         original_bytes = target.read_bytes()
         try:
@@ -290,7 +312,7 @@ class GeneratedContentRequirementsS4Test(unittest.TestCase):
     def test_s4_each_live_agent_frontmatter_name_equals_filename_stem(self):
         failures = []
         for name in TARGET_AGENT_NAMES:
-            path = AGENTS_DIR / name
+            path = GENERATOR_AGENTS_DIR / name
             if not path.is_file():
                 failures.append(f"{name}: file does not exist at {path}")
                 continue
@@ -315,7 +337,7 @@ class GeneratedContentRequirementsS4Test(unittest.TestCase):
     def test_s4_each_live_agent_description_non_empty(self):
         failures = []
         for name in TARGET_AGENT_NAMES:
-            path = AGENTS_DIR / name
+            path = GENERATOR_AGENTS_DIR / name
             if not path.is_file():
                 failures.append(f"{name}: file does not exist at {path}")
                 continue
@@ -339,7 +361,7 @@ class GeneratedContentRequirementsS4Test(unittest.TestCase):
     def test_s4_each_live_agent_cites_sub_agent_procedure_and_crucible(self):
         failures = []
         for name in TARGET_AGENT_NAMES:
-            path = AGENTS_DIR / name
+            path = GENERATOR_AGENTS_DIR / name
             if not path.is_file():
                 failures.append(f"{name}: file does not exist at {path}")
                 continue
@@ -359,7 +381,7 @@ class GeneratedContentRequirementsS4Test(unittest.TestCase):
             anchor = STACK_ANCHORS[stack]
             for role in ROLES:
                 name = f"{stack}-{role}-agent.md"
-                path = AGENTS_DIR / name
+                path = GENERATOR_AGENTS_DIR / name
                 if not path.is_file():
                     failures.append(f"{name}: file does not exist at {path}")
                     continue
@@ -375,12 +397,24 @@ class GeneratedContentRequirementsS4Test(unittest.TestCase):
 class RetiredArtifactGrepGateS4Test(unittest.TestCase):
     """SS4 -- zero references to retired artifacts (agent-baseline,
     crucible-report, orchestration-universal, bun-red-testing,
-    quarkus-regression-testing) anywhere under ~/.claude/agents/."""
+    quarkus-regression-testing) anywhere under the generated-output dir
+    (CR-MDB-014 §S7: retargeted from ~/.claude/agents/ to
+    GENERATOR_AGENTS_DIR)."""
 
     def test_s4_grep_gate_zero_retired_artifact_references(self):
-        # EXACT -- the AC names this exact grep invocation verbatim.
+        # A missing retargeted output dir must FAIL loudly -- grep against
+        # a non-existent path would otherwise vacuously "pass" with empty
+        # stdout, masking the real §S7 retarget gap.
+        self.assertTrue(
+            GENERATOR_AGENTS_DIR.is_dir(),
+            f"{GENERATOR_AGENTS_DIR} must exist (build.py retargeted per "
+            f"CR-MDB-014 §S7) before the retired-artifact grep gate means "
+            f"anything",
+        )
+        # EXACT -- the AC names this exact grep invocation verbatim (now
+        # against the repo-local retargeted output dir).
         result = subprocess.run(
-            ["grep", "-rl", RETIRED_ARTIFACT_PATTERN, str(AGENTS_DIR)],
+            ["grep", "-rl", RETIRED_ARTIFACT_PATTERN, str(GENERATOR_AGENTS_DIR)],
             capture_output=True, text=True, timeout=30,
         )
         matched_files = [ln for ln in result.stdout.splitlines() if ln.strip()]
@@ -473,6 +507,31 @@ class BespokeUntouchedS4Test(unittest.TestCase):
         self.assertEqual(
             result.returncode, 0,
             f"scoped chezmoi diff must exit 0, stderr:\n{result.stderr[:2000]}",
+        )
+
+
+class DeployedAgentsConsumerConstraintTest(unittest.TestCase):
+    """CR-MDB-014 §S7 addition -- the opposite-direction guarantee from the
+    build.py retarget: the DEPLOYED ~/.claude/agents/ tree still carries
+    all 16 generated agent files (existence only, no content coupling --
+    they stay live from a prior build run until the installer actually
+    redeploys them there). Mirrors the CR-MDB-011 AC6 pattern of pinning
+    that already-deployed content remains reachable across a source-side
+    reorganisation."""
+
+    def test_s7_deployed_claude_agents_still_contains_sixteen_generated_files(self):
+        missing = [
+            name for name in TARGET_AGENT_NAMES
+            if not (AGENTS_DIR / name).is_file()
+        ]
+        # POSITIVE/EXACT, existence-only -- all 16 generated files remain
+        # reachable at the real deployed location; content is deliberately
+        # NOT asserted here (that coupling now lives with GENERATOR_AGENTS_DIR).
+        self.assertEqual(
+            missing, [],
+            f"deployed {AGENTS_DIR} must still contain all 16 generated "
+            f"agent files (existence only) until the installer redeploys "
+            f"them there; missing: {missing}",
         )
 
 
