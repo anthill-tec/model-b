@@ -1,6 +1,6 @@
 # CR-MDB-014 — Universal installer flow + packaging (`modelb-axi`)
 
-**Status:** IN_PROGRESS
+**Status:** COMPLETED
 **Type:** feature
 **Priority:** P1 (heads the setup arc: 014 → 013 → 015)
 **Depends on:** CR-MDB-002, CR-MDB-008
