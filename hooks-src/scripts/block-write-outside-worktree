@@ -1,0 +1,128 @@
+#!/usr/bin/env python3
+"""pre-tool-use protocol script — HARD-BLOCKS a file write whose target falls
+OUTSIDE the active Model-B worktree (stops a dispatched sub-agent leaking
+edits into the main tree or a sibling worktree).
+
+Normalized from the deployed ~/.claude/hooks/block-write-outside-worktree.sh
+baseline (CR-MDB-015 §S3): same stdin contract (JSON `tool_name` in
+Write|Edit|NotebookEdit; target from `tool_input.file_path` /
+`.notebook_path`; `cwd`), same exit protocol (allow -> 0, block -> 2 +
+`{"decision":"block","reason":...}` on stdout), same SELF-GATING — a strict
+no-op unless EITHER (a) $WF_WORKTREE_ROOT is exported (explicit dispatch
+signal) OR (b) cwd sits inside a real `…/.claude/worktrees/<cr>/` path
+confirmed against `git worktree list`. Same allows (inside the worktree
+root; scratch under /tmp or $TMPDIR) and the same
+ALLOW_WRITE_OUTSIDE_WORKTREE=1 escape hatch. Self-contained, stdlib only.
+"""
+
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+_GATED_TOOLS = {"Write", "Edit", "NotebookEdit"}
+_WORKTREES_SEGMENT = "/.claude/worktrees/"
+
+
+def _resolve(path: str) -> str:
+    """`realpath -m` equivalent: normalize + resolve, existence not required."""
+    return os.path.realpath(path)
+
+
+def _derive_worktree_root_from_cwd(cwd: str) -> str | None:
+    """Path (b): cwd inside `…/.claude/worktrees/<cr>/…`, confirmed a REAL
+    registered git worktree — else None (fail safe toward non-Model-B)."""
+    if _WORKTREES_SEGMENT not in cwd:
+        return None
+    before, _, after = cwd.partition(_WORKTREES_SEGMENT)
+    cr_segment = after.split("/", 1)[0]
+    if not cr_segment:
+        return None
+    candidate = _resolve(f"{before}{_WORKTREES_SEGMENT}{cr_segment}")
+    try:
+        result = subprocess.run(
+            ["git", "-C", cwd, "worktree", "list", "--porcelain"],
+            capture_output=True, text=True, timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None  # cannot confirm -> stay a no-op
+    if result.returncode != 0:
+        return None
+    if f"worktree {candidate}" in result.stdout.splitlines():
+        return candidate
+    return None
+
+
+def _is_under(abs_path: str, root: str) -> bool:
+    """Boundary-safe prefix check (trailing-slash guarded)."""
+    return f"{abs_path}/".startswith(f"{root}/")
+
+
+def main() -> int:
+    try:
+        payload = json.load(sys.stdin)
+    except (json.JSONDecodeError, OSError):
+        return 0  # unreadable payload -> fail open (deterrent, not security boundary)
+    if not isinstance(payload, dict) or payload.get("tool_name") not in _GATED_TOOLS:
+        return 0
+
+    # Explicit, auditable opt-out wins before any work.
+    if os.environ.get("ALLOW_WRITE_OUTSIDE_WORKTREE", "") in ("1", "true"):
+        return 0
+
+    tool_input = payload.get("tool_input") or {}
+    target = tool_input.get("file_path") or tool_input.get("notebook_path") or ""
+    cwd = payload.get("cwd") or os.getcwd()
+    if not target:
+        return 0
+
+    # (a) Explicit dispatch signal wins; (b) else derive from cwd.
+    worktree_root = None
+    declared = os.environ.get("WF_WORKTREE_ROOT", "")
+    if declared and Path(declared).is_dir():
+        worktree_root = _resolve(declared)
+    if not worktree_root:
+        worktree_root = _derive_worktree_root_from_cwd(cwd)
+    if not worktree_root:
+        return 0  # No worktree context -> not Model-B -> do nothing.
+
+    absolute = _resolve(target if target.startswith("/") else f"{cwd}/{target}")
+
+    # Allow: inside the worktree root.
+    if _is_under(absolute, worktree_root):
+        return 0
+    # Allow: scratch under /tmp or $TMPDIR.
+    if _is_under(absolute, "/tmp"):
+        return 0
+    tmpdir = os.environ.get("TMPDIR", "")
+    if tmpdir and _is_under(absolute, _resolve(tmpdir)):
+        return 0
+
+    reason = f"""⛔ BLOCKED: write to a path OUTSIDE your worktree.
+
+  target:        {absolute}
+  worktree root: {worktree_root}
+
+You are operating inside a Model-B worktree. You have NO permission to write
+outside it — not the main repo tree, not a parent, not a sibling worktree. A
+cross-tree write corrupts another track's tree; a main-tree write leaks your CR
+onto develop.
+
+FIX:
+  • Write under your worktree root ({worktree_root}) — use a path that stays
+    inside it. An ABSOLUTE path into the main tree is the usual cause;
+    re-derive it from `git rev-parse --show-toplevel` (must equal the worktree
+    root), not a remembered main-tree path.
+  • Do NOT "recover" by copying files between trees (cp / disk-copy) — that is
+    a forbidden cross-boundary operation. If a target legitimately resolved
+    outside your root, STOP and report to the orchestrator.
+
+Deliberate, rare cross-tree write (orchestrator only): re-run with
+ALLOW_WRITE_OUTSIDE_WORKTREE=1 exported — explicit + auditable, never silent."""
+    print(json.dumps({"decision": "block", "reason": reason}))
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())

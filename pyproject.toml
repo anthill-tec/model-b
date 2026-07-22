@@ -24,6 +24,7 @@ packages = ["modelb_axi"]
 "generator" = "modelb_axi/_assets/generator"
 "contracts" = "modelb_axi/_assets/contracts"
 "scripts" = "modelb_axi/_assets/scripts"
+"hooks-src" = "modelb_axi/_assets/hooks-src"
 
 [tool.hatch.build.targets.sdist]
 only-include = [
@@ -33,4 +34,5 @@ only-include = [
     "generator",
     "contracts",
     "scripts",
+    "hooks-src",
 ]

@@ -1,0 +1,152 @@
+#!/usr/bin/env python3
+"""pre-tool-use protocol script — HARD-BLOCKS direct `cargo test` /
+`cargo nextest` / `cargo llvm-cov` (+ `check`/`clippy`) invocations in Rust
+projects and redirects to the rust-crucible.py wrapper.
+
+Normalized from the deployed ~/.claude/hooks/block-direct-cargo-test.sh
+baseline (CR-MDB-015 §S3): same stdin contract (JSON `tool_name` /
+`tool_input.command` / `cwd`), same exit protocol (allow -> 0, block -> 2 +
+`{"decision":"block","reason":...}` on stdout), same command-position-aware
+detector (formerly lib/detect-cargo-test.py, now inlined — self-contained,
+stdlib only, no jq / no lib/ helpers), same `ALLOW_RAW_CARGO=1` escape hatch
+and `dangerouslyDisableSandbox` bypass-closer. Client invocation guidance in
+the block reason follows the discovery convention (installed clients dir from
+install config; the crucible repo `clients/` dir in dev) instead of a
+hardcoded user-dotfile script path.
+"""
+
+import json
+import re
+import shlex
+import sys
+from pathlib import Path
+
+# Cargo verbs with an ingesting rust-crucible.py wrapper equivalent.
+TARGETS = {"test", "nextest", "llvm-cov", "check", "clippy"}
+OPS = {"|", "||", "&&", ";", ";;", "&", "(", ")", "\n"}
+
+DS_REASON = """⛔ BLOCKED: `dangerouslyDisableSandbox: true` is not allowed on a `cargo` command.
+
+This flag bypasses the cargo→Crucible enforcement hook. rust-crucible.py runs the
+SAME cargo command AND ingests results to Crucible (ORCHESTRATOR-RULES §4) — use it
+from the Crucible clients dir (installed location per install config; the crucible
+repo `clients/` dir in dev):
+  • compile / RED-compile:  python3 <crucible-clients>/rust-crucible.py check  --crate <c> [--tests] --agent <id>
+  • run tests:              python3 <crucible-clients>/rust-crucible.py test   --crate <c> [--filter <e>] --agent <id>
+  • clippy:                 python3 <crucible-clients>/rust-crucible.py clippy --crate <c> [--deny-warnings] --agent <id>
+
+Genuine raw-cargo need (rare, needs justification): prefix with ALLOW_RAW_CARGO=1
+(an explicit, auditable opt-out) — NOT a silent dangerouslyDisableSandbox."""
+
+REASON = """⛔ BLOCKED: direct `cargo test` / `cargo nextest` / `cargo llvm-cov` is not allowed in Rust projects.
+
+These are wrapped by rust-crucible.py, which runs the SAME cargo command AND ingests
+results to Crucible in one approved invocation (ORCHESTRATOR-RULES.md §4). Raw cargo
+bypasses ingest and re-prompts permission every run.
+
+Use instead (register first if you haven't; <crucible-clients> = the installed
+clients dir from install config, or the crucible repo `clients/` dir in dev):
+  • Run tests — one crate (add --test <bin> / --filter <expr> for a single test):
+      python3 <crucible-clients>/rust-crucible.py test --crate <crate> --agent <id>
+  • Full coverage regression (pre-merge gate — replaces `cargo llvm-cov`):
+      python3 <crucible-clients>/rust-crucible.py workspace-regression --agent <id> --all-features
+  • Compile-only / RED compile-fail (replaces `cargo check`):
+      python3 <crucible-clients>/rust-crucible.py check --crate <crate> --agent <id>
+
+See the project's instantiated orchestration memory (template: model-b repo
+skills-src/memory-templates/rust-orchestration.md) for the full tier.
+
+Escape hatch (rare, needs justification): prefix with ALLOW_RAW_CARGO=1
+  e.g.  ALLOW_RAW_CARGO=1 cargo nextest run -p <crate>"""
+
+
+def _is_cargo_invocation(command: str, match_any: bool = False) -> bool:
+    """Command-position-aware detector (inlined from the deployed
+    lib/detect-cargo-test.py). True only when `cargo` is the COMMAND WORD at a
+    command position (start of line / after a control operator, past leading
+    VAR=value assignments and an optional +toolchain token) with a TARGETS
+    verb — a mere mention inside an argument does not count. Fail-open on
+    parse error (deterrent, not a security boundary)."""
+    try:
+        lex = shlex.shlex(command, posix=True, punctuation_chars=True)
+        lex.whitespace_split = True
+        tokens = list(lex)
+    except ValueError:
+        return False  # unbalanced quotes etc. -> fail open (allow)
+
+    at_start = True
+    i, n = 0, len(tokens)
+    while i < n:
+        tok = tokens[i]
+        if tok in OPS:
+            at_start = True
+            i += 1
+            continue
+        if at_start:
+            if re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", tok):  # leading VAR=value
+                i += 1
+                continue  # still at a command-start position
+            if tok == "cargo":
+                if match_any:
+                    return True
+                j = i + 1
+                if j < n and tokens[j].startswith("+"):  # +toolchain selector
+                    j += 1
+                if j < n and tokens[j] in TARGETS:
+                    return True
+            at_start = False
+        i += 1
+    return False
+
+
+def _is_rust_project(cwd: str) -> bool:
+    """Cargo.toml in cwd or an ancestor (inlined detect-project semantics)."""
+    if not cwd:
+        return False
+    directory = Path(cwd)
+    for candidate in (directory, *directory.parents):
+        if (candidate / "Cargo.toml").is_file():
+            return True
+    return False
+
+
+def _block(reason: str) -> int:
+    print(json.dumps({"decision": "block", "reason": reason}))
+    return 2
+
+
+def main() -> int:
+    try:
+        payload = json.load(sys.stdin)
+    except (json.JSONDecodeError, OSError):
+        return 0  # unreadable payload -> fail open (deterrent, not security boundary)
+    if not isinstance(payload, dict) or payload.get("tool_name") != "Bash":
+        return 0
+    tool_input = payload.get("tool_input") or {}
+    command = tool_input.get("command") or ""
+    cwd = payload.get("cwd") or ""
+    if not command:
+        return 0
+
+    # Escape hatch — explicit opt-out wins before any matching.
+    if re.search(r"ALLOW_RAW_CARGO=(1|true)", command):
+        return 0
+    # Cheap pre-filter: most commands never mention cargo.
+    if "cargo" not in command:
+        return 0
+
+    # Bypass-closer: sandbox off on ANY real cargo command -> block.
+    if tool_input.get("dangerouslyDisableSandbox") is True and _is_cargo_invocation(
+        command, match_any=True
+    ):
+        return _block(DS_REASON)
+
+    if not _is_cargo_invocation(command):
+        return 0
+    if not _is_rust_project(cwd):
+        return 0
+    return _block(REASON)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

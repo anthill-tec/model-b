@@ -36,6 +36,11 @@ HARNESS_SKILL_DIRS: dict[str, str] = {
 SKILL_BUNDLE_MARKER = "SKILL.md"
 STORE_RELDIR = Path(".agents") / "skills"
 
+#: CR-MDB-015 §S6: the shared protocol scripts deploy ONCE user-scope into
+#: the same harness-neutral ``.agents/`` store the skill bundles use
+#: (``hooks`` mirrors the ``skills-src`` -> ``skills`` rename).
+HOOKS_SCRIPTS_STORE_RELDIR = Path(".agents") / "hooks" / "scripts"
+
 
 class DeployError(Exception):
     """A deploy step failed; install.toml must NOT be written (§S6)."""
@@ -69,6 +74,20 @@ def _skill_bundles(asset_root: Path) -> list[Path]:
         child for child in skills_src.iterdir()
         if child.is_dir() and (child / SKILL_BUNDLE_MARKER).is_file()
     )
+
+
+def _hook_scripts(asset_root: Path) -> list[Path]:
+    """The protocol scripts under ``<asset-root>/hooks-src/scripts/``.
+
+    Asset-root resolution is the caller's (:func:`default_asset_root` —
+    packaged ``modelb_axi/_assets`` first, repo checkout fallback), the
+    SAME chain the skill bundles use (CR-MDB-015 §S6)."""
+    scripts_dir = asset_root / "hooks-src" / "scripts"
+    if not scripts_dir.is_dir():
+        raise DeployError(
+            f"asset root has no hooks-src/scripts/ directory: {asset_root}"
+        )
+    return sorted(child for child in scripts_dir.iterdir() if child.is_file())
 
 
 def _deploy_file(
@@ -148,6 +167,19 @@ def deploy_assets(
                 manifest.append(
                     _deploy_file(src, dest, rel, prior, force_managed, skipped)
                 )
+        # CR-MDB-015 §S6: the seven protocol scripts, once, user-scope.
+        for src in _hook_scripts(asset_root):
+            rel_path = HOOKS_SCRIPTS_STORE_RELDIR / src.name
+            rel = str(rel_path)
+            dest = target_root / rel_path
+            manifest.append(
+                _deploy_file(src, dest, rel, prior, force_managed, skipped)
+            )
+            if rel not in skipped:
+                # Executable bit preserved (protocol scripts are run
+                # directly by harness wiring); hand-modified skips are
+                # left byte-AND-mode untouched.
+                shutil.copymode(src, dest)
         _link_harness_skills(target_root, harnesses, [b.name for b in bundles])
     except OSError as exc:
         raise DeployError(f"deploy step failed: {exc}") from exc
