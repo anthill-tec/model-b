@@ -26,11 +26,13 @@ importlib.util + pathlib.
 
 import ast
 import importlib.util
+import json
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
+import tomllib
 import unittest
 from pathlib import Path
 
@@ -605,15 +607,41 @@ class InitEmissionSoloRunTest(unittest.TestCase):
         )
 
     def test_hooks_readme_names_cr_mdb_015(self):
+        """AMENDED (sanctioned CR-MDB-015 013-gate amendment, per the CR's
+        Context section): this gate originally pinned the C1 seam-
+        placeholder text ("pending the CR-MDB-015 compiler" + the inert
+        `{"hooks": []}` JSON block). Now that §S5 fills the seam for real,
+        the placeholder is retired -- the gate retargets to the REAL
+        emission: `hooks/README.md` must carry the §S4 compiler's
+        per-harness report, naming the installed harness ("claude-code")
+        and the always-on `ambient-board-status` hook, rather than the
+        old placeholder. The method name is kept unchanged (it is cited by
+        name in the CR's Context section as "the sanctioned gate") -- only
+        the body's assertions retarget.
+        """
         hooks_readme = self._target / "hooks" / "README.md"
         self.assertTrue(
             hooks_readme.is_file(),
-            f"S3.7: `hooks/README.md` must be emitted; init stderr={self._result.stderr!r}",
+            f"S3.7/S5: `hooks/README.md` must be emitted; init stderr={self._result.stderr!r}",
         )
         content = hooks_readme.read_text(encoding="utf-8")
+        # POSITIVE -- the real compiler report names the installed harness.
         self.assertIn(
-            "CR-MDB-015", content,
-            f"S3.7: hooks seam note must name CR-MDB-015; got content={content!r}",
+            "claude-code", content,
+            "S5: hooks/README.md must carry the compiler report naming the "
+            f"emitted harness 'claude-code'; got content={content!r}",
+        )
+        # POSITIVE -- and the always-on ambient-board-status hook.
+        self.assertIn(
+            "ambient-board-status", content,
+            "S5: hooks/README.md must name the ambient-board-status hook "
+            f"in the compiler report; got content={content!r}",
+        )
+        # NEGATIVE -- the C1 seam placeholder text is retired.
+        self.assertNotIn(
+            "pending the CR-MDB-015 compiler", content,
+            "S5: the C1 placeholder text must be replaced by the real "
+            f"compiler report; got content={content!r}",
         )
 
     def test_non_dry_init_success_envelope_reports_ok_true_with_files_emitted_count(self):
@@ -651,6 +679,248 @@ class InitEmissionSoloRunTest(unittest.TestCase):
             count, 8,
             "S6: the files-emitted count/list must cover at least the base "
             f"committed set (>=8); got {count_field}={value!r}",
+        )
+
+
+class HooksSeamSoloRustEmissionTest(unittest.TestCase):
+    """§S5 AC (CR-MDB-015) -- a solo, single-stack `rust` init (claude-code
+    -only install.toml fixture) fills the hooks seam: stack/mode-derived
+    neutral-schema TOML instances land under `hooks/instances/<command>.toml`
+    (one instance per hook -- schema.md v1's "one instance per hook" line),
+    and the §S4 compiler wires the emitted instances into
+    `.claude/settings.json` for the installed claude-code harness.
+
+    Derived stack/mode selection table (documented per dispatch instruction,
+    from §S5's "cargo guard only for rust stacks; worktree/CR guards only
+    for multi mode; ambient-board-status always" rule plus each guard's own
+    nature -- schema.md v1's security-class list and each script's own
+    stdlib docstring). The CR text pins ONLY the rows this test and
+    HooksSeamMultiPythonEmissionTest assert on (cargo/mvn stack-gating,
+    worktree/CR mode-gating, ambient-status always-on); it is silent on
+    `block-bad-cycle-task-name` / `post-regression-disk-reminder`'s exact
+    gating for THIS scenario, so neither their presence nor their absence
+    is asserted below -- only the pinned rows:
+
+        hook                                    | stack gate               | mode gate
+        -----------------------------------------|--------------------------|----------
+        ambient-board-status                      | none (always)            | none (always)
+        block-direct-cargo-test                   | stacks ∩ {rust}          | none
+        block-direct-mvn-test                     | stacks ∩ {java, quarkus} | none
+        block-write-outside-worktree              | none (stack-neutral)     | multi only
+        block-cr-completed-without-spec-update    | none (stack-neutral)     | multi only
+        block-bad-cycle-task-name /
+        post-regression-disk-reminder             | none (stack-neutral per  | UNPINNED by
+                                                   | dispatch note)           | this CR slice
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls._tmp_home = tempfile.mkdtemp(prefix="modelb-axi-hooks-rust-home-")
+        cls._tmp_target = tempfile.mkdtemp(prefix="modelb-axi-hooks-rust-target-")
+        _write_install_toml(cls._tmp_home, harnesses=("claude-code",))
+        cls._result = _run_module(
+            "--yes", "init",
+            "--name", "X", "--token", "xproj", "--acronym", "XP",
+            "--mode", "solo", "--repo-shape", "standalone",
+            "--stacks", "rust", "--owner", "tester",
+            "--target", cls._tmp_target,
+            "--modelb-home", cls._tmp_home,
+        )
+        cls._target = Path(cls._tmp_target)
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls._tmp_home, ignore_errors=True)
+        shutil.rmtree(cls._tmp_target, ignore_errors=True)
+
+    def _instance_path(self, command):
+        return self._target / "hooks" / "instances" / f"{command}.toml"
+
+    def test_cargo_guard_and_ambient_status_toml_instances_emitted_with_correct_fields(self):
+        cargo_path = self._instance_path("block-direct-cargo-test")
+        self.assertTrue(
+            cargo_path.is_file(),
+            "S5: a `--stacks rust` init must emit the cargo-guard neutral "
+            f"schema instance at {cargo_path}; init exit={self._result.returncode} "
+            f"stderr={self._result.stderr!r}",
+        )
+        with open(cargo_path, "rb") as fh:
+            cargo_instance = tomllib.load(fh)
+        self.assertEqual(
+            cargo_instance.get("command"), "block-direct-cargo-test",
+            f"S5: got instance={cargo_instance!r}",
+        )
+        self.assertEqual(
+            cargo_instance.get("event"), "pre-tool-use",
+            f"S5: cargo guard is a pre-tool-use hook; got instance={cargo_instance!r}",
+        )
+        # POSITIVE -- security-class (block-*) hooks MUST declare
+        # fail_direction (schema.md v1).
+        self.assertIn(
+            cargo_instance.get("fail_direction"), ("open", "closed"),
+            "S5: the cargo guard is security-class and must declare "
+            f"fail_direction; got instance={cargo_instance!r}",
+        )
+
+        ambient_path = self._instance_path("ambient-board-status")
+        instances_dir = self._target / "hooks" / "instances"
+        self.assertTrue(
+            ambient_path.is_file(),
+            "S5: ambient-board-status must always be emitted; hooks/instances "
+            f"listing={list(instances_dir.iterdir()) if instances_dir.is_dir() else 'MISSING'}",
+        )
+        with open(ambient_path, "rb") as fh:
+            ambient_instance = tomllib.load(fh)
+        self.assertEqual(
+            ambient_instance.get("command"), "ambient-board-status",
+            f"S5: got instance={ambient_instance!r}",
+        )
+        self.assertEqual(
+            ambient_instance.get("event"), "session-start",
+            f"S5: ambient-board-status is a session-start hook; got instance={ambient_instance!r}",
+        )
+
+    def test_mvn_and_worktree_and_cr_completed_guard_instances_not_emitted_for_solo_rust(self):
+        # NEGATIVE -- no java/quarkus stack selected, so the mvn guard must
+        # not appear.
+        self.assertFalse(
+            self._instance_path("block-direct-mvn-test").exists(),
+            "S5: `--stacks rust` (no java/quarkus) must not emit the mvn-"
+            "guard instance",
+        )
+        # NEGATIVE -- solo mode, so neither the worktree nor the CR-
+        # completion guard may appear.
+        self.assertFalse(
+            self._instance_path("block-write-outside-worktree").exists(),
+            "S5: solo mode must not emit the worktree guard instance",
+        )
+        self.assertFalse(
+            self._instance_path("block-cr-completed-without-spec-update").exists(),
+            "S5: solo mode must not emit the CR-completion guard instance",
+        )
+
+    def test_claude_code_settings_json_wires_cargo_guard_and_ambient_status_commands(self):
+        settings_path = self._target / ".claude" / "settings.json"
+        self.assertTrue(
+            settings_path.is_file(),
+            "S5: compiled claude-code wiring must land at "
+            f".claude/settings.json under --target; init stderr={self._result.stderr!r}",
+        )
+        settings = json.loads(settings_path.read_text(encoding="utf-8"))
+        hooks_by_event = settings.get("hooks", {})
+
+        def _commands_for(event):
+            return [
+                spec.get("command", "")
+                for entry in hooks_by_event.get(event, [])
+                for spec in entry.get("hooks", [])
+            ]
+
+        def _all_commands():
+            commands = []
+            for event in hooks_by_event:
+                commands.extend(_commands_for(event))
+            return commands
+
+        # POSITIVE -- the cargo guard is wired under PreToolUse.
+        pre_tool_commands = _commands_for("PreToolUse")
+        self.assertTrue(
+            any(cmd.endswith("block-direct-cargo-test") for cmd in pre_tool_commands),
+            "S5: PreToolUse must wire the cargo guard; got PreToolUse commands="
+            f"{pre_tool_commands!r} (full settings={settings!r})",
+        )
+        # POSITIVE -- ambient-board-status is wired under SessionStart.
+        session_start_commands = _commands_for("SessionStart")
+        self.assertTrue(
+            any(cmd.endswith("ambient-board-status") for cmd in session_start_commands),
+            "S5: SessionStart must wire ambient-board-status; got SessionStart "
+            f"commands={session_start_commands!r} (full settings={settings!r})",
+        )
+        # NEGATIVE / bound -- zero mvn/worktree/cr-completed commands
+        # anywhere in the compiled wiring.
+        forbidden = (
+            "block-direct-mvn-test", "block-write-outside-worktree",
+            "block-cr-completed-without-spec-update",
+        )
+        leaked = [
+            cmd for cmd in _all_commands()
+            if any(cmd.endswith(f) for f in forbidden)
+        ]
+        self.assertEqual(
+            leaked, [],
+            "S5: solo/rust wiring must carry zero mvn/worktree/CR-completion "
+            f"commands; found {leaked!r} in settings={settings!r}",
+        )
+
+
+class HooksSeamMultiPythonEmissionTest(unittest.TestCase):
+    """§S5 AC (CR-MDB-015) -- a `--mode multi:2 --stacks python` init emits
+    the mode-gated worktree/CR-completion guard instances (multi only) and
+    withholds the stack-gated cargo/mvn guards (python selects neither rust
+    nor java/quarkus). See HooksSeamSoloRustEmissionTest's docstring for the
+    full derived selection table this pair of test classes is pinned from.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls._tmp_home = tempfile.mkdtemp(prefix="modelb-axi-hooks-multi-home-")
+        cls._tmp_target = tempfile.mkdtemp(prefix="modelb-axi-hooks-multi-target-")
+        _write_install_toml(cls._tmp_home, harnesses=("claude-code",))
+        cls._result = _run_module(
+            "--yes", "init",
+            "--name", "X", "--token", "xproj", "--acronym", "XP",
+            "--mode", "multi:2", "--repo-shape", "standalone",
+            "--stacks", "python", "--owner", "tester",
+            "--target", cls._tmp_target,
+            "--modelb-home", cls._tmp_home,
+        )
+        cls._target = Path(cls._tmp_target)
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls._tmp_home, ignore_errors=True)
+        shutil.rmtree(cls._tmp_target, ignore_errors=True)
+
+    def _instance_path(self, command):
+        return self._target / "hooks" / "instances" / f"{command}.toml"
+
+    def test_worktree_and_cr_completed_guard_instances_emitted_for_multi_mode(self):
+        for command in (
+            "block-write-outside-worktree",
+            "block-cr-completed-without-spec-update",
+        ):
+            path = self._instance_path(command)
+            self.assertTrue(
+                path.is_file(),
+                f"S5: `--mode multi:2` must emit the {command!r} guard "
+                f"instance; init exit={self._result.returncode} "
+                f"stderr={self._result.stderr!r}",
+            )
+            with open(path, "rb") as fh:
+                instance = tomllib.load(fh)
+            self.assertEqual(
+                instance.get("command"), command,
+                f"S5: got instance={instance!r}",
+            )
+            # POSITIVE -- these are security-class (block-*) hooks too.
+            self.assertIn(
+                instance.get("fail_direction"), ("open", "closed"),
+                f"S5: {command!r} is security-class and must declare "
+                f"fail_direction; got instance={instance!r}",
+            )
+
+    def test_cargo_and_mvn_guard_instances_not_emitted_for_python_stack(self):
+        # NEGATIVE / bound -- `--stacks python` selects neither rust nor
+        # java/quarkus, so neither stack-gated guard may appear, even
+        # though this run is multi-mode.
+        self.assertFalse(
+            self._instance_path("block-direct-cargo-test").exists(),
+            "S5: `--stacks python` must not emit the cargo guard instance",
+        )
+        self.assertFalse(
+            self._instance_path("block-direct-mvn-test").exists(),
+            "S5: `--stacks python` (no java/quarkus) must not emit the mvn "
+            "guard instance",
         )
 
 

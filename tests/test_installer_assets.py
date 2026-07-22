@@ -79,6 +79,20 @@ ALL_SEVEN_BUNDLE_NAMES = frozenset(IMPORTED_BUNDLE_NAMES) | {CRUCIBLE_BUNDLE_NAM
 STACKS = ("arduino", "bun", "python", "quarkus")
 ROLES = ("red", "green", "verify", "fix")
 
+# §S6 (CR-MDB-015) -- the shared protocol script library that must ship as
+# packaged data and get deployed user-scope, once, by the installer.
+HOOKS_SRC_DIR = REPO_ROOT / "hooks-src"
+HOOKS_SRC_SCRIPTS_DIR = HOOKS_SRC_DIR / "scripts"
+HOOK_SCRIPT_NAMES = (
+    "ambient-board-status",
+    "block-bad-cycle-task-name",
+    "block-cr-completed-without-spec-update",
+    "block-direct-cargo-test",
+    "block-direct-mvn-test",
+    "block-write-outside-worktree",
+    "post-regression-disk-reminder",
+)
+
 
 def _relative_file_set(root: Path) -> set:
     return {str(p.relative_to(root)) for p in root.rglob("*") if p.is_file()}
@@ -547,6 +561,131 @@ class InstalledPackageAssetRootEndToEndTest(unittest.TestCase):
             f"Vercel store must contain SKILL.md for every bundle under "
             f"{store_root} when deployed from the installed package; "
             f"missing: {missing_store}",
+        )
+
+
+class HooksSrcPackagingAssetTest(unittest.TestCase):
+    """§S6 AC7 (CR-MDB-015) -- `hooks-src/` (schema.md + the seven protocol
+    scripts) ships as packaged data: pyproject.toml force-includes it into
+    the wheel under `modelb_axi/_assets/hooks-src`, mirroring the existing
+    skills-src/generator/contracts/scripts rows, and the sdist only-include
+    list carries it too (so a source distribution build never silently
+    drops it). Direct pyproject.toml parse -- no wheel build needed."""
+
+    def test_pyproject_force_include_and_sdist_only_include_name_hooks_src(self):
+        pyproject_path = REPO_ROOT / "pyproject.toml"
+        with open(pyproject_path, "rb") as fh:
+            data = tomllib.load(fh)
+        force_include = (
+            data.get("tool", {}).get("hatch", {}).get("build", {})
+            .get("targets", {}).get("wheel", {}).get("force-include", {})
+        )
+        # POSITIVE/EXACT -- the wheel force-include maps hooks-src into the
+        # SAME package-data location the other three asset roots use.
+        self.assertEqual(
+            force_include.get("hooks-src"), "modelb_axi/_assets/hooks-src",
+            "S6/AC7: pyproject.toml [tool.hatch.build.targets.wheel."
+            "force-include] must map \"hooks-src\" = "
+            f"\"modelb_axi/_assets/hooks-src\"; got force_include={force_include!r}",
+        )
+        sdist_only_include = (
+            data.get("tool", {}).get("hatch", {}).get("build", {})
+            .get("targets", {}).get("sdist", {}).get("only-include", [])
+        )
+        # NEGATIVE / bound -- a source distribution build must not silently
+        # drop hooks-src/ either.
+        self.assertIn(
+            "hooks-src", sdist_only_include,
+            "S6/AC7: pyproject.toml [tool.hatch.build.targets.sdist]."
+            f"only-include must list \"hooks-src\"; got {sdist_only_include!r}",
+        )
+
+
+class HookScriptsDeployEndToEndTest(unittest.TestCase):
+    """§S6 AC7 (CR-MDB-015) -- the deploy engine's sandboxed install run
+    manifests the seven `hooks-src/scripts/` protocol scripts user-scope,
+    once, under the target-root's neutral store -- mirroring the existing
+    skill-bundle store pattern (`<target-root>/.agents/skills/<name>/`,
+    see DeployEngineSevenBundlesEndToEndTest above). No script-deploy path
+    exists yet in modelb_axi/deploy.py (only SKILL.md-marked bundles under
+    skills-src/ are deployed today -- hooks-src/scripts/ files carry no
+    SKILL.md marker), so this test pins the MINIMAL contract per the
+    dispatch instruction: the seven scripts land under
+    `<target-root>/.agents/hooks/scripts/<name>` (the deploy engine's own
+    `.agents/` store root; `hooks` mirrors the `skills-src` -> `skills`
+    rename the existing skill store already uses) with one install.toml
+    [[files]] manifest entry each."""
+
+    def setUp(self):
+        self._tmp_home = tempfile.mkdtemp(prefix="modelb-axi-hookdeploy-home-")
+        self._tmp_bin = tempfile.mkdtemp(prefix="modelb-axi-hookdeploy-fakebin-")
+        self._tmp_target_root = tempfile.mkdtemp(prefix="modelb-axi-hookdeploy-target-")
+        _write_fake_executable(self._tmp_bin, "uv", _FAKE_UV_SCRIPT)
+        _write_fake_executable(self._tmp_bin, "sandesh", _FAKE_SANDESH_SCRIPT)
+
+    def tearDown(self):
+        shutil.rmtree(self._tmp_home, ignore_errors=True)
+        shutil.rmtree(self._tmp_bin, ignore_errors=True)
+        shutil.rmtree(self._tmp_target_root, ignore_errors=True)
+
+    def test_end_to_end_install_deploys_seven_hook_scripts_with_manifest_entries(self):
+        result = _run_module(
+            "--yes", "--harnesses", "claude-code",
+            "--modelb-home", self._tmp_home,
+            "--target-root", self._tmp_target_root,
+            env_overrides={"PATH": self._tmp_bin},
+        )
+        self.assertEqual(
+            result.returncode, 0,
+            f"end-to-end sandboxed install must exit 0; got "
+            f"exit={result.returncode} stdout={result.stdout!r} "
+            f"stderr={result.stderr!r}",
+        )
+        deployed_dir = Path(self._tmp_target_root) / ".agents" / "hooks" / "scripts"
+        missing_scripts = [
+            name for name in HOOK_SCRIPT_NAMES
+            if not (deployed_dir / name).is_file()
+        ]
+        # POSITIVE/EXACT -- every one of the seven protocol scripts lands
+        # under the store, none missing.
+        self.assertEqual(
+            missing_scripts, [],
+            f"deployed hook-scripts store {deployed_dir} must contain all "
+            f"seven protocol scripts; missing={missing_scripts}",
+        )
+        # Round-trip fidelity across the deploy boundary -- a deployed
+        # script's bytes must match its hooks-src/scripts/ source exactly
+        # (catches a mangled/partial/truncated copy).
+        source_text = (HOOKS_SRC_SCRIPTS_DIR / "ambient-board-status").read_text(
+            encoding="utf-8",
+        )
+        deployed_text = (deployed_dir / "ambient-board-status").read_text(
+            encoding="utf-8",
+        )
+        self.assertEqual(
+            deployed_text, source_text,
+            "S6/AC7: the deployed ambient-board-status script must be "
+            "byte-for-byte identical to hooks-src/scripts/ambient-board-status",
+        )
+        with open(Path(self._tmp_home) / "install.toml", "rb") as fh:
+            data = tomllib.load(fh)
+        files_section = data.get("files", [])
+        manifest_paths = {
+            str(entry.get("path", "")) for entry in files_section
+            if isinstance(entry, dict)
+        }
+        expected_manifest_paths = {
+            str(Path(".agents") / "hooks" / "scripts" / name)
+            for name in HOOK_SCRIPT_NAMES
+        }
+        missing_manifest = sorted(expected_manifest_paths - manifest_paths)
+        # POSITIVE/EXACT -- one install.toml [[files]] manifest entry per
+        # deployed hook script.
+        self.assertEqual(
+            missing_manifest, [],
+            f"install.toml [[files]] must record a manifest entry for "
+            f"every deployed hook script; missing={missing_manifest} "
+            f"(found paths sample={sorted(manifest_paths)[:20]})",
         )
 
 
