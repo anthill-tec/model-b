@@ -137,6 +137,25 @@ def _load_toon_codec():
     return module
 
 
+def _parse_env_file(path: Path) -> dict:
+    """Minimal ``KEY=VALUE`` parser for the emitted ``.env``/``.env.local``
+    files (values may be bare or double-quoted; blank lines and
+    ``#``-comments are skipped) -- test-side only, no production coupling."""
+    values: dict = {}
+    if not path.is_file():
+        return values
+    for line in path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        key, _, raw_value = stripped.partition("=")
+        value = raw_value.strip()
+        if len(value) >= 2 and value[0] == value[-1] == '"':
+            value = value[1:-1]
+        values[key.strip()] = value
+    return values
+
+
 class InitHelpFlagsTest(unittest.TestCase):
     """§S2 AC -- `modelb-axi init --help` exits 0 and lists every flag the
     scaffold subcommand accepts."""
@@ -383,6 +402,419 @@ class StdlibOnlyImportScanTest(unittest.TestCase):
             offenders, {},
             "S2: every modelb_axi/*.py module must import only stdlib or "
             f"local (modelb_axi.*) modules; found third-party imports: {offenders!r}",
+        )
+
+
+class InitEmissionSoloRunTest(unittest.TestCase):
+    """§S3 AC -- a solo, standalone, single-stack `init` run (installed
+    harness set = claude-code per the test's install.toml fixture) emits
+    the full committed set: registry `.env`/`.env.local`, the docs model,
+    `AGENTS.md` + the claude-code anchor, in-repo memory, the git+commit
+    state, and the hooks seam note. One subprocess run shared read-only
+    across the test methods below (mirrors the class-level shared-fixture
+    style already used for HarnessTargetingTest in test_installer.py)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls._tmp_home = tempfile.mkdtemp(prefix="modelb-axi-emit-home-")
+        cls._tmp_target = tempfile.mkdtemp(prefix="modelb-axi-emit-target-")
+        _write_install_toml(cls._tmp_home, harnesses=("claude-code",))
+        cls._result = _run_module(
+            "--yes", "init",
+            "--name", "X", "--token", "xproj", "--acronym", "XP",
+            "--mode", "solo", "--repo-shape", "standalone",
+            "--stacks", "python", "--owner", "tester",
+            "--target", cls._tmp_target,
+            "--modelb-home", cls._tmp_home,
+        )
+        cls._target = Path(cls._tmp_target)
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls._tmp_home, ignore_errors=True)
+        shutil.rmtree(cls._tmp_target, ignore_errors=True)
+
+    def test_env_and_env_local_registry_and_gitignore_contract(self):
+        env_path = self._target / ".env"
+        self.assertTrue(
+            env_path.is_file(),
+            "S3.1: `.env` must be emitted at the project root; init "
+            f"exit={self._result.returncode} stderr={self._result.stderr!r}",
+        )
+        env = _parse_env_file(env_path)
+        # POSITIVE -- all five registry keys, mode-aware orchestrator label.
+        self.assertEqual(env.get("PROJECT_NAME"), "X", f"S3.1: got env={env!r}")
+        self.assertEqual(env.get("PROJECT_TOKEN"), "xproj", f"S3.1: got env={env!r}")
+        self.assertEqual(env.get("PROJECT_ACRONYM"), "XP", f"S3.1: got env={env!r}")
+        self.assertEqual(env.get("REPO_OWNER"), "tester", f"S3.1: got env={env!r}")
+        self.assertEqual(
+            env.get("ORCHESTRATOR_LABEL"), "vidushi-xproj",
+            f"S3.1: ORCHESTRATOR_LABEL must be vidushi-<token> in solo mode; got env={env!r}",
+        )
+        env_local_path = self._target / ".env.local"
+        self.assertTrue(
+            env_local_path.is_file(),
+            "S3.1: `.env.local` must be emitted; target listing="
+            f"{list(self._target.iterdir()) if self._target.exists() else 'MISSING'}",
+        )
+        gitignore_text = (self._target / ".gitignore").read_text(encoding="utf-8")
+        self.assertIn(
+            ".env.local", gitignore_text,
+            f"S3.1/S4: `.gitignore` must ignore `.env.local`; got {gitignore_text!r}",
+        )
+        env_local = _parse_env_file(env_local_path)
+        # POSITIVE -- seeded as an empty placeholder, not absent/None.
+        self.assertEqual(
+            env_local.get("CRUCIBLE_PROJECT_KEY"), "",
+            f"S3.1: `.env.local` must seed CRUCIBLE_PROJECT_KEY as an empty placeholder; got {env_local!r}",
+        )
+
+    def test_docs_model_queue_readme_and_research_dir(self):
+        readme_path = self._target / "docs" / "changes" / "README.md"
+        self.assertTrue(
+            readme_path.is_file(),
+            f"S3.2: `docs/changes/README.md` must be emitted; init stderr={self._result.stderr!r}",
+        )
+        readme = readme_path.read_text(encoding="utf-8")
+        for slot in ("Design contract", "Evidence base", "Ontology", "Target release"):
+            self.assertIn(
+                slot, readme,
+                f"S3.2: queue README must carry the four header slots incl. {slot!r}; got readme={readme!r}",
+            )
+        self.assertIn(
+            "| CR | Title | Wave | Depends on |", readme,
+            f"S3.2: queue README must carry the structure-only table header; got readme={readme!r}",
+        )
+        self.assertTrue(
+            (self._target / "docs" / "research").is_dir(),
+            "S3.2: `docs/research/` must exist",
+        )
+
+    def test_agents_md_identity_freeze_and_claude_md_symlink(self):
+        agents_path = self._target / "AGENTS.md"
+        self.assertTrue(
+            agents_path.is_file(),
+            f"S3.3: `AGENTS.md` must be emitted; init stderr={self._result.stderr!r}",
+        )
+        content = agents_path.read_text(encoding="utf-8")
+        self.assertIn("xproj", content, f"S3.3: AGENTS.md must carry the token; got content={content!r}")
+        self.assertIn("XP", content, f"S3.3: AGENTS.md must carry the acronym; got content={content!r}")
+        self.assertIn(
+            "python", content.lower(),
+            f"S3.3: AGENTS.md must carry the python skill-freeze content; got content={content!r}",
+        )
+        self.assertIn(
+            "grouping of CRs", content,
+            f"S3.3: AGENTS.md must carry the wave definition phrase; got content={content!r}",
+        )
+        # NEGATIVE -- post-036 run-context note: zero WORKFLOW_CYCLE_ID occurrences.
+        self.assertNotIn(
+            "WORKFLOW_CYCLE_ID", content,
+            f"S3.3: AGENTS.md must carry zero WORKFLOW_CYCLE_ID occurrences; got content={content!r}",
+        )
+        claude_md = self._target / "CLAUDE.md"
+        self.assertTrue(
+            claude_md.is_symlink(),
+            "S3.3: CLAUDE.md must be a symlink for the claude-code anchor; "
+            f"target listing={list(self._target.iterdir()) if self._target.exists() else 'MISSING'}",
+        )
+        self.assertEqual(
+            claude_md.resolve(), agents_path.resolve(),
+            "S3.3: CLAUDE.md symlink must resolve to AGENTS.md; got resolved="
+            f"{claude_md.resolve() if claude_md.exists() else 'MISSING'}",
+        )
+
+    def test_memory_docs_index_and_stack_filtered_templates(self):
+        memory_dir = self._target / "docs" / "memory"
+        index_path = memory_dir / "INDEX.md"
+        self.assertTrue(
+            index_path.is_file(),
+            f"S3.4: `docs/memory/INDEX.md` must be emitted; init stderr={self._result.stderr!r}",
+        )
+        # NEGATIVE / bound -- zero non-python stack templates leak into a
+        # `--stacks python` run (java/rust templates exist in the source tree).
+        for offender in ("java-orchestration.md", "rust-orchestration.md"):
+            self.assertFalse(
+                (memory_dir / offender).exists(),
+                f"S3.4: `--stacks python` must emit zero non-python stack templates; found {offender}",
+            )
+        # POSITIVE -- the stack-neutral template IS emitted regardless of --stacks.
+        self.assertTrue(
+            (memory_dir / "operational-commands.md").is_file(),
+            "S3.4: the stack-neutral memory template must be emitted for any --stacks value",
+        )
+
+    def test_git_repo_on_develop_with_single_commit_and_clean_porcelain(self):
+        git_dir = self._target / ".git"
+        self.assertTrue(
+            git_dir.is_dir(),
+            f"S3.5: `init` must create a git repo under --target; init stderr={self._result.stderr!r}",
+        )
+        branch = subprocess.run(
+            ["git", "-C", str(self._target), "branch", "--show-current"],
+            capture_output=True, text=True,
+        )
+        self.assertEqual(
+            branch.stdout.strip(), "develop",
+            f"S3.5: repo must be checked out on develop; got stdout={branch.stdout!r} stderr={branch.stderr!r}",
+        )
+        master = subprocess.run(
+            ["git", "-C", str(self._target), "rev-parse", "--verify", "master"],
+            capture_output=True, text=True,
+        )
+        self.assertEqual(
+            master.returncode, 0,
+            f"S3.5: a `master` ref must exist; stdout={master.stdout!r} stderr={master.stderr!r}",
+        )
+        commit_count = subprocess.run(
+            ["git", "-C", str(self._target), "rev-list", "--all", "--count"],
+            capture_output=True, text=True,
+        )
+        self.assertEqual(
+            commit_count.stdout.strip(), "1",
+            f"S4: exactly one initial commit is expected; got count={commit_count.stdout!r}",
+        )
+        porcelain = subprocess.run(
+            ["git", "-C", str(self._target), "status", "--porcelain"],
+            capture_output=True, text=True,
+        )
+        self.assertEqual(
+            porcelain.stdout.strip(), "?? .env.local",
+            f"S4: only `.env.local` may be untracked; got porcelain={porcelain.stdout!r}",
+        )
+
+    def test_hooks_readme_names_cr_mdb_015(self):
+        hooks_readme = self._target / "hooks" / "README.md"
+        self.assertTrue(
+            hooks_readme.is_file(),
+            f"S3.7: `hooks/README.md` must be emitted; init stderr={self._result.stderr!r}",
+        )
+        content = hooks_readme.read_text(encoding="utf-8")
+        self.assertIn(
+            "CR-MDB-015", content,
+            f"S3.7: hooks seam note must name CR-MDB-015; got content={content!r}",
+        )
+
+    def test_non_dry_init_success_envelope_reports_ok_true_with_files_emitted_count(self):
+        self.assertEqual(
+            self._result.returncode, 0,
+            "S3/S6: a full non-dry init run must exit 0; got "
+            f"exit={self._result.returncode} stdout={self._result.stdout!r} "
+            f"stderr={self._result.stderr!r}",
+        )
+        toon = _load_toon_codec()
+        try:
+            envelope = toon.decode(self._result.stdout)
+        except Exception as exc:
+            self.fail(
+                "S6: a non-dry `init` success must still emit a parseable "
+                f"TOON envelope; decode failed with {exc!r} on stdout={self._result.stdout!r}"
+            )
+        axi = envelope.get("axi", {})
+        self.assertIs(
+            axi.get("ok"), True,
+            f"S6: a successful non-dry init must report axi.ok true; got envelope={envelope!r}",
+        )
+        count_field = next(
+            (k for k in ("emitted", "files_emitted", "planned") if k in axi), None,
+        )
+        self.assertIsNotNone(
+            count_field,
+            "S6: the success envelope must carry a files-emitted count/list "
+            f"field (emitted/files_emitted/planned); got envelope={envelope!r}",
+        )
+        value = axi[count_field]
+        count = len(value) if isinstance(value, list) else value
+        # NEGATIVE / bound -- at least the 8 base committed-set files, loosely pinned.
+        self.assertGreaterEqual(
+            count, 8,
+            "S6: the files-emitted count/list must cover at least the base "
+            f"committed set (>=8); got {count_field}={value!r}",
+        )
+
+
+class HarnessAnchorMatrixTest(unittest.TestCase):
+    """§S3.3 AC -- per-harness anchors are emitted ONLY for the harnesses
+    the INSTALLATION declares. `DN-harness-agnostic-hooks.md` §2 surveys
+    Codex/Gemini/Cursor/Copilot/opencode/Amp project-config paths but
+    names neither `Hermes` nor `pi` (pi.dev) at all, and even for
+    opencode gives only a plugin mechanism (no concrete anchor-file
+    path) -- so for all three of hermes/pi/opencode the DN supplies no
+    concrete anchor location and §S3.3's fallback applies: "where a
+    harness reads AGENTS.md natively, emit nothing and note it" i.e. a
+    documented native-AGENTS.md note naming the harness, not a separate
+    anchor file."""
+
+    def _run_with_harnesses(self, harnesses):
+        tmp_home = tempfile.mkdtemp(prefix="modelb-axi-anchor-home-")
+        tmp_target = tempfile.mkdtemp(prefix="modelb-axi-anchor-target-")
+        self.addCleanup(shutil.rmtree, tmp_home, ignore_errors=True)
+        self.addCleanup(shutil.rmtree, tmp_target, ignore_errors=True)
+        _write_install_toml(tmp_home, harnesses=harnesses)
+        result = _run_module(
+            "--yes", "init",
+            "--name", "X", "--token", "xproj", "--acronym", "XP",
+            "--mode", "solo", "--repo-shape", "standalone",
+            "--stacks", "python", "--owner", "tester",
+            "--target", tmp_target,
+            "--modelb-home", tmp_home,
+        )
+        return result, Path(tmp_target)
+
+    def test_all_four_installed_harnesses_get_documented_anchors(self):
+        result, target = self._run_with_harnesses(
+            ("claude-code", "hermes", "pi", "opencode"),
+        )
+        claude_md = target / "CLAUDE.md"
+        self.assertTrue(
+            claude_md.is_symlink(),
+            f"S3.3: CLAUDE.md symlink anchor must exist for claude-code; "
+            f"init stderr={result.stderr!r}",
+        )
+        agents_path = target / "AGENTS.md"
+        self.assertTrue(
+            agents_path.is_file(),
+            f"S3.3: AGENTS.md must be emitted; init stderr={result.stderr!r}",
+        )
+        content = agents_path.read_text(encoding="utf-8").lower()
+        for marker in ("hermes", "pi.dev", "opencode"):
+            self.assertIn(
+                marker, content,
+                "S3.3: with all four roster harnesses installed, AGENTS.md "
+                f"must carry a native-anchor note naming {marker!r}; got content={content!r}",
+            )
+
+    def test_claude_only_install_emits_no_hermes_pi_opencode_anchors(self):
+        result, target = self._run_with_harnesses(("claude-code",))
+        claude_md = target / "CLAUDE.md"
+        self.assertTrue(
+            claude_md.is_symlink(),
+            f"S3.3: CLAUDE.md symlink anchor must still exist for claude-code; "
+            f"init stderr={result.stderr!r}",
+        )
+        agents_path = target / "AGENTS.md"
+        content = agents_path.read_text(encoding="utf-8").lower() if agents_path.is_file() else ""
+        for marker in ("hermes", "pi.dev", "opencode"):
+            self.assertNotIn(
+                marker, content,
+                "S3.3: with only claude-code installed, NO hermes/pi/opencode "
+                f"anchor note may appear; found {marker!r} in content={content!r}",
+            )
+
+
+class MonorepoEmissionTest(unittest.TestCase):
+    """§S3 AC -- `--repo-shape monorepo:a,b` emits per-sub-project `.env`
+    + `AGENTS.md` under each sub-project dir (`a/`, `b/`)."""
+
+    def setUp(self):
+        self._tmp_home = tempfile.mkdtemp(prefix="modelb-axi-mono-home-")
+        self._tmp_target = tempfile.mkdtemp(prefix="modelb-axi-mono-target-")
+        _write_install_toml(self._tmp_home, harnesses=("claude-code",))
+
+    def tearDown(self):
+        shutil.rmtree(self._tmp_home, ignore_errors=True)
+        shutil.rmtree(self._tmp_target, ignore_errors=True)
+
+    def test_monorepo_repo_shape_emits_per_subproject_env_and_agents_md(self):
+        result = _run_module(
+            "--yes", "init",
+            "--name", "X", "--token", "xproj", "--acronym", "XP",
+            "--mode", "solo", "--repo-shape", "monorepo:a,b",
+            "--stacks", "python", "--owner", "tester",
+            "--target", self._tmp_target,
+            "--modelb-home", self._tmp_home,
+        )
+        target = Path(self._tmp_target)
+        for sub in ("a", "b"):
+            sub_env = target / sub / ".env"
+            sub_agents = target / sub / "AGENTS.md"
+            self.assertTrue(
+                sub_env.is_file(),
+                f"S3: monorepo sub-project {sub!r} must get its own `.env`; "
+                f"init exit={result.returncode} stderr={result.stderr!r}",
+            )
+            self.assertTrue(
+                sub_agents.is_file(),
+                f"S3: monorepo sub-project {sub!r} must get its own `AGENTS.md`",
+            )
+            sub_env_content = _parse_env_file(sub_env)
+            self.assertEqual(
+                sub_env_content.get("PROJECT_TOKEN"), "xproj",
+                f"S3: sub-project .env must carry the project registry too; got {sub_env_content!r}",
+            )
+
+
+class NoCommitPolicyTest(unittest.TestCase):
+    """§S4 AC -- `--no-commit` leaves zero commits with no partial
+    commit, while the emission itself still happens."""
+
+    def setUp(self):
+        self._tmp_home = tempfile.mkdtemp(prefix="modelb-axi-nocommit-home-")
+        self._tmp_target = tempfile.mkdtemp(prefix="modelb-axi-nocommit-target-")
+        _write_install_toml(self._tmp_home, harnesses=("claude-code",))
+
+    def tearDown(self):
+        shutil.rmtree(self._tmp_home, ignore_errors=True)
+        shutil.rmtree(self._tmp_target, ignore_errors=True)
+
+    def test_no_commit_flag_leaves_zero_commits_and_still_emits_files(self):
+        result = _run_module(
+            "--yes", "init",
+            "--name", "X", "--token", "xproj", "--acronym", "XP",
+            "--mode", "solo", "--repo-shape", "standalone",
+            "--stacks", "python", "--owner", "tester",
+            "--target", self._tmp_target,
+            "--modelb-home", self._tmp_home,
+            "--no-commit",
+        )
+        target = Path(self._tmp_target)
+        # POSITIVE -- emission still happens under --no-commit.
+        self.assertTrue(
+            (target / "AGENTS.md").is_file(),
+            f"S4: --no-commit must still emit files; init exit={result.returncode} "
+            f"stderr={result.stderr!r}",
+        )
+        git_dir = target / ".git"
+        if git_dir.is_dir():
+            commit_count = subprocess.run(
+                ["git", "-C", str(target), "rev-list", "--all", "--count"],
+                capture_output=True, text=True,
+            )
+            self.assertEqual(
+                commit_count.stdout.strip(), "0",
+                f"S4: --no-commit must leave zero commits; got count={commit_count.stdout!r}",
+            )
+            # NEGATIVE -- no partial commit: nothing may be staged either.
+            staged = subprocess.run(
+                ["git", "-C", str(target), "diff", "--cached", "--name-only"],
+                capture_output=True, text=True,
+            )
+            self.assertEqual(
+                staged.stdout.strip(), "",
+                f"S4: --no-commit must leave nothing staged (no partial commit); got staged={staged.stdout!r}",
+            )
+
+
+class RegistryKeyDocPropagationTest(unittest.TestCase):
+    """§S5 AC -- the repo-local `skills-src/model-b/SKILL.md` documents
+    the full `.env` registry key set incl. REPO_OWNER and the scaffold
+    as its instantiation path. This is a direct repo-file read (no
+    subprocess) -- it is EXPECTED to fail until GREEN edits that
+    repo-local file."""
+
+    SKILL_MD_PATH = REPO_ROOT / "skills-src" / "model-b" / "SKILL.md"
+
+    def test_skill_md_names_repo_owner_and_scaffold_instantiation_path(self):
+        content = self.SKILL_MD_PATH.read_text(encoding="utf-8")
+        self.assertIn(
+            "REPO_OWNER", content,
+            "S5: SKILL.md must name REPO_OWNER among the registry keys; "
+            f"got content head={content[:2000]!r}",
+        )
+        self.assertIn(
+            "scaffold", content.lower(),
+            "S5: SKILL.md must document the scaffold flow as the "
+            f"registry's instantiation path; got content head={content[:2000]!r}",
         )
 
 
