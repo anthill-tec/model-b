@@ -1,0 +1,143 @@
+#!/usr/bin/env python3
+"""pre-tool-use protocol script — HARD-BLOCKS direct Maven test invocations
+(`mvn test`, `mvn verify`, `mvn integration-test`, `mvn test-compile`,
+surefire/failsafe goals; mvn / mvnw / ./mvnw / mvnd) in Java projects and
+redirects to the mvn-crucible.py wrapper. Build/release goals (package,
+install, deploy, compile) are NOT blocked.
+
+Normalized from the deployed ~/.claude/hooks/block-direct-mvn-test.sh
+baseline (CR-MDB-015 §S3): same stdin contract (JSON `tool_name` /
+`tool_input.command` / `cwd`), same exit protocol (allow -> 0, block -> 2 +
+`{"decision":"block","reason":...}` on stdout), the quote-aware
+command-position detector (formerly lib/detect-mvn-test.py) inlined —
+self-contained, stdlib only — and the same `ALLOW_RAW_MVN=1` escape hatch.
+Client invocation guidance follows the discovery convention (installed
+clients dir from install config; the crucible repo `clients/` dir in dev)
+instead of a hardcoded user-dotfile script path.
+"""
+
+import json
+import re
+import shlex
+import sys
+from pathlib import Path
+
+LAUNCHERS = {"mvn", "mvnw", "mvnd"}
+TEST_GOALS = {"test", "verify", "integration-test", "test-compile"}
+TEST_GOAL_PREFIXES = ("surefire:", "failsafe:")
+OPS = {"|", "||", "&&", ";", ";;", "&", "(", ")", "\n"}
+
+REASON = """⛔ BLOCKED: direct `mvn test` / `mvn verify` / `mvn integration-test` / `mvn test-compile` (and surefire/failsafe goals) is not allowed in Java projects.
+
+These are wrapped by mvn-crucible.py, which runs the SAME mvn goals AND ingests
+results (surefire/failsafe JUnit + JaCoCo) to Crucible in one approved invocation.
+Raw mvn bypasses ingest and re-prompts permission every run.
+
+Use instead (register first if you haven't; <crucible-clients> = the installed
+clients dir from install config, or the crucible repo `clients/` dir in dev):
+  • Single test class/method (surefire) — replaces `mvn test -Dtest=…`:
+      python3 <crucible-clients>/mvn-crucible.py unit --test <Class[#method]> --agent <id>
+  • A module's full surefire suite — replaces `mvn test [-pl m]`:
+      python3 <crucible-clients>/mvn-crucible.py module [--module <m> --also-make] --agent <id>
+  • Compile-only / RED compile-fail — replaces `mvn test-compile`:
+      python3 <crucible-clients>/mvn-crucible.py compile --agent <id>
+  • Integration tests (failsafe IT / @QuarkusIntegrationTest) — replaces `mvn verify`:
+      python3 <crucible-clients>/mvn-crucible.py e2e [--failsafe-only] [--native] --agent <id>
+  • Full reactor regression + coverage (pre-merge gate) — replaces `mvn clean verify`:
+      python3 <crucible-clients>/mvn-crucible.py regression --agent <id>
+
+Build/release goals (mvn package / install / compile) are allowed and unaffected.
+See the project's instantiated orchestration memory (template: model-b repo
+skills-src/memory-templates/java-orchestration.md) for the full tier.
+
+Escape hatch (rare, needs justification): prefix with ALLOW_RAW_MVN=1
+  e.g.  ALLOW_RAW_MVN=1 mvn clean verify -pl runtime"""
+
+
+def _is_launcher(token: str) -> bool:
+    """mvn / mvnw / mvnd, bare or path-invoked (./mvnw, sub/dir/mvnw)."""
+    return token.rsplit("/", 1)[-1] in LAUNCHERS
+
+
+def _is_test_goal(token: str) -> bool:
+    return token in TEST_GOALS or token.startswith(TEST_GOAL_PREFIXES)
+
+
+def _is_mvn_test_invocation(command: str) -> bool:
+    """Quote-aware, command-position-aware detector (deployed
+    lib/detect-mvn-test.py semantics): a launcher must be the command word,
+    and one of ITS OWN arguments (up to the next control operator) must be a
+    test-purpose goal/phase. Fail-open on parse error."""
+    try:
+        lex = shlex.shlex(command, posix=True, punctuation_chars=True)
+        lex.whitespace_split = True
+        tokens = list(lex)
+    except ValueError:
+        return False  # unbalanced quotes etc. -> fail open (allow)
+
+    at_start = True
+    i, n = 0, len(tokens)
+    while i < n:
+        tok = tokens[i]
+        if tok in OPS:
+            at_start = True
+            i += 1
+            continue
+        if at_start:
+            if re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", tok):  # leading VAR=value
+                i += 1
+                continue  # still at a command-start position
+            if _is_launcher(tok):
+                j = i + 1
+                while j < n and tokens[j] not in OPS:
+                    if _is_test_goal(tokens[j]):
+                        return True
+                    j += 1
+            at_start = False
+        i += 1
+    return False
+
+
+def _is_java_project(cwd: str) -> bool:
+    """pom.xml / build.gradle(.kts) in cwd or an ancestor."""
+    if not cwd:
+        return False
+    directory = Path(cwd)
+    for candidate in (directory, *directory.parents):
+        for marker in ("pom.xml", "build.gradle", "build.gradle.kts"):
+            if (candidate / marker).is_file():
+                return True
+    return False
+
+
+def main() -> int:
+    try:
+        payload = json.load(sys.stdin)
+    except (json.JSONDecodeError, OSError):
+        return 0  # unreadable payload -> fail open (deterrent, not security boundary)
+    if not isinstance(payload, dict) or payload.get("tool_name") != "Bash":
+        return 0
+    tool_input = payload.get("tool_input") or {}
+    command = tool_input.get("command") or ""
+    cwd = payload.get("cwd") or ""
+    if not command:
+        return 0
+
+    # Escape hatch — explicit opt-out wins before any matching.
+    if re.search(r"ALLOW_RAW_MVN=(1|true)", command):
+        return 0
+    # Cheap pre-filter: most commands never mention mvn.
+    if "mvn" not in command:
+        return 0
+
+    if not _is_mvn_test_invocation(command):
+        return 0
+    if not _is_java_project(cwd):
+        return 0
+
+    print(json.dumps({"decision": "block", "reason": REASON}))
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())

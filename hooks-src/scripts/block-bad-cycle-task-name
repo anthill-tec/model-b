@@ -1,0 +1,57 @@
+#!/usr/bin/env python3
+"""pre-tool-use protocol script — BLOCKS TaskCreate calls whose `subject`
+splits a TDD cycle into separate RED/GREEN/FIX tasks (a cycle is RED+GREEN as
+ONE task; VERIFY / FIX / regression+merge are separate top-level tasks).
+
+Normalized from the deployed ~/.claude/hooks/block-bad-cycle-task-name.sh
+baseline (CR-MDB-015 §S3): same stdin contract (JSON `tool_name` /
+`tool_input.subject`), same exit protocol (allow -> 0, block -> 2 +
+`{"decision":"block","reason":...}` on stdout), same detection regex.
+Self-contained, stdlib only (no jq). Project-agnostic.
+
+Allowed subject patterns:
+  `CR-XXX-234 - C1 - <scope title>`   <- cycle (RED+GREEN as one unit)
+  `CR-XXX-234 - VERIFY`               <- verify (separate task)
+  `CR-XXX-234 - FIX`                  <- fix (conditional separate task)
+  `CR-XXX-234 - regression + merge`   <- final (separate task)
+Disallowed (block): `... C1 - RED ...` / `... C2 - GREEN ...` /
+`... C1 - FIX ...` (a phase tag as a cycle suffix).
+"""
+
+import json
+import re
+import sys
+
+_BAD_PATTERN = re.compile(
+    r"(^|[^A-Za-z0-9])C[0-9]+\s*-\s*(RED|GREEN|FIX)\b", re.IGNORECASE
+)
+
+
+def main() -> int:
+    try:
+        payload = json.load(sys.stdin)
+    except (json.JSONDecodeError, OSError):
+        return 0  # unreadable payload -> fail open (deterrent, not security boundary)
+    if not isinstance(payload, dict) or payload.get("tool_name") != "TaskCreate":
+        return 0
+    subject = (payload.get("tool_input") or {}).get("subject") or ""
+    if not subject:
+        return 0
+
+    if _BAD_PATTERN.search(subject):
+        reason = (
+            f"⛔ BLOCKED: Task subject [{subject}] splits a cycle into separate "
+            "RED/GREEN tasks. Per ORCHESTRATOR-RULES.md §2: a cycle is RED+GREEN "
+            "as ONE task — internally dispatches RED then GREEN agents within "
+            "the same task lifecycle. Use the form `CR-N - C# - <scope title>` "
+            "(e.g. `CR-NAI-234 - C1 - DedupEngine API change`). VERIFY / FIX / "
+            "regression+merge are separate top-level tasks (no `Cn` prefix), "
+            "e.g. `CR-NAI-234 - VERIFY`."
+        )
+        print(json.dumps({"decision": "block", "reason": reason}))
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

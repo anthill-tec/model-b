@@ -1,0 +1,182 @@
+#!/usr/bin/env python3
+"""session-start protocol script — surfaces the Crucible board (open plans,
+active cycle, lastRunCr) into session context as ambient status (CR-MDB-015
+§S3, per the #1334 division; AXI principle 7).
+
+NEW in hooks-src (not an import): authored against
+crucible:clients/STATUS-CONTRACT.md **VERSION 1.0.0** (CR-CRU-035). The
+status feed is the project stack client's `status` verb — a read-only,
+hook-safe board query that always exits 0 and reports one of THREE definitive
+terminal states, each rendered DISTINCTLY here:
+
+  1. board present   -> plan rows (cr / wave / status / activeCycleId) +
+                        lastRunCr;
+  2. no plan filed   -> `ok:true`, empty plans, `warnings:[]` — a DEFINITIVE
+                        "no plan filed" note (never blurred with an outage);
+  3. tolerant degrade-> same empty shape but `warnings[]` carries
+                        `{code:"status-unavailable"}` — rendered as a board-
+                        unavailable degradation note (never "no plan").
+
+A fourth, hook-local defense-in-depth case — the feed command itself is
+missing/broken/hanging — ALSO degrades to exit 0 fast.
+
+Feed resolution: $MODELB_STATUS_CMD (the COMPLETE feed command, shell-split —
+the dependency-injection override) wins; otherwise the discovery convention —
+the installed clients dir from `$MODELB_HOME/install.toml` plus the cwd's
+stack marker — resolves `<stack>-crucible.py status`; no resolution is itself
+a degrade note. This is a SessionStart hook: it NEVER blocks, NEVER exits
+non-zero, and every subprocess is timeout-bounded. Self-contained, stdlib
+only; zero workflow-cycle env coupling.
+"""
+
+import os
+import re
+import shlex
+import subprocess
+import sys
+import tomllib
+from pathlib import Path
+
+STATUS_CONTRACT_VERSION = "1.0.0"
+
+#: Bound on the feed subprocess — a session start must never hang.
+_FEED_TIMEOUT_SECONDS = 2.0
+
+_STACK_MARKERS = (
+    ("Cargo.toml", "rust-crucible.py"),
+    ("pom.xml", "mvn-crucible.py"),
+    ("bun.lock", "bun-crucible.py"),
+    ("bun.lockb", "bun-crucible.py"),
+    ("pyproject.toml", "python-crucible.py"),
+)
+
+
+def _discover_feed_argv() -> list[str] | None:
+    """Discovery convention: installed clients dir from install config + the
+    cwd's stack marker -> `<stack>-crucible.py status`. None when either half
+    is unresolved (rendered as a degrade note, never an error)."""
+    home = os.environ.get("MODELB_HOME", "")
+    install_toml = Path(home) / "install.toml" if home else None
+    if install_toml is None or not install_toml.is_file():
+        return None
+    try:
+        config = tomllib.loads(install_toml.read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError):
+        return None
+    clients_dir = (config.get("install") or {}).get("clients_dir")
+    if not clients_dir:
+        return None
+    directory = Path.cwd()
+    for candidate in (directory, *directory.parents):
+        for marker, client in _STACK_MARKERS:
+            if (candidate / marker).is_file():
+                client_path = Path(clients_dir) / client
+                if client_path.is_file():
+                    return [sys.executable, str(client_path), "status"]
+                return None
+    return None
+
+
+def _parse_envelope(text: str) -> dict:
+    """Minimal TOON-AXI reader for the STATUS-CONTRACT 1.0.0 `status`
+    envelope: plans table rows, lastRunCr, count, warnings codes."""
+    plans: list[dict] = []
+    warnings: list[dict] = []
+    last_run_cr = None
+    count = None
+    lines = text.splitlines()
+    i = 0
+    while i < len(lines):
+        stripped = lines[i].strip()
+        table = re.match(r"(plans|warnings)\[(\d+)\]\{([^}]*)\}:", stripped)
+        if table:
+            key, rows, fields = table.group(1), int(table.group(2)), table.group(3).split(",")
+            for j in range(1, rows + 1):
+                if i + j >= len(lines):
+                    break
+                cells = lines[i + j].strip().split(",", len(fields) - 1)
+                row = dict(zip(fields, cells))
+                (plans if key == "plans" else warnings).append(row)
+            i += rows + 1
+            continue
+        scalar = re.match(r"lastRunCr:\s*(.*)$", stripped)
+        if scalar:
+            value = scalar.group(1).strip()
+            last_run_cr = None if value in ("", "null") else value
+        scalar = re.match(r"count:\s*(\d+)$", stripped)
+        if scalar:
+            count = int(scalar.group(1))
+        i += 1
+    return {"plans": plans, "warnings": warnings, "lastRunCr": last_run_cr, "count": count}
+
+
+def _degrade(note: str) -> int:
+    """Render a degradation note and continue — a session start never blocks."""
+    print(f"Crucible board (ambient status): degraded — {note}. "
+          "Continuing without ambient board status.")
+    return 0
+
+
+def main() -> int:
+    # Drain the SessionStart stdin payload (unused; keeps the pipe clean).
+    try:
+        sys.stdin.read()
+    except OSError:
+        pass  # a closed/absent stdin is fine for an ambient hook
+
+    override = os.environ.get("MODELB_STATUS_CMD", "")
+    if override:
+        try:
+            argv = shlex.split(override)
+        except ValueError:
+            return _degrade(f"MODELB_STATUS_CMD is unparsable: {override!r}")
+        if not argv:
+            return _degrade("MODELB_STATUS_CMD is empty")
+    else:
+        argv = _discover_feed_argv()
+        if argv is None:
+            return _degrade(
+                "no status feed resolved (set MODELB_STATUS_CMD, or install "
+                "config + a stack marker resolve <stack>-crucible.py)"
+            )
+
+    try:
+        result = subprocess.run(
+            argv, capture_output=True, text=True, timeout=_FEED_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return _degrade(f"status feed could not be run ({exc})")
+    if result.returncode != 0:
+        # Contract 1.0.0: a real feed never exits non-zero -> broken feed.
+        return _degrade(f"status feed exited {result.returncode}")
+
+    envelope = _parse_envelope(result.stdout)
+    if any(w.get("code") == "status-unavailable" for w in envelope["warnings"]):
+        detail = next(
+            (w.get("detail", "") for w in envelope["warnings"]
+             if w.get("code") == "status-unavailable"),
+            "",
+        )
+        print(f"Crucible board: status-unavailable (tolerant degrade) — {detail}. "
+              "The board could not be read; continuing without ambient status.")
+        return 0
+    if envelope["plans"]:
+        print(f"Crucible board ({len(envelope['plans'])} open plan(s)):")
+        for row in envelope["plans"]:
+            print(
+                f"  cr={row.get('cr')} wave={row.get('wave')} "
+                f"status={row.get('status')} activeCycleId={row.get('activeCycleId')}"
+            )
+        if envelope["lastRunCr"]:
+            print(f"lastRunCr: {envelope['lastRunCr']}")
+        return 0
+    if envelope["count"] == 0:
+        print("Crucible board: no plan filed (an empty board is definitive). "
+              "Next: plan-file --cr <CR-ID> --wave <n>.")
+        return 0
+    return _degrade("status feed output did not match STATUS-CONTRACT "
+                    f"{STATUS_CONTRACT_VERSION}")
+
+
+if __name__ == "__main__":
+    sys.exit(main())

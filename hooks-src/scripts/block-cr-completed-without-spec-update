@@ -1,0 +1,103 @@
+#!/usr/bin/env python3
+"""pre-tool-use protocol script — BLOCKS `git commit` when the commit message
+claims a CR is COMPLETED but the staged diff doesn't include that CR's spec
+file under `docs/changes/`.
+
+Normalized from the deployed
+~/.claude/hooks/block-cr-completed-without-spec-update.sh baseline
+(CR-MDB-015 §S3): same stdin contract (JSON `tool_name` /
+`tool_input.command` / `cwd`), same exit protocol (allow -> 0, block -> 2 +
+`{"decision":"block","reason":...}` on stdout), same gating (project must
+carry a `docs/changes/` dir in cwd or an ancestor; every failure mode is a
+silent allow). Self-contained, stdlib only (no jq). Project-agnostic.
+"""
+
+import json
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+
+def _find_project_root(cwd: str) -> Path | None:
+    """Nearest ancestor (incl. cwd) carrying docs/changes/, else None."""
+    if not cwd:
+        return None
+    directory = Path(cwd)
+    for candidate in (directory, *directory.parents):
+        if (candidate / "docs" / "changes").is_dir():
+            return candidate
+    return None
+
+
+def _staged_paths(project_root: Path) -> list[str]:
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(project_root), "diff", "--cached", "--name-only"],
+            capture_output=True, text=True, timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return []  # not a git repo / git unavailable -> silent allow upstream
+    if result.returncode != 0:
+        return []
+    return [line for line in result.stdout.splitlines() if line]
+
+
+def main() -> int:
+    try:
+        payload = json.load(sys.stdin)
+    except (json.JSONDecodeError, OSError):
+        return 0  # unreadable payload -> fail open (deterrent, not security boundary)
+    if not isinstance(payload, dict) or payload.get("tool_name") != "Bash":
+        return 0
+    command = (payload.get("tool_input") or {}).get("command") or ""
+    cwd = payload.get("cwd") or ""
+    if not command:
+        return 0
+
+    # Only target git commit invocations (not `git commit-tree` etc.).
+    if not re.search(r"\bgit\s+commit\b", command):
+        return 0
+
+    project_root = _find_project_root(cwd)
+    if project_root is None:
+        return 0  # Not a CR-managed project
+
+    # Scan the whole command string for a COMPLETED claim + CR id token(s)
+    # (handles -m "...", --message=..., and heredoc commit-message shapes).
+    if not re.search(r"\bCOMPLETED\b", command, re.IGNORECASE):
+        return 0  # No COMPLETED claim -> not a closure commit -> allow
+    cr_ids = sorted(set(re.findall(r"CR-[A-Z]+-[0-9]+", command)))
+    if not cr_ids:
+        return 0  # No CR mentioned -> allow
+
+    staged = _staged_paths(project_root)
+    if not staged:
+        return 0  # Empty diff (e.g. amend or initial) -> allow
+
+    missing = [
+        cr_id for cr_id in cr_ids
+        if not any(
+            re.search(rf"docs/changes/{re.escape(cr_id)}(-|\.md)", path)
+            for path in staged
+        )
+    ]
+    if missing:
+        crs = " ".join(missing)
+        reason = (
+            f"⛔ BLOCKED: Commit message mentions COMPLETED for CR(s) [{crs}] "
+            "but the staged diff does not include the CR spec file(s) under "
+            "docs/changes/. Per ORCHESTRATOR-RULES.md §5 (Closing a CR — TWO "
+            "files must be updated, always): flip the spec file `**Status:**` "
+            "field to COMPLETED before committing the closure, `git add` the "
+            "spec, then retry. To bypass (rare — pure docs-only commit not "
+            "closing the CR): remove the COMPLETED keyword from the commit "
+            "message."
+        )
+        print(json.dumps({"decision": "block", "reason": reason}))
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
