@@ -1,0 +1,21 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "modelb-axi"
+version = "0.1.0.dev0"
+description = "Model B universal installer + scaffold entrypoint (adaptive TUI), per DN-scaffold-packaging."
+requires-python = ">=3.11"
+
+[project.scripts]
+modelb-axi = "modelb_axi.cli:main"
+
+# Flat layout next to unrelated repo dirs (tests/, docs/, audits/, skills-src/,
+# generator/, ...): ship ONLY the modelb_axi package as code. Asset roots ride
+# as package data in cycle C4 (CR-MDB-014 §S2 tail), not in C1.
+[tool.hatch.build.targets.wheel]
+packages = ["modelb_axi"]
+
+[tool.hatch.build.targets.sdist]
+only-include = ["modelb_axi", "pyproject.toml"]
