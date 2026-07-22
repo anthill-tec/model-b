@@ -52,7 +52,7 @@ Every rule this project forged — registry, docs model, skill freeze, memory in
 - [ ] `AGENTS.md` contains token, acronym, python skill-freeze content, the "grouping of CRs" wave phrase, and zero `WORKFLOW_CYCLE_ID` occurrences; `CLAUDE.md` symlink resolves to AGENTS.md.
 - [ ] With a multi-harness install.toml fixture (all four roster ids), each installed harness gets its anchor (or a documented native-AGENTS.md note); with the claude-only fixture, NO hermes/pi/opencode anchors are emitted.
 - [ ] `docs/memory/` has INDEX.md and zero non-python stack templates (stack-neutral templates ARE emitted).
-- [ ] Temp project: git repo on `develop`, `master` exists, exactly one commit, `git status --porcelain` shows only `.env.local` untracked.
+- [ ] Temp project: git repo on `develop`, `master` exists, exactly one commit, `git status --porcelain` is EMPTY, `.env.local` exists on disk AND `git check-ignore .env.local` succeeds (genuinely gitignored — the porcelain-shows-untracked wording was self-contradictory; corrected 2026-07-22).
 - [ ] `hooks/README.md` contains "CR-MDB-015".
 - [ ] `--repo-shape monorepo:a,b` emits per-sub-project `.env` + `AGENTS.md` under `a/` and `b/`.
 

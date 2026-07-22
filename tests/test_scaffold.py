@@ -578,9 +578,30 @@ class InitEmissionSoloRunTest(unittest.TestCase):
             ["git", "-C", str(self._target), "status", "--porcelain"],
             capture_output=True, text=True,
         )
+        # POSITIVE -- a genuinely gitignored file never shows up in plain
+        # `git status --porcelain` output at all; a non-empty porcelain
+        # here would mean either something is left uncommitted OR
+        # `.env.local` is NOT actually ignored (both are failures).
         self.assertEqual(
-            porcelain.stdout.strip(), "?? .env.local",
-            f"S4: only `.env.local` may be untracked; got porcelain={porcelain.stdout!r}",
+            porcelain.stdout.strip(), "",
+            f"S4: `git status --porcelain` must be EMPTY (committed set "
+            f"clean, `.env.local` genuinely gitignored); got porcelain={porcelain.stdout!r}",
+        )
+        env_local_path = self._target / ".env.local"
+        self.assertTrue(
+            env_local_path.is_file(),
+            "S3.1/S4: `.env.local` must exist on disk even though it is "
+            f"gitignored; target listing={list(self._target.iterdir()) if self._target.exists() else 'MISSING'}",
+        )
+        check_ignore = subprocess.run(
+            ["git", "-C", str(self._target), "check-ignore", ".env.local"],
+            capture_output=True, text=True,
+        )
+        self.assertEqual(
+            check_ignore.returncode, 0,
+            "S4: `.env.local` must be genuinely gitignored (`git "
+            f"check-ignore` must exit 0); got exit={check_ignore.returncode} "
+            f"stdout={check_ignore.stdout!r} stderr={check_ignore.stderr!r}",
         )
 
     def test_hooks_readme_names_cr_mdb_015(self):
