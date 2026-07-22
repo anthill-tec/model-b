@@ -457,7 +457,7 @@ Project sessions (any installed harness)</code></pre></div>
 <!-- ============ WORKSPACE ============ -->
 <section class="rz-anchor" id="workspace">
   <h2 class="text-2xl font-bold mb-2">Project workspace — this repo's standing structure</h2>
-  <p class="text-sm text-base-content/70 mb-4">The <b>model-b</b> repo is not a one-shot migration script — it is the permanent workshop. As Crucible V2 and Model B evolve, changes are authored HERE (contracts, templates, skill sources), then built and synced into the chezmoi source and applied to <code>~/.claude</code>.</p>
+  <p class="text-sm text-base-content/70 mb-4">The <b>model-b</b> repo is not a one-shot migration script — it is the permanent workshop. As Crucible V2 and Model B evolve, changes are authored HERE (contracts, templates, skill sources) — <b>REPO-LOCAL ONLY (user 2026-07-22): no CR ever writes <code>~/.claude</code>; deployment to the user space is EXCLUSIVELY the universal installer's job (014). The chezmoi sync flow is legacy (waves 1–2 history); binds every downstream CR (011/013/014/015/012).</b></p>
   <div class="card card-border bg-base-200"><div class="card-body p-4">
 <div class="rz-tree">model-b/
 ├── audits/                      # audit reports + re-audit snapshots (drift watch over time)
