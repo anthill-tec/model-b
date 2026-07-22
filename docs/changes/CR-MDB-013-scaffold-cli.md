@@ -1,6 +1,6 @@
 # CR-MDB-013 — Model B scaffold flow (`modelb-axi` TUI)
 
-**Status:** PENDING
+**Status:** COMPLETED
 **Type:** feature
 **Priority:** P1 (the keystone deliverable)
 **Depends on:** CR-MDB-002, CR-MDB-008, CR-MDB-014
@@ -52,7 +52,7 @@ Every rule this project forged — registry, docs model, skill freeze, memory in
 - [ ] `AGENTS.md` contains token, acronym, python skill-freeze content, the "grouping of CRs" wave phrase, and zero `WORKFLOW_CYCLE_ID` occurrences; `CLAUDE.md` symlink resolves to AGENTS.md.
 - [ ] With a multi-harness install.toml fixture (all four roster ids), each installed harness gets its anchor (or a documented native-AGENTS.md note); with the claude-only fixture, NO hermes/pi/opencode anchors are emitted.
 - [ ] `docs/memory/` has INDEX.md and zero non-python stack templates (stack-neutral templates ARE emitted).
-- [ ] Temp project: git repo on `develop`, `master` exists, exactly one commit, `git status --porcelain` shows only `.env.local` untracked.
+- [ ] Temp project: git repo on `develop`, `master` exists, exactly one commit, `git status --porcelain` is EMPTY, `.env.local` exists on disk AND `git check-ignore .env.local` succeeds (genuinely gitignored — the porcelain-shows-untracked wording was self-contradictory; corrected 2026-07-22).
 - [ ] `hooks/README.md` contains "CR-MDB-015".
 - [ ] `--repo-shape monorepo:a,b` emits per-sub-project `.env` + `AGENTS.md` under `a/` and `b/`.
 
@@ -71,3 +71,4 @@ L. Two red-green cycles (C1 flow+flags+dry-run · C2 emission+commit-policy+prop
 
 ## Non-goals
 - Hook COMPILATION (015). Real-home deploy activation (deferred at 014 close). Rust/vscode agent generation (bespoke). Live registrations in tests.
+- Interactive TUI prompting — v1 is NON-INTERACTIVE-ONLY (missing flags fail fast with actionable messages); prompt/TUI defaults are follow-up work (VERIFY V1 suggestion, 2026-07-22). Live registration under `--register` — v1 fails fast honestly (F1); implementation is follow-up work.

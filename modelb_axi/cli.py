@@ -4,8 +4,10 @@ State detection + adaptive TUI shell: resolve ``$MODELB_HOME``
 (``--modelb-home`` flag > ``MODELB_HOME`` env > XDG data default), then
 branch on the presence of ``install.toml`` there — absent enters the
 INSTALLER flow (pre-flight → harness targeting → deploy + config
-write), present enters SCAFFOLD mode (v1 stub naming CR-MDB-013) unless
-``--reinstall`` forces the installer flow back on.
+write), present enters SCAFFOLD mode (banner proposing ``init``) unless
+``--reinstall`` forces the installer flow back on. The ``init``
+subcommand (CR-MDB-013 §S2, ``modelb_axi.scaffold``) is the scaffold
+flow itself and works in both states.
 
 Stdlib only.
 """
@@ -25,6 +27,7 @@ from modelb_axi.harness import (
     select_harnesses,
 )
 from modelb_axi.preflight import run_preflight
+from modelb_axi.scaffold import run_init
 
 INSTALL_TOML_NAME = "install.toml"
 
@@ -106,7 +109,67 @@ def _build_parser() -> argparse.ArgumentParser:
         "--force-managed", action="store_true",
         help="overwrite hand-modified managed files and refresh their manifest entries",
     )
+    subparsers = parser.add_subparsers(dest="command", metavar="COMMAND")
+    _add_init_parser(subparsers)
     return parser
+
+
+def _add_init_parser(subparsers) -> None:
+    """The `init` subcommand — the scaffold flow (CR-MDB-013 §S2)."""
+    init = subparsers.add_parser(
+        "init",
+        help="scaffold a Model B project under --target",
+        description=(
+            "Scaffold a Model B project: registry (.env), docs model, "
+            "AGENTS.md + harness anchors for the installed set, in-repo "
+            "memory, git+git-flow, and (opt-in) registrations."
+        ),
+    )
+    init.add_argument("--name", metavar="NAME", help="project display name (registry)")
+    init.add_argument("--token", metavar="TOKEN", help="project token (registry)")
+    init.add_argument("--acronym", metavar="ACRO", help="project acronym (registry)")
+    init.add_argument(
+        "--mode", metavar="MODE", help="orchestration mode: solo | multi:<N>",
+    )
+    init.add_argument(
+        "--repo-shape", metavar="SHAPE",
+        help="repo shape: standalone | monorepo:<sub1,sub2,…>",
+    )
+    init.add_argument(
+        "--stacks", metavar="CSV",
+        help="stack csv: arduino,bun,python,quarkus,rust,vscode,java",
+    )
+    init.add_argument(
+        "--harnesses", metavar="CSV", default=argparse.SUPPRESS,
+        help=(
+            "DEV-ONLY override of the installed harness set; the normal "
+            "path reads install.toml under $MODELB_HOME"
+        ),
+    )
+    init.add_argument("--owner", metavar="OWNER", help="REPO_OWNER registry value")
+    init.add_argument("--target", metavar="DIR", help="project directory to scaffold into")
+    init.add_argument(
+        "--dry-run", action="store_true",
+        help="validate + compute the plan; write NOTHING under --target",
+    )
+    init.add_argument(
+        "--no-commit", action="store_true",
+        help="skip the initial commit (leave the scaffold uncommitted)",
+    )
+    init.add_argument(
+        "--register", action="store_true",
+        help="perform Crucible/Sandesh registrations (default: emit manual-step notes)",
+    )
+    # Global flags accepted after the subcommand too; SUPPRESS keeps a
+    # pre-subcommand value from being clobbered by a subparser default.
+    init.add_argument(
+        "--yes", action="store_true", default=argparse.SUPPRESS,
+        help="non-interactive mode: accept all defaults, never read stdin",
+    )
+    init.add_argument(
+        "--modelb-home", metavar="DIR", default=argparse.SUPPRESS,
+        help="override $MODELB_HOME (default: ${XDG_DATA_HOME:-~/.local/share}/modelb)",
+    )
 
 
 def _confirm(prompt: str, interactive: bool) -> bool:
@@ -226,22 +289,29 @@ def _run_installer_flow(
     return 0
 
 
-def _run_scaffold_stub(home: Path) -> int:
-    """SCAFFOLD mode v1 stub (§S3): the scaffold flow is CR-MDB-013."""
+def _run_scaffold_mode(home: Path) -> int:
+    """SCAFFOLD-mode entry (CR-MDB-013 §S2): banner proposing `init`,
+    non-interactive, never re-enters the installer flow."""
     print("modelb-axi: scaffold mode")
     print(f"  {INSTALL_TOML_NAME} found under {home}")
-    print("  the scaffold flow is CR-MDB-013's flow; this v1 stub only detects state")
+    print(
+        "  scaffold flow (CR-MDB-013): run `modelb-axi init` to scaffold "
+        "a Model B project (see `init --help`)"
+    )
     return 0
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     home = resolve_modelb_home(args.modelb_home)
+    if getattr(args, "command", None) == "init":
+        # The scaffold flow works in BOTH states (§S2).
+        return run_init(args, home)
     harnesses = parse_harnesses(args.harnesses)
     target_root = resolve_target_root(args.target_root)
     interactive = not args.yes and sys.stdin.isatty()
     if (home / INSTALL_TOML_NAME).is_file() and not args.reinstall:
-        return _run_scaffold_stub(home)
+        return _run_scaffold_mode(home)
     return _run_installer_flow(
         home, harnesses, interactive, target_root,
         args.reinstall, args.force_managed,
