@@ -71,3 +71,4 @@ L. Two red-green cycles (C1 flow+flags+dry-run · C2 emission+commit-policy+prop
 
 ## Non-goals
 - Hook COMPILATION (015). Real-home deploy activation (deferred at 014 close). Rust/vscode agent generation (bespoke). Live registrations in tests.
+- Interactive TUI prompting — v1 is NON-INTERACTIVE-ONLY (missing flags fail fast with actionable messages); prompt/TUI defaults are follow-up work (VERIFY V1 suggestion, 2026-07-22). Live registration under `--register` — v1 fails fast honestly (F1); implementation is follow-up work.

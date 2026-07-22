@@ -816,6 +816,59 @@ class NoCommitPolicyTest(unittest.TestCase):
             )
 
 
+class RegisterHonestNoOpTest(unittest.TestCase):
+    """VERIFY F1 finding (sanctioned) -- `--register` is an honest no-op
+    in scaffold v1: live registration is NOT implemented, so passing the
+    flag must fail fast non-zero BEFORE any emission (`--target` stays
+    genuinely empty) with output naming `--register` and the fact it is
+    not implemented -- never a silent zero-work success."""
+
+    def setUp(self):
+        self._tmp_home = tempfile.mkdtemp(prefix="modelb-axi-register-home-")
+        self._tmp_target = tempfile.mkdtemp(prefix="modelb-axi-register-target-")
+        _write_install_toml(self._tmp_home, harnesses=("claude-code",))
+
+    def tearDown(self):
+        shutil.rmtree(self._tmp_home, ignore_errors=True)
+        shutil.rmtree(self._tmp_target, ignore_errors=True)
+
+    def test_register_flag_fails_fast_nonzero_with_empty_target(self):
+        result = _run_module(
+            "--yes", "init",
+            "--name", "X", "--token", "xproj", "--acronym", "XP",
+            "--mode", "solo", "--repo-shape", "standalone",
+            "--stacks", "python", "--owner", "tester",
+            "--target", self._tmp_target,
+            "--modelb-home", self._tmp_home,
+            "--register",
+        )
+        # POSITIVE -- the honest no-op refuses to pretend it registered.
+        self.assertNotEqual(
+            result.returncode, 0,
+            "F1: `init --register` must exit non-zero in v1 (live "
+            "registration is not implemented); got "
+            f"exit={result.returncode} stdout={result.stdout!r} "
+            f"stderr={result.stderr!r}",
+        )
+        # NEGATIVE / bound -- fail fast means NOTHING emitted under --target.
+        listing = sorted(os.listdir(self._tmp_target))
+        self.assertEqual(
+            listing, [],
+            f"F1: `init --register` must write NOTHING under --target; found {listing!r}",
+        )
+        combined = result.stdout + result.stderr
+        self.assertIn(
+            "--register", combined,
+            "F1: the failure output must name the --register flag; got "
+            f"stdout={result.stdout!r} stderr={result.stderr!r}",
+        )
+        self.assertIn(
+            "not implemented", combined.lower(),
+            "F1: the failure output must say registration is not "
+            f"implemented; got stdout={result.stdout!r} stderr={result.stderr!r}",
+        )
+
+
 class RegistryKeyDocPropagationTest(unittest.TestCase):
     """§S5 AC -- the repo-local `skills-src/model-b/SKILL.md` documents
     the full `.env` registry key set incl. REPO_OWNER and the scaffold

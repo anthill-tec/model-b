@@ -183,11 +183,12 @@ def _render_queue_readme(
 ) -> str:
     """Queue template (§S3.2): four header slots, empty structure-only
     table, setup-tasks checklist (incl. the §S3.6 manual registration
-    notes while ``--register`` is off), dated Notes footer."""
+    notes — registrations are manual in scaffold v1), dated Notes
+    footer."""
     today = datetime.date.today().isoformat()
     sandesh_task = (
         f"- [ ] Sandesh setup + register (`{name}`, `Mainline - {name}`) — "
-        "manual step (`--register` was off at scaffold time)\n"
+        "manual step (registrations are manual in scaffold v1)\n"
         if mode != "solo" else ""
     )
     return (
@@ -213,7 +214,7 @@ def _render_queue_readme(
         f"- [x] Scaffold via `modelb-axi init` — {today}\n"
         "- [ ] Register the project in Crucible and paste the key into "
         "`.env.local` (`CRUCIBLE_PROJECT_KEY=`) — manual step "
-        "(`--register` was off at scaffold time)\n"
+        "(registrations are manual in scaffold v1)\n"
         f"{sandesh_task}"
         "- [ ] Confirm the remote owner matches `REPO_OWNER` in `.env` "
         "before the first wave-boundary gate\n"
@@ -289,9 +290,8 @@ def _render_agents_md(
         "- Run context (post-036): workflow cycle context is attached by "
         "the tooling at ingest time — never hand-export cycle identifiers "
         "into the environment or into this file.\n"
-        "- Registrations were NOT performed at scaffold time "
-        "(`--register` off) — complete the manual setup tasks in the "
-        "queue README.\n"
+        "- Registrations are manual in scaffold v1 — complete the "
+        "manual setup tasks in the queue README.\n"
         "\n"
         f"## Skill freeze (derived from --stacks: {', '.join(stacks)})\n"
         f"{stack_lines}\n"
@@ -481,6 +481,15 @@ def run_init(args: argparse.Namespace, home: Path) -> int:
     dry_run = bool(getattr(args, "dry_run", False))
     print("modelb-axi: init — scaffold flow", file=sys.stderr)
     try:
+        # Honest no-op (VERIFY F1): --register parses (surface stable)
+        # but live registration ships in a later version — fail fast
+        # BEFORE any emission rather than silently doing nothing.
+        if getattr(args, "register", False):
+            raise ScaffoldError(
+                "--register: live registration is not implemented in "
+                "scaffold v1 — run without --register and perform the "
+                "manual registration steps the scaffold emits"
+            )
         harnesses, harness_source = resolve_harnesses(
             home, getattr(args, "harnesses", None),
         )
@@ -527,12 +536,11 @@ def run_init(args: argparse.Namespace, home: Path) -> int:
             print(f"modelb-axi: error: {exc}", file=sys.stderr)
             print(envelope("init", False, warnings=[str(exc)], dry_run=False))
             return 3
-        if not getattr(args, "register", False):
-            print(
-                "  note: registrations skipped (--register off) — manual "
-                "steps recorded in docs/changes/README.md setup tasks",
-                file=sys.stderr,
-            )
+        print(
+            "  note: registrations are manual in scaffold v1 — steps "
+            "recorded in docs/changes/README.md setup tasks",
+            file=sys.stderr,
+        )
 
     print(
         envelope(
