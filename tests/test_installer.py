@@ -26,7 +26,9 @@ Stdlib only: unittest + subprocess + sys + os + shutil + tempfile +
 tomllib + pathlib.
 """
 
+import hashlib
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -662,6 +664,482 @@ class UvAbsentBootstrapFailureTest(unittest.TestCase):
             "deps: uv=detected", result.stdout,
             f"AC4: must not report uv=detected when uv is absent from "
             f"PATH; got stdout={result.stdout!r}",
+        )
+
+
+# CR-MDB-014 cycle C3 -- §S5 harness targeting + §S6 deploy engine (AC2,
+# AC3 regression against a REAL deploy, AC5 idempotent-upgrade + hand-
+# modified detection, install.toml-written-last atomicity). New tests
+# only; everything above this point is untouched C1/C2 (§S2-S4,
+# AC1/AC3-stub/AC4/AC8).
+#
+# Deploy-target sandboxing (repo-local rule + DN §7): production code's
+# per-harness/Vercel-store deploy roots default to the real user home
+# (~/.agents, ~/.claude) -- UNTESTED BY DESIGN. Every test below pins a
+# `--target-root <dir>` flag that overrides those roots to a tmp sandbox,
+# so the deploy engine under test NEVER touches the real trees (on top
+# of the module-level AC7 mtime guard already in force for this whole
+# file). A `MODELB_TARGET_ROOT` env var is the documented flag/env
+# alternative (mirroring --modelb-home/MODELB_HOME) but is not itself
+# exercised here -- these tests pin the flag form only.
+#
+# Roster-to-harness-id mapping pinned for this cycle: the probed binary
+# name differs from the harness id in exactly one case --
+#   claude   -> "claude-code"
+#   hermes   -> "hermes"
+#   pi       -> "pi"
+#   opencode -> "opencode"
+#
+# New flags pinned by this cycle's tests: `--target-root`, `--reinstall`
+# (forces a run with an existing install.toml back into the installer
+# flow instead of the scaffold stub), `--force-managed` (overwrite a
+# hash-mismatched managed file and update its manifest entry).
+
+HARNESS_ROSTER_IDS = ["claude-code", "hermes", "pi", "opencode"]
+
+_FAKE_HARNESS_BIN_SCRIPT = (
+    "#!/bin/sh\n"
+    'echo "fake-harness-binary"\n'
+    "exit 0\n"
+)
+
+
+def _sha256_file(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _package_version() -> str:
+    """Read `__version__` straight from modelb_axi/__init__.py's source
+    text -- avoids relying on the repo root being importable in-process
+    for this subprocess-driven test module."""
+    text = MODULE_INIT.read_text(encoding="utf-8")
+    match = re.search(r'__version__\s*=\s*"([^"]+)"', text)
+    if not match:
+        raise AssertionError(f"could not find __version__ in {MODULE_INIT}")
+    return match.group(1)
+
+
+def _snapshot_relpaths(root: Path):
+    """Set of every file/symlink path under `root`, relative to `root` --
+    used to prove a re-run touches nothing outside the manifest."""
+    if not root.exists():
+        return set()
+    return {
+        str(p.relative_to(root))
+        for p in root.rglob("*")
+        if p.is_file() or p.is_symlink()
+    }
+
+
+class HarnessTargetingTest(unittest.TestCase):
+    """§S5 -- roster probe of claude/hermes/pi/opencode binaries on an
+    isolated PATH; explicit --harnesses wins over the detected set;
+    unknown harness names in --harnesses are rejected naming the valid
+    roster."""
+
+    def setUp(self):
+        self._tmp_home = tempfile.mkdtemp(prefix="modelb-axi-home-")
+        self._tmp_bin = tempfile.mkdtemp(prefix="modelb-axi-fakebin-")
+        self._tmp_target_root = tempfile.mkdtemp(prefix="modelb-axi-target-")
+
+    def tearDown(self):
+        shutil.rmtree(self._tmp_home, ignore_errors=True)
+        shutil.rmtree(self._tmp_bin, ignore_errors=True)
+        shutil.rmtree(self._tmp_target_root, ignore_errors=True)
+
+    @staticmethod
+    def _extract_selected_harnesses(stdout: str) -> list:
+        for line in stdout.splitlines():
+            if line.strip().startswith("harnesses selected:"):
+                _, _, rest = line.partition("harnesses selected:")
+                return [item.strip() for item in rest.split(",") if item.strip()]
+        return []
+
+    def test_detected_roster_binaries_proposed_as_default_selection_without_harnesses_flag(self):
+        _write_fake_executable(self._tmp_bin, "uv", _FAKE_UV_SCRIPT)
+        _write_fake_executable(self._tmp_bin, "sandesh", _FAKE_SANDESH_SCRIPT)
+        _write_fake_executable(self._tmp_bin, "claude", _FAKE_HARNESS_BIN_SCRIPT)
+        _write_fake_executable(self._tmp_bin, "opencode", _FAKE_HARNESS_BIN_SCRIPT)
+        # No "hermes"/"pi" binaries written -- must be excluded from the
+        # detected set.
+        result = _run_module(
+            "--yes", "--modelb-home", self._tmp_home,
+            "--target-root", self._tmp_target_root,
+            env_overrides={"PATH": self._tmp_bin},
+        )
+        selected = self._extract_selected_harnesses(result.stdout)
+        # POSITIVE -- exact detected set, roster order preserved.
+        self.assertEqual(
+            selected, ["claude-code", "opencode"],
+            "§S5: with only `claude`+`opencode` binaries on PATH and no "
+            "--harnesses flag, the proposed/selected set must be exactly "
+            f"['claude-code', 'opencode']; got stdout={result.stdout!r} "
+            f"stderr={result.stderr!r}",
+        )
+        self.assertEqual(
+            result.returncode, 0,
+            f"§S5: a clean detected-set run must exit 0; got "
+            f"exit={result.returncode} stderr={result.stderr!r}",
+        )
+
+    def test_explicit_harnesses_flag_wins_over_detected_set(self):
+        _write_fake_executable(self._tmp_bin, "uv", _FAKE_UV_SCRIPT)
+        _write_fake_executable(self._tmp_bin, "sandesh", _FAKE_SANDESH_SCRIPT)
+        # Detected set would be hermes+pi -- but explicit --harnesses
+        # claude-code must win outright.
+        _write_fake_executable(self._tmp_bin, "hermes", _FAKE_HARNESS_BIN_SCRIPT)
+        _write_fake_executable(self._tmp_bin, "pi", _FAKE_HARNESS_BIN_SCRIPT)
+        result = _run_module(
+            "--yes", "--harnesses", "claude-code",
+            "--modelb-home", self._tmp_home,
+            "--target-root", self._tmp_target_root,
+            env_overrides={"PATH": self._tmp_bin},
+        )
+        selected = self._extract_selected_harnesses(result.stdout)
+        # POSITIVE -- explicit selection wins outright.
+        self.assertEqual(
+            selected, ["claude-code"],
+            "§S5: explicit --harnesses claude-code must win over the "
+            f"detected (hermes, pi) set; got selected={selected} "
+            f"stdout={result.stdout!r}",
+        )
+        # NEGATIVE -- detected-but-not-selected harnesses must not leak in.
+        self.assertNotIn("hermes", selected)
+        self.assertNotIn("pi", selected)
+
+    def test_unknown_harness_name_in_flag_exits_nonzero_naming_valid_roster(self):
+        _write_fake_executable(self._tmp_bin, "uv", _FAKE_UV_SCRIPT)
+        _write_fake_executable(self._tmp_bin, "sandesh", _FAKE_SANDESH_SCRIPT)
+        result = _run_module(
+            "--yes", "--harnesses", "bogus-harness",
+            "--modelb-home", self._tmp_home,
+            "--target-root", self._tmp_target_root,
+            env_overrides={"PATH": self._tmp_bin},
+        )
+        combined = result.stdout + result.stderr
+        # POSITIVE -- non-zero exit is the failure signal.
+        self.assertNotEqual(
+            result.returncode, 0,
+            "§S5: an unknown harness name in --harnesses must exit "
+            f"non-zero; got exit={result.returncode} combined={combined!r}",
+        )
+        # POSITIVE -- names the offending value AND the full valid roster.
+        self.assertIn("bogus-harness", combined)
+        for harness_id in HARNESS_ROSTER_IDS:
+            self.assertIn(
+                harness_id, combined,
+                f"§S5: unknown-harness error must name the valid roster "
+                f"(missing {harness_id!r}); got combined={combined!r}",
+            )
+
+
+class DeployEngineTest(unittest.TestCase):
+    """§S6 -- manifest-driven deploy engine + install.toml config write
+    (AC2 end-to-end), the AC3 regression guard against a REAL deploy,
+    AC5 idempotent-upgrade + hand-modified-file detection, and the
+    install.toml-written-last atomicity guarantee."""
+
+    CRUCIBLE_SKILL_MD = REPO_ROOT / "skills-src" / "crucible" / "SKILL.md"
+
+    def setUp(self):
+        self._tmp_home = tempfile.mkdtemp(prefix="modelb-axi-home-")
+        self._tmp_bin = tempfile.mkdtemp(prefix="modelb-axi-fakebin-")
+        self._tmp_target_root = tempfile.mkdtemp(prefix="modelb-axi-target-")
+        _write_fake_executable(self._tmp_bin, "uv", _FAKE_UV_SCRIPT)
+        _write_fake_executable(self._tmp_bin, "sandesh", _FAKE_SANDESH_SCRIPT)
+
+    def tearDown(self):
+        # Undo any deliberately-broken permissions before cleanup so
+        # rmtree can actually remove the tree.
+        for root in (self._tmp_home, self._tmp_bin, self._tmp_target_root):
+            for p in Path(root).rglob("*"):
+                try:
+                    p.chmod(0o700)
+                except OSError:
+                    continue
+        shutil.rmtree(self._tmp_home, ignore_errors=True)
+        shutil.rmtree(self._tmp_bin, ignore_errors=True)
+        shutil.rmtree(self._tmp_target_root, ignore_errors=True)
+
+    def _run_install(self, *extra_args, env_overrides=None):
+        overrides = {"PATH": self._tmp_bin}
+        if env_overrides:
+            overrides.update(env_overrides)
+        return _run_module(
+            "--yes", "--harnesses", "claude-code",
+            "--modelb-home", self._tmp_home,
+            "--target-root", self._tmp_target_root,
+            *extra_args,
+            env_overrides=overrides,
+        )
+
+    def _store_skill_dir(self) -> Path:
+        return Path(self._tmp_target_root) / ".agents" / "skills" / "crucible"
+
+    def _harness_symlink(self) -> Path:
+        return Path(self._tmp_target_root) / ".claude" / "skills" / "crucible"
+
+    def _read_install_toml(self) -> dict:
+        with open(Path(self._tmp_home) / "install.toml", "rb") as fh:
+            return tomllib.load(fh)
+
+    def test_end_to_end_install_deploys_crucible_skill_once_symlinked_and_writes_install_toml(self):
+        result = self._run_install()
+        self.assertEqual(
+            result.returncode, 0,
+            f"AC2: end-to-end installer run must exit 0; got "
+            f"exit={result.returncode} stdout={result.stdout!r} "
+            f"stderr={result.stderr!r}",
+        )
+        store_dir = self._store_skill_dir()
+        store_skill_md = store_dir / "SKILL.md"
+        # POSITIVE -- ONE copy in the harness-neutral Vercel store,
+        # content matching the shipped skills-src/crucible/SKILL.md
+        # exactly.
+        self.assertTrue(
+            store_skill_md.is_file(),
+            f"AC2/§S6: {store_skill_md} must exist (Vercel-store deploy "
+            f"of the crucible skill bundle); target_root listing="
+            f"{list(Path(self._tmp_target_root).rglob('*'))}",
+        )
+        self.assertEqual(
+            store_skill_md.read_text(encoding="utf-8"),
+            self.CRUCIBLE_SKILL_MD.read_text(encoding="utf-8"),
+            "AC2: the deployed crucible SKILL.md must match "
+            "skills-src/crucible/SKILL.md byte-for-byte",
+        )
+        # POSITIVE -- the harness's skills dir gets a SYMLINK pointing at
+        # the store copy, not a second physical copy.
+        symlink_path = self._harness_symlink()
+        self.assertTrue(
+            symlink_path.is_symlink(),
+            f"AC2/§S6: {symlink_path} must be a symlink into the Vercel "
+            f"store (not a physical copy)",
+        )
+        self.assertEqual(
+            symlink_path.resolve(), store_dir.resolve(),
+            f"AC2: {symlink_path} must resolve to the store dir "
+            f"{store_dir}; got {symlink_path.resolve()}",
+        )
+        # install.toml structure -- parsed via tomllib, not string greps.
+        data = self._read_install_toml()
+        install_section = data.get("install", {})
+        self.assertEqual(
+            install_section.get("version"), _package_version(),
+            f"AC2: [install].version must match the package __version__ "
+            f"({_package_version()!r}); got {install_section.get('version')!r}",
+        )
+        self.assertEqual(
+            install_section.get("harnesses"), ["claude-code"],
+            f"AC2: [install].harnesses must be exactly ['claude-code']; "
+            f"got {install_section.get('harnesses')!r}",
+        )
+        self.assertEqual(
+            Path(str(install_section.get("asset_root", ""))), REPO_ROOT,
+            f"AC2: [install].asset_root must resolve to the package's "
+            f"asset root ({REPO_ROOT}); got {install_section.get('asset_root')!r}",
+        )
+        self.assertEqual(
+            data.get("deps"),
+            {"uv": "detected", "sandesh": "detected", "crucible": "absent"},
+            f"AC2: [deps] must persist the pre-flight verdicts exactly; "
+            f"got {data.get('deps')!r}",
+        )
+        files_section = data.get("files")
+        self.assertIsInstance(
+            files_section, list,
+            f"AC2: [[files]] must parse as a list of entries; got "
+            f"{type(files_section)}",
+        )
+        self.assertGreaterEqual(
+            len(files_section), 1,
+            "AC2: [[files]] must record at least one deployed file entry",
+        )
+        skill_entries = [
+            e for e in files_section
+            if isinstance(e, dict) and str(e.get("path", "")).endswith("crucible/SKILL.md")
+        ]
+        self.assertEqual(
+            len(skill_entries), 1,
+            f"AC2: exactly one [[files]] entry for the deployed "
+            f"crucible/SKILL.md; got entries={files_section!r}",
+        )
+        expected_hash = _sha256_file(store_skill_md)
+        self.assertEqual(
+            skill_entries[0].get("sha256"), expected_hash,
+            f"AC2: the manifest sha256 for crucible/SKILL.md must match "
+            f"its actual deployed content hash ({expected_hash}); got "
+            f"{skill_entries[0].get('sha256')!r}",
+        )
+
+    def test_second_launch_after_real_install_enters_scaffold_mode_naming_cr_mdb_013(self):
+        first = self._run_install()
+        self.assertEqual(
+            first.returncode, 0,
+            f"setup precondition: the first install must succeed; got "
+            f"exit={first.returncode} stderr={first.stderr!r}",
+        )
+        second = _run_module("--yes", "--modelb-home", self._tmp_home)
+        # POSITIVE -- AC3, exercised against a REAL deploy-written
+        # install.toml (not a hand-authored stub as in C1's
+        # StateDetectionTest).
+        self.assertEqual(
+            second.returncode, 0,
+            f"AC3: scaffold-mode stub must exit 0; got "
+            f"exit={second.returncode} stdout={second.stdout!r}",
+        )
+        self.assertIn(
+            "CR-MDB-013", second.stdout,
+            f"AC3: with a REAL install.toml on disk from a completed "
+            f"install, a second launch must enter scaffold mode naming "
+            f"CR-MDB-013; got stdout={second.stdout!r}",
+        )
+        # NEGATIVE -- must not re-run the installer flow.
+        self.assertNotIn("installer flow", second.stdout.lower())
+
+    def test_reinstall_run_is_noop_when_no_managed_files_changed(self):
+        first = self._run_install()
+        self.assertEqual(
+            first.returncode, 0,
+            f"precondition: first install must succeed; stderr={first.stderr!r}",
+        )
+        before_data = self._read_install_toml()
+        before_hashes = {e["path"]: e["sha256"] for e in before_data["files"]}
+        before_tree = _snapshot_relpaths(Path(self._tmp_target_root))
+
+        second = self._run_install("--reinstall")
+        self.assertEqual(
+            second.returncode, 0,
+            f"AC5: an idempotent --reinstall run must exit 0; got "
+            f"exit={second.returncode} stderr={second.stderr!r}",
+        )
+        after_data = self._read_install_toml()
+        after_hashes = {e["path"]: e["sha256"] for e in after_data["files"]}
+        # POSITIVE -- identical hashes, identical manifest entry count.
+        self.assertEqual(
+            after_hashes, before_hashes,
+            f"AC5: a second identical --reinstall run must leave every "
+            f"managed file's hash unchanged; before={before_hashes!r} "
+            f"after={after_hashes!r}",
+        )
+        after_tree = _snapshot_relpaths(Path(self._tmp_target_root))
+        # NEGATIVE / bound -- nothing outside the manifest (no new files,
+        # no removed files) appears under target_root.
+        self.assertEqual(
+            after_tree, before_tree,
+            f"AC5: a no-op reinstall must never touch paths outside the "
+            f"manifest; before={sorted(before_tree)} after={sorted(after_tree)}",
+        )
+
+    def test_hand_modified_managed_file_detected_and_not_silently_overwritten(self):
+        first = self._run_install()
+        self.assertEqual(
+            first.returncode, 0,
+            f"precondition: first install must succeed; stderr={first.stderr!r}",
+        )
+        store_skill_md = self._store_skill_dir() / "SKILL.md"
+        marker = "\n<!-- hand-edited by test, must not be silently clobbered -->\n"
+        original_content = store_skill_md.read_text(encoding="utf-8")
+        store_skill_md.write_text(original_content + marker, encoding="utf-8")
+
+        second = self._run_install("--reinstall")
+        combined = second.stdout + second.stderr
+        # POSITIVE -- the hand edit must survive: no silent overwrite.
+        current_content = store_skill_md.read_text(encoding="utf-8")
+        self.assertIn(
+            marker, current_content,
+            "AC5: a hand-modified managed file must NOT be silently "
+            f"overwritten without --force-managed; content after "
+            f"reinstall={current_content!r}",
+        )
+        # POSITIVE -- detection surfaces via non-zero exit OR an explicit
+        # skip-with-warning naming the file (dispatch-pinned disjunction).
+        self.assertTrue(
+            second.returncode != 0 or re.search(r"skip", combined, re.IGNORECASE),
+            "AC5: a hash-mismatched managed file must be surfaced as "
+            "either a non-zero exit or an explicit skip-with-warning; "
+            f"got exit={second.returncode} combined={combined!r}",
+        )
+        self.assertIn(
+            "SKILL.md", combined,
+            f"AC5: the hash-mismatch detection must name the affected "
+            f"file; got combined={combined!r}",
+        )
+
+    def test_force_managed_flag_overwrites_hand_modified_file_and_updates_manifest(self):
+        first = self._run_install()
+        self.assertEqual(
+            first.returncode, 0,
+            f"precondition: first install must succeed; stderr={first.stderr!r}",
+        )
+        store_skill_md = self._store_skill_dir() / "SKILL.md"
+        original_content = store_skill_md.read_text(encoding="utf-8")
+        store_skill_md.write_text(
+            original_content + "\n<!-- clobber me -->\n", encoding="utf-8",
+        )
+
+        second = self._run_install("--reinstall", "--force-managed")
+        self.assertEqual(
+            second.returncode, 0,
+            f"AC5: --force-managed must overwrite cleanly and exit 0; "
+            f"got exit={second.returncode} stderr={second.stderr!r}",
+        )
+        # POSITIVE -- content restored to the package's source exactly.
+        restored_content = store_skill_md.read_text(encoding="utf-8")
+        self.assertEqual(
+            restored_content, original_content,
+            "AC5: --force-managed must overwrite the hand-modified file "
+            "back to the package's source content",
+        )
+        # POSITIVE -- manifest hash updated to match the restored content.
+        data = self._read_install_toml()
+        skill_entries = [
+            e for e in data["files"]
+            if str(e.get("path", "")).endswith("crucible/SKILL.md")
+        ]
+        self.assertEqual(len(skill_entries), 1)
+        self.assertEqual(
+            skill_entries[0]["sha256"], _sha256_file(store_skill_md),
+            "AC5: the manifest entry's sha256 must be updated to match "
+            "the --force-managed-restored file",
+        )
+
+    def test_deploy_failure_leaves_no_install_toml_atomicity(self):
+        # Force a deploy-stage failure: pre-create the store parent dir
+        # unwritable, so the crucible-skill copy step fails partway
+        # through, without ever reaching the install.toml write.
+        broken_parent = Path(self._tmp_target_root) / ".agents" / "skills"
+        broken_parent.mkdir(parents=True, exist_ok=True)
+        broken_parent.chmod(0o000)
+        try:
+            result = self._run_install()
+            combined = result.stdout + result.stderr
+            # GUARD -- this failure must come from the deploy engine
+            # actually attempting (and failing at) the write, not from
+            # --target-root being an unrecognized flag; otherwise this
+            # test would pass vacuously before §S6 exists at all.
+            self.assertNotIn(
+                "unrecognized arguments", combined,
+                "atomicity test precondition: --target-root must be a "
+                f"recognized flag reaching the deploy stage; got "
+                f"combined={combined!r}",
+            )
+            # POSITIVE -- the broken deploy target must fail the run.
+            self.assertNotEqual(
+                result.returncode, 0,
+                f"atomicity: a deploy failure (unwritable target subdir) "
+                f"must exit non-zero; got exit={result.returncode} "
+                f"stdout={result.stdout!r} stderr={result.stderr!r}",
+            )
+        finally:
+            broken_parent.chmod(0o700)
+        # POSITIVE -- install.toml is written LAST: on any deploy
+        # failure, no install.toml must exist (state stays "not
+        # installed").
+        self.assertFalse(
+            (Path(self._tmp_home) / "install.toml").exists(),
+            "atomicity: install.toml must never exist after a failed "
+            "deploy (it is written LAST, only on full success)",
         )
 
 
