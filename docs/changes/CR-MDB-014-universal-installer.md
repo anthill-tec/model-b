@@ -1,6 +1,6 @@
 # CR-MDB-014 — Universal installer flow + packaging (`modelb-axi`)
 
-**Status:** IN_PROGRESS
+**Status:** COMPLETED
 **Type:** feature
 **Priority:** P1 (heads the setup arc: 014 → 013 → 015)
 **Depends on:** CR-MDB-002, CR-MDB-008
@@ -35,7 +35,7 @@ Probe the roster binaries (`claude`, `hermes`, `pi`, `opencode`), propose detect
 Manifest-driven copy of package assets into the selected harnesses' user-local locations (per-harness mapping table; Claude Code mapping complete in v1, other roster harnesses at least anchor-file mapping). Skills deploy per the PRD §D2 Vercel skills standard: ONE copy into the harness-neutral store (`~/.agents/skills/` — sandboxed in tests), symlinked into each selected harness's skills dir; every deployed path + hash recorded under `[files]`; `install.toml` written last (atomic). Re-run = idempotent upgrade per DN §5 (hash-check, confirm-before-overwrite of user-modified managed files, non-manifest files untouched).
 
 ### §S7 — Skill-source imports + generator retarget
-Import the remaining Model B-owned skills (`model-b`, `cr-authoring`, `git-workflow`, `chezmoi`, `bootstrap`, `shutdown`) into `skills-src/` as package assets (read-only copy FROM the deployed state — reading `~/.claude` allowed, writing never). Retarget `generator/build.py` output from the chezmoi source to repo/package assets (`--check` drift gate preserved); regenerated agents ship as assets.
+Import the remaining Model B-owned skills (`model-b`, `cr-authoring`, `git-workflow`, `chezmoi`, `bootstrap`, `shutdown`) into `skills-src/` as package assets (read-only copy FROM the deployed state — reading `~/.claude` allowed, writing never). Retarget `generator/build.py` output from the chezmoi source to repo/package assets (`--check` drift gate preserved); regenerated agents ship as assets at `generator/agents/`. **Sanctioned test amendment:** CR-MDB-008's gates (`tests/test_agent_generator.py`) pin the superseded `~/.claude/agents/` output target — they retarget to `generator/agents/`, keeping a read-only consumer-constraint check that the DEPLOYED `~/.claude/agents/*.md` files still exist untouched (agents remain live from there until this installer deploys).
 
 ## Acceptance criteria
 

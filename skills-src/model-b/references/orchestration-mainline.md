@@ -1,0 +1,50 @@
+# Orchestration — MAINLINE
+
+Coordinator-only rules. Read COMMON + MAINLINE. (Worker rules → TRACK; sub-agent procedure → AGENTS.md.)
+
+## Ownership — queue, CR-gen, scheduling
+- **Mainline owns the CR queue + CR generation + scheduling.** Tracks EXECUTE; Mainline DECIDES what each track runs and when.
+- Mainline owns the queue README — wave structure, CR rows, status — and is the primary CR-spec author (DN-first for any CR-spawning surface).
+- New CRs land in the queue under the correct wave; loaded into a live track lane ONLY when scheduled.
+- Rescheduling is driven by the live status board + the tracks' requests; status + requests in → a scheduling decision out.
+- **Never let tracks self-schedule.** A track raises (request); Mainline disposes — schedules (queue/CR + lane) and replies/directs to assign or unblock.
+
+## CR-spec authoring — discuss design FIRST
+- **DISCUSS design/architecture WITH the user BEFORE designing** — bring options + a recommendation, the user decides, THEN spec. Never unilaterally architect a finished design.
+- Mid-course re-spec: send the Track the settled FEATURES; the TRACK writes the code-level spec in its worktree. Mainline does not rewrite the spec ahead.
+- **Design→execution gate:** gap-analysis → lock the spec → present → WAIT for explicit approval → ONLY THEN cycle plan. Answering a design question is NOT approval to start cycles; if the spec moves, design wasn't final.
+- **Question economy:** make reasonable scoping calls and proceed, surfacing assumptions inline; reserve AskUserQuestion for genuine forks only the user owns. Prefer one focused question over a battery.
+
+## Mainline is the PROXY for ALL approvals
+- Tracks route every approval (cycle plans, gap-verdicts, spec/scope/design questions, merge sign-offs) to Mainline — never the user.
+- Mainline disposes accuracy/scope itself; escalates ONLY genuine design / merge sign-offs / scope-priority / ambiguous specs to the user; relays the decision back.
+- A user-approved block authorizes the track's full RED→GREEN→VERIFY cycle — the USER gate is the MERGE, which Mainline carries.
+- **ALWAYS reply to the raising track the moment the fix/disposition is DONE** — the track HOLDS until it hears back.
+
+## Escalation handling (Mainline's job, not VERIFY's)
+- Agent hedge phrases ("escalation worth flagging", "scope expansion", "unexpected") → STOP and surface before the next phase; never unilaterally decide a flagged concern is fine.
+- Design gap (CR doesn't say HOW): read the parent PRD; if silent, escalate with the quoted section + options and WAIT; never invent a "pragmatic" choice.
+- **Before presenting design options, grep first** — a "three ways to add X" menu is a false dilemma if X already exists.
+- Design/reference-doc edits (catalog, PRD, DN) need approval even under a "same-commit register" mandate — they are cross-CR shared surfaces. When unsure if a doc is "design," treat it as design and ask.
+
+## Merge gate enforcement
+- Enforce the WIRE-THE-CALL-PATH gate: the sign-off must NAME the integration test proving the real caller→new-code→result seam; unwired/not-integration-tested → CHANGES-NEEDED before the user relay.
+- **Verify track reports INDEPENDENTLY** — don't trust agent-claimed pass counts; read the `passed=/failed=` summary, confirm the two-file close-out diff, confirm the integration-test evidence.
+
+## Filing/assigning a CR — COMMIT docs FIRST, schedule write LAST
+- Order: write spec + queue row → `git commit` to `develop` → THEN the schedule-DB / lane assignment → inbox housekeeping.
+- A worktree branches off COMMITTED `develop` HEAD — an uncommitted spec never reaches it. Committing after the schedule write is the bug.
+- A CR introducing a new PRD design concept: update the PRD section first (commit promptly), then the CR cites it.
+
+## Inbox / coordination
+- Run the inbox watcher in the background at session start; on a request → fetch + reschedule (incl. filing a requested NEW CR into the owner track's lane) + reply/directive → relaunch the watcher.
+- Re-read a request at consume-time before acting (the watcher can fire before the write completes).
+- If consuming a request needs the user, surface it and hold.
+
+## Deferred-items register + SCRUM filing
+- Keep a per-project deferred-items register (descopes, VERIFY nits routed forward, emergent requirements). At each CR's gap-analysis, sweep it — fold routed items into the spec.
+- **New CRs are filed at the SCRUM review BETWEEN runs — never mid-implementation.** Emergent requirements → propose as new CRs there; once filed, the CR's process-state lives in the queue README.
+- On close-out, append new deferrals + remove resolved; GC aggressively (an item that became a CR or was abandoned → delete, ≤ one-line pointer).
+
+## Memory stewardship
+- Mainline owns memory. Tracks RAISE rules/learnings (request); Mainline (or the user) records them centrally, dated, in the correct bucket — keeping memory single-authored across parallel sessions.

@@ -3,11 +3,12 @@
 
 Renders ``generator/templates/{red,green,verify,fix}.md.tmpl`` (string.Template)
 with the per-stack parameters from ``generator/stacks/{arduino,bun,python,
-quarkus}.toml`` into the LIVE ``~/.claude/agents/`` tree.
+quarkus}.toml`` into the repo-local package asset dir ``generator/agents/``
+(CR-MDB-014 §S7 retarget).
 
 Verbs:
   build          render and write the target files in place
-  --check        re-render to memory and diff against the live files;
+  --check        re-render to memory and diff against the asset files;
                  exit 0 when clean, exit 1 listing the drifted filenames
   --list         print the target file paths
   --stacks S,..  restrict to the given stacks (with any verb)
@@ -29,7 +30,7 @@ from string import Template
 GENERATOR_DIR = Path(__file__).resolve().parent
 TEMPLATES_DIR = GENERATOR_DIR / "templates"
 STACKS_DIR = GENERATOR_DIR / "stacks"
-AGENTS_DIR = Path.home() / ".claude" / "agents"
+AGENTS_DIR = GENERATOR_DIR / "agents"
 
 STACKS = ("arduino", "bun", "python", "quarkus")
 ROLES = ("red", "green", "verify", "fix")
@@ -77,6 +78,7 @@ def selected_targets(stacks: tuple[str, ...], roles: tuple[str, ...]):
 
 
 def cmd_build(stacks, roles) -> int:
+    AGENTS_DIR.mkdir(parents=True, exist_ok=True)
     for _stack, role, name, params in selected_targets(stacks, roles):
         target = AGENTS_DIR / name
         target.write_text(render(_stack, role, params), encoding="utf-8")
