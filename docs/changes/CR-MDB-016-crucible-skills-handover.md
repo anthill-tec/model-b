@@ -109,6 +109,9 @@ Reply on Sandesh thread #1336 when the deployed copy is superseded (commitment m
 6. Chezmoi round-trip clean after §S4: retired files stay retired; no drift resurrect.
 7. The five pre-existing `crucible/references/<stack>.md` consumer paths still resolve
    (22 agent definitions + 2 refactorer skills).
-8. The amended PRD §4.2 grep gate (commit `3bd3561` semantics) passes over the repo:
-   `heartbeat.sh` zero hits outside `archive/`; `/agents/heartbeat` hits outside
-   `archive/` are exclusively the `/api/v2/agents/heartbeat` form.
+8. The amended PRD §4.2 grep gate (commit `3bd3561` semantics) passes over the LIVE
+   artifact tree this CR produces — `skills-src/`: `heartbeat.sh` zero hits;
+   every `/agents/heartbeat` hit is the `/api/v2/agents/heartbeat` form. (Historical
+   CR/PRD/DN/audit documents legitimately DESCRIBE the banned strings and are out of
+   gate scope per the cr-authoring convention — same live-tree scoping CR-MDB-003 used
+   for this criterion; the release-wide sweep is CR-MDB-012's, under the same reading.)
