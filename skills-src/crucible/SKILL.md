@@ -15,10 +15,12 @@ ingests in one call under your agent id. Never hand-roll `curl`; the client
 ## Lifecycle (every agent)
 
 - `register --agent <id> --phase <PHASE>` FIRST — before reading or running
-  anything. Registering IS the heartbeat: register/touch is one upsert, every
-  run ingest touches your agent, and there is NO separate heartbeat endpoint,
-  ping loop, or helper script. A normally-ingesting agent stays green by
-  doing its job; re-run `register` only on a genuine status change.
+  anything. Register/touch is ONE upsert and every run ingest touches your
+  agent — ingest remains the heartbeat. `/api/v2/agents/heartbeat` shares the
+  register handler and exists for the rare status-change touch; when you need
+  it, issue it via the client's `register` verb — never a hand-rolled `curl`
+  or a helper script. A normally-ingesting agent stays green by doing its
+  job; touch (re-run `register`) only on a genuine status change.
 - Ingest EVERY run — RED and GREEN separately (Crucible must show the
   RED→GREEN transition); compile/import failures route to the compile panel;
   coverage ONLY on a full-green regression, in the same parsed payload.
@@ -41,7 +43,7 @@ ingests in one call under your agent id. Never hand-roll `curl`; the client
 | java | `mvn-crucible.py` | `unit --test <Class> [--module <m>]`, `module`, `compile`, `e2e`, `regression`, `auto-ingest`, `docker-up/down`, `pre-merge-gate` + the plan verbs | `references/java.md` → bundled `crucible-report-java` |
 | bun | `bun-crucible.py` | universal verbs (`test --tests <file>`, `regression [--coverage]`, `check`, `auto-ingest`, `pre-merge-gate`) + the plan verbs — **REFERENCE IMPLEMENTATION** for the V2 client API | `references/bun.md` → bundled `crucible-report-bun` |
 | python | `python-crucible.py` | `test --tests <dotted.path>`, `regression [--coverage --cov-source]`, `check`, `auto-ingest`, `pre-merge-gate` + the plan verbs | `references/python.md` → bundled `crucible-report-python` |
-| arduino | `arduino-crucible.py` | `test`/`unit` (native host make junit), `regression`, `auto-ingest`, `check`/`compile` (arduino-cli), `pre-merge-gate` + the plan verbs | bundled-docs route note below (no local reference file) |
+| arduino | `arduino-crucible.py` | `test`/`unit` (native host make junit), `regression`, `auto-ingest`, `check`/`compile` (arduino-cli), `pre-merge-gate` + the plan verbs | `references/arduino.md` → bundled `crucible-report-arduino` |
 | vscode | NO client yet | interim inline urllib ingest, documented as-is; the future client is CRUCIBLE's deliverable (thread #1322) | `references/vscode.md` → bundled `crucible-report-vscode` |
 | electronics/hardware | excluded — under revision | — | — |
 
@@ -54,14 +56,13 @@ placement arrives only with Crucible's own installer.
 
 ## Bundled per-stack docs — the authority (routing note)
 
-The per-stack skill docs are BUNDLED with the clients at
-`crucible:clients/skills/crucible-report-*/`
-(`~/Documents/data_projects/crucible/clients/skills/`). They are the per-stack
-AUTHORITY — managed and updated by Crucible with the **CR-CRU-030** client
-contract they document; deployed placement arrives with Crucible's own
-installer (invoked by the Model B universal installer). The local
-`references/*.md` files are THIN ROUTERS: Model B workflow deltas only, then
-route to the bundle.
+The per-stack AUTHORITY is the **Model-B-owned** `crucible-report-<stack>`
+skill bundle (one per stack, arduino included, plus `crucible-register` for
+the lifecycle verbs). The bundles live in Model B's `skills-src/` and are
+deployed alongside this skill by the modelb-axi installer (CR-MDB-016
+handover — provenance in `skills-src/CRUCIBLE-HANDOVER.md`); they document
+the **CR-CRU-030** client contract. The local `references/*.md` files are
+THIN ROUTERS: Model B workflow deltas only, then route to the bundle.
 
 ## Workflow classification — server-driven cycle attach + display context
 
