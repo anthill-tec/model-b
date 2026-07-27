@@ -125,14 +125,25 @@ class CrucibleSkillS2Test(unittest.TestCase):
             f"(register lines: {register_line_idxs}, heartbeat lines: {heartbeat_line_idxs})",
         )
 
-        # NEGATIVE/EXACT bounds -- the phantom endpoint + shell-script must
-        # be entirely gone.
-        heartbeat_endpoint_count = content.count("/agents/heartbeat")
-        heartbeat_sh_count = content.count("heartbeat.sh")
+        # NEGATIVE/EXACT bound -- superseded by CR-MDB-016 AC8 (PRD §4.2 as
+        # amended): the phantom endpoint is no longer required to be absent
+        # outright -- every '/agents/heartbeat' hit must be the live
+        # '/api/v2/agents/heartbeat' form (mirrors the composed-pattern style
+        # of tests/test_skills_handover.py's AC8 tests).
+        phantom_endpoint = "/agents" + "/heartbeat"
+        live_endpoint = "/api/v2" + phantom_endpoint
+        non_v2_hits = [
+            line_no for line_no, ln in enumerate(lines, start=1)
+            if phantom_endpoint in ln and live_endpoint not in ln
+        ]
         self.assertEqual(
-            heartbeat_endpoint_count, 0,
-            f"expected zero '/agents/heartbeat' occurrences, found {heartbeat_endpoint_count}",
+            non_v2_hits, [],
+            f"expected every '{phantom_endpoint}' occurrence in SKILL.md to "
+            f"be the '{live_endpoint}' form, found non-v2 hits at lines: {non_v2_hits}",
         )
+        # NEGATIVE/EXACT bound -- the un-adopted shell helper must be
+        # entirely gone.
+        heartbeat_sh_count = content.count("heartbeat.sh")
         self.assertEqual(
             heartbeat_sh_count, 0,
             f"expected zero 'heartbeat.sh' occurrences, found {heartbeat_sh_count}",
@@ -395,15 +406,14 @@ class CrucibleSkillCRMDB011Test(unittest.TestCase):
         )
 
     def test_ac3_bundled_doc_route_and_arduino_client_row_present(self):
+        """Superseded by CR-MDB-016 AC3: the literal
+        'clients/skills/crucible-report-' route requirement is gone --
+        AC3 instead requires zero references to 'crucible:clients/skills/'
+        as a live authority (provenance doc excepted). The arduino
+        per-stack row requirement (full surface) still applies."""
         self.assertTrue(SKILL_MD.is_file(), f"{SKILL_MD} must exist")
         content = _read(SKILL_MD)
 
-        # POSITIVE -- routes to the bundled per-stack skill docs.
-        self.assertIn(
-            "clients/skills/crucible-report-", content,
-            "SKILL.md must route to the bundled per-stack skill docs "
-            "('clients/skills/crucible-report-')",
-        )
         # POSITIVE -- the per-stack table gains an arduino row (full surface).
         self.assertIn(
             "arduino-crucible.py", content,

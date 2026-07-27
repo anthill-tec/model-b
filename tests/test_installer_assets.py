@@ -284,13 +284,17 @@ class SkillBundleDiscoveryGuardTest(unittest.TestCase):
             sys.path.remove(str(REPO_ROOT))
         bundles = deploy_module._skill_bundles(REPO_ROOT)
         bundle_names = {b.name for b in bundles}
-        # POSITIVE/EXACT -- exactly the seven expected bundle names, no more
-        # (e.g. memory-templates/, which has no SKILL.md, must never be
-        # picked up) and no fewer.
+        # POSITIVE/EXACT -- CR-MDB-016 supersedes the seven-only bound: the
+        # seven pre-existing bundles UNION the seven imported handover
+        # bundles (14 total), no more (e.g. memory-templates/, which has no
+        # SKILL.md, must never be picked up) and no fewer.
+        expected_bundle_names = (
+            set(ALL_SEVEN_BUNDLE_NAMES) | set(CRUCIBLE_HANDOVER_BUNDLE_NAMES)
+        )
         self.assertEqual(
-            bundle_names, set(ALL_SEVEN_BUNDLE_NAMES),
+            bundle_names, expected_bundle_names,
             f"deploy._skill_bundles(REPO_ROOT) must discover exactly the "
-            f"seven skill bundles {sorted(ALL_SEVEN_BUNDLE_NAMES)}; "
+            f"fourteen skill bundles {sorted(expected_bundle_names)}; "
             f"found {sorted(bundle_names)}",
         )
         crucible_skill_md = SKILLS_SRC_DIR / CRUCIBLE_BUNDLE_NAME / "SKILL.md"
@@ -478,12 +482,17 @@ class DeployEngineSevenBundlesEndToEndTest(unittest.TestCase):
             parts = Path(path).parts
             if len(parts) >= 2 and parts[-1] == "SKILL.md":
                 skill_md_names.add(parts[-2])
-        # POSITIVE/EXACT -- a manifest entry for every one of the seven
-        # skill bundles' SKILL.md (>=7 distinct names, exactly these seven).
+        # POSITIVE/EXACT -- CR-MDB-016 supersedes the seven-only bound: a
+        # manifest entry for every one of the seven pre-existing skill
+        # bundles' SKILL.md UNION the seven imported handover bundles'
+        # SKILL.md (14 distinct names, exactly).
+        expected_skill_md_names = (
+            set(ALL_SEVEN_BUNDLE_NAMES) | set(CRUCIBLE_HANDOVER_BUNDLE_NAMES)
+        )
         self.assertEqual(
-            skill_md_names, set(ALL_SEVEN_BUNDLE_NAMES),
+            skill_md_names, expected_skill_md_names,
             f"install.toml [[files]] must record a SKILL.md entry for "
-            f"exactly the seven bundles {sorted(ALL_SEVEN_BUNDLE_NAMES)}; "
+            f"exactly the fourteen bundles {sorted(expected_skill_md_names)}; "
             f"found {sorted(skill_md_names)}",
         )
         store_root = Path(self._tmp_target_root) / ".agents" / "skills"
