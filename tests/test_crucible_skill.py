@@ -31,18 +31,29 @@ ARCHIVE_WAVE2 = REPO_ROOT / "archive" / "wave2"
 # + agent-protocol + the 4 TDD-phase skills), each keyed to a distinctive
 # anchor phrase drawn from its CURRENT SKILL.md body -- proves an archived
 # copy is a real content-preserving move, not an empty stub.
+# CR-MDB-016 (handover rebirth) legitimately re-ships crucible-report-{rust,
+# java,bun,python,vscode} (+ arduino) as installer-owned symlinks into
+# ~/.claude/skills -- removed from the deletion-target list below.
+# agent-protocol remains banned (CR-MDB-016 Option B) and stays a target.
 DELETION_TARGET_SKILLS = {
-    "crucible-report-rust": "clients/rust-crucible.py",
-    "crucible-report-java": "clients/mvn-crucible.py",
-    "crucible-report-bun": "clients/bun-crucible.py",
-    "crucible-report-python": "Python parallel of",
-    "crucible-report-vscode": "no `*-crucible.py` CLI client",
     "agent-protocol": "liveness through run ingests",
     "bun-red-testing": "ingest RED",
     "bun-green-testing": "ingest GREEN",
     "bun-regression-testing": "ingest with coverage",
     "quarkus-regression-testing": "ingest with JaCoCo coverage",
 }
+
+# crucible-report-* skills legitimately reappear under ~/.claude/skills post
+# CR-MDB-016, but ONLY as installer-owned symlinks (into ~/.agents/skills),
+# never as plain re-created directories.
+CRUCIBLE_REPORT_HANDOVER_SKILLS = (
+    "crucible-report-rust",
+    "crucible-report-java",
+    "crucible-report-bun",
+    "crucible-report-python",
+    "crucible-report-vscode",
+    "crucible-report-arduino",
+)
 
 MEMORY_DELETION_TARGET = "crucible-ingest.md"
 MEMORY_DELETION_ANCHOR = "NEVER hand-roll curl/python"
@@ -125,14 +136,25 @@ class CrucibleSkillS2Test(unittest.TestCase):
             f"(register lines: {register_line_idxs}, heartbeat lines: {heartbeat_line_idxs})",
         )
 
-        # NEGATIVE/EXACT bounds -- the phantom endpoint + shell-script must
-        # be entirely gone.
-        heartbeat_endpoint_count = content.count("/agents/heartbeat")
-        heartbeat_sh_count = content.count("heartbeat.sh")
+        # NEGATIVE/EXACT bound -- superseded by CR-MDB-016 AC8 (PRD §4.2 as
+        # amended): the phantom endpoint is no longer required to be absent
+        # outright -- every '/agents/heartbeat' hit must be the live
+        # '/api/v2/agents/heartbeat' form (mirrors the composed-pattern style
+        # of tests/test_skills_handover.py's AC8 tests).
+        phantom_endpoint = "/agents" + "/heartbeat"
+        live_endpoint = "/api/v2" + phantom_endpoint
+        non_v2_hits = [
+            line_no for line_no, ln in enumerate(lines, start=1)
+            if phantom_endpoint in ln and live_endpoint not in ln
+        ]
         self.assertEqual(
-            heartbeat_endpoint_count, 0,
-            f"expected zero '/agents/heartbeat' occurrences, found {heartbeat_endpoint_count}",
+            non_v2_hits, [],
+            f"expected every '{phantom_endpoint}' occurrence in SKILL.md to "
+            f"be the '{live_endpoint}' form, found non-v2 hits at lines: {non_v2_hits}",
         )
+        # NEGATIVE/EXACT bound -- the un-adopted shell helper must be
+        # entirely gone.
+        heartbeat_sh_count = content.count("heartbeat.sh")
         self.assertEqual(
             heartbeat_sh_count, 0,
             f"expected zero 'heartbeat.sh' occurrences, found {heartbeat_sh_count}",
@@ -254,6 +276,13 @@ class CrucibleSkillS4Test(unittest.TestCase):
     memory stub are archived into the repo then physically removed."""
 
     def test_s4_ten_skill_dirs_and_memory_stub_removed_with_archived_content(self):
+        """CR-MDB-016 (handover rebirth, supersession class): the wave-2
+        deletion targets never resurrect EXCEPT crucible-report-{rust,java,
+        bun,python,vscode,arduino}, which CR-MDB-016 legitimately re-ships as
+        real deployed handover bundles (installer-owned symlinks). Those are
+        excluded from DELETION_TARGET_SKILLS above; agent-protocol remains
+        banned per CR-MDB-016 Option B and every other original target still
+        applies unchanged."""
         still_present = []
         not_archived = []
         for name, anchor in DELETION_TARGET_SKILLS.items():
@@ -269,8 +298,8 @@ class CrucibleSkillS4Test(unittest.TestCase):
         if not _archive_has_content_move(MEMORY_DELETION_TARGET, MEMORY_DELETION_ANCHOR):
             not_archived.append(MEMORY_DELETION_TARGET)
 
-        # NEGATIVE -- none of the 10 skill dirs + memory/crucible-ingest.md
-        # may still exist in the live ~/.claude tree.
+        # NEGATIVE -- none of the remaining deletion-target skill dirs +
+        # memory/crucible-ingest.md may still exist in the live ~/.claude tree.
         self.assertEqual(
             still_present, [],
             f"expected zero deletion-target paths still present, found: {still_present}",
@@ -281,6 +310,20 @@ class CrucibleSkillS4Test(unittest.TestCase):
             not_archived, [],
             f"expected an archived copy retaining its anchor under {ARCHIVE_WAVE2} "
             f"for every deletion target, missing/anchor-less for: {not_archived}",
+        )
+
+        # STRENGTHEN -- any crucible-report-* handover bundle present under
+        # ~/.claude/skills must be an installer-owned symlink, never a plain
+        # re-created directory (CR-MDB-016 §S4 deploy-as-symlink contract).
+        non_symlink_report_skills = []
+        for name in CRUCIBLE_REPORT_HANDOVER_SKILLS:
+            live_dir = CLAUDE_DIR / "skills" / name
+            if live_dir.exists() and not live_dir.is_symlink():
+                non_symlink_report_skills.append(str(live_dir))
+        self.assertEqual(
+            non_symlink_report_skills, [],
+            "expected any present crucible-report-* skill path to be an "
+            f"installer-owned symlink, found plain dir(s): {non_symlink_report_skills}",
         )
 
     def test_s4_chezmoi_diff_clean_on_cr_touched_paths(self):
@@ -395,15 +438,14 @@ class CrucibleSkillCRMDB011Test(unittest.TestCase):
         )
 
     def test_ac3_bundled_doc_route_and_arduino_client_row_present(self):
+        """Superseded by CR-MDB-016 AC3: the literal
+        'clients/skills/crucible-report-' route requirement is gone --
+        AC3 instead requires zero references to 'crucible:clients/skills/'
+        as a live authority (provenance doc excepted). The arduino
+        per-stack row requirement (full surface) still applies."""
         self.assertTrue(SKILL_MD.is_file(), f"{SKILL_MD} must exist")
         content = _read(SKILL_MD)
 
-        # POSITIVE -- routes to the bundled per-stack skill docs.
-        self.assertIn(
-            "clients/skills/crucible-report-", content,
-            "SKILL.md must route to the bundled per-stack skill docs "
-            "('clients/skills/crucible-report-')",
-        )
         # POSITIVE -- the per-stack table gains an arduino row (full surface).
         self.assertIn(
             "arduino-crucible.py", content,

@@ -63,6 +63,23 @@ GENERATOR_AGENTS_DIR = GENERATOR_DIR / "agents"
 
 CLAUDE_SKILLS_DIR = Path.home() / ".claude" / "skills"
 
+# CR-MDB-016 Sec1/AC4 -- the 7 handover bundles (crucible-register +
+# crucible-report-{arduino,bun,java,python,rust,vscode}), imported from
+# crucible:clients/skills/ -- extending this file's durable
+# coverage-superset fidelity gate + bundle-discovery guard to cover them.
+CRUCIBLE_HANDOVER_BUNDLE_NAMES = (
+    "crucible-register",
+    "crucible-report-arduino",
+    "crucible-report-bun",
+    "crucible-report-java",
+    "crucible-report-python",
+    "crucible-report-rust",
+    "crucible-report-vscode",
+)
+ORIGIN_CRUCIBLE_SKILLS_DIR = (
+    Path.home() / "Documents" / "data_projects" / "crucible" / "clients" / "skills"
+)
+
 # §S7's six Model B-owned skill imports (crucible is the pre-existing 011
 # authorship -- guarded, not re-imported).
 IMPORTED_BUNDLE_NAMES = (
@@ -191,6 +208,66 @@ class ImportedSkillBundleFidelityTest(unittest.TestCase):
         self.assertEqual(failures, [], "\n".join(failures))
 
 
+class CrucibleHandoverBundleFidelityTest(unittest.TestCase):
+    """CR-MDB-016 AC4 -- extends the CR-MDB-014 import-fidelity gate
+    (ImportedSkillBundleFidelityTest above) to the 7 handover bundles:
+    each must exist under skills-src/ with a SKILL.md, its file set must
+    be a superset of its origin counterpart under crucible:clients/skills/
+    (WHEN that origin still exists -- it freezes/retires post-handover,
+    same durability guard CR-MDB-016's own AC1 test uses), and the deploy
+    engine's bundle-discovery function must find it (so the wheel/_assets
+    coverage this AC gates actually reaches it, additively -- the
+    pre-existing seven-bundle exact-match test below is untouched)."""
+
+    def test_each_handover_bundle_exists_and_covers_origin_file_set(self):
+        if not ORIGIN_CRUCIBLE_SKILLS_DIR.is_dir():
+            self.skipTest(
+                f"{ORIGIN_CRUCIBLE_SKILLS_DIR} absent -- origin has "
+                f"frozen/retired post-handover; coverage-superset fidelity "
+                f"is no longer checkable against it"
+            )
+        failures = []
+        for name in CRUCIBLE_HANDOVER_BUNDLE_NAMES:
+            origin_dir = ORIGIN_CRUCIBLE_SKILLS_DIR / name
+            imported_dir = SKILLS_SRC_DIR / name
+            if not (imported_dir / "SKILL.md").is_file():
+                failures.append(
+                    f"{name}: skills-src/{name}/SKILL.md does not exist "
+                    f"(handover import not yet authored)"
+                )
+                continue
+            origin_files = _relative_file_set(origin_dir)
+            imported_files = _relative_file_set(imported_dir)
+            missing = sorted(origin_files - imported_files)
+            if missing:
+                failures.append(
+                    f"{name}: repo bundle must cover every origin file "
+                    f"(superset of {origin_dir}); missing from "
+                    f"skills-src/{name}/: {missing}"
+                )
+        # POSITIVE/EXACT -- every one of the 7 handover bundles exists and
+        # covers the origin file set completely.
+        self.assertEqual(failures, [], "\n".join(failures))
+
+    def test_deploy_module_discovers_all_seven_handover_bundle_names(self):
+        sys.path.insert(0, str(REPO_ROOT))
+        try:
+            from modelb_axi import deploy as deploy_module
+        finally:
+            sys.path.remove(str(REPO_ROOT))
+        bundles = deploy_module._skill_bundles(REPO_ROOT)
+        bundle_names = {b.name for b in bundles}
+        missing = sorted(set(CRUCIBLE_HANDOVER_BUNDLE_NAMES) - bundle_names)
+        # POSITIVE -- the deploy engine's own discovery must find every
+        # handover bundle (additive to the pre-existing 7 -- 14 total once
+        # Sec1 lands), so wheel/_assets packaging carries them.
+        self.assertEqual(
+            missing, [],
+            f"deploy._skill_bundles(REPO_ROOT) must discover every handover "
+            f"bundle {sorted(CRUCIBLE_HANDOVER_BUNDLE_NAMES)}; missing: {missing}",
+        )
+
+
 class SkillBundleDiscoveryGuardTest(unittest.TestCase):
     """AC6 pin #2 -- the deploy engine's own bundle-discovery function
     (modelb_axi.deploy._skill_bundles, pure/read-only) finds exactly the
@@ -207,13 +284,17 @@ class SkillBundleDiscoveryGuardTest(unittest.TestCase):
             sys.path.remove(str(REPO_ROOT))
         bundles = deploy_module._skill_bundles(REPO_ROOT)
         bundle_names = {b.name for b in bundles}
-        # POSITIVE/EXACT -- exactly the seven expected bundle names, no more
-        # (e.g. memory-templates/, which has no SKILL.md, must never be
-        # picked up) and no fewer.
+        # POSITIVE/EXACT -- CR-MDB-016 supersedes the seven-only bound: the
+        # seven pre-existing bundles UNION the seven imported handover
+        # bundles (14 total), no more (e.g. memory-templates/, which has no
+        # SKILL.md, must never be picked up) and no fewer.
+        expected_bundle_names = (
+            set(ALL_SEVEN_BUNDLE_NAMES) | set(CRUCIBLE_HANDOVER_BUNDLE_NAMES)
+        )
         self.assertEqual(
-            bundle_names, set(ALL_SEVEN_BUNDLE_NAMES),
+            bundle_names, expected_bundle_names,
             f"deploy._skill_bundles(REPO_ROOT) must discover exactly the "
-            f"seven skill bundles {sorted(ALL_SEVEN_BUNDLE_NAMES)}; "
+            f"fourteen skill bundles {sorted(expected_bundle_names)}; "
             f"found {sorted(bundle_names)}",
         )
         crucible_skill_md = SKILLS_SRC_DIR / CRUCIBLE_BUNDLE_NAME / "SKILL.md"
@@ -401,12 +482,17 @@ class DeployEngineSevenBundlesEndToEndTest(unittest.TestCase):
             parts = Path(path).parts
             if len(parts) >= 2 and parts[-1] == "SKILL.md":
                 skill_md_names.add(parts[-2])
-        # POSITIVE/EXACT -- a manifest entry for every one of the seven
-        # skill bundles' SKILL.md (>=7 distinct names, exactly these seven).
+        # POSITIVE/EXACT -- CR-MDB-016 supersedes the seven-only bound: a
+        # manifest entry for every one of the seven pre-existing skill
+        # bundles' SKILL.md UNION the seven imported handover bundles'
+        # SKILL.md (14 distinct names, exactly).
+        expected_skill_md_names = (
+            set(ALL_SEVEN_BUNDLE_NAMES) | set(CRUCIBLE_HANDOVER_BUNDLE_NAMES)
+        )
         self.assertEqual(
-            skill_md_names, set(ALL_SEVEN_BUNDLE_NAMES),
+            skill_md_names, expected_skill_md_names,
             f"install.toml [[files]] must record a SKILL.md entry for "
-            f"exactly the seven bundles {sorted(ALL_SEVEN_BUNDLE_NAMES)}; "
+            f"exactly the fourteen bundles {sorted(expected_skill_md_names)}; "
             f"found {sorted(skill_md_names)}",
         )
         store_root = Path(self._tmp_target_root) / ".agents" / "skills"

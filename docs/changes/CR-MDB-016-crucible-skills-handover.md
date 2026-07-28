@@ -1,6 +1,6 @@
 # CR-MDB-016 — Crucible skills handover: adopt, bundle, publish, supersede deployed
 
-**Status:** PROPOSED
+**Status:** COMPLETED
 **Type:** migration
 **Priority:** P1 (blocks release 0.1.0 — the deployed skill actively teaches a removed API)
 **Depends on:** CR-MDB-011 (skills-src/crucible routing baseline), CR-MDB-014 (installer + wheel asset pipeline)
@@ -86,7 +86,10 @@ config, manual source commits — never apply/push).
 Reply on Sandesh thread #1336 when the deployed copy is superseded (commitment made in
 #1337), telling Crucible: (a) their `clients/skills/` copy may be frozen/retired;
 (b) `agent-protocol` ships ABSORBED into the crucible skill, not standalone, and
-`heartbeat.sh` was not adopted.
+`heartbeat.sh` was not adopted; (c) the STANDING maintenance contract — every future
+client-surface change gets an intimation on this thread so Model B can sync the
+now-independently-owned bundle docs (see `skills-src/CRUCIBLE-HANDOVER.md`
+§Maintenance contract).
 
 ## Acceptance Criteria
 
@@ -109,6 +112,9 @@ Reply on Sandesh thread #1336 when the deployed copy is superseded (commitment m
 6. Chezmoi round-trip clean after §S4: retired files stay retired; no drift resurrect.
 7. The five pre-existing `crucible/references/<stack>.md` consumer paths still resolve
    (22 agent definitions + 2 refactorer skills).
-8. The amended PRD §4.2 grep gate (commit `3bd3561` semantics) passes over the repo:
-   `heartbeat.sh` zero hits outside `archive/`; `/agents/heartbeat` hits outside
-   `archive/` are exclusively the `/api/v2/agents/heartbeat` form.
+8. The amended PRD §4.2 grep gate (commit `3bd3561` semantics) passes over the LIVE
+   artifact tree this CR produces — `skills-src/`: `heartbeat.sh` zero hits;
+   every `/agents/heartbeat` hit is the `/api/v2/agents/heartbeat` form. (Historical
+   CR/PRD/DN/audit documents legitimately DESCRIBE the banned strings and are out of
+   gate scope per the cr-authoring convention — same live-tree scoping CR-MDB-003 used
+   for this criterion; the release-wide sweep is CR-MDB-012's, under the same reading.)

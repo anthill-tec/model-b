@@ -24,12 +24,26 @@ frontmatter/description/citation/anchor content checks, and the
 retired-artifact grep gate) now targets ``GENERATOR_AGENTS_DIR`` instead of
 the live ``AGENTS_DIR``. The 13 BESPOKE defs were never part of build.py's
 target list and still live ONLY in the real deployed ``~/.claude/agents/``
-tree -- ``BespokeUntouchedS4Test`` is UNCHANGED (still ``AGENTS_DIR``). A
-new ``DeployedAgentsConsumerConstraintTest`` (§S7 addition) pins the
+tree -- ``BespokeUntouchedS4Test`` originally verified this via live
+``chezmoi diff`` against ``AGENTS_DIR``. A new
+``DeployedAgentsConsumerConstraintTest`` (§S7 addition) pins the
 opposite-direction guarantee: the DEPLOYED ``~/.claude/agents/`` tree still
 carries the 16 generated files (existence only, no content coupling) until
 the installer (CR-MDB-014) actually redeploys them there -- mirroring the
 CR-MDB-011 AC6 "already-deployed content must remain reachable" pattern.
+
+CR-MDB-016 AMENDMENT (skills-handover branch; orchestrator-approved user
+directive: the Model B system carries NO chezmoi dependencies -- Model B
+tests must not introspect the user's live chezmoi tree/history): two
+``BespokeUntouchedS4Test`` methods whose MECHANISM shelled out to
+``chezmoi diff`` on live agent files, and to the chezmoi SOURCE repo's last
+git commit, were flapping on unrelated user dotfile activity. The class is
+re-mechanized to pin the same CR-MDB-008 AC (the generator never
+writes/overwrites a bespoke agent def) with repo-side-only assertions
+driven from the generator's own inputs/outputs (``generator/`` templates +
+stacks + ``build.py``'s emitted-name set), built into an isolated tmp
+output dir -- no ``chezmoi`` invocation and no read of the live
+``~/.claude`` tree anywhere in the class.
 
 Stdlib only (unittest + subprocess + pathlib + shutil + sys + tomllib). No
 production-module import: build.py is invoked as a subprocess per the CR's
@@ -40,6 +54,7 @@ itself describes driving the gate.
 import shutil
 import subprocess
 import sys
+import tempfile
 import tomllib
 import unittest
 from pathlib import Path
@@ -99,17 +114,6 @@ RETIRED_ARTIFACT_PATTERN = (
     r"bun-red-testing\|quarkus-regression-testing"
 )
 
-# The 5 standard chezmoi-diff scope paths (same convention CR-MDB-002/003/004
-# and CR-MDB-005 used -- see tests/test_cr_authoring_skill.py /
-# tests/test_git_chezmoi_skills.py).
-CHEZMOI_SCOPE_PATHS = (
-    CLAUDE_DIR / "AGENTS.md",
-    CLAUDE_DIR / "CLAUDE.md",
-    CLAUDE_DIR / "agents",
-    CLAUDE_DIR / "memory",
-    CLAUDE_DIR / "skills",
-)
-
 
 def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
@@ -128,15 +132,6 @@ def _split_frontmatter(content: str):
             body = "\n".join(lines[idx + 1:])
             return frontmatter, body
     return "", content
-
-
-def _chezmoi_source_path(chezmoi_bin: str):
-    result = subprocess.run(
-        [chezmoi_bin, "source-path"], capture_output=True, text=True, timeout=15
-    )
-    if result.returncode != 0:
-        return None
-    return result.stdout.strip()
 
 
 class GeneratorSourcesS2Test(unittest.TestCase):
@@ -427,86 +422,81 @@ class RetiredArtifactGrepGateS4Test(unittest.TestCase):
 
 
 class BespokeUntouchedS4Test(unittest.TestCase):
-    """SS4 -- the 13 bespoke defs byte-unchanged (chezmoi diff on each is
-    empty AND none appears in the chezmoi source commit's file list); the
-    scoped 5-path chezmoi diff exits 0 empty."""
+    """SS4 -- CR-MDB-008 AC: the generator never writes/overwrites a bespoke
+    agent def. Re-mechanized under CR-MDB-016 (skills-handover branch;
+    orchestrator-approved user directive: the Model B system carries NO
+    chezmoi dependencies -- Model B tests must not introspect the user's
+    chezmoi tree/history). No chezmoi invocation, no read of the live
+    ~/.claude tree: this class drives the generator's own inputs/outputs
+    (generator/templates + generator/stacks + build.py) end to end into an
+    isolated tmp output dir and asserts, from build.py's own emitted-name
+    set, that (a) the generated agent name set is exactly the 16 stack x
+    role names and (b) none of the 13 bespoke names (rust x4, vscode x4,
+    electronics x4, inbox-analyst) is ever in that set or ever written to
+    disk by a build."""
 
-    def test_s4_bespoke_agents_chezmoi_diff_empty_per_file(self):
-        chezmoi = shutil.which("chezmoi")
-        if chezmoi is None:
-            self.skipTest("chezmoi binary not found on PATH -- cannot verify bespoke drift")
-        dirty = []
-        errored = []
-        for name in BESPOKE_AGENT_NAMES:
-            path = AGENTS_DIR / name
-            result = subprocess.run(
-                [chezmoi, "diff", str(path)], capture_output=True, text=True, timeout=30,
-            )
-            if result.returncode != 0:
-                errored.append(f"{name} (rc={result.returncode}): {result.stderr[:200]}")
-                continue
-            if result.stdout.strip():
-                dirty.append(name)
-        # NEGATIVE -- none of the 13 bespoke files may show a chezmoi diff.
-        self.assertEqual(
-            dirty, [],
-            f"bespoke agent files must be byte-unchanged (empty chezmoi diff), "
-            f"dirty: {dirty}",
+    def setUp(self):
+        self._tmp_generator_dir = Path(
+            tempfile.mkdtemp(prefix="modelb-axi-s4-generator-")
         )
-        # bound -- every diff invocation must have actually run (rc==0), else
-        # an unmanaged-path abort would vacuously report "no diff".
-        self.assertEqual(
-            errored, [],
-            f"chezmoi diff must exit 0 for every bespoke file, errors: {errored}",
-        )
+        shutil.copytree(TEMPLATES_DIR, self._tmp_generator_dir / "templates")
+        shutil.copytree(STACKS_DIR, self._tmp_generator_dir / "stacks")
+        shutil.copy(BUILD_PY, self._tmp_generator_dir / "build.py")
+        self._tmp_build_py = self._tmp_generator_dir / "build.py"
+        self._tmp_output_agents_dir = self._tmp_generator_dir / "agents"
 
-    def test_s4_bespoke_agents_absent_from_chezmoi_source_last_commit(self):
-        chezmoi = shutil.which("chezmoi")
-        if chezmoi is None:
-            self.skipTest("chezmoi binary not found on PATH -- cannot inspect source commit")
-        git_bin = shutil.which("git")
-        if git_bin is None:
-            self.skipTest("git binary not found on PATH -- cannot inspect source commit")
-        source_path = _chezmoi_source_path(chezmoi)
-        if not source_path:
-            self.skipTest("could not resolve `chezmoi source-path`")
+    def tearDown(self):
+        shutil.rmtree(self._tmp_generator_dir, ignore_errors=True)
+
+    def _run_isolated_build(self):
         result = subprocess.run(
-            [git_bin, "-C", source_path, "diff", "--name-only", "HEAD~1", "HEAD"],
-            capture_output=True, text=True, timeout=15,
-        )
-        if result.returncode != 0:
-            self.skipTest(
-                f"could not read chezmoi source repo's last commit: {result.stderr[:300]}"
-            )
-        changed_names = {Path(p).name for p in result.stdout.splitlines() if p.strip()}
-        overlap = changed_names & set(BESPOKE_AGENT_NAMES)
-        # NEGATIVE -- the CR's chezmoi source commit must not touch a bespoke file.
-        self.assertEqual(
-            overlap, set(),
-            f"chezmoi source commit's file list must not include a bespoke "
-            f"agent file, found: {overlap}",
-        )
-
-    def test_s4_scoped_chezmoi_diff_five_paths_exits_zero_empty(self):
-        chezmoi = shutil.which("chezmoi")
-        if chezmoi is None:
-            self.skipTest("chezmoi binary not found on PATH -- cannot verify dotfile-manager drift")
-        result = subprocess.run(
-            [chezmoi, "diff", *[str(p) for p in CHEZMOI_SCOPE_PATHS]],
+            [sys.executable, str(self._tmp_build_py), "build"],
             capture_output=True, text=True, timeout=60,
         )
-        # POSITIVE -- chezmoi's source state must exactly match the live
-        # state of the 5 standard CR-touched paths (empty diff).
-        self.assertEqual(
-            result.stdout.strip(), "",
-            f"scoped chezmoi diff must be empty (no drift), got "
-            f"({len(result.stdout)} chars):\n{result.stdout[:2000]}",
-        )
-        # EXACT bound -- a clean exit is required too, so an "unmanaged path"
-        # abort (empty stdout but non-zero exit) does not vacuously pass.
         self.assertEqual(
             result.returncode, 0,
-            f"scoped chezmoi diff must exit 0, stderr:\n{result.stderr[:2000]}",
+            f"an isolated `build.py build` (repo-side inputs, tmp output "
+            f"dir) must exit 0, got rc={result.returncode}\n"
+            f"stdout:\n{result.stdout[:2000]}\nstderr:\n{result.stderr[:2000]}",
+        )
+        return result
+
+    def test_s4_isolated_build_writes_exactly_the_16_target_files(self):
+        self._run_isolated_build()
+        self.assertTrue(
+            self._tmp_output_agents_dir.is_dir(),
+            f"{self._tmp_output_agents_dir} must be created by the build",
+        )
+        written_names = {
+            p.name for p in self._tmp_output_agents_dir.iterdir() if p.is_file()
+        }
+        expected_names = set(TARGET_AGENT_NAMES)
+        # POSITIVE/EXACT -- an isolated build's written-file set is exactly
+        # the 16 stack x role names, no more and no fewer.
+        self.assertEqual(
+            written_names, expected_names,
+            f"an isolated build must write exactly the 16 small-stack agent "
+            f"files, got {sorted(written_names)}, expected "
+            f"{sorted(expected_names)}",
+        )
+        # bound -- exactly 16 files land on disk, nothing extra silently
+        # emitted alongside them.
+        self.assertEqual(
+            len(written_names), 16,
+            f"expected exactly 16 written files, got {len(written_names)}",
+        )
+
+    def test_s4_isolated_build_never_writes_a_bespoke_agent_file(self):
+        self._run_isolated_build()
+        written_names = {
+            p.name for p in self._tmp_output_agents_dir.iterdir() if p.is_file()
+        }
+        # NEGATIVE -- none of the 13 bespoke defs is ever written by a build.
+        bespoke_overlap = written_names & set(BESPOKE_AGENT_NAMES)
+        self.assertEqual(
+            bespoke_overlap, set(),
+            f"a build must never write a bespoke agent file, found: "
+            f"{bespoke_overlap}",
         )
 
 

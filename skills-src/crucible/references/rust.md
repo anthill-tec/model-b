@@ -1,11 +1,10 @@
 # Crucible — Rust / Cargo stack (thin router)
 
-**Authority:** the bundled skill `crucible-report-rust` at
-`~/Documents/data_projects/crucible/clients/skills/crucible-report-rust/`
-(`crucible:clients/skills/`) — the full verb surface (`test --crate`,
-`regression-ingest`, `workspace-regression`, `clippy`, gates), endpoint
-routing, and report locations live THERE, managed by Crucible. Read it before
-running anything.
+**Authority:** the Model-B-owned bundled skill `crucible-report-rust`
+(`skills-src/crucible-report-rust/`, deployed by the modelb-axi installer) —
+the full verb surface (`test --crate`, `regression-ingest`,
+`workspace-regression`, `clippy`, gates), endpoint routing, and report
+locations live THERE. Read it before running anything.
 
 Model B deltas only:
 

@@ -1,10 +1,10 @@
 # Crucible — Quarkus / Java stack (thin router)
 
-**Authority:** the bundled skill `crucible-report-java` at
-`~/Documents/data_projects/crucible/clients/skills/crucible-report-java/`
-(`crucible:clients/skills/`) — the full verb surface (`unit --test`, `module`,
-`regression` with JaCoCo, gates), endpoint routing, and report locations live
-THERE, managed by Crucible. Read it before running anything.
+**Authority:** the Model-B-owned bundled skill `crucible-report-java`
+(`skills-src/crucible-report-java/`, deployed by the modelb-axi installer) —
+the full verb surface (`unit --test`, `module`, `regression` with JaCoCo,
+gates), endpoint routing, and report locations live THERE. Read it before
+running anything.
 
 Model B deltas only:
 
