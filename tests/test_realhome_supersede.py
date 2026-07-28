@@ -138,7 +138,7 @@ def _find_crucible_scripts() -> list:
     if not CLAUDE_SCRIPTS_DIR.is_dir():
         return []
     return sorted(
-        str(p) for p in CLAUDE_SCRIPTS_DIR.iterdir()
+        str(p) for p in CLAUDE_SCRIPTS_DIR.rglob("*")
         if p.is_file() and "crucible" in p.name.lower()
     )
 

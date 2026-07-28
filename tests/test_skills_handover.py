@@ -21,17 +21,12 @@ exists on this machine; the origin freezes/retires after handover per the
 CR context, so those specific assertions pytest-skip (not fail) when the
 directory is absent -- keeping the gate durable post-freeze.
 
-The repo-wide heartbeat grep gate (AC8) is scoped to skills-src/ -- the
-tree this CR's Sec1-Sec3 actually produces -- mirroring the scoping
-CR-MDB-003 used for the identical PRD Sec4.2 criterion (pinned to the live
-SKILL.md, never the whole git tree). docs/changes, docs/research, and
-audits/ are CR/PRD/audit history that legitimately quotes the retired
-phantom-heartbeat defect while describing it; cleaning those would rewrite
-historical record, which this repo's cr-authoring convention forbids and
-which this CR's own scope never touches. ESCALATION note: AC8's own text
-says the gate "passes over the repo" -- if that means the whole git tree
-(docs/ and audits/ included), this scoping decision needs orchestrator
-confirmation; see the final report.
+The heartbeat grep gate (AC8) is scoped to the LIVE artifact tree this
+CR produces -- skills-src/ -- per the amended spec (AC8 names the
+live-tree scope explicitly), mirroring the scoping CR-MDB-003 used for
+the identical PRD Sec4.2 criterion. Historical CR/PRD/DN/audit documents
+legitimately quote the retired phantom-heartbeat defect while describing
+it and are out of gate scope per the cr-authoring convention.
 
 Stdlib only: unittest + subprocess + re + hashlib + pathlib. No SUT
 import: this CR's Sec1-Sec3 deliverable is markdown/skill content, not
