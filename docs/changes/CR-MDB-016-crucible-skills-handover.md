@@ -1,6 +1,6 @@
 # CR-MDB-016 — Crucible skills handover: adopt, bundle, publish, supersede deployed
 
-**Status:** PROPOSED
+**Status:** COMPLETED
 **Type:** migration
 **Priority:** P1 (blocks release 0.1.0 — the deployed skill actively teaches a removed API)
 **Depends on:** CR-MDB-011 (skills-src/crucible routing baseline), CR-MDB-014 (installer + wheel asset pipeline)
