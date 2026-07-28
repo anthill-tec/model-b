@@ -57,3 +57,8 @@ document remain Crucible-owned and keep evolving. That is a standing coupling:
   bundle content, republishes the artifact, and redeploys via `modelb-axi`.
 - Drift check at every wave boundary: bundle docs vs the live client
   `--help`/behavior for each stack.
+- **Pre-release ask (matter of principle, user 2026-07-28): before EVERY Model B
+  release, ask Crucible over Sandesh whether any client changes have shipped
+  since the last sync — never rely on their intimations alone. A release goes
+  out only against a confirmed-current doc set. (Release-CR checklist step,
+  starting with CR-MDB-012.)
