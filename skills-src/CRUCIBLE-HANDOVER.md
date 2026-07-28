@@ -42,3 +42,18 @@ surface) is absorbed into `skills-src/crucible/` per CR-MDB-016 §S2(b). Its
 shell helper script was NOT adopted (the clients' `register` verb covers the
 rare status-change touch; the PRD §4.2 helper-script ban stays absolute). Its
 MDX-platform content (CodeForge/Velocity) is out of scope.
+
+## Maintenance contract — the ongoing coupling (user, 2026-07-28)
+
+Ownership of these skill DOCS is Model B's, but the CLIENT SCRIPTS they
+document remain Crucible-owned and keep evolving. That is a standing coupling:
+
+- **Every Crucible client-surface change (verbs, flags, envelope, endpoints)
+  obligates a Model B doc-sync** of the affected bundle(s) here — integrated
+  INDEPENDENTLY into this copy (Crucible's `clients/skills/` is frozen and is
+  never re-imported wholesale after the handover commit above).
+- **Coordination channel: Sandesh** (Mainline - Crucible ⟷ Mainline - ModelB).
+  Crucible intimates client changes on the #1336 thread; Model B syncs the
+  bundle content, republishes the artifact, and redeploys via `modelb-axi`.
+- Drift check at every wave boundary: bundle docs vs the live client
+  `--help`/behavior for each stack.

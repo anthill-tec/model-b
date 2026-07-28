@@ -86,7 +86,10 @@ config, manual source commits — never apply/push).
 Reply on Sandesh thread #1336 when the deployed copy is superseded (commitment made in
 #1337), telling Crucible: (a) their `clients/skills/` copy may be frozen/retired;
 (b) `agent-protocol` ships ABSORBED into the crucible skill, not standalone, and
-`heartbeat.sh` was not adopted.
+`heartbeat.sh` was not adopted; (c) the STANDING maintenance contract — every future
+client-surface change gets an intimation on this thread so Model B can sync the
+now-independently-owned bundle docs (see `skills-src/CRUCIBLE-HANDOVER.md`
+§Maintenance contract).
 
 ## Acceptance Criteria
 
