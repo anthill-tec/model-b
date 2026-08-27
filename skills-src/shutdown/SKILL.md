@@ -115,7 +115,7 @@ Host is going down (power failure, forced stop). After closing the active write:
    drain to exhaustion + merge, then ack. Say `emergency` if you need an immediate stop."*
    - **Non-emergency (default):** keep working — drain the todo list to exhaustion and get
      the active CR **merged back** (`git merge develop --no-edit` to behind=0, then
-     `worktree-flow finish` — merge-not-rebase). The active CR landing is part of a clean
+     `~/.agents/scripts/worktree-flow.py finish` — merge-not-rebase). The active CR landing is part of a clean
      graceful shutdown. (worktree-flow now emits a TOON envelope on stdout; the human
      board is on stderr.)
    - If Mainline/User replies with an emergency/immediate-stop → switch to the **Emergency**

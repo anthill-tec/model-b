@@ -259,21 +259,42 @@ CONTRACT_RENAME_REQUIREMENTS = (
     ),
 )
 
-#: §S6/AC1 — the live surfaces scanned for home-anchored tool paths.
+#: §S6/AC1 — the INSTRUCTIONAL surfaces scanned for home-anchored tool paths:
+#: the files that tell an agent what to run.
 S6_SCAN_ROOTS = (
     "skills-src",
     "modelb_axi",
     "scripts",
     "contracts",
     "hooks-src",
-    "docs/changes",
     "AGENTS.md",
 )
 
-#: §S6/AC1 — EXCLUDED, and asserted excluded. `archive/` is frozen history;
-#: rewriting it to satisfy a gate would destroy the record of what the CR
-#: detached from.
+#: §S6/AC1 — EXCLUDED, and asserted excluded: the surfaces that must be FREE
+#: to name the pattern in order to DESCRIBE or FORBID it. `docs/changes/` was
+#: a scanned root at C3 RED, which made the gate unsatisfiable — a spec cannot
+#: prohibit a string and also document its own prohibition (corrected
+#: 2026-08-27; measured then: 12 pairings, 6 real instructional violations and
+#: 6 prohibition-quotes in `docs/changes/`).
+S6_EXCLUDED_ROOTS = (
+    "docs/changes",
+    "docs/research",
+    "audits",
+    "archive",
+    "tests",
+)
+
+#: The frozen-history member of that set, guarded hardest: rewriting `archive/`
+#: to satisfy a gate would destroy the record of what the CR detached from.
 S6_EXCLUDED_ROOT = "archive"
+
+#: The excluded roots that STILL hold home-anchored pairings (measured at C3
+#: GREEN: docs/changes 6, archive 5, tests 2). The exclusion is load-bearing
+#: precisely because those references SURVIVE; if they were rewritten, specs,
+#: history or the gates themselves were edited to make this test green.
+#: `docs/research/` and `audits/` hold none today — excluded on principle, so
+#: describing the pattern there never becomes a violation later.
+S6_EXCLUSION_IS_LOAD_BEARING = ("docs/changes", "archive", "tests")
 
 #: The retired mirror location paired with one of the eight. Same shape as
 #: `tests/test_realhome_supersede.py`'s `LIVE_SCRIPTS_CRUCIBLE_REF_RE`:
@@ -744,7 +765,16 @@ class DetachmentS6Test(unittest.TestCase):
             f"{len(offending)}: {offending}",
         )
 
-    def test_s6_archived_history_is_excluded_from_the_detachment_gate(self):
+    def test_s6_excluded_surfaces_are_excluded_from_the_detachment_gate(self):
+        overlap = [root for root in S6_EXCLUDED_ROOTS if root in S6_SCAN_ROOTS]
+        self.assertEqual(
+            [], overlap,
+            f"§S6/AC1: {overlap} is both scanned and excluded. The excluded "
+            f"set {list(S6_EXCLUDED_ROOTS)} must stay FREE to name the "
+            f"pattern in order to describe or forbid it — a CR spec cannot "
+            f"prohibit a string and also document its own prohibition, and "
+            f"neither can this module's own gates.",
+        )
         self.assertNotIn(
             S6_EXCLUDED_ROOT, S6_SCAN_ROOTS,
             f"§S6/AC1: {S6_EXCLUDED_ROOT}/ must never be scanned — it is "
@@ -765,6 +795,18 @@ class DetachmentS6Test(unittest.TestCase):
             f"none. The exclusion is load-bearing precisely because those "
             f"references survive; if they were rewritten, archived history was "
             f"edited to make a gate green.",
+        )
+        emptied = [
+            root for root in S6_EXCLUSION_IS_LOAD_BEARING
+            if not _home_anchored_tool_refs(root)
+        ]
+        self.assertEqual(
+            [], emptied,
+            f"§S6/AC1: {emptied} were excluded because they still NAME the "
+            f"pattern in order to describe or forbid it, and now name it "
+            f"nowhere. Either the exclusion is pointless or a spec, a frozen "
+            f"record, or a test was rewritten to make a gate green — "
+            f"re-measure before trusting this module.",
         )
 
     def test_s6_seven_consuming_surfaces_name_the_deployed_store_path(self):

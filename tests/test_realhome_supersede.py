@@ -30,6 +30,14 @@ Written BEFORE Sec4's installer run against the real home lands:
   - AC6 precondition probe: ``chezmoi status`` (read-only) is expected to
     exit 0 already today -- this one MAY pass before the deploy; it is
     the invariant Sec4's deploy must not break.
+  - CR-MDB-022 Sec6/AC3 EXTENSION: the same retired-referencer gate, in the
+    same shape, for the eight adopted tool scripts. CR-MDB-022 moved them
+    into this repo's ``scripts/`` asset class, deployed to
+    ``~/.agents/scripts/``, so a live ``~/.claude/scripts/<tool>`` reference
+    is now the same defect class as a ``*crucible*`` one. FILES under
+    ``~/.claude/scripts/`` are NOT asserted absent for the eight -- that tree
+    is chezmoi-managed and this repo never writes or deletes there; only
+    REFERENCES to it are gated.
 
 Stdlib only: unittest + subprocess + re + os + pathlib. No SUT import --
 this cycle's Sec4 deliverable is a real-home installer run, not a Python
@@ -84,6 +92,31 @@ LIVE_SCRIPTS_CRUCIBLE_REF_RE = re.compile(
     r"\.claude/scripts/[\w-]*crucible[\w-]*\.(?:py|sh)"
 )
 
+# CR-MDB-022 Sec1 -- the eight adopted tool scripts (7 hand-maintained +
+# generated toon.py), owned by roundhouse/model-b and deployed to
+# ~/.agents/scripts/. Same defect class as the *crucible* mirrors above:
+# ~/.claude/scripts/ is chezmoi-managed, so any reference pointing there is
+# reverted out from under the referencer on the next `chezmoi apply`.
+ADOPTED_TOOL_NAMES = (
+    "worktree-flow.py",
+    "schedule_db.py",
+    "skill-release-gate.py",
+    "rust-code-health.py",
+    "rust-crate-map.py",
+    "rust-dead-scan.py",
+    "gate-lock.sh",
+    "toon.py",
+)
+AGENTS_STORE_SCRIPTS_DIR = HOME / ".agents" / "scripts"
+
+# Same narrowness as LIVE_SCRIPTS_CRUCIBLE_REF_RE: the retired path prefix
+# must be present, so prose that merely NAMES a tool is not flagged.
+LIVE_SCRIPTS_TOOL_REF_RE = re.compile(
+    r"\.claude/scripts/(?:"
+    + "|".join(re.escape(name) for name in ADOPTED_TOOL_NAMES)
+    + r")"
+)
+
 
 def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
@@ -109,9 +142,9 @@ def _bundle_is_deployed(name: str) -> bool:
     return (resolved / "SKILL.md").is_file()
 
 
-def _find_live_scripts_crucible_referencers() -> dict:
+def _find_live_scripts_referencers(pattern) -> dict:
     """Grep (read-only) the three referencer trees for live
-    ``~/.claude/scripts/<...>crucible<...>`` mentions. Returns
+    ``~/.claude/scripts/`` mentions matching ``pattern``. Returns
     {relative_path: [line_no, ...]}."""
     offending = {}
     for base in REFERENCER_DIRS:
@@ -127,11 +160,22 @@ def _find_live_scripts_crucible_referencers() -> dict:
             hit_lines = [
                 line_no
                 for line_no, line in enumerate(content.splitlines(), start=1)
-                if LIVE_SCRIPTS_CRUCIBLE_REF_RE.search(line)
+                if pattern.search(line)
             ]
             if hit_lines:
                 offending[str(p)] = hit_lines
     return offending
+
+
+def _find_live_scripts_crucible_referencers() -> dict:
+    """Live ``~/.claude/scripts/<...>crucible<...>`` referencers."""
+    return _find_live_scripts_referencers(LIVE_SCRIPTS_CRUCIBLE_REF_RE)
+
+
+def _find_live_scripts_tool_referencers() -> dict:
+    """Live ``~/.claude/scripts/<one of the eight adopted tools>``
+    referencers (CR-MDB-022 Sec6/AC3)."""
+    return _find_live_scripts_referencers(LIVE_SCRIPTS_TOOL_REF_RE)
 
 
 def _find_crucible_scripts() -> list:
@@ -292,7 +336,8 @@ class RetiredScriptMirrorsTest(unittest.TestCase):
     ``~/.claude/scripts/``, and zero LIVE references to
     ``~/.claude/scripts/<anything>crucible`` remain from files under
     ``~/.claude/agents/``, ``~/.claude/hooks/``, ``~/.claude/memory/``
-    (read-only grep)."""
+    (read-only grep). CR-MDB-022 Sec6/AC3 extends the referencer half, in
+    the same shape, to the eight adopted tool scripts."""
 
     def test_zero_crucible_named_scripts_remain_under_claude_scripts(self):
         offending = _find_crucible_scripts()
@@ -320,6 +365,26 @@ class RetiredScriptMirrorsTest(unittest.TestCase):
             f"crucible-repo client paths "
             f"(~/Documents/data_projects/crucible/clients/); still "
             f"live today (file -> offending line numbers): {offending}",
+        )
+
+    def test_zero_live_referencers_to_retired_scripts_tool_paths(self):
+        """CR-MDB-022 Sec6/AC3 -- the same gate for the eight adopted tools.
+
+        Only REFERENCES are asserted, never file absence: the eight are what
+        CR-MDB-022 Sec1 adopted FROM this tree, ``~/.claude/scripts/`` is
+        chezmoi-managed, and no Model B code path writes or deletes there.
+        """
+        offending = _find_live_scripts_tool_referencers()
+        self.assertEqual(
+            offending, {},
+            f"CR-MDB-022 Sec6 must repoint every referencer under "
+            f"{[str(d) for d in REFERENCER_DIRS]} away from "
+            f"'~/.claude/scripts/<tool>' for the eight adopted names "
+            f"{list(ADOPTED_TOOL_NAMES)} to the deployed store "
+            f"({AGENTS_STORE_SCRIPTS_DIR}); {CLAUDE_SCRIPTS_DIR} is "
+            f"chezmoi-managed, so a reference there is reverted out from "
+            f"under the referencer on the next `chezmoi apply`. Still live "
+            f"(file -> offending line numbers): {offending}",
         )
 
 

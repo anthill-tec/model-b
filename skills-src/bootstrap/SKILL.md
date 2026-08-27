@@ -148,7 +148,7 @@ you recover it — both roles recover.
 
 ## Step 3A — MAINLINE: load the queue, report to the USER
 
-1. **Load the last-held implementation-queue status** via the `worktree-flow.py`
+1. **Load the last-held implementation-queue status** via the `~/.agents/scripts/worktree-flow.py`
    helpers (the live git-derived board IS the source of truth — never raw `sqlite3`,
    never the README):
    - `worktree-flow.py status` — full board: per-CR worktrees (ahead/behind, latest

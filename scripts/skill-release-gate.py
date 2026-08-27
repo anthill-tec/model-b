@@ -27,7 +27,7 @@ Config lives in the project's `pyproject.toml` under `[tool.skill-release]`
 check argv/cmd, and teardown: `$TMP` (a scratch dir) and `$THROWAWAY_DB`
 (a unique per-run name). Nothing touches a live store.
 
-  python3 ~/.claude/scripts/skill-release-gate.py [--project-dir .]
+  python3 ~/.agents/scripts/skill-release-gate.py [--project-dir .]
 
 Exit 0 = all gates passed (safe to finish); non-zero = a gate failed.
 Self-test: point a check's data outside its window (or break a value) — the gate must FAIL.
