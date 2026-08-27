@@ -6,7 +6,7 @@
 **Depends on:** —
 **Labels:** tooling, installer, axi, toon, ownership, detachment, feature
 **Phase:** Wave 5
-**Design reference:** user directives 2026-08-27 — (a) "all Model B scripts are owned inside the model-b subproject and repo-managed here; the same-named scripts in the Claude global directories are NOT managed by Model B", (b) "we are detaching from the local development machine's environment; any reference to these scripts should be for using them from our owned `scripts/` folder under Model B; we bundle these along with the skills we manage for release, thus publishing and overwriting the local machine environment — that is the pattern; chezmoi ownership on the local machine is not our problem", (c) "`code-health` and `gate-lock`: adopt those", (d) "`schedule_db.py` was a transitional workflow planning and scheduling DB, superseded by Crucible when its 0.2.0 is released — Crucible will own storing the workflow plan and state; this approach will be deprecated" · `crucible:docs/research/DN-crucible-toon-subset.md` (**Crucible-owned** — cited, never edited) · `contracts/crucible-envelope.md` · PRD §D9/§D10 · CR-MDB-010 (the worktree-flow AXI envelope) · CR-MDB-016 §C2 (the store-authoritative deploy + supersede pattern this CR reuses)
+**Design reference:** user directives 2026-08-27 — (a) "all Model B scripts are owned inside the model-b subproject and repo-managed here; the same-named scripts in the Claude global directories are NOT managed by Model B", (b) "we are detaching from the local development machine's environment; any reference to these scripts should be for using them from our owned `scripts/` folder under Model B; we bundle these along with the skills we manage for release, thus publishing and overwriting the local machine environment — that is the pattern; chezmoi ownership on the local machine is not our problem", (c) "`code-health` and `gate-lock`: adopt those", (d) "`schedule_db.py` was a transitional workflow planning and scheduling DB, superseded by Crucible when its 0.2.0 is released — Crucible will own storing the workflow plan and state; this approach will be deprecated" · **PRD §D9** (`scripts/` is a permanent workspace directory of this repo; the single-source repo-local rule; AC gates assert repo paths, never deployed paths) · **PRD §D10** (the installer deploys the user-local file classes — "global memory (language refs), hook scripts, **scripts/wrappers**, skill bundles"; the scaffold stays project-specific) · `CR-MDB-014:23` (wired `scripts` into the package data as an asset root; never populated it) · CR-MDB-015 §S6 (the `.agents/hooks/scripts` deploy precedent this CR follows) · CR-MDB-016 §C2 (the store-authoritative deploy + supersede pattern) · CR-MDB-010 (the worktree-flow AXI envelope) · `crucible:docs/research/DN-crucible-toon-subset.md` (**Crucible-owned** — cited, never edited) · `contracts/crucible-envelope.md`
 
 ## Context
 
@@ -23,6 +23,15 @@ particular development machine. **That is not the current state.** Measured 2026
 - `pyproject.toml:26` force-includes `"scripts" = "modelb_axi/_assets/scripts"`, so **every
   wheel built since CR-MDB-014 has shipped an empty tooling directory** — undetected, because
   no gate asserts the asset class has content.
+
+**This is an unimplemented PRD requirement, not a new concept** (established at gap-analysis,
+2026-08-27). PRD §D9 lists `scripts/` among the permanent workspace directories of this repo,
+and §D10's installer-vs-scaffold split names the installer's user-local file classes
+explicitly: "global memory (language refs), hook scripts, **scripts/wrappers**, skill
+bundles". CR-MDB-014 acted on it halfway — its §S2 wired `scripts` into the package data as an
+asset root (`CR-MDB-014:23`) — and nothing ever populated it. So the slot is UNFINISHED, not
+vestigial: no Dimension-5 retire/delete judgement is involved, and this CR closes a gap the
+design contract has carried since Wave 3.
 
 **Published surfaces already instruct the missing tooling.** `worktree-flow` is cited by
 `skills-src/bootstrap/SKILL.md`, `skills-src/shutdown/SKILL.md`,
@@ -144,7 +153,22 @@ the #1336 lineage.
 ### §S4 — Ship them through the installer
 `modelb_axi/deploy.py` treats `scripts/` as a deployed asset class under the same sha256
 manifest discipline, idempotence and hand-modification skip rule as the skills and hook
-scripts, into a store path beside them. `install.toml` records the deployed location.
+scripts. The shape is EXTENDED from the existing hook-scripts path, not invented: `deploy.py`
+already carries `STORE_RELDIR = .agents/skills` and
+`HOOKS_SCRIPTS_STORE_RELDIR = .agents/hooks/scripts` (CR-MDB-015 §S6), with `_hook_scripts()`
+enumerating a flat asset directory. This CR adds the analogous constant
+`.agents/scripts` and a `_tool_scripts()` enumerator beside them.
+
+**The tooling deploys ONCE user-scope with NO per-harness symlink**, following the hook
+scripts rather than the skill bundles: `HARNESS_SKILL_DIRS` exists because a harness must
+discover skills in its own directory, whereas a script is invoked by the path a skill names.
+Adding scripts to the symlink map would create harness-specific tool paths and defeat the
+detachment.
+
+`install.toml` records the deployed location as a `[install]` STRING key —
+`config.py::_toml_value` serializes only strings and lists of strings by design, so anything
+richer is out of contract. CR-MDB-018 later adds `clients_dir` to the same table; the keys are
+disjoint and the two CRs do not conflict.
 
 ### §S5 — Name the gate tool and record its contract
 `skills-src/model-b/references/orchestration-common.md:63` names `gate-lock.sh` as the
@@ -214,10 +238,19 @@ reference, or removed while still referenced, fails.
 ### §S4
 - [ ] `deploy.py` deploys `scripts/` with sha256 manifest comparison; a second run reports
       every file unchanged; a hand-modified destination is SKIPPED unless `--force-managed`.
-- [ ] `install.toml` records the deployed scripts location; a dry-run writes nothing.
+- [ ] The store path is `.agents/scripts`, declared as a module-level constant beside
+      `STORE_RELDIR` and `HOOKS_SCRIPTS_STORE_RELDIR` — not a string literal at a call site.
+- [ ] `HARNESS_SKILL_DIRS` is UNCHANGED: no per-harness symlink is created for the scripts
+      asset class, asserted negatively.
+- [ ] `install.toml` records the deployed scripts location as a string key under `[install]`;
+      a dry-run writes nothing; a failed deploy leaves no `install.toml`.
 - [ ] An integration test drives the real installer entry point against a sandboxed
       `--target-root` and then EXECUTES a deployed script (`worktree-flow.py --help`),
       asserting exit 0 — the wire-the-call-path gate for this CR.
+- [ ] **Test-boundary rule (PRD §D9):** AC gates assert REPO paths, never real deployed
+      paths. Deployment behaviour is proven against a sandboxed `--target-root`; the only
+      real-home assertion permitted is the existing `MODELB_REALHOME_GATE=1`-gated module.
+      No test in this CR reads or writes the real `~/.claude` outside that gate.
 
 ### §S5
 - [ ] `orchestration-common.md` names `gate-lock.sh`, its seven verbs and its four exit codes;
