@@ -12,22 +12,36 @@
 
 Crucible renamed the registration classification flag `--phase` → `--role` fleet-wide as a
 **clean break** — no alias, no dual-key handling on the wire — and made the cycle
-attachment a registration-time binding. The released client surface, verified 2026-08-27
-against all five clients in `crucible:clients/`:
+attachment a registration-time binding. The whole delta shipped in their **0.1.0**, their
+first public release (confirmed Sandesh #1359: `git grep -- '--phase' 0.1.0 -- clients/`
+has no hits, and CR-CRU-044/056/059 are contained in `0.1.0`, `0.1.1`, `0.1.2`). Their
+latest release is **0.1.2**; the client-surface delta for both 0.1.1 and 0.1.2 is NONE.
+**Model B's bundles have therefore been stale since Crucible's very first release.**
 
-- `register --agent <id> --role {RED,GREEN,FIX,VERIFY,ORCHESTRATOR,report}` — `--role` is
-  REQUIRED; omitting it fails argument parsing with a non-zero exit and sends no
-  registration.
-- `--cycle <id>` is MANDATORY for the TDD roles `RED|GREEN|FIX|VERIFY`, bound to an ACTIVE
-  cycle of an open plan; an unbound TDD registration is refused with HTTP 409 and no agent
-  row is created. `ORCHESTRATOR` and `report` may register unbound.
+The released contract, verified 2026-08-27 against all five clients in `crucible:clients/`
+and confirmed by Crucible in #1359:
+
+- `register --agent <id> --role <ROLE>` — the enumeration is case-exact:
+  `RED | GREEN | FIX | VERIFY | ORCHESTRATOR | report` (five uppercase, `report`
+  lowercase). The Python clients make `--role` argparse-REQUIRED, so omitting it exits
+  non-zero and sends nothing; a registration that reaches the server without a valid role
+  is refused **400**: `role is required and must be one of RED | GREEN | FIX | VERIFY |
+  ORCHESTRATOR | report (got no role field)`.
+- `--cycle <int>` is **not** argparse-required — the SERVER owns the per-role rule.
+  `RED|GREEN|FIX|VERIFY` must bind an ACTIVE cycle of an OPEN plan; an unbound TDD
+  registration is refused **409** with the verbatim message
+  `role RED requires a cycle binding — register with --cycle <cycleId>` (em dash U+2014),
+  enforced at the route boundary before any write, so no agent row is created.
+  `ORCHESTRATOR` and `report` may register unbound.
 - `--phase` no longer exists: zero occurrences across the five clients and
-  `_crucible_axi.py`.
+  `_crucible_axi.py`, at every released tag.
 - The agentId is FREE-FORM. The role is never inferred from its shape — an id ending
   `-GREEN` registered with `--role RED` classifies as RED.
 - `--source` is constrained to `claude-md | package-json | git-repo | manual`; a value
   outside the enumeration is refused server-side with 409 and nothing is stored. Absent is
-  legal.
+  legal. It exists on the rust/mvn/arduino clients as of 0.1.0.
+- Register wire keys: `projectKey`, `agentId`, `role`, `cycleId`, `status`, `message`,
+  `identity{displayName, source, repoPath}`. `phase` appears nowhere in the wire contract.
 
 **Surfaces (verified 2026-08-27).** Every bundle Model B owns still teaches the retired
 flag, and none of them mentions either replacement:
@@ -81,11 +95,26 @@ though it has no live client (its documented surface must not teach a retired fl
 ### §S4 — Sync the project-layer conventions that restate the contract
 - `skills-src/memory-templates/java-orchestration.md:17` — `--phase` enumeration becomes
   the `--role` enumeration with the binding rule.
-- `AGENTS.md` — the agent-ids sentence currently reads as if the id encodes the phase.
-  State the contract: the id is a free-form readability habit, `--role` declares the role,
-  and TDD roles bind `--cycle`.
-- `contracts/crucible-envelope.md` — record the role/cycle-binding facts and cite the
-  status-envelope contract document by its document version.
+- `AGENTS.md` — two stale sentences. The agent-ids sentence reads as if the id encodes the
+  phase: state that the id is a free-form readability habit, `--role` declares the role,
+  and TDD roles bind `--cycle`. The plan-filing sentence still passes
+  `--orchestrator vidushi-mdb`: **`plan-file --orchestrator` was REMOVED** in 0.1.0
+  (#1359) — drop the flag, keep `--wave`.
+- `contracts/crucible-envelope.md` — record the role/cycle-binding facts, cite the
+  status-envelope contract document by its DOCUMENT version, and note the remaining 0.1.0
+  deltas: `gate-run --skip` added, `--source` on the rust/mvn/arduino clients,
+  `WORKFLOW_CYCLE_ID` gone while `WORKFLOW_ROLE`/`WORKFLOW_WAVE`/`WORKFLOW_CYCLE` remain.
+- **Released-only rule.** No Model B doc may teach a verb that is not in a Crucible
+  RELEASE. Per #1359 these are develop-only and 0.2.0-bound: the `queue` read verb,
+  `queue-file` (+ `--from-file`), `milestone --released-at/--crs/--packages/`
+  `--repair-provenance`, bun `--no-lifecycle`, and the routes `POST /api/v2/runs/start`,
+  `GET|POST /api/v2/projects/<key>/queue`, `GET /api/v2/projects/<key>/releases`. 0.2.0 is
+  NOT released and must never be cited as shipped.
+- **Two upstream traps not to copy** (#1359): `clients/rust-crucible.py`'s docstring
+  register examples (lines 70-71) omit `--cycle` and are guaranteed 409s; and
+  `cli/crucible-axi.ts register` ships without `--cycle` at all, so the released
+  TypeScript CLI cannot register a TDD role. Any Model B text that mentions a
+  registration surface names the Python clients.
 
 ### §S5 — The guard that would have caught it
 Port the transferable families of the inherited suite into a new stdlib `unittest` module
@@ -109,14 +138,24 @@ covered. The two agent-protocol families are NOT ported: `heartbeat.sh` and a st
       `{RED, GREEN, FIX, VERIFY, ORCHESTRATOR, report}`.
 - [ ] Every `register` example under `skills-src/` whose `--role` is one of
       `{RED, GREEN, FIX, VERIFY}` also carries `--cycle`.
-- [ ] `skills-src/crucible/SKILL.md` states all four rules verbatim in substance:
-      `--role` required and enumerated; `--cycle` mandatory for the four TDD roles with a
-      409 on omission; `ORCHESTRATOR`/`report` unbound-legal; agentId free-form with the
-      role never inferred from it.
+- [ ] `skills-src/crucible/SKILL.md` states, in substance: the case-exact `--role`
+      enumeration; that `--cycle` is required for `RED|GREEN|FIX|VERIFY` **by the server,
+      not by argparse**, refused 409; that a missing or out-of-enum role is refused 400;
+      that `ORCHESTRATOR`/`report` may register unbound; and that the agentId is free-form
+      with the role never inferred from it.
+- [ ] Zero occurrences of `--orchestrator` paired with `plan-file` under `skills-src/`,
+      `contracts/`, and `AGENTS.md` (the flag was removed in 0.1.0).
+- [ ] Zero occurrences of the develop-only verbs `queue-file`, `--from-file`,
+      `--released-at`, `--repair-provenance`, `--no-lifecycle` and of the string `0.2.0`
+      presented as released, anywhere under `skills-src/` or `contracts/`.
 - [ ] `skills-src/memory-templates/java-orchestration.md` documents the `--role`
       enumeration and the binding rule; no `--phase` remains.
 - [ ] `contracts/crucible-envelope.md` cites `STATUS-CONTRACT.md` **document version
-      2.0.0** and never implies a Crucible product version of 2.0.0.
+      2.0.0**, records that the product release carrying it is `0.1.0`, and never implies a
+      Crucible product version of `2.0.0`.
+- [ ] Documented Crucible release facts match #1359 exactly where stated: latest release
+      `0.1.2`; install entry point `crucible-axi install [--target-dir <dir>]` with default
+      `~/.crucible`; run verb `crucible-axi serve`.
 
 ### §S5
 - [ ] `tests/test_skill_bundle_guards.py` exists, is stdlib `unittest`, spawns no

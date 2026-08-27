@@ -30,8 +30,12 @@ tells an operator the output failed to match a contract version that is no longe
 contract.
 
 Naming discipline for this CR: `2.0.0` is the version of that ONE contract **document**.
-Crucible's product releases are `0.1.0 / 0.1.1 / 0.1.2` and "V2" is the `/api/v2/*` API
-generation. No text this CR writes may imply a Crucible product version of 2.0.0.
+Crucible's product releases are `0.1.0 / 0.1.1 / 0.1.2` (latest `0.1.2`) and "V2" is the
+`/api/v2/*` API generation. Crucible confirmed in #1359 that the product release carrying
+document versions 1.1.0 AND 2.0.0 is **0.1.0** — so the document's major bump never
+corresponded to a product major, and the hook has been pinned to a superseded document
+since before Crucible's first release. No text this CR writes may imply a Crucible product
+version of `2.0.0`.
 
 **2 — arduino can never resolve a feed.**
 `_STACK_MARKERS` (`:45-51`) maps five marker files to four clients — `Cargo.toml`,
