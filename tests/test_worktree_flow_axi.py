@@ -15,10 +15,11 @@ against the current print-based state:
     "stderr"/"TOON" consumer note yet.
 
 Stdlib + subprocess only. The TOON codec used for the TEST's own decoding
-is imported read-only from the Crucible source of truth
-(`crucible:clients/toon.py`) via a read-only `sys.path` insert -- NOT the
-not-yet-deployed `~/.claude/scripts/toon.py` copy, which is SS2's own
-deliverable and does not exist yet.
+is Model B's OWN `modelb_axi.axi` (CR-MDB-022 §S3): this module imports no
+module from outside this repo. It previously inserted Crucible's
+`clients/` directory on `sys.path` and used their codec as the decoder
+oracle -- removed, because forking another project's code into our process
+is the very defect CR-MDB-022 §S2 exists to remove.
 
 No mutating worktree-flow verbs are invoked (`status`, `next`, `progress`
 only, per SS1's "no mutating verbs in tests" scope note).
@@ -36,13 +37,11 @@ WORKTREE_FLOW = CLAUDE_DIR / "scripts" / "worktree-flow.py"
 DEPLOYED_TOON = CLAUDE_DIR / "scripts" / "toon.py"
 SKILLS_DIR = CLAUDE_DIR / "skills"
 
-# Read-only sys.path insert for the TEST's OWN TOON decoding -- the source
-# of truth crucible:clients/toon.py, NOT the not-yet-deployed
-# ~/.claude/scripts/toon.py copy (SS2's own deliverable, doesn't exist yet).
-_TOON_SRC_DIR = "/home/antonyj/Documents/data_projects/crucible/clients"
-if _TOON_SRC_DIR not in sys.path:
-    sys.path.insert(0, _TOON_SRC_DIR)
-import toon  # noqa: E402  (source-of-truth codec, read-only import)
+# Decode with Model B's OWN codec (CR-MDB-022 §S3) -- repo-local, so this
+# module imports nothing from outside this repo.
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+from modelb_axi import axi  # noqa: E402  (repo-local codec)
 
 
 def _run_wf(*args, timeout=30):
@@ -57,7 +56,7 @@ def _decode_envelope(result, verb_label):
     failing with a clear message (not a bare KeyError/decode traceback)
     when it isn't a valid AXI envelope yet -- exactly the gap RED expects."""
     try:
-        obj = toon.decode(result.stdout)
+        obj = axi.decode(result.stdout)
     except Exception as exc:  # pragma: no cover - diagnostic path
         raise AssertionError(
             f"{verb_label}: stdout did not decode as TOON ({type(exc).__name__}: {exc}); "
