@@ -45,12 +45,29 @@ stacks + ``build.py``'s emitted-name set), built into an isolated tmp
 output dir -- no ``chezmoi`` invocation and no read of the live
 ``~/.claude`` tree anywhere in the class.
 
-Stdlib only (unittest + subprocess + pathlib + shutil + sys + tomllib). No
-production-module import: build.py is invoked as a subprocess per the CR's
-own mechanics (`python3 generator/build.py --check`), matching how the spec
-itself describes driving the gate.
+CR-MDB-022 §S2 AMENDMENT (sanctioned follow-up, cycle C2 FIX): build.py
+gained a SECOND target class -- the generated TOON codec copy at its own
+``CODEC_TARGET`` (``<repo>/scripts/toon.py``), rendered from ``CODEC_SOURCE``
+(``<repo>/modelb_axi/toon.py``) and drift-gated by the SAME ``--check`` gate
+(the CR: "inventing a second gate binary would create a parallel
+convention"). Three assertions below encoded the now-superseded "exactly 16
+targets, all of them under generator/agents/" contract: the ``--list``
+target-set pin and both ``BespokeUntouchedS4Test`` isolated-build pins. They
+are retargeted to the generator's REAL target set -- the 16 stack x role
+agent definitions PLUS that one codec -- named from build.py's own
+constants, so a 17th stray target, a missing target or a relocated one
+still fails the gate. The method names are kept unchanged (they are cited
+by name in the sanctioning FIX dispatch); only the bodies retarget.
+
+Stdlib only (unittest + subprocess + pathlib + shutil + sys + tomllib +
+importlib.util). build.py is still driven as a SUBPROCESS for every gate,
+per the CR's own mechanics (`python3 generator/build.py --check`), matching
+how the spec itself describes driving it; the module is imported (pure --
+module level is constant definitions only, no I/O) solely to read its
+declared target paths instead of duplicating them as strings here.
 """
 
+import importlib.util
 import shutil
 import subprocess
 import sys
@@ -132,6 +149,24 @@ def _split_frontmatter(content: str):
             body = "\n".join(lines[idx + 1:])
             return frontmatter, body
     return "", content
+
+
+def _load_build_module():
+    """Import generator/build.py as a standalone module to read its declared
+    target constants (CR-MDB-022 §S2's ``CODEC_SOURCE``/``CODEC_TARGET``, and
+    ``AGENTS_DIR``). Pure -- module level is constant definitions only; this
+    never invokes cmd_build/cmd_check/cmd_list, which stay subprocess-driven.
+    generator/ has no __init__.py, hence importlib.util over a package
+    import."""
+    spec = importlib.util.spec_from_file_location("_cr_mdb_022_c2_build", BUILD_PY)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _relative_file_set(root: Path) -> set:
+    """Every file under ``root``, as a root-relative POSIX path string."""
+    return {p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_file()}
 
 
 class GeneratorSourcesS2Test(unittest.TestCase):
@@ -260,19 +295,42 @@ class BuildPyIdempotenceS3Test(unittest.TestCase):
             f"generator/build.py --list must exit 0, got rc={result.returncode}\n"
             f"stderr:\n{result.stderr[:2000]}",
         )
-        listed_names = {
-            Path(line.strip()).name
+        listed_paths = [
+            Path(line.strip())
             for line in result.stdout.splitlines()
             if line.strip()
-        }
-        expected_names = set(TARGET_AGENT_NAMES)
-        # POSITIVE/EXACT -- the target list is exactly the 16 small-stack files.
+        ]
+        # CR-MDB-022 §S2 SANCTIONED AMENDMENT -- superseded pin: build.py now
+        # owns a SECOND target class, the generated codec at its own
+        # CODEC_TARGET, gated by this same --check/--list surface rather than
+        # by a second gate binary. The pre-022 form compared the listed base
+        # NAMES against the 16 agent filenames; the amended form pins the
+        # EXACT set of full target PATHS -- the 16 agent definitions under
+        # generator/agents/ plus that one codec -- which is strictly stronger:
+        # a 17th stray target, a missing target, a relocated target and a
+        # renamed directory all still fail here.
+        build_module = _load_build_module()
+        expected_paths = {
+            GENERATOR_AGENTS_DIR / name for name in TARGET_AGENT_NAMES
+        } | {build_module.CODEC_TARGET}
+        # POSITIVE/EXACT -- the target list is exactly the 16 small-stack
+        # agent files plus the generated codec.
         self.assertEqual(
-            listed_names, expected_names,
-            f"--list must report exactly the 16 small-stack agent files, "
-            f"got {sorted(listed_names)}, expected {sorted(expected_names)}",
+            set(listed_paths), expected_paths,
+            f"--list must report exactly the 16 small-stack agent files plus "
+            f"the generated codec {build_module.CODEC_TARGET}, got "
+            f"{sorted(str(p) for p in listed_paths)}, expected "
+            f"{sorted(str(p) for p in expected_paths)}",
+        )
+        # bound -- each target is listed exactly once (no duplicated line
+        # hidden by the set comparison above).
+        self.assertEqual(
+            len(listed_paths), len(expected_paths),
+            f"--list must report each target exactly once, got "
+            f"{len(listed_paths)} lines for {len(expected_paths)} targets",
         )
         # NEGATIVE -- zero bespoke names present in the target list.
+        listed_names = {p.name for p in listed_paths}
         bespoke_overlap = listed_names & set(BESPOKE_AGENT_NAMES)
         self.assertEqual(
             bespoke_overlap, set(),
@@ -428,25 +486,53 @@ class BespokeUntouchedS4Test(unittest.TestCase):
     chezmoi dependencies -- Model B tests must not introspect the user's
     chezmoi tree/history). No chezmoi invocation, no read of the live
     ~/.claude tree: this class drives the generator's own inputs/outputs
-    (generator/templates + generator/stacks + build.py) end to end into an
-    isolated tmp output dir and asserts, from build.py's own emitted-name
-    set, that (a) the generated agent name set is exactly the 16 stack x
-    role names and (b) none of the 13 bespoke names (rust x4, vscode x4,
-    electronics x4, inbox-analyst) is ever in that set or ever written to
-    disk by a build."""
+    (generator/templates + generator/stacks + build.py, plus CR-MDB-022
+    §S2's codec source) end to end into an isolated tmp REPO ROOT and
+    asserts, from build.py's own declared targets, that (a) the written-file
+    set is exactly the generator's declared targets -- the 16 stack x role
+    agent definitions plus the one generated codec -- and (b) none of the 13
+    bespoke names (rust x4, vscode x4, electronics x4, inbox-analyst) is ever
+    in that set or ever written to disk by a build."""
 
     def setUp(self):
-        self._tmp_generator_dir = Path(
-            tempfile.mkdtemp(prefix="modelb-axi-s4-generator-")
-        )
+        # CR-MDB-022 §S2 SANCTIONED AMENDMENT: build.py resolves its REPO_ROOT
+        # as generator/'s parent and now also renders CODEC_TARGET from
+        # CODEC_SOURCE, so the isolated tree must mirror a whole repo root
+        # (generator/ + the codec source + the codec target's committed
+        # parent dir), not generator/ alone. Every path below is derived from
+        # build.py's own constants, so a relocated target relocates the
+        # fixture too instead of silently dropping out of the assertions.
+        self._build_module = _load_build_module()
+        origin_root = self._build_module.REPO_ROOT
+        agents_rel = self._build_module.AGENTS_DIR.relative_to(origin_root)
+        codec_source_rel = self._build_module.CODEC_SOURCE.relative_to(origin_root)
+        codec_target_rel = self._build_module.CODEC_TARGET.relative_to(origin_root)
+
+        self._tmp_repo_root = Path(tempfile.mkdtemp(prefix="modelb-axi-s4-repo-"))
+        self._tmp_generator_dir = self._tmp_repo_root / "generator"
+        self._tmp_generator_dir.mkdir()
         shutil.copytree(TEMPLATES_DIR, self._tmp_generator_dir / "templates")
         shutil.copytree(STACKS_DIR, self._tmp_generator_dir / "stacks")
         shutil.copy(BUILD_PY, self._tmp_generator_dir / "build.py")
+        tmp_codec_source = self._tmp_repo_root / codec_source_rel
+        tmp_codec_source.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(self._build_module.CODEC_SOURCE, tmp_codec_source)
+        (self._tmp_repo_root / codec_target_rel).parent.mkdir(
+            parents=True, exist_ok=True
+        )
+
         self._tmp_build_py = self._tmp_generator_dir / "build.py"
-        self._tmp_output_agents_dir = self._tmp_generator_dir / "agents"
+        self._tmp_output_agents_dir = self._tmp_repo_root / agents_rel
+        # The generator's declared target set, repo-root-relative.
+        self._expected_written = {
+            (agents_rel / name).as_posix() for name in TARGET_AGENT_NAMES
+        } | {codec_target_rel.as_posix()}
+        # The fixture inputs, so a build's written-file set is the exact
+        # difference against the whole isolated tree afterwards.
+        self._inputs_before_build = _relative_file_set(self._tmp_repo_root)
 
     def tearDown(self):
-        shutil.rmtree(self._tmp_generator_dir, ignore_errors=True)
+        shutil.rmtree(self._tmp_repo_root, ignore_errors=True)
 
     def _run_isolated_build(self):
         result = subprocess.run(
@@ -467,32 +553,46 @@ class BespokeUntouchedS4Test(unittest.TestCase):
             self._tmp_output_agents_dir.is_dir(),
             f"{self._tmp_output_agents_dir} must be created by the build",
         )
-        written_names = {
-            p.name for p in self._tmp_output_agents_dir.iterdir() if p.is_file()
-        }
-        expected_names = set(TARGET_AGENT_NAMES)
+        written = _relative_file_set(self._tmp_repo_root) - self._inputs_before_build
+        # CR-MDB-022 §S2 SANCTIONED AMENDMENT -- superseded pin: the
+        # generator's target set is no longer the 16 agent definitions alone,
+        # it is those 16 PLUS the generated codec at build.py's own
+        # CODEC_TARGET (which lands outside generator/agents/). The pre-022
+        # form listed generator/agents/ only; the amended form diffs the WHOLE
+        # isolated repo tree against the fixture inputs, so it is strictly
+        # stronger: a missing target fails as before, and an extra file
+        # written ANYWHERE -- a 17th target, a stray sibling outside the
+        # agents dir -- now fails too instead of going unseen.
         # POSITIVE/EXACT -- an isolated build's written-file set is exactly
-        # the 16 stack x role names, no more and no fewer.
+        # the declared targets, no more and no fewer.
         self.assertEqual(
-            written_names, expected_names,
-            f"an isolated build must write exactly the 16 small-stack agent "
-            f"files, got {sorted(written_names)}, expected "
-            f"{sorted(expected_names)}",
+            written, self._expected_written,
+            f"an isolated build must write exactly its declared targets (the "
+            f"16 small-stack agent files plus the generated codec), got "
+            f"{sorted(written)}, expected {sorted(self._expected_written)}",
         )
-        # bound -- exactly 16 files land on disk, nothing extra silently
-        # emitted alongside them.
+        # bound -- exactly 17 files land on disk (16 agent defs + 1 codec),
+        # nothing extra silently emitted alongside them.
         self.assertEqual(
-            len(written_names), 16,
-            f"expected exactly 16 written files, got {len(written_names)}",
+            len(written), 17,
+            f"expected exactly 17 written files (16 agent defs + 1 generated "
+            f"codec), got {len(written)}",
         )
 
     def test_s4_isolated_build_never_writes_a_bespoke_agent_file(self):
         self._run_isolated_build()
-        written_names = {
-            p.name for p in self._tmp_output_agents_dir.iterdir() if p.is_file()
+        # CR-MDB-022 §S2 SANCTIONED AMENDMENT -- superseded pin: a build now
+        # also writes outside generator/agents/ (the codec at CODEC_TARGET),
+        # so scanning that one dir is no longer sufficient. The amended form
+        # scans every file in the isolated repo tree; no fixture input carries
+        # a bespoke name, so any bespoke name present was written by the
+        # build. Strictly stronger: a bespoke def emitted anywhere in the
+        # tree, including beside the codec, now fails.
+        tree_names = {
+            Path(rel).name for rel in _relative_file_set(self._tmp_repo_root)
         }
         # NEGATIVE -- none of the 13 bespoke defs is ever written by a build.
-        bespoke_overlap = written_names & set(BESPOKE_AGENT_NAMES)
+        bespoke_overlap = tree_names & set(BESPOKE_AGENT_NAMES)
         self.assertEqual(
             bespoke_overlap, set(),
             f"a build must never write a bespoke agent file, found: "
