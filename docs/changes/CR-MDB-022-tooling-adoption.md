@@ -380,9 +380,16 @@ reference, or removed while still referenced, fails.
       records that a rename requires agreement from both projects.
 
 ### §S6
-- [ ] Zero occurrences of `~/.claude/scripts/` paired with any of the eight names anywhere
-      under `skills-src/`, `modelb_axi/`, `scripts/`, `contracts/`, `hooks-src/`,
-      `docs/changes/` or `AGENTS.md`.
+- [ ] Zero occurrences of `~/.claude/scripts/` paired with any of the eight names on the
+      INSTRUCTIONAL surfaces — the files that tell an agent what to run: `skills-src/`,
+      `scripts/`, `modelb_axi/`, `hooks-src/`, `contracts/` and `AGENTS.md`.
+- [ ] The gate EXCLUDES, and asserts its exclusion of, the surfaces that must be free to name
+      the pattern in order to describe or forbid it: `docs/changes/` (CR specs, including this
+      one, and the queue README), `docs/research/`, `audits/`, `archive/` and `tests/`.
+      **Corrected 2026-08-27 at C3 RED:** the original criterion listed `docs/changes/` as a
+      scanned surface, which made it unsatisfiable — a spec cannot forbid a string and also
+      document the prohibition. Measured at that point: 12 pairings, of which 6 were real
+      instructional violations and 6 were prohibition-quotes in `docs/changes/`.
 - [ ] Every consuming document names the deployed store path, and that path is the one
       `deploy.py` actually writes — asserted by comparing the documented string against the
       deploy target, not by eyeballing both.
