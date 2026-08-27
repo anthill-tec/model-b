@@ -19,7 +19,12 @@ from pathlib import Path
 
 from modelb_axi import __version__
 from modelb_axi.config import load_manifest_hashes, write_install_toml
-from modelb_axi.deploy import DeployError, default_asset_root, deploy_assets
+from modelb_axi.deploy import (
+    TOOL_SCRIPTS_STORE_RELDIR,
+    DeployError,
+    default_asset_root,
+    deploy_assets,
+)
 from modelb_axi.harness import (
     UnknownHarnessError,
     detect_harnesses,
@@ -234,6 +239,9 @@ def _deploy_stage(
             "version": __version__,
             "harnesses": selected,
             "asset_root": str(asset_root),
+            # CR-MDB-022 §S4: where the adopted workflow tooling landed,
+            # so a skill can name the script path without re-deriving it.
+            "tool_scripts_dir": str(target_root / TOOL_SCRIPTS_STORE_RELDIR),
         },
         deps=deps_verdicts,
         files=manifest,

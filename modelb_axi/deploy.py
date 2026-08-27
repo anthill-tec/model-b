@@ -41,6 +41,12 @@ STORE_RELDIR = Path(".agents") / "skills"
 #: (``hooks`` mirrors the ``skills-src`` -> ``skills`` rename).
 HOOKS_SCRIPTS_STORE_RELDIR = Path(".agents") / "hooks" / "scripts"
 
+#: CR-MDB-022 §S4: the adopted workflow tooling (``scripts/``) deploys the
+#: same way — ONCE user-scope into the harness-neutral ``.agents/`` store,
+#: with NO per-harness symlink (a script is invoked by the path a skill
+#: names, so a harness-specific tool path would defeat the detachment).
+TOOL_SCRIPTS_STORE_RELDIR = Path(".agents") / "scripts"
+
 
 class DeployError(Exception):
     """A deploy step failed; install.toml must NOT be written (§S6)."""
@@ -86,6 +92,20 @@ def _hook_scripts(asset_root: Path) -> list[Path]:
     if not scripts_dir.is_dir():
         raise DeployError(
             f"asset root has no hooks-src/scripts/ directory: {asset_root}"
+        )
+    return sorted(child for child in scripts_dir.iterdir() if child.is_file())
+
+
+def _tool_scripts(asset_root: Path) -> list[Path]:
+    """The adopted workflow tooling under ``<asset-root>/scripts/``.
+
+    Same shape as :func:`_hook_scripts` — one asset-root argument, a flat
+    sorted file list — over the asset root ``pyproject.toml`` already
+    force-includes (CR-MDB-022 §S4)."""
+    scripts_dir = asset_root / "scripts"
+    if not scripts_dir.is_dir():
+        raise DeployError(
+            f"asset root has no scripts/ directory: {asset_root}"
         )
     return sorted(child for child in scripts_dir.iterdir() if child.is_file())
 
@@ -179,6 +199,17 @@ def deploy_assets(
                 # Executable bit preserved (protocol scripts are run
                 # directly by harness wiring); hand-modified skips are
                 # left byte-AND-mode untouched.
+                shutil.copymode(src, dest)
+        # CR-MDB-022 §S4: the eight adopted workflow tools, once,
+        # user-scope — NO per-harness symlink (see the store constant).
+        for src in _tool_scripts(asset_root):
+            rel_path = TOOL_SCRIPTS_STORE_RELDIR / src.name
+            rel = str(rel_path)
+            dest = target_root / rel_path
+            manifest.append(
+                _deploy_file(src, dest, rel, prior, force_managed, skipped)
+            )
+            if rel not in skipped:
                 shutil.copymode(src, dest)
         _link_harness_skills(target_root, harnesses, [b.name for b in bundles])
     except OSError as exc:
