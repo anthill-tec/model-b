@@ -53,11 +53,15 @@ keep stable. They will file the materialisation fix as a CR at their next SCRUM,
 will not reshape the manifest — key names, file name and value meanings all stay put, so
 our consumption code will not need reworking.
 
-That yields a two-step resolution Model B must implement so it is correct both before and
-after their fix: read the manifest and take `clients[stack]`; if that path does not exist
-yet, fall back to the packaged copy for the interim; re-resolve from the manifest once the
-fixed release lands. Never resolve to `~/.claude/scripts` — that mirror was retired by
-CR-MDB-016 and running it orphans runs.
+Model B's resolution is therefore the manifest and nothing else: read
+`crucible-clients.json`, take `clients[stack]`, and record the directory. When the manifest
+is absent, unparsable, or names a directory that does not exist yet, the answer is
+**unresolved** — recorded as a WARN naming the upstream gap, never a substitute path.
+Building a compensating fallback would make Model B the maintainer of another project's
+client fleet, which is out of scope by standing directive: Crucible owns the clients, their
+installation and their location; Model B consumes the published contract and updates its
+skills when that contract changes. Never resolve to `~/.claude/scripts` either — that mirror
+was retired by CR-MDB-016 and running it orphans runs.
 
 Their `crucible-axi install [--target-dir <dir>]` (default `~/.crucible`) provisions and
 exits; the server is version-pinned to the installer (`CRUCIBLE_SERVER_VERSION` override,
@@ -75,15 +79,12 @@ breaks.
 ### §S2 — Capture the discovery manifest at pre-flight
 When `crucible-axi` is detected, read `<target-dir>/crucible-clients.json` (default
 `~/.crucible`) and resolve the clients directory from its `clients` values. When the
-resolved directory does not exist — the state every current install is in, per #1360 —
-fall back to the packaged copy Crucible named as the interim
-(`crucible_axi.__file__`'s sibling `clients` directory, resolved by asking the interpreter,
-never by hard-coding a site-packages path), and record WHICH source was used so the next
-run can prefer the manifest again once their materialisation fix ships. An absent or
-unparsable manifest, and a failed fallback, are WARNs that record the clients dir as
-unresolved — never a hard failure, never a fabricated path, never an attempt to install,
-upgrade, or run anything of Crucible's, and never a resolution to `~/.claude/scripts`.
-
+manifest is absent, unparsable, or resolves to a directory that does not exist — the state
+every current install is in, per #1360 — record the clients dir as UNRESOLVED with a WARN
+that names the upstream gap and points at `crucible-axi install`. Never a hard failure,
+never a fabricated or substitute path, never a package-internal or site-packages location,
+never a resolution to `~/.claude/scripts`, and never an attempt to install, upgrade, copy,
+or run anything of Crucible's.
 
 ### §S3 — Persist it where the hook already looks
 `modelb_axi/config.py`: `[install]` gains `clients_dir` (the resolved directory, omitted
@@ -93,9 +94,12 @@ last thing written.
 
 ### §S4 — Prove the seam end to end
 An integration test that drives the real installer entry point against a sandboxed
-`--target-root` with a fixture manifest on the resolution path, then runs the actual
-`hooks-src/scripts/ambient-board-status` script against the produced `install.toml` and
-asserts the hook resolves a feed instead of emitting the "no status feed resolved" degrade.
+`--target-root` with a fixture manifest whose `clients` directory actually EXISTS on the
+resolution path, then runs the actual `hooks-src/scripts/ambient-board-status` script
+against the produced `install.toml` and asserts the hook resolves a feed instead of emitting
+the "no status feed resolved" degrade. A second case, with no manifest present, asserts the
+hook degrades cleanly and still exits 0 — the state every install is in until Crucible ships
+materialisation.
 This test is what makes the two halves one wired feature rather than two files that mention
 the same key.
 
@@ -115,17 +119,18 @@ the same key.
       (`bun, python, rust, mvn, arduino`).
 - [ ] The manifest is read from `<target-dir>/crucible-clients.json` with `~/.crucible` as
       the default target dir.
-- [ ] When the manifest's resolved clients directory does not exist, resolution falls back
-      to the packaged `crucible_axi/clients` directory obtained by interrogating the
-      interpreter; no site-packages path is hard-coded anywhere in the repo.
-- [ ] The recorded resolution names its source (`manifest` or `packaged`), so a later run
-      can prefer the manifest once Crucible's materialisation fix ships.
+- [ ] When the manifest is absent, unparsable, or names a non-existent directory, the
+      resolution result is `unresolved` and no substitute path is produced — asserted for
+      all three cases independently.
+- [ ] No package-internal or site-packages path appears anywhere in `modelb_axi/`, and no
+      code path copies, writes, or executes a Crucible client.
 - [ ] No resolution path can ever yield a `~/.claude/scripts` location — asserted.
 - [ ] `install.toml` `[install]` carries `clients_dir` and the captured manifest `version`
       when resolution succeeded, and OMITS `clients_dir` entirely when it did not — no empty
       string, no placeholder path.
-- [ ] An absent manifest produces a recorded WARN and exit 0 from pre-flight; an unparsable
-      manifest does the same; a failed fallback does the same. None writes a `clients_dir`.
+- [ ] Each of the three unresolved cases — absent manifest, unparsable manifest, manifest
+      naming a non-existent directory — produces a recorded WARN and exit 0 from pre-flight,
+      and none writes a `clients_dir`.
 - [ ] `install.toml` is still written atomically and last; a failed pre-flight leaves no
       `install.toml`.
 
@@ -144,12 +149,14 @@ integration test module extended or added. No change to `hooks-src/` in this CR.
 
 ## Risk
 
-- **Upstream reality lags the upstream contract.** Crucible confirmed (#1360) that
-  `<target-dir>/clients/` is the contract but is not materialised by any install stage yet,
-  and that the fix is theirs to file. The interim fallback in §S2 is what keeps this CR
-  correct in the meantime; it must be a FALLBACK, never the recorded contract, or Model B
-  inherits a path that moves with the interpreter. Re-check at gap-analysis whether their
-  fix has shipped — if it has, the fallback stays but stops being the live path.
+- **Upstream reality lags the upstream contract, and that stays visible.** Crucible
+  confirmed (#1360) that `<target-dir>/clients/` is the contract but that no install stage
+  materialises it yet, and that the fix is theirs. Consequence to accept deliberately: on
+  every current install `clients_dir` stays unresolved and the ambient board keeps emitting
+  its "no status feed resolved" degrade until Crucible ships materialisation. That is the
+  honest state of a dependency Model B does not own; papering over it with a substitute path
+  would hide an upstream gap and make Model B its maintainer. Re-check at gap-analysis
+  whether their fix has shipped.
 - Re-running Crucible's installer is an UPGRADE path on their side; Model B must never
   invoke it. Detection and manifest reading only.
 - The `[install]` table gains keys. `config.py` has no schema versioning, so a stale
@@ -161,3 +168,7 @@ integration test module extended or added. No change to `hooks-src/` in this CR.
 - No change to the hook script itself (CR-MDB-019).
 - No installing, upgrading, starting, or stopping of Crucible.
 - No vendoring or copying of Crucible's clients — the manifest is read, never mirrored.
+- No substitute for Crucible's un-materialised install stage: no packaged-copy fallback, no
+  package-internal path, no Model B-provided client. Their fleet, their installer, their
+  location; Model B reads the manifest and reports unresolved when it cannot.
+- No client-path changes in the skills or the generator (CR-MDB-020).

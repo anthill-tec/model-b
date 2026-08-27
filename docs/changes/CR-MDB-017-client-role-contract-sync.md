@@ -126,6 +126,27 @@ covered. The two agent-protocol families are NOT ported: `heartbeat.sh` and a st
 `agent-protocol` skill are ratified out of existence and asserted absent by
 `tests/test_skills_handover.py:130-137` and `:360-384`.
 
+### §S6 — The generator emits the retired flag too
+The bundle sweep above does not reach the sub-agent definitions, and they carry the same
+defect at its source. `--phase` is hard-coded in all four role templates — not in the stack
+data — and is appended directly after the interpolated register command:
+
+- `generator/templates/red.md.tmpl:24` — `${register_command} --phase RED`
+- `generator/templates/green.md.tmpl:29` — `${register_command} --phase GREEN`
+- `generator/templates/verify.md.tmpl:26` — `${register_command} --phase VERIFY`
+- `generator/templates/fix.md.tmpl:23` — `${register_command} --phase FIX`
+
+All 16 generated definitions under `generator/agents/` therefore instruct a registration
+that cannot parse, and `--role` occurs in only two files anywhere under `generator/`.
+`--cycle` occurs nowhere, so even a corrected `--role` would be refused 409 for the four TDD
+roles — every generated agent is currently unable to register against a released Crucible.
+
+Each template's register step becomes `--role <ROLE>` with the case-exact enumeration, and
+the four TDD templates additionally carry `--cycle <cycleId>` with the binding rule stated
+where the agent will read it before running the command. Regenerate all 16 definitions with
+`python3 generator/build.py build` and prove `--check` clean; no generated file is
+hand-edited.
+
 ## Acceptance criteria
 
 ### §S1
@@ -168,18 +189,29 @@ covered. The two agent-protocol families are NOT ported: `heartbeat.sh` and a st
       origin suite called mandatory).
 - [ ] No test asserts the existence of `skills-src/agent-protocol/` or any `heartbeat.sh`.
 
+### §S6
+- [ ] Zero occurrences of `--phase` under `generator/` (templates and generated agents).
+- [ ] All four role templates emit `--role` with the case-exact role for that template.
+- [ ] `red`, `green`, `verify` and `fix` templates emit `--cycle` and state the binding rule
+      above the command the agent will run.
+- [ ] All 16 files under `generator/agents/` carry `--role` and `--cycle`, and
+      `python3 generator/build.py --check` exits 0 with no drift.
+- [ ] No file under `generator/agents/` is hand-edited — every change arrives via
+      `build.py build` from a template or stack edit.
+
 ## Estimated size
 
-9 files edited (1 routing skill, 6 bundles, 1 memory template, `AGENTS.md`,
-`contracts/crucible-envelope.md`), 1 test re-pinned, 1 test module added (~5 methods).
-Docs + tests only; no `modelb_axi/` code change.
+9 documentation files edited (1 routing skill, 6 bundles, 1 memory template, `AGENTS.md`,
+`contracts/crucible-envelope.md`), 4 role templates edited, 16 agent definitions
+regenerated, 1 test re-pinned, 1 test module added (~5 methods). Docs, templates and tests
+only; no `modelb_axi/` code change.
 
 ## Risk
 
 - The flag-surface guard must read the client `--help` surface without invoking a server.
   Shelling `--help` is safe (no network) but couples the suite to a sibling checkout —
   scope the guard to a declared allow-list of flags maintained in the test module, and let
-  the CR-MDB-020 anchoring work decide how the client is located.
+  the CR-MDB-020 anchoring work (now filed) decide how the client is located.
 - Re-pinning `tests/test_crucible_skill.py:169` is a sanctioned amendment, not a
   convenience: the assertion is inverted, never deleted.
 
