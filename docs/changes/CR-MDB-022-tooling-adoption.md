@@ -135,15 +135,35 @@ an ownership move, not a rewrite.
 owning workflow plan/state storage), the release that triggers it (their 0.2.0, unreleased),
 and the instruction not to extend it.
 
-### §S2 — One TOON codec, owned by Model B
-No file in this repo is a copy of a Crucible file. Model B's codec lives in `modelb_axi/` as
-the single implementation: `axi.py`'s existing 4-construct encoder gains the decoder the tools
-and tests need, and `scripts/toon.py` becomes a thin re-export so a directly-invoked script
-still works. No repo file imports `crucible:clients/toon.py`.
+### §S2 — One TOON codec, owned by Model B, with no third-party dependency
+**There is no usable generic Python TOON library — established 2026-08-27, and it must not be
+re-litigated.** PyPI `toon-format` 0.1.0 is genuinely the official project by identity
+(homepage `toonformat.dev`, repo `github.com/toon-format/toon-python`) but is a
+**name-reservation stub whose `encode`/`decode` both raise `NotImplementedError`** — Crucible
+confirmed this by unpacking the wheel twice (their CR-CRU-046 §S2, user decision Option A) and
+now carries a landmine guard asserting nobody re-pins `toon-format>=0.1,<0.2`. The bare `toon`
+package on PyPI 0.15.9 is "Tools for neuroscience experiments" — unrelated, and a silent
+landmine if installed. The first-party working implementation is TypeScript
+(`@toon-format/toon`). **Model B therefore adds NO runtime dependency; the stdlib-only rule
+stands unchanged, and no Model B file may declare a `toon`/`toon-format` dependency.**
 
-`worktree-flow.py`'s `sys.path.insert` + bare `import toon` (`:93`, `:136`) resolves to the
-adopted module, as does its `schedule_db` import (`:95`); the existing "unavailable → warn,
-queue-only" degrade path is preserved unchanged.
+**Codec home (user decision 2026-08-27).** The single hand-maintained implementation lives at
+`modelb_axi/toon.py`. `scripts/toon.py` is a GENERATED artifact — committed, never hand-edited,
+drift-gated — exactly the model `generator/agents/*.md` already uses in this repo. It is
+generated as a real, self-contained module (not a re-export) and is what `deploy.py` ships
+beside the tooling.
+
+The reason it cannot be a re-export is mechanical and was measured: `modelb_axi` is installed
+in an isolated uv-tool venv (`~/.local/share/uv/tools/modelb-axi/bin/python`) and is NOT
+importable from a bare `python3`. A deployed `worktree-flow.py` is invoked as plain `python3`,
+so a re-export would fail with `ModuleNotFoundError` — and C1's passing integration test runs
+exactly that command. `scripts/worktree-flow.py`'s `sys.path.insert` + bare `import toon`
+(`:93`, `:136`) therefore keeps working unchanged, in the repo and when deployed, because a
+real `toon.py` sits beside it in both places. Its `schedule_db` import (`:95`) and the
+"unavailable → warn, queue-only" degrade path are untouched.
+
+No file in this repo is a copy of a Crucible file, and no repo file imports
+`crucible:clients/toon.py`.
 
 ### §S3 — Fix the real wire defect and pin the round trip
 **Corrected 2026-08-27 at C2 RED, against measured evidence. The diagnosis this section
@@ -182,6 +202,27 @@ documented, valid SUBSET of TOON, and its decoder accepts what Model B's own too
 Conformance is PROVEN, not asserted: the encoder's output is round-tripped through Crucible's
 spec-conformant port **out of process** (subprocess only — never an import, per §S2), so the
 oracle is real without forking their code into ours.
+
+**Type preservation — four defects inherited with the subset, one of which bites Model B
+today.** Crucible's CR-CRU-046 RED documented these in the same narrow 4-construct subset that
+`modelb_axi/axi.py` implements and that the adopted `scripts/toon.py` was ported from. They are
+silent-corruption bugs, not cosmetics, and this cycle fixes them in Model B's codec:
+
+1. **Numeral-looking strings decode as numbers.** The scalar decoder treats any bare token
+   matching a JSON number literal as numeric, so the string `"4"` returns as the int `4`.
+   **This is live in Model B:** our own envelopes carry `context.wave` as the STRING `"4"` (the
+   shape a `WORKFLOW_WAVE` env value takes), so a Model B envelope already round-trips to the
+   wrong type.
+2. **`"42"` / `"true"` / `"null"` are emitted bare** (unquoted) and re-typed on decode to
+   int / bool / None.
+3. **A blank string decodes as a nested empty object**, because an empty scalar tail is
+   indistinguishable from a `key:` nested-object header.
+4. **Leading and trailing whitespace is lost** to a blind `.strip()` on every decoded line.
+
+The fix direction is quoting on emit and exact-typing on decode: a string that could be read as
+another scalar type is quoted, and the decoder never promotes a quoted scalar. Model B's
+encoder output must remain valid TOON — proven by the out-of-process oracle — so the quoting
+rule must match the spec's, not an invention.
 
 Deliverables: every verb that can emit a list — `status`, `next`, `progress` — round-trips
 through Model B's own decoder, including on a project with no ChangeSet DB (the
@@ -256,10 +297,18 @@ reference, or removed while still referenced, fails.
 - [ ] No module or test added by this CR writes under `~/.claude` or invokes `chezmoi`.
 
 ### §S2
-- [ ] Exactly one TOON implementation exists in the repo, in `modelb_axi/`, exposing `encode`
-      and `decode`.
-- [ ] `scripts/toon.py` re-exports it and holds no second implementation — asserted by
-      identity of the encode/decode callables, not by line count.
+- [ ] No Model B file declares a `toon` or `toon-format` dependency — asserted against
+      `pyproject.toml` and any PEP 723 inline metadata; the stdlib-only guarantee is intact.
+- [ ] Exactly one HAND-MAINTAINED TOON implementation exists: `modelb_axi/toon.py`, exposing
+      `encode` and `decode`, reachable as `modelb_axi`'s codec.
+- [ ] `scripts/toon.py` is a generated, self-contained module — byte-identical to what the
+      generator produces from `modelb_axi/toon.py`, carrying a do-not-hand-edit banner, and
+      importable with NO `modelb_axi` on `sys.path` (asserted by importing it from a bare
+      interpreter in a temp dir).
+- [ ] A `--check`-style drift gate fails when `scripts/toon.py` diverges from its source, in
+      the same spirit as `generator/build.py --check`.
+- [ ] `python3 scripts/worktree-flow.py status` works from the repo AND the deployed copy
+      works from the store — both resolving `toon` from beside themselves.
 - [ ] Zero `sys.path` inserts naming a path outside this repo under `scripts/`,
       `modelb_axi/` or `tests/`, and no repo file IMPORTS a Python module from Crucible's
       checkout (no `import toon` / `import _crucible_axi` resolved outside this repo).
@@ -280,6 +329,15 @@ reference, or removed while still referenced, fails.
       the inline form preserves JSON-quoting for items containing `,`, `:`, `[` or `]`.
 - [ ] Empty list headers are left ALONE — `status`, whose envelope is entirely `[0]` headers,
       decodes both before and after this cycle. A change there would be churn, not a fix.
+- [ ] **Type preservation, each asserted independently as a round trip:** the STRING `"4"`
+      survives as `"4"` and never becomes `4`; `"42"`, `"true"`, `"null"` survive as strings;
+      the empty string survives as `""` and not as an empty object; a string with meaningful
+      leading or trailing whitespace survives byte-exact.
+- [ ] A real Model B AXI envelope carrying `context.wave` as the string `"4"` round-trips with
+      `wave` still a string — the live instance of defect 1, asserted on the real envelope
+      shape rather than a synthetic one.
+- [ ] The quoting rule Model B emits is accepted by Crucible's port, proven by the
+      out-of-process oracle — the fix must not trade a type bug for an invalid-wire bug.
 - [ ] `worktree-flow.py status`, `next` and `progress` each emit stdout Model B's decoder
       accepts, on a project with no ChangeSet DB.
 - [ ] `tests/test_worktree_flow_axi.py` passes all six tests and imports no module from
