@@ -8,6 +8,7 @@ Worker-orchestrator-only rules. Read COMMON + TRACK. (Coordinator rules → MAIN
 - Use your OWN `<orchestrator>-tN` id for ALL orchestrator-level ops (gate, regression, heartbeats) — never the bare main-orchestrator id.
 
 ## Get next via worktree-flow next / start / finish
+- The tool is **`~/.agents/scripts/worktree-flow.py`** — Model B's deployed script store (what the installer writes), never a machine-local copy.
 - `next --track "Track N - <Project>"` → `NEXT <cr>` / `HOLD <cr>` (not yet ready — its `depends_on` CRs aren't all COMPLETED) / `DRAINED`. A held track idles for Mainline's dispatch; readiness is `depends_on`-driven.
 - `start --cr <CR>` → claim → IN_PROGRESS. `finish --cr <CR>` → COMPLETED + prints your next line (read it; it IS your instruction).
 - Loop = `next → start → finish`. NEVER parse md lane sections for the next CR.

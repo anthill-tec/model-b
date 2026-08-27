@@ -392,14 +392,40 @@ class BuildPyCliRetargetTest(unittest.TestCase):
             f"post-S7 retarget (pinned contract: {GENERATOR_AGENTS_DIR}); "
             f"found home-rooted paths: {home_rooted}",
         )
-        wrong_parent = [p for p in listed_paths if p.parent != GENERATOR_AGENTS_DIR]
-        # POSITIVE/EXACT -- every listed path's parent is exactly the
-        # pinned repo-local output dir.
+        # CR-MDB-022 §S2 SANCTIONED AMENDMENT -- superseded pin: build.py
+        # gained a SECOND target class, the generated codec at its own
+        # CODEC_TARGET (scripts/toon.py), drift-gated by this same
+        # --check/--list surface because "inventing a second gate binary would
+        # create a parallel convention". "Every listed path's parent is
+        # generator/agents/" is therefore a superseded contract. The amended
+        # form pins the EXACT set of listed target paths -- the 16 agent
+        # definitions plus that one codec, named from build.py's own constant
+        # rather than a duplicated string -- which is strictly stronger than
+        # the parent-directory check it replaces: a 17th stray target, a
+        # missing target, a relocated target and a renamed output dir all
+        # still fail. The home-rooted (§S7 retarget) and chezmoi-reference
+        # halves of this test are unchanged.
+        module = _load_build_module()
+        expected_paths = {
+            GENERATOR_AGENTS_DIR / f"{stack}-{role}-agent.md"
+            for stack in STACKS for role in ROLES
+        } | {module.CODEC_TARGET}
+        # POSITIVE/EXACT -- the listed target set is exactly the pinned
+        # repo-local agent assets plus the generated codec.
         self.assertEqual(
-            wrong_parent, [],
-            f"generator/build.py --list must report every target under "
-            f"{GENERATOR_AGENTS_DIR}; found paths with a different parent: "
-            f"{wrong_parent}",
+            set(listed_paths), expected_paths,
+            f"generator/build.py --list must report exactly the 16 agent "
+            f"definitions under {GENERATOR_AGENTS_DIR} plus the generated "
+            f"codec {module.CODEC_TARGET}; got "
+            f"{sorted(str(p) for p in listed_paths)}, expected "
+            f"{sorted(str(p) for p in expected_paths)}",
+        )
+        # bound -- each target is listed exactly once (no duplicated line
+        # hidden by the set comparison above).
+        self.assertEqual(
+            len(listed_paths), len(expected_paths),
+            f"generator/build.py --list must report each target exactly once, "
+            f"got {len(listed_paths)} lines for {len(expected_paths)} targets",
         )
 
         check_result = subprocess.run(
