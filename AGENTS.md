@@ -135,7 +135,7 @@ python3 ~/Documents/data_projects/crucible/clients/python-crucible.py regression
 - **Most tests are structural gates, so ordinary edits break them.** They assert repo layout, deployed `~/.claude`/`~/.agents` state, SKILL.md frontmatter, byte-identity of imported bundles, reference-router parity, `chezmoi diff` cleanliness, and grep-gates for retired terms (e.g. zero `WORKFLOW_CYCLE_ID`). Renaming a skill, doc, or reference file requires updating its gate.
 - `tests/test_realhome_supersede.py` touches the real home directory and **skips unless `MODELB_REALHOME_GATE=1`**.
 - Tests import `modelb_axi` directly — install the package (`pip install -e .`) or run from the repo root.
-- Baseline for `python3 -m unittest discover -s tests -t .`: **194 tests, 7 failures, 11 skips** (gates that depend on live external state — e.g. the worktree-flow TOON envelope). Compare against this baseline rather than expecting a fully green run.
+- Baseline for `python3 -m unittest discover -s tests -t .`: **240 tests, 1 failure, 12 skips** (as of CR-MDB-022; previously 194/7F/11S). The one failure is `test_crucible_skill.py::CrucibleSkillCRMDB011Test::test_ac7_repo_agents_md_no_longer_claims_workflow_cycle_id_injection` — a stale `WORKFLOW_CYCLE_ID` claim on an `AGENTS.md` line, pre-existing and unrelated to the tooling work. CR-MDB-022's TOON codec fix cleared 6 of the previous 7: the 3 `test_worktree_flow_axi` envelope gates and the 3 `test_scaffold` envelope gates, which shared the same root cause. Compare against this baseline rather than expecting a fully green run.
 - TDD is mandatory: RED before GREEN, never commit failing tests, clean build before every commit.
 
 ## Workflow Rules (Model B, solo)
