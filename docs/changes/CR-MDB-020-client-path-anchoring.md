@@ -3,7 +3,7 @@
 **Status:** PENDING
 **Type:** maintenance
 **Priority:** P1 (blocks release 0.1.0 — 53 shipped references resolve to a path Model B does not own, or to a mirror CR-MDB-016 retired)
-**Depends on:** CR-MDB-017 (rewrites the same bundle SKILL.mds for the `--role`/`--cycle` surface; serialize to avoid two CRs editing one file)
+**Depends on:** CR-MDB-017 (rewrites the same bundle SKILL.mds for the `--role`/`--cycle` surface), CR-MDB-022 (repoints the same two memory templates for tooling paths, and runs FIRST in the wave) — both edges exist to serialize shared files, not to sequence logic
 **Labels:** crucible, skills, generator, contract, patch
 **Phase:** Wave 5
 **Design reference:** Sandesh #1358/#1360 (the discovery-manifest contract and Crucible's confirmation of their own un-materialised stage) · `crucible:crucible_axi/manifest.py` (`MANIFEST_FILENAME = "crucible-clients.json"`, schema `{version, clients, status}`) · `crucible:docs/RUNBOOK.md:242` (published location) · CR-MDB-016 (the `~/.claude/scripts` client mirrors were retired) · user directive 2026-08-27 ("Model B will not maintain any client scripts of Crucible — that is the Crucible project's job; Model B only manages and updates the skills with reference to changes in Crucible") · CR-MDB-017 §Risk and §Non-goals, which designated this CR
