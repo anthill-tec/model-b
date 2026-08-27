@@ -6,7 +6,7 @@
 **Depends on:** —
 **Labels:** tooling, installer, axi, toon, ownership, detachment, feature
 **Phase:** Wave 5
-**Design reference:** user directives 2026-08-27 — (a) "all Model B scripts are owned inside the model-b subproject and repo-managed here; the same-named scripts in the Claude global directories are NOT managed by Model B", (b) "we are detaching from the local development machine's environment; any reference to these scripts should be for using them from our owned `scripts/` folder under Model B; we bundle these along with the skills we manage for release, thus publishing and overwriting the local machine environment — that is the pattern; chezmoi ownership on the local machine is not our problem", (c) "`code-health` and `gate-lock`: adopt those", (d) "`schedule_db.py` was a transitional workflow planning and scheduling DB, superseded by Crucible when its 0.2.0 is released — Crucible will own storing the workflow plan and state; this approach will be deprecated" · **PRD §D9** (`scripts/` is a permanent workspace directory of this repo; the single-source repo-local rule; AC gates assert repo paths, never deployed paths) · **PRD §D10** (the installer deploys the user-local file classes — "global memory (language refs), hook scripts, **scripts/wrappers**, skill bundles"; the scaffold stays project-specific) · `CR-MDB-014:23` (wired `scripts` into the package data as an asset root; never populated it) · CR-MDB-015 §S6 (the `.agents/hooks/scripts` deploy precedent this CR follows) · CR-MDB-016 §C2 (the store-authoritative deploy + supersede pattern) · CR-MDB-010 (the worktree-flow AXI envelope) · `crucible:docs/research/DN-crucible-toon-subset.md` (**Crucible-owned** — cited, never edited) · `contracts/crucible-envelope.md`
+**Design reference:** user directives 2026-08-27 — (a) "all Model B scripts are owned inside the model-b subproject and repo-managed here; the same-named scripts in the Claude global directories are NOT managed by Model B", (b) "we are detaching from the local development machine's environment; any reference to these scripts should be for using them from our owned `scripts/` folder under Model B; we bundle these along with the skills we manage for release, thus publishing and overwriting the local machine environment — that is the pattern; chezmoi ownership on the local machine is not our problem", (c) "`code-health` and `gate-lock`: adopt those", (d) "`schedule_db.py` was a transitional workflow planning and scheduling DB, superseded by Crucible when its 0.2.0 is released — Crucible will own storing the workflow plan and state; this approach will be deprecated" · **PRD §D9** (`scripts/` is a permanent workspace directory of this repo; the single-source repo-local rule; AC gates assert repo paths, never deployed paths) · **PRD §D10** (the installer deploys the user-local file classes — "global memory (language refs), hook scripts, **scripts/wrappers**, skill bundles"; the scaffold stays project-specific) · `CR-MDB-014:23` (wired `scripts` into the package data as an asset root; never populated it) · CR-MDB-015 §S6 (the `.agents/hooks/scripts` deploy precedent this CR follows) · CR-MDB-016 §C2 (the store-authoritative deploy + supersede pattern) · CR-MDB-010 (the worktree-flow AXI envelope) · **the OFFICIAL TOON spec** (toonformat.dev / github.com/toon-format) — the wire contract, with `crucible:clients/toon.py` as Crucible's spec-conformant port used only as an out-of-process oracle · `crucible:docs/research/DN-crucible-toon-subset.md` — **RETIRED pointer document** (their CR-CRU-046, 2026-08-01); cited for lineage only, never as a live contract, never edited · `contracts/crucible-envelope.md` (the Model B-owned surface recording what Model B emits)
 
 ## Context
 
@@ -82,20 +82,27 @@ exist, and the disagreement between two of them already costs three test failure
 | `~/.claude/scripts/toon.py` | 254 lines | encoder + decoder, described at `worktree-flow.py:117` as "copy of `crucible:clients/toon.py` sitting beside this script"; loaded by `sys.path.insert` at `:93`, imported at `:136` |
 | `modelb_axi/axi.py` | 95 lines | Model B's OWN encode-only 4-construct subset, whose docstring at `:10-12` states it "deliberately NEVER imports Crucible's `clients/toon.py`" |
 
-The failure is the collision. `worktree-flow.py` emits empty-list headers — measured verbatim,
-`rows[0]:` and `help[0]:` with no items — which the 254-line encoder produces happily and
-Crucible's 1356-line decoder refuses with
-`ToonDecodeError: Line 7: Expected 1 list-form items, but got 0`. Three of the six tests in
-`tests/test_worktree_flow_axi.py` fail on exactly this and are part of the recorded 7-failure
-baseline. The defect stayed latent because the tool lived outside the repo, where no gate ever
-ran against it. A script that self-describes as a copy of a Crucible file also cannot be
-adopted as Model B's own without contradicting the standing no-client-maintenance directive.
+The failure is the collision, and its shape was mis-stated until C2 RED measured it — see §S3
+for the correction and the evidence. In short: the 254-line encoder emits a NON-EMPTY list
+header with bare indented items (`warnings[1]:` then `    schedule_db unavailable — queue-only
+project`) which Crucible's port rejects at `clients/toon.py:1243`, because it counts an item
+line only when it begins with `- `. Empty headers like `rows[0]:`/`help[0]:` are VALID and are
+not the defect. Three of the six tests in `tests/test_worktree_flow_axi.py` fail on the
+non-empty case and are part of the recorded 7-failure baseline; `status`, whose envelope is
+entirely empty headers, has always decoded cleanly. The defect stayed latent because the tool
+lived outside the repo, where no gate ever ran against it. A script that self-describes as a
+copy of a Crucible file also cannot be adopted as Model B's own without contradicting the
+standing no-client-maintenance directive.
 
-**The subset's governing document is not ours either.** The subset `modelb_axi/axi.py`
-implements is declared in `DN-crucible-toon-subset.md`, which lives in **Crucible's** repo,
-and `axi.py:12` cites it by bare filename with no anchor — the same unanchored cross-project
-reference CR-MDB-020 fixes for client paths, here in code. Model B may not edit it, so the
-subset Model B honours is recorded on the Model B-owned `contracts/crucible-envelope.md`.
+**The governing document is RETIRED, which changes what "conformance" means here.**
+`modelb_axi/axi.py:10-12` claims wire-compatibility with a "pinned 4-construct TOON subset"
+declared in `DN-crucible-toon-subset.md`. That document was retired by Crucible's CR-CRU-046
+(2026-08-01) and now says only that Crucible speaks TOON per the OFFICIAL spec
+(toonformat.dev / github.com/toon-format), with `clients/toon.py` as their spec-conformant
+port. So there is no private subset to honour, no bespoke contract to mirror, and `axi.py`'s
+claim is stale. Model B does not implement the spec — it emits a documented valid SUBSET and
+proves conformance by round-tripping through their port out of process. §S3 carries the
+decision.
 
 **Where the deployed copy lives, and why not the old path.** CR-MDB-016 §C2 established the
 shape: deploy into Model B's store, let the harness resolve from there, repoint every
@@ -138,17 +145,52 @@ still works. No repo file imports `crucible:clients/toon.py`.
 adopted module, as does its `schedule_db` import (`:95`); the existing "unavailable → warn,
 queue-only" degrade path is preserved unchanged.
 
-### §S3 — Fix the empty-array defect and pin the round trip
-Establish by test which empty-list form the documented subset decodes, and make the encoder
-emit it. Every verb that can produce a zero-row table — `status`, `next`, `progress` —
-round-trips through Model B's own decoder. `tests/test_worktree_flow_axi.py` drops the
-absolute-path insert into the Crucible checkout and decodes with Model B's codec; its three
-failures resolve for the right reason — the encoder was wrong, not the oracle.
-`contracts/crucible-envelope.md` records the 4-construct subset including the empty-array
-form, since a construct that cannot round-trip is not in the subset whatever any document
-says. `axi.py`'s citation is anchored `crucible:docs/research/DN-crucible-toon-subset.md`;
-Crucible's note is cited, never edited, and no divergence is introduced without raising it on
-the #1336 lineage.
+### §S3 — Fix the real wire defect and pin the round trip
+**Corrected 2026-08-27 at C2 RED, against measured evidence. The diagnosis this section
+originally carried was wrong and is retained nowhere.** What was claimed: empty list headers
+`rows[0]:`/`help[0]:` are refused. What is true: they are VALID. `worktree-flow.py status`
+emits `lanes[0]:`, `warnings[0]:` and `help[0]:` and decodes cleanly against Crucible's
+spec-conformant port. `key: []` is the canonical empty form and `key[0]:` is also accepted;
+only `key[0]: []` is rejected. The original error message pointed at a line number that was
+read as the empty header and was in fact the line below it.
+
+**The real defect is a NON-EMPTY list header followed by BARE indented items.**
+`worktree-flow.py` emits `  warnings[1]:` then `    schedule_db unavailable — queue-only
+project`. `crucible:clients/toon.py:1243` counts a line as an item only when it starts with
+`- ` or equals `-`, so bare items yield zero recognized items against a declared count of
+one: `Expected 1 list-form items, but got 0`. Measured at `next` line 8 and `progress`
+line 7 — always the `[1]` header, never a `[0]` header.
+
+Two wire forms are accepted and either fixes it: **INLINE** — `warnings[1]: <text>`, which is
+what their encoder itself emits and is therefore the canonical choice — or **hyphenated
+list-form**, `warnings[1]:` followed by `    - <text>`. Inline carries one rule that must be
+preserved: an item containing `,`, `:`, `[` or `]` is JSON-quoted. A plain em dash is not
+quoted.
+
+**The governing document is not what this CR first assumed.**
+`crucible:docs/research/DN-crucible-toon-subset.md` is **RETIRED** (their CR-CRU-046,
+2026-08-01) and survives only as a pointer: "Crucible speaks TOON per the OFFICIAL spec —
+toonformat.dev / the toon-format GitHub org. The spec, not this document, is the wire"
+contract, with `clients/toon.py` as their spec-conformant port validated by a round-trip
+oracle against the official library. There is therefore **no private 4-construct subset to
+record**, and `modelb_axi/axi.py:10-12`'s claim of wire-compatibility with a "pinned
+4-construct TOON subset" is stale.
+
+**Conformance stance (decided here, deliberately conservative).** Model B does NOT implement
+the TOON spec — an 8-language official ecosystem already does. Model B's encoder emits a
+documented, valid SUBSET of TOON, and its decoder accepts what Model B's own tools emit.
+Conformance is PROVEN, not asserted: the encoder's output is round-tripped through Crucible's
+spec-conformant port **out of process** (subprocess only — never an import, per §S2), so the
+oracle is real without forking their code into ours.
+
+Deliverables: every verb that can emit a list — `status`, `next`, `progress` — round-trips
+through Model B's own decoder, including on a project with no ChangeSet DB (the
+`schedule_db unavailable — queue-only project` path, which is where the defect lives).
+`tests/test_worktree_flow_axi.py` decodes with Model B's codec and imports nothing from
+outside the repo. `contracts/crucible-envelope.md` records the subset Model B emits, names
+the OFFICIAL spec as the wire contract, and marks the DN as a retired pointer. `axi.py`'s
+stale subset claim is corrected. No Crucible file is edited, and any divergence found in
+their port is raised on the #1336 lineage rather than forked.
 
 ### §S4 — Ship them through the installer
 `modelb_axi/deploy.py` treats `scripts/` as a deployed asset class under the same sha256
@@ -231,17 +273,24 @@ reference, or removed while still referenced, fails.
 - [ ] The phrase "copy of crucible:" does not appear anywhere in the repo.
 
 ### §S3
-- [ ] `decode(encode(x)) == x` for an envelope carrying an empty list, asserted directly on
-      the codec.
+- [ ] `decode(encode(x)) == x` on Model B's codec for: an envelope with an EMPTY list, one
+      with a NON-EMPTY scalar list, a populated uniform table, and a scalar-only envelope.
+- [ ] The non-empty scalar list is emitted in a form Crucible's spec-conformant port
+      accepts, proven by round-tripping the output through that port **as a subprocess**;
+      the inline form preserves JSON-quoting for items containing `,`, `:`, `[` or `]`.
+- [ ] Empty list headers are left ALONE — `status`, whose envelope is entirely `[0]` headers,
+      decodes both before and after this cycle. A change there would be churn, not a fix.
 - [ ] `worktree-flow.py status`, `next` and `progress` each emit stdout Model B's decoder
-      accepts, including on a project with no ChangeSet DB (the
-      `schedule_db unavailable — queue-only project` path).
+      accepts, on a project with no ChangeSet DB.
 - [ ] `tests/test_worktree_flow_axi.py` passes all six tests and imports no module from
       outside this repo.
-- [ ] `contracts/crucible-envelope.md` states the 4-construct subset and the empty-array form;
-      no file in Crucible's repo is modified.
-- [ ] No repo file cites `DN-crucible-toon-subset.md` by bare filename — every citation
-      carries the `crucible:` anchor.
+- [ ] `contracts/crucible-envelope.md` names the official TOON spec (toonformat.dev /
+      github.com/toon-format) as the wire contract, records the subset Model B emits, and
+      records that `DN-crucible-toon-subset.md` is a RETIRED pointer document (their
+      CR-CRU-046) — not a live contract.
+- [ ] No repo file treats the retired DN as the wire contract; `modelb_axi/axi.py`'s
+      "pinned 4-construct TOON subset" claim is gone.
+- [ ] No file in Crucible's repo is modified.
 
 ### §S4
 - [ ] `deploy.py` deploys `scripts/` with sha256 manifest comparison; a second run reports
