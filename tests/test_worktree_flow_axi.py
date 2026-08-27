@@ -79,7 +79,8 @@ class WorktreeFlowCodecDeploymentTest(unittest.TestCase):
         # POSITIVE -- the deployed copy must exist.
         self.assertTrue(
             DEPLOYED_TOON.is_file(),
-            f"{DEPLOYED_TOON} must exist (deployed copy of crucible:clients/toon.py)",
+            f"{DEPLOYED_TOON} must exist (the deployed TOON codec, superseded "
+            f"by the generated scripts/toon.py)",
         )
         content = DEPLOYED_TOON.read_text(encoding="utf-8")
         # POSITIVE -- both required header anchors must be present.

@@ -118,9 +118,14 @@ def _sdb_con(main_wt, create=False):
 
 # ---------------------------------------------------------------------------
 # AXI output (CR-MDB-010): stdout = TOON envelope, stderr = human channel.
-# Converted verbs: status, next, finish, progress. The codec is the DEPLOYED
-# copy of crucible:clients/toon.py sitting beside this script (the sys.path
-# insert above makes it importable). Remaining verbs keep plain output.
+# Converted verbs: status, next, finish, progress. The codec is Model B's own
+# `toon.py`, sitting beside this script (the sys.path insert above makes it
+# importable) — generated from `modelb_axi/toon.py`, the one hand-maintained
+# implementation (CR-MDB-022 §S2). It emits a documented valid subset of the
+# OFFICIAL TOON spec (toonformat.dev / github.com/toon-format); a NON-EMPTY
+# scalar list goes out in the canonical INLINE form `key[N]: a,b`, never as a
+# header plus bare indented items, which no conformant decoder accepts
+# (CR-MDB-022 §S3). Remaining verbs keep plain output.
 # ---------------------------------------------------------------------------
 _AXI_PROJECT = None  # basename of the resolved project dir; set by converted verbs
 
@@ -138,7 +143,7 @@ def _emit_axi(verb, ok, payload, warnings=None, help_lines=None):
     stdout/stderr convention mirrored in contracts/crucible-envelope.md.
     Human rendering for converted verbs goes to stderr, never stdout.
     """
-    import toon  # deployed copy beside this script (see sys.path insert above)
+    import toon  # Model B's own codec, beside this script (see sys.path insert)
     envelope = {"verb": verb, "ok": ok, "project": _AXI_PROJECT}
     envelope.update(payload)
     envelope["warnings"] = list(warnings or [])

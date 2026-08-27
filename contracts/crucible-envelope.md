@@ -12,10 +12,75 @@ delivery is owned by the TRACKS header here plus CR-MDB-011's doc pass.
   stack client (`bun-crucible.py`, `python-crucible.py`, `mvn-crucible.py`,
   `rust-crucible.py`, `arduino-crucible.py`) emits it via the shared
   `crucible:clients/_crucible_axi.py`.
-- The TOON codec is `crucible:clients/toon.py` (`encode(dict) -> str` /
-  `decode(str) -> dict`; strict subset — no delimiter variants, no key-path expansion,
-  no inline primitive-array short form). GETs additionally serve compact TOON via
-  `?fmt=toon` / `Accept: text/toon`; JSON replies carry `help` hints.
+- The client-side TOON codec is `crucible:clients/toon.py` (`encode(dict) -> str` /
+  `decode(str) -> dict`) — Crucible's spec-conformant port of the official grammar,
+  validated upstream against the first-party reference library. It DOES emit the inline
+  primitive-array short form (`help[2]: cycle-done <id>,status`); an earlier "strict
+  subset, no inline short form" description here was measured wrong and is corrected
+  below. GETs additionally serve compact TOON via `?fmt=toon` / `Accept: text/toon`;
+  JSON replies carry `help` hints.
+
+## TOON wire contract
+
+**The wire contract is the OFFICIAL TOON spec** — toonformat.dev and the `toon-format`
+GitHub org. `crucible:docs/research/DN-crucible-toon-subset.md` is **RETIRED** (their
+CR-CRU-046, 2026-08-01) and survives only as a pointer at that spec. It is NOT a live
+contract, no Model B file may treat it as one, and there is no private four-construct
+subset to be pinned against.
+
+**Model B does not implement the spec** — an official multi-language ecosystem already
+does. `modelb_axi/toon.py` is the one HAND-MAINTAINED codec in this repo; `scripts/toon.py`
+is GENERATED from it by `generator/build.py` (a real self-contained module, never a
+re-export, so a deployed `worktree-flow.py` running under a bare `python3` resolves it
+from beside itself) and held byte-identical by `generator/build.py --check`. The codec
+ENCODES a documented valid SUBSET and DECODES what Model B's own tools emit.
+
+Conformance is PROVEN, not asserted: `tests/test_toon_codec.py` round-trips the encoder's
+output through `crucible:clients/toon.py` **out of process** — subprocess only, never an
+import, so no Crucible module is ever forked into a Model B process. That port is an
+ORACLE and nothing else; Model B holds no copy of it and maintains none of their clients.
+
+### The subset Model B emits
+
+| Construct | Wire form |
+|---|---|
+| Scalar line | `key: <scalar>` |
+| Nested object | `key:` + 2-space-indented child lines |
+| Empty array | `key[0]:` |
+| Scalar array | `key[N]: <item>,<item>` — the canonical INLINE form |
+| Uniform object table | `key[N]{col,…}:` + one comma-joined row per item |
+
+**Empty arrays.** `key: []` is the spec-canonical empty form and `key[0]:` is equally
+valid. Model B emits `key[0]:` — the form its tooling has always written, which
+`worktree-flow.py status` has always decoded — and its decoder accepts both. `key[0]: []`
+is INVALID and nothing here emits it.
+
+**Non-empty arrays go out INLINE.** A `[N]` header followed by BARE indented items is
+INVALID: a conformant decoder counts an item line only when it starts with `- `, so bare
+items read as zero items against a declared count of N. That was a live defect on
+`worktree-flow.py`'s `next` and `progress` degrade path (`schedule_db unavailable —
+queue-only project`) and is fixed in the codec, not per call site. The hyphenated
+`- <item>` form is the spec's other accepted shape: Model B decodes it and does not emit
+it. A BARE indented item is also still decoded, so an older deployed copy's output stays
+readable; it is never written.
+
+### The quoting rule
+
+A string is written BARE only when it is non-empty, has no leading or trailing space, is
+not `true`/`false`/`null`, is not numeric-looking, holds none of `:` `"` `\` `[` `]` `{`
+`}`, carries no control character, does not contain the `,` delimiter, and does not start
+with `-` or `#`. Otherwise it is JSON-quoted, escaping only `\ " \n \r \t` and C0 controls
+— an em dash is not special and stays an em dash.
+
+That single rule is simultaneously the wire rule and the TYPE-PRESERVATION guarantee.
+`"4"`, `"42"`, `"true"`, `"null"`, `""` and `"  indented  "` are therefore all quoted and
+round-trip as the strings they were, and the decoder never re-types a quoted scalar. The
+live instance: a Model B envelope carries `context.wave` as the STRING `"4"` (the shape a
+`$WORKFLOW_WAVE` value takes), and it now goes out as `wave: "4"`.
+
+A `key:` line with an empty tail is a NESTED OBJECT on BOTH sides of the wire — which is
+exactly why an intentional empty string is emitted as `key: ""`. Model B does not diverge
+from the reference port on that reading; it sidesteps the ambiguity on emit.
 
 ## Required surface
 
