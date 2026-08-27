@@ -218,8 +218,16 @@ reference, or removed while still referenced, fails.
       and `decode`.
 - [ ] `scripts/toon.py` re-exports it and holds no second implementation — asserted by
       identity of the encode/decode callables, not by line count.
-- [ ] Zero `sys.path` inserts naming a path outside this repo under `scripts/`, `modelb_axi/`
-      or `tests/`, and zero occurrences of `data_projects/crucible/clients`.
+- [ ] Zero `sys.path` inserts naming a path outside this repo under `scripts/`,
+      `modelb_axi/` or `tests/`, and no repo file IMPORTS a Python module from Crucible's
+      checkout (no `import toon` / `import _crucible_axi` resolved outside this repo).
+- [ ] **Sanctioned exception, asserted as permitted rather than forbidden:** INVOKING
+      Crucible's client as a subprocess from `~/Documents/data_projects/crucible/clients/`
+      remains correct and must not be swept. Model B dogfoods Crucible as a consumer and
+      this machine drives Crucible's DEV server, so the checkout — not the installed
+      `crucible-axi` package and not any local script store — is the live client source.
+      The gate distinguishes IMPORT (forbidden: it forks another project's code into our
+      process) from INVOCATION (required: it is how a consumer uses their tool).
 - [ ] The phrase "copy of crucible:" does not appear anywhere in the repo.
 
 ### §S3
