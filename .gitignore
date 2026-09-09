@@ -6,3 +6,4 @@ __pycache__/
 .venv/
 test-reports/
 .coverage
+.lean-ctx/
