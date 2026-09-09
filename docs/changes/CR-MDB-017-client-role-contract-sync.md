@@ -141,11 +141,47 @@ that cannot parse, and `--role` occurs in only two files anywhere under `generat
 `--cycle` occurs nowhere, so even a corrected `--role` would be refused 409 for the four TDD
 roles — every generated agent is currently unable to register against a released Crucible.
 
-Each template's register step becomes `--role <ROLE>` with the case-exact enumeration, and
-the four TDD templates additionally carry `--cycle <cycleId>` with the binding rule stated
-where the agent will read it before running the command. Regenerate all 16 definitions with
-`python3 generator/build.py build` and prove `--check` clean; no generated file is
-hand-edited.
+**Content sourced from Crucible directly (Sandesh #1364/#1366), not re-derived from their
+client `--help` alone** — their team hit the assigned-vs-minted agent-id defect themselves (5
+permanently mis-attributed runs) and their tier-guidance rewrite is validated against their
+own six-stack fleet. Two independently confirmed corrections to the pre-existing drift this
+section originally measured: the deployed `~/.claude/agents/rust-*-agent.md` files are
+**neither Model B's nor Crucible's** — no `generator/stacks/rust.toml` exists in this repo, the
+files are plain (non-symlinked), and Crucible confirmed their own rust set is separately
+located and already fixed. They are flagged to the user as an orphaned set, out of this CR's
+scope, never silently absorbed here.
+
+**§S6a — the registration line, shared across all four templates.** Each template's register
+step becomes `--role <ROLE>` with the case-exact enumeration, and the four TDD templates
+additionally carry `--cycle <cycleId>`, stated as REQUIRED for the four TDD roles (the server
+409s an unbound TDD registration even once the flag name is right) and absent for
+`ORCHESTRATOR`/`report`. The agent id is already sourced correctly in the existing template
+text ("the agentId from your dispatch prompt" — `red.md.tmpl:22` and its siblings); this is
+confirmed adequate, not rewritten, since Crucible's assigned-not-minted rule is what that
+phrasing already encodes.
+
+**§S6b — the tier-guidance section is PER-STACK, never a generic block.** This is a second,
+independent defect beyond `--phase`: a single generic tier-guidance paragraph is factually
+wrong for three of the four stacks, because the toolchains do not share a tier mechanism.
+Per Crucible's own fleet mapping — arduino has three separate build systems that ARE the
+tiers (native-host `unit`, `arduino-cli` `compile`/`check`, HIL as the unreachable-from-native
+integration/e2e end, with ArduinoFake as the explicitly-labelled middle ground); bun and
+python have no native tier split at all and must drive a project-DECLARED target (bun:
+`test:unit`/`test:integration`/`test:regression` scripts; python: a `--start-dir`/`--pattern`
+declaration) rather than hand-picking files; quarkus already has the split via Maven itself
+(surefire `*Test` = unit, failsafe `*IT` = integration) and the guidance's job is to forbid
+renaming an `*IT` to `*Test` to dodge a slow gate.
+
+The shared 16-line preamble ("which tier a feature needs is your call; how it runs locally is
+your stack's business… a tier names the DEPENDENCY a test takes, never its size… never report
+a run under a tier it did not earn") is identical across all four stacks and renders ONCE from
+the template, immediately followed by the per-stack half rendered from each stack's own
+`tier_guidance` TOML key — this is the `templates × stacks/*.toml` shape the generator already
+uses for the existing `mechanics`/`red`/`green`/`verify`/`fix` keys, extended with one more
+per-stack string, not a new mechanism.
+
+Regenerate all 16 definitions with `python3 generator/build.py build` and prove `--check`
+clean; no generated file is hand-edited.
 
 ## Acceptance criteria
 
@@ -198,13 +234,24 @@ hand-edited.
       `python3 generator/build.py --check` exits 0 with no drift.
 - [ ] No file under `generator/agents/` is hand-edited — every change arrives via
       `build.py build` from a template or stack edit.
+- [ ] The 16-line shared tier-guidance preamble renders IDENTICALLY across all four stacks'
+      generated agents, from the template, once.
+- [ ] Each of the four `generator/stacks/*.toml` carries its own `tier_guidance` key, and no
+      stack's rendered tier text is a copy of another's — arduino names its three build
+      systems and the ArduinoFake caveat; bun and python name a project-DECLARED target
+      (never a hand-picked file list); quarkus names the surefire/failsafe split and forbids
+      renaming `*IT` to `*Test`.
+- [ ] `generator/stacks/rust.toml` does NOT exist and is not created by this CR — the four
+      `~/.claude/agents/rust-*-agent.md` files measured during this CR's correspondence are
+      confirmed orphaned by both Model B's and Crucible's generators and are explicitly out
+      of scope.
 
 ## Estimated size
 
 9 documentation files edited (1 routing skill, 6 bundles, 1 memory template, `AGENTS.md`,
-`contracts/crucible-envelope.md`), 4 role templates edited, 16 agent definitions
-regenerated, 1 test re-pinned, 1 test module added (~5 methods). Docs, templates and tests
-only; no `modelb_axi/` code change.
+`contracts/crucible-envelope.md`), 4 role templates edited, 4 stack TOMLs gain a
+`tier_guidance` key each, 16 agent definitions regenerated, 1 test re-pinned, 1 test module
+added (~5 methods). Docs, templates and tests only; no `modelb_axi/` code change.
 
 ## Risk
 
