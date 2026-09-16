@@ -1,156 +1,232 @@
-# CR-MDB-025 — OMP as a fifth harness: neutral agent-definition schema + per-harness emitters
+# CR-MDB-025 — OMP as a first-class deploy target: agent definitions, hooks, and the harness roster
 
 **Status:** PENDING
 **Type:** feature
-**Priority:** P2 (not release-blocking for 0.1.0; user directive to adopt OMP as the preferred harness for the parent Roundhouse project makes it high-value for the NEXT wave)
-**Depends on:** —
-**Labels:** harness, generator, omp, agent-definitions, feature
-**Phase:** Wave 6 (post-0.1.0; filed now, scoped explicitly to NOT block wave 5)
-**Design reference:** user directive 2026-09-09 ("we have a new agentic harness called OMP; it has a different format for agent definitions though it is capable of reusing Claude's skill definitions; I am more inclined to use OMP over Claude given we are also migrating to the Roundhouse, your parent project's requirements") · `modelb_axi/hooks.py::compile_wiring()` (the existing neutral-schema + per-harness-emitter pattern this CR mirrors) · `modelb_axi/harness.py` (the roster this CR extends) · PRD §D10 ("target harness — a SETUP QUERY... per-harness support is a first-class FEATURE... the scaffolded ecosystem itself stays harness-agnostic")
+**Priority:** P1 (blocks release 0.1.0 — OMP is the harness the orchestrator now runs on, and
+Model B's generated agent definitions are **structurally invisible** to it: OMP deliberately
+refuses to read `.claude/agents`, so every generated definition is unreachable on the harness
+we actually use)
+**Depends on:** CR-MDB-017 (the `--role`/`--cycle` + `tier_guidance` template work lands in the
+same frontmatter/template surface this CR re-emits; sequencing after it avoids two rewrites of
+the same generated files)
+**Labels:** generator, installer, harness, agent-definitions, hooks, omp, feature
+**Phase:** Wave 5
+**Design reference:** user directive 2026-09-16 ("I want our definitions etc be targeting for
+deploy to OMP") · user directive 2026-09-09 (OMP preferred over Claude Code, tied to the
+Roundhouse migration) · `omp://task-agent-discovery.md` · `omp://skills.md` · `omp://hooks.md` ·
+PRD §D10 (per-harness support is a first-class feature; the ecosystem stays harness-agnostic) ·
+`modelb_axi/hooks.py::compile_wiring()` (the neutral-schema + per-harness-emitter precedent) ·
+Roundhouse PRD §D4 (Tier-1 route map in `generator/stacks/*.toml` `model:`)
 
 ## Context
 
-Model B's harness roster (`modelb_axi/harness.py::HARNESS_ROSTER`) is four ids:
-`claude-code`, `hermes`, `pi`, `opencode`. OMP — the harness this very orchestrator session
-runs under — is not among them, and the gap is not merely a missing roster entry: agent
-DEFINITIONS have a real, measured format divergence between Claude Code and OMP that skills do
-not.
+**Everything factual below is read from OMP's own documentation (`omp://…`) at omp/18.2.1 and
+verified against the local install — not inferred from one sampled file.** An earlier draft of
+this CR guessed the contract from a single agent file and got it wrong in both directions; the
+corrections are recorded in §S0 so the wrong shape cannot be reintroduced.
 
-**Skills are already largely harness-agnostic** — `~/.agents/skills/` is the Vercel-Skills-
-standard neutral store CR-MDB-002/014 already built, and `~/.claude/skills/model-b` is a
-symlink into it (`deploy.py::HARNESS_SKILL_DIRS`). OMP additionally carries its own
-`~/.omp/agent/managed-skills/` for session-local skill authoring, but per the user's own
-statement it is "capable of reusing Claude's skill definitions" — confirmed: this session's own
-managed skills coexist with, and do not replace, the shared store. **No change needed for
-skills.**
+### The blocking fact: OMP will never read our agent definitions
 
-**Agent definitions are not harness-agnostic, and the divergence is measured, not assumed.**
-Compared directly, 2026-09-09, `~/.omp/agent/agents/arduino-fix-agent.md` (a real OMP agent
-definition — this happens to be Crucible's own dogfood copy, visible because `~/.omp/agent/`
-is a machine-wide, not per-project, directory) against this repo's own generated Claude Code
-shape (`generator/stacks/quarkus.toml`'s frontmatter pattern):
+`omp://task-agent-discovery.md`, on discovery inputs:
 
-| Field | Claude Code (this repo's generator output) | OMP (measured) |
+> Direct cross-harness roots such as `.claude/agents`, `.codex/agents`, and `.gemini/agents` are
+> **intentionally skipped** — their frontmatter schema is not the OMP task-agent contract
+> (`TASK_AGENT_CONFIG_SOURCE = ".omp"` filters the native config-dir lists).
+
+This is a deliberate refusal, not an oversight, and no toggle opens it. OMP reads agent
+definitions from exactly two filesystem roots:
+
+- **user:** `~/.omp/agent/agents/*.md`
+- **project:** `.omp/agents/*.md` (nearest project `.omp` dir only)
+
+with precedence project → user → extension roots → Claude marketplace plugins → bundled, and
+first-wins dedup on exact case-sensitive `name`.
+
+**Second blocking fact, found while verifying the first:** `modelb_axi/deploy.py` has **no
+agent-definition asset class at all**. It deploys skill bundles (`STORE_RELDIR`), hook scripts
+(`HOOKS_SCRIPTS_STORE_RELDIR`) and tool scripts (`TOOL_SCRIPTS_STORE_RELDIR`) — the generated
+definitions under `generator/agents/` are never deployed by the installer at all. So this CR
+adds an asset class; it does not retarget an existing one.
+
+### Skills already work on OMP — verified empirically, no work required
+
+`omp://skills.md` registers `agents` (priority 70) for `.agent[s]/skills` and calls it
+**"the canonical OMP-native location"**, with its own `enableAgentsUser`/`enableAgentsProject`
+toggles that Claude/Codex/Pi toggles do not affect. Model B already deploys there:
+`~/.agents/skills/` holds 21 bundles as the real directory, and `~/.claude/skills/<name>` is a
+symlink into it (OMP additionally dedups by `realpath`, so the symlink is harmless).
+
+Proof rather than inference: **this orchestrator session is an OMP session, and its discovered
+skill list includes `model-b`, `crucible`, `bootstrap`, `shutdown`, `cr-authoring`,
+`git-workflow`, `chezmoi` and the `crucible-report-*` bundles.** CR-MDB-002/014's
+harness-neutral store already made skills OMP-correct as a side effect of being neutral. **§S
+for skills is therefore explicitly a NON-GOAL** — the accounting only needs `omp` recorded as a
+consumer so nobody "fixes" what works.
+
+### The real frontmatter contract, and the corrections it forces
+
+Per `parseAgentFields()` (`omp://task-agent-discovery.md`):
+
+| Field | Status in OMP | Our generated definitions emit |
 |---|---|---|
-| `name` | yes | yes |
-| `description` | yes | yes |
-| `model` | yes | yes |
-| `effort` | yes (`high`/`medium`) | **absent** |
-| `color` | yes | yes |
-| `tools` | yes (explicit allow-list, e.g. `Read, Grep, Glob, Bash`) | **absent** |
-| `maxTurns` | yes | yes |
-| `skills` | yes (declared array) | **absent** |
+| `name` | **required** | ✅ `python-red-agent` |
+| `description` | **required** | ✅ |
+| body → `systemPrompt` | **required** | ✅ |
+| `tools` | optional; CSV **or** array; `yield` auto-added | ✅ but Claude-Code tool NAMES |
+| `model` | optional; one selector, CSV, or array tried in order; `@role` aliases expand via `modelRoles` | ⚠️ `sonnet` / `inherit` |
+| `thinking-level` / `thinking` | optional; the effort surface | ❌ we emit `effort` |
+| `autoloadSkills` | optional; injects named parent-session skills | ❌ we emit `skills` |
+| `spawns` | optional; `*`, CSV, array | ❌ absent |
+| `output`, `blocking`, `read-summarize`, `prewalk`, `advisor` | optional | ❌ absent |
+| `color` | **not in the contract** | ⚠️ we emit it |
+| `maxTurns` | **not in the contract** | ⚠️ we emit it |
 
-OMP drops `effort`, `tools`, and the declared `skills:` array entirely — presumably resolved by
-the harness at runtime rather than declared per-agent, which is a real behavioral difference,
-not a naming one. `generator/build.py` today renders exactly one shape, directly to
-`generator/agents/*.md`, deployed as literal `~/.claude/agents/*.md`. There is no neutral
-intermediate and no per-harness compiler for agent definitions the way `hooks.py` already has
-for hooks.
+Unknown keys are *preserved as unknown metadata*, so `color`/`maxTurns` are inert rather than
+fatal — but they are noise, and `effort`/`skills` are **silently ineffective**, which is worse:
+the definition looks configured and is not.
 
-**The precedent to mirror already exists in this repo.** `modelb_axi/hooks.py::compile_wiring()`
-takes a neutral schema instance (`{event, matcher, command, tier, timeout, fail_direction}`),
-partitions per harness (`_partition()`), and fans out to `_emit_claude_code()`,
-`_emit_opencode()`, `_emit_pi()`, `_emit_hermes_advisory()` — each harness gets exactly the
-wiring shape it can honour, and a hook a harness cannot honour is REFUSED rather than
-silently degraded (`AllTargetsRefusedError`). Agent-definition emission needs the identical
-shape: one neutral generator output (already close to what `generator/templates/*.tmpl` +
-`generator/stacks/*.toml` produce today), fanned out per harness by a compiler that knows what
-each harness's frontmatter actually supports.
+### §S0 — corrections to this CR's own earlier draft (recorded so they cannot recur)
 
-**Scope discipline, stated because it was checked, not assumed.** This CR does NOT touch
-CR-MDB-017 or CR-MDB-024, which ship this wave targeting Claude Code only — by explicit user
-scoping decision, 2026-09-09, made precisely so this CR would not block or reshape in-flight
-work. Nor does it redesign `generator/build.py`'s current single-target-per-file rendering
-before 017/024/012 ship; it adds a parallel emission path once they have.
+The first draft sampled `~/.omp/agent/agents/arduino-fix-agent.md` and concluded "OMP drops
+`effort`, `tools` and `skills`; OMP has `color` and `maxTurns`." Both halves are wrong:
+
+- **OMP does have `tools`** — and an equivalent for each supposed drop: `effort` → `thinking-level`,
+  `skills` → `autoloadSkills`. They are renames, not removals.
+- **`color` and `maxTurns` are not OMP fields at all** — they appeared in the sample because that
+  tree is a mix of provenances. Measured across its 30 files: 16 carry `maxTurns`, 16 `color`,
+  10 `skills`, 10 `effort`, 9 `thinking-level`, 24 an `authority` key that is in no contract.
+  Sampling one file from a mixed directory produced a confident wrong answer.
+
+**Method rule for this CR: the contract comes from `omp://` docs plus the parser's documented
+behavior, never from sampling deployed files.**
 
 ## Scope
 
-### §S1 — Add `omp` to the harness roster
-`modelb_axi/harness.py::HARNESS_ROSTER` gains `("omp", "omp")` (binary name to be confirmed
-against the real OMP CLI entry point at gap-analysis — `which omp` resolved to `~/.bun/bin/omp`
-on this machine, which is a `shutil.which`-visible name and should probe correctly, but the
-exact packaged binary name must be verified, not assumed from one developer machine).
-`HARNESS_SKILL_DIRS` gains an OMP entry if OMP's skill-discovery directory differs from
-`~/.claude/skills`'s symlink-target shape — to be confirmed against OMP's actual skill-loading
-convention rather than guessed from `~/.omp/agent/managed-skills/`'s existence alone.
+### §S1 — Neutral agent-definition schema + per-harness emitters
+Restructure `generator/build.py` so rendering produces a **neutral definition** (name,
+description, body, tool intent, model/role, effort, autoload skills, spawn policy) which
+per-harness emitters serialize — the exact shape `hooks.py::compile_wiring()` already proves for
+hooks, including its refusal semantics.
 
-### §S2 — Neutral agent-definition schema
-A schema analogous to the hooks neutral schema: the fields every harness needs
-(`name`, `description`, `model`, `color`, `maxTurns`) versus the fields only some harnesses
-consume (`effort`, `tools`, `skills`). Documented in `generator/` alongside the existing
-templates, in the same spirit as `hooks-src/schema.md` documents the hooks schema.
+- `_emit_claude_code()` — current output, **byte-identical** to today's 20 files.
+- `_emit_omp()` — OMP's contract: `name`, `description`, `tools`, `model`, `thinking-level`,
+  `autoloadSkills`; `effort`/`skills` renamed; `color`/`maxTurns` dropped.
 
-### §S3 — Per-harness agent-definition compiler
-A `_emit_claude_code()`/`_emit_omp()` fan-out mirroring `hooks.py::compile_wiring()`'s shape:
-`_emit_claude_code()` renders the full frontmatter (current behavior, unchanged — this is a
-strictly additive CR); `_emit_omp()` renders OMP's measured subset (`name`, `description`,
-`model`, `color`, `maxTurns`), dropping `effort`/`tools`/`skills` rather than emitting fields
-OMP does not read. Both emit from the SAME rendered body content — the frontmatter is what
-diverges, not the instructions.
+### §S2 — Tool-name translation (not passthrough)
+Our definitions name Claude Code tools (`Read, Grep, Glob, Bash`). OMP's are lowercase with a
+different surface (`read`, `grep`, `glob`, `bash`, plus `ast_edit`, `lsp`, `hub`, `eval`,
+`todo`, `task`). A copied `tools:` line grants nothing it names. The emitter translates through
+an explicit map, and a tool with no OMP equivalent is **dropped with a recorded reason** —
+never silently renamed to something plausible. `yield` is auto-added by OMP and must not be
+emitted.
 
-### §S4 — Deploy path
-`deploy.py` gains an OMP target analogous to the existing `HARNESS_SKILL_DIRS`/agent-deploy
-pattern, writing to wherever OMP's own agent-discovery path resolves (`~/.omp/agent/agents/`
-observed on this machine; the resolution rule — fixed path vs. `$OMP_HOME`-relative vs.
-something else — must be confirmed against OMP's own documented convention, not this one
-developer machine's layout).
+### §S3 — Model selector: role aliases, not hardcoded names
+`model: sonnet` is a Claude Code alias. OMP resolves `@role` aliases through `modelRoles` in
+`~/.omp/agent/config.yml` (the local install defines `task`, `plan`, `smol`, `advisor`,
+`designer`, `default`, …). The OMP emitter emits a role alias, which is also what **Roundhouse
+PRD §D4** wants — the Tier-1 route map living in `generator/stacks/*.toml` `model:`. `inherit`
+maps to omission (OMP falls back to the parent's active model by documented precedence).
+
+### §S4 — Agent definitions become an installer asset class
+Add the missing class to `deploy.py` with the same sha256-manifest idempotence the other three
+use: `AGENT_DEFS_*` reldirs per harness — `.omp/agent/agents/` for OMP, and Claude Code's
+existing path for that harness — deployed per selected harness, hand-modified destinations
+skipped unless `--force-managed`.
+
+### §S5 — `omp` in the harness roster
+`HARNESS_ROSTER` gains `("omp", "omp")` (binary confirmed: `omp --version` → `omp/18.2.1`).
+`HARNESS_SKILL_DIRS` gets **no** OMP entry — OMP reads the neutral `.agents/skills` store
+directly, so a symlink would be redundant (and `HARNESS_SKILL_DIRS` is documented as
+symlink-only).
+
+### §S6 — OMP hook emitter
+`omp://hooks.md`: native user hooks load from `~/.omp/agent/hooks/pre/*.{ts,js}` and
+`.../post/*.{ts,js}` (project: `<cwd>/.omp/hooks/pre|post/`); a factory placed directly in
+`hooks/` is silently ignored. A module default-exports `(pi: HookAPI) => void` registering
+`pi.on("tool_call", …)` → `{ block, reason }` / `pi.on("tool_result", …)`. `~/.omp/agent/hooks`
+does not currently exist, so no Model B hooks reach OMP at all.
+
+Add `_emit_omp()` to `hooks.py` beside the existing emitters. **`fail_direction: closed` is
+honourable on OMP** — `tool_call` blocks on `{block:true}` and `HookToolWrapper` fails closed on
+a handler throw — so security-class hooks must NOT be refused here. The existing `_emit_pi`
+emitter is the closest precedent (OMP descends from pi — `omp://porting-from-pi-mono.md`) and
+should be read before writing a new one, not copied blindly.
 
 ## Acceptance criteria
 
 ### §S1
-- [ ] `HARNESS_ROSTER` includes `omp`; `detect_harnesses()` finds it when the real OMP binary
-      is on `PATH`, verified against OMP's actual packaged entry point name (not assumed from
-      one machine's `~/.bun/bin/omp`).
-- [ ] `select_harnesses(["omp"], ...)` resolves correctly and rejects unknown ids as before.
+- [ ] All 20 existing Claude Code definitions are **byte-identical** before/after — asserted by
+      diffing rendered output; any change is a blocking defect.
+- [ ] A documented neutral schema exists naming which fields are universal vs harness-specific.
+- [ ] `build.py --check` covers both harnesses' rendered output and fails on drift in either.
 
 ### §S2
-- [ ] A documented neutral agent-definition schema exists, naming which fields are
-      universal vs. harness-specific, with OMP's measured absence of `effort`/`tools`/`skills`
-      recorded as a confirmed fact (this CR's own measurement), not a guess.
+- [ ] No emitted OMP definition contains a Claude Code tool name (no `Read`/`Grep`/`Glob`/`Bash`
+      capitalised forms) — asserted by grep over emitted files.
+- [ ] The translation map is explicit in code, and every source tool resolves to an OMP tool or
+      is dropped with a reason recorded in the commit message.
+- [ ] No emitted OMP definition contains `yield` in `tools`.
 
 ### §S3
-- [ ] Claude Code output is BYTE-IDENTICAL to current `generator/build.py` output — this CR is
-      additive, and a regression in the existing 20 (16 + CR-MDB-024's rust set) generated
-      definitions is a blocking defect.
-- [ ] OMP output omits `effort`, `tools`, and `skills` from frontmatter and is a real,
-      parseable OMP agent definition — verified by OMP actually loading and using one in a
-      sandboxed session, not by frontmatter inspection alone.
-- [ ] The two emitters render from one shared body-content source; the instructional text is
-      not duplicated or hand-forked between them.
+- [ ] Every emitted OMP definition's `model` is either a `@role` alias or absent; no literal
+      `sonnet`/`inherit` survives.
+- [ ] Each emitted alias exists in the documented `modelRoles` set, or the CR records why a new
+      role is required.
 
 ### §S4
-- [ ] A sandboxed `--target-root` install with `--harnesses omp` deploys agent definitions to
-      OMP's real discovery path and OMP can load at least one of them.
-- [ ] No write occurs outside the sandboxed target in any test.
+- [ ] A sandboxed `--target-root` install with `--harnesses omp` writes definitions to
+      `<root>/.omp/agent/agents/*.md` and nothing outside the sandbox.
+- [ ] Re-running reports them unchanged (hash idempotence), and a hand-modified destination is
+      skipped without `--force-managed`.
+- [ ] Deploying `--harnesses claude-code` alone writes no `.omp` path, and vice versa.
+
+### §S5
+- [ ] `HARNESS_ROSTER` contains `omp`; `detect_harnesses()` finds it via `shutil.which("omp")`.
+- [ ] `HARNESS_SKILL_DIRS` has no `omp` key, with a comment recording why.
+
+### §S6
+- [ ] `_emit_omp()` writes `pre/`/`post/` subdirectories — never a factory directly in `hooks/`.
+- [ ] Emitted modules default-export a function taking the hook API and register via `pi.on`.
+- [ ] A `fail_direction: closed` instance targeting OMP is **accepted**, not refused; a test
+      asserts OMP is not in the refusal path for security-class hooks.
+- [ ] `AllTargetsRefusedError` still raises when every *other* selected harness refuses.
+
+### Integration (wire-the-call-path gate)
+- [ ] An integration test drives the real installer entry point with `--harnesses omp` against a
+      temp root and asserts the deployed definition files parse as valid OMP frontmatter
+      (required `name` + `description` present, no non-contract keys).
+- [ ] **Runtime proof, not frontmatter inspection:** one emitted definition is placed in a real
+      OMP-discoverable root and OMP resolves it by name (e.g. an agent lookup succeeds rather
+      than failing preflight with `Unknown agent`). A definition that parses but does not
+      resolve is not done.
 
 ## Estimated size
 
-Unknown until gap-analysis confirms OMP's real binary name, skill-directory convention, and
-agent-discovery path — all three are measured from one developer machine today and must be
-confirmed against OMP's own documentation or a second machine before this CR's Scope is
-finalized. Rough shape: `harness.py` (+1 roster entry), `hooks.py`-sized new compiler module or
-extension to `generator/build.py`, `deploy.py` (+1 target), 1 new schema doc, tests for all
-three.
+`generator/build.py` restructured to neutral + 2 emitters; `hooks.py` +1 emitter; `deploy.py`
++1 asset class (2 harness paths); `harness.py` +1 roster entry; 1 schema doc; tests for
+emitters, deploy idempotence, and the runtime-resolution gate. The 20 generated Claude Code
+files must not change.
 
 ## Risk
 
-- **Everything about OMP's conventions in this CR is measured from ONE machine.** The binary
-  name, the skill-reuse mechanism, and the agent-discovery path all need independent
-  confirmation (OMP's own docs, or a second install) before GREEN — do not generalize from
-  `~/.omp/agent/` on this developer's home directory alone.
-- **Do not let this CR touch CR-MDB-017/024's in-flight Claude-Code-only work.** The explicit
-  user scoping decision (2026-09-09) was to keep them unblocked; a later gap-analysis that finds
-  overlap routes the overlap forward to this CR, never backward into 017/024.
-- Frontmatter field dropping (`effort`/`tools`/`skills`) must not silently change agent
-  BEHAVIOR under OMP if OMP resolves those concerns some other way (e.g. tool access via a
-  different mechanism) — that resolution must be confirmed, not assumed equivalent.
+- **The byte-identity requirement on Claude Code output is the main regression risk.** Refactor
+  to neutral + emitters without touching rendered bytes; if they move, the refactor is wrong.
+- **Sequencing after CR-MDB-017 is deliberate** — 017 edits the same templates/frontmatter this
+  CR re-emits. Doing 025 first means rewriting both.
+- **Silent ineffectiveness is the failure mode to fear, not a crash.** OMP preserves unknown
+  keys, so a wrong field name produces a definition that looks configured and does nothing.
+  Every field must be asserted against the documented contract, not "it loaded fine".
+- **Do not infer OMP behavior from sampled files** (see §S0). Use `omp://` docs.
+- `~/.omp/agent/agents/` already holds 30 files of mixed provenance including another project's.
+  Deploying there must be additive and name-scoped; a collision silently wins by first-wins
+  dedup, so emitted names must stay `<stack>-<role>-agent`.
 
 ## Non-goals
 
-- No change to CR-MDB-017 or CR-MDB-024's scope, content, or sequencing.
-- No redesign of `generator/build.py`'s current template×stack rendering mechanism before this
-  CR's own gap-analysis confirms the shape a neutral intermediate should take.
-- No decision here about whether OMP becomes the DEFAULT harness for new Model B scaffolds —
-  that is a PRD §D10 discussion for whenever this CR is scheduled, not a decision made in this
-  spec.
+- **No skills work** — already OMP-correct via the neutral `.agents/skills` store, verified live
+  this session. Accounting only.
+- No change to the other harness emitters' behavior (`hermes`, `pi`, `opencode`).
+- No change to which stacks exist (CR-MDB-024's rust adoption is separate) and no vscode work.
+- No OMP extension/marketplace packaging, MCP config, or `modelRoles` authoring on the user's
+  behalf — we emit aliases and document the roles required.
+- No decision on whether OMP becomes the *default* harness for new scaffolds (PRD §D10, separate).
