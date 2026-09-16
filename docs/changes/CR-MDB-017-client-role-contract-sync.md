@@ -172,13 +172,23 @@ declaration) rather than hand-picking files; quarkus already has the split via M
 (surefire `*Test` = unit, failsafe `*IT` = integration) and the guidance's job is to forbid
 renaming an `*IT` to `*Test` to dodge a slow gate.
 
-The shared 16-line preamble ("which tier a feature needs is your call; how it runs locally is
-your stack's business… a tier names the DEPENDENCY a test takes, never its size… never report
-a run under a tier it did not earn") is identical across all four stacks and renders ONCE from
-the template, immediately followed by the per-stack half rendered from each stack's own
-`tier_guidance` TOML key — this is the `templates × stacks/*.toml` shape the generator already
-uses for the existing `mechanics`/`red`/`green`/`verify`/`fix` keys, extended with one more
-per-stack string, not a new mechanism.
+The shared preamble names the **fleet-uniform tier vocabulary** and then leaves the judgment to
+the agent. Crucible 0.2.0 (CR-CRU-111 §S1, confirmed by Sandesh #1369/#1372) collapsed the six
+tier verbs into ONE shared registrar, so all five clients now carry exactly
+`unit module integration e2e bdd regression` plus `test`, `pre-merge-gate` and `check` — verb
+counts from each client's own `--help` at `70224d6`: bun 35, python 35, rust 43, mvn 37,
+arduino 35. The preamble therefore states one vocabulary rather than per-stack run verbs, and
+carries the judgment rules ("which tier a feature needs is your call; how it runs locally is
+your stack's business… a tier names the DEPENDENCY a test takes, never its size… never report a
+run under a tier it did not earn"). **A tier a stack cannot honour must say so explicitly**
+(CR-CRU-111 §S2) — that is the per-stack half's job, and it is why the split is two halves
+rather than one block: the VOCABULARY is uniform, the HONOURABILITY is not.
+
+The preamble is identical across all stacks and renders ONCE from the template, immediately
+followed by the per-stack half rendered from each stack's own `tier_guidance` TOML key — this is
+the `templates × stacks/*.toml` shape the generator already uses for the existing
+`mechanics`/`red`/`green`/`verify`/`fix` keys, extended with one more per-stack string, not a new
+mechanism.
 
 Regenerate all 16 definitions with `python3 generator/build.py build` and prove `--check`
 clean; no generated file is hand-edited.
@@ -234,8 +244,14 @@ clean; no generated file is hand-edited.
       `python3 generator/build.py --check` exits 0 with no drift.
 - [ ] No file under `generator/agents/` is hand-edited — every change arrives via
       `build.py build` from a template or stack edit.
-- [ ] The 16-line shared tier-guidance preamble renders IDENTICALLY across all four stacks'
+- [ ] The shared tier-guidance preamble renders IDENTICALLY across all four stacks'
       generated agents, from the template, once.
+- [ ] The preamble names the fleet-uniform tier vocabulary exactly — `unit`, `module`,
+      `integration`, `e2e`, `bdd`, `regression` — and no generated agent names a
+      stack-specific run verb in its place.
+- [ ] Every stack's `tier_guidance` states explicitly which tiers that stack CANNOT honour
+      (CR-CRU-111 §S2); a stack whose text is silent about an unreachable tier fails this
+      criterion — arduino must name HIL as unreachable from the native host.
 - [ ] Each of the four `generator/stacks/*.toml` carries its own `tier_guidance` key, and no
       stack's rendered tier text is a copy of another's — arduino names its three build
       systems and the ArduinoFake caveat; bun and python name a project-DECLARED target
