@@ -121,6 +121,17 @@ I will treat those four as yours from then on, so nobody double-fixes").
       behind `MODELB_REALHOME_GATE=1`.
 - [ ] The built wheel contains all 20 generated definitions — asserted against a built
       artifact, per the CR-MDB-014 defect class.
+- [ ] **A written content triage covers all 2460 lines of the four bespoke definitions**, each
+      line in exactly one bucket — universal-procedure-dropped (template cites it),
+      rust-specific-moved-to-`rust.toml`, or dropped-with-reason. Filed in the CR's commit
+      message or a `docs/research/` note, not asserted in aggregate.
+- [ ] Every section heading present in a bespoke definition is either reproduced in the rendered
+      output, present in `rust.toml`, or named in the triage as deliberately dropped — checked
+      heading by heading against the rendered files, so no section vanishes silently.
+- [ ] `docs/research/DN-rationalization-plan-review.md:72` and CR-MDB-008's bespoke-exclusion
+      list no longer state that rust agents are never generated; both cite the 2026-09-16 user
+      ruling. `vscode ×4`, `electronics ×4` and `inbox-analyst` remain excluded and are
+      untouched by this CR.
 
 ### §S3
 - [ ] A reply is sent on the #1362–#1367 Sandesh thread confirming ownership, after §S1/§S2
@@ -141,6 +152,31 @@ I will treat those four as yours from then on, so nobody double-fixes").
   mechanism here if 017 is delayed — wait for it.
 - Retiring the deployed hand-maintained files touches the same real-home boundary CR-MDB-022
   established; reuse its pattern rather than inventing a second one.
+- **The four bespoke files are 5.5x the size of a generated definition, and the CONTENT TRIAGE
+  is this CR's real work.** Measured 2026-09-16: deployed rust definitions are 471/702/814/473 =
+  **2460 lines**; the generated four-role set for a comparable stack is ~130-150 each (python
+  1113 total). The gap is NOT mostly rust knowledge — it is the **universal procedure restated
+  inline**, which generated agents instead CITE (`python-red-agent.md:12` reads "Universal
+  procedure — READ FIRST (cited, not restated)", where `rust-red-agent.md` restates the worktree
+  boundary, tool usage and output discipline across ~130 lines). Removing that duplication is the
+  whole point of CR-MDB-001's core split, so generating rust CLOSES a known defect rather than
+  degrading the definitions.
+  **Every one of the 2460 lines must be classified into exactly one of three buckets, in writing,
+  before GREEN:** (a) universal procedure -> DROPPED from the definition because the template
+  cites it; (b) genuinely rust-specific -> moved into a `stacks/rust.toml` key (measured
+  candidates: Rust Build Caveats, `opensrc` dependency-source/crate-API verification,
+  async-tests-runtime-crate, timing-dependent test rules, mock-usage rules, refactoring-tools);
+  (c) neither -> dropped with the reason recorded. An unclassified line is a migration defect,
+  and "the template covers it" is a claim to verify against rendered output, never an assumption.
+- **This CR overturns a prior classification deliberately, on the user's ruling.**
+  `docs/research/DN-rationalization-plan-review.md:72` lists rust x4 under "Bespoke kept" and
+  CR-MDB-008 excludes the 13 bespoke defs from the generator target list "NEVER". That was a
+  wave-1 DESCOPE justified by the size outlier (`DN:11` — "rust (470-814 lines) and vscode agents
+  are bespoke outliers"), not a principle about language stacks. User ruling 2026-09-16: **rust is
+  a language stack, so its agents are generated like any other stack's.** The DN line and
+  CR-MDB-008's exclusion list MUST be updated in this CR's commit so the superseded
+  classification does not read as authoritative afterwards — a stale "NEVER generated" line is
+  exactly the half-true record that sent this CR's own analysis down the wrong path once already.
 
 ## Non-goals
 
