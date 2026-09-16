@@ -32,7 +32,7 @@ Queue rows enumerate the whole delivery (structure only). **Live status lives on
 | [CR-MDB-020](CR-MDB-020-client-path-anchoring.md) | Client-path anchoring: every client reference resolves to Crucible's published contract; Model B maintains none of their clients | 5 | 017, 022 |
 | [CR-MDB-024](CR-MDB-024-rust-stack-adoption.md) | Rust as a fifth generated stack: close the orphaned `~/.claude/agents/rust-*` gap CR-CRU-042 assigns to Model B | 5 | 017 |
 | [CR-MDB-021](CR-MDB-021-chezmoi-retirement.md) | Retire chezmoi introspection from the test suite: eight false-green release gates removed, policy self-enforcing | 5 | — |
-| [CR-MDB-026](CR-MDB-026-watcher-launch-supervision.md) | Watcher launch must survive a job-deadline harness: supervised process replaces the backgrounded shell job across bootstrap, shutdown and sandesh.md | 5 | — |
+| [CR-MDB-026](CR-MDB-026-watcher-launch-supervision.md) | The wake watcher must stay alive: supervised process + `restart: on-failure`, and the three-exit taxonomy (mail / timeout / lock-conflict) the bundles conflate | 5 | — |
 | [CR-MDB-025](CR-MDB-025-omp-harness-support.md) | OMP as a first-class deploy target: neutral agent-definition schema + per-harness emitters, agent-defs as an installer asset class, OMP hook emitter, `omp` in the roster | 5 | 017 |
 | [CR-MDB-012](CR-MDB-012-release-0.1.0.md) | Release 0.1.0: full verification suite (PRD §4) + archive/mapping.md + master tag | 5 | 006, 007, 008, 010, 011, 013, 014, 016, 017, 018, 019, 020, 021, 022, 023, 024, 025, 026 |
 

@@ -1,11 +1,16 @@
-# CR-MDB-026 — Watcher launch must survive a job-deadline harness: supervised process, not a backgrounded shell job
+# CR-MDB-026 — The wake watcher must stay alive: supervised process + `restart: on-failure`, and the three-exit taxonomy the bundles conflate
 
 **Status:** PENDING
 **Type:** bugfix
-**Priority:** P1 (blocks release 0.1.0 — the bundles ship an instruction that guarantees a dead
-watcher on any harness with a job deadline shorter than the watcher's own timeout, and a dead
-Mainline watcher silently stops waking on Track mail, which is the exact failure the prime
-directive exists to prevent)
+**Priority:** P1 (blocks release 0.1.0 — TWO independent guarantees of a dead watcher, both
+measured this session. (a) Launching it as a backgrounded shell job means any harness with a job
+deadline shorter than the watcher's timeout kills it — observed at 300s against a 14400s timeout,
+a 48x mismatch. (b) Even supervised, the watcher exits code 2 at its own 14400s timeout, so the
+default no-restart policy leaves it dead after ~4 hours of any long session. A dead Mainline
+watcher silently stops waking on Track mail while a blocked track HOLDS forever, which is the
+exact failure the prime directive exists to prevent — and because a timeout exit and the
+mail-arrival exit are both just "the process is gone", the bundles' current two-case reading of
+an exit is itself part of the defect)
 **Depends on:** —
 **Labels:** skills, hooks, orchestration, sandesh, bugfix
 **Design reference:** measured failure this session (2026-09-16, Mainline - ModelB) · `skills-src/bootstrap/SKILL.md` §Step-1 · `skills-src/shutdown/SKILL.md` §common-final-step · `skills-src/model-b/references/sandesh.md` §Bootstrap + §PRIME-DIRECTIVE · project memory `sandesh-mcp-only-boundary` (the CLI verbs an agent session may run)
@@ -63,6 +68,28 @@ Readiness matched on the watcher's real banner, so "launched" and "actually list
 observable fact instead of two hopes — which also closes the `listening:false` trap the bundles
 currently handle with a manual re-probe step.
 
+**Supervision alone is NOT sufficient — measured later the same session.** The supervised watcher
+then exited **code 2** after ~4 hours with `timed out (1441 polls)` in its own log (1441 × 10s
+≈ 14410s, i.e. the CLI's documented 14400s timeout). So the watcher has a finite natural
+lifetime and dies at it, supervised or not. A supervised process with the default `restart: no`
+policy is therefore still guaranteed to be dead after ~4 hours of a long session.
+
+**There are THREE distinct exits and the bundles conflate them.** This taxonomy is the CR's
+central content, because the response differs per case and two of the three look identical:
+
+| exit | meaning | correct response |
+|---|---|---|
+| `0` | mail arrived — this IS the wake mechanism | `fetch` FIRST, then relaunch (the session's job) |
+| `2` | the 14400s timeout expired; no mail involved | relaunch; no fetch needed (nothing was delivered) |
+| non-zero, immediately after launch | a duplicate hit the lock | **do nothing** — the prior watcher is alive |
+
+**`restart: on-failure` is the correct policy and discriminates by construction:** mail arrival
+exits `0`, which a failure-only policy does NOT restart — so the session is still woken and still
+performs the mandatory `fetch`-then-relaunch — while timeout expiry and transient faults exit
+non-zero and self-heal under bounded backoff. Verified working this session; a duplicate-lock
+exit also self-limits because the backoff applies while the live watcher keeps the lock.
+
+
 **Scope is two bundles plus one reference, and the instruction appears more than once.** It is in
 `bootstrap` (Step 1), in `shutdown` (the kill step names the same launch mechanism it is undoing),
 and in `model-b/references/sandesh.md` (§Bootstrap step 3 — the generic mechanics every project
@@ -72,13 +99,20 @@ inherits). All three must move together or a reader following one will contradic
 
 ### §S1 — Correct the launch instruction in `sandesh.md` (the generic authority)
 §Bootstrap step 3 names a **supervised long-running process** as the launch mechanism, keyed by a
-stable per-address name, with readiness gated on the `watching <address> in <Project>` banner.
+stable per-address name, with readiness gated on the `watching <address> in <Project>` banner,
+**and an explicit `restart: on-failure` policy** — supervision without it still leaves the
+watcher dead at its own 14400s timeout.
 `run_in_background` is retained as an explicitly-labelled **fallback for harnesses with no process
 supervisor**, together with the consequence of using it (the watcher dies at the harness job
-deadline and must be treated as unreliable). The PRIME DIRECTIVE section gains the
-distinguishing rule: a watcher exit is either mail-arrival or deadline-kill, and the two are told
-apart by reading the tail of its log before acting — `fetch` FIRST either way, because the gap
-case is the dangerous one.
+deadline and must be treated as unreliable).
+
+The PRIME DIRECTIVE section carries the **three-exit taxonomy** (exit `0` = mail arrived, the wake
+itself, answer with `fetch` FIRST then relaunch; exit `2` = the 14400s timeout expired, relaunch
+with no fetch owed; immediate non-zero = a duplicate hit the lock, do NOTHING because the prior
+watcher is alive). It states that the log tail is what distinguishes them, that `fetch` precedes
+relaunch whenever mail could have arrived, and that a failure-only restart policy is safe
+precisely because the mail-arrival case exits `0` and is therefore never auto-restarted behind the
+session's back.
 
 ### §S2 — Correct `bootstrap` Step 1
 Same substitution, phrased for the bootstrap flow, keeping the existing "never run it inline" and
@@ -103,8 +137,15 @@ filesystem access to the Sandesh store (project memory `sandesh-mcp-only-boundar
       primary launch mechanism, with readiness gated on the watcher's own banner line.
 - [ ] `run_in_background` appears only as an explicitly-labelled fallback, and the text states the
       deadline-kill consequence of using it.
-- [ ] The PRIME DIRECTIVE section states that a watcher exit is ambiguous between mail-arrival and
-      deadline-kill, that the log distinguishes them, and that `fetch` precedes relaunch regardless.
+- [ ] The launch instruction specifies `restart: on-failure` (or the harness equivalent), and the
+      text states WHY a failure-only policy is correct: mail arrival exits `0` and must NOT be
+      auto-restarted, because the session owes a `fetch` on that path.
+- [ ] The PRIME DIRECTIVE section enumerates all THREE exits with a distinct response each —
+      `0` mail-arrived (fetch first, then relaunch), `2` timeout-expired (relaunch, no fetch owed),
+      immediate non-zero (duplicate hit the lock, do nothing, prior watcher alive) — and names the
+      log tail as what distinguishes them.
+- [ ] No instruction anywhere treats a non-zero watcher exit as proof that mail arrived, or a
+      zero exit as proof that it did not.
 
 ### §S2
 - [ ] `skills-src/bootstrap/SKILL.md` Step 1 matches §S1's mechanism; the "exactly ONE per address"
