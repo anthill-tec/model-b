@@ -439,6 +439,78 @@ free via Max" is false and the assessment's economics change**, including which 
 `[targets.strong]`. That is a ROOT finding for the PRD, not a layer one, and it belongs beside
 `CR-RND-001` as a second thing to settle before the routing assessment is trusted.
 
+### D15 — The five Pi measurements, run 2026-09-18. Four answers change the plan.
+
+Run against Pi's own published docs (`earendil-works/pi`, `packages/coding-agent/docs/*`), not
+inferred. Item 3 was answered by user ruling ("we can create an extension") rather than measured.
+
+**1. Skills — ANSWERED, and it REVERSES §D2's cost.** Pi loads skills from `~/.pi/agent/skills/`
+**and `~/.agents/skills/`** (global), plus `.pi/skills/` and **`.agents/skills/`** in cwd and
+ancestors (project, after trust), plus package `skills/` dirs, plus a settings `skills` array, plus
+`--skill`. Directories containing `SKILL.md` are discovered **recursively**, so Model B's
+`<name>/SKILL.md` bundles work unmodified. Pi even relaxes the Agent-Skills name-matching rule
+explicitly because it "is suboptimal for **shared skill directories used across multiple agent
+harnesses**". **Pi is designed for the shared store that OMP refused** — so the per-harness skill
+copies §D2 was forced into are NOT needed on Pi, and that cost disappears. (Caveat to honour: under
+`~/.agents/skills/`, root `.md` files are IGNORED; only `SKILL.md` dirs and nested declared `.md`
+are found. Our layout complies.)
+
+**2. Packages/plugins — ANSWERED, and BETTER than OMP's marketplace.** Pi has a first-class
+package system: `pi install npm:@scope/pkg@1.2.3`, `git:github.com/user/repo@v1` (pinned tag or
+commit), plain `https://`/`ssh://`, and local absolute/relative paths (added to settings WITHOUT
+copying — the dev loop). A package bundles **extensions, skills, prompts, themes** via a
+`package.json` `pi` manifest or convention directories, where `skills/` recursively finds
+`SKILL.md` folders. `pi config` enables/disables individual resources; project entries override
+global; project packages auto-install on startup after trust; `pi-package` keyword lists in the
+gallery at `pi.dev/packages`. Crucially **npm sources ARE installable**, which OMP's marketplace
+refuses ("npm plugin sources are not yet supported"). **§D10 is NOT void — it is better served.**
+Pi core packages must be `peerDependencies` at `"*"` and not bundled (`@earendil-works/pi-ai`,
+`-pi-agent-core`, `-pi-coding-agent`, `-pi-tui`, `typebox`).
+
+**3. Supervised process for the CR-026 watcher — USER RULING: we build it as a Pi extension.**
+Not measured; decided. Pi has no `hub` equivalent among its built-ins, so the supervised named
+process with `restart: on-failure` that CR-MDB-026 standardised becomes Model-B-owned code shipped
+in our Pi package's `extensions/`. This is now a deliverable, not a dependency — and it must
+preserve 026's three-exit taxonomy (mail / timeout / lock-conflict) or the watcher regresses to the
+very defect 026 exists to fix.
+
+**4. Sub-agents — ANSWERED, and it is the BIGGEST RISK in the whole move.** **Pi core has no
+sub-agent dispatch.** Two independent confirmations: `packages.md` lists exactly four package
+resource types (extensions, skills, prompts, themes) with **no agents/teammates**; and
+`settings.md`'s `defaultTools` enumerates the available built-ins as `read`, `bash`, `powershell`,
+`edit`, `write`, `grep`, `find`, `ls` — **no `task` tool**. Sub-agents exist only in
+`pi-mono-team-mode`, a SEPARATE community npm package reading `.pi/teammates/<role>.md` (or
+`.claude/teammates/<role>.md`) with frontmatter `name`/`description`/`needsWorktree`/`hasMemory`/
+`modelTier`/`thinkingLevel`/`tools`.
+
+Model B's entire workflow IS dispatched sub-agents (RED→GREEN→VERIFY→FIX, each registering with
+Crucible under its own agent id). So this is the foundation, not a convenience. Three routes, and
+the choice belongs to the user:
+
+| | Route | Consequence |
+|---|---|---|
+| i | Depend on `pi-mono-team-mode` | The core of our workflow rests on a third-party package we do not control and whose maintenance status is unmeasured |
+| ii | **Build dispatch as a Model B Pi extension** | Consistent with the §D15.3 ruling; full control; materially bigger than the watcher extension — it needs session spawning, per-agent tool grants, model selection and result capture |
+| iii | Change the workflow | Rejected by default: the sub-agent split IS Model B's design (PRD §D6), not an implementation detail |
+
+**5. Model roles / Tier-1 seam — ANSWERED, and it HELPS D4.** Pi core has **no `modelRoles` alias
+indirection**: the settings are `defaultProvider`, `defaultModel`, `defaultThinkingLevel`,
+`modelThinkingLevels` (per-model, keyed `provider/modelId`) and `thinkingBudgets`. The role-alias
+layer the user objected to in OMP therefore **does not exist in Pi core** — it lives in team-mode's
+`modelTier`/`roleTiers`. So PRD §D4's seam gets SIMPLER, not harder: declare Switchyard as a custom
+provider (Pi supports custom providers and llama.cpp natively, with `models.json` + `baseUrl`), and
+a definition's model becomes a concrete **`switchyard/<route-id>`** — no alias to resolve, no second
+vocabulary. `generator/stacks/*.toml` `model:` remains the physical seam exactly as D4 says.
+
+**BILLING/ToS — now settled from Pi's own docs, and it falsifies a PRD premise.** Pi ships
+`warnings.anthropicExtraUsage` (default **`true`**): "Show a warning when Anthropic subscription
+auth **may use paid extra usage**", and `providers.md` states third-party harness usage "draws from
+extra usage and is billed per token, **not against Claude plan limits**". Pi builds a warning in for
+precisely this. Therefore PRD D2 / `routes.toml`'s "Claude is already free via your Max" is **FALSE
+for any third-party harness**, which changes what belongs in `[targets.strong]` and the whole
+assessment's economics. Escalated to the user (verify at `claude.ai/settings/usage`) and to the root
+PRD beside `CR-RND-001`.
+
 **What this ruling does NOT change:** the local lane was always the point (PRD D16's right-sized
 local serving model, Lemonade on `127.0.0.1:13305`), so "local models for specific coding tasks"
 is the existing design rather than a new requirement. What changes is that the HARNESS must reach
