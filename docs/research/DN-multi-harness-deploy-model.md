@@ -327,6 +327,124 @@ specific things, but NOT that pi has no story of its own in a different shape. A
 requires that measurement first — recorded here because this session twice reasoned from partial
 observation and twice had to retract.
 
+### D13 — SUPERSEDES §D11/§D12's adopted position: the target harness is PI, by user ruling
+
+**User ruling 2026-09-18, made against a contrary recommendation and with the measurement in
+hand.** Strategy A (consume OMP) was adopted in §D12 and is now WITHDRAWN. The target is upstream
+**Pi** (`earendil-works/pi`, formerly `badlogic/pi-mono`; npm `@mariozechner/pi-coding-agent`).
+The stated driver is "reasons beyond the switching layer" — recorded as such rather than guessed;
+§D14 is reserved for it once stated, because the spec should optimise for the real driver.
+
+**This section exists so the ruling is not "corrected" back by a later session that re-derives
+§D12.** It was overruled deliberately, after the following was put in writing.
+
+**What the measurement established, and what it did NOT.** Pi's own docs show the effort layer is
+Pi's in origin, not OMP's: a unified **`ThinkingLevel`**, `defaultThinkingLevel` over the
+*identical* seven values (`off|minimal|low|medium|high|xhigh|max`), per-role `thinkingLevel` and
+`modelTier` in team-mode role frontmatter, and a six-step resolution order whose fifth step is
+"a **legacy** `:<thinking>` model suffix such as `gpt-5.4:high`" — i.e. OMP's
+`anthropic/claude-opus-5:xhigh` is an inherited Pi convention. **So the move does not remove
+harness-side model/effort switching; it relocates it into a deeper resolution chain.** The
+double-classifier conflict is fixed by one setting (`defaultThinkingLevel` explicit rather than
+`auto`), available in BOTH harnesses. That objection was raised, considered and overruled; it is
+not re-openable without new evidence.
+
+**Measured consequences the re-spec must absorb:**
+
+| Surface | OMP (previous target) | Pi (new target) |
+|---|---|---|
+| Core tools | large set incl. `hub`, `task`, `lsp`, `ast_edit` | **four**: `read`, `write`, `edit`, `bash` |
+| Sub-agent definitions | task agents, `~/.omp/agent/agents/*.md` | **not core** — a separate package (`pi-mono-team-mode`), `.pi/teammates/<role>.md`, frontmatter `name`/`description`/`needsWorktree`/`hasMemory`/`modelTier`/`thinkingLevel`/`tools` |
+| Skills | capability discovery, `agents` provider @70 | implements the **Agent Skills standard** ("warns about most violations but remains lenient"); roots to be measured |
+| Extensions | unified extension API + plugin/marketplace | extensions register commands/skills; **plugin/marketplace presence UNMEASURED** |
+| Distribution | dual-catalog plugin (§D10) | **unknown — §D10's vehicle may not exist**, in which case distribution reverts to installer file-deploy |
+| Modes | interactive/RPC/ACP/print | interactive, print/JSON, RPC, SDK |
+
+**Three consequences that are not cosmetic:**
+
+1. **§D10 (the plugin/marketplace distribution decision) is provisionally void.** It rested on
+   OMP's marketplace and its Claude-Code-compatible dual catalogs. Whether Pi has an equivalent
+   is unmeasured. If it does not, distribution falls back to the installer writing files — which
+   is what §D2/§D3's ownership boundary already describes, so nothing is lost except the cheap
+   versioned-install story.
+2. **The emitter count goes from two to THREE.** Pi's teammate contract
+   (`modelTier`/`thinkingLevel`/`needsWorktree`/`hasMemory`) is a third shape beside Claude Code's
+   agent frontmatter and OMP's task-agent fields. §D1's neutral-source design is what makes this
+   affordable — this is exactly the reversibility it was adopted for, now being spent.
+3. **CR-MDB-026's watcher mechanism needs a Pi equivalent.** It standardised the Sandesh wake
+   watcher on a supervised named process with `restart: on-failure` — delivered by OMP's `hub`,
+   which Pi does not have among its four tools. Pi's supervised-process story must be measured
+   before 026 can be implemented, or the watcher regresses to the backgrounded-shell-job defect
+   026 exists to fix.
+
+**Required before CR-MDB-025 can be rewritten (measure, do not infer — this DN has twice recorded
+the cost of inferring):**
+
+- Pi's skill discovery roots, and whether `~/.agents/skills` is among them.
+- Whether Pi has a plugin/marketplace mechanism, or only extension entry points.
+- Pi's supervised-process / background-job facility, for the CR-026 watcher.
+- Whether `pi-mono-team-mode` is the sanctioned sub-agent path or an unofficial package, since the
+  whole Model B fleet depends on it.
+- Pi's own model-role/tier vocabulary, to map Tier-1 route ids onto (PRD §D4 named
+  `generator/stacks/*.toml` `model:` as the seam; the seam survives, the target vocabulary changes).
+
+**Unchanged by this ruling:** §D1 (neutral source + per-harness emitters), §D3 (own only what you
+generate; never touch electronics ×4 or `inbox-analyst`), §D4 (vscode as a bun/TS editor overlay),
+§D8 (external tools orchestrated, never vendored), §D9 (asset classes do not retro-deploy). §D11's
+"build our own harness is a NON-GOAL" also stands — this is a change of which upstream to consume,
+not a decision to write one.
+
+### D14 — Claude Code is DROPPED as a target; local + cloud mix; the Max subscription is retained
+
+**User ruling 2026-09-18:** move away from Claude Code because it is a closed garden, use LOCAL
+models for specific coding tasks alongside cloud providers, and keep using the owned Claude Max
+subscription. This is the driver §D13 reserved space for, and it reframes the harness decision:
+the move is not OMP→Pi for its own sake, it is **away from vendor-locked harnesses toward one
+that can mix local and cloud lanes** — which is the same thesis Roundhouse itself is built on
+(switchyard routing + lemonade serving).
+
+**Consequence for this DN: the emitter count DROPS rather than rises.** §D13 worried about a third
+emitter. With Claude Code dropped, the target set is Pi alone (OMP transitional, since the
+orchestrator runs on it today). §D1's "Claude Code output must stay byte-identical" constraint is
+RETIRED — it existed because Claude Code was the only working target. The 29 `~/.claude/agents/`
+files become unowned legacy under §D3: never written, never deleted.
+
+**The Max requirement is satisfiable on Pi — measured, not assumed.** Pi's quickstart documents
+built-in subscription logins via `/login` including **Claude Pro/Max** (also ChatGPT Plus/Pro,
+GitHub Copilot, Gemini CLI), with tokens in `~/.pi/agent/auth.json` and auto-refresh. Independently
+confirmed by the user for OMP, and corroborated locally: `~/.omp/agent/agent.db` holds exactly one
+credential, `provider=anthropic`, `credential_type=oauth`, not disabled, with usage windows
+labelled "Claude 5 Hour" / "Claude 7 Day". So the subscription is ALREADY decoupled from Claude
+Code today.
+
+**RISK, flagged and unresolved — it is the user's billing and ToS exposure, not ours to decide.**
+Two sources disagree with the assumption that Max is free in a third-party harness:
+
+1. Pi's own `providers.md`: "Anthropic subscription auth is active for Claude Pro/Max accounts.
+   **Third-party harness usage draws from extra usage and is billed per token, not against Claude
+   plan limits.**"
+2. An Anthropic policy change prohibiting subscription OAuth for third-party products — banning
+   Free/Pro/Max OAuth tokens outside Claude Code and Claude.ai. Pi carries a matching open issue
+   (#3372, "`pi` can apparently no longer work with Claude subscription").
+
+These contradict the local measurement (5-hour / 7-day window labels look like PLAN limits, not
+per-token extra usage), and this session cannot tell which is actually billing. **Escalated to the
+user to verify against their Anthropic usage page.**
+
+**Why it matters beyond Model B — it hits the PRD's cost premise.** `switchyard/routes.toml` and
+PRD D2 state: "keep 'strong' a NON-Claude model. Claude is already free via your Max, so paying
+for Claude through OpenRouter here would just duplicate what Max gives you." If Max via a
+third-party harness bills per token as extra usage — or is disallowed — then **"Claude is already
+free via Max" is false and the assessment's economics change**, including which target belongs in
+`[targets.strong]`. That is a ROOT finding for the PRD, not a layer one, and it belongs beside
+`CR-RND-001` as a second thing to settle before the routing assessment is trusted.
+
+**What this ruling does NOT change:** the local lane was always the point (PRD D16's right-sized
+local serving model, Lemonade on `127.0.0.1:13305`), so "local models for specific coding tasks"
+is the existing design rather than a new requirement. What changes is that the HARNESS must reach
+both lanes — which any OpenAI-compatible-capable harness does through switchyard (PRD D1), and
+which is exactly why owning the harness remains a NON-GOAL (§D11).
+
 ## Consequences per CR
 
 | CR | What this DN changes |
