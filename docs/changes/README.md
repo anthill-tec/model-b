@@ -38,6 +38,14 @@ Queue rows enumerate the whole delivery (structure only). **Live status lives on
 
 **— v1.0.0 ships here —** (release CR bundles the final gates; no close-out wave)
 
+## Wave 2 — the Pi migration (post-1.0.0)
+
+| CR | Title | Wave | Depends on |
+|---|---|---|---|
+| [CR-MDB-027](CR-MDB-027-subagent-dispatch-on-pi.md) | Sub-agent dispatch on Pi: decide what provides it, given Pi core has none | 2 | — |
+
+Wave 2 exists because the harness target changed by user ruling (`docs/research/DN-multi-harness-deploy-model.md` §D13/§D14: target Pi, drop Claude Code). **Nothing here blocks 1.0.0**, which ships on the current harness. CR-MDB-025 is re-targeted from OMP to Pi and its rewrite depends on CR-MDB-027's ruling; the Pi package/distribution CR follows as 028.
+
 ## Setup tasks (pre-wave — not a wave; a wave is a grouping of CRs)
 
 - [x] `git init` + `git flow init` (master/develop; on develop) — 2026-07-20
