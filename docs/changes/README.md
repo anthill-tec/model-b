@@ -163,3 +163,62 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   committed (found this session) — will be authored at the next SCRUM from Crucible's preserved title
   and 11-entry 2026-05-25 dependency snapshot (now 18 in this file, confirmed a strict superseding
   prefix, not a disagreement) plus the current 1.0.0 label.
+- 2026-09-18 — **POST-0.2.2 SWEEP APPLIED across every live spec** (commit `836ecfc`). Eight findings,
+  five blocking, from the two sanctioned sources only — Crucible's Sandesh dispatch (#1373) and
+  direct measurement of the INSTALLED production client. The headline correction: **CR-MDB-017's
+  "released-only" AC was INVERTED by reality** — `queue-file`, `--from-file` and
+  `milestone --released-at/--crs/--packages/--repair-provenance` are all present in 0.2.2 and this
+  project now uses several on its own board, so the old gate would have forbidden documenting
+  SHIPPED verbs. The principle survives; the enumeration is re-measured and the item to forbid is
+  now `portRule`/the `/api/health` listener block (0.3.0-bound, cautioned in #1373). Second
+  finding, a new non-executable instruction of the same class as `--phase`: **`plan-file` now
+  REQUIRES a `--cycle-kind` per `--cycle` and REFUSES the comma `--cycles` form**, `--orchestrator`
+  is retired in favour of the registered `--agent`, and `--release` registers the queue row in the
+  same call — taught wrongly in four surfaces plus the PRD. Also: `gate-run` replaces `gate-report`
+  (with `--skip`, which THIS project needs because no-mistakes' `ci` step is PR-based and we merge
+  directly with no PR); CR-018's and CR-020's shared premise that "no install materialises the
+  clients directory yet" is DEAD — `~/.crucible/crucible-clients.json` exists at `version 0.2.2`
+  with SIX keys, not the three CR-018 was written against, and all five clients are on disk;
+  CR-019's status-contract citation now resolves from the manifest's own `status` key instead of a
+  hardcoded path. CR-MDB-024 needed no substantive change (it already specified `--role`/`--cycle`
+  and already anchored on `~/.crucible/clients/`); 021/023/025/026 carry no Crucible surface.
+  Verified NO-ACTION rather than assumed: bun's 30s default (our bundle documents no timeout, so
+  there is no stale 5000ms claim to fix) and `portRule` (absent everywhere already).
+- 2026-09-18 — **DN FILED: `docs/research/DN-multi-harness-deploy-model.md`** (commit `b8e872c`,
+  user-directed). A deploy decision spanning CR-025/020/018/019/024/014/012 and all FIVE locally
+  present harnesses does not belong inside one CR's scope. Ten decisions, all measured. Two facts
+  forced it: **OMP does not consume the shared `~/.agents` store** (user ruling — it has its own
+  agents and skills definitions), and **agent definitions were never an installer asset class on
+  ANY harness** — `~/.claude/agents/` and `~/.omp/agent/agents/` each hold 29 hand-placed real
+  files, 0 symlinks, so "the installer takes over and overwrites" is symmetric, not OMP-specific.
+  **§D10 is the substantive result of the research the user asked for:** an OMP marketplace plugin
+  is literally "a directory containing skills, commands, agents, rules, hooks, tools" — Model B's
+  whole payload in one versioned unit — and the catalog format is **Claude-Code-compatible**, so
+  one repo shipping dual catalogs (`.omp-plugin/` + `.claude-plugin/`) serves BOTH harnesses by
+  publication instead of copying files into two private trees. It needs **no build toolchain**
+  (OMP imports `.ts` directly via Bun; `@oh-my-pi/pi-coding-agent` is a dev-only types dep), so
+  this repo stays stdlib-only Python. Constraints recorded: npm plugin sources are NOT installable;
+  a session RESTART, not `/reload-plugins`, is required for tools/hooks/extensions; extensions are
+  unsandboxed so periodic work must use `ctx.setInterval`; hooks are OMP's LEGACY surface.
+  Ownership boundary (§D3): of 29 definitions per harness Model B generates 20 — 24 once vscode
+  lands as a bun/TS **editor overlay** (§D4, no `stacks/vscode.toml`) — and NEVER writes or deletes
+  electronics ×4 or `inbox-analyst`. The census also proves the hand-modelled set is not a safe
+  copy source: `effort` in 10 files vs `thinking-level` in 9; `skills` in 10 with `autoloadSkills`
+  in **zero**, so those ten silently autoload nothing; `color`/`maxTurns` in 16 each are in no OMP
+  contract; 19 of 29 bodies still cite the stale `~/.claude/skills` store. Owning them means
+  REGENERATING them. Also: the OMP agent dir must be RESOLVED not hardcoded (`--profile`,
+  `PI_CODING_AGENT_DIR`); `config.yml` is verified, NEVER written (it carries the user's whole
+  harness config beside `modelRoles`).
+  **Two self-corrections on the record.** (i) CR-025's "skills already work on OMP — verified
+  empirically, no work required" is WITHDRAWN: one confounded observation (this session's skills
+  resolving from `~/.agents/skills` while OMP's own skill dirs measured EMPTY) was promoted to a
+  verified non-goal. (ii) The missing `~/.agents/scripts` was NOT the shipped defect first claimed
+  — a sandboxed run of current code deployed all eight tool scripts correctly, so this machine
+  simply carries a **stale install** (`install.toml` 41 files, zero `agents/scripts`, predating
+  CR-MDB-022); the fix is re-running the installer (§D9).
+  **NEW CR IDENTIFIED, NOT YET FILED — `CR-MDB-027` (next free number):** authoring the
+  marketplace + plugin package itself — dual catalogs, the `omp.extensions` manifest, TS factory
+  adapters over the python hook scripts, and the `omp plugin link` dev loop. Deliberately outside
+  CR-025, which keeps the neutral schema, the emitters and the asset class. Awaiting the user's go
+  at the SCRUM; publication location (this repo via `git-subdir`, the Roundhouse umbrella, or a
+  dedicated `model-b-marketplace` repo) is a user decision with release-process consequences.
