@@ -11,12 +11,43 @@ same frontmatter/template surface this CR re-emits; sequencing after it avoids t
 the same generated files)
 **Labels:** generator, installer, harness, agent-definitions, hooks, omp, feature
 **Phase:** Wave 5
-**Design reference:** user directive 2026-09-16 ("I want our definitions etc be targeting for
-deploy to OMP") · user directive 2026-09-09 (OMP preferred over Claude Code, tied to the
-Roundhouse migration) · `omp://task-agent-discovery.md` · `omp://skills.md` · `omp://hooks.md` ·
-PRD §D10 (per-harness support is a first-class feature; the ecosystem stays harness-agnostic) ·
-`modelb_axi/hooks.py::compile_wiring()` (the neutral-schema + per-harness-emitter precedent) ·
-Roundhouse PRD §D4 (Tier-1 route map in `generator/stacks/*.toml` `model:`)
+**Design reference:** **`docs/research/DN-multi-harness-deploy-model.md` — the governing design
+note (user-ruled 2026-09-18); this CR implements its §D1–§D10 and must not re-decide them** ·
+user directive 2026-09-16 ("I want our definitions etc be targeting for deploy to OMP") · user
+directive 2026-09-09 (OMP preferred over Claude Code, tied to the Roundhouse migration) · user
+directive 2026-09-18 (OMP does NOT consume the shared `~/.agents` store; and "bundling our Model
+B definitions and tools as extensions may be useful") · `omp://task-agent-discovery.md` ·
+`omp://skills.md` · `omp://hooks.md` · `omp://extensions.md` · `omp://extension-loading.md` ·
+`omp://marketplace.md` · PRD §D10 (per-harness support is a first-class feature; the ecosystem
+stays harness-agnostic) · `modelb_axi/hooks.py::compile_wiring()` (the neutral-schema +
+per-harness-emitter precedent) · Roundhouse PRD §D4 (Tier-1 route map)
+
+**RESHAPED 2026-09-18 by the DN — read it before this spec's older sections.** Three of this
+CR's premises changed and the delivery vehicle changed with them:
+
+1. **"Skills already work on OMP — no work required" is WITHDRAWN** (DN §D2, user ruling). OMP
+   is the one harness that does not consume `~/.agents`; it needs its own skills, tools and
+   agent definitions. The earlier "verified empirically" claim rested on this session's skill
+   injections resolving from `~/.agents/skills` while OMP's own skill dirs measured EMPTY —
+   treated now as incidental and not to be relied on.
+2. **Delivery is a PLUGIN, not a directory copy** (DN §D10). OMP's marketplace plugin is
+   literally "a directory containing skills, commands, agents, rules, hooks, tools" — Model B's
+   whole payload in one versioned unit — and its catalog format is Claude-Code-compatible, so
+   ONE repo with dual catalogs (`.omp-plugin/` + `.claude-plugin/`) serves both harnesses.
+   Crucially it needs **no build toolchain**: OMP imports `.ts` directly through Bun, so factory
+   adapters ship as source and `@oh-my-pi/pi-coding-agent` is a dev-only types dependency —
+   which keeps this repo stdlib-only-Python with no JS build.
+3. **The ownership boundary is explicit** (DN §D3): of the 29 hand-modelled definitions per
+   harness, Model B generates 20 (24 with vscode as a bun/TS editor overlay, DN §D4) and must
+   NEVER write or delete electronics ×4 or `inbox-analyst`. The census also found the
+   hand-modelled set is NOT a safe copy source: `effort` appears in 10 files (Claude-Code key)
+   against `thinking-level` in 9; `skills` in 10 with `autoloadSkills` in ZERO, so those ten
+   silently autoload nothing; `color`/`maxTurns` in 16 each are in no OMP contract; and 19 of 29
+   bodies still cite the stale `~/.claude/skills` store. Owning them means REGENERATING them
+   correctly, which repairs all of that — not importing them.
+
+Authoring the marketplace/plugin package itself is a SEPARATE CR (DN §Consequences) to be filed
+at the next SCRUM; this CR owns the neutral schema, the emitters, and the asset class.
 
 ## Context
 
@@ -48,20 +79,32 @@ agent-definition asset class at all**. It deploys skill bundles (`STORE_RELDIR`)
 definitions under `generator/agents/` are never deployed by the installer at all. So this CR
 adds an asset class; it does not retarget an existing one.
 
-### Skills already work on OMP — verified empirically, no work required
+### Skills on OMP — the earlier "no work required" finding is WITHDRAWN (user ruling 2026-09-18)
 
-`omp://skills.md` registers `agents` (priority 70) for `.agent[s]/skills` and calls it
-**"the canonical OMP-native location"**, with its own `enableAgentsUser`/`enableAgentsProject`
-toggles that Claude/Codex/Pi toggles do not affect. Model B already deploys there:
-`~/.agents/skills/` holds 21 bundles as the real directory, and `~/.claude/skills/<name>` is a
-symlink into it (OMP additionally dedups by `realpath`, so the symlink is harmless).
+**This section previously concluded that skills needed no work, and it was wrong. Kept, corrected
+in place, because the reasoning error is instructive and must not recur.**
 
-Proof rather than inference: **this orchestrator session is an OMP session, and its discovered
-skill list includes `model-b`, `crucible`, `bootstrap`, `shutdown`, `cr-authoring`,
-`git-workflow`, `chezmoi` and the `crucible-report-*` bundles.** CR-MDB-002/014's
-harness-neutral store already made skills OMP-correct as a side effect of being neutral. **§S
-for skills is therefore explicitly a NON-GOAL** — the accounting only needs `omp` recorded as a
-consumer so nobody "fixes" what works.
+What the docs say is still true as written: `omp://skills.md` registers `agents` (priority 70)
+for `.agent[s]/skills` and calls it "the canonical OMP-native location". What was WRONG was
+inferring from that, plus one observation, that Model B therefore had nothing to do.
+
+The observation: this orchestrator session is an OMP session, and the `bootstrap`/`shutdown`
+skills it executed were stamped `[Skill directory: /home/antonyj/.agents/skills/<name>]` — i.e.
+resolved out of the shared store. The measurement that should have been taken beside it:
+`~/.omp/agent/skills/` and `~/.omp/agent/managed-skills/` both exist and are **EMPTY (0
+entries)**, and OMP's `config.yml` references `~/.agents` nowhere.
+
+**The user's ruling is decisive: OMP is the one harness that does NOT work with the shared
+`~/.agents` set — it has its own agents and skills definitions.** Whatever produced those
+resolved paths is treated as incidental and MUST NOT be relied on. Skills are therefore **in
+scope for the OMP target**, delivered per DN §D2 (its own copy) or, preferably, per DN §D10
+(inside the plugin, where `skills/` is a first-class plugin content type).
+
+**The transferable lesson, recorded so it cannot recur:** "I observed it working" is not
+evidence about WHICH mechanism made it work. One confounded observation was promoted to a
+verified non-goal, which would have shipped an OMP target with no skills of its own. The same
+failure mode as this CR's §S0 frontmatter error — inferring a contract from a sample instead of
+measuring the contract and the alternatives together.
 
 ### The real frontmatter contract, and the corrections it forces
 
