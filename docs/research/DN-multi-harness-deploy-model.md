@@ -275,6 +275,58 @@ Revisit only if something proves that seam insufficient — the same falsifiable
 per-harness emitters means a future harness is a new emitter, not a rewrite — which is the real
 hedge, and the reason not to couple the workflow to any one harness's execution model.
 
+### D12 — The real axis is CONSUME vs FORK, not OMP vs Pi. Consume for 1.0.0; fork stays costed and live.
+
+Raised 2026-09-18, after D11 was (rightly) challenged for answering "is Pi installed" when the
+question was "what should we target going forward". Installation is reversible and irrelevant; the
+strategy is not. Restated properly, with evidence from OMP's own backport guide
+(`omp://porting-from-pi-mono.md`).
+
+**OMP is a FORK of pi-mono, and it enumerates what it added.** Upstream is `@mariozechner/*` /
+`@earendil-works/*` pi-mono; last recorded sync `b21b42d`, 2026-03-22. §15 "Features We Added
+(Preserve These)" therefore doubles as a list of what upstream pi LACKS:
+
+- **Capability-based discovery** — `defineCapability`, `registerProvider`, `loadCapability`,
+  **`skillCapability`**
+- Multi-credential auth with session affinity + round-robin (`agent.db`/bun:sqlite, vs upstream's
+  `auth.json` + `proper-lockfile`)
+- MCP / Exa / SSH integrations, LSP writethrough, bash interception
+- Native Bun `import()` for TS extension loading (upstream uses `jiti`); `pkg.omp` manifest
+  preferred over `pkg.pi`
+
+The first bullet is decisive for this DN: **capability-based discovery is the machinery this whole
+deploy model targets** — the `agents` skills provider at priority 70 (§D2), the `hookCapability`
+`pre|post` discovery (§D5), and the plugin/extension load pipeline (§D10). If it is an OMP
+addition, targeting upstream pi means §D2/§D5/§D10's contracts may not exist there at all, and the
+plugin/marketplace vehicle almost certainly does not. On features the direction is unambiguous:
+**OMP ⊇ pi.**
+
+**So the four real strategies, costed:**
+
+| | Strategy | Gets | Pays |
+|---|---|---|---|
+| **A** | Consume OMP via extensions/plugins | Everything; zero maintenance; this DN as written | OMP's decision layer exists — neutralized by config (§D11) |
+| **B** | Consume upstream Pi | Fewer features; may lack the discovery contracts specified here | A migration cost AND keeps the convolution — the only option that pays twice |
+| **C** | **Fork OMP into Roundhouse** | Full control: DELETE the competing decision layer instead of configuring around it, keeping every capability | The merge treadmill — OMP's own §11 "regression trap list" and §12 "detect and handle reworked code" exist because blind backporting silently loses features |
+| **D** | Build from scratch | Total control | 132 docs of surface: provider transports, 13 `toolconv/` families, compaction, session trees, RPC/ACP, natives, approval, TUI. NON-GOAL (§D11) |
+
+**C is the honest path to "our own dedicated agentic harness", and it is not exotic — it is
+precisely what OMP did to pi.** Its cost is measurable rather than theoretical: OMP shipped
+**18.2.1 → 18.2.5 during a single working session** on 2026-09-18.
+
+**Adopted position: A for 1.0.0; C stays live and costed, gated on ONE measurement.**
+`CR-RND-001`'s probe decides it. If Switchyard forwards `reasoning_effort` verbatim, the two
+decision layers compose and there is nothing to fork away from. If it strips or rejects the field,
+there is a concrete measured reason to own the harness — and the move would be to fork OMP, never
+to adopt a less-featured upstream. **Deciding to fork BEFORE that probe would pay the treadmill
+cost for a problem that may not exist.** B is rejected on current evidence.
+
+**Deliberately unmeasured, and flagged rather than assumed:** upstream pi's own skills/agents/
+plugin surface. The backport guide establishes what OMP added, which is evidence pi lacks those
+specific things, but NOT that pi has no story of its own in a different shape. Any move toward B
+requires that measurement first — recorded here because this session twice reasoned from partial
+observation and twice had to retract.
+
 ## Consequences per CR
 
 | CR | What this DN changes |
