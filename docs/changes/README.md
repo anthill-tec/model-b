@@ -112,11 +112,35 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   corrected the project's stale `sut_root` to this repo's Roundhouse path on request (#1374/#1375).
   User directive: propose a `1.0.0` release and target every filed CR (001–026, both shipped and
   pending) at it. `release-propose --label 1.0.0 --target 2026-10-31` filed; all 26 CRs planned via
-  `cr-plan --release 1.0.0`; wave order declared via `wave-sequence` per wave (5 calls). Corrected one
-  self-introduced ordering error in flight: wave 3's first sequence post put CR-MDB-013 before
-  CR-MDB-014 despite 013 DEPENDING ON 014 (footer 2026-07-22: "sequencing flipped 014 → 013") — the
-  server accepted it silently (no dependency-order validation), caught only by cross-checking the
-  posted order against this file's own dependency column, and re-posted correctly.
+  `cr-plan --release 1.0.0`. **The ROADMAP wave structure is deliberately NOT this file's wave
+  column** (user ruling, after the first attempt mirrored waves 1–5 onto the board and produced
+  incoherent rows — old waves holding PENDING entries). Our 1–5 waves are a HISTORICAL delivery
+  structure that ~15 footer notes below reference ("WAVE 2 CLOSED", "WAVE 5 OPENED"); a release
+  roadmap needs a forward-looking one. The board therefore carries exactly TWO waves:
+  **wave 1 = the 16 CRs already done** (001–016, 022), **wave 2 = the 10 still to do** (017, 018,
+  019, 023, 020, 024, 025, 021, 026, 012 — in dependency order, 012 last). `next` now answers
+  `NEXT cr=CR-MDB-017 seq=2001 wave=2 waveCompleted=1`. This file's own wave column is UNCHANGED
+  and stays historical; the two structures are intentionally different and must not be "reconciled".
+  **Pre-v2 metadata repaired (user-authorised to default reasonably rather than wait on Crucible).**
+  Two state errors were on the board, both pre-existing in the migrated slice, neither created here:
+  (i) `CR-MDB-001` derived `PENDING` despite shipping 2026-07-20, because its two plans (14, 15) are
+  keyed to the PRE-RENAME ids `CR-MB-001` and `CR-MODELB-001` — corroborated by the merge commit's
+  own branch, `feature/CR-MODELB-001-core-split` (`4fd2fcadc67f…`), and by the 2026-07-20 footer note.
+  No client verb re-keys a plan, so the repair was to file a correctly-keyed plan (91) carrying the
+  history this file already records (C1 red-green, C2 verify), walk both cycles through their legal
+  transitions, and `cr-close --commit 4fd2fca…`; the row now reads `COMPLETED, planId 91`. A plan
+  with invented cycles was NOT manufactured — every declared cycle matches the recorded history.
+  (ii) All 16 plans carried waves `null`/2/3/4/5, inconsistent with the new roadmap; `plan-backfill
+  --wave 1` aligned every one (it overwrites an existing wave, verified on plan 18 before bulk use).
+  `CR-MDB-007` is recorded `cr-supersede --by CR-MDB-006` (absorbed by 002–006, no spec ever filed),
+  which also auto-resolved CR-MDB-012's dependency on it; its row still derives `PENDING` beside
+  `lifecycle.state: SUPERSEDED` because derived status answers from plans and knows nothing of a
+  disposition — read lifecycle for the disposition, not status.
+  **Own error, disclosed:** getting 001's merge onto the board before the plan repair, `--label` was
+  used for an explanatory sentence, and `crMerged` renders labels — so that list now shows 001 twice,
+  once cleanly from `cr-close` and once as a sentence. No second milestone was posted to "fix" it (no
+  documented convergence semantics; a duplicate is worse than an ugly label). Retraction of the
+  manual one, and disposal of the two now-redundant orphan plans, are asked of Crucible over Sandesh.
   **STANDING RULE ESTABLISHED (user directive 2026-09-18, corrected mid-session):** Model B has
   NOTHING TO DO with the local Crucible PROJECT at any layer — not its development server (port
   3850), not the client-side scripts living inside that project's own checkout
