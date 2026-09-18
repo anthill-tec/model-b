@@ -6,7 +6,7 @@
 **Depends on:** CR-MDB-016 (Model B owns the seven bundles outright)
 **Labels:** crucible, skills, contract, patch
 **Phase:** Wave 5
-**Design reference:** `crucible:clients/STATUS-CONTRACT.md` §"Agent identity and role" · §"The identity source is an enumeration" · §"The agent identity is declared, never fabricated" · §"The cycle binding is declared at registration" (the status-envelope contract **document**, version 2.0.0) · `skills-src/CRUCIBLE-HANDOVER.md` §Maintenance-contract · Sandesh #1357, #1373 (Crucible's independent confirmation of the `--phase` drift and the vscode auto-attach claim, 2026-09-18)
+**Design reference:** `~/.crucible/clients/STATUS-CONTRACT.md` (installed, manifest-discoverable) §"Agent identity and role" · §"The identity source is an enumeration" · §"The agent identity is declared, never fabricated" · §"The cycle binding is declared at registration" (the status-envelope contract **document**, version 2.0.0) · `skills-src/CRUCIBLE-HANDOVER.md` §Maintenance-contract · Sandesh #1357, #1373 (Crucible's independent confirmation of the `--phase` drift and the vscode auto-attach claim, 2026-09-18)
 
 ## Context
 
@@ -18,7 +18,7 @@ has no hits, and CR-CRU-044/056/059 are contained in `0.1.0`, `0.1.1`, `0.1.2`).
 latest release is **0.1.2**; the client-surface delta for both 0.1.1 and 0.1.2 is NONE.
 **Model B's bundles have therefore been stale since Crucible's very first release.**
 
-The released contract, verified 2026-08-27 against all five clients in `crucible:clients/`
+The released contract, verified 2026-08-27 against all five clients as PUBLISHED (now re-verified at the installed `~/.crucible/clients/`)
 and confirmed by Crucible in #1359:
 
 - `register --agent <id> --role <ROLE>` — the enumeration is case-exact:
@@ -84,7 +84,7 @@ Two repo-side facts make this more than a text edit:
   static `test()` declarations expanding to 37 runtime cases** across 7 `describe` blocks.
 - The byte-identity fidelity gates that froze the imported bundles now self-skip
   (`tests/test_skills_handover.py:190-194`, `tests/test_installer_assets.py:223-227`)
-  because the origin `crucible:clients/skills/` was retired after the handover, so
+  because the origin Crucible-bundled `clients/skills/` was retired after the handover, so
   `skills-src/` is editable without violating an AC.
 
 ## Scope
@@ -144,23 +144,73 @@ comment to state the binding is declared at registration, not that it auto-attac
 - `AGENTS.md` — two stale sentences. The agent-ids sentence reads as if the id encodes the
   phase: state that the id is a free-form readability habit, `--role` declares the role,
   and TDD roles bind `--cycle`. The plan-filing sentence still passes
-  `--orchestrator vidushi-mdb`: **`plan-file --orchestrator` was REMOVED** in 0.1.0
-  (#1359) — drop the flag, keep `--wave`.
+  `--orchestrator vidushi-mdb`: **`plan-file --orchestrator` was REMOVED** — the registered
+  `--agent` id IS the plan's orchestrator now (installed client `--help`, measured 2026-09-18:
+  "the free-text --orchestrator label is retired"). Drop the flag, keep `--wave`, and add the
+  `--cycle-kind` requirement below.
+- **§S4a — the `plan-file` surface is a SECOND non-executable instruction, same defect class as
+  `--phase`.** Measured against the INSTALLED PRODUCTION client (0.2.2) on 2026-09-18, not
+  inferred: `--cycle` is repeatable and each occurrence REQUIRES a paired `--cycle-kind`
+  (`red-green | verify | fix`, positional — the Nth kind is the Nth cycle's, a mismatch or a
+  cycle left without one is refused before anything posts); the comma-split `--cycles` form is
+  **REFUSED for filing**; `--agent` is REQUIRED on every workflow verb with no fallback (an
+  unregistered id is refused 409); and `--release`, when given, REGISTERS the CR in the queue in
+  the same call (making `--wave` and `--title` required). Four surfaces teach the refused form
+  and must be corrected: `skills-src/crucible/SKILL.md:95`, `skills-src/model-b/SKILL.md:47`,
+  `contracts/crucible-envelope.md:129-131`, `AGENTS.md:145` — plus PRD §D3.4 (`:39`), handled in
+  §S4c. Proven in use this session: filing a plan with `--cycles` is impossible, and every CR
+  planned onto the 1.0.0 roadmap went through `--cycle`/`--cycle-kind` pairs.
 - `contracts/crucible-envelope.md` — record the role/cycle-binding facts, cite the
-  status-envelope contract document by its DOCUMENT version, and note the remaining 0.1.0
-  deltas: `gate-run --skip` added, `--source` on the rust/mvn/arduino clients,
-  `WORKFLOW_CYCLE_ID` gone while `WORKFLOW_ROLE`/`WORKFLOW_WAVE`/`WORKFLOW_CYCLE` remain.
-- **Released-only rule.** No Model B doc may teach a verb that is not in a Crucible
-  RELEASE. Per #1359 these are develop-only and 0.2.0-bound: the `queue` read verb,
-  `queue-file` (+ `--from-file`), `milestone --released-at/--crs/--packages/`
-  `--repair-provenance`, bun `--no-lifecycle`, and the routes `POST /api/v2/runs/start`,
-  `GET|POST /api/v2/projects/<key>/queue`, `GET /api/v2/projects/<key>/releases`. 0.2.0 is
-  NOT released and must never be cited as shipped.
-- **Two upstream traps not to copy** (#1359): `clients/rust-crucible.py`'s docstring
-  register examples (lines 70-71) omit `--cycle` and are guaranteed 409s; and
-  `cli/crucible-axi.ts register` ships without `--cycle` at all, so the released
-  TypeScript CLI cannot register a TDD role. Any Model B text that mentions a
-  registration surface names the Python clients.
+  status-envelope contract document by its DOCUMENT version (**verified still `2.0.0`** at
+  `~/.crucible/clients/STATUS-CONTRACT.md`, 2026-09-18), correct the `plan-file` signature per
+  §S4a, replace `gate-report` with `gate-run` per §S4b, and note `--source` on the
+  rust/mvn/arduino clients plus `WORKFLOW_CYCLE_ID` gone while
+  `WORKFLOW_ROLE`/`WORKFLOW_WAVE`/`WORKFLOW_CYCLE` remain.
+- **§S4b — `gate-run` is the gate verb; `gate-report` is the one-shot legacy.** `gate-run`
+  STREAMS and emits a `prefer-gate-run` discouragement warning from `gate-report` (Crucible
+  #1369). Two surfaces still name the wrong one: `skills-src/crucible/SKILL.md:97` and
+  `contracts/crucible-envelope.md:136`. Both carry two flags that matter to THIS project
+  specifically (measured from the installed client): `--skip`, which exists because
+  no-mistakes' `ci` step is PR-based and **a git-flow project that merges directly has no PR
+  for it to watch — without `--skip` the gate blocks until `ci_timeout`**, which is exactly
+  Model B's merge model; and `--release`, which names the release a gate gates (a gate naming
+  one is exempt from pruning until that release records). The wave-boundary gate sentence in
+  `AGENTS.md` inherits both.
+- **Released-only rule — RE-MEASURED 2026-09-18, and the previous list is now WRONG.** The
+  PRINCIPLE stands: no Model B doc may teach a verb absent from a Crucible RELEASE. The
+  enumeration does not. Against the installed production client (0.2.2), these are all PRESENT
+  and therefore legitimate to document: the `queue` read verb, `queue-file` (+ `--from-file`),
+  and `milestone --released-at/--crs/--packages/--repair-provenance`, plus the whole
+  declared-roadmap set (`release-propose`, `cr-plan`, `wave-sequence`, `cr-depends`,
+  `cr-supersede`, `cr-void`, `next`). They were correctly develop-only when #1359 was written;
+  0.2.0 has since RELEASED and production now runs 0.2.2, so the old ban would forbid
+  documenting verbs this project already uses on its own board. **The develop-only item to
+  forbid instead is `portRule` / the `/api/health` listener block (CR-CRU-139) — NOT in 0.2.2,
+  0.3.0-bound, explicitly cautioned by Crucible in #1373.** Verified absent from every Model B
+  doc today; the rule is therefore a guard against regression, not a cleanup. The banned-string
+  gate must name the version actually unreleased at authoring time, never a hardcoded `0.2.0`.
+- **Upstream traps — RE-MEASURED against the INSTALLED 0.2.2 client, 2026-09-18; both original
+  claims have changed and one is now void.** (a) `rust-crucible.py`'s docstring register
+  examples (`:71` and its sibling) are now `--role`-CORRECT but still omit `--cycle`, so they
+  remain guaranteed 409s for a TDD role — the trap survives in a new shape, and any Model B text
+  copying them inherits it. (b) The claim that `crucible-axi register` cannot bind a cycle is
+  VOID: the installed `crucible-axi` exposes only `{install, serve, uninstall}` and has no
+  `register` verb at all, so there is no TypeScript registration surface to mis-copy. Any Model
+  B text naming a registration surface names the Python clients — the conclusion is unchanged,
+  but it now rests on "the other CLI does not register" rather than "it registers wrongly".
+- **§S4c — the design docs Model B OWNS carry the same stale surface** (user directive
+  2026-09-18: the sweep includes our own PRD/DNs). `docs/research/PRD-model-b-rationalization.md`
+  §D3.4 (`:39`) states the plan/cycle idiom with the refused `--cycles` form; §D7 (`:62-68`)
+  records a 3-route endpoint list (`/api/v2/agents/{register,unregister}`,
+  `/api/v2/runs/{parsed,compile}`, `/api/v2/plans`) that predates the queue, release-proposal,
+  milestone and gate routes this project now uses, and still carries the REQUEST for a
+  `vscode-crucible.py` that the user has since DECLINED (Sandesh #1370) — an open request
+  contradicting a settled ruling invites a future CR to re-raise it.
+  `docs/research/DN-rationalization-plan-review.md:77` records "ALL clients gain the universal
+  plan/cycle verbs" as an ASK; it is delivered fleet-wide and should read as such. `:99`'s
+  per-stack Crucible smoke criterion (`register → test → unregister`) is still the right gate
+  but its `register` leg must carry `--role` and, for a TDD role, `--cycle`, or the smoke test
+  cannot pass. Corrections are factual only; no design decision is reopened.
 
 ### §S5 — The guard that would have caught it
 Port the transferable families of the inherited suite into a new stdlib `unittest` module
@@ -296,18 +346,46 @@ clean; no generated file is hand-edited.
       that `ORCHESTRATOR`/`report` may register unbound; and that the agentId is free-form
       with the role never inferred from it.
 - [ ] Zero occurrences of `--orchestrator` paired with `plan-file` under `skills-src/`,
-      `contracts/`, and `AGENTS.md` (the flag was removed in 0.1.0).
-- [ ] Zero occurrences of the develop-only verbs `queue-file`, `--from-file`,
-      `--released-at`, `--repair-provenance`, `--no-lifecycle` and of the string `0.2.0`
-      presented as released, anywhere under `skills-src/` or `contracts/`.
+      `contracts/`, `AGENTS.md` and `docs/research/` (retired; the registered `--agent` id is
+      the plan's orchestrator).
+- [ ] **Zero occurrences of the REFUSED `--cycles` form paired with `plan-file`** under
+      `skills-src/`, `contracts/`, `AGENTS.md` and `docs/research/`; every `plan-file` example
+      instead shows repeated `--cycle` each with its own `--cycle-kind` from
+      `{red-green, verify, fix}`, and states that a count mismatch is refused before anything
+      posts. (§S4a — measured against the installed 0.2.2 client.)
+- [ ] Every documented workflow-verb invocation carries `--agent`, and the docs state that an
+      unregistered id is refused 409 with no fallback.
+- [ ] No Model B doc names `gate-report` as the gate verb; `gate-run` replaces it at
+      `skills-src/crucible/SKILL.md:97` and `contracts/crucible-envelope.md:136`, and the
+      `--skip` rationale is stated (no-mistakes' `ci` step is PR-based; a git-flow project
+      merging directly has no PR, so the gate blocks until `ci_timeout` without it). (§S4b)
+- [ ] **The released-only gate is re-pinned, not inherited.** `queue-file`, `--from-file`,
+      `milestone --released-at/--crs/--packages/--repair-provenance` and the declared-roadmap
+      verbs are NOT forbidden — all are present in the installed 0.2.2 client and this project
+      uses several on its own board. The forbidden item is `portRule` / the `/api/health`
+      listener block (CR-CRU-139, 0.3.0-bound): zero occurrences under `skills-src/`,
+      `contracts/`, `docs/` and `AGENTS.md`. No AC hardcodes `0.2.0` as unreleased.
 - [ ] `skills-src/memory-templates/java-orchestration.md` documents the `--role`
       enumeration and the binding rule; no `--phase` remains.
 - [ ] `contracts/crucible-envelope.md` cites `STATUS-CONTRACT.md` **document version
-      2.0.0**, records that the product release carrying it is `0.1.0`, and never implies a
-      Crucible product version of `2.0.0`.
-- [ ] Documented Crucible release facts match #1359 exactly where stated: latest release
-      `0.1.2`; install entry point `crucible-axi install [--target-dir <dir>]` with default
-      `~/.crucible`; run verb `crucible-axi serve`.
+      2.0.0** — verified unchanged at `~/.crucible/clients/STATUS-CONTRACT.md` on 2026-09-18 —
+      and never implies a Crucible PRODUCT version of `2.0.0`. The version axis stays explicit:
+      the product version is `0.2.x`, `/api/v2` is the API generation, `2.0.0` is that one
+      contract document's own semver.
+- [ ] Documented Crucible release facts match the INSTALLED PRODUCTION install, not #1359's
+      now-superseded snapshot: product version **`0.2.2`** (per
+      `~/.crucible/crucible-clients.json`'s own `version`), install entry point
+      `crucible-axi install [--target-dir <dir>]` with default `~/.crucible`, run verb
+      `crucible-axi serve`, and `uninstall` as the third subcommand. No doc states `0.1.2` as
+      the latest release.
+- [ ] §S4c: `docs/research/PRD-model-b-rationalization.md` §D3.4 no longer shows the refused
+      `--cycles` form; §D7's endpoint list either covers the routes this project actually uses
+      (queue, release-proposals, milestones, gates) or states that it enumerates a subset; and
+      §D7's `vscode-crucible.py` REQUEST is recorded as DECLINED (user ruling, Sandesh #1370)
+      rather than left open.
+- [ ] §S4c: `docs/research/DN-rationalization-plan-review.md:77` reads as DELIVERED rather than
+      requested, and `:99`'s per-stack smoke criterion's `register` leg carries `--role` plus
+      `--cycle` for a TDD role.
 - [ ] `crucible-report-vscode/SKILL.md:54`'s comment no longer claims the active cycle
       "auto-attaches server-side"; it states the binding is declared explicitly via
       `--cycle <id>` at registration (CR-CRU-056, confirmed Sandesh #1373).

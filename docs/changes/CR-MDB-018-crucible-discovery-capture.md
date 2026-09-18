@@ -6,7 +6,7 @@
 **Depends on:** CR-MDB-014 (pre-flight + install.toml), CR-MDB-015 (the hook that consumes the key)
 **Labels:** installer, preflight, crucible, discovery, patch
 **Phase:** Wave 5
-**Design reference:** `crucible:crucible_axi/manifest.py` (the discovery manifest — CR-CRU-009 §S2) · `crucible:crucible_axi/cli.py` (`--target-dir`, default `~/.crucible`) · `crucible:docs/RUNBOOK.md` (the published manifest location) · `crucible:install.sh` (the installed CLI name and upgrade path) · PRD §D10 (installer = dependency orchestrator) · Sandesh #1357, #1358
+**Design reference:** the manifest contract as PUBLISHED (measured at `~/.crucible/crucible-clients.json`; Sandesh #1358/#1360) (the discovery manifest — CR-CRU-009 §S2) · the installed `crucible-axi install --target-dir` surface (default `~/.crucible`, measured 2026-09-18; subcommands `install|serve|uninstall`) · the published manifest location (measured: `~/.crucible/crucible-clients.json`) · the installed CLI name and upgrade path (`crucible-axi`, on PATH at `~/.local/bin/crucible-axi`) · PRD §D10 (installer = dependency orchestrator) · Sandesh #1357, #1358
 
 ## Context
 
@@ -15,7 +15,7 @@ clients live, and the session-start hook is supposed to CONSUME that. Neither ha
 
 **Defect 1 — the pre-flight probes a binary name that does not exist.**
 `modelb_axi/preflight.py:77` runs `shutil.which("crucible")`. Crucible's installed CLI is
-**`crucible-axi`** (`crucible:install.sh:13-14` — "it installs the `crucible-axi` primary
+**`crucible-axi`** (the installer's own published behaviour — "it installs the `crucible-axi` primary
 orchestrator from PyPI"; `:29`, `:53` invoke `crucible-axi uninstall`). A machine with a
 correct, current Crucible install is therefore reported `crucible=absent`, and
 `_CRUCIBLE_ABSENT_WARNING` (`preflight.py:39-42`) tells the user to install something they
@@ -33,25 +33,41 @@ manually exports `MODELB_STATUS_CMD`, the ambient board-status feature CR-MDB-01
 can never resolve a feed on any install.
 
 **The source that closes both.** Crucible's CR-CRU-009 shipped a machine-readable
-discovery manifest, explicitly built as "the Model-B pre-flight contract"
-(`crucible:crucible_axi/manifest.py:1-8`): `MANIFEST_FILENAME = "crucible-clients.json"`,
-schema `{version, clients, status}` with `clients[stack]` for
-`("bun", "python", "rust", "mvn", "arduino")`, written by the `manifest` install stage into
-`--target-dir` (default `~/.crucible`, also published at `crucible:docs/RUNBOOK.md:242`).
-It is released — Crucible carries tags `0.1.0`, `0.1.1`, `0.1.2`.
+discovery manifest, explicitly built as "the Model-B pre-flight contract":
+`MANIFEST_FILENAME = "crucible-clients.json"`, written by the `manifest` install stage into
+`--target-dir` (default `~/.crucible`).
 
-**The location question is ANSWERED — and it comes with an upstream defect we must survive
-(Sandesh #1360).** Crucible confirms the contract is `<target-dir>/clients/<stack>-crucible.py`,
-default `~/.crucible/clients/`, and that we should anchor on the manifest's `clients`
-values. They also confirm the defect this repo spotted: **nothing materialises that
-directory yet** — `STAGE_ORDER = (server, manifest, unit)` copies no fleet, while the files
-physically ride in the wheel at `crucible_axi/clients/` for their own CLI's use. Their
-ruling, verbatim in substance: the manifest is right about the contract and wrong about
-reality until the stage lands; do NOT repoint at site-packages, because that path is their
-internal resolution detail, moves with the interpreter/venv, and is not a surface they will
-keep stable. They will file the materialisation fix as a CR at their next SCRUM, and it
-will not reshape the manifest — key names, file name and value meanings all stay put, so
-our consumption code will not need reworking.
+**RE-MEASURED 2026-09-18 against the INSTALLED PRODUCTION install — the upstream defect this
+CR was written around is FIXED, and the manifest is WIDER than the schema recorded below.**
+`~/.crucible/crucible-clients.json` now exists (mtime 2026-09-18) declaring
+`"version": "0.2.2"`, and `~/.crucible/clients/` is populated with all five clients. So the
+premise that "nothing materialises that directory yet" (`STAGE_ORDER = (server, manifest,
+unit)`, Sandesh #1360) no longer holds, and **"unresolved" is no longer the expected outcome on
+this machine — a successful resolution is.** Both must still be handled, but the ACs below can
+no longer treat unresolved as the only reachable path.
+
+The measured schema has **SIX** keys, not the `{version, clients, status}` three this CR was
+written against — the extra three are CR-CRU-143's conditional manifest keys (Sandesh #1373):
+
+| key | measured value | use to Model B |
+|---|---|---|
+| `clients` | per-stack ABSOLUTE paths (`bun`/`python`/`rust`/`mvn`/`arduino`) | what §S2 resolves `clients_dir` from |
+| `version` | `"0.2.2"` | the install's own version, for the mismatch check §S3 already wants |
+| `status` | `~/.crucible/clients/STATUS-CONTRACT.md` | the re-pin target CR-MDB-019 hunts for — it is DISCOVERABLE, not a guessed path |
+| `config` | `~/.crucible/crucible.toml` | the operator-editable client config |
+| `server_config` | `~/.local/share/crucible/crucible.toml` | the server's own limits file |
+| `shipped_config` | `~/.crucible/clients/crucible.toml` | package data; the `[client] url` fallback |
+
+The three config keys matter beyond completeness: they answer, declaratively, the board-URL
+resolution question that misrouted this orchestrator's own session on 2026-09-18 (a client
+invoked from a personal checkout bound to a development board because that checkout's own
+`crucible.toml` won the `project → install → shipped` chain). A consumer that reads
+`shipped_config`/`config` from the manifest never has to guess which config a client obeyed.
+
+Crucible's standing ruling is unchanged and still binding: anchor on the manifest's values, do
+NOT repoint at site-packages (their internal resolution detail, moves with the interpreter),
+and the manifest's key names, file name and value meanings stay put — so consumption code
+written to the three original keys keeps working, and reading the three new ones is additive.
 
 Model B's resolution is therefore the manifest and nothing else: read
 `crucible-clients.json`, take `clients[stack]`, and record the directory. When the manifest
@@ -114,9 +130,18 @@ the same key.
       modelb-axi never deploys Crucible assets.
 
 ### §S2 / §S3
-- [ ] A manifest whose schema is `{version, clients, status}` yields a resolved clients
-      directory; the resolution covers all five stacks Crucible enumerates
-      (`bun, python, rust, mvn, arduino`).
+- [ ] A manifest carrying the measured SIX keys (`clients`, `version`, `status`, `config`,
+      `server_config`, `shipped_config`) yields a resolved clients directory; the resolution
+      covers all five stacks Crucible enumerates (`bun, python, rust, mvn, arduino`). Unknown
+      or additional keys are tolerated, never required — the manifest is Crucible's to grow.
+- [ ] **The REAL install resolves.** Asserted against the actual
+      `~/.crucible/crucible-clients.json` (present since 2026-09-18, `version: "0.2.2"`, five
+      client paths on disk), not only against a fixture: `clients_dir` resolves to
+      `~/.crucible/clients` and `[install].clients_dir` is written. This is the criterion the
+      original spec could not state, because when it was authored no install materialised that
+      directory and unresolved was the only reachable outcome.
+- [ ] `status` is taken FROM the manifest rather than guessed, giving CR-MDB-019 a discovered
+      path to the status contract instead of a hardcoded one.
 - [ ] The manifest is read from `<target-dir>/crucible-clients.json` with `~/.crucible` as
       the default target dir.
 - [ ] When the manifest is absent, unparsable, or names a non-existent directory, the
@@ -149,14 +174,17 @@ integration test module extended or added. No change to `hooks-src/` in this CR.
 
 ## Risk
 
-- **Upstream reality lags the upstream contract, and that stays visible.** Crucible
-  confirmed (#1360) that `<target-dir>/clients/` is the contract but that no install stage
-  materialises it yet, and that the fix is theirs. Consequence to accept deliberately: on
-  every current install `clients_dir` stays unresolved and the ambient board keeps emitting
-  its "no status feed resolved" degrade until Crucible ships materialisation. That is the
-  honest state of a dependency Model B does not own; papering over it with a substitute path
-  would hide an upstream gap and make Model B its maintainer. Re-check at gap-analysis
-  whether their fix has shipped.
+- **Upstream reality has CAUGHT UP with the upstream contract — this risk is CLOSED, and the
+  gap-analysis re-check it asked for is the thing that closed it.** The original entry said
+  Crucible confirmed (#1360) that `<target-dir>/clients/` was the contract but that no install
+  stage materialised it, so `clients_dir` would stay unresolved on every install and the
+  ambient board would keep emitting its "no status feed resolved" degrade until they shipped
+  the fix. Measured 2026-09-18: **they shipped it.** `~/.crucible/crucible-clients.json` exists
+  at `version: "0.2.2"` and all five clients are on disk, so resolution SUCCEEDS here. The
+  degrade path stays implemented and tested — a machine without the install still needs it —
+  but it is no longer the expected outcome, and no AC may assert it as the only one. The
+  deliberate refusal to build a compensating fallback was vindicated: waiting cost nothing and
+  a substitute path would now be dead code contradicting a real manifest.
 - Re-running Crucible's installer is an UPGRADE path on their side; Model B must never
   invoke it. Detection and manifest reading only.
 - The `[install]` table gains keys. `config.py` has no schema versioning, so a stale

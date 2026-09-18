@@ -6,7 +6,7 @@
 **Depends on:** CR-MDB-017 (rewrites the same bundle SKILL.mds for the `--role`/`--cycle` surface), CR-MDB-022 (repoints the same two memory templates for tooling paths, and runs FIRST in the wave) — both edges exist to serialize shared files, not to sequence logic
 **Labels:** crucible, skills, generator, contract, patch
 **Phase:** Wave 5
-**Design reference:** Sandesh #1358/#1360 (the discovery-manifest contract and Crucible's confirmation of their own un-materialised stage) · `crucible:crucible_axi/manifest.py` (`MANIFEST_FILENAME = "crucible-clients.json"`, schema `{version, clients, status}`) · `crucible:docs/RUNBOOK.md:242` (published location) · CR-MDB-016 (the `~/.claude/scripts` client mirrors were retired) · user directive 2026-08-27 ("Model B will not maintain any client scripts of Crucible — that is the Crucible project's job; Model B only manages and updates the skills with reference to changes in Crucible") · CR-MDB-017 §Risk and §Non-goals, which designated this CR
+**Design reference:** Sandesh #1358/#1360 (the discovery-manifest contract and Crucible's confirmation of their own un-materialised stage) · the PUBLISHED manifest, measured at `~/.crucible/crucible-clients.json` 2026-09-18 (`crucible-clients.json`, `version: "0.2.2"`, SIX keys — `clients`/`version`/`status` plus `config`/`server_config`/`shipped_config`) · CR-MDB-016 (the `~/.claude/scripts` client mirrors were retired) · user directive 2026-08-27 ("Model B will not maintain any client scripts of Crucible — that is the Crucible project's job; Model B only manages and updates the skills with reference to changes in Crucible") · CR-MDB-017 §Risk and §Non-goals, which designated this CR
 
 ## Context
 
@@ -56,14 +56,31 @@ also precisely the arrangement the directive forbids: a Model B-maintained copy 
 Crucible client. Two further occurrences sit in
 `skills-src/memory-templates/{java,rust}-orchestration.md`.
 
-**The anchor.** Crucible confirmed (#1360) the contract is
-`<target-dir>/clients/<stack>-crucible.py`, default `~/.crucible/clients/`, discovered
-through `crucible-clients.json` (`{version, clients, status}`), and that Model B should
-anchor on the manifest's `clients` values. They also confirmed that no install stage
-materialises that directory yet (`STAGE_ORDER = (server, manifest, unit)`), that the fix is
-theirs and is filed on their side, and that the manifest's shape will not change.
+**The anchor — RE-MEASURED 2026-09-18, and it is now REAL rather than aspirational.** Crucible
+confirmed (#1360) the contract is `<target-dir>/clients/<stack>-crucible.py`, default
+`~/.crucible/clients/`, discovered through `crucible-clients.json`, and that Model B should
+anchor on the manifest's `clients` values. At authoring time no install stage materialised that
+directory. **It does now:** `~/.crucible/crucible-clients.json` exists (`version: "0.2.2"`) and
+all five clients are present at `~/.crucible/clients/`, with the manifest carrying six keys
+(the three original plus `config`, `server_config`, `shipped_config` — CR-CRU-143). So this CR
+no longer documents a location that does not exist; it documents one an agent can run today.
 
-Under the directive, the un-materialised state is **not** Model B's to paper over in prose.
+**§S0 — the measured defect that makes this CR P1 rather than hygiene (user directive,
+2026-09-18).** `skills-src/crucible/SKILL.md:51` currently instructs agents to invoke clients
+from a PERSONAL CHECKOUT of the Crucible project (`~/Documents/data_projects/crucible/clients/`).
+That is not merely unanchored — it is actively harmful, proven by this orchestrator hitting it:
+such a checkout carries its own operator `crucible.toml` declaring a DEVELOPMENT board, and
+`_crucible_axi.py` resolves config `project → install → shipped`, deriving "install" from the
+client file's own location. A client invoked from that checkout therefore binds to the
+development board while its envelope still prints the project key, so **following our own
+published skill silently routes a project's workflow writes to the wrong server.** The user
+ruled the boundary explicitly: Model B has nothing to do with the local Crucible project at any
+layer — not its dev server, not the client scripts inside it, not its docs — and the only
+sanctioned surfaces are the production server and the PUBLISHED, INSTALLED clients under
+`~/.crucible/clients/`. Every reference this CR repoints must land there, and no Model B doc may
+name a personal-checkout path for any stack.
+
+Under the directive, nothing about the upstream install is Model B's to paper over in prose.
 The skills state the contract and name `crucible-axi install` as the way to satisfy it. They
 do not document a packaged-copy path, a site-packages path, or any Model B-provided
 substitute: a site-packages location is Crucible's internal resolution detail that moves
@@ -118,6 +135,19 @@ future edit that regresses either way fails.
       `crucible_axi/clients` package-internal path, or any Model B-provided client copy.
 - [ ] No file under `skills-src/` instructs the reader to copy, mirror, patch, or edit a
       Crucible client.
+- [ ] **§S0 — zero occurrences of a PERSONAL-CHECKOUT client path anywhere in the repo outside
+      `archive/`**: no `~/Documents/data_projects/crucible/`, no `$HOME`-relative or
+      absolute path into a Crucible source checkout, for any stack. `skills-src/crucible/SKILL.md:51`
+      specifically names `~/.crucible/clients/<stack>-crucible.py` (the installed, published
+      location) instead.
+- [ ] §S0 — the bundles state WHY, in one sentence an agent can act on: a Crucible source
+      checkout carries its own `crucible.toml`, and because a client resolves config
+      `project → install → shipped` with "install" derived from the client file's own location,
+      running a client out of a checkout binds it to that checkout's board — so a run can post
+      to a development server while reporting the right project key.
+- [ ] §S0 — no Model B doc names the Crucible development server, and none instructs reading
+      Crucible's own repository (source, clients, or docs) for any purpose; the sanctioned
+      surfaces are the production server and the installed clients.
 
 ### §S2 / §S3
 - [ ] Zero occurrences of `~/.claude/scripts/` paired with `-crucible.py` under

@@ -6,7 +6,7 @@
 **Depends on:** CR-MDB-015 (authored the hook + emitters), CR-MDB-018 (supplies the `clients_dir` the feed resolution needs)
 **Labels:** hooks, opencode, crucible, contract, patch
 **Phase:** Wave 5
-**Design reference:** `crucible:clients/STATUS-CONTRACT.md` (status-envelope contract **document**, version 2.0.0 — §Versioning records the 1.1.0 → 2.0.0 rationale) · `docs/research/DN-harness-agnostic-hooks.md` §2 / §4.4 (the refusal rule) · `hooks-src/schema.md`
+**Design reference:** the status-envelope contract **document**, version **2.0.0** — cited at its INSTALLED, manifest-discoverable location `~/.crucible/clients/STATUS-CONTRACT.md` (re-verified 2026-09-18: still `**Version: 2.0.0**`; §Versioning records the 1.1.0 → 2.0.0 rationale). **Never cite a Crucible source checkout** (user directive 2026-09-18): the path is discovered from `crucible-clients.json`'s own `status` key, which CR-MDB-018 now captures, so this hook's re-pin target is resolved rather than hardcoded · `docs/research/DN-harness-agnostic-hooks.md` §2 / §4.4 (the refusal rule) · `hooks-src/schema.md`
 
 ## Context
 
@@ -17,7 +17,7 @@ Three defects in shipped hook output, none of which any current test can see.
 contract document at version **1.0.0** and hard-codes it: `:40`
 (`STATUS_CONTRACT_VERSION = "1.0.0"`), `:7` (module docstring), `:81` (parser docstring),
 `:150` (an inline "Contract 1.0.0" comment), `:177` (the degrade message interpolates the
-constant). That document is now at **2.0.0** (`crucible:clients/STATUS-CONTRACT.md:3`).
+constant). That document is now at **2.0.0** (`~/.crucible/clients/STATUS-CONTRACT.md:3`).
 
 Scope of the actual breakage, measured rather than assumed: the hook invokes only the
 `status` verb (`:75`, `:127-146`) and never `register`, so the clean-break flag rename that

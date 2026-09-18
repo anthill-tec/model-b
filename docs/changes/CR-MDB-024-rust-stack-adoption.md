@@ -6,7 +6,7 @@
 **Depends on:** CR-MDB-017 (introduces the `tier_guidance` TOML key and the shared/per-stack template split this CR's rust fragment renders through)
 **Labels:** generator, rust, ownership, feature
 **Phase:** Wave 5
-**Design reference:** Sandesh #1362–#1367 (the correspondence that surfaced this) · `crucible:docs/changes/CR-CRU-042-exit-skills-ownership.md` (the ownership handover: "Model B now owns the skills component in FULL — content, bundling AND deploy... Crucible does not patch either in place") · `skills-src/memory-templates/rust-orchestration.md` (existing rust footprint in this repo) · `generator/stacks/quarkus.toml` (the shape this CR follows)
+**Design reference:** Sandesh #1362–#1367 (the correspondence that surfaced this) · Crucible's CR-CRU-042 as QUOTED TO US over Sandesh #1367 (the ownership handover: "Model B now owns the skills component in FULL — content, bundling AND deploy... Crucible does not patch either in place") · `skills-src/memory-templates/rust-orchestration.md` (existing rust footprint in this repo) · `generator/stacks/quarkus.toml` (the shape this CR follows)
 
 ## Context
 
