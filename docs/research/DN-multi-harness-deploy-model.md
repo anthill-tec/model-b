@@ -230,6 +230,51 @@ by construction rather than by manifest discipline.
 in the Roundhouse umbrella, or in a dedicated `model-b-marketplace` repo. Publication location
 is a user decision with release-process consequences, not a technical one.
 
+### D11 — Stay on OMP; neutralize its decision layer by configuration; "our own harness" is a NON-GOAL
+
+Raised 2026-09-18: since Roundhouse exists to build routing on switchyard + lemonade, would
+targeting **Pi** (which OMP extends) be better, given OMP's own model-switching layer convolutes
+the requirement? **The problem is real; the remedy is not a harness change.**
+
+**The problem, measured and sharper than first stated.** OMP does not merely indirect models — it
+runs a per-request classifier of its own. `defaultThinkingLevel: auto` is set here, and per
+`omp://models.md` the `tiny` role drives "`auto`-thinking difficulty classification". Switchyard's
+`[routes.smart]` is `type = "llm_classifier"`, `classifier_target = "weak"` — a small model
+inspecting each request. **Two classifiers, one layer apart, no shared signal**, deciding different
+dimensions (effort vs target) that can contradict silently. That question is escalated to the root
+as a design CR (drafted: `CR-RND-001`, the effort-vs-route dimension), because it is PRD/contract
+territory and no layer owns it.
+
+**Why not Pi.** Three measured objections. (1) **Pi is not installed** — no `pi` on PATH, only
+`omp` (18.2.5, which moved from 18.2.1 *during this session*); `~/.pi` is legacy-compat residue
+(`agent/` 10 entries, `skills/` 1). Targeting it means adopting a harness we neither run nor have
+verified. (2) **OMP IS Pi plus the parts we just chose to depend on** — the compat layer is
+pervasive (`legacy-pi-compat.ts`, `@mariozechner/*`/`@earendil-works/*` specifier rewrites, the
+legacy `pi.extensions` manifest key, `PI_CODING_AGENT_DIR`), and dropping to base Pi most likely
+forfeits the plugin/marketplace vehicle §D10 just established as the cheapest distribution path.
+(3) **Owning the harness buys nothing for routing.** PRD D1 already makes Switchyard the only
+endpoint harnesses talk to, and it is OpenAI-compatible; `omp://models.md` documents our exact
+case as first-class config (`baseUrl` + `auth: none` + `api: openai-completions` +
+`discovery.type: openai-models-list`). Routing is won by configuration, on any harness.
+
+**The convolution is disableable, not inherent.** Three config moves collapse OMP's layer to a
+passthrough: set `defaultThinkingLevel` explicit rather than `auto` (kills the second classifier);
+point every `modelRoles` alias at the one switchyard route; scope `enabledModels` to that provider
+so discovery and `contextPromotionTarget` cannot reach around it. A config edit, versus a harness
+migration.
+
+**"Build our own harness" is a NON-GOAL.** Switchyard + Lemonade are the differentiated parts;
+the harness is commodity. OMP's documentation alone runs to 132 files covering provider
+transports, per-model-family tool conversion (`toolconv/` × 13), compaction, session trees,
+RPC/ACP, natives, approval and TUI — and it ships several patch versions a day. Reimplementing
+that means owning the churn forever in exchange for capability the base-URL seam already gives.
+Revisit only if something proves that seam insufficient — the same falsifiable-test discipline
+`contracts/switchyard-routes.md` applies to merging the trees.
+
+**What this decision buys:** the harness choice stays REVERSIBLE. §D1's neutral source plus
+per-harness emitters means a future harness is a new emitter, not a rewrite — which is the real
+hedge, and the reason not to couple the workflow to any one harness's execution model.
+
 ## Consequences per CR
 
 | CR | What this DN changes |

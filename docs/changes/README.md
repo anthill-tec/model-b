@@ -222,3 +222,36 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   CR-025, which keeps the neutral schema, the emitters and the asset class. Awaiting the user's go
   at the SCRUM; publication location (this repo via `git-subdir`, the Roundhouse umbrella, or a
   dedicated `model-b-marketplace` repo) is a user decision with release-process consequences.
+- 2026-09-18 — **HARNESS QUESTION RULED (DN §D11); one ROOT design question escalated.** Asked
+  whether to target **Pi** instead of OMP, since Roundhouse exists to build routing on
+  switchyard+lemonade and OMP carries its own model-switching layer. Ruling: **stay on OMP,
+  neutralize its decision layer by configuration, and treat "our own agentic harness" as a
+  NON-GOAL.** Measured basis: Pi is not installed (no `pi` on PATH; only `omp` 18.2.5, which moved
+  from 18.2.1 mid-session; `~/.pi` is legacy residue); OMP IS Pi plus the plugin/marketplace
+  vehicle §D10 just adopted; and PRD D1 already makes switchyard the only endpoint, so routing is
+  won by CONFIGURATION on any harness (`omp://models.md` documents our exact case as first-class:
+  `baseUrl` + `auth: none` + `api: openai-completions` + `discovery.type: openai-models-list`).
+  The convolution is disableable — `defaultThinkingLevel` explicit instead of `auto`, all
+  `modelRoles` at one route, `enabledModels` scoped — a config edit versus a migration. The
+  harness stays REVERSIBLE because §D1's neutral source + emitters make a new harness a new
+  emitter, not a rewrite.
+  **The genuine unresolved question is NOT the harness — it is a dimension mismatch, and it is
+  ROOT-owned.** OMP treats reasoning effort as first-class in four places (effort encoded IN model
+  identity — `modelRoles` pins `anthropic/claude-opus-5:xhigh` etc.; per-role `:level` suffixes;
+  `thinking-level` frontmatter, measured in 9 of 29 definitions with the Claude-era `effort` key in
+  10 more; and `auto` difficulty classification driven by the `tiny` role). The routing layer has
+  NO representation for it: `switchyard/routes.toml` targets are bare model ids, and the PRD
+  mentions "thinking" three times, all of them `hide_thinking` telemetry privacy. So D4's
+  substitution of a route id for `sonnet`/`inherit` is **information-losing**, and switchyard's
+  `llm_classifier` + OMP's `auto` classifier are **two classifiers one layer apart with no shared
+  signal** that can contradict (cheap route + `:xhigh` = a small model told to think hard, silently).
+  Drafted for a ROOT session as **`CR-RND-001`** (`/tmp/CR-RND-001-effort-dimension-in-routing.md`)
+  with four options and the recommendation to PROBE option (D) first — effort riding the request
+  body if switchyard forwards `reasoning_effort` verbatim, which is orthogonal by construction and
+  needs no contract change. Unverified deliberately: switchyard-server is an upstream crates.io
+  binary, so its passthrough behaviour is observable but not readable here.
+  Also drafted for root: the `contracts/switchyard-routes.md` OMP-row correction
+  (`/tmp/rnd-contract-drift.md`) — it points `modelRoles` at `models.yml`, which holds ONLY
+  `providers` and would REJECT the key by schema validation; `modelRoles` is a `config.yml`
+  setting and TEN aliases are live, not the five listed. A layer session may not edit root
+  `contracts/`, hence drafts rather than commits.
