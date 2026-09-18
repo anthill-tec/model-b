@@ -6,7 +6,7 @@
 **Depends on:** CR-MDB-016 (Model B owns the seven bundles outright)
 **Labels:** crucible, skills, contract, patch
 **Phase:** Wave 5
-**Design reference:** `crucible:clients/STATUS-CONTRACT.md` §"Agent identity and role" · §"The identity source is an enumeration" · §"The agent identity is declared, never fabricated" · §"The cycle binding is declared at registration" (the status-envelope contract **document**, version 2.0.0) · `skills-src/CRUCIBLE-HANDOVER.md` §Maintenance-contract · Sandesh #1357
+**Design reference:** `crucible:clients/STATUS-CONTRACT.md` §"Agent identity and role" · §"The identity source is an enumeration" · §"The agent identity is declared, never fabricated" · §"The cycle binding is declared at registration" (the status-envelope contract **document**, version 2.0.0) · `skills-src/CRUCIBLE-HANDOVER.md` §Maintenance-contract · Sandesh #1357, #1373 (Crucible's independent confirmation of the `--phase` drift and the vscode auto-attach claim, 2026-09-18)
 
 ## Context
 
@@ -47,12 +47,28 @@ and confirmed by Crucible in #1359:
 flag, and none of them mentions either replacement:
 
 - `skills-src/crucible/SKILL.md:17` — `register --agent <id> --phase <PHASE>`
+- `skills-src/crucible/SKILL.md:35` — "Phase is metadata, not identity: pass it via
+  `--phase` on register." A SECOND occurrence in the same file, and its substance is also
+  wrong now, not just its flag name: the role is **declared** at registration, never
+  "metadata" attached to an identity.
 - `skills-src/crucible-report-arduino/SKILL.md:37`, `-bun/SKILL.md:36`,
   `-java/SKILL.md:32`, `-python/SKILL.md:39`, `-rust/SKILL.md:38` —
   `register --agent … --phase RED`
 - `skills-src/memory-templates/java-orchestration.md:17` —
   `register --phase RED|GREEN|FIX|VERIFY|ORCHESTRATOR`
-- `--role` and `--cycle` occur **zero** times across all seven bundles.
+- `skills-src/model-b/SKILL.md:45` — "ONE identity; phase via `--phase`, never embedded in
+  the id". The orchestration skill, not a Crucible bundle — it restates the same retired
+  contract and is in scope precisely because the ACs gate all of `skills-src/`.
+- **Nine surfaces total** (re-measured at gap-analysis, 2026-09-18), not the seven this
+  section originally listed.
+- `--role` occurs **zero** times across `skills-src/`. `--cycle` also occurs zero times **as
+  a flag** — but a naive substring grep returns two hits, `--cycles` on `plan-file`
+  (`crucible/SKILL.md:95`, `model-b/SKILL.md:47`). Every gate below therefore matches
+  `--cycle` on a word boundary; a substring match is a false green by construction.
+- `crucible-report-vscode/SKILL.md` carries **no CLI register example at all** — only the
+  v2 endpoint rows (`:234-235`) and the prose rule at `:259`. It is an API-path bundle, and
+  no `vscode-crucible.py` exists or will (user ruling; Sandesh #1370). Its exemption from
+  every client-flag gate is therefore EXPLICIT below, never a silent skip.
 
 These bundles are force-included into the `modelb-axi` wheel and deployed to the global
 skill store, so an agent that follows them issues a command that cannot parse.
@@ -79,22 +95,52 @@ Two repo-side facts make this more than a text edit:
 of `--phase` as a register flag. Sanctioned amendment — the pinned contract was superseded
 upstream.
 
-### §S2 — Sync the register contract in `skills-src/crucible/SKILL.md`
-Replace the `register --agent <id> --phase <PHASE>` instruction with the released surface:
-`--role` required and enumerated; `--cycle` mandatory for the four TDD roles and refused
-(409) when absent; `ORCHESTRATOR`/`report` may register unbound; the agentId is free-form
-and never parsed for role; `--source` enumerated with absent legal. Keep the existing
-ingest-is-heartbeat statement intact — it is unaffected.
+A second, independent re-pin belongs in the same section: the suite's ONE recorded baseline
+failure, `test_ac7_repo_agents_md_no_longer_claims_workflow_cycle_id_injection`, is
+self-tripping rather than measuring drift — both `AGENTS.md` occurrences of
+`WORKFLOW_CYCLE_ID` it counts are META text (the grep-gate-family description and the
+baseline sentence naming this very failure), while the guarantee the assertion exists to
+protect is intact everywhere the variable could actually be injected. Re-point the
+assertion at the CLAIM ("no sentence may say the wrapper injects `WORKFLOW_CYCLE_ID`")
+rather than a bare whole-file substring count, so documenting the prohibition and violating
+it are distinguishable again.
 
-### §S3 — Sync the six per-stack bundles
-`crucible-report-{arduino,bun,java,python,rust,vscode}/SKILL.md`: every `register` example
+### §S2 — Sync the register contract in `skills-src/crucible/SKILL.md`
+Replace the `register --agent <id> --phase <PHASE>` instruction (`:17`) with the released
+surface: `--role` required and enumerated; `--cycle` mandatory for the four TDD roles and
+refused (409) when absent; `ORCHESTRATOR`/`report` may register unbound; the agentId is
+free-form and never parsed for role; `--source` enumerated with absent legal. Keep the
+existing ingest-is-heartbeat statement intact — it is unaffected.
+
+Rewrite the second occurrence at `:35` on its MEANING, not just its flag name: the role is
+declared at registration from the case-exact enumeration, and identity (the free-form
+agentId, assigned by the dispatcher, never minted by the agent) is a separate axis. The
+current "phase is metadata, not identity" phrasing survives only as the identity half.
+
+### §S3 — Sync the five per-stack bundles with a live client
+`crucible-report-{arduino,bun,java,python,rust}/SKILL.md`: every `register` example
 carries `--role <ROLE>`, and every example whose role is `RED|GREEN|FIX|VERIFY` also
-carries `--cycle <id>`. No bundle retains `--phase`. The vscode bundle is included even
-though it has no live client (its documented surface must not teach a retired flag).
+carries `--cycle <id>`. No bundle retains `--phase`.
+
+`crucible-report-vscode/SKILL.md` has **no `register` example to sync** — confirmed at
+gap-analysis (§Surfaces, DRIFT-4) — and gets NO register-flag edit under this heading. It
+stays fully in scope for §S5's flag-surface guard, which asserts its exemption BY NAME
+rather than passing it by accident.
+
+It DOES need one prose fix, independently confirmed by Crucible (Sandesh #1373, measured on
+their tree 2026-09-07): `:54`'s comment reads `# No client-side cycle-id plumbing: the
+active cycle auto-attaches server-side.` CR-CRU-056 deleted that mechanism — cycle
+attachment is now an explicit `--cycle <id>` binding declared AT registration, which the
+server then stamps onto every subsequent ingest (the same registration-time-binding fact
+this CR's Context section already establishes from `STATUS-CONTRACT.md`). Rewrite the
+comment to state the binding is declared at registration, not that it auto-attaches.
 
 ### §S4 — Sync the project-layer conventions that restate the contract
 - `skills-src/memory-templates/java-orchestration.md:17` — `--phase` enumeration becomes
   the `--role` enumeration with the binding rule.
+- `skills-src/model-b/SKILL.md:45` — the naming-registry bullet's parenthetical becomes
+  "role declared via `--role`, never embedded in the id"; the ONE-identity rule and the
+  `<agent-type>-<project>` readability habit stay as they are.
 - `AGENTS.md` — two stale sentences. The agent-ids sentence reads as if the id encodes the
   phase: state that the id is a free-form readability habit, `--role` declares the role,
   and TDD roles bind `--cycle`. The plan-filing sentence still passes
@@ -119,12 +165,29 @@ though it has no live client (its documented surface must not teach a retired fl
 ### §S5 — The guard that would have caught it
 Port the transferable families of the inherited suite into a new stdlib `unittest` module
 `tests/test_skill_bundle_guards.py` — per-bundle v2-endpoint truth, no unmarked v1 legacy,
-ingest-is-heartbeat semantics, `tier` + `WORKFLOW_CYCLE` presence with zero
-`WORKFLOW_CYCLE_ID`, and real client verbs in examples — **strengthened with a flag-surface
-check** that the original lacked, and extended to the arduino bundle the original never
-covered. The two agent-protocol families are NOT ported: `heartbeat.sh` and a standalone
-`agent-protocol` skill are ratified out of existence and asserted absent by
-`tests/test_skills_handover.py:130-137` and `:360-384`.
+ingest-is-heartbeat semantics, `tier` + `WORKFLOW_CYCLE` presence, and real client verbs in
+examples — **strengthened with a flag-surface check** that the original lacked, and extended
+to the arduino bundle the original never covered. The two agent-protocol families are NOT
+ported: `heartbeat.sh` and a standalone `agent-protocol` skill are ratified out of existence
+and asserted absent by `tests/test_skills_handover.py:130-137` and `:360-384`.
+
+**The flag-surface check asserts POSITIVE facts about our own text, and reads no client.**
+The original framing — "fails when a flag is absent from the corresponding client's
+`--help`" — was cut at gap-analysis: it shells out to a sibling checkout, and the mitigation
+it required (an allow-list of Crucible's flags maintained in OUR test module) is a second
+source of truth for a surface we do not own. It rots silently, and a stale entry is
+indistinguishable from a real hit. The check therefore asserts, over `skills-src/` only:
+every `register` example carries `--role` with a value from the case-exact enumeration;
+every example whose role is `RED|GREEN|FIX|VERIFY` also carries `--cycle` (word-boundary
+match); and `--phase` appears nowhere. A fixture case carrying `--phase` proves the guard
+bites. Zero coupling, same protection — and the guard stays honest when Crucible's flags
+move next, because it never claimed to mirror them.
+
+`crucible-report-vscode` is covered for endpoint/heartbeat/tier truth and **explicitly
+exempted, by name, from the register-flag families** — it has no CLI register example and no
+client. The exemption is an assertion in the module (the bundle is named in an
+`API_PATH_BUNDLES` constant and the flag tests skip it deliberately), never an incidental
+zero-match that would pass whether or not the bundle had drifted.
 
 ### §S6 — The generator emits the retired flag too
 The bundle sweep above does not reach the sub-agent definitions, and they carry the same
@@ -144,12 +207,18 @@ roles — every generated agent is currently unable to register against a releas
 **Content sourced from Crucible directly (Sandesh #1364/#1366), not re-derived from their
 client `--help` alone** — their team hit the assigned-vs-minted agent-id defect themselves (5
 permanently mis-attributed runs) and their tier-guidance rewrite is validated against their
-own six-stack fleet. Two independently confirmed corrections to the pre-existing drift this
-section originally measured: the deployed `~/.claude/agents/rust-*-agent.md` files are
-**neither Model B's nor Crucible's** — no `generator/stacks/rust.toml` exists in this repo, the
-files are plain (non-symlinked), and Crucible confirmed their own rust set is separately
-located and already fixed. They are flagged to the user as an orphaned set, out of this CR's
-scope, never silently absorbed here.
+own six-stack fleet. One correction to the drift this section originally measured: the
+deployed `~/.claude/agents/rust-*-agent.md` files are **not** Crucible's — no
+`generator/stacks/rust.toml` exists in this repo, the files are plain (non-symlinked), and
+Crucible confirmed their own rust set is separately located and already fixed.
+
+**Rust is out of THIS CR's scope because CR-MDB-024 owns it — not because it is orphaned.**
+The earlier "orphaned set" framing was retracted at gap-analysis: design-lineage tracing
+(`DN-rationalization-plan-review.md:72`, `CR-MDB-008:24`) shows the four rust definitions
+PREDATE Model B and were a deliberate wave-1 descope justified by size, and the user ruled
+that rust IS a language stack and belongs in the generator. CR-MDB-024 (which depends on
+this CR) creates `generator/stacks/rust.toml`. Nothing in this CR may assert that file's
+absence.
 
 **§S6a — the registration line, shared across all four templates.** Each template's register
 step becomes `--role <ROLE>` with the case-exact enumeration, and the four TDD templates
@@ -198,13 +267,29 @@ clean; no generated file is hand-edited.
 ### §S1
 - [ ] `tests/test_crucible_skill.py` contains no assertion requiring the substring
       `--phase`; it asserts `--role` present in `skills-src/crucible/SKILL.md`.
+- [ ] `test_ac7_repo_agents_md_no_longer_claims_workflow_cycle_id_injection` no longer
+      asserts a bare `AGENTS.md.count("WORKFLOW_CYCLE_ID") == 0`. Measured at gap-analysis:
+      both occurrences are META — `AGENTS.md:135` describes the grep-gate family and `:138`
+      is the baseline sentence naming this very failure — while the guarantee itself HOLDS
+      (zero occurrences under `modelb_axi/`, `scripts/`, `generator/`, `skills-src/`; the
+      only other mention, `hooks-src/schema.md:49`, likewise asserts zero). The gate as
+      written forbids naming what it forbids. Re-point it at the CLAIM (no sentence may say
+      the wrapper injects `WORKFLOW_CYCLE_ID`) or delete it in favour of the product-surface
+      check that already passes; a second sanctioned re-pin in the same file as §S1's.
+- [ ] `python3 -m unittest discover -s tests -t .` shows **zero failures** — this CR clears
+      the last item in the recorded 240/1F/12S baseline, and `AGENTS.md`'s baseline sentence
+      is updated to say so.
 
 ### §S2 / §S3 / §S4
-- [ ] Zero occurrences of `--phase` under `skills-src/`, `contracts/`, and `AGENTS.md`.
+- [ ] Zero occurrences of `--phase` under `skills-src/`, `contracts/`, and `AGENTS.md` —
+      covering all NINE measured surfaces, explicitly including `skills-src/crucible/SKILL.md`
+      lines 17 AND 35 and `skills-src/model-b/SKILL.md:45`.
 - [ ] Every `register` example under `skills-src/` carries `--role` with a value from
       `{RED, GREEN, FIX, VERIFY, ORCHESTRATOR, report}`.
 - [ ] Every `register` example under `skills-src/` whose `--role` is one of
-      `{RED, GREEN, FIX, VERIFY}` also carries `--cycle`.
+      `{RED, GREEN, FIX, VERIFY}` also carries `--cycle`, matched on a WORD BOUNDARY so that
+      `--cycles` (the `plan-file` flag, present at `crucible/SKILL.md:95` and
+      `model-b/SKILL.md:47`) can never satisfy it.
 - [ ] `skills-src/crucible/SKILL.md` states, in substance: the case-exact `--role`
       enumeration; that `--cycle` is required for `RED|GREEN|FIX|VERIFY` **by the server,
       not by argparse**, refused 409; that a missing or out-of-enum role is refused 400;
@@ -223,16 +308,26 @@ clean; no generated file is hand-edited.
 - [ ] Documented Crucible release facts match #1359 exactly where stated: latest release
       `0.1.2`; install entry point `crucible-axi install [--target-dir <dir>]` with default
       `~/.crucible`; run verb `crucible-axi serve`.
+- [ ] `crucible-report-vscode/SKILL.md:54`'s comment no longer claims the active cycle
+      "auto-attaches server-side"; it states the binding is declared explicitly via
+      `--cycle <id>` at registration (CR-CRU-056, confirmed Sandesh #1373).
 
 ### §S5
 - [ ] `tests/test_skill_bundle_guards.py` exists, is stdlib `unittest`, spawns no
       subprocess and starts no server.
+- [ ] It reads no client source or `--help` output, and contains no allow-list mirroring
+      Crucible's flag surface — every assertion is about text under `skills-src/`.
 - [ ] It covers all seven owned bundles including arduino.
-- [ ] It fails when any `register` example under `skills-src/` names a flag absent from the
-      corresponding client's `--help` surface — asserted by a fixture case carrying
-      `--phase`.
-- [ ] It asserts zero `WORKFLOW_CYCLE_ID` occurrences under `skills-src/` (the guard the
-      origin suite called mandatory).
+- [ ] It fails when any `register` example under `skills-src/` carries `--phase`, omits
+      `--role`, uses an out-of-enum role, or omits `--cycle` on a TDD role — each asserted by
+      a fixture case, so the guard is proven to bite rather than assumed to.
+- [ ] `crucible-report-vscode` is named in an explicit API-path exemption constant and is
+      excluded from the register-flag families BY NAME; the module asserts the exemption
+      exists, so the bundle can never pass those families by having no register example.
+- [ ] It asserts zero `WORKFLOW_CYCLE_ID` occurrences under `skills-src/` — scoped to
+      register/ingest examples and prose that CLAIMS the variable is set, not a bare
+      whole-tree string count, which would false-red the moment a bundle documents the
+      retired variable (the exact defect §S1 re-pins in `test_crucible_skill.py`).
 - [ ] No test asserts the existence of `skills-src/agent-protocol/` or any `heartbeat.sh`.
 
 ### §S6
@@ -257,24 +352,30 @@ clean; no generated file is hand-edited.
       systems and the ArduinoFake caveat; bun and python name a project-DECLARED target
       (never a hand-picked file list); quarkus names the surefire/failsafe split and forbids
       renaming `*IT` to `*Test`.
-- [ ] `generator/stacks/rust.toml` does NOT exist and is not created by this CR — the four
-      `~/.claude/agents/rust-*-agent.md` files measured during this CR's correspondence are
-      confirmed orphaned by both Model B's and Crucible's generators and are explicitly out
-      of scope.
+- [ ] This CR neither creates nor asserts the absence of `generator/stacks/rust.toml`.
+      Rust belongs to CR-MDB-024 (which depends on this CR); the user ruled rust IS a
+      language stack, so an AC asserting that file's non-existence would break its own
+      dependent CR on landing and would re-assert a retracted "orphaned" claim.
 
 ## Estimated size
 
-9 documentation files edited (1 routing skill, 6 bundles, 1 memory template, `AGENTS.md`,
-`contracts/crucible-envelope.md`), 4 role templates edited, 4 stack TOMLs gain a
-`tier_guidance` key each, 16 agent definitions regenerated, 1 test re-pinned, 1 test module
-added (~5 methods). Docs, templates and tests only; no `modelb_axi/` code change.
+10 documentation files edited (1 routing skill, 6 bundles — 5 register-flag-synced plus
+vscode's single auto-attach comment fix, confirmed by Sandesh #1373 — 1 memory template, 1
+orchestration skill (`skills-src/model-b/SKILL.md`, added at gap-analysis — a second
+`--phase` occurrence lives there), `AGENTS.md`, `contracts/crucible-envelope.md`), 4 role
+templates edited, 4 stack TOMLs gain a `tier_guidance` key each, 16 agent definitions
+regenerated, 2 assertions re-pinned in `tests/test_crucible_skill.py` (the `--phase`
+substance re-pin and the `ac7` `WORKFLOW_CYCLE_ID` self-trip, added at gap-analysis), 1 test
+module added (~7 methods, widened for the vscode exemption and the flag-surface family).
+Docs, templates and tests only; no `modelb_axi/` code change.
 
 ## Risk
 
-- The flag-surface guard must read the client `--help` surface without invoking a server.
-  Shelling `--help` is safe (no network) but couples the suite to a sibling checkout —
-  scope the guard to a declared allow-list of flags maintained in the test module, and let
-  the CR-MDB-020 anchoring work (now filed) decide how the client is located.
+- The flag-surface guard reads NO client: it asserts positive facts about our own bundle
+  text (§S5). The rejected alternative — shelling the client `--help`, mitigated by an
+  allow-list of flags maintained in our test module — was cut at gap-analysis as a second
+  source of truth for a surface Model B does not own. CR-MDB-020 decides how a client is
+  LOCATED; nothing in this CR needs one.
 - Re-pinning `tests/test_crucible_skill.py:169` is a sanctioned amendment, not a
   convenience: the assertion is inverted, never deleted.
 
