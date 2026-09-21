@@ -34,18 +34,11 @@ Queue rows enumerate the whole delivery (structure only). **Live status lives on
 | [CR-MDB-021](CR-MDB-021-chezmoi-retirement.md) | Retire chezmoi introspection from the test suite: eight false-green release gates removed, policy self-enforcing | 5 | — |
 | [CR-MDB-026](CR-MDB-026-watcher-launch-supervision.md) | The wake watcher must stay alive: supervised process + `restart: on-failure`, and the three-exit taxonomy (mail / timeout / lock-conflict) the bundles conflate | 5 | — |
 | [CR-MDB-025](CR-MDB-025-omp-harness-support.md) | OMP as a first-class deploy target: neutral agent-definition schema + per-harness emitters, agent-defs as an installer asset class, OMP hook emitter, `omp` in the roster | 5 | 017 |
+| [CR-MDB-027](CR-MDB-027-subagent-dispatch-on-pi.md) | Sub-agent dispatch on Pi: decide what provides it, given Pi core has none (decision CR — blocks the CR-025 rewrite) | 5 | — |
 | [CR-MDB-028](CR-MDB-028-worktree-flow-scheduling-migration.md) | Retire `worktree-flow.py`'s DB half: scheduling moves to Crucible's API (P0 — above the routing strategy, user ruling) | 5 | 022 |
-| [CR-MDB-012](CR-MDB-012-release-1.0.0.md) | Release 1.0.0: full verification suite (PRD §4) + archive/mapping.md + master tag | 5 | 006, 007, 008, 010, 011, 013, 014, 016, 017, 018, 019, 020, 021, 022, 023, 024, 025, 026, 028 |
+| [CR-MDB-012](CR-MDB-012-release-1.0.0.md) | Release 1.0.0: full verification suite (PRD §4) + archive/mapping.md + master tag | 5 | 006, 007, 008, 010, 011, 013, 014, 016, 017, 018, 019, 020, 021, 022, 023, 024, 025, 026, 027, 028 |
 
 **— v1.0.0 ships here —** (release CR bundles the final gates; no close-out wave)
-
-## Wave 2 — the Pi migration (post-1.0.0)
-
-| CR | Title | Wave | Depends on |
-|---|---|---|---|
-| [CR-MDB-027](CR-MDB-027-subagent-dispatch-on-pi.md) | Sub-agent dispatch on Pi: decide what provides it, given Pi core has none | 2 | — |
-
-Wave 2 exists because the harness target changed by user ruling (`docs/research/DN-multi-harness-deploy-model.md` §D13/§D14: target Pi, drop Claude Code). **Nothing here blocks 1.0.0**, which ships on the current harness. CR-MDB-025 is re-targeted from OMP to Pi and its rewrite depends on CR-MDB-027's ruling; the Pi package/distribution CR follows as 028.
 
 ## Setup tasks (pre-wave — not a wave; a wave is a grouping of CRs)
 

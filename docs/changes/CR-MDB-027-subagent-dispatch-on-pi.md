@@ -2,13 +2,15 @@
 
 **Status:** PENDING (design decision required before any Pi re-spec can proceed)
 **Type:** design
-**Priority:** P0 for the Pi migration — **not** for release 1.0.0, which ships on the current
-harness. Nothing in wave 2 depends on this; CR-MDB-025's REWRITE does.
+**Priority:** P1 — **in release 1.0.0, wave 2** (user ruling 2026-09-21, moved in from post-1.0.0).
+It is a DECISION CR, not a build: it costs one measurement and one recorded ruling, which is why
+it fits inside the release. The implementation that follows is a separate CR and is NOT in 1.0.0.
 **Depends on:** `docs/research/DN-multi-harness-deploy-model.md` §D13/§D14/§D15 (the Pi ruling and
 the measurements). No code dependency.
-**Blocks:** the CR-MDB-025 rewrite (OMP → Pi), and any emission of agent definitions to Pi.
+**Blocks:** the CR-MDB-025 rewrite (OMP → Pi), and any emission of agent definitions to Pi. It is
+sequenced immediately before 025 on the board for that reason.
 **Labels:** generator, harness, agent-definitions, pi, design, workflow
-**Phase:** Wave 2 (post-1.0.0 in effect — see Priority)
+**Phase:** Wave 5 (repo queue) · release 1.0.0 wave 2 (Crucible board)
 **Design reference:** DN §D15.4 (measured: Pi core has no sub-agent dispatch) · PRD §D6 (role
 templates × per-stack params generate the agent set — the design this CR must preserve) ·
 `skills-src/model-b/references/sub-agent-procedure.md` (the binding procedure every dispatched
@@ -108,8 +110,11 @@ separate CR whose size is route-dependent and differs by an order of magnitude b
 - Choosing route (i) without §S1 makes an unmeasured third-party package load-bearing for every CR
   the project will ever run. Choosing route (ii) without scoping makes Model B the owner of an
   agent runtime, which §D11 called a non-goal for good reasons.
-- **1.0.0 is not blocked either way.** It ships on the current harness. Treating this as urgent
-  would import a migration risk into a release that does not need it.
+- **1.0.0 now CARRIES this decision** (user ruling 2026-09-21). That is affordable precisely
+  because this is a decision CR — one measurement, one recorded ruling — and it is bounded that
+  way deliberately. The IMPLEMENTATION that follows the ruling is a separate CR and is explicitly
+  **not** in 1.0.0. If the chosen route is (ii), build-your-own-dispatch, that build must not be
+  quietly pulled into the release on the grounds that its parent decision was.
 
 ## Non-goals
 
