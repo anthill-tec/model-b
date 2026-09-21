@@ -41,9 +41,33 @@ the skill name it.
 
 **A third coupling must be recorded, not deepened.** The ChangeSet-filing step at `:35` runs
 through `worktree-flow.py cs`, which is backed by `schedule_db.py` — the transitional
-scheduling DB that Crucible supersedes when their **0.2.0** ships (unreleased; never to be
-cited as available). This CR keeps that instruction working and adds nothing to it, so the
-skill needs no rewrite when the storage moves.
+scheduling DB that Crucible supersedes.
+
+**AMENDED 2026-09-21 (gap-analysis of CR-MDB-028). Two claims in the original paragraph are now
+false, and both are corrected here rather than left to be discovered at merge:**
+
+1. **"unreleased; never to be cited as available" is STALE.** Crucible 0.2.0 shipped; production
+   runs **0.2.2** and its roadmap verbs (`queue`, `cr-plan`, `wave-sequence`, `cr-depends`,
+   `next`, `release-propose`) are live and in use — this project's own 28 CRs sit on that board.
+   Same defect class as CR-MDB-017's released-only rule, corrected the same day.
+2. **"the skill needs no rewrite when the storage moves" is FALSE under CR-MDB-028**, which
+   REMOVES the `cs` verb outright. Both CRs are in release 1.0.0 wave 2, with 028 sequenced first
+   (`seq 2001`) and this CR fifth — so left uncorrected, this CR would adopt a published skill
+   instructing a verb that no longer exists.
+
+**The correction, and it is small.** `cs --type maintenance --findings …` was a CONVENIENCE
+performing two independent acts in one call. They separate cleanly, because the ledger half never
+went through `worktree-flow` at all (`rust-code-health.py ledger assign` is standalone; its
+full-sync path imports `schedule_db` directly at `:345`). So the skill's `:35` step becomes an
+explicit **two-step**:
+
+- `python3 ~/.crucible/clients/python-crucible.py cr-plan --cr <CR> --title <t> --release <r> --wave <w> --agent <id>` — files the CR
+- `python3 ~/.agents/scripts/rust-code-health.py ledger assign --slice <CR> --ids F-…,DS-…` — stamps the findings
+
+The ledger itself is unchanged: `id`/`status`/`slice`/`slice_history[]`, the single-active-owner
+invariant, `assign`/`sync`, all untouched. Crucible V2 has no finding-level entity and this CR
+does not ask it to grow one — the ledger stays a Model B tool.
+
 
 **Bundle accounting is currently wrong in two places.** `skills-src/` holds **14** bundles
 today — 7 Model B-owned (`model-b`, `crucible`, `cr-authoring`, `git-workflow`, `chezmoi`,
@@ -120,10 +144,20 @@ down where the next reader will look. No new coupling to `schedule_db.py` is int
       asserted against a built artifact.
 
 ### §S5
-- [ ] The ChangeSet-filing section names the transitional scheduling DB and Crucible's 0.2.0
-      as its successor, and no Model B document presents that release as shipped.
-- [ ] `grep` finds no new `schedule_db` invocation introduced by this CR beyond the existing
-      `worktree-flow.py cs` instruction.
+- [ ] **AMENDED 2026-09-21.** The ChangeSet-filing step teaches the explicit TWO-STEP —
+      `python-crucible.py cr-plan` to file the CR, `rust-code-health.py ledger assign` to stamp
+      the findings — and contains **zero** references to `worktree-flow.py cs`, which CR-MDB-028
+      removes.
+- [ ] No Model B document presents Crucible 0.2.0 as unreleased. It shipped; production runs
+      **0.2.2**. (The superseded AC asserted the opposite and would now fail against reality.)
+- [ ] `grep` finds no `schedule_db` invocation introduced by this CR — the previous carve-out for
+      "the existing `worktree-flow.py cs` instruction" is void, because that instruction is gone.
+- [ ] The ledger surface this CR documents is unchanged by it: `assign`/`sync`, the
+      `id`/`status`/`slice`/`slice_history[]` schema, and the domain-generic path rule are
+      described as they are, not as this CR would like them.
+- [ ] **CROSS-CR with CR-MDB-028:** neither CR may merge assuming the other's wording. Whichever
+      lands second re-greps for `worktree-flow.py cs` across `skills-src/` and `scripts/` and
+      finds zero.
 
 ## Estimated size
 

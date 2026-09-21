@@ -74,7 +74,7 @@ Measured in `scripts/worktree-flow.py`:
 
 | Verb | schedule_db use | Behaviour when absent | Crucible replacement (0.2.2, measured) |
 | --- | --- | --- | --- |
-| `cs` | write a ChangeSet row | hard `sys.exit` | `cr-plan --cr --title --release --wave`, `cr-depends --cr --on`, `wave-sequence --release --wave --crs` |
+| `cs` | write a ChangeSet row **and** stamp finding→CR ownership in one act | hard `sys.exit` | **Splits into two commands**: `cr-plan --cr --title --release --wave` files the CR; `rust-code-health.py ledger assign --slice <CR> --ids F-…,DS-…` stamps the findings. See §S6 — the ledger half was NOT lost, it was always a separate tool |
 | `show` | read one CR's metadata | hard `sys.exit` | `queue` (registered CR rows) / `status` (plans + cycles) |
 | `reconcile` | validate DB vs git | hard `sys.exit` | **no replacement — the verb dies with the DB** (there is no local index left to reconcile) |
 | `next` | readiness | degrade → `DRAINED` + warning | `next` — and it answers the SAME vocabulary, `NEXT / HOLD / DRAINED` |
@@ -104,13 +104,18 @@ Drop the `import schedule_db as _sdb` seam and the five verbs' DB paths. `cs`, `
 than an absent verb, because it reads as a broken tool rather than a moved responsibility. Their
 help text names the Crucible verb that replaces them.
 
-### §S2 — `next` delegates to Crucible, or is removed
+### §S2 — `next` is REMOVED, not delegated (decided at gap-analysis)
 
-Two acceptable outcomes, and the CR must choose one at implementation with the reason recorded:
-either `worktree-flow next` shells the installed client and relays its envelope (one board, one
-answer, callers unchanged), or it is **removed** and every caller is repointed at
-`python-crucible.py next`. Delegation keeps existing muscle memory; removal keeps Model B out of
-the business of proxying another project's API. **Do not keep a local answer.**
+The earlier draft deferred this binary to implementation. Deferring a costed choice past the
+branch cut is how it gets made by whoever picks up GREEN, so it is settled here: **remove**.
+
+Reasons, in order of weight: delegation would have Model B shell another project's client and
+inherit its absence as a runtime failure mode, which contradicts the standing "Model B maintains
+no client code" directive in spirit if not in letter; it keeps a second name for one answer alive
+indefinitely; and the callers are few and already enumerated (§S7 — three files, four references).
+Removal costs one repoint each and leaves exactly one board.
+
+`worktree-flow next` is deleted. Every caller names `python-crucible.py next` directly.
 
 ### §S3 — Repoint every published instruction
 
@@ -153,7 +158,73 @@ So the disposition splits:
 exactly the kind of thing this project has repeatedly paid for; it is recorded here so the next
 reader does not re-derive the tidier, wrong conclusion.
 
+### §S6 — The audit-cull ledger: what `cs` actually coupled, measured
+
+**Added at gap-analysis 2026-09-21, and it CORRECTS an overstatement made earlier in that same
+analysis.** The first reading claimed removing `cs` would "silently sever the code-health ledger's
+board mirror". Reading the code rather than the call site shows that is wrong, and the accurate
+version matters because it decides whether `cs` is removable at all.
+
+**What the ledger is.** A git-committed JSONL file at `docs/research/assets/audit-cull-ledger.jsonl`
+(`<domain>-audit-ledger.jsonl` for any non-cull domain — the mechanism is domain-generic since
+2026-07-06). One row per FINDING (`F-*`, `DS-*`) discovered by `rust-dead-scan.py` /
+`rust-code-health.py`, carrying `id`, `status` (`PROPOSED`/`APPROVED`/…), `slice` (the CR that
+currently owns it) and `slice_history[]` of `{cr, assigned, outcome, closed}` — the finding's CR
+lineage across time, with a single-active-owner invariant enforced by `_close_hist`/`_open_hist`
+(`rust-code-health.py:249-265`, `:299-318`).
+
+**What Crucible V2 does not have.** A *finding* is sub-CR. V2's atoms are CRs, plans, cycles, runs,
+gates and milestones; there is no row for an individual defect, therefore no finding→CR assignment,
+and no across-time finding lineage. `cr-supersede` records CR→CR succession, not this. That gap is
+real but it is **not created by this CR** — the ledger has always lived in a Model B tool, never in
+the board.
+
+**What `cs` actually did, and why removal is still safe.** `worktree-flow cs --type maintenance
+--findings …` was a CONVENIENCE that performed two independent acts in one call: file the CR, and
+stamp the findings. Measured facts that make the split harmless:
+
+- `rust-code-health.py ledger assign --slice <CR> --ids …` performs the stamping **standalone**
+  and does not call `worktree-flow` at all.
+- `rust-code-health.py:341-359`'s full-sync path imports `schedule_db` **directly** (`:345`) to
+  read board state; it never invokes `worktree-flow`. §S5 keeps that module, so this path is
+  untouched by this CR.
+- `ledger sync --slice X --db-state STATE` works with no DB whatsoever.
+
+So the only thing lost is the two-in-one convenience, and the only thing degraded is the automatic
+board→ledger fan-out — which for Model B fans out from a DB that has always been empty.
+
+**Consequence for §S1:** `cs` IS removable, conditional on the code-health skill's ChangeSet-filing
+step being rewritten as the explicit two-step. That rewrite is CR-MDB-023's, not this CR's — see
+the coordination requirement in the ACs.
+
+### §S7 — Measured consumer list (the pre-removal grep, performed at gap-analysis)
+
+§Risk said "grep the repo and the bundles before removal". Done 2026-09-21; recording the result
+here so it is discharged by an AC rather than repeated:
+
+| Consumer | Verb(s) | Disposition |
+| --- | --- | --- |
+| `skills-src/bootstrap/SKILL.md:156,201` | `next` | repoint at Crucible (§S3) |
+| `skills-src/model-b/references/orchestration-track.md:10` | `next` | repoint (§S3) |
+| `skills-src/memory-templates/rust-orchestration.md:14,18,20` | `next`, `reconcile`, `cs` | repoint `next`; delete the `reconcile` and `cs` lines (§S3) |
+| `scripts/rust-code-health.py:30` (docstring) | `cs` | rewrite as the two-step (§S6) |
+| **CR-MDB-023** (`:26`, `:42-46`, `:125-126`) | `cs` | **cross-CR — see ACs.** 023 adopts a skill whose `:35` instructs `cs` |
+| `archive/wave2/**` | all | immutable history; excluded |
+
 ## Acceptance criteria
+
+- [ ] **§S7: every consumer in the measured table is dispositioned** — `bootstrap/SKILL.md` ×2,
+      `orchestration-track.md` ×1, `rust-orchestration.md` ×3, `rust-code-health.py:30` ×1. The
+      assertion names the files and the count (7 live references), so fixing one cannot satisfy it.
+- [ ] **§S6: `rust-code-health.py:30`'s docstring teaches the TWO-STEP** — `cr-plan` to file the
+      CR, `ledger assign` to stamp the findings — and no longer cites `worktree-flow.py cs`.
+- [ ] **§S6: the ledger itself is untouched.** `ledger assign`, `ledger sync --slice X --db-state
+      STATE`, and the JSONL schema (`id`/`status`/`slice`/`slice_history[]`) are unchanged, proven
+      by their existing tests passing untouched. This CR removes a convenience, not a capability.
+- [ ] **CROSS-CR: CR-MDB-023 must not adopt a skill instructing a removed verb.** 023's `:35`
+      ChangeSet-filing step is rewritten as the two-step BEFORE either CR merges, and 023's claim
+      that "the skill needs no rewrite when the storage moves" is corrected. Whichever CR merges
+      second verifies the other's text; neither may land assuming the other's wording.
 
 - [ ] No `import schedule_db` (or `_sdb` reference) remains in `scripts/worktree-flow.py`.
 - [ ] `cs`, `show` and `reconcile` are removed, and their absence is documented with the Crucible
