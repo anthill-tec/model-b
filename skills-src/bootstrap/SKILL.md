@@ -148,12 +148,13 @@ you recover it — both roles recover.
 
 ## Step 3A — MAINLINE: load the queue, report to the USER
 
-1. **Load the last-held implementation-queue status** via the `~/.agents/scripts/worktree-flow.py`
-   helpers (the live git-derived board IS the source of truth — never raw `sqlite3`,
-   never the README):
-   - `worktree-flow.py status` — full board: per-CR worktrees (ahead/behind, latest
-     committed phase) + the ChangeSet-DB lane plan + inbox.
-   - `worktree-flow.py next` — readiness (what's `depends_on`-clear vs held).
+1. **Load the last-held implementation-queue status** from the two boards that own it
+   (never raw `sqlite3`, never the README):
+   - `~/.agents/scripts/worktree-flow.py status` — the git-derived board: per-CR
+     worktrees (ahead/behind, latest committed phase) + the merge lock.
+   - `python3 ~/.crucible/clients/python-crucible.py next [--track "Track N - <Project>"]`
+     — readiness: `NEXT <cr>` / `HOLD <cr>` (`depends_on` not all COMPLETED) / `DRAINED`.
+     Queue membership, release, wave, seq and dependencies live in Crucible (CR-MDB-028).
    (worktree-flow now emits a TOON envelope on stdout; the human board is on stderr.)
 2. **Check which Tracks are up and running** — `sandesh_addressbook(project_id="<Project>")`
    is Mainline's track-liveness probe. Read the flags per track:
@@ -197,8 +198,8 @@ you recover it — both roles recover.
      awaiting confirmation to continue."*
    - If **no carried work** (idle): *"Track N online, idle, awaiting assignment."*
 4. **Then HOLD** — idle on the Sandesh watcher, **zero LLM turns, never self-poll**.
-   Mainline disposes and sends a `directive` that wakes you. Do not run
-   `worktree-flow next` in a poll loop; do not self-schedule.
+   Mainline disposes and sends a `directive` that wakes you. Do not poll any board
+   (`python-crucible.py next` included) in a loop; do not self-schedule.
 5. A Track's SOLE contact is Mainline. Escalations, questions, status — all go to
    Mainline, never the user directly.
 

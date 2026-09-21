@@ -46,9 +46,11 @@ Universal rules for ANY orchestrator, ANY project/stack. Verbose detail + failur
 - Merge sign-off NAMES the integration test that proves the call path; unwired/unit-in-disguise → FIX_REQUIRED.
 
 ## Worktree isolation (basics)
+- **`worktree-flow` owns what it derives from git** (worktrees, ahead/behind, phase, merge). **Crucible owns what used to live in the DB** (queue membership, release, wave, seq, dependencies, readiness) — CR-MDB-028.
+- Readiness is `~/.crucible/clients/python-crucible.py next`'s answer (`NEXT` / `HOLD` / `DRAINED`) — never a local board, never a schedule md.
 - Each parallel CR gets its own working folder via the worktree tool; the merge is a serialized critical section.
 - Once your worktree exists, the MAIN tree is HANDS-OFF — all CR-coupled edits land in the worktree.
-- **Root the SESSION in the worktree (`EnterWorktree`) right after `start`** so you AND every sub-agent inherit its cwd — don't rely on per-command / per-agent `cd` (that's what leaks). ONE exception: `worktree-flow finish` removes the worktree + merges to develop, so it runs from the integration tree — `ExitWorktree` before calling it. `worktree-flow` status/next/progress resolve the main tree from git → run them FROM the worktree, never cd to develop.
+- **Root the SESSION in the worktree (`EnterWorktree`) right after `start`** so you AND every sub-agent inherit its cwd — don't rely on per-command / per-agent `cd` (that's what leaks). ONE exception: `worktree-flow finish` removes the worktree + merges to develop, so it runs from the integration tree — `ExitWorktree` before calling it. `worktree-flow` status/sync resolve the main tree from git → run them FROM the worktree, never cd to develop.
 - You own ONLY your CR — never run another CR's finish/merge or edit its tree.
 - Sub-agents default cwd to the MAIN repo root: every dispatch prompt makes the agent `cd` + assert `git rev-parse --show-toplevel` == worktree before any write; use absolute worktree paths; re-check the main tree is clean after each agent returns.
 - Throwaway/scratch/probe files → `/tmp` via `mktemp` (absolute), NEVER the repo or any worktree.
