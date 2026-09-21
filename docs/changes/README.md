@@ -33,7 +33,7 @@ Queue rows enumerate the whole delivery (structure only). **Live status lives on
 | [CR-MDB-024](CR-MDB-024-rust-stack-adoption.md) | Rust as a fifth generated stack: close the orphaned `~/.claude/agents/rust-*` gap CR-CRU-042 assigns to Model B | 5 | 017 |
 | [CR-MDB-021](CR-MDB-021-chezmoi-retirement.md) | Retire chezmoi introspection from the test suite: eight false-green release gates removed, policy self-enforcing | 5 | — |
 | [CR-MDB-026](CR-MDB-026-watcher-launch-supervision.md) | The wake watcher must stay alive: supervised process + `restart: on-failure`, and the three-exit taxonomy (mail / timeout / lock-conflict) the bundles conflate | 5 | — |
-| [CR-MDB-025](CR-MDB-025-omp-harness-support.md) | OMP as a first-class deploy target: neutral agent-definition schema + per-harness emitters, agent-defs as an installer asset class, OMP hook emitter, `omp` in the roster | 5 | 017 |
+| [CR-MDB-025](CR-MDB-025-pi-agent-definitions.md) | Pi as the deploy target for agent definitions: neutral schema + `_emit_pi()`, agent-defs as an installer asset class → `~/.agents/agents/` (re-specced 2026-09-21; OMP dropped) | 5 | 017, 024, 027 |
 | [CR-MDB-027](CR-MDB-027-subagent-dispatch-on-pi.md) | Sub-agent dispatch on Pi: decide what provides it, given Pi core has none (decision CR — RULED 2026-09-21: `pi-archimedes`, DN §D16; unblocks the CR-025 rewrite) | 5 | — |
 | [CR-MDB-028](CR-MDB-028-worktree-flow-scheduling-migration.md) | Retire `worktree-flow.py`'s DB half: scheduling moves to Crucible's API (P0 — above the routing strategy, user ruling) | 5 | 022 |
 | [CR-MDB-012](CR-MDB-012-release-1.0.0.md) | Release 1.0.0: full verification suite (PRD §4) + archive/mapping.md + master tag | 5 | 006, 007, 008, 010, 011, 013, 014, 016, 017, 018, 019, 020, 021, 022, 023, 024, 025, 026, 027, 028 |
@@ -279,3 +279,18 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   contradiction and are struck; 025 stays on 012's dependency list. Model resolution defect found in passing:
   archimedes passes `model:` literally as `--model`, so today's `sonnet`/`inherit` resolve to
   nothing and fall through to the parent's model by accident — the 025 emitter's §S3 fixes it.
+- 2026-09-21 — **USER RULING: OMP is NOT a target — not primary, not transitional.** The target set
+  is Pi alone (DN §D13/§D14 already dropped Claude Code; §D14's "OMP transitional, since the
+  orchestrator runs on it today" is overtaken — this orchestrator runs on Pi 0.86.1 with
+  `pi-archimedes`). **CR-MDB-025 RE-SPECCED** as `CR-MDB-025-pi-agent-definitions.md` (file
+  renamed; the OMP spec is git history and not a contract source): one neutral dict, ONE emitter
+  `_emit_pi()` (no Claude Code emitter — §D14 retired byte-identity), `[frontmatter]` free-text
+  blocks → structured `[roles.<role>]` tables, explicit tool map (`Glob→find`, drop-with-reason),
+  `model:` verbatim-or-omitted with every value EMPTY until the Tier-1 `CR-RND` sets route ids,
+  asset class `.agents/agents` (once, user-scope, no symlink; §D3 boundary — `inbox-analyst.md`
+  byte-identical after `--force-managed`), §S5 asserts roster/hooks UNCHANGED and a grep gate for
+  zero `~/.omp`/`~/.claude` paths under `modelb_axi/`+`generator/`, §S6 runtime proofs (archimedes
+  discovery from the sandbox cwd; a real dispatch into a fresh worktree to measure the `-p`
+  trust gate). Deps now 017, 024, 027. Three §S0 questions are parked for gap-analysis: who owns
+  the template bodies' `~/.claude/skills` citations (020 or 025), which test pins are §D14
+  amendments, and whether `skills:` gets a body-line replacement.

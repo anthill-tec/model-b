@@ -1,7 +1,7 @@
 # DN — The multi-harness deploy model: one neutral source, per-harness targets
 
 **Status:** ADOPTED (user-ruled 2026-09-18; §D16 added 2026-09-21)
-**Drives:** CR-MDB-025 (OMP target), CR-MDB-020 (client-path anchoring), CR-MDB-018 (discovery
+**Drives:** CR-MDB-025 (Pi agent definitions), CR-MDB-020 (client-path anchoring), CR-MDB-018 (discovery
 capture), CR-MDB-014 (universal installer — the flow this extends), CR-MDB-019 (hook runtime)
 **Supersedes in part:** CR-MDB-025's claim that "skills already work on OMP — no work required"
 (user correction 2026-09-18; see §D2)
@@ -404,8 +404,10 @@ that can mix local and cloud lanes** — which is the same thesis Roundhouse its
 (switchyard routing + lemonade serving).
 
 **Consequence for this DN: the emitter count DROPS rather than rises.** §D13 worried about a third
-emitter. With Claude Code dropped, the target set is Pi alone (OMP transitional, since the
-orchestrator runs on it today). §D1's "Claude Code output must stay byte-identical" constraint is
+emitter. With Claude Code dropped, the target set is Pi alone. (This section first read "OMP
+transitional, since the orchestrator runs on it today" — **overtaken 2026-09-21 by user ruling:
+OMP is NOT a target, not even transitional**; the orchestrator now runs on Pi 0.86.1 with
+`pi-archimedes`.) §D1's "Claude Code output must stay byte-identical" constraint is
 RETIRED — it existed because Claude Code was the only working target. The 29 `~/.claude/agents/`
 files become unowned legacy under §D3: never written, never deleted.
 
@@ -547,7 +549,8 @@ nested dispatch. Agent files: `.md` + frontmatter `name`/`description` (required
    shared store §D15.1 credits Pi for on skills. The per-harness agent-definition copy §D2/§D6
    forced for OMP is NOT needed on Pi; the installer asset class CR-MDB-025 §S4 introduces
    deploys once, user-scope, no symlink (the `.agents/skills` and `.agents/scripts` shape).
-2. **`_emit_pi()` replaces `_emit_omp()` in the CR-025 rewrite:** `tools` CSV of Pi core names
+2. **`_emit_pi()` is the ONE emitter in the CR-025 re-spec** (no `_emit_omp()`, no
+   `_emit_claude_code()` — §D14 retired byte-identity): `tools` CSV of Pi core names
    through an explicit translation map (drop-with-reason, never a plausible rename); `model` is a
    concrete `switchyard/<route-id>` per §D15.5 or omitted for `inherit` (archimedes passes it
    literally as `--model`, so `sonnet` today resolves to nothing); `effort` → `thinking`;
@@ -563,14 +566,14 @@ nested dispatch. Agent files: `.md` + frontmatter `name`/`description` (required
    Accepted because the dependency surface is four frontmatter keys plus one directory, and
    §D1 makes the provider an emitter target — a later swap to route (i) or (ii) is one emitter.
 
-**Release scope, ruled 2026-09-21:** CR-MDB-027 and its implementation (the CR-MDB-025 rewrite)
+**Release scope, ruled 2026-09-21:** CR-MDB-027 and its implementation (the CR-MDB-025 re-spec)
 are both in release 1.0.0; 025 stays on CR-MDB-012's dependency list.
 
 ## Consequences per CR
 
 | CR | What this DN changes |
 |---|---|
-| **025** (OMP → Pi) | Reshaped by §D10, then re-targeted by §D13 (Pi) and §D16 (archimedes): delivery is `_emit_pi()` + the agent-definition asset class to `~/.agents/agents/`. Withdraws "skills need no work" for OMP (§D2) — but on Pi skills need no work for the MEASURED reason §D15.1 gives. Ownership boundary (§D3) applies to `~/.agents/agents/`. Claude Code output stays byte-identical (§D1). §S5/§S6 (roster, hook emitter) fall away: `pi` is in the roster and `_emit_pi` hooks exist since 015. |
+| **025** (Pi agent definitions) | Re-specced 2026-09-21 as `CR-MDB-025-pi-agent-definitions.md` against §D13/§D14/§D16; the OMP spec is git history. Delivery: one neutral dict, `_emit_pi()`, structured `[roles.<role>]` TOML, explicit tool map, `model:` verbatim-or-omitted (values empty until the Tier-1 `CR-RND`), asset class `.agents/agents` once user-scope. On Pi skills need no work for the MEASURED reason §D15.1 gives. §D3 boundary applies to `~/.agents/agents/`. No Claude Code emitter (§D14). Roster and hooks unchanged (`pi` present; `_emit_pi` hooks since 015). |
 | **020** (client paths) | §D8's never-a-checkout rule is its §S0; the anchor is now real, not aspirational. |
 | **018** (discovery) | The manifest exists with six keys; resolution SUCCEEDS, so the unresolved degrade is no longer the expected outcome. |
 | **019** (hook runtime) | OMP joins the emitter set; `fail_direction: closed` is honourable there, unlike opencode. Hooks are OMP's legacy surface — extensions are the unified one (§D10). |
