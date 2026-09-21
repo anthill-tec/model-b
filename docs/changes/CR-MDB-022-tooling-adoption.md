@@ -1,6 +1,6 @@
 # CR-MDB-022 — Tooling adoption: eight workflow scripts into the repo, one Model B-owned TOON codec, every reference detached from the local machine
 
-**Status:** PENDING
+**Status:** COMPLETED — shipped 2026-08-27, merge `3c3dbdc` (README footer note of that date; board wave 1). Status line corrected 2026-09-21; the AC checkboxes below were never ticked at close-out and are left as authored — the footer note and the VERIFY record are the evidence. The "Crucible 0.2.0 is not released" statements in this spec were true at authoring and are SUPERSEDED: 0.2.0 shipped 2026-09-16, production is 0.2.2 (see CR-MDB-023, CR-MDB-028).
 **Type:** feature
 **Priority:** P0 — **the FIRST CR of Wave 5**, implemented before 017/018/019/020/021/023 (user directive: detaching from the local development machine's environment is the precondition for the rest of the wave; while it is outstanding, published skills instruct tooling this repo does not contain and the wheel ships an empty asset slot for it)
 **Depends on:** —

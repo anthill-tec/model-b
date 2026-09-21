@@ -2,7 +2,7 @@
 
 **Status:** PENDING
 **Type:** feature
-**Priority:** P1 (blocks release 0.1.0 — a skill that calls itself the Model-B toolset is unpublished, hard-codes local-machine paths, and documents its tools wrongly)
+**Priority:** P1 (blocks release 1.0.0 — a skill that calls itself the Model-B toolset is unpublished, hard-codes local-machine paths, and documents its tools wrongly)
 **Depends on:** CR-MDB-022 (adopts the three `rust-*` tools this skill drives and establishes the deployed script path it must name)
 **Labels:** skills, tooling, ownership, detachment, feature
 **Phase:** Wave 5

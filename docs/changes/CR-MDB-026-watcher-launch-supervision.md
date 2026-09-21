@@ -2,7 +2,7 @@
 
 **Status:** PENDING
 **Type:** bugfix
-**Priority:** P1 (blocks release 0.1.0 — TWO independent guarantees of a dead watcher, both
+**Priority:** P1 (blocks release 1.0.0 — TWO independent guarantees of a dead watcher, both
 measured this session. (a) Launching it as a backgrounded shell job means any harness with a job
 deadline shorter than the watcher's timeout kills it — observed at 300s against a 14400s timeout,
 a 48x mismatch. (b) Even supervised, the watcher exits code 2 at its own 14400s timeout, so the
@@ -11,9 +11,24 @@ watcher silently stops waking on Track mail while a blocked track HOLDS forever,
 exact failure the prime directive exists to prevent — and because a timeout exit and the
 mail-arrival exit are both just "the process is gone", the bundles' current two-case reading of
 an exit is itself part of the defect)
-**Depends on:** —
+**Depends on:** CR-MDB-029 (on Pi the supervised process with `restart: on-failure` is a
+Model-B-built Pi extension — DN §D15.3, user ruling; without it this CR's §S1 has no mechanism
+on the only target and the watcher regresses to the very defect it exists to fix, DN §D13 (3)).
+Until 029 ships, the `run_in_background` fallback §S4 names is the Pi path, and the bundles must
+say so explicitly.
 **Labels:** skills, hooks, orchestration, sandesh, bugfix
 **Design reference:** measured failure this session (2026-09-16, Mainline - ModelB) · `skills-src/bootstrap/SKILL.md` §Step-1 · `skills-src/shutdown/SKILL.md` §common-final-step · `skills-src/model-b/references/sandesh.md` §Bootstrap + §PRIME-DIRECTIVE · project memory `sandesh-mcp-only-boundary` (the CLI verbs an agent session may run)
+
+## Amendments 2026-09-21 (from `audits/2026-09-21-codebase-review-docs.md`)
+
+- Dependency on **CR-MDB-029** added (header). §S1 names the Pi mechanism: the `sandesh-watcher`
+  extension (029 §S2) implements this CR's three-exit taxonomy and readiness-on-banner; 029's
+  AC asserts mail / timeout / lock-conflict handling with a faked `sandesh notify`. The three
+  instruction-level edits (§S2/§S3) reference that extension's command, with the backgrounded
+  fallback labelled as such.
+- The other `run_in_background` uses in the skills (dispatching RED/GREEN/VERIFY/FIX,
+  `orchestration-track.md:39`; `crucible:114`) are NOT the watcher and are NOT this CR's — they
+  are rewritten for archimedes' blocking dispatch by CR-MDB-031 §S2.
 
 ## Context
 

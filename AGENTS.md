@@ -50,7 +50,7 @@ Key invariants:
 | `contracts/` | Cross-project interface contracts: `crucible-envelope.md`, `gate-lock.md`, `sandesh-cli.md`, `lean-ctx.md`, `mail-axi.md` |
 | `docs/research/` | `PRD-model-b-rationalization.md` (D1–D10) + `DN-*.md` design notes |
 | `docs/changes/` | `README.md` = CR queue (structure only) + `CR-MDB-NNN-*.md` specs |
-| `tests/` | 17 `unittest` modules; mostly structural/contract gates |
+| `tests/` | 19 `unittest` modules; mostly structural/contract gates |
 | `archive/` | `BASELINE.md` + `wave1..3/` historical records — read-only history |
 | `audits/` | Dated evidence files backing PRD decisions |
 
@@ -111,7 +111,7 @@ There is **no** Makefile/justfile, **no** CI (`.github/` absent), and **no** lin
 
 ## Testing & QA
 
-Pure **`unittest`** — no pytest, no `conftest.py`, no fixtures/markers. 17 modules in `tests/`, classes named `<Topic><Section>Test` (e.g. `ContractsS2Test`, `BlockDirectCargoTestScriptTest`), methods `test_s2_<assertion>`, each file ending in `if __name__ == "__main__": unittest.main()`.
+Pure **`unittest`** — no pytest, no `conftest.py`, no fixtures/markers. 19 modules in `tests/`, classes named `<Topic><Section>Test` (e.g. `ContractsS2Test`, `BlockDirectCargoTestScriptTest`), methods `test_s2_<assertion>` in the wave-1/2 modules (wave-3+ modules use `<Feature>Test` and descriptive names — CR-MDB-032 §S6 settles the convention), each file ending in `if __name__ == "__main__": unittest.main()`.
 
 ```bash
 python3 -m unittest tests.test_hooks                       # one module
@@ -135,7 +135,7 @@ python3 ~/Documents/data_projects/crucible/clients/python-crucible.py regression
 - **Most tests are structural gates, so ordinary edits break them.** They assert repo layout, deployed `~/.claude`/`~/.agents` state, SKILL.md frontmatter, byte-identity of imported bundles, reference-router parity, `chezmoi diff` cleanliness, and grep-gates for retired terms (e.g. zero `WORKFLOW_CYCLE_ID`). Renaming a skill, doc, or reference file requires updating its gate.
 - `tests/test_realhome_supersede.py` touches the real home directory and **skips unless `MODELB_REALHOME_GATE=1`**.
 - Tests import `modelb_axi` directly — install the package (`pip install -e .`) or run from the repo root.
-- Baseline for `python3 -m unittest discover -s tests -t .`: **240 tests, 1 failure, 12 skips** (as of CR-MDB-022; previously 194/7F/11S). The one failure is `test_crucible_skill.py::CrucibleSkillCRMDB011Test::test_ac7_repo_agents_md_no_longer_claims_workflow_cycle_id_injection` — a stale `WORKFLOW_CYCLE_ID` claim on an `AGENTS.md` line, pre-existing and unrelated to the tooling work. CR-MDB-022's TOON codec fix cleared 6 of the previous 7: the 3 `test_worktree_flow_axi` envelope gates and the 3 `test_scaffold` envelope gates, which shared the same root cause. Compare against this baseline rather than expecting a fully green run.
+- Baseline for `python3 -m unittest discover -s tests -t .`: **240 tests, 7 failures, 12 skips** (measured 2026-09-21; the earlier 240/1F/12S baseline was taken when the user's chezmoi tree happened to converge). Six failures are the `chezmoi diff` gates CR-MDB-021 retires — they compare the user's dotfile source to the user's home and flap on drift that is not a Model B property. The seventh is `test_crucible_skill.py::CrucibleSkillCRMDB011Test::test_ac7_repo_agents_md_no_longer_claims_workflow_cycle_id_injection`, a gate that forbids the string `WORKFLOW_CYCLE_ID` in this file while this paragraph must spell it to describe the gate — CR-MDB-032 §S3 scopes it. Two skips are permanently dead tests waiting for a retired origin directory (CR-MDB-032 §S1). Compare against this baseline rather than expecting a fully green run; `audits/2026-09-21-codebase-review-tests.md` has the per-test diagnosis.
 - TDD is mandatory: RED before GREEN, never commit failing tests, clean build before every commit.
 
 ## Workflow Rules (Model B, solo)

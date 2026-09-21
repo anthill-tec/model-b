@@ -2,7 +2,7 @@
 
 **Status:** PENDING
 **Type:** maintenance
-**Priority:** P1 (blocks release 0.1.0 — every `register` example we ship is non-executable against the released clients)
+**Priority:** P1 (blocks release 1.0.0 — every `register` example we ship is non-executable against the released clients)
 **Depends on:** CR-MDB-016 (Model B owns the seven bundles outright)
 **Labels:** crucible, skills, contract, patch
 **Phase:** Wave 5

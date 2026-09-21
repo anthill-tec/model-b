@@ -7,7 +7,12 @@
 **Depends on:** CR-MDB-027 (the dispatch ruling this CR implements — DN §D16) · CR-MDB-017 (its §S6
 rewrites the same four templates and regenerates the fleet; sequencing after it avoids two
 rewrites of the same files) · CR-MDB-024 lands its rust stack in the same generator surface and
-should precede this CR so one regeneration settles the whole fleet
+should precede this CR so one regeneration settles the whole fleet · **CR-MDB-033** (added
+2026-09-21: `deploy.py:123-131` overwrites an unmanaged same-named file on first install, so
+§S4's `inbox-analyst.md` AC cannot hold until 033 §S3 lands; and the scaffold compiles wiring
+against a `[install].target_root` the installer never writes, so §S6's sandbox proof is untrusted
+until 033 §S1) · **CR-MDB-030** (§S6.2's dispatch proof presumes the emitted `.pi/extensions/`
+load at all — they do not today; 030 fixes the runtime and owns the `-p` trust-gate measurement)
 **Labels:** generator, installer, harness, agent-definitions, pi, feature
 **Phase:** Wave 5 (repo queue) · release 1.0.0 wave 2 (Crucible board)
 **Design reference:** `docs/research/DN-multi-harness-deploy-model.md` — **§D13** (target is Pi),
@@ -68,6 +73,18 @@ is a mixed-provenance directory and proves nothing about what the reader accepts
 ## Scope
 
 ### §S0 — Gap-analysis questions to settle before RED (recorded so they are not skipped)
+
+**Answered 2026-09-21 by the review filings:**
+
+- Body citations `~/.claude/skills/<name>/...` in templates and `crucible_reference`: **CR-MDB-031
+  §S2** owns them, running after 017/020/025 so the fleet is regenerated once more, last. This CR
+  leaves the bodies untouched.
+- `skills:` replacement: settled at this CR's gap-analysis (unchanged).
+- Test pins that are §D14 amendments (from `audits/2026-09-21-codebase-review-tests.md` §1d):
+  `tests/test_agent_generator.py:365-447,603-625` and `tests/test_installer_assets.py:323-360`
+  freeze `render()` output and pin `~/.claude/agents`; listed by id in the RED plan.
+
+**Still open:**
 - Which CR owns repointing the template bodies' `~/.claude/skills/<name>/...` citations to the
   deployed store (`~/.agents/skills/<name>/...`): CR-MDB-020 (path anchoring) or this one. If
   020 has shipped and left them, this CR takes them; if 020 is pending, its scope is amended.
@@ -137,7 +154,9 @@ does. Two proofs:
    required field.
 2. **Dispatch into a fresh worktree (measures DN §D16 consequence 4):** one emitted VERIFY
    definition is dispatched with `cwd` = a fresh git worktree carrying CR-015's emitted
-   `.pi/extensions/`. Record whether `-p` mode loaded the project extensions (the write-boundary
+   `.pi/extensions/` **as rebuilt by CR-MDB-030** (today's emitted extensions do not load: no
+   default-export factory, no payload transport — 030 §S8 owns the primary trust-gate
+   measurement; this proof re-runs it end-to-end through archimedes). Record whether `-p` mode loaded the project extensions (the write-boundary
    block fires on an attempted `write`) or skipped them at the trust gate. Either answer is
    recorded in the CR close-out note; if skipped, the `tools` allowlist is the only boundary on
    Pi and `sub-agent-procedure.md` must say so.

@@ -7,6 +7,14 @@ capture), CR-MDB-014 (universal installer — the flow this extends), CR-MDB-019
 (user correction 2026-09-18; see §D2)
 **Measurement date:** 2026-09-18, this workstation, all figures measured not recalled
 
+> **Reading order (added 2026-09-21).** The decisions below are a dated record and are kept in
+> full so an overruled position is never re-derived. Rulings on 2026-09-18 (§D13, §D14) and
+> 2026-09-21 (§D16; OMP not a target at all) supersede the earlier OMP/Claude-Code plan:
+> **§D2, §D5, §D6, §D7, §D10, §D11, §D12 are SUPERSEDED in full; §D1 (byte-identity clause) and
+> §D8 (OMP clause) in part.** Read §D13–§D16 first; the Consequences table below is current.
+> Still binding unchanged: §D1 (neutral source + emitters), §D3, §D4, §D8 (except the OMP
+> clause), §D9.
+
 ## Why this note exists
 
 Model B ships three artifact families — skill bundles, generated agent definitions, tool
@@ -52,6 +60,9 @@ So the installer will own **20 of 29** (24 once vscode lands) and must leave **5
 ## Decisions
 
 ### D1 — One neutral agent-definition source, per-harness emitters
+> *2026-09-21: the "Claude Code output must stay byte-identical" clause is RETIRED by §D14; with
+> one target there is ONE emitter, `_emit_pi()` (§D16). The neutral-source principle stands.*
+
 Agent definitions become an installer asset class with the same shape hooks already use: a
 neutral declaration is authored once, and per-harness emitters render it into each harness's own
 frontmatter contract. Claude Code and OMP are both emitters; neither is the source. **Claude Code
@@ -59,6 +70,8 @@ output must stay byte-identical** across this change — it is the only currentl
 so any diff there is a regression, not an improvement.
 
 ### D2 — OMP is served by its OWN copies, never by `~/.agents/`
+> *SUPERSEDED 2026-09-21 — OMP is not a target. Pi reads the shared `~/.agents/` store natively
+> (§D15.1, §D16); no per-harness copy exists.*
 User ruling 2026-09-18: **OMP is the one harness that does not work with the shared `~/.agents`
 set — it has its own agents and skills definitions.** Therefore OMP receives:
 
@@ -95,6 +108,8 @@ it as a stack. This closes the drift those four currently carry (the retired `--
 `~/.claude` skill paths) by regenerating them rather than hand-patching.
 
 ### D5 — OMP hooks are plugin/extension modules in TypeScript, and the layout is load-bearing
+> *SUPERSEDED 2026-09-21 — no OMP target. The Pi hook runtime is CR-MDB-030; the "silent
+> ineffectiveness" failure mode named here remains the rule to design against.*
 Measured from `omp://hooks.md` and `omp://extension-loading.md`:
 
 - A hook module **default-exports a factory** `(pi: HookAPI) => void`, registering handlers via
@@ -121,12 +136,15 @@ single implementation; the factory is a per-harness adapter, exactly as the neut
 already intends.
 
 ### D6 — The OMP agent directory is RESOLVED, never hardcoded
+> *SUPERSEDED 2026-09-21 — no OMP target. The Pi target directory is `~/.agents/agents/` (§D16).*
 `~/.omp/agent` is only the default. `omp --profile <name>` moves it to
 `~/.omp/profiles/<name>/agent/`, and `PI_CODING_AGENT_DIR` overrides it outright. Every OMP path
 this model writes — agents, skills, tools, hooks — resolves the active agent directory first. A
 hardcoded `~/.omp/agent` is a defect that silently deploys into an inactive profile.
 
 ### D7 — `config.yml` is the USER's file: verify, never write
+> *SUPERSEDED 2026-09-21 — no OMP target. The equivalent Pi rule: `~/.pi/agent/settings.json` is
+> the user's file; the installer never edits it (CR-MDB-029 §S4 uses `pi install`).*
 `~/.omp/agent/config.yml` carries `modelRoles` **and** the user's whole harness configuration
 (theme, browser relay, provider search order, astEdit, symbolPreset, composer shape…).
 Overwriting or rewriting it would destroy unrelated user state. The installer therefore:
@@ -165,6 +183,7 @@ and the installer flow is selected by whether `$MODELB_HOME/install.toml` exists
 rather than assuming existing installs gain it.
 
 ### D10 — OMP's plugin/marketplace system is the RIGHT distribution vehicle, and it is cheap
+> *SUPERSEDED by §D15.2 — the Pi package system (CR-MDB-029) replaces the OMP marketplace.*
 
 User direction 2026-09-18: *"OMP has an extensions and plugin API… bundling our Model B
 definitions and tools as extensions may be useful."* Researched from `omp://extensions.md`,
@@ -231,6 +250,7 @@ in the Roundhouse umbrella, or in a dedicated `model-b-marketplace` repo. Public
 is a user decision with release-process consequences, not a technical one.
 
 ### D11 — Stay on OMP; neutralize its decision layer by configuration; "our own harness" is a NON-GOAL
+> *SUPERSEDED by §D13 (target = Pi). The NON-GOAL half — never build our own harness — stands.*
 
 Raised 2026-09-18: since Roundhouse exists to build routing on switchyard + lemonade, would
 targeting **Pi** (which OMP extends) be better, given OMP's own model-switching layer convolutes
@@ -276,6 +296,8 @@ per-harness emitters means a future harness is a new emitter, not a rewrite — 
 hedge, and the reason not to couple the workflow to any one harness's execution model.
 
 ### D12 — The real axis is CONSUME vs FORK, not OMP vs Pi. Consume for 1.0.0; fork stays costed and live.
+> *SUPERSEDED by §D13 as to the harness. The consume-vs-fork axis is reused by CR-MDB-027 for
+> the dispatch provider (§D16 (5)).*
 
 Raised 2026-09-18, after D11 was (rightly) challenged for answering "is Pi installed" when the
 question was "what should we target going forward". Installation is reversible and irrelevant; the
@@ -354,7 +376,7 @@ not re-openable without new evidence.
 | Surface | OMP (previous target) | Pi (new target) |
 |---|---|---|
 | Core tools | large set incl. `hub`, `task`, `lsp`, `ast_edit` | **four**: `read`, `write`, `edit`, `bash` |
-| Sub-agent definitions | task agents, `~/.omp/agent/agents/*.md` | **not core** — a separate package (`pi-mono-team-mode`), `.pi/teammates/<role>.md`, frontmatter `name`/`description`/`needsWorktree`/`hasMemory`/`modelTier`/`thinkingLevel`/`tools` |
+| Sub-agent definitions | task agents, `~/.omp/agent/agents/*.md` | **not core** — a separate package; `pi-mono-team-mode` was the one found on 2026-09-18; **→ §D16: `pi-archimedes`, `~/.agents/agents/`** |
 | Skills | capability discovery, `agents` provider @70 | implements the **Agent Skills standard** ("warns about most violations but remains lenient"); roots to be measured |
 | Extensions | unified extension API + plugin/marketplace | extensions register commands/skills; **plugin/marketplace presence UNMEASURED** |
 | Distribution | dual-catalog plugin (§D10) | **unknown — §D10's vehicle may not exist**, in which case distribution reverts to installer file-deploy |
@@ -378,7 +400,7 @@ not re-openable without new evidence.
    026 exists to fix.
 
 **Required before CR-MDB-025 can be rewritten (measure, do not infer — this DN has twice recorded
-the cost of inferring):**
+the cost of inferring):** *— ANSWERED: all five in §D15.1–§D15.5 and §D16 (2026-09-18/21).*
 
 - Pi's skill discovery roots, and whether `~/.agents/skills` is among them.
 - Whether Pi has a plugin/marketplace mechanism, or only extension entry points.
@@ -576,17 +598,15 @@ are both in release 1.0.0; 025 stays on CR-MDB-012's dependency list.
 | **025** (Pi agent definitions) | Re-specced 2026-09-21 as `CR-MDB-025-pi-agent-definitions.md` against §D13/§D14/§D16; the OMP spec is git history. Delivery: one neutral dict, `_emit_pi()`, structured `[roles.<role>]` TOML, explicit tool map, `model:` verbatim-or-omitted (values empty until the Tier-1 `CR-RND`), asset class `.agents/agents` once user-scope. On Pi skills need no work for the MEASURED reason §D15.1 gives. §D3 boundary applies to `~/.agents/agents/`. No Claude Code emitter (§D14). Roster and hooks unchanged (`pi` present; `_emit_pi` hooks since 015). |
 | **020** (client paths) | §D8's never-a-checkout rule is its §S0; the anchor is now real, not aspirational. |
 | **018** (discovery) | The manifest exists with six keys; resolution SUCCEEDS, so the unresolved degrade is no longer the expected outcome. |
-| **019** (hook runtime) | OMP joins the emitter set; `fail_direction: closed` is honourable there, unlike opencode. Hooks are OMP's legacy surface — extensions are the unified one (§D10). |
-| **024** (rust) | Its four definitions are emitted to BOTH harnesses, not just Claude Code. |
-| **014** (installer) | Gains the agent-definition asset class and the per-harness emitter dispatch. Per §D10 the OMP path is publication, so the installer orchestrates a plugin install rather than owning OMP's directories. |
-| **012** (release) | The release gate must prove Pi resolves an emitted definition by name (`list_agents` via archimedes) and Claude Code output is byte-identical. §D15.2 adds a publication step for the Pi package (extensions + skills): tag, `pi install npm:…@<version>`. |
+| **019** (hook runtime) | Re-scoped 2026-09-21: §S3 (opencode emitter) struck; keeps the status-contract re-pin and the arduino marker. The Pi emitter's runtime is CR-MDB-030. |
+| **024** (rust) | Its four definitions are generated into `generator/agents/` and reach Pi through CR-025's `.agents/agents` class; nothing under `~/.claude/agents/` is superseded (§D14). |
+| **014** (installer) | Gains the agent-definition asset class (CR-025 §S4) and `pi install` orchestration for the package (CR-029 §S4). CR-033 fixes `target_root`, atomic writes and the unmanaged-file clobber first. |
+| **012** (release) | The release gate must prove Pi resolves an emitted definition by name (`list_agents` via archimedes). §D15.2 adds a publication step for the Pi package (extensions + skills): tag, `pi install …@<version>` (CR-029 §S5). No byte-identity gate (§D14). |
 | **NEW CR — CR-MDB-029** | Authoring the Pi package itself per §D15.2: `package.json` `pi` manifest, `extensions/` (the CR-026 watcher per §D15.3; hooks currently emitted per-project by 015), `skills/`. **Agent definitions cannot ride it** — Pi packages carry only extensions/skills/prompts/themes — so the split is: package = extensions + skills; installer = agents + tool scripts. (The number 027 this row once reserved was consumed by the dispatch decision CR.) |
 
 ## Open, deliberately not decided here
 
 - Whether `hermes`/`opencode` should also receive agent definitions. (`pi` is now decided — §D16.)
   They are present on this machine but Model B has never emitted definitions for them, and
-  nothing yet establishes their frontmatter contracts. Out of scope until a CR needs it.
-- Whether the OMP-local skills copy should be a copy or a symlink farm. Copy is assumed (D2 says
-  correctness must not depend on shared-store resolution); a symlink would reintroduce exactly
-  the dependency the ruling removed.
+  nothing yet establishes their frontmatter contracts. Out of scope until a CR needs it — and
+  CR-MDB-031 removes them from the roster until one does.

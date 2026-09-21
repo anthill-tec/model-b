@@ -2,7 +2,7 @@
 
 **Status:** PENDING
 **Type:** bugfix
-**Priority:** P1 (blocks release 0.1.0 — a shipped hook reads a config key the installer never writes, so the feature is dead on every install)
+**Priority:** P1 (blocks release 1.0.0 — a shipped hook reads a config key the installer never writes, so the feature is dead on every install)
 **Depends on:** CR-MDB-014 (pre-flight + install.toml), CR-MDB-015 (the hook that consumes the key)
 **Labels:** installer, preflight, crucible, discovery, patch
 **Phase:** Wave 5

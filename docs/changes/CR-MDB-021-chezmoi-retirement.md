@@ -2,11 +2,29 @@
 
 **Status:** PENDING
 **Type:** maintenance
-**Priority:** P1 (blocks release 0.1.0 — eight gates in the release-verification suite are false-green and flap on unrelated user dotfile activity)
+**Priority:** P1 (blocks release 1.0.0 — eight gates in the release-verification suite are false-green and flap on unrelated user dotfile activity)
 **Depends on:** —
 **Labels:** tests, chezmoi, release-gate, patch
 **Phase:** Wave 5
 **Design reference:** user directive 2026-08-27 ("local scripts are not to be maintained by chezmoi; management would only apply to harness-installed skills, and that is not required either") · CR-MDB-016 orchestrator-approved amendment, recorded verbatim at `tests/test_agent_generator.py:35-46` ("the Model B system carries NO chezmoi dependencies — Model B tests must not introspect the user's live chezmoi tree/history") · PRD §D9/§D10 (the repo is the workshop, the installer is the only deployment channel) · project memory `repo-local-authoring-rule`
+
+## Amendments 2026-09-21 (from `audits/2026-09-21-codebase-review-{tests,docs}.md`)
+
+- **Measured today: all six `chezmoi diff` gates FAIL** (`~/.claude/AGENTS.md` mode 100600→100644
+  and a removed block in the user's live file vs their chezmoi source) — the false-green→false-red
+  flap this CR predicted. The suite is 240/7F/12S, not the 194-based arithmetic in the Suite AC
+  (`:139-142`); re-measure at RED against 240 and record the post-removal baseline.
+- **§S4 scope extended to `docs/research/` and `contracts/`:** PRD §4.6 ("`chezmoi diff` clean
+  after every wave" as a success criterion), PRD §D9 ("chezmoi remains … for destroying legacy
+  files"), `DN-scaffold-packaging.md:59-61` §6 (installer prints `chezmoi forget/destroy` paths —
+  the very message §S3 drops), `contracts/lean-ctx.md:33-34`, and `AGENTS.md:49` (the "chezmoi-
+  managed, so anything written there is reverted" rationale → "not Model B-owned").
+- **The `chezmoi` skill BUNDLE is not this CR's** — its retirement is CR-MDB-031 §S4 (§S0
+  question). This CR only removes chezmoi from the tests and the prose. `ChezmoiSkillS3Test`
+  (`tests/test_git_chezmoi_skills.py:151-233`, pins a retracted quirk claim in a *deployed* file)
+  goes with the bundle or is retargeted to `skills-src/` by CR-MDB-032.
+- **`test_realhome_supersede.py:391-419`'s `chezmoi status` probe** is removed here (§S3); the
+  module itself is retired by CR-MDB-032 §S3.
 
 ## Context
 

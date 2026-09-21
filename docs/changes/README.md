@@ -28,15 +28,20 @@ Queue rows enumerate the whole delivery (structure only). **Live status lives on
 | [CR-MDB-023](CR-MDB-023-code-health-skill-adoption.md) | `code-health` skill adopted as a published bundle: detached tool paths, recorded drift closed, bundle accounting corrected | 5 | 022 |
 | [CR-MDB-017](CR-MDB-017-client-role-contract-sync.md) | Client-verb contract sync: `--role` + mandatory `--cycle` binding replace the retired `--phase` across the seven owned bundles | 5 | 016 |
 | [CR-MDB-018](CR-MDB-018-crucible-discovery-capture.md) | Crucible discovery capture: probe `crucible-axi`, read the client manifest, persist `[install].clients_dir` | 5 | 014, 015 |
-| [CR-MDB-019](CR-MDB-019-hook-runtime-correctness.md) | Hook runtime correctness: status-contract-document re-pin, arduino stack marker, honestly-async opencode emitter | 5 | 015, 018 |
+| [CR-MDB-019](CR-MDB-019-hook-runtime-correctness.md) | Hook runtime correctness: status-contract-document re-pin, arduino stack marker (§S3 opencode emitter struck 2026-09-21 — non-target) | 5 | 015, 018 |
 | [CR-MDB-020](CR-MDB-020-client-path-anchoring.md) | Client-path anchoring: every client reference resolves to Crucible's published contract; Model B maintains none of their clients | 5 | 017, 022 |
 | [CR-MDB-024](CR-MDB-024-rust-stack-adoption.md) | Rust as a fifth generated stack: close the orphaned `~/.claude/agents/rust-*` gap CR-CRU-042 assigns to Model B | 5 | 017 |
 | [CR-MDB-021](CR-MDB-021-chezmoi-retirement.md) | Retire chezmoi introspection from the test suite: eight false-green release gates removed, policy self-enforcing | 5 | — |
-| [CR-MDB-026](CR-MDB-026-watcher-launch-supervision.md) | The wake watcher must stay alive: supervised process + `restart: on-failure`, and the three-exit taxonomy (mail / timeout / lock-conflict) the bundles conflate | 5 | — |
-| [CR-MDB-025](CR-MDB-025-pi-agent-definitions.md) | Pi as the deploy target for agent definitions: neutral schema + `_emit_pi()`, agent-defs as an installer asset class → `~/.agents/agents/` (re-specced 2026-09-21; OMP dropped) | 5 | 017, 024, 027 |
+| [CR-MDB-033](CR-MDB-033-installer-correctness.md) | Installer correctness: one `target_root` in `install.toml`, atomic writes everywhere, unmanaged files never clobbered, manifest always consulted | 5 | — |
+| [CR-MDB-030](CR-MDB-030-pi-hook-runtime.md) | Pi hook runtime: default-export factory, payload transport, Pi tool-name contract in the seven scripts, matcher honoured, real fail-closed, worktrees carry `.pi/extensions/` (P0 — every hook is a no-op on the only target today) | 5 | — |
+| [CR-MDB-026](CR-MDB-026-watcher-launch-supervision.md) | The wake watcher must stay alive: supervised process + `restart: on-failure`, and the three-exit taxonomy (mail / timeout / lock-conflict) the bundles conflate | 5 | 029 |
+| [CR-MDB-025](CR-MDB-025-pi-agent-definitions.md) | Pi as the deploy target for agent definitions: neutral schema + `_emit_pi()`, agent-defs as an installer asset class → `~/.agents/agents/` (re-specced 2026-09-21; OMP dropped) | 5 | 017, 024, 027, 030, 033 |
+| [CR-MDB-029](CR-MDB-029-pi-package.md) | The Model B Pi package: extensions (incl. the 026 watcher supervisor) + skills as one `pi install`-able unit; agents and tool scripts stay installer-deployed | 5 | 025, 026, 030 |
+| [CR-MDB-031](CR-MDB-031-claude-era-substrate-retirement.md) | Retire the Claude-era substrate: roster → `pi`, non-Pi emitters, `.claude/skills` symlink writer, `CLAUDE.md` emission, `chezmoi` bundle, `/tmp/claude-1000` wrapper, `.claude/worktrees` convention, skills' Claude Code dispatch/worktree/todo mechanics, `~/.claude/skills` body citations | 5 | 025, 026, 030 |
+| [CR-MDB-032](CR-MDB-032-test-suite-relocation.md) | Test-suite relocation: no dev-checkout reach, no real-home assertions, no dead/self-defeating gates, one helper module, a Pi end-to-end | 5 | 020, 021 |
 | [CR-MDB-027](CR-MDB-027-subagent-dispatch-on-pi.md) | Sub-agent dispatch on Pi: decide what provides it, given Pi core has none (decision CR — RULED 2026-09-21: `pi-archimedes`, DN §D16; unblocks the CR-025 rewrite) | 5 | — |
 | [CR-MDB-028](CR-MDB-028-worktree-flow-scheduling-migration.md) | Retire `worktree-flow.py`'s DB half: scheduling moves to Crucible's API (P0 — above the routing strategy, user ruling) | 5 | 022 |
-| [CR-MDB-012](CR-MDB-012-release-1.0.0.md) | Release 1.0.0: full verification suite (PRD §4) + archive/mapping.md + master tag | 5 | 006, 007, 008, 010, 011, 013, 014, 016, 017, 018, 019, 020, 021, 022, 023, 024, 025, 026, 027, 028 |
+| [CR-MDB-012](CR-MDB-012-release-1.0.0.md) | Release 1.0.0: full verification suite (PRD §4) + archive/mapping.md + master tag | 5 | 006, 007, 008, 010, 011, 013, 014, 016, 017, 018, 019, 020, 021, 022, 023, 024, 025, 026, 027, 028, 029, 030, 031, 032, 033 |
 
 **— v1.0.0 ships here —** (release CR bundles the final gates; no close-out wave)
 
@@ -294,3 +299,44 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   trust gate). Deps now 017, 024, 027. Three §S0 questions are parked for gap-analysis: who owns
   the template bodies' `~/.claude/skills` citations (020 or 025), which test pins are §D14
   amendments, and whether `skills:` gets a body-line replacement.
+- 2026-09-21 — **FULL CODEBASE REVIEW (user-directed) → four dated audits + five CRs + six spec
+  amendments.** Four read-only reviewer sub-agents (pi-archimedes dispatch, config-less — the
+  generated `*-verify-agent` files carry a `tools:` allowlist archimedes cannot grant, CR-025's
+  defect) covered `modelb_axi/`, the published assets, `tests/`, and docs-vs-code; reports at
+  `audits/2026-09-21-codebase-review-{modelb_axi,assets,tests,docs}.md` (~200 findings with
+  `file:line`). **Headline: the Pi hook pipeline is dead end-to-end on the only target** — three
+  independent defects measured against installed Pi 0.86.1 (no default-export factory so the
+  loader drops every emitted extension; `pi.exec` has no `stdin` so no script ever receives its
+  payload; 6 of 7 scripts match Claude tool names `Bash`/`Write`/`TaskCreate` where Pi sends
+  `toolName: bash`/`write`), plus `_HONORS_FAIL_CLOSED` is false for `pi` (`execCommand` never
+  rejects), `matcher` is ignored, and the scaffold `.gitignore`s `.pi/` so no worktree ever has the
+  extensions — every "HARD-ENFORCED" boundary the skills promise is fiction, and 019/025 both
+  excluded the Pi emitter from scope. **Filed:** **CR-MDB-030** (Pi hook runtime, P0, precedes 025
+  §S6 and 029); **CR-MDB-031** (Claude-era substrate retirement: roster→`pi`, three non-Pi emitters
+  and the `.claude/skills` symlink writer — the installer's ONLY per-harness writer targets the
+  forbidden tree — `CLAUDE.md` emission, `chezmoi` bundle, `/tmp/claude-1000` wrapper ×14,
+  `.claude/worktrees` 6-consumer contract, `EnterWorktree`/`Task*`/`run_in_background` dispatch
+  mechanics, 76 `~/.claude/skills` body citations — 171 live `~/.claude` strings in published
+  surfaces, 70 owned by 020); **CR-MDB-032** (tests: 7 sites reach the forbidden Crucible dev
+  checkout, 3 hard-fail off this machine and slip the 022 AST gate via `spec_from_file_location`;
+  8 modules assert real `~/.claude`; `test_worktree_flow_axi` drives stale `~/.claude/scripts`
+  copies and never `scripts/worktree-flow.py`; 23 e2e sites hard-wire `--harnesses claude-code`,
+  ZERO use `pi`; the AC7 gate forbids a string AGENTS.md must spell); **CR-MDB-033** (installer:
+  scaffold reads `[install].target_root` the installer never writes → sandbox installs compile
+  wiring to the real home; only `install.toml` is atomic; `deploy.py:123-131` CLOBBERS an
+  unmanaged same-named file on first install — breaks 025 §S4's `inbox-analyst` AC — so 025 now
+  depends on 033; manifest consulted only with `--reinstall`); **CR-MDB-029** (the Pi package:
+  extensions + skills; agents cannot ride it; 026's watcher supervisor lives here per DN §D15.3,
+  so 026 gains dep 029). **Amended:** 019 (§S3 opencode struck), 020 (scope → `AGENTS.md`,
+  `contracts/`, hook-script text; `tests/` sites to 032; CRUCIBLE-HANDOVER exempt; the LOCKED
+  ontology cited from the barred checkout is an open CReq), 021 (§S4 → `docs/research/` +
+  `contracts/`; bundle retirement is 031's; re-measure against 240), 024 (§S2 re-scoped — nothing
+  under `~/.claude/agents` is superseded, per §D14; PRD §D6/§4.4 added to its AC), 025 (§S0 Q1
+  answered: 031 owns body citations; deps 030, 033), 026 (dep 029). **DN**: reading-order banner
+  + in-place SUPERSEDED markers on §D1(clause)/D2/D5/D6/D7/D10/D11/D12, §D13 table row → §D16,
+  Consequences rows 014/019/024/012 rewritten (no byte-identity gate). **Hygiene:** CR-022 status
+  → COMPLETED; `DN-rationalization-plan-review.md` banner HISTORICAL; six specs `0.1.0`→`1.0.0`;
+  `AGENTS.md` module count 17→19 and baseline re-measured **240/7F/12S** with the per-failure
+  diagnosis (6 = CR-021 chezmoi flap on user dotfile drift; 1 = the AC7 gate-design defect).
+  012 gains deps 029–033. Board registration of the five new rows pending (`queue-file` is
+  develop-only per #1359 — register via `cr-plan --release 1.0.0 --wave 2` at the next SCRUM).

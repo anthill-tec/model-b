@@ -1,5 +1,12 @@
 # Claude Memory Rationalization — Model B unification, dynamic skill tree, AXI migration
 
+> **Status: HISTORICAL plan record (2026-07-20).** Kept as the evidence base the queue header
+> cites. Its operational decisions are superseded where later documents rule otherwise: chezmoi
+> as the deploy channel (CR-MDB-021, user directive 2026-08-27); `~/.claude/*` as critical files
+> and Claude Code as a target (DN-multi-harness-deploy-model §D14); "Wave 5 — Close-out" (there
+> is no close-out wave — README 2026-07-20); a `vscode-crucible.py` build (declined 2026-09-16,
+> #1370); rust as bespoke (CR-MDB-024). The PRD and `docs/changes/README.md` are authoritative.
+
 ## Context
 
 `~/.claude` grew organically into 24 memory files (7 orphaned from the index), ~50 skills, 29 agent definitions, and ~20 scripts. Three audits (memory duplication, Crucible-2 doc drift, skills/agents inventory) found:

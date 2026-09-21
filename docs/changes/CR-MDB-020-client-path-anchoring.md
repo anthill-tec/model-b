@@ -2,11 +2,34 @@
 
 **Status:** PENDING
 **Type:** maintenance
-**Priority:** P1 (blocks release 0.1.0 — 53 shipped references resolve to a path Model B does not own, or to a mirror CR-MDB-016 retired)
+**Priority:** P1 (blocks release 1.0.0 — 53 shipped references resolve to a path Model B does not own, or to a mirror CR-MDB-016 retired)
 **Depends on:** CR-MDB-017 (rewrites the same bundle SKILL.mds for the `--role`/`--cycle` surface), CR-MDB-022 (repoints the same two memory templates for tooling paths, and runs FIRST in the wave) — both edges exist to serialize shared files, not to sequence logic
 **Labels:** crucible, skills, generator, contract, patch
 **Phase:** Wave 5
 **Design reference:** **`docs/research/DN-multi-harness-deploy-model.md` §D8 (external tools are orchestrated and verified, never vendored — and never a personal checkout) — the governing design note, user-ruled 2026-09-18** · Sandesh #1358/#1360 (the discovery-manifest contract and Crucible's confirmation of their own then-un-materialised stage, since SHIPPED) · the PUBLISHED manifest, measured at `~/.crucible/crucible-clients.json` 2026-09-18 (`version: "0.2.2"`, SIX keys — `clients`/`version`/`status` plus `config`/`server_config`/`shipped_config`) · CR-MDB-016 (the `~/.claude/scripts` client mirrors were retired) · user directive 2026-08-27 ("Model B will not maintain any client scripts of Crucible — that is the Crucible project's job; Model B only manages and updates the skills with reference to changes in Crucible") · user directive 2026-09-18 (Model B has nothing to do with the local Crucible PROJECT at any layer; only the production server and the published installed clients) · CR-MDB-017 §Risk and §Non-goals, which designated this CR
+
+## Amendments 2026-09-21 (from `audits/2026-09-21-codebase-review-{assets,docs}.md`)
+
+- **§S0's repo-wide AC ("zero occurrences of a personal-checkout client path anywhere in the
+  repo outside `archive/`") is unchanged, but the SCOPE and size estimate now name every surface
+  it reaches:** `AGENTS.md:106,126-130,148` (teaches `~/Documents/data_projects/crucible` as the
+  source of truth and the `/tmp/claude-1000/modelb-crucible` wrapper as the canonical run);
+  `contracts/crucible-envelope.md:13-15,26,39-41` and `contracts/gate-lock.md:4-5,38-40` (the
+  contracts *mandate* the dev-checkout oracle); `hooks-src/scripts/block-direct-cargo-test:29-31,
+  43-44` and `hooks-src/schema.md:54-56` ("the crucible repo `clients/` dir in dev");
+  `docs/research/PRD-model-b-rationalization.md:41,65`. The two TEST sites
+  (`tests/test_toon_codec.py:99`, `tests/test_tooling_detachment.py:375`) are repointed by
+  **CR-MDB-032 §S1** against the same manifest anchor; 020's gate must cover `tests/` so 032
+  cannot regress it.
+- **Gate exemption, explicit:** `skills-src/CRUCIBLE-HANDOVER.md:9-10` (provenance) and
+  `archive/` are the only sanctioned occurrences; the gate whitelists them by path.
+- **`crucible_reference` (§S2) and the template bodies' `~/.claude/skills/...` citations are NOT
+  this CR's** — CR-MDB-031 §S2 repoints them to `~/.agents/skills/` after 017/020/025 regenerate,
+  so the fleet is regenerated once more, last. 020 regenerates for the client-path change only.
+- **Open conflict this CR must surface, not resolve:** `AGENTS.md:148` / PRD `:41` cite the LOCKED
+  ontology `crucible:docs/research/DN-model-b-language.md` — a dev-checkout doc the 2026-09-18
+  rule bars reading, with no published home. Record the CReq to Crucible (ship it beside the
+  clients or in the `crucible-axi` package) rather than delete the citation.
 
 ## Context
 

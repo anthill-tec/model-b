@@ -8,6 +8,27 @@
 **Phase:** Wave 5
 **Design reference:** Sandesh #1362–#1367 (the correspondence that surfaced this) · Crucible's CR-CRU-042 as QUOTED TO US over Sandesh #1367 (the ownership handover: "Model B now owns the skills component in FULL — content, bundling AND deploy... Crucible does not patch either in place") · `skills-src/memory-templates/rust-orchestration.md` (existing rust footprint in this repo) · `generator/stacks/quarkus.toml` (the shape this CR follows)
 
+## Amendments 2026-09-21 (from `audits/2026-09-21-codebase-review-docs.md`)
+
+- **§S2 and its AC (`:86-91`, `:119-121`) are RE-SCOPED:** "the deployed `~/.claude/agents/rust-*-
+  agent.md` files are superseded … the installer's deploy becomes authoritative, and
+  `test_realhome_supersede.py`'s pattern extends" contradicts DN §D14/§D3 ("the 29 `~/.claude/agents/`
+  files become unowned legacy: never written, never deleted"). This CR generates rust into
+  `generator/agents/` only; deployment is CR-MDB-025 §S4's `.agents/agents` class; nothing under
+  `~/.claude` is superseded, asserted, or touched.
+- **§S1's `[frontmatter]` block is TRANSITIONAL:** it matches today's four stack files so one
+  regeneration settles 017+024, and CR-MDB-025 §S1 then restructures all five into
+  `[roles.<role>]` tables (`effort`→`thinking`, `skills` dropped, tools translated). Accepted
+  double-regeneration per 025's Risk.
+- **Doc-update AC (`:127`) gains** `docs/research/PRD-model-b-rationalization.md` §D6 ("Bespoke:
+  rust ×4, vscode ×4 …") and §4.4 ("16 agents generated, 13 bespoke") — 20 generated after this CR,
+  5 bespoke (electronics ×4 + `inbox-analyst`); `generator/build.py:21-23` docstring likewise.
+  The "vscode ×4 remain excluded" line reads "untouched by this CR" (DN §D4 makes vscode a
+  generated overlay via its own CR).
+- Census pins to amend, by id: `tests/test_agent_generator.py:96-116,334-338,574-600` and
+  `tests/test_installer_assets.py:97-98,363-429` (4-stack / 13-bespoke / "exactly 17 written
+  files"). Keep ONE `--list` pin (032 §S4 dedups the other).
+
 ## Context
 
 Four files — `~/.claude/agents/rust-{red,green,verify,fix}-agent.md` — exist on every machine

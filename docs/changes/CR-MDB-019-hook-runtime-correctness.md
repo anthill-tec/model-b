@@ -2,11 +2,26 @@
 
 **Status:** PENDING
 **Type:** bugfix
-**Priority:** P2 (release-0.1.0 hygiene — one dead stack path and one fail-closed hazard in shipped hook output)
+**Priority:** P2 (release-1.0.0 hygiene — one dead stack path and one fail-closed hazard in shipped hook output)
 **Depends on:** CR-MDB-015 (authored the hook + emitters), CR-MDB-018 (supplies the `clients_dir` the feed resolution needs)
 **Labels:** hooks, opencode, crucible, contract, patch
 **Phase:** Wave 5
 **Design reference:** the status-envelope contract **document**, version **2.0.0** — cited at its INSTALLED, manifest-discoverable location `~/.crucible/clients/STATUS-CONTRACT.md` (re-verified 2026-09-18: still `**Version: 2.0.0**`; §Versioning records the 1.1.0 → 2.0.0 rationale). **Never cite a Crucible source checkout** (user directive 2026-09-18): the path is discovered from `crucible-clients.json`'s own `status` key, which CR-MDB-018 now captures, so this hook's re-pin target is resolved rather than hardcoded · `docs/research/DN-harness-agnostic-hooks.md` §2 / §4.4 (the refusal rule) · `hooks-src/schema.md`
+
+## Amendments 2026-09-21 (from `audits/2026-09-21-codebase-review-*.md`)
+
+- **§S3 STRUCK.** "Make the opencode handler honestly asynchronous" is withdrawn: opencode is not
+  a target (DN §D13/§D14) and `_emit_opencode` is retired by CR-MDB-031. Its AC lines under
+  "§S3 / §S4" that name the opencode emitter are void; §S4's fail-closed guard now applies to
+  the **Pi** emitter, whose runtime is rebuilt by CR-MDB-030 (measured: no default-export
+  factory, no `stdin` in `pi.exec`, `execCommand` never rejects — so today `_HONORS_FAIL_CLOSED`
+  is false for `pi` too). 019 keeps §S1 (status-contract re-pin from the manifest's `status`
+  key; `lastRunCr` → `lastClosedCr`) and §S2 (arduino marker). `tests/test_hooks.py:415-429`
+  loads Crucible's dev-checkout `toon.py` in-process to build this hook's fixtures — out of
+  bounds since 2026-09-18; use `modelb_axi.toon` (CR-MDB-032 §S1 owns the sweep; 019 must not
+  add to it).
+- "No change to the pi or claude-code emitters" in Non-goals now reads: no change to the pi
+  emitter *here* (030), and the claude-code emitter is retained only until 031 deletes it.
 
 ## Context
 
