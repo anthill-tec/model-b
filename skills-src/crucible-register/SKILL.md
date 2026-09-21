@@ -13,8 +13,20 @@ metadata:
 ```bash
 curl -s -X POST http://localhost:3849/api/v2/agents/register \
   -H 'Content-Type: application/json' \
-  -d '{"agentId":"YOUR_AGENT_ID","projectKey":"YOUR_PROJECT_KEY","status":"online","message":"Starting: TASK_DESCRIPTION","identity":{"displayName":"YOUR_DISPLAY_NAME","source":"claude-md"}}'
+  -d '{"agentId":"YOUR_AGENT_ID","projectKey":"YOUR_PROJECT_KEY","role":"RED","cycleId":"YOUR_CYCLE_ID","status":"online","message":"Starting: TASK_DESCRIPTION","identity":{"displayName":"YOUR_DISPLAY_NAME","source":"claude-md"}}'
 ```
+
+`role` is REQUIRED and case-exact, one of `RED`, `GREEN`, `FIX`, `VERIFY`,
+`ORCHESTRATOR`, `report` — a missing or out-of-enumeration role is rejected 400.
+`cycleId` binds the agent to an ACTIVE cycle of an OPEN plan and is REQUIRED by
+the server for the four TDD roles (`RED`/`GREEN`/`FIX`/`VERIFY`): an unbound TDD
+registration is rejected 409. `ORCHESTRATOR` and `report` may register unbound —
+omit `cycleId` entirely for those two. Once bound, the server stamps that cycle
+onto every run you ingest, so nothing downstream passes a cycle id again.
+
+The agentId is free-form and assigned by whoever dispatched you; the role is
+NEVER inferred from its shape, so an id ending `-GREEN` registered with
+`"role":"RED"` classifies as RED.
 
 `displayName` and `source` go inside the `identity` object — top-level values are
 ignored. Registration is an upsert: registering an already-known agent just

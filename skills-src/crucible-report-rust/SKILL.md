@@ -105,13 +105,21 @@ def _post(path, payload):
         data=json.dumps(payload).encode(), headers={"Content-Type": "application/json"})
     return json.loads(urllib.request.urlopen(req).read())
 
-def crucible_register(agent_id, phase="RED"):
-    """Register agent with Crucible. Call FIRST before any work."""
+def crucible_register(agent_id, role="RED", cycle_id=None):
+    """Register agent with Crucible. Call FIRST before any work.
+
+    role is case-exact: RED|GREEN|FIX|VERIFY|ORCHESTRATOR|report.
+    cycle_id is REQUIRED by the server for the four TDD roles (409 without);
+    ORCHESTRATOR/report may register unbound.
+    """
     env = _read_env()
-    return _post("/api/v2/agents/register",
-        {"agentId": agent_id, "projectKey": env["CRUCIBLE_PROJECT_KEY"],
-         "status": "online", "message": f"Starting {phase} phase",
-         "identity": {"displayName": f"{phase} {agent_id}", "source": "claude-code"}})
+    payload = {
+        "agentId": agent_id, "projectKey": env["CRUCIBLE_PROJECT_KEY"],
+        "role": role, "status": "online", "message": f"Starting {role}",
+        "identity": {"displayName": f"{role} {agent_id}", "source": "claude-md"}}
+    if cycle_id is not None:
+        payload["cycleId"] = cycle_id
+    return _post("/api/v2/agents/register", payload)
 
 def crucible_unregister(agent_id):
     """Unregister agent from Crucible. Call LAST before session ends."""

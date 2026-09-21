@@ -79,20 +79,32 @@ handover — provenance in `skills-src/CRUCIBLE-HANDOVER.md`); they document
 the **CR-CRU-030** client contract. The local `references/*.md` files are
 THIN ROUTERS: Model B workflow deltas only, then route to the bundle.
 
-## Workflow classification — server-driven cycle attach + display context
+## Workflow classification — cycle attach + display context
 
-Cycle attach is SERVER-DRIVEN (CR-CRU-036): every run/plan verb reads the
-open plan and auto-attaches to its single `status:"active"` cycle
-(`resolve_attach_cycle` in shared `_crucible_axi.py`). No env var carries a
-cycle id — clients resolve it from the server.
+> **The auto-attach mechanism below is RETIRED (2026-09-21, CR-CRU-056 §S1/§S4).**
+> A cycle is now bound EXPLICITLY at registration with `register --cycle <cycleId>`
+> — required by the server for the four TDD roles, optional for
+> `ORCHESTRATOR`/`report` — and the server stamps that binding onto every
+> subsequent ingest. The paragraph and bullets that follow are kept as the
+> superseded CR-CRU-036 contract so the supersession is legible; read them as
+> history. Where they and the `--cycle` binding disagree, the binding wins.
+
+Under CR-CRU-036 cycle attach was SERVER-DRIVEN: every run/plan verb read the
+open plan and auto-attached to its single `status:"active"` cycle
+(`resolve_attach_cycle` in shared `_crucible_axi.py`). No env var carried a
+cycle id — clients resolved it from the server.
 
 - OPEN plan but NO active cycle → the client emits the `no-active-cycle`
   warning and WITHHOLDS the run: `ok:false`, non-zero exit, nothing posted
   (no orphan ever reaches the server).
 - No open plan at all, or a plans-fetch hiccup → tolerant: the run proceeds
   unattached, no warning, no withhold.
-- The orchestrator's ONLY cycle input is `cycle-activate` (one active cycle
-  at a time); agents never pass a cycle id.
+- The orchestrator's ONLY cycle input WAS `cycle-activate` (one active cycle
+  at a time); agents never passed a cycle id. Today the orchestrator still
+  drives `cycle-activate`, and the agent declares the binding ONCE, at
+  registration, with `--cycle`.
+
+Still true either way: no env var carries a cycle id.
 
 Display/classification context survives as env vars:
 

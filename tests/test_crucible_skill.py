@@ -15,6 +15,7 @@ deliverable is markdown/skill content, not Python modules.
 """
 
 import os
+import re
 import subprocess
 import unittest
 from pathlib import Path
@@ -26,6 +27,62 @@ SKILL_DIR = REPO_ROOT / "skills-src" / "crucible"
 SKILL_MD = SKILL_DIR / "SKILL.md"
 REFERENCES_DIR = SKILL_DIR / "references"
 ARCHIVE_WAVE2 = REPO_ROOT / "archive" / "wave2"
+
+# ------------------------------------------------------------------------
+# CR-MDB-017 §S1 -- the `ac7` re-pin.
+#
+# The original assertion was a bare whole-file `AGENTS.md.count(...) == 0`
+# over the retired per-run cycle-id environment variable.  That made
+# DOCUMENTING the prohibition indistinguishable from VIOLATING it: the gate
+# forbade naming what it forbids, so AGENTS.md could not describe its own
+# grep-gate family or its own baseline failure without tripping it, and the
+# suite carried the result as a permanent recorded failure.
+#
+# Re-pointed at the CLAIM the gate exists to prevent: no SENTENCE may say the
+# per-project context wrapper injects that variable.  Naming the variable in
+# order to prohibit it is legal; asserting that something sets it is not.
+# The product-surface guarantee -- zero occurrences anywhere the variable
+# could actually be injected -- is asserted separately and positively below,
+# so nothing the old bare count protected is lost.
+CYCLE_ID_ENV_VAR = "WORKFLOW_CYCLE_ID"
+
+# Verbs that turn a mention into an injection CLAIM.
+INJECTION_VERB_RE = re.compile(
+    r"\b(?:inject(?:s|ed|ing)?|pin(?:s|ned|ning)?|set(?:s|ting)?|export(?:s|ed|ing)?"
+    r"|pass(?:es|ed|ing)?|provid(?:e|es|ed|ing)|suppl(?:y|ies|ied)"
+    r"|plumb(?:s|ed|ing)?|populat(?:e|es|ed|ing))\b",
+    re.IGNORECASE,
+)
+
+# Sentence-ish split: markdown lines, then terminal punctuation.  Narrower
+# units mean a verb elsewhere in a long bullet cannot manufacture a hit.
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.;:!?])\s+")
+
+# Where the variable could ACTUALLY be injected: the product surfaces.
+# AGENTS.md, docs/, audits/ and archive/ DESCRIBE the gate rather than violate
+# it -- a sweep that edits the gate's own definition defeats it.
+CYCLE_ID_PRODUCT_DIRS = ("modelb_axi", "scripts", "generator", "skills-src")
+
+
+def _sentences(text):
+    """Every sentence-ish fragment of `text` as (lineno, fragment)."""
+    out = []
+    for lineno, line in enumerate(text.splitlines(), 1):
+        for fragment in _SENTENCE_SPLIT_RE.split(line):
+            fragment = fragment.strip()
+            if fragment:
+                out.append((lineno, fragment))
+    return out
+
+
+def _injection_claims(text, token=CYCLE_ID_ENV_VAR):
+    """Sentences that both NAME `token` and assert something injects it."""
+    return [
+        (lineno, fragment)
+        for lineno, fragment in _sentences(text)
+        if token in fragment and INJECTION_VERB_RE.search(fragment)
+    ]
+
 
 # The 10 skill dirs §S4 requires gone from ~/.claude/skills/ (5 report skills
 # + agent-protocol + the 4 TDD-phase skills), each keyed to a distinctive
@@ -490,15 +547,66 @@ class CrucibleSkillCRMDB011Test(unittest.TestCase):
         )
 
     def test_ac7_repo_agents_md_no_longer_claims_workflow_cycle_id_injection(self):
+        """CR-MDB-017 §S1 re-pin: the CLAIM, not a bare substring count.
+
+        The assertion used to be `AGENTS.md.count(CYCLE_ID_ENV_VAR) == 0`,
+        which forbade naming what it forbids -- both occurrences it counted
+        were META (the grep-gate-family description and the baseline sentence
+        naming this very failure) while the guarantee itself held everywhere
+        the variable could be injected.  It now measures the claim: no
+        sentence may say the per-project context wrapper injects it.
+        """
         agents_md = REPO_ROOT / "AGENTS.md"
         self.assertTrue(agents_md.is_file(), f"{agents_md} must exist")
-        content = _read(agents_md)
-        count = content.count("WORKFLOW_CYCLE_ID")
-        # EXACT bound -- the wrapper sentence must no longer claim
-        # WORKFLOW_CYCLE_ID injection.
+        claims = _injection_claims(_read(agents_md))
+        # EXACT bound -- zero sentences asserting injection.  Mentioning the
+        # variable in order to prohibit it stays legal.
         self.assertEqual(
-            count, 0,
-            f"expected zero 'WORKFLOW_CYCLE_ID' occurrences in {agents_md}, found {count}",
+            claims, [],
+            f"expected no sentence in {agents_md} to claim the wrapper injects "
+            f"{CYCLE_ID_ENV_VAR}; offending sentences: "
+            + "; ".join(f"{lineno}: {frag}" for lineno, frag in claims),
+        )
+
+    def test_ac7_injection_claim_detector_bites(self):
+        """The re-pinned gate is PROVEN to bite, so the green above is not a
+        regex that matches nothing."""
+        violating = (
+            f"# Per-project context wrapper (pins CRUCIBLE_PROJECT_KEY and "
+            f"{CYCLE_ID_ENV_VAR})."
+        )
+        self.assertNotEqual(
+            _injection_claims(violating), [],
+            "a sentence claiming the wrapper pins the retired cycle-id variable "
+            f"must be reported; detector returned nothing for: {violating}",
+        )
+        permitted = (
+            f"They assert grep-gates for retired terms (e.g. zero "
+            f"`{CYCLE_ID_ENV_VAR}`)."
+        )
+        self.assertEqual(
+            _injection_claims(permitted), [],
+            "naming the variable in order to PROHIBIT it must stay legal, or the "
+            f"gate forbids documenting itself again: {permitted}",
+        )
+
+    def test_ac7_product_surfaces_carry_zero_cycle_id_injection_points(self):
+        """The guarantee the bare count was standing in for, asserted where it
+        actually means something: the surfaces that could inject the variable.
+        """
+        offending = {}
+        for dirname in CYCLE_ID_PRODUCT_DIRS:
+            root = REPO_ROOT / dirname
+            self.assertTrue(root.is_dir(), f"{root} must exist")
+            for path in sorted(p for p in root.rglob("*") if p.is_file()):
+                count = _read(path).count(CYCLE_ID_ENV_VAR)
+                if count:
+                    offending[str(path.relative_to(REPO_ROOT))] = count
+        # EXACT bound -- zero occurrences across every product surface.
+        self.assertEqual(
+            offending, {},
+            f"expected zero {CYCLE_ID_ENV_VAR!r} occurrences across "
+            f"{list(CYCLE_ID_PRODUCT_DIRS)}; found: {offending}",
         )
 
     def test_ac8_zero_claude_scripts_client_path_mentions_in_authored_skill(self):

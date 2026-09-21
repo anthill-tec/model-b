@@ -28,7 +28,17 @@ flag-surface family therefore asserts POSITIVE facts about our own examples:
   satisfy it by substring accident;
 * the retired register flag appears nowhere.
 
-Four fixture cases (temp bundles, never a mutation of `skills-src/`) prove each
+And the same surface on the wire (added at CR-MDB-017 V1), because not every
+register example is a command line: a `POST` to the agents register route whose
+payload declares no `role`, or declares a TDD role without a `cycleId`, is the
+same defect in the shape the released server actually rejects.  It shipped
+undetected in `crucible-register`, which owns no CLI client and therefore
+matched the flag families zero times -- passing not because it was correct but
+because nothing looked at it.  `HTTP_BODY_BUNDLES` names the bundles whose
+register surface is a payload, and the family asserts each one CONTRIBUTES an
+example, so the blind spot cannot reopen silently.
+
+Six fixture cases (temp bundles, never a mutation of `skills-src/`) prove each
 of those defects makes the checker bite, so the guard is demonstrated rather
 than assumed.
 
@@ -69,7 +79,11 @@ SKILLS_SRC = REPO_ROOT / "skills-src"
 # ------------------------------------------------------------- bundle sets ---
 
 # The lifecycle bundle; it documents the agents API but ships no per-stack tier
-# vocabulary, so it is out of the `tier` family below.
+# vocabulary, so it is out of the `tier` family below.  Its register surface is
+# an HTTP BODY, not a CLI invocation, so it is named in HTTP_BODY_BUNDLES below
+# and asserted about there -- CR-MDB-017 V1 found it sitting in no category at
+# all, passing every family by incidental zero-match while shipping a payload
+# the released server rejects.
 REGISTER_BUNDLE = "crucible-register"
 
 # Bundles that ship a CLI client and therefore MUST contribute a register
@@ -78,6 +92,15 @@ CLIENT_BUNDLES = (
     "crucible-report-arduino",
     "crucible-report-bun",
     "crucible-report-java",
+    "crucible-report-python",
+    "crucible-report-rust",
+)
+
+# Bundles whose register surface is an HTTP BODY posted to the agents API --
+# the wire-key equivalent of the CLI flag families.  Named so the body family
+# below can assert they CONTRIBUTE one, never pass by matching nothing.
+HTTP_BODY_BUNDLES = (
+    REGISTER_BUNDLE,
     "crucible-report-python",
     "crucible-report-rust",
 )
@@ -103,7 +126,10 @@ TDD_ROLES = ("RED", "GREEN", "FIX", "VERIFY")
 
 REGISTER_EXAMPLE_RE = re.compile(r"[\w./~$-]*-crucible\.py[`'\"]?\s+register\b")
 ROLE_FLAG_RE = re.compile(r"--role[=\s]+([A-Za-z-]+)")
-CYCLE_FLAG_RE = re.compile(r"--cycle\b")
+# Word-bounded on BOTH sides: `--cycles` (the plan-file flag) must not satisfy
+# the binding gate, and neither must `--cycle-kind` (the plan-file pair flag),
+# which a bare `\b` accepted because `-` is already a non-word character.
+CYCLE_FLAG_RE = re.compile(r"--cycle(?![\w-])")
 
 # Finding codes returned by `_register_flag_findings`.
 FINDING_RETIRED_FLAG = "retired-flag"
@@ -111,11 +137,112 @@ FINDING_MISSING_ROLE = "missing-role"
 FINDING_ROLE_OUT_OF_ENUM = "role-out-of-enum"
 FINDING_MISSING_CYCLE = "missing-cycle"
 
+# ------------------------------------------- the register BODY surface ---
+#
+# Not every register example is a command line.  `crucible-register` and the
+# python/rust bundles' fallback snippets post the payload directly, and the
+# wire keys `role` / `cycleId` are the exact equivalents of `--role` /
+# `--cycle`.  CR-MDB-017 V1: the CLI families above matched none of them, so
+# a body carrying NEITHER key -- which the released server rejects -- shipped
+# green.  This family closes that blind spot.
+REGISTER_API_PATH = "/api/v2/agents/register"
+
+# A body example is a register-path occurrence INSIDE a fenced code block whose
+# window carries a quoted `agentId` key -- i.e. an actual payload.  A row in an
+# endpoint-reference table names the same route in markdown prose, outside any
+# fence, and is correctly not an example.  The window reaches BOTH ways within
+# its block: a payload is as often assembled into a variable above the POST as
+# written inline below it.
+BODY_AGENT_KEY_RE = re.compile(r"[\"']agentId[\"']\s*:")
+BODY_ROLE_KEY_RE = re.compile(r"[\"']role[\"']\s*:")
+BODY_CYCLE_KEY_RE = re.compile(r"[\"']cycleId[\"']\s*:")
+# A TDD role stated as a literal value; a variable or placeholder is not one.
+BODY_TDD_ROLE_RE = re.compile(
+    r"[\"']role[\"']\s*:\s*[\"'](" + "|".join(TDD_ROLES) + r")[\"']"
+)
+BODY_WINDOW_LINES = 12
+FENCE_RE = re.compile(r"^[ \t]*```")
+
+FINDING_BODY_MISSING_ROLE = "body-missing-role"
+FINDING_BODY_MISSING_CYCLE = "body-missing-cycle"
+
 # ------------------------------------------------------ endpoints and verbs ---
 
-# Per-bundle v2 truth: every owned bundle documents the parsed and compile run
-# ingest routes, the two every client path ultimately posts to.
-V2_ENDPOINTS_REQUIRED = ("/api/v2/runs/parsed", "/api/v2/runs/compile")
+# Per-bundle v2 truth ("S5): each owned bundle's OWN measured endpoint floor,
+# not a fleet minimum.  The old two-route constant let the five richer bundles
+# silently drop the agents/events/projects routes they document and still pass;
+# arduino's entry is its true two.  Measured from each SKILL.md 2026-09-21.
+# `crucible-register` additionally documents the agents touch route; it is
+# omitted here only because tests/test_skills_handover.py:294 owns that family
+# and this module may not re-assert it.
+V2_ENDPOINTS_BY_BUNDLE = {
+    "crucible-register": (
+        "/api/v2/runs",
+        "/api/v2/runs/parsed",
+        "/api/v2/runs/compile",
+        "/api/v2/agents",
+        "/api/v2/agents/register",
+        "/api/v2/agents/unregister",
+        "/api/v2/events",
+        "/api/v2/projects",
+    ),
+    "crucible-report-arduino": (
+        "/api/v2/runs/parsed",
+        "/api/v2/runs/compile",
+    ),
+    "crucible-report-bun": (
+        "/api/v2/runs",
+        "/api/v2/runs/parsed",
+        "/api/v2/runs/compile",
+        "/api/v2/agents",
+        "/api/v2/agents/register",
+        "/api/v2/agents/unregister",
+        "/api/v2/events",
+        "/api/v2/projects",
+    ),
+    "crucible-report-java": (
+        "/api/v2/runs",
+        "/api/v2/runs/parsed",
+        "/api/v2/runs/compile",
+        "/api/v2/agents",
+        "/api/v2/agents/register",
+        "/api/v2/agents/unregister",
+        "/api/v2/events",
+        "/api/v2/projects",
+    ),
+    "crucible-report-python": (
+        "/api/v2/runs",
+        "/api/v2/runs/parsed",
+        "/api/v2/runs/compile",
+        "/api/v2/agents/register",
+        "/api/v2/agents/unregister",
+        "/api/v2/projects",
+    ),
+    "crucible-report-rust": (
+        "/api/v2/runs",
+        "/api/v2/runs/parsed",
+        "/api/v2/runs/compile",
+        "/api/v2/agents",
+        "/api/v2/agents/register",
+        "/api/v2/agents/unregister",
+        "/api/v2/events",
+        "/api/v2/projects",
+    ),
+    "crucible-report-vscode": (
+        "/api/v2/runs",
+        "/api/v2/runs/parsed",
+        "/api/v2/runs/compile",
+        "/api/v2/agents",
+        "/api/v2/agents/register",
+        "/api/v2/agents/unregister",
+        "/api/v2/events",
+        "/api/v2/projects",
+    ),
+}
+
+# The two routes every owned bundle posts to, whatever else it documents --
+# the floor of the floors, asserted so a per-bundle entry cannot be emptied.
+V2_ENDPOINTS_UNIVERSAL = ("/api/v2/runs/parsed", "/api/v2/runs/compile")
 
 # The v1 ingest route. Present only inside an explicit retired/legacy note.
 V1_ENDPOINT = "/api/ingest"
@@ -124,31 +251,68 @@ LEGACY_LOOKBACK_LINES = 15
 
 TIER_RE = re.compile(r"\btier\b", re.IGNORECASE)
 
-# Verbs the released clients actually expose, taken from THIS CR's own text
-# (§S3/§S4a/§S4b and the per-stack surfaces it enumerates) rather than from any
-# client's `argparse` — the module never reads one.
+# Verbs the released client fleet exposes, completed 2026-09-21 as the UNION of
+# the five installed clients' own subparser lists (44 verbs: the shared
+# lifecycle/tier/plan set plus rust's clippy/workspace verbs and java's docker
+# ones).  It is a vocabulary of OUR OWN text's subcommands, not a mirror of
+# Crucible's FLAG surface -- the module still reads no client at run time.
+# The previous 17-entry list was hand-picked from this CR's prose and missed
+# `cr-plan`, which skills-src/memory-templates/rust-orchestration.md:21 uses.
+# `gate-report` is listed because it EXISTS; naming it as the gate verb is a
+# separate prohibition, owned by tests/test_client_verb_sweep.py.
 CLIENT_VERBS = (
+    "abort",
+    "auto-ingest",
+    "bdd",
+    "check",
+    "checkpoint",
+    "clippy",
+    "compile",
+    "cr-close",
+    "cr-depends",
+    "cr-plan",
+    "cr-supersede",
+    "cr-void",
+    "cycle-activate",
+    "cycle-add",
+    "cycle-done",
+    "docker-down",
+    "docker-e2e-gate",
+    "docker-up",
+    "e2e",
+    "gate-report",
+    "gate-run",
+    "integration",
+    "milestone",
+    "module",
+    "next",
+    "plan-backfill",
+    "plan-file",
+    "plans",
+    "pre-merge-gate",
+    "queue",
+    "queue-file",
     "register",
-    "unregister",
-    "test",
     "regression",
     "regression-ingest",
-    "auto-ingest",
-    "check",
-    "compile",
+    "release-propose",
+    "smoke-test",
+    "status",
+    "stop",
+    "test",
     "unit",
-    "module",
-    "e2e",
-    "pre-merge-gate",
-    "next",
-    "plan-file",
-    "gate-run",
-    "cr-close",
-    "milestone",
+    "unregister",
+    "wave-sequence",
+    "workspace-clippy",
+    "workspace-regression",
 )
+# NO LINE ANCHOR.  The anchored form reached only the 32 invocations that begin
+# their line, so 12 of the 44 under skills-src/ were never scanned at all --
+# ordered-list items (`1. \`mvn-crucible.py regression\``), mid-sentence prose
+# citations, and inline backticked references.  An invocation in prose teaches
+# a verb exactly as loudly as one in a fenced block.
 CLIENT_INVOCATION_RE = re.compile(
-    r"^[ \t]*(?:\$[ \t]*)?(?:python3[ \t]+)?[\w./~$-]*-crucible\.py[ \t]+([a-z][a-z0-9-]*)",
-    re.MULTILINE,
+    r"[\w./~$-]*-crucible\.py[ \t]+([a-z][a-z0-9-]*)"
 )
 
 # ----------------------------------------------------------- fixture inputs ---
@@ -169,6 +333,25 @@ FIXTURE_LINE_NO_CYCLE = (
 )
 FIXTURE_LINE_CLEAN = (
     "python3 clients/rust-crucible.py register --agent AGENT_ID --role VERIFY --cycle 60"
+)
+
+# Register BODY fixtures -- the wire-key equivalents of the four above. The
+# first is the exact shape `crucible-register` shipped until CR-MDB-017 V1:
+# a payload the released server rejects, which every CLI family passed over.
+FIXTURE_BODY_NO_ROLE = """curl -s -X POST http://localhost:3849/api/v2/agents/register \\
+  -d '{"agentId":"AGENT_ID","projectKey":"KEY","status":"online"}'"""
+FIXTURE_BODY_TDD_NO_CYCLE = """curl -s -X POST http://localhost:3849/api/v2/agents/register \\
+  -d '{"agentId":"AGENT_ID","projectKey":"KEY","role":"RED","status":"online"}'"""
+FIXTURE_BODY_CLEAN = """curl -s -X POST http://localhost:3849/api/v2/agents/register \\
+  -d '{"agentId":"AGENT_ID","projectKey":"KEY","role":"RED","cycleId":"60","status":"online"}'"""
+# An unbound registration is LEGAL for the two non-TDD roles, so the body
+# family must not report it -- otherwise it would forbid what the server allows.
+FIXTURE_BODY_CLEAN_UNBOUND = """curl -s -X POST http://localhost:3849/api/v2/agents/register \\
+  -d '{"agentId":"AGENT_ID","projectKey":"KEY","role":"ORCHESTRATOR","status":"online"}'"""
+# An endpoint-reference table row names the path but carries no payload; it is
+# not an example and must not be reported.
+FIXTURE_BODY_TABLE_ROW = (
+    "| `/api/v2/agents/register` | POST | Register/touch agent (upsert) |"
 )
 
 FIXTURE_BUNDLE_NAME = "crucible-report-fixture"
@@ -274,7 +457,98 @@ def _register_flag_findings(root):
             findings.append(
                 (FINDING_MISSING_CYCLE, f"{rel}:{lineno}: role {role} — {line}")
             )
+    findings.extend(_register_body_findings(root))
     return findings
+
+
+def _fenced_block_spans(lines):
+    """[(start, end)] half-open line-index spans of every fenced code block."""
+    spans = []
+    start = None
+    for index, line in enumerate(lines):
+        if not FENCE_RE.match(line):
+            continue
+        if start is None:
+            start = index + 1
+        else:
+            spans.append((start, index))
+            start = None
+    if start is not None:  # unterminated fence: treat the tail as the block
+        spans.append((start, len(lines)))
+    return spans
+
+
+def _register_body_examples(root, include_exempt=False):
+    """Every register BODY example under `root` as (relpath, lineno, window).
+
+    Scoped to fenced code blocks: a register route named in a markdown table or
+    a sentence is documentation, not an executable example, and carries no
+    payload obligation.  Inside a block the window spans both directions so a
+    payload built into a variable above the POST is seen.
+    """
+    found = []
+    for path in _iter_files(root):
+        if not include_exempt and _is_exempt(path, root):
+            continue
+        lines = _read(path).splitlines()
+        spans = _fenced_block_spans(lines)
+        for index, line in enumerate(lines):
+            if REGISTER_API_PATH not in line:
+                continue
+            block = next(
+                ((s, e) for s, e in spans if s <= index < e), None
+            )
+            if block is None:
+                continue
+            start = max(block[0], index - BODY_WINDOW_LINES)
+            end = min(block[1], index + BODY_WINDOW_LINES)
+            window = "\n".join(lines[start:end])
+            if BODY_AGENT_KEY_RE.search(window):
+                found.append((_rel(path, root), index + 1, window))
+    return found
+
+
+def _register_body_findings(root):
+    """Register-BODY defects under `root`, as (code, detail).
+
+    The wire-key half of the checker: `role` is the equivalent of `--role` and
+    `cycleId` of `--cycle`, and the server rejects a body missing either one
+    for a TDD role exactly as it rejects the command line.
+    """
+    findings = []
+    for rel, lineno, window in _register_body_examples(root):
+        first = next(
+            (
+                line.strip()
+                for line in window.splitlines()
+                if REGISTER_API_PATH in line
+            ),
+            window.splitlines()[0].strip(),
+        )
+        if not BODY_ROLE_KEY_RE.search(window):
+            findings.append(
+                (FINDING_BODY_MISSING_ROLE, f"{rel}:{lineno}: {first}")
+            )
+            continue
+        match = BODY_TDD_ROLE_RE.search(window)
+        if match and not BODY_CYCLE_KEY_RE.search(window):
+            findings.append(
+                (
+                    FINDING_BODY_MISSING_CYCLE,
+                    f"{rel}:{lineno}: role {match.group(1)} — {first}",
+                )
+            )
+    return findings
+
+
+def _documents_endpoint(text, endpoint):
+    """True when `text` names `endpoint` as a route in its own right.
+
+    Matched with a trailing path-boundary so `/api/v2/agents` is not satisfied
+    by `/api/v2/agents/register` -- without it every shorter route in the
+    per-bundle map would pass on a longer one's prefix.
+    """
+    return re.search(re.escape(endpoint) + r"(?![\w/-])", text) is not None
 
 
 def _codes(findings):
@@ -518,6 +792,134 @@ class RegisterFlagFixtureTest(unittest.TestCase):
         )
 
 
+class RegisterBodySurfaceTest(unittest.TestCase):
+    """The HTTP-BODY half of the register surface (CR-MDB-017 V1).
+
+    `crucible-register` sat in no category at all: it owns no CLI client, so
+    every CLI family matched nothing in it and it passed by incidental
+    zero-match -- while shipping a `POST /api/v2/agents/register` body with
+    neither `role` nor `cycleId`, which the released server rejects.  That is
+    the exact failure mode the register-flag families exist to forbid, so the
+    wire keys are gated with the same force as the flags.
+    """
+
+    def setUp(self):
+        self.examples = _register_body_examples(SKILLS_SRC)
+        self.findings = _register_body_findings(SKILLS_SRC)
+
+    def test_body_bundles_are_named_and_each_contributes_a_body_example(self):
+        for bundle in HTTP_BODY_BUNDLES:
+            self.assertTrue(
+                (SKILLS_SRC / bundle).is_dir(),
+                f"HTTP_BODY_BUNDLES names {bundle!r}, which does not exist under "
+                "skills-src/; a stale category gates nothing.",
+            )
+        self.assertIn(
+            REGISTER_BUNDLE,
+            HTTP_BODY_BUNDLES,
+            f"{REGISTER_BUNDLE!r} must sit in a category this module asserts "
+            "about. Before CR-MDB-017 V1 it was in none, so it passed every "
+            "family by matching nothing.",
+        )
+        contributors = {rel.split("/", 1)[0] for rel, _, _ in self.examples}
+        missing = sorted(b for b in HTTP_BODY_BUNDLES if b not in contributors)
+        self.assertEqual(
+            missing,
+            [],
+            "every body-surface bundle must contribute at least one register "
+            f"payload example, or this family passes it vacuously: {missing}",
+        )
+
+    def test_every_register_body_example_carries_a_role_key(self):
+        hits = [
+            detail
+            for code, detail in self.findings
+            if code == FINDING_BODY_MISSING_ROLE
+        ]
+        self.assertEqual(
+            hits,
+            [],
+            "every register payload under skills-src/ must carry a `role` key "
+            f"from the case-exact set {{{', '.join(ROLE_ENUM)}}}; the server "
+            "rejects a body that declares none. Offenders:\n  " + "\n  ".join(hits),
+        )
+
+    def test_tdd_role_register_body_examples_carry_a_cycle_id(self):
+        hits = [
+            detail
+            for code, detail in self.findings
+            if code == FINDING_BODY_MISSING_CYCLE
+        ]
+        self.assertEqual(
+            hits,
+            [],
+            "a register payload declaring one of "
+            f"{{{', '.join(TDD_ROLES)}}} must also carry `cycleId`; the server "
+            "rejects an unbound TDD registration. Offenders:\n  " + "\n  ".join(hits),
+        )
+
+
+class RegisterBodyFixtureTest(unittest.TestCase):
+    """The body family is PROVEN to bite, the same way the four flag defects
+    are -- against a temp fixture, never a mutation of skills-src/."""
+
+    def test_fixture_register_body_missing_role_is_reported(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _write_fixture_bundle(tmp, FIXTURE_BODY_NO_ROLE)
+            findings = _register_flag_findings(root)
+        self.assertIn(
+            FINDING_BODY_MISSING_ROLE,
+            _codes(findings),
+            "the payload `crucible-register` shipped until CR-MDB-017 V1 declares "
+            "no role and must be reported; the checker returned "
+            f"{_codes(findings)}",
+        )
+
+    def test_fixture_tdd_role_register_body_missing_cycle_is_reported(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _write_fixture_bundle(tmp, FIXTURE_BODY_TDD_NO_CYCLE)
+            findings = _register_flag_findings(root)
+        self.assertIn(
+            FINDING_BODY_MISSING_CYCLE,
+            _codes(findings),
+            "a payload declaring a TDD role with no cycle binding must be "
+            f"reported; the checker returned {_codes(findings)}",
+        )
+
+    def test_fixture_clean_register_bodies_are_reported_by_nothing(self):
+        for label, body in (
+            ("bound TDD role", FIXTURE_BODY_CLEAN),
+            ("unbound non-TDD role", FIXTURE_BODY_CLEAN_UNBOUND),
+        ):
+            with tempfile.TemporaryDirectory() as tmp:
+                root = _write_fixture_bundle(tmp, body)
+                findings = _register_flag_findings(root)
+            self.assertEqual(
+                findings,
+                [],
+                f"a correct register payload ({label}) must produce no finding, "
+                f"or the two negative cases above prove nothing: {findings}",
+            )
+
+    def test_fixture_endpoint_table_row_is_not_treated_as_a_body_example(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _write_fixture_bundle(tmp, FIXTURE_BODY_TABLE_ROW)
+            examples = _register_body_examples(root)
+            findings = _register_flag_findings(root)
+        self.assertEqual(
+            examples,
+            [],
+            "an endpoint-reference table row names the register route in prose "
+            f"and carries no payload, so it is not an example: {examples}",
+        )
+        self.assertEqual(
+            findings,
+            [],
+            "documenting the route in a reference table must stay legal, or "
+            f"every bundle's endpoint table becomes an offender: {findings}",
+        )
+
+
 class ApiPathExemptionTest(unittest.TestCase):
     """The vscode exemption is an assertion, never an incidental zero-match."""
 
@@ -553,18 +955,58 @@ class BundleEndpointTierAndVerbTest(unittest.TestCase):
     """Ported from the inherited Bun guard: v2-endpoint truth, no unmarked v1
     legacy, `tier` presence, and real client verbs — now including arduino."""
 
-    def test_every_owned_bundle_documents_the_v2_run_ingest_routes(self):
+    def test_every_owned_bundle_documents_its_own_measured_v2_routes(self):
+        """PER-BUNDLE truth, not a fleet minimum: each bundle must keep every v2
+        route IT documents, so a richer bundle cannot silently shed the agents,
+        events or projects routes and still pass on the two-route floor."""
+        measured = _owned_bundle_names(SKILLS_SRC)
+        unmapped = [b for b in measured if b not in V2_ENDPOINTS_BY_BUNDLE]
+        self.assertEqual(
+            unmapped,
+            [],
+            "every owned bundle needs its OWN measured endpoint floor in "
+            f"V2_ENDPOINTS_BY_BUNDLE; unmapped: {unmapped}",
+        )
+        stale = [b for b in V2_ENDPOINTS_BY_BUNDLE if b not in measured]
+        self.assertEqual(
+            stale,
+            [],
+            "V2_ENDPOINTS_BY_BUNDLE names bundles that do not exist under "
+            f"skills-src/; a stale entry gates nothing: {stale}",
+        )
         missing = []
         for path in _owned_bundle_paths():
             text = _read(path / "SKILL.md")
-            for endpoint in V2_ENDPOINTS_REQUIRED:
-                if endpoint not in text:
+            for endpoint in V2_ENDPOINTS_BY_BUNDLE[path.name]:
+                if not _documents_endpoint(text, endpoint):
                     missing.append(f"{_rel(path)}/SKILL.md: {endpoint}")
         self.assertEqual(
             missing,
             [],
-            "every owned bundle must document the v2 run-ingest routes it posts "
-            f"to {list(V2_ENDPOINTS_REQUIRED)}; missing: {missing}",
+            "each bundle must still document every v2 route it was measured to "
+            f"document; dropped: {missing}",
+        )
+
+    def test_every_bundle_floor_contains_the_universal_run_ingest_routes(self):
+        """The per-bundle map cannot be emptied to make the family above pass."""
+        thin = {
+            bundle: list(endpoints)
+            for bundle, endpoints in V2_ENDPOINTS_BY_BUNDLE.items()
+            if not set(V2_ENDPOINTS_UNIVERSAL) <= set(endpoints)
+        }
+        self.assertEqual(
+            thin,
+            {},
+            "every bundle's floor must contain the two run-ingest routes every "
+            f"client path ultimately posts to {list(V2_ENDPOINTS_UNIVERSAL)}; "
+            f"these were weakened: {thin}",
+        )
+        self.assertGreater(
+            len(V2_ENDPOINTS_BY_BUNDLE["crucible-report-bun"]),
+            len(V2_ENDPOINTS_BY_BUNDLE["crucible-report-arduino"]),
+            "the richer bundles must carry a STRICTLY larger floor than "
+            "arduino's true two, or the map has collapsed back into the fleet "
+            "minimum it replaced.",
         )
 
     def test_no_owned_bundle_carries_an_unmarked_v1_ingest_reference(self):

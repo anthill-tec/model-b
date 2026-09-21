@@ -83,6 +83,26 @@ BAN_DEFINING_FILES = (
     GUARD_TEST,
 )
 
+# §S4d, CR-MDB-017 V1 — the `.lavish/` carve-out, made EXPLICIT.
+#
+# `.lavish/` holds generated lavish-axi renderings of past review sessions. The
+# three `/api/ingest` occurrences in `model-b-memory-rationalization.html`
+# NARRATE this very migration — they name the defect, the v1→v2 mapping, and
+# the grep-gate list — so they describe the ban exactly as the PRD/DN/audit
+# hits do, and a sweep there would falsify a record rather than fix an
+# instruction. PRD §11 criterion 2 carries the same carve-out in prose.
+#
+# It is spelled out here because until now the directory escaped this scan
+# TWICE BY ACCIDENT: every dot-prefixed path part is skipped, and `.html` is
+# not in TEXT_SUFFIXES. The AC was therefore claimed on an incidental
+# zero-match — the precise failure mode this CR exists to forbid — while the
+# directory sat git-tracked and unignored.
+LAVISH_CARVE_OUT = ".lavish/"
+GENERATED_ARTIFACT_CARVE_OUTS = (LAVISH_CARVE_OUT,)
+# A carved-out hit must still be NARRATION: it names the v2 route it maps to,
+# or it names the gate. A live v1 instruction dropped there still fails.
+LAVISH_NARRATION_MARKERS = ("/api/v2/", "gate")
+
 TEXT_SUFFIXES = {"", ".md", ".toml", ".ts", ".py", ".txt", ".json", ".yaml", ".yml", ".sh"}
 
 # ------------------------------------------------------------ vocabulary ----
@@ -686,6 +706,8 @@ class ClientVerbSweepS4dTest(unittest.TestCase):
             if not path.is_file() or path.suffix not in TEXT_SUFFIXES:
                 continue
             rel = path.relative_to(REPO_ROOT).as_posix()
+            if rel.startswith(GENERATED_ARTIFACT_CARVE_OUTS):
+                continue
             if any(part.startswith(".") for part in Path(rel).parts):
                 continue
             if rel.startswith(API_INGEST_EXCLUDED_PREFIXES) or rel == GUARD_TEST:
@@ -717,6 +739,44 @@ class ClientVerbSweepS4dTest(unittest.TestCase):
             broken,
             "a sweep that edits the gate's own definition defeats the gate; these files "
             "DESCRIBE the ban and must keep their strings:\n" + _fmt(broken),
+        )
+
+
+    def test_s4d_the_lavish_carve_out_is_explicit_and_its_hits_are_narration(self):
+        """CR-MDB-017 V1 — the carve-out is NAMED and TRUTHFUL, never incidental.
+
+        `.lavish/` is git-tracked and unignored, so criterion 2 could not be
+        claimed while it went unexamined. It is carved out by name; this gate
+        proves the carve-out is honest by re-reading the directory the main scan
+        skips and requiring every `/api/ingest` line there to be narration.
+        """
+        self.assertIn(
+            LAVISH_CARVE_OUT,
+            GENERATED_ARTIFACT_CARVE_OUTS,
+            "the carve-out must be NAMED in a constant the scan reads, not left "
+            "to the dot-directory and non-text-suffix skips that hid it.",
+        )
+        carve_root = REPO_ROOT / LAVISH_CARVE_OUT.rstrip("/")
+        if not carve_root.is_dir():
+            return  # nothing carved out; the criterion is unconditionally met
+        instructional = []
+        for path in sorted(carve_root.rglob("*")):
+            if not path.is_file():
+                continue
+            rel = path.relative_to(REPO_ROOT).as_posix()
+            for lineno, line in enumerate(
+                path.read_text(encoding="utf-8", errors="replace").splitlines(), 1
+            ):
+                if "/api/ingest" not in line:
+                    continue
+                if not any(m in line for m in LAVISH_NARRATION_MARKERS):
+                    instructional.append((rel, lineno, line))
+        self.assertEqual(
+            [],
+            instructional,
+            "a carved-out generated artifact may DESCRIBE the retired v1 routes "
+            "(naming the v2 route they map to, or naming the gate) but never "
+            "teach one as live; these read as instructions:\n" + _fmt(instructional),
         )
 
 

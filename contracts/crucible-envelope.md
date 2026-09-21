@@ -102,6 +102,64 @@ from the reference port on that reading; it sidesteps the ambiguity on emit.
 
 ## Required surface
 
+### Register surface — the role/cycle binding (CR-CRU-044 §S1 + CR-CRU-056 §S1/§S4)
+
+This is the flag surface four consumers mirror (`skills-src/crucible/SKILL.md`, the six
+`crucible-report-*` bundles, `generator/templates/*.tmpl`, and `AGENTS.md`); a consumer
+that drifts from it teaches a registration the released server rejects. Measured against
+the installed `0.2.2` fleet, 2026-09-21.
+
+```
+register --agent <id> --role <ROLE> [--cycle <cycleId>] [--display-name <n>]
+         [--source <src>] [--message <m>] [--project-dir <dir>]
+```
+
+- **`--role` is required and CASE-EXACT**, from `{RED, GREEN, FIX, VERIFY, ORCHESTRATOR,
+  report}` — five uppercase, `report` lowercase. It is the ONLY role channel. A missing
+  role, or one outside that set, is refused 400 by the server; `red` is not `RED`.
+  `report` is the role for a registration that is not exercising a TDD role.
+- **`--cycle` binds the agent to a cycle, and the SERVER — not argparse — requires it for
+  the four TDD roles** `RED|GREEN|FIX|VERIFY`: an unbound TDD registration is refused 409.
+  The flag is optional in the parser, so the omission surfaces as a server error, never a
+  usage message. `ORCHESTRATOR` and `report` may legally register UNBOUND. The id must name
+  an ACTIVE cycle of an OPEN plan, it is server-assigned (never guessed), and once bound the
+  server stamps every subsequent ingest by that agent with it.
+- **The agentId is FREE-FORM** and assigned by the dispatcher, never minted by the agent.
+  The role is NEVER inferred from its shape: an id ending `-GREEN` registered with
+  `--role RED` classifies as RED. Any `<type>-<project>` or `CR-<PROJ>-NNN-<cycle>-<ROLE>`
+  spelling is a readability habit only.
+- **`--source` is enumerated** — `{claude-md, package-json, git-repo, manual}`, default
+  `claude-md` — and is carried by the whole fleet, `rust-crucible.py`, `mvn-crucible.py`
+  and `arduino-crucible.py` included, not just the bun/python pair.
+- Registration is an UPSERT: registering an already-known agent touches it.
+- The env carriers are unchanged by this surface — see *Classification context* below.
+  `WORKFLOW_ROLE`, `WORKFLOW_WAVE` and `WORKFLOW_CYCLE` survive; the per-run cycle-id
+  carrier is GONE, and no env var carries a cycle id. The cycle arrives through `--cycle`
+  at registration and nowhere else.
+
+**Wire body** — `POST /api/v2/agents/register`, the equivalent of the flags above.
+`role` is omitted only when none was declared (which the server then refuses), and
+`cycleId` is present only for a bound registration:
+
+```json
+{
+  "agentId": "<id>",
+  "projectKey": "<uuid>",
+  "role": "<ROLE>",
+  "cycleId": "<cycleId>",
+  "status": "online",
+  "message": "<status message>",
+  "identity": {
+    "displayName": "<name>",
+    "source": "<src>",
+    "repoPath": "<project dir>"
+  }
+}
+```
+
+`displayName`, `source` and `repoPath` go INSIDE `identity` — top-level copies are ignored
+by v2. `unregister` takes `agentId` + `projectKey` only.
+
 ### Envelope (stdout = AXI channel, stderr = human channel)
 Every client verb emits exactly one TOON envelope on stdout:
 
@@ -113,7 +171,9 @@ Every client verb emits exactly one TOON envelope on stdout:
   `auto-ingest`, `plan-file`, …); `ok` — boolean outcome; result fields are verb-specific
   (e.g. `agent`, `cr`, run summary).
 - `context` — `{projectKey, agentId?, cycleId?, wave?, cr?, track?}`. Absent keys are
-  OMITTED. `cycleId` is SERVER-RESOLVED (below), never supplied by the caller.
+  OMITTED. `context.cycleId` ECHOES the attachment the SERVER reported, which since
+  CR-CRU-056 is the binding the agent declared at registration via `register --cycle`
+  (see *Register surface* above, and the retired auto-attach note below).
 - `warnings[]` — always present, empty when clean.
 - The human-readable line is interactive-only and goes to stderr; the machine channel is
   the stdout envelope. Test-run output itself is passed through on stderr.
@@ -125,10 +185,19 @@ Runs and plan verbs are classified by the surviving `WORKFLOW_*` env carriers
 `WORKFLOW_CYCLE` (cycle label — display). Model B pins these via the per-project context
 wrapper (`/tmp/claude-1000/modelb-crucible`). No env var carries a cycle id.
 
-### Server-resolved cycle attach + no-active-cycle withhold (CR-CRU-036)
-`context.cycleId` is resolved by the client from the server via
+### Server-resolved cycle attach + no-active-cycle withhold (CR-CRU-036) — RETIRED
+
+> **RETIRED 2026-09-21 by CR-CRU-056 §S1/§S4.** Cycle attachment is no longer discovered
+> by the client at ingest time. It is an EXPLICIT binding declared at registration with
+> `register --cycle <cycleId>` (see *Register surface* above), which the server then stamps
+> onto every subsequent ingest by that agent. The mechanism described in this subsection is
+> kept verbatim as the superseded contract Model B mirrored between CR-CRU-036 and
+> CR-CRU-056 — read it as history, never as an instruction. Where it and the register
+> surface disagree, the register surface wins.
+
+`context.cycleId` was resolved by the client from the server via
 `resolve_attach_cycle` (shared `_crucible_axi.py`): the open plan's single
-`status:"active"` cycle is auto-attached. The contract returns
+`status:"active"` cycle was auto-attached. The contract returned
 `(cycle_id, warnings, withhold)`:
 
 - plans-fetch failure → `(None, [], False)`: tolerant, the verb PROCEEDS.
@@ -139,7 +208,9 @@ wrapper (`/tmp/claude-1000/modelb-crucible`). No env var carries a cycle id.
   withhold line to stderr, SKIPS the POST (nothing is posted — no orphan ever reaches
   the server) and exits non-zero.
 
-The orchestrator's only cycle input is `cycle-activate`; agents never pass a cycle id.
+Under THAT mechanism the orchestrator's only cycle input was `cycle-activate` and agents
+never passed a cycle id. Under the current one the orchestrator still drives
+`cycle-activate`, and the agent additionally declares the binding ONCE, at registration.
 
 ### Universal plan verbs (fleet-wide)
 Filed by the orchestrator, on ALL stack clients:
@@ -173,8 +244,13 @@ Filed by the orchestrator, on ALL stack clients:
   until that release records) — omit it unless the gate really gates a release.
 
 ### Agent-naming header (bundled agent-naming skill)
-- TDD-phase agents: `CR-<PROJ>-NNN-<cycle>-<PHASE>` (e.g. `CR-MDB-009-C1-GREEN`).
+- TDD-ROLE agents: `CR-<PROJ>-NNN-<cycle>-<ROLE>` (e.g. `CR-MDB-009-C1-GREEN`) — a
+  readability habit, never a parsed key. The role itself is declared with `--role` at
+  registration and is never inferred from the id (see *Register surface*).
 - Orchestrator ops: `<agent-type>-<project>` (Model B solo: `vidushi-mdb`).
+- The older spelling of the same habit, `CR-<PROJ>-NNN-<cycle>-<PHASE>`, named the retired
+  per-phase register flag that Crucible removed in 0.1.0 with no alias. It is superseded by
+  the `<ROLE>` form above and survives here only so the supersession is legible.
 
 ## Filed requests / gaps
 
