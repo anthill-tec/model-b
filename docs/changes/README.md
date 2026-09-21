@@ -372,3 +372,8 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   quarkus agents regenerated, `build.py --check` clean, suite unchanged 240/7F/12S; PRD §D5 amended
   — there is no cross-project memory tier any more. `convex-client-server.md` is not a Model B
   stack reference and stays the user's.
+- 2026-09-21 — **BOARD RE-SEQUENCED** after the dependency changes: `wave-sequence --release 1.0.0
+  --wave 2` authored the whole 17-entry order `028 017 018 019 023 020 024 027 021 033 030 025 032
+  029 026 031 012` (dependency-respecting; 028 first per the P0 ruling, 012 last). `next` →
+  `CR-MDB-028 seq=2001`. The repo queue table's row order is historical and does not mirror this;
+  the board is the sequencing authority.
