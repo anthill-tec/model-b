@@ -34,7 +34,7 @@ Queue rows enumerate the whole delivery (structure only). **Live status lives on
 | [CR-MDB-021](CR-MDB-021-chezmoi-retirement.md) | Retire chezmoi introspection from the test suite: eight false-green release gates removed, policy self-enforcing | 5 | — |
 | [CR-MDB-026](CR-MDB-026-watcher-launch-supervision.md) | The wake watcher must stay alive: supervised process + `restart: on-failure`, and the three-exit taxonomy (mail / timeout / lock-conflict) the bundles conflate | 5 | — |
 | [CR-MDB-025](CR-MDB-025-omp-harness-support.md) | OMP as a first-class deploy target: neutral agent-definition schema + per-harness emitters, agent-defs as an installer asset class, OMP hook emitter, `omp` in the roster | 5 | 017 |
-| [CR-MDB-027](CR-MDB-027-subagent-dispatch-on-pi.md) | Sub-agent dispatch on Pi: decide what provides it, given Pi core has none (decision CR — blocks the CR-025 rewrite) | 5 | — |
+| [CR-MDB-027](CR-MDB-027-subagent-dispatch-on-pi.md) | Sub-agent dispatch on Pi: decide what provides it, given Pi core has none (decision CR — RULED 2026-09-21: `pi-archimedes`, DN §D16; unblocks the CR-025 rewrite) | 5 | — |
 | [CR-MDB-028](CR-MDB-028-worktree-flow-scheduling-migration.md) | Retire `worktree-flow.py`'s DB half: scheduling moves to Crucible's API (P0 — above the routing strategy, user ruling) | 5 | 022 |
 | [CR-MDB-012](CR-MDB-012-release-1.0.0.md) | Release 1.0.0: full verification suite (PRD §4) + archive/mapping.md + master tag | 5 | 006, 007, 008, 010, 011, 013, 014, 016, 017, 018, 019, 020, 021, 022, 023, 024, 025, 026, 027, 028 |
 
@@ -257,3 +257,25 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   `providers` and would REJECT the key by schema validation; `modelRoles` is a `config.yml`
   setting and TEN aliases are live, not the five listed. A layer session may not edit root
   `contracts/`, hence drafts rather than commits.
+- 2026-09-21 — **CR-MDB-027 RULED: sub-agent dispatch on Pi is `pi-archimedes`** (route i′, a
+  fourth route the 2026-09-18 survey missed — it searched "teammates", not "subagent"). Measured
+  from the installed package's source, not from this session working: 2.8.0, unaffiliated single
+  maintainer, 23 releases in 11 weeks, peer-dep `>=0.1.0` on Pi 0.86.1; each dispatch is a
+  **separate `pi` process** (`--mode json --no-session -p --tools <csv> --exclude-tools subagent`,
+  per-call `cwd`), blocking, no nesting; agent files are `name`/`description`/`model`/`tools`
+  CSV/`thinking` frontmatter read from project `.pi/agents/` → user `~/.pi/agent/agents/` →
+  **global `~/.agents/agents/`** — the shared store Pi already uses for skills, where the 20
+  Model B definitions + 4 vscode + `inbox-analyst` sit hand-placed today and already resolve via
+  `list_agents`. All three §S4 properties hold, two by HARNESS enforcement (`--tools` allowlist;
+  the child loads project `.pi/extensions/` so 015's write-boundary block applies) — stronger than
+  Claude Code's prompt-only baseline. Recorded DN §D16; §D15.4 table names the route; DN
+  Consequences rows for 025/012 re-targeted OMP → Pi and the unfiled plugin CR renumbered
+  **CR-MDB-029** (027 consumed its number). **Sequence approved (user):** 027 → 025 rewrite
+  (`_emit_pi()`, asset class → `~/.agents/agents/`, §S5/§S6 fall away) → 029 (Pi package:
+  extensions + skills; agents cannot ride a Pi package). Two items carried, not closed: (a) whether
+  `-p` mode skips the project-trust prompt for a fresh worktree's `.pi/` — 025's integration gate
+  measures it; (b) **release scope RULED (user, emphatic): 027 AND its implementation (the 025
+  rewrite) are in 1.0.0** — 027's leftover "implementation not in 1.0.0" clauses were the
+  contradiction and are struck; 025 stays on 012's dependency list. Model resolution defect found in passing:
+  archimedes passes `model:` literally as `--model`, so today's `sonnet`/`inherit` resolve to
+  nothing and fall through to the parent's model by accident — the 025 emitter's §S3 fixes it.

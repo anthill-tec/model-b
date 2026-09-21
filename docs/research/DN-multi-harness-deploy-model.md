@@ -1,6 +1,6 @@
 # DN — The multi-harness deploy model: one neutral source, per-harness targets
 
-**Status:** ADOPTED (user-ruled 2026-09-18)
+**Status:** ADOPTED (user-ruled 2026-09-18; §D16 added 2026-09-21)
 **Drives:** CR-MDB-025 (OMP target), CR-MDB-020 (client-path anchoring), CR-MDB-018 (discovery
 capture), CR-MDB-014 (universal installer — the flow this extends), CR-MDB-019 (hook runtime)
 **Supersedes in part:** CR-MDB-025's claim that "skills already work on OMP — no work required"
@@ -484,13 +484,14 @@ resource types (extensions, skills, prompts, themes) with **no agents/teammates*
 `modelTier`/`thinkingLevel`/`tools`.
 
 Model B's entire workflow IS dispatched sub-agents (RED→GREEN→VERIFY→FIX, each registering with
-Crucible under its own agent id). So this is the foundation, not a convenience. Three routes, and
-the choice belongs to the user:
+Crucible under its own agent id). So this is the foundation, not a convenience. Three routes were
+tabled here; a fourth was found and chosen on 2026-09-21 (§D16):
 
 | | Route | Consequence |
 |---|---|---|
 | i | Depend on `pi-mono-team-mode` | The core of our workflow rests on a third-party package we do not control and whose maintenance status is unmeasured |
-| ii | **Build dispatch as a Model B Pi extension** | Consistent with the §D15.3 ruling; full control; materially bigger than the watcher extension — it needs session spawning, per-agent tool grants, model selection and result capture |
+| **i′** | **Depend on `pi-archimedes` (`@pi-archimedes/subagent`) — CHOSEN 2026-09-21** | Same third-party class as (i), but already installed, measured (CR-MDB-027 §S1.1), and reading the shared `~/.agents/agents/` store — so the emitter target is one directory, not a per-harness copy |
+| ii | Build dispatch as a Model B Pi extension | Consistent with the §D15.3 ruling; full control; materially bigger than the watcher extension — it needs session spawning, per-agent tool grants, model selection and result capture |
 | iii | Change the workflow | Rejected by default: the sub-agent split IS Model B's design (PRD §D6), not an implementation detail |
 
 **5. Model roles / Tier-1 seam — ANSWERED, and it HELPS D4.** Pi core has **no `modelRoles` alias
@@ -517,22 +518,70 @@ is the existing design rather than a new requirement. What changes is that the H
 both lanes — which any OpenAI-compatible-capable harness does through switchyard (PRD D1), and
 which is exactly why owning the harness remains a NON-GOAL (§D11).
 
+### D16 — Sub-agent dispatch on Pi is provided by `pi-archimedes`; the emitter target is `~/.agents/agents/`
+
+**User ruling 2026-09-21**, closing CR-MDB-027. Measurement in CR-MDB-027 §S1.1 (sources: the
+installed package's `package.json`/`README.md`/`src/spawn.ts`/`src/agents.ts` and the npm
+registry — mechanism read from source, not inferred from this session working).
+
+**What was measured, in one line each.** `pi-archimedes` 2.8.0, unaffiliated single maintainer,
+23 releases in 11 weeks, peer-dep `pi-coding-agent >=0.1.0` (no upper bound; runs on the local
+0.86.1). Its `@pi-archimedes/subagent` component dispatches each task as a **separate `pi`
+process** — `pi --mode json --no-session -p --model … --thinking … --tools <csv> --exclude-tools
+subagent --system-prompt <body> <task>` in a per-call `cwd` — blocking, parallel via `tasks[]`, no
+nested dispatch. Agent files: `.md` + frontmatter `name`/`description` (required), `model`,
+`tools` (CSV), `thinking`; unknown keys preserved. Scopes: project `.pi/agents/` → user
+`~/.pi/agent/agents/` → **global `~/.agents/agents/`**.
+
+**How the three CR-027 §S4 properties are provided:**
+
+| Property | Mechanism | Strength vs Claude Code baseline |
+|---|---|---|
+| Own Crucible identity per phase | Own process + own `bash`; agent id/`--role`/`--cycle` arrive in the task prompt exactly as `sub-agent-procedure.md` already specifies | Equal (prompt-carried, as today) |
+| Worktree write boundary, VERIFY read-only | (1) `tools` allowlist is **harness-enforced** via `--tools`; (2) the child is a full `pi` in `cwd`, so CR-015's `.pi/extensions/block-write-outside-worktree` applies | Stronger — (1) has no Claude Code equivalent |
+| Context isolation | Separate process, `--no-session`, own `childSessionId` | Stronger |
+
+**Consequences.**
+
+1. **The emitter target is `~/.agents/agents/<name>.md`** — archimedes' global scope and the same
+   shared store §D15.1 credits Pi for on skills. The per-harness agent-definition copy §D2/§D6
+   forced for OMP is NOT needed on Pi; the installer asset class CR-MDB-025 §S4 introduces
+   deploys once, user-scope, no symlink (the `.agents/skills` and `.agents/scripts` shape).
+2. **`_emit_pi()` replaces `_emit_omp()` in the CR-025 rewrite:** `tools` CSV of Pi core names
+   through an explicit translation map (drop-with-reason, never a plausible rename); `model` is a
+   concrete `switchyard/<route-id>` per §D15.5 or omitted for `inherit` (archimedes passes it
+   literally as `--model`, so `sonnet` today resolves to nothing); `effort` → `thinking`;
+   `color`/`maxTurns`/`skills` dropped as inert.
+3. **The ownership boundary §D3 now applies to `~/.agents/agents/`**: 25 hand-placed files today;
+   Model B generates 20 (24 with the vscode overlay §D4) and never writes or deletes
+   `inbox-analyst`.
+4. **One caveat is carried, not closed:** whether `-p` mode honours or skips the project-trust
+   prompt for a fresh worktree's `.pi/` (`modelb_axi/hooks.py:320`). If it skips silently, the
+   extension half of the write boundary is absent and only the `tools` allowlist holds. The 025
+   rewrite's integration gate measures it with a real dispatch into a fresh worktree.
+5. **Risk accepted and bounded:** a single unaffiliated maintainer, the same class as route (i).
+   Accepted because the dependency surface is four frontmatter keys plus one directory, and
+   §D1 makes the provider an emitter target — a later swap to route (i) or (ii) is one emitter.
+
+**Release scope, ruled 2026-09-21:** CR-MDB-027 and its implementation (the CR-MDB-025 rewrite)
+are both in release 1.0.0; 025 stays on CR-MDB-012's dependency list.
+
 ## Consequences per CR
 
 | CR | What this DN changes |
 |---|---|
-| **025** (OMP) | Reshaped by §D10: delivery becomes "publish a PLUGIN", not "write files into `~/.omp/agent/`". Withdraws "skills need no work" (§D2). Adds the adoption census and ownership boundary (§D3), agent-dir resolution (§D6), `config.yml` verify-not-write (§D7), and TS factory adapters over the python hook scripts (§D5). Claude Code output stays byte-identical (§D1). |
+| **025** (OMP → Pi) | Reshaped by §D10, then re-targeted by §D13 (Pi) and §D16 (archimedes): delivery is `_emit_pi()` + the agent-definition asset class to `~/.agents/agents/`. Withdraws "skills need no work" for OMP (§D2) — but on Pi skills need no work for the MEASURED reason §D15.1 gives. Ownership boundary (§D3) applies to `~/.agents/agents/`. Claude Code output stays byte-identical (§D1). §S5/§S6 (roster, hook emitter) fall away: `pi` is in the roster and `_emit_pi` hooks exist since 015. |
 | **020** (client paths) | §D8's never-a-checkout rule is its §S0; the anchor is now real, not aspirational. |
 | **018** (discovery) | The manifest exists with six keys; resolution SUCCEEDS, so the unresolved degrade is no longer the expected outcome. |
 | **019** (hook runtime) | OMP joins the emitter set; `fail_direction: closed` is honourable there, unlike opencode. Hooks are OMP's legacy surface — extensions are the unified one (§D10). |
 | **024** (rust) | Its four definitions are emitted to BOTH harnesses, not just Claude Code. |
 | **014** (installer) | Gains the agent-definition asset class and the per-harness emitter dispatch. Per §D10 the OMP path is publication, so the installer orchestrates a plugin install rather than owning OMP's directories. |
-| **012** (release) | The release gate must prove BOTH harnesses resolve an emitted definition by name. §D10 adds a publication step: tag, catalog version + source pin, then `omp plugin marketplace update` / `omp plugin upgrade`. A session RESTART is required for tools/hooks/extensions — `/reload-plugins` is insufficient. |
-| **NEW CR needed** | Authoring the marketplace + plugin package itself (dual catalogs, `omp.extensions` manifest, TS factory adapters, dev-loop via `omp plugin link`). This is not inside 025's current scope and should be filed at the next SCRUM. |
+| **012** (release) | The release gate must prove Pi resolves an emitted definition by name (`list_agents` via archimedes) and Claude Code output is byte-identical. §D15.2 adds a publication step for the Pi package (extensions + skills): tag, `pi install npm:…@<version>`. |
+| **NEW CR — CR-MDB-029** | Authoring the Pi package itself per §D15.2: `package.json` `pi` manifest, `extensions/` (the CR-026 watcher per §D15.3; hooks currently emitted per-project by 015), `skills/`. **Agent definitions cannot ride it** — Pi packages carry only extensions/skills/prompts/themes — so the split is: package = extensions + skills; installer = agents + tool scripts. (The number 027 this row once reserved was consumed by the dispatch decision CR.) |
 
 ## Open, deliberately not decided here
 
-- Whether the four `pi`/`hermes`/`opencode` harnesses should also receive agent definitions.
+- Whether `hermes`/`opencode` should also receive agent definitions. (`pi` is now decided — §D16.)
   They are present on this machine but Model B has never emitted definitions for them, and
   nothing yet establishes their frontmatter contracts. Out of scope until a CR needs it.
 - Whether the OMP-local skills copy should be a copy or a symlink farm. Copy is assumed (D2 says
