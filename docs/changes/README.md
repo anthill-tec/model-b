@@ -377,3 +377,15 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   029 026 031 012` (dependency-respecting; 028 first per the P0 ruling, 012 last). `next` →
   `CR-MDB-028 seq=2001`. The repo queue table's row order is historical and does not mirror this;
   the board is the sequencing authority.
+- 2026-09-21 — **CR-MDB-028 GAP-ANALYSIS (orchestrator, not delegated)** — baseline measured
+  240/7F/12S (the 4 touched suites OK); seven drifts, all amended in the spec: (1) coupling is 8/10
+  verbs, not 5 — `start`/`finish`/`abort` carry DB mirrors; `finish`'s "next line" goes and
+  `orchestration-track.md:13` repoints; (2) §S7 re-measured 13 refs not 7 — AC now pins 12 + a grep
+  gate; (3) `progress` measured at ZERO callers → removed, not deliberated; (4) five test sites
+  listed by id, incl. `test_worktree_flow_axi.py:141,160,169` which run the STALE `~/.claude/scripts`
+  copy and would stay green after removal; (5) CR-010's `next`/`progress` conversions retire as a
+  sanctioned amendment; (6) header/AC/risk text aligned; (7) **cross-project: the shared deployed
+  `worktree-flow.py` is NAI's tool too** — NAI resolves it path-less to the chezmoi copy today and
+  would lose its scheduler on the first `modelb-axi` run. **USER RULING: proceed DB-less now; NAI
+  migrates at the 1.0.0 release** (NAI is waiting on it) — **CR-MDB-012 carries the NAI migration
+  item**; `schedule_db.py`'s retirement is decided there, §S5 keeps it shipped until then.

@@ -1,6 +1,6 @@
 # CR-MDB-028 — Retire `worktree-flow.py`'s DB half: scheduling moves to Crucible's API
 
-**Status:** PENDING
+**Status:** GAP-ANALYSIS DONE 2026-09-21 — seven drifts amended below; branch cut follows
 **Type:** maintenance / migration
 **Priority:** **P0 for wave 1** (user ruling 2026-09-21: this ranks ABOVE the Roundhouse routing
 strategy and the LLM auto-routing work). Rationale the user gave, and it is the right one: the
@@ -11,12 +11,52 @@ validated yet.
 **Depends on:** nothing in this repo. Its only gate — "Crucible 0.2.0 actually shipping" — is
 **OPEN**: production runs **0.2.2** and the roadmap verbs are live and in use.
 **Labels:** scripts, worktree-flow, crucible, scheduling, migration
-**Phase:** Wave 1 (proposed)
+**Phase:** Wave 5 (repo queue, historical column) · release 1.0.0 **wave 2, seq 2001 — first** (Crucible board, re-sequenced 2026-09-21)
 **Design reference:** CR-MDB-022 §Context ("the retirement itself is a future CR gated on that
 release, not this one") · user directive 2026-08-27 (`schedule_db.py` is transitional; Crucible
 assumes responsibility for storing the workflow plan and state from 0.2.0) · `docs/changes/README.md`
 footer 2026-08-27 and 2026-09-18 · measured client surface of the INSTALLED production client
 (`~/.crucible/clients/python-crucible.py`, 0.2.2)
+
+## Gap-analysis amendments 2026-09-21 (all seven drifts; the sections below are read WITH these)
+
+1. **Coupling is 8 of 10 verbs, not 5.** `start` (`:401-406`, `:478-482`), `finish` (`:855-871`) and
+   `abort` (`:973-976`) carry optional DB *mirrors* guarded by `_sdb_con() is None`: slug-from-heading
+   and ownership claim, COMPLETED + close-note + the **"next: NEXT/HOLD" line**, and state-set. Only
+   `status` and `sync` are DB-free. The mirrors are removed with the rest; behaviour on a DB-less
+   project is byte-identical, so the "git-derived verbs unchanged" AC holds for `status`/`sync`
+   and for the DB-less behaviour of `start`/`finish`/`abort`. **`finish` no longer prints a next
+   line** — `orchestration-track.md:13` ("it IS your instruction") repoints to `python-crucible.py next`.
+2. **§S7 re-measured: 13 references, not 7.** Added: `orchestration-track.md:10,12,13,15,22` and
+   `orchestration-common.md:51`. The AC pins 12 repo-side sites + the CR-023 cross-CR item, and a
+   grep gate (`worktree-flow(\.py)? (cs|show|reconcile|next|progress)` → 0 under `skills-src/`,
+   `scripts/`, `AGENTS.md`, `hooks-src/`).
+3. **§S4 SETTLED: `progress` is REMOVED.** Measured 2026-09-21: zero callers in `skills-src/`,
+   `scripts/`, `AGENTS.md`, `hooks-src/`; only CR-010's AC line and two tests reference it. Crucible's
+   `checkpoint`/`cycle-done` carry progress.
+4. **Test amendments, by id (sanctioned amendments to closed CR-010/022):**
+   `tests/test_toon_codec.py:150` `WF_VERBS` → `(("status",),)`; `:1036-1081`'s degrade-warning
+   assertion deleted (the codec's static bare-item fixtures at `:726-760`, `:920`, `:958` stay);
+   `tests/test_worktree_flow_axi.py:141,160,169` deleted — they run the STALE
+   `~/.claude/scripts/worktree-flow.py` (measured: `~/.agents/scripts/` does not exist) and would
+   stay green after removal, so RED cannot run against them; CR-032 retires the module's remainder.
+   `tests/test_tooling_adoption.py:319-346`'s five banner regexes (`TRANSITIONAL`, `Crucible …
+   owns`, `plan … state/storage`, `0.2.0`, `must not be extended`) MUST still match §S5's rewritten
+   banner — `0.2.0` survives as the release that moved *Model B's* storage, not as a removal date.
+   `tests/test_tooling_detachment.py:29-30` line-pins (`rust-orchestration.md:11`) sit above the
+   deleted lines 18/20 and are unaffected; re-run after edit.
+5. **CR-010 lineage:** 010 converted `next` and `progress` to AXI (`:24`, `:41`, `:59`). Retiring them
+   is a sanctioned amendment; its envelope contract stands for `status` and `finish` only.
+6. **Header/AC text aligned:** `next` is removed (not "delegates or"); the delegation risk bullet is
+   dead; no module is deleted (§S5); the board is the sequencing authority.
+7. **CROSS-PROJECT (NAI) — USER RULING 2026-09-21: proceed DB-less now; NAI's migration is handled
+   at the 1.0.0 release.** Measured: NAI's docs name `worktree-flow` without a path; today they resolve
+   to `~/.claude/scripts/worktree-flow.py` (chezmoi copy, Jul 21, DB-coupled) because
+   `~/.agents/scripts/` is not materialised on this machine. The first `modelb-axi` run deploys the
+   DB-less tool; NAI is **waiting on Model B's 1.0.0 release** to migrate its 334-row DB to Crucible.
+   Consequence: CR-MDB-012's release notes carry the NAI migration item and `schedule_db.py`'s
+   retirement is decided THERE (§S5 keeps it shipped until then). The "touches no NAI state" AC
+   stands as written.
 
 ## Context
 
@@ -123,13 +163,12 @@ Removal costs one repoint each and leaves exactly one board.
 `AGENTS.md` where they name `worktree-flow` for scheduling. State the git-vs-Crucible split above
 verbatim, so the next reader does not have to infer it.
 
-### §S4 — Decide `progress` deliberately (the one genuine gap)
+### §S4 — `progress` is REMOVED (settled at gap-analysis, amendment 3)
 
-`cmd_progress` reports weighted task progress against a ChangeSet row. Crucible has `milestone`,
-`cycle-activate`/`cycle-done` and `checkpoint`, but none is a drop-in for per-task weighted
-progress. Three options, to be settled in the CR rather than improvised: map it onto `checkpoint`;
-drop the verb as unused (measure first — is anything actually calling it?); or keep it as the one
-local-state exception with its own justification. **Measure usage before choosing.**
+`cmd_progress` reported weighted task progress against a ChangeSet row. **Measured 2026-09-21: no
+caller anywhere in the published surfaces** — only CR-010's AC and two tests name it. It goes with
+`cs`/`show`/`reconcile`/`next`; its help-text replacement names Crucible's `checkpoint` and
+`cycle-done`. (The original three-option text is superseded; recorded in git history.)
 
 ### §S5 — `schedule_db.py` STAYS SHIPPED — it is NAI's, not dead code
 
@@ -213,9 +252,11 @@ here so it is discharged by an AC rather than repeated:
 
 ## Acceptance criteria
 
-- [ ] **§S7: every consumer in the measured table is dispositioned** — `bootstrap/SKILL.md` ×2,
-      `orchestration-track.md` ×1, `rust-orchestration.md` ×3, `rust-code-health.py:30` ×1. The
-      assertion names the files and the count (7 live references), so fixing one cannot satisfy it.
+- [ ] **§S7: every consumer in the re-measured table is dispositioned** — `bootstrap/SKILL.md` ×2,
+      `orchestration-track.md` ×5 (`:10,12,13,15,22`), `orchestration-common.md` ×1 (`:51`),
+      `rust-orchestration.md` ×3, `rust-code-health.py:30` ×1 = **12 repo-side references**, plus the
+      CR-023 cross-CR item. Discharged by a grep gate: `worktree-flow(\.py)? (cs|show|reconcile|next|progress)`
+      returns 0 under `skills-src/`, `scripts/`, `AGENTS.md`, `hooks-src/` (`archive/` excluded).
 - [ ] **§S6: `rust-code-health.py:30`'s docstring teaches the TWO-STEP** — `cr-plan` to file the
       CR, `ledger assign` to stamp the findings — and no longer cites `worktree-flow.py cs`.
 - [ ] **§S6: the ledger itself is untouched.** `ledger assign`, `ledger sync --slice X --db-state
@@ -226,18 +267,27 @@ here so it is discharged by an AC rather than repeated:
       that "the skill needs no rewrite when the storage moves" is corrected. Whichever CR merges
       second verifies the other's text; neither may land assuming the other's wording.
 
-- [ ] No `import schedule_db` (or `_sdb` reference) remains in `scripts/worktree-flow.py`.
-- [ ] `cs`, `show` and `reconcile` are removed, and their absence is documented with the Crucible
-      verb that replaces each.
-- [ ] `next` either delegates to the installed client or is removed; **no code path produces a
-      local scheduling answer**, and the chosen option's reason is recorded in the CR.
+- [ ] No `import schedule_db` (or `_sdb` reference) remains in `scripts/worktree-flow.py` — including
+      the optional mirrors in `start`, `finish` and `abort` (amendment 1).
+- [ ] `cs`, `show`, `reconcile`, `next` and `progress` are removed, and their absence is documented
+      with the Crucible verb that replaces each (`cr-plan`+`ledger assign`, `queue`/`status`, none,
+      `next`, `checkpoint`/`cycle-done`).
+- [ ] **No code path produces a local scheduling answer**; `worktree-flow --help` lists exactly
+      `start status sync finish abort`.
+- [ ] `finish` no longer prints a next-line; `orchestration-track.md:13` routes the track's next
+      instruction to `python-crucible.py next`.
 - [ ] Running `worktree-flow next` and `python-crucible.py next` in the same repo cannot return
       contradictory answers — asserted by there being only one source, not by comparing outputs.
 - [ ] The git-derived verbs (`start`, `status`, `sync`, `finish`, `abort`) are unchanged in
-      behaviour, proven by their existing tests still passing untouched.
+      DB-less behaviour, proven by their existing tests still passing untouched.
 - [ ] Every published surface naming `worktree-flow` for scheduling states the git-vs-Crucible
       split; zero surfaces route a scheduling question at `worktree-flow`.
-- [ ] `progress` has a recorded decision backed by a usage measurement, not a guess.
+- [ ] `progress` is removed; the usage measurement (0 callers, 2026-09-21) is recorded in this CR.
+- [ ] **Test amendments land exactly as amendment 4 lists them** — `test_toon_codec.py:150` +
+      `:1036-1081`, `test_worktree_flow_axi.py:141,160,169` — and no other test changes; the five
+      banner regexes in `test_tooling_adoption.py:319-346` pass unmodified against the rewritten
+      banner.
+- [ ] CR-MDB-010's AC lines for `next` and `progress` envelopes are struck with a dated note.
 - [ ] `schedule_db.py` is **still present** in `scripts/` and still in the installer's tool-script
       asset class — its removal is explicitly NOT part of this CR (§S5). Asserted positively, so a
       later tidy-up cannot silently drop it.
@@ -246,7 +296,8 @@ here so it is discharged by an AC rather than repeated:
 - [ ] Tests covering `schedule_db.py` itself still pass unchanged; only tests asserting
       `worktree-flow`'s coupling to it retire.
 - [ ] Nothing in this CR touches `/home/antonyj/Documents/data_projects/nai/` or any other
-      project's state.
+      project's state. **NAI's migration off `schedule_db` is a CR-MDB-012 release item (user ruling
+      2026-09-21); this CR adds that line to 012's dependency notes in the queue.**
 - [ ] The suite's recorded baseline is re-measured and `AGENTS.md`'s baseline sentence updated if
       the count moves.
 
@@ -267,23 +318,23 @@ see, ahead of a strategy we cannot yet validate, is the correct ordering.
 
 ## Estimated size
 
-One script edited (five verbs removed or delegated), one module possibly deleted, three published
-surfaces repointed, tests retired with the code they cover. No new abstractions, no new asset class.
+One script edited (five verbs removed, three verbs' DB mirrors removed), no module deleted (§S5),
+six published surfaces repointed, five test sites amended by id. No new abstractions, no new asset class.
 
 ## Risk
 
 - **`reconcile` has no successor.** It validated the local index against git; with the index gone
   the guarantee it enforced also goes. That is correct — there is nothing left to drift — but it
   should be recorded, not silently dropped.
-- Delegating `next` couples our script to the installed client's presence. Use the manifest-anchored
-  location (CR-MDB-020, `~/.crucible/clients/`), never a checkout path, and degrade with a clear
-  message when the client is absent.
+- ~~Delegating `next` couples our script to the installed client's presence.~~ Dead option — `next`
+  is removed (§S2).
 - Removing verbs is a published-surface change; anything scripted against `cs`/`show`/`reconcile`
   breaks loudly. Grep the repo and the bundles before removal, per CR-MDB-020's pattern.
 
 ## Non-goals
 
-- No change to the git-derived verbs or their output contract (CR-MDB-010's TOON envelope stands).
+- No change to the git-derived verbs' DB-less behaviour or output contract (CR-MDB-010's TOON
+  envelope stands for `status` and `finish`; its `next`/`progress` conversions retire with the verbs).
 - No new Crucible client code — Model B maintains none (standing directive).
 - No re-litigation of whether Crucible owns scheduling; that is settled by user directive and by
   022's recorded sunset.
