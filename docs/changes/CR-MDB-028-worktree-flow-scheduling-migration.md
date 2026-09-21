@@ -20,6 +20,34 @@ footer 2026-08-27 and 2026-09-18 · measured client surface of the INSTALLED pro
 
 ## Context
 
+**RECONCILED 2026-09-21 (user directive: "reconcile your local db and the new Crucible V2 based
+tracking… migrate fully to Crucible V2"). The result changes this CR's nature: there is NO DATA TO
+MIGRATE, so this is a DELETION, not a migration.**
+
+Measured on both sides:
+
+| Side | State |
+| --- | --- |
+| Crucible production board | Exactly ONE project — `Model B`, key `019f7eb8-8cad-7000-9838-854eca8e7c20`, `sutRoot` correct, active. 27 queue entries, 16 plans, 47 cycles, the 1.0.0 release with waves and sequences. No duplicate project to merge. |
+| Local `schedule_db` for Model B | **Does not exist.** Neither `.wf-schedule.db` nor the legacy `.nai-schedule.db` exists anywhere in the Roundhouse tree or under `$HOME`. It was never created. |
+
+So `worktree-flow next`'s `schedule_db unavailable — queue-only project` is not a degraded state;
+it is the ONLY state this project has ever had. **Model B's scheduling truth has always lived in
+Crucible.** The V2 data migration is therefore already complete, and what remains is code and
+published instructions pointing at a backend that holds nothing.
+
+That reframes the work: every §S below is subtractive — delete the dead path, repoint the docs.
+Nothing is copied, transformed or backfilled.
+
+**⚠ CROSS-PROJECT BLAST RADIUS, found by this reconciliation and NOT previously known.** The only
+live schedule DB on this machine belongs to **NAI**:
+`/home/antonyj/Documents/data_projects/nai/.wf-schedule.db` — 225 KB, **334 changeset rows**
+(`CR-NAI-280/281/282/309/311`, …), with three `Track N - Nai` watchers running. NAI is **not** on
+this Crucible install (the board lists only `Model B`). **Model B ships the tool NAI depends on**
+(`scripts/schedule_db.py`, deployed through the `.agents/scripts` asset class). §S5's proposal to
+retire it would pull the backing library out from under an active project holding live state.
+§S5 is rewritten accordingly.
+
 **This CR is the one CR-MDB-022 promised and deferred.** 022 adopted `schedule_db.py` as
 TRANSITIONAL, banner and all, and wrote its sunset down explicitly: *"the retirement itself is a
 future CR gated on that release, not this one."* The gate was Crucible 0.2.0 shipping. It shipped;
@@ -98,11 +126,32 @@ progress. Three options, to be settled in the CR rather than improvised: map it 
 drop the verb as unused (measure first — is anything actually calling it?); or keep it as the one
 local-state exception with its own justification. **Measure usage before choosing.**
 
-### §S5 — `schedule_db.py` itself
+### §S5 — `schedule_db.py` STAYS SHIPPED — it is NAI's, not dead code
 
-Once nothing imports it, decide whether it stays in `scripts/` as a deployed asset. It should not:
-shipping a tool whose own banner says it is superseded teaches the wrong thing. Removal also
-shrinks the installer's tool-script asset class by one. Any test that drives it retires with it.
+**Rewritten 2026-09-21 after reconciliation.** The original §S5 proposed retiring `schedule_db.py`
+from `scripts/` and from the installer's tool-script asset class, reasoning that shipping a tool
+whose banner says it is superseded teaches the wrong thing. **That reasoning was right about Model
+B and wrong about the machine.** `schedule_db.py` has a live consumer: NAI holds 334 changeset
+rows in `.wf-schedule.db` and is not tracked on this Crucible install at all. Removing the module
+from the deployed tool bundle would break an active project mid-flight.
+
+So the disposition splits:
+
+- **`worktree-flow.py` drops its `schedule_db` dependency** (§S1–§S4). That is Model B's call to
+  make, and it is what "migrate fully to Crucible V2" means for *this* project.
+- **`scripts/schedule_db.py` REMAINS** in the repo and in the `.agents/scripts` asset class, with
+  its TRANSITIONAL banner intact. It is no longer Model B's backend; it is a tool Model B
+  publishes that another project still depends on.
+- **Its banner is corrected** to say exactly that, because the current wording implies an imminent
+  removal that must not happen while NAI relies on it: the successor for *Model B* is Crucible's
+  queue; retirement of the module itself is gated on its remaining consumers migrating, which is
+  NOT this CR's business and NOT Model B's decision alone.
+- **Any test that drives `schedule_db.py` stays** — it still ships, so it still needs coverage.
+  Only tests asserting `worktree-flow`'s DB *coupling* retire.
+
+**Do not "finish the job" by deleting the module.** A cross-project dependency discovered late is
+exactly the kind of thing this project has repeatedly paid for; it is recorded here so the next
+reader does not re-derive the tidier, wrong conclusion.
 
 ## Acceptance criteria
 
@@ -118,8 +167,15 @@ shrinks the installer's tool-script asset class by one. Any test that drives it 
 - [ ] Every published surface naming `worktree-flow` for scheduling states the git-vs-Crucible
       split; zero surfaces route a scheduling question at `worktree-flow`.
 - [ ] `progress` has a recorded decision backed by a usage measurement, not a guess.
-- [ ] If `schedule_db.py` is retired, it is gone from `scripts/`, from the installer's tool-script
-      list, and from any test that drives it — with no dangling reference anywhere.
+- [ ] `schedule_db.py` is **still present** in `scripts/` and still in the installer's tool-script
+      asset class — its removal is explicitly NOT part of this CR (§S5). Asserted positively, so a
+      later tidy-up cannot silently drop it.
+- [ ] `scripts/schedule_db.py`'s banner names Crucible's queue as *Model B's* successor and states
+      that the module itself persists for other consumers, with no implied removal date.
+- [ ] Tests covering `schedule_db.py` itself still pass unchanged; only tests asserting
+      `worktree-flow`'s coupling to it retire.
+- [ ] Nothing in this CR touches `/home/antonyj/Documents/data_projects/nai/` or any other
+      project's state.
 - [ ] The suite's recorded baseline is re-measured and `AGENTS.md`'s baseline sentence updated if
       the count moves.
 
