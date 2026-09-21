@@ -60,6 +60,18 @@ flag, and none of them mentions either replacement:
 - `skills-src/model-b/SKILL.md:45` — "ONE identity; phase via `--phase`, never embedded in
   the id". The orchestration skill, not a Crucible bundle — it restates the same retired
   contract and is in scope precisely because the ACs gate all of `skills-src/`.
+- **ELEVEN surfaces total** (re-measured at V1, 2026-09-21 — was ten at gap-analysis, nine on
+  2026-09-18, seven when first written). The eleventh is **`skills-src/crucible-register/SKILL.md:13-16`**,
+  found by VERIFY: it is an **HTTP-body** register example, not a CLI one, so every sweep that
+  grepped for `--phase` was structurally blind to it. Its JSON payload carries `agentId`,
+  `projectKey`, `status`, `message` and `identity{}` but **no `role` and no `cycleId`** — a
+  guaranteed 400 against the released server, in the one bundle whose whole subject is
+  registration. The register contract this CR documents (Context, wire keys) is what makes it
+  measurable; the ten-surface count was a flag-shaped question asked of a body-shaped defect.
+  **§S5's guard could not see it either** — `REGISTER_EXAMPLE_RE` matches `*-crucible.py register`
+  only, and `crucible-register` sits in neither the anti-vacuity `CLIENT_BUNDLES` nor the by-name
+  `API_PATH_BUNDLES`, so it passed by incidental zero-match — the exact failure mode AC 5.5
+  forbids for vscode. Both the payload and the guard's blind spot are fixed in the same pass.
 - **TEN surfaces total** (re-measured at gap-analysis, 2026-09-21 — was nine on 2026-09-18, and
   seven when this section was first written). The tenth is
   `skills-src/memory-templates/java-testing-practices.md`, imported on 2026-09-21 under the PRD
@@ -371,6 +383,13 @@ clean; no generated file is hand-edited.
       was unsatisfiable as stated.)
 
 ### §S2 / §S3 / §S4
+- [ ] **The registration bundle's own example is executable.** `skills-src/crucible-register/SKILL.md`'s
+      `POST /api/v2/agents/register` body carries `role` (case-exact enumeration) and, for a TDD
+      role, `cycleId` — the wire-key equivalents of `--role`/`--cycle`. Added at V1 (2026-09-21):
+      the bundle shipped a body with neither, which the released server refuses 400.
+- [ ] **§S5's guard sees HTTP-body register examples, not only CLI ones**, and
+      `crucible-register` is named in a category the guard asserts about — never passing by
+      incidental zero-match. A fixture case proves the body family bites.
 - [ ] Zero occurrences of `--phase` under `skills-src/`, `contracts/`, and `AGENTS.md` —
       covering all TEN measured surfaces, explicitly including `skills-src/crucible/SKILL.md`
       lines 17 AND 35, `skills-src/model-b/SKILL.md:45`, and
@@ -405,7 +424,10 @@ clean; no generated file is hand-edited.
       verbs are NOT forbidden — all are present in the installed 0.2.2 client and this project
       uses several on its own board. The forbidden item is `portRule` / the `/api/health`
       listener block (CR-CRU-139, 0.3.0-bound): zero occurrences under `skills-src/`,
-      `contracts/`, `docs/` and `AGENTS.md`. No AC hardcodes `0.2.0` as unreleased.
+      `contracts/` and `AGENTS.md`. **`docs/changes/` is carved out** — this CR's own spec and the
+      queue notes must spell `portRule` to prohibit it, the same self-trip §S1 diagnoses for the
+      `ac7` gate (corrected at V1; the shipped gate already implements the carve-out).
+      No AC hardcodes `0.2.0` as unreleased.
 - [ ] `skills-src/memory-templates/java-orchestration.md` documents the `--role`
       enumeration and the binding rule; no `--phase` remains.
 - [ ] **§S4d: ZERO occurrences of `/api/ingest` outside `archive/`, `docs/`, `audits/` and the
@@ -417,7 +439,10 @@ clean; no generated file is hand-edited.
       lines at gap-analysis; a sweep that leaves any one of them fails this criterion.
 - [ ] §S4d: the PRD §11 criterion-2 grep (`/api/ingest/`, zero outside `archive/`) passes for the
       first time — this CR is what makes CR-MDB-012's release gate satisfiable, and CR-012 should
-      not be scheduled expecting it to pass beforehand.
+      not be scheduled expecting it to pass beforehand. **`.lavish/` counts** (added at V1): it is
+      git-tracked and unignored, and `model-b-memory-rationalization.html` carries three live v1
+      references. Sweep it, carve it out of the criterion explicitly, or gitignore the directory —
+      but the AC may not be claimed while they stand.
 - [ ] §S4d: the references that DEFINE the gate are untouched — `docs/research/PRD-*.md:104`,
       `DN-rationalization-plan-review.md:98`, `audits/2026-07-20-crucible-drift.md`, and
       `docs/research/crucible-clients-skills-guard.test.ts` still contain their `/api/ingest`
