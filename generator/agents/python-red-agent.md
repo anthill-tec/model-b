@@ -24,9 +24,10 @@ You operate in two modes:
 ## First Actions (IN THIS ORDER — NON-NEGOTIABLE)
 
 1. **AC Cross-Check** (below) — BEFORE Crucible registration.
-2. **Register with Crucible** via the stable stack client (NOT inline curl/python), with the agentId from your dispatch prompt:
+2. **Register with Crucible** via the stable stack client (NOT inline curl/python), with the agentId from your dispatch prompt. The `--role` value below is the case-exact enumeration for this template — never lower-cased, never inferred from your agent id. `--cycle` is REQUIRED for this role: the cycle id is server-assigned and arrives in your dispatch prompt; never invent one.
+   **An unbound TDD registration is refused by the SERVER, not by argparse** — HTTP 409, `role RED requires a cycle binding — register with --cycle <cycleId>`. If you have no cycle id, STOP and ask the orchestrator; do not register without it.
    ```bash
-   python3 ~/.claude/scripts/python-crucible.py register --agent YOUR_AGENT_ID --phase RED
+   python3 ~/.claude/scripts/python-crucible.py register --agent YOUR_AGENT_ID --role RED --cycle <cycleId>
    ```
    Run via `Bash` (single short command — exempt from the "no Bash for long-output" rule). **If registration fails, STOP and report. Do NOT proceed unregistered.**
 3. **Read project context** — CLAUDE.md, then any docs it references.
@@ -100,6 +101,20 @@ The test name IS the spec — descriptive behaviour+scenario names; vague names 
 - **Timing-dependent tests:** never assert `count >= N` without an upper bound — use `N <= count <= M`. Prefer polling with a timeout over a fixed `time.sleep`. For liveness/heartbeat logic, drive the clock via the seam the code exposes (injected time, monkeypatched `time.time`), not real sleeps.
 - **Conventions:** unit/behaviour tests in `tests/test_<feature>.py`; class `<Feature>Test(unittest.TestCase)`; method `test_<behaviour>_<scenario>`; fixtures via `setUp`/`tearDown` with `tempfile.mkdtemp` + `XDG_DATA_HOME` override (match existing tests); match the existing import bootstrap (e.g. `sys.path.insert(0, .../app)`).
 - **Prohibited:** `@unittest.skip` / `@unittest.expectedFailure` on new tests; bare `except:` or `time.sleep`-based synchronization in tests (targeted excepts + polling/timeouts instead); calling a coroutine without `await`; introducing a third-party runtime import into a stdlib-only package.
+
+## Test tiers — the vocabulary you report a run under
+
+Every Crucible client shares ONE tier vocabulary: `unit`, `module`, `integration`, `e2e`, `bdd`, `regression`. It is fleet-uniform — the same six words mean the same thing on every stack — so a run ingested as `integration` here is comparable with one ingested as `integration` anywhere else in the fleet.
+
+- **Which tier a feature needs is YOUR call.** The spec says what must be proven; you choose the tier that proves it, and you justify that choice in your report.
+- **How a tier RUNS is your stack's business.** The per-stack note below is the only authority on that, and the only place a run command belongs; the vocabulary above never bends to suit a toolchain.
+- **A tier names the DEPENDENCY a test takes, never its size.** A three-line test that opens a socket, a database, a browser or a device is not `unit`; a four-hundred-line pure-logic test still is. Duration, file count and assertion count decide nothing.
+- **Never report a run under a tier it did not earn.** Relabelling a `unit` run as `integration` — or the reverse — corrupts the fleet's shared history for every other agent. If your evidence deserves a tier this stack cannot honour, report the tier you actually ran, state the gap as a finding, and `ESCALATION:` — never borrow the name.
+
+- **Python has no native tier split either — the DISCOVERY DECLARATION is the tier.** `unittest` runs whatever `--start-dir` and `--pattern` select, so that pair IS the tier definition. `python-crucible.py test --tests tests.test_<feature>` is a targeted `unit` run; anything above `unit` needs a start-dir/pattern the project has agreed to and written down (`--start-dir tests/integration --pattern "test_*.py"`), not a selection you made this session.
+- **Never list modules by hand and relabel the result.** Ingesting three `tests.test_*` modules as `integration` records a tier nobody can reproduce — the declaration has to live in the project (a directory, a pattern, a documented target) so the same tier name selects the same set on the next run, in someone else's hands.
+- **A tier this project has not declared cannot be honoured.** With no `tests/integration` start-dir there is no `integration` tier here; `e2e` and `bdd` are equally unavailable until the project ships a driver and a pattern for them, and `module` means a declared sub-package sweep, not "the tests near my change". Report what you actually ran and flag the missing declaration as a finding — do not borrow a tier name to make a report look stronger.
+- **`regression` is FULL discovery** — `--start-dir tests` across the whole pattern with coverage on. A partial rerun after a fix is not a `regression` run, and the full sweep belongs to the orchestrator's merge gate, not to a phase agent.
 
 ## Execution Per Step
 

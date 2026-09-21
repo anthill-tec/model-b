@@ -27,9 +27,10 @@ If the prompt references a CR spec:
 ## First Actions (IN THIS ORDER — NON-NEGOTIABLE)
 
 1. **AC Cross-Check** (above) — before Crucible.
-2. **Register with Crucible** via the stable stack client (NOT inline curl/python):
+2. **Register with Crucible** via the stable stack client (NOT inline curl/python), with the agentId from your dispatch prompt. The `--role` value below is the case-exact enumeration for this template — never lower-cased, never inferred from your agent id. `--cycle` is REQUIRED for this role: the cycle id is server-assigned and arrives in your dispatch prompt; never invent one.
+   **An unbound TDD registration is refused by the SERVER, not by argparse** — HTTP 409, `role GREEN requires a cycle binding — register with --cycle <cycleId>`. If you have no cycle id, STOP and ask the orchestrator; do not register without it.
    ```bash
-   python3 ~/.claude/scripts/bun-crucible.py register --agent YOUR_AGENT_ID --phase GREEN
+   python3 ~/.claude/scripts/bun-crucible.py register --agent YOUR_AGENT_ID --role GREEN --cycle <cycleId>
    ```
    Via `Bash` (short command). If it fails, STOP and report.
 3. **Read project context** — CLAUDE.md + referenced docs.
@@ -90,6 +91,20 @@ Verify after EVERY file change — do NOT batch testing to the end.
 - **Error handling:** map a non-zero `pi.exec` `code` to an error result carrying `stderr`; a zero `code` to `{content:[{type:"text",text:stdout}]}` — exactly as the tests assert; don't invent a different shape.
 - **Async:** `execute` is `async`; `await pi.exec(...)`; pass the `signal` through to `pi.exec` for cancellation.
 - **Boundaries:** the shim only translates params↔CLI and shells out — no business logic, no Sandesh-core import.
+
+## Test tiers — the vocabulary you report a run under
+
+Every Crucible client shares ONE tier vocabulary: `unit`, `module`, `integration`, `e2e`, `bdd`, `regression`. It is fleet-uniform — the same six words mean the same thing on every stack — so a run ingested as `integration` here is comparable with one ingested as `integration` anywhere else in the fleet.
+
+- **Which tier a feature needs is YOUR call.** The spec says what must be proven; you choose the tier that proves it, and you justify that choice in your report.
+- **How a tier RUNS is your stack's business.** The per-stack note below is the only authority on that, and the only place a run command belongs; the vocabulary above never bends to suit a toolchain.
+- **A tier names the DEPENDENCY a test takes, never its size.** A three-line test that opens a socket, a database, a browser or a device is not `unit`; a four-hundred-line pure-logic test still is. Duration, file count and assertion count decide nothing.
+- **Never report a run under a tier it did not earn.** Relabelling a `unit` run as `integration` — or the reverse — corrupts the fleet's shared history for every other agent. If your evidence deserves a tier this stack cannot honour, report the tier you actually ran, state the gap as a finding, and `ESCALATION:` — never borrow the name.
+
+- **Bun has no native tier split — the PROJECT declares one.** `bun test` knows files and filters, not tiers; the boundary lives in `package.json` scripts: `test:unit`, `test:integration`, `test:regression`. Run the declared script for the tier you intend to report, and name that script in your report so the next agent can reproduce exactly the same set.
+- **Never hand-pick a file list and call it a tier.** Passing `--tests a.test.ts b.test.ts` and ingesting the result as `integration` records a tier the project never defined: the next "same" run selects different files and the two are no longer comparable. A hand-picked list is a TARGETED run — report it as `unit`, and only when every file in it is genuinely dependency-free.
+- **A tier with no declared script cannot be honoured here.** With no `test:integration` in `package.json` this stack has no `integration` tier — report the tier you actually ran and raise the missing script as a finding. The same holds for `e2e` and `bdd`: Bun ships neither a driver nor a convention for either, so both are unavailable until the project declares one; `module` is only meaningful in a workspace that has declared its package boundaries.
+- **`regression` means the whole declared suite**, coverage on, not "the tests I happened to touch". A subset rerun after a fix is not a `regression` run whatever its size — and the full sweep is the orchestrator's merge gate, not yours.
 
 ## Test Modification Rules (NON-NEGOTIABLE)
 

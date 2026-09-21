@@ -25,7 +25,7 @@
 3. MCP holdouts: **docs + AXI CLI contract only**; server rewrites happen in their own repos.
 4. Legacy files: **archive in this repo, then delete via chezmoi**.
 5. Canonical name: **Model B** (all "Plan B" occurrences renamed).
-6. Lagging Crucible clients: **build both** (new `vscode-crucible.py`, extend `arduino-crucible.py`).
+6. Lagging Crucible clients: **build both** (new `vscode-crucible.py`, extend `arduino-crucible.py`). *(Superseded for vscode: DECLINED 2026-09-16, Sandesh #1370 — see the Scripts / AXI wave entry. The `arduino-crucible.py` extension stands.)*
 7. AXI envelope: **upgrade clients** to emit the TOON-AXI envelope (verb, ok, counts, `warnings[]`, `help`) so the skill's contract becomes true.
 8. Memory: **big reference docs stay as memory files**; procedural content moves to skills.
 9. **Language/stack references are NOT skills** — a skill's description leaks into every project's session. Stack refs stay in `memory/`; stack-scoped skills and per-project CLAUDE.md files reference them, containing context per project.
@@ -82,7 +82,7 @@ Generated: arduino/bun/python/quarkus × red/green/verify/fix (16 agents). Bespo
 - `bun-crucible.py` is the **reference implementation** for the Crucible V2 client API (decision 11); all clients converge on it.
 - Shared envelope helper (e.g. `scripts/axi_envelope.py`): TOON-AXI envelope on stdout for all `*-crucible.py` clients (verb, ok, counts, `warnings[]`, `help` next-step).
 - ALL clients gain the universal plan/cycle verbs (`plan-file`, `cycle-activate`, `cycle-done`, `cr-close`) against `/api/v2/plans` (verified live) — DELIVERED fleet-wide on all five clients.
-- NEW `vscode-crucible.py`: register/unregister, `test --tests`, `regression --coverage`, `check` (tsc), auto-ingest, pre-merge-gate, plan verbs; Vitest+Mocha JUnit + lcov → `/api/v2/runs/parsed`, tsc → `/runs/compile`.
+- ~~NEW `vscode-crucible.py`: register/unregister, `test --tests`, `regression --coverage`, `check` (tsc), auto-ingest, pre-merge-gate, plan verbs; Vitest+Mocha JUnit + lcov → `/api/v2/runs/parsed`, tsc → `/runs/compile`.~~ **DECLINED** (user ruling 2026-09-16, Sandesh #1370; recorded in PRD §D7) — a Crucible client targets a LANGUAGE STACK and VS Code is an EDITOR; the VS Code stack reports through the clients already shipped. Closed, not pending; not to be re-raised.
 - EXTEND `arduino-crucible.py`: regression, auto-ingest, check, pre-merge-gate, plan verbs (as applicable to firmware flow).
 - `worktree-flow.py` migrates to AXI output: TOON envelope for `status`/`next`/`finish` + machine-readable lane boards.
 - `hw-crucible.py` stays a shim to anthill-forge (`forge crucible …`); the forge client must conform to the same V2 API + envelope contract.
@@ -95,7 +95,7 @@ Generated: arduino/bun/python/quarkus × red/green/verify/fix (16 agents). Bespo
 - **Wave 1 — Core split**: rewrite `AGENTS.md` as the frugal ~100-line core (CLAUDE.md symlink KEPT); move sub-agent procedure → model-b references; mechanically repoint ALL inbound refs (17 agents, `rust-orchestration.md` L3, `java-orchestration.md` L3, `cr-prd-dn-conventions.md` ~L63, old core L70/L73/L354); delete both shims.
 - **Wave 2 — Model B + consolidation**: `model-b`, `crucible` rewrite, `cr-authoring`, `git-workflow` merge, `chezmoi` skill; memory merges/deletes; "Plan B"→"Model B" sweep (incl. `agent-protocol`→crucible merge, bootstrap/shutdown/code-health wording).
 - **Wave 3 — Generator**: build generator + stack params; regenerate 16 agents; side-by-side diff review vs originals; install via chezmoi; wire `build.py --check` as drift gate (hook into `skill-release-gate.py`).
-- **Wave 4 — Tooling/AXI**: envelope helper; align ALL clients to the bun-crucible reference API (plan/cycle verbs + envelope); `vscode-crucible.py`; arduino extension; worktree-flow AXI migration; final crucible-skill envelope docs; `contracts/` specs.
+- **Wave 4 — Tooling/AXI**: envelope helper; align ALL clients to the bun-crucible reference API (plan/cycle verbs + envelope); `vscode-crucible.py` (DECLINED — Sandesh #1370, never built); arduino extension; worktree-flow AXI migration; final crucible-skill envelope docs; `contracts/` specs.
 - **Wave 5 — Close-out**: `archive/mapping.md`; chezmoi source commits; full verification.
 
 ## Verification
@@ -113,6 +113,6 @@ Generated: arduino/bun/python/quarkus × red/green/verify/fix (16 agents). Bespo
 - `~/.claude/memory/*` per end-state table above
 - `~/.claude/skills/{model-b,crucible,cr-authoring,git-workflow,chezmoi}/SKILL.md` (+ references/)
 - `~/.claude/agents/*.md` (16 regenerated, 17 repointed)
-- `~/.claude/scripts/{axi_envelope.py,vscode-crucible.py,arduino-crucible.py,rust-crucible.py,mvn-crucible.py,bun-crucible.py,python-crucible.py}`
+- `~/.claude/scripts/{axi_envelope.py,vscode-crucible.py,arduino-crucible.py,rust-crucible.py,mvn-crucible.py,bun-crucible.py,python-crucible.py}` — `vscode-crucible.py` DECLINED (Sandesh #1370), so it is not among the files this plan touches.
 - `~/.local/share/chezmoi/**` (every change mirrored; deletions via chezmoi source)
 - This repo: `generator/`, `contracts/`, `archive/`

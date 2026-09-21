@@ -18,6 +18,16 @@ mechanics = '''
 - **Stdlib-only runtime is a common project constraint** (see CLAUDE.md): third-party deps belong only in the modules/venv that need them, never leaked into the pure runtime path.
 '''
 
+# CR-MDB-017 §S6b — the per-stack half of the tier-guidance section. Python's
+# tier is whatever the discovery DECLARATION selects; an ad-hoc module list is
+# not a tier, however many modules it names.
+tier_guidance = '''
+- **Python has no native tier split either — the DISCOVERY DECLARATION is the tier.** `unittest` runs whatever `--start-dir` and `--pattern` select, so that pair IS the tier definition. `python-crucible.py test --tests tests.test_<feature>` is a targeted `unit` run; anything above `unit` needs a start-dir/pattern the project has agreed to and written down (`--start-dir tests/integration --pattern "test_*.py"`), not a selection you made this session.
+- **Never list modules by hand and relabel the result.** Ingesting three `tests.test_*` modules as `integration` records a tier nobody can reproduce — the declaration has to live in the project (a directory, a pattern, a documented target) so the same tier name selects the same set on the next run, in someone else's hands.
+- **A tier this project has not declared cannot be honoured.** With no `tests/integration` start-dir there is no `integration` tier here; `e2e` and `bdd` are equally unavailable until the project ships a driver and a pattern for them, and `module` means a declared sub-package sweep, not "the tests near my change". Report what you actually ran and flag the missing declaration as a finding — do not borrow a tier name to make a report look stronger.
+- **`regression` is FULL discovery** — `--start-dir tests` across the whole pattern with coverage on. A partial rerun after a fix is not a `regression` run, and the full sweep belongs to the orchestrator's merge gate, not to a phase agent.
+'''
+
 [description]
 red = "RED phase agent — test specialist for Python projects (unittest/pytest + xmlrunner). Two modes. (1) Write NEW failing tests for a CR spec. (2) Fix BROKEN test collection/imports so existing tests can run. Does NOT write production code."
 green = "GREEN phase agent — implements production Python code to make failing tests pass. Works step-by-step, one module at a time. Does NOT modify tests unless explicitly approved by the orchestrator. Used after RED tests are committed."
