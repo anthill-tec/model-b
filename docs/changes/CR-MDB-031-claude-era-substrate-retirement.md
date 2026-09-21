@@ -36,7 +36,7 @@ help text naming `claude-code,hermes`. [modelb_axi §B, §D]
 `~/.claude/skills/...` citations in skill bodies (×12) and template bodies (×8 → 32 generated),
 `~/.claude/memory/*` in `quarkus.toml:17`, the `/tmp/claude-1000/<project>-crucible` wrapper
 idiom (×14), the `.claude/worktrees/<cr>` convention shared by 6 consumers incl.
-`block-write-outside-worktree:25` and `worktree-flow.py:87`. [assets #7, #19–22, #32, #44–47, #58]
+`block-write-outside-worktree:25` and `worktree-flow.py:106`. [assets #7, #19–22, #32, #44–47, #58]
 
 **The `chezmoi` bundle** — 92 lines, 35 `chezmoi` refs, all about `~/.claude`; listed as an owned
 bundle in `AGENTS.md` and counted by `tests/test_installer_assets.py`. CR-021 retires chezmoi

@@ -29,7 +29,7 @@ MEASURED PRE-STATE (2026-08-27, HEAD 693c8d1; C1 GREEN is 91ff12f):
     The note is RETIRED (Crucible CR-CRU-046, 2026-08-01) and survives only
     as a pointer at the OFFICIAL spec (toonformat.dev /
     github.com/toon-format), so neither citation may stand as a live contract.
-  - `scripts/worktree-flow.py:122` and `tests/test_worktree_flow_axi.py:82`
+  - `scripts/worktree-flow.py:127` and `tests/test_worktree_flow_axi.py:82`
     both carry the provenance phrase §S2/AC8 forbids.
   - `python3 scripts/worktree-flow.py status --project-dir .` exits 0 and its
     stdout decodes cleanly against Crucible's port — including its
@@ -721,9 +721,9 @@ class ToonCodecS2Test(unittest.TestCase):
 
 class ToonEnvelopeS3Test(unittest.TestCase):
     """§S3 — the round trip, the four type-preservation defects, the real wire
-    form, and the three list-emitting verbs on a project with NO ChangeSet DB
+    form, and the surviving list-emitting verb on a project with NO ChangeSet DB
     (the `schedule_db unavailable — queue-only project` degrade path, which is
-    where the defect lives)."""
+    where the defect lived; CR-MDB-028 left `status` as the only such verb)."""
 
     EMPTY_LIST_ENVELOPE = {
         "axi": {
@@ -1032,7 +1032,7 @@ class ToonEnvelopeS3Test(unittest.TestCase):
             f"`status`; Model B read {after!r}, the port read {before!r}",
         )
 
-    def test_s3_all_three_list_verbs_decode_on_a_queue_only_project(self):
+    def test_s3_the_surviving_list_verb_decodes_on_a_queue_only_project(self):
         codec = self._require_codec()
         rejected = []
         with tempfile.TemporaryDirectory(prefix="mdb022-wf-") as tmp:

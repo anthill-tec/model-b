@@ -135,7 +135,26 @@ COMMON_REF = (
     REPO_ROOT / "skills-src" / "model-b" / "references" / "orchestration-common.md"
 )
 RUST_TEMPLATE = REPO_ROOT / "skills-src" / "memory-templates" / "rust-orchestration.md"
+JAVA_TEMPLATE = REPO_ROOT / "skills-src" / "memory-templates" / "java-orchestration.md"
 AGENTS_MD = REPO_ROOT / "AGENTS.md"
+SKILLS_SRC = REPO_ROOT / "skills-src"
+
+#: DB-era verb names that only ever belonged to `worktree-flow`'s removed half.
+#: Spelled as inline-code tokens they are unambiguous: the Crucible client has
+#: no `cs`/`reconcile`/`show`/`progress` verb, so a backticked one on a
+#: worktree-flow surface can only be teaching a verb C1 deleted. `next` is
+#: excluded deliberately — it is the CLIENT's verb now and must be spellable.
+DB_ERA_VERB_TOKEN = re.compile(r"`(cs|reconcile|show|progress)`")
+
+#: Frontmatter routing tokens. Superset of SCHEDULING_TOKENS: a `description:`
+#: summarises a whole skill, so it routes the reader with nouns (`queue`,
+#: `board`) where a body line uses verbs. CR-MDB-028 F1 VERIFY finding 2: the
+#: body-line list had no `queue` token, so a frontmatter clause advertising a
+#: "worktree-flow queue board" passed every existing gate.
+FRONTMATTER_ROUTING_TOKENS = re.compile(
+    r"\b(queue|board|next|readiness|schedul\w*|depends_on|ChangeSet|progress|reconcile|cs)\b",
+    re.IGNORECASE,
+)
 
 
 def _read(path):
@@ -252,6 +271,29 @@ def _sections(path):
         current[1].append((lineno, line))
     sections.append(current)
     return sections
+
+
+def _frontmatter_description(path):
+    """The YAML frontmatter `description:` value of a SKILL.md, or "".
+
+    Folded continuation lines (an indented next line) are joined, so a wrapped
+    description is matched as the single sentence a harness actually reads.
+    """
+    lines = _read(path).splitlines()
+    if not lines or lines[0].strip() != "---":
+        return ""
+    parts = []
+    for line in lines[1:]:
+        if line.strip() == "---":
+            break
+        if parts:
+            if line[:1].isspace() and line.strip():
+                parts.append(line.strip())
+                continue
+            break
+        if line.startswith("description:"):
+            parts.append(line[len("description:") :].strip())
+    return " ".join(parts)
 
 
 class WorktreeFlowSurfacesS7Test(unittest.TestCase):
@@ -492,6 +534,101 @@ class WorktreeFlowSurfacesS3Test(unittest.TestCase):
             offenders,
             "AGENTS.md routes a scheduling question at worktree-flow; state "
             "the git-vs-Crucible split instead:\n  " + "\n  ".join(offenders),
+        )
+
+    def test_s3_java_orchestration_template_teaches_the_post_db_scheduling_story(self):
+        """java-orchestration.md: no DB-era verb, and readiness routed at Crucible.
+
+        CR-MDB-028 F1 VERIFY finding 1. The Java memory template taught the
+        `next → start → finish` loop with `cs`/`status`/`reconcile` and
+        "ChangeSet DB mechanics" in the present tense. §S7's grep gate could not
+        see it: the verbs are spelled as a BARE backticked list, never as
+        `worktree-flow <verb>`, so no existing regex matched. This gate is
+        per-surface and shape-independent — a roster check plus a DB-era token
+        check plus the positive Crucible route.
+        """
+        rosters = [
+            f"java-orchestration.md:{lineno}: {line.strip()}"
+            f"  [retired: {','.join(sorted(verbs & set(RETIRED_VERBS)))}]"
+            for lineno, line, verbs in _verb_enumeration_lines(JAVA_TEMPLATE)
+            if verbs & set(RETIRED_VERBS)
+        ]
+        self.assertEqual(
+            [],
+            rosters,
+            "skills-src/memory-templates/java-orchestration.md enumerates "
+            "worktree-flow verbs C1 deleted; the roster is exactly "
+            "start/status/sync/finish/abort:\n  " + "\n  ".join(rosters),
+        )
+
+        db_era = [
+            f"java-orchestration.md:{lineno}: {line.strip()}"
+            for lineno, line in _numbered(JAVA_TEMPLATE)
+            if DB_ERA_VERB_TOKEN.search(line)
+        ]
+        self.assertEqual(
+            [],
+            db_era,
+            "java-orchestration.md still spells a DB-era worktree-flow verb "
+            "(`cs`/`reconcile`/`show`/`progress`) as a live instruction — the "
+            "Crucible client has no such verb, so the reader is taught a "
+            "command that cannot run:\n  " + "\n  ".join(db_era),
+        )
+
+        routed = [
+            f"{lineno}: {line.strip()}"
+            for lineno, line in _numbered(JAVA_TEMPLATE)
+            if CRUCIBLE_NEXT_LINE.search(line)
+        ]
+        self.assertTrue(
+            routed,
+            "java-orchestration.md never names the Crucible client's `next` "
+            "verb: a Java track's readiness question must be routed at "
+            "`python-crucible.py next`, or the template teaches a loop with "
+            "no scheduler.",
+        )
+
+        self.assertTrue(
+            _states_the_split(_read(JAVA_TEMPLATE)),
+            "java-orchestration.md drops the ChangeSet DB without stating "
+            "what replaced it: one block must say worktree-flow owns what it "
+            "derives from git (worktrees, ahead/behind, phase, merge) and "
+            "Crucible owns queue membership, release, wave, seq, "
+            "dependencies and readiness (§S3).",
+        )
+
+    def test_s3_no_skill_frontmatter_description_routes_the_queue_at_worktree_flow(self):
+        """Skill `description:` frontmatter never advertises worktree-flow as the queue.
+
+        CR-MDB-028 F1 VERIFY finding 2. A skill's frontmatter description is
+        the ONLY text a harness reads before loading the bundle, so a stale
+        route there misdirects every session that never opens the file —
+        bootstrap's said a Mainline session "reads the worktree-flow queue
+        board" while its own Step 3A already asked Crucible. No existing gate
+        looked at frontmatter, and `SCHEDULING_TOKENS` carries no `queue`
+        token, so the clause was invisible twice over.
+        """
+        offenders = []
+        for path in sorted(SKILLS_SRC.glob("*/SKILL.md")):
+            description = _frontmatter_description(path)
+            if not description:
+                continue
+            for match in re.finditer(r"worktree-flow", description):
+                start = max(0, match.start() - ROUTE_WINDOW)
+                window = description[start : match.end() + ROUTE_WINDOW].replace(
+                    "schedule_db", ""
+                )
+                if FRONTMATTER_ROUTING_TOKENS.search(window):
+                    rel = path.relative_to(REPO_ROOT)
+                    offenders.append(f"{rel} description: …{window.strip()}…")
+                    break
+        self.assertEqual(
+            [],
+            offenders,
+            "a skill's frontmatter `description:` routes queue/scheduling at "
+            "worktree-flow; the queue lives in Crucible and worktree-flow "
+            "answers only git-derived worktree state:\n  "
+            + "\n  ".join(offenders),
         )
 
     def test_s3_git_vs_crucible_split_is_stated_in_an_orchestration_reference(self):

@@ -59,7 +59,8 @@ is INVALID and nothing here emits it.
 INVALID: a conformant decoder counts an item line only when it starts with `- `, so bare
 items read as zero items against a declared count of N. That was a live defect on
 `worktree-flow.py`'s `next` and `progress` degrade path (`schedule_db unavailable —
-queue-only project`) and is fixed in the codec, not per call site. The hyphenated
+queue-only project`; both verbs removed by CR-MDB-028) and is fixed in the codec, not per
+call site. The hyphenated
 `- <item>` form is the spec's other accepted shape: Model B decodes it and does not emit
 it. A BARE indented item is also still decoded, so an older deployed copy's output stays
 readable; it is never written.

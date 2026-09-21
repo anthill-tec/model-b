@@ -876,7 +876,7 @@ def cmd_abort(args):
         sys.exit("[worktree-flow] ERROR: abort needs --cr (or --release-lock).")
     if not getattr(args, "reason", None):
         sys.exit("[worktree-flow] ERROR: abort/supersede needs --reason — the cause is "
-                 "recorded in the changeset note (ABORTED/SUPERSEDED must say why).")
+                 "recorded on the CR in Crucible's queue (ABORTED/SUPERSEDED must say why).")
     target = "SUPERSEDED" if getattr(args, "superseded", False) else "ABORTED"
 
     # Remove the worktree IF one exists; tolerate its absence so a queue-only
@@ -894,7 +894,7 @@ def cmd_abort(args):
             print(f"[dry-run] git -C {main_wt} {' '.join(rm)}")
             if args.delete_branch:
                 print(f"[dry-run] git -C {main_wt} branch -D {branch}")
-            print(f"[dry-run] changeset {args.cr} → {target}  ({args.reason})")
+            print(f"[dry-run] record {args.cr} → {target} on the CR in Crucible's queue  ({args.reason})")
             return 0
         r = _git(rm, main_wt)
         if r.returncode != 0:
@@ -912,7 +912,7 @@ def cmd_abort(args):
             print(f"abort: branch {branch} kept (delete with: git -C {main_wt} branch -D {branch})")
     else:
         if args.dry_run:
-            print(f"[dry-run] no worktree for {args.cr}; changeset → {target}  ({args.reason})")
+            print(f"[dry-run] no worktree for {args.cr}; record → {target} on the CR in Crucible's queue  ({args.reason})")
             return 0
         print(f"abort: no live worktree for {args.cr} (queue-only or already removed)")
 

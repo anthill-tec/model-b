@@ -63,7 +63,7 @@ not one:
   of the other seven does. No test enumerates the set, and no test asserts
   the built wheel's copy. `gate-lock.sh` and `skill-release-gate.py` have no
   consuming-skill reference under `skills-src/` (grep -rl count 0);
-  `toon.py` has none DIRECTLY but is imported by `scripts/worktree-flow.py:146`,
+  `toon.py` has none DIRECTLY but is imported by `scripts/worktree-flow.py:151`,
   which three skills name — so consumption is resolved TRANSITIVELY here
   rather than pretending the codec is orphaned.
 
@@ -80,7 +80,7 @@ STANDING GUARDS — tests that PASS today, deliberately, and must keep passing:
     rule exists to prevent. §S5 RECORDS the contract; it does not touch the
     string.
   - `test_s6_relocated_tooling_resolves_its_siblings_from_beside_itself`.
-    C1 adopted the bundle already self-contained (`worktree-flow.py:98`
+    C1 adopted the bundle already self-contained (`worktree-flow.py:119`
     inserts its own directory on `sys.path`), so relocatability holds today.
     The guard stops §S6's repointing from reintroducing a home-anchored
     resolution.
