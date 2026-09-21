@@ -138,54 +138,6 @@ class WorktreeFlowEnvelopeTest(unittest.TestCase):
             f"({type(axi.get('ok')).__name__})",
         )
 
-    def test_next_unknown_track_no_db_row_yields_drained_decision(self):
-        result = _run_wf("next", "--track", "Track 99 - Nowhere")
-        axi = _decode_envelope(result, "next")
-        self.assertEqual(
-            axi.get("verb"), "next",
-            f"axi.verb must equal 'next', got {axi.get('verb')!r}",
-        )
-        self.assertIn(
-            "decision", axi,
-            f"axi must contain a 'decision' field, got keys {list(axi.keys())}",
-        )
-        # POSITIVE -- an unknown track with no matching ChangeSet row must
-        # decide DRAINED (would fail against a stub always returning e.g. NEXT).
-        self.assertEqual(
-            axi.get("decision"), "DRAINED",
-            f"axi.decision must equal 'DRAINED' for an unknown track with no "
-            f"rows, got {axi.get('decision')!r}",
-        )
-
-    def test_progress_stdout_decodes_to_progress_envelope(self):
-        # Read-only call: unknown --cr, no --done/--total -> no DB mutation.
-        result = _run_wf("progress", "--cr", "CR-NOWHERE-000")
-        axi = _decode_envelope(result, "progress")
-        self.assertEqual(
-            axi.get("verb"), "progress",
-            f"axi.verb must equal 'progress', got {axi.get('verb')!r}",
-        )
-
-    def test_all_three_verbs_have_list_type_warnings_field(self):
-        cases = [
-            ("status", _run_wf("status")),
-            ("next", _run_wf("next", "--track", "Track 99 - Nowhere")),
-            ("progress", _run_wf("progress", "--cr", "CR-NOWHERE-000")),
-        ]
-        not_list = []
-        for label, result in cases:
-            axi = _decode_envelope(result, label)
-            warnings = axi.get("warnings")
-            if not isinstance(warnings, list):
-                not_list.append((label, warnings))
-        # NEGATIVE/bound -- every verb's warnings field must be a list
-        # (possibly empty), never absent or a non-list type.
-        self.assertEqual(
-            not_list, [],
-            f"expected axi.warnings to be a list on all three verbs, "
-            f"non-list/missing: {not_list}",
-        )
-
 
 class WorktreeFlowSkillConsumerNotesTest(unittest.TestCase):
     """SS4 -- consumer skills mentioning worktree-flow output carry a note."""

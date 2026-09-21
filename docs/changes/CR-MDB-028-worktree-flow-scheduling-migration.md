@@ -210,7 +210,7 @@ version matters because it decides whether `cs` is removable at all.
 `rust-code-health.py`, carrying `id`, `status` (`PROPOSED`/`APPROVED`/…), `slice` (the CR that
 currently owns it) and `slice_history[]` of `{cr, assigned, outcome, closed}` — the finding's CR
 lineage across time, with a single-active-owner invariant enforced by `_close_hist`/`_open_hist`
-(`rust-code-health.py:249-265`, `:299-318`).
+(`rust-code-health.py:253-269`, `:303-322`).
 
 **What Crucible V2 does not have.** A *finding* is sub-CR. V2's atoms are CRs, plans, cycles, runs,
 gates and milestones; there is no row for an individual defect, therefore no finding→CR assignment,
@@ -224,7 +224,7 @@ stamp the findings. Measured facts that make the split harmless:
 
 - `rust-code-health.py ledger assign --slice <CR> --ids …` performs the stamping **standalone**
   and does not call `worktree-flow` at all.
-- `rust-code-health.py:341-359`'s full-sync path imports `schedule_db` **directly** (`:345`) to
+- `rust-code-health.py:345-363`'s full-sync path imports `schedule_db` **directly** (`:349`) to
   read board state; it never invokes `worktree-flow`. §S5 keeps that module, so this path is
   untouched by this CR.
 - `ledger sync --slice X --db-state STATE` works with no DB whatsoever.

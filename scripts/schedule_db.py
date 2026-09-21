@@ -1,19 +1,24 @@
 # Owner: Model B (roundhouse/model-b) — adopted by CR-MDB-022 §S1.
-# Consuming skills: memory-templates (rust-orchestration.md); imported as a library by
-#   scripts/worktree-flow.py.
+# Consuming skills: memory-templates (rust-orchestration.md); scripts/rust-code-health.py
+#   imports it directly for its board→ledger full true-up.
 #
 # TRANSITIONAL — this file is on its way out; build nothing new on it.
-# Superseded by: Crucible owns workflow plan/state storage.
-# Sunset trigger: Crucible 0.2.0, unreleased today (crucible#1359) — when it ships, the
-#   store moves to Crucible and this file is deleted rather than migrated.
+# Superseded FOR MODEL B by: Crucible's queue — it owns workflow plan state/storage
+#   from Crucible 0.2.0 onward; CR-MDB-028 retired Model B's last caller, so
+#   scripts/worktree-flow.py is now purely git-derived and imports nothing from here.
+# The MODULE ITSELF REMAINS shipped for its other consumers, which still hold live
+#   state on it; migrating them is a CR-MDB-012 release item and not Model B's call
+#   alone, so NO removal date is implied for this file.
 # Until then it must not be extended: fix defects only; no new schema, verbs or callers.
 
 """schedule_db.py — shared scheduling library for the Model-B worktree-flow tooling.
 
 A SQLite-backed **ChangeSet** store (the per-track lane plan) + git-derived trigger
-evaluation, imported as a utility by worktree-flow.py (the CLI). One row per CR (the "ChangeSet"); state transitions
-happen via worktree-flow start/finish so the DB can never disagree with git, and
-reconcile() rebuilds it from git anytime. The DB file (.wf-schedule.db; a legacy
+evaluation. One row per CR (the "ChangeSet"). CR-MDB-028 removed Model B's last
+caller — `worktree-flow.py` is now purely git-derived and imports nothing from here,
+and Crucible's queue owns Model B's scheduling; the module remains for its other
+consumers, which still drive it directly. reconcile() rebuilds the store from git
+anytime. The DB file (.wf-schedule.db; a legacy
 .nai-schedule.db is used when present) is GITIGNORED — a local, rebuildable index,
 NOT a committed authority. Git stays the ground truth.
 

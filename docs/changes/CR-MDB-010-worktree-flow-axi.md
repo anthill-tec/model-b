@@ -8,6 +8,8 @@
 **Phase:** Wave 3
 **Design reference:** `contracts/crucible-envelope.md` (the envelope + stdout/stderr convention — worktree-flow ADOPTS it; the codec's source of truth is `crucible:clients/toon.py`) · PRD §D7 (worktree-flow migrates to AXI output)
 
+**Amended 2026-09-21 by CR-MDB-028** (sanctioned amendment to a COMPLETED CR): `worktree-flow.py`'s DB half is retired, so `next` and `progress` no longer exist and their AC lines below are struck. This CR's envelope contract stands for `status` and `finish` only; the scheduling answer now comes from `~/.crucible/clients/python-crucible.py next`.
+
 ## Context
 
 `worktree-flow.py` (10 verbs, print-based) is Model B's lane/worktree tool. Per PRD §D7 it adopts the AXI output convention: TOON envelope on stdout, human lines on stderr — same shape the crucible clients converge on. The codec deploys to `~/.claude/scripts/` as a copy of the source-of-truth `crucible:clients/toon.py` (the existing repo→deployed-copy pattern), with a TRACKS header.
@@ -37,9 +39,9 @@ Exit codes unchanged. `--dry-run` paths emit the envelope with `dry_run: true`.
 
 ### §S3
 - [ ] `worktree-flow.py status --project-dir <repo>` stdout decodes via the toon codec to an object whose `axi.verb == "status"` and `axi.ok is True`; stderr is non-empty (human board).
-- [ ] `next --track` (no DB row → `DRAINED` for an unknown track) stdout envelope has `axi.verb == "next"` and a `decision` field.
-- [ ] `progress` stdout envelope has `axi.verb == "progress"`.
-- [ ] Envelope contains `warnings` as a list (possibly empty) on all three verbs.
+- [x] ~~`next --track` (no DB row → `DRAINED` for an unknown track) stdout envelope has `axi.verb == "next"` and a `decision` field.~~ **SUPERSEDED 2026-09-21 (CR-MDB-028 — `next` removed).**
+- [x] ~~`progress` stdout envelope has `axi.verb == "progress"`.~~ **SUPERSEDED 2026-09-21 (CR-MDB-028 — `progress` removed).**
+- [ ] Envelope contains `warnings` as a list (possibly empty) on the surviving converted verbs (`status`, `finish`).
 
 ### §S4
 - [ ] `grep -l "worktree-flow" ~/.claude/skills/*/SKILL.md` files each contain "stderr" or "TOON" within 2 lines of their worktree-flow output mention (the added note).

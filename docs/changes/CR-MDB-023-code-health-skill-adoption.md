@@ -23,7 +23,7 @@ invocation it teaches is an absolute path into `~/.claude/scripts/`:
 - `:26` — `python3 ~/.claude/scripts/rust-code-health.py snapshot --phase {baseline|pre|post|adhoc} [--slice CR-XXX]`
 - `:29-32` — the four `query` verbs (`trend`, `crate`, `delta`, `ledger`)
 - `:41` — `python3 ~/.claude/scripts/rust-dead-scan.py inventory pub-scan deps reconcile boundaries --lift-lint`
-- `:35` — `worktree-flow.py cs --cr … --type maintenance --findings …`
+- `:35` — `worktree-flow.py cs --cr … --type maintenance --findings …` (HISTORY: `cs` is REMOVED by CR-MDB-028 — the two-step below replaces it)
 - `:38` — `rust-code-health.py ledger assign|sync`
 
 CR-MDB-022 adopts those tools and establishes the deployed store path; this CR is what makes
@@ -39,9 +39,10 @@ the skill name it.
   `ledger assign|sync --domain {cull|temporal|<name>}` (`:14`). A maintenance domain that is
   not `cull` has no documented path.
 
-**A third coupling must be recorded, not deepened.** The ChangeSet-filing step at `:35` runs
-through `worktree-flow.py cs`, which is backed by `schedule_db.py` — the transitional
-scheduling DB that Crucible supersedes.
+**A third coupling must be recorded, not deepened.** The ChangeSet-filing step at `:35` ran
+through `worktree-flow.py cs`, which was backed by `schedule_db.py` — the transitional
+scheduling DB that Crucible supersedes. **CR-MDB-028 has since REMOVED that verb; the call is
+history, and the two-step below is what the adopted skill must teach.**
 
 **AMENDED 2026-09-21 (gap-analysis of CR-MDB-028). Two claims in the original paragraph are now
 false, and both are corrected here rather than left to be discovered at merge:**

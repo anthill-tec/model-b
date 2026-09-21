@@ -27,10 +27,14 @@ Usage:
   rust-code-health.py ledger sync [--slice CR-X --db-state STATE]   # board->ledger mirror / full true-up
 
 Board->ledger auto-link (Maintenance CRs ONLY): the ledger is the SOURCE for
-maintenance-CR planning — `worktree-flow.py cs --type maintenance --findings ...`
-files the CR and stamps each finding's `slice` in one act; every subsequent
-board transition mirrors via schedule_db.set_state -> `ledger sync`
-(IN_PROGRESS -> IN_PROGRESS, COMPLETED -> COMPLETED + merge commit,
+maintenance-CR planning, filed in TWO EXPLICIT STEPS (CR-MDB-028 §S6 — the
+one-act convenience is gone with the local ChangeSet DB):
+  1. `python-crucible.py cr-plan --cr CR-X --title "..." --release R --wave N`
+     files the CR on Crucible's queue (the board that owns the plan).
+  2. `rust-code-health.py ledger assign --slice CR-X --ids F-...,DS-...`
+     stamps each finding's `slice` with that CR (this tool, standalone).
+Every subsequent board transition mirrors via schedule_db.set_state -> `ledger
+sync` (IN_PROGRESS -> IN_PROGRESS, COMPLETED -> COMPLETED + merge commit,
 ABORTED/SUPERSEDED -> findings return to the APPROVED pool). POST snapshots
 RATIFY completion: a finding whose stable id still appears in the fresh scan is
 flagged NOT-RATIFIED in health_delta.md and the ledger.
