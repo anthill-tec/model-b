@@ -1,6 +1,6 @@
 # Model B — CR queue
 
-**Project:** Model B (acronym: MDB · solo orchestrator: `vidushi-mdb`) · **Crucible projectKey:** `019f7eb8-8cad-7000-9838-854eca8e7c20` · **Design contract:** `docs/research/PRD-model-b-rationalization.md` · **Evidence base:** `audits/2026-07-20-*.md` + `docs/research/DN-rationalization-plan-review.md` · **Ontology:** `crucible:docs/research/DN-model-b-language.md` · **Target release:** 1.0.0
+**Project:** Model B (acronym: MDB · solo orchestrator: `vidushi-mdb`) · **Crucible projectKey:** `019f7eb8-8cad-7000-9838-854eca8e7c20` · **Design contract:** `docs/research/PRD-model-b-rationalization.md` · **Evidence base:** `audits/2026-07-20-*.md` + `docs/research/DN-rationalization-plan-review.md` · **Ontology:** `docs/research/DN-model-b-language.md` (frozen import of Crucible's, 2026-09-21) · **Target release:** 1.0.0
 Conventions (naming, agentIds, workflow rules) live in the project `AGENTS.md` — not here.
 
 Queue rows enumerate the whole delivery (structure only). **Live status lives on the Crucible board** (plans/cycles/milestones — we file every run and transition there); `Type` lives in each spec's front matter. Pick the next CR by wave + `Depends on` against the board. Spec files are authored at wave-open.
@@ -36,7 +36,7 @@ Queue rows enumerate the whole delivery (structure only). **Live status lives on
 | [CR-MDB-030](CR-MDB-030-pi-hook-runtime.md) | Pi hook runtime: default-export factory, payload transport, Pi tool-name contract in the seven scripts, matcher honoured, real fail-closed, worktrees carry `.pi/extensions/` (P0 — every hook is a no-op on the only target today) | 5 | — |
 | [CR-MDB-026](CR-MDB-026-watcher-launch-supervision.md) | The wake watcher must stay alive: supervised process + `restart: on-failure`, and the three-exit taxonomy (mail / timeout / lock-conflict) the bundles conflate | 5 | 029 |
 | [CR-MDB-025](CR-MDB-025-pi-agent-definitions.md) | Pi as the deploy target for agent definitions: neutral schema + `_emit_pi()`, agent-defs as an installer asset class → `~/.agents/agents/` (re-specced 2026-09-21; OMP dropped) | 5 | 017, 024, 027, 030, 033 |
-| [CR-MDB-029](CR-MDB-029-pi-package.md) | The Model B Pi package: extensions (incl. the 026 watcher supervisor) + skills as one `pi install`-able unit; agents and tool scripts stay installer-deployed | 5 | 025, 026, 030 |
+| [CR-MDB-029](CR-MDB-029-pi-package.md) | The Model B Pi package: extensions (incl. the 026 watcher supervisor) + skills as one `pi install`-able unit; agents and tool scripts stay installer-deployed | 5 | 025, 030 |
 | [CR-MDB-031](CR-MDB-031-claude-era-substrate-retirement.md) | Retire the Claude-era substrate: roster → `pi`, non-Pi emitters, `.claude/skills` symlink writer, `CLAUDE.md` emission, `chezmoi` bundle, `/tmp/claude-1000` wrapper, `.claude/worktrees` convention, skills' Claude Code dispatch/worktree/todo mechanics, `~/.claude/skills` body citations | 5 | 025, 026, 030 |
 | [CR-MDB-032](CR-MDB-032-test-suite-relocation.md) | Test-suite relocation: no dev-checkout reach, no real-home assertions, no dead/self-defeating gates, one helper module, a Pi end-to-end | 5 | 020, 021 |
 | [CR-MDB-027](CR-MDB-027-subagent-dispatch-on-pi.md) | Sub-agent dispatch on Pi: decide what provides it, given Pi core has none (decision CR — RULED 2026-09-21: `pi-archimedes`, DN §D16; unblocks the CR-025 rewrite) | 5 | — |
@@ -353,3 +353,22 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   measurement to run at root, and 030 gains a Non-goal so hooks never stamp it; (d) acceptance
   signals stay CR-SY-003's `approved`/`verify_verdict`/`fix_cycles` fed by the existing Crucible
   lifecycle — no Model B change.
+- 2026-09-21 — **BOARD: CR-MDB-029/030/031/032/033 registered** on production via
+  `cr-plan --release 1.0.0 --wave 2` under `vidushi-mdb` (registered ORCHESTRATOR); dependency
+  sets declared with `cr-depends` for 025/026/029/031/032/033 and 012 (25 deps). **The server
+  refused one edge as a cycle** — 029→026 with 026→029 — which was a real spec error: 029
+  *implements* 026's three-exit taxonomy, so the edge runs 026→029 only; 029's header and queue row
+  corrected (deps 025, 030). Board is 33 entries; `queue` shows all five in wave 2.
+- 2026-09-21 — **TWO RULINGS (user) closing the review's escalations.** (a) The LOCKED ontology is
+  a **frozen import**: `docs/research/DN-model-b-language.md`, body byte-identical to Crucible's
+  origin `a9a8f57` under a 10-line provenance header; `AGENTS.md:148`, PRD §D3 and this header cite
+  it there — no Model B surface reads the Crucible checkout for it any more; `scaffold.py:201` and
+  `skills-src/model-b/SKILL.md:12` repoint in 031 §S2 (code/bundle gates). (b) **Cross-project
+  language refs move into the stack's memory templates** — done: five Java-family files from the
+  user's global memory imported as `skills-src/memory-templates/java-{coding-standards,
+  testing-practices,modern-syntax,maven-best-practices,quarkus-patterns}.md` (the `java-` prefix
+  keys `_select_memory_templates`; `maven-`/`quarkus-` prefixes would have leaked into every
+  scaffold), `generator/stacks/quarkus.toml:17` cites the scaffolded `docs/memory/` paths, four
+  quarkus agents regenerated, `build.py --check` clean, suite unchanged 240/7F/12S; PRD §D5 amended
+  — there is no cross-project memory tier any more. `convex-client-server.md` is not a Model B
+  stack reference and stays the user's.

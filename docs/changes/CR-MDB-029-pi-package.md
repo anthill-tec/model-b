@@ -8,7 +8,9 @@ decision CR)
 without it — DN §D15.3)
 **Depends on:** CR-MDB-030 (the hook runtime the package's extensions ship must work first) ·
 CR-MDB-025 (agent definitions are NOT in this package; their asset class must exist so the split
-below is real) · CR-MDB-026 (the watcher extension implements 026's three-exit taxonomy)
+below is real). **Not** CR-MDB-026: this CR *implements* 026's three-exit taxonomy, and 026's
+instruction-level edits then cite the extension — the edge runs 026 → 029 (the board refused the
+reverse as a cycle, 2026-09-21).
 **Labels:** pi, packaging, extensions, skills, distribution, feature
 **Phase:** Wave 5 (repo queue) · release 1.0.0 wave 2 (Crucible board)
 **Design reference:** DN §D15.2 (Pi package system: `package.json` `pi` manifest, `npm:`/`git:`/

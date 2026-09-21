@@ -89,8 +89,12 @@ Remove the NAI project-memory examples. Repoint every `~/.claude/skills/<name>/�
 skill bodies, template bodies and `crucible_reference` to `~/.agents/skills/<name>/…` (or a
 relative skill-dir path) — **this closes CR-025 §S0's first parked question: 031 owns it, and
 runs after 025/017/020's regeneration so the fleet is regenerated once more, last.**
-`quarkus.toml:17`'s `~/.claude/memory/*` refs are repointed or dropped (needs the PRD §D5
-ruling on where global language refs live on Pi — recorded here as a decision this CR forces).
+`quarkus.toml:17`'s `~/.claude/memory/*` refs — **DONE 2026-09-21 ahead of this CR** (user ruling:
+the five Java-family refs became `skills-src/memory-templates/java-*.md`, `quarkus.toml` cites the
+scaffolded `docs/memory/` paths, PRD §D5 amended). Two ontology citations remain for this CR:
+`modelb_axi/scaffold.py:201` renders `crucible:docs/research/DN-model-b-language.md` into every
+scaffolded AGENTS.md and `skills-src/model-b/SKILL.md:12` cites the same — both repoint to the
+frozen import `docs/research/DN-model-b-language.md` (imported 2026-09-21).
 
 ### §S3 — Worktree convention
 Per §S0: rename across `block-write-outside-worktree`, `worktree-flow.py`, `bootstrap`,

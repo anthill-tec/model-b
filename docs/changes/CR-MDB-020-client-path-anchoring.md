@@ -26,10 +26,11 @@
 - **`crucible_reference` (§S2) and the template bodies' `~/.claude/skills/...` citations are NOT
   this CR's** — CR-MDB-031 §S2 repoints them to `~/.agents/skills/` after 017/020/025 regenerate,
   so the fleet is regenerated once more, last. 020 regenerates for the client-path change only.
-- **Open conflict this CR must surface, not resolve:** `AGENTS.md:148` / PRD `:41` cite the LOCKED
-  ontology `crucible:docs/research/DN-model-b-language.md` — a dev-checkout doc the 2026-09-18
-  rule bars reading, with no published home. Record the CReq to Crucible (ship it beside the
-  clients or in the `crucible-axi` package) rather than delete the citation.
+- **Open conflict — RESOLVED 2026-09-21 (user ruling):** the LOCKED ontology is now a frozen import at
+  `docs/research/DN-model-b-language.md` (origin `a9a8f57`, byte-identical body, provenance header);
+  `AGENTS.md`, the PRD and the queue header cite it there. The remaining `crucible:` citations in
+  `modelb_axi/scaffold.py:201` and `skills-src/model-b/SKILL.md:12` are CR-MDB-031 §S2's. No CReq
+  to Crucible is needed; divergence from origin is raised on the #1336 lineage.
 
 ## Context
 

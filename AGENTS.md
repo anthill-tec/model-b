@@ -145,5 +145,5 @@ python3 ~/Documents/data_projects/crucible/clients/python-crucible.py regression
 - Plans are filed at CR start via the Crucible client with `--wave <n> --orchestrator vidushi-mdb`; **cycle ids are server-assigned — never guessed**. Cycle labels: `C<n> <label> (§S…)`.
 - Post a `milestone` at every workflow moment: `--type gap-analysis` when gap analysis completes, `--type stage-flip --label "<CR> <cycle> done"` at each cycle-done; `cr-merged` fires automatically from `cr-close --commit`.
 - Wave-boundary gate: no-mistakes, ingested as gate evidence. The gate reads `REPO_OWNER` from `.env`.
-- Ontology `crucible:docs/research/DN-model-b-language.md` is **LOCKED** — cite it, never fork it.
+- Ontology `docs/research/DN-model-b-language.md` is **LOCKED** — a frozen import of Crucible's `DN-model-b-language.md` (origin `a9a8f57`, imported 2026-09-21 by user ruling so no Model B surface reads the Crucible checkout). Cite it, never fork it; divergence goes to Crucible over Sandesh (#1336 lineage).
 - Load-on-demand references: `model-b` skill (orchestration), `crucible` skill (test lifecycle), `cr-authoring` (CR/PRD/DN), `gap-analysis` (before any CR), `git-workflow`, `chezmoi`, `bootstrap`/`shutdown`.
