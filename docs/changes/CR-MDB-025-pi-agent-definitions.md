@@ -85,6 +85,25 @@ is a mixed-provenance directory and proves nothing about what the reader accepts
   freeze `render()` output and pin `~/.claude/agents`; listed by id in the RED plan.
 
 **Still open:**
+
+- **Reconciled with the independent root review (2026-09-21):**
+  - `contracts/switchyard-routes.md` v0.1 names Model B's consumer surface as `[frontmatter] model:`;
+    §S1 replaces it with `[roles.<role>] model`. **CReq to root:** the contract's Pi consumer row
+    (item 5 of the review) must cite `generator/stacks/*.toml` `[roles.<role>] model` and
+    `~/.agents/agents/` (DN §D16). Model B consumes the contract; this CR never edits it.
+  - **Not blocked by the Tier-1 map.** The review calls the Tier-1 map "now blocking because
+    pi-archimedes cannot resolve `model: sonnet`/`inherit`". Measured (CR-027 §S1.1): an agent file
+    with NO `model:` falls through to the per-call override, then the parent's active model. §S3
+    emits no `model:` line until the `CR-RND` sets route ids, so every definition is valid and
+    dispatchable before that CR exists. The Tier-1 map blocks the routing *assessment*, not this CR.
+  - **`user`-field workload identity (review items 6/20/21) — gated on CR-SY-003 §S1.** CR-SY-003
+    defers "harness-side change to stamp agentId into `user`" until its probe says `user recorded`.
+    On Pi the dispatched process receives only `--model` from archimedes; the agent id
+    (`CR-<ACRONYM>-NNN-<cycle>-<PHASE>`) lives in the task prompt. The review's constraint — role in
+    `user`, NOT via the hook compiler and NOT via a Pi-specific extension — leaves only a Pi
+    provider-config mechanism, which is **unmeasured**. If §S1 returns `user recorded`, the Pi
+    stamping mechanism is measured first and raised at root if the constraint cannot be met; this
+    CR's emitter carries nothing for it until then.
 - Which CR owns repointing the template bodies' `~/.claude/skills/<name>/...` citations to the
   deployed store (`~/.agents/skills/<name>/...`): CR-MDB-020 (path anchoring) or this one. If
   020 has shipped and left them, this CR takes them; if 020 is pending, its scope is amended.

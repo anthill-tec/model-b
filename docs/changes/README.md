@@ -340,3 +340,16 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   diagnosis (6 = CR-021 chezmoi flap on user dotfile drift; 1 = the AC7 gate-design defect).
   012 gains deps 029–033. Board registration of the five new rows pending (`queue-file` is
   develop-only per #1359 — register via `cr-plan --release 1.0.0 --wave 2` at the next SCRUM).
+- 2026-09-21 — **INDEPENDENT ROOT REVIEW reconciled for this layer** (23 items; most are root-session
+  work — PRD amendment, contract bump, `routes.toml`, local lane, closed-loop draft). Model B-relevant
+  outcomes: (a) the contract bump (item 5) must change Model B's consumer row from `[frontmatter]
+  model:` to `[roles.<role>] model` (025 §S1) and add `~/.agents/agents/` — recorded in 025 §S0 as a
+  CReq to root; (b) the review's "Tier-1 map is now blocking because archimedes cannot resolve
+  `sonnet`/`inherit`" (item 13) is TRUE for the routing assessment and FALSE for 025 — §S3 emits no
+  `model:` line, which archimedes resolves to the parent's model (measured, CR-027 §S1.1), so 025
+  ships before the Tier-1 `CR-RND`; (c) the `user`-field workload identity (items 6/20/21) is gated
+  on CR-SY-003 §S1 and the review's constraint (not via hook compiler, not via a Pi extension) may be
+  unsatisfiable on Pi where a dispatched process receives only `--model` — recorded in 025 §S0 as a
+  measurement to run at root, and 030 gains a Non-goal so hooks never stamp it; (d) acceptance
+  signals stay CR-SY-003's `approved`/`verify_verdict`/`fix_cycles` fed by the existing Crucible
+  lifecycle — no Model B change.

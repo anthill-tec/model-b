@@ -134,5 +134,9 @@ Medium; security-class.
 ## Non-goals
 
 - No new hooks. No change to the neutral schema's *event* set beyond the `pre-compact` mapping.
+- **No workload-identity stamping through hooks.** The routing request's `user` field (CR-SY-003,
+  root review item 21) is not the hook compiler's to populate — its six-field schema cannot
+  express it and the review rules it out. Whatever stamps `user` on Pi is decided at root after
+  CR-SY-003 §S1; CR-025 §S0 carries the question.
 - No retirement of non-Pi emitters here — CR-MDB-031.
 - No package shipping — CR-MDB-029.
