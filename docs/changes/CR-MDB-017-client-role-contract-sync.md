@@ -138,6 +138,23 @@ comment to state the binding is declared at registration, not that it auto-attac
 ### §S4 — Sync the project-layer conventions that restate the contract
 - `skills-src/memory-templates/java-orchestration.md:17` — `--phase` enumeration becomes
   the `--role` enumeration with the binding rule.
+- **§S4d — the RETIRED v1 `/api/ingest/*` endpoints, which are a PRD release-gate violation
+  today** (user directive 2026-09-21: "upgrade Model B agents and any skills to use the Crucible
+  V2 API wherever possible"). PRD §11 criterion 2 requires **zero** references outside `archive/`
+  to `/api/ingest/`. Measured 2026-09-21: **ten live references**, none of them in the seven
+  Crucible-origin bundles (those are already clean v2):
+  - `skills-src/memory-templates/java-orchestration.md` ×4 (`:20`, `:22`, `:43`, `:56`) —
+    `/api/ingest/compile` and `/api/ingest/parsed` → `/api/v2/runs/compile` and
+    `/api/v2/runs/parsed`.
+  - `skills-src/memory-templates/rust-orchestration.md:31` ×1 — `/api/ingest/compile` and
+    `/api/ingest` → `/api/v2/runs/compile` and `/api/v2/runs`.
+  - `generator/stacks/quarkus.toml:11` ×1 — **the source**, which renders into
+    `generator/agents/quarkus-{red,green,verify,fix}-agent.md` ×4. Fix the TOML once and
+    regenerate; never hand-edit the four.
+  Archive hits (`archive/wave2/`, `archive/wave3/`) are immutable history and stay. Hits in the
+  PRD, the DN, `audits/`, and `docs/research/crucible-clients-skills-guard.test.ts` DESCRIBE the
+  gate rather than violate it, and must not be "fixed" — a sweep that edits the gate's own
+  definition defeats it.
 - `skills-src/model-b/SKILL.md:45` — the naming-registry bullet's parenthetical becomes
   "role declared via `--role`, never embedded in the id"; the ONE-identity rule and the
   `<agent-type>-<project>` readability habit stay as they are.
@@ -367,6 +384,19 @@ clean; no generated file is hand-edited.
       `contracts/`, `docs/` and `AGENTS.md`. No AC hardcodes `0.2.0` as unreleased.
 - [ ] `skills-src/memory-templates/java-orchestration.md` documents the `--role`
       enumeration and the binding rule; no `--phase` remains.
+- [ ] **§S4d: ZERO occurrences of `/api/ingest` outside `archive/`, `docs/`, `audits/` and the
+      inherited guard test.** Specifically: `skills-src/memory-templates/java-orchestration.md`
+      and `rust-orchestration.md` name only `/api/v2/runs`, `/api/v2/runs/parsed` and
+      `/api/v2/runs/compile`; `generator/stacks/quarkus.toml` likewise; and the four
+      `generator/agents/quarkus-*` files carry the corrected text **via regeneration**, proven by
+      `python3 generator/build.py --check` exiting 0.
+- [ ] §S4d: the PRD §11 criterion-2 grep (`/api/ingest/`, zero outside `archive/`) passes for the
+      first time — this CR is what makes CR-MDB-012's release gate satisfiable, and CR-012 should
+      not be scheduled expecting it to pass beforehand.
+- [ ] §S4d: the references that DEFINE the gate are untouched — `docs/research/PRD-*.md:104`,
+      `DN-rationalization-plan-review.md:98`, `audits/2026-07-20-crucible-drift.md`, and
+      `docs/research/crucible-clients-skills-guard.test.ts` still contain their `/api/ingest`
+      strings. An implementer who "cleans" these has broken the gate rather than passed it.
 - [ ] `contracts/crucible-envelope.md` cites `STATUS-CONTRACT.md` **document version
       2.0.0** — verified unchanged at `~/.crucible/clients/STATUS-CONTRACT.md` on 2026-09-18 —
       and never implies a Crucible PRODUCT version of `2.0.0`. The version axis stays explicit:
@@ -437,8 +467,10 @@ clean; no generated file is hand-edited.
 
 ## Estimated size
 
-10 documentation files edited (1 routing skill, 6 bundles — 5 register-flag-synced plus
-vscode's single auto-attach comment fix, confirmed by Sandesh #1373 — 1 memory template, 1
+11 documentation files edited (1 routing skill, 6 bundles — 5 register-flag-synced plus
+vscode's single auto-attach comment fix, confirmed by Sandesh #1373 — **2 memory templates**
+(`java-orchestration.md` for both `--phase` and §S4d's v1 endpoints, `rust-orchestration.md`
+for §S4d), 1
 orchestration skill (`skills-src/model-b/SKILL.md`, added at gap-analysis — a second
 `--phase` occurrence lives there), `AGENTS.md`, `contracts/crucible-envelope.md`), 4 role
 templates edited, 4 stack TOMLs gain a `tier_guidance` key each, 16 agent definitions
