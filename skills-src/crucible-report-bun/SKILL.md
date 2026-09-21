@@ -33,7 +33,7 @@ environment — set these on every call so runs land on the right cycle:
 ### Lifecycle
 
 ```bash
-python3 clients/bun-crucible.py register --agent AGENT_ID --phase RED
+python3 clients/bun-crucible.py register --agent AGENT_ID --role RED --cycle <cycleId>
 # ... work ...
 python3 clients/bun-crucible.py unregister --agent AGENT_ID
 ```

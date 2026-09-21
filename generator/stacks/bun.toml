@@ -16,6 +16,16 @@ mechanics = '''
 - **The SUT is a thin TS shim that shells to the `sandesh` CLI** — tests mock `pi.exec` and assert the argv built + the result mapping; they never run the real CLI or Sandesh-core. **Sandesh-core stays Python-pure (PE3)** — the TS extension never imports it.
 '''
 
+# CR-MDB-017 §S6b — the per-stack half of the tier-guidance section. Bun has no
+# tier mechanism of its own, so the tier a run may claim is whatever the PROJECT
+# has declared in package.json — never what the agent selected by hand.
+tier_guidance = '''
+- **Bun has no native tier split — the PROJECT declares one.** `bun test` knows files and filters, not tiers; the boundary lives in `package.json` scripts: `test:unit`, `test:integration`, `test:regression`. Run the declared script for the tier you intend to report, and name that script in your report so the next agent can reproduce exactly the same set.
+- **Never hand-pick a file list and call it a tier.** Passing `--tests a.test.ts b.test.ts` and ingesting the result as `integration` records a tier the project never defined: the next "same" run selects different files and the two are no longer comparable. A hand-picked list is a TARGETED run — report it as `unit`, and only when every file in it is genuinely dependency-free.
+- **A tier with no declared script cannot be honoured here.** With no `test:integration` in `package.json` this stack has no `integration` tier — report the tier you actually ran and raise the missing script as a finding. The same holds for `e2e` and `bdd`: Bun ships neither a driver nor a convention for either, so both are unavailable until the project declares one; `module` is only meaningful in a workspace that has declared its package boundaries.
+- **`regression` means the whole declared suite**, coverage on, not "the tests I happened to touch". A subset rerun after a fix is not a `regression` run whatever its size — and the full sweep is the orchestrator's merge gate, not yours.
+'''
+
 [description]
 red = "RED phase agent — test specialist for Bun/TypeScript projects (`bun test`). Two modes. (1) Write NEW failing tests for a CR spec. (2) Fix BROKEN test compilation/imports so existing tests can run. Does NOT write production code."
 green = "GREEN phase agent — implements production TypeScript code to make failing Bun tests pass. Works step-by-step, one module/tool at a time. Does NOT modify tests unless explicitly approved by the orchestrator. Used after RED tests are committed."

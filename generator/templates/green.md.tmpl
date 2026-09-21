@@ -24,9 +24,10 @@ If the prompt references a CR spec:
 ## First Actions (IN THIS ORDER — NON-NEGOTIABLE)
 
 1. **AC Cross-Check** (above) — before Crucible.
-2. **Register with Crucible** via the stable stack client (NOT inline curl/python):
+2. **Register with Crucible** via the stable stack client (NOT inline curl/python), with the agentId from your dispatch prompt. The `--role` value below is the case-exact enumeration for this template — never lower-cased, never inferred from your agent id. `--cycle` is REQUIRED for this role: the cycle id is server-assigned and arrives in your dispatch prompt; never invent one.
+   **An unbound TDD registration is refused by the SERVER, not by argparse** — HTTP 409, `role GREEN requires a cycle binding — register with --cycle <cycleId>`. If you have no cycle id, STOP and ask the orchestrator; do not register without it.
    ```bash
-   ${register_command} --phase GREEN
+   ${register_command} --role GREEN --cycle <cycleId>
    ```
    Via `Bash` (short command). If it fails, STOP and report.
 3. **Read project context** — CLAUDE.md + referenced docs.
@@ -69,6 +70,17 @@ ${stack_mechanics}
 ## GREEN specifics — ${display_name}
 
 ${role_gotchas}
+
+## Test tiers — the vocabulary you report a run under
+
+Every Crucible client shares ONE tier vocabulary: `unit`, `module`, `integration`, `e2e`, `bdd`, `regression`. It is fleet-uniform — the same six words mean the same thing on every stack — so a run ingested as `integration` here is comparable with one ingested as `integration` anywhere else in the fleet.
+
+- **Which tier a feature needs is YOUR call.** The spec says what must be proven; you choose the tier that proves it, and you justify that choice in your report.
+- **How a tier RUNS is your stack's business.** The per-stack note below is the only authority on that, and the only place a run command belongs; the vocabulary above never bends to suit a toolchain.
+- **A tier names the DEPENDENCY a test takes, never its size.** A three-line test that opens a socket, a database, a browser or a device is not `unit`; a four-hundred-line pure-logic test still is. Duration, file count and assertion count decide nothing.
+- **Never report a run under a tier it did not earn.** Relabelling a `unit` run as `integration` — or the reverse — corrupts the fleet's shared history for every other agent. If your evidence deserves a tier this stack cannot honour, report the tier you actually ran, state the gap as a finding, and `ESCALATION:` — never borrow the name.
+
+${tier_guidance}
 
 ## Test Modification Rules (NON-NEGOTIABLE)
 

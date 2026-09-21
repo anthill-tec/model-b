@@ -18,6 +18,16 @@ mechanics = '''
 - **Third-party API sources:** Arduino_GFX (`Arduino_GFX` v1.6.5) source is cached — verify before using: `rg "<symbol>" ~/.opensrc/repos/github.com/moononournation/Arduino_GFX/v1.6.5/src`. NEVER assume an API from memory.
 '''
 
+# CR-MDB-017 §S6b — the per-stack half of the tier-guidance section. Arduino is
+# the stack where the BUILD SYSTEM is the tier boundary, so honourability is a
+# hardware fact, not a convention.
+tier_guidance = '''
+- **Three separate build systems ARE the three tiers here — they are not interchangeable.** `unit` is the native-host `g++` build under `sheetal-firmware/tests/native/` (pure modules against the thin `mock/Arduino.h`). `compile`/`check` is `arduino-cli compile --fqbn arduino:renesas_uno:minima` — the TARGET build gate, ingested as a compile result and never as a test tier. A green native `unit` run says nothing about whether the sketch links for the board; a green target compile says nothing about behaviour. Report each under its own name and never let one stand in for the other.
+- **ArduinoFake is the explicitly-labelled middle ground, not a `unit` shortcut.** A host test that fakes `Wire`/`Serial` through ArduinoFake (L2, CR-SHE-007) takes a hardware-API dependency, so it is a `module` run and the report must say "ArduinoFake" in as many words. Folding faked-hardware cases silently into `unit` hides that the hardware was never there.
+- **HIL is UNREACHABLE from the native host** — the `integration` and `e2e` tiers end at the real board on `/dev/ttyACM0` (L3, CR-SHE-008) and the Wokwi headless sim (L4, CR-SHE-009+), and neither is reachable from where you run. Never report `integration` or `e2e` off a host run: file the unverified hardware/protocol behaviour as a coverage-gap finding and `ESCALATION:` instead.
+- **`bdd` is not honoured on this stack at all** (no scenario harness is wired into either build), and the `regression` tier arrives with lcov coverage only when CR-SHE-006 lands. Until then the widest honest tier available to you is `unit`, plus the separate `compile` gate.
+'''
+
 [description]
 red = "RED phase agent — test specialist for Arduino firmware (native host g++ unit tests + `arduino-cli` compile). Two modes. (1) Write NEW failing native tests for a CR spec. (2) Fix BROKEN test compilation so existing tests run. Does NOT write production code. Native tests cover PURE modules only; hardware modules go to HIL/ArduinoFake."
 green = "GREEN phase agent — implements production C++/Arduino code to make failing native tests pass in the Sheetal firmware. Works one module at a time. Keeps both the host `g++` test build AND the `arduino-cli` target build green. Does NOT modify tests unless explicitly approved by the orchestrator."

@@ -14,12 +14,12 @@ the Quarkus-specific gotchas. Sub-agent test/impl conventions live in `java-test
 
 ## Tooling (the workflow is embodied here — don't hand-roll)
 - **`~/.claude/scripts/mvn-crucible.py`** — single entry for Maven test runs + Crucible ingest. Four test tiers + lifecycle + docker. **Use the CLI, NEVER inline curl/python** — a stable signature gets one-time permission approval; per-call inline re-prompts every run. Subcommands:
-  - `register --phase RED|GREEN|FIX|VERIFY|ORCHESTRATOR` / `unregister` — agent lifecycle (heartbeat / remove; `identity.displayName` inside the payload).
+  - `register --role RED|GREEN|FIX|VERIFY|ORCHESTRATOR|report [--cycle <cycleId>]` / `unregister` — agent lifecycle (heartbeat / remove; `identity.displayName` inside the payload). `--role` is required and case-exact (five uppercase, `report` lowercase); the server binds the cycle at registration — `RED|GREEN|FIX|VERIFY` must pass `--cycle` for an ACTIVE cycle of an OPEN plan or the registration is refused 409, while `ORCHESTRATOR`/`report` may register unbound.
   - `unit --test <Class[#method]>` — targeted surefire (RED/GREEN cycle level). `mvn clean test -Dtest=…`. No coverage.
   - `module [--module <m> --also-make]` — a whole module's surefire suite. `mvn clean test [-pl m -am]`. No coverage.
-  - `compile` — `mvn clean test-compile` → `/api/ingest/compile` (RED-as-compile-fail path).
+  - `compile` — `mvn clean test-compile` → `/api/v2/runs/compile` (RED-as-compile-fail path).
   - `e2e [--failsafe-only] [--native] [--with-docker]` — failsafe `*IT.java` / `@QuarkusIntegrationTest`. No coverage.
-  - `regression` — full reactor `mvn clean verify` → surefire + failsafe + JaCoCo → `/api/ingest/parsed` **with coverage**. Orchestrator gate.
+  - `regression` — full reactor `mvn clean verify` → surefire + failsafe + JaCoCo → `/api/v2/runs/parsed` **with coverage**. Orchestrator gate.
   - `auto-ingest [--coverage]` — ingest EXISTING reports without running mvn.
   - `docker-up`/`docker-down`, `pre-merge-gate` (docker-up → regression → docker-down).
   - Common flags: `--module`/`--also-make` (`-pl`/`-am`), `--native` (`-Dnative`), `--profile P` (`-P`), `--system-prop k=v` (`-Dk=v`), `--update-snapshots` (`-U`), `--maven-dir backend` (monorepo), `--coverage-profile`, `--log <file>`.
@@ -41,7 +41,7 @@ the Quarkus-specific gotchas. Sub-agent test/impl conventions live in `java-test
 - **`clean` always** on test runs — wipes stale `target/surefire-reports/` so only the SUT's XML is ingested.
 
 ## Pre-merge gate (the regression gate)
-1. `mvn-crucible.py regression --agent <orchestrator-id>` → `mvn clean verify` (whole reactor) → parse surefire + failsafe + JaCoCo → `/api/ingest/parsed`.
+1. `mvn-crucible.py regression --agent <orchestrator-id>` → `mvn clean verify` (whole reactor) → parse surefire + failsafe + JaCoCo → `/api/v2/runs/parsed`.
 2. **Coverage published ONLY on a zero-failure full run** — JaCoCo from a partial/failed/targeted run is incomplete; the script refuses to attach it when `failed > 0`.
 3. For CRs touching docker-compose e2e: `pre-merge-gate` wraps docker-up → regression → docker-down. (Quarkus DevServices/TestContainers self-provision containers and need no compose.)
 4. **Report ignored/skipped tests explicitly** — every regression. Enumerate `@Disabled`/`@DisabledIf`/skipped tests with reasons; distinguish env-gated (docker/native unavailable) from real coverage holes. A bare pass/skip count hides them.
@@ -54,7 +54,7 @@ Quarkus emits two JaCoCo outputs; only one is correct for Quarkus-managed classe
 - exec: ✅ `target/jacoco-quarkus.exec` vs ❌ `target/jacoco.exec`. Detail in `java-testing-practices.md`. Target: >80% instruction on I/O-backed service classes.
 
 ## RED that won't compile
-A Java RED frequently fails to **compile** (the target class/method doesn't exist yet) — that is a valid RED. Ingest via `mvn-crucible.py unit --agent <id>` (auto-falls-back to `mvn clean test-compile` → `/api/ingest/compile`) or `compile --agent <id>`. Never skip ingesting a compile-fail RED.
+A Java RED frequently fails to **compile** (the target class/method doesn't exist yet) — that is a valid RED. Ingest via `mvn-crucible.py unit --agent <id>` (auto-falls-back to `mvn clean test-compile` → `/api/v2/runs/compile`) or `compile --agent <id>`. Never skip ingesting a compile-fail RED.
 
 ## Layered enterprise architecture (Quarkus-specific — folded into the universal agents)
 Quarkus services follow **Model → Repository → Service → Resource** layering (vs Rust's crate/module split). Migration/implementation is **bottom-up, one class at a time** (see `java-testing-practices.md` "Layer Migration Order"). The agent set is the **universal RED/GREEN/VERIFY/FIX** (same as Rust) — there are NO separate layer-planner/reviewer/auditor agents. Their stack-specific knowledge is folded in: REST/Resource + E2E/smoke/load test patterns → `quarkus-red-agent` + `java-testing-practices.md`; Resource impl + REST-client conventions → `quarkus-green-agent`; per-layer review + OWASP backend security → `quarkus-verify-agent` (which loads the `reviewer-quarkus` / `reviewer-architecture` / `reviewer-security` skills). Planning is the **orchestrator's** job (gap analysis + cycle plan), per standard orchestration — agents execute.

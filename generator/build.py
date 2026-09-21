@@ -84,6 +84,10 @@ def render(stack: str, role: str, params: dict) -> str:
         "crucible_reference": params["crucible_reference"],
         "stack_mechanics": params["mechanics"].strip("\n"),
         "role_gotchas": params["gotchas"][role].strip("\n"),
+        # CR-MDB-017 §S6b: the per-stack half of the tier-guidance section.
+        # The shared preamble lives in the template and renders once; this key
+        # carries the honourability half, which is stack data, not template text.
+        "tier_guidance": params["tier_guidance"].strip(),
     }
     content = template.substitute(mapping)
     return content.rstrip("\n") + "\n"

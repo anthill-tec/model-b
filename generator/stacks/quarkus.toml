@@ -8,7 +8,7 @@ unregister_command = "python3 ~/.claude/scripts/mvn-crucible.py unregister --age
 crucible_reference = "~/.claude/skills/crucible/references/java.md"
 
 mechanics = '''
-- **Framework/client:** JUnit 5 via Maven surefire/failsafe, driven through `mvn-crucible.py` (tiers `unit` / `module` / `e2e` / `regression`, plus `compile`; `clean` is built in). `unit --test <Class>` runs + parses + ingests in one call and auto-routes: surefire XML → `/api/ingest`; compile-fail → `mvn test-compile` → `/api/ingest/compile`. A compile failure IS a valid RED — it is ingested, never skipped.
+- **Framework/client:** JUnit 5 via Maven surefire/failsafe, driven through `mvn-crucible.py` (tiers `unit` / `module` / `e2e` / `regression`, plus `compile`; `clean` is built in). `unit --test <Class>` runs + parses + ingests in one call and auto-routes: surefire XML → `/api/v2/runs`; compile-fail → `mvn test-compile` → `/api/v2/runs/compile`. A compile failure IS a valid RED — it is ingested, never skipped.
 - **Detect the Maven layout:** `./mvnw` vs `mvn`; single-module vs reactor (`-pl`); monorepo backend (set `--maven-dir`). Read root + module `pom.xml` for surefire/failsafe/jacoco config.
 - **Always `clean` on test runs** — wipes stale `target/surefire-reports/` so only the SUT's XML is ingested (stale reports → false green). The client does this for you.
 - **Don't parse the mvn console for results** — after a run, read `target/surefire-reports/*.txt`/`*.xml`. Use `--log <file>` then grep; never re-run a multi-minute suite just to "see" output.
@@ -16,6 +16,16 @@ mechanics = '''
 - **Third-party API sources:** verify the method/field exists in the EXACT resolved version — read `~/.m2/repository/...` for the resolved jar/sources, or `opensrc fetch maven:<group>:<artifact>` then `rg` over `$(opensrc path maven:<group>:<artifact>)`. Never assume from IDE autocomplete or a different version; match the pattern sibling code uses.
 - **Companion memory (read as directed by the project):** the project's instantiated orchestration memory (template: model-b repo `skills-src/memory-templates/java-orchestration.md`) — Maven mechanics, `mvn-crucible.py` tiers, the gate sequence, Quarkus gotchas; `docs/memory/java-testing-practices.md` (scaffolded from `skills-src/memory-templates/`) — Quarkus test conventions, JaCoCo, `@TempDir`, naming, review gates; `docs/memory/java-coding-standards.md` — imports, naming, error handling, DTO records, no full-namespace.
 - **Test file naming:** unit → `<Feature>Test.java` (surefire); integration/E2E → `<Feature>IT.java` (failsafe).
+'''
+
+# CR-MDB-017 §S6b — the per-stack half of the tier-guidance section. Quarkus is
+# the one stack where the split already EXISTS in the build; the guidance's job
+# is to stop an agent dodging it by renaming a class.
+tier_guidance = '''
+- **Maven has already drawn the line — do not redraw it.** Surefire runs `<Feature>Test.java` as the `unit` tier; failsafe runs `<Feature>IT.java` as the `integration` tier, where DevServices/TestContainers stand real infrastructure up around the test. The suffix IS the tier declaration, so the class name and the tier you ingest must agree — the pom, not your judgement, decides which lane a class runs in.
+- **Renaming an `*IT` to `*Test` to dodge a slow gate is FORBIDDEN.** It drags an infrastructure-dependent test into the fast lane, where it either fails for the wrong reason or passes against whatever container happened to be up — and it silently deletes the project's only `integration` signal. If failsafe is too slow, report that as a finding; never rename to escape it. The reverse (`*Test` → `*IT`) is the same offence: it hides a fast regression behind a gate nobody runs per commit.
+- **`module` is a reactor fact here** — a whole `-pl <module>` build, not "a few related classes". Claim `module` only when you ran that module's suite; a hand-picked class selection stays `unit` no matter how many classes it names.
+- **`bdd` is not honoured on this stack** — no Cucumber/JBehave harness is wired into the build, so a scenario-style test is still a surefire `*Test` and is reported as `unit`. `e2e` is failsafe `*IT` territory only and cannot be claimed from a surefire run; if the CR's behaviour genuinely needs it and no `*IT` exists, that is a coverage-gap finding, not a tier you may award yourself.
 '''
 
 [description]

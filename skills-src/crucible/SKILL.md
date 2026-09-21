@@ -14,8 +14,19 @@ ingests in one call under your agent id. Never hand-roll `curl`; the client
 
 ## Lifecycle (every agent)
 
-- `register --agent <id> --phase <PHASE>` FIRST — before reading or running
-  anything. Register/touch is ONE upsert and every run ingest touches your
+- `register --agent <id> --role <ROLE>` FIRST — before reading or running
+  anything, and with `--cycle <cycleId>` bound in the same call when your role
+  is a TDD role. `--role` is the ONE argparse-required flag; its values are
+  case-exact: `RED | GREEN | FIX | VERIFY | ORCHESTRATOR | report` (five
+  uppercase, `report` lowercase). A registration that reaches the server with
+  a missing or out-of-enumeration role is refused 400. The per-role cycle rule
+  is the SERVER's, not argparse's: `RED|GREEN|FIX|VERIFY` must bind an ACTIVE
+  cycle of an OPEN plan, and an unbound TDD registration is refused 409 —
+  `role RED requires a cycle binding — register with --cycle <cycleId>` —
+  at the route boundary, before any agent row is written. `ORCHESTRATOR` and
+  `report` may register unbound, with no cycle. `--source` is enumerated
+  `claude-md | package-json | git-repo | manual`; absent is legal.
+  Register/touch is ONE upsert and every run ingest touches your
   agent — ingest remains the heartbeat. `/api/v2/agents/heartbeat` shares the
   register handler and exists for the rare status-change touch; when you need
   it, issue it via the client's `register` verb — never a hand-rolled `curl`
@@ -30,10 +41,14 @@ ingests in one call under your agent id. Never hand-roll `curl`; the client
 ## Identity — ONE agent id for the whole session
 
 - Orchestrators: `<agent-type>-<project>` (e.g. `vidushi-NAI`, `mainline-MDB`).
-- TDD-phase agents: `CR-<ACRONYM>-NNN-<cycle>-<PHASE>` (e.g.
-  `CR-MDB-003-C1-GREEN`) — the CR id + cycle + phase IS the identity.
-- Phase is metadata, not identity: pass it via `--phase` on register. Never
-  mint a second agent id mid-session.
+- TDD-role agents: `CR-<ACRONYM>-NNN-<cycle>-<ROLE>` (e.g.
+  `CR-MDB-003-C1-GREEN`) — the CR id + cycle + role IS the identity.
+- Role and identity are SEPARATE axes. The role is DECLARED at registration,
+  via `--role`, from the case-exact enumeration above; the agentId is
+  FREE-FORM, assigned by the dispatcher and never minted by the agent. The
+  role is never inferred from the id's shape — an id ending `-GREEN`
+  registered with `--role RED` classifies as RED. Never mint a second agent
+  id mid-session.
 
 ## Per-stack client surfaces (they are NOT uniform — read the reference)
 
@@ -64,20 +79,32 @@ handover — provenance in `skills-src/CRUCIBLE-HANDOVER.md`); they document
 the **CR-CRU-030** client contract. The local `references/*.md` files are
 THIN ROUTERS: Model B workflow deltas only, then route to the bundle.
 
-## Workflow classification — server-driven cycle attach + display context
+## Workflow classification — cycle attach + display context
 
-Cycle attach is SERVER-DRIVEN (CR-CRU-036): every run/plan verb reads the
-open plan and auto-attaches to its single `status:"active"` cycle
-(`resolve_attach_cycle` in shared `_crucible_axi.py`). No env var carries a
-cycle id — clients resolve it from the server.
+> **The auto-attach mechanism below is RETIRED (2026-09-21, CR-CRU-056 §S1/§S4).**
+> A cycle is now bound EXPLICITLY at registration with `register --cycle <cycleId>`
+> — required by the server for the four TDD roles, optional for
+> `ORCHESTRATOR`/`report` — and the server stamps that binding onto every
+> subsequent ingest. The paragraph and bullets that follow are kept as the
+> superseded CR-CRU-036 contract so the supersession is legible; read them as
+> history. Where they and the `--cycle` binding disagree, the binding wins.
+
+Under CR-CRU-036 cycle attach was SERVER-DRIVEN: every run/plan verb read the
+open plan and auto-attached to its single `status:"active"` cycle
+(`resolve_attach_cycle` in shared `_crucible_axi.py`). No env var carried a
+cycle id — clients resolved it from the server.
 
 - OPEN plan but NO active cycle → the client emits the `no-active-cycle`
   warning and WITHHOLDS the run: `ok:false`, non-zero exit, nothing posted
   (no orphan ever reaches the server).
 - No open plan at all, or a plans-fetch hiccup → tolerant: the run proceeds
   unattached, no warning, no withhold.
-- The orchestrator's ONLY cycle input is `cycle-activate` (one active cycle
-  at a time); agents never pass a cycle id.
+- The orchestrator's ONLY cycle input WAS `cycle-activate` (one active cycle
+  at a time); agents never passed a cycle id. Today the orchestrator still
+  drives `cycle-activate`, and the agent declares the binding ONCE, at
+  registration, with `--cycle`.
+
+Still true either way: no env var carries a cycle id.
 
 Display/classification context survives as env vars:
 
@@ -91,10 +118,35 @@ Display/classification context survives as env vars:
   `/tmp/claude-1000/<project>-crucible`) that pins the project key/dir and the
   `WORKFLOW_CYCLE` label + `WORKFLOW_WAVE` only — it never injects a cycle id
   (attach is server-driven). When your prompt names a wrapper, use it.
-- **Plan verbs (universal — fleet-wide on all five clients):**
-  `plan-file --cr <id> --title <t> --cycles <n> [--wave <w>] [--orchestrator <id>]`,
-  `cycle-activate` / `cycle-done` (legal transitions planned → active → done),
-  `cr-close --commit <sha>`, `milestone`, `gate-report`.
+- **Plan verbs (universal — fleet-wide on all five clients), every one posting
+  under a registered `--agent` id:**
+  `plan-file --cr <id> --title <t> --cycle "C1 <label>" --cycle-kind red-green --cycle "C2 <label>" --cycle-kind verify --wave <w> --agent <id>`,
+  `cycle-activate <cycle-id> --agent <id>` / `cycle-done <cycle-id> --agent <id>`
+  (legal transitions planned → active → done),
+  `cr-close --commit <sha> --agent <id>`, `milestone --type <t> --agent <id>`,
+  `gate-run --intent <goal> --agent <id>`.
+- **`--cycle` and `--cycle-kind` pair up positionally.** `--cycle` is repeatable
+  and every occurrence REQUIRES its own `--cycle-kind` from `red-green | verify |
+  fix`: the Nth kind is the Nth cycle's. A kind count that does not match the
+  cycle count, or a cycle left without one, is refused **before anything posts** —
+  nothing partial is ever filed. The legacy comma-split `--cycles` form is refused
+  for filing.
+- **`--agent` is REQUIRED on every workflow verb, with no fallback:** the identity
+  is declared or the verb fails, and an unregistered id is refused 409 by the
+  server — it is never silently downgraded. The free-text `--orchestrator` label
+  is retired; the registered `--agent` id IS the plan's orchestrator.
+- **`--release <label>`**, when given at filing, also REGISTERS the CR in the queue
+  in the same call (which makes `--wave` and `--title` required); omitted, the plan
+  is filed and nothing is claimed on the roadmap.
+- **Gate verb — `gate-run`, which replaces the legacy `gate-report`.**
+  `gate-run --intent <goal> --agent <id>` STREAMS the no-mistakes pipeline; the
+  retired one-shot `gate-report` still answers but emits a `prefer-gate-run`
+  discouragement warning (Crucible #1369). `--skip <steps>` is forwarded VERBATIM
+  to `no-mistakes axi run --skip`; it exists because that pipeline's `ci` step is PR-based,
+  and a git-flow project that merges directly has none for it to watch, so
+  without `--skip` the gate blocks until `ci_timeout`. `--release <label>` names
+  the release a gate gates (a gate naming one is exempt from pruning until that
+  release records) — omit it unless the gate really gates a release.
 
 ## Envelope — TOON-AXI on stdout (shipped fleet-wide)
 
