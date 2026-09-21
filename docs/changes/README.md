@@ -389,3 +389,21 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   would lose its scheduler on the first `modelb-axi` run. **USER RULING: proceed DB-less now; NAI
   migrates at the 1.0.0 release** (NAI is waiting on it) — **CR-MDB-012 carries the NAI migration
   item**; `schedule_db.py`'s retirement is decided there, §S5 keeps it shipped until then.
+- 2026-09-21 — **CR-MDB-017 GAP-ANALYSIS (orchestrator, not delegated)** — baseline re-measured
+  post-merge 270/7F/12S @ `c092caa`. The 2026-09-18 contract research HOLDS: every cited line still
+  lands (`crucible/SKILL.md:17,35,95,97`, `model-b/SKILL.md:45`, `java-orchestration.md:17`,
+  `red.md.tmpl:24`, `quarkus.toml:11`, `test_crucible_skill.py:169`, `AGENTS.md:145`) and the
+  installed 0.2.2 client still self-describes `--cycles` as "Legacy comma-split form, REFUSED for
+  filing". Six drifts, all from tree movement since, and **two are self-inflicted**: (1) §S1's
+  "zero failures" AC was unsatisfiable — the baseline moved 240/1F → 270/7F and six of the seven
+  are CR-021's chezmoi gates, so the AC now reads 7→6 and names them as another CR's; (2) `--phase`
+  is TEN surfaces not nine — `skills-src/memory-templates/java-testing-practices.md`, imported
+  earlier the same day under the PRD §D5 move, arrived carrying it; (3) §S4d's `/api/ingest` count
+  is THIRTEEN live lines not ten — the same imported file adds three (`:736,:739,:740`) and
+  `java-orchestration`/`rust-orchestration` lines shifted (`:43→:44`, `:56→:57`, `:31→:29`);
+  (4) `contracts/crucible-envelope.md` gate-report `:136→:137` (CR-028 F1's clause);
+  (5) §S5 was re-scoped — three of its families are ALREADY gated by `test_skills_handover.py`
+  (`:226` WORKFLOW_CYCLE_ID, `:294` v2 touch, `:386` heartbeat form), so the new module adds only
+  the flag-surface check and cites the rest, and an AC now FORBIDS duplicating them; (6) Type/size
+  corrected — §S6b's per-stack `tier_guidance` (zero keys exist today) is content authoring, so
+  this is not a "patch". Verdict SPEC_UPDATE_NEEDED, all six amended; no prerequisite CR.

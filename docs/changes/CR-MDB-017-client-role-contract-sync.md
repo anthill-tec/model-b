@@ -1,7 +1,8 @@
 # CR-MDB-017 — Client-verb contract sync: the owned bundles still teach the retired `--phase` flag
 
 **Status:** PENDING
-**Type:** maintenance
+**Type:** maintenance (two families: a client-verb flag sync across the published surfaces, and
+the per-stack tier-guidance authoring of §S6b — the latter is content creation, not a patch)
 **Priority:** P1 (blocks release 1.0.0 — every `register` example we ship is non-executable against the released clients)
 **Depends on:** CR-MDB-016 (Model B owns the seven bundles outright)
 **Labels:** crucible, skills, contract, patch
@@ -59,8 +60,11 @@ flag, and none of them mentions either replacement:
 - `skills-src/model-b/SKILL.md:45` — "ONE identity; phase via `--phase`, never embedded in
   the id". The orchestration skill, not a Crucible bundle — it restates the same retired
   contract and is in scope precisely because the ACs gate all of `skills-src/`.
-- **Nine surfaces total** (re-measured at gap-analysis, 2026-09-18), not the seven this
-  section originally listed.
+- **TEN surfaces total** (re-measured at gap-analysis, 2026-09-21 — was nine on 2026-09-18, and
+  seven when this section was first written). The tenth is
+  `skills-src/memory-templates/java-testing-practices.md`, imported on 2026-09-21 under the PRD
+  §D5 amendment (the Java language references moved out of the user's global memory into Model B
+  memory templates); it arrived carrying the same retired flag.
 - `--role` occurs **zero** times across `skills-src/`. `--cycle` also occurs zero times **as
   a flag** — but a naive substring grep returns two hits, `--cycles` on `plan-file`
   (`crucible/SKILL.md:95`, `model-b/SKILL.md:47`). Every gate below therefore matches
@@ -138,15 +142,21 @@ comment to state the binding is declared at registration, not that it auto-attac
 ### §S4 — Sync the project-layer conventions that restate the contract
 - `skills-src/memory-templates/java-orchestration.md:17` — `--phase` enumeration becomes
   the `--role` enumeration with the binding rule.
+- `skills-src/memory-templates/java-testing-practices.md` — same `--phase` enumeration in its
+  Crucible-lifecycle section (added to this CR at the 2026-09-21 gap-analysis; the file entered
+  the repo after the original sweep was measured).
 - **§S4d — the RETIRED v1 `/api/ingest/*` endpoints, which are a PRD release-gate violation
   today** (user directive 2026-09-21: "upgrade Model B agents and any skills to use the Crucible
   V2 API wherever possible"). PRD §11 criterion 2 requires **zero** references outside `archive/`
-  to `/api/ingest/`. Measured 2026-09-21: **ten live references**, none of them in the seven
-  Crucible-origin bundles (those are already clean v2):
-  - `skills-src/memory-templates/java-orchestration.md` ×4 (`:20`, `:22`, `:43`, `:56`) —
-    `/api/ingest/compile` and `/api/ingest/parsed` → `/api/v2/runs/compile` and
-    `/api/v2/runs/parsed`.
-  - `skills-src/memory-templates/rust-orchestration.md:31` ×1 — `/api/ingest/compile` and
+  to `/api/ingest/`. **Re-measured 2026-09-21 at gap-analysis: THIRTEEN live lines** (was ten on
+  2026-09-18), none of them in the seven Crucible-origin bundles (those are already clean v2):
+  - `skills-src/memory-templates/java-orchestration.md` ×4 (`:20`, `:22`, `:44`, `:57` — the last
+    two shifted from `:43`/`:56`) — `/api/ingest/compile` and `/api/ingest/parsed` →
+    `/api/v2/runs/compile` and `/api/v2/runs/parsed`.
+  - **`skills-src/memory-templates/java-testing-practices.md` ×3 (`:736`, `:739`, `:740`)** — new
+    surface, imported 2026-09-21 with the PRD §D5 move; same v1 endpoints.
+  - `skills-src/memory-templates/rust-orchestration.md:29` ×1 (shifted from `:31` by CR-MDB-028's
+    deletions) — `/api/ingest/compile` and
     `/api/ingest` → `/api/v2/runs/compile` and `/api/v2/runs`.
   - `generator/stacks/quarkus.toml:11` ×1 — **the source**, which renders into
     `generator/agents/quarkus-{red,green,verify,fix}-agent.md` ×4. Fix the TOML once and
@@ -186,7 +196,8 @@ comment to state the binding is declared at registration, not that it auto-attac
 - **§S4b — `gate-run` is the gate verb; `gate-report` is the one-shot legacy.** `gate-run`
   STREAMS and emits a `prefer-gate-run` discouragement warning from `gate-report` (Crucible
   #1369). Two surfaces still name the wrong one: `skills-src/crucible/SKILL.md:97` and
-  `contracts/crucible-envelope.md:136`. Both carry two flags that matter to THIS project
+  `contracts/crucible-envelope.md:137` (was `:136`; shifted by CR-MDB-028's F1 clause at `:61`).
+  Both carry two flags that matter to THIS project
   specifically (measured from the installed client): `--skip`, which exists because
   no-mistakes' `ci` step is PR-based and **a git-flow project that merges directly has no PR
   for it to watch — without `--skip` the gate blocks until `ci_timeout`**, which is exactly
@@ -230,11 +241,19 @@ comment to state the binding is declared at registration, not that it auto-attac
   cannot pass. Corrections are factual only; no design decision is reopened.
 
 ### §S5 — The guard that would have caught it
-Port the transferable families of the inherited suite into a new stdlib `unittest` module
-`tests/test_skill_bundle_guards.py` — per-bundle v2-endpoint truth, no unmarked v1 legacy,
-ingest-is-heartbeat semantics, `tier` + `WORKFLOW_CYCLE` presence, and real client verbs in
-examples — **strengthened with a flag-surface check** that the original lacked, and extended
-to the arduino bundle the original never covered. The two agent-protocol families are NOT
+**Re-scoped at the 2026-09-21 gap-analysis: this module adds ONLY what does not already exist.**
+Three of the families originally listed are already asserted by
+`tests/test_skills_handover.py` — zero `WORKFLOW_CYCLE_ID` across the bundles (`:226`), the v2
+touch contract (`:294`), and every heartbeat hit in the v2 form (`:386`). Re-implementing them in
+a second module creates two sources for one property, the drift the 2026-09-21 audit already
+records for eight copy-pasted helpers. The new module therefore CITES those and does not repeat
+them; the AC below is narrowed to match.
+
+Port the remaining transferable families of the inherited suite into a new stdlib `unittest`
+module `tests/test_skill_bundle_guards.py` — per-bundle v2-endpoint truth, no unmarked v1 legacy,
+`tier` presence, and real client verbs in examples — **whose reason to exist is the
+flag-surface check** the original lacked, extended to the arduino bundle the original never
+covered. The two agent-protocol families are NOT
 ported: `heartbeat.sh` and a standalone `agent-protocol` skill are ratified out of existence
 and asserted absent by `tests/test_skills_handover.py:130-137` and `:360-384`.
 
@@ -343,14 +362,19 @@ clean; no generated file is hand-edited.
       written forbids naming what it forbids. Re-point it at the CLAIM (no sentence may say
       the wrapper injects `WORKFLOW_CYCLE_ID`) or delete it in favour of the product-surface
       check that already passes; a second sanctioned re-pin in the same file as §S1's.
-- [ ] `python3 -m unittest discover -s tests -t .` shows **zero failures** — this CR clears
-      the last item in the recorded 240/1F/12S baseline, and `AGENTS.md`'s baseline sentence
-      is updated to say so.
+- [ ] `python3 -m unittest discover -s tests -t .` failures drop from **7 to 6**: this CR clears
+      `test_ac7_repo_agents_md_no_longer_claims_workflow_cycle_id_injection` and nothing else.
+      **The remaining six are the `chezmoi diff` gates CR-MDB-021 retires — not this CR's, and an
+      implementer who "fixes" them has done another CR's work.** `AGENTS.md`'s baseline sentence
+      is updated to the measured post-CR figure. (Re-measured at the 2026-09-21 gap-analysis: the
+      baseline is 270/7F/12S, not the 240/1F/12S this AC was written against, so "zero failures"
+      was unsatisfiable as stated.)
 
 ### §S2 / §S3 / §S4
 - [ ] Zero occurrences of `--phase` under `skills-src/`, `contracts/`, and `AGENTS.md` —
-      covering all NINE measured surfaces, explicitly including `skills-src/crucible/SKILL.md`
-      lines 17 AND 35 and `skills-src/model-b/SKILL.md:45`.
+      covering all TEN measured surfaces, explicitly including `skills-src/crucible/SKILL.md`
+      lines 17 AND 35, `skills-src/model-b/SKILL.md:45`, and
+      `skills-src/memory-templates/java-testing-practices.md` (the tenth, imported 2026-09-21).
 - [ ] Every `register` example under `skills-src/` carries `--role` with a value from
       `{RED, GREEN, FIX, VERIFY, ORCHESTRATOR, report}`.
 - [ ] Every `register` example under `skills-src/` whose `--role` is one of
@@ -373,7 +397,7 @@ clean; no generated file is hand-edited.
 - [ ] Every documented workflow-verb invocation carries `--agent`, and the docs state that an
       unregistered id is refused 409 with no fallback.
 - [ ] No Model B doc names `gate-report` as the gate verb; `gate-run` replaces it at
-      `skills-src/crucible/SKILL.md:97` and `contracts/crucible-envelope.md:136`, and the
+      `skills-src/crucible/SKILL.md:97` and `contracts/crucible-envelope.md:137`, and the
       `--skip` rationale is stated (no-mistakes' `ci` step is PR-based; a git-flow project
       merging directly has no PR, so the gate blocks until `ci_timeout` without it). (§S4b)
 - [ ] **The released-only gate is re-pinned, not inherited.** `queue-file`, `--from-file`,
@@ -385,11 +409,12 @@ clean; no generated file is hand-edited.
 - [ ] `skills-src/memory-templates/java-orchestration.md` documents the `--role`
       enumeration and the binding rule; no `--phase` remains.
 - [ ] **§S4d: ZERO occurrences of `/api/ingest` outside `archive/`, `docs/`, `audits/` and the
-      inherited guard test.** Specifically: `skills-src/memory-templates/java-orchestration.md`
-      and `rust-orchestration.md` name only `/api/v2/runs`, `/api/v2/runs/parsed` and
-      `/api/v2/runs/compile`; `generator/stacks/quarkus.toml` likewise; and the four
-      `generator/agents/quarkus-*` files carry the corrected text **via regeneration**, proven by
-      `python3 generator/build.py --check` exiting 0.
+      inherited guard test.** Specifically: `skills-src/memory-templates/java-orchestration.md`,
+      **`java-testing-practices.md`** and `rust-orchestration.md` name only `/api/v2/runs`,
+      `/api/v2/runs/parsed` and `/api/v2/runs/compile`; `generator/stacks/quarkus.toml` likewise;
+      and the four `generator/agents/quarkus-*` files carry the corrected text **via
+      regeneration**, proven by `python3 generator/build.py --check` exiting 0. Thirteen live
+      lines at gap-analysis; a sweep that leaves any one of them fails this criterion.
 - [ ] §S4d: the PRD §11 criterion-2 grep (`/api/ingest/`, zero outside `archive/`) passes for the
       first time — this CR is what makes CR-MDB-012's release gate satisfiable, and CR-012 should
       not be scheduled expecting it to pass beforehand.
@@ -432,10 +457,10 @@ clean; no generated file is hand-edited.
 - [ ] `crucible-report-vscode` is named in an explicit API-path exemption constant and is
       excluded from the register-flag families BY NAME; the module asserts the exemption
       exists, so the bundle can never pass those families by having no register example.
-- [ ] It asserts zero `WORKFLOW_CYCLE_ID` occurrences under `skills-src/` — scoped to
-      register/ingest examples and prose that CLAIMS the variable is set, not a bare
-      whole-tree string count, which would false-red the moment a bundle documents the
-      retired variable (the exact defect §S1 re-pins in `test_crucible_skill.py`).
+- [ ] It does NOT re-assert what `tests/test_skills_handover.py` already gates — zero
+      `WORKFLOW_CYCLE_ID` across the bundles (`:226`), the v2 touch contract (`:294`), the v2
+      heartbeat form (`:386`). The module cites them in its docstring instead; a duplicate
+      assertion of any of the three fails this criterion.
 - [ ] No test asserts the existence of `skills-src/agent-protocol/` or any `heartbeat.sh`.
 
 ### §S6
@@ -467,10 +492,11 @@ clean; no generated file is hand-edited.
 
 ## Estimated size
 
-11 documentation files edited (1 routing skill, 6 bundles — 5 register-flag-synced plus
-vscode's single auto-attach comment fix, confirmed by Sandesh #1373 — **2 memory templates**
-(`java-orchestration.md` for both `--phase` and §S4d's v1 endpoints, `rust-orchestration.md`
-for §S4d), 1
+12 documentation files edited (1 routing skill, 6 bundles — 5 register-flag-synced plus
+vscode's single auto-attach comment fix, confirmed by Sandesh #1373 — **3 memory templates**
+(`java-orchestration.md` for both `--phase` and §S4d's v1 endpoints, `java-testing-practices.md`
+for both — added at the 2026-09-21 gap-analysis, imported after the original sweep — and
+`rust-orchestration.md` for §S4d), 1
 orchestration skill (`skills-src/model-b/SKILL.md`, added at gap-analysis — a second
 `--phase` occurrence lives there), `AGENTS.md`, `contracts/crucible-envelope.md`), 4 role
 templates edited, 4 stack TOMLs gain a `tier_guidance` key each, 16 agent definitions
