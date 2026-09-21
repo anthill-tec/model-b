@@ -166,7 +166,13 @@ class CrucibleSkillS2Test(unittest.TestCase):
 
         required_terms = [
             "<agent-type>-<project>",
-            "--phase",
+            # CR-MDB-017 §S1 (sanctioned amendment): Crucible retired `--phase`
+            # in their 0.1.0 clean break, with no alias, so the pinned term was
+            # superseded upstream. Inverted to the released register surface --
+            # `--role` (argparse-required, case-exact enumeration) plus the
+            # `--cycle` binding the server demands of the four TDD roles.
+            "--role",
+            "--cycle",
             "regression-ingest",  # rust
             "unit --test",  # java
             "plan-file",  # bun

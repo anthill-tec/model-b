@@ -35,7 +35,7 @@ environment — set these on every call so runs land on the right cycle:
 ### Lifecycle
 
 ```bash
-python3 clients/rust-crucible.py register --agent red-nai-042 --phase RED
+python3 clients/rust-crucible.py register --agent red-nai-042 --role RED --cycle <cycleId>
 # ... work ...
 python3 clients/rust-crucible.py unregister --agent red-nai-042
 ```

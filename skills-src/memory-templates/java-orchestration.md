@@ -14,7 +14,7 @@ the Quarkus-specific gotchas. Sub-agent test/impl conventions live in `java-test
 
 ## Tooling (the workflow is embodied here — don't hand-roll)
 - **`~/.claude/scripts/mvn-crucible.py`** — single entry for Maven test runs + Crucible ingest. Four test tiers + lifecycle + docker. **Use the CLI, NEVER inline curl/python** — a stable signature gets one-time permission approval; per-call inline re-prompts every run. Subcommands:
-  - `register --phase RED|GREEN|FIX|VERIFY|ORCHESTRATOR` / `unregister` — agent lifecycle (heartbeat / remove; `identity.displayName` inside the payload).
+  - `register --role RED|GREEN|FIX|VERIFY|ORCHESTRATOR|report [--cycle <cycleId>]` / `unregister` — agent lifecycle (heartbeat / remove; `identity.displayName` inside the payload). `--role` is required and case-exact (five uppercase, `report` lowercase); the server binds the cycle at registration — `RED|GREEN|FIX|VERIFY` must pass `--cycle` for an ACTIVE cycle of an OPEN plan or the registration is refused 409, while `ORCHESTRATOR`/`report` may register unbound.
   - `unit --test <Class[#method]>` — targeted surefire (RED/GREEN cycle level). `mvn clean test -Dtest=…`. No coverage.
   - `module [--module <m> --also-make]` — a whole module's surefire suite. `mvn clean test [-pl m -am]`. No coverage.
   - `compile` — `mvn clean test-compile` → `/api/ingest/compile` (RED-as-compile-fail path).

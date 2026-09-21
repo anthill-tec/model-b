@@ -739,7 +739,7 @@ Route every Maven test run + Crucible ingest through `~/Documents/data_projects/
 | **regression** (orchestrator gate) | `regression` | `clean verify` (whole reactor) | surefire + failsafe + JaCoCo → `/api/ingest/parsed` **with coverage** |
 | compile-only | `compile` | `clean test-compile` | `/api/ingest/compile` |
 
-- `register --phase RED\|GREEN\|FIX\|VERIFY\|ORCHESTRATOR` first; `unregister` last.
+- `register --role RED\|GREEN\|FIX\|VERIFY\|ORCHESTRATOR\|report [--cycle <cycleId>]` first; `unregister` last. `--role` is required and case-exact (five uppercase, `report` lowercase); `RED\|GREEN\|FIX\|VERIFY` must bind an ACTIVE cycle of an OPEN plan with `--cycle` or the server refuses the registration 409 — `ORCHESTRATOR`/`report` may register unbound.
 - Common flags: `--module`/`--also-make` (reactor `-pl`/`-am`), `--native` (`-Dnative`), `--profile P` (`-P`), `--system-prop k=v` (`-Dk=v`, e.g. `api.version=1.4.2`), `--update-snapshots` (`-U`), `--log <file>` (capture full run for later grep — never re-run a long suite).
 - **Coverage is published ONLY by `regression` on a zero-failure run** — JaCoCo from a partial/failed/targeted run is incomplete; the script refuses to attach it when `failed > 0`.
 - Monorepo backend / non-root pom → `--maven-dir backend` or `CRUCIBLE_MAVEN_DIR=backend` in `.env`. Compose-based e2e → `CRUCIBLE_COMPOSE_FILE` / `CRUCIBLE_DOCKER_SERVICES` in `.env`; JaCoCo behind a profile → `--coverage-profile` / `CRUCIBLE_COVERAGE_PROFILE`.

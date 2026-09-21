@@ -14,8 +14,19 @@ ingests in one call under your agent id. Never hand-roll `curl`; the client
 
 ## Lifecycle (every agent)
 
-- `register --agent <id> --phase <PHASE>` FIRST — before reading or running
-  anything. Register/touch is ONE upsert and every run ingest touches your
+- `register --agent <id> --role <ROLE>` FIRST — before reading or running
+  anything, and with `--cycle <cycleId>` bound in the same call when your role
+  is a TDD role. `--role` is the ONE argparse-required flag; its values are
+  case-exact: `RED | GREEN | FIX | VERIFY | ORCHESTRATOR | report` (five
+  uppercase, `report` lowercase). A registration that reaches the server with
+  a missing or out-of-enumeration role is refused 400. The per-role cycle rule
+  is the SERVER's, not argparse's: `RED|GREEN|FIX|VERIFY` must bind an ACTIVE
+  cycle of an OPEN plan, and an unbound TDD registration is refused 409 —
+  `role RED requires a cycle binding — register with --cycle <cycleId>` —
+  at the route boundary, before any agent row is written. `ORCHESTRATOR` and
+  `report` may register unbound, with no cycle. `--source` is enumerated
+  `claude-md | package-json | git-repo | manual`; absent is legal.
+  Register/touch is ONE upsert and every run ingest touches your
   agent — ingest remains the heartbeat. `/api/v2/agents/heartbeat` shares the
   register handler and exists for the rare status-change touch; when you need
   it, issue it via the client's `register` verb — never a hand-rolled `curl`
@@ -30,10 +41,14 @@ ingests in one call under your agent id. Never hand-roll `curl`; the client
 ## Identity — ONE agent id for the whole session
 
 - Orchestrators: `<agent-type>-<project>` (e.g. `vidushi-NAI`, `mainline-MDB`).
-- TDD-phase agents: `CR-<ACRONYM>-NNN-<cycle>-<PHASE>` (e.g.
-  `CR-MDB-003-C1-GREEN`) — the CR id + cycle + phase IS the identity.
-- Phase is metadata, not identity: pass it via `--phase` on register. Never
-  mint a second agent id mid-session.
+- TDD-role agents: `CR-<ACRONYM>-NNN-<cycle>-<ROLE>` (e.g.
+  `CR-MDB-003-C1-GREEN`) — the CR id + cycle + role IS the identity.
+- Role and identity are SEPARATE axes. The role is DECLARED at registration,
+  via `--role`, from the case-exact enumeration above; the agentId is
+  FREE-FORM, assigned by the dispatcher and never minted by the agent. The
+  role is never inferred from the id's shape — an id ending `-GREEN`
+  registered with `--role RED` classifies as RED. Never mint a second agent
+  id mid-session.
 
 ## Per-stack client surfaces (they are NOT uniform — read the reference)
 

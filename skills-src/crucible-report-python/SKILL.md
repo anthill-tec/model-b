@@ -36,7 +36,7 @@ workflow context read from the environment:
 ```bash
 VENV=$PWD/.venv/bin/python
 # register / unregister the agent
-python3 clients/python-crucible.py register --agent CR-OA-002-A-RED --phase RED --project-dir $PWD
+python3 clients/python-crucible.py register --agent CR-OA-002-A-RED --role RED --cycle <cycleId> --project-dir $PWD
 # targeted RED/GREEN run + ingest (dotted test path; tier: unit)
 WORKFLOW_CYCLE="my cycle label" PY_CRUCIBLE_PYTHON=$VENV \
 python3 clients/python-crucible.py test --tests tests.test_mongo_connection --agent CR-OA-002-A-RED --project-dir $PWD
