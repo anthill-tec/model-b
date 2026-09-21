@@ -144,7 +144,6 @@ FORBIDDEN_DISTRIBUTIONS = frozenset({"toon", "toon-format", "toon_format"})
 BANNER_MARKERS = ("GENERATED", "modelb_axi/toon.py", "hand-edit")
 BANNER_WINDOW = 20
 
-DEGRADE_MARKER = "schedule_db unavailable"
 DEGRADE_WARNING = "schedule_db unavailable — queue-only project"
 
 WF_VERBS = (("status",),)
