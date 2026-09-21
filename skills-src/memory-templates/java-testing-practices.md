@@ -733,11 +733,11 @@ Route every Maven test run + Crucible ingest through `~/Documents/data_projects/
 
 | Tier | Command | Maven goal | Ingest |
 |---|---|---|---|
-| **unit** (RED/GREEN cycle) | `unit --test <Class[#method]>` | `clean test -Dtest=…` | surefire → `/api/ingest` junit; compile-fail → `/api/ingest/compile` |
+| **unit** (RED/GREEN cycle) | `unit --test <Class[#method]>` | `clean test -Dtest=…` | surefire → `/api/v2/runs` junit; compile-fail → `/api/v2/runs/compile` |
 | **module** | `module --module <m> [--also-make]` | `clean test -pl <m> [-am]` | surefire (parsed if multi-module) |
 | **e2e** | `e2e [--failsafe-only] [--native] [--with-docker]` | `clean verify` / `failsafe:integration-test` | failsafe + surefire (parsed, **no coverage**) |
-| **regression** (orchestrator gate) | `regression` | `clean verify` (whole reactor) | surefire + failsafe + JaCoCo → `/api/ingest/parsed` **with coverage** |
-| compile-only | `compile` | `clean test-compile` | `/api/ingest/compile` |
+| **regression** (orchestrator gate) | `regression` | `clean verify` (whole reactor) | surefire + failsafe + JaCoCo → `/api/v2/runs/parsed` **with coverage** |
+| compile-only | `compile` | `clean test-compile` | `/api/v2/runs/compile` |
 
 - `register --role RED\|GREEN\|FIX\|VERIFY\|ORCHESTRATOR\|report [--cycle <cycleId>]` first; `unregister` last. `--role` is required and case-exact (five uppercase, `report` lowercase); `RED\|GREEN\|FIX\|VERIFY` must bind an ACTIVE cycle of an OPEN plan with `--cycle` or the server refuses the registration 409 — `ORCHESTRATOR`/`report` may register unbound.
 - Common flags: `--module`/`--also-make` (reactor `-pl`/`-am`), `--native` (`-Dnative`), `--profile P` (`-P`), `--system-prop k=v` (`-Dk=v`, e.g. `api.version=1.4.2`), `--update-snapshots` (`-U`), `--log <file>` (capture full run for later grep — never re-run a long suite).

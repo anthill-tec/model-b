@@ -106,10 +106,35 @@ Display/classification context survives as env vars:
   `/tmp/claude-1000/<project>-crucible`) that pins the project key/dir and the
   `WORKFLOW_CYCLE` label + `WORKFLOW_WAVE` only — it never injects a cycle id
   (attach is server-driven). When your prompt names a wrapper, use it.
-- **Plan verbs (universal — fleet-wide on all five clients):**
-  `plan-file --cr <id> --title <t> --cycles <n> [--wave <w>] [--orchestrator <id>]`,
-  `cycle-activate` / `cycle-done` (legal transitions planned → active → done),
-  `cr-close --commit <sha>`, `milestone`, `gate-report`.
+- **Plan verbs (universal — fleet-wide on all five clients), every one posting
+  under a registered `--agent` id:**
+  `plan-file --cr <id> --title <t> --cycle "C1 <label>" --cycle-kind red-green --cycle "C2 <label>" --cycle-kind verify --wave <w> --agent <id>`,
+  `cycle-activate <cycle-id> --agent <id>` / `cycle-done <cycle-id> --agent <id>`
+  (legal transitions planned → active → done),
+  `cr-close --commit <sha> --agent <id>`, `milestone --type <t> --agent <id>`,
+  `gate-run --intent <goal> --agent <id>`.
+- **`--cycle` and `--cycle-kind` pair up positionally.** `--cycle` is repeatable
+  and every occurrence REQUIRES its own `--cycle-kind` from `red-green | verify |
+  fix`: the Nth kind is the Nth cycle's. A kind count that does not match the
+  cycle count, or a cycle left without one, is refused **before anything posts** —
+  nothing partial is ever filed. The legacy comma-split `--cycles` form is refused
+  for filing.
+- **`--agent` is REQUIRED on every workflow verb, with no fallback:** the identity
+  is declared or the verb fails, and an unregistered id is refused 409 by the
+  server — it is never silently downgraded. The free-text `--orchestrator` label
+  is retired; the registered `--agent` id IS the plan's orchestrator.
+- **`--release <label>`**, when given at filing, also REGISTERS the CR in the queue
+  in the same call (which makes `--wave` and `--title` required); omitted, the plan
+  is filed and nothing is claimed on the roadmap.
+- **Gate verb — `gate-run`, which replaces the legacy `gate-report`.**
+  `gate-run --intent <goal> --agent <id>` STREAMS the no-mistakes pipeline; the
+  retired one-shot `gate-report` still answers but emits a `prefer-gate-run`
+  discouragement warning (Crucible #1369). `--skip <steps>` is forwarded VERBATIM
+  to `no-mistakes axi run --skip`; it exists because that pipeline's `ci` step is PR-based,
+  and a git-flow project that merges directly has none for it to watch, so
+  without `--skip` the gate blocks until `ci_timeout`. `--release <label>` names
+  the release a gate gates (a gate naming one is exempt from pruning until that
+  release records) — omit it unless the gate really gates a release.
 
 ## Envelope — TOON-AXI on stdout (shipped fleet-wide)
 

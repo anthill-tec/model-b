@@ -6,6 +6,23 @@ develop `949a2f4`; per-delivery intimations thread #1330/#1332). This document M
 the delivered client contract; it never forks it. Reconciliation on each upstream
 delivery is owned by the TRACKS header here plus CR-MDB-011's doc pass.
 
+## Installed product facts (measured, never inferred)
+
+Measured against the production Crucible installed on this machine:
+
+- **Product version `0.2.2`** — the release Model B documents against.
+- The installer is `crucible-axi install`, which stages the client fleet + manifest.
+- `--target-dir` chooses where that fleet is laid down.
+- The default target is `~/.crucible`, so the clients live at `~/.crucible/clients/`.
+- The run verb is `crucible-axi serve` — the provisioned server, in the foreground.
+- `crucible-axi uninstall` reverses the install (the exact inverse of `install`).
+- This document tracks `STATUS-CONTRACT.md` at its **document version 2.0.0** (verified at `~/.crucible/clients/STATUS-CONTRACT.md`).
+
+**Three version axes, never conflated:** the PRODUCT version is `0.2.x`
+(installed `0.2.2`); `/api/v2` is the API GENERATION the clients speak; and `2.0.0`
+is the semver of one document only — `STATUS-CONTRACT.md`. It is not a Crucible
+product or release number and must never be read as one.
+
 ## Current state
 
 - The envelope is the SHIPPED, fleet-wide current state: every client verb on every
@@ -127,14 +144,33 @@ The orchestrator's only cycle input is `cycle-activate`; agents never pass a cyc
 ### Universal plan verbs (fleet-wide)
 Filed by the orchestrator, on ALL stack clients:
 
-- `plan-file --cr <id> --title <t> --cycles <n> [--wave <w>] [--orchestrator <id>]`
-  — wave resolves `--wave` > `$WORKFLOW_WAVE`; track from `$WORKFLOW_ROLE`; orchestrator
-  from `--orchestrator` / `$WORKFLOW_ORCHESTRATOR`. Cycle ids are SERVER-ASSIGNED.
-- `cycle-activate` / `cycle-done` — legal transitions planned → active → done.
-- `cr-close --commit <sha>` — closes the CR on feature merge.
-- `milestone` — workflow timeline events (`gap-analysis | design-review | stage-flip |
-  custom`); `cr-merged` fires automatically from cr-close.
-- `gate-report` — wave-boundary no-mistakes gate evidence (`kind:"gate"`).
+- `plan-file --cr <id> --title <t> --cycle "C1 <label>" --cycle-kind red-green --cycle "C2 <label>" --cycle-kind verify --wave <w> --agent <id>`
+  — wave resolves `--wave` > `$WORKFLOW_WAVE`; track from `$WORKFLOW_ROLE`. Cycle ids are
+  SERVER-ASSIGNED.
+- `--cycle` is repeatable and each occurrence REQUIRES its own `--cycle-kind`
+  (`red-green | verify | fix`), paired positionally: the Nth kind is the Nth cycle's. A
+  kind count that does not match the cycle count, or a cycle left without one, is refused
+  **before anything posts** — nothing partial is filed. The legacy comma-split `--cycles`
+  form is refused for filing.
+- `--agent` is REQUIRED on every workflow verb, with no fallback: the identity is declared
+  or the verb fails, and an unregistered id is refused by the server with 409 — there is no
+  silent downgrade. The free-text `--orchestrator` label is retired; the registered
+  `--agent` id IS the plan's orchestrator.
+- `--release <label>` at filing also REGISTERS the CR in the queue in the same call (which
+  makes `--wave` and `--title` required); omitted, nothing is claimed on the roadmap.
+- `cycle-activate <cycle-id> --agent <id>` / `cycle-done <cycle-id> --agent <id>` — legal
+  transitions planned → active → done.
+- `cr-close --commit <sha> --agent <id>` — closes the CR on feature merge.
+- `milestone --type <t> --agent <id>` — workflow timeline events (`gap-analysis |
+  design-review | stage-flip | custom`); `cr-merged` fires automatically from cr-close.
+- `gate-run --intent <goal> --agent <id>` — wave-boundary no-mistakes gate evidence
+  (`kind:"gate"`), STREAMED. It replaces `gate-report`, which survives only as the retired
+  one-shot and emits a `prefer-gate-run` discouragement warning (Crucible #1369).
+- `--skip <steps>` on the gate verb is forwarded VERBATIM to `no-mistakes axi run --skip`.
+  It exists because no-mistakes' `ci` step is PR-based: a git-flow project that merges
+  directly has no PR for it to watch, so without `--skip` the gate blocks until
+  `ci_timeout`. `--release <label>` names the release a gate gates (exempt from pruning
+  until that release records) — omit it unless the gate really gates a release.
 
 ### Agent-naming header (bundled agent-naming skill)
 - TDD-phase agents: `CR-<PROJ>-NNN-<cycle>-<PHASE>` (e.g. `CR-MDB-009-C1-GREEN`).

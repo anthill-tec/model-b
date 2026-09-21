@@ -81,7 +81,7 @@ Generated: arduino/bun/python/quarkus × red/green/verify/fix (16 agents). Bespo
 ### Scripts / AXI wave
 - `bun-crucible.py` is the **reference implementation** for the Crucible V2 client API (decision 11); all clients converge on it.
 - Shared envelope helper (e.g. `scripts/axi_envelope.py`): TOON-AXI envelope on stdout for all `*-crucible.py` clients (verb, ok, counts, `warnings[]`, `help` next-step).
-- ALL clients gain the universal plan/cycle verbs (`plan-file`, `cycle-activate`, `cycle-done`, `cr-close`) against `/api/v2/plans` (verified live).
+- ALL clients gain the universal plan/cycle verbs (`plan-file`, `cycle-activate`, `cycle-done`, `cr-close`) against `/api/v2/plans` (verified live) — DELIVERED fleet-wide on all five clients.
 - NEW `vscode-crucible.py`: register/unregister, `test --tests`, `regression --coverage`, `check` (tsc), auto-ingest, pre-merge-gate, plan verbs; Vitest+Mocha JUnit + lcov → `/api/v2/runs/parsed`, tsc → `/runs/compile`.
 - EXTEND `arduino-crucible.py`: regression, auto-ingest, check, pre-merge-gate, plan verbs (as applicable to firmware flow).
 - `worktree-flow.py` migrates to AXI output: TOON envelope for `status`/`next`/`finish` + machine-readable lane boards.
@@ -103,7 +103,7 @@ Generated: arduino/bun/python/quarkus × red/green/verify/fix (16 agents). Bespo
 - **Token budget**: always-loaded set 621 lines → ≤100 lines single AGENTS.md core (`wc -l` + token estimate) — measure before/after.
 - **Chezmoi round-trip**: `chezmoi diff` clean after apply; deleted files STAY deleted after a fresh `chezmoi apply`.
 - **Grep gates** (zero hits outside `archive/`): `agent-baseline.md`, `orchestration-universal.md`, `Plan B`, `/api/ingest/`, `heartbeat.sh`, `/agents/heartbeat`.
-- **Crucible smoke** per stack: client `register → test → unregister` against `localhost:3849` in a sample project; envelope parses; run visible server-side.
+- **Crucible smoke** per stack: client `register --agent <id> --role <ROLE> --cycle <id>` (a TDD role must bind its cycle at registration or the server refuses it) → `test` → `unregister --agent <id>` against `localhost:3849` in a sample project; envelope parses; run visible server-side.
 - **Generator**: `build.py --check` idempotent (second run = no diff); generated agent frontmatter valid.
 - **Skill loads**: `/model-b`, `/crucible <stack>`, `/cr-authoring`, `/chezmoi` load and every referenced memory/reference path exists.
 

@@ -51,7 +51,7 @@ if os.path.exists(env_path):
 
 def workflow_context():
     ctx = {}
-    # No client-side cycle-id plumbing: the active cycle auto-attaches server-side.
+    # No client-side cycle-id plumbing: the cycle binding is declared via `--cycle <id>` at registration (CR-CRU-056, Sandesh #1373).
     for var, key in [("WORKFLOW_CYCLE", "cycle"), ("WORKFLOW_WAVE", "wave"), ("WORKFLOW_ROLE", "role")]:
         if os.environ.get(var): ctx[key] = os.environ[var]
     return ctx
