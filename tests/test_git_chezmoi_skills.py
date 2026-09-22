@@ -34,15 +34,15 @@ CHEZMOI_INTEGRATION_MD = CLAUDE_DIR / "memory" / "chezmoi-integration.md"
 
 ARCHIVE_WAVE2 = REPO_ROOT / "archive" / "wave2"
 
-# The 5 standard chezmoi-diff scope paths (same convention CR-MDB-002/003/004
-# used -- see tests/test_cr_authoring_skill.py).
-CHEZMOI_SCOPE_PATHS = (
-    CLAUDE_DIR / "AGENTS.md",
-    CLAUDE_DIR / "CLAUDE.md",
-    CLAUDE_DIR / "agents",
-    CLAUDE_DIR / "memory",
-    CLAUDE_DIR / "skills",
-)
+# CR-MDB-021 §S2 retired the chezmoi-diff scope-path constant along
+# with its sole consumer, the chezmoi-diff invocation test that used
+# to close out DeletionsS4Test below. That test duplicated coverage
+# already carried directly against the repo and the live ~/.claude
+# tree by test_s4_legacy_memory_files_removed_with_archived_content,
+# with no dependency on the user's chezmoi source repo or on the
+# chezmoi binary being present on PATH -- see
+# docs/changes/CR-MDB-021-chezmoi-retirement.md §S2 for the full
+# disposition.
 
 # §S5's AC names this exact grep invocation verbatim.
 STALE_REF_PATTERN = r"memory/git-workflow\|git-multi-account\|chezmoi-integration"
@@ -232,8 +232,8 @@ class ChezmoiSkillS3Test(unittest.TestCase):
 
 class DeletionsS4Test(unittest.TestCase):
     """SS4 -- memory/git-workflow.md, memory/git-multi-account.md,
-    memory/chezmoi-integration.md: archive to <repo>/archive/wave2/, delete
-    via chezmoi discipline."""
+    memory/chezmoi-integration.md: archived to <repo>/archive/wave2/,
+    then physically removed."""
 
     def test_s4_legacy_memory_files_removed_with_archived_content(self):
         still_present = []
@@ -269,34 +269,34 @@ class DeletionsS4Test(unittest.TestCase):
             f"for every deletion target, missing/anchor-less for: {not_archived}",
         )
 
-    def test_s4_chezmoi_diff_clean_on_cr_touched_paths(self):
-        """chezmoi's source state must exactly match the live state of the 5
-        standard CR-touched paths, per the AC's scoped `chezmoi diff`."""
-        import shutil
+    # CR-MDB-021 retired test_s4_chezmoi_diff_clean_on_cr_touched_paths.
+    # The method shelled out to `chezmoi diff` scoped to the same five
+    # CR-MDB-005-touched paths as the scope-path constant retired above
+    # in this module, and asserted an empty, exit-0 diff.
+    #
+    # Per the CR-MDB-021 Context table (measured 2026-08-27), that
+    # coverage was never load-bearing: three of the five scope arguments
+    # are directories that `chezmoi diff`'s default --recursive=false
+    # compares shallowly, never reaching the files this CR actually
+    # touches, and the skills/ argument cannot see Model-B-owned skill
+    # drift at all (CR-MDB-016 de-chezmoi'd the skills tree).
+    #
+    # The real acceptance criterion -- that memory/git-workflow.md,
+    # memory/git-multi-account.md and memory/chezmoi-integration.md are
+    # gone from the live ~/.claude tree AND have a content-preserving
+    # archived copy under <repo>/archive/wave2/ -- is already carried in
+    # full by test_s4_legacy_memory_files_removed_with_archived_content
+    # above, asserted directly against the repo and the live tree with no
+    # dependency on the user's chezmoi source repo or on the chezmoi
+    # binary being present on PATH.
+    #
+    # See docs/changes/CR-MDB-021-chezmoi-retirement.md (Scope section) for the
+    # full disposition and the sanctioned-amendment rationale for
+    # removing coverage from this CLOSED CR's (CR-MDB-005) gate set --
+    # the acceptance criterion moved, no coverage was lost.
 
-        chezmoi = shutil.which("chezmoi")
-        if chezmoi is None:
-            self.skipTest("chezmoi binary not found on PATH -- cannot verify dotfile-manager drift")
-        result = subprocess.run(
-            [chezmoi, "diff", *[str(p) for p in CHEZMOI_SCOPE_PATHS]],
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
-        # POSITIVE -- chezmoi's source state must exactly match the live
-        # state of the CR-touched paths (empty diff).
-        self.assertEqual(
-            result.stdout.strip(), "",
-            f"chezmoi diff on CR-touched paths must be empty (no drift), got ({len(result.stdout)} chars):\n"
-            f"{result.stdout[:2000]}",
-        )
-        # EXACT bound -- a clean exit is required too, so an "unmanaged
-        # path" abort (empty stdout but non-zero exit) does not vacuously pass.
-        self.assertEqual(
-            result.returncode, 0,
-            "chezmoi diff on CR-touched paths must exit 0 -- a non-zero exit "
-            f"means chezmoi never actually compared the paths. stderr:\n{result.stderr[:2000]}",
-        )
+
+
 
 
 class ConsumerRepointS5Test(unittest.TestCase):

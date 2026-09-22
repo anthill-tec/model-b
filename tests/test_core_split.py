@@ -5,13 +5,11 @@ LIVE ~/.claude tree on this machine. They are intentionally written before
 the GREEN-phase reorganization runs, so most of them are expected to FAIL
 against the current (pre-CR-MDB-001) state of ~/.claude.
 
-Stdlib only (unittest + subprocess + pathlib + re + shutil).
+Stdlib only (unittest + pathlib + re).
 """
 
 import os
 import re
-import shutil
-import subprocess
 import unittest
 from pathlib import Path
 
@@ -205,8 +203,7 @@ class CoreSplitS4NoStaleShimReferencesTest(unittest.TestCase):
 
 class CoreSplitS5ShimRemovalAndArchiveTest(unittest.TestCase):
     """§S5 — the shim files are physically removed from ~/.claude/memory,
-    archived copies exist in the repo, and chezmoi's view of ~/.claude is
-    clean (no drift, no resurrection of the retired files on dry-run apply)."""
+    and content-preserving archived copies exist in the repo."""
 
     AGENT_BASELINE_SHIM = CLAUDE_DIR / "memory" / "agent-baseline.md"
     ORCH_UNIVERSAL_SHIM = CLAUDE_DIR / "memory" / "orchestration-universal.md"
@@ -250,115 +247,6 @@ class CoreSplitS5ShimRemovalAndArchiveTest(unittest.TestCase):
         # NEGATIVE bound — archived copies must not be empty stubs.
         self.assertGreater(len(agent_baseline_content.strip()), 0)
         self.assertGreater(len(orch_universal_content.strip()), 0)
-
-    def test_s5_chezmoi_diff_clean_on_cr_touched_paths(self):
-        """chezmoi's source state must exactly match the live state of the
-        specific paths CR-MDB-001 touches (AGENTS.md, CLAUDE.md, agents/,
-        memory/, skills/). Pre-existing, out-of-scope drift elsewhere in the
-        dotfiles tree (e.g. .bashrc) is NOT part of this AC and is excluded
-        by scoping the diff to these five target args."""
-        chezmoi = shutil.which("chezmoi")
-        if chezmoi is None:
-            self.skipTest("chezmoi binary not found on PATH — cannot verify dotfile-manager drift")
-        result = subprocess.run(
-            [
-                chezmoi, "diff",
-                str(CLAUDE_DIR / "AGENTS.md"),
-                str(CLAUDE_DIR / "CLAUDE.md"),
-                str(CLAUDE_DIR / "agents"),
-                str(CLAUDE_DIR / "memory"),
-                str(CLAUDE_DIR / "skills"),
-            ],
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
-        # POSITIVE — chezmoi's source state must exactly match the live state
-        # of the CR-touched paths only.
-        self.assertEqual(
-            result.stdout.strip(), "",
-            f"chezmoi diff on CR-touched paths must be empty (no drift), got ({len(result.stdout)} chars):\n"
-            f"{result.stdout[:2000]}",
-        )
-        # EXACT bound — a clean exit is required too. An "unmanaged path"
-        # abort (e.g. "chezmoi: ~/.claude/AGENTS.md: not managed", exit 1)
-        # produces empty stdout WITHOUT proving the CR-touched paths are
-        # actually drift-free, so it must FAIL this gate, not vacuously pass
-        # it. GREEN must bring AGENTS.md and the CLAUDE.md symlink under
-        # chezmoi management for this check to pass meaningfully.
-        self.assertEqual(
-            result.returncode, 0,
-            "chezmoi diff on CR-touched paths must exit 0 — a non-zero exit "
-            "(e.g. an 'unmanaged path' abort) means chezmoi never actually "
-            f"compared the paths, even if stdout looked empty. stderr:\n{result.stderr[:2000]}",
-        )
-
-    def test_s5_chezmoi_apply_dry_run_no_shim_mentions(self):
-        """A non-interactive `chezmoi apply --dry-run --verbose` scoped to the
-        five CR-MDB-001-touched paths (AGENTS.md, CLAUDE.md, agents/,
-        memory/, skills/ — never whole-home) must exit 0 AND must not mention
-        either retired shim path form ('memory/agent-baseline.md',
-        'memory/orchestration-universal.md'). The returncode assertion makes
-        this non-vacuous: an 'unmanaged path' abort no longer passes silently.
-        Uses a /tmp copy of the chezmoi config with autoCommit/autoPush forced
-        off so the dry-run can never mutate the source repo."""
-        chezmoi = shutil.which("chezmoi")
-        if chezmoi is None:
-            self.skipTest("chezmoi binary not found on PATH — cannot verify dry-run apply output")
-        # Ensure the non-interactive config exists (autoCommit/autoPush = false),
-        # derived from the live chezmoi config. Create it if missing.
-        noauto_config = Path("/tmp/claude-1000/chezmoi-noauto.toml")
-        if not noauto_config.is_file():
-            live_config = Path.home() / ".config" / "chezmoi" / "chezmoi.toml"
-            self.assertTrue(
-                live_config.is_file(),
-                f"{live_config} must exist to derive the non-interactive config",
-            )
-            noauto_content = (
-                _read(live_config)
-                .replace("autoCommit = true", "autoCommit = false")
-                .replace("autoPush = true", "autoPush = false")
-            )
-            noauto_config.parent.mkdir(parents=True, exist_ok=True)
-            noauto_config.write_text(noauto_content, encoding="utf-8")
-        result = subprocess.run(
-            [
-                chezmoi, "--config", str(noauto_config),
-                "apply", "--dry-run", "--verbose",
-                str(CLAUDE_DIR / "AGENTS.md"),
-                str(CLAUDE_DIR / "CLAUDE.md"),
-                str(CLAUDE_DIR / "agents"),
-                str(CLAUDE_DIR / "memory"),
-                str(CLAUDE_DIR / "skills"),
-            ],
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
-        combined = result.stdout + result.stderr
-        # EXACT bound — a clean exit is required. An 'unmanaged path' abort
-        # (exit 1, empty output) would otherwise pass the mention checks
-        # vacuously without chezmoi ever evaluating the CR-touched paths.
-        self.assertEqual(
-            result.returncode, 0,
-            "chezmoi apply --dry-run on the CR-touched paths must exit 0 — a "
-            "non-zero exit means chezmoi never actually evaluated the paths. "
-            f"stderr:\n{result.stderr[:2000]}",
-        )
-        agent_baseline_mentions = combined.count("memory/agent-baseline.md")
-        orch_universal_mentions = combined.count("memory/orchestration-universal.md")
-        # EXACT bounds — a non-mutating dry-run apply must not attempt to
-        # resurrect either retired shim file.
-        self.assertEqual(
-            agent_baseline_mentions, 0,
-            f"dry-run apply output must not mention 'memory/agent-baseline.md', found "
-            f"{agent_baseline_mentions} time(s) (showing first 2000 chars):\n{combined[:2000]}",
-        )
-        self.assertEqual(
-            orch_universal_mentions, 0,
-            f"dry-run apply output must not mention 'memory/orchestration-universal.md', found "
-            f"{orch_universal_mentions} time(s) (showing first 2000 chars):\n{combined[:2000]}",
-        )
 
 
 if __name__ == "__main__":

@@ -115,16 +115,6 @@ CRUCIBLE_REPORT_HANDOVER_SKILLS = (
 MEMORY_DELETION_TARGET = "crucible-ingest.md"
 MEMORY_DELETION_ANCHOR = "NEVER hand-roll curl/python"
 
-# The 5 standard chezmoi-diff scope paths (same convention CR-MDB-002 used).
-CHEZMOI_SCOPE_PATHS = (
-    CLAUDE_DIR / "AGENTS.md",
-    CLAUDE_DIR / "CLAUDE.md",
-    CLAUDE_DIR / "agents",
-    CLAUDE_DIR / "memory",
-    CLAUDE_DIR / "skills",
-)
-
-
 def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
 
@@ -335,8 +325,9 @@ class CrucibleSkillS3Test(unittest.TestCase):
 
 
 class CrucibleSkillS4Test(unittest.TestCase):
-    """SS4 -- deletions (chezmoi discipline): the 10 skill dirs + the one
-    memory stub are archived into the repo then physically removed."""
+    """SS4 -- deletions (removal plus content-preserving archive): the 10
+    skill dirs + the one memory stub are archived into the repo then
+    physically removed."""
 
     def test_s4_ten_skill_dirs_and_memory_stub_removed_with_archived_content(self):
         """CR-MDB-016 (handover rebirth, supersession class): the wave-2
@@ -387,35 +378,6 @@ class CrucibleSkillS4Test(unittest.TestCase):
             non_symlink_report_skills, [],
             "expected any present crucible-report-* skill path to be an "
             f"installer-owned symlink, found plain dir(s): {non_symlink_report_skills}",
-        )
-
-    def test_s4_chezmoi_diff_clean_on_cr_touched_paths(self):
-        """chezmoi's source state must exactly match the live state of the 5
-        standard CR-touched paths, per the AC's scoped `chezmoi diff`."""
-        import shutil
-
-        chezmoi = shutil.which("chezmoi")
-        if chezmoi is None:
-            self.skipTest("chezmoi binary not found on PATH -- cannot verify dotfile-manager drift")
-        result = subprocess.run(
-            [chezmoi, "diff", *[str(p) for p in CHEZMOI_SCOPE_PATHS]],
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
-        # POSITIVE -- chezmoi's source state must exactly match the live
-        # state of the CR-touched paths (empty diff).
-        self.assertEqual(
-            result.stdout.strip(), "",
-            f"chezmoi diff on CR-touched paths must be empty (no drift), got ({len(result.stdout)} chars):\n"
-            f"{result.stdout[:2000]}",
-        )
-        # EXACT bound -- a clean exit is required too, so an "unmanaged
-        # path" abort (empty stdout but non-zero exit) does not vacuously pass.
-        self.assertEqual(
-            result.returncode, 0,
-            "chezmoi diff on CR-touched paths must exit 0 -- a non-zero exit "
-            f"means chezmoi never actually compared the paths. stderr:\n{result.stderr[:2000]}",
         )
 
 

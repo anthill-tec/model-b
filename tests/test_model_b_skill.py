@@ -199,8 +199,9 @@ class ModelBSkillS3Test(unittest.TestCase):
 
 
 class ModelBSkillS4Test(unittest.TestCase):
-    """SS4 -- memory deletions (chezmoi discipline): the four source files are
-    archived into the repo then physically removed from ~/.claude/memory."""
+    """SS4 -- memory deletions (removal plus content-preserving archive):
+    the four source files are archived into the repo then physically
+    removed from ~/.claude/memory."""
 
     MEMORY_FILES = (
         "orchestration-common.md",
@@ -228,43 +229,6 @@ class ModelBSkillS4Test(unittest.TestCase):
                 f"archived {filename} must retain its distinctive anchor {anchor!r}",
             )
             self.assertGreater(len(archived_content.strip()), 0, f"archived {filename} must not be empty")
-
-    def test_s4_chezmoi_diff_clean_on_cr_touched_paths(self):
-        """chezmoi's source state must exactly match the live state of the
-        specific paths CR-MDB-002 touches (AGENTS.md, CLAUDE.md, agents/,
-        memory/, skills/), per the AC's exact `chezmoi diff` invocation."""
-        import shutil
-
-        chezmoi = shutil.which("chezmoi")
-        if chezmoi is None:
-            self.skipTest("chezmoi binary not found on PATH -- cannot verify dotfile-manager drift")
-        result = subprocess.run(
-            [
-                chezmoi, "diff",
-                str(CLAUDE_DIR / "AGENTS.md"),
-                str(CLAUDE_DIR / "CLAUDE.md"),
-                str(CLAUDE_DIR / "agents"),
-                str(CLAUDE_DIR / "memory"),
-                str(CLAUDE_DIR / "skills"),
-            ],
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
-        # POSITIVE -- chezmoi's source state must exactly match the live
-        # state of the CR-touched paths (empty diff).
-        self.assertEqual(
-            result.stdout.strip(), "",
-            f"chezmoi diff on CR-touched paths must be empty (no drift), got ({len(result.stdout)} chars):\n"
-            f"{result.stdout[:2000]}",
-        )
-        # EXACT bound -- a clean exit is required too, so an "unmanaged
-        # path" abort (empty stdout but non-zero exit) does not vacuously pass.
-        self.assertEqual(
-            result.returncode, 0,
-            "chezmoi diff on CR-touched paths must exit 0 -- a non-zero exit "
-            f"means chezmoi never actually compared the paths. stderr:\n{result.stderr[:2000]}",
-        )
 
 
 class ModelBSkillS5Test(unittest.TestCase):
