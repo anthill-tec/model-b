@@ -1,6 +1,6 @@
 ---
 name: cr-authoring
-description: Authoring and lifecycle conventions for CR (Change Request), PRD, and DN documents — spec structure, AC precision, the structure-only CR queue, waves and release CRs, and the CReq/CRes library-communication pattern. Triggers: CR, PRD, DN, acceptance criteria, spec, queue, CReq, CRes.
+description: Authoring and lifecycle conventions for CR (Change Request), PRD, and DN documents — spec structure, AC precision, the structure-only CR queue, waves, the release-is-not-a-CR boundary rule, and the CReq/CRes library-communication pattern. Triggers: CR, PRD, DN, acceptance criteria, spec, queue, CReq, CRes.
 ---
 
 # CR / PRD / DN Authoring — the universal doc model
@@ -76,12 +76,13 @@ A **CR has a design surface** (new types/API/architecture, PRD coupling) → spe
 ## The CR queue — structure only (queue idiom, 2026-07-20)
 `docs/changes/README.md` is the queue; it holds **structure only**:
 - **Row columns: CR / Title / Wave / Depends on.** Nothing else — no status column, no plan/open-plan/closed+merge bookkeeping in rows.
+- **A row's title and its spec's H1 must agree — and so must the TRACKING BOARD's registered title.** Measured 2026-09-21: a CR rewritten to drop one harness for another kept its old board title for three days because the repo side was corrected and the board side was not, and the board is the authority for queue status. Where a board read-verb cannot echo titles, the parity is re-posted rather than read; either way it is checked when a spec's subject changes, not only at release.
 - **Statuses are DERIVED on the Crucible board** (plans / cycles / milestones), never hand-maintained in the queue.
 - **Header slots:** `Design contract` / `Evidence base` / `Ontology` / `Target release`.
 - **Dated footer `Notes`** — scheduling notes, scope moves, fold-ins, supersessions, user-approved breaking changes (dated lines).
 - **Release-boundary row** — a row marking the release boundary in the ordering.
 - **Wave** = a **grouping of CRs** marking an execution boundary (solo: a redesign point between groups). Setup tasks and the release are NOT waves.
-- **Release CR** bundles the final gates — there is NO close-out wave.
+- **A release is NOT a CR** (user ruling 2026-09-21, correcting the earlier "release CR bundles the final gates" model). A release is a **boundary event**: the wave carrying it drains its queue, a human approves starting it, it is executed per the `git-workflow` skill, and only then recorded. **Never author a release CR, never express "the wave must finish" as dependency edges on one, and never put the release procedure in a spec** — the procedure lives in `git-workflow` §Releases and is loaded at release time. Work the release genuinely needs (an archive mapping, a doc sweep) is an ordinary CR in the wave, named for what it builds.
 
 ## Closing a CR
 - **Board-tracked projects:** close via `cr-close` (board carries the status); the CR spec file's top `**Status:**` flip stays: `COMPLETED (shipped YYYY-MM-DD on <branch>)`. Date-only ship refs, never a merge-commit hash.

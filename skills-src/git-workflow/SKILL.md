@@ -81,6 +81,21 @@ Semantic versioning **MAJOR.MINOR.PATCH** — and **NO `v` prefix** for our vers
 
 ## Releases (NON-NEGOTIABLE)
 
+**A release is a BOUNDARY EVENT, not a work item.** It is not a CR, it is never gated by one,
+and it never starts automatically. The trigger is two things together: the wave carrying the
+release has **drained its queue**, and a **human has approved starting the release**. A queue
+that empties is a signal, not a decision.
+
+- **CRs are not release gates.** A CR describes work; a release describes a boundary. Expressing
+  "the wave must finish" as dependency edges on a release CR duplicates what the draining queue
+  already says, and it hands a decision that is the human's to a row on a board.
+- **Running a CR during a release is possible and HIGHLY DISCOURAGED.** The release branch exists
+  to be verified and tagged; putting unreviewed work on it defeats that. Every dependency lands
+  before the release starts. Taking the exception needs explicit approval and a recorded reason.
+- **The record comes after the fact**, never before: the release is proposed (a label and a
+  target), approved by a human, executed, and only then recorded — a milestone is a record, not
+  an event.
+
 **ALL releases MUST use `git flow release` commands.** Never manually tag, never bump version directly on develop/main. **Ask before releasing** — version bumps and releases require human approval.
 
 ### The 10-step git flow release (Java Maven projects)

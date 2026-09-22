@@ -1,4 +1,35 @@
-# CR-MDB-012 — Release 1.0.0: the verification suite, the archive mapping, and the master tag
+# CR-MDB-012 — Release 1.0.0 (SUPERSEDED — a release is not a CR)
+
+**Status:** SUPERSEDED 2026-09-21 by **CR-MDB-034** (`archive/mapping.md`). **Do not execute this
+document.** It is retained only so the reasoning that retired it stays on the record.
+
+**Why it was wrong.** This CR treated the release as a work item: 25 dependency edges expressing
+"the wave must finish", acceptance criteria firing at release time, and — worst — the release
+PROCEDURE copied into the spec. All three are errors, ruled by the user on 2026-09-21:
+
+- **A release is a BOUNDARY EVENT, not a CR.** It happens when the wave carrying it drains its
+  queue AND a human approves starting it. A draining queue is a signal; the decision is the
+  human's. Dependency edges on a release CR duplicate the first and usurp the second.
+- **CRs do not gate releases.** A CR describes work. Nothing in the queue may claim the authority
+  to say a release may proceed.
+- **The procedure belongs to memory**, not a spec: `skills-src/git-workflow/SKILL.md` §Releases,
+  loaded at release time. A procedure with two homes drifts — the exact defect this document's
+  own §S4 was written to gate, committed by the document that gated it.
+
+**Where its content went:**
+
+| Content | New home |
+|---|---|
+| Release boundary rules, the 10-step `git flow release`, build-from-master, ask-before-releasing | `skills-src/git-workflow/SKILL.md` §Releases (memory) |
+| "A release is not a CR"; work a release needs is an ordinary CR | `skills-src/cr-authoring/SKILL.md` §queue (memory) |
+| Board-vs-repo title parity (the drift that exposed it) | `skills-src/cr-authoring/SKILL.md` §queue, as a standing rule checked when a spec's subject changes — plus a request to Crucible for a `queue` that returns titles |
+| `archive/mapping.md` | **CR-MDB-034** — the only genuine deliverable here |
+| PRD §4 re-measurement, the zero-failure suite, closing the record | the release ritual in memory; the suite is simply expected to be green when a release is proposed |
+
+The original text follows, unedited below this banner, as the record of what was retired.
+
+---
+
 
 **Status:** PENDING — **SEED, not the finished spec.** Authored 2026-09-21 because the queue row
 has linked to this filename since 2026-07-20 and the file never existed, and because CR-MDB-025's

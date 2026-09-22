@@ -41,9 +41,9 @@ Queue rows enumerate the whole delivery (structure only). **Live status lives on
 | [CR-MDB-032](CR-MDB-032-test-suite-relocation.md) | Test-suite relocation: no dev-checkout reach, no real-home assertions, no dead/self-defeating gates, one helper module, a Pi end-to-end | 5 | 020, 021 |
 | [CR-MDB-027](CR-MDB-027-subagent-dispatch-on-pi.md) | Sub-agent dispatch on Pi: decide what provides it, given Pi core has none (decision CR — RULED 2026-09-21: `pi-archimedes`, DN §D16; unblocks the CR-025 rewrite) | 5 | — |
 | [CR-MDB-028](CR-MDB-028-worktree-flow-scheduling-migration.md) | Retire `worktree-flow.py`'s DB half: scheduling moves to Crucible's API (P0 — above the routing strategy, user ruling) | 5 | 022 |
-| [CR-MDB-012](CR-MDB-012-release-1.0.0.md) | Release 1.0.0: full verification suite (PRD §4) + archive/mapping.md + master tag | 5 | 006, 007, 008, 010, 011, 013, 014, 016, 017, 018, 019, 020, 021, 022, 023, 024, 025, 026, 027, 028, 029, 030, 031, 032, 033 |
+| [CR-MDB-034](CR-MDB-034-archive-mapping.md) | `archive/mapping.md`: where every relocated file went (supersedes CR-MDB-012 — a release is NOT a CR) | 5 | — |
 
-**— v1.0.0 ships here —** (release CR bundles the final gates; no close-out wave)
+**— v1.0.0 ships here —** (the release is a BOUNDARY EVENT, not a queue row: the wave drains, the user approves, `git-workflow` §Releases executes it, a milestone records it afterwards. No release CR, no close-out wave.)
 
 ## Setup tasks (pre-wave — not a wave; a wave is a grouping of CRs)
 
@@ -471,3 +471,20 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   CR-MDB-032 (deps 020, 021), so it was on that CR's critical path regardless. New order:
   `028 017 027 | 021 033 030 024 025 029 026 018 019 023 020 032 031 012`; `next` → `CR-MDB-021
   seq=2004`. Every dependency edge still satisfied by position.
+- 2026-09-21 — **A RELEASE IS NOT A CR (user ruling) — CR-MDB-012 SUPERSEDED by CR-MDB-034.** The
+  2026-07-20 model ("a release CR bundles the final gates; no close-out wave") is corrected: a
+  release is a **boundary event**, triggered when the wave carrying it **drains its queue** AND
+  **the user approves starting it**. A draining queue is a signal; the decision is the user's. The
+  CR-012 seed authored earlier today got all three parts wrong — 25 dependency edges expressing
+  "the wave must finish" (which the draining queue already expresses), acceptance criteria firing
+  at release time (usurping the approval), and the 10-step release PROCEDURE copied into the spec
+  (a second home for something memory already owns — the exact drift its own §S4 was written to
+  gate). **Redistributed:** the boundary rules and the procedure to `skills-src/git-workflow/SKILL.md`
+  §Releases, incl. that running a CR during a release is possible but HIGHLY DISCOURAGED and needs
+  explicit approval; "a release is NOT a CR" plus the board-vs-repo title-parity standing rule to
+  `skills-src/cr-authoring/SKILL.md` §queue; `archive/mapping.md` — the one genuine deliverable —
+  to **CR-MDB-034**, filed and named for what it builds, depending on nothing and gating nothing.
+  `cr-supersede --cr CR-MDB-012 --by CR-MDB-034` posted (resolvedDependants=0); 012 is out of the
+  wave-2 sequence, its spec retained under a SUPERSEDED banner recording why. The ships-here row
+  now says what the boundary is rather than naming a CR. Still open: the request to Crucible for a
+  `queue` read verb that returns titles, which would make the parity rule checkable read-only.
