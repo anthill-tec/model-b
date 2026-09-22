@@ -36,6 +36,7 @@ Queue rows enumerate the whole delivery (structure only). **Live status lives on
 | [CR-MDB-030](CR-MDB-030-pi-hook-runtime.md) | Pi hook runtime: default-export factory, payload transport, Pi tool-name contract in the seven scripts, matcher honoured, real fail-closed, worktrees carry `.pi/extensions/` (P0 — every hook is a no-op on the only target today) | 5 | — |
 | [CR-MDB-026](CR-MDB-026-watcher-launch-supervision.md) | The wake watcher must stay alive: supervised process + `restart: on-failure`, and the three-exit taxonomy (mail / timeout / lock-conflict) the bundles conflate | 5 | 029 |
 | [CR-MDB-025](CR-MDB-025-pi-agent-definitions.md) | Pi as the deploy target for agent definitions: neutral schema + `_emit_pi()`, agent-defs as an installer asset class → `~/.agents/agents/` (re-specced 2026-09-21; OMP dropped) | 5 | 017, 024, 027, 030, 033 |
+| [CR-MDB-036](CR-MDB-036-harness-capability-contract.md) | Harness capability contract: installer declares/probes/verifies required Pi extensions | 5 | 033, 025 |
 | [CR-MDB-029](CR-MDB-029-pi-package.md) | The Model B Pi package: extensions (incl. the 026 watcher supervisor) + skills as one `pi install`-able unit; agents and tool scripts stay installer-deployed | 5 | 025, 030 |
 | [CR-MDB-031](CR-MDB-031-claude-era-substrate-retirement.md) | Retire the Claude-era substrate: roster → `pi`, non-Pi emitters, `.claude/skills` symlink writer, `CLAUDE.md` emission, `chezmoi` bundle, `/tmp/claude-1000` wrapper, `.claude/worktrees` convention, skills' Claude Code dispatch/worktree/todo mechanics, `~/.claude/skills` body citations | 5 | 025, 026, 030 |
 | [CR-MDB-032](CR-MDB-032-test-suite-relocation.md) | Test-suite relocation: no dev-checkout reach, no real-home assertions, no dead/self-defeating gates, one helper module, a Pi end-to-end | 5 | 020, 021 |
@@ -505,3 +506,17 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   `lifecycle.state`, which is the subject of the CReq drafted at
   `docs/research/CREQ-crucible-queue-projection.md` — undelivered, because `Mainline - Crucible`
   is inactive and we never start a provider's session to deliver mail.
+- 2026-09-22 — **CR-MDB-036 filed: the installer must know what the harness has to HAVE.** Model B
+  ships skills, agent definitions and hook wiring into Pi, and all three assume capabilities a
+  vanilla Pi lacks — `@gotgenes/pi-subagents` (dispatch + the `tools:` allowlist), `pi-lean-ctx`
+  (`ctx_shell`, which measurement on 2026-09-22 showed is the ONLY shell a dispatched child has:
+  a probe naming `bash, Bash, shell, Shell, exec, run, terminal, sh, command` resolved none of
+  them), and `@gotgenes/pi-permission-system` (`permission:`, without which a declared
+  `write: deny` is decoration). None of these announce themselves: deploy only writes files, so a
+  missing extension surfaces later as an agent that "did nothing" — which is exactly how
+  CR-MDB-021's four dispatches went. `preflight.py` already has the right shape for PATH binaries
+  (uv FAILs, sandesh installs on confirm, crucible WARNs) but extensions are not on PATH; they
+  live in `settings.json` `packages[]`. The CR also insists the probe test CAPABILITY not package
+  presence, the real-world proof being `@pi-archimedes/` — an empty directory providing nothing,
+  which CR-MDB-027 nonetheless named as the dispatch provider. Sequenced after 025 (which defines
+  what the agents require) and 033 (which repairs the installer paths it rides).
