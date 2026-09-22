@@ -1,4 +1,4 @@
-# CR-MDB-036 — Harness capability contract: the installer declares, probes and verifies the Pi extensions Model B's assets depend on
+# CR-MDB-036 — Harness capability contract and stack selection: the installer declares what it needs, probes only what you chose, and never installs a toolchain behind your back
 
 **Status:** PENDING
 **Type:** feature
@@ -141,6 +141,53 @@ to run `ctx_search` on a harness without lean-ctx is a broken instruction, not a
 scaffolded on one machine and cloned onto a vanilla Pi fails loudly at pre-flight rather than
 mysteriously at first dispatch.
 
+### §S7 — A stack selector on the INSTALLER, not just on `init`
+
+Measured 2026-09-22: `modelb-axi init` accepts `--stacks`, but the installer path does not — it
+carries `--harnesses` only, and `deploy.py` is **stack-blind**, shipping all 13 bundles and every
+agent definition to everyone. A python-only user receives arduino, quarkus and bun agents plus
+their `crucible-report-*` bundles, and then — under §S1's scoping — would be told about toolchains
+for stacks they never asked for.
+
+- The installer gains **`--stacks CSV`**, mirroring `init`'s flag and vocabulary, defaulting to
+  all supported stacks so existing behaviour is unchanged when the flag is omitted.
+- Interactively (no `--yes`), the user is offered the stack list and selects; `--yes` takes the
+  default. Selection is a *choice*, never inferred by sniffing the machine — a developer who has
+  `cargo` installed has not thereby asked for the rust agents.
+- **Selection scopes what is deployed**: the stack's agent definitions and its `crucible-report-*`
+  bundle. Stack-neutral assets (`model-b`, `crucible`, `cr-authoring`, `git-workflow`,
+  `bootstrap`, `shutdown`, the hook scripts, the tool scripts) always deploy.
+- The selection persists in `install.toml`, so a re-run, an upgrade, or a `doctor` knows which
+  stacks this installation is for without asking again — and adding a stack later is a re-run
+  with a wider `--stacks`, not a reinstall.
+
+### §S8 — Probing SDKs cheaply, and never installing them behind the user's back
+
+Tier-3 toolchains are the expensive part of the contract, in two senses: probing them badly is
+slow, and installing them is a large, opinionated act on someone's machine.
+
+- **Only SELECTED stacks are probed.** This is the main saving §S7 buys: an unselected stack costs
+  zero probes, zero warnings, and zero mention in the report.
+- **Probe by resolution, not by execution.** Measured on this machine: `command -v` across five
+  toolchains costs ~1 ms, while a single `mvn -version` costs ~227 ms because it spawns a JVM.
+  The pre-flight resolves the binary and stops there. A version *check* runs only where a minimum
+  version is genuinely required, only for a selected stack, and its cost is acknowledged in the
+  report rather than hidden.
+- **Model B never installs a language toolchain.** For an absent SDK the installer names the
+  provider's own installer (`rustup`, `sdkman`/the distro JDK, `bun`'s installer, `arduino-cli`'s
+  installer) and offers to run **that**, on explicit confirmation, exactly as it already does for
+  Sandesh via `uv tool install`. Declining is a first-class outcome: the stack's assets still
+  deploy, the verdict is recorded `absent`, and the user is told which agents will not be able to
+  run tests until it is present.
+- **An absent SDK for a selected stack is a WARN, not a FAIL.** A user may legitimately install
+  the assets on a machine that is not the build machine. The Tier-1 `required` gate stands
+  (without dispatch or a shell nothing works anywhere); a missing `cargo` only makes the rust
+  agents inert, which the report says plainly.
+- Python's `xmlrunner` and `coverage` are the exception worth naming: they are **pip
+  dependencies of the Crucible client we ship instructions for**, not a developer's own toolchain,
+  so their absence is reported against the python stack with the exact `uv`/`pip` command, not
+  left to be discovered when a RED run fails to produce JUnit XML.
+
 ## Acceptance criteria
 
 - [ ] A single declarative structure in `modelb_axi/` lists every required capability with its
@@ -163,6 +210,33 @@ mysteriously at first dispatch.
 - [ ] **Measured, not assumed:** the pre-flight's verdict for each capability is corroborated
       against a real dispatch on this machine (an agent that can/cannot call `ctx_shell`), and the
       transcript reference is recorded in the CR's close-out.
+
+### §S7 — stack selection
+
+- [ ] The installer accepts `--stacks CSV` with the same vocabulary as `init`; omitting it
+      selects all supported stacks, so current behaviour is unchanged.
+- [ ] An unsupported name is rejected with a message listing the supported stacks (the same
+      rejection CR-MDB-024 §S4 requires for `vscode`).
+- [ ] With `--stacks python`, a sandbox install deploys the python agent definitions and
+      `crucible-report-python`, and deploys **no** arduino/bun/quarkus/rust agent definitions or
+      their report bundles; the stack-neutral bundles and both script classes still deploy.
+- [ ] Interactive selection is offered when neither `--stacks` nor `--yes` is given; `--yes`
+      takes the default without reading stdin.
+- [ ] The selection round-trips through `install.toml`, and a re-run with a wider `--stacks` adds
+      the newly selected stack's assets without disturbing the rest of the manifest.
+
+### §S8 — SDK probing
+
+- [ ] Unselected stacks are not probed at all — asserted by a test that counts probe invocations
+      for a single-stack selection.
+- [ ] Toolchain probes resolve binaries rather than executing them; no probe spawns a runtime
+      merely to learn that it exists.
+- [ ] An absent SDK for a selected stack WARNs, records `absent`, names the provider's own
+      installer, and does not fail the install.
+- [ ] No language toolchain is installed without explicit confirmation; declining is recorded and
+      the install continues.
+- [ ] The python stack reports `xmlrunner`/`coverage` absence with the exact install command,
+      distinguishing them from a developer's own toolchain.
 
 ## Estimated size
 

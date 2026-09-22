@@ -36,7 +36,7 @@ Queue rows enumerate the whole delivery (structure only). **Live status lives on
 | [CR-MDB-030](CR-MDB-030-pi-hook-runtime.md) | Pi hook runtime: default-export factory, payload transport, Pi tool-name contract in the seven scripts, matcher honoured, real fail-closed, worktrees carry `.pi/extensions/` (P0 — every hook is a no-op on the only target today) | 5 | — |
 | [CR-MDB-026](CR-MDB-026-watcher-launch-supervision.md) | The wake watcher must stay alive: supervised process + `restart: on-failure`, and the three-exit taxonomy (mail / timeout / lock-conflict) the bundles conflate | 5 | 029 |
 | [CR-MDB-025](CR-MDB-025-pi-agent-definitions.md) | Pi as the deploy target for agent definitions: neutral schema + `_emit_pi()`, agent-defs as an installer asset class → `~/.agents/agents/` (re-specced 2026-09-21; OMP dropped) | 5 | 017, 024, 027, 030, 033 |
-| [CR-MDB-036](CR-MDB-036-harness-capability-contract.md) | Harness capability contract: installer declares/probes/verifies required Pi extensions | 5 | 033, 025 |
+| [CR-MDB-036](CR-MDB-036-harness-capability-contract.md) | Harness capability contract + installer stack selector; probe only selected stacks, never auto-install a toolchain | 5 | 033, 025 |
 | [CR-MDB-029](CR-MDB-029-pi-package.md) | The Model B Pi package: extensions (incl. the 026 watcher supervisor) + skills as one `pi install`-able unit; agents and tool scripts stay installer-deployed | 5 | 025, 030 |
 | [CR-MDB-031](CR-MDB-031-claude-era-substrate-retirement.md) | Retire the Claude-era substrate: roster → `pi`, non-Pi emitters, `.claude/skills` symlink writer, `CLAUDE.md` emission, `chezmoi` bundle, `/tmp/claude-1000` wrapper, `.claude/worktrees` convention, skills' Claude Code dispatch/worktree/todo mechanics, `~/.claude/skills` body citations | 5 | 025, 026, 030 |
 | [CR-MDB-032](CR-MDB-032-test-suite-relocation.md) | Test-suite relocation: no dev-checkout reach, no real-home assertions, no dead/self-defeating gates, one helper module, a Pi end-to-end | 5 | 020, 021 |
@@ -533,3 +533,16 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   `API_PATH_BUNDLES` exemption that exists only for it — is retired by **CR-MDB-024 §S4**, filed
   there because that CR already converts the other ungenerated set (rust) and already owes
   Crucible a message on the same thread.
+- 2026-09-22 — **CR-MDB-036 extended: a stack SELECTOR on the installer, and cheap SDK probing.**
+  Measured: `init` accepts `--stacks`, the installer does not, and `deploy.py` is stack-blind — a
+  python-only user is given arduino, quarkus, bun and rust agents plus their report bundles, and
+  under the new scoping would then be nagged about toolchains for stacks they never asked for.
+  Scoping requirements without a selector is incoherent, so §S7 adds `--stacks` to the installer
+  (defaulting to all, so nothing changes for existing users) and makes selection scope what is
+  DEPLOYED, persisted in `install.toml`. §S8 governs the expensive tier: probe only SELECTED
+  stacks, and probe by RESOLUTION not execution — `command -v` across five toolchains costs ~1 ms
+  while a single `mvn -version` costs ~227 ms because it spawns a JVM. Model B never installs a
+  language toolchain; it names the provider's own installer and offers to run that on
+  confirmation, exactly as it already does for Sandesh. An absent SDK for a selected stack WARNs
+  rather than fails — installing assets on a machine that is not the build machine is legitimate.
+  Selection is a CHOICE and is never inferred from what happens to be on the machine.
