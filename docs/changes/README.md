@@ -435,3 +435,24 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   cannot silently drop the text. 018 was chosen because it already owns the installed-client
   surface — discovery makes the client findable, these rules make it usable without losing a
   run's attribution.
+- 2026-09-21 — **BOARD-vs-REPO TITLE DRIFT found by the user, swept, and gated.** CR-MDB-025's
+  spec was rewritten on 2026-09-21 to drop OMP and target Pi, and its queue row here was updated
+  in the same commit — but its **board title**, posted by `cr-plan` on 2026-09-18, still read
+  "OMP as a first-class deploy target". The board is the authority for queue status, so the
+  authoritative surface contradicted the spec beside it. Three more had drifted the same way:
+  **018** (missing §S5), **019** (still advertising the struck opencode emitter) and **024**
+  (still claiming the `~/.claude/agents/rust-*` supersede that §D14 retired). **Why nothing
+  caught it:** the `queue` read verb returns `cr, wave, status, planId` and NO title, so no
+  read-only check can compare them — the only echo is `cr-plan --full` on write. Every
+  status-check this session was therefore structurally incapable of seeing the drift.
+  **Swept:** all thirteen PENDING wave-2 entries re-posted from their spec H1s, so board and repo
+  agree by construction; order, `dependsOn` and `seq` all preserved (verified on 025: deps 5,
+  seq 2007). The three COMPLETED entries (028, 017, 027) were left alone — their titles are
+  accurate to what shipped and re-posting a closed row for a cosmetic fix is not worth the risk.
+  **Gated:** `docs/changes/CR-MDB-012-release-1.0.0.md` is authored (it has been linked from the
+  queue since 2026-07-20 and never existed) with **§S4, a board-vs-repo parity gate** — every
+  release CR's board title must match its spec H1, proven per CR by `cr-plan --full`'s echoed
+  `entry.title` — plus an AC to **raise the read-path gap with Crucible** on the #1336 lineage: a
+  `queue` that returned titles would make this checkable read-only by anyone. The 012 file is
+  explicitly a SEED, not the finished release spec: its dependency line, criteria list and
+  baseline figure are snapshots to be re-derived at release-open.
