@@ -142,6 +142,50 @@ module, ~12 tests. Small–medium.
   `tests/test_tooling_adoption.py:627` also pins `config.py::_toml_value serializes only strings`,
   which §S5's schema assertion changes.
 
+## Interrupted run — resume state (EMERGENCY shutdown 2026-09-22)
+
+An emergency power-outage shutdown stopped cycle C1 mid-GREEN. Cycle **69** (plan 96) is still
+ACTIVE. WIP committed and pushed at **`b9da107`**; `develop` untouched at `9f512eb`.
+
+**Verified state:** RED is real — **364 / 5F / 11S at `8feffab`**, the 5 failures being the new
+tests. GREEN is **UNVERIFIED**: the suite was never run against `b9da107` and nothing was
+ingested. The GREEN agent's own final check confirmed the failed edit never applied and both
+touched files parse; the orchestrator re-confirmed with `ast.parse`.
+
+**Done in `b9da107`:** §S3 whole (`deploy.py` `_deploy_file` returns `None` for unmanaged and
+collects them; `cli.py` loads the manifest unconditionally and prints the corrected
+`unmanaged: … left untouched (no flag overwrites it)` warning) and §S1's installer half
+(`target_root`, `skills_dir`, `hooks_scripts_dir` recorded).
+
+**NOT done:** §S1's scaffold half. `scaffold.py:421 _hook_scripts_root` still reads
+`[install].target_root` with a `Path.home()` fallback and still carries the false
+"the v1 installer does not record it" docstring.
+
+### Two conflicts requiring an ORCHESTRATOR RULING before GREEN resumes
+
+Both are test-vs-test and cannot be fixed by production code alone.
+
+1. **`tests/test_tooling_adoption.py:601` is ALREADY FAILING in `b9da107`.** Its
+   `INSTALL_KEY_HINT = /script|tool/i` sweep over `[install]` keys outside
+   `{version, harnesses, asset_root}` now catches `hooks_scripts_dir` and asserts its value is
+   `…/.agents/scripts` — but the value is `.agents/hooks/scripts`. The key name is pinned
+   verbatim by the RED test, so no production rename escapes it. **The branch therefore has a
+   6th failure that is NOT one of the five RED tests** — do not mistake it for a regression
+   introduced on resume. Ruling needed: widen that test's exclusion set (it predates this CR's
+   schema) versus any production change.
+2. **`tests/test_scaffold.py:111 `_write_install_toml`** writes a fixture carrying only
+   `version/harnesses/asset_root`. §S1 as literally written ("no fallback when a manifest
+   exists") would make all ten real-`init` tests using it raise. The GREEN agent proposed
+   narrowing the rule — fall back to the documented home default only when NO deployment-location
+   key (`target_root`/`hooks_scripts_dir`/`tool_scripts_dir`) is present, error otherwise — and
+   flagged it as possibly fitted to the tests. **It is: that rule is shaped by the fixtures, so
+   it needs a deliberate decision, not a GREEN-phase improvisation.** Cheaper and more honest
+   alternative to weigh first: update the `test_scaffold.py` fixture to record
+   `hooks_scripts_dir`, since every real install after this CR will.
+
+**Resume order:** rule on both conflicts → finish `_hook_scripts_root` → register
+`CR-MDB-033-C1-GREEN` (nothing to unregister; the bracket was never opened) → run the suite.
+
 ## Non-goals
 
 - No asset-class additions (025), no roster change (031), no emitter logic (030).
