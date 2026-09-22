@@ -30,8 +30,7 @@ documents the preference order Model B relies on and the operational findings ra
 ### (a) Shell-allowlist friction for project tooling
 `ctx_shell` enforces a restricted command allowlist (~204 built-in commands,
 `~/.config/lean-ctx/config.toml`). Observed blocks in real orchestration sessions:
-- `chezmoi` blocked — every `~/.claude` mutation in this workflow goes through chezmoi,
-  so the block forces a fallback to the native shell for a mandatory discipline;
+- `chezmoi` blocked — this is the user's own dotfile-manager operation invoked in-session, not a Model B mutation (Model B never mutates `~/.claude` itself; the `modelb-axi` installer is the only deployment channel, PRD §D9/§D10), so the block still forces a fallback to the native shell whenever that user-level workflow runs;
 - project wrapper scripts blocked — per-project context wrappers (e.g. the
   `/tmp/claude-1000/modelb-crucible` test wrapper) and the `*-crucible.py` clients are
   not on the built-in list, pushing test runs off the compressed channel.

@@ -59,16 +59,6 @@ D5_GLOBAL_MEMORY_FILES = frozenset(
     }
 )
 
-# The 5 standard chezmoi-diff scope paths (same convention CR-MDB-002/003/
-# 004/005 used -- see tests/test_git_chezmoi_skills.py).
-CHEZMOI_SCOPE_PATHS = (
-    CLAUDE_DIR / "AGENTS.md",
-    CLAUDE_DIR / "CLAUDE.md",
-    CLAUDE_DIR / "agents",
-    CLAUDE_DIR / "memory",
-    CLAUDE_DIR / "skills",
-)
-
 # SS5's AC names this exact grep invocation verbatim.
 STALE_REF_PATTERN = (
     r"QUICK_REFERENCE\|stack-detection\|plan_b_workflow\|devops-environment"
@@ -159,8 +149,8 @@ class MemoryModelS3Test(unittest.TestCase):
     """SS3 -- delete QUICK_REFERENCE.md (superseded by the trigger table),
     stack-detection.md (superseded by the crucible skill),
     plan_b_workflow_model.md (broken mis-paste; canonical = model-b skill),
-    devops-environment.md (after SS2 merge) -- via chezmoi discipline,
-    archived to <repo>/archive/wave2/."""
+    devops-environment.md (after SS2 merge) -- removed and archived,
+    content preserved under <repo>/archive/wave2/."""
 
     def test_s3_deletion_targets_removed_with_content_preserving_archive(self):
         deletion_targets = (
@@ -277,35 +267,6 @@ class MemoryModelS4Test(unittest.TestCase):
         # Redundant explicit count check per the AC's literal
         # `ls ~/.claude/memory/ | wc -l` == 6 wording.
         self.assertEqual(len(live_files), 6, f"found {len(live_files)} files: {sorted(live_files)}")
-
-    def test_s4_chezmoi_diff_clean_on_cr_touched_paths(self):
-        """chezmoi's source state must exactly match the live state of the 5
-        standard CR-touched paths, per the AC's scoped `chezmoi diff`."""
-        import shutil
-
-        chezmoi = shutil.which("chezmoi")
-        if chezmoi is None:
-            self.skipTest("chezmoi binary not found on PATH -- cannot verify dotfile-manager drift")
-        result = subprocess.run(
-            [chezmoi, "diff", *[str(p) for p in CHEZMOI_SCOPE_PATHS]],
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
-        # POSITIVE -- chezmoi's source state must exactly match the live
-        # state of the CR-touched paths (empty diff).
-        self.assertEqual(
-            result.stdout.strip(), "",
-            f"chezmoi diff on CR-touched paths must be empty (no drift), got ({len(result.stdout)} chars):\n"
-            f"{result.stdout[:2000]}",
-        )
-        # EXACT bound -- a clean exit is required too, so an "unmanaged
-        # path" abort (empty stdout but non-zero exit) does not vacuously pass.
-        self.assertEqual(
-            result.returncode, 0,
-            "chezmoi diff on CR-touched paths must exit 0 -- a non-zero exit "
-            f"means chezmoi never actually compared the paths. stderr:\n{result.stderr[:2000]}",
-        )
 
 
 class MemoryModelS5Test(unittest.TestCase):

@@ -39,14 +39,13 @@ Written BEFORE Sec4's installer run against the real home lands:
     is chezmoi-managed and this repo never writes or deletes there; only
     REFERENCES to it are gated.
 
-Stdlib only: unittest + subprocess + re + os + pathlib. No SUT import --
+Stdlib only: unittest + re + os + pathlib. No SUT import --
 this cycle's Sec4 deliverable is a real-home installer run, not a Python
 module under this repo.
 """
 
 import os
 import re
-import subprocess
 import unittest
 from pathlib import Path
 
@@ -343,12 +342,11 @@ class RetiredScriptMirrorsTest(unittest.TestCase):
         offending = _find_crucible_scripts()
         # EXACT bound -- today 6 stale mirrors exist (arduino-, bun-,
         # hw-, mvn-, python-, rust-crucible.py); Sec4 must retire all of
-        # them (chezmoi destroy/forget) so this is empty.
+        # them so this is empty.
         self.assertEqual(
             offending, [],
             f"Sec4 must retire every '*crucible*' client script under "
-            f"{CLAUDE_SCRIPTS_DIR} (via chezmoi destroy/forget, never "
-            f"plain rm); still present today: {offending}",
+            f"{CLAUDE_SCRIPTS_DIR}; still present today: {offending}",
         )
 
     def test_zero_live_referencers_to_retired_scripts_crucible_paths(self):
@@ -385,37 +383,6 @@ class RetiredScriptMirrorsTest(unittest.TestCase):
             f"chezmoi-managed, so a reference there is reverted out from "
             f"under the referencer on the next `chezmoi apply`. Still live "
             f"(file -> offending line numbers): {offending}",
-        )
-
-
-@unittest.skipUnless(GATE_ENABLED, _SKIP_REASON)
-class ChezmoiRoundTripPreconditionTest(unittest.TestCase):
-    """AC6 pre-condition probe -- ``chezmoi status`` (read-only) must
-    exit 0 both BEFORE and AFTER the Sec4 deploy; this test asserts the
-    invariant that Sec4's retirement/supersede work must not break. It
-    may already PASS today -- that is expected; it exists to catch a
-    REGRESSION Sec4 could introduce (a broken chezmoi source state), not
-    to fail cleanly pre-deploy."""
-
-    def test_chezmoi_status_exits_zero(self):
-        try:
-            result = subprocess.run(
-                ["chezmoi", "status"],
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-        except (OSError, subprocess.SubprocessError) as exc:
-            self.fail(f"'chezmoi status' could not be run: {exc}")
-        # POSITIVE/EXACT -- read-only chezmoi status must exit clean (0);
-        # this is the round-trip invariant Sec4's retirements must not
-        # break, per AC6.
-        self.assertEqual(
-            result.returncode, 0,
-            f"'chezmoi status' must exit 0 (read-only precondition for "
-            f"AC6's post-Sec4 round-trip check); got returncode="
-            f"{result.returncode}, stdout={result.stdout!r}, "
-            f"stderr={result.stderr!r}",
         )
 
 

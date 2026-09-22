@@ -207,13 +207,32 @@ documenting its own history — precisely the `test_ac7` trap CR-MDB-017 had to 
       `CR-MDB-0{01..16}-*.md`. Their chezmoi steps are historical record (PRD §D9).
 - [ ] The §S4 check distinguishes instructing from describing: `AGENTS.md` may still NAME the
       retired gates when recording that they were retired.
+- [ ] **The §S4 gate states its true scope.** It is a REGRESSION PIN on the three phrasings
+      measured 2026-09-21 (`AGENTS.md:49`, `AGENTS.md:109`, `contracts/lean-ctx.md:33`), not a
+      general natural-language instruction detector — a differently-phrased future instruction
+      will not trip it, and its docstrings must say so rather than implying an unconditional
+      prohibition. Catching new phrasings is a gap-analysis/CR-review duty, not this test's.
+      *(VERIFY ruling C3, accepted: broadening the regexes would recreate the `test_ac7`
+      over-firing trap in reverse — English has no structural hook equivalent to §S1's AST
+      shapes, so the honest move is to narrow the CLAIM, not the code.)*
+- [ ] The gate's file scope matches its own wording: **every** open CR is scanned, CR-MDB-022 and
+      CR-MDB-028 included. A scope narrower than the AC it serves is the same oversell defect at
+      the file-selection layer.
+- [ ] `ClosedCrSpecsUntouchedTest` **skips**, never fails, when `develop`/`origin/develop` cannot
+      be resolved. Reproduced 2026-09-22 in a fresh single-branch clone: it reported
+      `fatal: Not a valid object name develop` as a closed-CR integrity failure. A gate that
+      fails on an environment precondition rather than a Model B property is the exact defect
+      this CR exists to remove — shipping one inside it would be self-refuting.
 
 ### Suite
-- [ ] Re-measured at RED and again at GREEN. From the measured baseline of **361 / 6F / 12S**
-      (2026-09-22 05:09:48Z, `b2fb822`), the predicted post-CR state is **354 collected
-      (361 − 8 removed + 1 added), 0 failures, 11 skips** — all six failures are the removed
-      gates, and skips drop by one because `test_chezmoi_status_exits_zero` is collected-but-
-      skipped under the realhome gate. A deviation from 354/0F/11S is investigated, not accepted.
+- [ ] Re-measured at RED and again at GREEN. Baseline **361 / 6F / 12S** (2026-09-22 05:09:48Z,
+      `b2fb822`). **MEASURED after C1: 356 collected, 0 failures, 11 skips** — 361 − 8 removed
+      + 3 added (the §S1 gate ships with two detector-bites tests, not one test). All six failures
+      were the removed gates; skips drop by one because `test_chezmoi_status_exits_zero` was
+      collected-but-skipped under the realhome gate. C2 adds the §S4 gate and its fixtures, so the
+      final figure is re-measured at C2 GREEN, not predicted here.
+      *(This AC previously read "354 (+1 added)", written before C1 shipped. Corrected against the
+      measured run — a predicted count is not evidence.)*
 - [ ] `AGENTS.md`'s Testing & QA baseline sentence (`:138`) records the new figures, and `:135`
       no longer lists `chezmoi diff` cleanliness among what the gates assert. **Re-recorded ONCE,
       as a close-out step of the final cycle** — not per-cycle.
@@ -226,7 +245,7 @@ corrected). No `modelb_axi/` change, no `skills-src/` content change, no install
 
 ## Risk
 
-- The suite's collected-test count drops by 8 and gains 1. Any consumer pinning a literal count
+- The suite's collected-test count drops by 8 and gains 3. Any consumer pinning a literal count
   must move in the same commit — `AGENTS.md:138`'s baseline sentence is the only such consumer
   (measured: no test asserts a literal collected count).
 - Removing a method from a CLOSED CR's gate set is a sanctioned amendment, justified by the
