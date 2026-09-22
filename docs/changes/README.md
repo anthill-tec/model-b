@@ -563,3 +563,15 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   one. **The documentation REVIEW is a release step, not a CR gate** (user ruling): the same
   boundary-event reasoning that keeps the release out of the queue. The CR makes the guide exist
   and keeps the copies identical; the release judges whether the doc set still tells the truth.
+- 2026-09-22 — **CR-MDB-012 forced off wave 2; the void verb's gap recorded for Crucible.**
+  Measured: `cr-void` writes `lifecycle.state: VOID` and does NOT touch `status`, which stays
+  `PENDING` and is what the `queue` projection reads — and **no client verb sets `status`**, it
+  is server-owned. Re-authoring the wave without it does not work either: `wave-sequence` given
+  19 ids returned `entries=20`, the server re-appending the voided CR, because the row is owned
+  by the CR's own `wave` field. Workaround applied so wave 2 reads clean: `dependsOn` stripped
+  25 → 0 (a void was claiming dependencies on half the queue) and the CR re-planned into a
+  **wave 99 void bucket** with `VOID — ` leading its title. **That wave 99 is a workaround, not
+  a truth** — nothing runs in wave 99; revert it once the verb handles this. The user is raising
+  the better ask directly with Crucible: voiding should take a CR OFF the queue while retaining
+  its DB entry. Evidence travels with the request in
+  `docs/research/CREQ-crucible-queue-projection.md` §Addendum.
