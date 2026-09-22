@@ -63,3 +63,59 @@ At first deploy, paths that chezmoi currently manages become installer-managed: 
 ## 7. Testing rule (binds all 014/013 cycles)
 
 Installer/scaffold tests deploy ONLY into throwaway sandbox roots (tmp dirs via env override — `$MODELB_HOME` + per-harness target overrides). The live `~/.claude` is read-only forever in CR work.
+
+## 8. Capability contract and stack selection (2026-09-22 — implements PRD D11)
+
+§4's installer flow checks three PATH binaries (`uv`, `sandesh`, `crucible`) and stops there.
+Measurement in wave 2 showed that leaves the installation's most consequential dependencies
+unchecked, and the failure is silent: deploying is only writing files, so a harness that cannot
+execute the assets accepts every one of them and reports success.
+
+**The pre-flight becomes tier-aware.** Same policy vocabulary as §4 (FAIL / install-on-confirm /
+WARN), three new things to say:
+
+| Tier | Probed how | Absence costs |
+|---|---|---|
+| Harness capabilities (Pi extensions) | the resolved harness config — a package must be in `settings.json` `packages[]`, not merely present on disk | the whole installation is inert |
+| Model B's own tools (Sandesh, Crucible clients + server, bundled scripts) | PATH + known install roots | one named capability |
+| Per-stack toolchains | `command -v` of the SELECTED stacks only | one stack's agents cannot test |
+
+**Presence is not capability.** The probe reads what the harness will actually load. The
+cautionary case is real: `@pi-archimedes/` exists on this machine as an EMPTY directory, absent
+from `packages[]`, and was nonetheless named as the dispatch provider in a shipped ruling. A
+directory check would have called that healthy.
+
+**Stack selection enters the installer.** `init` has `--stacks`; the installer did not, and
+`deploy.py` was stack-blind. The installer gains the same flag with the same vocabulary,
+defaulting to all stacks. Selection decides **what is deployed** (a stack's agent definitions and
+its `crucible-report-*` bundle; stack-neutral assets always deploy) and **what is probed** — which
+is where the cost saving lives. It persists in `install.toml`, so widening later is a re-run, not
+a reinstall.
+
+**Probe cost is a design constraint, not an afterthought.** Resolution, not execution: measured,
+`command -v` across five toolchains costs ~1 ms while a single `mvn -version` costs ~227 ms
+because it spawns a JVM. Version checks run only where a minimum version is genuinely required.
+
+**Remediation keeps §4's boundary.** Model B installs nothing on the user's behalf beyond what
+§4 already allowed (Sandesh via `uv`, on confirm). For a missing SDK it names the provider's own
+installer and offers to run that, on explicit confirmation; declining is a first-class outcome
+that records `absent` and continues. Model B never installs a language toolchain silently, and
+never edits the harness config without saying so.
+
+## 9. The install experience is documented for USERS, not just specified
+
+Everything above is a contributor-facing specification. The person running `modelb-axi` on a
+fresh machine needs a different document: what to install first, what the stack choice means,
+what each pre-flight verdict is telling them, and what to do about a WARN. That guide is a
+deliverable of CR-MDB-036 (§S9), not an afterthought — a feature whose whole purpose is to stop
+silent failure fails its purpose if its own diagnostics need a spec to interpret.
+
+The guide is authored ONCE and every publishing surface derives from it: the GitHub release
+notes, the Pi package README (CR-MDB-029), and the repo README. Four hand-maintained copies of
+install instructions is four drifts waiting, and the copy a user follows after it stopped being
+true is the expensive one. Extraction is mechanical and gated.
+
+**Reviewing the documentation is a RELEASE step, not a CR gate** (user ruling 2026-09-22) — the
+same boundary-event reasoning that keeps the release itself out of the queue. The CR makes the
+guide exist and keeps the copies mechanically identical; the release decides whether the doc set
+still tells the truth.

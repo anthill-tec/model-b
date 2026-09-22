@@ -76,6 +76,7 @@ This effort ships AXI CLI **contracts** (specs in `contracts/`), not implementat
 The `model-b` repo is the permanent authoring workspace: `audits/`, `contracts/`, `generator/`, `skills-src/`, `archive/`, `scripts/`, `plans/`, `docs/`. **Single-source rule (AMENDED, user 2026-07-22): ALL Model B-owned artifacts are authored REPO-LOCAL (e.g. `skills-src/`); NOTHING in a CR writes `~/.claude` — deployment to the user space is EXCLUSIVELY the universal installer's job (014, invoking provider installers). This binds EVERY downstream CR (011/013/014/015/012): AC gates assert repo paths, never deployed paths.** The chezmoi flow is LEGACY: waves 1–2 legitimately deployed through it pre-installer and their history stands; chezmoi remains only for the user's own dotfile operations and for destroying legacy files (`chezmoi destroy`/`forget`, D4) with `archive/` + mapping — never as a CR deployment channel again.
 
 ### D10 — The Model B scaffold CLI (project initializer)
+
 - **Deliverable:** an AXI-conventions CLI (working name `modelb-axi`; final name settled in the packaging DN) whose `init` verb scaffolds a Model B-driven project from inputs. **Going forward, EVERY Model B project — single or multi orchestrator, monorepo or not — is initialized through this tool** (correct-by-construction replaces convention-by-memory).
 - **Inputs:** project name / canonical token / acronym; orchestration mode (`solo` | `multi <N tracks>`); repo shape (standalone | monorepo with named sub-projects); stack(s) per (sub-)project; repo owner — the remote's owning account/organization, a setup query per D3.1 (e.g. personal / work / `anthill-tec`); target harness — a SETUP QUERY (user 2026-07-21): per-harness support is a first-class FEATURE determining generator behavior and which files are emitted (e.g. the D10.7 hook wiring), while the scaffolded ecosystem itself stays harness-agnostic.
 - **Outputs per (sub-)project:**
@@ -92,6 +93,46 @@ The `model-b` repo is the permanent authoring workspace: `audits/`, `contracts/`
 - **Installer orchestration boundary (Crucible #1330, adopted 2026-07-21): CRUCIBLE owns, tests, and fixes the `*-crucible.py` client scripts AND ships its OWN installer — server + clients as one CLI-installable bundle, deployed per targeted agentic harness. The Model B UNIVERSAL INSTALLER (014) is an ORCHESTRATOR that DEPENDS ON and INVOKES Crucible's installer; it does NOT copy or mirror crucible clients into the user space (supersedes the earlier "Model B owns the installer framework" reading; no `~/.claude/scripts` mirror-sync). The CR-CRU-035 seam stands: Crucible builds the ambient-context core scripts + the status contract; Model B owns the hook templates + their generation (015).**
 - **Setup design SETTLED (user, lavish review 2026-07-22):** (a) **Technology** — Python package installed via **uv/pipx** (`uv tool install modelb-axi`): isolated venv + globally exported bin, the model Sandesh already uses (`sandesh-relay` is a uv tool); npx rejected (no global CLI export; the tooling incl. the generators is Python). (b) **UX** — ONE adaptive **TUI** CLI (à la the Vercel skill installer): on launch it DETECTS ecosystem state — not set up ⇒ INSTALLER flow (harness targeting, dependency pre-flight, install-config write); set up ⇒ SCAFFOLD-GENERATOR flow (project deploy for the user-selected stack + harness); sensible defaults throughout; the scaffold subsystem runs off this TUI (013 and 014 converge on one binary — 013 = the scaffold flow, 014 = the installer flow + packaging). (c) **Dependency orchestration** — the installer pre-flight checks ALL dependant tooling (Crucible, Sandesh, and `uv` itself) and proactively installs what is missing via each provider's OWN bundle / package-repo install method (Model B's memory + skill extensions depend on Crucible's installed scripts/skills). (d) **Config** — the CLI keeps its own config under `$MODELB_HOME`, following Linux user-home (XDG) conventions as managed by the uv/pipx userspace-install defaults. (e) **Initial harness roster** — Claude Code, Hermes, pi (pi.dev), OpenCode; additional harnesses are future work; the agent-deployment shape is finalized PER supported harness. (f) **Sequencing** — **014 BEFORE 013** (the scaffold flow runs off the installed base); the queue dependency is flipped accordingly. (g) Skills deploy ONCE user-scope by the installer; the scaffold only references them.
 - **Release ↔ setup ↔ init interaction (user 2026-07-21):** the Model B RELEASE (CR-MDB-012, git-flow from master) ships the scaffold CLI WITH ITS ASSETS (memory templates, generator templates+params), the skill bundles, and the contracts. **Model B SETUP is a distinct machine-level step** (install skills to shared user scope + `modelb-axi` onto PATH with packaged assets) — designed in the 014 DN whose scope is release→install→setup, not packaging format alone. **Per-project `init` consumes PACKAGED assets via the asset-root resolution `$MODELB_HOME` → package data → repo fallback (dev mode)** — the scaffold never assumes a model-b checkout.
+
+### D11 — Capability contract and stack-scoped installation (2026-09-22, extends D10(c))
+
+D10(c) settled that the installer pre-flight checks dependant tooling and offers to install what
+is missing via each provider's own method. Measurement in wave 2 showed that principle was right
+and its SCOPE was far too narrow: it named Crucible, Sandesh and `uv`, and said nothing about the
+things that decide whether a deployed asset can execute **at all**.
+
+**A deployed asset that cannot run is worse than an absent one**, because it looks installed. A
+vanilla Pi accepts every file Model B writes and then silently cannot dispatch an agent, cannot
+give it a shell, and cannot honour a `permission:` key. Nothing errors, because deploying is only
+writing files; the failure surfaces layers away as an agent that "did nothing".
+
+**The requirement has three tiers**, and they differ in who provides them and what absence costs:
+
+1. **Harness capabilities** — the Pi extensions that make the assets executable: dispatch and the
+   `tools:` allowlist, the `ctx_*` family (measured 2026-09-22: `ctx_shell` is the ONLY shell a
+   dispatched agent has), and the permission layer that decides whether a granted tool may run.
+   Absence here is **fatal to the whole installation** — no stack works.
+2. **Model B's own tools** — the Sandesh CLI, the Crucible clients + manifest + server, and the
+   bundled tool scripts (including one that needs `bash`, not `python3`). Absence disables a
+   named capability: orchestration comms, or test ingest, or a specific script.
+3. **Per-stack toolchains** — `cargo`/`nextest`, `mvn`, `bun`/`node`, `arduino-cli`/`g++`, and
+   for python the **non-stdlib** `xmlrunner`/`coverage` that the Crucible client requires.
+   Absence makes ONE stack's agents unable to test, and nothing else.
+
+**Installation is stack-scoped.** The user selects stacks; selection decides both what is
+**deployed** and what is **probed**. A python-only user receives neither the rust agents nor a
+word about `cargo`. Selection is a *choice*, never inferred from what happens to be on the
+machine — having `cargo` installed is not a request for the rust agents.
+
+**Probing is cheap; installing is the user's call.** Probes resolve binaries rather than executing
+them (measured: `command -v` across five toolchains ≈ 1 ms; one `mvn -version` ≈ 227 ms, because
+it spawns a JVM). Model B **never installs a language toolchain** — it names the provider's own
+installer and offers to run that on explicit confirmation, exactly as D10(c) already required for
+Sandesh. A missing tier-3 toolchain WARNs and continues: installing assets on a machine that is
+not the build machine is legitimate.
+
+Implementation: **CR-MDB-036**. Audit evidence: that CR's "Audit 2026-09-22" section.
+
 
 ## 3. Invariants & constraints
 - `CLAUDE.md` symlink invariant (D1) — never de-symlinked.

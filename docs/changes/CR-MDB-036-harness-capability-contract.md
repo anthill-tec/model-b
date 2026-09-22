@@ -188,6 +188,60 @@ slow, and installing them is a large, opinionated act on someone's machine.
   so their absence is reported against the python stack with the exact `uv`/`pip` command, not
   left to be discovered when a RED run fails to produce JUnit XML.
 
+### §S9 — One install guide, authored once, reused by every publishing surface
+
+The feature's purpose is to stop silent failure. It fails that purpose if its own diagnostics need
+the spec to interpret — so the user-facing guide is a deliverable of this CR, not a follow-up.
+
+**`docs/install-guide.md` is the single source.** It covers: prerequisites in dependency order
+(what must exist before `modelb-axi` is even useful), the stack selector and what choosing a
+stack does and does not install, how to read every pre-flight verdict line, what each WARN means
+in consequences rather than in jargon ("the rust agents will deploy but cannot run tests until
+`cargo` is present"), and how to widen the selection later without reinstalling.
+
+**Every other surface DERIVES from it; none restates it.** The same content is wanted in at least
+four places, and four hand-maintained copies is four drifts waiting:
+
+| Surface | Owner | How it gets the content |
+|---|---|---|
+| `docs/install-guide.md` | this CR | **the source** |
+| GitHub release notes | the release ritual (`skills-src/git-workflow/SKILL.md` §Releases) | extracted at release time, never retyped |
+| The Pi package's README | CR-MDB-029 §S1 | extracted at publish time |
+| Repo `README.md` install section | this CR | extracted, or a pointer — never a paraphrase |
+
+Extraction is mechanical: the guide carries explicitly marked regions, and the publishing steps
+copy a named region verbatim. A gate compares each derived copy against its source region and
+fails on divergence — the same discipline the board-vs-repo title-parity rule exists for, applied
+to the one document a user actually reads. A paraphrase in a release note is how a user ends up
+following instructions that stopped being true two releases ago.
+
+**The REVIEW of the documentation happens at the release, not here** (user ruling 2026-09-22).
+This CR's job is to make the guide exist, make it correct at the time of writing, and make every
+other surface derive from it mechanically. Judging whether the whole doc set still tells the
+truth is a release-boundary activity — consistent with a release being a boundary event whose
+ritual lives in `skills-src/git-workflow/SKILL.md` §Releases rather than in any queue row. The
+extraction gate is what makes that review cheap: a reviewer reads one source instead of
+diffing four copies.
+
+**§S9 acceptance criteria**
+
+- [ ] `docs/install-guide.md` exists and covers, at minimum: prerequisites in dependency order;
+      what the stack selector installs and skips; every pre-flight verdict line and its meaning;
+      the consequence of each WARN stated in terms of what will not work; and how to add a stack
+      later.
+- [ ] Its regions are explicitly marked for extraction, and the marker convention is documented
+      in the file itself.
+- [ ] The repo `README.md` install section is extracted from it or points at it — it contains no
+      independently-worded copy.
+- [ ] A gate fails when a derived copy diverges from its source region, with a fixture proving the
+      gate bites on an edited copy.
+- [ ] `skills-src/git-workflow/SKILL.md` §Releases names TWO release steps: extracting the guide's
+      marked regions into the release notes, and a **documentation review** over the doc set
+      (user ruling 2026-09-22 — the review is a release-boundary activity, not a CR gate).
+      CR-MDB-029 §S1 is annotated to take the Pi package README from the same source.
+- [ ] The guide is written for someone on a fresh machine who has never read a CR — no §S
+      references, no CR ids, no internal vocabulary in the instructions themselves.
+
 ## Acceptance criteria
 
 - [ ] A single declarative structure in `modelb_axi/` lists every required capability with its

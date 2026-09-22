@@ -546,3 +546,20 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   confirmation, exactly as it already does for Sandesh. An absent SDK for a selected stack WARNs
   rather than fails — installing assets on a machine that is not the build machine is legitimate.
   Selection is a CHOICE and is never inferred from what happens to be on the machine.
+- 2026-09-22 — **PRD D11 added; the install guide is single-sourced; doc review moves to the
+  release.** The capability contract earned a design decision rather than living only in a CR:
+  **PRD §D11** records that a deployed asset which cannot run is worse than an absent one (a
+  vanilla Pi accepts every file and then silently cannot dispatch, cannot give an agent a shell,
+  cannot honour `permission:`), that the requirement has three tiers differing in who provides
+  them and what absence costs, that installation is stack-SCOPED with selection a choice and never
+  inferred from the machine, and that Model B never installs a language toolchain. It extends
+  D10(c), whose principle was right and whose scope named only Crucible, Sandesh and `uv`.
+  `DN-scaffold-packaging.md` §8 carries the mechanics (probe the resolved harness config, not the
+  disk — `@pi-archimedes/` is an empty directory that a presence check would call healthy) and §9
+  the user-facing story. **CR-036 §S9** makes `docs/install-guide.md` the single source from which
+  the release notes, the Pi package README (CR-029) and the repo README are mechanically
+  extracted, gated against divergence — four hand-maintained copies of install instructions is
+  four drifts waiting, and the copy a user follows after it stopped being true is the expensive
+  one. **The documentation REVIEW is a release step, not a CR gate** (user ruling): the same
+  boundary-event reasoning that keeps the release out of the queue. The CR makes the guide exist
+  and keeps the copies identical; the release judges whether the doc set still tells the truth.
