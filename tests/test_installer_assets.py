@@ -44,6 +44,7 @@ Stdlib only: unittest + subprocess + sys + shutil + tempfile +
 tomllib + importlib.util + pathlib.
 """
 
+import ast
 import importlib.util
 import os
 import shutil
@@ -60,6 +61,16 @@ GENERATOR_DIR = REPO_ROOT / "generator"
 BUILD_PY = GENERATOR_DIR / "build.py"
 # The RED-pinned retarget contract's output dir (see module docstring).
 GENERATOR_AGENTS_DIR = GENERATOR_DIR / "agents"
+
+# CR-MDB-021 §S1 -- the three roots the chezmoi-invocation gate scans.
+# hooks-src/scripts/ holds extensionless-but-python3 neutral hook scripts
+# (see hooks-src/schema.md), so it is walked separately from the .py globs
+# used for tests/ and modelb_axi/.
+CHEZMOI_INVOCATION_SCAN_ROOTS = (
+    REPO_ROOT / "tests",
+    REPO_ROOT / "modelb_axi",
+    REPO_ROOT / "hooks-src" / "scripts",
+)
 
 CLAUDE_SKILLS_DIR = Path.home() / ".claude" / "skills"
 
@@ -453,6 +464,274 @@ class BuildPyCliRetargetTest(unittest.TestCase):
             chezmoi_hits, [],
             f"generator/ must contain zero chezmoi-source references; "
             f"found: {chezmoi_hits}",
+        )
+
+
+def _is_chezmoi_which_call(node):
+    """True for a call node shaped exactly `shutil.which("chezmoi")`
+    (first positional arg a string constant equal to "chezmoi")."""
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "which"
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "shutil"
+        and len(node.args) >= 1
+        and isinstance(node.args[0], ast.Constant)
+        and node.args[0].value == "chezmoi"
+    )
+
+
+_SUBPROCESS_INVOCATION_FUNCS = frozenset({"run", "call", "check_call", "check_output", "Popen"})
+
+
+def _is_subprocess_call(node):
+    """True for `subprocess.<run|call|check_call|check_output|Popen>(...)`
+    -- restricted to the `subprocess.` attribute form actually used in this
+    tree (never a bare `run(...)`, which would risk false positives on an
+    unrelated same-named helper)."""
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr in _SUBPROCESS_INVOCATION_FUNCS
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "subprocess"
+    )
+
+
+def _first_argv_element(call_node):
+    """The first element of a subprocess call's argv list/tuple literal, or
+    None if the first positional arg is not a list/tuple literal or is
+    empty (e.g. `shell=True` string-form calls, which this repo does not
+    use for chezmoi and which this gate therefore does not need to match)."""
+    if not call_node.args:
+        return None
+    first = call_node.args[0]
+    if isinstance(first, (ast.List, ast.Tuple)) and first.elts:
+        return first.elts[0]
+    return None
+
+
+class _ChezmoiInvocationVisitor(ast.NodeVisitor):
+    """Walks one module's AST in source order, tracking which local names
+    are bound to `shutil.which("chezmoi")` so a later subprocess argv head
+    referencing that name is recognised as the SAME invocation CR-MDB-021
+    §S1 targets -- not just a bare `"chezmoi"` literal."""
+
+    def __init__(self):
+        self.hits = []  # list of (lineno, enclosing_funcname, kind)
+        self._which_names = set()
+        self._func_stack = []
+
+    def _enclosing(self):
+        return self._func_stack[-1] if self._func_stack else "<module>"
+
+    def _visit_function(self, node):
+        self._func_stack.append(node.name)
+        self.generic_visit(node)
+        self._func_stack.pop()
+
+    visit_FunctionDef = _visit_function
+    visit_AsyncFunctionDef = _visit_function
+
+    def visit_Assign(self, node):
+        if _is_chezmoi_which_call(node.value):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    self._which_names.add(target.id)
+        self.generic_visit(node)
+
+    def visit_Call(self, node):
+        if _is_chezmoi_which_call(node):
+            self.hits.append((node.lineno, self._enclosing(), 'shutil.which("chezmoi")'))
+        elif _is_subprocess_call(node):
+            head = _first_argv_element(node)
+            if isinstance(head, ast.Constant) and head.value == "chezmoi":
+                self.hits.append(
+                    (node.lineno, self._enclosing(), 'subprocess argv[0] == "chezmoi" literal')
+                )
+            elif isinstance(head, ast.Name) and head.id in self._which_names:
+                self.hits.append((
+                    node.lineno, self._enclosing(),
+                    f'subprocess argv[0] == {head.id!r} (bound to shutil.which("chezmoi"))',
+                ))
+        self.generic_visit(node)
+
+
+def find_chezmoi_invocations(source, filename="<string>"):
+    """CR-MDB-021 §S1 -- static (never-executes-anything) detector for a
+    chezmoi-binary INVOCATION in Python source text. Returns a list of
+    `(lineno, enclosing_funcname, kind)` tuples, empty if none found.
+
+    Matches ONLY:
+      (a) `shutil.which("chezmoi")`, and
+      (b) a `subprocess.<run|call|check_call|check_output|Popen>(...)` call
+          whose argv list/tuple's FIRST element is either the literal
+          string "chezmoi" or a name bound (by a plain `x = shutil.which(
+          "chezmoi")` assignment earlier in the same source) to that call.
+
+    Deliberately does NOT match a bare substring/mention of "chezmoi" --
+    `self.assertEqual(x, "chezmoi")`, `self.assertIn("chezmoi", ...)`, and
+    `"chezmoi"` as a tuple/list element (e.g. a bundle-name registry) all
+    produce zero hits. Pure `ast.parse` + tree walk -- runs no subprocess,
+    reads no file, touches nothing under `$HOME`.
+    """
+    try:
+        tree = ast.parse(source, filename=filename)
+    except SyntaxError as exc:
+        raise ValueError(f"{filename}: could not parse as Python source: {exc}") from exc
+    visitor = _ChezmoiInvocationVisitor()
+    visitor.visit(tree)
+    return visitor.hits
+
+
+def _iter_chezmoi_scan_sources(root):
+    """Yield (path, source_text) for every file under `root` this gate
+    inspects: `*.py` files everywhere, plus extensionless `#!.../python3`
+    scripts under `hooks-src/scripts/` (the neutral hook-script convention
+    -- see hooks-src/schema.md -- ships no file extension)."""
+    if not root.is_dir():
+        return
+    for path in sorted(root.rglob("*")):
+        if not path.is_file():
+            continue
+        if path.suffix == ".py":
+            yield path, path.read_text(encoding="utf-8")
+        elif root.name == "scripts" and path.suffix == "":
+            text = path.read_text(encoding="utf-8")
+            first_line = text.splitlines()[0] if text else ""
+            if first_line.startswith("#!") and "python" in first_line:
+                yield path, text
+
+
+class ChezmoiInvocationGateTest(unittest.TestCase):
+    """CR-MDB-021 §S1 -- the guard that makes the chezmoi-retirement policy
+    self-enforcing: no module under tests/, modelb_axi/, or
+    hooks-src/scripts/ may INVOKE the chezmoi binary. Static AST inspection
+    only (see find_chezmoi_invocations); this class itself never runs
+    chezmoi and never reads anything under $HOME."""
+
+    def test_detector_bites_fires_on_real_invocation_only(self):
+        synthetic_source = (
+            "import shutil\n"
+            "import subprocess\n"
+            "\n"
+            "\n"
+            "def test_real_invocation():\n"
+            '    chezmoi = shutil.which("chezmoi")\n'
+            '    subprocess.run([chezmoi, "diff", "/tmp"], capture_output=True)\n'
+            "\n"
+            "\n"
+            "def test_assert_equal_bare_literal():\n"
+            '    self.assertEqual(observed_bundle_manager, "chezmoi", "must be chezmoi")\n'
+            "\n"
+            "\n"
+            "def test_assert_in_bare_literal():\n"
+            '    self.assertIn("chezmoi", content.lower(), "must mention chezmoi")\n'
+            "\n"
+            "\n"
+            "def test_bundle_name_tuple_element():\n"
+            "    NAMES = (\n"
+            '        "model-b",\n'
+            '        "chezmoi",\n'
+            '        "bootstrap",\n'
+            "    )\n"
+        )
+        hits = find_chezmoi_invocations(synthetic_source, filename="<detector-bites>")
+        hit_funcs = sorted({funcname for (_lineno, funcname, _kind) in hits})
+        # POSITIVE/EXACT -- the matcher fires on the real-invocation function
+        # only; the assertEqual/assertIn/tuple-element forms produce zero hits.
+        self.assertEqual(
+            hit_funcs, ["test_real_invocation"],
+            f"detector-bites fixture: matcher must fire on test_real_invocation "
+            f"only (never on the bare-literal assertEqual/assertIn/tuple-element "
+            f"forms), got hits in: {hit_funcs}",
+        )
+        # bound -- exactly the two matched sites inside that one function
+        # (the shutil.which binding, then the subprocess argv head bound to
+        # it), never more and never fewer.
+        self.assertEqual(
+            len(hits), 2,
+            f"detector-bites fixture: expected exactly 2 matched sites inside "
+            f"test_real_invocation (shutil.which + subprocess argv head), "
+            f"got {len(hits)}: {hits}",
+        )
+
+    def test_retained_live_lines_present_and_do_not_trip_matcher(self):
+        git_chezmoi_skills = REPO_ROOT / "tests" / "test_git_chezmoi_skills.py"
+        source = git_chezmoi_skills.read_text(encoding="utf-8")
+        lines = source.splitlines()
+        # POSITIVE -- the two retained content-assertion lines this CR
+        # deliberately keeps are still exactly where the spec pins them.
+        self.assertIn(
+            '"chezmoi"', lines[168],
+            f"{git_chezmoi_skills}:169 must still read the literal \"chezmoi\" "
+            f"(shipped SKILL.md frontmatter name assertion), got: {lines[168]!r}",
+        )
+        self.assertIn("assertEqual", lines[167], f"{git_chezmoi_skills}:168 must be an assertEqual(")
+        self.assertIn(
+            '"chezmoi"', lines[343],
+            f"{git_chezmoi_skills}:344 must still read the literal \"chezmoi\" "
+            f"(AGENTS.md content assertion), got: {lines[343]!r}",
+        )
+        self.assertIn("assertIn", lines[342], f"{git_chezmoi_skills}:343 must be an assertIn(")
+
+        hits = find_chezmoi_invocations(source, filename=str(git_chezmoi_skills))
+        offending_at_retained_lines = [h for h in hits if h[0] in (168, 169, 343, 344)]
+        # NEGATIVE -- neither retained line trips the matcher.
+        self.assertEqual(
+            offending_at_retained_lines, [],
+            f"matcher must not trip on the retained content-assertion lines "
+            f"168-169/343-344 of {git_chezmoi_skills}; got "
+            f"{offending_at_retained_lines}",
+        )
+
+        this_file = REPO_ROOT / "tests" / "test_installer_assets.py"
+        this_source = this_file.read_text(encoding="utf-8")
+        this_lines = this_source.splitlines()
+        bundle_tuple_line = next(
+            i for i, ln in enumerate(this_lines) if '"chezmoi",' in ln
+        )
+        # POSITIVE sanity -- the Model-B-owned bundle-name tuple element this
+        # CR exempts is still present in this very file.
+        self.assertIn('"chezmoi"', this_lines[bundle_tuple_line])
+        hits_here = find_chezmoi_invocations(this_source, filename=str(this_file))
+        bundle_tuple_hits = [h for h in hits_here if h[0] == bundle_tuple_line + 1]
+        # NEGATIVE -- the matcher must not trip on this file's own
+        # IMPORTED_BUNDLE_NAMES tuple element.
+        self.assertEqual(
+            bundle_tuple_hits, [],
+            f"matcher must not trip on this file's own bundle-name tuple "
+            f"element at line {bundle_tuple_line + 1}; got {bundle_tuple_hits}",
+        )
+
+    def test_zero_chezmoi_invocations_under_tests_modelb_axi_hooks_scripts(self):
+        violations = {}
+        for root in CHEZMOI_INVOCATION_SCAN_ROOTS:
+            for path, source in _iter_chezmoi_scan_sources(root):
+                try:
+                    hits = find_chezmoi_invocations(source, filename=str(path))
+                except ValueError as exc:
+                    self.fail(str(exc))
+                if not hits:
+                    continue
+                by_func = {}
+                for lineno, funcname, kind in hits:
+                    by_func.setdefault(funcname, []).append((lineno, kind))
+                rel = path.relative_to(REPO_ROOT)
+                for funcname, sites in sorted(by_func.items()):
+                    violations[f"{rel}::{funcname}"] = sites
+        scanned_roots = [str(r.relative_to(REPO_ROOT)) for r in CHEZMOI_INVOCATION_SCAN_ROOTS]
+        # NEGATIVE/EXACT -- zero chezmoi-binary invocation sites (static
+        # source inspection of shutil.which("chezmoi") + subprocess argv
+        # heads) anywhere under tests/, modelb_axi/, hooks-src/scripts/.
+        # THIS IS THE RED: today 8 methods across 7 modules still invoke
+        # chezmoi (see CR-MDB-021 Context table) -- this must fail until
+        # §S2/§S3 remove them.
+        self.assertEqual(
+            violations, {},
+            f"found {len(violations)} chezmoi-invocation site(s) under "
+            f"{scanned_roots}: {violations}",
         )
 
 
