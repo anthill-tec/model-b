@@ -407,3 +407,31 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   the flag-surface check and cites the rest, and an AC now FORBIDS duplicating them; (6) Type/size
   corrected — §S6b's per-stack `tier_guidance` (zero keys exist today) is content authoring, so
   this is not a "patch". Verdict SPEC_UPDATE_NEEDED, all six amended; no prerequisite CR.
+- 2026-09-21 — **CR-MDB-029 RE-PRIORITISED (user directive) + two carried items closed.**
+  (a) **029 lifted from fourteenth to eighth** on the 1.0.0 wave-2 sequence, with its dependency
+  chain moved ahead of it rather than around it: `033 → 030 → 024 → 025 → 029`, and **026 placed
+  immediately behind** since it depends on 029. New order: `028 017 027 033 030 024 025 029 026
+  018 019 023 020 021 032 031 012` (every dependency edge still satisfied by position; verified
+  before posting). The driver is that 029 carries the Pi watcher extension — until it ships,
+  `/bootstrap`'s notifier step is unexecutable on Pi (CR-026's measured defect, no supervisor),
+  so every run starts with a known-dead instruction. **CR-MDB-027 closed in passing** (`693b264`):
+  it was ruled and documented on 2026-09-21 but never had a plan, so `next` kept surfacing a
+  decision CR that was already spent — plan 94, one verify cycle recording the measurement, closed
+  against the ruling commit. `next` now answers `CR-MDB-033 seq=2004`.
+  (b) **The two root RND drafts are tracked** (root commit `a251c4e`):
+  `docs/PRD:Telemetry-Driven-Closed-Loop-Optimization.md` and `docs/PerCRCostComputation.md`,
+  committed as authored and explicitly NOT adopted — the independent review's recommendations
+  against the PRD draft (post-assessment framing, sy-tuner proposes/human applies per D10, generic
+  route ids until the verdict, preserve the `coder` control, drop the names absent from
+  `contracts/switchyard-routes.md`, fix FR-1's harness paths) remain open against that text. The
+  colon in the PRD filename is left pending a rename decision.
+  (c) **Two client-lifecycle rules written into `skills-src/crucible/SKILL.md`**, each measured
+  twice in flight this run: ingest with `--cycle <id>` BEFORE `cycle-done` (a run ingested after
+  the cycle closed is refused and nothing backfills it; an unbound agent's run stores
+  project-scoped and untraceable), and a stale cycle binding survives re-registration so clearing
+  it takes `unregister` THEN `register` — an ORCHESTRATOR registering unbound avoids it entirely.
+  Per the user directive the requirement is TRACKED downstream rather than left as prose:
+  **CR-MDB-018 gains §S5** and two ACs, one of which requires a gate so a later bundle rewrite
+  cannot silently drop the text. 018 was chosen because it already owns the installed-client
+  surface — discovery makes the client findable, these rules make it usable without losing a
+  run's attribution.

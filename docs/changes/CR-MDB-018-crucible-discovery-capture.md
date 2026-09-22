@@ -85,6 +85,25 @@ else `crucible_axi.__version__`) and run with `crucible-axi serve`.
 
 ## Scope
 
+### §S5 — The lifecycle rules the discovery seam depends on (added 2026-09-21, user directive)
+
+Two client-lifecycle facts were measured in flight during CR-MDB-028 and CR-MDB-017, each
+costing a 409 before it was understood. They are **already written into
+`skills-src/crucible/SKILL.md`** ahead of this CR; this section exists so the requirement is
+TRACKED by an AC rather than surviving only as prose one edit away from deletion:
+
+- **Ingest before `cycle-done`, with `--cycle <id>`.** A run ingested after its cycle closed is
+  refused (`bound cycle <id> is done — ingest refused, run NOT stored`) and nothing backfills
+  it; a run from an agent bound to no cycle stores project-scoped with a `no-cycle` warning and
+  is permanently untraceable to its cycle.
+- **A stale cycle binding survives re-registration.** `register` on an id already bound to a
+  finished cycle does not rebind it — every workflow verb then 409s. `unregister` then
+  `register`. A long-running ORCHESTRATOR should register unbound.
+
+This belongs with §S1–§S4 because it is the same surface: what the installed client's identity
+and run verbs actually require of a caller. The discovery work makes the client FINDABLE; these
+two rules make the found client USABLE without losing a run's attribution.
+
 ### §S1 — Probe the binary Crucible actually installs
 `modelb_axi/preflight.py`: detect `crucible-axi`. The absent-warning text names Crucible's
 own installer entry point rather than a generic instruction, and keeps the standing rule
@@ -167,10 +186,23 @@ the same key.
 - [ ] A grep for non-test callers of the capture function returns at least one — the
       pre-flight path itself.
 
+### §S5
+- [ ] `skills-src/crucible/SKILL.md` states BOTH lifecycle rules in substance: that a run is
+      ingested with `--cycle <id>` BEFORE `cycle-done` (a run ingested after the cycle closed
+      is refused and nothing backfills it; an unbound agent's run stores project-scoped and
+      untraceable), and that a stale cycle binding survives re-registration so clearing it
+      takes `unregister` then `register`, with the ORCHESTRATOR/`report` unbound registration
+      named as the way to avoid it entirely.
+- [ ] A gate asserts both rules are present — added to `tests/test_skill_bundle_guards.py`'s
+      bundle families or as its own method — so the prose cannot be silently dropped by a
+      later bundle rewrite. The text landed ahead of this CR (2026-09-21); this AC is what
+      keeps it.
+
 ## Estimated size
 
 3 modules touched (`preflight.py`, `config.py`, the pre-flight caller in `cli.py`), 1
-integration test module extended or added. No change to `hooks-src/` in this CR.
+integration test module extended or added, 1 published bundle already carrying §S5's text
+plus its gate. No change to `hooks-src/` in this CR.
 
 ## Risk
 

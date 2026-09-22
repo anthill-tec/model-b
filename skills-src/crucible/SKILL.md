@@ -106,6 +106,20 @@ cycle id — clients resolved it from the server.
 
 Still true either way: no env var carries a cycle id.
 
+**Two binding rules learned in flight (2026-09-21, measured twice each):**
+
+- **Ingest the run BEFORE `cycle-done`, and pass `--cycle <id>`.** A run ingested
+  after its cycle closed is refused — `bound cycle <id> is done — ingest refused,
+  run NOT stored` — and nothing backfills it. A run ingested by an agent bound to
+  no cycle stores project-scoped with a `no-cycle` warning and can never be traced
+  to the cycle it belongs to. Order is: run → ingest → `cycle-done`.
+- **A stale cycle binding survives re-registration.** Re-running `register` for an
+  id already bound to a finished cycle does NOT rebind it; every workflow verb then
+  fails 409. Clear it with `unregister` THEN `register` — two calls, not one. An
+  ORCHESTRATOR/`report` id that never binds avoids this entirely, which is why a
+  long-running orchestrator should register unbound and let its dispatched agents
+  carry the cycle bindings.
+
 Display/classification context survives as env vars:
 
 | Env var | Meaning |
