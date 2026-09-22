@@ -41,12 +41,15 @@ and for the whole test suite (repo-local authoring rule / AC7). Instead:
     uses for the live `~/.claude/agents/` tree pre-S7).
 
 Stdlib only: unittest + subprocess + sys + shutil + tempfile +
-tomllib + importlib.util + pathlib.
+tomllib + importlib.util + pathlib + hashlib + re (CR-MDB-021 §S4 --
+git-backed byte-identity gate + prose-instruction matcher).
 """
 
 import ast
+import hashlib
 import importlib.util
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -732,6 +735,333 @@ class ChezmoiInvocationGateTest(unittest.TestCase):
             violations, {},
             f"found {len(violations)} chezmoi-invocation site(s) under "
             f"{scanned_roots}: {violations}",
+        )
+
+
+# ---------------------------------------------------------------------------
+# CR-MDB-021 §S4 -- prose surfaces must not INSTRUCT a chezmoi step as
+# part of Model B CR work. Naming/describing the retired mechanism (a
+# closed CR's history, a bundle-name list entry, a quoted citation of
+# another line, or the user's own dotfile discipline) is NOT the same as
+# instructing it -- see find_chezmoi_prose_instructions' docstring.
+# ---------------------------------------------------------------------------
+
+CONTRACTS_DIR = REPO_ROOT / "contracts"
+CHANGES_DIR = REPO_ROOT / "docs" / "changes"
+MEMORY_TEMPLATES_DIR = SKILLS_SRC_DIR / "memory-templates"
+
+# The exact OPEN CR numbers in scope for the §S4 prose-instruction gate,
+# per dispatch (007 has no separate spec file; 022/027/028 are open CRs but
+# were not named in scope and are deliberately excluded here -- CLOSED CRs
+# 001-016 are covered separately, by ClosedCrSpecsUntouchedTest below, never
+# by this gate).
+OPEN_CR_NUMBERS_IN_S4_SCOPE = (17, 18, 19, 20, 21, 23, 24, 25, 26, 29, 30, 31, 32, 33, 34, 35)
+
+
+def _chezmoi_prose_instruction_scope_files():
+    """The exact §S4 surface set: AGENTS.md, contracts/lean-ctx.md,
+    every skills-src/memory-templates/*.md, docs/changes/README.md, and the
+    named OPEN CR specs only."""
+    files = [REPO_ROOT / "AGENTS.md", CONTRACTS_DIR / "lean-ctx.md", CHANGES_DIR / "README.md"]
+    files.extend(sorted(MEMORY_TEMPLATES_DIR.glob("*.md")))
+    for number in OPEN_CR_NUMBERS_IN_S4_SCOPE:
+        files.extend(sorted(CHANGES_DIR.glob(f"CR-MDB-0{number}-*.md")))
+    return [f for f in files if f.is_file()]
+
+
+_CHEZMOI_PROSE_PARAGRAPH_START_RE = re.compile(r'^(#{1,6}\s|-\s|\*\s|\d+\.\s|\|)')
+
+# The three curated prescriptive frames CR-MDB-021 §S4 measured -- each
+# one is an ACTUAL sentence shape that prescribes a dotfile-manager
+# mechanism for MODEL B's own mutation, not a description of one.
+# Deliberately does NOT include a bare "chezmoi diff"/"chezmoi apply"
+# mention: AGENTS.md:135's "chezmoi diff cleanliness" names what a
+# now-removed test asserted (a prose-staleness fix bundled into the Suite
+# AC's close-out step, not a live instruction site), and AGENTS.md:138
+# names retired gates for the historical baseline-count record -- both are
+# describing, not instructing (the same test_ac7 substring-sweep trap
+# CR-MDB-017 had to repair).
+_CHEZMOI_PROSE_TRIGGERS = {
+    "follows chezmoi discipline": re.compile(r'\bfollows?\s+chezmoi\s+discipline\b', re.IGNORECASE),
+    "goes through chezmoi": re.compile(r'\bgoes\s+through\s+chezmoi\b', re.IGNORECASE),
+    "(chezmoi-managed rationale)": re.compile(r'\(chezmoi-managed\b', re.IGNORECASE),
+}
+
+# Describing is not instructing: a paragraph matching one of these is
+# exempt even if it also matches a trigger above.
+_CHEZMOI_PROSE_EXEMPTIONS = (
+    # a quoted CITATION of another line's trigger phrase (e.g. this CR's
+    # own §S4 Amendments section quoting contracts/lean-ctx.md:33
+    # verbatim in parens-and-quotes) -- reporting that a line elsewhere
+    # says this is not issuing the instruction here.
+    re.compile(
+        r'["\u201c][^"\u201d\n]{0,400}?'
+        r'(?:goes\s+through\s+chezmoi|chezmoi\s+discipline|chezmoi-managed)'
+        r'[^"\u201d\n]{0,20}?["\u201d]',
+        re.IGNORECASE,
+    ),
+    # "chezmoi" as one element of a backtick-quoted, comma-separated
+    # bundle/skill-name list (AGENTS.md's skills-src/ row and its
+    # load-on-demand-references bullet; CR-023's parallel bundle count).
+    re.compile(r'`chezmoi`\s*,|,\s*`chezmoi`\b'),
+    re.compile(r'\bskills-src/chezmoi\b', re.IGNORECASE),
+    re.compile(r'\bchezmoi\s+(?:skill\s+)?bundle\b', re.IGNORECASE),
+    # the USER's own dotfile discipline -- explicitly out of scope.
+    re.compile(r"user'?s?\s+own\s+dotfile", re.IGNORECASE),
+    # a dated Notes-log entry or a completed setup checkbox in
+    # docs/changes/README.md's queue footer -- historical record.
+    re.compile(r'^-\s*\d{4}-\d{2}-\d{2}\s*\u2014'),
+    re.compile(r'^-\s*\[[xX]\]'),
+)
+
+
+def _iter_prose_paragraphs(text):
+    """Group physical lines into logical markdown paragraphs: a heading,
+    top-level bullet, numbered item, or table row starts a new paragraph;
+    an indented/unmarked line merges into the paragraph above it (this
+    repo wraps bullet continuations at 2-space indent). A blank line
+    always closes the current paragraph. Returns a list of
+    `(start_lineno, joined_text)`, 1-indexed."""
+    paragraphs = []
+    current_lines = []
+    current_start = None
+    for lineno, line in enumerate(text.splitlines(), start=1):
+        if line.strip() == "":
+            if current_lines:
+                paragraphs.append((current_start, " ".join(current_lines)))
+                current_lines = []
+                current_start = None
+            continue
+        if current_lines and _CHEZMOI_PROSE_PARAGRAPH_START_RE.match(line):
+            paragraphs.append((current_start, " ".join(current_lines)))
+            current_lines = []
+        if not current_lines:
+            current_start = lineno
+        current_lines.append(line.strip())
+    if current_lines:
+        paragraphs.append((current_start, " ".join(current_lines)))
+    return paragraphs
+
+
+def find_chezmoi_prose_instructions(text, filename="<string>"):
+    """CR-MDB-021 §S4 -- detects prose that INSTRUCTS a chezmoi step as
+    part of Model B CR work, as distinct from merely NAMING/describing the
+    retired mechanism (a closed CR's history, a bundle-name list entry, a
+    quoted citation of another line, or the user's own dotfile discipline).
+
+    Paragraph-scoped (see _iter_prose_paragraphs). A paragraph is reported
+    once, on its first matching trigger, if it contains one of the three
+    curated prescriptive frames in _CHEZMOI_PROSE_TRIGGERS AND matches none
+    of _CHEZMOI_PROSE_EXEMPTIONS. `filename` is carried through only for
+    caller error messages; this function reads no file itself.
+
+    Returns a list of `(start_lineno, trigger_name, paragraph_text)`
+    tuples, empty if none. Pure string/regex inspection -- never invokes
+    chezmoi, never runs a subprocess, reads nothing under $HOME.
+    """
+    hits = []
+    for start_lineno, paragraph in _iter_prose_paragraphs(text):
+        if "chezmoi" not in paragraph.lower():
+            continue
+        if any(exempt.search(paragraph) for exempt in _CHEZMOI_PROSE_EXEMPTIONS):
+            continue
+        for trigger_name, pattern in _CHEZMOI_PROSE_TRIGGERS.items():
+            if pattern.search(paragraph):
+                hits.append((start_lineno, trigger_name, paragraph))
+                break
+    return hits
+
+
+class ChezmoiProseInstructionGateTest(unittest.TestCase):
+    """CR-MDB-021 §S4 -- no LIVE Model B surface (AGENTS.md,
+    contracts/lean-ctx.md, skills-src/memory-templates/*.md,
+    docs/changes/README.md, or a named OPEN CR spec) may INSTRUCT a
+    chezmoi diff/add/apply step as part of Model B CR work. Static text
+    inspection only (see find_chezmoi_prose_instructions); this class
+    never runs chezmoi and never reads anything under $HOME."""
+
+    def test_detector_bites_fires_on_genuine_instruction_only(self):
+        synthetic_prose = (
+            "## Scenario (a) -- genuine instruction (MUST fire)\n"
+            "\n"
+            "- Every `~/.claude` mutation follows chezmoi discipline: no-auto temp\n"
+            "  config, manual source commits, deletions via `chezmoi destroy`/`forget`\n"
+            "  (a plain `rm` resurrects on apply). Never `chezmoi apply`, never push\n"
+            "  the source repo.\n"
+            "\n"
+            "## Scenario (b) -- historical/descriptive citation-quote (MUST NOT fire)\n"
+            "\n"
+            "- **Amendment:** `contracts/lean-ctx.md:33` (\"every `~/.claude` mutation\n"
+            "  in this workflow goes through chezmoi\") is in scope as a historical\n"
+            "  citation of an existing line, not a live instruction issued here.\n"
+            "\n"
+            "## Scenario (c) -- skills-src/chezmoi bundle-name list element (MUST NOT fire)\n"
+            "\n"
+            "| `skills-src/` | 13 skill bundles. Model-B-owned: `model-b`, `crucible`, "
+            "`cr-authoring`, `git-workflow`, `chezmoi`, `bootstrap`, `shutdown`. |\n"
+            "\n"
+            "## Scenario (d) -- the USER's own dotfile discipline (MUST NOT fire)\n"
+            "\n"
+            "`skills-src/chezmoi/` documents the USER's own dotfile discipline and is\n"
+            "not a Model B dependency on chezmoi.\n"
+        )
+        hits = find_chezmoi_prose_instructions(synthetic_prose, filename="<detector-bites>")
+        # POSITIVE/EXACT -- fires on scenario (a) only, at its start line,
+        # via the "follows chezmoi discipline" trigger.
+        self.assertEqual(
+            [h[0] for h in hits], [3],
+            f"detector-bites fixture: matcher must fire on scenario (a) "
+            f"(line 3) only; got hits at lines {[h[0] for h in hits]}",
+        )
+        self.assertEqual(
+            hits[0][1], "follows chezmoi discipline",
+            f"scenario (a) must trip the 'follows chezmoi discipline' "
+            f"trigger; got {hits[0][1]!r}",
+        )
+        # NEGATIVE -- scenario (b)'s quoted citation of the SAME "goes
+        # through chezmoi" phrase this gate's own real-world target
+        # (contracts/lean-ctx.md:33) uses does NOT trip the matcher: the
+        # gate must distinguish reporting a line from re-issuing it.
+        self.assertNotIn(
+            10, [h[0] for h in hits],
+            "scenario (b) (line 10) is a quoted historical citation, not "
+            "a live instruction -- must not trip the matcher",
+        )
+        # NEGATIVE -- scenario (c)'s bundle-name list element.
+        self.assertNotIn(
+            16, [h[0] for h in hits],
+            "scenario (c) (line 16) is a bundle-name list element, not an "
+            "instruction -- must not trip the matcher",
+        )
+        # NEGATIVE -- scenario (d)'s USER's-own-dotfiles sentence.
+        self.assertNotIn(
+            20, [h[0] for h in hits],
+            "scenario (d) (line 20) describes the USER's own dotfile "
+            "discipline, not a Model B CR instruction -- must not trip "
+            "the matcher",
+        )
+
+    def test_zero_chezmoi_instruction_sites_across_live_model_b_prose(self):
+        violations = {}
+        for path in _chezmoi_prose_instruction_scope_files():
+            source = path.read_text(encoding="utf-8")
+            hits = find_chezmoi_prose_instructions(source, filename=str(path))
+            if hits:
+                rel = path.relative_to(REPO_ROOT)
+                violations[str(rel)] = [(lineno, trigger) for lineno, trigger, _para in hits]
+        # NEGATIVE/EXACT -- zero chezmoi-instruction sites across AGENTS.md,
+        # contracts/lean-ctx.md, skills-src/memory-templates/*.md,
+        # docs/changes/README.md, and the named OPEN CR specs. THIS IS THE
+        # RED: AGENTS.md:49 and :109, plus contracts/lean-ctx.md:33, still
+        # prescribe a dotfile-manager mechanism for Model B work today --
+        # this must fail until they are reworded.
+        self.assertEqual(
+            violations, {},
+            f"found chezmoi-instruction site(s) in live Model B prose: {violations}",
+        )
+
+
+# ---------------------------------------------------------------------------
+# CR-MDB-021 §S4 AC -- closed CR specs (001-016) are historical record
+# and must remain byte-identical to their committed state on the
+# merge-base with develop.
+# ---------------------------------------------------------------------------
+
+CLOSED_CR_SPEC_NAME_RE = re.compile(r'^CR-MDB-0(0[1-9]|1[0-6])-.*\.md$')
+
+
+def _closed_cr_spec_files():
+    """Every docs/changes/CR-MDB-0{01..16}-*.md file that exists (007 has
+    no separate spec file -- see docs/changes/README.md's queue row, which
+    points CR-MDB-007 at README.md#footer-notes instead)."""
+    return sorted(
+        p for p in CHANGES_DIR.glob("CR-MDB-0*.md")
+        if CLOSED_CR_SPEC_NAME_RE.match(p.name)
+    )
+
+
+def _git_merge_base_with_develop(repo_root):
+    """`git merge-base HEAD develop`, run against `repo_root`.
+
+    This is how "the committed manifest" (§S4 AC) is derived here:
+    this RED agent has no shell/execution tool of its own to run
+    `sha256sum` and hand-type digest literals from its output (a
+    documented dispatch constraint -- fabricating hex digest strings
+    without computing them would be worse than not gating at all), and
+    this file may touch no other file, so no committed snapshot fixture
+    can be added alongside it either. The comparison target is instead
+    resolved by the SAME `git` the test-runner already has, AT TEST RUN
+    TIME -- never guessed by this agent -- which is a stronger and more
+    literal reading of the AC's own wording ("byte-identical to its
+    committed state on the merge-base with develop") than a hand-typed
+    sha256 manifest would have been anyway.
+    """
+    result = subprocess.run(
+        ["git", "merge-base", "HEAD", "develop"],
+        cwd=str(repo_root), capture_output=True, text=True, timeout=15,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"git merge-base HEAD develop failed (exit {result.returncode}): "
+            f"{result.stderr.strip()}"
+        )
+    return result.stdout.strip()
+
+
+def _git_committed_blob_sha256(commit, relpath, repo_root):
+    """sha256 of `relpath` as it existed at `commit` (`git show
+    <commit>:<relpath>`), computed from the raw blob bytes -- never reads
+    the live working-tree file."""
+    result = subprocess.run(
+        ["git", "show", f"{commit}:{relpath}"],
+        cwd=str(repo_root), capture_output=True, timeout=15,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"git show {commit}:{relpath} failed (exit {result.returncode}): "
+            f"{result.stderr.decode('utf-8', errors='replace').strip()}"
+        )
+    return hashlib.sha256(result.stdout).hexdigest()
+
+
+class ClosedCrSpecsUntouchedTest(unittest.TestCase):
+    """CR-MDB-021 §S4 AC -- 'CLOSED CR specs under docs/changes/ are
+    unmodified -- git diff touches no CR-MDB-0{01..16}-*.md'. PRD §D9:
+    waves 1-2 'legitimately deployed [through chezmoi] pre-installer and
+    their history stands'; rewriting them would falsify the record."""
+
+    def test_closed_cr_specs_byte_identical_to_merge_base_with_develop(self):
+        closed_specs = _closed_cr_spec_files()
+        # sanity -- the 001-016 range yields the 15 files that exist today
+        # (007 has no separate spec file); catches an accidental empty scan.
+        self.assertEqual(
+            len(closed_specs), 15,
+            f"expected exactly 15 closed CR spec files (001-016, minus 007 "
+            f"which has no separate file) under {CHANGES_DIR}; found "
+            f"{len(closed_specs)}: {[p.name for p in closed_specs]}",
+        )
+        try:
+            merge_base = _git_merge_base_with_develop(REPO_ROOT)
+        except RuntimeError as exc:
+            self.fail(f"could not resolve merge-base with develop: {exc}")
+
+        mismatched = []
+        for path in closed_specs:
+            relpath = str(path.relative_to(REPO_ROOT))
+            try:
+                committed_sha256 = _git_committed_blob_sha256(merge_base, relpath, REPO_ROOT)
+            except RuntimeError as exc:
+                self.fail(str(exc))
+            live_sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
+            if live_sha256 != committed_sha256:
+                mismatched.append(relpath)
+        # NEGATIVE/EXACT -- zero closed CR specs differ from their
+        # committed state on the merge-base with develop.
+        self.assertEqual(
+            mismatched, [],
+            f"{len(mismatched)} closed CR spec file(s) differ from their "
+            f"committed state on the merge-base with develop -- closed CRs "
+            f"are historical record and must not be edited: {mismatched}",
         )
 
 
