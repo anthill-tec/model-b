@@ -207,6 +207,22 @@ documenting its own history — precisely the `test_ac7` trap CR-MDB-017 had to 
       `CR-MDB-0{01..16}-*.md`. Their chezmoi steps are historical record (PRD §D9).
 - [ ] The §S4 check distinguishes instructing from describing: `AGENTS.md` may still NAME the
       retired gates when recording that they were retired.
+- [ ] **The §S4 gate states its true scope.** It is a REGRESSION PIN on the three phrasings
+      measured 2026-09-21 (`AGENTS.md:49`, `AGENTS.md:109`, `contracts/lean-ctx.md:33`), not a
+      general natural-language instruction detector — a differently-phrased future instruction
+      will not trip it, and its docstrings must say so rather than implying an unconditional
+      prohibition. Catching new phrasings is a gap-analysis/CR-review duty, not this test's.
+      *(VERIFY ruling C3, accepted: broadening the regexes would recreate the `test_ac7`
+      over-firing trap in reverse — English has no structural hook equivalent to §S1's AST
+      shapes, so the honest move is to narrow the CLAIM, not the code.)*
+- [ ] The gate's file scope matches its own wording: **every** open CR is scanned, CR-MDB-022 and
+      CR-MDB-028 included. A scope narrower than the AC it serves is the same oversell defect at
+      the file-selection layer.
+- [ ] `ClosedCrSpecsUntouchedTest` **skips**, never fails, when `develop`/`origin/develop` cannot
+      be resolved. Reproduced 2026-09-22 in a fresh single-branch clone: it reported
+      `fatal: Not a valid object name develop` as a closed-CR integrity failure. A gate that
+      fails on an environment precondition rather than a Model B property is the exact defect
+      this CR exists to remove — shipping one inside it would be self-refuting.
 
 ### Suite
 - [ ] Re-measured at RED and again at GREEN. Baseline **361 / 6F / 12S** (2026-09-22 05:09:48Z,

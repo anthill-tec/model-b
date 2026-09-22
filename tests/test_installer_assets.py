@@ -751,11 +751,11 @@ CHANGES_DIR = REPO_ROOT / "docs" / "changes"
 MEMORY_TEMPLATES_DIR = SKILLS_SRC_DIR / "memory-templates"
 
 # The exact OPEN CR numbers in scope for the §S4 prose-instruction gate,
-# per dispatch (007 has no separate spec file; 022/027/028 are open CRs but
-# were not named in scope and are deliberately excluded here -- CLOSED CRs
+# per dispatch (007 has no separate spec file; 027 is an open CR but was
+# not named in scope and is deliberately excluded here -- CLOSED CRs
 # 001-016 are covered separately, by ClosedCrSpecsUntouchedTest below, never
 # by this gate).
-OPEN_CR_NUMBERS_IN_S4_SCOPE = (17, 18, 19, 20, 21, 23, 24, 25, 26, 29, 30, 31, 32, 33, 34, 35)
+OPEN_CR_NUMBERS_IN_S4_SCOPE = (17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 28, 29, 30, 31, 32, 33, 34, 35)
 
 
 def _chezmoi_prose_instruction_scope_files():
@@ -844,10 +844,30 @@ def _iter_prose_paragraphs(text):
 
 
 def find_chezmoi_prose_instructions(text, filename="<string>"):
-    """CR-MDB-021 §S4 -- detects prose that INSTRUCTS a chezmoi step as
-    part of Model B CR work, as distinct from merely NAMING/describing the
-    retired mechanism (a closed CR's history, a bundle-name list entry, a
-    quoted citation of another line, or the user's own dotfile discipline).
+    """CR-MDB-021 §S4 -- REGRESSION PIN, not a general natural-language
+    instruction detector. This function fires on exactly the three curated
+    phrasings in _CHEZMOI_PROSE_TRIGGERS -- "follows chezmoi discipline",
+    "goes through chezmoi", "(chezmoi-managed" -- because those were the
+    precise three sites measured live in Model B prose on 2026-09-21
+    (AGENTS.md:49, AGENTS.md:109, contracts/lean-ctx.md:33). It does NOT
+    detect a differently-phrased future instruction (e.g. "run chezmoi
+    apply after each ~/.claude edit", "sync this via chezmoi", "chezmoi
+    manages the memory directory") -- those phrasings simply do not match
+    any of the three fixed regexes and pass through silently. Catching a
+    reworded or novel instruction is a gap-analysis / CR-review
+    responsibility, not this test's: broadening the regexes to guess at
+    unseen phrasings would recreate the over-firing trap this gate was
+    built to avoid (see the docstring below and the exemption list, which
+    exist because a naive substring match on "chezmoi" fires on citations,
+    bundle-name list entries, and the user's own dotfile discipline).
+
+    Contrast with ChezmoiInvocationGateTest (§S1, find_chezmoi_invocations
+    above): THAT gate is self-enforcing because it hooks real Python AST
+    shapes (shutil.which("chezmoi") / a subprocess argv head bound to it)
+    and so generalises to any future code using that API, regardless of
+    surrounding phrasing. This prose gate has no equivalent structural
+    anchor -- natural-language phrasing has no AST -- so it cannot borrow
+    that self-enforcing framing and must not be described as if it did.
 
     Paragraph-scoped (see _iter_prose_paragraphs). A paragraph is reported
     once, on its first matching trigger, if it contains one of the three
@@ -873,12 +893,28 @@ def find_chezmoi_prose_instructions(text, filename="<string>"):
 
 
 class ChezmoiProseInstructionGateTest(unittest.TestCase):
-    """CR-MDB-021 §S4 -- no LIVE Model B surface (AGENTS.md,
+    """CR-MDB-021 §S4 -- REGRESSION PIN on the three exact prescriptive
+    phrasings measured live in Model B prose on 2026-09-21: "follows
+    chezmoi discipline" (AGENTS.md:49), "goes through chezmoi"
+    (contracts/lean-ctx.md:33), and "(chezmoi-managed" (AGENTS.md:109).
+    This is NOT a general natural-language chezmoi-instruction detector --
+    it asserts that those three sites, and only those three phrasings
+    wherever they recur, no longer instruct a chezmoi step across AGENTS.md,
     contracts/lean-ctx.md, skills-src/memory-templates/*.md,
-    docs/changes/README.md, or a named OPEN CR spec) may INSTRUCT a
-    chezmoi diff/add/apply step as part of Model B CR work. Static text
-    inspection only (see find_chezmoi_prose_instructions); this class
-    never runs chezmoi and never reads anything under $HOME."""
+    docs/changes/README.md, and the named OPEN CR specs. A differently
+    phrased future instruction (e.g. "run chezmoi apply after each
+    ~/.claude edit", "sync this via chezmoi") will NOT be caught by this
+    gate; recognising that is a gap-analysis / CR-review responsibility at
+    review time, not a property this test can or should guarantee.
+
+    Unlike ChezmoiInvocationGateTest (§S1) -- which hooks a real Python
+    AST shape (shutil.which("chezmoi") / a subprocess argv head bound to
+    it) and therefore stays self-enforcing against any future code using
+    that API -- this gate has no structural anchor to generalise from:
+    prose has no AST. Do not describe this class as self-enforcing or as
+    a general prohibition; it is a pin on the three measured sites only.
+    Static text inspection only (see find_chezmoi_prose_instructions);
+    this class never runs chezmoi and never reads anything under $HOME."""
 
     def test_detector_bites_fires_on_genuine_instruction_only(self):
         synthetic_prose = (
@@ -980,8 +1016,30 @@ def _closed_cr_spec_files():
     )
 
 
+class _DevelopRefUnresolvable(RuntimeError):
+    """Raised by _git_merge_base_with_develop when neither `develop` nor
+    `origin/develop` can be resolved against HEAD in this clone."""
+
+
 def _git_merge_base_with_develop(repo_root):
-    """`git merge-base HEAD develop`, run against `repo_root`.
+    """Resolve the merge-base between HEAD and develop's history.
+
+    Tries `git merge-base HEAD develop` first (a local branch, present when
+    this clone has ever checked out or tracked one), then falls back to
+    `git merge-base HEAD origin/develop` (the remote-tracking ref, present
+    in a plain single-branch `git clone` that never checked out `develop`
+    locally). If NEITHER ref resolves, raises _DevelopRefUnresolvable naming
+    both attempted refs and their git errors.
+
+    A fresh single-branch clone carrying no `develop` history at all is an
+    ENVIRONMENT precondition gap, not a closed-CR-integrity violation --
+    reporting it as the latter is exactly the defect class CR-MDB-021
+    itself exists to remove (a gate failing for a reason that is not a
+    Model B property; see the CR's own Context). The caller
+    (ClosedCrSpecsUntouchedTest) must `self.skipTest` on
+    _DevelopRefUnresolvable, never `self.fail` -- the substantive
+    byte-identity assertion is unchanged and still runs whenever either
+    ref IS resolvable.
 
     This is how "the committed manifest" (§S4 AC) is derived here:
     this RED agent has no shell/execution tool of its own to run
@@ -996,16 +1054,19 @@ def _git_merge_base_with_develop(repo_root):
     committed state on the merge-base with develop") than a hand-typed
     sha256 manifest would have been anyway.
     """
-    result = subprocess.run(
-        ["git", "merge-base", "HEAD", "develop"],
-        cwd=str(repo_root), capture_output=True, text=True, timeout=15,
-    )
-    if result.returncode != 0:
-        raise RuntimeError(
-            f"git merge-base HEAD develop failed (exit {result.returncode}): "
-            f"{result.stderr.strip()}"
+    attempt_errors = []
+    for ref in ("develop", "origin/develop"):
+        result = subprocess.run(
+            ["git", "merge-base", "HEAD", ref],
+            cwd=str(repo_root), capture_output=True, text=True, timeout=15,
         )
-    return result.stdout.strip()
+        if result.returncode == 0:
+            return result.stdout.strip()
+        attempt_errors.append(f"{ref}: {result.stderr.strip()}")
+    raise _DevelopRefUnresolvable(
+        "neither 'develop' nor 'origin/develop' could be resolved against "
+        "HEAD (tried in that order): " + "; ".join(attempt_errors)
+    )
 
 
 def _git_committed_blob_sha256(commit, relpath, repo_root):
@@ -1042,6 +1103,18 @@ class ClosedCrSpecsUntouchedTest(unittest.TestCase):
         )
         try:
             merge_base = _git_merge_base_with_develop(REPO_ROOT)
+        except _DevelopRefUnresolvable as exc:
+            # ENVIRONMENT precondition gap, not a closed-CR-integrity
+            # violation -- a fresh single-branch clone carries no `develop`
+            # history at all, so this check simply cannot run here.
+            # Reporting that as an integrity FAILURE is exactly the defect
+            # class CR-MDB-021 exists to remove (a gate failing for a
+            # reason that is not a Model B property) -- skip, don't fail.
+            self.skipTest(
+                f"cannot resolve 'develop' or 'origin/develop' in this "
+                f"clone -- the closed-CR byte-identity check needs a clone "
+                f"that carries develop's history: {exc}"
+            )
         except RuntimeError as exc:
             self.fail(f"could not resolve merge-base with develop: {exc}")
 
