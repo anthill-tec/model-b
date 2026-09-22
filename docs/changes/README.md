@@ -456,3 +456,18 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   `queue` that returned titles would make this checkable read-only by anyone. The 012 file is
   explicitly a SEED, not the finished release spec: its dependency line, criteria list and
   baseline figure are snapshots to be re-derived at release-open.
+- 2026-09-21 — **CR-MDB-021 MOVED TO THE FRONT of the pending wave-2 set** (user directive). It
+  has no dependencies, so it can run at any position, and leaving it at fourteen was costing
+  every CR in front of it: until the six `chezmoi diff` gates are retired, every RED brief must
+  name them, every GREEN and VERIFY must classify them, and — the cost that actually bit — a
+  genuine new failure can hide inside an expected-failure set. That is how
+  `test_ac7_repo_agents_md_no_longer_claims_workflow_cycle_id_injection` survived for weeks:
+  the bucket had seven things in it and nobody re-examined the bucket. CR-MDB-017 cleared ac7,
+  leaving six with one owner; 021 removes that owner. **This does NOT shorten the path to
+  release** — CR-MDB-012 depends on all 25 CRs and re-sequencing changes when work happens, never
+  how much (an earlier framing of this as "the shortest release path" was wrong and is retracted).
+  What it buys is an unambiguous signal for the thirteen CRs that follow, and it stops gates that
+  assert on the USER's dotfile tree from flapping into Model B's baseline. 021 also blocks
+  CR-MDB-032 (deps 020, 021), so it was on that CR's critical path regardless. New order:
+  `028 017 027 | 021 033 030 024 025 029 026 018 019 023 020 032 031 012`; `next` → `CR-MDB-021
+  seq=2004`. Every dependency edge still satisfied by position.
