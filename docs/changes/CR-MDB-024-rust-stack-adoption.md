@@ -115,6 +115,56 @@ Once this CR ships, reply on the #1362–#1367 thread confirming Model B has tak
 the rust stack, per their explicit request in #1367 ("If you take the rust stack, tell me and
 I will treat those four as yours from then on, so nobody double-fixes").
 
+**Also tell them vscode is retired (§S4)** — they own `crucible-report-vscode`'s origin, and
+#1369 already recorded that `vscode-crucible.py` never shipped. Retiring it on our side closes
+the loop rather than leaving them maintaining an import nobody consumes.
+
+### §S4 (ADDED 2026-09-22, user ruling) — retire the vscode agents: an IDE is not a stack
+
+**The taxonomy is the reason, not the broken client.** Model B's agents are per **stack** — a
+language, its runtime, and its test framework, which is what determines how a RED/GREEN cycle is
+run and ingested. **VS Code is an editor.** A VS Code extension is TypeScript tested with
+vitest/mocha; that is the bun/TypeScript stack, not a stack of its own. The four `vscode-*`
+agents were a category error, and the symptoms follow from it: the generator never owned them,
+`generator/stacks/` has no vscode entry, no `vscode-crucible.py` was ever shipped (Crucible
+#1369), and the deployed definitions cite no client at all — they name `vitest` only. They could
+not have ingested a test run if asked.
+
+The live deployed copies were deleted 2026-09-22 (a session-level operational fix — the fleet
+went from 24 definitions to 20). This section removes the repo-side substrate, which is gated and
+therefore cannot be done by hand:
+
+- `skills-src/crucible-report-vscode/` — deleted. It is a Crucible-origin import, so
+  `skills-src/CRUCIBLE-HANDOVER.md`'s bundle roster drops from 7 to 6, and the byte-identity /
+  coverage gates in `tests/test_skills_handover.py` move with it.
+- `skills-src/crucible/references/vscode.md` and the vscode rows in `skills-src/crucible/SKILL.md`
+  — deleted; the `crucible` skill must not document a client that does not exist.
+- `generator/build.py`'s BESPOKE list and `tests/test_agent_generator.py:101-111` lose the four
+  `vscode-*` names (the same list §S2 edits for rust, so the two land together or the list is
+  wrong twice).
+- `modelb_axi/scaffold.py` and `modelb_axi/cli.py` drop `vscode` from the selectable stacks.
+- `tests/test_client_role_contract.py`'s `API_PATH_BUNDLES = ("crucible-report-vscode",)`
+  exemption and its `test_s3_api_path_exemption_constant_names_vscode_bundle` gate are deleted
+  outright — an exemption whose only member is gone is dead weight, and leaving it would make the
+  next reader hunt for a bundle that no longer exists.
+- `AGENTS.md`'s `crucible-report-{arduino,bun,java,python,rust,vscode}` enumeration and the
+  13-bundle count are corrected; `docs/changes/README.md` records the retirement with its reason.
+
+**§S4 acceptance criteria**
+
+- [ ] Zero `vscode` references under `skills-src/`, `generator/`, `modelb_axi/` and `tests/`,
+      other than historical mentions in closed CR specs and `archive/`.
+- [ ] `skills-src/` carries **12** bundles and `CRUCIBLE-HANDOVER.md` documents **6** imported
+      ones; the handover gates assert the new counts rather than being deleted.
+- [ ] `generator/build.py --check` is clean, and the BESPOKE list names only definitions that
+      still exist.
+- [ ] `modelb-axi init --stacks vscode` is rejected with a message naming the supported stacks.
+- [ ] The suite is green at its then-current baseline; no gate is deleted merely because it
+      failed — each is re-pointed or removed with its subject.
+- [ ] The retirement and its taxonomic reason (an IDE is not a stack) are recorded in the queue
+      footer, so the category error is not re-made by a future reader who sees TypeScript
+      extension work and reaches for a vscode agent.
+
 ## Acceptance criteria
 
 ### §S1

@@ -30,7 +30,7 @@ Queue rows enumerate the whole delivery (structure only). **Live status lives on
 | [CR-MDB-018](CR-MDB-018-crucible-discovery-capture.md) | Crucible discovery capture: probe `crucible-axi`, read the client manifest, persist `[install].clients_dir` | 5 | 014, 015 |
 | [CR-MDB-019](CR-MDB-019-hook-runtime-correctness.md) | Hook runtime correctness: status-contract-document re-pin, arduino stack marker (§S3 opencode emitter struck 2026-09-21 — non-target) | 5 | 015, 018 |
 | [CR-MDB-020](CR-MDB-020-client-path-anchoring.md) | Client-path anchoring: every client reference resolves to Crucible's published contract; Model B maintains none of their clients | 5 | 017, 022 |
-| [CR-MDB-024](CR-MDB-024-rust-stack-adoption.md) | Rust as a fifth generated stack: close the orphaned `~/.claude/agents/rust-*` gap CR-CRU-042 assigns to Model B | 5 | 017 |
+| [CR-MDB-024](CR-MDB-024-rust-stack-adoption.md) | Rust as a fifth generated stack + retire the vscode agents (an IDE is not a stack) | 5 | 017 |
 | [CR-MDB-021](CR-MDB-021-chezmoi-retirement.md) | Retire chezmoi introspection from the test suite: eight false-green release gates removed, policy self-enforcing | 5 | — |
 | [CR-MDB-033](CR-MDB-033-installer-correctness.md) | Installer correctness: one `target_root` in `install.toml`, atomic writes everywhere, unmanaged files never clobbered, manifest always consulted | 5 | — |
 | [CR-MDB-030](CR-MDB-030-pi-hook-runtime.md) | Pi hook runtime: default-export factory, payload transport, Pi tool-name contract in the seven scripts, matcher honoured, real fail-closed, worktrees carry `.pi/extensions/` (P0 — every hook is a no-op on the only target today) | 5 | — |
@@ -520,3 +520,16 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   presence, the real-world proof being `@pi-archimedes/` — an empty directory providing nothing,
   which CR-MDB-027 nonetheless named as the dispatch provider. Sequenced after 025 (which defines
   what the agents require) and 033 (which repairs the installer paths it rides).
+- 2026-09-22 — **The vscode agents are retired (user ruling): an IDE is not a stack.** Model B's
+  agents are per STACK — a language, its runtime and its test framework, which is what decides how
+  a RED/GREEN cycle runs and ingests. VS Code is an editor; a VS Code extension is TypeScript
+  tested with vitest/mocha, i.e. the bun/TypeScript stack wearing a costume. Every symptom follows
+  from the category error: the generator never owned the four `vscode-*` definitions,
+  `generator/stacks/` has no vscode entry, `vscode-crucible.py` was never shipped (Crucible
+  #1369), and the deployed files cite no client at all — they could not have ingested a run if
+  asked. The live deployed copies were deleted the same day (fleet 24 → 20 definitions); the
+  repo-side substrate — the imported `crucible-report-vscode` bundle, the `crucible` skill's
+  vscode reference, the BESPOKE lists, the scaffold's stack choices, and the single-member
+  `API_PATH_BUNDLES` exemption that exists only for it — is retired by **CR-MDB-024 §S4**, filed
+  there because that CR already converts the other ungenerated set (rust) and already owes
+  Crucible a message on the same thread.
