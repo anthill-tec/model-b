@@ -41,6 +41,7 @@ Queue rows enumerate the whole delivery (structure only). **Live status lives on
 | [CR-MDB-032](CR-MDB-032-test-suite-relocation.md) | Test-suite relocation: no dev-checkout reach, no real-home assertions, no dead/self-defeating gates, one helper module, a Pi end-to-end | 5 | 020, 021 |
 | [CR-MDB-027](CR-MDB-027-subagent-dispatch-on-pi.md) | Sub-agent dispatch on Pi: decide what provides it, given Pi core has none (decision CR — RULED 2026-09-21: `pi-archimedes`, DN §D16; unblocks the CR-025 rewrite) | 5 | — |
 | [CR-MDB-028](CR-MDB-028-worktree-flow-scheduling-migration.md) | Retire `worktree-flow.py`'s DB half: scheduling moves to Crucible's API (P0 — above the routing strategy, user ruling) | 5 | 022 |
+| [CR-MDB-035](CR-MDB-035-prd-criteria-reconciliation.md) | Reconcile PRD §4 success criteria with the shipped tree | 5 | 021, 025, 031 |
 | [CR-MDB-034](CR-MDB-034-archive-mapping.md) | `archive/mapping.md`: where every relocated file went (supersedes CR-MDB-012 — a release is NOT a CR) | 5 | — |
 
 **— v1.0.0 ships here —** (the release is a BOUNDARY EVENT, not a queue row: the wave drains, the user approves, `git-workflow` §Releases executes it, a milestone records it afterwards. No release CR, no close-out wave.)
@@ -488,3 +489,19 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   wave-2 sequence, its spec retained under a SUPERSEDED banner recording why. The ships-here row
   now says what the boundary is rather than naming a CR. Still open: the request to Crucible for a
   `queue` read verb that returns titles, which would make the parity rule checkable read-only.
+- 2026-09-22 — **CR-MDB-012 VOIDED; its one piece of real work refiled as CR-MDB-035.** A re-read
+  before voiding asked whether anything in 012 was unbuilt WORK rather than release ritual. One
+  thing was: **§S1, re-measuring PRD §4 against the shipped tree**. Measured that morning — §4.1
+  holds (core = 69 lines ≤ 100), §4.2 holds (`test_client_verb_sweep` 25 OK), §4.3's "`memory/`"
+  no longer exists (it is `skills-src/memory-templates/`), §4.4's "16 generated / 13 bespoke" is a
+  snapshot CR-025 and CR-031 will invalidate, §4.5 needs restating now Crucible 0.2.x has shipped
+  (and `vscode-crucible.py` has not), and **§4.6 demands `chezmoi diff` cleanliness — the exact
+  property CR-MDB-021 is approved to delete.** A design contract that contradicts an approved CR
+  is the worst kind of drift: both surfaces look authoritative. That reconciliation is now
+  **CR-MDB-035** (depends 021, 025, 031; sequenced late, before 034). The board has **no
+  un-supersede verb**, so 012 could not be renamed back into a live CR — it was voided
+  (`state: VOID`, `brokenDependants=0`) and the work refiled under its own id. Note the board
+  still renders the voided row as `PENDING`: the `queue` projection carries neither `title` nor
+  `lifecycle.state`, which is the subject of the CReq drafted at
+  `docs/research/CREQ-crucible-queue-projection.md` — undelivered, because `Mainline - Crucible`
+  is inactive and we never start a provider's session to deliver mail.

@@ -1,7 +1,14 @@
 # CR-MDB-012 — Release 1.0.0 (SUPERSEDED — a release is not a CR)
 
-**Status:** SUPERSEDED 2026-09-21 by **CR-MDB-034** (`archive/mapping.md`). **Do not execute this
-document.** It is retained only so the reasoning that retired it stays on the record.
+**Status:** **VOID** 2026-09-22 (board `state: VOID`), after being superseded by **CR-MDB-034**.
+**Do not execute this document.** It is retained only so the reasoning that retired it stays on
+the record.
+
+A re-read on 2026-09-22 found ONE part of it was real unbuilt work rather than release ritual:
+**§S1's re-measurement of PRD §4**. Measured that day, two criteria hold, three are stale and
+criterion 6 (`chezmoi diff` clean) *contradicts approved CR-MDB-021*. That work is now
+**CR-MDB-035**. The board cannot un-supersede an entry, so 012 could not simply be renamed —
+it was voided and the work refiled under its own id.
 
 **Why it was wrong.** This CR treated the release as a work item: 25 dependency edges expressing
 "the wave must finish", acceptance criteria firing at release time, and — worst — the release
@@ -23,7 +30,8 @@ PROCEDURE copied into the spec. All three are errors, ruled by the user on 2026-
 | Release boundary rules, the 10-step `git flow release`, build-from-master, ask-before-releasing | `skills-src/git-workflow/SKILL.md` §Releases (memory) |
 | "A release is not a CR"; work a release needs is an ordinary CR | `skills-src/cr-authoring/SKILL.md` §queue (memory) |
 | Board-vs-repo title parity (the drift that exposed it) | `skills-src/cr-authoring/SKILL.md` §queue, as a standing rule checked when a spec's subject changes — plus a request to Crucible for a `queue` that returns titles |
-| `archive/mapping.md` | **CR-MDB-034** — the only genuine deliverable here |
+| `archive/mapping.md` | **CR-MDB-034** |
+| §S1 — re-measure PRD §4, amend what no longer describes the design | **CR-MDB-035** (the other genuine deliverable, found on the 2026-09-22 re-read) |
 | PRD §4 re-measurement, the zero-failure suite, closing the record | the release ritual in memory; the suite is simply expected to be green when a release is proposed |
 
 The original text follows, unedited below this banner, as the record of what was retired.
