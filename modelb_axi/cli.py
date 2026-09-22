@@ -20,6 +20,8 @@ from pathlib import Path
 from modelb_axi import __version__
 from modelb_axi.config import load_manifest_hashes, write_install_toml
 from modelb_axi.deploy import (
+    HOOKS_SCRIPTS_STORE_RELDIR,
+    STORE_RELDIR,
     TOOL_SCRIPTS_STORE_RELDIR,
     DeployError,
     default_asset_root,
@@ -216,13 +218,23 @@ def _deploy_stage(
     force_managed: bool,
 ) -> int:
     """Stage 3 (§S6): manifest-driven deploy, then the config write LAST
-    — any deploy failure exits non-zero with NO install.toml written."""
+    — any deploy failure exits non-zero with NO install.toml written.
+
+    ``reinstall`` no longer gates the manifest read (CR-MDB-033 §S3): the
+    prior manifest is consulted whenever one exists under ``home``, so a
+    deploy made without the flag cannot re-clobber a hand-modified
+    managed file. The flag remains the CLI's state gate in :func:`main`.
+    """
     asset_root = default_asset_root()
-    prior_hashes = load_manifest_hashes(home) if reinstall else {}
+    # Manifest protection follows manifest PRESENCE, not a flag
+    # (load_manifest_hashes returns {} when install.toml is absent).
+    prior_hashes = load_manifest_hashes(home)
+    unmanaged: list[str] = []
     try:
         manifest, skipped = deploy_assets(
             asset_root, target_root, selected,
             prior_hashes=prior_hashes, force_managed=force_managed,
+            unmanaged=unmanaged,
         )
     except DeployError as exc:
         print(f"modelb-axi: error: {exc}", file=sys.stderr)
@@ -233,12 +245,27 @@ def _deploy_stage(
             f"{rel} (hash mismatch; re-run with --force-managed to overwrite)",
             file=sys.stderr,
         )
+    for rel in unmanaged:
+        # CR-MDB-033 §S3: a file absent from the manifest is not Model
+        # B's (DN §D3) — distinct vocabulary from the managed skip above,
+        # and deliberately names NO flag: --force-managed adopts nothing.
+        print(
+            f"modelb-axi: warning: unmanaged: {target_root / rel} — not "
+            f"Model B's; left untouched (no flag overwrites it)",
+            file=sys.stderr,
+        )
     write_install_toml(
         home,
         install={
             "version": __version__,
             "harnesses": selected,
             "asset_root": str(asset_root),
+            # CR-MDB-033 §S1: the deployed root and its per-asset-class
+            # dirs, recorded once here so the scaffold reads them instead
+            # of re-deriving a second path rule from Path.home().
+            "target_root": str(target_root),
+            "skills_dir": str(target_root / STORE_RELDIR),
+            "hooks_scripts_dir": str(target_root / HOOKS_SCRIPTS_STORE_RELDIR),
             # CR-MDB-022 §S4: where the adopted workflow tooling landed,
             # so a skill can name the script path without re-deriving it.
             "tool_scripts_dir": str(target_root / TOOL_SCRIPTS_STORE_RELDIR),
