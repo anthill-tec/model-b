@@ -1077,6 +1077,17 @@ class DeployEngineTest(unittest.TestCase):
             f"AC5: the hash-mismatch detection must name the affected "
             f"file; got combined={combined!r}",
         )
+        # NEGATIVE (CR-MDB-033 §S3 regression guard) -- a hash-mismatched
+        # MANAGED file (recorded in the prior manifest) must keep using
+        # the existing hand-modified-managed vocabulary; the CR-MDB-033
+        # "unmanaged:" wording is reserved for files ABSENT from the
+        # manifest entirely (AC3) and must never leak into this path.
+        self.assertNotIn(
+            "unmanaged:", combined,
+            "CR-MDB-033 §S3: a hash-mismatched MANAGED file must never be "
+            "reported via the 'unmanaged:' wording reserved for files "
+            f"absent from the manifest; got combined={combined!r}",
+        )
 
     def test_force_managed_flag_overwrites_hand_modified_file_and_updates_manifest(self):
         first = self._run_install()
@@ -1114,6 +1125,17 @@ class DeployEngineTest(unittest.TestCase):
             skill_entries[0]["sha256"], _sha256_file(store_skill_md),
             "AC5: the manifest entry's sha256 must be updated to match "
             "the --force-managed-restored file",
+        )
+        # NEGATIVE (CR-MDB-033 §S3 regression guard) -- same vocabulary
+        # guard as the hand-modified-detection test above: this file WAS
+        # in the manifest, so the existing --force-managed message
+        # applies, never the new unmanaged-file wording (AC3).
+        combined = second.stdout + second.stderr
+        self.assertNotIn(
+            "unmanaged:", combined,
+            "CR-MDB-033 §S3: --force-managed overwriting a MANAGED "
+            "hand-modified file must never be reported via the "
+            f"'unmanaged:' wording; got combined={combined!r}",
         )
 
     def test_deploy_failure_leaves_no_install_toml_atomicity(self):
