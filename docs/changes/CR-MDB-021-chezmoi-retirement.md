@@ -209,11 +209,14 @@ documenting its own history — precisely the `test_ac7` trap CR-MDB-017 had to 
       retired gates when recording that they were retired.
 
 ### Suite
-- [ ] Re-measured at RED and again at GREEN. From the measured baseline of **361 / 6F / 12S**
-      (2026-09-22 05:09:48Z, `b2fb822`), the predicted post-CR state is **354 collected
-      (361 − 8 removed + 1 added), 0 failures, 11 skips** — all six failures are the removed
-      gates, and skips drop by one because `test_chezmoi_status_exits_zero` is collected-but-
-      skipped under the realhome gate. A deviation from 354/0F/11S is investigated, not accepted.
+- [ ] Re-measured at RED and again at GREEN. Baseline **361 / 6F / 12S** (2026-09-22 05:09:48Z,
+      `b2fb822`). **MEASURED after C1: 356 collected, 0 failures, 11 skips** — 361 − 8 removed
+      + 3 added (the §S1 gate ships with two detector-bites tests, not one test). All six failures
+      were the removed gates; skips drop by one because `test_chezmoi_status_exits_zero` was
+      collected-but-skipped under the realhome gate. C2 adds the §S4 gate and its fixtures, so the
+      final figure is re-measured at C2 GREEN, not predicted here.
+      *(This AC previously read "354 (+1 added)", written before C1 shipped. Corrected against the
+      measured run — a predicted count is not evidence.)*
 - [ ] `AGENTS.md`'s Testing & QA baseline sentence (`:138`) records the new figures, and `:135`
       no longer lists `chezmoi diff` cleanliness among what the gates assert. **Re-recorded ONCE,
       as a close-out step of the final cycle** — not per-cycle.
@@ -226,7 +229,7 @@ corrected). No `modelb_axi/` change, no `skills-src/` content change, no install
 
 ## Risk
 
-- The suite's collected-test count drops by 8 and gains 1. Any consumer pinning a literal count
+- The suite's collected-test count drops by 8 and gains 3. Any consumer pinning a literal count
   must move in the same commit — `AGENTS.md:138`'s baseline sentence is the only such consumer
   (measured: no test asserts a literal collected count).
 - Removing a method from a CLOSED CR's gate set is a sanctioned amendment, justified by the
