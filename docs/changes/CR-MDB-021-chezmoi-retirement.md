@@ -10,15 +10,23 @@
 
 ## Amendments 2026-09-21 (from `audits/2026-09-21-codebase-review-{tests,docs}.md`)
 
-- **Measured today: all six `chezmoi diff` gates FAIL** (`~/.claude/AGENTS.md` mode 100600→100644
+- **Baseline re-measured 2026-09-22 05:09:48Z at `b2fb822`: 361 tests / 6 failures / 12 skips.**
+  All six failures are this CR's `chezmoi diff` gates (`~/.claude/AGENTS.md` mode 100600→100644
   and a removed block in the user's live file vs their chezmoi source) — the false-green→false-red
-  flap this CR predicted. The suite is 240/7F/12S, not the 194-based arithmetic in the Suite AC
-  (`:139-142`); re-measure at RED against 240 and record the post-removal baseline.
-- **§S4 scope extended to `docs/research/` and `contracts/`:** PRD §4.6 ("`chezmoi diff` clean
-  after every wave" as a success criterion), PRD §D9 ("chezmoi remains … for destroying legacy
-  files"), `DN-scaffold-packaging.md:59-61` §6 (installer prints `chezmoi forget/destroy` paths —
-  the very message §S3 drops), `contracts/lean-ctx.md:33-34`, and `AGENTS.md:49` (the "chezmoi-
-  managed, so anything written there is reverted" rationale → "not Model B-owned").
+  flap this CR predicted. **Both earlier figures in this spec are superseded**: the Suite AC's
+  194-based arithmetic and this amendment's own "240/7F/12S". Predicted post-CR state is derived
+  in the Suite AC below; re-measure at RED rather than trusting any number written here.
+- **§S4 scope: `contracts/` yes, `docs/research/` NO.** `contracts/lean-ctx.md:33` ("every
+  `~/.claude` mutation in this workflow goes through chezmoi") is in scope. **PRD §4.6 is NOT —
+  it belongs to CR-MDB-035**, which reconciles all six PRD §4 criteria together; amputating one
+  early would leave §4 half-reconciled by two CRs. PRD §D9's legacy narrative ("chezmoi remains
+  only for the user's own dotfile operations … never as a CR deployment channel again") is design
+  rationale that already says what this CR enforces — it stays, in both CRs.
+- **Correction to an earlier amendment:** it claimed `DN-scaffold-packaging.md:59-61` §6 describes
+  the installer printing `chezmoi forget/destroy` paths, "the very message §S3 drops". Measured
+  2026-09-22: **`modelb_axi/` contains zero `chezmoi` references** — that print was never built.
+  The DN describes unshipped behaviour (out of scope here); the message §S3 actually rewords is in
+  `tests/test_realhome_supersede.py:346,350`.
 - **The `chezmoi` skill BUNDLE is not this CR's** — its retirement is CR-MDB-031 §S4 (§S0
   question). This CR only removes chezmoi from the tests and the prose. `ChezmoiSkillS3Test`
   (`tests/test_git_chezmoi_skills.py:151-233`, pins a retracted quirk claim in a *deployed* file)
@@ -72,11 +80,11 @@ repo archive — verified per module:
 |---|---|---|
 | `test_core_split.py:254`, `:296` | `test_s5_chezmoi_diff_clean_on_cr_touched_paths`, `test_s5_chezmoi_apply_dry_run_no_shim_mentions` | the `§S5` shim-removal + archive assertions (`:207-252`) |
 | `test_model_b_skill.py:232` | `test_s4_chezmoi_diff_clean_on_cr_touched_paths` | `test_s4_memory_shim_files_removed_and_archived_under_wave2_with_preserved_content` (`:212`) |
-| `test_crucible_skill.py:329` | `test_s4_chezmoi_diff_clean_on_cr_touched_paths` | `test_s4_ten_skill_dirs_and_memory_stub_removed_with_archived_content` (`:278`) |
+| `test_crucible_skill.py:392` | `test_s4_chezmoi_diff_clean_on_cr_touched_paths` | `test_s4_ten_skill_dirs_and_memory_stub_removed_with_archived_content` (`:278`) |
 | `test_cr_authoring_skill.py:231` | `test_s3_chezmoi_diff_clean_on_cr_touched_paths` | `test_s3_legacy_memory_files_removed_with_archived_content` (`:199`) |
 | `test_git_chezmoi_skills.py:272` | `test_s4_chezmoi_diff_clean_on_cr_touched_paths` | `test_s4_legacy_memory_files_removed_with_archived_content` (`:238`) |
 | `test_memory_model.py:281` | `test_s4_chezmoi_diff_clean_on_cr_touched_paths` | `test_s3_deletion_targets_removed_with_content_preserving_archive` (`:165`) + `test_s4_global_memory_has_exactly_the_six_d5_files` |
-| `test_realhome_supersede.py:335` | `ChezmoiRoundTripPreconditionTest.test_chezmoi_status_exits_zero` | none needed — it probes the user's dotfile source health, not a Model B invariant |
+| `test_realhome_supersede.py:392` (class; method `:400`, argv `:403`) | `ChezmoiRoundTripPreconditionTest.test_chezmoi_status_exits_zero` | none needed — it probes the user's dotfile source health, not a Model B invariant |
 
 The removals are sanctioned amendments to CLOSED CRs (001, 002, 003, 004, 005, 006, 016):
 the mechanism is retired, the acceptance criterion each gate was attached to is retained by
@@ -86,21 +94,38 @@ its sibling, and the policy authorising it is on record in-tree.
 
 ### §S1 — The guard that makes the policy self-enforcing
 Add to `tests/test_installer_assets.py` (beside the existing zero-chezmoi-refs-under-
-`generator/` gate at `:370`) a repo-side grep gate asserting that no module under `tests/`,
-`modelb_axi/`, or `hooks-src/scripts/` invokes the `chezmoi` binary — no `"chezmoi"` in a
-`subprocess` argv, no `shutil.which("chezmoi")`. Static source inspection only; the gate
-never runs `chezmoi` itself. This is the RED: it fails on the eight methods that exist
-today.
+`generator/` gate at `:446`) a repo-side gate asserting that no module under `tests/`,
+`modelb_axi/`, or `hooks-src/scripts/` **invokes** the `chezmoi` binary. Static source
+inspection only; the gate never runs `chezmoi` itself. This is the RED: it fails on the eight
+methods that exist today.
+
+**The matcher must detect INVOCATION, not the word.** A grep for the quoted token `"chezmoi"`
+false-REDs on three lines this CR deliberately retains — `test_git_chezmoi_skills.py:169`
+(`assertEqual(..., "chezmoi")` on the shipped SKILL.md's frontmatter name), `:344`
+(`assertIn("chezmoi", content.lower())`), and `test_installer_assets.py:89` (`"chezmoi"` in the
+Model-B-owned bundle tuple). The gate matches only:
+
+- `shutil.which("chezmoi")`, and
+- a `subprocess` argv whose FIRST element is `chezmoi` or a variable bound to `shutil.which`.
+
+This is the same defect class as the `test_ac7` substring gate CR-MDB-017 repaired — a whole-file
+substring count cannot tell naming a thing from doing it. The gate therefore ships with a
+**detector-bites fixture**: a synthetic source string containing both a real invocation and each
+of the three retained forms, asserting the matcher fires on the first and stays silent on the
+other three.
 
 `skills-src/chezmoi/` is explicitly exempt and stays shipped — it documents the USER's own
 dotfile discipline and is not a Model B dependency on chezmoi.
 
 ### §S2 — Remove the seven `diff`/`apply` methods and their dead constants
 Delete the seven methods named in the Context table, and the now-unreferenced
-`CHEZMOI_SCOPE_PATHS` tuples at `test_cr_authoring_skill.py:35`, `test_crucible_skill.py:62`,
+`CHEZMOI_SCOPE_PATHS` tuples at `test_cr_authoring_skill.py:35`, `test_crucible_skill.py:119`,
 `test_git_chezmoi_skills.py:39`, `test_memory_model.py:64`, plus the inline five-path argv
 lists in `test_core_split.py` and `test_model_b_skill.py`. Any `import shutil` left with no
 other consumer in the module goes with them. Sibling methods are untouched.
+
+(Measured 2026-09-22: those four tuples have exactly four consumers, each inside a method this
+CR deletes — no external consumer anywhere under `tests/` or `modelb_axi/`.)
 
 Class docstrings that describe the section as "(chezmoi discipline)" are corrected to name
 what the class actually asserts — removal plus content-preserving archive — so the module
@@ -116,18 +141,39 @@ maintains none of Crucible's client scripts it is now doubly load-bearing — bu
 failure message to drop the `chezmoi destroy/forget` instruction, since Model B no longer
 prescribes a dotfile-manager mechanism for a tree it does not own.
 
-### §S4 — Purge the retired mechanism from the prose that gates the release
-`docs/changes/`, `AGENTS.md` and `skills-src/memory-templates/` must not instruct a Model B
-CR to perform a `chezmoi diff`/`add`/`apply` step as part of Model B work. Statements about
-the USER's dotfile discipline (the `chezmoi` skill, and the project memory note) are out of
-scope and stay.
+### §S4 — Purge the retired mechanism from the prose that INSTRUCTS Model B work
+`AGENTS.md`, `contracts/lean-ctx.md`, `skills-src/memory-templates/`, `docs/changes/README.md`
+and any OPEN CR must not instruct a Model B CR to perform a `chezmoi diff`/`add`/`apply` step as
+part of Model B work. Measured targets: `AGENTS.md:49` (the "chezmoi-managed, so anything written
+there is reverted" rationale → "not Model B-owned"), `AGENTS.md:109` (the per-mutation discipline
+bullet), `AGENTS.md:135` (lists "`chezmoi diff` cleanliness" among what the gates assert), and
+`contracts/lean-ctx.md:33`.
+
+**CLOSED CRs are historical record and are NOT edited.** Twenty-two files under `docs/changes/`
+mention chezmoi; most are closed specs (001–016) whose chezmoi steps *actually happened* — PRD
+§D9 states waves 1–2 "legitimately deployed through it pre-installer and **their history
+stands**". Rewriting them would falsify the record, the same error the `.lavish/` carve-out
+exists to prevent. A closed CR describing what it did is not an instruction to do it again.
+
+Statements about the USER's dotfile discipline (the `chezmoi` skill bundle, the project memory
+note) are out of scope and stay. PRD §4.6 belongs to CR-MDB-035, not here.
+
+**Describing ≠ instructing.** `AGENTS.md:135` and `:138` NAME these gates in order to record that
+they were retired; §S4's check must not be a substring sweep, or the file becomes forbidden from
+documenting its own history — precisely the `test_ac7` trap CR-MDB-017 had to repair.
 
 ## Acceptance criteria
 
 ### §S1
 - [ ] `tests/test_installer_assets.py` carries a gate asserting zero `chezmoi` binary
-      invocations under `tests/`, `modelb_axi/`, and `hooks-src/scripts/`, matched by
-      static source inspection.
+      **invocations** under `tests/`, `modelb_axi/`, and `hooks-src/scripts/`, matched by
+      static source inspection of `shutil.which("chezmoi")` and of subprocess argv heads.
+- [ ] The gate ships with a **detector-bites fixture**: against a synthetic source containing
+      (a) a real `chezmoi` invocation, (b) `assertEqual(..., "chezmoi")`, (c)
+      `assertIn("chezmoi", ...)` and (d) `"chezmoi"` as a bundle-name list element, the matcher
+      fires on (a) ONLY.
+- [ ] The three retained live lines — `test_git_chezmoi_skills.py:169`, `:344`, and
+      `test_installer_assets.py:89` — are present and do NOT trip the gate.
 - [ ] That gate invokes no subprocess named `chezmoi` and reads nothing under `$HOME`.
 - [ ] The gate FAILS against the pre-§S2 tree (demonstrated at RED) and passes after.
 - [ ] `skills-src/chezmoi/SKILL.md` still exists and is still deployed by the installer's
@@ -142,6 +188,9 @@ scope and stay.
       retained unchanged.
 - [ ] No test module calls `shutil.which("chezmoi")`.
 - [ ] `CHEZMOI_SCOPE_PATHS` does not appear anywhere under `tests/`.
+- [ ] Every class docstring that described its section as "(chezmoi discipline)" names what the
+      class actually asserts — removal plus content-preserving archive — so no module documents a
+      mechanism it no longer uses.
 - [ ] Every sibling method named in the Context table still exists and still passes.
 - [ ] `ChezmoiRoundTripPreconditionTest` does not exist; the `~/.claude/scripts/*crucible*`
       absence assertion at `test_realhome_supersede.py:300` survives with its assertion
@@ -150,14 +199,24 @@ scope and stay.
       chezmoi invocation.
 
 ### §S4
-- [ ] No file under `docs/changes/`, and neither `AGENTS.md` nor any
-      `skills-src/memory-templates/*.md`, instructs a `chezmoi` step as part of Model B CR
-      work.
+- [ ] Neither `AGENTS.md`, `contracts/lean-ctx.md`, any `skills-src/memory-templates/*.md`,
+      `docs/changes/README.md`, nor any OPEN CR instructs a `chezmoi` step as part of Model B CR
+      work. Specifically `AGENTS.md:49`, `:109`, `:135` and `contracts/lean-ctx.md:33` no longer
+      prescribe a dotfile-manager mechanism for Model B work.
+- [ ] **CLOSED CR specs under `docs/changes/` are unmodified** — `git diff` touches no
+      `CR-MDB-0{01..16}-*.md`. Their chezmoi steps are historical record (PRD §D9).
+- [ ] The §S4 check distinguishes instructing from describing: `AGENTS.md` may still NAME the
+      retired gates when recording that they were retired.
 
 ### Suite
-- [ ] `python3 -m unittest discover -s tests -t .` collects 194 − 8 = **186 tests** plus the
-      one gate added by §S1 = **187**, with failures and skips no worse than the recorded
-      baseline of 7 and 11 minus any that were chezmoi-dependent.
+- [ ] Re-measured at RED and again at GREEN. From the measured baseline of **361 / 6F / 12S**
+      (2026-09-22 05:09:48Z, `b2fb822`), the predicted post-CR state is **354 collected
+      (361 − 8 removed + 1 added), 0 failures, 11 skips** — all six failures are the removed
+      gates, and skips drop by one because `test_chezmoi_status_exits_zero` is collected-but-
+      skipped under the realhome gate. A deviation from 354/0F/11S is investigated, not accepted.
+- [ ] `AGENTS.md`'s Testing & QA baseline sentence (`:138`) records the new figures, and `:135`
+      no longer lists `chezmoi diff` cleanliness among what the gates assert. **Re-recorded ONCE,
+      as a close-out step of the final cycle** — not per-cycle.
 - [ ] Full regression is ingested to Crucible under the cycle's agent id.
 
 ## Estimated size
@@ -167,9 +226,9 @@ corrected). No `modelb_axi/` change, no `skills-src/` content change, no install
 
 ## Risk
 
-- The suite's collected-test count drops by 8. Any consumer pinning the literal 194 must
-  move to the new number in the same commit — `AGENTS.md`'s Testing & QA baseline sentence
-  is one such consumer and is in scope for the update.
+- The suite's collected-test count drops by 8 and gains 1. Any consumer pinning a literal count
+  must move in the same commit — `AGENTS.md:138`'s baseline sentence is the only such consumer
+  (measured: no test asserts a literal collected count).
 - Removing a method from a CLOSED CR's gate set is a sanctioned amendment, justified by the
   in-tree 016 precedent. It must be recorded in the queue footer, not left implicit.
 - `test_git_chezmoi_skills.py` is the trap: its `§S3` class legitimately tests the CONTENT
