@@ -57,11 +57,19 @@ every `hooks.py` emitter, and `scaffold._emit_plan`. `install.toml` mode becomes
 documented).
 
 ### §S3 — Unmanaged files are skipped, never clobbered
-`_deploy_file`: dest exists ∧ differs ∧ not in manifest → **skip** with a distinct warning
-(`unmanaged: <path> — not Model B's; --force-managed to overwrite`). `--force-managed` overwrites
-managed-but-modified files only; unmanaged files are overwritten by nothing short of a new
-explicit `--adopt <name>` (out of scope — record the gap). The manifest is loaded whenever it
-exists, not only with `--reinstall`.
+`_deploy_file`: dest exists ∧ differs ∧ not in manifest → **skip** with a distinct warning.
+
+**Warning text (corrected 2026-09-22, post-gap-analysis):**
+`unmanaged: <path> — not Model B's; left untouched (no flag overwrites it)`.
+The original spec text read `… --force-managed to overwrite`, which **contradicts the very next
+sentence and AC3**: `--force-managed` overwrites managed-but-modified files ONLY, so the warning
+would have told the user to run a flag that does nothing to their file. Gap-analysis did not
+catch this; it was caught at GREEN dispatch. If a takeover path is ever wanted it is the
+`--adopt <name>` flag recorded in Risk as a follow-up — **not** in this CR.
+
+`--force-managed` overwrites managed-but-modified files only; unmanaged files are overwritten by
+nothing short of a future explicit `--adopt <name>` (out of scope — the gap is recorded). The
+manifest is loaded whenever it exists, not only with `--reinstall`.
 
 ### §S4 — Scaffold emission is honest about partial failure (DECIDED at gap-analysis)
 **Decision 2026-09-22: take the HONEST option, not the transactional one.** Measured:
