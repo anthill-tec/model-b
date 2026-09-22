@@ -71,10 +71,28 @@ write.
   client code, so this is a request, not a patch.
 
 ### §S5 — Release execution
-The 10-step git-flow release per `skills-src/git-workflow/SKILL.md`: release branch, version bump,
-verification, merge to `master`, tag, back-merge to `develop`. Then `milestone --crs --packages
---released-at` records the release on the board, and the Pi package (CR-MDB-029) is published and
-smoke-installed on a clean profile.
+
+**Governed by the `git-workflow` skill (§Releases) — memory, not this document.** The 10-step
+`git flow release` is non-negotiable and is NOT restated here; a procedure with two homes drifts,
+and the skill is the one that is loaded at release time. Read it then.
+
+Only the project deltas the skill cannot know belong in this CR:
+
+- **The version lives in two files** — `pyproject.toml` `[project] version` and
+  `modelb_axi/__init__.py` `__version__` (both `0.1.0.dev0` today), plus the Pi package's
+  `package.json` if CR-MDB-029 has landed.
+- **Model B is a submodule.** The released pointer must reach the Roundhouse root, or the tag is
+  unreachable from a fresh clone — `scripts/stack-doctor.fish` gates on exactly that.
+- **The board and the package** — `milestone --crs --packages --released-at` records the release
+  (CR-CRU-129: a milestone is a record, not an event); CR-MDB-029 §S5 publishes the Pi package
+  and smoke-installs it on a clean profile.
+
+**Every dependency CR lands BEFORE the release starts.** Running a CR during a release is
+possible and is **highly discouraged** — it puts unreviewed work on a branch whose only job is
+to be verified and tagged. In particular §S2's zero-failure gate depends on CR-MDB-021 having
+already retired the six chezmoi gates: if 021 has not landed when the release is proposed, the
+release waits. Taking the exception at all requires explicit approval and a recorded reason; it
+is never the plan.
 
 ### §S6 — Close the record
 `docs/changes/README.md`'s footer gains the release entry; the deferred-items register is swept
@@ -93,8 +111,16 @@ one final time; anything still open becomes a post-1.0.0 CR rather than an unrec
       `entry.title`; the sweep and its date are in the release notes.
 - [ ] **§S4: the read-path gap is raised with Crucible** (a `queue` that returns titles), on the
       #1336 lineage, as a request.
-- [ ] `master` carries the annotated tag; `develop` is back-merged; the board records the release
-      via `milestone --crs --packages --released-at`.
+- [ ] **§S5: the release followed the `git-workflow` skill** — the `1.0.0` tag exists, `master`
+      carries only the merge, and the built artifact reports `1.0.0`. HOW that is achieved is the
+      skill's to say; this CR gates only that it was.
+- [ ] §S5: the released submodule pointer is committed and pushed at the Roundhouse root, and
+      `fish scripts/stack-doctor.fish --section submodules` reports HEALTHY.
+- [ ] §S5: the second remote is either pushed or its omission is recorded in the release notes.
+- [ ] §S5: **no CR was executed during the release** — or, if one was, the exception carries an
+      explicit approval and a recorded reason. Every dependency, CR-MDB-021 included, landed on
+      `develop` before the release started.
+- [ ] The board records the release via `milestone --crs --packages --released-at`.
 - [ ] The Pi package publishes and `pi install` resolves it on a clean profile (CR-MDB-029 §S5).
 - [ ] The queue's footer records the release; the deferred register is empty or every item is a
       filed post-1.0.0 CR.
