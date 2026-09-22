@@ -15,6 +15,151 @@ until 033 §S1) · **CR-MDB-030** (§S6.2's dispatch proof presumes the emitted 
 load at all — they do not today; 030 fixes the runtime and owns the `-p` trust-gate measurement)
 **Labels:** generator, installer, harness, agent-definitions, pi, feature
 **Phase:** Wave 5 (repo queue) · release 1.0.0 wave 2 (Crucible board)
+
+## Amendment 2026-09-22 — measured during CR-MDB-021, from four live dispatches
+
+Four sub-agents were dispatched during CR-MDB-021 (RED ×2, GREEN ×2, FIX, VERIFY). **Every one
+of them could author files and none of them could execute anything.** The orchestrator ran every
+test and carried every Crucible registration. This is §S2's prediction confirmed in the field,
+plus three facts this spec currently gets wrong.
+
+**1. The dispatch provider named in §D16/CR-MDB-027 is NOT what is running.**
+`~/.pi/agent/npm/node_modules/@pi-archimedes/` is an **empty directory**, and `pi-archimedes` is
+absent from `settings.json` `packages[]`. The live dispatcher is **`@gotgenes/pi-subagents`
+v21.7.5**. Every contract in this CR sourced from "the archimedes contract" must be re-derived
+from `@gotgenes/pi-subagents/docs/configuration.md`, which is authoritative and installed
+locally. CR-MDB-027's ruling needs the same correction — it is a dispatch-provider ruling naming
+a package that provides no dispatch.
+
+**2. The `tools` contract, read from the live docs (`docs/configuration.md:190-233`):**
+
+- `tools` is the agent's **complete allowlist of capability tools, not a filter over built-ins**.
+- The seven built-ins are lowercase: **`read`, `bash`, `edit`, `write`, `grep`, `find`, `ls`**.
+- **Omitting `tools` gives all seven built-ins and NO extension tools** — so a generated agent
+  with no `tools:` line gets no `ctx_*` tool at all, and lean-ctx is unreachable from it.
+- **Naming an extension's tool is the only way to admit it.** The child loads the parent's
+  extensions and their `registerTool` does run, but the allowlist is applied *before* the child's
+  registry is built, so an unlisted tool is silently dropped — "the registration reports no
+  error; the tool simply is not there."
+- `subagent`/`get_subagent_result`/`steer_subagent` are always removed (recursion guard);
+  `ask_parent`/`notify_parent` are always added.
+- Accepted forms: comma string, flow sequence, block sequence, or `tools: none`.
+
+**3. Capitalised Claude-era names are the measured cause of a ZERO-tool agent.**
+`~/.agents/agents/python-verify-agent.md` carries `tools: Read, Grep, Glob, Bash`. Dispatched, it
+reported **no tools whatsoever — not even read** — and correctly refused to produce a review
+rather than fabricate one. `inbox-analyst.md` carries `tools: '*'` and works. That is a control
+and an experiment: the allowlist is matched literally, so four names that match no registered
+tool admit nothing. §S2 called this exactly ("a `--tools` allowlist that grants **none**"); it is
+no longer a prediction.
+
+**4. RESIDUAL RESOLVED 2026-09-22 by direct probe — `ctx_shell` is the ONLY shell a child has.**
+A throwaway probe agent (`tools: read, bash, grep, find, ls, ctx_shell, ctx_read`) was dispatched
+and asked to report its own callable schema. Measured:
+
+- **The allowlist works, and it admits extension tools by name.** `ctx_shell` was granted and
+  successfully ran `echo PROBE_CTXSHELL_OK`. Naming a `ctx_*` tool is sufficient and effective.
+- **There is NO native shell tool in this Pi install.** A second probe listing
+  `bash, Bash, shell, Shell, exec, run, terminal, sh, command` resolved **none** of them; only
+  `read` and `ctx_shell` appeared in the callable schema. The docs' "seven built-ins" list
+  includes `bash`, but no tool by that name exists here — so a child with no `tools:` key gets no
+  extension tools AND no shell, which is exactly why RED/GREEN/FIX could author but never execute.
+- **Therefore `ctx_shell` is not a preference for dispatched agents; it is the only shell.** An
+  emitted definition that omits `ctx_shell` produces an agent that cannot run a test, full stop.
+- **The child's advertised tool list is the PARENT's** (`@gotgenes/pi-subagents` #901). The probe
+  saw ~45 tools named in its prompt prose against 8 real schemas. This is why three agents tried
+  `ctx_shell`, were told "Tool not found", and spent turns diagnosing the harness instead of
+  working. The prose lies; only the schema is real.
+
+This closes the residual: the cause is not `effort`/`color`/`skills`/`model: inherit`. It is the
+combination of no `tools:` key (⇒ no extension tools) with no native shell existing at all.
+
+**5. `@gotgenes/pi-permission-system` was installed 2026-09-22 — it CHANGES this CR's contract.**
+Measured immediately after install, same probe method:
+
+- **It fixes the #901 prompt lie, partially.** The child now carries a second, ACCURATE
+  `Available tools:` block (8 entries, matching its real schema) alongside the inherited 45-entry
+  prose list. A dispatched agent can now tell what it really has — the misdiagnosis that cost
+  turns in CR-MDB-021 is less likely to repeat.
+- **It BLOCKS `ctx_shell` by default in a non-interactive child.** First probe after install:
+  `[pi-permission-system] This 'ctx_shell' call for agent 'mdb-tool-probe' requires approval, but
+  no interactive UI is available.` The tool was in the schema and still did not run. **Granting a
+  tool via `tools:` is no longer sufficient** — an unlisted policy defaults to `ask`, and `ask`
+  in a background sub-agent is a hard stop.
+- **`permission:` frontmatter resolves it.** With
+  `permission:\n  ctx_shell: allow\n  read: allow\n  ctx_read: allow`, the same probe ran
+  `echo PROBE_OK && python3 -c "print(2+2)"` and returned `PROBE_OK / 4`, exit 0, no prompt.
+- Surfaces are named per tool (`read: allow`, `write: deny`, `bash: {git *: ask}`), and
+  `permission:` is read **exclusively** by this extension — `@gotgenes/pi-subagents` ignores it.
+
+**Consequence for §S7: the emitter must write BOTH keys.** `tools:` decides what exists;
+`permission:` decides whether it may run. A generated agent with `tools: ... ctx_shell` and no
+`permission:` block is a fully-equipped agent that stalls on its first command with no human
+there to approve it — indistinguishable, from the orchestrator's side, from an agent that did
+nothing.
+
+### §S7 (ADDED) — the emitter grants tools, and grants lean-ctx
+
+The emitter MUST write an explicit `tools:` line. Omission is not "use the default" — it is
+"no extension tools", which silently removes lean-ctx from every dispatched agent.
+
+- **Tool names are lowercase Pi names**, never Claude-era capitalised ones. A capitalised name is
+  not a portability wart; it is a measured zero-tool agent.
+- **lean-ctx is named explicitly, and its shell wrapper is the shell of record** —
+  `ctx_shell`, `ctx_read`, `ctx_grep`, `ctx_glob`, `ctx_find`, `ctx_ls`, `ctx_patch`. **Measured
+  2026-09-22: `ctx_shell` is the ONLY shell available to a dispatched child** — no `bash` or any
+  other native shell name resolves in this install — so this is not a style preference but the
+  difference between an agent that can run a test and one that cannot. `bash` may still be listed
+  for portability to installs that have it, but `ctx_shell` is mandatory.
+- **Per-role grants**, not one list for all four:
+  - RED / GREEN / FIX — read+write+execute: `read, write, edit, grep, find, ls, bash` plus the
+    `ctx_*` set.
+  - VERIFY — read-only: `read, grep, find, ls, bash` plus `ctx_read, ctx_grep, ctx_glob,
+    ctx_find, ctx_ls, ctx_shell`, and **no `write`/`edit`/`ctx_patch`**. A VERIFY agent that
+    cannot write is enforced by the allowlist rather than by asking it nicely in prose.
+- **A `permission:` block is emitted beside `tools:`** (required since the permission system was
+  installed 2026-09-22 — see amendment point 5). Every tool the role is granted carries an
+  explicit `allow`, because an unstated policy defaults to `ask` and `ask` cannot be answered in
+  a background child. For VERIFY, `write: deny` and `edit: deny` are stated as well, so the
+  read-only property is enforced twice — once by absence from the allowlist, once by policy.
+- **`skills:` is dead frontmatter** under v21 and must not be emitted; children inherit the
+  parent's skills. Emitting it is harmless only until it is not — and it currently documents a
+  capability the agent does not get that way.
+- The stack TOML carries intent names; the emitter translates. A role with no `tools` key emits
+  no `tools:` line **only if that is deliberate** — and the default for the four TDD roles is
+  never that.
+
+**§S7 acceptance criteria**
+
+- [ ] Every emitted agent definition carries an explicit `tools:` line; zero emitted files omit it.
+- [ ] Zero emitted `tools:` values contain a capitalised name (`Read`, `Grep`, `Glob`, `Bash`,
+      `Write`, `Edit`) — asserted by a gate over the generated fleet, with a detector fixture that
+      proves the gate bites on a capitalised value.
+- [ ] Every emitted RED/GREEN/FIX definition names `ctx_shell` and at least `ctx_read`,
+      `ctx_grep`; every emitted VERIFY definition names the read-only `ctx_*` subset and omits
+      `write`, `edit` and `ctx_patch`.
+- [ ] No emitted definition carries a `skills:` key (removed from the schema in v21).
+- [ ] **Measured, not assumed:** a dispatched generated agent of each role reports that it can run
+      `ctx_shell`, recorded with the transcript reference.
+- [ ] Every emitted definition names `ctx_shell` — asserted by a gate over the generated fleet.
+      An agent without it cannot execute anything in this install.
+- [ ] Every emitted definition carries a `permission:` block granting `allow` to every tool its
+      own `tools:` line admits; zero emitted files grant a tool without a matching policy.
+      Asserted by a gate that cross-checks the two frontmatter keys against each other.
+- [ ] Emitted VERIFY definitions state `write: deny` and `edit: deny` explicitly, in addition to
+      omitting them from `tools:`.
+- [ ] **Measured end-to-end:** a dispatched generated agent of each role runs a real command via
+      `ctx_shell` and returns its output — not merely "has the tool". Recorded with the transcript
+      reference. A tool present but policy-blocked looks identical to a working agent until it
+      stalls.
+- [ ] The generated agent BODIES stop instructing `Bash` and stop citing `~/.claude/scripts/` for
+      the Crucible client (CR-MDB-020 owns the path; this CR owns the tool name). A body that
+      tells an agent to use a tool its own frontmatter does not grant is a self-inflicted
+      zero-tool report.
+- [ ] `docs/research/DN-multi-harness-deploy-model.md` §D16 and CR-MDB-027 are corrected to name
+      `@gotgenes/pi-subagents` as the dispatch provider, with the empty `@pi-archimedes/`
+      directory recorded as the evidence.
+
 **Design reference:** `docs/research/DN-multi-harness-deploy-model.md` — **§D13** (target is Pi),
 **§D14** (Claude Code dropped; byte-identical constraint RETIRED), **§D15** (the five Pi
 measurements), **§D16** (dispatch = `pi-archimedes`; emitter target `~/.agents/agents/`), §D1

@@ -70,11 +70,25 @@ guarantees deploy integrity — README 2026-08-27) together with `test_tooling_d
 which only asserts its skip guards. `ChezmoiSkillS3Test` goes with the chezmoi bundle (031) or
 is retargeted to `skills-src/` if the bundle survives.
 
+**Note 2026-09-22:** CR-MDB-021 already re-pointed AC7 and removed the chezmoi gates; read the
+current tree before assuming this paragraph's targets still exist. `ChezmoiRoundTripPreconditionTest`
+is gone, and `test_realhome_supersede.py` now carries one retained `~/.claude/scripts/*crucible*`
+absence assertion — retiring the module must re-home that assertion, not drop it.
+
 ### §S4 — One gate, one place
 Hoist `_split_frontmatter`, `_read`, `_files_under`, `_files_containing`,
 `_archive_has_content_move`, `_run_module`, `_write_fake_executable`, the fake-uv script into
 `tests/_helpers.py`. Keep one `build.py --list` pin and one `--check` pin. Replace the six
 `WORKFLOW_CYCLE_ID == 0` gates with one repo-wide gate (CR-012's "permanent regression guard").
+
+**Added 2026-09-22 (found by the CR-MDB-021 FIX agent, flagged not fixed — out of its scope):**
+`tests/test_installer_assets.py`, in
+`DeployEngineSevenBundlesEndToEndTest.test_end_to_end_install_deploys_seven_skill_bundles_with_manifest_and_symlinks`,
+iterates `for entry in files_section:` where `files_section` comes from `data.get("files")`
+narrowed only by a preceding `assertIsInstance`. A static analyser cannot follow that narrowing,
+so the loop reads as iterating an `Any`/`None`. Pre-existing, harmless at runtime, and exactly
+the kind of thing that belongs in a tests-hygiene CR rather than riding an unrelated one — bind
+the value to a locally-typed name after the assertion so the narrowing is legible.
 
 ### §S5 — Pi is the exercised harness
 One installer e2e and one scaffold e2e run `--harnesses pi` against a sandbox and assert:
