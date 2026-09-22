@@ -8,6 +8,11 @@ pre-existing same-named file on a first install; and 025's sandboxed integration
 trusted while the scaffold compiles wiring against a `[install].target_root` the installer never
 writes.
 **Depends on:** — (small, self-contained; sequenced first in the wave-2 tail)
+**Gap-analysis:** 2026-09-22, orchestrator-run — verdict **SPEC_UPDATE_NEEDED**, corrections
+applied in place and marked inline. Baseline measured at analysis time: **359 tests / 0 failures
+/ 11 skips** on `develop` @ `9f512eb`, clean tree. All 8 measured defects re-verified against
+current source and CONFIRMED; DN §D3 confirms defect 3 is a design-contract violation
+("a file absent from the manifest is not Model B's").
 **Labels:** installer, scaffold, config, bugfix
 **Phase:** Wave 5 (repo queue) · release 1.0.0 wave 2 (Crucible board)
 **Design reference:** `AGENTS.md` ("writes are atomic (temp file + os.replace)"; "idempotence by
@@ -31,10 +36,19 @@ is not Model B's") · DN §D9 (asset classes do not retro-deploy) · `audits/…
 
 ### §S1 — One source of truth for the deployed root
 `config.write_install_toml` records `target_root` (the resolved `--target-root`/`MODELB_TARGET_ROOT`/
-home) and per-class dirs (`skills_dir`, `hooks_scripts_dir`, `tool_scripts_dir`, and 025's
-`agent_defs_dir`). Scaffold reads `hooks_scripts_dir` directly; no fallback to `Path.home()`
-when a manifest exists — a manifest without the key is a versioned-upgrade case handled with a
-clear error naming `modelb-axi --reinstall`.
+home) and per-class dirs for the asset classes that EXIST today (`skills_dir`,
+`hooks_scripts_dir`, `tool_scripts_dir`). Scaffold reads `hooks_scripts_dir` directly; no
+fallback to `Path.home()` when a manifest exists — a manifest without the key is a
+versioned-upgrade case handled with a clear error naming `modelb-axi --reinstall`.
+`scaffold._hook_scripts_dir`'s docstring ("forward-compatible; the v1 installer does not record
+it") is corrected in the same change, or it contradicts the new behaviour.
+
+**Gap-analysis 2026-09-22 — `agent_defs_dir` REMOVED from this section.** It was listed as
+"025's `agent_defs_dir`", but `.agents/agents` is not an asset class until CR-MDB-025 creates it
+(`deploy.py` defines only `STORE_RELDIR`, `HOOKS_SCRIPTS_STORE_RELDIR`,
+`TOOL_SCRIPTS_STORE_RELDIR`), and 033 is sequenced BEFORE 025. A key naming a directory nothing
+deploys to is a claim the installer cannot honour. **025 adds its own key** through the seam this
+CR builds.
 
 ### §S2 — Atomic writes everywhere
 One helper `modelb_axi/_fsutil.py::atomic_write(path, data: bytes, mode=None)` (tmp in the same
@@ -49,10 +63,15 @@ managed-but-modified files only; unmanaged files are overwritten by nothing shor
 explicit `--adopt <name>` (out of scope — record the gap). The manifest is loaded whenever it
 exists, not only with `--reinstall`.
 
-### §S4 — Scaffold emission is transactional or honest
-Either stage the plan into a temp dir and rename into place at the end, or amend the docstring
-and the `init` envelope to say a failed emission may leave a partial tree with the list of files
-written. Decide at gap-analysis; the AC below covers both.
+### §S4 — Scaffold emission is honest about partial failure (DECIDED at gap-analysis)
+**Decision 2026-09-22: take the HONEST option, not the transactional one.** Measured:
+`scaffold.py:686` gates the whole emission behind `if not dry_run:`, so the `--dry-run` half of
+the docstring claim is TRUE — only the "(and any failure) writes NOTHING" half is false. Staging
+an entire scaffold tree through a temp dir to make that second clause true is machinery out of
+proportion to what it protects: `init` targets a NEW project directory, and a failed run leaves a
+partial tree the user deletes. Amend the docstring to claim only what holds, and make the `init`
+envelope list exactly the files written before the failure. (Dimension 7 — reversible: if you
+want true transactionality, say so and it becomes its own CR.)
 
 ### §S5 — Validation and hygiene
 Validate `install.toml` harness ids against the roster like the override; single TOML writer
@@ -68,18 +87,28 @@ citations name the DN file; "Vercel store" → "shared store".
       produces a named error, not a home fallback.
 - [ ] Killing the process between tmp-write and rename leaves the destination untouched —
       asserted by monkeypatching `os.replace` to raise and checking the prior file is intact.
-- [ ] First install into a root that already holds `.agents/agents/inbox-analyst.md` (foreign
-      content): the file is byte-identical afterwards; the run reports it as unmanaged; a second
-      run with `--force-managed` still leaves it byte-identical.
+- [ ] First install into a root that already holds a foreign file **at a path Model B actually
+      deploys to** — `<target-root>/.agents/scripts/gate-lock.sh` with foreign content (gap-analysis
+      2026-09-22: the original AC named `.agents/agents/inbox-analyst.md`, which nothing deploys to
+      until CR-MDB-025, so it would have passed VACUOUSLY without the fix): the file is
+      byte-identical afterwards; the run reports it as unmanaged; a second run with
+      `--force-managed` still leaves it byte-identical.
 - [ ] A managed file hand-modified after install is skipped without `--force-managed` and
-      overwritten with it (existing behaviour, re-asserted).
+      overwritten with it — **already covered by `tests/test_installer.py:1046` and `:1081`;
+      re-assert by extending those, do not write duplicates** (gap-analysis, Dimension 4).
 - [ ] Without `--reinstall`, a second run over the same root reports every managed file
-      unchanged (manifest consulted).
-- [ ] `init` with a mid-plan failure: either no file exists under `--target` (transactional) or
-      the envelope lists exactly the files written (honest) — one asserted.
+      unchanged (manifest consulted) — `test_installer.py:1012` covers the `--reinstall` path
+      only; the new assertion is the NO-flag path.
+- [ ] `init` with a mid-plan failure: the envelope lists exactly the files written (§S4's honest
+      option), and `--dry-run` still writes nothing.
 - [ ] `install.toml` listing a non-roster harness id fails fast with the id named.
-- [ ] `grep -c "print(" modelb_axi/cli.py` human lines route to stderr; exactly one `deps:` line
-      on stdout per run.
+- [ ] Every human progress line in `modelb_axi/cli.py` is written with `file=sys.stderr`;
+      stdout from an installer run contains no human prose (asserted by capturing both streams,
+      not by `grep -c`). The `deps:` line keeps BOTH of its emissions — the pre-remediation
+      report and the post-install update are deliberate under CR-MDB-014 AC4 ("records detection
+      truthfully ... before any remediation mutates the picture"); gap-analysis 2026-09-22
+      reversed the original "exactly one `deps:` line" AC, which would have destroyed that
+      truthfulness to fix a channel bug.
 - [ ] Both TOML serialisations go through `config._toml_string`; a value containing `\x1b`
       round-trips through `tomllib`.
 
@@ -91,10 +120,19 @@ module, ~12 tests. Small–medium.
 ## Risk
 
 - Existing installs carry manifests without `target_root`; §S1's named error must point at the
-  remedy. Recorded as an upgrade note for CR-012.
+  remedy. Recorded as an upgrade note for the **release ritual**
+  (`skills-src/git-workflow/SKILL.md` §Releases) — gap-analysis 2026-09-22: the original text
+  said "for CR-012", which is VOID (a release is not a CR).
 - Changing first-install semantics (skip unmanaged) may surprise a user who expected a takeover;
   the warning text names the flag that does not exist (`--adopt`) so the gap is visible, and
   the queue note records it as a follow-up.
+- **Inverse blast radius (gap-analysis 2026-09-22, Dimension 16).** `tests/test_tooling_adoption.py`
+  pins `modelb_axi/cli.py:233-237` in TWO places (`:16` docstring, `:157` comment). That pin has
+  ALREADY drifted — 233-237 is now the skip-warning tail and the `[install]` table sits at
+  238-245 — and §S1 moves the block again. Both are prose, not asserted, so nothing fails; they
+  are re-recorded ONCE as a close-out step of the final cycle, not as a per-cycle escalation.
+  `tests/test_tooling_adoption.py:627` also pins `config.py::_toml_value serializes only strings`,
+  which §S5's schema assertion changes.
 
 ## Non-goals
 
