@@ -113,7 +113,9 @@ writing files; the failure surfaces layers away as an agent that "did nothing".
 1. **Harness capabilities** — the Pi extensions that make the assets executable: dispatch and the
    `tools:` allowlist, the `ctx_*` family (measured 2026-09-22: `ctx_shell` is the ONLY shell a
    dispatched agent has), and the permission layer that decides whether a granted tool may run.
-   Absence here is **fatal to the whole installation** — no stack works.
+   Absence of dispatch or the shell is **fatal to the whole installation** — no stack works. The
+   permission layer is recommended, not fatal (amended 2026-09-24): without it `permission:` keys
+   are ignored, but a read-only role stays read-only because its `tools:` line omits write tools.
 2. **Model B's own tools** — the Sandesh CLI, the Crucible clients + manifest + server, and the
    bundled tool scripts (including one that needs `bash`, not `python3`). Absence disables a
    named capability: orchestration comms, or test ingest, or a specific script.
@@ -122,8 +124,8 @@ writing files; the failure surfaces layers away as an agent that "did nothing".
    Absence makes ONE stack's agents unable to test, and nothing else.
 
 **Installation is stack-scoped.** The user selects stacks; selection decides both what is
-**deployed** and what is **probed**. A python-only user receives neither the rust agents nor a
-word about `cargo`. Selection is a *choice*, never inferred from what happens to be on the
+**deployed** and what is **probed**. A python-only user receives neither the rust report bundle
+nor a word about `cargo` (agent definitions are rendered per project, not installed — D10.8). Selection is a *choice*, never inferred from what happens to be on the
 machine — having `cargo` installed is not a request for the rust agents.
 
 **Probing is cheap; installing is the user's call.** Probes resolve binaries rather than executing
