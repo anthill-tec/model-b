@@ -47,7 +47,7 @@ from modelb_axi.capabilities import (
     resolve_agent_dir,
 )
 from modelb_axi.requirements import REQUIREMENTS, requirement
-from modelb_axi.toolchains import probe_toolchains, remediate_toolchains, resolve
+from modelb_axi.toolchains import probe_toolchains, remediate_toolchains, resolve, run_on_terminal
 
 SANDESH_PACKAGE = "sandesh-relay"
 
@@ -126,14 +126,12 @@ def _offer_pi_installs(
             _warn(f"declined `{command}` — {cap} stays absent", warnings)
             continue
         try:
-            result = subprocess.run(
-                [pi_path, "install", spec], capture_output=True, text=True, check=False,
-            )
+            returncode = run_on_terminal([pi_path, "install", spec])
         except OSError as exc:
             _warn(f"`{command}` could not run ({exc})", warnings)
             continue
-        if result.returncode != 0:
-            _warn(f"`{command}` failed (exit={result.returncode})", warnings)
+        if returncode != 0:
+            _warn(f"`{command}` failed (exit={returncode})", warnings)
             continue
         ran = True
     return ran

@@ -77,19 +77,36 @@ def probe_toolchains(
     return verdicts
 
 
-def _run_installer(argv: list[str], command: str, warn: Callable[[str], None]) -> str:
-    """Run one confirmed provider installer; its output goes to the human
-    channel (stderr) — stdout carries only the envelope."""
+def human_channel_fd() -> int:
+    """The file descriptor of the human channel: ``sys.stderr``'s, or the
+    process's fd 2 when ``sys.stderr`` has been replaced by an object
+    with no descriptor."""
     try:
-        result = subprocess.run(argv, capture_output=True, text=True, check=False)
+        return sys.stderr.fileno()
+    except (AttributeError, OSError, ValueError):  # io.UnsupportedOperation is an OSError
+        return 2
+
+
+def run_on_terminal(argv: list[str], env: dict[str, str] | None = None) -> int:
+    """Run a confirmed third-party installer (a provider installer or
+    Pi's ``pi install``) UNCAPTURED: stdin and stderr are inherited, and
+    its stdout goes to the human channel (stderr) — so its prompts and
+    errors reach the user while it runs, and stdout keeps carrying only
+    the envelope. Returns the exit code; ``OSError`` when it cannot run."""
+    sys.stderr.flush()
+    return subprocess.run(argv, stdout=human_channel_fd(), env=env, check=False).returncode
+
+
+def _run_installer(argv: list[str], command: str, warn: Callable[[str], None]) -> str:
+    """Run one confirmed provider installer on the user's terminal
+    (:func:`run_on_terminal`)."""
+    try:
+        returncode = run_on_terminal(argv)
     except OSError as exc:
         warn(f"`{command}` could not run ({exc}); recording absent")
         return ABSENT
-    for stream in (result.stdout, result.stderr):
-        if stream:
-            print(stream, end="" if stream.endswith("\n") else "\n", file=sys.stderr)
-    if result.returncode != 0:
-        warn(f"`{command}` failed (exit={result.returncode}); recording absent")
+    if returncode != 0:
+        warn(f"`{command}` failed (exit={returncode}); recording absent")
         return ABSENT
     return INSTALLED
 
