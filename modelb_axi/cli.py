@@ -35,7 +35,7 @@ from modelb_axi.harness import (
     select_harnesses,
 )
 from modelb_axi.preflight import run_preflight
-from modelb_axi.scaffold import run_agents, run_init
+from modelb_axi.scaffold import KNOWN_STACKS, run_agents, run_init
 
 INSTALL_TOML_NAME = "install.toml"
 
@@ -116,6 +116,14 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--force-managed", action="store_true",
         help="overwrite hand-modified managed files and refresh their manifest entries",
+    )
+    parser.add_argument(
+        "--allow-missing-capabilities", action="store_true",
+        help=(
+            "install even when a required harness capability (dispatch, "
+            "lean-ctx) is missing; the assets depending on it stay inert, "
+            "and the override is recorded in install.toml"
+        ),
     )
     subparsers = parser.add_subparsers(dest="command", metavar="COMMAND")
     _add_init_parser(subparsers)
@@ -273,6 +281,9 @@ def _deploy_stage(
     *,
     warnings: list[str] | None = None,
     report: dict | None = None,
+    capabilities: dict[str, str] | None = None,
+    stacks: list[str] | None = None,
+    allow_missing_capabilities: bool = False,
 ) -> int:
     """Stage 3 (§S6): manifest-driven deploy, then the config write LAST
     — any deploy failure exits non-zero with NO install.toml written.
@@ -286,9 +297,16 @@ def _deploy_stage(
     success, receives the envelope's install fields (``target_root``,
     ``install_toml``, ``managed_files``, ``skipped``, ``unmanaged`` —
     CR-MDB-033 §S6).
+
+    CR-MDB-036 §S4: ``capabilities`` (the pre-flight verdicts) becomes
+    ``[capabilities]``; ``stacks`` (default: every supported stack)
+    becomes ``[install].stacks``; ``allow_missing_capabilities`` is
+    recorded only when used.
     """
     if warnings is None:
         warnings = []
+    if stacks is None:
+        stacks = list(KNOWN_STACKS)
     asset_root = default_asset_root()
     # Manifest protection follows manifest PRESENCE, not a flag
     # (load_manifest_hashes returns {} when install.toml is absent).
@@ -319,24 +337,29 @@ def _deploy_stage(
             f"untouched (no flag overwrites it)",
             warnings,
         )
+    install = {
+        "version": __version__,
+        "harnesses": selected,
+        "asset_root": str(asset_root),
+        # CR-MDB-033 §S1: the deployed root and its per-asset-class
+        # dirs, recorded once here so the scaffold reads them instead
+        # of re-deriving a second path rule from Path.home().
+        "target_root": str(target_root),
+        "skills_dir": str(target_root / STORE_RELDIR),
+        "hooks_scripts_dir": str(target_root / HOOKS_SCRIPTS_STORE_RELDIR),
+        # CR-MDB-022 §S4: where the adopted workflow tooling landed,
+        # so a skill can name the script path without re-deriving it.
+        "tool_scripts_dir": str(target_root / TOOL_SCRIPTS_STORE_RELDIR),
+        "stacks": list(stacks),
+    }
+    if allow_missing_capabilities:
+        install["allow_missing_capabilities"] = True
     install_toml = write_install_toml(
         home,
-        install={
-            "version": __version__,
-            "harnesses": selected,
-            "asset_root": str(asset_root),
-            # CR-MDB-033 §S1: the deployed root and its per-asset-class
-            # dirs, recorded once here so the scaffold reads them instead
-            # of re-deriving a second path rule from Path.home().
-            "target_root": str(target_root),
-            "skills_dir": str(target_root / STORE_RELDIR),
-            "hooks_scripts_dir": str(target_root / HOOKS_SCRIPTS_STORE_RELDIR),
-            # CR-MDB-022 §S4: where the adopted workflow tooling landed,
-            # so a skill can name the script path without re-deriving it.
-            "tool_scripts_dir": str(target_root / TOOL_SCRIPTS_STORE_RELDIR),
-        },
+        install=install,
         deps=deps_verdicts,
         files=manifest,
+        capabilities=capabilities,
     )
     _say(f"  wrote {install_toml} ({len(manifest)} managed files)")
     if report is not None:
@@ -357,6 +380,7 @@ def _run_installer_flow(
     target_root: Path | None,
     reinstall: bool,
     force_managed: bool,
+    allow_missing_capabilities: bool = False,
 ) -> int:
     """INSTALLER flow entry (§S3 shell): banner + ordered stages.
 
@@ -375,9 +399,11 @@ def _run_installer_flow(
         return 1
     # Stage 1 — dependency pre-flight (§S4). Runs (and reports its
     # `deps:` line) BEFORE any later stage announcement.
-    _say("  [stage 1/3] pre-flight: dependency checks (uv / Sandesh / Crucible)")
-    preflight_exit, deps_verdicts = run_preflight(
+    _say("  [stage 1/3] pre-flight: harness capabilities + dependency checks (uv / Sandesh / Crucible)")
+    stacks = list(KNOWN_STACKS)
+    preflight_exit, deps_verdicts, capabilities = run_preflight(
         lambda prompt: _confirm(prompt, interactive), warnings,
+        stacks=stacks, allow_missing_capabilities=allow_missing_capabilities,
     )
     if preflight_exit != 0:
         _emit_install_envelope("preflight_failed", False, warnings, fields)
@@ -409,7 +435,8 @@ def _run_installer_flow(
     report: dict = {}
     deploy_exit = _deploy_stage(
         home, target_root, selected, deps_verdicts, reinstall, force_managed,
-        warnings=warnings, report=report,
+        warnings=warnings, report=report, capabilities=capabilities,
+        stacks=stacks, allow_missing_capabilities=allow_missing_capabilities,
     )
     if deploy_exit != 0:
         _emit_install_envelope("deploy_failed", False, warnings, fields)
@@ -450,7 +477,7 @@ def main(argv: list[str] | None = None) -> int:
         return _run_scaffold_mode(home)
     return _run_installer_flow(
         home, harnesses, interactive, target_root,
-        args.reinstall, args.force_managed,
+        args.reinstall, args.force_managed, args.allow_missing_capabilities,
     )
 
 

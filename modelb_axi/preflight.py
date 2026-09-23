@@ -1,36 +1,56 @@
-"""Dependency pre-flight — installer-flow stage 1 (CR-MDB-014 §S4, AC4).
+"""Dependency and capability pre-flight — installer-flow stage 1
+(CR-MDB-014 §S4; CR-MDB-036 §S1–§S3).
 
-Checks the three ecosystem dependencies in order against the CURRENT
-``PATH`` (``shutil.which`` — the tests' isolation seam):
+Probes, in order, against the CURRENT environment (``shutil.which`` and
+``$HOME``/``$PI_CODING_AGENT_DIR`` — the tests' isolation seams):
 
-1. ``uv`` — the bootstrap dependency everything else rides on. Absent is
+1. **Harness capabilities** (tier 1, :mod:`modelb_axi.capabilities`) —
+   reported as ``harness: dispatch=<v> lean-ctx=<v> permissions=<v>``.
+2. ``uv`` — the bootstrap dependency everything else rides on. Absent is
    the pre-flight FAILURE mode: non-zero exit with bootstrap
-   instructions, before any other stage output.
-2. ``sandesh`` — absent triggers a proactive install THROUGH the
-   provider's own method (``uv tool install sandesh-relay``, via the
-   PATH-resolved ``uv``) on confirm; ``--yes`` supplies the implicit
-   confirm (DN-scaffold-packaging §4 "on confirm").
-3. ``crucible`` — Crucible ships its own installer (DN-scaffold-packaging §4 / decision D):
-   absent means WARN pointing at Crucible's own installer and record
-   ``absent`` — never hand-deploy their assets.
+   instructions.
+3. ``sandesh`` and ``crucible`` — reported with ``uv`` as
+   ``deps: uv=<v> sandesh=<v> crucible=<v>``. Crucible is judged by its
+   released-client manifest ``~/.crucible/crucible-clients.json``, never
+   a binary and never its server; absent means WARN pointing at
+   Crucible's own installer — never hand-deploy their assets.
+4. One ``stack <name>: client=<v>`` line per selected stack.
 
-Emits the machine-greppable ``deps: uv=... sandesh=... crucible=...``
-line on STDERR — the human channel; stdout is reserved for the
-installer's one AXI envelope (CR-MDB-033 §S6) — and returns the final
-verdicts for ``[deps]`` persistence into ``install.toml`` (§S6). Every
-warning printed is also appended, unprefixed, to the caller's
-``warnings`` list so the envelope can carry it. This module itself
-writes nothing to disk.
+Every group line is printed on STDERR (the human channel; stdout is the
+installer's one AXI envelope, CR-MDB-033 §S6) BEFORE any policy decision
+or remediation. Then policy (§S3): a missing REQUIRED capability fails the
+pre-flight naming the asset families it leaves inert, unless the caller
+allows missing capabilities; ``unknown`` and a missing RECOMMENDED one
+WARN and continue. Model B never installs a third-party extension and
+never edits Pi's ``settings.json`` — it names ``pi install npm:<pkg>``.
+Sandesh (Model B's own ecosystem) keeps its install-on-confirm.
 
-Stdlib only.
+Every warning printed is also appended, unprefixed, to the caller's
+``warnings`` list so the envelope can carry it. This module writes
+nothing to disk. Stdlib only.
 """
 
 import shutil
 import subprocess
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
+
+from modelb_axi.capabilities import (
+    ABSENT,
+    DETECTED,
+    UNKNOWN,
+    load_crucible_clients,
+    probe_crucible_client,
+    probe_harness,
+    resolve_agent_dir,
+)
+from modelb_axi.requirements import REQUIREMENTS, requirement
 
 SANDESH_PACKAGE = "sandesh-relay"
+
+#: Tier-2 requirements probed by ``shutil.which`` and recorded only in
+#: ``[capabilities]`` — ``[deps]`` stays exactly uv/sandesh/crucible.
+_PATH_TOOLS: tuple[str, ...] = ("python3", "bash", "gh", "jq")
 
 _UV_BOOTSTRAP_MESSAGE = (
     "pre-flight failed — `uv` not found on PATH.\n"
@@ -40,15 +60,22 @@ _UV_BOOTSTRAP_MESSAGE = (
 )
 
 _CRUCIBLE_ABSENT_WARNING = (
-    "Crucible not found on PATH — install it with Crucible's own "
-    "installer; modelb-axi never deploys Crucible assets."
+    "Crucible's released clients not found (no ~/.crucible/crucible-clients.json) "
+    "— install them with Crucible's own installer; modelb-axi never deploys "
+    "Crucible assets."
+)
+
+_CRUCIBLE_UNKNOWN_WARNING = (
+    "crucible=unknown — ~/.crucible/crucible-clients.json does not parse; "
+    "the crucible-report-* skill bundles may not find their clients. "
+    "Reinstall with Crucible's own installer."
 )
 
 
-def _warn(message: str, warnings: list[str]) -> None:
+def _warn(message: str, warnings: list[str], level: str = "warning") -> None:
     """Print one warning on the human channel (stderr) and record it,
     unprefixed, for the installer envelope (CR-MDB-033 §S6)."""
-    print(f"modelb-axi: warning: {message}", file=sys.stderr)
+    print(f"modelb-axi: {level}: {message}", file=sys.stderr)
     warnings.append(message)
 
 
@@ -70,41 +97,129 @@ def _install_sandesh(uv_path: str, warnings: list[str]) -> str:
     return "installed"
 
 
+def _families(row: dict) -> str:
+    return ", ".join(row["asset_families"])
+
+
+def _harness_policy(
+    harness: dict[str, str], settings_path: str, allow_missing: bool,
+    warnings: list[str],
+) -> list[str]:
+    """§S3 per tier-1 capability. Returns the ids of REQUIRED capabilities
+    that are absent (the pre-flight failure set; empty under the override)."""
+    failed: list[str] = []
+    for cap, verdict in harness.items():
+        row = requirement(cap)
+        if verdict == DETECTED:
+            continue
+        fix = f"install it with Pi's own command: `{row['remediation']}`"
+        if verdict == UNKNOWN:
+            _warn(
+                f"{cap}=unknown — {settings_path} could not be judged; if "
+                f"missing, {_families(row)} will be inert. {fix}",
+                warnings,
+            )
+        elif row["policy"] == "required" and not allow_missing:
+            _warn(
+                f"{cap}=absent — required: {_families(row)} would be inert; {fix}",
+                warnings, level="error",
+            )
+            failed.append(cap)
+        elif row["policy"] == "required":
+            _warn(
+                f"{cap}=absent — {_families(row)} will be inert "
+                f"(continuing: --allow-missing-capabilities); {fix}",
+                warnings,
+            )
+        else:
+            _warn(f"{cap}=absent — {_families(row)} is ignored; {fix}", warnings)
+    return failed
+
+
 def run_preflight(
-    confirm: Callable[[str], bool], warnings: list[str] | None = None,
-) -> tuple[int, dict[str, str]]:
-    """Run the §S4 dependency pre-flight (installer-flow stage 1).
+    confirm: Callable[[str], bool],
+    warnings: list[str] | None = None,
+    *,
+    stacks: Iterable[str] = (),
+    allow_missing_capabilities: bool = False,
+) -> tuple[int, dict[str, str], dict[str, str]]:
+    """Run the dependency and capability pre-flight (installer stage 1).
 
     ``confirm`` is the CLI's prompt seam, pre-bound to the run's
-    interactivity (always-True under ``--yes``). ``warnings``, when
-    given, collects the text of every warning and error printed
-    (CR-MDB-033 §S6). Returns ``(exit_code, verdicts)``: exit 0 on
-    success (with the final per-dep verdicts for ``[deps]``
-    persistence), non-zero when ``uv`` is absent.
+    interactivity (always-True under ``--yes``) — used only for Model B's
+    own Sandesh install, never for a third-party extension. ``warnings``,
+    when given, collects every warning and error printed. ``stacks`` are
+    the selected stacks, one ``stack <name>:`` line each.
+
+    Returns ``(exit_code, deps, capabilities)``: ``deps`` is exactly
+    uv/sandesh/crucible for ``[deps]``; ``capabilities`` maps every probed
+    requirement id to its verdict for ``[capabilities]`` (§S4). Non-zero
+    when ``uv`` is absent, or a required capability is absent without
+    ``allow_missing_capabilities``.
     """
     if warnings is None:
         warnings = []
+    stacks = list(stacks)
+    tier1 = {row["id"]: row["provider"] for row in REQUIREMENTS if row["tier"] == 1}
+    agent_dir = resolve_agent_dir()
+    harness = probe_harness(tier1, agent_dir)
+    print(
+        "harness: " + " ".join(f"{cap}={v}" for cap, v in harness.items()),
+        file=sys.stderr,
+    )
+
     uv_path = shutil.which("uv")
     if uv_path is None:
         print(f"modelb-axi: {_UV_BOOTSTRAP_MESSAGE}", file=sys.stderr)
         warnings.append(_UV_BOOTSTRAP_MESSAGE)
-        return 1, {}
+        return 1, {}, dict(harness)
 
-    sandesh_verdict = "detected" if shutil.which("sandesh") is not None else "absent"
-    if shutil.which("crucible") is not None:
-        crucible_verdict = "detected"
-    else:
-        _warn(_CRUCIBLE_ABSENT_WARNING, warnings)
-        crucible_verdict = "absent"
+    sandesh_verdict = DETECTED if shutil.which("sandesh") is not None else ABSENT
+    crucible_verdict, clients = load_crucible_clients()
+    stack_clients = {
+        stack: probe_crucible_client(stack, crucible_verdict, clients) for stack in stacks
+    }
+    path_tools = {
+        tool: DETECTED if shutil.which(tool) is not None else ABSENT for tool in _PATH_TOOLS
+    }
 
     # Truthful DETECTION report first (AC4: "records ... detection
-    # truthfully") — before any remediation mutates the picture.
+    # truthfully") — every group line before any policy or remediation.
     print(
         f"deps: uv=detected sandesh={sandesh_verdict} crucible={crucible_verdict}",
         file=sys.stderr,
     )
+    for stack, client in stack_clients.items():
+        print(f"stack {stack}: client={client}", file=sys.stderr)
 
-    if sandesh_verdict == "absent" and confirm(
+    failed = _harness_policy(
+        harness, str(agent_dir / "settings.json"), allow_missing_capabilities, warnings,
+    )
+    if crucible_verdict == ABSENT:
+        _warn(_CRUCIBLE_ABSENT_WARNING, warnings)
+    elif crucible_verdict == UNKNOWN:
+        _warn(_CRUCIBLE_UNKNOWN_WARNING, warnings)
+    for tool, verdict in path_tools.items():
+        if verdict == ABSENT:
+            row = requirement(tool)
+            _warn(
+                f"{tool} not found on PATH — {_families(row)} will not run; "
+                f"{row['remediation']}",
+                warnings,
+            )
+
+    capabilities = {**harness, "uv": DETECTED, "sandesh": sandesh_verdict,
+                    "crucible": crucible_verdict, **path_tools}
+    if failed:
+        message = (
+            f"pre-flight failed — required capabilities missing: {', '.join(failed)}; "
+            f"install them, or re-run with --allow-missing-capabilities"
+        )
+        print(f"modelb-axi: {message}", file=sys.stderr)
+        warnings.append(message)
+        return 1, {}, capabilities
+
+    if sandesh_verdict == ABSENT and confirm(
         f"Sandesh not found — install via `uv tool install {SANDESH_PACKAGE}`?"
     ):
         sandesh_verdict = _install_sandesh(uv_path, warnings)
@@ -114,9 +229,10 @@ def run_preflight(
                 f"deps: uv=detected sandesh=installed crucible={crucible_verdict}",
                 file=sys.stderr,
             )
+    capabilities["sandesh"] = sandesh_verdict
 
     return 0, {
-        "uv": "detected",
+        "uv": DETECTED,
         "sandesh": sandesh_verdict,
         "crucible": crucible_verdict,
-    }
+    }, capabilities
