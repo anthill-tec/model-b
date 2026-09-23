@@ -236,6 +236,8 @@ import tomllib
 import unittest
 from pathlib import Path
 
+from tests.pi_capability_sandbox import with_agent_dir
+
 from modelb_axi import agents as agents_mod
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -1289,8 +1291,11 @@ def _run_module_c3(*args, cwd=None, env_overrides=None, timeout=60, stdin=subpro
     env = dict(os.environ)
     existing_pp = env.get("PYTHONPATH", "")
     env["PYTHONPATH"] = str(REPO_ROOT) + (os.pathsep + existing_pp if existing_pp else "")
-    if env_overrides:
-        env.update(env_overrides)
+    # CR-MDB-036 migration: pin PI_CODING_AGENT_DIR to a sandboxed,
+    # fully provisioned Pi agent dir unless the caller pins its own --
+    # the pre-flight now probes harness capabilities and no test may
+    # read the real ~/.pi.
+    env.update(with_agent_dir(env_overrides))
     cmd = [sys.executable, "-m", "modelb_axi", *args]
     return subprocess.run(
         cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout,
@@ -1627,6 +1632,8 @@ class InstalledWheelInitRendersAgentsS6Test(unittest.TestCase):
         # The dev-mode repo copy of modelb_axi must never shadow the
         # installed package.
         run_env.pop("PYTHONPATH", None)
+        # CR-MDB-036: sandboxed, provisioned Pi agent dir -- never ~/.pi.
+        run_env.update(with_agent_dir(None))
 
         # Stage 1: a real installer run -> install.toml with asset_root
         # pointing INSIDE the installed package, harnesses=[pi].

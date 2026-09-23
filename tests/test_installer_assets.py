@@ -58,6 +58,8 @@ import tomllib
 import unittest
 from pathlib import Path
 
+from tests.pi_capability_sandbox import with_agent_dir
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SKILLS_SRC_DIR = REPO_ROOT / "skills-src"
 GENERATOR_DIR = REPO_ROOT / "generator"
@@ -168,8 +170,11 @@ def _run_module(*args, env_overrides=None, timeout=20):
     env = dict(os.environ)
     existing_pp = env.get("PYTHONPATH", "")
     env["PYTHONPATH"] = str(REPO_ROOT) + (os.pathsep + existing_pp if existing_pp else "")
-    if env_overrides:
-        env.update(env_overrides)
+    # CR-MDB-036 migration: pin PI_CODING_AGENT_DIR to a sandboxed,
+    # fully provisioned Pi agent dir unless the caller pins its own --
+    # the pre-flight now probes harness capabilities and no test may
+    # read the real ~/.pi.
+    env.update(with_agent_dir(env_overrides))
     cmd = [sys.executable, "-m", "modelb_axi", *args]
     return subprocess.run(
         cmd, capture_output=True, text=True, timeout=timeout,
@@ -1338,6 +1343,8 @@ class InstalledPackageAssetRootEndToEndTest(unittest.TestCase):
         # absolute path (the AC1 probe runs it with no PATH restriction
         # at all, so this is strictly tighter).
         run_env["PATH"] = self._tmp_bin
+        # CR-MDB-036: sandboxed, provisioned Pi agent dir -- never ~/.pi.
+        run_env.update(with_agent_dir(None))
         result = subprocess.run(
             [str(installed_bin), "--yes", "--harnesses", "claude-code",
              "--modelb-home", self._tmp_home,
