@@ -165,34 +165,39 @@ def remediate_toolchains(
     warn: Callable[[str], None],
     offer: Callable[[str], bool] | None,
 ) -> None:
-    """WARN for every tool not ``detected``, naming its provider's
+    """WARN for every tool not ``detected`` — each tool its OWN warning,
+    naming its provider's installer, even when another tool shares that
     installer; offer a non-elevated installer whose runner resolves, at
-    most once per installer. ``verdicts`` is updated in place
-    (``installed`` after a confirmed installer exits 0)."""
-    outcomes: dict[tuple[str, ...], str] = {}
+    most once per installer. ``verdicts`` is updated in place: after a
+    confirmed installer exits 0, every tool it covers is re-probed
+    (``installed`` iff now found)."""
+    offered: dict[tuple[str, ...], bool] = {}  # installer -> ran and exited 0
     for stack, row in verdicts.items():
         for probe in STACK_TOOLCHAINS[stack]:
             name = probe["name"]
             if row[name] == DETECTED:
                 continue
-            command = probe["remediation"]
             install = probe["install"]
-            if install in outcomes:
-                row[name] = outcomes[install]
-                continue
             # The remediation is prose with any command set apart in
             # backticks by the data (``requirements._probe``); the
             # elevated-privilege note is installer wording, never data.
             warn(
                 f"stack {stack}: {name}={row[name]} — {stack} tests cannot run on "
-                f"this machine; {command}" + (_ELEVATED_NOTE if install is None else "")
+                f"this machine; {probe['remediation']}"
+                + (_ELEVATED_NOTE if install is None else "")
             )
             if install is None or offer is None:
+                continue
+            display = install_display(install)
+            if install in offered:
+                # Shared installer, already offered this run: no second
+                # offer; re-probe this tool too if it ran.
+                if offered[install]:
+                    row[name] = _reprobe(probe, resolved, display, warn)
                 continue
             runner = resolve(install[0], resolved)
             if runner is None:
                 continue
-            display = install_display(install)
             env = _installer_env(probe)
             with_env = "".join(
                 f" with {var}={raw}" for var, raw in (probe.get("env_dirs") or {}).items()
@@ -201,5 +206,6 @@ def remediate_toolchains(
                 ran = _run_installer([runner, *install[1:]], display, warn, env)
                 row[name] = _reprobe(probe, resolved, display, warn) if ran else ABSENT
             else:
+                ran = False
                 warn(f"declined `{display}` — {name} stays {row[name]} for stack {stack}")
-            outcomes[install] = row[name]
+            offered[install] = ran
