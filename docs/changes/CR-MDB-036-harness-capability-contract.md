@@ -53,11 +53,19 @@ harness capability — the tool names it provides (CR-MDB-020 §S5 checks skills
 | 1 | `permissions` | `@gotgenes/pi-permission-system` | recommended | always |
 | 2 | `uv` | uv | required | always |
 | 2 | `sandesh` | `sandesh-relay` (via `uv tool install`) | recommended, install-on-confirm | always |
-| 2 | `crucible` | Crucible's released clients: `~/.crucible/clients/crucible-clients.json` | recommended | always |
-| 2 | `crucible-client` | `~/.crucible/clients/<client>-crucible.py` | recommended | per selected stack |
+| 2 | `crucible` | Crucible's released clients: the manifest `~/.crucible/crucible-clients.json` | recommended | always |
+| 2 | `crucible-client` | the manifest's `clients[<key>]` | recommended | per selected stack |
 | 2 | `python3`, `bash` | the OS | recommended | always (tool scripts; `gate-lock.sh` needs `bash`) |
 | 2 | `gh`, `jq` | their projects | recommended | always |
 | 3 | toolchain | see §S8 | recommended | per selected stack |
+
+**The Crucible manifest** (measured 2026-09-24; amended at C1): `~/.crucible/crucible-clients.json`
+sits at the install root, not under `clients/`. It is JSON whose `clients` object maps a key
+(`arduino`, `bun`, `mvn`, `python`, `rust`) to the absolute path of a released client, beside
+`version` and config paths. `crucible` is `detected` iff the manifest exists and parses with a
+`clients` object, `absent` if it is missing or has no `clients` object, and `unknown` if it does not
+parse. A stack's `crucible-client` is `detected` iff `clients[<key>]` names an existing file, where
+the key is the stack name except `quarkus` and `java`, which use `mvn`; no manifest means `absent`.
 
 The Crucible server is not probed: it is up or down from minute to minute, and a recorded verdict
 would be stale on arrival. Ingest failures surface at run time, where the clients report them.
@@ -138,8 +146,10 @@ is missing.
       requirement touches only that structure and its test.
 - [ ] Each tier-1 row lists the tool names its provider supplies: `dispatch` → `subagent`,
       `get_subagent_result`, `steer_subagent`; `lean-ctx` → every `ctx_*` tool and `lean_ctx`.
-- [ ] The `crucible` verdict comes from `~/.crucible/clients/crucible-clients.json`, never from a
-      `crucible` binary on PATH; no probe contacts a Crucible server.
+- [ ] The `crucible` and per-stack `crucible-client` verdicts follow the manifest rules in §S1
+      (`~/.crucible/crucible-clients.json`; `quarkus`/`java` → `mvn`), one test per rule, including a
+      manifest found only under `clients/` reading `absent`; never a `crucible` binary on PATH; no
+      probe contacts a Crucible server.
 
 ### §S2
 - [ ] The probe reads `$PI_CODING_AGENT_DIR/settings.json` when the variable is set, else
