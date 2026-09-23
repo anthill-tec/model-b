@@ -21,6 +21,20 @@ zone 2. **Answered 2026-09-24 as #1385 — both asks ACCEPTED, the UI proposal R
 Crucible reproduced it independently on CR-CRU-082. They will send the CR id when it is filed
 and again when it ships. The text below is the draft #1384 was sent from.
 
+**Filed 2026-09-24 as CR-CRU-147 (#1386)** — "a voided CR is not queued work, and its row says so";
+Crucible release **0.3.0**, wave 7, seq 7014 (behind CR-CRU-022/098/141/144/145/146). Two
+corrections from Crucible:
+
+- **Successor naming is already settled:** CR-CRU-078 AC27 (shipped in 0.2.0) requires a SUPERSEDED
+  row to name its successor and a VOID row to read as abandoned. Document it as settled.
+- **`status` will not change, by design:** CR-CRU-091 keeps two axes — `status` (derived:
+  PENDING = no plan, IN_PROGRESS = open plan, COMPLETED = closed + merged) and `lifecycle.state`
+  (is the work still wanted). CR-CRU-147 fixes the readers (`next`, the Wave Card, the table,
+  `queue`); no verb will write `status`.
+
+**Action for Model B:** drop the CR-MDB-012 wave-99 workaround once Crucible 0.3.0's released
+clients are installed here.
+
 ---
 
 Request: make `queue` readable — add `title` and `lifecycle.state` to the projection.

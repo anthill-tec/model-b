@@ -116,7 +116,9 @@ dropped. The `MODELB_REALHOME_GATE` paragraph is deleted with the module.
 - **Added 2026-09-24 (pi-lens, pre-existing):** `tests/test_installer.py:1022,1026` (CR-MDB-014) and
   `tests/test_installer_correctness.py:44,918,974,1015,1042` (CR-MDB-033) — unsorted import block,
   unnarrowed `Optional` values reaching `write_bytes`/`chmod`/`iter`/`rstrip`/`startswith`, and
-  string concatenation in loops. Same hygiene class; no behaviour defect.
+  string concatenation in loops. Same hygiene class; no behaviour defect. Also `tests/test_installer_correctness.py:1046`
+  (unannotated `**kwargs` passed through) and `:1182`, `:1233` (nested `with` statements), all
+  CR-MDB-033.
 
 ## Acceptance criteria
 
