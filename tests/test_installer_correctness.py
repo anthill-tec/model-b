@@ -148,7 +148,7 @@ _FAKE_SANDESH_SCRIPT = (
 # Fake `uv` fixture that ALSO writes an invocation marker for `uv tool
 # install <pkg>` (when $FAKE_UV_INSTALL_MARKER is set) -- mirrors
 # tests/test_installer.py's SandeshAbsentInstallViaUvShimTest fixture
-# exactly; C3's \u00a7S6 stdout/stderr-split test needs the proactive
+# exactly; C3's §S6 stdout/stderr-split test needs the proactive
 # Sandesh install to actually fire (BOTH `deps:` lines), which the
 # plain _FAKE_UV_SCRIPT above (a no-op `exit 0`) never triggers.
 _FAKE_UV_SCRIPT_WITH_INSTALL_MARKER = (
@@ -1549,15 +1549,16 @@ class MidEmissionFailureInsideWiringCompilationEmittedTest(unittest.TestCase):
         )
 
 
+
 # ---------------------------------------------------------------------------
-# CR-MDB-033 cycle C3 -- \u00a7S5 validation and hygiene, \u00a7S6 the installer's
-# result is one AXI envelope on stdout. Appended below the cycle C1 (\u00a7S1/
-# \u00a7S3) and C2 (\u00a7S2/\u00a7S4) classes above, which are GREEN as of this
+# CR-MDB-033 cycle C3 -- §S5 validation and hygiene, §S6 the installer's
+# result is one AXI envelope on stdout. Appended below the cycle C1 (§S1/
+# §S3) and C2 (§S2/§S4) classes above, which are GREEN as of this
 # cycle's baseline (measured 377 tests / 0 failures / 11 skips at fee5f6b)
 # and are left untouched.
 #
 # MEASURED defects this cycle's tests pin (docs/changes/
-# CR-MDB-033-installer-correctness.md \u00a7S5/\u00a7S6):
+# CR-MDB-033-installer-correctness.md §S5/§S6):
 #   - scaffold.resolve_harnesses trusts install.toml's `harnesses` list
 #     UNCHECKED -- only the --harnesses dev-override branch validates
 #     against HARNESS_ROSTER_IDS -- so a stale/typo'd id silently reaches
@@ -1571,7 +1572,7 @@ class MidEmissionFailureInsideWiringCompilationEmittedTest(unittest.TestCase):
 #     string grammar rejects; scaffold._render_instance_toml has its OWN
 #     unescaped `f'{field} = "{value}"'` quoting (context-table defect #7).
 #   - deploy.py/hooks.py/cli.py/preflight.py/harness.py cite bare
-#     `DN \u00a7N` without naming the DN file, and deploy.py calls the shared
+#     `DN §N` without naming the DN file, and deploy.py calls the shared
 #     asset store the "Vercel store" twice.
 #   - tests/test_tooling_adoption.py's module docstring cites
 #     `modelb_axi/cli.py:233-237` by line range.
@@ -1606,7 +1607,7 @@ def _run_main_in_process(argv, env_overrides=None, isatty=False, input_answers=N
 
 
 class InstallTomlUnknownHarnessIdRejectedTest(unittest.TestCase):
-    """AC (\u00a7S5) -- an install.toml listing a non-roster harness id makes
+    """AC (§S5) -- an install.toml listing a non-roster harness id makes
     a real `init` fail with the SAME UnknownHarnessError and exit code as
     the `--harnesses` dev-override rejection, naming the id, before any
     file is written under --target -- and on --dry-run too. MEASURED
@@ -1661,12 +1662,12 @@ class InstallTomlUnknownHarnessIdRejectedTest(unittest.TestCase):
         # already-validated --harnesses override rejection.
         self.assertNotEqual(
             result.returncode, 0,
-            f"\u00a7S5: a stale harness id read from install.toml must fail "
+            f"§S5: a stale harness id read from install.toml must fail "
             f"`init`; got exit={result.returncode} combined={combined!r}",
         )
         self.assertEqual(
             result.returncode, override_result.returncode,
-            f"\u00a7S5: an install.toml-sourced unknown harness id must exit "
+            f"§S5: an install.toml-sourced unknown harness id must exit "
             f"with the SAME code as the --harnesses override rejection "
             f"({override_result.returncode}); got {result.returncode}",
         )
@@ -1676,14 +1677,14 @@ class InstallTomlUnknownHarnessIdRejectedTest(unittest.TestCase):
         for harness_id in HARNESS_ROSTER_IDS:
             self.assertIn(
                 harness_id, combined,
-                f"\u00a7S5: the error must name the valid roster (missing "
+                f"§S5: the error must name the valid roster (missing "
                 f"{harness_id!r}); got combined={combined!r}",
             )
         # NEGATIVE / bound -- no file anywhere under --target.
         leftover = _files_under_excluding_git(self._tmp_target)
         self.assertEqual(
             leftover, [],
-            f"\u00a7S5: a rejected harness id must leave NO FILE under "
+            f"§S5: a rejected harness id must leave NO FILE under "
             f"--target; found {leftover!r}; combined={combined!r}",
         )
 
@@ -1697,8 +1698,8 @@ class InstallTomlUnknownHarnessIdRejectedTest(unittest.TestCase):
         combined = result.stdout + result.stderr
         self.assertNotEqual(
             result.returncode, 0,
-            f"\u00a7S5: --dry-run must ALSO reject a stale install.toml "
-            f"harness id (a hard validation error, unlike the \u00a7S1 "
+            f"§S5: --dry-run must ALSO reject a stale install.toml "
+            f"harness id (a hard validation error, unlike the §S1 "
             f"hooks_scripts_dir case which --dry-run may preview as a "
             f"warning); got exit={result.returncode} combined={combined!r}",
         )
@@ -1706,13 +1707,13 @@ class InstallTomlUnknownHarnessIdRejectedTest(unittest.TestCase):
         leftover = _files_under_excluding_git(self._tmp_dry_target)
         self.assertEqual(
             leftover, [],
-            f"\u00a7S5: --dry-run must write NOTHING under --target even "
+            f"§S5: --dry-run must write NOTHING under --target even "
             f"when rejecting a stale harness id; found {leftover!r}",
         )
 
 
 class TomlStringControlCharacterRoundTripTest(unittest.TestCase):
-    """AC (\u00a7S5) -- config._toml_string must escape every C0 control
+    """AC (§S5) -- config._toml_string must escape every C0 control
     (U+0000-U+001F) and DEL (U+007F) as \\uXXXX so every install.toml
     string write round-trips through tomllib. MEASURED current defect:
     `_toml_string` only escapes backslash/quote/\\n/\\t/\\r -- every other
@@ -1740,13 +1741,13 @@ class TomlStringControlCharacterRoundTripTest(unittest.TestCase):
                 )
         self.assertEqual(
             offenders, [],
-            f"\u00a7S5: _toml_string must escape every C0 control and DEL as "
+            f"§S5: _toml_string must escape every C0 control and DEL as "
             f"\\uXXXX so it round-trips through tomllib; offenders={offenders!r}",
         )
 
 
 class RenderInstanceTomlUsesSharedStringWriterTest(unittest.TestCase):
-    """AC (\u00a7S5) -- scaffold._render_instance_toml must write its string
+    """AC (§S5) -- scaffold._render_instance_toml must write its string
     values through config._toml_string (the ONE TOML string writer), not
     its own unescaped `f'{field} = "{value}"'` quoting (context-table
     defect #7: two hand-rolled TOML writers, one escapes, one does not).
@@ -1769,24 +1770,24 @@ class RenderInstanceTomlUsesSharedStringWriterTest(unittest.TestCase):
             parsed = tomllib.loads(rendered)
         except tomllib.TOMLDecodeError as exc:
             self.fail(
-                f"\u00a7S5: _render_instance_toml must escape string values "
+                f"§S5: _render_instance_toml must escape string values "
                 f"through config._toml_string so the output parses as valid "
                 f"TOML; tomllib raised {exc} on rendered={rendered!r}"
             )
         self.assertEqual(
             parsed.get("matcher"), instance["matcher"],
-            f"\u00a7S5: the rendered matcher value must round-trip exactly "
+            f"§S5: the rendered matcher value must round-trip exactly "
             f"through tomllib; got {parsed.get('matcher')!r}",
         )
 
 
 class DnCitationsNameTheirFileAndNoVercelReferenceTest(unittest.TestCase):
-    """AC (\u00a7S5) -- every `DN \u00a7` citation in modelb_axi/ names its DN
-    file (e.g. `DN-harness-agnostic-hooks \u00a74`, never the bare `DN \u00a74`),
+    """AC (§S5) -- every `DN §` citation in modelb_axi/ names its DN
+    file (e.g. `DN-harness-agnostic-hooks §4`, never the bare `DN §4`),
     and the string 'Vercel' appears nowhere in modelb_axi/ ('shared store'
     is the correct term) -- two grep gates. MEASURED current defects:
     deploy.py/hooks.py/cli.py/preflight.py/harness.py/scaffold.py cite
-    bare `DN \u00a7N` without naming which DN doc, and deploy.py calls the
+    bare `DN §N` without naming which DN doc, and deploy.py calls the
     shared asset store the 'Vercel store' twice."""
 
     def test_no_bare_dn_section_citation_without_a_named_dn_file(self):
@@ -1797,14 +1798,14 @@ class DnCitationsNameTheirFileAndNoVercelReferenceTest(unittest.TestCase):
                 continue
             text = path.read_text(encoding="utf-8")
             for lineno, line in enumerate(text.splitlines(), start=1):
-                if "DN \u00a7" in line:
+                if "DN §" in line:
                     offenders.append(
                         f"{path.relative_to(REPO_ROOT)}:{lineno}: {line.strip()}"
                     )
         self.assertEqual(
             offenders, [],
-            "\u00a7S5: every `DN \u00a7` citation must name its DN file (e.g. "
-            "`DN-harness-agnostic-hooks \u00a74`), never the bare `DN \u00a7N`; "
+            "§S5: every `DN §` citation must name its DN file (e.g. "
+            "`DN-harness-agnostic-hooks §4`), never the bare `DN §N`; "
             f"offending lines: {offenders!r}",
         )
 
@@ -1822,16 +1823,16 @@ class DnCitationsNameTheirFileAndNoVercelReferenceTest(unittest.TestCase):
                     )
         self.assertEqual(
             offenders, [],
-            "\u00a7S5: 'Vercel' must not appear anywhere in modelb_axi/ "
+            "§S5: 'Vercel' must not appear anywhere in modelb_axi/ "
             "('shared store' is the correct term); offending lines: "
             f"{offenders!r}",
         )
 
 
 class ToolingAdoptionCitesCliPyByFunctionNotLineRangeTest(unittest.TestCase):
-    """AC (\u00a7S6 tail) -- tests/test_tooling_adoption.py must cite
+    """AC (§S6 tail) -- tests/test_tooling_adoption.py must cite
     modelb_axi/cli.py by FUNCTION name, never by line range (a moving
-    target once \u00a7S6 adds envelope emission to cli.py). MEASURED current
+    target once §S6 adds envelope emission to cli.py). MEASURED current
     defect: its module docstring cites `modelb_axi/cli.py:233-237`."""
 
     def test_cli_py_citation_names_a_function_never_a_line_range(self):
@@ -1839,7 +1840,7 @@ class ToolingAdoptionCitesCliPyByFunctionNotLineRangeTest(unittest.TestCase):
         text = target.read_text(encoding="utf-8")
         self.assertIn(
             "cli.py", text,
-            "\u00a7S6 precondition: tests/test_tooling_adoption.py must still "
+            "§S6 precondition: tests/test_tooling_adoption.py must still "
             "cite modelb_axi/cli.py somewhere (the fix renames the "
             "citation to a function, it does not delete it)",
         )
@@ -1850,14 +1851,14 @@ class ToolingAdoptionCitesCliPyByFunctionNotLineRangeTest(unittest.TestCase):
         ]
         self.assertEqual(
             offenders, [],
-            "\u00a7S6: tests/test_tooling_adoption.py must cite "
+            "§S6: tests/test_tooling_adoption.py must cite "
             "modelb_axi/cli.py by function name, never a line range; "
             f"offending lines: {offenders!r}",
         )
 
 
 class InstallerEightExitPathsEnvelopeTest(unittest.TestCase):
-    """AC (\u00a7S6) -- every one of the eight installer exit paths in the
+    """AC (§S6) -- every one of the eight installer exit paths in the
     CR's table writes EXACTLY ONE AXI envelope to stdout (verb=install)
     whose outcome/ok match the table, and the process exit code matches
     too -- asserted per path via subTest (a path not asserted is a path
@@ -1880,7 +1881,7 @@ class InstallerEightExitPathsEnvelopeTest(unittest.TestCase):
             return _decode_envelope(stdout).get("axi", {})
         except Exception as exc:
             self.fail(
-                f"\u00a7S6 path={label}: stdout must decode as a TOON AXI "
+                f"§S6 path={label}: stdout must decode as a TOON AXI "
                 f"envelope via modelb_axi.toon; got exc={exc!r} "
                 f"stdout={stdout!r}"
             )
@@ -1889,21 +1890,21 @@ class InstallerEightExitPathsEnvelopeTest(unittest.TestCase):
         axi = self._decode_axi(stdout, label)
         self.assertEqual(
             axi.get("verb"), "install",
-            f"\u00a7S6 path={label}: envelope verb must be 'install'; got axi={axi!r}",
+            f"§S6 path={label}: envelope verb must be 'install'; got axi={axi!r}",
         )
         self.assertEqual(
             axi.get("outcome"), expected_outcome,
-            f"\u00a7S6 path={label}: envelope outcome must be "
+            f"§S6 path={label}: envelope outcome must be "
             f"{expected_outcome!r}; got axi={axi!r}",
         )
         self.assertEqual(
             axi.get("ok"), expected_ok,
-            f"\u00a7S6 path={label}: envelope ok must be {expected_ok!r}; "
+            f"§S6 path={label}: envelope ok must be {expected_ok!r}; "
             f"got axi={axi!r}",
         )
         self.assertEqual(
             returncode, expected_exit,
-            f"\u00a7S6 path={label}: process exit code must be "
+            f"§S6 path={label}: process exit code must be "
             f"{expected_exit}; got {returncode} (envelope axi={axi!r})",
         )
 
@@ -2022,7 +2023,7 @@ class InstallerEightExitPathsEnvelopeTest(unittest.TestCase):
             )
             self.assertFalse(
                 (Path(home) / "install.toml").exists(),
-                "\u00a7S6 path=deploy_failed: install.toml must never be "
+                "§S6 path=deploy_failed: install.toml must never be "
                 "written on a deploy failure (written last, on full "
                 "success only)",
             )
@@ -2065,7 +2066,7 @@ class InstallerEightExitPathsEnvelopeTest(unittest.TestCase):
 
 
 class StdoutCarriesOnlyEnvelopeAllHumanLinesOnStderrTest(unittest.TestCase):
-    """AC (\u00a7S6) -- on every path, stdout carries NOTHING but the one AXI
+    """AC (§S6) -- on every path, stdout carries NOTHING but the one AXI
     envelope, and every human line from cli.py AND preflight.py is on
     stderr -- including BOTH `deps:` lines (the pre-remediation report and
     the post-install update, CR-MDB-014 AC4) on a run that installs
@@ -2074,7 +2075,7 @@ class StdoutCarriesOnlyEnvelopeAllHumanLinesOnStderrTest(unittest.TestCase):
     `file=sys.stderr`)."""
 
     _HUMAN_MARKERS = (
-        "modelb-axi:", "deps:", "harnesses selected:",
+        "modelb-axi:", "deps: uv=", "harnesses selected:",
         "[stage 1/3]", "[stage 2/3]", "[stage 3/3]", "wrote ",
     )
 
@@ -2122,7 +2123,7 @@ class StdoutCarriesOnlyEnvelopeAllHumanLinesOnStderrTest(unittest.TestCase):
             axi = _decode_envelope(result.stdout).get("axi", {})
         except Exception as exc:
             self.fail(
-                f"\u00a7S6: stdout must be exactly one decodable TOON AXI "
+                f"§S6: stdout must be exactly one decodable TOON AXI "
                 f"envelope; exc={exc!r} stdout={result.stdout!r}"
             )
         self.assertEqual(
@@ -2134,7 +2135,7 @@ class StdoutCarriesOnlyEnvelopeAllHumanLinesOnStderrTest(unittest.TestCase):
         offenders = [m for m in self._HUMAN_MARKERS if m in result.stdout]
         self.assertEqual(
             offenders, [],
-            f"\u00a7S6: stdout must carry NOTHING but the envelope; found "
+            f"§S6: stdout must carry NOTHING but the envelope; found "
             f"human markers {offenders!r} in stdout={result.stdout!r}",
         )
 
@@ -2142,29 +2143,29 @@ class StdoutCarriesOnlyEnvelopeAllHumanLinesOnStderrTest(unittest.TestCase):
         # post-install update) land on stderr.
         self.assertIn(
             "deps: uv=detected sandesh=absent crucible=absent", result.stderr,
-            f"\u00a7S6: the pre-remediation deps: line must be on stderr; "
+            f"§S6: the pre-remediation deps: line must be on stderr; "
             f"got stderr={result.stderr!r}",
         )
         self.assertIn(
             "deps: uv=detected sandesh=installed crucible=absent", result.stderr,
-            f"\u00a7S6: the post-install-update deps: line must be on "
+            f"§S6: the post-install-update deps: line must be on "
             f"stderr; got stderr={result.stderr!r}",
         )
         # POSITIVE -- the stage/progress banners are on stderr too.
         self.assertIn(
             "harnesses selected:", result.stderr,
-            f"\u00a7S6: 'harnesses selected:' must be on stderr; got "
+            f"§S6: 'harnesses selected:' must be on stderr; got "
             f"stderr={result.stderr!r}",
         )
         self.assertIn(
             "[stage 1/3]", result.stderr,
-            f"\u00a7S6: stage banners must be on stderr; got "
+            f"§S6: stage banners must be on stderr; got "
             f"stderr={result.stderr!r}",
         )
 
 
 class InstalledEnvelopeFieldsMatchInstallTomlAndForeignFileTest(unittest.TestCase):
-    """AC (\u00a7S6) -- on the `installed` outcome, the envelope's `deps`
+    """AC (§S6) -- on the `installed` outcome, the envelope's `deps`
     equals install.toml's [deps] table, `managed_files` equals the number
     of [[files]] entries, and a foreign
     `<target-root>/.agents/scripts/gate-lock.sh` (present before the run,
@@ -2203,7 +2204,7 @@ class InstalledEnvelopeFieldsMatchInstallTomlAndForeignFileTest(unittest.TestCas
             axi = _decode_envelope(result.stdout).get("axi", {})
         except Exception as exc:
             self.fail(
-                f"\u00a7S6: stdout must decode as a TOON AXI envelope; "
+                f"§S6: stdout must decode as a TOON AXI envelope; "
                 f"exc={exc!r} stdout={result.stdout!r}"
             )
         self.assertEqual(
@@ -2217,14 +2218,14 @@ class InstalledEnvelopeFieldsMatchInstallTomlAndForeignFileTest(unittest.TestCas
         # POSITIVE -- deps equals install.toml [deps] exactly.
         self.assertEqual(
             axi.get("deps"), toml_data.get("deps"),
-            f"\u00a7S6: envelope deps must equal install.toml [deps]; "
+            f"§S6: envelope deps must equal install.toml [deps]; "
             f"envelope={axi.get('deps')!r} toml={toml_data.get('deps')!r}",
         )
         # POSITIVE -- managed_files equals the [[files]] entry count.
         files_section = toml_data.get("files", [])
         self.assertEqual(
             axi.get("managed_files"), len(files_section),
-            f"\u00a7S6: envelope managed_files must equal len([[files]]) "
+            f"§S6: envelope managed_files must equal len([[files]]) "
             f"({len(files_section)}); got {axi.get('managed_files')!r}",
         )
         # POSITIVE -- the foreign gate-lock.sh appears in unmanaged.
@@ -2232,20 +2233,20 @@ class InstalledEnvelopeFieldsMatchInstallTomlAndForeignFileTest(unittest.TestCas
         expected_rel = str(Path(".agents") / "scripts" / "gate-lock.sh")
         self.assertIn(
             expected_rel, unmanaged,
-            f"\u00a7S6: the foreign gate-lock.sh must appear in envelope "
+            f"§S6: the foreign gate-lock.sh must appear in envelope "
             f"unmanaged (rel={expected_rel!r}); got unmanaged={unmanaged!r}",
         )
         # NEGATIVE -- byte-identical, never adopted into the manifest.
         self.assertEqual(
             self._foreign.read_text(encoding="utf-8"), self._foreign_content,
-            "\u00a7S6/\u00a7S3: the foreign file must remain byte-identical",
+            "§S6/§S3: the foreign file must remain byte-identical",
         )
         manifest_paths = {
             e.get("path") for e in files_section if isinstance(e, dict)
         }
         self.assertNotIn(
             expected_rel, manifest_paths,
-            f"\u00a7S6/\u00a7S3: the foreign file must NEVER be recorded in "
+            f"§S6/§S3: the foreign file must NEVER be recorded in "
             f"the manifest ([[files]]); got manifest_paths={manifest_paths!r}",
         )
 

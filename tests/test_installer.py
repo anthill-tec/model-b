@@ -273,19 +273,20 @@ class StateDetectionTest(unittest.TestCase):
             "--yes", "--harnesses", "claude-code",
             "--modelb-home", self._tmp_home,
         )
-        # POSITIVE -- with no install.toml, stdout must name the installer
-        # flow (not scaffold mode).
+        # POSITIVE -- CR-MDB-033 §S6 migration: this is a PROSE check
+        # (does the run mention the installer flow) -- stdout carries
+        # nothing but the envelope now, so it reads stderr.
         self.assertIn(
-            "installer", result.stdout.lower(),
-            "AC3: with no install.toml under --modelb-home, stdout must "
+            "installer", result.stderr.lower(),
+            "AC3: with no install.toml under --modelb-home, stderr must "
             f"mention the installer flow; got exit={result.returncode} "
             f"stdout={result.stdout!r} stderr={result.stderr!r}",
         )
         # NEGATIVE -- must NOT claim to be in scaffold mode / name CR-MDB-013.
         self.assertNotIn(
-            "CR-MDB-013", result.stdout,
+            "CR-MDB-013", result.stderr,
             "AC3: with no install.toml present, the run must NOT enter "
-            f"scaffold mode; got stdout={result.stdout!r}",
+            f"scaffold mode; got stderr={result.stderr!r}",
         )
 
     def test_missing_install_toml_enters_installer_flow_via_modelb_home_env_var(self):
@@ -296,7 +297,7 @@ class StateDetectionTest(unittest.TestCase):
             env_overrides={"MODELB_HOME": self._tmp_home},
         )
         self.assertIn(
-            "installer", result.stdout.lower(),
+            "installer", result.stderr.lower(),
             "AC3: MODELB_HOME env var (no --modelb-home flag) with no "
             f"install.toml must still enter installer flow; got "
             f"exit={result.returncode} stdout={result.stdout!r} "
@@ -334,20 +335,23 @@ class StateDetectionTest(unittest.TestCase):
             f"stderr={result.stderr!r}",
         )
         self.assertIn(
-            "scaffold", result.stdout.lower(),
+            "scaffold", result.stderr.lower(),
             "AC3/S2: with install.toml present, launch must banner scaffold "
             f"mode; got stdout={result.stdout!r} stderr={result.stderr!r}",
         )
         self.assertIn(
-            "init", result.stdout.lower(),
+            "init", result.stderr.lower(),
             "AC3/S2: the scaffold-mode banner must propose running `init`; "
             f"got stdout={result.stdout!r} stderr={result.stderr!r}",
         )
         # NEGATIVE -- must NOT re-run the installer flow once scaffolded.
+        # CR-MDB-033 §S6 migration: this absence guard now reads
+        # stderr (stdout carries nothing but the envelope, so checking
+        # stdout would be vacuous once §S6 lands).
         self.assertNotIn(
-            "installer flow", result.stdout.lower(),
+            "installer flow", result.stderr.lower(),
             "AC3: with install.toml present, the run must NOT re-enter the "
-            f"installer flow; got stdout={result.stdout!r}",
+            f"installer flow; got stderr={result.stderr!r}",
         )
 
 
@@ -457,21 +461,27 @@ class DependencyPreflightReportingTest(unittest.TestCase):
             "--modelb-home", self._tmp_home,
             env_overrides={"PATH": self._tmp_bin},
         )
-        # CR-MDB-033 §S6 migration: read the FACT from the envelope, not
-        # a stdout text scrape.
-        axi = _decode_envelope(result.stdout).get("axi", {})
-        self.assertEqual(
-            axi.get("deps"),
-            {"uv": "detected", "sandesh": "absent", "crucible": "absent"},
-            "AC4: with no sandesh binary on PATH, the envelope's deps "
-            f"field must report sandesh=absent truthfully (not detected); "
-            f"got axi={axi!r} stdout={result.stdout!r} stderr={result.stderr!r}",
+        # CR-MDB-033 §S6 migration: this checks the TRUTHFUL PRE-
+        # REMEDIATION detection line specifically (AC4: "records ...
+        # detection truthfully" BEFORE any remediation mutates the
+        # picture) -- not the envelope's `deps` field, which is the
+        # FINAL post-remediation verdict and would legitimately read
+        # sandesh=installed here once the proactive-install attempt
+        # against the shared fake `uv` shim succeeds (this fixture sets
+        # no FAKE_UV_INSTALL_MARKER and doesn't care about that outcome
+        # -- only that the FIRST report was truthful). This is a PROSE/
+        # moment-in-time text check, so it reads stderr.
+        self.assertIn(
+            "deps: uv=detected sandesh=absent crucible=absent", result.stderr,
+            "AC4: with no sandesh binary on PATH, pre-flight's PRE-"
+            f"remediation report must state sandesh=absent truthfully "
+            f"(not detected); got stderr={result.stderr!r}",
         )
 
     def test_preflight_deps_report_precedes_harness_targeting_stage(self):
         """Pre-flight is stage 1 of the installer flow (§S3 stage order,
         dispatch item 1) -- its deps report must appear in stderr before
-        the stage-2 harness-targeting announcement (CR-MDB-033 \u00a7S6
+        the stage-2 harness-targeting announcement (CR-MDB-033 §S6
         migration: this is an ORDERING check over human prose, which now
         lives entirely on stderr, not stdout)."""
         _write_fake_executable(self._tmp_bin, "uv", _FAKE_UV_SCRIPT)
@@ -490,12 +500,12 @@ class DependencyPreflightReportingTest(unittest.TestCase):
         )
         self.assertNotEqual(
             harness_index, -1,
-            f"\u00a7S3: harness-targeting stage announcement not found in "
+            f"§S3: harness-targeting stage announcement not found in "
             f"stderr={stderr!r}",
         )
         self.assertLess(
             deps_index, harness_index,
-            "\u00a7S4: pre-flight (deps report) must run as stage 1, before "
+            "§S4: pre-flight (deps report) must run as stage 1, before "
             f"the harness-targeting stage; stderr={stderr!r}",
         )
 
@@ -695,11 +705,15 @@ class UvAbsentBootstrapFailureTest(unittest.TestCase):
             f"naming `uv`; got combined={combined!r}",
         )
         # NEGATIVE -- must not fabricate a deps report and proceed as if
-        # uv were present.
+        # uv were present. CR-MDB-033 §S6 migration: this absence guard
+        # must assert against STDERR (where every `deps:` line lives now,
+        # §S6's own table) -- checking stdout would be vacuously true
+        # once stdout carries nothing but the envelope, defeating the
+        # guard's purpose of catching a fabricated report.
         self.assertNotIn(
-            "deps: uv=detected", result.stdout,
+            "deps: uv=detected", result.stderr,
             f"AC4: must not report uv=detected when uv is absent from "
-            f"PATH; got stdout={result.stdout!r}",
+            f"PATH; got stderr={result.stderr!r}",
         )
 
 
@@ -785,7 +799,7 @@ class HarnessTargetingTest(unittest.TestCase):
 
     @staticmethod
     def _extract_selected_harnesses(stdout: str) -> list:
-        """CR-MDB-033 \u00a7S6 migration: the selected-harnesses FACT is read
+        """CR-MDB-033 §S6 migration: the selected-harnesses FACT is read
         from the envelope's `harnesses` field, never scraped from a
         `harnesses selected:` stdout text line."""
         from modelb_axi.toon import decode
@@ -1019,7 +1033,7 @@ class DeployEngineTest(unittest.TestCase):
         second = _run_module("--yes", "--modelb-home", self._tmp_home)
         # POSITIVE -- AC3, exercised against a REAL deploy-written
         # install.toml (not a hand-authored stub as in C1's
-        # StateDetectionTest). CR-MDB-033 \u00a7S6 migration: the
+        # StateDetectionTest). CR-MDB-033 §S6 migration: the
         # already-installed FACT is read from the envelope's `outcome`,
         # not scraped from a "CR-MDB-013" stdout text mention.
         self.assertEqual(
@@ -1030,13 +1044,13 @@ class DeployEngineTest(unittest.TestCase):
         axi = _decode_envelope(second.stdout).get("axi", {})
         self.assertEqual(
             axi.get("outcome"), "already_installed",
-            f"AC3/CR-MDB-033 \u00a7S6: with a REAL install.toml on disk from "
+            f"AC3/CR-MDB-033 §S6: with a REAL install.toml on disk from "
             f"a completed install, a second launch's envelope outcome must "
             f"be 'already_installed'; got axi={axi!r} stdout={second.stdout!r}",
         )
         self.assertTrue(
             axi.get("ok"),
-            f"AC3/CR-MDB-033 \u00a7S6: the already-installed envelope must "
+            f"AC3/CR-MDB-033 §S6: the already-installed envelope must "
             f"carry ok=true; got axi={axi!r}",
         )
         # PROSE -- the human notice (naming CR-MDB-013) is on stderr now.
@@ -1046,7 +1060,7 @@ class DeployEngineTest(unittest.TestCase):
             f"install, a second launch must enter scaffold mode naming "
             f"CR-MDB-013 on stderr; got stderr={second.stderr!r}",
         )
-        # NEGATIVE -- must not re-run the installer flow. CR-MDB-033 \u00a7S6
+        # NEGATIVE -- must not re-run the installer flow. CR-MDB-033 §S6
         # migration: this absence guard now reads stderr (stdout carries
         # nothing but the envelope, so checking stdout would be vacuous).
         self.assertNotIn("installer flow", second.stderr.lower())

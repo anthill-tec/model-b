@@ -13,7 +13,8 @@ current tree measures (2026-08-27):
     beside `_hook_scripts()`, so the §S4 constant/enumerator tests fail on
     absence.
   - `install.toml`'s `[install]` table carries exactly `version`,
-    `harnesses` and `asset_root` (`modelb_axi/cli.py:233-237`), so the
+    `harnesses` and `asset_root` (`modelb_axi/cli.py`'s `_deploy_stage`),
+    so the
     deployed-tooling-location key is not written and a sandboxed installer
     run deploys nothing under `<target-root>/.agents/scripts/`.
 

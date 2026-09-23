@@ -207,20 +207,23 @@ class ScaffoldModeEntryTest(unittest.TestCase):
             f"must exit 0; got exit={result.returncode} "
             f"stdout={result.stdout!r} stderr={result.stderr!r}",
         )
+        # CR-MDB-033 \u00a7S6: stdout carries nothing but the AXI envelope
+        # now (verb `install`); these are PROSE checks over the human
+        # scaffold-mode banner, which moved to stderr.
         self.assertIn(
-            "scaffold", result.stdout.lower(),
-            "S2: with install.toml present, stdout must banner scaffold "
-            f"mode; got stdout={result.stdout!r}",
+            "scaffold", result.stderr.lower(),
+            "S2: with install.toml present, stderr must banner scaffold "
+            f"mode; got stderr={result.stderr!r}",
         )
         self.assertIn(
-            "init", result.stdout.lower(),
+            "init", result.stderr.lower(),
             "S2: the scaffold-mode banner must propose running `init`; got "
-            f"stdout={result.stdout!r}",
+            f"stderr={result.stderr!r}",
         )
         # NEGATIVE -- must not re-enter the installer flow.
         self.assertNotIn(
-            "installer flow", result.stdout.lower(),
-            f"S2: must not re-enter the installer flow; got stdout={result.stdout!r}",
+            "installer flow", result.stderr.lower(),
+            f"S2: must not re-enter the installer flow; got stderr={result.stderr!r}",
         )
 
 
