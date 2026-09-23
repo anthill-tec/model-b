@@ -50,6 +50,9 @@ installer's asset class (CR-025 §S4). Tool scripts stay installer-deployed to `
   `extensions/` set reading project config) or stay per-project. Package-shipped means every Pi
   session gets them without scaffold; per-project means worktrees need `.pi/extensions/` tracked
   (CR-030 §S6). Decide once; the answer shapes 030's emitter.
+  **DECIDED 2026-09-23 (user, at CR-MDB-030 gap-analysis): per-project.** Hooks are wired per
+  project as PRD D10.7 and DN §D17 settle; `.pi/` is tracked so worktrees carry them (CR-030 §S6).
+  This package ships no hook extensions.
 - Publication location: this repo via a subdirectory published to npm, or a git-source install
   (`pi install git:github.com/antojk/model-b#<tag>` with a subpath) — DN Consequences named the
   choice as the user's, with release-process consequences for CR-012.
@@ -111,7 +114,8 @@ Python) + tests. Medium.
 
 - Pi's package contract is measured from docs at 0.86.1 and one working package
   (`pi-archimedes`); a Pi change to the manifest schema surfaces at the next upgrade.
-- If §S0 chooses package-shipped hooks, 030 and 029 must land together or the hooks exist twice.
+- ~~If §S0 chooses package-shipped hooks, 030 and 029 must land together or the hooks exist twice.~~
+  Moot: §S0 chose per-project hooks (2026-09-23).
 - Publishing adds an npm (or git-tag) step to the release; 012 must not be authored without §S5.
 
 ## Non-goals
