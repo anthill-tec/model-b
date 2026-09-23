@@ -90,7 +90,7 @@ SCRIPTS_ROOT = REPO_ROOT / "hooks-src" / "scripts"
 # informational hook (session-start) -- exactly the prompt's pinned pair.
 CARGO_GUARD_OPEN = {
     "event": "pre-tool-use",
-    "matcher": "Bash",
+    "matcher": "bash",
     "command": "block-direct-cargo-test",
     "tier": "core",
     "timeout": 5,
@@ -109,7 +109,7 @@ AMBIENT_STATUS = {
 # AC5: a security-class guard declaring fail_direction=closed.
 WRITE_GUARD_CLOSED = {
     "event": "pre-tool-use",
-    "matcher": "Write|Edit",
+    "matcher": "write|edit",
     "command": "block-write-outside-worktree",
     "tier": "core",
     "timeout": 5,
@@ -183,6 +183,8 @@ class ClaudeCodeEmitterTest(HooksCompilerTestCase):
         pre_tool_use = settings["hooks"]["PreToolUse"]
         self.assertEqual(len(pre_tool_use), 1)
         cargo_entry = pre_tool_use[0]
+        # CR-MDB-030 §S4: the emitter translates the neutral matcher into
+        # Claude Code's own tool name -- never the neutral `bash`.
         self.assertEqual(cargo_entry["matcher"], "Bash")
         cargo_cmd = cargo_entry["hooks"][0]
         expected_cargo_path = str(SCRIPTS_ROOT / "block-direct-cargo-test")
@@ -198,6 +200,55 @@ class ClaudeCodeEmitterTest(HooksCompilerTestCase):
 
         # Negative/bound: exactly these two events, nothing extra invented.
         self.assertEqual(set(settings["hooks"].keys()), {"PreToolUse", "SessionStart"})
+
+    def test_settings_json_matcher_uses_claude_code_tool_names(self):
+        """CR-MDB-030 §S4 / AC: `.claude/settings.json` carries Claude Code's
+        own tool names for every neutral matcher -- each class in §S4's
+        table, an alternation translated per member, and a name with no
+        Claude Code equivalent passed through unchanged. One subtest per
+        row. Instances are `open` so claude-code emits rather than refuses."""
+        from modelb_axi.hooks import compile_wiring
+
+        cases = [
+            ("bash", "Bash"),
+            ("write", "Write"),
+            ("edit", "Edit|MultiEdit|NotebookEdit"),
+            ("read", "Read"),
+            ("grep", "Grep"),
+            ("find", "Glob"),
+            ("ls", "LS"),
+            ("write|edit", "Write|Edit|MultiEdit|NotebookEdit"),
+            ("bash|read", "Bash|Read"),
+            ("mcp__example__tool", "mcp__example__tool"),
+            ("*", "*"),
+        ]
+        for neutral, expected in cases:
+            with self.subTest(neutral=neutral):
+                target = self.target / neutral.replace("|", "_").replace("*", "star")
+                instance = {
+                    "event": "pre-tool-use",
+                    "matcher": neutral,
+                    "command": "block-direct-cargo-test",
+                    "tier": "core",
+                    "timeout": 5,
+                    "fail_direction": "open",
+                }
+                compile_wiring(
+                    schema_instances=[instance],
+                    harnesses=["claude-code"],
+                    target=target,
+                    scripts_root=SCRIPTS_ROOT,
+                )
+                settings = json.loads(
+                    (target / ".claude" / "settings.json").read_text(encoding="utf-8")
+                )
+                entries = settings["hooks"]["PreToolUse"]
+                self.assertEqual(len(entries), 1)
+                self.assertEqual(
+                    entries[0]["matcher"], expected,
+                    f"§S4: neutral matcher {neutral!r} must be written as "
+                    f"Claude Code's {expected!r} in settings.json",
+                )
 
     def test_fail_open_guard_is_emitted_not_refused_for_claude_code(self):
         from modelb_axi.hooks import compile_wiring
@@ -280,7 +331,15 @@ class OpenCodeEmitterTest(HooksCompilerTestCase):
 class PiExtensionEmitterTest(HooksCompilerTestCase):
     """AC4 pi: `.pi/extensions/<name>.ts` -- full TS-extension emitter."""
 
-    def test_extension_subscribes_session_start_and_tool_call_via_pi_exec(self):
+    def test_extension_default_exports_a_factory_and_never_uses_pi_exec(self):
+        """MIGRATED (CR-MDB-030 §S1/§S2, C1): the pre-030 characterization
+        asserted `pi.on(...)` at module top level (no default export -- the
+        loader drops it) and `pi.exec` (no `stdin` option on 0.87.1's
+        `ExecOptions`, so no script ever received its payload). The 030
+        contract is a default-export factory that never spawns via
+        `pi.exec` -- runtime-loadability is proven separately by
+        tests/test_pi_hook_runtime.py::DefaultExportFactoryTest, which
+        drives the REAL emitted file through Pi's own jiti loader."""
         from modelb_axi.hooks import compile_wiring
 
         report = compile_wiring(
@@ -301,9 +360,15 @@ class PiExtensionEmitterTest(HooksCompilerTestCase):
         )
         combined = "".join(p.read_text(encoding="utf-8") for p in ts_files)
 
+        self.assertIn("export default function", combined)
+        self.assertNotIn(
+            "pi.exec(", combined,
+            "§S2: pi.exec has no stdin option -- the shim must pipe stdin via "
+            "node:child_process instead",
+        )
+        self.assertIn("node:child_process", combined)
         self.assertIn("session_start", combined)
         self.assertIn("tool_call", combined)
-        self.assertIn("pi.exec", combined)
         self.assertIn("{ block: true", combined)
         expected_cargo_path = str(SCRIPTS_ROOT / "block-direct-cargo-test")
         self.assertIn(expected_cargo_path, combined)
@@ -358,10 +423,13 @@ class PiExtensionEmitterTest(HooksCompilerTestCase):
         self.assertIn('pi.on("turn_end"', combined)
         self.assertIn('pi.on("input"', combined)
 
-    def test_pre_compact_is_a_declared_gap_for_pi_not_emitted_not_refused(self):
-        """F1 (VERIFY B2): pre-compact has NO pi counterpart -- no extension
-        file emitted, NOT a refusal, and the report note names the gap (same
-        declared-degradation idiom as hermes)."""
+    def test_pre_compact_maps_to_session_before_compact_and_is_emitted(self):
+        """MIGRATED (CR-MDB-030 \u00a7S5, C1): pre-compact's pi counterpart is
+        `session_before_compact` -- it is EMITTED, not a declared gap, and
+        the old 'no documented pi counterpart' note is gone. Runtime
+        registration through the real jiti loader is proven separately by
+        tests/test_pi_hook_runtime.py::DefaultExportFactoryTest
+        ::test_pre_compact_maps_to_session_before_compact_and_registers_it."""
         from modelb_axi.hooks import compile_wiring
 
         report = compile_wiring(
@@ -372,24 +440,27 @@ class PiExtensionEmitterTest(HooksCompilerTestCase):
         )
 
         pi_report = report["pi"]
-        # Missing event, not a fail-direction conflict: never a refusal.
         self.assertEqual(pi_report["refusals"], [])
-        self.assertEqual(pi_report["emitted_files"], [])
-        gap_file = (
+        self.assertFalse(pi_report["degraded"])
+        self.assertEqual(
+            pi_report["emitted_files"],
+            [str(Path(".pi") / "extensions" / "post-regression-disk-reminder.ts")],
+        )
+
+        ext_file = (
             self.target / ".pi" / "extensions" / "post-regression-disk-reminder.ts"
         )
-        self.assertFalse(
-            gap_file.exists(), "pre-compact hook must not be emitted for pi"
-        )
-        # Declared, never silent: a note names both the event and the hook.
-        gap_notes = [
-            n
-            for n in pi_report["notes"]
-            if "pre-compact" in n and "post-regression-disk-reminder" in n
+        self.assertTrue(ext_file.is_file())
+        text = ext_file.read_text(encoding="utf-8")
+        self.assertIn('pi.on("session_before_compact"', text)
+
+        stale_notes = [
+            n for n in pi_report["notes"]
+            if "no" in n.lower() and "counterpart" in n.lower()
         ]
-        self.assertTrue(
-            gap_notes,
-            f"expected a declared-gap note naming the event and hook: {pi_report['notes']!r}",
+        self.assertEqual(
+            stale_notes, [],
+            f"the 'no documented pi counterpart' note must be gone: {pi_report['notes']!r}",
         )
 
 
@@ -504,7 +575,7 @@ class RefusalTest(HooksCompilerTestCase):
         self.assertNotIn(".claude/settings.json", report["claude-code"]["emitted_files"])
 
     def test_all_targets_refused_raises_distinct_error(self):
-        from modelb_axi.hooks import compile_wiring, AllTargetsRefusedError
+        from modelb_axi.hooks import AllTargetsRefusedError, compile_wiring
 
         with self.assertRaises(AllTargetsRefusedError) as ctx:
             compile_wiring(

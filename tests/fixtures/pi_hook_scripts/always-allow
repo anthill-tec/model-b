@@ -1,0 +1,17 @@
+#!/usr/bin/env python3
+"""Test-only protocol-script fixture (CR-MDB-030 §S5) — NOT a real
+hooks-src/scripts/ hook. Reads and discards stdin, always exits 0 (the
+protocol's unconditional allow outcome) with no output. Used as the
+happy-path baseline against which the four failure-mode fixtures in this
+directory are contrasted."""
+
+import sys
+
+
+def main() -> int:
+    sys.stdin.read()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

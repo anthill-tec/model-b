@@ -704,9 +704,9 @@ class HooksSeamSoloRustEmissionTest(unittest.TestCase):
     stdlib docstring). The CR text pins ONLY the rows this test and
     HooksSeamMultiPythonEmissionTest assert on (cargo/mvn stack-gating,
     worktree/CR mode-gating, ambient-status always-on); it is silent on
-    `block-bad-cycle-task-name` / `post-regression-disk-reminder`'s exact
-    gating for THIS scenario, so neither their presence nor their absence
-    is asserted below -- only the pinned rows:
+    `post-regression-disk-reminder`'s exact gating for THIS scenario, so
+    neither its presence nor its absence is asserted below -- only the
+    pinned rows:
 
         hook                                    | stack gate               | mode gate
         -----------------------------------------|--------------------------|----------
@@ -715,7 +715,6 @@ class HooksSeamSoloRustEmissionTest(unittest.TestCase):
         block-direct-mvn-test                     | stacks ∩ {java, quarkus} | none
         block-write-outside-worktree              | none (stack-neutral)     | multi only
         block-cr-completed-without-spec-update    | none (stack-neutral)     | multi only
-        block-bad-cycle-task-name /
         post-regression-disk-reminder             | none (stack-neutral per  | UNPINNED by
                                                    | dispatch note)           | this CR slice
     """
@@ -806,7 +805,11 @@ class HooksSeamSoloRustEmissionTest(unittest.TestCase):
             "S5: solo mode must not emit the CR-completion guard instance",
         )
 
-    def test_claude_code_settings_json_wires_cargo_guard_and_ambient_status_commands(self):
+    def test_claude_code_refuses_closed_cargo_guard_and_still_wires_ambient_status(self):
+        # CR-MDB-030 \u00a7S6 migration (orchestrator-approved): block-* guards
+        # are `closed`, and claude-code cannot honour `closed`
+        # (hooks._HONORS_FAIL_CLOSED), so the \u00a7S4 compiler REFUSES the cargo
+        # guard there and reports the refusal in hooks/README.md.
         settings_path = self._target / ".claude" / "settings.json"
         self.assertTrue(
             settings_path.is_file(),
@@ -829,12 +832,35 @@ class HooksSeamSoloRustEmissionTest(unittest.TestCase):
                 commands.extend(_commands_for(event))
             return commands
 
-        # POSITIVE -- the cargo guard is wired under PreToolUse.
-        pre_tool_commands = _commands_for("PreToolUse")
+        # NEGATIVE -- the closed cargo guard is NOT wired anywhere in the
+        # claude-code settings (refused, CR-MDB-030 \u00a7S6).
+        cargo_wired = [
+            cmd for cmd in _all_commands()
+            if cmd.endswith("block-direct-cargo-test")
+        ]
+        self.assertEqual(
+            cargo_wired, [],
+            "S6: the closed cargo guard must be refused on claude-code, not "
+            f"wired; found {cargo_wired!r} in settings={settings!r}",
+        )
+        # POSITIVE -- the refusal is surfaced in the compiler report
+        # (hooks/README.md), under the claude-code section.
+        report_path = self._target / "hooks" / "README.md"
         self.assertTrue(
-            any(cmd.endswith("block-direct-cargo-test") for cmd in pre_tool_commands),
-            "S5: PreToolUse must wire the cargo guard; got PreToolUse commands="
-            f"{pre_tool_commands!r} (full settings={settings!r})",
+            report_path.is_file(),
+            f"S6: init must emit the hook compiler report at {report_path}",
+        )
+        report = report_path.read_text(encoding="utf-8")
+        section = report.split("### claude-code", 1)
+        self.assertEqual(
+            len(section), 2,
+            f"S6: hooks/README.md must carry a claude-code section; got {report!r}",
+        )
+        claude_section = section[1].split("\n### ", 1)[0]
+        self.assertIn(
+            "- REFUSED `block-direct-cargo-test`:", claude_section,
+            "S6: hooks/README.md must report the cargo guard REFUSED for "
+            f"claude-code; got claude-code section={claude_section!r}",
         )
         # POSITIVE -- ambient-board-status is wired under SessionStart.
         session_start_commands = _commands_for("SessionStart")
@@ -928,6 +954,233 @@ class HooksSeamMultiPythonEmissionTest(unittest.TestCase):
             self._instance_path("block-direct-mvn-test").exists(),
             "S5: `--stacks python` (no java/quarkus) must not emit the mvn "
             "guard instance",
+        )
+
+
+class PiWorktreeCarryAndClosedGuardsTest(unittest.TestCase):
+    """\u00a7S6 AC (CR-MDB-030) -- the scaffold's `.gitignore` stops ignoring
+    `.pi/` wholesale so a fresh `git worktree add` carries the project's
+    `.pi/extensions/` (compiled pi hook shims) and `.pi/agents/` (subagent
+    defs); every scaffold `block-*` guard instance is emitted
+    `fail_direction: closed` (the pre-CR-030 value was `open`); and the old
+    Claude-refusal rationale comment that justified `open` is gone from
+    `scaffold.py`'s source.
+
+    RUN CONTEXT -- one `--mode multi:2 --stacks rust,java --harnesses
+    claude-code,pi` init fixture, shared by every test method below: multi
+    mode + rust + java together select ALL FOUR block-* instances (see
+    HooksSeamSoloRustEmissionTest's derived selection table), and `pi` in
+    the installed harness roster makes the \u00a7S4 compiler
+    (`hooks.compile_wiring` -> `_emit_pi`) emit one `.pi/extensions/
+    <command>.ts` per instance.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls._tmp_home = tempfile.mkdtemp(prefix="modelb-axi-pi-worktree-home-")
+        cls._tmp_target = tempfile.mkdtemp(prefix="modelb-axi-pi-worktree-target-")
+        _write_install_toml(cls._tmp_home, harnesses=("claude-code", "pi"))
+        cls._result = _run_module(
+            "--yes", "init",
+            "--name", "X", "--token", "xproj", "--acronym", "XP",
+            "--mode", "multi:2", "--repo-shape", "standalone",
+            "--stacks", "rust,java", "--owner", "tester",
+            "--target", cls._tmp_target,
+            "--modelb-home", cls._tmp_home,
+        )
+        cls._target = Path(cls._tmp_target)
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls._tmp_home, ignore_errors=True)
+        shutil.rmtree(cls._tmp_target, ignore_errors=True)
+
+    def _instance_path(self, command):
+        return self._target / "hooks" / "instances" / f"{command}.toml"
+
+    def test_init_succeeded_precondition(self):
+        # Fixture precondition, not an S6 assertion itself -- every other
+        # method in this class depends on this run having actually emitted
+        # a project tree.
+        self.assertEqual(
+            self._result.returncode, 0,
+            f"S6 fixture precondition: init must succeed; "
+            f"stdout={self._result.stdout!r} stderr={self._result.stderr!r}",
+        )
+
+    def test_gitignore_has_no_line_ignoring_pi_directory_wholesale(self):
+        gitignore_path = self._target / ".gitignore"
+        self.assertTrue(gitignore_path.is_file(), f"expected {gitignore_path}")
+        lines = [
+            ln.strip()
+            for ln in gitignore_path.read_text(encoding="utf-8").splitlines()
+        ]
+        # NEGATIVE/EXACT -- any of these forms blanket-ignores the whole
+        # `.pi/` tree, which would silently drop `.pi/extensions/` AND
+        # `.pi/agents/` from every future `git add -A`.
+        offending = [ln for ln in lines if ln in (".pi/", ".pi", "/.pi/", "/.pi")]
+        self.assertEqual(
+            offending, [],
+            f"S6: `.gitignore` must not ignore `.pi/` wholesale (so "
+            f".pi/extensions/ and .pi/agents/ can be tracked); got "
+            f"lines={lines!r}",
+        )
+
+    def test_every_scaffold_block_guard_instance_is_fail_closed(self):
+        for command in (
+            "block-direct-cargo-test",
+            "block-direct-mvn-test",
+            "block-write-outside-worktree",
+            "block-cr-completed-without-spec-update",
+        ):
+            path = self._instance_path(command)
+            self.assertTrue(
+                path.is_file(),
+                f"S6 fixture precondition: {command!r} instance must be "
+                f"emitted by this run (rust+java stacks, multi mode); init "
+                f"stderr={self._result.stderr!r}",
+            )
+            with open(path, "rb") as fh:
+                instance = tomllib.load(fh)
+            # POSITIVE/EXACT -- CR-MDB-030 \u00a7S6 flips every scaffold
+            # block-* guard from "open" to "closed"; the pre-CR-030 value
+            # ("open") must NOT survive.
+            self.assertEqual(
+                instance.get("fail_direction"), "closed",
+                f"S6: {command!r} must be emitted fail_direction=closed "
+                f"(not the pre-CR-030 'open'); got instance={instance!r}",
+            )
+
+    def test_claude_refusal_rationale_comment_removed_from_scaffold_source(self):
+        source = (REPO_ROOT / "modelb_axi" / "scaffold.py").read_text(encoding="utf-8")
+        # NEGATIVE -- the pre-CR-030 rationale sentence that justified
+        # emitting `fail_direction: "open"` because `closed` would make the
+        # \u00a7S4 compiler refuse the guard on Claude Code (a fail-open
+        # harness) must be gone now that guards ARE closed.
+        self.assertNotIn(
+            "REFUSE the guard on the fail-open harnesses",
+            source,
+            "S6: the Claude-refusal rationale comment that justified "
+            "fail_direction='open' must be deleted from scaffold.py now "
+            "that block-* guards are closed",
+        )
+        self.assertNotIn(
+            'fail_direction = "open"',
+            source,
+            "S6: scaffold.py's block-* comment/prose must not still "
+            "prescribe fail_direction='open'",
+        )
+
+    def test_fresh_worktree_checkout_carries_pi_extensions_and_pi_agents(self):
+        # Simulate a user-authored Pi subagent definition living alongside
+        # the scaffold-emitted `.pi/extensions/*.ts` -- proves the
+        # `.gitignore` fix is not merely cosmetic: a REAL `.pi/agents/*`
+        # file survives `git add -A` and is present after `git worktree
+        # add`, exactly like the `.pi/extensions/*.ts` files init already
+        # emitted.
+        agents_dir = self._target / ".pi" / "agents"
+        agents_dir.mkdir(parents=True, exist_ok=True)
+        agent_file = agents_dir / "sample-subagent.md"
+        agent_file.write_text("# sample subagent\n", encoding="utf-8")
+
+        # NEGATIVE -- `git check-ignore` exits 0 when a path IS ignored;
+        # this must exit non-zero (not ignored) for both a scaffold-
+        # emitted extension and the manually-added agents file, or
+        # nothing downstream (`add`/`commit`/the worktree) can carry them.
+        for rel in (".pi/agents/sample-subagent.md", ".pi/extensions"):
+            check_ignore = subprocess.run(
+                ["git", "check-ignore", rel], cwd=self._target,
+                capture_output=True, text=True,
+            )
+            self.assertNotEqual(
+                check_ignore.returncode, 0,
+                f"S6: {rel!r} must NOT be git-ignored; `git check-ignore` "
+                f"reported it ignored (stdout={check_ignore.stdout!r})",
+            )
+
+        add = subprocess.run(
+            ["git", "add", "-A"], cwd=self._target,
+            capture_output=True, text=True,
+        )
+        self.assertEqual(add.returncode, 0, f"git add failed: {add.stderr!r}")
+        commit = subprocess.run(
+            [
+                "git", "-c", "user.email=modelb-axi-test@localhost",
+                "-c", "user.name=modelb-axi-test",
+                "commit", "-m", "test: add sample .pi/agents fixture",
+            ],
+            cwd=self._target, capture_output=True, text=True,
+        )
+        self.assertEqual(
+            commit.returncode, 0,
+            f"S6: committing the new `.pi/agents/*` file must succeed "
+            f"(it must be a real, add-able change, not gitignored-away); "
+            f"git commit stdout={commit.stdout!r} stderr={commit.stderr!r}",
+        )
+
+        ls_files = subprocess.run(
+            ["git", "ls-files", ".pi"], cwd=self._target,
+            capture_output=True, text=True,
+        )
+        self.assertEqual(ls_files.returncode, 0, f"git ls-files failed: {ls_files.stderr!r}")
+        tracked = set(ls_files.stdout.split())
+        # POSITIVE/EXACT -- the agents file must be genuinely git-tracked,
+        # not merely present on disk.
+        self.assertIn(
+            ".pi/agents/sample-subagent.md", tracked,
+            f"S6: `.pi/agents/*` must be genuinely git-tracked (not "
+            f"ignored); tracked .pi entries={tracked!r}",
+        )
+        tracked_extensions = [
+            entry for entry in tracked if entry.startswith(".pi/extensions/")
+        ]
+        self.assertTrue(
+            tracked_extensions,
+            f"S6 fixture precondition: at least one .pi/extensions/*.ts "
+            f"must be emitted+tracked (pi harness selected); "
+            f"tracked={tracked!r}",
+        )
+
+        worktree_root = tempfile.mkdtemp(prefix="modelb-axi-pi-worktree-checkout-")
+        self.addCleanup(shutil.rmtree, worktree_root, ignore_errors=True)
+        checkout_path = Path(worktree_root) / "wt"
+        worktree_add = subprocess.run(
+            [
+                "git", "worktree", "add", "-b", "s6-worktree-check",
+                str(checkout_path), "develop",
+            ],
+            cwd=self._target, capture_output=True, text=True,
+        )
+        self.addCleanup(
+            lambda: subprocess.run(
+                ["git", "worktree", "remove", "--force", str(checkout_path)],
+                cwd=self._target, capture_output=True, text=True,
+            )
+        )
+        self.assertEqual(
+            worktree_add.returncode, 0,
+            f"git worktree add failed: {worktree_add.stderr!r}",
+        )
+        # POSITIVE -- the fresh worktree checkout (a SEPARATE working tree
+        # from a fresh `git checkout` of the same commit) must physically
+        # contain both directories -- this is the literal AC wording ("a
+        # fresh `git worktree add` ... contains its .pi/extensions/ and
+        # .pi/agents/").
+        pi_listing = (
+            sorted(str(p.relative_to(checkout_path)) for p in (checkout_path / ".pi").rglob("*"))
+            if (checkout_path / ".pi").exists() else "MISSING .pi"
+        )
+        self.assertTrue(
+            (checkout_path / ".pi" / "agents" / "sample-subagent.md").is_file(),
+            f"S6: fresh worktree checkout must carry .pi/agents/*; "
+            f"listing={pi_listing}",
+        )
+        extensions_dir = checkout_path / ".pi" / "extensions"
+        extensions_in_worktree = list(extensions_dir.glob("*.ts")) if extensions_dir.is_dir() else []
+        self.assertTrue(
+            extensions_in_worktree,
+            f"S6: fresh worktree checkout must carry .pi/extensions/*.ts; "
+            f"listing={pi_listing}",
         )
 
 

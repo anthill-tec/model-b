@@ -112,11 +112,13 @@ ROLES = ("red", "green", "verify", "fix")
 
 # §S6 (CR-MDB-015) -- the shared protocol script library that must ship as
 # packaged data and get deployed user-scope, once, by the installer.
+# MIGRATED (CR-MDB-030 §S7, this cycle): the cycle-todo-naming guard
+# retired -- six scripts now, not seven; its own nonexistence is
+# tests/test_hook_retirement.py's job, not this deploy-shape pin's.
 HOOKS_SRC_DIR = REPO_ROOT / "hooks-src"
 HOOKS_SRC_SCRIPTS_DIR = HOOKS_SRC_DIR / "scripts"
 HOOK_SCRIPT_NAMES = (
     "ambient-board-status",
-    "block-bad-cycle-task-name",
     "block-cr-completed-without-spec-update",
     "block-direct-cargo-test",
     "block-direct-mvn-test",
@@ -1397,18 +1399,22 @@ class HooksSrcPackagingAssetTest(unittest.TestCase):
 
 class HookScriptsDeployEndToEndTest(unittest.TestCase):
     """§S6 AC7 (CR-MDB-015) -- the deploy engine's sandboxed install run
-    manifests the seven `hooks-src/scripts/` protocol scripts user-scope,
+    manifests the six `hooks-src/scripts/` protocol scripts user-scope,
     once, under the target-root's neutral store -- mirroring the existing
     skill-bundle store pattern (`<target-root>/.agents/skills/<name>/`,
     see DeployEngineSevenBundlesEndToEndTest above). No script-deploy path
     exists yet in modelb_axi/deploy.py (only SKILL.md-marked bundles under
     skills-src/ are deployed today -- hooks-src/scripts/ files carry no
     SKILL.md marker), so this test pins the MINIMAL contract per the
-    dispatch instruction: the seven scripts land under
+    dispatch instruction: the six scripts land under
     `<target-root>/.agents/hooks/scripts/<name>` (the deploy engine's own
     `.agents/` store root; `hooks` mirrors the `skills-src` -> `skills`
     rename the existing skill store already uses) with one install.toml
-    [[files]] manifest entry each."""
+    [[files]] manifest entry each. MIGRATED (CR-MDB-030 §S7, this cycle):
+    was seven scripts before the cycle-todo-naming guard's retirement; the
+    deployed-set assertion below is now an EXACT bound (six, no more, no
+    fewer), catching the retired script if it is still physically present
+    under hooks-src/scripts/ when it should have been deleted."""
 
     def setUp(self):
         self._tmp_home = tempfile.mkdtemp(prefix="modelb-axi-hookdeploy-home-")
@@ -1422,7 +1428,7 @@ class HookScriptsDeployEndToEndTest(unittest.TestCase):
         shutil.rmtree(self._tmp_bin, ignore_errors=True)
         shutil.rmtree(self._tmp_target_root, ignore_errors=True)
 
-    def test_end_to_end_install_deploys_seven_hook_scripts_with_manifest_entries(self):
+    def test_end_to_end_install_deploys_six_hook_scripts_with_manifest_entries(self):
         result = _run_module(
             "--yes", "--harnesses", "claude-code",
             "--modelb-home", self._tmp_home,
@@ -1440,12 +1446,25 @@ class HookScriptsDeployEndToEndTest(unittest.TestCase):
             name for name in HOOK_SCRIPT_NAMES
             if not (deployed_dir / name).is_file()
         ]
-        # POSITIVE/EXACT -- every one of the seven protocol scripts lands
+        # POSITIVE/EXACT -- every one of the six protocol scripts lands
         # under the store, none missing.
         self.assertEqual(
             missing_scripts, [],
             f"deployed hook-scripts store {deployed_dir} must contain all "
-            f"seven protocol scripts; missing={missing_scripts}",
+            f"six protocol scripts; missing={missing_scripts}",
+        )
+        # NEGATIVE/EXACT bound (\u00a7S7) -- exactly six scripts land, nothing
+        # extra -- catches the retired cycle-todo-naming guard still being
+        # deployed if hooks-src/scripts/ was not actually cleaned up.
+        deployed_names = sorted(
+            p.name for p in deployed_dir.iterdir() if p.is_file()
+        ) if deployed_dir.is_dir() else []
+        self.assertEqual(
+            deployed_names, sorted(HOOK_SCRIPT_NAMES),
+            f"deployed hook-scripts store {deployed_dir} must contain "
+            f"EXACTLY the six surviving protocol scripts, no more (a "
+            f"retired script left on disk would leak through here); got "
+            f"{deployed_names!r}",
         )
         # Round-trip fidelity across the deploy boundary -- a deployed
         # script's bytes must match its hooks-src/scripts/ source exactly

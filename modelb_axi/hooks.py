@@ -13,8 +13,10 @@ per-harness native wiring (DN-harness-agnostic-hooks §4): claude-code
 extensions under ``.pi/extensions/``; hermes declared degradation (advisory
 user-scope snippet only). ``fail_direction=closed`` hooks are REFUSED for
 harnesses that cannot honor fail-closed (claude-code, hermes — DN-harness-agnostic-hooks §4.4);
-pi and opencode honor it via shim-blocks-on-spawn-failure (DN-harness-agnostic-hooks §2 roster
-addendum). Every (hook x harness) pairing is accounted for in the report —
+pi honors it because its shim blocks on every non-protocol outcome (spawn
+error, other exit code, kill on timeout, unparseable output — CR-MDB-030
+§S5), opencode via shim-blocks-on-spawn-failure (DN-harness-agnostic-hooks §2
+roster addendum). Every (hook x harness) pairing is accounted for in the report —
 emitted, refused, or degraded-noted; when every requested harness refuses
 every hook, :class:`AllTargetsRefusedError` is raised.
 
@@ -130,9 +132,34 @@ _CLAUDE_EVENT_KEYS = {
     "pre-compact": "PreCompact",
 }
 
-#: Harnesses whose shims block on spawn failure, so fail-closed IS honorable
-#: (DN-harness-agnostic-hooks §2 roster addendum: pi explicitly; opencode is the same spawn-shim
-#: emitter class). claude-code and hermes are fail-open-only (DN-harness-agnostic-hooks §2/§4.4).
+#: Neutral tool class -> Claude Code tool-name alternation (CR-MDB-030 §S4).
+#: A name absent here has no Claude Code equivalent and passes through.
+_CLAUDE_TOOL_NAMES = {
+    "bash": "Bash",
+    "write": "Write",
+    "edit": "Edit|MultiEdit|NotebookEdit",
+    "read": "Read",
+    "grep": "Grep",
+    "find": "Glob",
+    "ls": "LS",
+}
+
+
+def _claude_matcher(matcher: str | None) -> str:
+    """The neutral ``matcher`` in Claude Code's own tool names, translated
+    per alternation member; ``*`` for an absent matcher (CR-MDB-030 §S4)."""
+    if not matcher:
+        return "*"
+    return "|".join(
+        _CLAUDE_TOOL_NAMES.get(member, member) for member in matcher.split("|")
+    )
+
+#: Harnesses whose shims can honor fail-closed. pi: its shim blocks on every
+#: non-protocol outcome — spawn error, other exit code, kill on timeout,
+#: unparseable output (CR-MDB-030 §S5, proven through Pi's own loader by §S8).
+#: opencode: its spawn shim blocks on spawn failure (DN-harness-agnostic-hooks
+#: §2 roster addendum). claude-code and hermes are fail-open-only
+#: (DN-harness-agnostic-hooks §2/§4.4).
 _HONORS_FAIL_CLOSED = frozenset({"pi", "opencode"})
 
 _REFUSAL_REASONS = {
@@ -205,7 +232,7 @@ def _emit_claude_code(
         if instance.get("timeout") is not None:
             command_spec["timeout"] = instance["timeout"]
         hooks_by_event.setdefault(_CLAUDE_EVENT_KEYS[instance["event"]], []).append(
-            {"matcher": instance.get("matcher") or "*", "hooks": [command_spec]}
+            {"matcher": _claude_matcher(instance.get("matcher")), "hooks": [command_spec]}
         )
     settings_path = target / ".claude" / "settings.json"
     settings_path.parent.mkdir(parents=True, exist_ok=True)
@@ -216,26 +243,225 @@ def _emit_claude_code(
     _record_emitted(entry, ".claude/settings.json", emitted)
 
 
-def _spawn_shim_body(instance: dict, script_path: str) -> str:
-    """TS spawn-shim body for the pi extension emitter: run the protocol
-    script via ``pi.exec``, map exit 2 -> block, honor the declared fail
-    direction on spawn failure."""
+#: Hook budget applied when an instance declares no ``timeout`` (seconds) —
+#: the pi shim always enforces SOME budget, so a hung script can never stall
+#: a tool call indefinitely (CR-MDB-030 §S2).
+_PI_DEFAULT_TIMEOUT_S = 60
+
+#: TS body of every emitted pi extension, after its generated constants
+#: (``SCRIPT``, ``TIMEOUT_MS``, ``FAIL_CLOSED``, ``MATCH``) — CR-MDB-030
+#: §S1–§S5.
+#: The protocol script is spawned with ``node:child_process`` (``pi.exec``
+#: has no stdin option), the payload is written to its piped stdin, and the
+#: outcome is decided here: exit 0 allows; exit 2 with a parseable
+#: ``{"decision":"block"}`` blocks; ANY other outcome (spawn error, other
+#: exit code, kill on timeout, unparseable output) blocks with a reason when
+#: fail-closed and allows when fail-open. Before any of that, the Pi event
+#: is mapped into the NEUTRAL payload of hooks-src/schema.md (CR-MDB-030
+#: §S3) and a tool event whose neutral ``tool_name`` the instance's ``MATCH``
+#: does not name returns before spawning (CR-MDB-030 §S4).
+_PI_SHIM_RUNTIME = """\
+const SHELL_LANGUAGES = new Set(["shell", "bash", "sh"]);
+
+// Pi toolName -> neutral file class (hooks-src/schema.md, Pi mapping).
+const FILE_TOOLS = new Map([
+  ["write", "write"],
+  ["edit", "edit"],
+  ["ctx_edit", "edit"],
+  ["ctx_patch", "edit"],
+  ["read", "read"],
+  ["grep", "grep"],
+  ["find", "find"],
+  ["ls", "ls"],
+]);
+
+type NeutralPayload = {
+  tool_name: string | null;
+  tool_input: unknown;
+  cwd: string;
+  session_id: string | null;
+  harness_tool: string | null;
+};
+
+function nonEmptyString(value: unknown): string | null {
+  return typeof value === "string" && value !== "" ? value : null;
+}
+
+// Every path the call targets: the primary `path`, plus each per-operation
+// `path` a ctx_patch call carries -- de-duplicated, in order.
+function targetPaths(toolName: string, input: any): string[] {
+  const paths: string[] = [];
+  const add = (value: unknown) => {
+    const path = nonEmptyString(value);
+    if (path !== null && !paths.includes(path)) paths.push(path);
+  };
+  add(input.path);
+  if (toolName === "ctx_patch" && Array.isArray(input.ops)) {
+    for (const op of input.ops) {
+      if (op !== null && typeof op === "object") add(op.path);
+    }
+  }
+  return paths;
+}
+
+function neutralTool(toolName: string, rawInput: unknown) {
+  const input: any = rawInput !== null && typeof rawInput === "object" ? rawInput : {};
+  if (toolName === "bash" || toolName === "ctx_shell") {
+    return { tool_name: "bash", tool_input: { command: String(input.command ?? "") } };
+  }
+  if (toolName === "ctx_execute" && SHELL_LANGUAGES.has(input.language)) {
+    return { tool_name: "bash", tool_input: { command: String(input.code ?? "") } };
+  }
+  const fileClass = FILE_TOOLS.get(toolName);
+  if (fileClass !== undefined) {
+    return {
+      tool_name: fileClass,
+      tool_input: { path: nonEmptyString(input.path), paths: targetPaths(toolName, input) },
+    };
+  }
+  return { tool_name: toolName, tool_input: rawInput ?? {} }; // unmapped: passed through
+}
+
+function toNeutral(event: any, ctx: any): NeutralPayload {
+  const cwd = typeof ctx?.cwd === "string" ? ctx.cwd : process.cwd();
+  const id = ctx?.sessionManager?.getSessionId?.();
+  const session_id = typeof id === "string" ? id : null;
+  if (typeof event?.toolName !== "string") {
+    // Not a tool event (session start, turn end, input, compaction).
+    return { tool_name: null, tool_input: {}, cwd, session_id, harness_tool: null };
+  }
+  const { tool_name, tool_input } = neutralTool(event.toolName, event.input);
+  return { tool_name, tool_input, cwd, session_id, harness_tool: event.toolName };
+}
+
+// matcher on the NEUTRAL tool_name; it filters tool events only.
+function matches(payload: NeutralPayload): boolean {
+  if (MATCH === null || payload.harness_tool === null) return true;
+  return payload.tool_name !== null && MATCH.includes(payload.tool_name);
+}
+
+type HookOutcome = {
+  code: number | null;
+  stdout: string;
+  killed: boolean;
+  spawnError: string | null;
+};
+
+function runHook(payload: unknown): Promise<HookOutcome> {
+  return new Promise((resolve) => {
+    let settled = false;
+    let killed = false;
+    let stdout = "";
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const finish = (outcome: HookOutcome) => {
+      if (settled) return;
+      settled = true;
+      if (timer !== undefined) clearTimeout(timer);
+      resolve(outcome);
+    };
+    let child;
+    try {
+      child = spawn(SCRIPT, [], { stdio: ["pipe", "pipe", "ignore"] });
+    } catch (err) {
+      finish({ code: null, stdout, killed, spawnError: String(err) });
+      return;
+    }
+    timer = setTimeout(() => {
+      killed = true;
+      child.kill("SIGKILL");
+    }, TIMEOUT_MS);
+    child.stdout.setEncoding("utf-8");
+    child.stdout.on("data", (chunk: string) => {
+      stdout += chunk;
+    });
+    child.on("error", (err: Error) => {
+      finish({ code: null, stdout, killed, spawnError: String(err) });
+    });
+    child.on("close", (code: number | null) => {
+      finish({ code, stdout, killed, spawnError: null });
+    });
+    // A script may exit without reading its stdin (EPIPE on write). That is
+    // not a hook outcome in itself: the exit code / kill above decides it.
+    child.stdin.on("error", () => undefined);
+    child.stdin.end(JSON.stringify(payload));
+  });
+}
+
+function onFailure(reason: string) {
+  return FAIL_CLOSED
+    ? { block: true, reason: "fail-closed guard: " + reason }
+    : {}; // fail-open: a hook failure allows the action
+}
+
+async function decide(payload: unknown) {
+  const outcome = await runHook(payload);
+  if (outcome.spawnError !== null) {
+    return onFailure("hook spawn failed: " + outcome.spawnError);
+  }
+  if (outcome.killed) {
+    return onFailure("hook exceeded its timeout (" + TIMEOUT_MS + " ms) and was killed");
+  }
+  if (outcome.code === 0) {
+    return {}; // protocol: exit 0 allows
+  }
+  if (outcome.code === 2) { // protocol: exit 2 blocks
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(outcome.stdout);
+    } catch (err) {
+      return onFailure("hook printed unparseable output: " + String(err));
+    }
+    if (parsed !== null && typeof parsed === "object" && (parsed as any).decision === "block") {
+      const reason = (parsed as any).reason;
+      return { block: true, reason: typeof reason === "string" ? reason : outcome.stdout };
+    }
+    return onFailure("hook printed unparseable output: exit 2 without a decision=block object");
+  }
+  return onFailure("hook exited with code " + String(outcome.code));
+}
+"""
+
+
+def _pi_matcher(matcher: str | None) -> list[str] | None:
+    """The instance ``matcher`` as the neutral tool names it names
+    (CR-MDB-030 §S4): ``|``-separated exact names; ``None`` (unfiltered)
+    for an absent matcher or one containing ``*``."""
+    if not matcher:
+        return None
+    names = [name.strip() for name in matcher.split("|") if name.strip()]
+    if not names or "*" in names:
+        return None
+    return names
+
+
+def _pi_extension_text(instance: dict, pi_event: str, script_path: str) -> str:
+    """Full TS source of one pi extension (CR-MDB-030 §S1–§S5): a
+    default-export factory registering one handler with the 0.87.1
+    ``(event, ctx)`` signature that maps the event into the neutral payload,
+    honours the matcher, then runs the script. Every interpolated string
+    goes through ``json.dumps`` so no raw ``"`` reaches a TypeScript
+    literal."""
+    timeout_s = instance.get("timeout") or _PI_DEFAULT_TIMEOUT_S
     fail_closed = instance.get("fail_direction") == "closed"
-    on_spawn_failure = (
-        '    return { block: true, reason: "fail-closed guard: hook spawn failed" };'
-        if fail_closed
-        else "    return {}; // fail-open: spawn failure allows the action"
-    )
+    match = _pi_matcher(instance.get("matcher"))
     return (
-        f'  const result = await pi.exec("{script_path}", [],'
-        " { stdin: JSON.stringify(payload) }).catch(() => null);\n"
-        "  if (result === null) {\n"
-        f"{on_spawn_failure}\n"
-        "  }\n"
-        "  if (result.code === 2) { // protocol: exit 2 blocks\n"
-        "    return { block: true, reason: result.stdout };\n"
-        "  }\n"
-        "  return {};\n"
+        "// Generated by modelb_axi hooks compiler (CR-MDB-030 §S1–§S5) — do not edit.\n"
+        'import { spawn } from "node:child_process";\n'
+        "\n"
+        f"const SCRIPT = {json.dumps(script_path)};\n"
+        f"const TIMEOUT_MS = {timeout_s * 1000};\n"
+        f"const FAIL_CLOSED = {'true' if fail_closed else 'false'};\n"
+        f"const MATCH: string[] | null = {json.dumps(match)};\n"
+        "\n"
+        + _PI_SHIM_RUNTIME
+        + "\n"
+        "export default function (pi) {\n"
+        f"  pi.on({json.dumps(pi_event)}, async (event, ctx) => {{\n"
+        "    const payload = toNeutral(event, ctx);\n"
+        "    if (!matches(payload)) return {}; // matcher: never spawned\n"
+        "    return decide(payload);\n"
+        "  });\n"
+        "}\n"
     )
 
 
@@ -254,7 +480,7 @@ def _emit_opencode(
     ]
     for instance in instances:
         script_path = str(scripts_root / instance["command"])
-        # Mirror the pi _spawn_shim_body semantics: honor the declared fail
+        # Honor the declared fail
         # direction on spawn failure (status null / thrown) — a fail-closed
         # guard must BLOCK when its script cannot run (DN-harness-agnostic-hooks §4.4).
         fail_closed = instance.get("fail_direction") == "closed"
@@ -290,16 +516,16 @@ def _emit_opencode(
     _record_emitted(entry, str(shim_rel), emitted)
 
 
-#: pi extension event names (DN-harness-agnostic-hooks §2 roster addendum, event-map citations) per
-#: universal event. ``pre-compact`` has NO documented pi counterpart —
-#: DECLARED GAP: not emitted for pi, noted in the compiler report (same
-#: declared-degradation idiom as hermes; NOT a refusal).
+#: pi extension event names (DN-harness-agnostic-hooks §2 roster addendum,
+#: event-map citations; ``pre-compact`` -> ``session_before_compact`` per
+#: CR-MDB-030 §S5) per universal event.
 _PI_EVENTS = {
     "pre-tool-use": "tool_call",
     "post-tool-use": "tool_result",
     "session-start": "session_start",
     "turn-stop": "turn_end",
     "prompt-submit": "input",
+    "pre-compact": "session_before_compact",
 }
 
 
@@ -315,25 +541,9 @@ def _emit_pi(
     extensions_dir.mkdir(parents=True, exist_ok=True)
     emitted_any = False
     for instance in instances:
-        pi_event = _PI_EVENTS.get(instance["event"])
-        if pi_event is None:
-            # DECLARED GAP (DN-harness-agnostic-hooks §2 roster addendum): the universal event has
-            # no pi counterpart — not emitted, reported, never silent.
-            entry["degraded"] = True
-            entry["notes"].append(
-                "pi: DECLARED GAP — universal event "
-                f"'{instance['event']}' has no pi counterpart; hook "
-                f"'{instance['command']}' not emitted for pi (DN-harness-agnostic-hooks §2 roster "
-                "addendum)"
-            )
-            continue
+        pi_event = _PI_EVENTS[instance["event"]]  # every VALID_EVENTS member maps
         script_path = str(scripts_root / instance["command"])
-        text = (
-            "// Generated by modelb_axi hooks compiler (CR-MDB-015 §S4) — do not edit.\n"
-            f'pi.on("{pi_event}", async (payload) => {{\n'
-            + _spawn_shim_body(instance, script_path)
-            + "});\n"
-        )
+        text = _pi_extension_text(instance, pi_event, script_path)
         ext_rel = Path(".pi") / "extensions" / f"{instance['command']}.ts"
         atomic_write(target / ext_rel, text.encode("utf-8"))
         _record_emitted(entry, str(ext_rel), emitted)

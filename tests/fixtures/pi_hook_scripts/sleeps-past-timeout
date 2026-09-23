@@ -1,0 +1,19 @@
+#!/usr/bin/env python3
+"""Test-only protocol-script fixture (CR-MDB-030 §S5) — NOT a real
+hooks-src/scripts/ hook. Reads stdin then sleeps far past any hook
+`timeout` a driving test declares (5s, versus the 1s timeouts the RED
+tests use), so the shim must kill it on timeout — the spec's "kill on
+timeout" failure mode."""
+
+import sys
+import time
+
+
+def main() -> int:
+    sys.stdin.read()
+    time.sleep(5)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

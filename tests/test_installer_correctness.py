@@ -1427,17 +1427,25 @@ class MidEmissionFailureInsideWiringCompilationEmittedTest(unittest.TestCase):
     Measured (orchestrator repro): with harnesses ``["pi", "claude-code",
     "opencode", "hermes"]`` recorded in that order in ``install.toml``,
     ``scaffold._emit_plan``'s ``roster_harnesses`` preserves that order,
-    so ``compile_wiring`` starts wiring "pi" first; a failure after the
-    2nd successful wiring write leaves ``.pi/extensions/ambient-board-
-    status.ts`` and ``.pi/extensions/block-bad-cycle-task-name.ts`` on
-    disk (from ``hooks._emit_pi``'s per-instance loop), while
-    ``scaffold._emit_plan`` never reaches its ``emitted.extend(...)``
-    line for this harness -- ``compile_wiring`` raised before returning
-    a report at all -- so NEITHER file is listed in the failure
-    envelope's ``emitted``, even though both are really on disk under
-    ``--target``. This breaks the \u00a7S4 AC's "exactly the files
-    present" contract specifically for wiring output, which the
-    ``_render_agents_md``-injection test above cannot reach."""
+    so ``compile_wiring`` starts wiring "pi" first; for the default
+    ``python``/``solo`` args this test uses, ``pi``'s ONLY two instances
+    (``ambient-board-status``, ``post-regression-disk-reminder`` -- the
+    cycle-todo-naming guard between them retired under CR-MDB-030 \u00a7S7)
+    both land on disk, exhausting pi's ENTIRE wiring within the 2-write
+    budget; the injection then fires on the FIRST write of the NEXT
+    harness in roster order (``claude-code``'s single
+    ``.claude/settings.json``), which never lands. Since
+    ``scaffold._emit_plan`` only calls
+    ``emitted.extend(harness_entry["emitted_files"])`` AFTER
+    ``compile_wiring`` RETURNS for a harness, and ``compile_wiring``
+    raised mid-way instead of returning at all, NEITHER of pi's two real
+    files is listed in the failure envelope's ``emitted``, even though
+    both are really on disk under ``--target``. This breaks the \u00a7S4
+    AC's "exactly the files present" contract specifically for wiring
+    output, which the ``_render_agents_md``-injection test above cannot
+    reach -- now proven ACROSS a harness boundary rather than within a
+    single harness's per-instance loop, since pi's post-\u00a7S7 instance
+    count (2) exactly matches ``FAIL_AFTER``."""
 
     def setUp(self):
         self._tmp_home = tempfile.mkdtemp(prefix="modelb-axi-c2-wiring-partial-home-")
@@ -1484,27 +1492,30 @@ class MidEmissionFailureInsideWiringCompilationEmittedTest(unittest.TestCase):
         leftover = _files_under_excluding_git(self._tmp_target)
 
         # NEGATIVE / bound -- the injection lands after exactly two real
-        # wiring writes succeed, so the two known pi-extension files must
-        # be genuinely present on disk (never zero -- and never the full
-        # wiring set, which would mean the injection missed its mark).
+        # wiring writes succeed; post-\u00a7S7 (CR-MDB-030) pi has EXACTLY two
+        # instances for these default args, so BOTH its files must be
+        # genuinely present on disk (never zero -- and never a THIRD pi
+        # file, which would mean pi's instance count changed again and
+        # this precondition needs re-deriving).
         expected_partial_wiring = {
             str(Path(".pi") / "extensions" / "ambient-board-status.ts"),
-            str(Path(".pi") / "extensions" / "block-bad-cycle-task-name.ts"),
+            str(Path(".pi") / "extensions" / "post-regression-disk-reminder.ts"),
         }
         self.assertTrue(
             expected_partial_wiring.issubset(set(leftover)),
-            "AC4 precondition: the injection must leave exactly the first "
-            f"two pi wiring files on disk; expected "
+            "AC4 precondition: the injection must leave BOTH of pi's "
+            f"wiring files on disk; expected "
             f"{sorted(expected_partial_wiring)} to be a subset of leftover "
             f"{leftover!r} -- got exit={exit_code} stdout={combined!r}",
         )
-        third_pi_file = str(
-            Path(".pi") / "extensions" / "post-regression-disk-reminder.ts"
-        )
+        first_claude_code_file = str(Path(".claude") / "settings.json")
         self.assertNotIn(
-            third_pi_file, leftover,
-            "AC4 precondition: the 3rd pi wiring write must be the one "
-            f"that raised, so {third_pi_file!r} must NOT be on disk; got "
+            first_claude_code_file, leftover,
+            "AC4 precondition: pi's wiring must complete WITHIN the "
+            "2-write budget (its instance count post-\u00a7S7 is exactly 2), "
+            "so the 3rd atomic_write call -- the NEXT harness in roster "
+            f"order (claude-code) -- must be the one that raised; "
+            f"{first_claude_code_file!r} must NOT be on disk; got "
             f"leftover={leftover!r}",
         )
 

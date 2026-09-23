@@ -188,7 +188,9 @@ def _render_gitignore() -> str:
         ".claude/\n"
         ".opencode/\n"
         ".hermes/\n"
-        ".pi/\n"
+        # `.pi/` is NOT ignored: `.pi/extensions/` (compiled hook shims) and
+        # `.pi/agents/` are tracked so every worktree carries them
+        # (CR-MDB-030 §S6).
         "\n"
         "# Tooling debris.\n"
         "__pycache__/\n"
@@ -338,19 +340,19 @@ def _render_sub_agents_md(name: str, sub: str, token: str, acronym: str) -> str:
 # CR-MDB-015 §S5 hook-selection table (stack/mode-derived). Pinned rows
 # (CR text + the C3 RED tests): the cargo guard iff a rust stack; the mvn
 # guard iff a java/quarkus stack; the worktree + CR-completion guards iff
-# multi mode; ambient-board-status always. Unpinned rows — this slice's
-# documented choice: `block-bad-cycle-task-name` and
-# `post-regression-disk-reminder` are stack-neutral AND mode-neutral
-# workflow-hygiene hooks (cycle/task naming and the post-regression disk
-# reminder apply to solo and multi projects alike), so both are emitted
-# ALWAYS.
+# multi mode; ambient-board-status always. Unpinned row — this slice's
+# documented choice: `post-regression-disk-reminder` is a stack-neutral AND
+# mode-neutral workflow-hygiene hook (the post-regression disk reminder
+# applies to solo and multi projects alike), so it is emitted ALWAYS.
+#
+# matcher vocabulary: every matcher names the NEUTRAL tool class of
+# hooks-src/schema.md (`bash`, `write|edit`), never a harness's own tool
+# name (CR-MDB-030 §S4).
 #
 # fail_direction choice: every scaffold-emitted security-class (block-*)
-# guard declares `fail_direction = "open"` — declaring `closed` would make
-# the §S4 compiler REFUSE the guard on the fail-open harnesses (claude-code,
-# hermes; DN-harness-agnostic-hooks §4.4), stripping it entirely from the primary harness. The
-# imported baselines are fail-open advisory guards, so `open` is the honest
-# intent, not a downgrade.
+# guard is `closed` (CR-MDB-030 §S6) — Pi, the primary harness, honours it.
+# The fail-open-only harnesses (claude-code, hermes) refuse closed hooks,
+# so they wire no block-* guard; hooks/README.md reports each refusal.
 
 
 def _hook_instances(stacks: list[str], mode: str) -> list[dict]:
@@ -364,15 +366,8 @@ def _hook_instances(stacks: list[str], mode: str) -> list[dict]:
             "timeout": 10,
         },
         {
-            "event": "pre-tool-use",
-            "matcher": "TaskCreate",
-            "command": "block-bad-cycle-task-name",
-            "tier": "core",
-            "fail_direction": "open",
-        },
-        {
             "event": "post-tool-use",
-            "matcher": "Bash",
+            "matcher": "bash",
             "command": "post-regression-disk-reminder",
             "tier": "core",
         },
@@ -380,33 +375,33 @@ def _hook_instances(stacks: list[str], mode: str) -> list[dict]:
     if "rust" in stacks:
         instances.append({
             "event": "pre-tool-use",
-            "matcher": "Bash",
+            "matcher": "bash",
             "command": "block-direct-cargo-test",
             "tier": "core",
-            "fail_direction": "open",
+            "fail_direction": "closed",
         })
     if {"java", "quarkus"} & set(stacks):
         instances.append({
             "event": "pre-tool-use",
-            "matcher": "Bash",
+            "matcher": "bash",
             "command": "block-direct-mvn-test",
             "tier": "core",
-            "fail_direction": "open",
+            "fail_direction": "closed",
         })
     if mode != "solo":
         instances.append({
             "event": "pre-tool-use",
-            "matcher": "Write|Edit|NotebookEdit",
+            "matcher": "write|edit",
             "command": "block-write-outside-worktree",
             "tier": "core",
-            "fail_direction": "open",
+            "fail_direction": "closed",
         })
         instances.append({
             "event": "pre-tool-use",
-            "matcher": "Bash",
+            "matcher": "bash",
             "command": "block-cr-completed-without-spec-update",
             "tier": "core",
-            "fail_direction": "open",
+            "fail_direction": "closed",
         })
     return instances
 

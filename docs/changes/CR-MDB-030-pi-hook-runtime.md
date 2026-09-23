@@ -59,7 +59,9 @@ with the 0.87.1 handler signature. The script path and every interpolated string
 ### §S2 — Payload transport: a piped child process
 The shim spawns the protocol script with `node:child_process` (extensions run unsandboxed) with
 `stdin` piped, writes the neutral payload as JSON, closes stdin, and collects exit code, stdout
-and whether it was killed. The instance's `timeout` is enforced by killing the child. The seven
+and whether it was killed. The instance's `timeout` is enforced by killing the child; an instance
+that declares none gets **60 seconds**, so a hung script can never stall a tool call
+indefinitely. The seven
 scripts' stdin/exit protocol is unchanged. `pi.exec` is not used.
 
 ### §S3 — Payload contract: neutral in, harness-native out
@@ -77,6 +79,9 @@ for audit only — no script branches on it). The Pi shim maps the event into th
 | `read`, `grep`, `find`, `ls` | same name | `input.path` |
 | any other tool | passed through under its own name | `input` unchanged |
 
+An event that is not a tool call (`session-start`, `pre-compact`, …) carries the same keys, with
+`tool_name` and `harness_tool` null and `tool_input` `{}`; a matcher does not filter such events.
+
 The six remaining scripts are ported to the neutral names (`Bash`→`bash`, `Write|Edit|NotebookEdit`
 →`write|edit`, `file_path`→`path`/`paths`). A file guard checks every entry of `paths`.
 
@@ -90,6 +95,13 @@ that text).
 `_emit_pi` compiles it into a guard that returns before spawning when the mapped name does not
 match, so `write|edit` also covers `ctx_patch` and `ctx_edit`, and `bash` covers `ctx_shell`.
 `scaffold._hook_instances` uses the neutral vocabulary.
+
+**Every emitter translates the neutral matcher into its own harness's tool names** — the neutral
+name is the schema's, never a harness's. `_emit_pi` does it through §S3's table. `_emit_claude_code`
+writes Claude Code's names into `settings.json`: `bash`→`Bash`, `write`→`Write`,
+`edit`→`Edit|MultiEdit|NotebookEdit`, `read`→`Read`, `grep`→`Grep`, `find`→`Glob`, `ls`→`LS`, an
+alternation translated per member; a name with no Claude Code equivalent passes through unchanged.
+(Claude Code is retiring under CR-MDB-031, but until it is removed its emitted wiring must work.)
 
 ### §S5 — Fail-closed that is real
 For `fail_direction: closed`, the shim blocks with a reason on any outcome other than exit 0
@@ -115,8 +127,11 @@ The installer's hook-script set becomes six. Closed specs (CR-MDB-015) and `audi
 and are not edited.
 
 ### §S8 — Runtime proof through Pi's own loader
-A test imports each emitted `.pi/extensions/*.ts` with the **jiti** that the installed Pi uses,
-exactly as Pi's loader does (`{ default: true }`), invokes the factory with a recording `pi`
+A test imports each emitted `.pi/extensions/*.ts` with the **`jiti` package** the installed Pi
+depends on (`createJiti(…).import(path, { default: true })`, exactly as Pi's loader calls it) —
+not Pi's own `jiti-loader.js` module, which keeps Node's event loop alive. The harness ends in an
+explicit `process.exit`, and every invocation of it carries a timeout, so a hang fails the test
+instead of stalling the run. It invokes the factory with a recording `pi`
 object, and drives the registered handlers with events shaped as 0.87.1 defines them. No model
 is involved, so it is deterministic. The test SKIPS, naming what is missing, when `pi`, its jiti
 or `node` is absent; it never passes without running. Whether project hooks reach dispatched
@@ -137,10 +152,13 @@ agents is not re-tested per run: it was measured on 2026-09-23 (Context).
 - [ ] `block-direct-cargo-test` blocks `cargo test` through `bash`, `ctx_shell` and a shell
       `ctx_execute`; `block-direct-mvn-test` blocks `mvn test` through the same three.
 - [ ] A `closed` hook blocks, with a reason, when its script is missing, exits 1, exceeds its
-      timeout, or prints unparseable output; an `open` hook allows in each of those four cases —
+      timeout (the declared one, or 60 s when none is declared), or prints unparseable output; an `open` hook allows in each of those four cases —
       asserted through the emitted shim, eight subtests.
 - [ ] `matcher` filters on the neutral name: a `write|edit` hook does not spawn for `bash` or
       `ctx_shell`, and does spawn for `ctx_patch` — asserted by a counting fake script.
+- [ ] `.claude/settings.json` carries Claude Code's own tool names for every neutral matcher —
+      `bash`→`Bash`, `write|edit`→`Write|Edit|MultiEdit|NotebookEdit`, and each other class in
+      §S4's list — never the neutral name.
 - [ ] `session_before_compact` is emitted for `pre-compact`; no "no documented pi counterpart"
       note remains.
 - [ ] A fresh `git worktree add` of a scaffolded project contains its `.pi/extensions/` and

@@ -4,9 +4,10 @@ OUTSIDE the active Model-B worktree (stops a dispatched sub-agent leaking
 edits into the main tree or a sibling worktree).
 
 Normalized from the deployed ~/.claude/hooks/block-write-outside-worktree.sh
-baseline (CR-MDB-015 §S3): same stdin contract (JSON `tool_name` in
-Write|Edit|NotebookEdit; target from `tool_input.file_path` /
-`.notebook_path`; `cwd`), same exit protocol (allow -> 0, block -> 2 +
+baseline (CR-MDB-015 §S3), on the neutral payload (CR-MDB-030 §S3): the
+neutral `tool_name` in write|edit; targets from `tool_input.paths` (every
+path the call targets — each is checked) plus `tool_input.path`; `cwd`),
+same exit protocol (allow -> 0, block -> 2 +
 `{"decision":"block","reason":...}` on stdout), same SELF-GATING — a strict
 no-op unless EITHER (a) $WF_WORKTREE_ROOT is exported (explicit dispatch
 signal) OR (b) cwd sits inside a real `…/.claude/worktrees/<cr>/` path
@@ -21,7 +22,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-_GATED_TOOLS = {"Write", "Edit", "NotebookEdit"}
+_GATED_TOOLS = {"write", "edit"}  # the neutral file-write classes (schema.md)
 _WORKTREES_SEGMENT = "/.claude/worktrees/"
 
 
@@ -59,46 +60,30 @@ def _is_under(abs_path: str, root: str) -> bool:
     return f"{abs_path}/".startswith(f"{root}/")
 
 
-def main() -> int:
-    try:
-        payload = json.load(sys.stdin)
-    except (json.JSONDecodeError, OSError):
-        return 0  # unreadable payload -> fail open (deterrent, not security boundary)
-    if not isinstance(payload, dict) or payload.get("tool_name") not in _GATED_TOOLS:
-        return 0
+def _targets(tool_input: dict) -> list[str]:
+    """Every path the call targets: `paths` (neutral file class) plus the
+    primary `path`, de-duplicated; non-string / empty entries dropped."""
+    paths = tool_input.get("paths")
+    candidates = (list(paths) if isinstance(paths, list) else []) + [tool_input.get("path")]
+    targets: list[str] = []
+    for candidate in candidates:
+        if isinstance(candidate, str) and candidate and candidate not in targets:
+            targets.append(candidate)
+    return targets
 
-    # Explicit, auditable opt-out wins before any work.
-    if os.environ.get("ALLOW_WRITE_OUTSIDE_WORKTREE", "") in ("1", "true"):
-        return 0
 
-    tool_input = payload.get("tool_input") or {}
-    target = tool_input.get("file_path") or tool_input.get("notebook_path") or ""
-    cwd = payload.get("cwd") or os.getcwd()
-    if not target:
-        return 0
-
-    # (a) Explicit dispatch signal wins; (b) else derive from cwd.
-    worktree_root = None
-    declared = os.environ.get("WF_WORKTREE_ROOT", "")
-    if declared and Path(declared).is_dir():
-        worktree_root = _resolve(declared)
-    if not worktree_root:
-        worktree_root = _derive_worktree_root_from_cwd(cwd)
-    if not worktree_root:
-        return 0  # No worktree context -> not Model-B -> do nothing.
-
-    absolute = _resolve(target if target.startswith("/") else f"{cwd}/{target}")
-
-    # Allow: inside the worktree root.
+def _is_allowed(absolute: str, worktree_root: str) -> bool:
+    """Inside the worktree root, or scratch under /tmp or $TMPDIR."""
     if _is_under(absolute, worktree_root):
-        return 0
-    # Allow: scratch under /tmp or $TMPDIR.
+        return True
     if _is_under(absolute, "/tmp"):
-        return 0
+        return True
     tmpdir = os.environ.get("TMPDIR", "")
-    if tmpdir and _is_under(absolute, _resolve(tmpdir)):
-        return 0
+    return bool(tmpdir) and _is_under(absolute, _resolve(tmpdir))
 
+
+def _block(absolute: str, worktree_root: str) -> int:
+    """Print the protocol block response naming the offending target."""
     reason = f"""⛔ BLOCKED: write to a path OUTSIDE your worktree.
 
   target:        {absolute}
@@ -122,6 +107,40 @@ Deliberate, rare cross-tree write (orchestrator only): re-run with
 ALLOW_WRITE_OUTSIDE_WORKTREE=1 exported — explicit + auditable, never silent."""
     print(json.dumps({"decision": "block", "reason": reason}))
     return 2
+
+
+def main() -> int:
+    try:
+        payload = json.load(sys.stdin)
+    except (json.JSONDecodeError, OSError):
+        return 0  # unreadable payload -> fail open (deterrent, not security boundary)
+    if not isinstance(payload, dict) or payload.get("tool_name") not in _GATED_TOOLS:
+        return 0
+
+    # Explicit, auditable opt-out wins before any work.
+    if os.environ.get("ALLOW_WRITE_OUTSIDE_WORKTREE", "") in ("1", "true"):
+        return 0
+
+    targets = _targets(payload.get("tool_input") or {})
+    cwd = payload.get("cwd") or os.getcwd()
+    if not targets:
+        return 0
+
+    # (a) Explicit dispatch signal wins; (b) else derive from cwd.
+    worktree_root = None
+    declared = os.environ.get("WF_WORKTREE_ROOT", "")
+    if declared and Path(declared).is_dir():
+        worktree_root = _resolve(declared)
+    if not worktree_root:
+        worktree_root = _derive_worktree_root_from_cwd(cwd)
+    if not worktree_root:
+        return 0  # No worktree context -> not Model-B -> do nothing.
+
+    for target in targets:
+        absolute = _resolve(target if target.startswith("/") else f"{cwd}/{target}")
+        if not _is_allowed(absolute, worktree_root):
+            return _block(absolute, worktree_root)
+    return 0
 
 
 if __name__ == "__main__":

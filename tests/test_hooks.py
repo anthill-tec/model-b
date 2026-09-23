@@ -93,17 +93,19 @@ HOOKS_SRC_DIR = REPO_ROOT / "hooks-src"
 SCHEMA_MD = HOOKS_SRC_DIR / "schema.md"
 SCRIPTS_DIR = HOOKS_SRC_DIR / "scripts"
 
-# §S3: the six imported (read-only baseline) Model-B-owned guard scripts +
-# the new ambient-board-status (seven protocol scripts total, AC2).
+# §S3 (CR-MDB-030, migrated this cycle): the five remaining imported
+# Model-B-owned guard scripts + the new ambient-board-status (six protocol
+# scripts total, AC2) -- the cycle-todo-naming guard retired under §S7
+# (CR-MDB-030 C2, tests/test_hook_retirement.py owns that AC now; its
+# retired identifier is spelled ONLY there, never here).
 IMPORTED_SCRIPT_NAMES = [
     "block-direct-cargo-test",
     "block-direct-mvn-test",
-    "block-bad-cycle-task-name",
     "block-cr-completed-without-spec-update",
     "block-write-outside-worktree",
     "post-regression-disk-reminder",
 ]
-ALL_SEVEN_SCRIPT_NAMES = IMPORTED_SCRIPT_NAMES + ["ambient-board-status"]
+ALL_SIX_SCRIPT_NAMES = IMPORTED_SCRIPT_NAMES + ["ambient-board-status"]
 
 CLAUDE_HOOKS_DIR = Path.home() / ".claude" / "hooks"
 
@@ -206,7 +208,7 @@ class SchemaDefinitionTest(unittest.TestCase):
     def test_invalid_toml_instance_unknown_event_is_rejected(self):
         toml_text = (
             'event = "on-file-save"\n'  # not in the universal event set
-            'matcher = "Bash"\n'
+            'matcher = "bash"\n'
             'command = "block-direct-cargo-test"\n'
             'tier = "core"\n'
             'timeout = 5\n'
@@ -224,7 +226,7 @@ class SchemaDefinitionTest(unittest.TestCase):
         # class per the RED pin above -- fail_direction is REQUIRED.
         toml_text = (
             'event = "pre-tool-use"\n'
-            'matcher = "Write|Edit"\n'
+            'matcher = "write|edit"\n'
             'command = "block-write-outside-worktree"\n'
             'tier = "core"\n'
             'timeout = 5\n'
@@ -239,12 +241,15 @@ class SchemaDefinitionTest(unittest.TestCase):
 
 
 class ProtocolScriptLibraryStructureTest(unittest.TestCase):
-    """AC2 structural pin: all seven scripts exist, are executable, and are
-    clean of the forbidden WORKFLOW_CYCLE_ID / .claude/scripts references."""
+    """AC2 structural pin: all six SURVIVING scripts exist, are executable,
+    and are clean of the forbidden WORKFLOW_CYCLE_ID / .claude/scripts
+    references. The cycle-todo-naming guard retired under \u00a7S7 (CR-MDB-030
+    C2) -- its own nonexistence is tests/test_hook_retirement.py's job, not
+    this structural pin's."""
 
-    def test_all_seven_protocol_scripts_exist_executable_and_clean_of_forbidden_references(self):
+    def test_all_six_protocol_scripts_exist_executable_and_clean_of_forbidden_references(self):
         failures = []
-        for name in ALL_SEVEN_SCRIPT_NAMES:
+        for name in ALL_SIX_SCRIPT_NAMES:
             path = SCRIPTS_DIR / name
             if not path.is_file():
                 failures.append(f"{name}: missing at {path}")
@@ -257,15 +262,18 @@ class ProtocolScriptLibraryStructureTest(unittest.TestCase):
                 failures.append(f"{name}: contains forbidden WORKFLOW_CYCLE_ID reference")
             if ".claude/scripts" in text:
                 failures.append(f"{name}: contains forbidden .claude/scripts client path")
-        # POSITIVE/EXACT -- zero failures across all seven scripts.
+        # POSITIVE/EXACT -- zero failures across all six scripts.
         self.assertEqual(failures, [], "\n".join(failures))
 
 
 class BlockDirectCargoTestScriptTest(unittest.TestCase):
     """AC2 behavioural -- block-direct-cargo-test: blocks a direct `cargo
     test` invocation in a Rust project; allows a rust-crucible.py wrapper
-    invocation (mirrors the deployed ~/.claude/hooks/block-direct-cargo-test.sh
-    contract: stdin JSON tool_name/tool_input.command/cwd)."""
+    invocation. MIGRATED (CR-MDB-030 \u00a7S3, this cycle): the stdin contract's
+    `tool_name` moved from the Claude Code vocabulary (`Bash`) to the
+    neutral schema's (`bash`) -- the script now gates on the neutral name
+    (mirrors the deployed ~/.claude/hooks/block-direct-cargo-test.sh
+    contract otherwise: tool_input.command/cwd)."""
 
     def setUp(self):
         self._tmp_rust = tempfile.mkdtemp(prefix="modelb-hooks-rust-")
@@ -282,7 +290,7 @@ class BlockDirectCargoTestScriptTest(unittest.TestCase):
         result = _run_script(
             "block-direct-cargo-test",
             {
-                "tool_name": "Bash",
+                "tool_name": "bash",
                 "tool_input": {"command": "cargo test -p fixture"},
                 "cwd": self._tmp_rust,
             },
@@ -302,7 +310,7 @@ class BlockDirectCargoTestScriptTest(unittest.TestCase):
         result = _run_script(
             "block-direct-cargo-test",
             {
-                "tool_name": "Bash",
+                "tool_name": "bash",
                 "tool_input": {
                     "command": "python3 rust-crucible.py test --crate fixture --agent x",
                 },
@@ -317,11 +325,14 @@ class BlockDirectCargoTestScriptTest(unittest.TestCase):
 
 
 class BlockWriteOutsideWorktreeScriptTest(unittest.TestCase):
-    """AC2 behavioural -- block-write-outside-worktree: input contract pinned
-    truthfully from the deployed script's actual stdin reading (tool_name in
-    Write|Edit|NotebookEdit; target path from tool_input.file_path /
-    .notebook_path; worktree root from $WF_WORKTREE_ROOT, the explicit
-    dispatch-signal path (a) in the deployed script)."""
+    """AC2 behavioural -- block-write-outside-worktree. MIGRATED (CR-MDB-030
+    \u00a7S3, this cycle): the stdin contract's `tool_name` moved from the Claude
+    Code vocabulary (`write`/`edit`/`notebookedit` predecessors) to the
+    neutral schema's (`write`/`edit`), and the target path moved from
+    `tool_input.file_path` to `tool_input.path` (plus `paths`, every path
+    the call targets -- \u00a7S3's file-class shape); worktree root still
+    resolves from $WF_WORKTREE_ROOT, the explicit dispatch-signal path (a)
+    in the deployed script."""
 
     def setUp(self):
         self._tmp_wt = tempfile.mkdtemp(prefix="modelb-hooks-worktree-")
@@ -336,8 +347,8 @@ class BlockWriteOutsideWorktreeScriptTest(unittest.TestCase):
         result = _run_script(
             "block-write-outside-worktree",
             {
-                "tool_name": "Write",
-                "tool_input": {"file_path": outside_target},
+                "tool_name": "write",
+                "tool_input": {"path": outside_target, "paths": [outside_target]},
                 "cwd": self._tmp_wt,
             },
             env_overrides={"WF_WORKTREE_ROOT": self._tmp_wt},
@@ -359,8 +370,8 @@ class BlockWriteOutsideWorktreeScriptTest(unittest.TestCase):
         result = _run_script(
             "block-write-outside-worktree",
             {
-                "tool_name": "Write",
-                "tool_input": {"file_path": inside_target},
+                "tool_name": "write",
+                "tool_input": {"path": inside_target, "paths": [inside_target]},
                 "cwd": self._tmp_wt,
             },
             env_overrides={"WF_WORKTREE_ROOT": self._tmp_wt},
@@ -374,33 +385,40 @@ class BlockWriteOutsideWorktreeScriptTest(unittest.TestCase):
 
 
 class RemainingGuardScriptsSmokeTest(unittest.TestCase):
-    """AC2 smoke allow-path for the four remaining guard scripts not given a
+    """AC2 smoke allow-path for the three remaining guard scripts not given a
     dedicated block/allow pair above: existence + executable (covered by
-    ProtocolScriptLibraryStructureTest) + a benign payload allows (exit 0)."""
+    ProtocolScriptLibraryStructureTest) + a benign payload allows (exit 0).
+    MIGRATED (CR-MDB-030 \u00a7S3/\u00a7S7, this cycle): `tool_name` moved to the
+    neutral vocabulary (`bash`), and the cycle-todo-naming guard's entry is
+    REMOVED -- it is retired under \u00a7S7, so nothing here asserts its
+    behaviour anymore; tests/test_hook_retirement.py owns its nonexistence."""
 
-    _BENIGN_PAYLOADS = {
-        "block-direct-mvn-test": {
-            "tool_name": "Bash",
-            "tool_input": {"command": "echo hello"},
-            "cwd": "/tmp",
-        },
-        "block-bad-cycle-task-name": {
-            "tool_name": "TaskCreate",
-            "tool_input": {"subject": "CR-MDB-015 - C1 - schema"},
-        },
-        "block-cr-completed-without-spec-update": {
-            "tool_name": "Bash",
-            "tool_input": {"command": "echo hello"},
-            "cwd": "/tmp",
-        },
-        "post-regression-disk-reminder": {
-            "tool_name": "Bash",
-            "tool_input": {"command": "echo hello"},
-        },
-    }
+    def setUp(self):
+        self._tmp_cwd = tempfile.mkdtemp(prefix="modelb-hooks-benign-cwd-")
 
-    def test_four_remaining_guards_allow_benign_payload(self):
-        for name, payload in self._BENIGN_PAYLOADS.items():
+    def tearDown(self):
+        shutil.rmtree(self._tmp_cwd, ignore_errors=True)
+
+    def _benign_payloads(self):
+        return {
+            "block-direct-mvn-test": {
+                "tool_name": "bash",
+                "tool_input": {"command": "echo hello"},
+                "cwd": self._tmp_cwd,
+            },
+            "block-cr-completed-without-spec-update": {
+                "tool_name": "bash",
+                "tool_input": {"command": "echo hello"},
+                "cwd": self._tmp_cwd,
+            },
+            "post-regression-disk-reminder": {
+                "tool_name": "bash",
+                "tool_input": {"command": "echo hello"},
+            },
+        }
+
+    def test_three_remaining_guards_allow_benign_payload(self):
+        for name, payload in self._benign_payloads().items():
             with self.subTest(script=name):
                 path = SCRIPTS_DIR / name
                 self.assertTrue(path.is_file(), f"expected protocol script at {path}")
@@ -423,6 +441,9 @@ def _toon_encode(obj):
     import importlib.util
     spec = importlib.util.spec_from_file_location(
         "test_hooks_toon", str(CRUCIBLE_CLIENTS_DIR / "toon.py")
+    )
+    assert spec is not None and spec.loader is not None, (
+        f"could not build a module spec for {CRUCIBLE_CLIENTS_DIR / 'toon.py'}"
     )
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

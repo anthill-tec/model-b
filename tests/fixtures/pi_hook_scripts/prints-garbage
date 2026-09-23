@@ -1,0 +1,18 @@
+#!/usr/bin/env python3
+"""Test-only protocol-script fixture (CR-MDB-030 §S5) — NOT a real
+hooks-src/scripts/ hook. Reads and discards stdin, exits 2 (the block
+exit code) but with stdout that is NOT parseable JSON — the spec's
+"unparseable output" failure mode, distinct from a genuine
+`{"decision":"block"}` response."""
+
+import sys
+
+
+def main() -> int:
+    sys.stdin.read()
+    print("not-json-at-all{{{")
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())
