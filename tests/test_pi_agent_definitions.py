@@ -108,12 +108,107 @@ five gap-analysis-named files. Two needed migration for this slice:
   this slice; they may need one at a later §S6/§S7 cycle when this repo's
   own `.pi/agents/` and `PROJECT_STACKS` land.
 
+CR-MDB-025 CYCLE C3 AMENDMENT (this cycle, C3 RED): §S6 (`init` renders the
+project's agents; `modelb-axi agents` re-render verb; ownership markers;
+the installer writes no agents) plus the Migration AC as it applies to §S6
+join the covered scope below via the new `*S6Test` classes at the end of
+this file. §S7 (Model B dog-fooding, measured at close-out) stays out of
+scope -- nothing below asserts against THIS repo's own `.pi/agents/` or
+regenerates `generator/agents/*.md`.
+
+Written BEFORE any §S6 production code exists (measured 2026-09-2x):
+`scaffold.py::_emit_plan` has no `agents` import and no `.pi/agents` write
+site at all -- `init` today emits nothing under `.pi/agents/` for any
+stack/harness combination; `cli.py` has no `agents` subparser, so
+`modelb-axi agents` fails as an unrecognised subcommand (a clean
+subprocess-level argparse failure, matching this suite's established
+not-yet-existing-subcommand RED shape, e.g. tests/test_installer.py's own
+note on AC3/AC8).
+
+Design assumptions this cycle's tests had to fix, in the absence of a
+pinned literal (documented, not guessed -- each is the only reading that
+keeps ALL of §S6's own AC bullets mutually satisfiable, or mirrors an
+established sibling pattern already in this codebase):
+  - Ownership marker SYNTAX: the AC pins only that it is "a marker comment
+    ... naming the generator and the sha256 of the rest of the file", never
+    a literal string. Tested STRUCTURALLY: a `#`-prefixed line inside the
+    frontmatter block, containing a bare 64-hex-digit token and the
+    substring "modelb" (case-insensitive -- the only generator-name family
+    this codebase has: modelb-axi/modelb_axi). A `#`-comment (not a new
+    top-level key) is required by the AC's own wording AND is the only
+    choice that does not regress the already-GREEN §S3 AC1 frontmatter-
+    key-set gate (`FrontmatterKeySetS3Test`, allowed set unchanged this
+    cycle).
+  - AC1's "byte-identical to what build.py renders" and the Ownership AC's
+    per-file marker are BOTH true only if the marker lives inside the ONE
+    shared render/emit path §S1 already established (`agents.render()` /
+    `_emit_pi()`) -- so every byte-identity assertion below simply calls
+    `agents.render(...)` and compares raw bytes, never a hand-built
+    expectation, and never assumes the marker is a project-render-only
+    post-processing step layered outside that function.
+  - Envelope OUTCOME field names: the CR's own prose names the vocabulary
+    ("written, unchanged, skipped and unmanaged") but not the exact TOON
+    keys. Tested via `_find_path_in_envelope_bucket`, which accepts any
+    list-valued envelope field whose KEY contains the keyword substring --
+    binds to the vocabulary, not to one hand-picked key spelling.
+  - Asset-root resolution for `generator/templates`/`generator/stacks`:
+    assumed to follow the SAME `install.toml [install].asset_root` ->
+    `default_asset_root()` fallback chain `scaffold._memory_templates_dir`
+    already uses for `skills-src/memory-templates` -- the established
+    idiom in this same module for exactly this asset-root-resolution
+    problem, not a fresh invention.
+  - CLI surface: `agents` subcommand, `--stacks` (its own flag, mirroring
+    `init`'s), and the EXISTING top-level `--force-managed`/`--modelb-home`
+    flags (given BEFORE the subcommand token, exactly as `--yes` already is
+    in every `init` invocation in this suite) -- never a new, separately-
+    declared `--force-managed` on the `agents` subparser, since one already
+    exists globally.
+
+Migration (§ Migration AC, this cycle's slice -- §S6, scaffold/init/CLI/
+installer tests included): re-surveyed the five gap-analysis-named files
+PLUS tests/test_scaffold.py, tests/test_installer.py and
+tests/test_installer_correctness.py for §S6 coupling (`PROJECT_STACKS`,
+`.pi/agents`, an exact `.env` key set, an exact target-tree listing, or an
+`agents` CLI reference). Zero required migrations -- reasoned per file:
+  - tests/test_agent_generator.py, tests/test_installer_assets.py -- their
+    generated-content assertions all treat `render()`'s output dynamically
+    (byte-compared against a live call, never a hardcoded string), so they
+    track whatever §S1's shared render path emits (marker included) with
+    no test-file change needed; and neither references `.pi/agents`,
+    `PROJECT_STACKS` or the `agents` verb (re-grepped, zero hits).
+  - tests/test_realhome_supersede.py, tests/test_tooling_adoption.py,
+    tests/test_git_chezmoi_skills.py -- zero `PROJECT_STACKS`/`.pi/agents`/
+    `agents_dir`/`modelb-axi agents` references (re-grepped this cycle);
+    entirely about deployed ~/.claude state, the tooling-scripts store, and
+    the git-workflow/chezmoi skills. No migration.
+  - tests/test_scaffold.py -- surveyed every fixture that installs `pi` in
+    its harness set or asserts `.env`'s exact key set. None assert an
+    exact `.env` key SET (only `.get("KEY")` presence/value checks), so an
+    added `PROJECT_STACKS` key regresses nothing there. Two fixtures
+    render agents as a side effect and are directly protected instead of
+    migrated (their existing assertions never touch `.pi/agents/`'s
+    contents, so they need no edit, but a NEW regression-guard test below,
+    `InitToleratesStackWithoutAgentTemplateS6Test`, pins the exact
+    behaviour `PiWorktreeCarryAndClosedGuardsTest`'s own fixture --
+    `--stacks rust,java` -- depends on: `agents.STACKS` has no `java`
+    entry (only `quarkus`, distinct from scaffold's own `KNOWN_STACKS`,
+    which lists both), so agent rendering must silently skip `java` rather
+    than fail `init`, or that pre-existing baseline test regresses).
+  - tests/test_installer.py, tests/test_installer_correctness.py -- their
+    installer-flow (non-`init`) fixtures never touch `.pi/agents` today
+    and §S6 pins the installer must go on writing nothing there (a NEW
+    test below, `InstallerWritesNoAgentsS6Test`, pins this as a fresh
+    assertion; no existing installer-flow test asserted the opposite, so
+    none needed migrating).
+
 Stdlib only: unittest + tomllib + re + shutil + subprocess + sys + tempfile
-+ importlib.util + pathlib, matching the sibling generator test modules'
-existing conventions.
++ importlib.util + pathlib + hashlib + os, matching the sibling generator
+test modules' existing conventions.
 """
 
+import hashlib
 import importlib.util
+import os
 import re
 import shutil
 import subprocess
@@ -122,6 +217,8 @@ import tempfile
 import tomllib
 import unittest
 from pathlib import Path
+
+from modelb_axi import agents as agents_mod
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 GENERATOR_DIR = REPO_ROOT / "generator"
@@ -913,6 +1010,893 @@ class ToolNamesRuleS5Test(unittest.TestCase):
         self.assertEqual(
             len(BASH_TOKEN_RE.findall("```bash\npython3 foo.py\n```")), 0,
             "the detector must not fire on a lowercase ```bash``` fence tag",
+        )
+
+
+# ---------------------------------------------------------------------------
+# CR-MDB-025 CYCLE C3 -- \u00a7S6: `init` renders the project's agents; the
+# `agents` CLI re-render verb; file-ownership markers; the installer writes
+# no agent definitions. See the module docstring's "CYCLE C3 AMENDMENT"
+# section for the design assumptions these tests had to fix.
+# ---------------------------------------------------------------------------
+
+# \u00a7S6 -- the one rendered-agents directory this CR's Pi emitter writes to.
+PI_AGENTS_RELDIR = Path(".pi") / "agents"
+
+# \u00a7S6 Ownership -- structural marker detection (see the module docstring's
+# design-assumptions note): a bare 64-hex-digit sha256 token, matched inside
+# a `#`-prefixed comment line that also names this project ("modelb",
+# case-insensitive).
+_MARKER_HASH_RE = re.compile(r"\b[0-9a-f]{64}\b")
+
+
+def _run_module_c3(*args, cwd=None, env_overrides=None, timeout=60, stdin=subprocess.DEVNULL):
+    """Invoke `python -m modelb_axi <args>`, optionally inside `cwd` -- the
+    `agents` verb re-renders "the project in the current directory" per the
+    CR's own \u00a7S6 prose, so exercising it means actually chdir-ing there, not
+    just passing a --target-shaped flag. Mirrors tests/test_scaffold.py's
+    own `_run_module` (not imported from it -- every sibling test module in
+    this suite keeps its own copy)."""
+    env = dict(os.environ)
+    existing_pp = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = str(REPO_ROOT) + (os.pathsep + existing_pp if existing_pp else "")
+    if env_overrides:
+        env.update(env_overrides)
+    cmd = [sys.executable, "-m", "modelb_axi", *args]
+    return subprocess.run(
+        cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout,
+        stdin=stdin, env=env,
+    )
+
+
+def _copy_c3_asset_root(dest: Path) -> Path:
+    """A PRIVATE, mutable copy of the asset roots `init`/`agents` need
+    (`generator/` for templates+stacks, `skills-src/memory-templates/` for
+    the \u00a7S3.4 memory seam every `init` run still exercises) -- so a test can
+    edit a template file to prove re-render WITHOUT ever touching the real
+    repo tree (the sandbox-guard rule every sibling scaffold test module in
+    this suite honours)."""
+    dest.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(GENERATOR_DIR, dest / "generator")
+    (dest / "skills-src").mkdir(parents=True, exist_ok=True)
+    shutil.copytree(
+        REPO_ROOT / "skills-src" / "memory-templates",
+        dest / "skills-src" / "memory-templates",
+    )
+    return dest
+
+
+def _write_install_toml_c3(home: Path, asset_root: Path, harnesses=("pi",)) -> Path:
+    """A valid install.toml fixture pointed at a PRIVATE `asset_root`
+    (never the real repo) -- mirrors tests/test_scaffold.py's own
+    `_write_install_toml`, extended with a real, controllable asset root so
+    \u00a7S6 tests can mutate a template and observe the re-render pick it up."""
+    harnesses_toml = ", ".join(f'"{h}"' for h in harnesses)
+    hooks_scripts_dir = home / ".agents" / "hooks" / "scripts"
+    home.mkdir(parents=True, exist_ok=True)
+    install_toml = home / "install.toml"
+    install_toml.write_text(
+        "[install]\n"
+        'version = "0.1.0"\n'
+        f"harnesses = [{harnesses_toml}]\n"
+        f'asset_root = "{asset_root}"\n'
+        f'hooks_scripts_dir = "{hooks_scripts_dir}"\n'
+        "\n"
+        "[deps]\n"
+        'uv = "present"\n'
+        "\n"
+        "[files]\n",
+        encoding="utf-8",
+    )
+    return install_toml
+
+
+def _parse_env_file_c3(path: Path) -> dict:
+    """Minimal `KEY=VALUE` parser for the emitted `.env` -- mirrors
+    tests/test_scaffold.py's own `_parse_env_file` (test-side only, no
+    production coupling)."""
+    values: dict = {}
+    if not path.is_file():
+        return values
+    for line in path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        key, _, raw_value = stripped.partition("=")
+        value = raw_value.strip()
+        if len(value) >= 2 and value[0] == value[-1] == '"':
+            value = value[1:-1]
+        values[key.strip()] = value
+    return values
+
+
+def _decode_envelope_c3(stdout: str) -> dict:
+    """Decode a TOON AXI envelope via Model B's OWN codec
+    (`modelb_axi.toon`) -- the production emitter's exact counterpart, per
+    `axi.py`'s own module docstring (never Crucible's client copy)."""
+    from modelb_axi.toon import decode
+    return decode(stdout)
+
+
+def _snapshot_hashes(root: Path) -> dict:
+    """{relpath: sha256} for every regular file under `root`, `.git/`
+    excluded (internal git housekeeping can touch loose-object files for
+    reasons unrelated to what a test is proving) and symlinks excluded
+    (e.g. CLAUDE.md)."""
+    snap = {}
+    for path in sorted(root.rglob("*")):
+        rel = path.relative_to(root)
+        if ".git" in rel.parts:
+            continue
+        if path.is_file() and not path.is_symlink():
+            snap[str(rel)] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return snap
+
+
+def _marker_line(frontmatter: str):
+    """The \u00a7S6 Ownership marker COMMENT line, or None. See the module
+    docstring's design-assumptions note for the structural-detection
+    rationale (a `#`-prefixed line, a bare 64-hex sha256, and the
+    substring "modelb")."""
+    for ln in frontmatter.splitlines():
+        stripped = ln.strip()
+        if (
+            stripped.startswith("#")
+            and _MARKER_HASH_RE.search(stripped)
+            and "modelb" in stripped.lower()
+        ):
+            return ln
+    return None
+
+
+def _strip_exact_line(text: str, line: str) -> str:
+    """Remove exactly ONE occurrence of `line` from `text` -- used to turn a
+    genuinely rendered file into a "no marker" fixture (Ownership AC's 4th
+    subtest: a same-named file that was never generated, or whose marker
+    was stripped, carries no marker at all)."""
+    lines = text.splitlines(keepends=True)
+    for idx, ln in enumerate(lines):
+        if ln.rstrip("\n") == line:
+            del lines[idx]
+            return "".join(lines)
+    raise AssertionError(f"line {line!r} not found to strip")
+
+
+def _find_path_in_envelope_bucket(envelope: dict, rel_path: str, keyword: str) -> bool:
+    """True if `rel_path` appears in a list-valued envelope field whose KEY
+    contains `keyword` (case-insensitive substring) -- binds to the \u00a7S6
+    outcome VOCABULARY the CR's own prose names ("written, unchanged,
+    skipped and unmanaged") without pinning one hand-picked TOON key
+    spelling."""
+    axi = envelope.get("axi", envelope)
+    for key, value in axi.items():
+        if keyword.lower() in key.lower() and isinstance(value, list) and any(
+            rel_path in str(item) for item in value
+        ):
+            return True
+    return False
+
+
+def _init_pi_project(tmp_dir_prefix: str, stacks="python", harnesses=("pi",)):
+    """Run a real, fully isolated `init` (private asset-root copy, sandboxed
+    home+target -- never the real repo/home) and return
+    `(result, home, asset_root, target)` as `Path`s."""
+    tmp_home = Path(tempfile.mkdtemp(prefix=f"{tmp_dir_prefix}-home-"))
+    tmp_asset_root = Path(tempfile.mkdtemp(prefix=f"{tmp_dir_prefix}-assets-"))
+    tmp_target = Path(tempfile.mkdtemp(prefix=f"{tmp_dir_prefix}-target-"))
+    _copy_c3_asset_root(tmp_asset_root)
+    _write_install_toml_c3(tmp_home, tmp_asset_root, harnesses=harnesses)
+    result = _run_module_c3(
+        "--yes", "init",
+        "--name", "X", "--token", "xproj", "--acronym", "XP",
+        "--mode", "solo", "--repo-shape", "standalone",
+        "--stacks", stacks, "--owner", "tester",
+        "--target", str(tmp_target),
+        "--modelb-home", str(tmp_home),
+    )
+    return result, tmp_home, tmp_asset_root, tmp_target
+
+
+class InitRendersPiProjectAgentsS6Test(unittest.TestCase):
+    """\u00a7S6 AC1 -- `init --stacks python` with installed harnesses `[pi]`
+    writes exactly `.pi/agents/python-{red,green,verify,fix}-agent.md`,
+    records `PROJECT_STACKS=python` in `.env`, and each written file is
+    byte-identical to `agents.render()` for the same stack x role.
+
+    Written before any \u00a7S6 production code exists: `run_init` never renders
+    agent definitions today (`scaffold.py::_emit_plan` has no `agents`
+    import or `.pi/agents` write site).
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls._result, cls._home, cls._asset_root, cls._target = _init_pi_project(
+            "modelb-axi-c3-s6-solo",
+        )
+
+    @classmethod
+    def tearDownClass(cls):
+        for root in (cls._home, cls._asset_root, cls._target):
+            shutil.rmtree(root, ignore_errors=True)
+
+    def test_s6_init_succeeded_precondition(self):
+        # Fixture precondition, not an S6 assertion itself.
+        self.assertEqual(
+            self._result.returncode, 0,
+            f"S6 fixture precondition: init must succeed; "
+            f"stdout={self._result.stdout!r} stderr={self._result.stderr!r}",
+        )
+
+    def test_s6_init_writes_exactly_the_four_python_pi_agent_files(self):
+        agents_dir = self._target / PI_AGENTS_RELDIR
+        self.assertTrue(
+            agents_dir.is_dir(),
+            f"S6 AC1: {agents_dir} must exist after `init --stacks python` "
+            f"with installed harnesses [pi]; init stderr={self._result.stderr!r}",
+        )
+        found = sorted(p.name for p in agents_dir.glob("*"))
+        expected = sorted(f"python-{role}-agent.md" for role in ROLES)
+        # POSITIVE/EXACT -- exactly these four files, nothing else.
+        self.assertEqual(
+            found, expected,
+            f"S6 AC1: {agents_dir} must contain exactly {expected}; found {found}",
+        )
+
+    def test_s6_each_written_file_is_byte_identical_to_agents_render_output(self):
+        params = agents_mod.load_stack_params(STACKS_DIR, "python")
+        for role in ROLES:
+            written = self._target / PI_AGENTS_RELDIR / f"python-{role}-agent.md"
+            self.assertTrue(
+                written.is_file(),
+                f"S6 AC1 fixture precondition: {written} must exist "
+                f"(see test_s6_init_writes_exactly_the_four_python_pi_agent_files)",
+            )
+            expected = agents_mod.render("python", role, params, TEMPLATES_DIR, harness="pi")
+            # POSITIVE/EXACT -- byte-for-byte, not merely equivalent.
+            self.assertEqual(
+                written.read_text(encoding="utf-8"), expected,
+                f"S6 AC1: {written} must be byte-identical to "
+                f"agents.render('python', {role!r}, ...); it is not",
+            )
+
+    def test_s6_env_records_project_stacks_equal_to_python(self):
+        env = _parse_env_file_c3(self._target / ".env")
+        self.assertEqual(
+            env.get("PROJECT_STACKS"), "python",
+            f"S6 AC1: `.env` must record PROJECT_STACKS=python; got env={env!r}",
+        )
+
+
+class InitToleratesStackWithoutAgentTemplateS6Test(unittest.TestCase):
+    """\u00a7S6 regression guard -- `scaffold.KNOWN_STACKS` names `java` as a
+    stack id distinct from `quarkus` (memory-template selection and
+    hook-instance selection both already branch on it), but
+    `agents.STACKS` has no `java` entry at all (only `quarkus` --
+    "Quarkus/Java projects"). A `--stacks rust,java` init -- exactly
+    tests/test_scaffold.py's existing `PiWorktreeCarryAndClosedGuardsTest`
+    fixture, which this CR must not break -- must still succeed, rendering
+    agent definitions only for the stack(s) that HAVE one; `java` is
+    silently skipped, never a fatal error.
+    """
+
+    def test_s6_stacks_rust_java_with_pi_harness_renders_rust_only_and_succeeds(self):
+        tmp_home = tempfile.mkdtemp(prefix="modelb-axi-c3-s6-java-home-")
+        tmp_target = tempfile.mkdtemp(prefix="modelb-axi-c3-s6-java-target-")
+        self.addCleanup(shutil.rmtree, tmp_home, ignore_errors=True)
+        self.addCleanup(shutil.rmtree, tmp_target, ignore_errors=True)
+        # Mirrors tests/test_scaffold.py's own `_write_install_toml` fixture
+        # EXACTLY (a bogus configured asset_root relying on the real repo's
+        # default_asset_root() fallback) -- the SAME configuration
+        # PiWorktreeCarryAndClosedGuardsTest already uses.
+        hooks_scripts_dir = Path(tmp_home) / ".agents" / "hooks" / "scripts"
+        Path(tmp_home, "install.toml").write_text(
+            "[install]\n"
+            'version = "0.1.0"\n'
+            'harnesses = ["claude-code", "pi"]\n'
+            'asset_root = "/tmp/does-not-matter-for-this-test"\n'
+            f'hooks_scripts_dir = "{hooks_scripts_dir}"\n'
+            "\n[deps]\nuv = \"present\"\n\n[files]\n",
+            encoding="utf-8",
+        )
+        result = _run_module_c3(
+            "--yes", "init",
+            "--name", "X", "--token", "xproj", "--acronym", "XP",
+            "--mode", "multi:2", "--repo-shape", "standalone",
+            "--stacks", "rust,java", "--owner", "tester",
+            "--target", tmp_target,
+            "--modelb-home", tmp_home,
+        )
+        # POSITIVE -- `java` in --stacks must never be fatal.
+        self.assertEqual(
+            result.returncode, 0,
+            f"S6: `init --stacks rust,java` (no java stack TOML for agent "
+            f"rendering) must still succeed; got exit={result.returncode} "
+            f"stdout={result.stdout!r} stderr={result.stderr!r}",
+        )
+        agents_dir = Path(tmp_target) / PI_AGENTS_RELDIR
+        found = sorted(p.name for p in agents_dir.glob("*")) if agents_dir.is_dir() else []
+        expected = sorted(f"rust-{role}-agent.md" for role in ROLES)
+        # POSITIVE/EXACT -- rust's four files, and nothing named `java-*`.
+        self.assertEqual(
+            found, expected,
+            f"S6: --stacks rust,java must render exactly rust's four "
+            f"files (java silently skipped, no java-*-agent.md); found {found}",
+        )
+
+
+class InstalledWheelInitRendersAgentsS6Test(unittest.TestCase):
+    """\u00a7S6 AC2 -- an installed-wheel `init` (never a repo checkout) also
+    renders `.pi/agents/*`: the wheel's force-included package data
+    (`modelb_axi/_assets/generator/...`) is what a genuinely-installed
+    `init` resolves its templates/stacks from -- the same CR-MDB-014/022
+    missing-asset-class shape `InstalledPackageAssetRootEndToEndTest`
+    (tests/test_installer_assets.py) already proved for the deploy engine,
+    applied here to `init`.
+    """
+
+    def setUp(self):
+        self._tmp_dirs = []
+        self._uv_tool_dir = self._mkdtemp("modelb-axi-c3-e2e-uvtool-")
+        self._uv_tool_bin_dir = self._mkdtemp("modelb-axi-c3-e2e-uvbin-")
+        self._tmp_home = self._mkdtemp("modelb-axi-c3-e2e-home-")
+        self._tmp_target_root = self._mkdtemp("modelb-axi-c3-e2e-target-root-")
+        self._tmp_init_target = self._mkdtemp("modelb-axi-c3-e2e-init-target-")
+
+    def _mkdtemp(self, prefix: str) -> str:
+        path = tempfile.mkdtemp(prefix=prefix)
+        self._tmp_dirs.append(path)
+        return path
+
+    def tearDown(self):
+        for root in self._tmp_dirs:
+            shutil.rmtree(root, ignore_errors=True)
+
+    def test_s6_installed_wheel_init_renders_pi_agents_from_packaged_assets(self):
+        uv = shutil.which("uv")
+        if uv is None:
+            self.fail(
+                "installed-wheel e2e: `uv` binary not found on PATH -- "
+                "cannot verify installability (guarded, not skipped)"
+            )
+        install_env = dict(os.environ)
+        install_env["UV_TOOL_DIR"] = self._uv_tool_dir
+        install_env["UV_TOOL_BIN_DIR"] = self._uv_tool_bin_dir
+        install = subprocess.run(
+            [uv, "tool", "install", str(REPO_ROOT), "--force"],
+            capture_output=True, text=True, timeout=240, env=install_env,
+        )
+        self.assertEqual(
+            install.returncode, 0,
+            f"`uv tool install {REPO_ROOT} --force` must exit 0; got "
+            f"exit={install.returncode}\nstdout={install.stdout[-2000:]}"
+            f"\nstderr={install.stderr[-2000:]}",
+        )
+        installed_bin = Path(self._uv_tool_bin_dir) / "modelb-axi"
+        self.assertTrue(installed_bin.exists(), f"{installed_bin} must exist")
+
+        run_env = dict(os.environ)
+        # The dev-mode repo copy of modelb_axi must never shadow the
+        # installed package.
+        run_env.pop("PYTHONPATH", None)
+
+        # Stage 1: a real installer run -> install.toml with asset_root
+        # pointing INSIDE the installed package, harnesses=[pi].
+        installer_result = subprocess.run(
+            [str(installed_bin), "--yes", "--harnesses", "pi",
+             "--modelb-home", self._tmp_home,
+             "--target-root", self._tmp_target_root],
+            capture_output=True, text=True, timeout=60,
+            stdin=subprocess.DEVNULL, env=run_env,
+        )
+        self.assertEqual(
+            installer_result.returncode, 0,
+            f"installed `modelb-axi` installer run must exit 0; got "
+            f"exit={installer_result.returncode} "
+            f"stdout={installer_result.stdout!r} stderr={installer_result.stderr!r}",
+        )
+        install_toml_path = Path(self._tmp_home) / "install.toml"
+        with open(install_toml_path, "rb") as fh:
+            data = tomllib.load(fh)
+        asset_root = Path(str(data.get("install", {}).get("asset_root", "")))
+        self.assertEqual(
+            asset_root.parts[-2:], ("modelb_axi", "_assets"),
+            f"[install].asset_root must point inside the installed "
+            f"package (.../modelb_axi/_assets); got {asset_root}",
+        )
+
+        # Stage 2: `init` from the SAME installed binary -- never REPO_ROOT.
+        init_result = subprocess.run(
+            [str(installed_bin), "--yes", "init",
+             "--name", "X", "--token", "xproj", "--acronym", "XP",
+             "--mode", "solo", "--repo-shape", "standalone",
+             "--stacks", "python", "--owner", "tester",
+             "--target", self._tmp_init_target,
+             "--modelb-home", self._tmp_home],
+            capture_output=True, text=True, timeout=60,
+            stdin=subprocess.DEVNULL, env=run_env,
+        )
+        self.assertEqual(
+            init_result.returncode, 0,
+            f"installed `modelb-axi init` must exit 0 (never a repo "
+            f"checkout -- REPO_ROOT is not even on PYTHONPATH here); got "
+            f"exit={init_result.returncode} stdout={init_result.stdout!r} "
+            f"stderr={init_result.stderr!r}",
+        )
+        agents_dir = Path(self._tmp_init_target) / PI_AGENTS_RELDIR
+        found = sorted(p.name for p in agents_dir.glob("*")) if agents_dir.is_dir() else []
+        expected = sorted(f"python-{role}-agent.md" for role in ROLES)
+        self.assertEqual(
+            found, expected,
+            f"S6 AC2: installed-wheel init must render exactly {expected} "
+            f"under {agents_dir}; found {found}",
+        )
+        # POSITIVE/EXACT -- the packaged-asset render is byte-identical to
+        # this dev checkout's own agents.render() (same template content,
+        # force-included verbatim into the wheel).
+        params = agents_mod.load_stack_params(STACKS_DIR, "python")
+        for role in ROLES:
+            written = (agents_dir / f"python-{role}-agent.md").read_text(encoding="utf-8")
+            expected_content = agents_mod.render("python", role, params, TEMPLATES_DIR, harness="pi")
+            self.assertEqual(
+                written, expected_content,
+                f"S6 AC2: installed-wheel python-{role}-agent.md must be "
+                f"byte-identical to this checkout's agents.render() output",
+            )
+
+
+class AgentsCliReRenderS6Test(unittest.TestCase):
+    """\u00a7S6 AC3 -- `modelb-axi agents` in an initialised project re-renders
+    from `PROJECT_STACKS`, touching nothing else; `--stacks python,rust`
+    adds the four rust definitions and rewrites `PROJECT_STACKS`.
+
+    Written before the `agents` CLI subcommand exists at all -- every
+    invocation below fails at the argparse level (unrecognised subcommand)
+    against the current tree.
+    """
+
+    def setUp(self):
+        self._result, self._home, self._asset_root, self._target = _init_pi_project(
+            "modelb-axi-c3-s6-rerender",
+        )
+        self.assertEqual(
+            self._result.returncode, 0,
+            f"S6 fixture precondition: init must succeed; "
+            f"stderr={self._result.stderr!r}",
+        )
+
+    def tearDown(self):
+        for root in (self._home, self._asset_root, self._target):
+            shutil.rmtree(root, ignore_errors=True)
+
+    def test_s6_agents_verb_rerenders_after_template_change_and_touches_no_other_file(self):
+        before = _snapshot_hashes(self._target)
+        # Mutate the RED template in the PRIVATE asset-root copy only --
+        # never the real repo (sandbox-guard rule).
+        red_template = self._asset_root / "generator" / "templates" / "red.md.tmpl"
+        original = red_template.read_text(encoding="utf-8")
+        marker_text = "S6-C3-TEMPLATE-CHANGE-PROBE"
+        red_template.write_text(original + f"\n{marker_text}\n", encoding="utf-8")
+
+        result = _run_module_c3(
+            "--modelb-home", str(self._home), "agents",
+            cwd=str(self._target),
+        )
+        self.assertEqual(
+            result.returncode, 0,
+            f"S6 AC3: `modelb-axi agents` must exit 0; got "
+            f"exit={result.returncode} stdout={result.stdout!r} "
+            f"stderr={result.stderr!r}",
+        )
+        after = _snapshot_hashes(self._target)
+
+        red_path_rel = str(Path(".pi") / "agents" / "python-red-agent.md")
+        # POSITIVE -- the RED definition actually picked up the changed
+        # template's new content.
+        self.assertIn(
+            marker_text,
+            (self._target / PI_AGENTS_RELDIR / "python-red-agent.md").read_text(encoding="utf-8"),
+            "S6 AC3: re-render must pick up the changed RED template",
+        )
+        # NEGATIVE/EXACT -- the ONLY relpath whose content changed is the
+        # one whose SOURCE template changed; every other file in the whole
+        # target tree (including the other three .pi/agents/*.md files) is
+        # untouched.
+        changed = {p for p in before if before.get(p) != after.get(p)} | (set(after) - set(before))
+        self.assertEqual(
+            changed, {red_path_rel},
+            f"S6 AC3: `modelb-axi agents` must change no file other than "
+            f"the one whose template changed; got changed={changed!r}",
+        )
+
+    def test_s6_agents_verb_with_stacks_flag_adds_rust_and_rewrites_project_stacks(self):
+        result = _run_module_c3(
+            "--modelb-home", str(self._home), "agents", "--stacks", "python,rust",
+            cwd=str(self._target),
+        )
+        self.assertEqual(
+            result.returncode, 0,
+            f"S6 AC3: `modelb-axi agents --stacks python,rust` must exit "
+            f"0; got exit={result.returncode} stdout={result.stdout!r} "
+            f"stderr={result.stderr!r}",
+        )
+        agents_dir = self._target / PI_AGENTS_RELDIR
+        found = sorted(p.name for p in agents_dir.glob("*"))
+        expected = sorted(
+            f"{stack}-{role}-agent.md" for stack in ("python", "rust") for role in ROLES
+        )
+        # POSITIVE/EXACT -- python's four files survive AND rust's four
+        # new ones appear; nothing else.
+        self.assertEqual(
+            found, expected,
+            f"S6 AC3: --stacks python,rust must yield exactly {expected}; found {found}",
+        )
+        params = agents_mod.load_stack_params(STACKS_DIR, "rust")
+        for role in ROLES:
+            written = (agents_dir / f"rust-{role}-agent.md").read_text(encoding="utf-8")
+            expected_content = agents_mod.render("rust", role, params, TEMPLATES_DIR, harness="pi")
+            self.assertEqual(
+                written, expected_content,
+                f"S6 AC3: rust-{role}-agent.md must be byte-identical to "
+                f"agents.render('rust', {role!r}, ...)",
+            )
+        env = _parse_env_file_c3(self._target / ".env")
+        stacks_value = env.get("PROJECT_STACKS", "")
+        # POSITIVE/EXACT (order-independent) -- PROJECT_STACKS is
+        # rewritten to name both stacks, comma-separated.
+        self.assertEqual(
+            {s.strip() for s in stacks_value.split(",") if s.strip()},
+            {"python", "rust"},
+            f"S6 AC3: `.env` PROJECT_STACKS must be rewritten to name both "
+            f"stacks (order-independent); got {stacks_value!r}",
+        )
+        self.assertIn(
+            ",", stacks_value,
+            f"S6 AC3: PROJECT_STACKS must be comma-separated; got {stacks_value!r}",
+        )
+
+
+class AgentsAxiEnvelopeS6Test(unittest.TestCase):
+    """\u00a7S6 AC6 -- `modelb-axi agents` emits exactly ONE AXI envelope on
+    stdout (verb `agents`), listing each rendered file's outcome."""
+
+    def setUp(self):
+        self._result, self._home, self._asset_root, self._target = _init_pi_project(
+            "modelb-axi-c3-s6-envelope",
+        )
+        self.assertEqual(self._result.returncode, 0, self._result.stderr)
+
+    def tearDown(self):
+        for root in (self._home, self._asset_root, self._target):
+            shutil.rmtree(root, ignore_errors=True)
+
+    def test_s6_agents_verb_stdout_is_exactly_one_envelope_naming_verb_agents(self):
+        result = _run_module_c3(
+            "--modelb-home", str(self._home), "agents", cwd=str(self._target),
+        )
+        self.assertEqual(
+            result.returncode, 0,
+            f"S6 AC6: `modelb-axi agents` must exit 0; got "
+            f"exit={result.returncode} stdout={result.stdout!r} "
+            f"stderr={result.stderr!r}",
+        )
+        try:
+            envelope = _decode_envelope_c3(result.stdout)
+        except Exception as exc:
+            self.fail(
+                f"S6 AC6: `modelb-axi agents` stdout must parse as a TOON "
+                f"envelope; decode failed with {exc!r} on "
+                f"stdout={result.stdout!r}"
+            )
+        axi = envelope.get("axi", {})
+        self.assertEqual(
+            axi.get("verb"), "agents",
+            f"S6 AC6: envelope axi.verb must be 'agents'; got envelope={envelope!r}",
+        )
+        self.assertIs(
+            axi.get("ok"), True,
+            f"S6 AC6: a clean re-render must report ok:true; got envelope={envelope!r}",
+        )
+
+    def test_s6_agents_verb_envelope_lists_each_files_outcome(self):
+        result = _run_module_c3(
+            "--modelb-home", str(self._home), "agents", cwd=str(self._target),
+        )
+        self.assertEqual(
+            result.returncode, 0,
+            f"S6 AC6: `modelb-axi agents` must exit 0; got "
+            f"exit={result.returncode} stdout={result.stdout!r} "
+            f"stderr={result.stderr!r}",
+        )
+        envelope = _decode_envelope_c3(result.stdout)
+        for role in ROLES:
+            rel = str(Path(".pi") / "agents" / f"python-{role}-agent.md")
+            found = (
+                _find_path_in_envelope_bucket(envelope, rel, "written")
+                or _find_path_in_envelope_bucket(envelope, rel, "unchanged")
+            )
+            self.assertTrue(
+                found,
+                f"S6 AC6: {rel} must be listed under a 'written' or "
+                f"'unchanged' outcome field in the envelope; got "
+                f"envelope={envelope!r}",
+            )
+
+
+class InstallerWritesNoAgentsS6Test(unittest.TestCase):
+    """\u00a7S6 AC5 -- the installer writes nothing under any agents directory,
+    and `install.toml` carries no agent key."""
+
+    def setUp(self):
+        self._tmp_home = tempfile.mkdtemp(prefix="modelb-axi-c3-s6-noagents-home-")
+        self._tmp_target_root = tempfile.mkdtemp(prefix="modelb-axi-c3-s6-noagents-target-")
+
+    def tearDown(self):
+        shutil.rmtree(self._tmp_home, ignore_errors=True)
+        shutil.rmtree(self._tmp_target_root, ignore_errors=True)
+
+    def test_s6_installer_run_writes_no_pi_agents_directory(self):
+        result = _run_module_c3(
+            "--yes", "--harnesses", "pi",
+            "--modelb-home", self._tmp_home,
+            "--target-root", self._tmp_target_root,
+        )
+        self.assertEqual(
+            result.returncode, 0,
+            f"S6 fixture precondition: installer run must succeed; "
+            f"stdout={result.stdout!r} stderr={result.stderr!r}",
+        )
+        agents_dir = Path(self._tmp_target_root) / PI_AGENTS_RELDIR
+        # NEGATIVE -- the installer must write NOTHING under any agents
+        # directory.
+        self.assertFalse(
+            agents_dir.exists(),
+            f"S6 AC5: the installer must write NOTHING under any agents "
+            f"directory; found {agents_dir}",
+        )
+
+    def test_s6_install_toml_carries_no_agent_key(self):
+        result = _run_module_c3(
+            "--yes", "--harnesses", "pi",
+            "--modelb-home", self._tmp_home,
+            "--target-root", self._tmp_target_root,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        install_toml_path = Path(self._tmp_home) / "install.toml"
+        with open(install_toml_path, "rb") as fh:
+            data = tomllib.load(fh)
+        install_section = data.get("install", {})
+        agent_keys = [k for k in install_section if "agent" in k.lower()]
+        # NEGATIVE/EXACT -- zero [install] keys name "agent".
+        self.assertEqual(
+            agent_keys, [],
+            f"S6 AC5: [install] must carry no agent key; got "
+            f"install_section={install_section!r}",
+        )
+        agent_file_entries = [
+            entry for entry in data.get("files", [])
+            # Path-COMPONENT match ("agents" as an exact path segment, or
+            # the generated `<stack>-<role>-agent.md` filename suffix) --
+            # never a bare substring: every deployed skill lives under the
+            # `.agents/` STORE dir, whose name itself contains "agent" as a
+            # substring, which would false-positive on every entry.
+            if "agents" in Path(str(entry.get("path", ""))).parts
+            or str(entry.get("path", "")).endswith("-agent.md")
+        ]
+        # NEGATIVE/EXACT -- zero [[files]] manifest entries name "agent".
+        self.assertEqual(
+            agent_file_entries, [],
+            f"S6 AC5: install.toml's [[files]] manifest must carry no "
+            f"agent-path entry; got {agent_file_entries!r}",
+        )
+
+
+class AgentOwnershipRulesS6Test(unittest.TestCase):
+    """\u00a7S6 Ownership AC -- one subtest per rule: a missing file is
+    written; an intact marked file is rewritten (content updates when its
+    template does); a hand-modified marked file is skipped as
+    `hand_modified` unless `--force-managed`, which overwrites it; a
+    same-named file with no marker is NEVER written (not even with
+    `--force-managed`) and is reported `unmanaged`; a file of another name
+    in the directory is left completely untouched.
+    """
+
+    def setUp(self):
+        self._result, self._home, self._asset_root, self._target = _init_pi_project(
+            "modelb-axi-c3-s6-ownership",
+        )
+        self.assertEqual(
+            self._result.returncode, 0,
+            f"S6 fixture precondition: init must succeed; "
+            f"stderr={self._result.stderr!r}",
+        )
+        self._agents_dir = self._target / PI_AGENTS_RELDIR
+
+    def tearDown(self):
+        for root in (self._home, self._asset_root, self._target):
+            shutil.rmtree(root, ignore_errors=True)
+
+    def _run_agents(self, *extra_args):
+        return _run_module_c3(
+            "--modelb-home", str(self._home), "agents", *extra_args,
+            cwd=str(self._target),
+        )
+
+    def test_s6_ownership_missing_file_is_written(self):
+        target_file = self._agents_dir / "python-fix-agent.md"
+        self.assertTrue(
+            target_file.is_file(),
+            f"S6 Ownership fixture precondition: `init` must already have "
+            f"rendered {target_file} (\u00a7S6 AC1) before this test can delete "
+            f"it and prove re-render",
+        )
+        target_file.unlink()
+        self.assertFalse(target_file.exists())
+
+        result = self._run_agents()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        # POSITIVE -- the missing file reappears, rendered.
+        self.assertTrue(
+            target_file.is_file(),
+            f"S6 Ownership: a missing rendered file must be (re)written; "
+            f"stdout={result.stdout!r} stderr={result.stderr!r}",
+        )
+        rel = str(Path(".pi") / "agents" / "python-fix-agent.md")
+        envelope = _decode_envelope_c3(result.stdout)
+        self.assertTrue(
+            _find_path_in_envelope_bucket(envelope, rel, "written"),
+            f"S6 Ownership: {rel} must be reported under a 'written' "
+            f"outcome; got envelope={envelope!r}",
+        )
+
+    def test_s6_ownership_intact_marked_file_is_rewritten_on_template_change(self):
+        target_file = self._agents_dir / "python-green-agent.md"
+        self.assertTrue(
+            target_file.is_file(),
+            f"S6 Ownership fixture precondition: `init` must already have "
+            f"rendered {target_file} (\u00a7S6 AC1)",
+        )
+        before = target_file.read_text(encoding="utf-8")
+
+        green_template = self._asset_root / "generator" / "templates" / "green.md.tmpl"
+        green_template.write_text(
+            green_template.read_text(encoding="utf-8") + "\nS6-OWNERSHIP-REWRITE-PROBE\n",
+            encoding="utf-8",
+        )
+        result = self._run_agents()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        after = target_file.read_text(encoding="utf-8")
+
+        # POSITIVE -- content actually changed to the new render.
+        self.assertNotEqual(
+            before, after,
+            "S6 Ownership: an intact-marker file must be REWRITTEN "
+            "(picking up the changed template), not left as-is",
+        )
+        self.assertIn("S6-OWNERSHIP-REWRITE-PROBE", after)
+        rel = str(Path(".pi") / "agents" / "python-green-agent.md")
+        envelope = _decode_envelope_c3(result.stdout)
+        self.assertTrue(
+            _find_path_in_envelope_bucket(envelope, rel, "written"),
+            f"S6 Ownership: a changed, intact-marker file must be "
+            f"reported 'written'; got envelope={envelope!r}",
+        )
+
+    def test_s6_ownership_hand_modified_marked_file_skipped_then_forced(self):
+        target_file = self._agents_dir / "python-verify-agent.md"
+        self.assertTrue(
+            target_file.is_file(),
+            f"S6 Ownership fixture precondition: `init` must already have "
+            f"rendered {target_file} (\u00a7S6 AC1)",
+        )
+        rendered = target_file.read_text(encoding="utf-8")
+        frontmatter, _ = _split_frontmatter(rendered)
+        marker = _marker_line(frontmatter)
+        self.assertIsNotNone(
+            marker,
+            f"S6 Ownership fixture precondition: a rendered file must "
+            f"carry the ownership marker comment inside its frontmatter "
+            f"(a '#'-prefixed line naming the generator + a 64-hex "
+            f"sha256, per the AC's own wording); got frontmatter={frontmatter!r}",
+        )
+        hand_edited = rendered.replace("description:", "description: HAND-EDITED", 1)
+        self.assertNotEqual(hand_edited, rendered)
+        target_file.write_text(hand_edited, encoding="utf-8")
+
+        # Without --force-managed: left untouched, reported hand_modified.
+        result = self._run_agents()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            target_file.read_text(encoding="utf-8"), hand_edited,
+            "S6 Ownership: a hand-modified marked file must be left "
+            "byte-identical to the hand edit without --force-managed",
+        )
+        rel = str(Path(".pi") / "agents" / "python-verify-agent.md")
+        envelope = _decode_envelope_c3(result.stdout)
+        reported = (
+            _find_path_in_envelope_bucket(envelope, rel, "skipped")
+            or _find_path_in_envelope_bucket(envelope, rel, "hand_modified")
+        )
+        self.assertTrue(
+            reported,
+            f"S6 Ownership: {rel} must be reported skipped/hand_modified; "
+            f"got envelope={envelope!r} stderr={result.stderr!r}",
+        )
+
+        # With --force-managed: overwritten, back to a fresh render.
+        forced = _run_module_c3(
+            "--modelb-home", str(self._home), "--force-managed", "agents",
+            cwd=str(self._target),
+        )
+        self.assertEqual(forced.returncode, 0, forced.stderr)
+        params = agents_mod.load_stack_params(STACKS_DIR, "python")
+        expected = agents_mod.render("python", "verify", params, TEMPLATES_DIR, harness="pi")
+        self.assertEqual(
+            target_file.read_text(encoding="utf-8"), expected,
+            "S6 Ownership: --force-managed must overwrite a hand-modified "
+            "marked file back to a fresh render",
+        )
+
+    def test_s6_ownership_file_with_no_marker_never_written_reported_unmanaged(self):
+        target_file = self._agents_dir / "python-red-agent.md"
+        self.assertTrue(
+            target_file.is_file(),
+            f"S6 Ownership fixture precondition: `init` must already have "
+            f"rendered {target_file} (\u00a7S6 AC1)",
+        )
+        rendered = target_file.read_text(encoding="utf-8")
+        frontmatter, _ = _split_frontmatter(rendered)
+        marker = _marker_line(frontmatter)
+        self.assertIsNotNone(marker, "fixture precondition: marker must be present")
+        assert marker is not None  # narrows for the type checker; proven above
+        no_marker_content = _strip_exact_line(rendered, marker)
+        self.assertNotIn(
+            marker.strip(), no_marker_content,
+            "fixture precondition: the marker line must be fully removed",
+        )
+        target_file.write_text(no_marker_content, encoding="utf-8")
+
+        result = self._run_agents("--force-managed")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        # POSITIVE/EXACT -- byte-identical to the no-marker fixture: not
+        # even --force-managed adopts an unmarked file (deploy.py's own
+        # "no flag overwrites it" rule, applied here).
+        self.assertEqual(
+            target_file.read_text(encoding="utf-8"), no_marker_content,
+            "S6 Ownership: a same-named file with no marker must NEVER be "
+            "written, not even with --force-managed",
+        )
+        rel = str(Path(".pi") / "agents" / "python-red-agent.md")
+        envelope = _decode_envelope_c3(result.stdout)
+        self.assertTrue(
+            _find_path_in_envelope_bucket(envelope, rel, "unmanaged"),
+            f"S6 Ownership: {rel} must be reported 'unmanaged'; got "
+            f"envelope={envelope!r}",
+        )
+
+    def test_s6_ownership_file_of_another_name_left_completely_untouched(self):
+        # Fixture setup only (not a production-behaviour assumption): the
+        # AC's own wording ("a file of ANOTHER NAME IN THE DIRECTORY")
+        # presupposes the directory exists -- true once \u00a7S6 lands (init
+        # already populated it with the four generated files in setUp).
+        self._agents_dir.mkdir(parents=True, exist_ok=True)
+        other_file = self._agents_dir / "custom-hand-authored-notes.md"
+        other_content = "# not a generated agent\n\nhand-authored, unrelated filename.\n"
+        other_file.write_text(other_content, encoding="utf-8")
+        other_mtime_before = other_file.stat().st_mtime_ns
+
+        result = self._run_agents("--force-managed")
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+        self.assertTrue(other_file.is_file(), "must not be deleted")
+        self.assertEqual(
+            other_file.read_text(encoding="utf-8"), other_content,
+            "S6 Ownership: a file of another name in the directory must "
+            "be left byte-identical",
+        )
+        self.assertEqual(
+            other_file.stat().st_mtime_ns, other_mtime_before,
+            "S6 Ownership: a file of another name must not even be "
+            "touched (mtime must be unchanged)",
         )
 
 
