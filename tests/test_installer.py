@@ -120,6 +120,16 @@ def _write_fake_executable(bin_dir: str, name: str, script_body: str) -> Path:
     return path
 
 
+def _decode_envelope(stdout: str) -> dict:
+    """Decode a `modelb_axi` TOON AXI envelope printed on stdout, using
+    the package's OWN codec (CR-MDB-033 §S6 migration: the `deps:`
+    verdicts, `_extract_selected_harnesses`, and the already-installed
+    notice read installer FACTS from here now, not from stdout text --
+    per the CR's own AC)."""
+    from modelb_axi.toon import decode
+    return decode(stdout)
+
+
 # Fake `uv` fixture: `uv tool install <pkg>` writes an invocation marker
 # (when $FAKE_UV_INSTALL_MARKER is set) instead of touching the network;
 # any other invocation (e.g. `--version`) just exits 0.
@@ -412,13 +422,16 @@ class DependencyPreflightReportingTest(unittest.TestCase):
             "--modelb-home", self._tmp_home,
             env_overrides={"PATH": self._tmp_bin},
         )
-        # POSITIVE -- exact machine-greppable deps line, all three named.
-        self.assertIn(
-            "deps: uv=detected sandesh=detected crucible=absent",
-            result.stdout,
-            "AC4: pre-flight must report all three deps with exact "
-            f"detected/absent verdicts; got exit={result.returncode} "
-            f"stdout={result.stdout!r} stderr={result.stderr!r}",
+        # POSITIVE -- CR-MDB-033 §S6 migration: the deps verdicts are an
+        # installer FACT, read from the envelope's `deps` field, never
+        # scraped from stdout text.
+        axi = _decode_envelope(result.stdout).get("axi", {})
+        self.assertEqual(
+            axi.get("deps"),
+            {"uv": "detected", "sandesh": "detected", "crucible": "absent"},
+            "AC4: the envelope's deps field must report all three deps "
+            f"with exact detected/absent verdicts; got exit={result.returncode} "
+            f"axi={axi!r} stdout={result.stdout!r} stderr={result.stderr!r}",
         )
         self.assertEqual(
             result.returncode, 0,
@@ -444,18 +457,23 @@ class DependencyPreflightReportingTest(unittest.TestCase):
             "--modelb-home", self._tmp_home,
             env_overrides={"PATH": self._tmp_bin},
         )
-        self.assertIn(
-            "deps: uv=detected sandesh=absent crucible=absent",
-            result.stdout,
-            "AC4: with no sandesh binary on PATH, pre-flight must report "
-            f"sandesh=absent truthfully (not detected); got "
-            f"stdout={result.stdout!r} stderr={result.stderr!r}",
+        # CR-MDB-033 §S6 migration: read the FACT from the envelope, not
+        # a stdout text scrape.
+        axi = _decode_envelope(result.stdout).get("axi", {})
+        self.assertEqual(
+            axi.get("deps"),
+            {"uv": "detected", "sandesh": "absent", "crucible": "absent"},
+            "AC4: with no sandesh binary on PATH, the envelope's deps "
+            f"field must report sandesh=absent truthfully (not detected); "
+            f"got axi={axi!r} stdout={result.stdout!r} stderr={result.stderr!r}",
         )
 
     def test_preflight_deps_report_precedes_harness_targeting_stage(self):
         """Pre-flight is stage 1 of the installer flow (§S3 stage order,
-        dispatch item 1) -- its deps report must appear in stdout before
-        the stage-2 harness-targeting announcement."""
+        dispatch item 1) -- its deps report must appear in stderr before
+        the stage-2 harness-targeting announcement (CR-MDB-033 \u00a7S6
+        migration: this is an ORDERING check over human prose, which now
+        lives entirely on stderr, not stdout)."""
         _write_fake_executable(self._tmp_bin, "uv", _FAKE_UV_SCRIPT)
         _write_fake_executable(self._tmp_bin, "sandesh", _FAKE_SANDESH_SCRIPT)
         result = _run_module(
@@ -463,22 +481,22 @@ class DependencyPreflightReportingTest(unittest.TestCase):
             "--modelb-home", self._tmp_home,
             env_overrides={"PATH": self._tmp_bin},
         )
-        stdout = result.stdout
-        deps_index = stdout.find("deps: uv=")
-        harness_index = stdout.lower().find("harness targeting")
+        stderr = result.stderr
+        deps_index = stderr.find("deps: uv=")
+        harness_index = stderr.lower().find("harness targeting")
         self.assertNotEqual(
             deps_index, -1,
-            f"AC4: deps report line not found in stdout={stdout!r}",
+            f"AC4: deps report line not found in stderr={stderr!r}",
         )
         self.assertNotEqual(
             harness_index, -1,
-            f"§S3: harness-targeting stage announcement not found in "
-            f"stdout={stdout!r}",
+            f"\u00a7S3: harness-targeting stage announcement not found in "
+            f"stderr={stderr!r}",
         )
         self.assertLess(
             deps_index, harness_index,
-            "§S4: pre-flight (deps report) must run as stage 1, before "
-            f"the harness-targeting stage; stdout={stdout!r}",
+            "\u00a7S4: pre-flight (deps report) must run as stage 1, before "
+            f"the harness-targeting stage; stderr={stderr!r}",
         )
 
 
@@ -507,7 +525,9 @@ class CrucibleAbsentWarnsRecordsAbsentAndDeploysNothingTest(unittest.TestCase):
             "--modelb-home", self._tmp_home,
             env_overrides={"PATH": self._tmp_bin},
         )
-        combined = result.stdout + result.stderr
+        # CR-MDB-033 §S6 migration: the warning is PROSE -- it must live
+        # entirely on stderr now (stdout carries nothing but the envelope).
+        combined = result.stderr
         # POSITIVE -- warning names Crucible.
         self.assertIn(
             "Crucible", combined,
@@ -522,12 +542,14 @@ class CrucibleAbsentWarnsRecordsAbsentAndDeploysNothingTest(unittest.TestCase):
             "AC4: the Crucible warning must name THEIR OWN installer "
             f"(never hand-deploy their assets); got combined={combined!r}",
         )
-        # POSITIVE -- deps line records crucible as absent.
-        self.assertIn(
-            "deps: uv=detected sandesh=detected crucible=absent",
-            result.stdout,
-            f"AC4: crucible must be recorded absent on the deps line; "
-            f"got stdout={result.stdout!r}",
+        # POSITIVE -- CR-MDB-033 §S6 migration: the deps FACT is read
+        # from the envelope, not scraped from a stdout deps: line.
+        axi = _decode_envelope(result.stdout).get("axi", {})
+        self.assertEqual(
+            axi.get("deps"),
+            {"uv": "detected", "sandesh": "detected", "crucible": "absent"},
+            f"AC4: crucible must be recorded absent in the envelope's deps "
+            f"field; got axi={axi!r} stdout={result.stdout!r}",
         )
         # NEGATIVE / bound -- zero Crucible files deployed under the
         # sandbox MODELB_HOME, now AND as a standing regression guard
@@ -609,14 +631,16 @@ class SandeshAbsentInstallViaUvShimTest(unittest.TestCase):
             "AC4: the shim must have been invoked as exactly `uv tool "
             f"install sandesh-relay`; got marker contents={marker_contents!r}",
         )
-        # POSITIVE -- deps line reflects the proactive install, never a
-        # silent "absent".
-        self.assertIn(
-            "deps: uv=detected sandesh=installed crucible=absent",
-            result.stdout,
+        # POSITIVE -- CR-MDB-033 §S6 migration: the deps FACT (the
+        # proactive install's final verdict, never a silent "absent") is
+        # read from the envelope, not scraped from a stdout deps: line.
+        axi = _decode_envelope(result.stdout).get("axi", {})
+        self.assertEqual(
+            axi.get("deps"),
+            {"uv": "detected", "sandesh": "installed", "crucible": "absent"},
             "AC4: after a successful proactive install via the shim, the "
-            f"deps line must report sandesh=installed; got "
-            f"stdout={result.stdout!r} stderr={result.stderr!r}",
+            f"envelope's deps field must report sandesh=installed; got "
+            f"axi={axi!r} stdout={result.stdout!r} stderr={result.stderr!r}",
         )
         self.assertEqual(
             result.returncode, 0,
@@ -761,11 +785,12 @@ class HarnessTargetingTest(unittest.TestCase):
 
     @staticmethod
     def _extract_selected_harnesses(stdout: str) -> list:
-        for line in stdout.splitlines():
-            if line.strip().startswith("harnesses selected:"):
-                _, _, rest = line.partition("harnesses selected:")
-                return [item.strip() for item in rest.split(",") if item.strip()]
-        return []
+        """CR-MDB-033 \u00a7S6 migration: the selected-harnesses FACT is read
+        from the envelope's `harnesses` field, never scraped from a
+        `harnesses selected:` stdout text line."""
+        from modelb_axi.toon import decode
+        axi = decode(stdout).get("axi", {})
+        return list(axi.get("harnesses", []))
 
     def test_detected_roster_binaries_proposed_as_default_selection_without_harnesses_flag(self):
         _write_fake_executable(self._tmp_bin, "uv", _FAKE_UV_SCRIPT)
@@ -994,20 +1019,37 @@ class DeployEngineTest(unittest.TestCase):
         second = _run_module("--yes", "--modelb-home", self._tmp_home)
         # POSITIVE -- AC3, exercised against a REAL deploy-written
         # install.toml (not a hand-authored stub as in C1's
-        # StateDetectionTest).
+        # StateDetectionTest). CR-MDB-033 \u00a7S6 migration: the
+        # already-installed FACT is read from the envelope's `outcome`,
+        # not scraped from a "CR-MDB-013" stdout text mention.
         self.assertEqual(
             second.returncode, 0,
             f"AC3: scaffold-mode stub must exit 0; got "
             f"exit={second.returncode} stdout={second.stdout!r}",
         )
+        axi = _decode_envelope(second.stdout).get("axi", {})
+        self.assertEqual(
+            axi.get("outcome"), "already_installed",
+            f"AC3/CR-MDB-033 \u00a7S6: with a REAL install.toml on disk from "
+            f"a completed install, a second launch's envelope outcome must "
+            f"be 'already_installed'; got axi={axi!r} stdout={second.stdout!r}",
+        )
+        self.assertTrue(
+            axi.get("ok"),
+            f"AC3/CR-MDB-033 \u00a7S6: the already-installed envelope must "
+            f"carry ok=true; got axi={axi!r}",
+        )
+        # PROSE -- the human notice (naming CR-MDB-013) is on stderr now.
         self.assertIn(
-            "CR-MDB-013", second.stdout,
+            "CR-MDB-013", second.stderr,
             f"AC3: with a REAL install.toml on disk from a completed "
             f"install, a second launch must enter scaffold mode naming "
-            f"CR-MDB-013; got stdout={second.stdout!r}",
+            f"CR-MDB-013 on stderr; got stderr={second.stderr!r}",
         )
-        # NEGATIVE -- must not re-run the installer flow.
-        self.assertNotIn("installer flow", second.stdout.lower())
+        # NEGATIVE -- must not re-run the installer flow. CR-MDB-033 \u00a7S6
+        # migration: this absence guard now reads stderr (stdout carries
+        # nothing but the envelope, so checking stdout would be vacuous).
+        self.assertNotIn("installer flow", second.stderr.lower())
 
     def test_reinstall_run_is_noop_when_no_managed_files_changed(self):
         first = self._run_install()

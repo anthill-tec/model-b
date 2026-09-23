@@ -46,6 +46,7 @@ import contextlib
 import hashlib
 import io
 import os
+import re
 import shutil
 import stat
 import subprocess
@@ -55,6 +56,8 @@ import tomllib
 import unittest
 from pathlib import Path
 from unittest import mock
+
+from modelb_axi.harness import HARNESS_ROSTER_IDS
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -139,6 +142,24 @@ _FAKE_UV_SCRIPT = (
 _FAKE_SANDESH_SCRIPT = (
     "#!/bin/sh\n"
     'echo "sandesh-relay 0.0.0-fake"\n'
+    "exit 0\n"
+)
+
+# Fake `uv` fixture that ALSO writes an invocation marker for `uv tool
+# install <pkg>` (when $FAKE_UV_INSTALL_MARKER is set) -- mirrors
+# tests/test_installer.py's SandeshAbsentInstallViaUvShimTest fixture
+# exactly; C3's \u00a7S6 stdout/stderr-split test needs the proactive
+# Sandesh install to actually fire (BOTH `deps:` lines), which the
+# plain _FAKE_UV_SCRIPT above (a no-op `exit 0`) never triggers.
+_FAKE_UV_SCRIPT_WITH_INSTALL_MARKER = (
+    "#!/bin/sh\n"
+    'if [ "$1" = "tool" ] && [ "$2" = "install" ]; then\n'
+    '    if [ -n "$FAKE_UV_INSTALL_MARKER" ]; then\n'
+    '        printf \'%s\\n\' "$*" > "$FAKE_UV_INSTALL_MARKER"\n'
+    "    fi\n"
+    "    exit 0\n"
+    "fi\n"
+    'echo "uv 0.0.0-fake"\n'
     "exit 0\n"
 )
 
@@ -1525,6 +1546,707 @@ class MidEmissionFailureInsideWiringCompilationEmittedTest(unittest.TestCase):
             f"--target (compared as sets of relative paths); got "
             f"emitted={emitted!r} leftover on disk={leftover!r}; "
             f"envelope={envelope!r}",
+        )
+
+
+# ---------------------------------------------------------------------------
+# CR-MDB-033 cycle C3 -- \u00a7S5 validation and hygiene, \u00a7S6 the installer's
+# result is one AXI envelope on stdout. Appended below the cycle C1 (\u00a7S1/
+# \u00a7S3) and C2 (\u00a7S2/\u00a7S4) classes above, which are GREEN as of this
+# cycle's baseline (measured 377 tests / 0 failures / 11 skips at fee5f6b)
+# and are left untouched.
+#
+# MEASURED defects this cycle's tests pin (docs/changes/
+# CR-MDB-033-installer-correctness.md \u00a7S5/\u00a7S6):
+#   - scaffold.resolve_harnesses trusts install.toml's `harnesses` list
+#     UNCHECKED -- only the --harnesses dev-override branch validates
+#     against HARNESS_ROSTER_IDS -- so a stale/typo'd id silently reaches
+#     _emit_plan's roster filter instead of raising UnknownHarnessError.
+#   - modelb_axi.cli never calls modelb_axi.axi.envelope for ANY
+#     installer-flow exit path; every stage prints bare `print(...)` to
+#     stdout by default (preflight.py's two `deps: ...` lines included),
+#     so none of the CR's eight exit paths emits an AXI envelope at all.
+#   - config._toml_string escapes only backslash/quote/\n/\t/\r -- every
+#     other C0 control and DEL pass through RAW, which tomllib's basic-
+#     string grammar rejects; scaffold._render_instance_toml has its OWN
+#     unescaped `f'{field} = "{value}"'` quoting (context-table defect #7).
+#   - deploy.py/hooks.py/cli.py/preflight.py/harness.py cite bare
+#     `DN \u00a7N` without naming the DN file, and deploy.py calls the shared
+#     asset store the "Vercel store" twice.
+#   - tests/test_tooling_adoption.py's module docstring cites
+#     `modelb_axi/cli.py:233-237` by line range.
+# ---------------------------------------------------------------------------
+
+
+def _run_main_in_process(argv, env_overrides=None, isatty=False, input_answers=None):
+    """Drive ``modelb_axi.cli.main()`` IN-PROCESS (never subprocess) so the
+    interactive confirm prompts can be exercised: a subprocess's stdin is
+    never a real tty (``sys.stdin.isatty()`` is always False under
+    ``subprocess.DEVNULL``/``PIPE``), so ``--yes`` is not even needed to
+    stay non-interactive under `_run_module` -- which also means a
+    subprocess probe can NEVER reach the "user declines" exit paths at
+    all. Mirrors the in-process idiom this file's own C1/C2 classes
+    already use for ``cli._deploy_stage``/``scaffold.run_init`` when a
+    production seam (here: a real tty + real stdin answers) is otherwise
+    unreachable through a subprocess run. Returns
+    ``(returncode, stdout_text, stderr_text)``."""
+    from modelb_axi import cli
+
+    env_patch = dict(env_overrides) if env_overrides else {}
+    answers = list(input_answers) if input_answers else []
+    stdout_buf = io.StringIO()
+    stderr_buf = io.StringIO()
+    with mock.patch.dict(os.environ, env_patch), \
+         mock.patch.object(sys.stdin, "isatty", return_value=isatty), \
+         mock.patch("builtins.input", side_effect=answers), \
+         contextlib.redirect_stdout(stdout_buf), \
+         contextlib.redirect_stderr(stderr_buf):
+        code = cli.main(argv)
+    return code, stdout_buf.getvalue(), stderr_buf.getvalue()
+
+
+class InstallTomlUnknownHarnessIdRejectedTest(unittest.TestCase):
+    """AC (\u00a7S5) -- an install.toml listing a non-roster harness id makes
+    a real `init` fail with the SAME UnknownHarnessError and exit code as
+    the `--harnesses` dev-override rejection, naming the id, before any
+    file is written under --target -- and on --dry-run too. MEASURED
+    current defect: `scaffold.resolve_harnesses` trusts install.toml's
+    `harnesses` list UNCHECKED (only the `--harnesses` override path
+    validates against `HARNESS_ROSTER_IDS`), so a stale/typo'd id
+    silently reaches `_emit_plan`'s
+    `roster_harnesses = [h for h in harnesses if h in HARNESS_ROSTER_IDS]`
+    filter instead of raising a named error -- today the run SUCCEEDS
+    (exit 0, full scaffold tree written) with the bad id silently
+    dropped."""
+
+    def setUp(self):
+        self._tmp_home = tempfile.mkdtemp(prefix="modelb-axi-c3-s5-badharness-home-")
+        self._tmp_target = tempfile.mkdtemp(prefix="modelb-axi-c3-s5-badharness-target-")
+        self._tmp_dry_target = tempfile.mkdtemp(prefix="modelb-axi-c3-s5-badharness-dry-target-")
+        _write_full_install_toml(self._tmp_home, harnesses=("bogus-harness",))
+
+    def tearDown(self):
+        for root in (self._tmp_home, self._tmp_target, self._tmp_dry_target):
+            shutil.rmtree(root, ignore_errors=True)
+
+    def test_stale_id_in_install_toml_exits_same_as_dev_override_before_any_write(self):
+        override_home = tempfile.mkdtemp(prefix="modelb-axi-c3-s5-badharness-override-home-")
+        override_target = tempfile.mkdtemp(prefix="modelb-axi-c3-s5-badharness-override-target-")
+        try:
+            override_result = _run_module(
+                "--yes", "init", *_INIT_REQUIRED_FLAGS,
+                "--harnesses", "bogus-harness",
+                "--target", override_target,
+                "--modelb-home", override_home,
+                "--no-commit",
+            )
+        finally:
+            shutil.rmtree(override_home, ignore_errors=True)
+            shutil.rmtree(override_target, ignore_errors=True)
+        self.assertNotEqual(
+            override_result.returncode, 0,
+            "precondition: the --harnesses dev-override rejection itself "
+            f"must fail; got exit={override_result.returncode} "
+            f"combined={override_result.stdout + override_result.stderr!r}",
+        )
+
+        result = _run_module(
+            "--yes", "init", *_INIT_REQUIRED_FLAGS,
+            "--target", self._tmp_target,
+            "--modelb-home", self._tmp_home,
+            "--no-commit",
+        )
+        combined = result.stdout + result.stderr
+        # POSITIVE -- non-zero exit, and the SAME exit code as the
+        # already-validated --harnesses override rejection.
+        self.assertNotEqual(
+            result.returncode, 0,
+            f"\u00a7S5: a stale harness id read from install.toml must fail "
+            f"`init`; got exit={result.returncode} combined={combined!r}",
+        )
+        self.assertEqual(
+            result.returncode, override_result.returncode,
+            f"\u00a7S5: an install.toml-sourced unknown harness id must exit "
+            f"with the SAME code as the --harnesses override rejection "
+            f"({override_result.returncode}); got {result.returncode}",
+        )
+        # POSITIVE -- names the offending id and the valid roster (the
+        # SAME UnknownHarnessError vocabulary the override path uses).
+        self.assertIn("bogus-harness", combined)
+        for harness_id in HARNESS_ROSTER_IDS:
+            self.assertIn(
+                harness_id, combined,
+                f"\u00a7S5: the error must name the valid roster (missing "
+                f"{harness_id!r}); got combined={combined!r}",
+            )
+        # NEGATIVE / bound -- no file anywhere under --target.
+        leftover = _files_under_excluding_git(self._tmp_target)
+        self.assertEqual(
+            leftover, [],
+            f"\u00a7S5: a rejected harness id must leave NO FILE under "
+            f"--target; found {leftover!r}; combined={combined!r}",
+        )
+
+    def test_dry_run_also_rejects_the_stale_id_before_any_write(self):
+        result = _run_module(
+            "--yes", "init", *_INIT_REQUIRED_FLAGS,
+            "--target", self._tmp_dry_target,
+            "--modelb-home", self._tmp_home,
+            "--no-commit", "--dry-run",
+        )
+        combined = result.stdout + result.stderr
+        self.assertNotEqual(
+            result.returncode, 0,
+            f"\u00a7S5: --dry-run must ALSO reject a stale install.toml "
+            f"harness id (a hard validation error, unlike the \u00a7S1 "
+            f"hooks_scripts_dir case which --dry-run may preview as a "
+            f"warning); got exit={result.returncode} combined={combined!r}",
+        )
+        self.assertIn("bogus-harness", combined)
+        leftover = _files_under_excluding_git(self._tmp_dry_target)
+        self.assertEqual(
+            leftover, [],
+            f"\u00a7S5: --dry-run must write NOTHING under --target even "
+            f"when rejecting a stale harness id; found {leftover!r}",
+        )
+
+
+class TomlStringControlCharacterRoundTripTest(unittest.TestCase):
+    """AC (\u00a7S5) -- config._toml_string must escape every C0 control
+    (U+0000-U+001F) and DEL (U+007F) as \\uXXXX so every install.toml
+    string write round-trips through tomllib. MEASURED current defect:
+    `_toml_string` only escapes backslash/quote/\\n/\\t/\\r -- every other
+    C0 control and DEL pass through RAW, which tomllib's basic-string
+    grammar refuses to parse (or parses to the wrong character)."""
+
+    def test_every_c0_control_and_del_round_trips_through_tomllib(self):
+        from modelb_axi.config import _toml_string
+
+        offenders = []
+        for codepoint in list(range(0x20)) + [0x7F]:
+            char = chr(codepoint)
+            if char in ("\n", "\t", "\r"):
+                continue  # already correctly short-escaped -- not this gap
+            serialized = _toml_string(char)
+            toml_text = f"value = {serialized}\n"
+            try:
+                parsed = tomllib.loads(toml_text)
+            except tomllib.TOMLDecodeError as exc:
+                offenders.append(f"U+{codepoint:04X}: TOMLDecodeError({exc})")
+                continue
+            if parsed.get("value") != char:
+                offenders.append(
+                    f"U+{codepoint:04X}: round-tripped to {parsed.get('value')!r}"
+                )
+        self.assertEqual(
+            offenders, [],
+            f"\u00a7S5: _toml_string must escape every C0 control and DEL as "
+            f"\\uXXXX so it round-trips through tomllib; offenders={offenders!r}",
+        )
+
+
+class RenderInstanceTomlUsesSharedStringWriterTest(unittest.TestCase):
+    """AC (\u00a7S5) -- scaffold._render_instance_toml must write its string
+    values through config._toml_string (the ONE TOML string writer), not
+    its own unescaped `f'{field} = "{value}"'` quoting (context-table
+    defect #7: two hand-rolled TOML writers, one escapes, one does not).
+    MEASURED current defect: a string value carrying a double-quote or
+    backslash renders unescaped TOML that tomllib refuses to parse."""
+
+    def test_command_value_with_quote_and_backslash_round_trips_through_tomllib(self):
+        from modelb_axi.scaffold import _render_instance_toml
+
+        instance = {
+            "event": "pre-tool-use",
+            "matcher": 'weird "matcher" value \\with\\ backslashes',
+            "command": "guard-example",
+            "tier": None,
+            "timeout": None,
+            "fail_direction": None,
+        }
+        rendered = _render_instance_toml(instance)
+        try:
+            parsed = tomllib.loads(rendered)
+        except tomllib.TOMLDecodeError as exc:
+            self.fail(
+                f"\u00a7S5: _render_instance_toml must escape string values "
+                f"through config._toml_string so the output parses as valid "
+                f"TOML; tomllib raised {exc} on rendered={rendered!r}"
+            )
+        self.assertEqual(
+            parsed.get("matcher"), instance["matcher"],
+            f"\u00a7S5: the rendered matcher value must round-trip exactly "
+            f"through tomllib; got {parsed.get('matcher')!r}",
+        )
+
+
+class DnCitationsNameTheirFileAndNoVercelReferenceTest(unittest.TestCase):
+    """AC (\u00a7S5) -- every `DN \u00a7` citation in modelb_axi/ names its DN
+    file (e.g. `DN-harness-agnostic-hooks \u00a74`, never the bare `DN \u00a74`),
+    and the string 'Vercel' appears nowhere in modelb_axi/ ('shared store'
+    is the correct term) -- two grep gates. MEASURED current defects:
+    deploy.py/hooks.py/cli.py/preflight.py/harness.py/scaffold.py cite
+    bare `DN \u00a7N` without naming which DN doc, and deploy.py calls the
+    shared asset store the 'Vercel store' twice."""
+
+    def test_no_bare_dn_section_citation_without_a_named_dn_file(self):
+        module_dir = REPO_ROOT / "modelb_axi"
+        offenders = []
+        for path in sorted(module_dir.rglob("*.py")):
+            if "__pycache__" in path.parts:
+                continue
+            text = path.read_text(encoding="utf-8")
+            for lineno, line in enumerate(text.splitlines(), start=1):
+                if "DN \u00a7" in line:
+                    offenders.append(
+                        f"{path.relative_to(REPO_ROOT)}:{lineno}: {line.strip()}"
+                    )
+        self.assertEqual(
+            offenders, [],
+            "\u00a7S5: every `DN \u00a7` citation must name its DN file (e.g. "
+            "`DN-harness-agnostic-hooks \u00a74`), never the bare `DN \u00a7N`; "
+            f"offending lines: {offenders!r}",
+        )
+
+    def test_vercel_appears_nowhere_in_modelb_axi(self):
+        module_dir = REPO_ROOT / "modelb_axi"
+        offenders = []
+        for path in sorted(module_dir.rglob("*.py")):
+            if "__pycache__" in path.parts:
+                continue
+            text = path.read_text(encoding="utf-8")
+            for lineno, line in enumerate(text.splitlines(), start=1):
+                if "Vercel" in line:
+                    offenders.append(
+                        f"{path.relative_to(REPO_ROOT)}:{lineno}: {line.strip()}"
+                    )
+        self.assertEqual(
+            offenders, [],
+            "\u00a7S5: 'Vercel' must not appear anywhere in modelb_axi/ "
+            "('shared store' is the correct term); offending lines: "
+            f"{offenders!r}",
+        )
+
+
+class ToolingAdoptionCitesCliPyByFunctionNotLineRangeTest(unittest.TestCase):
+    """AC (\u00a7S6 tail) -- tests/test_tooling_adoption.py must cite
+    modelb_axi/cli.py by FUNCTION name, never by line range (a moving
+    target once \u00a7S6 adds envelope emission to cli.py). MEASURED current
+    defect: its module docstring cites `modelb_axi/cli.py:233-237`."""
+
+    def test_cli_py_citation_names_a_function_never_a_line_range(self):
+        target = REPO_ROOT / "tests" / "test_tooling_adoption.py"
+        text = target.read_text(encoding="utf-8")
+        self.assertIn(
+            "cli.py", text,
+            "\u00a7S6 precondition: tests/test_tooling_adoption.py must still "
+            "cite modelb_axi/cli.py somewhere (the fix renames the "
+            "citation to a function, it does not delete it)",
+        )
+        offenders = [
+            f"tests/test_tooling_adoption.py:{i}: {line.strip()}"
+            for i, line in enumerate(text.splitlines(), start=1)
+            if re.search(r"cli\.py:\d+", line)
+        ]
+        self.assertEqual(
+            offenders, [],
+            "\u00a7S6: tests/test_tooling_adoption.py must cite "
+            "modelb_axi/cli.py by function name, never a line range; "
+            f"offending lines: {offenders!r}",
+        )
+
+
+class InstallerEightExitPathsEnvelopeTest(unittest.TestCase):
+    """AC (\u00a7S6) -- every one of the eight installer exit paths in the
+    CR's table writes EXACTLY ONE AXI envelope to stdout (verb=install)
+    whose outcome/ok match the table, and the process exit code matches
+    too -- asserted per path via subTest (a path not asserted is a path
+    not wired, mirroring this file's own AtomicWriteSixSitesTest
+    precedent). MEASURED current defect: modelb_axi.cli never calls
+    modelb_axi.axi.envelope for ANY installer-flow exit path (only
+    scaffold.run_init does) -- every subtest below decodes bare human
+    prose on stdout today, not a TOON envelope."""
+
+    def setUp(self):
+        self._tmp_bin = tempfile.mkdtemp(prefix="modelb-axi-c3-envelope-bin-")
+        _write_fake_executable(self._tmp_bin, "uv", _FAKE_UV_SCRIPT)
+        _write_fake_executable(self._tmp_bin, "sandesh", _FAKE_SANDESH_SCRIPT)
+
+    def tearDown(self):
+        shutil.rmtree(self._tmp_bin, ignore_errors=True)
+
+    def _decode_axi(self, stdout: str, label: str) -> dict:
+        try:
+            return _decode_envelope(stdout).get("axi", {})
+        except Exception as exc:
+            self.fail(
+                f"\u00a7S6 path={label}: stdout must decode as a TOON AXI "
+                f"envelope via modelb_axi.toon; got exc={exc!r} "
+                f"stdout={stdout!r}"
+            )
+
+    def _assert_path(self, label, returncode, stdout, expected_exit, expected_outcome, expected_ok):
+        axi = self._decode_axi(stdout, label)
+        self.assertEqual(
+            axi.get("verb"), "install",
+            f"\u00a7S6 path={label}: envelope verb must be 'install'; got axi={axi!r}",
+        )
+        self.assertEqual(
+            axi.get("outcome"), expected_outcome,
+            f"\u00a7S6 path={label}: envelope outcome must be "
+            f"{expected_outcome!r}; got axi={axi!r}",
+        )
+        self.assertEqual(
+            axi.get("ok"), expected_ok,
+            f"\u00a7S6 path={label}: envelope ok must be {expected_ok!r}; "
+            f"got axi={axi!r}",
+        )
+        self.assertEqual(
+            returncode, expected_exit,
+            f"\u00a7S6 path={label}: process exit code must be "
+            f"{expected_exit}; got {returncode} (envelope axi={axi!r})",
+        )
+
+    def test_each_of_the_eight_exit_paths_writes_one_matching_envelope(self):
+        with self.subTest(path="already_installed"):
+            self._check_already_installed()
+        with self.subTest(path="aborted (decline proceed)"):
+            self._check_aborted_decline_proceed()
+        with self.subTest(path="preflight_failed"):
+            self._check_preflight_failed()
+        with self.subTest(path="harness_rejected"):
+            self._check_harness_rejected()
+        with self.subTest(path="aborted (decline harness set)"):
+            self._check_aborted_decline_harness_set()
+        with self.subTest(path="deploy_failed"):
+            self._check_deploy_failed()
+        with self.subTest(path="deploy_skipped"):
+            self._check_deploy_skipped()
+        with self.subTest(path="installed"):
+            self._check_installed()
+
+    def _check_already_installed(self):
+        home = tempfile.mkdtemp(prefix="modelb-axi-c3-envelope-installed-notice-")
+        try:
+            _write_full_install_toml(home, harnesses=("claude-code",))
+            result = _run_module("--yes", "--modelb-home", home)
+            self._assert_path(
+                "already_installed", result.returncode, result.stdout,
+                expected_exit=0, expected_outcome="already_installed", expected_ok=True,
+            )
+        finally:
+            shutil.rmtree(home, ignore_errors=True)
+
+    def _check_aborted_decline_proceed(self):
+        home = tempfile.mkdtemp(prefix="modelb-axi-c3-envelope-declineproceed-")
+        try:
+            code, stdout, _stderr = _run_main_in_process(
+                ["--modelb-home", home], isatty=True, input_answers=["n"],
+            )
+            self._assert_path(
+                "aborted-decline-proceed", code, stdout,
+                expected_exit=1, expected_outcome="aborted", expected_ok=False,
+            )
+        finally:
+            shutil.rmtree(home, ignore_errors=True)
+
+    def _check_preflight_failed(self):
+        home = tempfile.mkdtemp(prefix="modelb-axi-c3-envelope-nouv-home-")
+        empty_bin = tempfile.mkdtemp(prefix="modelb-axi-c3-envelope-nouv-bin-")
+        try:
+            result = _run_module(
+                "--yes", "--modelb-home", home,
+                env_overrides={"PATH": empty_bin},
+            )
+            self._assert_path(
+                "preflight_failed", result.returncode, result.stdout,
+                expected_exit=1, expected_outcome="preflight_failed", expected_ok=False,
+            )
+        finally:
+            shutil.rmtree(home, ignore_errors=True)
+            shutil.rmtree(empty_bin, ignore_errors=True)
+
+    def _check_harness_rejected(self):
+        home = tempfile.mkdtemp(prefix="modelb-axi-c3-envelope-badharness-")
+        try:
+            result = _run_module(
+                "--yes", "--harnesses", "bogus-harness",
+                "--modelb-home", home,
+                env_overrides={"PATH": self._tmp_bin},
+            )
+            self._assert_path(
+                "harness_rejected", result.returncode, result.stdout,
+                expected_exit=1, expected_outcome="harness_rejected", expected_ok=False,
+            )
+        finally:
+            shutil.rmtree(home, ignore_errors=True)
+
+    def _check_aborted_decline_harness_set(self):
+        home = tempfile.mkdtemp(prefix="modelb-axi-c3-envelope-declineharness-home-")
+        target_root = tempfile.mkdtemp(prefix="modelb-axi-c3-envelope-declineharness-target-")
+        try:
+            code, stdout, _stderr = _run_main_in_process(
+                ["--modelb-home", home, "--target-root", target_root],
+                env_overrides={"PATH": self._tmp_bin},
+                isatty=True, input_answers=["y", "n"],
+            )
+            self._assert_path(
+                "aborted-decline-harness-set", code, stdout,
+                expected_exit=1, expected_outcome="aborted", expected_ok=False,
+            )
+        finally:
+            shutil.rmtree(home, ignore_errors=True)
+            shutil.rmtree(target_root, ignore_errors=True)
+
+    def _check_deploy_failed(self):
+        home = tempfile.mkdtemp(prefix="modelb-axi-c3-envelope-deployfailed-home-")
+        target_root = tempfile.mkdtemp(prefix="modelb-axi-c3-envelope-deployfailed-target-")
+        try:
+            # A non-symlink file already occupying the harness-skill link
+            # path makes `deploy._link_harness_skills` raise DeployError
+            # deterministically (the claude-code skills-dir mapping).
+            blocker = Path(target_root) / ".claude" / "skills" / "crucible"
+            blocker.parent.mkdir(parents=True, exist_ok=True)
+            blocker.write_text(
+                "not a symlink -- blocks the harness link step\n", encoding="utf-8",
+            )
+            result = _run_module(
+                "--yes", "--harnesses", "claude-code",
+                "--modelb-home", home,
+                "--target-root", target_root,
+                env_overrides={"PATH": self._tmp_bin},
+            )
+            self._assert_path(
+                "deploy_failed", result.returncode, result.stdout,
+                expected_exit=1, expected_outcome="deploy_failed", expected_ok=False,
+            )
+            self.assertFalse(
+                (Path(home) / "install.toml").exists(),
+                "\u00a7S6 path=deploy_failed: install.toml must never be "
+                "written on a deploy failure (written last, on full "
+                "success only)",
+            )
+        finally:
+            shutil.rmtree(home, ignore_errors=True)
+            shutil.rmtree(target_root, ignore_errors=True)
+
+    def _check_deploy_skipped(self):
+        home = tempfile.mkdtemp(prefix="modelb-axi-c3-envelope-noroot-")
+        try:
+            result = _run_module(
+                "--yes", "--harnesses", "claude-code",
+                "--modelb-home", home,
+                env_overrides={"PATH": self._tmp_bin},
+            )
+            self._assert_path(
+                "deploy_skipped", result.returncode, result.stdout,
+                expected_exit=0, expected_outcome="deploy_skipped", expected_ok=True,
+            )
+        finally:
+            shutil.rmtree(home, ignore_errors=True)
+
+    def _check_installed(self):
+        home = tempfile.mkdtemp(prefix="modelb-axi-c3-envelope-installed-")
+        target_root = tempfile.mkdtemp(prefix="modelb-axi-c3-envelope-installed-target-")
+        try:
+            result = _run_module(
+                "--yes", "--harnesses", "claude-code",
+                "--modelb-home", home,
+                "--target-root", target_root,
+                env_overrides={"PATH": self._tmp_bin},
+            )
+            self._assert_path(
+                "installed", result.returncode, result.stdout,
+                expected_exit=0, expected_outcome="installed", expected_ok=True,
+            )
+        finally:
+            shutil.rmtree(home, ignore_errors=True)
+            shutil.rmtree(target_root, ignore_errors=True)
+
+
+class StdoutCarriesOnlyEnvelopeAllHumanLinesOnStderrTest(unittest.TestCase):
+    """AC (\u00a7S6) -- on every path, stdout carries NOTHING but the one AXI
+    envelope, and every human line from cli.py AND preflight.py is on
+    stderr -- including BOTH `deps:` lines (the pre-remediation report and
+    the post-install update, CR-MDB-014 AC4) on a run that installs
+    Sandesh. MEASURED current defect: preflight.py's two `deps: ...`
+    prints and every cli.py progress/banner line go to stdout today (no
+    `file=sys.stderr`)."""
+
+    _HUMAN_MARKERS = (
+        "modelb-axi:", "deps:", "harnesses selected:",
+        "[stage 1/3]", "[stage 2/3]", "[stage 3/3]", "wrote ",
+    )
+
+    def setUp(self):
+        self._tmp_home = tempfile.mkdtemp(prefix="modelb-axi-c3-s6-stdout-home-")
+        self._tmp_bin = tempfile.mkdtemp(prefix="modelb-axi-c3-s6-stdout-bin-")
+        self._tmp_target_root = tempfile.mkdtemp(prefix="modelb-axi-c3-s6-stdout-target-")
+        marker_fd, self._marker_path = tempfile.mkstemp(prefix="c3-s6-uv-install-marker-")
+        os.close(marker_fd)
+        os.remove(self._marker_path)  # must NOT exist yet -- proves invocation
+        _write_fake_executable(self._tmp_bin, "uv", _FAKE_UV_SCRIPT_WITH_INSTALL_MARKER)
+        # Deliberately NO fake `sandesh` binary -- triggers the proactive
+        # install path, so BOTH `deps:` lines print (pre-remediation +
+        # post-install update).
+
+    def tearDown(self):
+        for root in (self._tmp_home, self._tmp_bin, self._tmp_target_root):
+            shutil.rmtree(root, ignore_errors=True)
+        if os.path.exists(self._marker_path):
+            os.remove(self._marker_path)
+
+    def test_stdout_is_exactly_one_envelope_and_both_deps_lines_are_on_stderr(self):
+        result = _run_module(
+            "--yes", "--harnesses", "claude-code",
+            "--modelb-home", self._tmp_home,
+            "--target-root", self._tmp_target_root,
+            env_overrides={
+                "PATH": self._tmp_bin,
+                "FAKE_UV_INSTALL_MARKER": self._marker_path,
+            },
+        )
+        self.assertEqual(
+            result.returncode, 0,
+            f"precondition: full install must succeed; exit={result.returncode} "
+            f"stdout={result.stdout!r} stderr={result.stderr!r}",
+        )
+        self.assertTrue(
+            os.path.exists(self._marker_path),
+            "precondition: the sandesh proactive-install shim must have "
+            f"fired; stdout={result.stdout!r} stderr={result.stderr!r}",
+        )
+
+        # POSITIVE -- stdout decodes as exactly one AXI envelope.
+        try:
+            axi = _decode_envelope(result.stdout).get("axi", {})
+        except Exception as exc:
+            self.fail(
+                f"\u00a7S6: stdout must be exactly one decodable TOON AXI "
+                f"envelope; exc={exc!r} stdout={result.stdout!r}"
+            )
+        self.assertEqual(
+            axi.get("outcome"), "installed",
+            f"precondition: outcome must be installed; got axi={axi!r}",
+        )
+
+        # NEGATIVE -- no human/progress marker text leaks onto stdout.
+        offenders = [m for m in self._HUMAN_MARKERS if m in result.stdout]
+        self.assertEqual(
+            offenders, [],
+            f"\u00a7S6: stdout must carry NOTHING but the envelope; found "
+            f"human markers {offenders!r} in stdout={result.stdout!r}",
+        )
+
+        # POSITIVE -- BOTH deps: lines (pre-remediation report + the
+        # post-install update) land on stderr.
+        self.assertIn(
+            "deps: uv=detected sandesh=absent crucible=absent", result.stderr,
+            f"\u00a7S6: the pre-remediation deps: line must be on stderr; "
+            f"got stderr={result.stderr!r}",
+        )
+        self.assertIn(
+            "deps: uv=detected sandesh=installed crucible=absent", result.stderr,
+            f"\u00a7S6: the post-install-update deps: line must be on "
+            f"stderr; got stderr={result.stderr!r}",
+        )
+        # POSITIVE -- the stage/progress banners are on stderr too.
+        self.assertIn(
+            "harnesses selected:", result.stderr,
+            f"\u00a7S6: 'harnesses selected:' must be on stderr; got "
+            f"stderr={result.stderr!r}",
+        )
+        self.assertIn(
+            "[stage 1/3]", result.stderr,
+            f"\u00a7S6: stage banners must be on stderr; got "
+            f"stderr={result.stderr!r}",
+        )
+
+
+class InstalledEnvelopeFieldsMatchInstallTomlAndForeignFileTest(unittest.TestCase):
+    """AC (\u00a7S6) -- on the `installed` outcome, the envelope's `deps`
+    equals install.toml's [deps] table, `managed_files` equals the number
+    of [[files]] entries, and a foreign
+    `<target-root>/.agents/scripts/gate-lock.sh` (present before the run,
+    absent from any prior manifest) appears in `unmanaged`."""
+
+    def setUp(self):
+        self._tmp_home = tempfile.mkdtemp(prefix="modelb-axi-c3-s6-fields-home-")
+        self._tmp_bin = tempfile.mkdtemp(prefix="modelb-axi-c3-s6-fields-bin-")
+        self._tmp_target_root = tempfile.mkdtemp(prefix="modelb-axi-c3-s6-fields-target-")
+        _write_fake_executable(self._tmp_bin, "uv", _FAKE_UV_SCRIPT)
+        _write_fake_executable(self._tmp_bin, "sandesh", _FAKE_SANDESH_SCRIPT)
+        # A foreign, non-Model-B file at a path the tool scripts deploy
+        # to -- present BEFORE the run, absent from any manifest.
+        self._foreign_content = "#!/bin/sh\necho not-model-bs-gate-lock\n"
+        self._foreign = Path(self._tmp_target_root) / ".agents" / "scripts" / "gate-lock.sh"
+        self._foreign.parent.mkdir(parents=True, exist_ok=True)
+        self._foreign.write_text(self._foreign_content, encoding="utf-8")
+
+    def tearDown(self):
+        for root in (self._tmp_home, self._tmp_bin, self._tmp_target_root):
+            shutil.rmtree(root, ignore_errors=True)
+
+    def test_installed_envelope_deps_managed_files_and_unmanaged_match_install_toml(self):
+        result = _run_module(
+            "--yes", "--harnesses", "claude-code",
+            "--modelb-home", self._tmp_home,
+            "--target-root", self._tmp_target_root,
+            env_overrides={"PATH": self._tmp_bin},
+        )
+        self.assertEqual(
+            result.returncode, 0,
+            f"precondition: full install must succeed; exit={result.returncode} "
+            f"stdout={result.stdout!r} stderr={result.stderr!r}",
+        )
+        try:
+            axi = _decode_envelope(result.stdout).get("axi", {})
+        except Exception as exc:
+            self.fail(
+                f"\u00a7S6: stdout must decode as a TOON AXI envelope; "
+                f"exc={exc!r} stdout={result.stdout!r}"
+            )
+        self.assertEqual(
+            axi.get("outcome"), "installed",
+            f"precondition: outcome must be installed; got axi={axi!r}",
+        )
+
+        with open(Path(self._tmp_home) / "install.toml", "rb") as fh:
+            toml_data = tomllib.load(fh)
+
+        # POSITIVE -- deps equals install.toml [deps] exactly.
+        self.assertEqual(
+            axi.get("deps"), toml_data.get("deps"),
+            f"\u00a7S6: envelope deps must equal install.toml [deps]; "
+            f"envelope={axi.get('deps')!r} toml={toml_data.get('deps')!r}",
+        )
+        # POSITIVE -- managed_files equals the [[files]] entry count.
+        files_section = toml_data.get("files", [])
+        self.assertEqual(
+            axi.get("managed_files"), len(files_section),
+            f"\u00a7S6: envelope managed_files must equal len([[files]]) "
+            f"({len(files_section)}); got {axi.get('managed_files')!r}",
+        )
+        # POSITIVE -- the foreign gate-lock.sh appears in unmanaged.
+        unmanaged = axi.get("unmanaged", [])
+        expected_rel = str(Path(".agents") / "scripts" / "gate-lock.sh")
+        self.assertIn(
+            expected_rel, unmanaged,
+            f"\u00a7S6: the foreign gate-lock.sh must appear in envelope "
+            f"unmanaged (rel={expected_rel!r}); got unmanaged={unmanaged!r}",
+        )
+        # NEGATIVE -- byte-identical, never adopted into the manifest.
+        self.assertEqual(
+            self._foreign.read_text(encoding="utf-8"), self._foreign_content,
+            "\u00a7S6/\u00a7S3: the foreign file must remain byte-identical",
+        )
+        manifest_paths = {
+            e.get("path") for e in files_section if isinstance(e, dict)
+        }
+        self.assertNotIn(
+            expected_rel, manifest_paths,
+            f"\u00a7S6/\u00a7S3: the foreign file must NEVER be recorded in "
+            f"the manifest ([[files]]); got manifest_paths={manifest_paths!r}",
         )
 
 
