@@ -37,7 +37,7 @@ Queue rows enumerate the whole delivery (structure only). **Live status lives on
 | [CR-MDB-026](CR-MDB-026-watcher-launch-supervision.md) | The wake watcher must stay alive: supervised process + `restart: on-failure`, and the three-exit taxonomy (mail / timeout / lock-conflict) the bundles conflate | 5 | 029 |
 | [CR-MDB-025](CR-MDB-025-pi-agent-definitions.md) | Pi agent definitions: neutral schema, per-harness emitter, rendered per project | 5 | 017, 024, 027, 030, 033 |
 | [CR-MDB-036](CR-MDB-036-harness-capability-contract.md) | Harness capability contract and installer stack selection | 5 | — |
-| [CR-MDB-037](CR-MDB-037-install-guide-freshness-policy.md) | Install guide, deployed-asset freshness, and the shipped permission policy | 5 | 036 |
+| [CR-MDB-037](CR-MDB-037-install-guide-freshness-policy.md) | Install guide, deployed-asset freshness, the per-project permission policy, and project trust | 5 | 036 |
 | [CR-MDB-029](CR-MDB-029-pi-package.md) | The Model B Pi package: extensions (incl. the 026 watcher supervisor) + skills as one `pi install`-able unit; agents and tool scripts stay installer-deployed | 5 | 025, 030 |
 | [CR-MDB-031](CR-MDB-031-claude-era-substrate-retirement.md) | Retire the Claude-era substrate: roster → `pi`, non-Pi emitters, `.claude/skills` symlink writer, `CLAUDE.md` emission, `chezmoi` bundle, `/tmp/claude-1000` wrapper, `.claude/worktrees` convention, skills' Claude Code dispatch/worktree/todo mechanics, `~/.claude/skills` body citations | 5 | 025, 026, 030 |
 | [CR-MDB-032](CR-MDB-032-test-suite-relocation.md) | Test-suite relocation: no dev-checkout reach, no real-home assertions, no dead/self-defeating gates, one helper module, a Pi end-to-end | 5 | 020, 021 |
@@ -607,4 +607,4 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
 - 2026-09-24 — **Deferred (CR-MDB-036 C5 VERIFY finding 6):** `preflight._install_sandesh` still
   captures and discards `uv tool install sandesh-relay` output (a failure shows only the exit code)
   and is the one confirmed install without a re-probe. CR-036 §S3 kept Sandesh's behaviour as-is;
-  fold into the next installer CR (CR-MDB-037 or later).
+  folded into CR-MDB-037 §S5 at its gap-analysis (2026-09-24).
