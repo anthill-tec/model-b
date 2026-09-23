@@ -1236,5 +1236,151 @@ class ScaffoldDocstringNoLongerClaimsFailureWritesNothingTest(unittest.TestCase)
         )
 
 
+class RegressionPinFilePermissionsUnaffectedByAtomicWritesTest(unittest.TestCase):
+    """REGRESSION PIN (\u00a7S2, C2 RED2) -- NOT a failing test: pins that
+    atomic writes change no file's permissions BEFORE the coming GREEN
+    replaces `write_text`/`shutil.copyfile` with a `tempfile.mkstemp` +
+    `os.replace` helper. `mkstemp` creates files 0600; today `write_text`
+    honours the umask and `deploy._deploy_file` + `shutil.copymode`
+    preserves a hook script's source mode -- these three tests MUST PASS
+    on current code, and must keep passing once `atomic_write(mode=None)`
+    lands (CR-MDB-033 \u00a7S2's own AC: "produces the mode a plain write
+    would (0o666 & ~umask), not mkstemp's 0600").
+
+    Umask is set EXPLICITLY (0o022, saved/restored in setUp/tearDown) so
+    the expected mode is computed from it rather than hard-coded 0o644 --
+    a real installer run (`--harnesses claude-code,pi`) followed by a real
+    `init` reading that install.toml drives every site under test through
+    a subprocess that inherits the parent's umask at fork time (verified
+    inheritance, not assumed)."""
+
+    _UMASK = 0o022
+
+    def setUp(self):
+        self._prior_umask = os.umask(self._UMASK)
+        self._tmp_home = tempfile.mkdtemp(prefix="modelb-axi-c2-perm-home-")
+        self._tmp_bin = tempfile.mkdtemp(prefix="modelb-axi-c2-perm-bin-")
+        self._tmp_target_root = tempfile.mkdtemp(prefix="modelb-axi-c2-perm-target-")
+        self._tmp_project = tempfile.mkdtemp(prefix="modelb-axi-c2-perm-project-")
+        _write_fake_executable(self._tmp_bin, "uv", _FAKE_UV_SCRIPT)
+        _write_fake_executable(self._tmp_bin, "sandesh", _FAKE_SANDESH_SCRIPT)
+
+    def tearDown(self):
+        os.umask(self._prior_umask)
+        for root in (self._tmp_home, self._tmp_bin, self._tmp_target_root, self._tmp_project):
+            shutil.rmtree(root, ignore_errors=True)
+
+    def _run_real_install_and_init(self):
+        install_result = _run_module(
+            "--yes", "--harnesses", "claude-code,pi",
+            "--modelb-home", self._tmp_home,
+            "--target-root", self._tmp_target_root,
+            env_overrides={"PATH": self._tmp_bin},
+        )
+        self.assertEqual(
+            install_result.returncode, 0,
+            f"precondition: the real install must succeed; got "
+            f"exit={install_result.returncode} "
+            f"stdout={install_result.stdout!r} stderr={install_result.stderr!r}",
+        )
+        init_result = _run_module(
+            "--yes", "init", *_INIT_REQUIRED_FLAGS,
+            "--target", self._tmp_project,
+            "--modelb-home", self._tmp_home,
+        )
+        self.assertEqual(
+            init_result.returncode, 0,
+            f"precondition: `init` reading the real install.toml must "
+            f"succeed; got exit={init_result.returncode} "
+            f"stdout={init_result.stdout!r} stderr={init_result.stderr!r}",
+        )
+        return install_result, init_result
+
+    def test_compiled_pi_extension_has_umask_default_mode_not_mkstemp_0600(self):
+        _install_result, init_result = self._run_real_install_and_init()
+        ext_dir = Path(self._tmp_project) / ".pi" / "extensions"
+        ts_files = sorted(ext_dir.glob("*.ts")) if ext_dir.is_dir() else []
+        self.assertTrue(
+            ts_files,
+            f"precondition: at least one compiled .pi/extensions/*.ts must "
+            f"exist; init stdout={init_result.stdout!r} "
+            f"stderr={init_result.stderr!r}",
+        )
+        expected_mode = 0o666 & ~self._UMASK
+        for ts_path in ts_files:
+            mode = stat.S_IMODE(ts_path.stat().st_mode)
+            # POSITIVE -- exact mode a plain write would produce under
+            # this umask.
+            self.assertEqual(
+                mode, expected_mode,
+                "REGRESSION PIN \u00a7S2: a compiled .pi/extensions/*.ts "
+                f"must carry the mode a plain write would under umask "
+                f"{oct(self._UMASK)} ({oct(expected_mode)}); got "
+                f"{oct(mode)} for {ts_path}",
+            )
+            # NEGATIVE -- never mkstemp's 0600 default.
+            self.assertNotEqual(
+                mode, 0o600,
+                f"REGRESSION PIN \u00a7S2: {ts_path} must NOT carry "
+                f"mkstemp's 0600 default; got {oct(mode)}",
+            )
+
+    def test_scaffolded_agents_md_has_umask_default_mode_not_mkstemp_0600(self):
+        _install_result, init_result = self._run_real_install_and_init()
+        agents_path = Path(self._tmp_project) / "AGENTS.md"
+        self.assertTrue(
+            agents_path.is_file(),
+            f"precondition: AGENTS.md must be emitted; init "
+            f"stdout={init_result.stdout!r} stderr={init_result.stderr!r}",
+        )
+        expected_mode = 0o666 & ~self._UMASK
+        mode = stat.S_IMODE(agents_path.stat().st_mode)
+        # POSITIVE -- exact mode a plain write would produce under this umask.
+        self.assertEqual(
+            mode, expected_mode,
+            "REGRESSION PIN \u00a7S2: a scaffolded AGENTS.md must carry "
+            f"the mode a plain write would under umask {oct(self._UMASK)} "
+            f"({oct(expected_mode)}); got {oct(mode)}",
+        )
+        # NEGATIVE -- never mkstemp's 0600 default.
+        self.assertNotEqual(
+            mode, 0o600,
+            f"REGRESSION PIN \u00a7S2: AGENTS.md must NOT carry mkstemp's "
+            f"0600 default; got {oct(mode)}",
+        )
+
+    def test_deployed_hook_script_keeps_source_executable_bit(self):
+        install_result, _init_result = self._run_real_install_and_init()
+        src_path = REPO_ROOT / "hooks-src" / "scripts" / "ambient-board-status"
+        deployed_path = (
+            Path(self._tmp_target_root) / ".agents" / "hooks" / "scripts"
+            / "ambient-board-status"
+        )
+        self.assertTrue(
+            deployed_path.is_file(),
+            f"precondition: {deployed_path} must exist after a real "
+            f"install; install stdout={install_result.stdout!r} "
+            f"stderr={install_result.stderr!r}",
+        )
+        src_mode = stat.S_IMODE(src_path.stat().st_mode)
+        deployed_mode = stat.S_IMODE(deployed_path.stat().st_mode)
+        src_exec_bits = src_mode & 0o111
+        deployed_exec_bits = deployed_mode & 0o111
+        # precondition, not the pin itself -- the source script really is
+        # executable in the tree this test reads from.
+        self.assertEqual(
+            src_exec_bits, 0o111,
+            f"precondition: {src_path} must be executable (all-exec bits "
+            f"set) in the source tree; got {oct(src_mode)}",
+        )
+        # POSITIVE -- the deployed copy keeps AT LEAST the source's exec bits.
+        self.assertEqual(
+            deployed_exec_bits, src_exec_bits,
+            "REGRESSION PIN \u00a7S2: a deployed hook script must keep "
+            f"its source's executable bit (0o111); source={oct(src_mode)} "
+            f"deployed={oct(deployed_mode)}",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
