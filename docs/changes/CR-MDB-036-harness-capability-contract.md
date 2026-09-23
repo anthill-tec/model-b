@@ -243,6 +243,26 @@ diffing four copies.
 - [ ] The guide is written for someone on a fresh machine who has never read a CR — no §S
       references, no CR ids, no internal vocabulary in the instructions themselves.
 
+### §S11 — The permission policy the workflow needs is shipped and checked
+
+Measured 2026-09-23 on this machine. With `@gotgenes/pi-permission-system` installed and no
+config, background children's `ask` prompts were forwarded to the user for every access outside
+the working directory and every skill read. A first config without a universal fallback made it
+worse: the package documents that omitting `"*"` means `"ask"`, so every tool without its own rule
+prompted (11 `ctx_shell` prompts in an hour). A `"*": "allow"` fallback stopped the prompts but
+the package warns against it. The policy that works names what the workflow uses:
+
+- `"*": "ask"` as the explicit fallback;
+- `allow` by exact tool name for the lean-ctx family (every `ctx_*` tool and `lean_ctx` — tool
+  keys take no wildcard, so each is listed), the built-in file tools, the sub-agent tools
+  (`subagent`, `get_subagent_result`, `steer_subagent`), `todo` and `ask_user_question`;
+- `skill: allow`; `external_directory_read` allowing `~/.agents/*`, `~/.crucible/*`,
+  `~/.pi/agent/*` and `/tmp/*`; `external_directory_write` allowing `/tmp/*`; both else `ask`.
+
+The installer ships that policy as a template and, when the permission system is present, reports
+whether the global config carries it: absent, missing the `"*"` fallback, or missing a
+workflow tool is a WARN naming the consequence. It never overwrites a user's existing config.
+
 ### §S10 — Deployed assets report when they are stale
 
 Measured 2026-09-23: all six orchestrator skills deployed on this machine (`model-b`, `bootstrap`,
@@ -281,6 +301,13 @@ Running bare `modelb-axi` on an installed machine (the `already_installed` outco
 - [ ] **Measured, not assumed:** the pre-flight's verdict for each capability is corroborated
       against a real dispatch on this machine (an agent that can/cannot call `ctx_shell`), and the
       transcript reference is recorded in the CR's close-out.
+
+### §S11 — permission policy
+
+- [ ] The shipped policy template has an explicit `"*": "ask"`, allows every workflow tool named
+      in §S11 by exact name, and allows no tool by a `"*": "allow"` fallback.
+- [ ] With the permission system installed, the installer's result reports the global config as
+      `absent`, `no-fallback`, `missing-tools` (naming them) or `ok`, and never writes that file.
 
 ### §S10 — asset freshness
 
