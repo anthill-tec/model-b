@@ -280,7 +280,15 @@ class OpenCodeEmitterTest(HooksCompilerTestCase):
 class PiExtensionEmitterTest(HooksCompilerTestCase):
     """AC4 pi: `.pi/extensions/<name>.ts` -- full TS-extension emitter."""
 
-    def test_extension_subscribes_session_start_and_tool_call_via_pi_exec(self):
+    def test_extension_default_exports_a_factory_and_never_uses_pi_exec(self):
+        """MIGRATED (CR-MDB-030 §S1/§S2, C1): the pre-030 characterization
+        asserted `pi.on(...)` at module top level (no default export -- the
+        loader drops it) and `pi.exec` (no `stdin` option on 0.87.1's
+        `ExecOptions`, so no script ever received its payload). The 030
+        contract is a default-export factory that never spawns via
+        `pi.exec` -- runtime-loadability is proven separately by
+        tests/test_pi_hook_runtime.py::DefaultExportFactoryTest, which
+        drives the REAL emitted file through Pi's own jiti loader."""
         from modelb_axi.hooks import compile_wiring
 
         report = compile_wiring(
@@ -301,9 +309,15 @@ class PiExtensionEmitterTest(HooksCompilerTestCase):
         )
         combined = "".join(p.read_text(encoding="utf-8") for p in ts_files)
 
+        self.assertIn("export default function", combined)
+        self.assertNotIn(
+            "pi.exec(", combined,
+            "§S2: pi.exec has no stdin option -- the shim must pipe stdin via "
+            "node:child_process instead",
+        )
+        self.assertIn("node:child_process", combined)
         self.assertIn("session_start", combined)
         self.assertIn("tool_call", combined)
-        self.assertIn("pi.exec", combined)
         self.assertIn("{ block: true", combined)
         expected_cargo_path = str(SCRIPTS_ROOT / "block-direct-cargo-test")
         self.assertIn(expected_cargo_path, combined)
@@ -358,10 +372,13 @@ class PiExtensionEmitterTest(HooksCompilerTestCase):
         self.assertIn('pi.on("turn_end"', combined)
         self.assertIn('pi.on("input"', combined)
 
-    def test_pre_compact_is_a_declared_gap_for_pi_not_emitted_not_refused(self):
-        """F1 (VERIFY B2): pre-compact has NO pi counterpart -- no extension
-        file emitted, NOT a refusal, and the report note names the gap (same
-        declared-degradation idiom as hermes)."""
+    def test_pre_compact_maps_to_session_before_compact_and_is_emitted(self):
+        """MIGRATED (CR-MDB-030 \u00a7S5, C1): pre-compact's pi counterpart is
+        `session_before_compact` -- it is EMITTED, not a declared gap, and
+        the old 'no documented pi counterpart' note is gone. Runtime
+        registration through the real jiti loader is proven separately by
+        tests/test_pi_hook_runtime.py::DefaultExportFactoryTest
+        ::test_pre_compact_maps_to_session_before_compact_and_registers_it."""
         from modelb_axi.hooks import compile_wiring
 
         report = compile_wiring(
@@ -372,24 +389,27 @@ class PiExtensionEmitterTest(HooksCompilerTestCase):
         )
 
         pi_report = report["pi"]
-        # Missing event, not a fail-direction conflict: never a refusal.
         self.assertEqual(pi_report["refusals"], [])
-        self.assertEqual(pi_report["emitted_files"], [])
-        gap_file = (
+        self.assertFalse(pi_report["degraded"])
+        self.assertEqual(
+            pi_report["emitted_files"],
+            [str(Path(".pi") / "extensions" / "post-regression-disk-reminder.ts")],
+        )
+
+        ext_file = (
             self.target / ".pi" / "extensions" / "post-regression-disk-reminder.ts"
         )
-        self.assertFalse(
-            gap_file.exists(), "pre-compact hook must not be emitted for pi"
-        )
-        # Declared, never silent: a note names both the event and the hook.
-        gap_notes = [
-            n
-            for n in pi_report["notes"]
-            if "pre-compact" in n and "post-regression-disk-reminder" in n
+        self.assertTrue(ext_file.is_file())
+        text = ext_file.read_text(encoding="utf-8")
+        self.assertIn('pi.on("session_before_compact"', text)
+
+        stale_notes = [
+            n for n in pi_report["notes"]
+            if "no" in n.lower() and "counterpart" in n.lower()
         ]
-        self.assertTrue(
-            gap_notes,
-            f"expected a declared-gap note naming the event and hook: {pi_report['notes']!r}",
+        self.assertEqual(
+            stale_notes, [],
+            f"the 'no documented pi counterpart' note must be gone: {pi_report['notes']!r}",
         )
 
 
@@ -504,7 +524,7 @@ class RefusalTest(HooksCompilerTestCase):
         self.assertNotIn(".claude/settings.json", report["claude-code"]["emitted_files"])
 
     def test_all_targets_refused_raises_distinct_error(self):
-        from modelb_axi.hooks import compile_wiring, AllTargetsRefusedError
+        from modelb_axi.hooks import AllTargetsRefusedError, compile_wiring
 
         with self.assertRaises(AllTargetsRefusedError) as ctx:
             compile_wiring(

@@ -1,0 +1,19 @@
+#!/usr/bin/env python3
+"""Test-only protocol-script fixture (CR-MDB-030 §S2/§S8) — NOT a real
+hooks-src/scripts/ hook. Reads the raw stdin payload and echoes it back
+verbatim inside a valid block response, so a driving test can assert
+EXACTLY what the shim piped to this script's stdin. Always exits 2 (the
+protocol's block outcome) with parseable JSON."""
+
+import json
+import sys
+
+
+def main() -> int:
+    raw = sys.stdin.read()
+    print(json.dumps({"decision": "block", "reason": raw}))
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())

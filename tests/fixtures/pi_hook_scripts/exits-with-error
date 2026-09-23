@@ -1,0 +1,16 @@
+#!/usr/bin/env python3
+"""Test-only protocol-script fixture (CR-MDB-030 §S5) — NOT a real
+hooks-src/scripts/ hook. Reads and discards stdin, exits 1 — a protocol
+exit code that is neither the allow (0) nor the block (2) outcome, i.e.
+the spec's "any other exit code" failure mode."""
+
+import sys
+
+
+def main() -> int:
+    sys.stdin.read()
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
