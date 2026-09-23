@@ -138,6 +138,14 @@ generator and the sha256 of the rest of the file. A render:
 This repository's `.pi/agents/` — hand-made on 2026-09-23 — is replaced by `modelb-axi agents`
 output for `PROJECT_STACKS=python`.
 
+### §S8 — The released client in the generator inputs (moved from CR-MDB-020 §S2)
+`generator/stacks/*.toml` `test_command`, `register_command` and `unregister_command` name the
+released Crucible client, `~/.crucible/clients/<stack>-crucible.py`, instead of the retired mirror
+`~/.claude/scripts/<stack>-crucible.py`, which does not exist on a Pi install. Without this, `init`
+ships definitions whose First Action 1 cannot run. `crucible_reference` is unchanged. Moved here by
+user ruling 2026-09-23; CR-MDB-020 keeps the skill, reference and memory-template anchoring and
+the anchoring and contract gates.
+
 ## Acceptance criteria
 
 ### §S1
@@ -202,6 +210,14 @@ output for `PROJECT_STACKS=python`.
       repository, runs a real command through `ctx_shell` and returns its output without a
       permission prompt — recorded with the transcript reference at close-out.
 
+### §S8
+- [ ] All five `generator/stacks/*.toml` resolve their three command strings to
+      `~/.crucible/clients/<stack>-crucible.py`; `crucible_reference` is unchanged.
+- [ ] Zero occurrences of `~/.claude/scripts/` paired with `-crucible.py` under `generator/`
+      (templates, stacks, rendered output) — a gate, with a detector fixture proving it bites.
+- [ ] All 20 files under `generator/agents/` carry the released-client form, and
+      `python3 generator/build.py --check` is clean.
+
 ### Migration
 - [ ] Existing tests that assert the old frontmatter, `render()` output, the `[frontmatter]` block
       or `~/.claude/agents` — and those that depend on them without naming them — are migrated to
@@ -227,5 +243,7 @@ verb), the fleet regenerated, tests. Medium.
 - No installer asset class for agents (DN §D17). Nothing under `~/.pi/agent/agents/` (Pi's global
   scope, legacy) is written or deleted.
 - No Tier-1 route ids (a `CR-RND`); no `user`-field workload identity (gated on CR-SY-003 §S1).
-- No client-path re-anchoring (CR-MDB-020); no `~/.claude/skills/` citation repoint (CR-MDB-031).
+- No client-path anchoring beyond §S8's three generator commands: skills, references, memory
+  templates and the anchoring gate over `skills-src/` stay CR-MDB-020's; no `~/.claude/skills/`
+  citation repoint (CR-MDB-031).
 - No emitter for any harness but Pi.

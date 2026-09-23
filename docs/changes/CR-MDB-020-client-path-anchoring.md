@@ -132,18 +132,16 @@ checkout (`~/Documents/data_projects/crucible/clients/mvn-crucible.py`) and is a
 way. Model B consumes Crucible's RELEASED client only (PRD, installer-orchestration boundary,
 2026-09-23).
 
-### §S2 — Retire the mirror from the generator inputs
-`generator/stacks/*.toml`: `test_command`, `register_command` and `unregister_command` for
-all four stacks resolve to Crucible's contract location instead of
-`~/.claude/scripts/<stack>-crucible.py`. `crucible_reference` continues to point at the
-Model B-owned skill under the deployed skill store — that is a Model B artifact and is not
-affected by this boundary.
+### §S2 — Retire the mirror from the memory templates
+The generator half of this section — `generator/stacks/*.toml` `test_command`,
+`register_command` and `unregister_command` — moved to CR-MDB-025 §S8 (user ruling 2026-09-23):
+`init` ships rendered definitions, so a broken register command could not wait for this CR.
 
-`skills-src/memory-templates/{java,rust}-orchestration.md`: the same two occurrences.
+`skills-src/memory-templates/{java,rust}-orchestration.md`: the two occurrences of
+`~/.claude/scripts/<stack>-crucible.py` resolve to Crucible's contract location.
 
 ### §S3 — Regenerate and prove determinism
-Regenerate all 16 agent definitions with `python3 generator/build.py build`, then prove
-`python3 generator/build.py --check` is clean. No generated file is hand-edited.
+Moved to CR-MDB-025 §S8 with the generator half of §S2.
 
 ### §S4 — The gate that keeps it anchored
 A stdlib `unittest` gate asserting, over `skills-src/` and `generator/` and excluding
@@ -198,12 +196,8 @@ failing test that names the line, rather than as an agent that cannot register.
       development-checkout path; it names the released client.
 
 ### §S2 / §S3
-- [ ] Zero occurrences of `~/.claude/scripts/` paired with `-crucible.py` under
-      `generator/` and `skills-src/`.
-- [ ] All four `generator/stacks/*.toml` resolve their three command strings to the anchored
-      contract location; `crucible_reference` still names the Model B-owned skill path.
-- [ ] All 16 files under `generator/agents/` carry the anchored form, and
-      `python3 generator/build.py --check` exits 0 with no drift reported.
+- [ ] Zero occurrences of `~/.claude/scripts/` paired with `-crucible.py` under `skills-src/`
+      (`generator/` is gated by CR-MDB-025 §S8).
 - [ ] `skills-src/memory-templates/{java,rust}-orchestration.md` carry no retired-mirror
       reference.
 
