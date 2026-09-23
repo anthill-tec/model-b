@@ -109,7 +109,9 @@ def parse_stacks(raw: str) -> list[str]:
     ``init``, ``agents`` and the installer (CR-MDB-036 §S7). An
     unsupported name raises :class:`ScaffoldError` listing the supported
     stacks."""
-    stacks = [s.strip() for s in raw.split(",") if s.strip()]
+    # Duplicates collapse to the first occurrence, order kept (cycle-91
+    # finding 10): a stack is recorded, probed and deployed once.
+    stacks = list(dict.fromkeys(s.strip() for s in raw.split(",") if s.strip()))
     unknown = [s for s in stacks if s not in KNOWN_STACKS]
     if unknown:
         raise ScaffoldError(
