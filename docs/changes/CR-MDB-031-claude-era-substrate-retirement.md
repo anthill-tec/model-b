@@ -4,8 +4,9 @@
 **Type:** refactor
 **Priority:** P1 — in release 1.0.0, wave 2, **after CR-MDB-025 and CR-MDB-030** (025 §S5 freezes
 the roster/hooks deliberately so its own diff stays small; this CR is where that freeze ends)
-**Depends on:** CR-MDB-025 (the agent-definition asset class must exist before the Claude Code
-path is removed) · CR-MDB-030 (the Pi emitter must work before the others are deleted) ·
+**Depends on:** CR-MDB-020 (its §S5 tool contract is this CR's acceptance gate for DN §D18) ·
+CR-MDB-025 (Pi agent definitions must render per project, DN §D17, before the Claude
+Code path is removed) · CR-MDB-030 (the Pi emitter must work before the others are deleted) ·
 CR-MDB-026 (its bootstrap/shutdown edits touch the same skill files; sequence to avoid a double
 rewrite)
 **Labels:** harness, installer, hooks, skills, contracts, refactor, retirement
@@ -78,12 +79,13 @@ split `KNOWN_STACKS` (generator stacks) from memory-template prefixes and drop `
 former; fix `cli.py` help/docstrings (`resolve_target_root`'s "live `~/.claude`" text).
 `hooks-src/schema.md` drops "compiled per harness (claude-code, opencode, hermes, pi)".
 
-### §S2 — Skill mechanics for Pi + archimedes
+### §S2 — Skill mechanics, written harness-neutrally (DN §D18)
 Rewrite the orchestration mechanics once, in `skills-src/model-b/references/{orchestration-common,
 orchestration-track,orchestration-mainline,sub-agent-procedure}.md`, `bootstrap`, `shutdown`:
 dispatch is `subagent` (blocking, `tasks[]` for parallel, per-call `cwd` = the worktree —
 never `run_in_background`); worktrees are created by `worktree-flow.py` and passed as `cwd`
-(no `EnterWorktree`); todo state is the Pi `todo` tool (no `TaskList`/`TaskUpdate`); project
+(no `EnterWorktree`); todo state is described as "your task list", naming no harness's task tool
+(no `TaskList`/`TaskUpdate`, and not Pi's `todo` either — DN §D18 option A); project
 context is `AGENTS.md` (no `CLAUDE.md`); the boundary section names the Pi mechanisms (§S0).
 Remove the NAI project-memory examples. Repoint every `~/.claude/skills/<name>/…` citation in
 skill bodies, template bodies and `crucible_reference` to `~/.agents/skills/<name>/…` (or a
@@ -113,6 +115,14 @@ four-id pin, `CLAUDE.md`-symlink and hermes/opencode-note scaffold tests, the
 `pi` (CR-025 adds the first Pi e2e; this CR makes it the only one). Listed by test id in the RED
 plan as §D14 amendments.
 
+**Sandesh is named by its CLI (DN §D18).** Every `sandesh_*` MCP call in `skills-src/` and
+`generator/` — `sandesh_send`, `sandesh_reply`, `sandesh_fetch`, `sandesh_inbox`,
+`sandesh_register`, `sandesh_unregister`, `sandesh_addressbook`, `sandesh_setup` — becomes the
+`sandesh` CLI form with its flags (`sandesh send --to … --project …`), which every harness can
+run from a shell. The rule itself (describe the capability; name the harness-neutral CLI where
+the exact invocation matters; never a harness's own tool name) is stated once where skill
+authors read it; the location is a §S0 question.
+
 ## Acceptance criteria
 
 - [ ] `HARNESS_ROSTER` contains only `pi`; `detect_harnesses()` finds it via `shutil.which("pi")`.
@@ -128,6 +138,13 @@ plan as §D14 amendments.
 - [ ] Zero `EnterWorktree`, `ExitWorktree`, `TaskList`, `TaskUpdate`, `TaskStop`, `PreToolUse`,
       `dangerouslyDisableSandbox`, `run_in_background` (outside the 026-owned watcher fallback
       sentence) in `skills-src/` — grep gate.
+- [ ] Zero `sandesh_(send|reply|fetch|inbox|register|unregister|addressbook|setup)` in
+      `skills-src/` or `generator/`; every Sandesh step names the `sandesh` CLI with the flags
+      it needs — grep gate.
+- [ ] CR-MDB-020 §S5's tool contract passes over `skills-src/` and `generator/` for the Pi
+      target, with no exemptions added by this CR.
+- [ ] The harness-neutral skill-writing rule (DN §D18) is stated once, where skill authors
+      read it.
 - [ ] Zero `/tmp/claude-1000` in the repo outside `archive/`.
 - [ ] The worktree convention is one string, declared in `contracts/worktree-layout.md`, and
       `block-write-outside-worktree` + `worktree-flow.py` + the four skills agree — a test

@@ -638,27 +638,16 @@ per project:
 5. Model B dog-foods this first: `model-b/.pi/agents/` holds its python agents (hand-made in the
    interim, 2026-09-23; rendered once CR-MDB-025 lands).
 
-## Consequences per CR
+### D18 — A shared skill names capabilities and CLIs, never a harness's own tools
 
-| CR | What this DN changes |
-|---|---|
-| **025** (Pi agent definitions) | Re-specced 2026-09-21 as `CR-MDB-025-pi-agent-definitions.md` against §D13/§D14/§D16; the OMP spec is git history. Delivery: one neutral dict, `_emit_pi()`, structured `[roles.<role>]` TOML, explicit tool map, `model:` verbatim-or-omitted (values empty until the Tier-1 `CR-RND`), asset class `.agents/agents` once user-scope. On Pi skills need no work for the MEASURED reason §D15.1 gives. §D3 boundary applies to `~/.agents/agents/`. No Claude Code emitter (§D14). Roster and hooks unchanged (`pi` present; `_emit_pi` hooks since 015). |
-| **020** (client paths) | §D8's never-a-checkout rule is its §S0; the anchor is now real, not aspirational. |
-| **018** (discovery) | The manifest exists with six keys; resolution SUCCEEDS, so the unresolved degrade is no longer the expected outcome. |
-| **019** (hook runtime) | Re-scoped 2026-09-21: §S3 (opencode emitter) struck; keeps the status-contract re-pin and the arduino marker. The Pi emitter's runtime is CR-MDB-030. |
-| **024** (rust) | Its four definitions are generated into `generator/agents/` and reach Pi the way every stack's do — rendered per project by `init` into `.pi/agents/` (§D17); nothing under `~/.claude/agents/` is superseded (§D14). |
-| **014** (installer) | Deploys **no** agent-definition class (§D17 — agents are rendered per project by `init`, superseding the CR-025 §S4 asset class this row once named); gains `pi install` orchestration for the package (CR-029 §S4). CR-033 fixes `target_root`, atomic writes and the unmanaged-file clobber first. |
-| **012** (release) | The release gate must prove Pi resolves an emitted definition by name (`list_agents` via archimedes). §D15.2 adds a publication step for the Pi package (extensions + skills): tag, `pi install …@<version>` (CR-029 §S5). No byte-identity gate (§D14). |
-| **NEW CR — CR-MDB-029** | Authoring the Pi package itself per §D15.2: `package.json` `pi` manifest, `extensions/` (the CR-026 watcher per §D15.3; hooks currently emitted per-project by 015), `skills/`. **Agent definitions cannot ride it** — Pi packages carry only extensions/skills/prompts/themes — so the split is: package = extensions + skills; installer = tool scripts; `init` = agents, per project (§D17). (The number 027 this row once reserved was consumed by the dispatch decision CR.) |
+**User ruling 2026-09-23: options A + D below.** Skills describe the capability ("record it in
+your task list"); where the exact invocation is load-bearing they name the harness-neutral CLI
+(`sandesh send --to … --project …`, a Crucible client verb), never a harness's own tool or
+tool wrapper (`TaskUpdate`, `todo`, `sandesh_send`). CR-MDB-020 §S5's tool contract (D) keeps
+harness-specific names from returning; CR-MDB-031 applies the rule to `skills-src/`. Option C
+(per-harness skill rendering) is held in reserve should A prove too vague in practice.
 
-## Open, deliberately not decided here
-
-- Whether `hermes`/`opencode` should also receive agent definitions. (`pi` is now decided — §D17.)
-  They are present on this machine but Model B has never emitted definitions for them, and
-  nothing yet establishes their frontmatter contracts. Out of scope until a CR needs it — and
-  CR-MDB-031 removes them from the roster until one does.
-
-### OPEN (drafted 2026-09-23 for user review) — How a harness-neutral skill names harness-specific tools
+*The analysis as drafted for review:*
 
 **The problem, measured.** Skills are shipped once, user-scope, and read by every targeted harness
 (§D15.1). Their text nevertheless instructs tools only one harness has. In `skills-src/` today:
@@ -678,13 +667,32 @@ answered this for agent definitions (render per harness); skills were left harne
 | **C. Render skills per harness** | Template placeholders (`{task_tool}`, `{sandesh_send}`) filled per harness | The same emitter model as agents (§D17), writing per-harness skill copies | Contradicts §D15.1's one shared store; per-harness skill directories return (what §D2 removed for OMP) |
 | **D. Tool contract only** | Unchanged | CR-MDB-020 §S5's tool contract fails any skill naming a tool the target harness lacks | Detects, does not resolve — pairs with A, B or C |
 
-**Recommendation (for review, not decided): A + D.** Skills describe the capability; where an exact
+**Recommendation (adopted 2026-09-23): A + D.** Skills describe the capability; where an exact
 invocation is load-bearing — a CLI with flags, like `sandesh send --to … --project …` or a Crucible
 client verb — the skill names the **CLI**, which is harness-neutral by construction, rather than a
 harness's tool wrapper around it. The tool contract (D) keeps harness-specific tool names from
 creeping back. C is held back because it reopens the per-harness skill copies §D15.1 closed; it
 becomes the answer only if A proves too vague in practice.
 
-**Owner once decided:** CR-MDB-031 already removes the Claude-era tool names; the chosen option
-would widen it (or a new CR) to cover the Sandesh MCP verbs and state the rule in `skills-src`.
+**Owner:** CR-MDB-031, widened 2026-09-23 to cover the Sandesh MCP verbs and to state the rule
+once in `skills-src`, gated by CR-MDB-020 §S5.
 
+## Consequences per CR
+
+| CR | What this DN changes |
+|---|---|
+| **025** (Pi agent definitions) | Re-specced 2026-09-21 as `CR-MDB-025-pi-agent-definitions.md` against §D13/§D14/§D16; the OMP spec is git history. Delivery: one neutral dict, `_emit_pi()`, structured `[roles.<role>]` TOML, explicit tool map, `model:` verbatim-or-omitted (values empty until the Tier-1 `CR-RND`), asset class `.agents/agents` once user-scope. On Pi skills need no work for the MEASURED reason §D15.1 gives. §D3 boundary applies to `~/.agents/agents/`. No Claude Code emitter (§D14). Roster and hooks unchanged (`pi` present; `_emit_pi` hooks since 015). |
+| **020** (client paths) | §D8's never-a-checkout rule is its §S0; the anchor is now real, not aspirational. |
+| **018** (discovery) | The manifest exists with six keys; resolution SUCCEEDS, so the unresolved degrade is no longer the expected outcome. |
+| **019** (hook runtime) | Re-scoped 2026-09-21: §S3 (opencode emitter) struck; keeps the status-contract re-pin and the arduino marker. The Pi emitter's runtime is CR-MDB-030. |
+| **024** (rust) | Its four definitions are generated into `generator/agents/` and reach Pi the way every stack's do — rendered per project by `init` into `.pi/agents/` (§D17); nothing under `~/.claude/agents/` is superseded (§D14). |
+| **014** (installer) | Deploys **no** agent-definition class (§D17 — agents are rendered per project by `init`, superseding the CR-025 §S4 asset class this row once named); gains `pi install` orchestration for the package (CR-029 §S4). CR-033 fixes `target_root`, atomic writes and the unmanaged-file clobber first. |
+| **012** (release) | The release gate must prove Pi resolves an emitted definition by name (`list_agents` via archimedes). §D15.2 adds a publication step for the Pi package (extensions + skills): tag, `pi install …@<version>` (CR-029 §S5). No byte-identity gate (§D14). |
+| **NEW CR — CR-MDB-029** | Authoring the Pi package itself per §D15.2: `package.json` `pi` manifest, `extensions/` (the CR-026 watcher per §D15.3; hooks currently emitted per-project by 015), `skills/`. **Agent definitions cannot ride it** — Pi packages carry only extensions/skills/prompts/themes — so the split is: package = extensions + skills; installer = tool scripts; `init` = agents, per project (§D17). (The number 027 this row once reserved was consumed by the dispatch decision CR.) |
+
+## Open, deliberately not decided here
+
+- Whether `hermes`/`opencode` should also receive agent definitions. (`pi` is now decided — §D17.)
+  They are present on this machine but Model B has never emitted definitions for them, and
+  nothing yet establishes their frontmatter contracts. Out of scope until a CR needs it — and
+  CR-MDB-031 removes them from the roster until one does.
