@@ -51,9 +51,11 @@ from modelb_axi.toolchains import probe_toolchains, remediate_toolchains, resolv
 
 SANDESH_PACKAGE = "sandesh-relay"
 
-#: Tier-2 requirements probed by ``shutil.which`` and recorded only in
-#: ``[capabilities]`` — ``[deps]`` stays exactly uv/sandesh/crucible.
-_PATH_TOOLS: tuple[str, ...] = ("python3", "bash", "gh", "jq")
+#: The requirement ``probe`` kind of a tier-2 tool judged by
+#: ``shutil.which`` and recorded only in ``[capabilities]`` — ``[deps]``
+#: stays exactly uv/sandesh/crucible. Which tools carry it is DATA
+#: (:data:`modelb_axi.requirements.REQUIREMENTS`), read at call time.
+_PATH_PROBE = "path"
 
 _UV_BOOTSTRAP_MESSAGE = (
     "pre-flight failed — `uv` not found on PATH.\n"
@@ -219,9 +221,10 @@ def run_preflight(
     stack_clients = {
         stack: probe_crucible_client(stack, crucible_verdict, clients) for stack in stacks
     }
+    path_rows = [row for row in REQUIREMENTS if row.get("probe") == _PATH_PROBE]
     path_tools = {
-        tool: DETECTED if resolve(tool, resolved) is not None else ABSENT
-        for tool in _PATH_TOOLS
+        row["id"]: DETECTED if resolve(row["id"], resolved) is not None else ABSENT
+        for row in path_rows
     }
     toolchains = probe_toolchains(stacks, resolved)
 
@@ -244,11 +247,10 @@ def run_preflight(
         _warn(_CRUCIBLE_ABSENT_WARNING, warnings)
     elif crucible_verdict == UNKNOWN:
         _warn(_CRUCIBLE_UNKNOWN_WARNING, warnings)
-    for tool, verdict in path_tools.items():
-        if verdict == ABSENT:
-            row = requirement(tool)
+    for row in path_rows:
+        if path_tools[row["id"]] == ABSENT:
             _warn(
-                f"{tool} not found on PATH — {_families(row)} will not run; "
+                f"{row['id']} not found on PATH — {_families(row)} will not run; "
                 f"{row['remediation']}",
                 warnings,
             )

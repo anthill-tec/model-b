@@ -13,6 +13,12 @@ dict with the §S1 fields:
 ``policy``          ``required`` (missing fails the pre-flight, §S3) or
                     ``recommended`` (missing WARNs and continues)
 ``scope``           ``"always"``, or the tuple of stacks that need it
+``probe``           how the pre-flight judges it: ``pi-package`` (Pi's
+                    settings + node_modules), ``bootstrap`` (``uv``),
+                    ``deps`` (Sandesh), ``crucible-manifest``,
+                    ``toolchain`` (§S8), or ``path`` — a tier-2 tool
+                    resolved by ``shutil.which`` and recorded in
+                    ``[capabilities]``; a new ``path`` row needs no code
 ``asset_families``  the deployed asset families that are inert without it
 ``remediation``     what the user runs to provide it
 ``tools``           tier 1 only: the tool names the provider supplies
@@ -55,6 +61,7 @@ REQUIREMENTS: tuple[dict, ...] = (
         "provider": "@gotgenes/pi-subagents",
         "policy": "required",
         "scope": "always",
+        "probe": "pi-package",
         "asset_families": ("agent definitions", "orchestration skills"),
         "remediation": "pi install npm:@gotgenes/pi-subagents",
         "tools": ("subagent", "get_subagent_result", "steer_subagent"),
@@ -65,6 +72,7 @@ REQUIREMENTS: tuple[dict, ...] = (
         "provider": "pi-lean-ctx",
         "policy": "required",
         "scope": "always",
+        "probe": "pi-package",
         "asset_families": ("agent definitions", "tool scripts"),
         "remediation": "pi install npm:pi-lean-ctx",
         "tools": _LEAN_CTX_TOOLS,
@@ -75,6 +83,7 @@ REQUIREMENTS: tuple[dict, ...] = (
         "provider": "@gotgenes/pi-permission-system",
         "policy": "recommended",
         "scope": "always",
+        "probe": "pi-package",
         "asset_families": ("agent definitions' permission: frontmatter",),
         "remediation": "pi install npm:@gotgenes/pi-permission-system",
         "tools": (),
@@ -85,6 +94,7 @@ REQUIREMENTS: tuple[dict, ...] = (
         "provider": "uv",
         "policy": "required",
         "scope": "always",
+        "probe": "bootstrap",
         "asset_families": ("the modelb-axi installer", "Sandesh install"),
         "remediation": "curl -LsSf https://astral.sh/uv/install.sh | sh",
     },
@@ -94,6 +104,7 @@ REQUIREMENTS: tuple[dict, ...] = (
         "provider": "sandesh-relay (via uv tool install)",
         "policy": "recommended",
         "scope": "always",
+        "probe": "deps",
         "asset_families": ("bootstrap and shutdown skills",),
         "remediation": "uv tool install sandesh-relay",
     },
@@ -103,6 +114,7 @@ REQUIREMENTS: tuple[dict, ...] = (
         "provider": f"Crucible's released clients: ~/{CRUCIBLE_MANIFEST_RELPATH}",
         "policy": "recommended",
         "scope": "always",
+        "probe": "crucible-manifest",
         "asset_families": ("crucible skills", "crucible-report-* skill bundles"),
         "remediation": "install Crucible's released clients with Crucible's own installer",
     },
@@ -112,6 +124,7 @@ REQUIREMENTS: tuple[dict, ...] = (
         "provider": "the manifest's clients[<key>]: <key>-crucible.py",
         "policy": "recommended",
         "scope": _ALL_STACKS,
+        "probe": "crucible-manifest",
         "asset_families": ("crucible-report-<stack> skill bundle",),
         "remediation": "install Crucible's released clients with Crucible's own installer",
     },
@@ -121,6 +134,7 @@ REQUIREMENTS: tuple[dict, ...] = (
         "provider": "the OS",
         "policy": "recommended",
         "scope": "always",
+        "probe": "path",
         "asset_families": ("tool scripts", "hook scripts"),
         "remediation": "install python3 with the OS package manager",
     },
@@ -130,6 +144,7 @@ REQUIREMENTS: tuple[dict, ...] = (
         "provider": "the OS",
         "policy": "recommended",
         "scope": "always",
+        "probe": "path",
         "asset_families": ("tool scripts (gate-lock.sh)",),
         "remediation": "install bash with the OS package manager",
     },
@@ -139,6 +154,7 @@ REQUIREMENTS: tuple[dict, ...] = (
         "provider": "the GitHub CLI project",
         "policy": "recommended",
         "scope": "always",
+        "probe": "path",
         "asset_families": ("git-workflow skill",),
         "remediation": "install gh from https://cli.github.com",
     },
@@ -148,6 +164,7 @@ REQUIREMENTS: tuple[dict, ...] = (
         "provider": "the jq project",
         "policy": "recommended",
         "scope": "always",
+        "probe": "path",
         "asset_families": ("tool scripts",),
         "remediation": "install jq with the OS package manager",
     },
@@ -157,6 +174,7 @@ REQUIREMENTS: tuple[dict, ...] = (
         "provider": "each stack's own toolchain provider",
         "policy": "recommended",
         "scope": _ALL_STACKS,
+        "probe": "toolchain",
         "asset_families": ("crucible-report-<stack> skill bundle", "agent definitions"),
         "remediation": (
             "install the stack's toolchain with its provider's own installer "
