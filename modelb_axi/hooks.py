@@ -132,6 +132,28 @@ _CLAUDE_EVENT_KEYS = {
     "pre-compact": "PreCompact",
 }
 
+#: Neutral tool class -> Claude Code tool-name alternation (CR-MDB-030 §S4).
+#: A name absent here has no Claude Code equivalent and passes through.
+_CLAUDE_TOOL_NAMES = {
+    "bash": "Bash",
+    "write": "Write",
+    "edit": "Edit|MultiEdit|NotebookEdit",
+    "read": "Read",
+    "grep": "Grep",
+    "find": "Glob",
+    "ls": "LS",
+}
+
+
+def _claude_matcher(matcher: str | None) -> str:
+    """The neutral ``matcher`` in Claude Code's own tool names, translated
+    per alternation member; ``*`` for an absent matcher (CR-MDB-030 §S4)."""
+    if not matcher:
+        return "*"
+    return "|".join(
+        _CLAUDE_TOOL_NAMES.get(member, member) for member in matcher.split("|")
+    )
+
 #: Harnesses whose shims can honor fail-closed. pi: its shim blocks on every
 #: non-protocol outcome — spawn error, other exit code, kill on timeout,
 #: unparseable output (CR-MDB-030 §S5, proven through Pi's own loader by §S8).
@@ -210,7 +232,7 @@ def _emit_claude_code(
         if instance.get("timeout") is not None:
             command_spec["timeout"] = instance["timeout"]
         hooks_by_event.setdefault(_CLAUDE_EVENT_KEYS[instance["event"]], []).append(
-            {"matcher": instance.get("matcher") or "*", "hooks": [command_spec]}
+            {"matcher": _claude_matcher(instance.get("matcher")), "hooks": [command_spec]}
         )
     settings_path = target / ".claude" / "settings.json"
     settings_path.parent.mkdir(parents=True, exist_ok=True)
