@@ -79,6 +79,9 @@ for audit only — no script branches on it). The Pi shim maps the event into th
 | `read`, `grep`, `find`, `ls` | same name | `input.path` |
 | any other tool | passed through under its own name | `input` unchanged |
 
+An event that is not a tool call (`session-start`, `pre-compact`, …) carries the same keys, with
+`tool_name` and `harness_tool` null and `tool_input` `{}`; a matcher does not filter such events.
+
 The six remaining scripts are ported to the neutral names (`Bash`→`bash`, `Write|Edit|NotebookEdit`
 →`write|edit`, `file_path`→`path`/`paths`). A file guard checks every entry of `paths`.
 
