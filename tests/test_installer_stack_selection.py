@@ -81,7 +81,7 @@ def _recording_shim(marker: Path, exit_code: int = 0) -> str:
     EXECUTION, then exits ``exit_code``."""
     return (
         "#!/bin/sh\n"
-        f'printf \'%s %s\\n\' "$(basename "$0")" "$*" >> "{marker}"\n'
+        f'printf \'%s %s\\n\' "${{0##*/}}" "$*" >> "{marker}"\n'
         f"exit {exit_code}\n"
     )
 

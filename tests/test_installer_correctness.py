@@ -2007,7 +2007,7 @@ class InstallerEightExitPathsEnvelopeTest(unittest.TestCase):
         target_root = tempfile.mkdtemp(prefix="modelb-axi-c3-envelope-declineharness-target-")
         try:
             code, stdout, _stderr = _run_main_in_process(
-                ["--modelb-home", home, "--target-root", target_root],
+                ["--modelb-home", home, "--target-root", target_root, "--stacks", "python"],
                 env_overrides={"PATH": self._tmp_bin},
                 isatty=True, input_answers=["y", "n"],
             )
