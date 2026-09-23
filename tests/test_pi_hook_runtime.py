@@ -394,13 +394,18 @@ class PiHookPayloadTransportTest(PiLoaderTestCase):
             "timeout?, cwd?}) -- the shim must not use it",
         )
 
+        # MIGRATED (CR-MDB-030 \u00a7S3, orchestrator-approved at C2 GREEN): the
+        # shim now pipes the NEUTRAL payload it built, not the raw Pi event.
+        # An unmapped pass-through tool keeps its input unchanged, so the
+        # probe proves byte-exact transport of what the shim built.
         event = {
             "type": "tool_call",
             "toolCallId": "probe-1",
-            "toolName": "ctx_shell",
-            "input": {"command": "echo hi", "__probe": "transport-fidelity-xyz"},
+            "toolName": "ctx_glob",
+            "input": {"pattern": "**/*.py", "__probe": "transport-fidelity-xyz"},
         }
-        loaded = self._drive(ext_path, event=event)
+        cwd = "/srv/example-project"
+        loaded = self._drive(ext_path, event=event, ctx={"cwd": cwd})
         self.assertIsNone(loaded["importError"])
         self.assertIsNone(loaded["handlerThrew"])
         result = loaded["handlerResult"]
@@ -408,9 +413,16 @@ class PiHookPayloadTransportTest(PiLoaderTestCase):
         self.assertTrue(result.get("block"), f"expected block: true, got {result!r}")
         echoed = json.loads(result["reason"])
         self.assertEqual(
-            echoed, event,
-            "the script's stdin must be EXACTLY the JSON the shim built for "
-            "this event -- not a subset, not re-ordered, not stringified twice",
+            echoed,
+            {
+                "tool_name": "ctx_glob",
+                "tool_input": {"pattern": "**/*.py", "__probe": "transport-fidelity-xyz"},
+                "cwd": cwd,
+                "session_id": None,  # the ctx exposes no sessionManager
+                "harness_tool": "ctx_glob",
+            },
+            "the script's stdin must be EXACTLY the neutral JSON the shim built "
+            "for this event -- not a subset, not re-ordered, not stringified twice",
         )
 
     def test_a_different_event_produces_a_different_exact_echo(self):
@@ -420,16 +432,26 @@ class PiHookPayloadTransportTest(PiLoaderTestCase):
         event = {
             "type": "tool_call",
             "toolCallId": "probe-2",
-            "toolName": "write",
-            "input": {"path": "/srv/example-project/file.txt", "__probe": "second-distinct-marker"},
+            "toolName": "ctx_tree",
+            "input": {"path": "/srv/other-project", "__probe": "second-distinct-marker"},
         }
-        loaded = self._drive(ext_path, event=event)
+        cwd = "/srv/other-project"
+        loaded = self._drive(ext_path, event=event, ctx={"cwd": cwd})
         result = loaded["handlerResult"]
         self.assertTrue(result and result.get("block"))
         echoed = json.loads(result["reason"])
-        self.assertEqual(echoed, event)
+        self.assertEqual(
+            echoed,
+            {
+                "tool_name": "ctx_tree",
+                "tool_input": {"path": "/srv/other-project", "__probe": "second-distinct-marker"},
+                "cwd": cwd,
+                "session_id": None,
+                "harness_tool": "ctx_tree",
+            },
+        )
         self.assertNotEqual(
-            echoed.get("toolCallId"), "probe-1",
+            echoed["tool_input"].get("__probe"), "transport-fidelity-xyz",
             "the echoed payload must reflect THIS call's event, not a fixture "
             "from a previous test",
         )
