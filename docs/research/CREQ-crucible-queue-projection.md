@@ -88,7 +88,14 @@ client-contract channel.
 
 ---
 
-## Pending outbound 2026-09-23 — CR-MDB-024 §S5, for the #1362–#1367 thread
+## SENT 2026-09-23 as Sandesh #1383 (reply to #1367) — CR-MDB-024 §S5
+
+*Delivered once `Mainline - Crucible` came back online; the text below is the draft it was sent
+from. #1383 also told Crucible that Model B runs only their released clients, and that one stale
+registration of ours (`CR-MDB-033-C3-GREEN`) sits on their dev board. The queue-projection and
+void-semantics requests above are still NOT sent: the user is raising the void question directly.*
+
+### (draft as recorded) Pending outbound — for the #1362–#1367 thread
 
 **Not a request; an ownership confirmation owed under #1367.** To be sent the next time
 `Mainline - Crucible` is listening (inactive since 2026-09-20; Sandesh refuses an inactive
