@@ -37,6 +37,8 @@ HARNESS_SKILL_DIRS: dict[str, str] = {
 }
 
 SKILL_BUNDLE_MARKER = "SKILL.md"
+#: Stack-scoped skill bundles (CR-MDB-036 §S7) share this name prefix.
+REPORT_BUNDLE_PREFIX = "crucible-report-"
 STORE_RELDIR = Path(".agents") / "skills"
 
 #: CR-MDB-015 §S6: the shared protocol scripts deploy ONCE user-scope into
@@ -75,13 +77,22 @@ def sha256_file(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _skill_bundles(asset_root: Path) -> list[Path]:
+def report_bundle(stack: str) -> str:
+    """The ``crucible-report-*`` bundle a stack deploys (CR-MDB-036 §S7):
+    ``crucible-report-<stack>``, except quarkus and java share ``-java``."""
+    return f"{REPORT_BUNDLE_PREFIX}{'java' if stack in ('quarkus', 'java') else stack}"
+
+
+def _skill_bundles(asset_root: Path, stacks: list[str] | None = None) -> list[Path]:
     skills_src = asset_root / "skills-src"
     if not skills_src.is_dir():
         raise DeployError(f"asset root has no skills-src/ directory: {asset_root}")
+    wanted = None if stacks is None else {report_bundle(s) for s in stacks}
     return sorted(
         child for child in skills_src.iterdir()
         if child.is_dir() and (child / SKILL_BUNDLE_MARKER).is_file()
+        and (wanted is None or not child.name.startswith(REPORT_BUNDLE_PREFIX)
+             or child.name in wanted)
     )
 
 
@@ -188,6 +199,7 @@ def deploy_assets(
     prior_hashes: dict[str, str] | None = None,
     force_managed: bool = False,
     unmanaged: list[str] | None = None,
+    stacks: list[str] | None = None,
 ) -> tuple[list[dict], list[str]]:
     """Run the §S6 deploy: store copies + harness symlinks.
 
@@ -201,13 +213,17 @@ def deploy_assets(
     (CR-MDB-033 §S3). It is an out-parameter rather than a third return
     value because ``(manifest, skipped)`` is a pinned return shape
     (CR-MDB-022 §S4): the two skip vocabularies stay distinct without
-    breaking existing callers."""
+    breaking existing callers.
+
+    ``stacks`` (CR-MDB-036 §S7) scopes the ``crucible-report-*`` bundles
+    to the selection (``None`` = every stack); every other bundle, the
+    hook scripts and the tool scripts always deploy."""
     prior = prior_hashes or {}
     manifest: list[dict] = []
     skipped: list[str] = []
     unmanaged_paths = unmanaged if unmanaged is not None else []
     try:
-        bundles = _skill_bundles(asset_root)
+        bundles = _skill_bundles(asset_root, stacks)
         skills_src = asset_root / "skills-src"
         for bundle in bundles:
             for src in sorted(bundle.rglob("*")):

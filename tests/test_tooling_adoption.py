@@ -78,6 +78,8 @@ import tomllib
 import unittest
 from pathlib import Path
 
+from tests.pi_capability_sandbox import with_agent_dir
+
 from modelb_axi import deploy
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -198,8 +200,11 @@ def _run_installer(*args, env_overrides=None, timeout=60):
     env = dict(os.environ)
     existing_pp = env.get("PYTHONPATH", "")
     env["PYTHONPATH"] = str(REPO_ROOT) + (os.pathsep + existing_pp if existing_pp else "")
-    if env_overrides:
-        env.update(env_overrides)
+    # CR-MDB-036 migration: pin PI_CODING_AGENT_DIR to a sandboxed,
+    # fully provisioned Pi agent dir unless the caller pins its own --
+    # the pre-flight now probes harness capabilities and no test may
+    # read the real ~/.pi.
+    env.update(with_agent_dir(env_overrides))
     return subprocess.run(
         [sys.executable, "-m", "modelb_axi", *args],
         capture_output=True, text=True, timeout=timeout,

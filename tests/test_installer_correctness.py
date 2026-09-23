@@ -57,6 +57,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from tests.pi_capability_sandbox import shared_home_without_crucible, with_agent_dir
+
 from modelb_axi.harness import HARNESS_ROSTER_IDS
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -112,8 +114,11 @@ def _run_module(*args, env_overrides=None, timeout=20, stdin=subprocess.DEVNULL)
     env = dict(os.environ)
     existing_pp = env.get("PYTHONPATH", "")
     env["PYTHONPATH"] = str(REPO_ROOT) + (os.pathsep + existing_pp if existing_pp else "")
-    if env_overrides:
-        env.update(env_overrides)
+    # CR-MDB-036 migration: pin PI_CODING_AGENT_DIR to a sandboxed,
+    # fully provisioned Pi agent dir unless the caller pins its own --
+    # the pre-flight now probes harness capabilities and no test may
+    # read the real ~/.pi.
+    env.update(with_agent_dir(env_overrides))
     cmd = [sys.executable, "-m", "modelb_axi", *args]
     return subprocess.run(
         cmd, capture_output=True, text=True, timeout=timeout, stdin=stdin, env=env,
@@ -1604,7 +1609,11 @@ def _run_main_in_process(argv, env_overrides=None, isatty=False, input_answers=N
     ``(returncode, stdout_text, stderr_text)``."""
     from modelb_axi import cli
 
-    env_patch = dict(env_overrides) if env_overrides else {}
+    # CR-MDB-036 migration: pin PI_CODING_AGENT_DIR to a sandboxed,
+    # fully provisioned Pi agent dir unless the caller pins its own --
+    # the pre-flight now probes harness capabilities and no test may
+    # read the real ~/.pi.
+    env_patch = with_agent_dir(env_overrides)
     answers = list(input_answers) if input_answers else []
     stdout_buf = io.StringIO()
     stderr_buf = io.StringIO()
@@ -1998,7 +2007,7 @@ class InstallerEightExitPathsEnvelopeTest(unittest.TestCase):
         target_root = tempfile.mkdtemp(prefix="modelb-axi-c3-envelope-declineharness-target-")
         try:
             code, stdout, _stderr = _run_main_in_process(
-                ["--modelb-home", home, "--target-root", target_root],
+                ["--modelb-home", home, "--target-root", target_root, "--stacks", "python"],
                 env_overrides={"PATH": self._tmp_bin},
                 isatty=True, input_answers=["y", "n"],
             )
@@ -2087,6 +2096,9 @@ class StdoutCarriesOnlyEnvelopeAllHumanLinesOnStderrTest(unittest.TestCase):
 
     _HUMAN_MARKERS = (
         "modelb-axi:", "deps: uv=", "harnesses selected:",
+        # CR-MDB-036 §S3: the pre-flight's harness group line is human
+        # prose too.
+        "harness: dispatch=",
         "[stage 1/3]", "[stage 2/3]", "[stage 3/3]", "wrote ",
     )
 
@@ -2116,6 +2128,8 @@ class StdoutCarriesOnlyEnvelopeAllHumanLinesOnStderrTest(unittest.TestCase):
             env_overrides={
                 "PATH": self._tmp_bin,
                 "FAKE_UV_INSTALL_MARKER": self._marker_path,
+                # CR-MDB-036: crucible=absent needs a manifest-less HOME.
+                "HOME": shared_home_without_crucible(),
             },
         )
         self.assertEqual(
@@ -2161,6 +2175,14 @@ class StdoutCarriesOnlyEnvelopeAllHumanLinesOnStderrTest(unittest.TestCase):
             "deps: uv=detected sandesh=installed crucible=absent", result.stderr,
             f"§S6: the post-install-update deps: line must be on "
             f"stderr; got stderr={result.stderr!r}",
+        )
+        # POSITIVE -- CR-MDB-036 §S3: the harness group line (sandboxed,
+        # fully provisioned agent dir) lands on stderr, before deps:.
+        self.assertIn(
+            "harness: dispatch=detected lean-ctx=detected permissions=detected",
+            result.stderr,
+            f"CR-MDB-036 §S3: the harness: line must be on stderr; got "
+            f"stderr={result.stderr!r}",
         )
         # POSITIVE -- the stage/progress banners are on stderr too.
         self.assertIn(

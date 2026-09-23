@@ -37,6 +37,8 @@ import tomllib
 import unittest
 from pathlib import Path
 
+from tests.pi_capability_sandbox import shared_home_without_crucible, with_agent_dir
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PYPROJECT_TOML = REPO_ROOT / "pyproject.toml"
 MODULE_DIR = REPO_ROOT / "modelb_axi"
@@ -96,12 +98,16 @@ def _run_module(*args, env_overrides=None, timeout=15, stdin=subprocess.DEVNULL)
     PYTHONPATH, so a not-yet-existing package surfaces as a clean
     subprocess-level failure (`ModuleNotFoundError` on stderr, non-zero
     exit) instead of an in-process ImportError that would kill collection
-    of this whole test file."""
+    of this whole test file.
+
+    CR-MDB-036 migration: every run pins ``PI_CODING_AGENT_DIR`` to a
+    sandboxed, fully provisioned Pi agent dir (unless the caller pins its
+    own) -- the installer's pre-flight now probes harness capabilities,
+    and no test may read the real ``~/.pi``."""
     env = dict(os.environ)
     existing_pp = env.get("PYTHONPATH", "")
     env["PYTHONPATH"] = str(REPO_ROOT) + (os.pathsep + existing_pp if existing_pp else "")
-    if env_overrides:
-        env.update(env_overrides)
+    env.update(with_agent_dir(env_overrides))
     cmd = [sys.executable, "-m", "modelb_axi", *args]
     return subprocess.run(
         cmd, capture_output=True, text=True, timeout=timeout, stdin=stdin, env=env,
@@ -419,12 +425,14 @@ class DependencyPreflightReportingTest(unittest.TestCase):
     def test_all_three_deps_reported_with_exact_detected_and_absent_verdicts(self):
         _write_fake_executable(self._tmp_bin, "uv", _FAKE_UV_SCRIPT)
         _write_fake_executable(self._tmp_bin, "sandesh", _FAKE_SANDESH_SCRIPT)
-        # No fake `crucible` binary is ever provided in this whole file --
-        # Crucible ships no installer yet per DN §4, so it is always absent.
+        # CR-MDB-036 migration: `crucible` is now judged by Crucible's
+        # released-client manifest (~/.crucible/crucible-clients.json),
+        # never a `crucible` binary -- an EMPTY sandbox HOME is what makes
+        # it truthfully absent, independent of the machine running this.
         result = _run_module(
             "--yes", "--harnesses", "claude-code",
             "--modelb-home", self._tmp_home,
-            env_overrides={"PATH": self._tmp_bin},
+            env_overrides={"PATH": self._tmp_bin, "HOME": shared_home_without_crucible()},
         )
         # POSITIVE -- CR-MDB-033 §S6 migration: the deps verdicts are an
         # installer FACT, read from the envelope's `deps` field, never
@@ -459,7 +467,7 @@ class DependencyPreflightReportingTest(unittest.TestCase):
         result = _run_module(
             "--yes", "--harnesses", "claude-code",
             "--modelb-home", self._tmp_home,
-            env_overrides={"PATH": self._tmp_bin},
+            env_overrides={"PATH": self._tmp_bin, "HOME": shared_home_without_crucible()},  # CR-MDB-036: crucible=absent needs a manifest-less HOME
         )
         # CR-MDB-033 §S6 migration: this checks the TRUTHFUL PRE-
         # REMEDIATION detection line specifically (AC4: "records ...
@@ -486,13 +494,15 @@ class DependencyPreflightReportingTest(unittest.TestCase):
         lives entirely on stderr, not stdout)."""
         _write_fake_executable(self._tmp_bin, "uv", _FAKE_UV_SCRIPT)
         _write_fake_executable(self._tmp_bin, "sandesh", _FAKE_SANDESH_SCRIPT)
+        # CR-MDB-036 C2 migration: HOME pinned to a manifest-less sandbox --
+        # this run used to read the real ~/.crucible (found at C1 GREEN).
         result = _run_module(
             "--yes", "--harnesses", "claude-code",
             "--modelb-home", self._tmp_home,
-            env_overrides={"PATH": self._tmp_bin},
+            env_overrides={"PATH": self._tmp_bin, "HOME": shared_home_without_crucible()},
         )
         stderr = result.stderr
-        deps_index = stderr.find("deps: uv=")
+        deps_index = stderr.find("deps: uv=detected sandesh=detected crucible=absent")
         harness_index = stderr.lower().find("harness targeting")
         self.assertNotEqual(
             deps_index, -1,
@@ -530,10 +540,13 @@ class CrucibleAbsentWarnsRecordsAbsentAndDeploysNothingTest(unittest.TestCase):
     def test_crucible_absent_warns_names_own_installer_and_deploys_zero_files(self):
         _write_fake_executable(self._tmp_bin, "uv", _FAKE_UV_SCRIPT)
         _write_fake_executable(self._tmp_bin, "sandesh", _FAKE_SANDESH_SCRIPT)
+        # CR-MDB-036 migration: "Crucible absent" now means no released-
+        # client manifest at ~/.crucible/crucible-clients.json -- an EMPTY sandbox
+        # HOME, never the machine's real one.
         result = _run_module(
             "--yes", "--harnesses", "claude-code",
             "--modelb-home", self._tmp_home,
-            env_overrides={"PATH": self._tmp_bin},
+            env_overrides={"PATH": self._tmp_bin, "HOME": shared_home_without_crucible()},
         )
         # CR-MDB-033 §S6 migration: the warning is PROSE -- it must live
         # entirely on stderr now (stdout carries nothing but the envelope).
@@ -623,6 +636,8 @@ class SandeshAbsentInstallViaUvShimTest(unittest.TestCase):
             env_overrides={
                 "PATH": self._tmp_bin,
                 "FAKE_UV_INSTALL_MARKER": self._marker_path,
+                # CR-MDB-036: crucible=absent needs a manifest-less HOME.
+                "HOME": shared_home_without_crucible(),
             },
         )
         # MOCK VERIFICATION -- assert the fake `uv` shim actually
@@ -913,7 +928,8 @@ class DeployEngineTest(unittest.TestCase):
         shutil.rmtree(self._tmp_target_root, ignore_errors=True)
 
     def _run_install(self, *extra_args, env_overrides=None):
-        overrides = {"PATH": self._tmp_bin}
+        # CR-MDB-036: [deps] crucible=absent needs a manifest-less HOME.
+        overrides = {"PATH": self._tmp_bin, "HOME": shared_home_without_crucible()}
         if env_overrides:
             overrides.update(env_overrides)
         return _run_module(

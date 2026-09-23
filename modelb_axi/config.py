@@ -5,8 +5,11 @@ serializer covering exactly the pinned config schema — string values,
 lists of strings, and the ``[[files]]`` array-of-tables — because the
 stdlib ships no TOML writer and the runtime is stdlib-only:
 
-    [install]           version / harnesses / asset_root
-    [deps]              persisted pre-flight verdicts
+    [install]           version / harnesses / asset_root / ... / stacks,
+                        and allow_missing_capabilities only when used
+    [deps]              persisted pre-flight verdicts (uv/sandesh/crucible)
+    [capabilities]      every probed requirement id -> verdict
+                        (CR-MDB-036 §S4; absent from a pre-036 file)
     [[files]]           one entry per deployed file: path + sha256
 
 Atomicity (§S6 "written last"): the file is serialized to a temp file in
@@ -15,6 +18,7 @@ invoke :func:`write_install_toml` AFTER every deploy step has succeeded
 — a failed deploy leaves no ``install.toml`` at all.
 """
 
+import re
 import tomllib
 from pathlib import Path
 
@@ -29,6 +33,8 @@ _INSTALL_TOML_MODE = 0o644
 #: Characters with a TOML short escape; every other C0 control and DEL
 #: is written as ``\uXXXX`` (CR-MDB-033 §S5).
 _TOML_SHORT_ESCAPES = {"\\": "\\\\", '"': '\\"', "\n": "\\n", "\t": "\\t", "\r": "\\r"}
+#: A TOML bare key: ASCII letters, digits, ``_`` and ``-`` only.
+_BARE_KEY = re.compile(r"[A-Za-z0-9_-]+")
 
 
 def _toml_escape_char(char: str) -> str:
@@ -48,7 +54,18 @@ def _toml_string(value: str) -> str:
     return '"' + "".join(_toml_escape_char(c) for c in value) + '"'
 
 
+def _toml_key(key: str) -> str:
+    """A bare key when TOML allows one, else a quoted key — a dotted
+    bare key would NEST (``"python.client"`` stays one flat key,
+    CR-MDB-036 §S4)."""
+    if key and _BARE_KEY.fullmatch(key):
+        return key
+    return _toml_string(key)
+
+
 def _toml_value(value) -> str:
+    if isinstance(value, bool):
+        return "true" if value else "false"
     if isinstance(value, str):
         return _toml_string(value)
     if isinstance(value, list):
@@ -57,9 +74,10 @@ def _toml_value(value) -> str:
 
 
 def serialize_install_toml(
-    install: dict, deps: dict, files: list[dict]
+    install: dict, deps: dict, files: list[dict], capabilities: dict | None = None,
 ) -> str:
-    """Serialize the pinned install.toml schema to TOML text."""
+    """Serialize the pinned install.toml schema to TOML text; the
+    ``[capabilities]`` table only when ``capabilities`` is given."""
     lines: list[str] = ["[install]"]
     for key, value in install.items():
         lines.append(f"{key} = {_toml_value(value)}")
@@ -67,6 +85,11 @@ def serialize_install_toml(
     lines.append("[deps]")
     for key, value in deps.items():
         lines.append(f"{key} = {_toml_value(value)}")
+    if capabilities is not None:
+        lines.append("")
+        lines.append("[capabilities]")
+        for key, value in capabilities.items():
+            lines.append(f"{_toml_key(key)} = {_toml_value(value)}")
     for entry in files:
         lines.append("")
         lines.append("[[files]]")
@@ -76,13 +99,14 @@ def serialize_install_toml(
 
 
 def write_install_toml(
-    home: Path, install: dict, deps: dict, files: list[dict]
+    home: Path, install: dict, deps: dict, files: list[dict],
+    capabilities: dict | None = None,
 ) -> Path:
     """Atomically write ``install.toml`` under ``home`` (temp + rename).
 
     Mode 0644: the file holds no secrets (CR-MDB-033 §S2)."""
     home.mkdir(parents=True, exist_ok=True)
-    text = serialize_install_toml(install, deps, files)
+    text = serialize_install_toml(install, deps, files, capabilities)
     target = home / INSTALL_TOML_NAME
     atomic_write(target, text.encode("utf-8"), mode=_INSTALL_TOML_MODE)
     return target

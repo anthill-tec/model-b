@@ -32,7 +32,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from modelb_axi import agents
+from modelb_axi import agents, requirements
 from modelb_axi._fsutil import atomic_write
 from modelb_axi.axi import envelope
 from modelb_axi.config import INSTALL_TOML_NAME, _toml_string, load_install_toml
@@ -104,8 +104,14 @@ def _reject_unknown_harnesses(harness_ids: list[str]) -> None:
         raise UnknownHarnessError(unknown)
 
 
-def _parse_stacks(raw: str) -> list[str]:
-    stacks = [s.strip() for s in raw.split(",") if s.strip()]
+def parse_stacks(raw: str) -> list[str]:
+    """A ``--stacks`` CSV against :data:`KNOWN_STACKS` — shared by
+    ``init``, ``agents`` and the installer (CR-MDB-036 §S7). An
+    unsupported name raises :class:`ScaffoldError` listing the supported
+    stacks."""
+    # Duplicates collapse to the first occurrence, order kept (cycle-91
+    # finding 10): a stack is recorded, probed and deployed once.
+    stacks = list(dict.fromkeys(s.strip() for s in raw.split(",") if s.strip()))
     unknown = [s for s in stacks if s not in KNOWN_STACKS]
     if unknown:
         raise ScaffoldError(
@@ -277,6 +283,33 @@ _HARNESS_NATIVE_NOTES: dict[str, str] = {
 }
 
 
+def _render_capability_contract(stacks: list[str]) -> str:
+    """The §S6 capability contract, rendered from
+    :mod:`modelb_axi.requirements` at call time (never hand-copied): one
+    line per tier-1 capability and per selected stack's toolchain probe,
+    each pairing the name with its remediation. Unselected stacks are not
+    mentioned."""
+    lines = [
+        f"- `{row['id']}` ({row['policy']}): `{row['remediation']}`"
+        for row in requirements.REQUIREMENTS if row["tier"] == 1
+    ]
+    seen: set[str] = set()
+    for stack in stacks:
+        for probe in requirements.STACK_TOOLCHAINS.get(stack, ()):
+            if probe["name"] in seen:
+                continue
+            seen.add(probe["name"])
+            lines.append(
+                f"- `{probe['name']}` ({stack} toolchain): {probe['remediation']}"
+            )
+    return (
+        "## Harness capability contract (from the installation's requirements)\n"
+        "Each line names what this project's assets need and how to provide "
+        "it when missing.\n"
+        + "\n".join(lines) + "\n"
+    )
+
+
 def _render_agents_md(
     name: str, token: str, acronym: str, mode: str, owner: str,
     stacks: list[str], harnesses: list[str],
@@ -332,6 +365,8 @@ def _render_agents_md(
         f"## Harness anchors (installed set: {', '.join(harnesses)})\n"
         + "\n".join(anchor_lines) + "\n"
         "\n"
+        + _render_capability_contract(stacks)
+        + "\n"
         "## Generator note\n"
         "- Agents regenerate from the INSTALLATION's generator assets — "
         "never from a per-project copy.\n"
@@ -779,7 +814,7 @@ def run_init(args: argparse.Namespace, home: Path) -> int:
                 "non-interactive run)"
             )
         _validate_mode(args.mode)
-        stacks = _parse_stacks(args.stacks)
+        stacks = parse_stacks(args.stacks)
         sub_projects = _sub_projects(args.repo_shape)
     except (ScaffoldError, UnknownHarnessError) as exc:
         print(f"modelb-axi: error: {exc}", file=sys.stderr)
@@ -935,7 +970,7 @@ def run_agents(args: argparse.Namespace, home: Path, project_root: Path | None =
                 "of a project scaffolded by `modelb-axi init`"
             )
         if requested:
-            stacks = _parse_stacks(requested)
+            stacks = parse_stacks(requested)
         else:
             recorded = _read_env_value(env_path, PROJECT_STACKS_KEY)
             if not recorded:
@@ -943,7 +978,7 @@ def run_agents(args: argparse.Namespace, home: Path, project_root: Path | None =
                     f"{env_path} records no {PROJECT_STACKS_KEY}; pass "
                     "--stacks <csv> to render and record the project's stacks"
                 )
-            stacks = _parse_stacks(recorded)
+            stacks = parse_stacks(recorded)
         harnesses, harness_source = resolve_harnesses(home, None)
         templates_dir, stacks_dir = _agent_sources(home)
     except (ScaffoldError, UnknownHarnessError) as exc:

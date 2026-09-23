@@ -35,7 +35,13 @@ from modelb_axi.harness import (
     select_harnesses,
 )
 from modelb_axi.preflight import run_preflight
-from modelb_axi.scaffold import run_agents, run_init
+from modelb_axi.scaffold import (
+    KNOWN_STACKS,
+    ScaffoldError,
+    parse_stacks,
+    run_agents,
+    run_init,
+)
 
 INSTALL_TOML_NAME = "install.toml"
 
@@ -116,6 +122,22 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--force-managed", action="store_true",
         help="overwrite hand-modified managed files and refresh their manifest entries",
+    )
+    parser.add_argument(
+        "--allow-missing-capabilities", action="store_true",
+        help=(
+            "install even when a required harness capability (dispatch, "
+            "lean-ctx) is missing; the assets depending on it stay inert, "
+            "and the override is recorded in install.toml"
+        ),
+    )
+    parser.add_argument(
+        "--stacks", metavar="CSV",
+        help=(
+            "stacks to install for (arduino,bun,python,quarkus,rust,java): "
+            "scopes the crucible-report-* bundles and the toolchain probes; "
+            "default: every stack (offered interactively without --yes)"
+        ),
     )
     subparsers = parser.add_subparsers(dest="command", metavar="COMMAND")
     _add_init_parser(subparsers)
@@ -245,6 +267,33 @@ def _confirm(prompt: str, interactive: bool) -> bool:
     return answer in ("", "y", "yes")
 
 
+def _offer(prompt: str) -> bool:
+    """Explicit-yes prompt seam for installers Model B does not own \u2014
+    Pi's ``pi install`` and the \u00a7S8 toolchain installers (CR-MDB-036
+    \u00a7S3/\u00a7S8). Only ``y``/``yes`` confirms; Enter does not. Never
+    called under ``--yes`` or without a TTY (the caller passes ``None``)."""
+    print(f"{prompt} [y/N] ", end="", file=sys.stderr, flush=True)
+    return input().strip().lower() in ("y", "yes")
+
+
+def _select_stacks_stage(requested: list[str] | None, interactive: bool) -> list[str]:
+    """CR-MDB-036 \u00a7S7: ``--stacks`` wins; otherwise an interactive run is
+    offered the list (Enter = all) and ``--yes`` takes the default (all).
+    Never inferred from the machine. An unsupported answer raises
+    :class:`ScaffoldError` listing the supported stacks."""
+    if requested is not None:
+        return requested
+    if not interactive:
+        return list(KNOWN_STACKS)
+    print(
+        f"Stacks to install for, comma-separated ({', '.join(KNOWN_STACKS)}); "
+        "Enter = all: ",
+        end="", file=sys.stderr, flush=True,
+    )
+    answer = input().strip()
+    return parse_stacks(answer) if answer else list(KNOWN_STACKS)
+
+
 def _select_harnesses_stage(requested: list[str], interactive: bool) -> list[str] | None:
     """Stage 2 (§S5): probe the roster, resolve the selection, print the
     ``harnesses selected:`` line (stderr). Returns None when the user
@@ -273,6 +322,9 @@ def _deploy_stage(
     *,
     warnings: list[str] | None = None,
     report: dict | None = None,
+    capabilities: dict[str, str] | None = None,
+    stacks: list[str] | None = None,
+    allow_missing_capabilities: bool = False,
 ) -> int:
     """Stage 3 (§S6): manifest-driven deploy, then the config write LAST
     — any deploy failure exits non-zero with NO install.toml written.
@@ -286,9 +338,16 @@ def _deploy_stage(
     success, receives the envelope's install fields (``target_root``,
     ``install_toml``, ``managed_files``, ``skipped``, ``unmanaged`` —
     CR-MDB-033 §S6).
+
+    CR-MDB-036 §S4: ``capabilities`` (the pre-flight verdicts) becomes
+    ``[capabilities]``; ``stacks`` (default: every supported stack)
+    becomes ``[install].stacks``; ``allow_missing_capabilities`` is
+    recorded only when used.
     """
     if warnings is None:
         warnings = []
+    if stacks is None:
+        stacks = list(KNOWN_STACKS)
     asset_root = default_asset_root()
     # Manifest protection follows manifest PRESENCE, not a flag
     # (load_manifest_hashes returns {} when install.toml is absent).
@@ -298,7 +357,7 @@ def _deploy_stage(
         manifest, skipped = deploy_assets(
             asset_root, target_root, selected,
             prior_hashes=prior_hashes, force_managed=force_managed,
-            unmanaged=unmanaged,
+            unmanaged=unmanaged, stacks=stacks,
         )
     except DeployError as exc:
         _warn(str(exc), warnings, level="error")
@@ -319,24 +378,29 @@ def _deploy_stage(
             f"untouched (no flag overwrites it)",
             warnings,
         )
+    install = {
+        "version": __version__,
+        "harnesses": selected,
+        "asset_root": str(asset_root),
+        # CR-MDB-033 §S1: the deployed root and its per-asset-class
+        # dirs, recorded once here so the scaffold reads them instead
+        # of re-deriving a second path rule from Path.home().
+        "target_root": str(target_root),
+        "skills_dir": str(target_root / STORE_RELDIR),
+        "hooks_scripts_dir": str(target_root / HOOKS_SCRIPTS_STORE_RELDIR),
+        # CR-MDB-022 §S4: where the adopted workflow tooling landed,
+        # so a skill can name the script path without re-deriving it.
+        "tool_scripts_dir": str(target_root / TOOL_SCRIPTS_STORE_RELDIR),
+        "stacks": list(stacks),
+    }
+    if allow_missing_capabilities:
+        install["allow_missing_capabilities"] = True
     install_toml = write_install_toml(
         home,
-        install={
-            "version": __version__,
-            "harnesses": selected,
-            "asset_root": str(asset_root),
-            # CR-MDB-033 §S1: the deployed root and its per-asset-class
-            # dirs, recorded once here so the scaffold reads them instead
-            # of re-deriving a second path rule from Path.home().
-            "target_root": str(target_root),
-            "skills_dir": str(target_root / STORE_RELDIR),
-            "hooks_scripts_dir": str(target_root / HOOKS_SCRIPTS_STORE_RELDIR),
-            # CR-MDB-022 §S4: where the adopted workflow tooling landed,
-            # so a skill can name the script path without re-deriving it.
-            "tool_scripts_dir": str(target_root / TOOL_SCRIPTS_STORE_RELDIR),
-        },
+        install=install,
         deps=deps_verdicts,
         files=manifest,
+        capabilities=capabilities,
     )
     _say(f"  wrote {install_toml} ({len(manifest)} managed files)")
     if report is not None:
@@ -357,12 +421,16 @@ def _run_installer_flow(
     target_root: Path | None,
     reinstall: bool,
     force_managed: bool,
+    allow_missing_capabilities: bool = False,
+    requested_stacks: list[str] | None = None,
 ) -> int:
     """INSTALLER flow entry (§S3 shell): banner + ordered stages.
 
     Every exit path writes exactly one AXI envelope (verb ``install``)
     to stdout, with the path's ``outcome`` (CR-MDB-033 §S6); every human
-    line goes to stderr."""
+    line goes to stderr. ``requested_stacks`` is the validated
+    ``--stacks`` selection, ``None`` when the flag was omitted
+    (CR-MDB-036 §S7)."""
     warnings: list[str] = []
     fields: dict = {}
     _say("modelb-axi: entering installer flow")
@@ -373,11 +441,20 @@ def _run_installer_flow(
         _say("modelb-axi: installer flow aborted by user")
         _emit_install_envelope("aborted", False, warnings, fields)
         return 1
+    try:
+        stacks = _select_stacks_stage(requested_stacks, interactive)
+    except ScaffoldError as exc:
+        _warn(str(exc), warnings, level="error")
+        _emit_install_envelope("stacks_rejected", False, warnings, fields)
+        return 1
+    _say(f"stacks selected: {', '.join(stacks)}")
     # Stage 1 — dependency pre-flight (§S4). Runs (and reports its
     # `deps:` line) BEFORE any later stage announcement.
-    _say("  [stage 1/3] pre-flight: dependency checks (uv / Sandesh / Crucible)")
-    preflight_exit, deps_verdicts = run_preflight(
+    _say("  [stage 1/3] pre-flight: harness capabilities + dependency checks (uv / Sandesh / Crucible)")
+    preflight_exit, deps_verdicts, capabilities = run_preflight(
         lambda prompt: _confirm(prompt, interactive), warnings,
+        stacks=stacks, allow_missing_capabilities=allow_missing_capabilities,
+        offer=_offer if interactive else None,
     )
     if preflight_exit != 0:
         _emit_install_envelope("preflight_failed", False, warnings, fields)
@@ -409,7 +486,8 @@ def _run_installer_flow(
     report: dict = {}
     deploy_exit = _deploy_stage(
         home, target_root, selected, deps_verdicts, reinstall, force_managed,
-        warnings=warnings, report=report,
+        warnings=warnings, report=report, capabilities=capabilities,
+        stacks=stacks, allow_missing_capabilities=allow_missing_capabilities,
     )
     if deploy_exit != 0:
         _emit_install_envelope("deploy_failed", False, warnings, fields)
@@ -446,11 +524,23 @@ def main(argv: list[str] | None = None) -> int:
     harnesses = parse_harnesses(args.harnesses)
     target_root = resolve_target_root(args.target_root)
     interactive = not args.yes and sys.stdin.isatty()
+    requested_stacks = None
+    if args.stacks is not None:
+        try:
+            requested_stacks = parse_stacks(args.stacks)
+        except ScaffoldError as exc:
+            # CR-MDB-036 \u00a7S7: rejected before any stage, listing the
+            # supported stacks; nothing is deployed or written.
+            warnings: list[str] = []
+            _warn(str(exc), warnings, level="error")
+            _emit_install_envelope("stacks_rejected", False, warnings, {})
+            return 1
     if (home / INSTALL_TOML_NAME).is_file() and not args.reinstall:
         return _run_scaffold_mode(home)
     return _run_installer_flow(
         home, harnesses, interactive, target_root,
-        args.reinstall, args.force_managed,
+        args.reinstall, args.force_managed, args.allow_missing_capabilities,
+        requested_stacks,
     )
 
 

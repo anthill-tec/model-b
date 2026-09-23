@@ -37,7 +37,7 @@ tier_guidance = '''
 '''
 
 [description]
-red = "RED phase agent — test specialist for Rust/Cargo projects. Two modes. (1) Write NEW failing tests for a CR spec. (2) Fix BROKEN test compilation so existing tests can run. Does NOT write production code. Uses the refactorer-rust skill when mechanical rewrites are applicable."
+red = "RED phase agent — test specialist for Rust/Cargo projects. Two modes. (1) Write NEW failing tests for a CR spec. (2) Fix BROKEN test compilation so existing tests can run. Does NOT write production code. Uses tool-first mechanical rewrites when applicable."
 green = "GREEN phase agent — implements production Rust code to make failing tests pass. Works step-by-step, one module at a time. Does NOT modify tests unless explicitly approved by the orchestrator. Used after RED tests are committed."
 verify = "VERIFY agent — reviews a Rust/Cargo feature branch after implementation is complete. Read-only analysis of CR compliance, wiring completeness, test-coverage adequacy, crate-boundary adherence, and code quality. Does NOT modify code. Used when an orchestrator dispatches a verification task after GREEN."
 fix = "FIX agent — addresses specific findings from a VERIFY agent report in Rust/Cargo projects. Fixes only what is listed and approved. Does NOT decide what to fix — the orchestrator tells it which findings to address."
@@ -45,28 +45,28 @@ fix = "FIX agent — addresses specific findings from a VERIFY agent report in R
 [roles.red]
 tools = ["read", "write", "edit", "grep", "find", "ls", "ctx_shell", "ctx_read", "ctx_grep", "ctx_glob", "ctx_find", "ctx_ls", "ctx_patch", "ctx_edit", "ctx_search", "ctx_tree"]
 thinking = "high"
-skills = ["crucible", "refactorer-rust", "reviewer-coverage"]
+skills = ["crucible"]
 
 [roles.green]
 tools = ["read", "write", "edit", "grep", "find", "ls", "ctx_shell", "ctx_read", "ctx_grep", "ctx_glob", "ctx_find", "ctx_ls", "ctx_patch", "ctx_edit", "ctx_search", "ctx_tree"]
 thinking = "medium"
-skills = ["crucible", "refactorer-rust", "reviewer-coverage"]
+skills = ["crucible"]
 
 [roles.verify]
 tools = ["read", "grep", "find", "ls", "ctx_shell", "ctx_read", "ctx_grep", "ctx_glob", "ctx_find", "ctx_ls", "ctx_search", "ctx_tree"]
 thinking = "high"
-skills = ["reviewer", "reviewer-coverage", "reviewer-architecture", "reviewer-security", "reviewer-style", "reviewer-syntax"]
+skills = []
 
 [roles.fix]
 tools = ["read", "write", "edit", "grep", "find", "ls", "ctx_shell", "ctx_read", "ctx_grep", "ctx_glob", "ctx_find", "ctx_ls", "ctx_patch", "ctx_edit", "ctx_search", "ctx_tree"]
 thinking = "high"
-skills = ["crucible", "refactorer-rust", "reviewer-coverage"]
+skills = ["crucible"]
 
 [gotchas]
 red = '''
 - **Run only YOUR tests:** `test --crate <c> --filter 'test(/<your_pattern>/)' --agent YOUR_AGENT_ID` — never a whole test file unfiltered; report only your new tests' results, not pass counts carried over from prior cycles. Compile-failure RED: `check --crate <c> --tests --agent YOUR_AGENT_ID`.
 - **SUT compile failure vs. RED-agent bug.** A compile error because the target type/field/fn does not exist YET is a valid RED. A compile error because you called a method that does not exist on a THIRD-PARTY type is your bug and wastes a cycle — verify every unfamiliar crate API against the source at the `Cargo.lock` version before using it (see "Stack mechanics"), and match how sibling tests already use that crate.
-- **Mode 2 (fix test compilation):** use the `refactorer-rust` skill for renames, `use` rewrites and signature migrations across files — its tool priority is `cargo fix` > `ast-grep` > `cargo clippy --fix` > manual `edit`. No `sed`/`awk` on `.rs` files. Tests must COMPILE after Mode 2; they may still fail.
+- **Mode 2 (fix test compilation):** for renames, `use` rewrites and signature migrations across files the tool priority is `cargo fix` > `ast-grep` > `cargo clippy --fix` > manual `edit`. No `sed`/`awk` on `.rs` files. Tests must COMPILE after Mode 2; they may still fail.
 - **Structure:** `#[cfg(test)] mod tests { use super::*; … }` at the bottom of the module; group with nested `mod`s if organisation matters — never a separate `<thing>_tests.rs` in `src/`. Cross-module tests go in `<crate>/tests/<feature>.rs`.
 - **Async:** `#[tokio::test]` only in crates that already depend on tokio. Respect the project's crate-boundary rules in tests too — a test must not pull an async runtime or I/O crate into a crate whose boundary forbids it.
 - **Assertions:** `assert_eq!`/`assert_ne!` with a message naming the expectation; for a `Result`, assert the specific `Err` variant or message, not just `is_err()`; use `pretty_assertions::assert_eq` for large structures when the workspace already depends on it.
@@ -88,7 +88,7 @@ green = '''
 - **Errors:** typed library errors via `thiserror` (`#[derive(Debug, thiserror::Error)]`, one variant per failure with its context); `anyhow` only at a binary's top level — match whatever the crate's siblings already use.
 - **Feature flags are additive:** never put code behind a flag that REMOVES something available without it. When your code is feature-gated, `check` it with the default feature set AND with the gating features.
 - **Crate boundaries:** the project's CLAUDE.md names which crates may depend on what (e.g. a pure AST crate with no async runtime or I/O). Adding a forbidden dependency is a design change — `ESCALATION:`, never just add it.
-- **Mechanical multi-file changes** (renames, `use` rewrites, signature changes): the `refactorer-rust` skill — `cargo fix` > `ast-grep` > `cargo clippy --fix` > manual. No `sed` on `.rs`.
+- **Mechanical multi-file changes** (renames, `use` rewrites, signature changes): `cargo fix` > `ast-grep` > `cargo clippy --fix` > manual. No `sed` on `.rs`.
 - **After each file:** `check --crate <c> --agent YOUR_AGENT_ID`. **Before finishing:** `clippy --crate <c> --deny-warnings --agent YOUR_AGENT_ID` and fix every warning.
 '''
 verify = '''
@@ -114,7 +114,7 @@ fix = '''
 | Clippy warnings | `clippy --crate <c> --deny-warnings --agent YOUR_AGENT_ID`; typical fixes: `&String` → `&str` in params, drop a `.clone()` where a borrow suffices, `if let Some(x) = o { x } else { d }` → `o.unwrap_or(d)`. |
 | Test in a CR/cycle-named file | ESCALATE — relocating it is a separate orchestrator-approved consolidation step, not a one-off fix. |
 - **Per finding:** `test --crate <c> --filter 'test(/<relevant_test>/)' --agent YOUR_AGENT_ID`, then `check --crate <c> --agent YOUR_AGENT_ID` to catch cascades, then commit that one fix.
-- **Mechanical multi-file changes:** the `refactorer-rust` skill (`cargo fix` > `ast-grep` > `cargo clippy --fix` > manual); `edit` for a trivial known old→new; no `sed` on `.rs`.
+- **Mechanical multi-file changes:** `cargo fix` > `ast-grep` > `cargo clippy --fix` > manual; `edit` for a trivial known old→new; no `sed` on `.rs`.
 - **Respect crate boundaries** (a fix in a pure crate must not introduce an I/O or async dependency) and **feature gates** (test gated code with its `--features`; confirm the test count).
 - Targeted crates only — never a workspace run, never llvm-cov; coverage is the orchestrator's gate.
 '''

@@ -98,6 +98,13 @@ scaffolded `docs/memory/` paths, PRD §D5 amended). Two ontology citations remai
 scaffolded AGENTS.md and `skills-src/model-b/SKILL.md:12` cites the same — both repoint to the
 frozen import `docs/research/DN-model-b-language.md` (imported 2026-09-21).
 
+**Now a stall, not just a stale path (measured 2026-09-24, CR-MDB-036 C5 VERIFY):** every rendered
+definition — including this repository's `.pi/agents/` — tells agents to read
+`~/.claude/skills/model-b/references/sub-agent-procedure.md` and `~/.claude/skills/crucible/…`.
+`~/.claude/` is outside the permission policy, so each such read stalls a background agent on an
+unanswered prompt (10 minutes), the same cause CR-MDB-036 §S9 removed for unshipped skills. The
+repoint target is `~/.agents/skills/`.
+
 ### §S3 — Worktree convention
 Per §S0: rename across `block-write-outside-worktree`, `worktree-flow.py`, `bootstrap`,
 `shutdown`, `orchestration-track`, `sub-agent-procedure`; file `contracts/worktree-layout.md`.

@@ -108,6 +108,15 @@ dropped. The `MODELB_REALHOME_GATE` paragraph is deleted with the module.
   has an unsorted import block; `tests/test_installer_assets.py:140-141` passes an unnarrowed
   `ModuleSpec | None` to `module_from_spec` and calls `.loader.exec_module` on it, and `:1223`
   iterates a possibly-`None` value. Same hygiene class; no behaviour defect.
+- **Added 2026-09-24 (CR-MDB-036 C2 RED finding):** many `_run_module` calls in
+  `tests/test_installer.py` still leave `HOME` (and some `PATH`) unpinned, so they read the real
+  `~/.crucible` manifest; since CR-MDB-036 the default stack selection includes python, so they
+  also run the PATH `python3` import check for `xmlrunner`/`coverage`. Read-only and harmless, but
+  not hermetic — the same real-home-read class this CR removes.
+- **Added 2026-09-24 (pi-lens, pre-existing):** `tests/test_installer.py:1022,1026` (CR-MDB-014) and
+  `tests/test_installer_correctness.py:44,918,974,1015,1042` (CR-MDB-033) — unsorted import block,
+  unnarrowed `Optional` values reaching `write_bytes`/`chmod`/`iter`/`rstrip`/`startswith`, and
+  string concatenation in loops. Same hygiene class; no behaviour defect.
 
 ## Acceptance criteria
 

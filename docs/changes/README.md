@@ -604,3 +604,7 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   [--all-features] [--clean] [--with-docker]` without `--profile`, which the released client
   supports (default `ci`) and CR-024's generated tier guidance uses. A skills-src edit needs a CR;
   CR-MDB-020 already edits that template's client paths — fold it in there.
+- 2026-09-24 — **Deferred (CR-MDB-036 C5 VERIFY finding 6):** `preflight._install_sandesh` still
+  captures and discards `uv tool install sandesh-relay` output (a failure shows only the exit code)
+  and is the one confirmed install without a re-probe. CR-036 §S3 kept Sandesh's behaviour as-is;
+  fold into the next installer CR (CR-MDB-037 or later).

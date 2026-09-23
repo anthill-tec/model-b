@@ -24,10 +24,14 @@ Stdlib only: ast + unittest + subprocess + sys + os + shutil + tempfile +
 importlib.util + pathlib.
 """
 
+import argparse
 import ast
+import contextlib
 import importlib.util
+import io
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -35,6 +39,9 @@ import tempfile
 import tomllib
 import unittest
 from pathlib import Path
+from unittest import mock
+
+from modelb_axi import requirements as _requirements
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 MODULE_DIR = REPO_ROOT / "modelb_axi"
@@ -508,9 +515,13 @@ class InitEmissionSoloRunTest(unittest.TestCase):
         content = agents_path.read_text(encoding="utf-8")
         self.assertIn("xproj", content, f"S3.3: AGENTS.md must carry the token; got content={content!r}")
         self.assertIn("XP", content, f"S3.3: AGENTS.md must carry the acronym; got content={content!r}")
+        # Migrated (CR-MDB-036 \u00a7S6): the capability contract now names the
+        # python toolchain (`python3`), so a whole-file "python" check would
+        # pass with the skill freeze gone -- scope it to the freeze section.
+        freeze = _md_section(content, "## Skill freeze")
         self.assertIn(
-            "python", content.lower(),
-            f"S3.3: AGENTS.md must carry the python skill-freeze content; got content={content!r}",
+            "python", freeze.lower(),
+            f"S3.3: AGENTS.md's skill-freeze section must carry the python stack; got section={freeze!r} content={content!r}",
         )
         self.assertIn(
             "grouping of CRs", content,
@@ -1227,11 +1238,13 @@ class HarnessAnchorMatrixTest(unittest.TestCase):
             agents_path.is_file(),
             f"S3.3: AGENTS.md must be emitted; init stderr={result.stderr!r}",
         )
-        content = agents_path.read_text(encoding="utf-8").lower()
+        content = _md_section(
+            agents_path.read_text(encoding="utf-8"), "## Harness anchors",
+        ).lower()
         for marker in ("hermes", "pi.dev", "opencode"):
             self.assertIn(
                 marker, content,
-                "S3.3: with all four roster harnesses installed, AGENTS.md "
+                "S3.3: with all four roster harnesses installed, AGENTS.md's harness-anchors section "
                 f"must carry a native-anchor note naming {marker!r}; got content={content!r}",
             )
 
@@ -1244,7 +1257,18 @@ class HarnessAnchorMatrixTest(unittest.TestCase):
             f"init stderr={result.stderr!r}",
         )
         agents_path = target / "AGENTS.md"
-        content = agents_path.read_text(encoding="utf-8").lower() if agents_path.is_file() else ""
+        # Migrated (CR-MDB-036 \u00a7S6): the Pi capability contract may name Pi
+        # anywhere in the file; the anchor rule governs the anchors section.
+        self.assertTrue(
+            agents_path.is_file(),
+            f"S3.3: AGENTS.md must be emitted; init stderr={result.stderr!r}",
+        )
+        full = agents_path.read_text(encoding="utf-8")
+        self.assertIn(
+            "## Harness anchors", full,
+            f"S3.3: AGENTS.md must carry its harness-anchors section; got content={full!r}",
+        )
+        content = _md_section(full, "## Harness anchors").lower()
         for marker in ("hermes", "pi.dev", "opencode"):
             self.assertNotIn(
                 marker, content,
@@ -1397,6 +1421,285 @@ class RegisterHonestNoOpTest(unittest.TestCase):
             "F1: the failure output must say registration is not "
             f"implemented; got stdout={result.stdout!r} stderr={result.stderr!r}",
         )
+
+
+def _md_section(content: str, heading_prefix: str) -> str:
+    """The Markdown section whose heading line starts with
+    ``heading_prefix``, up to (not including) the next ``## `` heading;
+    ``""`` when no such heading exists. Test-side only."""
+    out: list[str] = []
+    inside = False
+    for line in content.splitlines():
+        if not inside and line.startswith(heading_prefix):
+            inside = True
+            out.append(line)
+            continue
+        if inside and line.startswith("## "):
+            break
+        if inside:
+            out.append(line)
+    return "\n".join(out)
+
+
+def _names(text: str, token: str) -> bool:
+    """True when ``token`` occurs in ``text`` as a whole name -- not as part
+    of a longer identifier (``lean-ctx`` inside ``pi-lean-ctx`` is not a
+    mention of ``lean-ctx``; ``cargo`` inside ``cargo-nextest`` is not a
+    mention of ``cargo``)."""
+    return re.search(
+        rf"(?<![\w-]){re.escape(token)}(?![\w-])", text,
+    ) is not None
+
+
+def _tier1_rows() -> list[dict]:
+    return [row for row in _requirements.REQUIREMENTS if row["tier"] == 1]
+
+
+def _line_pairing(content: str, name: str, remediation: str) -> list[str]:
+    """Lines of ``content`` naming ``name`` AND carrying ``remediation``
+    verbatim -- the \u00a7S6 "each with its remediation" pairing."""
+    return [
+        line for line in content.splitlines()
+        if _names(line, name) and remediation in line
+    ]
+
+
+def _run_init_subprocess(stacks: str, harnesses=("pi",)):
+    """A real `modelb-axi --yes init` (production entry) into a fresh
+    sandbox; returns ``(result, AGENTS.md text or "", dirs to clean)``."""
+    tmp_home = tempfile.mkdtemp(prefix="modelb-axi-contract-home-")
+    tmp_target = tempfile.mkdtemp(prefix="modelb-axi-contract-target-")
+    _write_install_toml(tmp_home, harnesses=harnesses)
+    result = _run_module(
+        "--yes", "init",
+        "--name", "X", "--token", "xproj", "--acronym", "XP",
+        "--mode", "solo", "--repo-shape", "standalone",
+        "--stacks", stacks, "--owner", "tester",
+        "--target", tmp_target,
+        "--modelb-home", tmp_home,
+        timeout=60,
+    )
+    agents_path = Path(tmp_target) / "AGENTS.md"
+    text = agents_path.read_text(encoding="utf-8") if agents_path.is_file() else ""
+    return result, text, (tmp_home, tmp_target)
+
+
+class ScaffoldCapabilityContractTest(unittest.TestCase):
+    """CR-MDB-036 \u00a7S6 AC -- `init` writes the tier-1 capabilities and the
+    selected stacks' toolchains, with remediations, into the scaffolded
+    `AGENTS.md`; a python-only project names no other stack's toolchain.
+
+    Every expected value is read from ``modelb_axi.requirements``
+    (``REQUIREMENTS`` tier-1 rows, ``STACK_TOOLCHAINS``) -- never a hand-
+    copied string -- and driven through the real `init` entry point.
+    Pairing is asserted per line: a capability/probe name and its own
+    remediation on one line, so a list of names followed by an unrelated
+    list of remediations does not pass."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls._result, cls._content, cls._dirs = _run_init_subprocess("python")
+
+    @classmethod
+    def tearDownClass(cls):
+        for d in cls._dirs:
+            shutil.rmtree(d, ignore_errors=True)
+
+    def _precondition(self):
+        self.assertEqual(
+            self._result.returncode, 0,
+            f"precondition: init must succeed; stdout={self._result.stdout!r} "
+            f"stderr={self._result.stderr!r}",
+        )
+        self.assertTrue(self._content, "precondition: AGENTS.md must be emitted")
+
+    def test_every_tier1_capability_is_named_with_its_remediation(self):
+        self._precondition()
+        rows = _tier1_rows()
+        # Bound on the data itself: \u00a7S1 declares exactly three tier-1 rows.
+        self.assertEqual(
+            sorted(r["id"] for r in rows), ["dispatch", "lean-ctx", "permissions"],
+            f"requirements data drifted from \u00a7S1's tier-1 table: {rows!r}",
+        )
+        for row in rows:
+            with self.subTest(capability=row["id"]):
+                self.assertTrue(
+                    _line_pairing(self._content, row["id"], row["remediation"]),
+                    f"\u00a7S6: AGENTS.md must name tier-1 capability {row['id']!r} "
+                    f"with its remediation {row['remediation']!r} on one line; "
+                    f"got content={self._content!r}",
+                )
+
+    def test_python_only_project_names_python_toolchain_and_no_other_stacks(self):
+        self._precondition()
+        python_probes = _requirements.STACK_TOOLCHAINS["python"]
+        for probe in python_probes:
+            with self.subTest(probe=probe["name"]):
+                self.assertTrue(
+                    _line_pairing(self._content, probe["name"], probe["remediation"]),
+                    f"\u00a7S6: a python project's AGENTS.md must name toolchain probe "
+                    f"{probe['name']!r} with its remediation "
+                    f"{probe['remediation']!r} on one line; got content={self._content!r}",
+                )
+        # NEGATIVE -- no other stack's toolchain: neither a probe name nor
+        # a remediation from any unselected stack's STACK_TOOLCHAINS row.
+        python_names = {p["name"] for p in python_probes}
+        python_remediations = {p["remediation"] for p in python_probes}
+        for stack, probes in _requirements.STACK_TOOLCHAINS.items():
+            if stack == "python":
+                continue
+            for probe in probes:
+                if probe["name"] not in python_names:
+                    self.assertFalse(
+                        _names(self._content, probe["name"]),
+                        f"\u00a7S6: a python-only AGENTS.md must not name {stack}'s "
+                        f"toolchain probe {probe['name']!r}; got content={self._content!r}",
+                    )
+                if probe["remediation"] not in python_remediations:
+                    self.assertNotIn(
+                        probe["remediation"], self._content,
+                        f"\u00a7S6: a python-only AGENTS.md must not carry {stack}'s "
+                        f"remediation {probe['remediation']!r}",
+                    )
+
+
+class ScaffoldCapabilityContractMultiStackTest(unittest.TestCase):
+    """CR-MDB-036 \u00a7S6 AC, edge -- with `--stacks python,rust` BOTH selected
+    stacks' toolchains are written with remediations, and no unselected
+    stack's (arduino, bun, quarkus/java) toolchain appears."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls._result, cls._content, cls._dirs = _run_init_subprocess("python,rust")
+
+    @classmethod
+    def tearDownClass(cls):
+        for d in cls._dirs:
+            shutil.rmtree(d, ignore_errors=True)
+
+    def test_each_selected_stack_toolchain_named_and_unselected_absent(self):
+        self.assertEqual(
+            self._result.returncode, 0,
+            f"precondition: init must succeed; stderr={self._result.stderr!r}",
+        )
+        selected = ("python", "rust")
+        for stack in selected:
+            for probe in _requirements.STACK_TOOLCHAINS[stack]:
+                with self.subTest(stack=stack, probe=probe["name"]):
+                    self.assertTrue(
+                        _line_pairing(self._content, probe["name"], probe["remediation"]),
+                        f"\u00a7S6: AGENTS.md for --stacks python,rust must name {stack}'s "
+                        f"toolchain probe {probe['name']!r} with its remediation "
+                        f"{probe['remediation']!r}; got content={self._content!r}",
+                    )
+        selected_names = {
+            p["name"] for s in selected for p in _requirements.STACK_TOOLCHAINS[s]
+        }
+        for stack, probes in _requirements.STACK_TOOLCHAINS.items():
+            if stack in selected:
+                continue
+            for probe in probes:
+                if probe["name"] in selected_names:
+                    continue
+                self.assertFalse(
+                    _names(self._content, probe["name"]),
+                    f"\u00a7S6: unselected stack {stack!r}'s toolchain probe "
+                    f"{probe['name']!r} must not be named; got content={self._content!r}",
+                )
+                self.assertNotIn(probe["remediation"], self._content)
+
+
+class ScaffoldCapabilityContractRemediationOnlyTest(unittest.TestCase):
+    """CR-MDB-036 cycle-91 finding 11 -- the scaffolded AGENTS.md states the
+    remediation only: no installer-only wording (e.g. "named, never run by
+    modelb-axi") in its capability contract, for every stack."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls._result, cls._content, cls._dirs = _run_init_subprocess(
+            "arduino,bun,python,quarkus,rust,java",
+        )
+
+    @classmethod
+    def tearDownClass(cls):
+        for d in cls._dirs:
+            shutil.rmtree(d, ignore_errors=True)
+
+    def test_contract_carries_no_installer_only_wording(self):
+        self.assertEqual(self._result.returncode, 0, self._result.stderr)
+        start = self._content.find("## Harness capability contract")
+        self.assertNotEqual(start, -1, f"precondition: contract present; {self._content!r}")
+        end = self._content.find("\n## ", start + 1)
+        section = self._content[start:end if end != -1 else None]
+        for phrase in ("modelb-axi", "never run", "named,"):
+            with self.subTest(phrase=phrase):
+                self.assertNotIn(
+                    phrase, section,
+                    f"finding 11: installer-only wording in AGENTS.md; section={section!r}",
+                )
+
+
+class ScaffoldCapabilityContractReadsRequirementsDataTest(unittest.TestCase):
+    """CR-MDB-036 \u00a7S1/\u00a7S6 -- the contract is DATA read by the scaffold
+    ("adding a requirement touches only that structure"): changing a row in
+    ``modelb_axi.requirements`` changes the scaffolded AGENTS.md, and the
+    replaced text disappears. In-process ``scaffold.run_init`` (the only way
+    to alter the data mid-run; same idiom as test_installer_correctness's
+    ``_render_agents_md`` injection). The rows and the toolchain dict are
+    mutated IN PLACE (``mock.patch.dict``), so the patch lands whatever
+    import style the scaffold uses."""
+
+    _SENTINEL_PROBE = {
+        "name": "sentinel-probe-036",
+        "kind": "binary",
+        "remediation": "run sentinel-installer-036 --for-s6",
+        "install": None,
+    }
+    _SENTINEL_TIER1_REMEDIATION = "pi install npm:sentinel-dispatch-036"
+
+    def setUp(self):
+        self._tmp_home = tempfile.mkdtemp(prefix="modelb-axi-contract-data-home-")
+        self._tmp_target = tempfile.mkdtemp(prefix="modelb-axi-contract-data-target-")
+        self.addCleanup(shutil.rmtree, self._tmp_home, ignore_errors=True)
+        self.addCleanup(shutil.rmtree, self._tmp_target, ignore_errors=True)
+        _write_install_toml(self._tmp_home, harnesses=("pi",))
+
+    def test_agents_md_follows_the_requirements_data_not_a_copy(self):
+        from modelb_axi import scaffold
+
+        original_dispatch = _requirements.requirement("dispatch")["remediation"]
+        original_python = [p["remediation"] for p in _requirements.STACK_TOOLCHAINS["python"]]
+        args = argparse.Namespace(
+            name="X", token="xproj", acronym="XP", mode="solo",
+            repo_shape="standalone", stacks="python", owner="tester",
+            target=self._tmp_target, dry_run=False, no_commit=True,
+            register=False, harnesses=None,
+        )
+        with mock.patch.dict(
+            _requirements.STACK_TOOLCHAINS, {"python": (dict(self._SENTINEL_PROBE),)},
+        ), mock.patch.dict(
+            _requirements.requirement("dispatch"),
+            {"remediation": self._SENTINEL_TIER1_REMEDIATION},
+        ), contextlib.redirect_stdout(io.StringIO()), \
+                contextlib.redirect_stderr(io.StringIO()) as err:
+            exit_code = scaffold.run_init(args, Path(self._tmp_home))
+        self.assertEqual(exit_code, 0, f"precondition: init must succeed; stderr={err.getvalue()!r}")
+        content = (Path(self._tmp_target) / "AGENTS.md").read_text(encoding="utf-8")
+        # POSITIVE -- the patched data is what is written, paired per line.
+        self.assertTrue(
+            _line_pairing(content, "dispatch", self._SENTINEL_TIER1_REMEDIATION),
+            f"\u00a7S6: AGENTS.md must render the dispatch row's remediation from "
+            f"the requirements data; got content={content!r}",
+        )
+        self.assertTrue(
+            _line_pairing(content, self._SENTINEL_PROBE["name"], self._SENTINEL_PROBE["remediation"]),
+            f"\u00a7S6: AGENTS.md must render the python toolchain from "
+            f"STACK_TOOLCHAINS; got content={content!r}",
+        )
+        # NEGATIVE -- the replaced values are gone (no hand-copied strings).
+        self.assertNotIn(original_dispatch, content)
+        for remediation in original_python:
+            self.assertNotIn(remediation, content)
 
 
 class RegistryKeyDocPropagationTest(unittest.TestCase):

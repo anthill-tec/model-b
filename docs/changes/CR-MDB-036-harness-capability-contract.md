@@ -53,11 +53,19 @@ harness capability — the tool names it provides (CR-MDB-020 §S5 checks skills
 | 1 | `permissions` | `@gotgenes/pi-permission-system` | recommended | always |
 | 2 | `uv` | uv | required | always |
 | 2 | `sandesh` | `sandesh-relay` (via `uv tool install`) | recommended, install-on-confirm | always |
-| 2 | `crucible` | Crucible's released clients: `~/.crucible/clients/crucible-clients.json` | recommended | always |
-| 2 | `crucible-client` | `~/.crucible/clients/<client>-crucible.py` | recommended | per selected stack |
+| 2 | `crucible` | Crucible's released clients: the manifest `~/.crucible/crucible-clients.json` | recommended | always |
+| 2 | `crucible-client` | the manifest's `clients[<key>]` | recommended | per selected stack |
 | 2 | `python3`, `bash` | the OS | recommended | always (tool scripts; `gate-lock.sh` needs `bash`) |
 | 2 | `gh`, `jq` | their projects | recommended | always |
 | 3 | toolchain | see §S8 | recommended | per selected stack |
+
+**The Crucible manifest** (measured 2026-09-24; amended at C1): `~/.crucible/crucible-clients.json`
+sits at the install root, not under `clients/`. It is JSON whose `clients` object maps a key
+(`arduino`, `bun`, `mvn`, `python`, `rust`) to the absolute path of a released client, beside
+`version` and config paths. `crucible` is `detected` iff the manifest exists and parses with a
+`clients` object, `absent` if it is missing or has no `clients` object, and `unknown` if it does not
+parse. A stack's `crucible-client` is `detected` iff `clients[<key>]` names an existing file, where
+the key is the stack name except `quarkus` and `java`, which use `mvn`; no manifest means `absent`.
 
 The Crucible server is not probed: it is up or down from minute to minute, and a recorded verdict
 would be stale on arrival. Ingest failures surface at run time, where the clients report them.
@@ -73,10 +81,11 @@ crashes on another tool's configuration and reads no key but `packages`. The ins
 personal settings only; project `.pi/settings.json` is a project's concern.
 
 ### §S3 — Policy per capability
-- A missing **required** capability (`dispatch`, `lean-ctx`, `uv`) exits non-zero with outcome
+- A missing **required** harness capability (`dispatch`, `lean-ctx`) exits non-zero with outcome
   `preflight_failed`, naming the asset families that would be inert — unless
   `--allow-missing-capabilities` is given, which is documented in `--help` and recorded in
-  `install.toml`.
+  `install.toml`. A missing `uv` stays the existing bootstrap failure, which no flag overrides
+  (amended at C1: nothing can be installed without it).
 - `unknown` and a missing **recommended** capability WARN, naming the consequence, and continue.
 - Model B never installs a third-party extension, and never edits `settings.json`. For a missing
   extension it names Pi's own command (`pi install npm:<package>`) and offers to run it only on an
@@ -84,8 +93,9 @@ personal settings only; project `.pi/settings.json` is a project's concern.
   existing install-on-confirm behaviour (it is Model B's own ecosystem).
 
 ### §S4 — Record the verdicts
-`install.toml` gains a `[capabilities]` table (id → verdict), the selected `stacks` in `[install]`,
-and the override flag when used, so a later run or a support question can see what the harness
+`install.toml` gains a `[capabilities]` table (id → verdict; a selected stack's verdicts use quoted
+keys `"<stack>.<probe>"`, e.g. `"python.client"`, `"python.xmlrunner"`, `"rust.cargo"` — amended at
+C1), the selected `stacks` in `[install]`, and the override flag when used, so a later run or a support question can see what the harness
 looked like at install time without re-probing.
 
 ### §S6 — Scaffolded projects inherit the contract
@@ -131,6 +141,19 @@ is missing.
   privileges (a distro JDK package) is named, never run. Declining is recorded and the install
   continues.
 
+### §S9 — Agent definitions name only skills Model B ships (user ruling 2026-09-24)
+CR-MDB-025 turned each role's `skills` list into a "Load these skills first:" body line, so agents
+now try to load them. Nine of the ten names in `generator/stacks/*.toml` (`reviewer`,
+`reviewer-coverage`, `reviewer-architecture`, `reviewer-security`, `reviewer-style`,
+`reviewer-syntax`, `reviewer-quarkus`, `refactorer-java`, `refactorer-rust`) are not Model B skills:
+they exist only under the user's `~/.claude/skills/`, outside the permission policy, and each read
+stalls a dispatched agent for 10 minutes on an unanswered prompt (measured at C1 RED, 20:03–20:13).
+Before CR-MDB-025 these names sat in an inert `skills:` key and were never loaded.
+
+A stack's role `skills` list names only bundles under `skills-src/` (deployed to
+`~/.agents/skills/`). The nine are removed; a role left with none carries no skills line. The fleet
+and this repository's `.pi/agents/` are re-rendered.
+
 ## Acceptance criteria
 
 ### §S1
@@ -138,8 +161,10 @@ is missing.
       requirement touches only that structure and its test.
 - [ ] Each tier-1 row lists the tool names its provider supplies: `dispatch` → `subagent`,
       `get_subagent_result`, `steer_subagent`; `lean-ctx` → every `ctx_*` tool and `lean_ctx`.
-- [ ] The `crucible` verdict comes from `~/.crucible/clients/crucible-clients.json`, never from a
-      `crucible` binary on PATH; no probe contacts a Crucible server.
+- [ ] The `crucible` and per-stack `crucible-client` verdicts follow the manifest rules in §S1
+      (`~/.crucible/crucible-clients.json`; `quarkus`/`java` → `mvn`), one test per rule, including a
+      manifest found only under `clients/` reading `absent`; never a `crucible` binary on PATH; no
+      probe contacts a Crucible server.
 
 ### §S2
 - [ ] The probe reads `$PI_CODING_AGENT_DIR/settings.json` when the variable is set, else
@@ -154,6 +179,9 @@ is missing.
       the inert asset families; with `--allow-missing-capabilities` the install proceeds and
       `install.toml` records the override.
 - [ ] A missing `permissions`, or an `unknown` verdict, WARNs with its consequence and continues.
+- [ ] For a missing extension, an interactive run offers `pi install npm:<package>` and runs it only
+      after an explicit yes; declining is recorded and the policy above then applies. Under `--yes`
+      it is never run.
 - [ ] A non-interactive (`--yes`) run against a sandbox agent dir lacking every extension installs
       nothing and leaves `settings.json` byte-identical — asserted by a diff.
 - [ ] The pre-flight prints, before any remediation, one line per group on stderr:
@@ -163,6 +191,8 @@ is missing.
 ### §S4
 - [ ] `install.toml` carries `[capabilities]`, `[install].stacks`, and the override flag when used;
       a round-trip test writes and reads them back, and a pre-036 `install.toml` still loads.
+- [ ] Each selected stack's client and toolchain verdicts are recorded under `"<stack>.<probe>"` keys
+      (`"<stack>.client"` for the Crucible client); an unselected stack records none.
 
 ### §S6
 - [ ] `init` writes the tier-1 capabilities and the selected stacks' toolchains, with remediations,
@@ -190,6 +220,13 @@ is missing.
 - [ ] Under `--yes`, no toolchain installer runs; interactively, one runs only after an explicit
       yes, an elevated-privilege installer is never run, and declining is recorded.
 
+### §S9
+- [ ] Every skill named in a `generator/stacks/*.toml` role `skills` list is a directory under
+      `skills-src/` carrying a `SKILL.md` — a gate, with a detector fixture proving it bites on
+      `reviewer-coverage`.
+- [ ] No rendered definition under `generator/agents/` or `.pi/agents/` names a skill outside
+      `skills-src/`; `build.py --check` is clean and `.pi/agents/` equals `modelb-axi agents` output.
+
 ### Close-out
 - [ ] **Measured, not assumed:** the installer's harness verdicts, run read-only against this
       machine's real agent dir, report `dispatch`, `lean-ctx` and `permissions` as `detected`, and a
@@ -199,7 +236,9 @@ is missing.
 - [ ] Tests asserting the old `deps:` line, the `crucible` binary probe, the `install.toml` schema,
       or the scaffolded `AGENTS.md` — and tests depending on them without naming them — are migrated
       and listed by id in the RED report. Starting set: `test_installer`,
-      `test_installer_correctness`, `test_scaffold`.
+      `test_installer_correctness`, `test_scaffold` — including
+      `test_installer.DependencyPreflightReportingTest.test_preflight_deps_report_precedes_harness_targeting_stage`,
+      which still reads the real `~/.crucible` (found at C1 GREEN).
 
 ## Estimated size
 
