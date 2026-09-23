@@ -102,6 +102,9 @@ sites; this CR makes sure Pi has coverage before that.)
 `<Topic><Section>Test`/`test_s<n>_`; wave-3+ `<Feature>Test`/descriptive) — or the rule is
 dropped. The `MODELB_REALHOME_GATE` paragraph is deleted with the module.
 
+
+- **Added 2026-09-23 (pi-lens, pre-existing):** `generator/build.py:161` reads `__doc__.splitlines()` without narrowing an `Optional[str]`; `build.py:27`, `tests/test_rust_stack_generator.py:43` have unsorted import blocks; `tests/test_client_verb_sweep.py:554` uses a `str.format` call. None is a behaviour defect; all are the type-narrowing/hygiene class this CR already carries.
+
 ## Acceptance criteria
 
 - [ ] `grep -r "data_projects/crucible" tests/` → 0; the extended AST gate catches a

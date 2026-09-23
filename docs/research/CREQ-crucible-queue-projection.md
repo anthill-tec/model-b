@@ -85,3 +85,22 @@ so the evidence travels with the request.
 
 Context: Model B release 1.0.0, wave 2. Raised under the #1336 lineage as the standing
 client-contract channel.
+
+---
+
+## Pending outbound 2026-09-23 — CR-MDB-024 §S5, for the #1362–#1367 thread
+
+**Not a request; an ownership confirmation owed under #1367.** To be sent the next time
+`Mainline - Crucible` is listening (inactive since 2026-09-20; Sandesh refuses an inactive
+recipient).
+
+> Model B has taken ownership of the rust stack, as you asked in #1367 ("tell me and I will treat
+> those four as yours"). CR-MDB-024 merged 2026-09-23 (`3bef690`): `generator/stacks/rust.toml`
+> now renders `rust-{red,green,verify,fix}-agent.md` alongside the other four stacks, using the
+> released client `~/.crucible/clients/rust-crucible.py` with `--role`/`--cycle` and your
+> CR-CRU-111 tier mapping. Please treat those four as ours from here, so nobody double-fixes.
+>
+> Also: Model B has retired its vscode agents and the imported `crucible-report-vscode` bundle —
+> an IDE is not a stack; VS Code extension work is the bun/TypeScript stack. Since you own that
+> bundle's origin and #1369 recorded that `vscode-crucible.py` never shipped, you can drop it from
+> the set you maintain for Model B. Our imported roster is now six bundles.
