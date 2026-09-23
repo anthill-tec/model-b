@@ -144,19 +144,20 @@ mysteriously at first dispatch.
 ### §S7 — A stack selector on the INSTALLER, not just on `init`
 
 Measured 2026-09-22: `modelb-axi init` accepts `--stacks`, but the installer path does not — it
-carries `--harnesses` only, and `deploy.py` is **stack-blind**, shipping all 13 bundles and every
-agent definition to everyone. A python-only user receives arduino, quarkus and bun agents plus
-their `crucible-report-*` bundles, and then — under §S1's scoping — would be told about toolchains
-for stacks they never asked for.
+carries `--harnesses` only, and `deploy.py` is **stack-blind**, shipping all 13 bundles to
+everyone. A python-only user receives the arduino, quarkus and bun `crucible-report-*` bundles,
+and then — under §S1's scoping — would be told about toolchains for stacks they never asked for.
+(Agent definitions are not the installer's: they are rendered per project by `init` for the
+project's own stacks — DN §D17 — so this selector does not scope them.)
 
 - The installer gains **`--stacks CSV`**, mirroring `init`'s flag and vocabulary, defaulting to
   all supported stacks so existing behaviour is unchanged when the flag is omitted.
 - Interactively (no `--yes`), the user is offered the stack list and selects; `--yes` takes the
   default. Selection is a *choice*, never inferred by sniffing the machine — a developer who has
-  `cargo` installed has not thereby asked for the rust agents.
-- **Selection scopes what is deployed**: the stack's agent definitions and its `crucible-report-*`
-  bundle. Stack-neutral assets (`model-b`, `crucible`, `cr-authoring`, `git-workflow`,
-  `bootstrap`, `shutdown`, the hook scripts, the tool scripts) always deploy.
+  `cargo` installed has not thereby asked for the rust stack.
+- **Selection scopes what is deployed**: the stack's `crucible-report-*` bundle. Stack-neutral
+  assets (`model-b`, `crucible`, `cr-authoring`, `git-workflow`, `bootstrap`, `shutdown`, the hook
+  scripts, the tool scripts) always deploy.
 - The selection persists in `install.toml`, so a re-run, an upgrade, or a `doctor` knows which
   stacks this installation is for without asking again — and adding a stack later is a re-run
   with a wider `--stacks`, not a reinstall.
@@ -242,6 +243,22 @@ diffing four copies.
 - [ ] The guide is written for someone on a fresh machine who has never read a CR — no §S
       references, no CR ids, no internal vocabulary in the instructions themselves.
 
+### §S10 — Deployed assets report when they are stale
+
+Measured 2026-09-23: all six orchestrator skills deployed on this machine (`model-b`, `bootstrap`,
+`shutdown`, `crucible`, `git-workflow`, `cr-authoring`) differ from their repo source — the
+deployed copies are older, still teaching a retired `--phase` flag — and nothing said so. A
+deployed asset has three possible states against the manifest and the package it came from, and
+the installation must be able to tell them apart:
+
+- **current** — deployed hash = manifest hash = packaged source hash;
+- **stale** — deployed = manifest, but the packaged source has changed since (an upgrade that was
+  not redeployed); the remedy is a re-run;
+- **hand-modified** — deployed ≠ manifest; the remedy is the user's call (`--force-managed`).
+
+Running bare `modelb-axi` on an installed machine (the `already_installed` outcome, CR-MDB-033
+§S6) reports `stale` and `hand_modified` as lists of relative paths in its envelope. No new verb.
+
 ## Acceptance criteria
 
 - [ ] A single declarative structure in `modelb_axi/` lists every required capability with its
@@ -265,15 +282,23 @@ diffing four copies.
       against a real dispatch on this machine (an agent that can/cannot call `ctx_shell`), and the
       transcript reference is recorded in the CR's close-out.
 
+### §S10 — asset freshness
+
+- [ ] With a deployed skill left as installed and its packaged source changed, the
+      `already_installed` envelope lists it under `stale`, not under `hand_modified`.
+- [ ] With a deployed skill edited by hand, the envelope lists it under `hand_modified`, not under
+      `stale`.
+- [ ] With nothing changed, both lists are empty.
+
 ### §S7 — stack selection
 
 - [ ] The installer accepts `--stacks CSV` with the same vocabulary as `init`; omitting it
       selects all supported stacks, so current behaviour is unchanged.
 - [ ] An unsupported name is rejected with a message listing the supported stacks (the same
       rejection CR-MDB-024 §S4 requires for `vscode`).
-- [ ] With `--stacks python`, a sandbox install deploys the python agent definitions and
-      `crucible-report-python`, and deploys **no** arduino/bun/quarkus/rust agent definitions or
-      their report bundles; the stack-neutral bundles and both script classes still deploy.
+- [ ] With `--stacks python`, a sandbox install deploys `crucible-report-python` and **no**
+      arduino/bun/quarkus/rust report bundles; the stack-neutral bundles and both script classes
+      still deploy; and the installer writes no agent definitions for any stack (DN §D17).
 - [ ] Interactive selection is offered when neither `--stacks` nor `--yes` is given; `--yes`
       takes the default without reading stdin.
 - [ ] The selection round-trips through `install.toml`, and a re-run with a wider `--stacks` adds

@@ -3,7 +3,7 @@
 **Status:** PENDING
 **Type:** maintenance
 **Priority:** P1 (blocks release 1.0.0 — 53 shipped references resolve to a path Model B does not own, or to a mirror CR-MDB-016 retired)
-**Depends on:** CR-MDB-017 (rewrites the same bundle SKILL.mds for the `--role`/`--cycle` surface), CR-MDB-022 (repoints the same two memory templates for tooling paths, and runs FIRST in the wave) — both edges exist to serialize shared files, not to sequence logic
+**Depends on:** CR-MDB-017 (rewrites the same bundle SKILL.mds for the `--role`/`--cycle` surface), CR-MDB-022 (repoints the same two memory templates for tooling paths, and runs FIRST in the wave) — both edges exist to serialize shared files, not to sequence logic; CR-MDB-036 (§S5's tool contract checks against the harness capability declaration 036 §S1 introduces)
 **Labels:** crucible, skills, generator, contract, patch
 **Phase:** Wave 5
 **Design reference:** **`docs/research/DN-multi-harness-deploy-model.md` §D8 (external tools are orchestrated and verified, never vendored — and never a personal checkout) — the governing design note, user-ruled 2026-09-18** · Sandesh #1358/#1360 (the discovery-manifest contract and Crucible's confirmation of their own then-un-materialised stage, since SHIPPED) · the PUBLISHED manifest, measured at `~/.crucible/crucible-clients.json` 2026-09-18 (`version: "0.2.2"`, SIX keys — `clients`/`version`/`status` plus `config`/`server_config`/`shipped_config`) · CR-MDB-016 (the `~/.claude/scripts` client mirrors were retired) · user directive 2026-08-27 ("Model B will not maintain any client scripts of Crucible — that is the Crucible project's job; Model B only manages and updates the skills with reference to changes in Crucible") · user directive 2026-09-18 (Model B has nothing to do with the local Crucible PROJECT at any layer; only the production server and the published installed clients) · CR-MDB-017 §Risk and §Non-goals, which designated this CR
@@ -127,6 +127,11 @@ is not shipped by Model B.
 The vscode bundle is included if it carries the form; it has no live client, and its
 documented surface must still name the contract rather than a bare relative path.
 
+`skills-src/memory-templates/java-testing-practices.md` names the same Crucible development
+checkout (`~/Documents/data_projects/crucible/clients/mvn-crucible.py`) and is anchored the same
+way. Model B consumes Crucible's RELEASED client only (PRD, installer-orchestration boundary,
+2026-09-23).
+
 ### §S2 — Retire the mirror from the generator inputs
 `generator/stacks/*.toml`: `test_command`, `register_command` and `unregister_command` for
 all four stacks resolve to Crucible's contract location instead of
@@ -145,6 +150,22 @@ A stdlib `unittest` gate asserting, over `skills-src/` and `generator/` and excl
 `archive/`: zero `~/.claude/scripts/*-crucible.py` references, and zero unrooted
 `clients/<stack>-crucible.py` references. The gate names the permitted anchored form so a
 future edit that regresses either way fails.
+
+### §S5 — Contract tests against the released client and the target harness
+Every gate above checks Model B's text against a snapshot Model B wrote. This section checks it
+against the things the text instructs, so a Crucible release or a harness change surfaces as a
+failing test that names the line, rather than as an agent that cannot register.
+
+- **Client contract.** Every Crucible client invocation (`<stack>-crucible.py <verb> [flags]`)
+  under `generator/templates/`, `generator/stacks/`, `skills-src/` and `contracts/` is checked
+  against the RELEASED client: `~/.crucible/clients/<stack>-crucible.py <verb> --help` must
+  list the verb and every flag used. When the released client is absent the test SKIPS,
+  naming the missing file; it never passes vacuously. The existing hermetic guards are
+  unchanged — this lives in its own module.
+- **Tool contract.** Every tool name those same surfaces instruct an agent or orchestrator to
+  call must be a tool the target harness has, per the capability declaration of CR-MDB-036 §S1.
+  A skill written for one harness's tool set is exactly how `TaskUpdate` and the `sandesh_*`
+  MCP verbs reached a harness that has neither.
 
 ## Acceptance criteria
 
@@ -173,6 +194,9 @@ future edit that regresses either way fails.
       Crucible's own repository (source, clients, or docs) for any purpose; the sanctioned
       surfaces are the production server and the installed clients.
 
+- [ ] `skills-src/memory-templates/java-testing-practices.md` carries no Crucible
+      development-checkout path; it names the released client.
+
 ### §S2 / §S3
 - [ ] Zero occurrences of `~/.claude/scripts/` paired with `-crucible.py` under
       `generator/` and `skills-src/`.
@@ -189,6 +213,15 @@ future edit that regresses either way fails.
       anchored form.
 - [ ] The gate excludes `archive/` explicitly and asserts that exclusion, so archived
       history is never rewritten to satisfy it.
+
+### §S5
+- [ ] Every client invocation in the four named trees is checked against the released
+      client's `<verb> --help`; a fixture using a flag the client lacks fails naming the file,
+      line and flag; with no released client installed the module SKIPS with the missing path
+      in its reason.
+- [ ] Every tool name those trees instruct is checked against CR-MDB-036's declaration for the
+      target harness; a fixture instructing `TaskUpdate` fails for Pi, and one instructing
+      `todo` passes.
 
 ## Estimated size
 

@@ -16,6 +16,16 @@ load at all — they do not today; 030 fixes the runtime and owns the `-p` trust
 **Labels:** generator, installer, harness, agent-definitions, pi, feature
 **Phase:** Wave 5 (repo queue) · release 1.0.0 wave 2 (Crucible board)
 
+## Amendment 2026-09-23 — agents render per project (DN §D17, PRD D10.8)
+
+User ruling: agent definitions are harness-specific in format and location and carry project
+facts, so `init` renders them per project into each targeted harness's project directory (Pi:
+`.pi/agents/`), and the installer deploys none. §S1, §S4, §S5 and §S6 are rewritten to that.
+Where the Context, "The contract" and §S0 below describe `pi-archimedes` or a `~/.agents/agents/`
+target, they are superseded: the dispatcher is `@gotgenes/pi-subagents`, which reads only
+`<project>/.pi/agents/` then `~/.pi/agent/agents/`. The 20 Model B definitions formerly in
+`~/.agents/agents/` were removed 2026-09-23.
+
 ## Amendment 2026-09-22 — measured during CR-MDB-021, from four live dispatches
 
 Four sub-agents were dispatched during CR-MDB-021 (RED ×2, GREEN ×2, FIX, VERIFY). **Every one
@@ -274,8 +284,10 @@ is a mixed-provenance directory and proves nothing about what the reader accepts
 `generator/build.py` renders each stack × role into a **neutral definition** — a plain dict:
 `name`, `description`, `body`, `tools` (list of Claude-era intent names as authored),
 `model` (route id or `None`), `thinking`, `skills` (list) — then `_emit_pi(defn) -> str`
-serialises it. **One emitter.** No `_emit_claude_code()` is written (§D14 retired it; YAGNI); the
-neutral dict is what keeps a future emitter a one-function change (§D1).
+serialises it. **One emitter per harness** — the generator exists to tailor definitions to each
+harness's frontmatter (DN §D17); `_emit_pi()` is the only one written today. No
+`_emit_claude_code()` is written (§D14 retired it; YAGNI); the neutral dict is what keeps the next
+emitter a one-function change (§D1).
 
 `generator/stacks/*.toml` `[frontmatter]` free-text blocks are replaced by structured per-role
 tables so the emitter never parses YAML it wrote:
@@ -306,17 +318,24 @@ model) — the route-id values are Roundhouse PRD §D4's Tier-1 map and change o
 `CR-RND` that updates `contracts/switchyard-routes.md` and this TOML in one wave. No literal
 `sonnet`, `inherit`, `opus`, `haiku` survives anywhere under `generator/`.
 
-### §S4 — Agent definitions become an installer asset class
-`deploy.py` gains the fourth class with the same sha256-manifest idempotence as the other three:
-`AGENT_DEFS_STORE_RELDIR = ".agents/agents"`, `_agent_defs()` sourcing
-`generator/agents/*.md` from the packaged asset root, `[install].agent_defs_dir` written to
-`install.toml`. Deployed **once, user-scope, no per-harness symlink** — the `.agents/scripts`
-shape from CR-022 — because the reader is the shared store itself. Hand-modified destinations
-are skipped unless `--force-managed`. **§D3 ownership:** the installer writes only the names it
-generates (20; 24 with the vscode overlay once §D4 lands) and never writes, renames or deletes
-any other file in that directory — `inbox-analyst.md` is the standing example.
+### §S4 — Agent definitions are rendered per project by `init` (DN §D17)
+`init` renders definitions for the **project's** stacks into each **targeted harness's project
+agent directory** — for Pi, `<target>/.pi/agents/<name>.md`, which Pi reads before its global
+scope. Targeted harnesses are the installation's (`install.toml [install].harnesses`). Rendering
+uses the same neutral definition + per-harness emitter as `build.py` — one code path; the
+committed `generator/agents/` remains the drift-gated reference output.
 
-### §S5 — Nothing else changes in the installer
+A **re-render command** runs only this step for an already-initialised project, reading its stacks
+from the project's registry, so a template change reaches a project when it re-renders. `init`
+writes only the names it generates and never writes or deletes a file of any other name in the
+directory. How a re-render recognises its own earlier output versus a same-named hand-made file,
+and the command's name, are settled at this CR's gap-analysis (§S0).
+
+The installer deploys **no** agent definitions: no `.agents/agents` asset class, no
+`agent_defs_dir` key. Model B dog-foods the result: `model-b/.pi/agents/` — hand-made in the
+interim — becomes the re-render output.
+
+### §S5 — The installer is unchanged by this CR
 `pi` is already in `HARNESS_ROSTER`. `_emit_pi()` in `hooks.py` already exists (CR-015) and its
 runtime correctness is CR-019's. No roster change, no hook emitter, no `HARNESS_SKILL_DIRS`
 change. `~/.claude/agents/` is unowned legacy (§D14): never written, never deleted.
@@ -324,9 +343,9 @@ change. `~/.claude/agents/` is unowned legacy (§D14): never written, never dele
 ### §S6 — Runtime proof and the trust caveat
 The integration gate proves the **reader** accepts the output, not merely that a YAML parser
 does. Two proofs:
-1. **Discovery:** from a cwd whose nearest `.agents/agents/` is the sandbox root, archimedes'
-   discovery lists every emitted definition by name and none is skipped for a missing
-   required field.
+1. **Discovery:** from a sandbox project cwd, `@gotgenes/pi-subagents` lists every rendered
+   definition from the project's `.pi/agents/` by name, none is skipped for a missing required
+   field, and a rendered definition overrides a same-named global one.
 2. **Dispatch into a fresh worktree (measures DN §D16 consequence 4):** one emitted VERIFY
    definition is dispatched with `cwd` = a fresh git worktree carrying CR-015's emitted
    `.pi/extensions/` **as rebuilt by CR-MDB-030** (today's emitted extensions do not load: no
@@ -359,15 +378,20 @@ does. Two proofs:
       emits it verbatim.
 
 ### §S4
-- [ ] A sandboxed `--target-root` install writes `<root>/.agents/agents/<name>.md` for every
-      generated definition and nothing outside the sandbox.
-- [ ] Re-running reports every definition unchanged (hash idempotence); a hand-modified
-      destination is skipped without `--force-managed` and overwritten with it.
-- [ ] A pre-existing foreign file in the sandbox's `.agents/agents/` (e.g. `inbox-analyst.md`)
-      is byte-identical after install and after `--force-managed`.
-- [ ] `install.toml` records `agent_defs_dir` and the per-file hashes.
-- [ ] A built wheel contains `generator/agents/*.md` and an installed-binary run deploys them
-      (the CR-MDB-014/022 defect class: assets missing from the wheel).
+- [ ] `init` with `--stacks python` and installed harnesses `[pi]` writes exactly
+      `.pi/agents/python-{red,green,verify,fix}-agent.md` under `--target` — no other stack's
+      definitions, nothing outside `--target`.
+- [ ] Each rendered definition is byte-identical to what `build.py` emits for the same stack ×
+      role × harness (one code path).
+- [ ] A foreign file of another name in `.pi/agents/` is byte-identical after `init` and after a
+      re-render.
+- [ ] After a template change, the re-render command regenerates an initialised project's
+      definitions and changes no other file in the project.
+- [ ] The installer writes nothing under any agents directory, and `install.toml` carries no
+      `agent_defs_dir`.
+- [ ] An installed-wheel `init` (not a repo checkout) renders the definitions — the wheel carries
+      everything rendering needs (the CR-MDB-014/022 missing-asset defect class).
+- [ ] `model-b/.pi/agents/` equals the re-render output for this project.
 
 ### §S5
 - [ ] `HARNESS_ROSTER`, `HARNESS_SKILL_DIRS` and `hooks.py` are unchanged by this CR — diff gate.
@@ -375,7 +399,8 @@ does. Two proofs:
       after this CR — grep gate (`archive/` excluded).
 
 ### §S6 (integration)
-- [ ] Discovery proof recorded: every emitted name listed by archimedes from the sandbox cwd.
+- [ ] Discovery proof recorded: every rendered name listed by `@gotgenes/pi-subagents` from the
+      sandbox project cwd, and the project definition shown overriding a same-named global one.
 - [ ] Dispatch proof recorded with the trust-gate answer, and `sub-agent-procedure.md` amended
       if the extension half of the boundary is absent in `-p` mode.
 
