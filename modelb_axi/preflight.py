@@ -14,7 +14,9 @@ Probes, in order, against the CURRENT environment (``shutil.which`` and
    released-client manifest ``~/.crucible/crucible-clients.json``, never
    a binary and never its server; absent means WARN pointing at
    Crucible's own installer — never hand-deploy their assets.
-4. One ``stack <name>: client=<v>`` line per selected stack.
+4. One ``stack <name>: <probe>=<v> … client=<v>`` line per selected
+   stack — its §S8 toolchain (:mod:`modelb_axi.toolchains`) and its
+   Crucible client; unselected stacks cost no probe.
 
 Every group line is printed on STDERR (the human channel; stdout is the
 installer's one AXI envelope, CR-MDB-033 §S6) BEFORE any policy decision
@@ -45,6 +47,7 @@ from modelb_axi.capabilities import (
     resolve_agent_dir,
 )
 from modelb_axi.requirements import REQUIREMENTS, requirement
+from modelb_axi.toolchains import probe_toolchains, remediate_toolchains, resolve
 
 SANDESH_PACKAGE = "sandesh-relay"
 
@@ -101,6 +104,41 @@ def _families(row: dict) -> str:
     return ", ".join(row["asset_families"])
 
 
+def _offer_pi_installs(
+    harness: dict[str, str], offer: Callable[[str], bool] | None, warnings: list[str],
+) -> bool:
+    """§S3: for each ABSENT tier-1 extension, offer Pi's own
+    ``pi install npm:<package>`` — run only on an explicit interactive yes
+    (``offer`` is ``None`` under ``--yes``). Model B never edits Pi's
+    ``settings.json``; Pi does. A decline is recorded as a warning.
+    Returns True when any install ran and exited 0 (re-probe)."""
+    missing = [cap for cap, verdict in harness.items() if verdict == ABSENT]
+    if offer is None or not missing:
+        return False
+    pi_path = shutil.which("pi")
+    if pi_path is None:
+        return False
+    ran = False
+    for cap in missing:
+        spec = f"npm:{requirement(cap)['provider']}"
+        command = f"pi install {spec}"
+        if not offer(f"{cap}=absent — run Pi's own `{command}`?"):
+            _warn(f"declined `{command}` — {cap} stays absent", warnings)
+            continue
+        try:
+            result = subprocess.run(
+                [pi_path, "install", spec], capture_output=True, text=True, check=False,
+            )
+        except OSError as exc:
+            _warn(f"`{command}` could not run ({exc})", warnings)
+            continue
+        if result.returncode != 0:
+            _warn(f"`{command}` failed (exit={result.returncode})", warnings)
+            continue
+        ran = True
+    return ran
+
+
 def _harness_policy(
     harness: dict[str, str], settings_path: str, allow_missing: bool,
     warnings: list[str],
@@ -142,12 +180,15 @@ def run_preflight(
     *,
     stacks: Iterable[str] = (),
     allow_missing_capabilities: bool = False,
+    offer: Callable[[str], bool] | None = None,
 ) -> tuple[int, dict[str, str], dict[str, str]]:
     """Run the dependency and capability pre-flight (installer stage 1).
 
     ``confirm`` is the CLI's prompt seam, pre-bound to the run's
     interactivity (always-True under ``--yes``) — used only for Model B's
-    own Sandesh install, never for a third-party extension. ``warnings``,
+    own Sandesh install, never for a third-party extension. ``offer`` is the
+    explicit-yes seam (``None`` under ``--yes``) for Pi's own ``pi install``
+    and the §S8 provider installers. ``warnings``,
     when given, collects every warning and error printed. ``stacks`` are
     the selected stacks, one ``stack <name>:`` line each.
 
@@ -175,13 +216,16 @@ def run_preflight(
         return 1, {}, dict(harness)
 
     sandesh_verdict = DETECTED if shutil.which("sandesh") is not None else ABSENT
+    resolved: dict[str, str | None] = {"uv": uv_path}
     crucible_verdict, clients = load_crucible_clients()
     stack_clients = {
         stack: probe_crucible_client(stack, crucible_verdict, clients) for stack in stacks
     }
     path_tools = {
-        tool: DETECTED if shutil.which(tool) is not None else ABSENT for tool in _PATH_TOOLS
+        tool: DETECTED if resolve(tool, resolved) is not None else ABSENT
+        for tool in _PATH_TOOLS
     }
+    toolchains = probe_toolchains(stacks, resolved)
 
     # Truthful DETECTION report first (AC4: "records ... detection
     # truthfully") — every group line before any policy or remediation.
@@ -190,8 +234,11 @@ def run_preflight(
         file=sys.stderr,
     )
     for stack, client in stack_clients.items():
-        print(f"stack {stack}: client={client}", file=sys.stderr)
+        probes = "".join(f"{name}={v} " for name, v in toolchains[stack].items())
+        print(f"stack {stack}: {probes}client={client}", file=sys.stderr)
 
+    if _offer_pi_installs(harness, offer, warnings):
+        harness = probe_harness(tier1, agent_dir)
     failed = _harness_policy(
         harness, str(agent_dir / "settings.json"), allow_missing_capabilities, warnings,
     )
@@ -230,6 +277,20 @@ def run_preflight(
                 file=sys.stderr,
             )
     capabilities["sandesh"] = sandesh_verdict
+
+    remediate_toolchains(
+        toolchains, resolved, lambda message: _warn(message, warnings), offer,
+    )
+    for stack, client in stack_clients.items():
+        if client != DETECTED and crucible_verdict == DETECTED:
+            _warn(
+                f"stack {stack}: client={client} — Crucible's manifest names no "
+                f"client for {stack}; {requirement('crucible-client')['remediation']}",
+                warnings,
+            )
+        for name, verdict in toolchains[stack].items():
+            capabilities[f"{stack}.{name}"] = verdict
+        capabilities[f"{stack}.client"] = client
 
     return 0, {
         "uv": DETECTED,

@@ -104,7 +104,11 @@ def _reject_unknown_harnesses(harness_ids: list[str]) -> None:
         raise UnknownHarnessError(unknown)
 
 
-def _parse_stacks(raw: str) -> list[str]:
+def parse_stacks(raw: str) -> list[str]:
+    """A ``--stacks`` CSV against :data:`KNOWN_STACKS` — shared by
+    ``init``, ``agents`` and the installer (CR-MDB-036 §S7). An
+    unsupported name raises :class:`ScaffoldError` listing the supported
+    stacks."""
     stacks = [s.strip() for s in raw.split(",") if s.strip()]
     unknown = [s for s in stacks if s not in KNOWN_STACKS]
     if unknown:
@@ -779,7 +783,7 @@ def run_init(args: argparse.Namespace, home: Path) -> int:
                 "non-interactive run)"
             )
         _validate_mode(args.mode)
-        stacks = _parse_stacks(args.stacks)
+        stacks = parse_stacks(args.stacks)
         sub_projects = _sub_projects(args.repo_shape)
     except (ScaffoldError, UnknownHarnessError) as exc:
         print(f"modelb-axi: error: {exc}", file=sys.stderr)
@@ -935,7 +939,7 @@ def run_agents(args: argparse.Namespace, home: Path, project_root: Path | None =
                 "of a project scaffolded by `modelb-axi init`"
             )
         if requested:
-            stacks = _parse_stacks(requested)
+            stacks = parse_stacks(requested)
         else:
             recorded = _read_env_value(env_path, PROJECT_STACKS_KEY)
             if not recorded:
@@ -943,7 +947,7 @@ def run_agents(args: argparse.Namespace, home: Path, project_root: Path | None =
                     f"{env_path} records no {PROJECT_STACKS_KEY}; pass "
                     "--stacks <csv> to render and record the project's stacks"
                 )
-            stacks = _parse_stacks(recorded)
+            stacks = parse_stacks(recorded)
         harnesses, harness_source = resolve_harnesses(home, None)
         templates_dir, stacks_dir = _agent_sources(home)
     except (ScaffoldError, UnknownHarnessError) as exc:

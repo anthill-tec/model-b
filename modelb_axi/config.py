@@ -18,6 +18,7 @@ invoke :func:`write_install_toml` AFTER every deploy step has succeeded
 — a failed deploy leaves no ``install.toml`` at all.
 """
 
+import re
 import tomllib
 from pathlib import Path
 
@@ -32,6 +33,8 @@ _INSTALL_TOML_MODE = 0o644
 #: Characters with a TOML short escape; every other C0 control and DEL
 #: is written as ``\uXXXX`` (CR-MDB-033 §S5).
 _TOML_SHORT_ESCAPES = {"\\": "\\\\", '"': '\\"', "\n": "\\n", "\t": "\\t", "\r": "\\r"}
+#: A TOML bare key: ASCII letters, digits, ``_`` and ``-`` only.
+_BARE_KEY = re.compile(r"[A-Za-z0-9_-]+")
 
 
 def _toml_escape_char(char: str) -> str:
@@ -49,6 +52,15 @@ def _toml_string(value: str) -> str:
     take their short escapes; every other C0 control (U+0000–U+001F) and
     DEL (U+007F) is written as ``\\uXXXX``."""
     return '"' + "".join(_toml_escape_char(c) for c in value) + '"'
+
+
+def _toml_key(key: str) -> str:
+    """A bare key when TOML allows one, else a quoted key — a dotted
+    bare key would NEST (``"python.client"`` stays one flat key,
+    CR-MDB-036 §S4)."""
+    if key and _BARE_KEY.fullmatch(key):
+        return key
+    return _toml_string(key)
 
 
 def _toml_value(value) -> str:
@@ -77,7 +89,7 @@ def serialize_install_toml(
         lines.append("")
         lines.append("[capabilities]")
         for key, value in capabilities.items():
-            lines.append(f"{key} = {_toml_value(value)}")
+            lines.append(f"{_toml_key(key)} = {_toml_value(value)}")
     for entry in files:
         lines.append("")
         lines.append("[[files]]")

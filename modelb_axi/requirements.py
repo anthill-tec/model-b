@@ -166,7 +166,72 @@ REQUIREMENTS: tuple[dict, ...] = (
 )
 
 
+# ---------------------------------------------------------------------------
+# §S8 — the tier-3 ``toolchain`` row, per stack
+# ---------------------------------------------------------------------------
+
+_RUSTUP_INSTALLER = "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
+_BUN_INSTALLER = "curl -fsSL https://bun.sh/install | bash"
+_ARDUINO_CLI_INSTALLER = (
+    "curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | sh"
+)
+#: The Crucible python client's modules; ``xmlrunner`` ships in the
+#: ``unittest-xml-reporting`` package (orchestrator ruling, C2).
+_PIP_INSTALL = "python3 -m pip install unittest-xml-reporting coverage"
+_ELEVATED = "(needs elevated privileges — named, never run by modelb-axi)"
+
+
+def _probe(
+    name: str, remediation: str, install: tuple[str, ...] | None, kind: str = "binary",
+) -> dict:
+    return {"name": name, "kind": kind, "remediation": remediation, "install": install}
+
+
+_JVM_PROBES: tuple[dict, ...] = (
+    _probe("mvn", "install Maven from a JDK/Maven source (a distro package or "
+                  f"https://maven.apache.org) {_ELEVATED}", None),
+    _probe("java", "install a JDK from a JDK/Maven source (a distro package or "
+                   f"https://adoptium.net) {_ELEVATED}", None),
+)
+
+#: Stack -> its toolchain probes, in §S8 table order. ``kind`` is
+#: ``binary`` (resolved by ``shutil.which``, never executed) or ``module``
+#: (imported by the PATH ``python3``). ``remediation`` is always named;
+#: ``install`` is the provider's own installer as an argv — offered only on
+#: an explicit interactive yes, its ``[0]`` resolved on PATH first — or
+#: ``None`` when it needs elevated privileges (named, never run).
+STACK_TOOLCHAINS: dict[str, tuple[dict, ...]] = {
+    "python": (
+        _probe("python3", f"install python3 with the OS package manager {_ELEVATED}", None),
+        _probe("xmlrunner", _PIP_INSTALL, tuple(_PIP_INSTALL.split()), kind="module"),
+        _probe("coverage", _PIP_INSTALL, tuple(_PIP_INSTALL.split()), kind="module"),
+    ),
+    "rust": (
+        _probe("cargo", f"install Rust with rustup: {_RUSTUP_INSTALLER}",
+               ("sh", "-c", _RUSTUP_INSTALLER)),
+        _probe("cargo-nextest", "cargo install cargo-nextest",
+               ("cargo", "install", "cargo-nextest")),
+        _probe("cargo-llvm-cov", "cargo install cargo-llvm-cov",
+               ("cargo", "install", "cargo-llvm-cov")),
+    ),
+    "quarkus": _JVM_PROBES,
+    "java": _JVM_PROBES,
+    "bun": (
+        _probe("bun", f"install bun with bun's installer: {_BUN_INSTALLER}",
+               ("sh", "-c", _BUN_INSTALLER)),
+        _probe("node", "install Node.js from https://nodejs.org or the OS package "
+                       f"manager {_ELEVATED}", None),
+    ),
+    "arduino": (
+        _probe("arduino-cli", f"install arduino-cli with its installer: {_ARDUINO_CLI_INSTALLER}",
+               ("sh", "-c", _ARDUINO_CLI_INSTALLER)),
+        _probe("g++", f"install g++ with the OS package manager {_ELEVATED}", None),
+    ),
+}
+
+
 def requirement(requirement_id: str) -> dict:
+
     """The one row with ``requirement_id``; ``KeyError`` when undeclared."""
     for row in REQUIREMENTS:
         if row["id"] == requirement_id:
