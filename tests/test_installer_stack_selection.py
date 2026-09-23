@@ -656,5 +656,331 @@ class StackVerdictKeysTest(_StackSandboxCase):
             {"bun.bun", "bun.node", "bun.client"},
         )
 
+# ---------------------------------------------------------------------------
+# CR-MDB-036 cycle-91 VERIFY findings (fixed at C92): child output, the
+# re-probe after a confirmed install, shared-install warnings, warning
+# shape, duplicate stack names.
+# ---------------------------------------------------------------------------
+
+#: The executables a warning's backticked command may start with — a
+#: backticked span is a COMMAND, never prose (finding 7).
+_COMMAND_HEADS = {"curl", "cargo", "python3", "pi", "uv"}
+
+
+def _backticked(text: str) -> list[str]:
+    import re
+    return re.findall(r"`([^`]+)`", text)
+
+
+def _install_display(install: tuple[str, ...]) -> str:
+    """How a provider installer argv reads as a command: an ``sh -c``
+    pipeline is its script; anything else is the argv joined."""
+    return install[-1] if tuple(install[:2]) == ("sh", "-c") else " ".join(install)
+
+
+def _tool_path(name: str) -> str:
+    """Absolute path of a real coreutil, resolved on the TEST's PATH so a
+    shim can call it under the sandbox's one-directory PATH."""
+    found = shutil.which(name)
+    if found is None:
+        raise unittest.SkipTest(f"{name} not available to build the shim")
+    return found
+
+
+def _terminal_shim(marker: Path) -> str:
+    """A fake installer that records its run and reports whether its
+    STDOUT is the user's terminal (not a capture pipe), plus one stderr
+    line."""
+    return (
+        "#!/bin/sh\n"
+        f'printf \'%s %s\\n\' "${{0##*/}}" "$*" >> "{marker}"\n'
+        'if [ -t 1 ]; then echo "CHILD-STDOUT-ON-TERMINAL ${0##*/}"; '
+        'else echo "CHILD-STDOUT-CAPTURED ${0##*/}"; fi\n'
+        'echo "CHILD-STDERR ${0##*/}" >&2\n'
+        "exit 0\n"
+    )
+
+
+class ChildInstallerOutputOnTerminalTest(_StackSandboxCase):
+    """Findings 1+8 (§S3/§S8): a confirmed provider installer and a
+    confirmed ``pi install`` are NOT captured — the child's stdout goes to
+    the user's stderr (the terminal), so its prompts and errors are
+    visible while it runs; the envelope on stdout stays clean.
+
+    Driven through a real subprocess whose stdin AND stderr are one
+    pseudo-terminal (the only way to reach an interactive offer with a
+    real file descriptor); stdout is a pipe carrying the envelope.
+    Fixture: ``permissions`` missing (one ``pi install`` offer), rust
+    selected with ``cargo``/``cargo-llvm-cov`` present and
+    ``cargo-nextest`` absent (one ``cargo install`` offer); both shims
+    report whether their stdout is the terminal."""
+
+    def setUp(self):
+        super().setUp()
+        self.agent_dir = self._root / "agent-no-permissions"
+        make_provisioned_agent_dir(self.agent_dir, omit=("permissions",))
+        _write_exe(self.bin_dir, "pi", _terminal_shim(self.marker))
+        _write_exe(self.bin_dir, "cargo", _terminal_shim(self.marker))
+        self.shim("cargo-llvm-cov")
+
+    def _run_on_terminal(self, *extra, answers: str = "y\n" * 3 + "n\n" * 6):
+        import pty
+        import threading
+        master, slave = pty.openpty()
+        proc = subprocess.Popen(
+            [sys.executable, "-m", "modelb_axi", *self._installer_args(*extra)],
+            stdin=slave, stdout=subprocess.PIPE, stderr=slave,
+            env=self._subprocess_env(), close_fds=True,
+        )
+        os.close(slave)
+        os.write(master, answers.encode())
+        chunks: list[bytes] = []
+
+        def pump():
+            while True:
+                try:
+                    data = os.read(master, 4096)
+                except OSError:
+                    return
+                if not data:
+                    return
+                chunks.append(data)
+
+        reader = threading.Thread(target=pump, daemon=True)
+        reader.start()
+        try:
+            stdout, _ = proc.communicate(timeout=60)
+        finally:
+            reader.join(timeout=10)
+            os.close(master)
+        return proc.returncode, stdout.decode(), b"".join(chunks).decode(errors="replace")
+
+    def test_confirmed_installers_write_to_the_users_terminal_not_a_capture(self):
+        code, stdout, terminal = self._run_on_terminal("--stacks", "rust")
+        runs = self.executions()
+        self.assertTrue(any(r.startswith("pi install") for r in runs),
+                        f"precondition: pi install confirmed; ran={runs!r} terminal={terminal!r}")
+        self.assertTrue(any(r.startswith("cargo install") for r in runs),
+                        f"precondition: cargo install confirmed; ran={runs!r} terminal={terminal!r}")
+        for child in ("pi", "cargo"):
+            with self.subTest(child=child):
+                self.assertIn(
+                    f"CHILD-STDOUT-ON-TERMINAL {child}", terminal,
+                    f"findings 1+8: {child}'s stdout must reach the user's terminal "
+                    f"(stderr), not a capture pipe; terminal={terminal!r}",
+                )
+                self.assertIn(f"CHILD-STDERR {child}", terminal,
+                              f"{child}'s errors must be visible; terminal={terminal!r}")
+        self.assertNotIn("CHILD-", stdout, "stdout carries only the envelope")
+        self.assertEqual(code, 0, f"stdout={stdout!r} terminal={terminal!r}")
+
+
+class ProviderInstallerReprobeTest(_StackSandboxCase):
+    """Finding 2 + the re-probe rule (§S8): after a CONFIRMED provider
+    installer, that one tool is re-probed — ``installed`` only if it is now
+    found, else ``absent`` with a warning naming where it was expected.
+    ``sh -c`` installers are exercised through a recording ``sh`` shim.
+    arduino-cli's installer runs with ``BINDIR=~/.local/bin`` (created if
+    missing). Under ``--yes`` no ``sh -c`` installer ever runs."""
+
+    def _sh_shim(self, body: str = "") -> None:
+        _write_exe(self.bin_dir, "sh", (
+            "#!/bin/sh\n"
+            f'printf \'sh %s BINDIR=%s\\n\' "$*" "$BINDIR" >> "{self.marker}"\n'
+            f"{body}"
+            "exit 0\n"
+        ))
+
+    def _sh_runs(self) -> list[str]:
+        return [r for r in self.executions() if r.startswith("sh ")]
+
+    @staticmethod
+    def _offer_naming(needle: str):
+        return lambda chunk: needle in chunk
+
+    def test_yes_never_runs_an_sh_c_provider_installer(self):
+        self._sh_shim()
+        axi = self.assert_installed(self.run_installer("--stacks", "bun,arduino"))
+        self.assertEqual(self._sh_runs(), [], "§S8: --yes never confirms an sh -c installer")
+        self.assertEqual(self.install_toml()["capabilities"].get("bun.bun"), "absent", axi)
+
+    def test_confirmed_sh_c_installer_that_provides_the_tool_records_installed(self):
+        chmod = _tool_path("chmod")
+        self._sh_shim(
+            f"printf '#!/bin/sh\\nexit 0\\n' > \"{self.bin_dir}/bun\"\n"
+            f'{chmod} 755 "{self.bin_dir}/bun"\n'
+        )
+        result = self.run_interactive(
+            make_responder([(self._offer_naming("bun.sh/install"), "y")]), "--stacks", "bun",
+        )
+        self.assertEqual(len(result.offers_naming("bun.sh/install")), 1, f"reads={result.reads!r}")
+        self.assertEqual(len(self._sh_runs()), 1, f"ran once; ran={self.executions()!r}")
+        self.assertIn("-c", self._sh_runs()[0])
+        self.assert_installed(result)
+        self.assertEqual(self.install_toml()["capabilities"].get("bun.bun"), "installed",
+                         "re-probe found bun on PATH after the confirmed install")
+
+    def test_confirmed_sh_c_installer_that_leaves_the_tool_unfound_records_absent(self):
+        self._sh_shim()
+        result = self.run_interactive(
+            make_responder([(self._offer_naming("bun.sh/install"), "y")]), "--stacks", "bun",
+        )
+        self.assertEqual(len(self._sh_runs()), 1, f"ran={self.executions()!r}")
+        axi = self.assert_installed(result)
+        self.assertEqual(self.install_toml()["capabilities"].get("bun.bun"), "absent",
+                         "exit 0 alone is not `installed` — the re-probe decides")
+        hits = [w for w in axi.get("warnings", []) if "bun" in w and "~/.bun/bin" in w]
+        self.assertTrue(hits, f"the warning names where bun was expected; {axi!r}")
+
+    def test_arduino_cli_installer_gets_bindir_local_bin_created_if_missing(self):
+        local_bin = self.home / ".local" / "bin"
+        self.assertFalse(local_bin.exists(), "precondition: ~/.local/bin is missing")
+        self._sh_shim(
+            f'printf \'#!/bin/sh\\nexit 0\\n\' > "$BINDIR/arduino-cli"\n'
+            f'{_tool_path("chmod")} 755 "$BINDIR/arduino-cli"\n'
+        )
+        result = self.run_interactive(
+            make_responder([(self._offer_naming("arduino-cli"), "y")]), "--stacks", "arduino",
+        )
+        runs = self._sh_runs()
+        self.assertEqual(len(runs), 1, f"ran={self.executions()!r} reads={result.reads!r}")
+        self.assertTrue(runs[0].endswith(f"BINDIR={local_bin}"),
+                        f"finding 2: arduino-cli's installer runs with BINDIR=~/.local/bin; {runs!r}")
+        self.assertTrue(local_bin.is_dir(), "~/.local/bin is created when missing")
+        axi = self.assert_installed(result)
+        # ~/.local/bin is not on the sandbox PATH: the re-probe cannot find it.
+        self.assertEqual(self.install_toml()["capabilities"].get("arduino.arduino-cli"), "absent")
+        hits = [w for w in axi.get("warnings", []) if "arduino-cli" in w and "~/.local/bin" in w
+                and "declin" not in w.lower()]
+        self.assertTrue(hits, f"the warning names ~/.local/bin as where it was expected; {axi!r}")
+
+    def test_arduino_cli_found_in_local_bin_on_path_records_installed(self):
+        local_bin = self.home / ".local" / "bin"
+        self._sh_shim(
+            f'printf \'#!/bin/sh\\nexit 0\\n\' > "$BINDIR/arduino-cli"\n'
+            f'{_tool_path("chmod")} 755 "$BINDIR/arduino-cli"\n'
+        )
+        env = self.sandbox_env()
+        env["PATH"] = f"{self.bin_dir}{os.pathsep}{local_bin}"
+        result = run_installer_interactive(
+            self._installer_args("--stacks", "arduino"), env,
+            make_responder([(self._offer_naming("arduino-cli"), "y")]),
+        )
+        self.assert_installed(result)
+        self.assertEqual(self.install_toml()["capabilities"].get("arduino.arduino-cli"), "installed")
+
+
+class SharedInstallCommandWarningTest(_StackSandboxCase):
+    """Finding 5 (§S8): xmlrunner and coverage share one install command.
+    Under interactive offers the command is offered once, yet coverage
+    keeps its OWN warning naming it — whether the offer was taken or
+    declined. Fixture: the PATH ``python3`` fails every import check but
+    runs ``-m pip`` (recorded)."""
+
+    def setUp(self):
+        super().setUp()
+        _write_exe(self.bin_dir, "python3", (
+            "#!/bin/sh\n"
+            'if [ "$1" = "-c" ]; then exit 1; fi\n'
+            f'printf \'python3 %s\\n\' "$*" >> "{self.marker}"\n'
+            "exit 0\n"
+        ))
+
+    def _run(self, answer: str):
+        result = self.run_interactive(
+            make_responder([(lambda chunk: "pip install" in chunk, answer)]), "--stacks", "python",
+        )
+        self.assertEqual(len(result.offers_naming("pip install")), 1,
+                         f"the shared command is offered once; reads={result.reads!r}")
+        return self.assert_installed(result)
+
+    def _assert_own_warnings(self, axi: dict):
+        warnings = axi.get("warnings", [])
+        for module in ("xmlrunner", "coverage"):
+            with self.subTest(module=module):
+                own = [w for w in warnings if w.startswith(f"stack python: {module}=")]
+                self.assertTrue(own, f"finding 5: {module} keeps its own warning; {warnings!r}")
+                self.assertTrue(any("pip install" in w for w in own), own)
+
+    def test_accepted_shared_install_keeps_coverages_own_warning(self):
+        axi = self._run("y")
+        pip_runs = [r for r in self.executions() if "pip install" in r]
+        self.assertEqual(len(pip_runs), 1, f"ran once; ran={self.executions()!r}")
+        self._assert_own_warnings(axi)
+        caps = self.install_toml()["capabilities"]
+        # Imports still fail after the install: the re-probe records absent.
+        self.assertEqual((caps.get("python.xmlrunner"), caps.get("python.coverage")),
+                         ("absent", "absent"))
+
+    def test_declined_shared_install_keeps_coverages_own_warning(self):
+        axi = self._run("n")
+        self.assertEqual([r for r in self.executions() if "pip install" in r], [])
+        self._assert_own_warnings(axi)
+
+
+class WarningCommandShapeTest(_StackSandboxCase):
+    """Finding 7: a warning separates the command from the prose — every
+    backticked span is exactly a command from the requirements data,
+    never prose such as ``install Rust with rustup: …``."""
+
+    def test_backticked_spans_in_toolchain_warnings_are_commands_only(self):
+        from modelb_axi.requirements import STACK_TOOLCHAINS
+        commands = {
+            _install_display(p["install"])
+            for probes in STACK_TOOLCHAINS.values() for p in probes if p["install"]
+        }
+        axi = self.assert_installed(self.run_installer())
+        spans = [s for w in axi.get("warnings", []) for s in _backticked(w)]
+        self.assertTrue(spans, f"precondition: toolchain warnings name commands; {axi!r}")
+        prose = [s for s in spans if s.split()[0] not in _COMMAND_HEADS or s not in commands]
+        self.assertEqual(prose, [], f"finding 7: backticks hold a command only; spans={spans!r}")
+
+
+class DuplicateStackNamesTest(_StackSandboxCase):
+    """Finding 10 (§S7): duplicate names in ``--stacks`` are de-duplicated
+    (first occurrence order kept) before anything is recorded or
+    deployed."""
+
+    def test_duplicate_stack_names_are_recorded_and_probed_once(self):
+        result = self.run_installer("--stacks", "python,rust,python,rust")
+        self.assert_installed(result)
+        self.assertEqual(self.install_toml()["install"]["stacks"], ["python", "rust"])
+        self.assertEqual(
+            [ln.split(":")[0] for ln in self.stack_lines(result.stderr)],
+            ["stack python", "stack rust"],
+        )
+        self.assertIn("stacks selected: python, rust\n", result.stderr)
+
+    def test_parse_stacks_deduplicates_keeping_first_order(self):
+        from modelb_axi.scaffold import parse_stacks
+        self.assertEqual(parse_stacks("rust, python,rust,python"), ["rust", "python"])
+
+
+class StacksRejectedEnvelopeTest(_StackSandboxCase):
+    """Finding 4: the ``stacks_rejected`` outcome is ``ok=false`` and its
+    envelope warnings carry the rejection listing the supported stacks —
+    both for ``--stacks`` and for an interactive answer."""
+
+    def _assert_rejected(self, axi: dict):
+        self.assertEqual(axi.get("outcome"), "stacks_rejected", axi)
+        self.assertIs(axi.get("ok"), False, axi)
+        warnings = axi.get("warnings", [])
+        hits = [w for w in warnings if "cobol" in w and all(s in w for s in ALL_STACKS)]
+        self.assertTrue(hits, f"the rejection is an envelope warning; {warnings!r}")
+
+    def test_flag_rejection_envelope(self):
+        result = self.run_installer("--stacks", "python,cobol")
+        self.assertNotEqual(result.returncode, 0)
+        self._assert_rejected(_decode(result.stdout))
+
+    def test_interactive_answer_rejection_envelope(self):
+        result = self.run_interactive(make_responder([(
+            lambda chunk: all(s in chunk for s in ALL_STACKS) and "client=" not in chunk, "cobol",
+        )]))
+        self.assertNotEqual(result.returncode, 0)
+        self._assert_rejected(_decode(result.stdout))
+        self.assertFalse((self.modelb_home / "install.toml").exists())
+
+
 if __name__ == "__main__":
     unittest.main()

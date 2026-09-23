@@ -251,6 +251,117 @@ class RequirementsDeclarationTest(unittest.TestCase):
         strays = [t for t in tools if t != "lean_ctx" and not t.startswith("ctx_")]
         self.assertEqual(strays, [], f"§S1: lean-ctx tools must be ctx_* or lean_ctx; got {tools}")
 
+    def test_path_probed_rows_are_declared_by_their_probe_kind(self):
+        """Finding 3: the tier-2 PATH tools are DATA \u2014 each row carries a
+        probe kind, and the ``path`` rows are exactly python3/bash/gh/jq."""
+        path_rows = sorted(r["id"] for r in _requirements() if r.get("probe") == "path")
+        self.assertEqual(path_rows, ["bash", "gh", "jq", "python3"])
+        for row in _requirements():
+            if row.get("probe") == "path":
+                self.assertEqual(row["tier"], 2, row)
+
+
+# ---------------------------------------------------------------------------
+# Tier-2 PATH tools and the per-stack client warning (cycle-91 findings 3/4)
+# ---------------------------------------------------------------------------
+
+class PathToolsRecordAndWarnTest(_SandboxedInstallerCase):
+    """Finding 4: the tier-2 PATH tools are recorded in ``[capabilities]``
+    and each absent one WARNs naming itself; a present one does not."""
+
+    def test_path_tools_are_recorded_and_absent_ones_warn(self):
+        make_provisioned_agent_dir(self.agent_dir)
+        _write_exe(self.bin_dir, "gh", "#!/bin/sh\nexit 0\n")
+        result = self.run_installer("--stacks", "rust")
+        axi = _decode(result.stdout)
+        self.assertEqual(axi.get("outcome"), "installed", result.stderr)
+        caps = self.install_toml()["capabilities"]
+        self.assertEqual(
+            {t: caps.get(t) for t in ("python3", "bash", "gh", "jq")},
+            {"python3": "absent", "bash": "absent", "gh": "detected", "jq": "absent"},
+        )
+        warnings = axi.get("warnings", [])
+        for tool in ("python3", "bash", "jq"):
+            with self.subTest(tool=tool):
+                self.assertTrue(
+                    any(w.startswith(f"{tool} not found on PATH") for w in warnings),
+                    f"an absent {tool} WARNs naming itself; {warnings!r}",
+                )
+        self.assertFalse(any(w.startswith("gh ") for w in warnings), warnings)
+
+
+class PathToolsAreDataDrivenTest(_SandboxedInstallerCase):
+    """Finding 3: adding a tier-2 PATH tool touches only the requirements
+    data \u2014 a new ``probe: path`` row is probed, recorded and warned by
+    the unchanged pre-flight. In-process, with the row added by patching
+    ``REQUIREMENTS`` wherever it is bound."""
+
+    _NEW_ROW = {
+        "id": "sentinel-tool-c92",
+        "tier": 2,
+        "provider": "the sentinel project",
+        "policy": "recommended",
+        "scope": "always",
+        "probe": "path",
+        "asset_families": ("sentinel scripts",),
+        "remediation": "install sentinel-tool-c92 from the sentinel project",
+    }
+
+    def test_a_new_path_row_is_probed_recorded_and_warned(self):
+        import contextlib
+        import io
+        from unittest import mock
+
+        from modelb_axi import preflight, requirements
+
+        make_provisioned_agent_dir(self.agent_dir)
+        rows = (*requirements.REQUIREMENTS, dict(self._NEW_ROW))
+        env = {"HOME": str(self.home), "PATH": str(self.bin_dir),
+               AGENT_DIR_ENV: str(self.agent_dir)}
+        warnings: list[str] = []
+        patches = [mock.patch.object(requirements, "REQUIREMENTS", rows)]
+        if hasattr(preflight, "REQUIREMENTS"):
+            patches.append(mock.patch.object(preflight, "REQUIREMENTS", rows))
+        with contextlib.ExitStack() as stack:
+            for patch in patches:
+                stack.enter_context(patch)
+            stack.enter_context(mock.patch.dict(os.environ, env, clear=True))
+            stack.enter_context(contextlib.redirect_stderr(io.StringIO()))
+            code, _, caps = preflight.run_preflight(lambda _p: False, warnings)
+        self.assertEqual(code, 0, warnings)
+        self.assertEqual(caps.get("sentinel-tool-c92"), "absent", caps)
+        self.assertTrue(
+            any(w.startswith("sentinel-tool-c92 not found on PATH") for w in warnings),
+            f"the new row WARNs with its remediation; {warnings!r}",
+        )
+
+
+class CrucibleClientWarningWordingTest(_SandboxedInstallerCase):
+    """Finding 4: a selected stack whose Crucible client is absent (while
+    the manifest is detected) WARNs \u2014 and the wording distinguishes a
+    manifest with NO entry for the stack from an entry naming a missing
+    file (which it names)."""
+
+    def test_no_entry_and_missing_file_warn_distinctly(self):
+        make_provisioned_agent_dir(self.agent_dir)
+        make_home(self.home, crucible_manifest=True, dangling=("python",))
+        dangling = str(self.home / ".crucible" / "clients" / "python-crucible.py")
+        result = self.run_installer("--stacks", "python,rust")
+        axi = _decode(result.stdout)
+        self.assertEqual(axi.get("outcome"), "installed", result.stderr)
+        warnings = axi.get("warnings", [])
+        python = [w for w in warnings if w.startswith("stack python: client=")]
+        rust = [w for w in warnings if w.startswith("stack rust: client=")]
+        self.assertEqual(len(python), 1, warnings)
+        self.assertEqual(len(rust), 1, warnings)
+        self.assertIn(dangling, python[0], "the missing file is named")
+        self.assertIn("does not exist", python[0])
+        self.assertNotIn("no entry", python[0])
+        self.assertIn("no entry", rust[0])
+        self.assertNotIn("does not exist", rust[0])
+        for w in python + rust:
+            self.assertIn("Crucible's own installer", w)
+
 
 class CrucibleVerdictSourceTest(_SandboxedInstallerCase):
     """§S1 AC3, as amended by the orchestrator (2026-09-24): ``crucible``
@@ -674,6 +785,76 @@ class InteractivePiInstallOfferTest(_SandboxedInstallerCase):
         self.assertEqual(self._pi_runs(), [])
         self.assertNotEqual(result.returncode, 0, result.stderr)
         self.assertEqual(_decode(result.stdout).get("outcome"), "preflight_failed")
+
+
+class PiInstallReprobeTest(_SandboxedInstallerCase):
+    """Re-probe rule (\u00a7S3): after a confirmed ``pi install`` exits 0, that
+    one capability is re-probed \u2014 ``installed`` only if Pi now loads it,
+    else ``absent`` with a warning naming where it was expected. The ``pi``
+    shim stands in for Pi: in one case it lists and materialises the
+    package (as Pi would), in the other it does nothing."""
+
+    def setUp(self):
+        super().setUp()
+        self.pi_marker = self._root / "pi-ran"
+        _write_exe(
+            self.bin_dir, "pi",
+            f'#!/bin/sh\nprintf \'%s\\n\' "$*" >> "{self.pi_marker}"\nexit 0\n',
+        )
+        _write_exe(self.bin_dir, "python3", "#!/bin/sh\nexit 0\n")
+
+    def _pi_runs(self) -> list[str]:
+        if not self.pi_marker.exists():
+            return []
+        return [ln for ln in self.pi_marker.read_text(encoding="utf-8").splitlines() if ln]
+
+    def _pi_provisions(self):
+        provisioned = make_provisioned_agent_dir(self._root / "provisioned")
+        cp = shutil.which("cp")
+        if cp is None:
+            self.skipTest("cp not available to build the pi shim")
+        _write_exe(self.bin_dir, "pi", (
+            "#!/bin/sh\n"
+            f'printf \'%s\\n\' "$*" >> "{self.pi_marker}"\n'
+            f'{cp} -R "{provisioned}/." "{self.agent_dir}/"\n'
+            "exit 0\n"
+        ))
+
+    def _run_interactive(self, missing: str):
+        from tests.scripted_terminal import make_responder, run_installer_interactive
+        make_provisioned_agent_dir(self.agent_dir, omit=(missing,))
+        needle = f"pi install npm:{TIER1_PACKAGES[missing]}"
+        argv = ["--harnesses", "pi", "--modelb-home", str(self.modelb_home),
+                "--target-root", str(self.target_root), "--stacks", "python"]
+        env = {"HOME": str(self.home), "PATH": str(self.bin_dir),
+               AGENT_DIR_ENV: str(self.agent_dir)}
+        return run_installer_interactive(
+            argv, env, make_responder([(lambda chunk: needle in chunk, "y")]),
+        )
+
+    def test_pi_install_that_provides_the_extension_records_installed(self):
+        self._pi_provisions()
+        result = self._run_interactive("permissions")
+        self.assertEqual(self._pi_runs(), [f"install npm:{PERMISSIONS_PKG}"])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.install_toml()["capabilities"].get("permissions"), "installed")
+        axi = _decode(result.stdout)
+        self.assertFalse(
+            [w for w in axi.get("warnings", []) if w.startswith("permissions=")],
+            f"an installed extension draws no policy warning; {axi!r}",
+        )
+
+    def test_pi_install_that_leaves_it_unloaded_records_absent_naming_where(self):
+        result = self._run_interactive("permissions")
+        self.assertEqual(self._pi_runs(), [f"install npm:{PERMISSIONS_PKG}"])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.install_toml()["capabilities"].get("permissions"), "absent")
+        axi = _decode(result.stdout)
+        hits = [
+            w for w in axi.get("warnings", [])
+            if PERMISSIONS_PKG in w and "settings.json" in w and "node_modules" in w
+        ]
+        self.assertTrue(hits, f"the warning names where Pi was expected to load it; {axi!r}")
 
 
 class PreflightReportLinesTest(_SandboxedInstallerCase):

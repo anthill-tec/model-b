@@ -329,33 +329,27 @@ TOOL_DENIAL_RUN_RE = re.compile(
 # hardcoded snapshot, not a live re-parse of the doomed [frontmatter] shape,
 # is the expected-value source for the "Load these skills first:" tests
 # below (taken from the CURRENT spec-honoured TOML content, not invented).
+# CR-MDB-036 \u00a7S9 migration (user ruling 2026-09-24): the nine
+# reviewer-*/refactorer-* names are not Model B skills and are removed; a
+# role's list names only skills-src/ bundles, so only `crucible` survives.
 CURRENT_SKILLS = {
     ("arduino", "red"): [], ("arduino", "green"): [],
-    ("arduino", "verify"): ["reviewer", "reviewer-coverage", "reviewer-syntax"],
+    ("arduino", "verify"): [],
     ("arduino", "fix"): [],
     ("bun", "red"): [], ("bun", "green"): [],
-    ("bun", "verify"): ["reviewer", "reviewer-coverage", "reviewer-security", "reviewer-style"],
+    ("bun", "verify"): [],
     ("bun", "fix"): [],
-    ("python", "red"): ["reviewer-coverage"], ("python", "green"): ["reviewer-coverage"],
-    ("python", "verify"): [
-        "reviewer", "reviewer-coverage", "reviewer-architecture",
-        "reviewer-security", "reviewer-style", "reviewer-syntax",
-    ],
-    ("python", "fix"): ["reviewer-coverage"],
-    ("quarkus", "red"): ["crucible", "refactorer-java", "reviewer-coverage"],
-    ("quarkus", "green"): ["crucible", "refactorer-java", "reviewer-coverage"],
-    ("quarkus", "verify"): [
-        "reviewer", "reviewer-coverage", "reviewer-quarkus", "reviewer-architecture",
-        "reviewer-security", "reviewer-style", "reviewer-syntax",
-    ],
-    ("quarkus", "fix"): ["crucible", "refactorer-java", "reviewer-coverage"],
-    ("rust", "red"): ["crucible", "refactorer-rust", "reviewer-coverage"],
-    ("rust", "green"): ["crucible", "refactorer-rust", "reviewer-coverage"],
-    ("rust", "verify"): [
-        "reviewer", "reviewer-coverage", "reviewer-architecture",
-        "reviewer-security", "reviewer-style", "reviewer-syntax",
-    ],
-    ("rust", "fix"): ["crucible", "refactorer-rust", "reviewer-coverage"],
+    ("python", "red"): [], ("python", "green"): [],
+    ("python", "verify"): [],
+    ("python", "fix"): [],
+    ("quarkus", "red"): ["crucible"],
+    ("quarkus", "green"): ["crucible"],
+    ("quarkus", "verify"): [],
+    ("quarkus", "fix"): ["crucible"],
+    ("rust", "red"): ["crucible"],
+    ("rust", "green"): ["crucible"],
+    ("rust", "verify"): [],
+    ("rust", "fix"): ["crucible"],
 }
 
 
@@ -770,6 +764,84 @@ class SkillsBodyLineS3Test(unittest.TestCase):
                 failures.append(f"{path.name}: role carries no skills but body has a 'Load these skills first:' line")
         # NEGATIVE -- a skill-less role never gets the line (regression guard).
         self.assertEqual(failures, [], "\n".join(failures))
+
+
+SKILLS_SRC_DIR = REPO_ROOT / "skills-src"
+
+#: A skill named in prose: "the `<name>` skill".
+_PROSE_SKILL_RE = re.compile(r"`([a-z0-9][a-z0-9-]*)` skill\b")
+
+
+def _shipped_skills() -> set[str]:
+    """Bundles Model B ships: directories under skills-src/ with a SKILL.md."""
+    return {p.name for p in SKILLS_SRC_DIR.iterdir() if (p / "SKILL.md").is_file()}
+
+
+def _unshipped_role_skills(stack_toml_texts: dict[str, str], shipped: set[str]) -> list[str]:
+    """``<stack>.<role>: <skill>`` for every role ``skills`` entry that is
+    not a shipped bundle."""
+    hits = []
+    for stack, text in sorted(stack_toml_texts.items()):
+        for role, table in tomllib.loads(text).get("roles", {}).items():
+            hits.extend(
+                f"{stack}.{role}: {skill}" for skill in table.get("skills", [])
+                if skill not in shipped
+            )
+    return hits
+
+
+def _unshipped_skill_mentions(text: str, shipped: set[str]) -> list[str]:
+    """Skills a rendered definition tells an agent to load that Model B
+    does not ship: its "Load these skills first:" names and any prose
+    "the `<name>` skill"."""
+    named: list[str] = []
+    for line in text.splitlines():
+        if agents_mod.SKILLS_LINE_PREFIX in line:
+            listed = line.split(agents_mod.SKILLS_LINE_PREFIX, 1)[1].strip().rstrip(".")
+            named.extend(s.strip() for s in listed.split(",") if s.strip())
+    named.extend(_PROSE_SKILL_RE.findall(text))
+    return sorted({s for s in named if s not in shipped})
+
+
+class ShippedSkillsOnlyS9Test(unittest.TestCase):
+    """CR-MDB-036 \u00a7S9 -- a stack's role ``skills`` list names only bundles
+    under skills-src/ (each carrying a SKILL.md), and no rendered definition
+    under generator/agents/ names a skill outside skills-src/. Each gate has
+    a detector fixture proving it bites on ``reviewer-coverage``."""
+
+    def test_s9_every_role_skill_is_a_shipped_bundle(self):
+        texts = {p.stem: _read(p) for p in sorted(STACKS_DIR.glob("*.toml"))}
+        self.assertEqual(sorted(texts), sorted(STACKS), "precondition: every stack TOML read")
+        self.assertEqual(_unshipped_role_skills(texts, _shipped_skills()), [])
+
+    def test_s9_role_skill_gate_bites_on_reviewer_coverage(self):
+        fixture = {"python": '[roles.red]\nskills = ["crucible", "reviewer-coverage"]\n'}
+        self.assertEqual(
+            _unshipped_role_skills(fixture, _shipped_skills()),
+            ["python.red: reviewer-coverage"],
+        )
+
+    def test_s9_no_rendered_definition_names_an_unshipped_skill(self):
+        shipped = _shipped_skills()
+        rendered = sorted(AGENTS_DIR.glob("*-agent.md"))
+        self.assertEqual(len(rendered), len(STACKS) * len(ROLES), "precondition: 20 definitions")
+        failures = {
+            p.name: hits for p in rendered
+            if (hits := _unshipped_skill_mentions(_read(p), shipped))
+        }
+        self.assertEqual(failures, {}, f"\u00a7S9: definitions naming unshipped skills: {failures}")
+
+    def test_s9_rendered_definition_gate_bites_on_reviewer_coverage(self):
+        shipped = _shipped_skills()
+        self.assertEqual(
+            _unshipped_skill_mentions("Load these skills first: crucible, reviewer-coverage.\n", shipped),
+            ["reviewer-coverage"],
+        )
+        self.assertEqual(
+            _unshipped_skill_mentions("use the `reviewer-coverage` skill to judge it", shipped),
+            ["reviewer-coverage"],
+        )
+        self.assertEqual(_unshipped_skill_mentions("the `crucible` skill", shipped), [])
 
 
 class UnknownIntentDropS2Test(unittest.TestCase):

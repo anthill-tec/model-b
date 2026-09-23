@@ -1609,6 +1609,36 @@ class ScaffoldCapabilityContractMultiStackTest(unittest.TestCase):
                 self.assertNotIn(probe["remediation"], self._content)
 
 
+class ScaffoldCapabilityContractRemediationOnlyTest(unittest.TestCase):
+    """CR-MDB-036 cycle-91 finding 11 -- the scaffolded AGENTS.md states the
+    remediation only: no installer-only wording (e.g. "named, never run by
+    modelb-axi") in its capability contract, for every stack."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls._result, cls._content, cls._dirs = _run_init_subprocess(
+            "arduino,bun,python,quarkus,rust,java",
+        )
+
+    @classmethod
+    def tearDownClass(cls):
+        for d in cls._dirs:
+            shutil.rmtree(d, ignore_errors=True)
+
+    def test_contract_carries_no_installer_only_wording(self):
+        self.assertEqual(self._result.returncode, 0, self._result.stderr)
+        start = self._content.find("## Harness capability contract")
+        self.assertNotEqual(start, -1, f"precondition: contract present; {self._content!r}")
+        end = self._content.find("\n## ", start + 1)
+        section = self._content[start:end if end != -1 else None]
+        for phrase in ("modelb-axi", "never run", "named,"):
+            with self.subTest(phrase=phrase):
+                self.assertNotIn(
+                    phrase, section,
+                    f"finding 11: installer-only wording in AGENTS.md; section={section!r}",
+                )
+
+
 class ScaffoldCapabilityContractReadsRequirementsDataTest(unittest.TestCase):
     """CR-MDB-036 \u00a7S1/\u00a7S6 -- the contract is DATA read by the scaffold
     ("adding a requirement touches only that structure"): changing a row in
