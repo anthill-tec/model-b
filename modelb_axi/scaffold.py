@@ -32,6 +32,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from modelb_axi import agents
 from modelb_axi._fsutil import atomic_write
 from modelb_axi.axi import envelope
 from modelb_axi.config import INSTALL_TOML_NAME, _toml_string, load_install_toml
@@ -63,6 +64,10 @@ _REQUIRED_FLAGS: tuple[tuple[str, str], ...] = (
 
 class ScaffoldError(ValueError):
     """A validation failure that aborts ``init`` before any write."""
+
+
+# CR-MDB-025 §S6 — the committed `.env` key recording the project's stacks.
+PROJECT_STACKS_KEY = "PROJECT_STACKS"
 
 
 def resolve_harnesses(home: Path, dev_override: str | None) -> tuple[list[str], str]:
@@ -157,9 +162,14 @@ def _orchestrator_label(mode: str, token: str) -> str:
     return f"vidushi-{token}" if mode == "solo" else f"Mainline-{token}"
 
 
-def _render_env(name: str, token: str, acronym: str, mode: str, owner: str) -> str:
-    """The COMMITTED ``.env`` registry: all five keys (§S3.1)."""
-    return (
+def _render_env(
+    name: str, token: str, acronym: str, mode: str, owner: str,
+    stacks: list[str] | None = None,
+) -> str:
+    """The COMMITTED ``.env`` registry: all five keys (§S3.1), plus
+    ``PROJECT_STACKS`` when ``stacks`` is given (CR-MDB-025 §S6 — the set
+    ``modelb-axi agents`` re-renders from)."""
+    text = (
         "# Project naming registry (CR-MDB-013 scaffold; committed).\n"
         f"PROJECT_NAME={name}\n"
         f"PROJECT_TOKEN={token}\n"
@@ -167,6 +177,9 @@ def _render_env(name: str, token: str, acronym: str, mode: str, owner: str) -> s
         f"ORCHESTRATOR_LABEL={_orchestrator_label(mode, token)}\n"
         f"REPO_OWNER={owner}\n"
     )
+    if stacks:
+        text += f"{PROJECT_STACKS_KEY}={','.join(stacks)}\n"
+    return text
 
 
 def _render_env_local() -> str:
@@ -547,6 +560,32 @@ def _memory_templates_dir(home: Path) -> Path:
     )
 
 
+def _agent_sources(home: Path) -> tuple[Path, Path]:
+    """Asset-root resolution for the agent templates + stack TOMLs
+    (CR-MDB-025 §S6), the same chain as :func:`_memory_templates_dir`:
+    ``install.toml [install].asset_root`` → :func:`default_asset_root`.
+    Returns ``(templates_dir, stacks_dir)``."""
+    candidates: list[Path] = []
+    configured = load_install_toml(home).get("install", {}).get("asset_root")
+    if configured:
+        candidates.append(Path(str(configured)))
+    candidates.append(default_asset_root())
+    for root in candidates:
+        templates = root / "generator" / "templates"
+        stacks = root / "generator" / "stacks"
+        if templates.is_dir() and stacks.is_dir():
+            return templates, stacks
+    raise ScaffoldError(
+        "no generator/templates + generator/stacks found under any asset "
+        "root; tried: " + ", ".join(str(c) for c in candidates)
+    )
+
+
+def _renders_agents(harnesses: list[str]) -> bool:
+    """True when any harness has a project agent directory + emitter."""
+    return any(h in agents.PROJECT_AGENT_DIRS for h in harnesses)
+
+
 def _select_memory_templates(templates_dir: Path, stacks: list[str]) -> list[Path]:
     """Filter templates by ``--stacks``: a ``<stack>-*.md`` template is
     emitted only when its stack is selected; stack-neutral templates
@@ -605,6 +644,7 @@ def _emit_plan(
     home: Path,
     hook_scripts_root: Path | None,
     emitted: list[str] | None = None,
+    agent_sources: tuple[Path, Path] | None = None,
 ) -> list[str]:
     """Perform the real §S3/§S4 emission under ``target``; returns the
     emitted file paths (relative to ``target``).
@@ -618,7 +658,11 @@ def _emit_plan(
     files written when emission raises (CR-MDB-033 §S4). It is passed
     through to :func:`compile_wiring` as its ``emitted`` out-list, so
     compiled wiring files are recorded per write (not after the compiler
-    returns) and each appears exactly once."""
+    returns) and each appears exactly once.
+
+    ``agent_sources`` is the ``(templates_dir, stacks_dir)`` pair resolved
+    by :func:`run_init` during validation (CR-MDB-025 §S6); ``None``
+    renders no agent definitions."""
     if emitted is None:
         emitted = []
 
@@ -633,7 +677,7 @@ def _emit_plan(
     label = _orchestrator_label(mode, token)
 
     # §S3.1 registry + §S3.5 .gitignore.
-    write(".env", _render_env(name, token, acronym, mode, owner))
+    write(".env", _render_env(name, token, acronym, mode, owner, stacks))
     write(".env.local", _render_env_local())
     write(".gitignore", _render_gitignore())
 
@@ -675,6 +719,17 @@ def _emit_plan(
             emitted=emitted,
         )
     write("hooks/README.md", _render_hooks_readme(report, instances, harnesses))
+
+    # CR-MDB-025 §S6: the project's agent definitions, per installed
+    # harness with an emitter; a stack with no stack TOML renders none.
+    if agent_sources is not None:
+        agent_report: dict = {}
+        try:
+            agents.render_project(
+                target, stacks, harnesses, *agent_sources, report=agent_report,
+            )
+        finally:
+            emitted.extend(agent_report.get("written", []))
 
     # §S3 monorepo: per-sub-project registry + override.
     for sub in sub_projects:
@@ -754,6 +809,20 @@ def run_init(args: argparse.Namespace, home: Path) -> int:
             print(f"modelb-axi: warning: {exc}", file=sys.stderr)
             plan_warnings.append(str(exc))
 
+    # CR-MDB-025 §S6: the agent templates + stack TOMLs are resolved in
+    # validation too, under the same dry-run/abort rule as above.
+    agent_sources: tuple[Path, Path] | None = None
+    if _renders_agents(harnesses):
+        try:
+            agent_sources = _agent_sources(home)
+        except ScaffoldError as exc:
+            if not dry_run:
+                print(f"modelb-axi: error: {exc}", file=sys.stderr)
+                print(envelope("init", False, warnings=[str(exc)], dry_run=False))
+                return 2
+            print(f"modelb-axi: warning: {exc}", file=sys.stderr)
+            plan_warnings.append(str(exc))
+
     emitted: list[str] = []
     if not dry_run:
         try:
@@ -771,6 +840,7 @@ def run_init(args: argparse.Namespace, home: Path) -> int:
                 home=home,
                 hook_scripts_root=hook_scripts_root,
                 emitted=emitted,
+                agent_sources=agent_sources,
             )
         except (ScaffoldError, OSError) as exc:
             # CR-MDB-033 §S4: a mid-emission failure may leave a partial
@@ -808,4 +878,124 @@ def run_init(args: argparse.Namespace, home: Path) -> int:
             planned=plan,
         )
     )
+    return 0
+
+
+def _read_env_value(env_path: Path, key: str) -> str | None:
+    """The value of ``key`` in a ``KEY=VALUE`` registry file, or None."""
+    for line in env_path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        name, _, value = stripped.partition("=")
+        if name.strip() == key:
+            return value.strip()
+    return None
+
+
+def _set_env_value(env_path: Path, key: str, value: str) -> bool:
+    """Set ``key=value`` in a registry file, replacing an existing ``key``
+    line in place or appending one; atomic. Returns False (and writes
+    nothing) when the file already carries exactly that line."""
+    lines = env_path.read_text(encoding="utf-8").splitlines(keepends=True)
+    new_line = f"{key}={value}\n"
+    for idx, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("#") or "=" not in stripped:
+            continue
+        if stripped.partition("=")[0].strip() == key:
+            if line == new_line:
+                return False
+            lines[idx] = new_line
+            break
+    else:
+        if lines and not lines[-1].endswith("\n"):
+            lines[-1] += "\n"
+        lines.append(new_line)
+    atomic_write(env_path, "".join(lines).encode("utf-8"))
+    return True
+
+
+def run_agents(args: argparse.Namespace, home: Path, project_root: Path | None = None) -> int:
+    """Entry for the ``agents`` subcommand (CR-MDB-025 §S6): re-render the
+    agent definitions of the project in the current directory from its
+    ``PROJECT_STACKS``; ``--stacks`` changes the set and rewrites
+    ``PROJECT_STACKS``. Emits one AXI envelope (verb ``agents``) on stdout
+    listing written, unchanged, skipped and unmanaged files. Returns the
+    process exit code."""
+    print("modelb-axi: agents — re-render project agent definitions", file=sys.stderr)
+    root = project_root if project_root is not None else Path.cwd()
+    env_path = root / ".env"
+    requested = getattr(args, "stacks", None)
+    force_managed = bool(getattr(args, "force_managed", False))
+    try:
+        if not env_path.is_file():
+            raise ScaffoldError(
+                f"no .env in {root}; run `modelb-axi agents` from the root "
+                "of a project scaffolded by `modelb-axi init`"
+            )
+        if requested:
+            stacks = _parse_stacks(requested)
+        else:
+            recorded = _read_env_value(env_path, PROJECT_STACKS_KEY)
+            if not recorded:
+                raise ScaffoldError(
+                    f"{env_path} records no {PROJECT_STACKS_KEY}; pass "
+                    "--stacks <csv> to render and record the project's stacks"
+                )
+            stacks = _parse_stacks(recorded)
+        harnesses, harness_source = resolve_harnesses(home, None)
+        templates_dir, stacks_dir = _agent_sources(home)
+    except (ScaffoldError, UnknownHarnessError) as exc:
+        print(f"modelb-axi: error: {exc}", file=sys.stderr)
+        print(envelope("agents", False, warnings=[str(exc)], project=str(root)))
+        return 2
+
+    print(f"  harnesses ({harness_source}): {', '.join(harnesses)}", file=sys.stderr)
+    print(f"  stacks: {', '.join(stacks)}", file=sys.stderr)
+    report: dict = {}
+    try:
+        agents.render_project(
+            root, stacks, harnesses, templates_dir, stacks_dir,
+            force_managed=force_managed, report=report,
+        )
+        if requested:
+            _set_env_value(env_path, PROJECT_STACKS_KEY, ",".join(stacks))
+    except OSError as exc:
+        print(f"modelb-axi: error: {exc}", file=sys.stderr)
+        print(envelope(
+            "agents", False, warnings=[str(exc)], project=str(root), **report,
+        ))
+        return 3
+
+    warnings: list[str] = []
+    if not _renders_agents(harnesses):
+        warnings.append(
+            "no installed harness has an agent emitter; nothing rendered "
+            f"(harnesses: {', '.join(harnesses)})"
+        )
+    for rel in report["skipped"]:
+        warnings.append(
+            f"skipping hand-modified managed file {rel} (marker hash "
+            "mismatch; re-run with --force-managed to overwrite)"
+        )
+    for rel in report["unmanaged"]:
+        warnings.append(
+            f"unmanaged: {rel} — no Model B marker; left untouched (no "
+            "flag overwrites it)"
+        )
+    for stack in report["no_definitions"]:
+        warnings.append(f"stack {stack!r} has no agent definitions; none rendered")
+    for message in warnings:
+        print(f"modelb-axi: warning: {message}", file=sys.stderr)
+    print(envelope(
+        "agents", True,
+        warnings=warnings,
+        project=str(root),
+        stacks=stacks,
+        harnesses=harnesses,
+        harness_source=harness_source,
+        force_managed=force_managed,
+        **report,
+    ))
     return 0
