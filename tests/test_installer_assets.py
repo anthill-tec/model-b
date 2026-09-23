@@ -77,9 +77,9 @@ CHEZMOI_INVOCATION_SCAN_ROOTS = (
 
 CLAUDE_SKILLS_DIR = Path.home() / ".claude" / "skills"
 
-# CR-MDB-016 Sec1/AC4 -- the 7 handover bundles (crucible-register +
-# crucible-report-{arduino,bun,java,python,rust,vscode}), imported from
-# crucible:clients/skills/ -- extending this file's durable
+# CR-MDB-024 \u00a7S3 (this cycle, C2 RED, 2026-09-22 VS Code ruling): narrowed
+# from 7 to 6 handover bundles -- the VS Code crucible-report bundle is
+# retired outright (an IDE is not a stack). Extending this file's durable
 # coverage-superset fidelity gate + bundle-discovery guard to cover them.
 CRUCIBLE_HANDOVER_BUNDLE_NAMES = (
     "crucible-register",
@@ -88,7 +88,6 @@ CRUCIBLE_HANDOVER_BUNDLE_NAMES = (
     "crucible-report-java",
     "crucible-report-python",
     "crucible-report-rust",
-    "crucible-report-vscode",
 )
 ORIGIN_CRUCIBLE_SKILLS_DIR = (
     Path.home() / "Documents" / "data_projects" / "crucible" / "clients" / "skills"
@@ -107,7 +106,8 @@ IMPORTED_BUNDLE_NAMES = (
 CRUCIBLE_BUNDLE_NAME = "crucible"
 ALL_SEVEN_BUNDLE_NAMES = frozenset(IMPORTED_BUNDLE_NAMES) | {CRUCIBLE_BUNDLE_NAME}
 
-STACKS = ("arduino", "bun", "python", "quarkus")
+# CR-MDB-024 \u00a7S2 -- rust joined the generator as a fifth stack (16 -> 20).
+STACKS = ("arduino", "bun", "python", "quarkus", "rust")
 ROLES = ("red", "green", "verify", "fix")
 
 # §S6 (CR-MDB-015) -- the shared protocol script library that must ship as
@@ -261,11 +261,11 @@ class CrucibleHandoverBundleFidelityTest(unittest.TestCase):
                     f"(superset of {origin_dir}); missing from "
                     f"skills-src/{name}/: {missing}"
                 )
-        # POSITIVE/EXACT -- every one of the 7 handover bundles exists and
+        # POSITIVE/EXACT -- every one of the 6 handover bundles exists and
         # covers the origin file set completely.
         self.assertEqual(failures, [], "\n".join(failures))
 
-    def test_deploy_module_discovers_all_seven_handover_bundle_names(self):
+    def test_deploy_module_discovers_all_six_handover_bundle_names(self):
         sys.path.insert(0, str(REPO_ROOT))
         try:
             from modelb_axi import deploy as deploy_module
@@ -275,8 +275,9 @@ class CrucibleHandoverBundleFidelityTest(unittest.TestCase):
         bundle_names = {b.name for b in bundles}
         missing = sorted(set(CRUCIBLE_HANDOVER_BUNDLE_NAMES) - bundle_names)
         # POSITIVE -- the deploy engine's own discovery must find every
-        # handover bundle (additive to the pre-existing 7 -- 14 total once
-        # Sec1 lands), so wheel/_assets packaging carries them.
+        # handover bundle (additive to the pre-existing 7 -- 13 total,
+        # CR-MDB-024 \u00a7S3 this cycle narrows the handover half from 7 to 6),
+        # so wheel/_assets packaging carries them.
         self.assertEqual(
             missing, [],
             f"deploy._skill_bundles(REPO_ROOT) must discover every handover "
@@ -301,16 +302,18 @@ class SkillBundleDiscoveryGuardTest(unittest.TestCase):
         bundles = deploy_module._skill_bundles(REPO_ROOT)
         bundle_names = {b.name for b in bundles}
         # POSITIVE/EXACT -- CR-MDB-016 supersedes the seven-only bound: the
-        # seven pre-existing bundles UNION the seven imported handover
-        # bundles (14 total), no more (e.g. memory-templates/, which has no
-        # SKILL.md, must never be picked up) and no fewer.
+        # seven pre-existing bundles UNION the six imported handover
+        # bundles (13 total, CR-MDB-024 \u00a7S3 this cycle -- the VS Code
+        # crucible-report bundle is retired outright), no more (e.g.
+        # memory-templates/, which has no SKILL.md, must never be picked
+        # up) and no fewer.
         expected_bundle_names = (
             set(ALL_SEVEN_BUNDLE_NAMES) | set(CRUCIBLE_HANDOVER_BUNDLE_NAMES)
         )
         self.assertEqual(
             bundle_names, expected_bundle_names,
             f"deploy._skill_bundles(REPO_ROOT) must discover exactly the "
-            f"fourteen skill bundles {sorted(expected_bundle_names)}; "
+            f"thirteen skill bundles {sorted(expected_bundle_names)}; "
             f"found {sorted(bundle_names)}",
         )
         crucible_skill_md = SKILLS_SRC_DIR / CRUCIBLE_BUNDLE_NAME / "SKILL.md"
@@ -337,11 +340,12 @@ class SkillBundleDiscoveryGuardTest(unittest.TestCase):
 
 class GeneratorAgentsAssetTest(unittest.TestCase):
     """AC6 pin #4/#5 -- the retargeted output dir (generator/agents/, the
-    RED-pinned contract) contains the 16 generated agent .md files,
+    RED-pinned contract) contains the 20 generated agent .md files
+    (CR-MDB-024 \u00a7S2: 16 legacy + 4 rust),
     content-identical to build.py's own render() (pure, no I/O -- this
     test never shells out to build.py's `build` sub-command)."""
 
-    def test_generator_agents_dir_contains_sixteen_files_matching_render(self):
+    def test_generator_agents_dir_contains_twenty_files_matching_render(self):
         module = _load_build_module()
         failures = []
         if not GENERATOR_AGENTS_DIR.is_dir():
@@ -352,12 +356,12 @@ class GeneratorAgentsAssetTest(unittest.TestCase):
             )
         found_names = {p.name for p in GENERATOR_AGENTS_DIR.glob("*.md")}
         expected_names = {f"{stack}-{role}-agent.md" for stack in STACKS for role in ROLES}
-        # POSITIVE/EXACT -- exactly the 16 small-stack files, none missing,
+        # POSITIVE/EXACT -- exactly the 20 generated stack files, none missing,
         # none extra.
         self.assertEqual(
             found_names, expected_names,
-            f"{GENERATOR_AGENTS_DIR} must contain exactly the 16 "
-            f"regenerated small-stack agent files; found {sorted(found_names)}",
+            f"{GENERATOR_AGENTS_DIR} must contain exactly the 20 "
+            f"regenerated stack agent files; found {sorted(found_names)}",
         )
         for stack in STACKS:
             params = module.load_stack_params(stack)
@@ -414,10 +418,11 @@ class BuildPyCliRetargetTest(unittest.TestCase):
         # --check/--list surface because "inventing a second gate binary would
         # create a parallel convention". "Every listed path's parent is
         # generator/agents/" is therefore a superseded contract. The amended
-        # form pins the EXACT set of listed target paths -- the 16 agent
-        # definitions plus that one codec, named from build.py's own constant
+        # form pins the EXACT set of listed target paths -- the 20 agent
+        # definitions (CR-MDB-024 \u00a7S2: 16 legacy + 4 rust) plus that one
+        # codec, named from build.py's own constant
         # rather than a duplicated string -- which is strictly stronger than
-        # the parent-directory check it replaces: a 17th stray target, a
+        # the parent-directory check it replaces: a 21st stray target, a
         # missing target, a relocated target and a renamed output dir all
         # still fail. The home-rooted (§S7 retarget) and chezmoi-reference
         # halves of this test are unchanged.
@@ -430,7 +435,7 @@ class BuildPyCliRetargetTest(unittest.TestCase):
         # repo-local agent assets plus the generated codec.
         self.assertEqual(
             set(listed_paths), expected_paths,
-            f"generator/build.py --list must report exactly the 16 agent "
+            f"generator/build.py --list must report exactly the 20 agent "
             f"definitions under {GENERATOR_AGENTS_DIR} plus the generated "
             f"codec {module.CODEC_TARGET}; got "
             f"{sorted(str(p) for p in listed_paths)}, expected "
@@ -1194,15 +1199,17 @@ class DeployEngineSevenBundlesEndToEndTest(unittest.TestCase):
                 skill_md_names.add(parts[-2])
         # POSITIVE/EXACT -- CR-MDB-016 supersedes the seven-only bound: a
         # manifest entry for every one of the seven pre-existing skill
-        # bundles' SKILL.md UNION the seven imported handover bundles'
-        # SKILL.md (14 distinct names, exactly).
+        # bundles' SKILL.md UNION the six imported handover bundles'
+        # SKILL.md (13 distinct names, exactly -- CR-MDB-024 \u00a7S3 this cycle
+        # narrows the handover half from 7 to 6, the VS Code crucible-report
+        # bundle retired outright).
         expected_skill_md_names = (
             set(ALL_SEVEN_BUNDLE_NAMES) | set(CRUCIBLE_HANDOVER_BUNDLE_NAMES)
         )
         self.assertEqual(
             skill_md_names, expected_skill_md_names,
             f"install.toml [[files]] must record a SKILL.md entry for "
-            f"exactly the fourteen bundles {sorted(expected_skill_md_names)}; "
+            f"exactly the thirteen bundles {sorted(expected_skill_md_names)}; "
             f"found {sorted(skill_md_names)}",
         )
         store_root = Path(self._tmp_target_root) / ".agents" / "skills"

@@ -7,19 +7,22 @@ This module is therefore the RED for that module — it asserts nothing about
 properties §S5's acceptance criteria demand. Every gate below fails today for one
 reason: `tests/test_skill_bundle_guards.py` does not exist yet.
 
-Which "seven owned bundles" (§S5 AC3)
--------------------------------------
-The owned set is MEASURED from `skills-src/` at run time by `_owned_bundles()` —
+Which "six owned bundles" (\u00a7S5 AC3, narrowed by CR-MDB-024 \u00a7S3)
+------------------------------------------------------------------------
+The owned set is MEASURED from `skills-src/` at run time by `_owned_bundles()` --
 every directory carrying a `SKILL.md` whose name is `crucible-register` or starts
-with `crucible-report-` — and cross-checked against the bullet list in
-`skills-src/CRUCIBLE-HANDOVER.md` ("Bundles imported (7 of 8)"). That measurement
-yields exactly seven: `crucible-register` plus `crucible-report-{arduino,bun,java,
-python,rust,vscode}`. The set is measured rather than hard-coded because the CR's
-prose and the dispatch brief both gloss it loosely; the handover doc is the
-ratified record of what Model B owns (CR-MDB-016 §S1, Sandesh #1336/#1337).
+with `crucible-report-` -- and cross-checked against the bullet list in
+`skills-src/CRUCIBLE-HANDOVER.md` ("Bundles imported (6 of 8)"). That measurement
+yields exactly six as of CR-MDB-024 \u00a7S3 (this cycle, C2 RED, 2026-09-22 VS Code
+ruling -- the VS Code crucible-report bundle is retired outright, narrowing the
+CR-MDB-016 \u00a7S1 original seven by one): `crucible-register` plus
+`crucible-report-{arduino,bun,java,python,rust}`. The set is measured rather than
+hard-coded because the CR's prose and the dispatch brief both gloss it loosely;
+the handover doc is the ratified record of what Model B owns (CR-MDB-016 \u00a7S1,
+Sandesh #1336/#1337).
 `skills-src/crucible/` is deliberately NOT in the set: it is Model-B-authored
-routing content, not one of the seven Crucible-origin bundles — a guard that also
-covers it satisfies these gates (they assert the seven are present, never that
+routing content, not one of the six Crucible-origin bundles -- a guard that also
+covers it satisfies these gates (they assert the six are present, never that
 nothing else is).
 
 The no-duplication criterion
@@ -133,9 +136,12 @@ HOME_ESCAPE_MARKERS = ("Path.home", "expanduser", "expandvars")
 MAX_DISTINCT_FLAG_LITERALS = 10
 FLAG_LITERAL_RE = re.compile(r"--[A-Za-z][A-Za-z0-9-]+")
 
-# §S5 AC5 — the API-path exemption constant.
-EXEMPTION_CONST_NAME_RE = re.compile(r"API_PATH|EXEMPT", re.IGNORECASE)
-EXEMPT_BUNDLE = "crucible-report-vscode"
+# CR-MDB-024 \u00a7S3 (this cycle, C2 RED, 2026-09-22 VS Code ruling): \u00a7S5 AC5's
+# API-path exemption constant is retired along with the bundle it named --
+# the VS Code crucible-report bundle is deleted outright, so
+# tests/test_skill_bundle_guards.py's API_PATH_BUNDLES is correctly EMPTY
+# and there is nothing left for a constant-name/exempt-bundle pair here to
+# demand.
 
 # §S5 AC4 — the four register defects, each of which must be proven to bite by a
 # FIXTURE case. Matched on the guard's test-method NAMES (predictable for GREEN,
@@ -551,30 +557,32 @@ class SkillBundleGuardsMetaTest(unittest.TestCase):
             f"{MAX_DISTINCT_FLAG_LITERALS}).",
         )
 
-    def test_s5_guard_module_covers_all_seven_owned_bundles_including_arduino(self):
+    def test_s5_guard_module_covers_all_six_owned_bundles_including_arduino(self):
         """DEMANDS: the guard names every owned bundle measured from
-        `skills-src/` — arduino included, which the inherited suite never
-        covered."""
+        `skills-src/` -- arduino included, which the inherited suite never
+        covered. CR-MDB-024 \u00a7S3 AMENDMENT (this cycle, C2 RED, 2026-09-22 VS
+        Code ruling): narrowed from seven to six -- the VS Code crucible-report
+        bundle is retired outright."""
         owned = _owned_bundles()
         handover = _handover_bundles()
         self.assertEqual(
             len(owned),
-            7,
+            6,
             f"the owned bundle set measured from {_rel(SKILLS_SRC)} must be the "
-            f"seven of CR-MDB-016 §S1; measured {len(owned)}: {list(owned)}",
+            f"six of CR-MDB-024 \u00a7S3; measured {len(owned)}: {list(owned)}",
         )
         self.assertEqual(
             sorted(owned),
             sorted(handover),
             f"the set measured from {_rel(SKILLS_SRC)} ({list(owned)}) must match "
-            f"the ratified record in {_rel(HANDOVER_MD)} ({list(handover)}) — if "
+            f"the ratified record in {_rel(HANDOVER_MD)} ({list(handover)}) -- if "
             f"they disagree, the provenance doc is the authority and this CR is "
             f"working from a stale set.",
         )
         self.assertIn(
             "crucible-report-arduino",
             owned,
-            "arduino must be in the measured owned set — §S5 exists partly to "
+            "arduino must be in the measured owned set -- \u00a7S5 exists partly to "
             "extend the inherited suite to it.",
         )
 
@@ -594,59 +602,18 @@ class SkillBundleGuardsMetaTest(unittest.TestCase):
         self.assertEqual(
             uncovered,
             [],
-            f"{_rel(GUARD_MODULE)} must cover all seven owned bundles (named "
+            f"{_rel(GUARD_MODULE)} must cover all six owned bundles (named "
             f"directly, or composed from a `crucible-report-` prefix and a stack "
             f"token). Never named: {uncovered}",
         )
 
-    def test_s5_guard_module_exempts_vscode_bundle_by_name_via_constant(self):
-        """DEMANDS: `crucible-report-vscode` sits in an explicit API-path
-        exemption constant, that constant is USED to exclude it from the
-        register-flag families, and a test asserts the exemption — so the bundle
-        can never pass those families by incidental zero-match."""
-        source, tree = self._require_guard()
-        constants = _module_level_constants(tree)
-
-        candidates = {
-            name: value
-            for name, (value, _) in constants.items()
-            if EXEMPTION_CONST_NAME_RE.search(name)
-            and EXEMPT_BUNDLE in _flatten_strings(value)
-        }
-        self.assertTrue(
-            candidates,
-            f"{_rel(GUARD_MODULE)} must name {EXEMPT_BUNDLE!r} in an explicit "
-            f"API-path exemption constant (e.g. `API_PATH_BUNDLES`, the name "
-            f"tests/test_client_role_contract.py already uses). Module-level "
-            f"constants whose names match {EXEMPTION_CONST_NAME_RE.pattern!r}: "
-            f"{[n for n in constants if EXEMPTION_CONST_NAME_RE.search(n)]}",
-        )
-        const_name = sorted(candidates)[0]
-
-        loads = _loaded_names(tree).get(const_name, 0)
-        self.assertGreaterEqual(
-            loads,
-            2,
-            f"{_rel(GUARD_MODULE)}: `{const_name}` is referenced {loads} time(s). "
-            f"It must be USED at least twice — once to exclude the bundle BY NAME "
-            f"from the register-flag families, once in the test that asserts the "
-            f"exemption is truthful. A constant nobody reads exempts nothing.",
-        )
-
-        asserting = [
-            name
-            for name, node in _test_methods(tree).items()
-            if const_name in (ast.get_source_segment(source, node) or "")
-            and "self.assert" in (ast.get_source_segment(source, node) or "")
-        ]
-        self.assertTrue(
-            asserting,
-            f"{_rel(GUARD_MODULE)} must contain a test method that ASSERTS the "
-            f"`{const_name}` exemption (that it names {EXEMPT_BUNDLE!r}, and that "
-            f"the bundle genuinely has no CLI register example) — §S5: the "
-            f"exemption is an assertion, never an incidental zero-match.",
-        )
-
+    # CR-MDB-024 \u00a7S3 (this cycle, C2 RED, 2026-09-22 VS Code ruling):
+    # test_s5_guard_module_exempts_VS_Code_bundle_by_name_via_constant is
+    # DELETED, not migrated -- the VS Code bundle it demanded an explicit
+    # API-path exemption for is retired outright, so
+    # tests/test_skill_bundle_guards.py's own API_PATH_BUNDLES is correctly
+    # EMPTY now (see that module's own \u00a7S3 amendment); there is no longer
+    # anything for this meta-gate to demand.
     def test_s5_guard_module_defers_handover_gated_properties_and_cites_them(self):
         """DEMANDS: the guard does NOT re-assert the three families
         `tests/test_skills_handover.py` already gates, and cites them with their

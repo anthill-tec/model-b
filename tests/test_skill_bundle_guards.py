@@ -38,9 +38,10 @@ because nothing looked at it.  `HTTP_BODY_BUNDLES` names the bundles whose
 register surface is a payload, and the family asserts each one CONTRIBUTES an
 example, so the blind spot cannot reopen silently.
 
-Six fixture cases (temp bundles, never a mutation of `skills-src/`) prove each
+Five fixture cases (temp bundles, never a mutation of `skills-src/`) prove each
 of those defects makes the checker bite, so the guard is demonstrated rather
-than assumed.
+than assumed. (CR-MDB-024 \u00a7S3, this cycle: the sixth fixture, the
+API-path-exemption case, is retired along with the bundle it exempted.)
 
 What this module deliberately does NOT assert (§S5, re-scoped 2026-09-21)
 ------------------------------------------------------------------------
@@ -59,10 +60,13 @@ the standalone protocol skill and its shell helper are ratified out of existence
 by `tests/test_skills_handover.py:130-137` and `:360-384`.  Nothing here may
 assert they exist.
 
-`crucible-report-vscode` owns no CLI client and has no `register` example, so it
-is exempted from the register-flag families BY NAME through `API_PATH_BUNDLES`
-— read once to exclude it from the scan and once by the test that proves the
-exemption truthful, never an incidental zero-match.
+CR-MDB-024 \u00a7S3 AMENDMENT (this cycle, C2 RED, 2026-09-22 VS Code ruling): the
+VS Code crucible-report bundle this module's `API_PATH_BUNDLES` exemption
+existed for is retired outright -- an IDE is not a stack. `API_PATH_BUNDLES`
+narrows to empty and `ApiPathExemptionTest` (which asserted the exemption was
+named and truthful) is deleted rather than migrated: there is no bundle left
+for either to be about. The owned-bundle-set pin
+(`SkillBundleScanCoverageTest`) narrows from seven to six accordingly.
 
 Stdlib only: unittest + re + tempfile + pathlib.  No subprocess, no server, no
 socket, and no path outside this repository.
@@ -106,11 +110,15 @@ HTTP_BODY_BUNDLES = (
 )
 
 # Bundles that talk to Crucible over the v2 HTTP API and own NO CLI client.
-# EXEMPT BY NAME from the register-flag families (same constant name
-# `tests/test_client_role_contract.py` uses for the same ruling, Sandesh #1370).
-API_PATH_BUNDLES = ("crucible-report-vscode",)
+# EMPTY as of CR-MDB-024 \u00a7S3 (this cycle, C2 RED, 2026-09-22 VS Code ruling):
+# the sole exemption, the VS Code crucible-report bundle, is retired outright rather
+# than migrated -- an IDE is not a stack, so there is no CLI-client-less
+# report bundle left to exempt. Left as an empty tuple (not deleted) so the
+# `_is_exempt`/`named` call sites below stay syntactically valid without a
+# structural rewrite.
+API_PATH_BUNDLES = ()
 
-# The six per-stack report bundles carry the tier vocabulary.
+# The five per-stack report bundles carry the tier vocabulary.
 REPORT_BUNDLE_PREFIX = "crucible-report-"
 
 # ------------------------------------------------- the register-flag surface ---
@@ -219,16 +227,6 @@ V2_ENDPOINTS_BY_BUNDLE = {
         "/api/v2/projects",
     ),
     "crucible-report-rust": (
-        "/api/v2/runs",
-        "/api/v2/runs/parsed",
-        "/api/v2/runs/compile",
-        "/api/v2/agents",
-        "/api/v2/agents/register",
-        "/api/v2/agents/unregister",
-        "/api/v2/events",
-        "/api/v2/projects",
-    ),
-    "crucible-report-vscode": (
         "/api/v2/runs",
         "/api/v2/runs/parsed",
         "/api/v2/runs/compile",
@@ -608,8 +606,9 @@ class SkillBundleScanCoverageTest(unittest.TestCase):
         self.assertEqual(
             sorted(measured),
             list(named),
-            "the owned bundle set measured from skills-src/ must be the seven of "
-            f"CR-MDB-016 §S1; measured {list(measured)} against named {list(named)}. "
+            "the owned bundle set measured from skills-src/ must be the six of "
+            f"CR-MDB-024 §S3 (CR-MDB-016 §S1's original seven, less the retired "
+            f"VS Code bundle); measured {list(measured)} against named {list(named)}. "
             "If they disagree, a bundle was added or removed without updating this "
             "guard, and the flag families would silently stop covering it.",
         )
@@ -774,22 +773,11 @@ class RegisterFlagFixtureTest(unittest.TestCase):
             f"negative cases above prove nothing: {findings}",
         )
 
-    def test_exempt_bundle_fixture_is_excluded_from_the_register_families(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = _write_fixture_bundle(tmp, FIXTURE_LINE_NO_ROLE)
-            exempt = root / API_PATH_BUNDLES[0]
-            exempt.mkdir()
-            (exempt / "SKILL.md").write_text(
-                FIXTURE_BODY.format(line=FIXTURE_LINE_NO_CYCLE), encoding="utf-8"
-            )
-            examples = _register_examples(root)
-        leaked = [rel for rel, _, _ in examples if rel.startswith(API_PATH_BUNDLES[0])]
-        self.assertEqual(
-            leaked,
-            [],
-            "the API-path bundle must be excluded from the register-flag scan BY "
-            f"NAME via API_PATH_BUNDLES; these lines leaked in: {leaked}",
-        )
+    # CR-MDB-024 \u00a7S3 (this cycle, C2 RED, 2026-09-22 VS Code ruling):
+    # test_exempt_bundle_fixture_is_excluded_from_the_register_families is
+    # DELETED, not migrated -- API_PATH_BUNDLES is now empty (the bundle it
+    # exempted is retired outright), so there is no exempt-bundle fixture
+    # case left to construct or prove excluded.
 
 
 class RegisterBodySurfaceTest(unittest.TestCase):
@@ -920,37 +908,10 @@ class RegisterBodyFixtureTest(unittest.TestCase):
         )
 
 
-class ApiPathExemptionTest(unittest.TestCase):
-    """The vscode exemption is an assertion, never an incidental zero-match."""
-
-    def test_api_path_exemption_names_vscode_and_is_truthful(self):
-        self.assertIn(
-            "crucible-report-vscode",
-            API_PATH_BUNDLES,
-            "the vscode bundle must be exempted from the register-flag families BY "
-            "NAME — it owns no CLI client (user ruling, Sandesh #1370) — never by "
-            "having happened to match nothing.",
-        )
-        for bundle in API_PATH_BUNDLES:
-            self.assertTrue(
-                (SKILLS_SRC / bundle).is_dir(),
-                f"API_PATH_BUNDLES names {bundle!r}, which does not exist under "
-                "skills-src/; a stale exemption silently widens the blind spot.",
-            )
-        leaked = [
-            f"{rel}:{lineno}: {line}"
-            for rel, lineno, line in _register_examples(SKILLS_SRC, include_exempt=True)
-            if rel.split("/", 1)[0] in API_PATH_BUNDLES
-        ]
-        self.assertEqual(
-            leaked,
-            [],
-            "the exemption claims the API-path bundles have no CLI register "
-            "example. They now do, so the exemption is a lie and the bundle is "
-            f"escaping the flag families: {leaked}",
-        )
-
-
+# CR-MDB-024 \u00a7S3 (this cycle, C2 RED, 2026-09-22 VS Code ruling):
+# ApiPathExemptionTest is DELETED, not migrated -- API_PATH_BUNDLES is now
+# empty (the VS Code bundle it named is retired outright), so there is no
+# exemption left to name or prove truthful.
 class BundleEndpointTierAndVerbTest(unittest.TestCase):
     """Ported from the inherited Bun guard: v2-endpoint truth, no unmarked v1
     legacy, `tier` presence, and real client verbs — now including arduino."""
@@ -1030,8 +991,8 @@ class BundleEndpointTierAndVerbTest(unittest.TestCase):
         ]
         self.assertEqual(
             len(report_bundles),
-            6,
-            "the six per-stack report bundles must all be measured; found "
+            5,
+            "the five per-stack report bundles must all be measured; found "
             f"{[p.name for p in report_bundles]}",
         )
         silent = [

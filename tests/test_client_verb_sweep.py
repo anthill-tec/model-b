@@ -65,7 +65,10 @@ NORMATIVE_SURFACES = (
 PRD = "docs/research/PRD-model-b-rationalization.md"
 DN_PLAN_REVIEW = "docs/research/DN-rationalization-plan-review.md"
 ENVELOPE_CONTRACT = "contracts/crucible-envelope.md"
-VSCODE_BUNDLE = "skills-src/crucible-report-vscode/SKILL.md"
+# CR-MDB-024 \u00a7S3 (this cycle, C2 RED, 2026-09-22 vscode ruling): VSCODE_BUNDLE
+# retired -- the skills-src/crucible-report-vscode/ bundle it named is deleted
+# outright, not migrated, so the cycle-binding-comment test that used it is
+# deleted below too (tests/test_ide_overlay_retirement.py gates the deletion).
 
 # §S4d: the ban's own definitions, excluded from the ban's scan.
 GUARD_TEST = "docs/research/crucible-clients-skills-guard.test.ts"
@@ -503,11 +506,18 @@ class ClientVerbSweepS4bTest(unittest.TestCase):
 
 
 class ClientVerbSweepS4cTest(unittest.TestCase):
-    """§S4c — Model B's own design docs, the contract-version axis, and the vscode comment.
+    """§S4c — Model B's own design docs and the contract-version axis.
 
     Corrections here are factual only; no design decision is reopened. The version axis stays
     explicit: the product version is ``0.2.x``, ``/api/v2`` is the API generation, and ``2.0.0``
     is the STATUS-CONTRACT document's own semver.
+
+    CR-MDB-024 §S3 AMENDMENT (this cycle, C2 RED, 2026-09-22 vscode ruling): the
+    ``crucible-report-vscode`` bundle this class used to sweep (the cycle-binding
+    comment check) is retired outright along with the rest of the vscode substrate --
+    an IDE is not a stack -- so that test is deleted rather than migrated: there is no
+    replacement bundle for it to check. The declined-client-request check below is
+    UNAFFECTED (PRD §D7 is untouched by this CR's Non-goals) and stays.
     """
 
     def test_s4c_prd_d3_4_plan_cycle_idiom_shows_no_refused_cycles_form(self):
@@ -662,29 +672,14 @@ class ClientVerbSweepS4cTest(unittest.TestCase):
             "0.2.2:\n" + _fmt(offenders),
         )
 
-    def test_s4c_vscode_bundle_states_cycle_binding_is_declared_at_registration(self):
-        """The vscode bundle no longer claims the active cycle auto-attaches server-side."""
-        offenders = [
-            (VSCODE_BUNDLE, lineno, line)
-            for lineno, line in enumerate(_lines(VSCODE_BUNDLE), 1)
-            if re.search(r"(?i)auto-?attach", line)
-        ]
-        self.assertEqual(
-            [],
-            offenders,
-            "CR-CRU-056 deleted server-side auto-attach; the comment must state the binding is "
-            "declared via `--cycle <id>` at registration:\n" + _fmt(offenders),
-        )
-        binding = re.compile(
-            r"(?is)--cycle(?![\w-])[^\n]{0,160}registration"
-            r"|registration[^\n]{0,160}--cycle(?![\w-])"
-        )
-        binding_anchor = _anchor(VSCODE_BUNDLE, re.compile(r"(?i)cycle"))
-        self.assertTrue(
-            binding.search(_text(VSCODE_BUNDLE)),
-            f"{VSCODE_BUNDLE}:{binding_anchor}: the bundle must state the cycle binding is "
-            "declared via `--cycle <id>` at registration.",
-        )
+    # CR-MDB-024 \u00a7S3 (this cycle, C2 RED, 2026-09-22 vscode ruling): the
+    # cycle-binding-comment test that used to live here
+    # (test_s4c_vscode_bundle_states_cycle_binding_is_declared_at_registration)
+    # is DELETED, not migrated -- it read
+    # skills-src/crucible-report-vscode/SKILL.md, which this CR deletes
+    # outright (an IDE is not a stack). There is no replacement bundle for
+    # it to check; the deletion itself is gated by
+    # tests/test_ide_overlay_retirement.py.
 
 
 # ------------------------------------------------------------------ §S4d ----

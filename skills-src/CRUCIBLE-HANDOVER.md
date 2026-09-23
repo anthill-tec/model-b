@@ -1,6 +1,7 @@
 # Crucible skills handover — provenance record (CR-MDB-016 §S1)
 
-Provenance of the seven skill bundles imported verbatim into `skills-src/`.
+Provenance of the skill bundles imported verbatim into `skills-src/` — seven at
+handover, six since CR-MDB-024 §S3 (see *Retirement* below).
 This document is the ONLY place under `skills-src/` allowed to cite the origin
 path; the imported files themselves were never edited.
 
@@ -13,7 +14,7 @@ path; the imported files themselves were never edited.
 - **Import method:** byte-identical copy (`cp -r`, verified with `diff -r` —
   zero differences across all seven bundles)
 
-## Bundles imported (7 of 8)
+## Bundles imported (6 of 8)
 
 - `crucible-register`
 - `crucible-report-arduino`
@@ -21,7 +22,14 @@ path; the imported files themselves were never edited.
 - `crucible-report-java`
 - `crucible-report-python`
 - `crucible-report-rust`
-- `crucible-report-vscode`
+
+## Retirement: the editor-overlay bundle (CR-MDB-024 §S3)
+
+The seventh bundle imported at handover — the crucible-report bundle for the
+VS Code editor overlay — was deleted outright by CR-MDB-024 §S3 (user ruling
+2026-09-22): an IDE is not a stack. Extension work in TypeScript is served by
+the bun stack; there is no separate editor-overlay agent set to report for.
+The roster above is therefore six of the eight origin bundles.
 
 ## Ratification
 

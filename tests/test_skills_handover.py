@@ -49,8 +49,11 @@ ORIGIN_SKILLS_DIR = (
     Path.home() / "Documents" / "data_projects" / "crucible" / "clients" / "skills"
 )
 
-# The 7 bundles Sec1 imports verbatim (agent-protocol deliberately
-# excluded -- Option B, absorbed into crucible instead).
+# CR-MDB-024 \u00a7S3 (this cycle, C2 RED, 2026-09-22 VS Code ruling): the 6
+# bundles Sec1 imports verbatim (agent-protocol deliberately excluded --
+# Option B, absorbed into crucible instead; the VS Code crucible-report
+# bundle deliberately excluded too -- retired outright, an IDE is not a
+# stack).
 IMPORTED_BUNDLE_NAMES = (
     "crucible-register",
     "crucible-report-arduino",
@@ -58,10 +61,9 @@ IMPORTED_BUNDLE_NAMES = (
     "crucible-report-java",
     "crucible-report-python",
     "crucible-report-rust",
-    "crucible-report-vscode",
 )
 
-ALL_STACKS = ("rust", "java", "bun", "python", "vscode", "arduino")
+ALL_STACKS = ("rust", "java", "bun", "python", "arduino")
 
 
 def _read(path: Path) -> str:
@@ -101,9 +103,14 @@ def _missing_imported_bundles():
 
 class ImportedBundleExistenceAndMetadataTest(unittest.TestCase):
     """AC1 -- the 7 bundles exist under skills-src/ with Vercel-Skills
-    `metadata:` frontmatter; NO skills-src/agent-protocol/ directory."""
+    `metadata:` frontmatter; NO skills-src/agent-protocol/ directory.
 
-    def test_seven_bundles_exist_with_skill_md_and_metadata_frontmatter_and_no_agent_protocol(self):
+    CR-MDB-024 \u00a7S3 AMENDMENT (this cycle, C2 RED, 2026-09-22 VS Code ruling):
+    narrowed from 7 to 6 -- the VS Code crucible-report bundle is retired
+    outright (an IDE is not a stack).
+    """
+
+    def test_six_bundles_exist_with_skill_md_and_metadata_frontmatter_and_no_agent_protocol(self):
         missing = _missing_imported_bundles()
         no_metadata = []
         for name in IMPORTED_BUNDLE_NAMES:
@@ -113,10 +120,10 @@ class ImportedBundleExistenceAndMetadataTest(unittest.TestCase):
             frontmatter, _ = _split_frontmatter(_read(skill_md))
             if "metadata:" not in frontmatter:
                 no_metadata.append(name)
-        # POSITIVE/EXACT -- every one of the 7 bundles has a SKILL.md.
+        # POSITIVE/EXACT -- every one of the 6 bundles has a SKILL.md.
         self.assertEqual(
             missing, [],
-            f"expected skills-src/<bundle>/SKILL.md for all 7 imported "
+            f"expected skills-src/<bundle>/SKILL.md for all 6 imported "
             f"bundles {IMPORTED_BUNDLE_NAMES}; missing: {missing}",
         )
         # POSITIVE -- every bundle's SKILL.md carries Vercel-Skills
@@ -316,20 +323,26 @@ class CrucibleSkillRoutingAndProtocolSyncTest(unittest.TestCase):
 
 
 class ReferenceRoutersParityTest(unittest.TestCase):
-    """AC7 (router part) -- references/{rust,java,bun,python,vscode}.md
-    all still exist, and references/arduino.md EXISTS (new parity
-    router)."""
+    """AC7 (router part) -- references/{rust,java,bun,python}.md all still
+    exist, and references/arduino.md EXISTS (new parity router).
 
-    def test_all_six_stack_reference_routers_exist_including_new_arduino(self):
+    CR-MDB-024 \u00a7S3 AMENDMENT (this cycle, C2 RED, 2026-09-22 VS Code ruling):
+    narrowed from six stacks to five -- the VS Code reference router is
+    retired outright along with the rest of that substrate (an IDE is not
+    a stack); its absence is gated separately in
+    tests/test_ide_overlay_retirement.py.
+    """
+
+    def test_all_five_stack_reference_routers_exist_including_new_arduino(self):
         missing = [
             stack for stack in ALL_STACKS
             if not (REFERENCES_DIR / f"{stack}.md").is_file()
         ]
-        # POSITIVE/EXACT -- consumer constraint: the five pre-existing
+        # POSITIVE/EXACT -- consumer constraint: the four surviving
         # routers keep resolving, and arduino gains parity.
         self.assertEqual(
             missing, [],
-            f"expected references/{{rust,java,bun,python,vscode,arduino}}.md to "
+            f"expected references/{{rust,java,bun,python,arduino}}.md to "
             f"all exist (arduino is the new parity router); missing: {missing}",
         )
 

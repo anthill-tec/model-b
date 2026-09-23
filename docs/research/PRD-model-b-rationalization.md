@@ -54,8 +54,8 @@ The `~/.claude` user space grew organically into 24 memory files, ~50 skills, 29
 - Procedural/workflow content still consolidates into skills (D3/D4); the remaining global files merge or delete per the disposition table in the reviewed plan.
 
 ### D6 — Generated per-stack agents
-- Role templates (`red/green/verify/fix`) + per-stack parameter files generate the arduino/bun/python/quarkus agent set (16 files). SE principles are written once — in the templates.
-- Bespoke (not generated): rust ×4, vscode ×4, electronics ×4, `inbox-analyst` (similarity data shows templating would destroy real content).
+- Role templates (`red/green/verify/fix`) + per-stack parameter files generate the arduino/bun/python/quarkus/rust agent set (20 files). SE principles are written once — in the templates.
+- Bespoke (not generated): electronics ×4, `inbox-analyst` (similarity data shows templating would destroy real content). Corrected by CR-MDB-024 §S4: rust ×4 became the fifth generated stack (2026-09-16 rust ruling), and the editor-overlay set was retired outright — an IDE is not a stack (2026-09-22 ruling).
 - Every agent references `AGENTS.md` (+ the D1 procedure reference), never `memory/agent-baseline.md`.
 - `build.py --check` (regenerate + diff) is the drift gate; hand-edits to generated files fail it.
 

@@ -59,6 +59,39 @@ constants, so a 17th stray target, a missing target or a relocated one
 still fails the gate. The method names are kept unchanged (they are cited
 by name in the sanctioning FIX dispatch); only the bodies retarget.
 
+CR-MDB-024 \u00a7S1/\u00a7S2 AMENDMENT (sanctioned follow-up, cycle C1 RED): a fifth
+stack, ``rust``, joins the generator's own target census (``generator/agents/
+rust-{red,green,verify,fix}-agent.md``), widening the SMALL-STACK build/list/
+check/content/bespoke gates from 16 to 20 targets and dropping the 4 rust
+names out of the 13-strong bespoke list (13 -> 9 at C1; VS Code's four +
+electronics x4 + inbox-analyst stayed bespoke then -- CR-MDB-024 \u00a7S3, cycle
+C2, narrows it further to 5; see the \u00a7S3 amendment below). Two pins are DELIBERATELY left untouched at their ORIGINAL 16/four-
+stack semantics because they assert real machine/repo state this CR does not
+touch: ``ArchiveOriginalsS4Test`` (the pre-CR-MDB-008 archive under
+``archive/wave3/agents/`` never gained rust originals -- they were never
+archived there) and ``DeployedAgentsConsumerConstraintTest`` (the real
+deployed ``~/.claude/agents/`` tree never carried the rust definitions --
+CR-MDB-024's Context section: they live at ``~/.pi/agent/agents/``, and its
+Non-goals rule out any deployment from this CR). Migrating either to the
+widened 20-name set would manufacture a RED for the wrong reason -- a gap
+this CR does not create and is not asked to close. A new module-level
+``TARGET_AGENT_NAMES_WITH_RUST`` (20) is used ONLY by the generator's-own-
+census assertions (build/list/check/content/bespoke); ``TARGET_AGENT_NAMES``
+(16) keeps its original meaning and its original two consumers.
+
+CR-MDB-024 \u00a7S3 AMENDMENT (this cycle, C2 RED, 2026-09-22 VS Code ruling): the
+four VS Code agent names now drop out of the bespoke list too -- an IDE is
+not a stack, so they are retired outright rather than adopted as a
+generated one. ``BESPOKE_AGENT_NAMES`` narrows from 9 to 5 (electronics x4
++ inbox-analyst). The generator's own target census
+(``TARGET_AGENT_NAMES_WITH_RUST``, the build/list/check/content gates) is
+UNAFFECTED -- the retired stack was never one of its targets either before
+or after -- so only the bespoke-negative assertions move.
+``tests/test_ide_overlay_retirement.py`` carries the new module-level gates
+this cycle adds (the zero-reference sweep, the skills-src/ bundle census,
+the CLI stack-rejection and DN/PRD/README record checks); this file's
+amendment is the narrower BESPOKE_AGENT_NAMES migration only.
+
 Stdlib only (unittest + subprocess + pathlib + shutil + sys + tomllib +
 importlib.util). build.py is still driven as a SUBPROCESS for every gate,
 per the CR's own mechanics (`python3 generator/build.py --check`), matching
@@ -74,6 +107,7 @@ import sys
 import tempfile
 import tomllib
 import unittest
+
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -95,20 +129,31 @@ ARCHIVE_WAVE3_AGENTS = REPO_ROOT / "archive" / "wave3" / "agents"
 STACKS = ["arduino", "bun", "python", "quarkus"]
 ROLES = ["red", "green", "verify", "fix"]
 
-# The 16 small-stack agent files build.py must own (never the 13 bespoke ones).
+# CR-MDB-024 \u00a7S2: the generator's own stack set widens to five once
+# generator/stacks/rust.toml exists and build.py's STACKS tuple names it.
+RUST_STACK = "rust"
+GENERATED_STACKS = STACKS + [RUST_STACK]
+
+# The 16 small-stack agent files build.py owned BEFORE CR-MDB-024 -- still
+# the correct set for the archive pin and the deployed-tree pin below, which
+# assert repo/machine state this CR does not touch.
 TARGET_AGENT_NAMES = [f"{stack}-{role}-agent.md" for stack in STACKS for role in ROLES]
 
-# The 13 bespoke defs build.py must NEVER touch (rust x4, vscode x4,
-# electronics x4, inbox-analyst).
+# CR-MDB-024 \u00a7S2: the generator's OWN target census after rust joins it --
+# 16 legacy + 4 rust = 20. Used only by the build/list/check/content/bespoke
+# gates below (never by the archive or deployed-tree pins).
+TARGET_AGENT_NAMES_WITH_RUST = [
+    f"{stack}-{role}-agent.md" for stack in GENERATED_STACKS for role in ROLES
+]
+
+# The 5 bespoke defs build.py must NEVER touch (electronics x4,
+# inbox-analyst). CR-MDB-024 \u00a7S2 (2026-09-16 rust ruling) dropped the 4
+# rust names that were bespoke before this CR -- rust is now a generated
+# stack. CR-MDB-024 \u00a7S3 (2026-09-22 VS Code ruling) drops the four
+# VS Code agent names too -- those definitions were retired outright (an
+# IDE is not a stack), not adopted as a generated stack, so they leave the
+# bespoke list rather than moving to TARGET_AGENT_NAMES_WITH_RUST.
 BESPOKE_AGENT_NAMES = [
-    "rust-red-agent.md",
-    "rust-green-agent.md",
-    "rust-verify-agent.md",
-    "rust-fix-agent.md",
-    "vscode-red-agent.md",
-    "vscode-green-agent.md",
-    "vscode-verify-agent.md",
-    "vscode-fix-agent.md",
     "electronics-bench-test-engineer.md",
     "electronics-board-designer.md",
     "electronics-production-engineer.md",
@@ -123,6 +168,7 @@ STACK_ANCHORS = {
     "bun": "bun test",
     "quarkus": "mvn",
     "arduino": "arduino-cli",
+    "rust": "cargo",
 }
 
 # The AC names this exact grep invocation verbatim (S4 bullet 3).
@@ -159,6 +205,7 @@ def _load_build_module():
     generator/ has no __init__.py, hence importlib.util over a package
     import."""
     spec = importlib.util.spec_from_file_location("_cr_mdb_022_c2_build", BUILD_PY)
+    assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -284,7 +331,9 @@ class BuildPyIdempotenceS3Test(unittest.TestCase):
             f"{target} must be restored to its original content after the test",
         )
 
-    def test_s3_build_py_target_list_is_exactly_the_16_small_stack_files(self):
+    def test_s3_build_py_target_list_is_exactly_the_20_generated_files(self):
+        """CR-MDB-024 \u00a7S2: renamed from ..._16_small_stack_files (the count is
+        no longer 16 once rust joins the generator's own census)."""
         self.assertTrue(BUILD_PY.is_file(), f"{BUILD_PY} must exist to run --list")
         result = subprocess.run(
             [sys.executable, str(BUILD_PY), "--list"],
@@ -300,24 +349,22 @@ class BuildPyIdempotenceS3Test(unittest.TestCase):
             for line in result.stdout.splitlines()
             if line.strip()
         ]
-        # CR-MDB-022 §S2 SANCTIONED AMENDMENT -- superseded pin: build.py now
-        # owns a SECOND target class, the generated codec at its own
-        # CODEC_TARGET, gated by this same --check/--list surface rather than
-        # by a second gate binary. The pre-022 form compared the listed base
-        # NAMES against the 16 agent filenames; the amended form pins the
-        # EXACT set of full target PATHS -- the 16 agent definitions under
-        # generator/agents/ plus that one codec -- which is strictly stronger:
-        # a 17th stray target, a missing target, a relocated target and a
+        # CR-MDB-024 \u00a7S2 AMENDMENT -- superseded pin: build.py's own target
+        # census widens from 16 to 20 once rust joins it as a fifth stack.
+        # The pre-024 form compared against TARGET_AGENT_NAMES (16); the
+        # amended form compares against TARGET_AGENT_NAMES_WITH_RUST (20),
+        # still named from build.py's own constants for the codec half, so a
+        # 21st stray target, a missing target, a relocated target and a
         # renamed directory all still fail here.
         build_module = _load_build_module()
         expected_paths = {
-            GENERATOR_AGENTS_DIR / name for name in TARGET_AGENT_NAMES
+            GENERATOR_AGENTS_DIR / name for name in TARGET_AGENT_NAMES_WITH_RUST
         } | {build_module.CODEC_TARGET}
-        # POSITIVE/EXACT -- the target list is exactly the 16 small-stack
-        # agent files plus the generated codec.
+        # POSITIVE/EXACT -- the target list is exactly the 20 small-stack
+        # agent files (16 legacy + 4 rust) plus the generated codec.
         self.assertEqual(
             set(listed_paths), expected_paths,
-            f"--list must report exactly the 16 small-stack agent files plus "
+            f"--list must report exactly the 20 small-stack agent files plus "
             f"the generated codec {build_module.CODEC_TARGET}, got "
             f"{sorted(str(p) for p in listed_paths)}, expected "
             f"{sorted(str(p) for p in expected_paths)}",
@@ -358,13 +405,14 @@ class ArchiveOriginalsS4Test(unittest.TestCase):
 
 
 class GeneratedContentRequirementsS4Test(unittest.TestCase):
-    """SS4 -- each of the 16 live files: frontmatter name == filename stem;
-    non-empty description; cites sub-agent-procedure + the crucible skill;
-    contains its stack's mechanic anchor."""
+    """SS4 -- each of the 20 live files (CR-MDB-024 \u00a7S2: 16 legacy + 4 rust):
+    frontmatter name == filename stem; non-empty description; cites
+    sub-agent-procedure + the crucible skill; contains its stack's mechanic
+    anchor."""
 
     def test_s4_each_live_agent_frontmatter_name_equals_filename_stem(self):
         failures = []
-        for name in TARGET_AGENT_NAMES:
+        for name in TARGET_AGENT_NAMES_WITH_RUST:
             path = GENERATOR_AGENTS_DIR / name
             if not path.is_file():
                 failures.append(f"{name}: file does not exist at {path}")
@@ -384,12 +432,12 @@ class GeneratedContentRequirementsS4Test(unittest.TestCase):
                 failures.append(
                     f"{name}: frontmatter name={value!r} must equal filename stem {expected_stem!r}"
                 )
-        # POSITIVE/EXACT -- every one of the 16 files has name == stem.
+        # POSITIVE/EXACT -- every one of the 20 files has name == stem.
         self.assertEqual(failures, [], "\n".join(failures))
 
     def test_s4_each_live_agent_description_non_empty(self):
         failures = []
-        for name in TARGET_AGENT_NAMES:
+        for name in TARGET_AGENT_NAMES_WITH_RUST:
             path = GENERATOR_AGENTS_DIR / name
             if not path.is_file():
                 failures.append(f"{name}: file does not exist at {path}")
@@ -408,12 +456,12 @@ class GeneratedContentRequirementsS4Test(unittest.TestCase):
             description = description_lines[0].split(":", 1)[1].strip()
             if not description:
                 failures.append(f"{name}: description: must be non-empty")
-        # POSITIVE -- every one of the 16 files has a non-empty description.
+        # POSITIVE -- every one of the 20 files has a non-empty description.
         self.assertEqual(failures, [], "\n".join(failures))
 
     def test_s4_each_live_agent_cites_sub_agent_procedure_and_crucible(self):
         failures = []
-        for name in TARGET_AGENT_NAMES:
+        for name in TARGET_AGENT_NAMES_WITH_RUST:
             path = GENERATOR_AGENTS_DIR / name
             if not path.is_file():
                 failures.append(f"{name}: file does not exist at {path}")
@@ -425,12 +473,12 @@ class GeneratedContentRequirementsS4Test(unittest.TestCase):
             ]
             if missing_terms:
                 failures.append(f"{name}: missing required citation terms {missing_terms}")
-        # POSITIVE -- every one of the 16 files cites both anchors.
+        # POSITIVE -- every one of the 20 files cites both anchors.
         self.assertEqual(failures, [], "\n".join(failures))
 
     def test_s4_each_live_agent_contains_its_stack_mechanic_anchor(self):
         failures = []
-        for stack in STACKS:
+        for stack in GENERATED_STACKS:
             anchor = STACK_ANCHORS[stack]
             for role in ROLES:
                 name = f"{stack}-{role}-agent.md"
@@ -443,7 +491,7 @@ class GeneratedContentRequirementsS4Test(unittest.TestCase):
                     failures.append(
                         f"{name}: must contain stack anchor {anchor!r} (stack={stack})"
                     )
-        # POSITIVE -- every one of the 16 files retains its stack's mechanic anchor.
+        # POSITIVE -- every one of the 20 files retains its stack's mechanic anchor.
         self.assertEqual(failures, [], "\n".join(failures))
 
 
@@ -491,7 +539,7 @@ class BespokeUntouchedS4Test(unittest.TestCase):
     asserts, from build.py's own declared targets, that (a) the written-file
     set is exactly the generator's declared targets -- the 16 stack x role
     agent definitions plus the one generated codec -- and (b) none of the 13
-    bespoke names (rust x4, vscode x4, electronics x4, inbox-analyst) is ever
+    bespoke names (rust x4, VS Code x4, electronics x4, inbox-analyst) is ever
     in that set or ever written to disk by a build."""
 
     def setUp(self):
@@ -523,9 +571,11 @@ class BespokeUntouchedS4Test(unittest.TestCase):
 
         self._tmp_build_py = self._tmp_generator_dir / "build.py"
         self._tmp_output_agents_dir = self._tmp_repo_root / agents_rel
-        # The generator's declared target set, repo-root-relative.
+        # CR-MDB-024 \u00a7S2 AMENDMENT: the generator's declared target set is
+        # now TARGET_AGENT_NAMES_WITH_RUST (20) once rust joins it, not the
+        # pre-024 TARGET_AGENT_NAMES (16) -- repo-root-relative.
         self._expected_written = {
-            (agents_rel / name).as_posix() for name in TARGET_AGENT_NAMES
+            (agents_rel / name).as_posix() for name in TARGET_AGENT_NAMES_WITH_RUST
         } | {codec_target_rel.as_posix()}
         # The fixture inputs, so a build's written-file set is the exact
         # difference against the whole isolated tree afterwards.
@@ -547,41 +597,39 @@ class BespokeUntouchedS4Test(unittest.TestCase):
         )
         return result
 
-    def test_s4_isolated_build_writes_exactly_the_16_target_files(self):
+    def test_s4_isolated_build_writes_exactly_the_20_target_files(self):
+        """CR-MDB-024 \u00a7S2: renamed from ..._16_target_files (16 legacy + 4
+        rust = 20 once rust joins the generator's own census)."""
         self._run_isolated_build()
         self.assertTrue(
             self._tmp_output_agents_dir.is_dir(),
             f"{self._tmp_output_agents_dir} must be created by the build",
         )
         written = _relative_file_set(self._tmp_repo_root) - self._inputs_before_build
-        # CR-MDB-022 §S2 SANCTIONED AMENDMENT -- superseded pin: the
-        # generator's target set is no longer the 16 agent definitions alone,
-        # it is those 16 PLUS the generated codec at build.py's own
-        # CODEC_TARGET (which lands outside generator/agents/). The pre-022
-        # form listed generator/agents/ only; the amended form diffs the WHOLE
-        # isolated repo tree against the fixture inputs, so it is strictly
-        # stronger: a missing target fails as before, and an extra file
-        # written ANYWHERE -- a 17th target, a stray sibling outside the
-        # agents dir -- now fails too instead of going unseen.
+        # CR-MDB-024 \u00a7S2 AMENDMENT -- superseded pin: the generator's target
+        # set widens from 16+1 to 20+1 once rust.toml exists and build.py's
+        # STACKS tuple names "rust". Still diffs the WHOLE isolated repo tree
+        # against the fixture inputs, so a missing target, or an extra file
+        # written anywhere, still fails.
         # POSITIVE/EXACT -- an isolated build's written-file set is exactly
         # the declared targets, no more and no fewer.
         self.assertEqual(
             written, self._expected_written,
             f"an isolated build must write exactly its declared targets (the "
-            f"16 small-stack agent files plus the generated codec), got "
+            f"20 small-stack agent files plus the generated codec), got "
             f"{sorted(written)}, expected {sorted(self._expected_written)}",
         )
-        # bound -- exactly 17 files land on disk (16 agent defs + 1 codec),
+        # bound -- exactly 21 files land on disk (20 agent defs + 1 codec),
         # nothing extra silently emitted alongside them.
         self.assertEqual(
-            len(written), 17,
-            f"expected exactly 17 written files (16 agent defs + 1 generated "
+            len(written), 21,
+            f"expected exactly 21 written files (20 agent defs + 1 generated "
             f"codec), got {len(written)}",
         )
 
     def test_s4_isolated_build_never_writes_a_bespoke_agent_file(self):
         self._run_isolated_build()
-        # CR-MDB-022 §S2 SANCTIONED AMENDMENT -- superseded pin: a build now
+        # CR-MDB-022 \u00a7S2 SANCTIONED AMENDMENT -- superseded pin: a build now
         # also writes outside generator/agents/ (the codec at CODEC_TARGET),
         # so scanning that one dir is no longer sufficient. The amended form
         # scans every file in the isolated repo tree; no fixture input carries
@@ -591,7 +639,8 @@ class BespokeUntouchedS4Test(unittest.TestCase):
         tree_names = {
             Path(rel).name for rel in _relative_file_set(self._tmp_repo_root)
         }
-        # NEGATIVE -- none of the 13 bespoke defs is ever written by a build.
+        # NEGATIVE -- none of the 9 bespoke defs (CR-MDB-024 \u00a7S2: rust's 4
+        # names dropped out of bespoke) is ever written by a build.
         bespoke_overlap = tree_names & set(BESPOKE_AGENT_NAMES)
         self.assertEqual(
             bespoke_overlap, set(),

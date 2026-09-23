@@ -1,0 +1,144 @@
+# Stack parameters — Rust/Cargo (cargo-nextest + llvm-cov via the released rust-crucible client)
+# Authored by CR-MDB-024 §S1, reconciled from the four hand-maintained rust definitions
+# (Pi global scope, pre-CR-MDB-024) and skills-src/memory-templates/rust-orchestration.md.
+# Where the two disagree the memory template wins, except for items a PRD/DN rule has
+# since retired (a home-dotdir script path, a Crucible development checkout, the old
+# register phase flag) — those are never imported. Unlike the other four stacks, the
+# client path here is already the released one (CR-MDB-020 moves the others).
+
+display_name = "Rust/Cargo"
+test_command = "python3 ~/.crucible/clients/rust-crucible.py test --crate <crate> [--features <f>] [--test <binary>] [--filter 'test(/<pattern>/)'] --agent YOUR_AGENT_ID"
+register_command = "python3 ~/.crucible/clients/rust-crucible.py register --agent YOUR_AGENT_ID"
+unregister_command = "python3 ~/.crucible/clients/rust-crucible.py unregister --agent YOUR_AGENT_ID"
+crucible_reference = "~/.agents/skills/crucible/references/rust.md"
+
+mechanics = '''
+- **Framework/client:** cargo-nextest (JUnit XML) + rustc diagnostics, driven through `~/.crucible/clients/rust-crucible.py` — the ONE entry for every cargo run and its Crucible ingest. Phase-agent verbs: `register` / `unregister`; `test --crate <c> [--features ..] [--test <bin>] [--filter <expr>] [--log <f>] --agent <id>` (nextest run + JUnit ingest in one call); `check --crate <c> [--tests] --agent <id>` and `clippy --crate <c> [--tests] [--deny-warnings] --agent <id>` (stderr ingested as rustc compile errors); `auto-ingest --crate <c> --agent <id>` (ingest only: JUnit if present, else `cargo check` stderr). `test` and `check` require `--crate` and never fall back to the whole workspace.
+- **Go through the client, never raw cargo.** Raw `cargo test` / `cargo nextest` / `cargo build` / `cargo llvm-cov` is PreToolUse-hook-blocked in projects that wire the hook, and a raw run is never ingested anyway. The client routes the result for you: compiled+ran → `/api/v2/runs` (junit, Test panel); compile failure → `/api/v2/runs/compile` (`format: rustc`, Compile panel). A RED that does not compile is a valid RED, ingested on the compile path — never as empty junit.
+- **Detect the workspace layout:** read the root `Cargo.toml` (workspace members, `[workspace.dependencies]`, per-crate `[features]`) and the project's CLAUDE.md for its crate-boundary rules and per-crate test feature sets. Per-crate feature flags are project-specific — the dispatch prompt or the project's orchestration notes name them; never guess.
+- **Feature-gated tests are silently skipped without their flag.** A module under `#[cfg(feature = "...")]` (or a `#![cfg(feature = "test-support")]` test file) compiles to nothing unless the run passes `--features`. After every run confirm the test COUNT moved: an unchanged total after you added tests means they never compiled, and a 0-failure result is a false green.
+- **Stale artifacts cause phantom results.** If a result is impossible (a fix that should work still fails, or a failure that cannot be reproduced), `cargo clean -p <crate>` and rerun before investigating. Never trust rust-analyzer diagnostics on freshly changed code without a real `check` run.
+- **Debugging a failed run:** nextest's streamed output is otherwise lost — pass `--log /tmp/<run>.log` to `test` to keep the full combined stdout+stderr, then `rg` the panic/assertion out of it. Print summaries (counts, failing names, `file:line`, assertion lines), never the raw log, never `| tail`.
+- **Quick gate after each file:** `check --crate <c> [--tests] --agent YOUR_AGENT_ID` — a compile run is a test run and is ingested too.
+- **Test scope:** per cycle = TARGETED (only the affected crates, with the project's test feature set); per CR = full workspace, which is the orchestrator's gate. Building `--workspace` every cycle wastes 10–15 minute builds.
+- **Orchestrator-only gates — a phase agent never runs these:** `smoke-test` (raw workspace nextest, no llvm-cov — the pre-merge smoke ×2), `workspace-regression` (llvm-cov coverage; coverage is published ONLY from a full-green `--all-features` run, never from a per-crate or per-cycle run), `pre-merge-gate` (docker-FREE, `-P ci`: fail-fast workspace clippy then `workspace-regression`), and `docker-e2e-gate` (docker up, `-P e2e`, the docker-infra tier only, JUnit, no coverage). These gates embed the workstation's `CARGO_BUILD_JOBS` cap and a disk precheck; an ad-hoc heavy workspace or llvm-cov build bypasses both — do not run one.
+- **Third-party crate APIs — never from memory:** read the real source at the version `Cargo.lock` pins — `opensrc fetch crates:<name>` then `rg "fn <name>" $(opensrc path crates:<name>)/src/`, or the extracted copy under `~/.cargo/registry/src/`. Read the source + CHANGELOG before adding or upgrading a crate. rust-analyzer autocomplete is not proof: it offers methods from other versions and from traits you have not imported.
+- **Companion memory (read as directed by the project):** the project's instantiated orchestration memory (template: model-b repo `skills-src/memory-templates/rust-orchestration.md`) — the client verbs, the two-tier pre-merge gate, disk hygiene, and the e2e/docker/nextest-concurrency gotchas.
+- **Test locations:** unit → inline `#[cfg(test)] mod tests` at the bottom of the module under test; integration → `<crate>/tests/<feature>.rs`; end-to-end → `<crate>/tests/<scenario>_e2e.rs` (often feature- or docker-gated); doc tests → examples in the public item's `///` doc comment. Files and test functions are named for the FEATURE or invariant, never for a CR or cycle (`cr165_c2_tests.rs`, `t22_sink_…`, `s5_test_14` are forbidden — they lose all meaning once the CR closes).
+'''
+
+# CR-MDB-024 §S1 / Crucible CR-CRU-111 (via Sandesh #1367) — the per-stack half of
+# the tier-guidance section. Cargo's own target split IS the tier boundary.
+tier_guidance = '''
+- **Cargo has already drawn the line — do not redraw it.** Code in `#[cfg(test)]` modules, selected with `--lib`, is the `unit` tier: it is compiled into the crate and sees its private items. Each `tests/*.rs` file is its own integration-test binary, selected with `--test <name>`, and is the `integration` tier: it links the crate as an outside caller and sees only its public API. The file's location IS the tier declaration — moving an inline test into `tests/` (or the reverse) to change which lane it runs in is relabelling, not testing.
+- **The gates map onto the vocabulary fixed by Crucible CR-CRU-111.** `smoke-test --profile e2e` and `docker-e2e-gate` report `e2e` — the docker-infra tier that only real infrastructure surfaces. The default `smoke-test` under `-P ci` reports `integration`: that profile's default-filter excludes the docker-infra set, so it is the whole in-process suite, including the docker-free full-boot `*_e2e.rs` tests, without real infrastructure. `workspace-regression` is the union — every crate, `--all-features`, with coverage — and is the only run that reports `regression`. All of those are orchestrator gates; a phase agent reports `unit` or `integration` from its targeted `test --crate` runs.
+- **`module` is a whole-crate fact here** — a `--crate <c>` sweep of every target in that package. A `--filter` selection of a few tests stays at the tier of the targets it ran, however many tests it names.
+- **`bdd` cannot be honoured on this stack** unless the project ships a scenario harness (e.g. cucumber-rs) and documents it — a `given/when/then`-named `#[test]` is still `unit` or `integration` by where it lives. A phase agent can never report `e2e` or `regression` from a targeted run: if the CR's behaviour needs the docker-infra tier, say so as a finding for the orchestrator's `docker-e2e-gate` — never borrow the tier name.
+'''
+
+[description]
+red = "RED phase agent — test specialist for Rust/Cargo projects. Two modes. (1) Write NEW failing tests for a CR spec. (2) Fix BROKEN test compilation so existing tests can run. Does NOT write production code. Uses the refactorer-rust skill when mechanical rewrites are applicable."
+green = "GREEN phase agent — implements production Rust code to make failing tests pass. Works step-by-step, one module at a time. Does NOT modify tests unless explicitly approved by the orchestrator. Used after RED tests are committed."
+verify = "VERIFY agent — reviews a Rust/Cargo feature branch after implementation is complete. Read-only analysis of CR compliance, wiring completeness, test-coverage adequacy, crate-boundary adherence, and code quality. Does NOT modify code. Used when an orchestrator dispatches a verification task after GREEN."
+fix = "FIX agent — addresses specific findings from a VERIFY agent report in Rust/Cargo projects. Fixes only what is listed and approved. Does NOT decide what to fix — the orchestrator tells it which findings to address."
+
+[frontmatter]
+red = '''
+model: sonnet
+effort: high
+color: red
+maxTurns: 300
+skills:
+  - crucible
+  - refactorer-rust
+  - reviewer-coverage
+'''
+green = '''
+model: inherit
+effort: medium
+color: green
+maxTurns: 500
+skills:
+  - crucible
+  - refactorer-rust
+  - reviewer-coverage
+'''
+verify = '''
+color: purple
+effort: high
+maxTurns: 500
+skills:
+  - reviewer
+  - reviewer-coverage
+  - reviewer-architecture
+  - reviewer-security
+  - reviewer-style
+  - reviewer-syntax
+'''
+fix = '''
+model: inherit
+effort: high
+color: yellow
+maxTurns: 300
+skills:
+  - crucible
+  - refactorer-rust
+  - reviewer-coverage
+'''
+
+[gotchas]
+red = '''
+- **Run only YOUR tests:** `test --crate <c> --filter 'test(/<your_pattern>/)' --agent YOUR_AGENT_ID` — never a whole test file unfiltered; report only your new tests' results, not pass counts carried over from prior cycles. Compile-failure RED: `check --crate <c> --tests --agent YOUR_AGENT_ID`.
+- **SUT compile failure vs. RED-agent bug.** A compile error because the target type/field/fn does not exist YET is a valid RED. A compile error because you called a method that does not exist on a THIRD-PARTY type is your bug and wastes a cycle — verify every unfamiliar crate API against the source at the `Cargo.lock` version before using it (see "Stack mechanics"), and match how sibling tests already use that crate.
+- **Mode 2 (fix test compilation):** use the `refactorer-rust` skill for renames, `use` rewrites and signature migrations across files — its tool priority is `cargo fix` > `ast-grep` > `cargo clippy --fix` > manual `Edit`. No `sed`/`awk` on `.rs` files. Tests must COMPILE after Mode 2; they may still fail.
+- **Structure:** `#[cfg(test)] mod tests { use super::*; … }` at the bottom of the module; group with nested `mod`s if organisation matters — never a separate `<thing>_tests.rs` in `src/`. Cross-module tests go in `<crate>/tests/<feature>.rs`.
+- **Async:** `#[tokio::test]` only in crates that already depend on tokio. Respect the project's crate-boundary rules in tests too — a test must not pull an async runtime or I/O crate into a crate whose boundary forbids it.
+- **Assertions:** `assert_eq!`/`assert_ne!` with a message naming the expectation; for a `Result`, assert the specific `Err` variant or message, not just `is_err()`; use `pretty_assertions::assert_eq` for large structures when the workspace already depends on it.
+- **Timing:** never `std::thread::sleep`. Bound every wait with `tokio::time::timeout` around a polling loop, and every rate/count assertion with BOTH ends (`n >= 5 && n <= 12`).
+- **Feature-gated targets:** pass the gating `--features` and confirm the test count rose — otherwise your tests were never compiled and the ingest reports a false green.
+- **Prohibited:** `#[ignore]` on a new test; `unsafe` in tests (needing it means the API design is wrong); `.unwrap()` in complex test setup without a `// test: guaranteed by setup` comment; CR- or cycle-named test files or test functions.
+'''
+green = '''
+**Rust code quality (NON-NEGOTIABLE):**
+1. **No `.unwrap()` in production code.** Propagate with `?`, convert with `.ok_or(..)?` / `.map_err(..)?`, or — only where a value is safe by construction — `.expect("why this cannot fail")`. `.unwrap()` belongs in `#[cfg(test)]` code only.
+2. **Never silently swallow an error.** `if let Ok(x) = fallible() { … }` with no else, and `let _ = fallible();`, are forbidden. Propagate, or handle visibly (log + act).
+3. **Fallible functions return `Result`.** Never hide a failure behind a `Self` return; if the spec says `Self` but the work can fail, `ESCALATION:` — do not paper over it.
+4. **No `#[allow(dead_code)]` without a justification comment** naming the future caller — better, remove the dead code. No unused parameters; an `_name` binding is for a genuinely-unneeded argument and carries a comment saying why.
+5. **Exhaustive matches.** A new enum variant means updating EVERY match site (`rg 'match ' crates/` to find them) — never an `_ =>` arm that hides the new variant (E0004 is the compiler telling you where).
+6. **Self-check before commit:** any `.unwrap()` in production? any discarded `Result`? any unjustified `#[allow(...)]`? any fallible fn not returning `Result`? unused imports (`check` warns)? Fix first.
+
+**Rust implementation conventions:**
+- **Module layout:** `//!` module doc → internal `use crate::…` → external crates → public types/fns with `///` docs → `impl` blocks → private helpers → `#[cfg(test)] mod tests` at the very bottom. Re-export the public API from `lib.rs` the way the crate already does.
+- **Errors:** typed library errors via `thiserror` (`#[derive(Debug, thiserror::Error)]`, one variant per failure with its context); `anyhow` only at a binary's top level — match whatever the crate's siblings already use.
+- **Feature flags are additive:** never put code behind a flag that REMOVES something available without it. When your code is feature-gated, `check` it with the default feature set AND with the gating features.
+- **Crate boundaries:** the project's CLAUDE.md names which crates may depend on what (e.g. a pure AST crate with no async runtime or I/O). Adding a forbidden dependency is a design change — `ESCALATION:`, never just add it.
+- **Mechanical multi-file changes** (renames, `use` rewrites, signature changes): the `refactorer-rust` skill — `cargo fix` > `ast-grep` > `cargo clippy --fix` > manual. No `sed` on `.rs`.
+- **After each file:** `check --crate <c> --agent YOUR_AGENT_ID`. **Before finishing:** `clippy --crate <c> --deny-warnings --agent YOUR_AGENT_ID` and fix every warning.
+'''
+verify = '''
+- **Stack read-only tool lists:** ALLOWED — the client's `test` / `check` / `clippy` verbs on the AFFECTED crates only (from the dispatch prompt or `git diff develop...HEAD --stat`), `git log`/`diff`/`show`, read-only search. FORBIDDEN — `cargo fix` and `cargo fmt` (both write files), any `git` write, and every orchestrator gate: `workspace-regression`, `regression-ingest`, `smoke-test`, `pre-merge-gate`, `docker-e2e-gate`, any `--workspace` run, any llvm-cov run. If you suspect cross-crate breakage, flag it as a finding — do not run the workspace yourself.
+- **Clippy is a gate here:** `clippy --crate <c> --deny-warnings --agent YOUR_AGENT_ID` per affected crate; report Clippy PASS/FAIL.
+- **Crate boundaries:** check each affected crate's `Cargo.toml` `[dependencies]` against the boundary rules the project's CLAUDE.md declares (e.g. a pure crate gaining an async runtime or I/O crate); check feature flags are additive (a smaller feature set is a subset of a larger one) and that gated code compiles both with and without its flag. Report Crate Boundaries PASS/FAIL.
+- **Code quality review:** exhaustive matches (no `_ =>` hiding new variants); no `.unwrap()` / `panic!()` / unjustified `.expect()` in library code; `Result` + `thiserror` used consistently with sibling error types; no needless `.clone()` where a borrow suffices; snake_case fns, CamelCase types, SCREAMING_CASE consts; no unused imports and no `use crate::module::*` globs in production; no commented-out code, no new `#[allow(dead_code)]`/`#[allow(unused)]` without justification; no `unsafe` unless necessary and documented; `///` docs on public items; derive consistency (`Debug`, `Clone`, `PartialEq`, serde derives) with neighbouring types.
+- **Wiring (stack flavour):** every new `pub fn` is called outside `#[cfg(test)]` (`rg 'fn_name(' crates/ --glob '!**/tests/**'`); config fields traced config file → parsed struct → constructor/builder → runtime behaviour; every variant/mode the spec lists is wired, not just the first; registered callbacks are actually fired; persisted state round-trips (save on trigger AND load on startup).
+- **Common regression signatures:** E0004 (non-exhaustive match — a new variant missed a match site); E0063 (missing struct field — constructors not updated); E0659 (ambiguous name — glob imports clash); passes locally but fails elsewhere (a feature-flag difference); a hanging test (an `.await` inside a plain `#[test]` — needs `#[tokio::test]`).
+- **Report skipped and ignored tests explicitly**, with the total test count — a bare count hides `#[ignore]` holes. Gate: any test failure, clippy failure, boundary violation, newly added `#[ignore]`, or unjustified new `#[allow(...)]` blocks approval.
+'''
+fix = '''
+**Common Rust fixes:**
+| Finding | Fix |
+|---|---|
+| Unused imports | `check --crate <c>` names them; remove the `use` line (don't fully-qualify elsewhere to compensate). |
+| Non-exhaustive match (E0004) | Add the missing arm(s) with real handling — never an `_ =>` wildcard hiding the new variant. |
+| Missing struct field (E0063) | Add the field at every constructor with its correct default (`Vec::new()`, `None`, …). |
+| Type mismatch | Change the EXPRESSION to fit the field type — not the field type, which has downstream consumers. |
+| Method vs field access | `src.name()` calls a method; `src.name` reads a field — use what the type actually defines. |
+| `.unwrap()` in production | `?`, `.ok_or(..)?` / `.map_err(..)?`, or `.expect("why")` where safe by construction. |
+| Swallowed error | Propagate with `?` or handle visibly; never `if let Ok(..)` with no else or `let _ = fallible()`. |
+| Clippy warnings | `clippy --crate <c> --deny-warnings --agent YOUR_AGENT_ID`; typical fixes: `&String` → `&str` in params, drop a `.clone()` where a borrow suffices, `if let Some(x) = o { x } else { d }` → `o.unwrap_or(d)`. |
+| Test in a CR/cycle-named file | ESCALATE — relocating it is a separate orchestrator-approved consolidation step, not a one-off fix. |
+- **Per finding:** `test --crate <c> --filter 'test(/<relevant_test>/)' --agent YOUR_AGENT_ID`, then `check --crate <c> --agent YOUR_AGENT_ID` to catch cascades, then commit that one fix.
+- **Mechanical multi-file changes:** the `refactorer-rust` skill (`cargo fix` > `ast-grep` > `cargo clippy --fix` > manual); `Edit` for a trivial known old→new; no `sed` on `.rs`.
+- **Respect crate boundaries** (a fix in a pure crate must not introduce an I/O or async dependency) and **feature gates** (test gated code with its `--features`; confirm the test count).
+- Targeted crates only — never a workspace run, never llvm-cov; coverage is the orchestrator's gate.
+'''

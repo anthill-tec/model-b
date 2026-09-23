@@ -89,9 +89,17 @@ def _injection_claims(text, token=CYCLE_ID_ENV_VAR):
 # anchor phrase drawn from its CURRENT SKILL.md body -- proves an archived
 # copy is a real content-preserving move, not an empty stub.
 # CR-MDB-016 (handover rebirth) legitimately re-ships crucible-report-{rust,
-# java,bun,python,vscode} (+ arduino) as installer-owned symlinks into
+# java,bun,python} (+ arduino) as installer-owned symlinks into
 # ~/.claude/skills -- removed from the deletion-target list below.
 # agent-protocol remains banned (CR-MDB-016 Option B) and stays a target.
+# CR-MDB-024 \u00a7S3 (2026-09-22 VS Code ruling): the VS Code crucible-report
+# bundle is no longer a legitimate handover bundle -- it is retired outright (an IDE is
+# not a stack), so it drops out of CRUCIBLE_REPORT_HANDOVER_SKILLS below
+# and back onto DELETION_TARGET_SKILLS' effective footprint via the
+# dedicated VS Code retirement gates in
+# tests/test_ide_overlay_retirement.py (this file's DELETION_TARGET_SKILLS
+# dict stays scoped to CR-MDB-016's own original wave-2 targets, never
+# grown for a later CR's retirement).
 DELETION_TARGET_SKILLS = {
     "agent-protocol": "liveness through run ingests",
     "bun-red-testing": "ingest RED",
@@ -108,7 +116,6 @@ CRUCIBLE_REPORT_HANDOVER_SKILLS = (
     "crucible-report-java",
     "crucible-report-bun",
     "crucible-report-python",
-    "crucible-report-vscode",
     "crucible-report-arduino",
 )
 
@@ -273,19 +280,27 @@ class CrucibleSkillS2Test(unittest.TestCase):
 
 class CrucibleSkillS3Test(unittest.TestCase):
     """SS3 -- references/ per stack (absorbs each crucible-report-* skill's
-    still-true content, corrected against the drift audit)."""
+    still-true content, corrected against the drift audit).
 
-    def test_s3_all_five_reference_files_exist_with_stack_specific_content(self):
-        stacks = ("rust", "java", "bun", "python", "vscode")
+    CR-MDB-024 \u00a7S3 AMENDMENT (this cycle, C2 RED, 2026-09-22 VS Code ruling):
+    the VS Code reference router (its ``references/`` entry) and its row in
+    this SKILL.md are retired along with the rest of the VS Code substrate
+    -- an IDE is not a stack, so it never belonged among the per-STACK
+    reference routers. The method below narrows from five routers to four;
+    the dedicated absence gate lives in
+    ``tests/test_ide_overlay_retirement.py``."""
+
+    def test_s3_all_four_reference_files_exist_with_stack_specific_content(self):
+        stacks = ("rust", "java", "bun", "python")
         missing_files = []
         for stack in stacks:
             path = REFERENCES_DIR / f"{stack}.md"
             if not path.is_file():
                 missing_files.append(str(path))
-        # POSITIVE -- all five reference files must exist.
+        # POSITIVE -- all four reference files must exist.
         self.assertEqual(
             missing_files, [],
-            f"expected all five references/{{rust,java,bun,python,vscode}}.md to exist, "
+            f"expected all four references/{{rust,java,bun,python}}.md to exist, "
             f"missing: {missing_files}",
         )
 
@@ -307,22 +322,6 @@ class CrucibleSkillS3Test(unittest.TestCase):
         )
         self.assertGreater(len(bun_content.strip()), 0, "references/bun.md must not be empty")
 
-        vscode_path = REFERENCES_DIR / "vscode.md"
-        self.assertTrue(vscode_path.is_file(), f"{vscode_path} must exist")
-        vscode_content = _read(vscode_path)
-        no_client_variants = ("no client", "no `*-crucible.py`", "No CLI client", "no CLI client")
-        has_no_client_marker = any(v in vscode_content for v in no_client_variants)
-        self.assertTrue(
-            has_no_client_marker,
-            f"references/vscode.md must contain a 'no client' (or equivalent) marker, "
-            f"tried variants {no_client_variants}",
-        )
-        self.assertIn(
-            "interim", vscode_content,
-            "references/vscode.md must contain 'interim'",
-        )
-        self.assertGreater(len(vscode_content.strip()), 0, "references/vscode.md must not be empty")
-
 
 class CrucibleSkillS4Test(unittest.TestCase):
     """SS4 -- deletions (removal plus content-preserving archive): the 10
@@ -332,11 +331,14 @@ class CrucibleSkillS4Test(unittest.TestCase):
     def test_s4_ten_skill_dirs_and_memory_stub_removed_with_archived_content(self):
         """CR-MDB-016 (handover rebirth, supersession class): the wave-2
         deletion targets never resurrect EXCEPT crucible-report-{rust,java,
-        bun,python,vscode,arduino}, which CR-MDB-016 legitimately re-ships as
+        bun,python,arduino}, which CR-MDB-016 legitimately re-ships as
         real deployed handover bundles (installer-owned symlinks). Those are
         excluded from DELETION_TARGET_SKILLS above; agent-protocol remains
         banned per CR-MDB-016 Option B and every other original target still
-        applies unchanged."""
+        applies unchanged. CR-MDB-024 \u00a7S3 (this cycle, 2026-09-22 VS Code
+        ruling) drops the VS Code crucible-report bundle out of that legitimate-reappear
+        set entirely -- its dedicated retirement gate lives in
+        tests/test_ide_overlay_retirement.py, not here."""
         still_present = []
         not_archived = []
         for name, anchor in DELETION_TARGET_SKILLS.items():
@@ -478,7 +480,7 @@ class CrucibleSkillCRMDB011Test(unittest.TestCase):
         )
 
     def test_ac4_each_reference_routes_to_its_crucible_report_bundle(self):
-        stacks = ("rust", "java", "bun", "python", "vscode")
+        stacks = ("rust", "java", "bun", "python")
         missing_route = []
         for stack in stacks:
             path = REFERENCES_DIR / f"{stack}.md"
@@ -493,18 +495,23 @@ class CrucibleSkillCRMDB011Test(unittest.TestCase):
             f"'crucible-report-<stack>' bundle, missing route in: {missing_route}",
         )
 
-    def test_ac6_all_five_reference_files_still_exist(self):
-        stacks = ("rust", "java", "bun", "python", "vscode")
+    def test_ac6_all_four_reference_files_still_exist(self):
+        """CR-MDB-024 \u00a7S3 AMENDMENT (this cycle, C2 RED, 2026-09-22 VS Code
+        ruling): narrowed from five stacks to four -- the VS Code reference
+        router is retired outright along with the rest of that substrate
+        (an IDE is not a stack); its absence is gated separately in
+        tests/test_ide_overlay_retirement.py."""
+        stacks = ("rust", "java", "bun", "python")
         missing_files = [
             str(REFERENCES_DIR / f"{stack}.md")
             for stack in stacks
             if not (REFERENCES_DIR / f"{stack}.md").is_file()
         ]
-        # POSITIVE -- consumer constraint: 22 agents + 2 refactorer skills
-        # reference these exact paths, so they must keep resolving.
+        # POSITIVE -- consumer constraint: the surviving agents + refactorer
+        # skills reference these exact paths, so they must keep resolving.
         self.assertEqual(
             missing_files, [],
-            f"expected all five references/{{rust,java,bun,python,vscode}}.md paths "
+            f"expected all four references/{{rust,java,bun,python}}.md paths "
             f"to still exist (consumer constraint), missing: {missing_files}",
         )
 

@@ -59,7 +59,6 @@ ingests in one call under your agent id. Never hand-roll `curl`; the client
 | bun | `bun-crucible.py` | universal verbs (`test --tests <file>`, `regression [--coverage]`, `check`, `auto-ingest`, `pre-merge-gate`) + the plan verbs — **REFERENCE IMPLEMENTATION** for the V2 client API | `references/bun.md` → bundled `crucible-report-bun` |
 | python | `python-crucible.py` | `test --tests <dotted.path>`, `regression [--coverage --cov-source]`, `check`, `auto-ingest`, `pre-merge-gate` + the plan verbs | `references/python.md` → bundled `crucible-report-python` |
 | arduino | `arduino-crucible.py` | `test`/`unit` (native host make junit), `regression`, `auto-ingest`, `check`/`compile` (arduino-cli), `pre-merge-gate` + the plan verbs | `references/arduino.md` → bundled `crucible-report-arduino` |
-| vscode | NO client yet | interim inline urllib ingest, documented as-is; the future client is CRUCIBLE's deliverable (thread #1322) | `references/vscode.md` → bundled `crucible-report-vscode` |
 | electronics/hardware | excluded — under revision | — | — |
 
 Clients live in the CRUCIBLE project's own `clients/` directory —
