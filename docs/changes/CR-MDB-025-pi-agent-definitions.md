@@ -109,6 +109,11 @@ enforced by both the allowlist and the policy.
   new value from the spec, never from the changed code; migrated tests are listed by id.
 - **All roles — tool names.** No body instructs a tool its own frontmatter does not grant; no body
   names `Bash`. (Client paths are CR-MDB-020's; `~/.claude/skills/` citations are CR-MDB-031's.)
+- **All roles — register first.** Registration with Crucible is First Action 1 in every definition,
+  ahead of the AC cross-check, as `skills-src/model-b/references/sub-agent-procedure.md` already
+  requires ("register immediately on startup, before reading/running anything"). A cross-check that
+  finds the spec unsatisfiable ends in escalate-then-unregister. Today `red.md.tmpl` and
+  `green.md.tmpl` put the cross-check first; `fix` and `verify` already comply.
 
 ### §S6 — `init` renders the project's agents
 `init` renders definitions for the project's stacks into each installed harness's project agent
@@ -170,6 +175,9 @@ output for `PROJECT_STACKS=python`.
       definition carries the prove-both-ways rule and the test-migration rule — gates over the
       fleet.
 - [ ] No rendered body names `Bash`, and no body instructs a tool absent from its own `tools:` line.
+- [ ] Every rendered definition's First Actions list has registration with Crucible as item 1, ahead
+      of the AC cross-check — a gate over the fleet (all 20), with a detector fixture proving it bites
+      on the pre-amendment order.
 
 ### §S6
 - [ ] `init --stacks python` with installed harnesses `[pi]` writes exactly
