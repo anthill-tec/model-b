@@ -575,3 +575,17 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   the better ask directly with Crucible: voiding should take a CR OFF the queue while retaining
   its DB entry. Evidence travels with the request in
   `docs/research/CREQ-crucible-queue-projection.md` §Addendum.
+- 2026-09-23 — **To revisit after CR-MDB-033 closes: how the generator and the installer
+  connect.** User-stated purpose (the design anchor for that discussion): **the generator exists
+  to tailor agent definitions to each install-target harness, because each harness supports its
+  own frontmatter.** One neutral definition per stack × role, one emitter per harness (today:
+  Pi only, per DN §D14). Measured current state: the installer deploys no agent definitions at
+  all (`deploy.py` has three asset classes: skills, hook scripts, tool scripts); the wheel
+  force-includes the whole `generator/` yet no package code invokes it; `init`'s rendered
+  AGENTS.md claims "Agents regenerate from the INSTALLATION's generator assets", which nothing
+  implements; the live `~/.agents/agents/` fleet (20) is hand-placed and all 16 generated names
+  differ from `generator/agents/`. Questions for that session: whether rendering happens at
+  install time for the TARGETED harnesses (which the stated purpose implies) rather than copying
+  pre-rendered files as CR-MDB-025 §S4 now specifies; how that composes with CR-MDB-036 §S7's
+  stack selector (render only selected stacks × targeted harnesses); and CR-MDB-025 §S1's
+  "`_emit_pi()` is the only serialiser", which reads as one emitter of many, not the only one.
