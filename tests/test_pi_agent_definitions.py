@@ -2149,5 +2149,149 @@ class AgentOwnershipRulesS6Test(unittest.TestCase):
         )
 
 
+# ---------------------------------------------------------------------------
+# \u00a7S8 -- the released client in the generator inputs (moved from CR-MDB-020
+# \u00a7S2 by user ruling 2026-09-23, committed 0246f6a). The three command
+# strings in every generator/stacks/*.toml name the released Crucible client
+# ~/.crucible/clients/<client>-crucible.py, never the retired mirror
+# ~/.claude/scripts/<client>-crucible.py (absent on a Pi install, so First
+# Action 1 of every rendered definition could not run). Measured at 0246f6a:
+# arduino/bun/python/quarkus carry the retired form in all three commands
+# (17 occurrences each across stacks + rendered output); rust alone already
+# carries the released form. `crucible_reference` is out of this scope and
+# must stay byte-identical to its 0246f6a value.
+# ---------------------------------------------------------------------------
+
+RELEASED_CLIENT_DIR = "~/.crucible/clients/"
+# The client script each stack's commands invoke (quarkus drives Maven, so
+# its client is mvn-crucible.py -- the released filename under
+# ~/.crucible/clients/, measured 2026-09-23).
+STACK_CLIENT_SCRIPT = {
+    "arduino": "arduino-crucible.py",
+    "bun": "bun-crucible.py",
+    "python": "python-crucible.py",
+    "quarkus": "mvn-crucible.py",
+    "rust": "rust-crucible.py",
+}
+S8_COMMAND_KEYS = ("test_command", "register_command", "unregister_command")
+# \u00a7S8 AC1 "crucible_reference is unchanged" -- the exact 0246f6a values.
+CRUCIBLE_REFERENCE_AT_0246F6A = {
+    "arduino": (
+        "~/.claude/skills/crucible/SKILL.md (no per-stack reference file for arduino "
+        "yet \u2014 client limits: `arduino-crucible.py` currently offers the `unit` and "
+        "`compile` tiers with `--project-dir sheetal-firmware`; the `regression` tier "
+        "with lcov coverage lands with CR-SHE-006 \u2014 until then use `unit`)"
+    ),
+    "bun": "~/.claude/skills/crucible/references/bun.md",
+    "python": "~/.claude/skills/crucible/references/python.md",
+    "quarkus": "~/.claude/skills/crucible/references/java.md",
+    "rust": "~/.agents/skills/crucible/references/rust.md",
+}
+# A path-qualified client token: everything up to the last '/' is the
+# directory, the rest is the <client>-crucible.py script name.
+CLIENT_PATH_TOKEN_RE = re.compile(r"([~\w./-]*/)([\w-]+-crucible\.py)")
+# \u00a7S8 AC2 -- the retired mirror paired with a crucible client.
+RETIRED_CLIENT_PATH_RE = re.compile(r"\.claude/scripts/[\w./-]*-crucible\.py")
+
+
+def _retired_client_paths(text: str) -> list:
+    """\u00a7S8 AC2 -- every `.claude/scripts/...-crucible.py` pairing in ``text``."""
+    return RETIRED_CLIENT_PATH_RE.findall(text)
+
+
+def _non_released_client_tokens(text: str) -> list:
+    """\u00a7S8 AC3 -- every path-qualified `*-crucible.py` token in ``text`` whose
+    directory is not the released ~/.crucible/clients/."""
+    return [
+        d + s for d, s in CLIENT_PATH_TOKEN_RE.findall(text)
+        if d != RELEASED_CLIENT_DIR
+    ]
+
+
+class ReleasedClientPathS8Test(unittest.TestCase):
+    """\u00a7S8 -- the generator inputs and the rendered fleet name the released
+    Crucible client, never the retired ~/.claude/scripts/ mirror."""
+
+    def _stack_toml(self, stack: str) -> dict:
+        path = STACKS_DIR / f"{stack}.toml"
+        self.assertTrue(path.is_file(), f"{path} must exist")
+        with path.open("rb") as fh:
+            return tomllib.load(fh)
+
+    def test_s8_every_stack_toml_command_string_names_the_released_client(self):
+        problems = []
+        for stack in STACKS:
+            data = self._stack_toml(stack)
+            expected = RELEASED_CLIENT_DIR + STACK_CLIENT_SCRIPT[stack]
+            for key in S8_COMMAND_KEYS:
+                value = data.get(key)
+                if not isinstance(value, str):
+                    problems.append(f"{stack}.toml: {key} missing or not a string")
+                    continue
+                tokens = [d + s for d, s in CLIENT_PATH_TOKEN_RE.findall(value)]
+                if tokens != [expected]:
+                    problems.append(
+                        f"{stack}.toml: {key} names {tokens}, expected exactly [{expected!r}]"
+                    )
+        self.assertEqual(problems, [], "\n".join(problems))
+
+    def test_s8_crucible_reference_is_unchanged_from_0246f6a(self):
+        changed = []
+        for stack in STACKS:
+            actual = self._stack_toml(stack).get("crucible_reference")
+            if actual != CRUCIBLE_REFERENCE_AT_0246F6A[stack]:
+                changed.append(f"{stack}.toml: crucible_reference = {actual!r}")
+        self.assertEqual(changed, [], "\n".join(changed))
+
+    def test_s8_detector_bites_on_retired_client_path_but_not_on_released(self):
+        retired = "python3 ~/.claude/scripts/python-crucible.py register --agent X"
+        released = "python3 ~/.crucible/clients/python-crucible.py register --agent X"
+        unrelated = "see ~/.claude/scripts/toon.py and `arduino-crucible.py` (bare)"
+        self.assertEqual(
+            _retired_client_paths(retired), [".claude/scripts/python-crucible.py"]
+        )
+        self.assertEqual(_retired_client_paths(released), [])
+        self.assertEqual(_retired_client_paths(unrelated), [])
+        self.assertEqual(
+            _non_released_client_tokens(retired), ["~/.claude/scripts/python-crucible.py"]
+        )
+        self.assertEqual(_non_released_client_tokens(released), [])
+
+    def test_s8_zero_retired_client_paths_under_generator_templates_stacks_and_agents(self):
+        files = _generator_content_files()
+        self.assertTrue(files, "no generator content files found")
+        hits = []
+        for path in files:
+            for match in _retired_client_paths(_read(path)):
+                hits.append(f"{path.relative_to(REPO_ROOT)}: {match}")
+        self.assertEqual(hits, [], "\n".join(hits))
+
+    def test_s8_all_twenty_rendered_definitions_carry_the_released_client_form(self):
+        files = _all_agent_files()
+        self.assertEqual(len(files), len(STACKS) * len(ROLES), [f.name for f in files])
+        problems = []
+        for path in files:
+            stack = path.name.split("-", 1)[0]
+            client = RELEASED_CLIENT_DIR + STACK_CLIENT_SCRIPT[stack]
+            text = _read(path)
+            for verb in ("register", "unregister"):
+                if f"{client} {verb} --agent" not in text:
+                    problems.append(f"{path.name}: no `{client} {verb} --agent` command")
+            stray = _non_released_client_tokens(text)
+            if stray:
+                problems.append(f"{path.name}: non-released client paths {sorted(set(stray))}")
+        self.assertEqual(problems, [], "\n".join(problems))
+
+    def test_s8_build_check_is_clean(self):
+        result = subprocess.run(
+            [sys.executable, str(BUILD_PY), "--check"],
+            cwd=REPO_ROOT, capture_output=True, text=True, timeout=120,
+        )
+        self.assertEqual(
+            result.returncode, 0,
+            f"build.py --check must be clean:\n{result.stdout}\n{result.stderr}",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
