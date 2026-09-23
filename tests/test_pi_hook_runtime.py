@@ -12,8 +12,10 @@ Out of scope for C1 (land in later cycles, NOT tested here):
     ported scripts once §S3 lands.
   * §S4 matcher-on-neutral-name filtering (the "counting fake script" test)
     — C2.
-  * §S6 (.gitignore / worktree carry) and §S7 (retire
-    block-bad-cycle-task-name) — C3.
+  * §S6 (.gitignore / worktree carry) — C3. §S7 (retire the cycle-todo-
+    naming guard) moved INTO C2 (orchestrator scope widen, this pass) --
+    see tests/test_hook_retirement.py, which owns its retired identifier
+    and every AC about it; this file never spells that name.
 
 CR-MDB-030 cycle C2 ADDS (this pass — §S3 payload contract + §S4 matcher on
 the neutral name, per the mapping table in the CR spec):
@@ -24,10 +26,12 @@ the neutral name, per the mapping table in the CR spec):
   * `ScriptVocabularyAndSchemaDocTest` — the grep gate (zero Claude Code
     tool-name/`file_path` literals in `hooks-src/scripts/*`) and the
     schema.md neutral-payload/mapping documentation checks. Scans the WHOLE
-    `hooks-src/scripts/*` directory per the AC's literal wording, so it
-    stays RED for `block-bad-cycle-task-name` (still `TaskCreate`-gated)
-    until §S7 (C3) retires that script — the other six porting to the
-    neutral vocabulary is C2's job.
+    `hooks-src/scripts/*` directory per the AC's literal wording; §S7 (the
+    cycle-todo-naming guard's retirement) is now ALSO C2's job (scope
+    widened), so this grep gate is expected to reach GREEN entirely within
+    this cycle once tests/test_hook_retirement.py's own AC does too --
+    porting the six surviving scripts to the neutral vocabulary was
+    always C2's job.
   * `PiHookWriteBoundaryAcrossToolsTest` — `block-write-outside-worktree`
     through `write`, `edit`, `ctx_edit`, `ctx_patch` (incl. a second
     ctx_patch operation targeting the outside path), and an allowed `read`
@@ -669,13 +673,18 @@ class PiHookNeutralPayloadMappingTest(PiLoaderTestCase):
 class ScriptVocabularyAndSchemaDocTest(unittest.TestCase):
     """AC (\u00a7S3): grep gate over hooks-src/scripts/* + schema.md doc checks.
 
-    NOTE: hooks-src/scripts/block-bad-cycle-task-name retires under \u00a7S7
-    (CR-MDB-030 cycle C3), not this cycle -- it still contains "TaskCreate"
-    today and will until C3 lands. This test intentionally scans the WHOLE
-    hooks-src/scripts/* directory (the AC's literal scope: "in
-    hooks-src/scripts/*"), so it stays RED for that one file until C3's
-    retirement; porting the other six scripts to the neutral vocabulary is
-    this cycle's (C2's) job.
+    \u00a7S7's cycle-todo-naming guard retirement moved into THIS cycle (C2) --
+    its script's own removal, and every reference to its name, is
+    tests/test_hook_retirement.py's job (the ONE module allowed to spell
+    it). This gate still scans the WHOLE hooks-src/scripts/* directory
+    (the AC's literal scope) for the SIX SURVIVING scripts' vocabulary
+    (`Bash`/`Write`/`Edit`/`NotebookEdit`/`TaskCreate`/`MultiEdit`/
+    `file_path`); it would ALSO catch the retired script's own leftover
+    `TaskCreate` reference if that file still physically exists when this
+    runs -- a second, independent signal alongside
+    tests/test_hook_retirement.py's dedicated existence check, not a
+    duplicate of it (this gate's job is the SIX-script vocabulary; the
+    retired script's presence/absence is incidental to it).
     """
 
     _FORBIDDEN_LITERALS = (

@@ -90,7 +90,7 @@ SCRIPTS_ROOT = REPO_ROOT / "hooks-src" / "scripts"
 # informational hook (session-start) -- exactly the prompt's pinned pair.
 CARGO_GUARD_OPEN = {
     "event": "pre-tool-use",
-    "matcher": "Bash",
+    "matcher": "bash",
     "command": "block-direct-cargo-test",
     "tier": "core",
     "timeout": 5,
@@ -109,7 +109,7 @@ AMBIENT_STATUS = {
 # AC5: a security-class guard declaring fail_direction=closed.
 WRITE_GUARD_CLOSED = {
     "event": "pre-tool-use",
-    "matcher": "Write|Edit",
+    "matcher": "write|edit",
     "command": "block-write-outside-worktree",
     "tier": "core",
     "timeout": 5,
@@ -183,7 +183,7 @@ class ClaudeCodeEmitterTest(HooksCompilerTestCase):
         pre_tool_use = settings["hooks"]["PreToolUse"]
         self.assertEqual(len(pre_tool_use), 1)
         cargo_entry = pre_tool_use[0]
-        self.assertEqual(cargo_entry["matcher"], "Bash")
+        self.assertEqual(cargo_entry["matcher"], "bash")
         cargo_cmd = cargo_entry["hooks"][0]
         expected_cargo_path = str(SCRIPTS_ROOT / "block-direct-cargo-test")
         self.assertEqual(cargo_cmd["command"], expected_cargo_path)

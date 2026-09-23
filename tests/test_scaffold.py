@@ -704,9 +704,9 @@ class HooksSeamSoloRustEmissionTest(unittest.TestCase):
     stdlib docstring). The CR text pins ONLY the rows this test and
     HooksSeamMultiPythonEmissionTest assert on (cargo/mvn stack-gating,
     worktree/CR mode-gating, ambient-status always-on); it is silent on
-    `block-bad-cycle-task-name` / `post-regression-disk-reminder`'s exact
-    gating for THIS scenario, so neither their presence nor their absence
-    is asserted below -- only the pinned rows:
+    `post-regression-disk-reminder`'s exact gating for THIS scenario, so
+    neither its presence nor its absence is asserted below -- only the
+    pinned rows:
 
         hook                                    | stack gate               | mode gate
         -----------------------------------------|--------------------------|----------
@@ -715,7 +715,6 @@ class HooksSeamSoloRustEmissionTest(unittest.TestCase):
         block-direct-mvn-test                     | stacks ∩ {java, quarkus} | none
         block-write-outside-worktree              | none (stack-neutral)     | multi only
         block-cr-completed-without-spec-update    | none (stack-neutral)     | multi only
-        block-bad-cycle-task-name /
         post-regression-disk-reminder             | none (stack-neutral per  | UNPINNED by
                                                    | dispatch note)           | this CR slice
     """
