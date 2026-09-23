@@ -946,10 +946,11 @@ class AtomicWriteSixSitesTest(unittest.TestCase):
             skipped: list = []
             unmanaged: list = []
             with mock.patch("os.replace", side_effect=OSError("AC1 injected os.replace failure")):
-                deploy._deploy_file(
-                    src, dest, "dest.txt", {"dest.txt": prior_hash},
-                    False, skipped, unmanaged,
-                )
+                with self.assertRaises(OSError):
+                    deploy._deploy_file(
+                        src, dest, "dest.txt", {"dest.txt": prior_hash},
+                        False, skipped, unmanaged,
+                    )
             self.assertEqual(
                 dest.read_bytes(), prior_content,
                 "AC1/§S2 site=deploy._deploy_file: the prior destination "
@@ -986,7 +987,8 @@ class AtomicWriteSixSitesTest(unittest.TestCase):
             scripts_root = target / "scripts-root-placeholder"
             emitter = getattr(hooks, emitter_name)
             with mock.patch("os.replace", side_effect=OSError("AC1 injected os.replace failure")):
-                emitter(instances, target, scripts_root, entry)
+                with self.assertRaises(OSError):
+                    emitter(instances, target, scripts_root, entry)
             self.assertEqual(
                 dest.read_bytes(), prior_content,
                 f"AC1/§S2 site=hooks.{emitter_name}: the prior destination "
@@ -1012,13 +1014,14 @@ class AtomicWriteSixSitesTest(unittest.TestCase):
             prior_content = "PRIOR ENV CONTENT -- must survive an os.replace failure\n"
             env_path.write_text(prior_content, encoding="utf-8")
             with mock.patch("os.replace", side_effect=OSError("AC1 injected os.replace failure")):
-                scaffold._emit_plan(
-                    target,
-                    name="X", token="xproj", acronym="XP", mode="solo",
-                    owner="tester", stacks=["python"], harnesses=[],
-                    sub_projects=[], no_commit=True, home=home,
-                    hook_scripts_root=None,
-                )
+                with self.assertRaises(OSError):
+                    scaffold._emit_plan(
+                        target,
+                        name="X", token="xproj", acronym="XP", mode="solo",
+                        owner="tester", stacks=["python"], harnesses=[],
+                        sub_projects=[], no_commit=True, home=home,
+                        hook_scripts_root=None,
+                    )
             self.assertEqual(
                 env_path.read_text(encoding="utf-8"), prior_content,
                 "AC1/§S2 site=scaffold._emit_plan: the prior .env content "
