@@ -185,12 +185,13 @@ class RustStackTomlShapeS1Test(unittest.TestCase):
         self.assertEqual(problems, [], "\n".join(problems))
 
     def test_s1_rust_toml_per_role_tables_cover_all_four_roles(self):
-        """[description], [frontmatter] and [gotchas] each carry all four
-        roles (red, green, verify, fix) as non-empty string values."""
+        """[description] and [gotchas] each carry all four roles (red,
+        green, verify, fix) as non-empty string values, and [roles] carries
+        a table for each of the four roles (CR-MDB-025 §S1 AC3)."""
         self.assertTrue(RUST_TOML.is_file(), f"{RUST_TOML} must exist")
         params = _rust_params()
         problems = []
-        for table_name in ("description", "frontmatter", "gotchas"):
+        for table_name in ("description", "gotchas"):
             table = params.get(table_name)
             if not isinstance(table, dict):
                 problems.append(f"[{table_name}]: missing or not a table")
@@ -201,7 +202,17 @@ class RustStackTomlShapeS1Test(unittest.TestCase):
                     problems.append(
                         f"[{table_name}].{role}: expected a non-empty string, got {value!r}"
                     )
-        # POSITIVE/bound — exactly the 3 tables x 4 roles = 12 entries, none missing.
+        roles_table = params.get("roles")
+        if not isinstance(roles_table, dict):
+            problems.append("[roles]: missing or not a table")
+        else:
+            for role in ROLES:
+                if not isinstance(roles_table.get(role), dict):
+                    problems.append(
+                        f"[roles.{role}]: expected a table, got {roles_table.get(role)!r}"
+                    )
+        # POSITIVE/bound — 2 string tables x 4 roles = 8 entries, plus the
+        # 4 [roles.<role>] tables, none missing.
         self.assertEqual(problems, [], "\n".join(problems))
 
 

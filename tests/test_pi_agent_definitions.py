@@ -535,13 +535,11 @@ class UnknownIntentDropS2Test(unittest.TestCase):
 
         fixture_toml = tmp_generator_dir / "stacks" / "python.toml"
         original_text = fixture_toml.read_text(encoding="utf-8")
-        match = re.search(r"\n\[frontmatter\]\n.*?(?=\n\[gotchas\])", original_text, re.S)
+        match = re.search(r"\n\[roles\.red\]\n.*?(?=\n\[|\Z)", original_text, re.S)
         self.assertIsNotNone(
             match,
-            "fixture setup: python.toml must still carry a [frontmatter] "
-            "block to splice out (this fixture targets the pre-GREEN "
-            "baseline) -- if this fails, the real TOML has already been "
-            "migrated and this fixture needs updating to match",
+            "fixture setup: python.toml must carry a [roles.red] table "
+            "to replace with the fixture's (§S1 AC3 shape)",
         )
         assert match is not None
         valid_tools_csv = ", ".join(f'"{t}"' for t in WRITE_CAPABLE_TOOLS)
