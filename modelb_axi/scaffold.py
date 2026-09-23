@@ -32,7 +32,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from modelb_axi import agents
+from modelb_axi import agents, requirements
 from modelb_axi._fsutil import atomic_write
 from modelb_axi.axi import envelope
 from modelb_axi.config import INSTALL_TOML_NAME, _toml_string, load_install_toml
@@ -281,6 +281,33 @@ _HARNESS_NATIVE_NOTES: dict[str, str] = {
 }
 
 
+def _render_capability_contract(stacks: list[str]) -> str:
+    """The §S6 capability contract, rendered from
+    :mod:`modelb_axi.requirements` at call time (never hand-copied): one
+    line per tier-1 capability and per selected stack's toolchain probe,
+    each pairing the name with its remediation. Unselected stacks are not
+    mentioned."""
+    lines = [
+        f"- `{row['id']}` ({row['policy']}): `{row['remediation']}`"
+        for row in requirements.REQUIREMENTS if row["tier"] == 1
+    ]
+    seen: set[str] = set()
+    for stack in stacks:
+        for probe in requirements.STACK_TOOLCHAINS.get(stack, ()):
+            if probe["name"] in seen:
+                continue
+            seen.add(probe["name"])
+            lines.append(
+                f"- `{probe['name']}` ({stack} toolchain): {probe['remediation']}"
+            )
+    return (
+        "## Harness capability contract (from the installation's requirements)\n"
+        "Each line names what this project's assets need and how to provide "
+        "it when missing.\n"
+        + "\n".join(lines) + "\n"
+    )
+
+
 def _render_agents_md(
     name: str, token: str, acronym: str, mode: str, owner: str,
     stacks: list[str], harnesses: list[str],
@@ -336,6 +363,8 @@ def _render_agents_md(
         f"## Harness anchors (installed set: {', '.join(harnesses)})\n"
         + "\n".join(anchor_lines) + "\n"
         "\n"
+        + _render_capability_contract(stacks)
+        + "\n"
         "## Generator note\n"
         "- Agents regenerate from the INSTALLATION's generator assets — "
         "never from a per-project copy.\n"
