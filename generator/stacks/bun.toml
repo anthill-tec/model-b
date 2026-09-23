@@ -45,7 +45,7 @@ skills = []
 [roles.verify]
 tools = ["read", "grep", "find", "ls", "ctx_shell", "ctx_read", "ctx_grep", "ctx_glob", "ctx_find", "ctx_ls", "ctx_search", "ctx_tree"]
 thinking = "medium"
-skills = ["reviewer", "reviewer-coverage", "reviewer-security", "reviewer-style"]
+skills = []
 
 [roles.fix]
 tools = ["read", "write", "edit", "grep", "find", "ls", "ctx_shell", "ctx_read", "ctx_grep", "ctx_glob", "ctx_find", "ctx_ls", "ctx_patch", "ctx_edit", "ctx_search", "ctx_tree"]

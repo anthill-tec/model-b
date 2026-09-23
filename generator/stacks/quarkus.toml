@@ -29,7 +29,7 @@ tier_guidance = '''
 '''
 
 [description]
-red = "RED phase agent — test specialist for Quarkus/Java projects. Two modes. (1) Write NEW failing tests for a CR spec. (2) Fix BROKEN test compilation so existing tests can run. Does NOT write production code. Uses the refactorer-java skill when mechanical rewrites are applicable."
+red = "RED phase agent — test specialist for Quarkus/Java projects. Two modes. (1) Write NEW failing tests for a CR spec. (2) Fix BROKEN test compilation so existing tests can run. Does NOT write production code. Uses tool-first mechanical rewrites (OpenRewrite) when applicable."
 green = "GREEN phase agent — implements production code to make failing tests pass in Quarkus/Java projects. Works step-by-step, one class at a time. Does NOT modify tests unless explicitly approved by the orchestrator."
 verify = "VERIFY agent — reviews a Quarkus/Java feature branch after implementation is complete. Read-only analysis of CR compliance, wiring completeness, test coverage adequacy, layer-boundary adherence, and code quality. Does NOT modify code. Used when an orchestrator dispatches a verification task after GREEN."
 fix = "FIX agent — addresses specific findings from a VERIFY agent report in Quarkus/Java projects. Fixes only what is listed and approved. Does NOT decide what to fix — the orchestrator tells it which findings to address."
@@ -37,26 +37,26 @@ fix = "FIX agent — addresses specific findings from a VERIFY agent report in Q
 [roles.red]
 tools = ["read", "write", "edit", "grep", "find", "ls", "ctx_shell", "ctx_read", "ctx_grep", "ctx_glob", "ctx_find", "ctx_ls", "ctx_patch", "ctx_edit", "ctx_search", "ctx_tree"]
 thinking = "high"
-skills = ["crucible", "refactorer-java", "reviewer-coverage"]
+skills = ["crucible"]
 
 [roles.green]
 tools = ["read", "write", "edit", "grep", "find", "ls", "ctx_shell", "ctx_read", "ctx_grep", "ctx_glob", "ctx_find", "ctx_ls", "ctx_patch", "ctx_edit", "ctx_search", "ctx_tree"]
 thinking = "high"
-skills = ["crucible", "refactorer-java", "reviewer-coverage"]
+skills = ["crucible"]
 
 [roles.verify]
 tools = ["read", "grep", "find", "ls", "ctx_shell", "ctx_read", "ctx_grep", "ctx_glob", "ctx_find", "ctx_ls", "ctx_search", "ctx_tree"]
 thinking = "medium"
-skills = ["reviewer", "reviewer-coverage", "reviewer-quarkus", "reviewer-architecture", "reviewer-security", "reviewer-style", "reviewer-syntax"]
+skills = []
 
 [roles.fix]
 tools = ["read", "write", "edit", "grep", "find", "ls", "ctx_shell", "ctx_read", "ctx_grep", "ctx_glob", "ctx_find", "ctx_ls", "ctx_patch", "ctx_edit", "ctx_search", "ctx_tree"]
 thinking = "high"
-skills = ["crucible", "refactorer-java", "reviewer-coverage"]
+skills = ["crucible"]
 
 [gotchas]
 red = '''
-- **Refactoring test code (Mode 2):** use the `refactorer-java` skill (OpenRewrite + tool-first) for cross-file mechanical changes; `edit` only for trivial known old→new in one file; avoid `sed`.
+- **Refactoring test code (Mode 2):** tool-first (OpenRewrite) for cross-file mechanical changes; `edit` only for trivial known old→new in one file; avoid `sed`.
 - **Quarkus test annotations:** `@QuarkusTest` — CDI beans, services, REST endpoints with full DI container; `@QuarkusIntegrationTest` — the packaged app (failsafe after `mvn package`, the E2E tier); plain JUnit 5 `@Test` — pure POJO/utility/mapper unit tests, no CDI.
 - **CDI:** `@Inject` real bean; `@InjectMock` Mockito mock into CDI. **NEVER `@Mock` + `@InjectMocks`** (standalone Mockito). NEVER `new MyService()` in a `@QuarkusTest` — let CDI inject.
 - **REST Assured:** `given().contentType(JSON).body(b).when().post("/api/x").then().statusCode(200).body("field", equalTo(v))`; static-import `io.restassured.RestAssured.given`, `org.hamcrest.Matchers.*`. Assert exact status codes (200/201/204/400/404) and body shape.
@@ -80,15 +80,15 @@ green = '''
 - **Quick gates:** after each file `mvn-crucible.py compile --agent YOUR_AGENT_ID` (or `mvn -q clean test-compile`); module regression before finishing: `mvn-crucible.py module [--module m] --agent YOUR_AGENT_ID`.
 - **Quality checks before completion:** enum comparison uses `==`, not `.equals()`; `.call()` for Uni-returning emits; no blocking; layer order respected.
 - **Prohibited:** `Thread.sleep()` → Awaitility / `Uni.delayIt()`; `UUID.randomUUID()` → `UuidV7Generator.generate()`; `@Mock`+`@InjectMocks`; manual JSON serialization (use Jackson annotations); `new ServerEvent(...)`.
-- Use `refactorer-java` for mechanical multi-file changes; avoid `sed`.
+- Tool-first (OpenRewrite) for mechanical multi-file changes; avoid `sed`.
 '''
 verify = '''
 - **Stack read-only tool lists:** ALLOWED — `mvn test`/`verify`/`test-compile` (verification runs), targeted `mvn-crucible.py module [--module m]` runs. FORBIDDEN — `mvn ... -Drewrite` / OpenRewrite apply, or any writer.
 - **Targeted regression = affected module(s) only** via `mvn-crucible.py module`; the full-reactor `regression` (with JaCoCo coverage) is the ORCHESTRATOR's pre-merge gate — if you suspect cross-module breakage, flag it, don't run it.
 - **Layer-boundary checks:** Repository = data only; Service = logic + events; Resource = HTTP only — no business logic in resources, no HTTP in services. Reactive: no blocking / `.await().indefinitely()` in production; `Uni`/`Multi` returns; `.call()` (not `.invoke()`) for Uni side effects. Enum compare `==`, not `.equals()`. SSE via `eventBus.emit(type, pk, data, from, to)`, not `new ServerEvent(...)`. No unused imports / full-namespace names / empty catches / dead code.
 - **Wiring (stack flavour):** new methods/beans used outside `src/test` (`grep -rn 'methodName(' src/main/java`); `application.properties`/`@ConfigProperty` keys traced properties → injected field → behaviour; events/SSE actually fired in production; persisted state round-trips.
-- **Per-layer deep review** (`reviewer-quarkus`/`reviewer-architecture`): Model — field types + nullability, validation annotations (`@NotNull`/`@NotBlank`/`@Size`), Panache patterns, non-empty `@BsonProperty`; Service — `Uni`/`Multi` returns, scope annotations, transaction boundaries, idempotency, no N+1 queries, no blocking, visible error handling; Resource — exact status codes (200/201/204/400/404/500), `@Valid`, DTO mapping (no entity leak), OpenAPI, SSE/WebSocket; Cross-cutting — no circular CDI deps, consistent naming, no dead code.
-- **Security review (OWASP backend; `reviewer-security` skill)** — run the red-flag greps, trace each finding, BLOCK MERGE on any Critical/High: Injection (NoSQL filters from unsanitized input; `Runtime.exec`/`ProcessBuilder` with user args; log forging; SSRF); Auth (missing `@RolesAllowed`/`@Authenticated`; JWT expiry/validation); Misconfiguration (`%prod` vs `%dev` leakage; Swagger/dev-services in prod; CORS `*`; stack traces in responses); Sensitive data (hardcoded secrets/keys/tokens; creds in `application.properties` without env substitution; secrets in logs; `.env` not git-ignored — `grep -rn 'password\|secret\|api.key\|token\|credential' --include=*.java --include=*.properties`); Dependencies (known-CVE versions — `./mvnw versions:display-dependency-updates`); Input validation (missing `@Valid`; unbounded payloads; path traversal); Business logic (IDOR; mass assignment — bind to a DTO, not the entity; rate limiting on sensitive endpoints). Frontend security is out of scope.
+- **Per-layer deep review:** Model — field types + nullability, validation annotations (`@NotNull`/`@NotBlank`/`@Size`), Panache patterns, non-empty `@BsonProperty`; Service — `Uni`/`Multi` returns, scope annotations, transaction boundaries, idempotency, no N+1 queries, no blocking, visible error handling; Resource — exact status codes (200/201/204/400/404/500), `@Valid`, DTO mapping (no entity leak), OpenAPI, SSE/WebSocket; Cross-cutting — no circular CDI deps, consistent naming, no dead code.
+- **Security review (OWASP backend)** — run the red-flag greps, trace each finding, BLOCK MERGE on any Critical/High: Injection (NoSQL filters from unsanitized input; `Runtime.exec`/`ProcessBuilder` with user args; log forging; SSRF); Auth (missing `@RolesAllowed`/`@Authenticated`; JWT expiry/validation); Misconfiguration (`%prod` vs `%dev` leakage; Swagger/dev-services in prod; CORS `*`; stack traces in responses); Sensitive data (hardcoded secrets/keys/tokens; creds in `application.properties` without env substitution; secrets in logs; `.env` not git-ignored — `grep -rn 'password\|secret\|api.key\|token\|credential' --include=*.java --include=*.properties`); Dependencies (known-CVE versions — `./mvnw versions:display-dependency-updates`); Input validation (missing `@Valid`; unbounded payloads; path traversal); Business logic (IDOR; mass assignment — bind to a DTO, not the entity; rate limiting on sensitive endpoints). Frontend security is out of scope.
 - **Coverage:** read an existing `target/jacoco-report/jacoco.csv` if present to spot I/O-backed service classes < 80% instruction — flag as findings; never run a fresh full coverage pass.
 - **Test quality:** I/O-backed service tests are integration (no `@InjectMock` on them); error/edge/idempotency covered; `*Test`/`*IT` naming; descriptive method names (java-testing-practices.md "Reviewer checklist").
 - Report the independent gate results with real counts; include Security PASS/WARN/BLOCK in the report.
@@ -106,5 +106,5 @@ fix = '''
 | `@Mock`+`@InjectMocks` | Quarkus `@InjectMock`. |
 | Missing layer separation | Move logic to Service, data to Repository, HTTP to Resource. |
 | Test-quality finding | Add error/edge/mock-verification assertions per java-testing-practices.md. |
-Use the `refactorer-java` skill for cross-file mechanical changes (renames, import rewrites, signature updates) — tool-first, do NOT improvise; `edit` for trivial known old→new; avoid `sed`. Coverage NEVER on targeted runs — full coverage is the orchestrator's gate.
+Cross-file mechanical changes (renames, import rewrites, signature updates) are tool-first (OpenRewrite) — do NOT improvise; `edit` for trivial known old→new; avoid `sed`. Coverage NEVER on targeted runs — full coverage is the orchestrator's gate.
 '''

@@ -66,7 +66,7 @@ Check the stack's layer/dependency boundaries — see "VERIFY specifics" below. 
 Apply the stack quality checklist in "VERIFY specifics" (exceptions/error handling, resources, naming/style, imports, dead code, async discipline, test quality: one behaviour per test, descriptive names, positive + bound + error + mock-received assertions, feature-named — never CR/cycle-named — test files).
 
 ### 5. Coverage adequacy (READ-only, no new coverage run)
-If the orchestrator attached a coverage report, use the `reviewer-coverage` skill to judge adequacy of the changed lines/branches. Do NOT run a fresh coverage pass yourself.
+If the orchestrator attached a coverage report, judge from it whether the changed lines/branches are adequately covered. Do NOT run a fresh coverage pass yourself.
 
 ### 6. Test-quality oversights + investigation discipline (general)
 Flag: (a) an E2E/integration test that only proves "no error/exception" without asserting the real outcome AND a clean failure channel (silently-dropped items = a false green); (b) a feature passing only through a bypass harness that skips its production wiring (grep that the real caller invokes it); (c) a field/symbol referenced on the consuming side but absent/mis-typed on the producing side (check BOTH sides of any typed boundary).

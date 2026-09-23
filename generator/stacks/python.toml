@@ -37,22 +37,22 @@ fix = "FIX agent — addresses specific findings from a VERIFY agent report in P
 [roles.red]
 tools = ["read", "write", "edit", "grep", "find", "ls", "ctx_shell", "ctx_read", "ctx_grep", "ctx_glob", "ctx_find", "ctx_ls", "ctx_patch", "ctx_edit", "ctx_search", "ctx_tree"]
 thinking = "high"
-skills = ["reviewer-coverage"]
+skills = []
 
 [roles.green]
 tools = ["read", "write", "edit", "grep", "find", "ls", "ctx_shell", "ctx_read", "ctx_grep", "ctx_glob", "ctx_find", "ctx_ls", "ctx_patch", "ctx_edit", "ctx_search", "ctx_tree"]
 thinking = "medium"
-skills = ["reviewer-coverage"]
+skills = []
 
 [roles.verify]
 tools = ["read", "grep", "find", "ls", "ctx_shell", "ctx_read", "ctx_grep", "ctx_glob", "ctx_find", "ctx_ls", "ctx_search", "ctx_tree"]
 thinking = "medium"
-skills = ["reviewer", "reviewer-coverage", "reviewer-architecture", "reviewer-security", "reviewer-style", "reviewer-syntax"]
+skills = []
 
 [roles.fix]
 tools = ["read", "write", "edit", "grep", "find", "ls", "ctx_shell", "ctx_read", "ctx_grep", "ctx_glob", "ctx_find", "ctx_ls", "ctx_patch", "ctx_edit", "ctx_search", "ctx_tree"]
 thinking = "high"
-skills = ["reviewer-coverage"]
+skills = []
 
 [gotchas]
 red = '''
