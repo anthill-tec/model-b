@@ -1385,5 +1385,148 @@ class RegressionPinFilePermissionsUnaffectedByAtomicWritesTest(unittest.TestCase
         )
 
 
+class MidEmissionFailureInsideWiringCompilationEmittedTest(unittest.TestCase):
+    """AC4 (\u00a7S4, C2) -- a mid-emission ``OSError`` injected INSIDE
+    ``hooks.compile_wiring`` (after some wiring files are already written
+    to disk, but BEFORE ``compile_wiring`` returns) must still leave the
+    failure envelope's ``emitted`` field listing EXACTLY the files present
+    under ``--target``.
+
+    Distinct from ``MidEmissionFailureHonestPartialEmissionTest`` above,
+    which injects its failure in ``_render_agents_md`` -- BEFORE hook
+    compilation ever starts, so ``scaffold._emit_plan``'s
+    ``emitted.extend(harness_entry["emitted_files"])`` line (only reached
+    once ``compile_wiring`` RETURNS) is never exercised by that test at
+    all. Here the injection is on ``hooks.atomic_write`` (the name
+    ``hooks.py`` imports it under), patched to call the REAL
+    ``_fsutil.atomic_write`` for its first two successful calls and then
+    raise -- landing the failure mid-way through the FIRST (roster-order)
+    harness's wiring emission, after real files already landed on disk.
+
+    Measured (orchestrator repro): with harnesses ``["pi", "claude-code",
+    "opencode", "hermes"]`` recorded in that order in ``install.toml``,
+    ``scaffold._emit_plan``'s ``roster_harnesses`` preserves that order,
+    so ``compile_wiring`` starts wiring "pi" first; a failure after the
+    2nd successful wiring write leaves ``.pi/extensions/ambient-board-
+    status.ts`` and ``.pi/extensions/block-bad-cycle-task-name.ts`` on
+    disk (from ``hooks._emit_pi``'s per-instance loop), while
+    ``scaffold._emit_plan`` never reaches its ``emitted.extend(...)``
+    line for this harness -- ``compile_wiring`` raised before returning
+    a report at all -- so NEITHER file is listed in the failure
+    envelope's ``emitted``, even though both are really on disk under
+    ``--target``. This breaks the \u00a7S4 AC's "exactly the files
+    present" contract specifically for wiring output, which the
+    ``_render_agents_md``-injection test above cannot reach."""
+
+    def setUp(self):
+        self._tmp_home = tempfile.mkdtemp(prefix="modelb-axi-c2-wiring-partial-home-")
+        self._tmp_target = tempfile.mkdtemp(prefix="modelb-axi-c2-wiring-partial-target-")
+        _write_full_install_toml(
+            self._tmp_home,
+            harnesses=("pi", "claude-code", "opencode", "hermes"),
+        )
+
+    def tearDown(self):
+        for root in (self._tmp_home, self._tmp_target):
+            shutil.rmtree(root, ignore_errors=True)
+
+    def test_failure_inside_compile_wiring_still_lists_exact_partial_tree_in_emitted(self):
+        from modelb_axi import scaffold
+        from modelb_axi._fsutil import atomic_write as real_atomic_write
+
+        call_count = {"n": 0}
+        FAIL_AFTER = 2  # let exactly two real wiring files land, then raise.
+
+        def _flaky_atomic_write(path, data, mode=None):
+            call_count["n"] += 1
+            if call_count["n"] > FAIL_AFTER:
+                raise OSError(
+                    "CR-MDB-033 C2 injected mid-compile_wiring failure"
+                )
+            return real_atomic_write(path, data, mode=mode)
+
+        args = _init_args(self._tmp_target, dry_run=False)
+        out = io.StringIO()
+        with mock.patch(
+            "modelb_axi.hooks.atomic_write", side_effect=_flaky_atomic_write,
+        ), contextlib.redirect_stdout(out):
+            exit_code = scaffold.run_init(args, Path(self._tmp_home))
+        combined = out.getvalue()
+
+        # POSITIVE -- non-zero exit is the failure signal.
+        self.assertNotEqual(
+            exit_code, 0,
+            "AC4/\u00a7S4 (wiring variant): a mid-compile_wiring OSError "
+            f"must exit non-zero; got exit={exit_code} stdout={combined!r}",
+        )
+
+        leftover = _files_under_excluding_git(self._tmp_target)
+
+        # NEGATIVE / bound -- the injection lands after exactly two real
+        # wiring writes succeed, so the two known pi-extension files must
+        # be genuinely present on disk (never zero -- and never the full
+        # wiring set, which would mean the injection missed its mark).
+        expected_partial_wiring = {
+            str(Path(".pi") / "extensions" / "ambient-board-status.ts"),
+            str(Path(".pi") / "extensions" / "block-bad-cycle-task-name.ts"),
+        }
+        self.assertTrue(
+            expected_partial_wiring.issubset(set(leftover)),
+            "AC4 precondition: the injection must leave exactly the first "
+            f"two pi wiring files on disk; expected "
+            f"{sorted(expected_partial_wiring)} to be a subset of leftover "
+            f"{leftover!r} -- got exit={exit_code} stdout={combined!r}",
+        )
+        third_pi_file = str(
+            Path(".pi") / "extensions" / "post-regression-disk-reminder.ts"
+        )
+        self.assertNotIn(
+            third_pi_file, leftover,
+            "AC4 precondition: the 3rd pi wiring write must be the one "
+            f"that raised, so {third_pi_file!r} must NOT be on disk; got "
+            f"leftover={leftover!r}",
+        )
+
+        envelope = _decode_envelope(combined)
+        axi = envelope.get("axi", {})
+        # POSITIVE -- axi.ok is false on this path.
+        self.assertIs(
+            axi.get("ok"), False,
+            "AC4 (wiring variant): the failure envelope must report "
+            f"axi.ok false; got envelope={envelope!r}",
+        )
+        emitted = axi.get("emitted")
+
+        # THE BUG this test pins: the two pi wiring files that are REALLY
+        # on disk must be listed in `emitted` -- today they are not,
+        # because `scaffold._emit_plan` only calls
+        # `emitted.extend(harness_entry["emitted_files"])` AFTER
+        # `compile_wiring` returns, and `compile_wiring` raised instead of
+        # returning.
+        self.assertTrue(
+            expected_partial_wiring.issubset(set(emitted or [])),
+            "AC4/\u00a7S4 (wiring variant): every wiring file really on "
+            "disk under --target must be listed in the failure envelope's "
+            f"`emitted` field; expected {sorted(expected_partial_wiring)} "
+            f"to be a subset of emitted={emitted!r} (files really on disk: "
+            f"{leftover!r}); envelope={envelope!r}",
+        )
+
+        # POSITIVE -- `emitted`, compared as a SET of relative paths, must
+        # equal EXACTLY the files present under --target -- the same
+        # "exactly the files present" contract
+        # ``MidEmissionFailureHonestPartialEmissionTest`` already pins for
+        # the pre-wiring injection point, now pinned for the INSIDE-
+        # wiring-compilation injection point too.
+        self.assertEqual(
+            set(emitted or []), set(leftover),
+            "AC4/\u00a7S4 (wiring variant): the failure envelope's "
+            "`emitted` field must list EXACTLY the files present under "
+            f"--target (compared as sets of relative paths); got "
+            f"emitted={emitted!r} leftover on disk={leftover!r}; "
+            f"envelope={envelope!r}",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
