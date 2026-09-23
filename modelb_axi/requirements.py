@@ -196,12 +196,23 @@ _ARDUINO_CLI_INSTALLER = (
 #: The Crucible python client's modules; ``xmlrunner`` ships in the
 #: ``unittest-xml-reporting`` package (orchestrator ruling, C2).
 _PIP_INSTALL = "python3 -m pip install unittest-xml-reporting coverage"
+_PIP_HOW = "install the Crucible python client's modules with pip"
 _ELEVATED = "(needs elevated privileges — named, never run by modelb-axi)"
 
 
+def install_display(install: tuple[str, ...]) -> str:
+    """How a provider installer argv reads as a command: an ``sh -c``
+    pipeline is its script; any other argv is joined."""
+    return install[-1] if install[:2] == ("sh", "-c") else " ".join(install)
+
+
 def _probe(
-    name: str, remediation: str, install: tuple[str, ...] | None, kind: str = "binary",
+    name: str, how: str, install: tuple[str, ...] | None, kind: str = "binary",
 ) -> dict:
+    """One toolchain probe. Its ``remediation`` is ``how`` \u2014 prose \u2014 and,
+    when the provider's installer can be run, that command set apart in
+    backticks: ``<how>: `<command>` `` (the command never carries prose)."""
+    remediation = f"{how}: `{install_display(install)}`" if install else how
     return {"name": name, "kind": kind, "remediation": remediation, "install": install}
 
 
@@ -221,27 +232,25 @@ _JVM_PROBES: tuple[dict, ...] = (
 STACK_TOOLCHAINS: dict[str, tuple[dict, ...]] = {
     "python": (
         _probe("python3", f"install python3 with the OS package manager {_ELEVATED}", None),
-        _probe("xmlrunner", _PIP_INSTALL, tuple(_PIP_INSTALL.split()), kind="module"),
-        _probe("coverage", _PIP_INSTALL, tuple(_PIP_INSTALL.split()), kind="module"),
+        _probe("xmlrunner", _PIP_HOW, tuple(_PIP_INSTALL.split()), kind="module"),
+        _probe("coverage", _PIP_HOW, tuple(_PIP_INSTALL.split()), kind="module"),
     ),
     "rust": (
-        _probe("cargo", f"install Rust with rustup: {_RUSTUP_INSTALLER}",
-               ("sh", "-c", _RUSTUP_INSTALLER)),
-        _probe("cargo-nextest", "cargo install cargo-nextest",
+        _probe("cargo", "install Rust with rustup", ("sh", "-c", _RUSTUP_INSTALLER)),
+        _probe("cargo-nextest", "install it with cargo",
                ("cargo", "install", "cargo-nextest")),
-        _probe("cargo-llvm-cov", "cargo install cargo-llvm-cov",
+        _probe("cargo-llvm-cov", "install it with cargo",
                ("cargo", "install", "cargo-llvm-cov")),
     ),
     "quarkus": _JVM_PROBES,
     "java": _JVM_PROBES,
     "bun": (
-        _probe("bun", f"install bun with bun's installer: {_BUN_INSTALLER}",
-               ("sh", "-c", _BUN_INSTALLER)),
+        _probe("bun", "install bun with bun's installer", ("sh", "-c", _BUN_INSTALLER)),
         _probe("node", "install Node.js from https://nodejs.org or the OS package "
                        f"manager {_ELEVATED}", None),
     ),
     "arduino": (
-        _probe("arduino-cli", f"install arduino-cli with its installer: {_ARDUINO_CLI_INSTALLER}",
+        _probe("arduino-cli", "install arduino-cli with its installer",
                ("sh", "-c", _ARDUINO_CLI_INSTALLER)),
         _probe("g++", f"install g++ with the OS package manager {_ELEVATED}", None),
     ),

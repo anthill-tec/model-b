@@ -24,7 +24,7 @@ import sys
 from collections.abc import Callable, Iterable
 
 from modelb_axi.capabilities import ABSENT, DETECTED, UNKNOWN
-from modelb_axi.requirements import STACK_TOOLCHAINS
+from modelb_axi.requirements import STACK_TOOLCHAINS, install_display
 
 INSTALLED = "installed"
 
@@ -132,19 +132,18 @@ def remediate_toolchains(
             if install in outcomes:
                 row[name] = outcomes[install]
                 continue
+            # The remediation is prose with any command set apart in
+            # backticks by the data (``requirements._probe``).
             warn(
                 f"stack {stack}: {name}={row[name]} — {stack} tests cannot run on "
                 f"this machine; {command}"
-                if not install else
-                f"stack {stack}: {name}={row[name]} — {stack} tests cannot run on "
-                f"this machine; install it with `{command}`"
             )
             if install is None or offer is None:
                 continue
             runner = resolve(install[0], resolved)
             if runner is None:
                 continue
-            display = install[-1] if install[:2] == ("sh", "-c") else " ".join(install)
+            display = install_display(install)
             if offer(f"Run `{display}` to install {name} for stack {stack}?"):
                 row[name] = _run_installer([runner, *install[1:]], display, warn)
             else:
