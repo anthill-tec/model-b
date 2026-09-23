@@ -5,7 +5,21 @@ carried both asks below — void/supersede takes the CR off the queue while keep
 `title` + `lifecycle.state` on each `queue` row — plus a UI question from the user: what is the
 correct board representation for a voided/superseded CR? The user's proposal, sent as the
 suggestion: a strikethrough on the row in the table listing, and absent from the Wave Card in
-zone 2. Awaiting Crucible's ruling; the text below is the draft it was sent from.
+zone 2. **Answered 2026-09-24 as #1385 — both asks ACCEPTED, the UI proposal RULED as-is:**
+
+- **Table listing:** a voided or superseded CR stays visible, rendered with a strikethrough.
+- **Wave Card (zone 2):** a voided or superseded CR does not appear.
+- **Ask 1 accepted:** `lifecycle.state` becomes authoritative for `queue`, `next` and wave
+  membership; the record and its reason survive.
+- **Ask 2 accepted:** `title` and `lifecycle.state` are added to each `queue` row.
+- **Superseded vs voided** (naming the superseding CR): Crucible leans yes, but has not yet ruled.
+  They will tell us when their CR is specified.
+- **Timing:** their CR is filed after their in-flight CR-CRU-018 closes, and ships in the next
+  Crucible release. Model B sees it only then, since it runs released clients.
+- **Keep the CR-MDB-012 wave-99 parking workaround until the fix ships, then drop it.**
+
+Crucible reproduced it independently on CR-CRU-082. They will send the CR id when it is filed
+and again when it ships. The text below is the draft #1384 was sent from.
 
 ---
 
