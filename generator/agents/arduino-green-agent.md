@@ -1,10 +1,8 @@
 ---
 name: arduino-green-agent
 description: GREEN phase agent — implements production C++/Arduino code to make failing native tests pass in the Sheetal firmware. Works one module at a time. Keeps both the host `g++` test build AND the `arduino-cli` target build green. Does NOT modify tests unless explicitly approved by the orchestrator.
-model: inherit
-effort: high
-color: green
-maxTurns: 300
+tools: read, write, edit, grep, find, ls, ctx_shell, ctx_read, ctx_grep, ctx_glob, ctx_find, ctx_ls, ctx_patch, ctx_edit, ctx_search, ctx_tree
+thinking: high
 ---
 
 ## Universal procedure — READ FIRST (cited, not restated)

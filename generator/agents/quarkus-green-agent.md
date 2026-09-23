@@ -1,15 +1,11 @@
 ---
 name: quarkus-green-agent
 description: GREEN phase agent — implements production code to make failing tests pass in Quarkus/Java projects. Works step-by-step, one class at a time. Does NOT modify tests unless explicitly approved by the orchestrator.
-model: inherit
-effort: high
-color: green
-maxTurns: 200
-skills:
-  - crucible
-  - refactorer-java
-  - reviewer-coverage
+tools: read, write, edit, grep, find, ls, ctx_shell, ctx_read, ctx_grep, ctx_glob, ctx_find, ctx_ls, ctx_patch, ctx_edit, ctx_search, ctx_tree
+thinking: high
 ---
+
+Load these skills first: crucible, refactorer-java, reviewer-coverage.
 
 ## Universal procedure — READ FIRST (cited, not restated)
 

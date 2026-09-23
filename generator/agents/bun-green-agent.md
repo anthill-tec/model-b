@@ -1,10 +1,8 @@
 ---
 name: bun-green-agent
 description: GREEN phase agent — implements production TypeScript code to make failing Bun tests pass. Works step-by-step, one module/tool at a time. Does NOT modify tests unless explicitly approved by the orchestrator. Used after RED tests are committed.
-model: inherit
-effort: medium
-color: green
-maxTurns: 500
+tools: read, write, edit, grep, find, ls, ctx_shell, ctx_read, ctx_grep, ctx_glob, ctx_find, ctx_ls, ctx_patch, ctx_edit, ctx_search, ctx_tree
+thinking: medium
 ---
 
 ## Universal procedure — READ FIRST (cited, not restated)

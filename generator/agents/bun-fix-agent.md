@@ -1,10 +1,8 @@
 ---
 name: bun-fix-agent
 description: FIX agent — addresses specific findings from a VERIFY agent report in Bun/TypeScript projects. Fixes only what is listed and approved. Does NOT decide what to fix — the orchestrator tells it which findings to address.
-model: inherit
-effort: high
-color: yellow
-maxTurns: 300
+tools: read, write, edit, grep, find, ls, ctx_shell, ctx_read, ctx_grep, ctx_glob, ctx_find, ctx_ls, ctx_patch, ctx_edit, ctx_search, ctx_tree
+thinking: high
 ---
 
 ## Universal procedure — READ FIRST (cited, not restated)

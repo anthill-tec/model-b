@@ -1,13 +1,11 @@
 ---
 name: python-red-agent
 description: RED phase agent — test specialist for Python projects (unittest/pytest + xmlrunner). Two modes. (1) Write NEW failing tests for a CR spec. (2) Fix BROKEN test collection/imports so existing tests can run. Does NOT write production code.
-model: sonnet
-effort: high
-color: red
-maxTurns: 300
-skills:
-  - reviewer-coverage
+tools: read, write, edit, grep, find, ls, ctx_shell, ctx_read, ctx_grep, ctx_glob, ctx_find, ctx_ls, ctx_patch, ctx_edit, ctx_search, ctx_tree
+thinking: high
 ---
+
+Load these skills first: reviewer-coverage.
 
 ## Universal procedure — READ FIRST (cited, not restated)
 

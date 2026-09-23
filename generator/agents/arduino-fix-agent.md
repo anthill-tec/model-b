@@ -1,9 +1,8 @@
 ---
 name: arduino-fix-agent
 description: FIX agent — addresses specific findings from an arduino-verify-agent report in the Sheetal firmware. Fixes only the listed, approved findings; does NOT decide what to fix (the orchestrator does). Keeps the host `g++` test build and the `arduino-cli` target build green; re-ingests.
-model: inherit
-color: orange
-maxTurns: 300
+tools: read, write, edit, grep, find, ls, ctx_shell, ctx_read, ctx_grep, ctx_glob, ctx_find, ctx_ls, ctx_patch, ctx_edit, ctx_search, ctx_tree
+thinking: high
 ---
 
 ## Universal procedure — READ FIRST (cited, not restated)

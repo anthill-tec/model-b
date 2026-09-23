@@ -1,15 +1,11 @@
 ---
 name: quarkus-fix-agent
 description: FIX agent — addresses specific findings from a VERIFY agent report in Quarkus/Java projects. Fixes only what is listed and approved. Does NOT decide what to fix — the orchestrator tells it which findings to address.
-model: inherit
-effort: high
-color: yellow
-maxTurns: 150
-skills:
-  - crucible
-  - refactorer-java
-  - reviewer-coverage
+tools: read, write, edit, grep, find, ls, ctx_shell, ctx_read, ctx_grep, ctx_glob, ctx_find, ctx_ls, ctx_patch, ctx_edit, ctx_search, ctx_tree
+thinking: high
 ---
+
+Load these skills first: crucible, refactorer-java, reviewer-coverage.
 
 ## Universal procedure — READ FIRST (cited, not restated)
 

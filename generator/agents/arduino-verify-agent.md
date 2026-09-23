@@ -1,14 +1,11 @@
 ---
 name: arduino-verify-agent
 description: VERIFY agent — reviews a Sheetal firmware CR after GREEN. Read-only analysis of CR/AC compliance, wiring + caller-existence, test-coverage adequacy across the test pyramid (native/ArduinoFake/HIL/sim), layer-boundary adherence, and code quality. Re-runs the full native suite + `arduino-cli` compile independently. Does NOT modify code.
-model: inherit
-color: yellow
-maxTurns: 300
-skills:
-  - reviewer
-  - reviewer-coverage
-  - reviewer-syntax
+tools: read, grep, find, ls, ctx_shell, ctx_read, ctx_grep, ctx_glob, ctx_find, ctx_ls, ctx_search, ctx_tree
+thinking: medium
 ---
+
+Load these skills first: reviewer, reviewer-coverage, reviewer-syntax.
 
 ## Universal procedure — READ FIRST (cited, not restated)
 

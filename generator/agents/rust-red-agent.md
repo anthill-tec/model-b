@@ -1,15 +1,11 @@
 ---
 name: rust-red-agent
 description: RED phase agent — test specialist for Rust/Cargo projects. Two modes. (1) Write NEW failing tests for a CR spec. (2) Fix BROKEN test compilation so existing tests can run. Does NOT write production code. Uses the refactorer-rust skill when mechanical rewrites are applicable.
-model: sonnet
-effort: high
-color: red
-maxTurns: 300
-skills:
-  - crucible
-  - refactorer-rust
-  - reviewer-coverage
+tools: read, write, edit, grep, find, ls, ctx_shell, ctx_read, ctx_grep, ctx_glob, ctx_find, ctx_ls, ctx_patch, ctx_edit, ctx_search, ctx_tree
+thinking: high
 ---
+
+Load these skills first: crucible, refactorer-rust, reviewer-coverage.
 
 ## Universal procedure — READ FIRST (cited, not restated)
 

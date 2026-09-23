@@ -1,15 +1,11 @@
 ---
 name: quarkus-red-agent
 description: RED phase agent — test specialist for Quarkus/Java projects. Two modes. (1) Write NEW failing tests for a CR spec. (2) Fix BROKEN test compilation so existing tests can run. Does NOT write production code. Uses the refactorer-java skill when mechanical rewrites are applicable.
-model: inherit
-effort: high
-color: red
-maxTurns: 200
-skills:
-  - crucible
-  - refactorer-java
-  - reviewer-coverage
+tools: read, write, edit, grep, find, ls, ctx_shell, ctx_read, ctx_grep, ctx_glob, ctx_find, ctx_ls, ctx_patch, ctx_edit, ctx_search, ctx_tree
+thinking: high
 ---
+
+Load these skills first: crucible, refactorer-java, reviewer-coverage.
 
 ## Universal procedure — READ FIRST (cited, not restated)
 

@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
-"""CR-MDB-008 — generator: renders the 20 generated stack agent definitions
+"""CR-MDB-008 — generator: writes the 20 generated stack agent definitions
 (CR-MDB-024 §S2 added rust as the fifth stack), plus the generated TOON codec
 copy that ships beside the tooling (CR-MDB-022 §S2).
 
-Renders ``generator/templates/{red,green,verify,fix}.md.tmpl`` (string.Template)
-with the per-stack parameters from ``generator/stacks/{arduino,bun,python,
-quarkus,rust}.toml`` into the repo-local package asset dir ``generator/agents/``
-(CR-MDB-014 §S7 retarget), and renders ``scripts/toon.py`` from
+A thin wrapper over ``modelb_axi.agents`` (CR-MDB-025 §S1), which holds the
+neutral render and the per-harness emitters — one code path. The agent
+definitions come from ``generator/templates/{red,green,verify,fix}.md.tmpl`` and
+the per-stack parameters in ``generator/stacks/{arduino,bun,python,quarkus,
+rust}.toml``, serialised by the Pi emitter into the repo-local package asset
+dir ``generator/agents/`` (CR-MDB-014 §S7 retarget) — the committed reference
+output ``--check`` gates. ``scripts/toon.py`` is written from
 ``modelb_axi/toon.py`` — a real, self-contained module (never a re-export: a
 deployed ``worktree-flow.py`` runs under a bare ``python3`` that cannot reach
 the ``modelb_axi`` venv) carrying a do-not-hand-edit banner.
@@ -21,29 +24,36 @@ Verbs:
 
 Stdlib only. Deterministic output: stable target ordering, no timestamps.
 The 5 bespoke defs (electronics x4, inbox-analyst) are NEVER targets. The codec copy is not stack- or role-scoped, so it is a target
-of every invocation.
+of every invocation. A tool intent the emitter cannot translate is dropped and
+reported on stderr with its reason (CR-MDB-025 §S2).
 """
 
 from __future__ import annotations
 
 import argparse
 import sys
-import tomllib
 from pathlib import Path
-from string import Template
 
 GENERATOR_DIR = Path(__file__).resolve().parent
+REPO_ROOT = GENERATOR_DIR.parent
+
+# Run as a script from a checkout: this checkout's modelb_axi resolves first,
+# and the build writes exactly its declared targets — no bytecode cache for
+# the package it imports (CR-MDB-008 §S4).
+if __name__ == "__main__":
+    sys.dont_write_bytecode = True
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from modelb_axi import agents  # noqa: E402  (needs the sys.path entry above)
+from modelb_axi.agents import ROLES, STACKS  # noqa: E402
+
 TEMPLATES_DIR = GENERATOR_DIR / "templates"
 STACKS_DIR = GENERATOR_DIR / "stacks"
 AGENTS_DIR = GENERATOR_DIR / "agents"
 
-STACKS = ("arduino", "bun", "python", "quarkus", "rust")
-ROLES = ("red", "green", "verify", "fix")
-
 # The 20 stack agent files this generator owns — never the bespoke defs.
 TARGETS = tuple(f"{stack}-{role}-agent.md" for stack in STACKS for role in ROLES)
-
-REPO_ROOT = GENERATOR_DIR.parent
 
 # The generated codec copy (CR-MDB-022 §S2): one hand-maintained source,
 # one committed, drift-gated, self-contained artifact beside the tooling.
@@ -62,36 +72,19 @@ CODEC_BANNER = """\
 # `python3` resolves it from beside itself with no modelb_axi on sys.path.
 """
 
-
 def load_stack_params(stack: str) -> dict:
     """Parse one stack TOML via tomllib."""
-    path = STACKS_DIR / f"{stack}.toml"
-    with path.open("rb") as fh:
-        return tomllib.load(fh)
+    return agents.load_stack_params(STACKS_DIR, stack)
 
+def render(stack: str, role: str, params: dict, drops: list[dict] | None = None) -> str:
+    """One agent file's full content (Pi emitter), via modelb_axi.agents."""
+    return agents.render(stack, role, params, TEMPLATES_DIR, drops=drops)
 
-def render(stack: str, role: str, params: dict) -> str:
-    """Render one agent file's full content deterministically."""
-    template = Template((TEMPLATES_DIR / f"{role}.md.tmpl").read_text(encoding="utf-8"))
-    mapping = {
-        "name": f"{stack}-{role}-agent",
-        "description": params["description"][role],
-        "frontmatter_extra": params["frontmatter"][role].strip("\n"),
-        "display_name": params["display_name"],
-        "test_command": params["test_command"],
-        "register_command": params["register_command"],
-        "unregister_command": params["unregister_command"],
-        "crucible_reference": params["crucible_reference"],
-        "stack_mechanics": params["mechanics"].strip("\n"),
-        "role_gotchas": params["gotchas"][role].strip("\n"),
-        # CR-MDB-017 §S6b: the per-stack half of the tier-guidance section.
-        # The shared preamble lives in the template and renders once; this key
-        # carries the honourability half, which is stack data, not template text.
-        "tier_guidance": params["tier_guidance"].strip(),
-    }
-    content = template.substitute(mapping)
-    return content.rstrip("\n") + "\n"
-
+def _report_drops(drops: list[dict]) -> None:
+    """Record every dropped tool intent, with its reason, on stderr."""
+    for drop in drops:
+        print(f"dropped tool {drop['intent']!r} from {drop['name']}: {drop['reason']}",
+              file=sys.stderr)
 
 def selected_targets(stacks: tuple[str, ...], roles: tuple[str, ...]):
     """Yield (stack, role, filename) in stable TARGETS order."""
@@ -104,30 +97,31 @@ def selected_targets(stacks: tuple[str, ...], roles: tuple[str, ...]):
                 continue
             yield stack, role, f"{stack}-{role}-agent.md", params
 
-
 def render_codec() -> str:
     """The generated ``scripts/toon.py``: the banner plus its source verbatim."""
     return CODEC_BANNER + "\n" + CODEC_SOURCE.read_text(encoding="utf-8")
 
-
 def cmd_build(stacks, roles) -> int:
     AGENTS_DIR.mkdir(parents=True, exist_ok=True)
+    drops: list[dict] = []
     for _stack, role, name, params in selected_targets(stacks, roles):
         target = AGENTS_DIR / name
-        target.write_text(render(_stack, role, params), encoding="utf-8")
+        target.write_text(render(_stack, role, params, drops), encoding="utf-8")
         print(f"wrote {target}")
+    _report_drops(drops)
     CODEC_TARGET.write_text(render_codec(), encoding="utf-8")
     print(f"wrote {CODEC_TARGET}")
     return 0
 
-
 def cmd_check(stacks, roles) -> int:
     drifted = []
+    drops: list[dict] = []
     for stack, role, name, params in selected_targets(stacks, roles):
         live = AGENTS_DIR / name
-        rendered = render(stack, role, params)
+        rendered = render(stack, role, params, drops)
         if not live.is_file() or live.read_text(encoding="utf-8") != rendered:
             drifted.append(name)
+    _report_drops(drops)
     if (not CODEC_TARGET.is_file()
             or CODEC_TARGET.read_text(encoding="utf-8") != render_codec()):
         drifted.append(str(CODEC_TARGET.relative_to(REPO_ROOT)))
@@ -139,13 +133,11 @@ def cmd_check(stacks, roles) -> int:
     print("clean: live tree matches regeneration")
     return 0
 
-
 def cmd_list(stacks, roles) -> int:
     for _stack, _role, name, _params in selected_targets(stacks, roles):
         print(AGENTS_DIR / name)
     print(CODEC_TARGET)
     return 0
-
 
 def parse_filter(raw: str | None, allowed: tuple[str, ...], label: str) -> tuple[str, ...]:
     if raw is None:
@@ -155,7 +147,6 @@ def parse_filter(raw: str | None, allowed: tuple[str, ...], label: str) -> tuple
     if unknown:
         raise SystemExit(f"unknown {label}: {', '.join(unknown)} (allowed: {', '.join(allowed)})")
     return picked
-
 
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
@@ -181,7 +172,6 @@ def main(argv: list[str]) -> int:
     if args.list_targets:
         return cmd_list(stacks, roles)
     return cmd_build(stacks, roles)
-
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv[1:]))

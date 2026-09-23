@@ -1,17 +1,11 @@
 ---
 name: rust-verify-agent
 description: VERIFY agent — reviews a Rust/Cargo feature branch after implementation is complete. Read-only analysis of CR compliance, wiring completeness, test-coverage adequacy, crate-boundary adherence, and code quality. Does NOT modify code. Used when an orchestrator dispatches a verification task after GREEN.
-color: purple
-effort: high
-maxTurns: 500
-skills:
-  - reviewer
-  - reviewer-coverage
-  - reviewer-architecture
-  - reviewer-security
-  - reviewer-style
-  - reviewer-syntax
+tools: read, grep, find, ls, ctx_shell, ctx_read, ctx_grep, ctx_glob, ctx_find, ctx_ls, ctx_search, ctx_tree
+thinking: high
 ---
+
+Load these skills first: reviewer, reviewer-coverage, reviewer-architecture, reviewer-security, reviewer-style, reviewer-syntax.
 
 ## Universal procedure — READ FIRST (cited, not restated)
 

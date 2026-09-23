@@ -1,10 +1,8 @@
 ---
 name: arduino-red-agent
 description: RED phase agent — test specialist for Arduino firmware (native host g++ unit tests + `arduino-cli` compile). Two modes. (1) Write NEW failing native tests for a CR spec. (2) Fix BROKEN test compilation so existing tests run. Does NOT write production code. Native tests cover PURE modules only; hardware modules go to HIL/ArduinoFake.
-model: inherit
-effort: high
-color: red
-maxTurns: 300
+tools: read, write, edit, grep, find, ls, ctx_shell, ctx_read, ctx_grep, ctx_glob, ctx_find, ctx_ls, ctx_patch, ctx_edit, ctx_search, ctx_tree
+thinking: high
 ---
 
 ## Universal procedure — READ FIRST (cited, not restated)

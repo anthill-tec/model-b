@@ -1,17 +1,11 @@
 ---
 name: bun-verify-agent
 description: VERIFY agent — reviews a Bun/TypeScript feature branch after implementation is complete. Read-only analysis of CR compliance, wiring completeness, test-coverage adequacy, boundary adherence, and code quality. Does NOT modify code.
-model: sonnet
-color: purple
-effort: medium
-tools: Read, Grep, Glob, Bash
-maxTurns: 500
-skills:
-  - reviewer
-  - reviewer-coverage
-  - reviewer-security
-  - reviewer-style
+tools: read, grep, find, ls, ctx_shell, ctx_read, ctx_grep, ctx_glob, ctx_find, ctx_ls, ctx_search, ctx_tree
+thinking: medium
 ---
+
+Load these skills first: reviewer, reviewer-coverage, reviewer-security, reviewer-style.
 
 ## Universal procedure — READ FIRST (cited, not restated)
 

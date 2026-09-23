@@ -42,49 +42,25 @@ green = "GREEN phase agent — implements production Rust code to make failing t
 verify = "VERIFY agent — reviews a Rust/Cargo feature branch after implementation is complete. Read-only analysis of CR compliance, wiring completeness, test-coverage adequacy, crate-boundary adherence, and code quality. Does NOT modify code. Used when an orchestrator dispatches a verification task after GREEN."
 fix = "FIX agent — addresses specific findings from a VERIFY agent report in Rust/Cargo projects. Fixes only what is listed and approved. Does NOT decide what to fix — the orchestrator tells it which findings to address."
 
-[frontmatter]
-red = '''
-model: sonnet
-effort: high
-color: red
-maxTurns: 300
-skills:
-  - crucible
-  - refactorer-rust
-  - reviewer-coverage
-'''
-green = '''
-model: inherit
-effort: medium
-color: green
-maxTurns: 500
-skills:
-  - crucible
-  - refactorer-rust
-  - reviewer-coverage
-'''
-verify = '''
-color: purple
-effort: high
-maxTurns: 500
-skills:
-  - reviewer
-  - reviewer-coverage
-  - reviewer-architecture
-  - reviewer-security
-  - reviewer-style
-  - reviewer-syntax
-'''
-fix = '''
-model: inherit
-effort: high
-color: yellow
-maxTurns: 300
-skills:
-  - crucible
-  - refactorer-rust
-  - reviewer-coverage
-'''
+[roles.red]
+tools = ["read", "write", "edit", "grep", "find", "ls", "ctx_shell", "ctx_read", "ctx_grep", "ctx_glob", "ctx_find", "ctx_ls", "ctx_patch", "ctx_edit", "ctx_search", "ctx_tree"]
+thinking = "high"
+skills = ["crucible", "refactorer-rust", "reviewer-coverage"]
+
+[roles.green]
+tools = ["read", "write", "edit", "grep", "find", "ls", "ctx_shell", "ctx_read", "ctx_grep", "ctx_glob", "ctx_find", "ctx_ls", "ctx_patch", "ctx_edit", "ctx_search", "ctx_tree"]
+thinking = "medium"
+skills = ["crucible", "refactorer-rust", "reviewer-coverage"]
+
+[roles.verify]
+tools = ["read", "grep", "find", "ls", "ctx_shell", "ctx_read", "ctx_grep", "ctx_glob", "ctx_find", "ctx_ls", "ctx_search", "ctx_tree"]
+thinking = "high"
+skills = ["reviewer", "reviewer-coverage", "reviewer-architecture", "reviewer-security", "reviewer-style", "reviewer-syntax"]
+
+[roles.fix]
+tools = ["read", "write", "edit", "grep", "find", "ls", "ctx_shell", "ctx_read", "ctx_grep", "ctx_glob", "ctx_find", "ctx_ls", "ctx_patch", "ctx_edit", "ctx_search", "ctx_tree"]
+thinking = "high"
+skills = ["crucible", "refactorer-rust", "reviewer-coverage"]
 
 [gotchas]
 red = '''

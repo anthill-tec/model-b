@@ -1,18 +1,11 @@
 ---
 name: quarkus-verify-agent
 description: VERIFY agent — reviews a Quarkus/Java feature branch after implementation is complete. Read-only analysis of CR compliance, wiring completeness, test coverage adequacy, layer-boundary adherence, and code quality. Does NOT modify code. Used when an orchestrator dispatches a verification task after GREEN.
-model: inherit
-color: blue
-maxTurns: 150
-skills:
-  - reviewer
-  - reviewer-coverage
-  - reviewer-quarkus
-  - reviewer-architecture
-  - reviewer-security
-  - reviewer-style
-  - reviewer-syntax
+tools: read, grep, find, ls, ctx_shell, ctx_read, ctx_grep, ctx_glob, ctx_find, ctx_ls, ctx_search, ctx_tree
+thinking: medium
 ---
+
+Load these skills first: reviewer, reviewer-coverage, reviewer-quarkus, reviewer-architecture, reviewer-security, reviewer-style, reviewer-syntax.
 
 ## Universal procedure — READ FIRST (cited, not restated)
 
