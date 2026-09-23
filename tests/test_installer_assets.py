@@ -107,7 +107,8 @@ IMPORTED_BUNDLE_NAMES = (
 CRUCIBLE_BUNDLE_NAME = "crucible"
 ALL_SEVEN_BUNDLE_NAMES = frozenset(IMPORTED_BUNDLE_NAMES) | {CRUCIBLE_BUNDLE_NAME}
 
-STACKS = ("arduino", "bun", "python", "quarkus")
+# CR-MDB-024 \u00a7S2 -- rust joined the generator as a fifth stack (16 -> 20).
+STACKS = ("arduino", "bun", "python", "quarkus", "rust")
 ROLES = ("red", "green", "verify", "fix")
 
 # §S6 (CR-MDB-015) -- the shared protocol script library that must ship as
@@ -337,11 +338,12 @@ class SkillBundleDiscoveryGuardTest(unittest.TestCase):
 
 class GeneratorAgentsAssetTest(unittest.TestCase):
     """AC6 pin #4/#5 -- the retargeted output dir (generator/agents/, the
-    RED-pinned contract) contains the 16 generated agent .md files,
+    RED-pinned contract) contains the 20 generated agent .md files
+    (CR-MDB-024 \u00a7S2: 16 legacy + 4 rust),
     content-identical to build.py's own render() (pure, no I/O -- this
     test never shells out to build.py's `build` sub-command)."""
 
-    def test_generator_agents_dir_contains_sixteen_files_matching_render(self):
+    def test_generator_agents_dir_contains_twenty_files_matching_render(self):
         module = _load_build_module()
         failures = []
         if not GENERATOR_AGENTS_DIR.is_dir():
@@ -352,12 +354,12 @@ class GeneratorAgentsAssetTest(unittest.TestCase):
             )
         found_names = {p.name for p in GENERATOR_AGENTS_DIR.glob("*.md")}
         expected_names = {f"{stack}-{role}-agent.md" for stack in STACKS for role in ROLES}
-        # POSITIVE/EXACT -- exactly the 16 small-stack files, none missing,
+        # POSITIVE/EXACT -- exactly the 20 generated stack files, none missing,
         # none extra.
         self.assertEqual(
             found_names, expected_names,
-            f"{GENERATOR_AGENTS_DIR} must contain exactly the 16 "
-            f"regenerated small-stack agent files; found {sorted(found_names)}",
+            f"{GENERATOR_AGENTS_DIR} must contain exactly the 20 "
+            f"regenerated stack agent files; found {sorted(found_names)}",
         )
         for stack in STACKS:
             params = module.load_stack_params(stack)
@@ -414,10 +416,11 @@ class BuildPyCliRetargetTest(unittest.TestCase):
         # --check/--list surface because "inventing a second gate binary would
         # create a parallel convention". "Every listed path's parent is
         # generator/agents/" is therefore a superseded contract. The amended
-        # form pins the EXACT set of listed target paths -- the 16 agent
-        # definitions plus that one codec, named from build.py's own constant
+        # form pins the EXACT set of listed target paths -- the 20 agent
+        # definitions (CR-MDB-024 \u00a7S2: 16 legacy + 4 rust) plus that one
+        # codec, named from build.py's own constant
         # rather than a duplicated string -- which is strictly stronger than
-        # the parent-directory check it replaces: a 17th stray target, a
+        # the parent-directory check it replaces: a 21st stray target, a
         # missing target, a relocated target and a renamed output dir all
         # still fail. The home-rooted (§S7 retarget) and chezmoi-reference
         # halves of this test are unchanged.
@@ -430,7 +433,7 @@ class BuildPyCliRetargetTest(unittest.TestCase):
         # repo-local agent assets plus the generated codec.
         self.assertEqual(
             set(listed_paths), expected_paths,
-            f"generator/build.py --list must report exactly the 16 agent "
+            f"generator/build.py --list must report exactly the 20 agent "
             f"definitions under {GENERATOR_AGENTS_DIR} plus the generated "
             f"codec {module.CODEC_TARGET}; got "
             f"{sorted(str(p) for p in listed_paths)}, expected "
