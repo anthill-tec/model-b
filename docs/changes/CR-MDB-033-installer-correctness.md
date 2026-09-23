@@ -111,6 +111,10 @@ file; "Vercel store" → "shared store".
       subtests; a site not asserted is a site not wired.
 - [ ] No `shutil.copyfile`, `.write_text(` or `.write_bytes(` remains in `modelb_axi/` outside
       `_fsutil.py` — a grep gate.
+- [ ] Atomic writes change no file's permissions: `atomic_write(..., mode=None)` produces the
+      mode a plain write would (`0o666 & ~umask`), not `mkstemp`'s 0600 — asserted on a compiled
+      `.pi/extensions/*.ts` and a scaffolded `AGENTS.md`; a deployed hook script keeps its
+      source's executable bit.
 - [ ] `install.toml` is written with mode 0644.
 - [ ] First install into a root that already holds a foreign `<target-root>/.agents/scripts/gate-lock.sh`:
       the file is byte-identical afterwards; the run reports it with the `unmanaged:` warning; a
