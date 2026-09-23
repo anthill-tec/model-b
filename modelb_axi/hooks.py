@@ -179,8 +179,21 @@ def _partition(instances: list[dict], harness: str) -> tuple[list[dict], list[di
     return emittable, refused
 
 
+def _record_emitted(entry: dict, rel: str, emitted: list[str] | None) -> None:
+    """Record a just-written wiring file (relative to ``target``) in the
+    harness report entry and, when given, the caller's ``emitted`` out-list.
+    Called only AFTER the file's ``atomic_write`` succeeds (CR-MDB-033 §S4)."""
+    entry["emitted_files"].append(rel)
+    if emitted is not None:
+        emitted.append(rel)
+
+
 def _emit_claude_code(
-    instances: list[dict], target: Path, scripts_root: Path, entry: dict
+    instances: list[dict],
+    target: Path,
+    scripts_root: Path,
+    entry: dict,
+    emitted: list[str] | None = None,
 ) -> None:
     """Emit ``.claude/settings.json`` in the native Claude Code hooks shape."""
     hooks_by_event: dict[str, list[dict]] = {}
@@ -200,7 +213,7 @@ def _emit_claude_code(
         settings_path,
         (json.dumps({"hooks": hooks_by_event}, indent=2) + "\n").encode("utf-8"),
     )
-    entry["emitted_files"].append(".claude/settings.json")
+    _record_emitted(entry, ".claude/settings.json", emitted)
 
 
 def _spawn_shim_body(instance: dict, script_path: str) -> str:
@@ -227,7 +240,11 @@ def _spawn_shim_body(instance: dict, script_path: str) -> str:
 
 
 def _emit_opencode(
-    instances: list[dict], target: Path, scripts_root: Path, entry: dict
+    instances: list[dict],
+    target: Path,
+    scripts_root: Path,
+    entry: dict,
+    emitted: list[str] | None = None,
 ) -> None:
     """Emit a generated TS spawn-shim plugin under ``.opencode/``."""
     lines = [
@@ -270,7 +287,7 @@ def _emit_opencode(
     shim_path = target / shim_rel
     shim_path.parent.mkdir(parents=True, exist_ok=True)
     atomic_write(shim_path, "\n".join(lines).encode("utf-8"))
-    entry["emitted_files"].append(str(shim_rel))
+    _record_emitted(entry, str(shim_rel), emitted)
 
 
 #: pi extension event names (DN §2 roster addendum, event-map citations) per
@@ -287,7 +304,11 @@ _PI_EVENTS = {
 
 
 def _emit_pi(
-    instances: list[dict], target: Path, scripts_root: Path, entry: dict
+    instances: list[dict],
+    target: Path,
+    scripts_root: Path,
+    entry: dict,
+    emitted: list[str] | None = None,
 ) -> None:
     """Emit one full TS extension per hook under ``.pi/extensions/``."""
     extensions_dir = target / ".pi" / "extensions"
@@ -315,7 +336,7 @@ def _emit_pi(
         )
         ext_rel = Path(".pi") / "extensions" / f"{instance['command']}.ts"
         atomic_write(target / ext_rel, text.encode("utf-8"))
-        entry["emitted_files"].append(str(ext_rel))
+        _record_emitted(entry, str(ext_rel), emitted)
         emitted_any = True
     if emitted_any:
         entry["notes"].append(
@@ -326,7 +347,11 @@ def _emit_pi(
 
 
 def _emit_hermes_advisory(
-    instances: list[dict], target: Path, scripts_root: Path, entry: dict
+    instances: list[dict],
+    target: Path,
+    scripts_root: Path,
+    entry: dict,
+    emitted: list[str] | None = None,
 ) -> None:
     """Emit the hermes ADVISORY snippet — never project-level wiring."""
     lines = [
@@ -348,7 +373,7 @@ def _emit_hermes_advisory(
     advisory_path = target / advisory_rel
     advisory_path.parent.mkdir(parents=True, exist_ok=True)
     atomic_write(advisory_path, ("\n".join(lines) + "\n").encode("utf-8"))
-    entry["emitted_files"].append(str(advisory_rel))
+    _record_emitted(entry, str(advisory_rel), emitted)
 
 
 def compile_wiring(
@@ -356,9 +381,18 @@ def compile_wiring(
     harnesses: list[str],
     target: Path,
     scripts_root: Path,
+    *,
+    emitted: list[str] | None = None,
 ) -> dict:
     """Compile neutral schema instances into per-harness wiring under
     ``target`` (§S4).
+
+    ``emitted`` is an optional caller-owned out-list: when given, each
+    wiring file's path (relative to ``target``, the same form as the
+    report's ``emitted_files``) is appended to it immediately AFTER that
+    file's write succeeds, so the caller still holds exactly the files
+    written if compilation raises part-way (CR-MDB-033 §S4). When ``None``
+    (the default) nothing beyond the returned report is recorded.
 
     Returns a report dict keyed by harness id, each value
     ``{"emitted_files": list[str], "refusals": list[dict], "degraded": bool,
@@ -397,14 +431,16 @@ def compile_wiring(
                 "manual adoption (consent allowlist forces human approval)"
             )
             if emittable:
-                _emit_hermes_advisory(emittable, target, scripts_root, entry)
+                _emit_hermes_advisory(
+                    emittable, target, scripts_root, entry, emitted
+                )
         elif emittable:
             if harness == "claude-code":
-                _emit_claude_code(emittable, target, scripts_root, entry)
+                _emit_claude_code(emittable, target, scripts_root, entry, emitted)
             elif harness == "opencode":
-                _emit_opencode(emittable, target, scripts_root, entry)
+                _emit_opencode(emittable, target, scripts_root, entry, emitted)
             else:  # pi — the roster is validated above
-                _emit_pi(emittable, target, scripts_root, entry)
+                _emit_pi(emittable, target, scripts_root, entry, emitted)
         # Uniform accounting: wiring counts as emitted exactly when this
         # harness entry reports emitted files (hermes advisory included).
         if entry["emitted_files"]:

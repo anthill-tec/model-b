@@ -607,7 +607,10 @@ def _emit_plan(
 
     ``emitted`` is an optional caller-owned out-list, appended to only
     AFTER each write succeeds, so the caller still holds exactly the
-    files written when emission raises (CR-MDB-033 §S4)."""
+    files written when emission raises (CR-MDB-033 §S4). It is passed
+    through to :func:`compile_wiring` as its ``emitted`` out-list, so
+    compiled wiring files are recorded per write (not after the compiler
+    returns) and each appears exactly once."""
     if emitted is None:
         emitted = []
 
@@ -661,9 +664,8 @@ def _emit_plan(
     if roster_harnesses and hook_scripts_root is not None:
         report = compile_wiring(
             instances, roster_harnesses, target, hook_scripts_root,
+            emitted=emitted,
         )
-        for harness_entry in report.values():
-            emitted.extend(harness_entry["emitted_files"])
     write("hooks/README.md", _render_hooks_readme(report, instances, harnesses))
 
     # §S3 monorepo: per-sub-project registry + override.
