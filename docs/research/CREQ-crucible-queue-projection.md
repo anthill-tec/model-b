@@ -1,9 +1,11 @@
 # CReq → Crucible — `cr-void` should take the CR off the queue; `queue` should carry `title` + `lifecycle.state`
 
-**Status:** DRAFTED 2026-09-22, **NOT YET DELIVERED** — `Mainline - Crucible` is
-registered but `inactive`, and Sandesh refuses an inactive recipient. Send this over the
-#1336 lineage the next time they are listening. Do NOT start their session to deliver it
-(standing rule: never run provider services).
+**Status:** SENT 2026-09-24 as Sandesh **#1384** (to `Mainline - Crucible`, kind request). It
+carried both asks below — void/supersede takes the CR off the queue while keeping its record, and
+`title` + `lifecycle.state` on each `queue` row — plus a UI question from the user: what is the
+correct board representation for a voided/superseded CR? The user's proposal, sent as the
+suggestion: a strikethrough on the row in the table listing, and absent from the Wave Card in
+zone 2. Awaiting Crucible's ruling; the text below is the draft it was sent from.
 
 ---
 
