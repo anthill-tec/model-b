@@ -128,6 +128,14 @@ The emitter MUST write an explicit `tools:` line. Omission is not "use the defau
 - The stack TOML carries intent names; the emitter translates. A role with no `tools` key emits
   no `tools:` line **only if that is deliberate** — and the default for the four TDD roles is
   never that.
+- **The RED template requires every test to be proved both ways** (user-approved 2026-09-23,
+  already applied by hand to the five live `*-red-agent.md` definitions, which the next build
+  overwrites). `generator/templates/red.md.tmpl` gains, after its "Self-check per test" rule, a
+  NON-NEGOTIABLE rule that the RED agent proves each test (1) FAILS for the right reason on
+  current code and (2) is PASSABLE by an implementation the spec permits, with a regression pin
+  proved by showing it fails against the regression it guards, and reports both proofs. The
+  orchestrator then accepts the phase from those proofs and its Crucible ingest instead of
+  re-running it.
 
 **§S7 acceptance criteria**
 
@@ -138,6 +146,9 @@ The emitter MUST write an explicit `tools:` line. Omission is not "use the defau
 - [ ] Every emitted RED/GREEN/FIX definition names `ctx_shell` and at least `ctx_read`,
       `ctx_grep`; every emitted VERIFY definition names the read-only `ctx_*` subset and omits
       `write`, `edit` and `ctx_patch`.
+- [ ] Every emitted `*-red-agent.md` contains the "Prove every test BOTH ways" rule (fails for
+      the right reason; passable by a spec-permitted implementation; pins proved against their
+      regression) — asserted by a gate over the generated fleet.
 - [ ] No emitted definition carries a `skills:` key (removed from the schema in v21).
 - [ ] **Measured, not assumed:** a dispatched generated agent of each role reports that it can run
       `ctx_shell`, recorded with the transcript reference.
