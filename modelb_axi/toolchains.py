@@ -105,19 +105,31 @@ def run_on_terminal(argv: list[str], env: dict[str, str] | None = None) -> int:
     return subprocess.run(argv, stdout=human_channel_fd(), env=env, check=False).returncode
 
 
-def _installer_env(probe: dict) -> dict[str, str] | None:
-    """The environment a probe's installer runs with: the current one plus
-    its ``env_dirs`` (``~`` expanded), each directory created if missing;
-    ``None`` (inherit) when it declares none."""
+def _installer_env(
+    probe: dict, command: str, warn: Callable[[str], None],
+) -> tuple[bool, dict[str, str] | None]:
+    """``(ok, env)``: the environment a probe's installer runs with \u2014 the
+    current one plus its ``env_dirs`` (``~`` expanded), each directory
+    created if missing; ``None`` (inherit) when it declares none. When a
+    directory cannot be created (unwritable, or a non-directory in its
+    path) it WARNs naming that path and returns ``ok`` False: the installer
+    is not run and the tool is recorded ``absent`` \u2014 never raised."""
     env_dirs = probe.get("env_dirs") or {}
     if not env_dirs:
-        return None
+        return True, None
     env = dict(os.environ)
     for var, raw in env_dirs.items():
         path = Path(raw).expanduser()
-        path.mkdir(parents=True, exist_ok=True)
+        try:
+            path.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            warn(
+                f"cannot create {var}={path} for `{command}` "
+                f"({exc}); not run \u2014 {probe['name']} recorded absent"
+            )
+            return False, None
         env[var] = str(path)
-    return env
+    return True, env
 
 
 def _run_installer(
@@ -203,7 +215,8 @@ def remediate_toolchains(
             )
             if offer(f"Run `{display}`{with_env} to install {name} for stack {stack}?"):
                 # env dirs are created only once the user has said yes.
-                ran = _run_installer([runner, *install[1:]], display, warn, _installer_env(probe))
+                env_ok, env = _installer_env(probe, display, warn)
+                ran = env_ok and _run_installer([runner, *install[1:]], display, warn, env)
                 row[name] = _reprobe(probe, resolved, display, warn) if ran else ABSENT
             else:
                 ran = False
