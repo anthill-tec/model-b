@@ -47,7 +47,7 @@ from modelb_axi.capabilities import (
     probe_harness,
     resolve_agent_dir,
 )
-from modelb_axi.requirements import REQUIREMENTS, requirement
+from modelb_axi.requirements import REQUIREMENTS, STACK_CLIENT_KEYS, requirement
 from modelb_axi.toolchains import (
     INSTALLED,
     probe_toolchains,
@@ -107,6 +107,20 @@ def _install_sandesh(uv_path: str, warnings: list[str]) -> str:
         )
         return "absent"
     return "installed"
+
+
+def _client_gap(stack: str, clients: dict) -> str:
+    """Why a stack's Crucible client is not ``detected`` under a detected
+    manifest — the manifest has NO entry for its key, or the entry names
+    a file that does not exist — and the remediation."""
+    key = STACK_CLIENT_KEYS[stack]
+    target = clients.get(key)
+    if isinstance(target, str) and target:
+        why = (f"Crucible's manifest entry for key {key} names {target}, "
+               f"which does not exist")
+    else:
+        why = f"Crucible's manifest has no entry for key {key}"
+    return f"{why}; {requirement('crucible-client')['remediation']}"
 
 
 def _families(row: dict) -> str:
@@ -303,11 +317,7 @@ def run_preflight(
     )
     for stack, client in stack_clients.items():
         if client != DETECTED and crucible_verdict == DETECTED:
-            _warn(
-                f"stack {stack}: client={client} — Crucible's manifest names no "
-                f"client for {stack}; {requirement('crucible-client')['remediation']}",
-                warnings,
-            )
+            _warn(f"stack {stack}: client={client} — {_client_gap(stack, clients)}", warnings)
         for name, verdict in toolchains[stack].items():
             capabilities[f"{stack}.{name}"] = verdict
         capabilities[f"{stack}.client"] = client
