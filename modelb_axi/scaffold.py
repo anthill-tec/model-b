@@ -28,7 +28,7 @@ import sys
 from pathlib import Path
 
 from modelb_axi.axi import envelope
-from modelb_axi.config import load_install_toml
+from modelb_axi.config import INSTALL_TOML_NAME, load_install_toml
 from modelb_axi.deploy import default_asset_root
 from modelb_axi.harness import (
     HARNESS_ROSTER_IDS,
@@ -421,6 +421,11 @@ def _render_instance_toml(instance: dict) -> str:
 def _hook_scripts_root(home: Path) -> Path:
     """Scripts root the compiled wiring points its commands at (§S5).
 
+    Called ONCE, from :func:`run_init`'s validation phase — before the
+    first write under ``--target`` and on ``--dry-run`` too (CR-MDB-033
+    §S1) — so a failure init can know in advance never leaves a partial
+    tree and is never previewed as a clean plan.
+
     Documented choice: commands target the DEPLOYED user-scope store
     (`<target-root>/.agents/hooks/scripts/…`, CR-MDB-015 §S6/PRD D10.7)
     — the one location the installer manifests the protocol scripts to —
@@ -431,8 +436,19 @@ def _hook_scripts_root(home: Path) -> Path:
     re-derives it. When that key is absent there is no fallback to
     ``Path.home()`` and no partial-key heuristic: :class:`ScaffoldError`
     is raised naming the missing key and ``modelb-axi --reinstall``, the
-    run that records it. Read-only — nothing is ever written there by
-    the scaffold."""
+    run that records it. When no ``install.toml`` exists at ``home`` at
+    all (the ``--harnesses`` dev-override path) a DISTINCT
+    :class:`ScaffoldError` says so and names the installer as the
+    remedy — no hook scripts have been deployed anywhere. The two cases
+    are told apart by whether the file exists, never by which keys are
+    present. Read-only — nothing is ever written there by the scaffold."""
+    install_toml = home / INSTALL_TOML_NAME
+    if not install_toml.is_file():
+        raise ScaffoldError(
+            f"no install.toml exists at {home}, so no hook scripts have "
+            "been deployed anywhere for init to wire; run the installer "
+            f"(`modelb-axi --modelb-home {home}`) first, then re-run init"
+        )
     configured = load_install_toml(home).get("install", {}).get(
         "hooks_scripts_dir"
     )
@@ -573,9 +589,14 @@ def _emit_plan(
     sub_projects: list[str],
     no_commit: bool,
     home: Path,
+    hook_scripts_root: Path | None,
 ) -> list[str]:
     """Perform the real §S3/§S4 emission under ``target``; returns the
-    emitted file paths (relative to ``target``)."""
+    emitted file paths (relative to ``target``).
+
+    ``hook_scripts_root`` is resolved by :func:`run_init` during
+    validation (CR-MDB-033 §S1) — ``None`` only when no roster harness
+    needs compiled wiring; emission never resolves it itself."""
     emitted: list[str] = []
 
     def write(rel: str, text: str) -> None:
@@ -625,9 +646,9 @@ def _emit_plan(
         )
     roster_harnesses = [h for h in harnesses if h in HARNESS_ROSTER_IDS]
     report: dict = {}
-    if roster_harnesses:
+    if roster_harnesses and hook_scripts_root is not None:
         report = compile_wiring(
-            instances, roster_harnesses, target, _hook_scripts_root(home),
+            instances, roster_harnesses, target, hook_scripts_root,
         )
         for harness_entry in report.values():
             emitted.extend(harness_entry["emitted_files"])
@@ -693,6 +714,24 @@ def run_init(args: argparse.Namespace, home: Path) -> int:
     print(f"  harnesses ({harness_source}): {', '.join(harnesses)}", file=sys.stderr)
     print(f"  plan: {len(plan)} files under {target}", file=sys.stderr)
 
+    # CR-MDB-033 §S1: the hook-scripts dir is resolved here, in
+    # validation, BEFORE the first write — a failure init can know in
+    # advance never leaves a partial tree. --dry-run runs the same check
+    # and carries the error text as a warning, so an unemittable plan is
+    # never previewed as clean.
+    plan_warnings: list[str] = []
+    hook_scripts_root: Path | None = None
+    if any(h in HARNESS_ROSTER_IDS for h in harnesses):
+        try:
+            hook_scripts_root = _hook_scripts_root(home)
+        except ScaffoldError as exc:
+            if not dry_run:
+                print(f"modelb-axi: error: {exc}", file=sys.stderr)
+                print(envelope("init", False, warnings=[str(exc)], dry_run=False))
+                return 2
+            print(f"modelb-axi: warning: {exc}", file=sys.stderr)
+            plan_warnings.append(str(exc))
+
     emitted: list[str] = []
     if not dry_run:
         try:
@@ -708,6 +747,7 @@ def run_init(args: argparse.Namespace, home: Path) -> int:
                 sub_projects=sub_projects,
                 no_commit=bool(getattr(args, "no_commit", False)),
                 home=home,
+                hook_scripts_root=hook_scripts_root,
             )
         except (ScaffoldError, OSError) as exc:
             print(f"modelb-axi: error: {exc}", file=sys.stderr)
@@ -722,6 +762,7 @@ def run_init(args: argparse.Namespace, home: Path) -> int:
     print(
         envelope(
             "init", True,
+            warnings=plan_warnings,
             dry_run=dry_run,
             emitted=emitted,
             name=args.name,
