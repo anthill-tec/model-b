@@ -41,16 +41,20 @@ Stdlib only: unittest + subprocess + tempfile + shutil + tomllib +
 pathlib + contextlib/io for in-process stdout/stderr capture.
 """
 
+import argparse
 import contextlib
+import hashlib
 import io
 import os
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
 import tomllib
 import unittest
 from pathlib import Path
+from unittest import mock
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -814,6 +818,421 @@ class DryRunSurfacesSameErrorTextAsWarningTest(unittest.TestCase):
             f"AC-c: the dry-run envelope must carry the SAME error text "
             f"the real run fails with, as a warning; real_error="
             f"{real_error!r} dry_warnings={dry_warnings!r}",
+        )
+
+
+# ---------------------------------------------------------------------------
+# CR-MDB-033 cycle C2 -- §S2 atomic writes everywhere, §S4 honest partial
+# emission. Appended below the cycle C1 (§S1/§S3) classes above, which are
+# GREEN as of this cycle's baseline (measured 368 tests / 0 failures / 11
+# skips at 74b10f2) and are left untouched.
+#
+# MEASURED defects this cycle's tests pin (docs/changes/
+# CR-MDB-033-installer-correctness.md §S2/§S4, C2-tightened ACs):
+#   - AC1: deploy._deploy_file uses `shutil.copyfile(src, dest)`; the four
+#     hooks.py emitters and scaffold._emit_plan's inner `write()` use
+#     `.write_text(`/`.write_bytes(` directly -- none of the six sites calls
+#     `os.replace` at all, so monkeypatching it to raise has NO effect on
+#     them today: the prior destination content is unconditionally
+#     overwritten rather than preserved.
+#   - AC2: the grep gate finds `shutil.copyfile` in deploy.py, `.write_text(`
+#     in hooks.py (x4) and scaffold.py's `_emit_plan.write()`, and there is
+#     no `modelb_axi/_fsutil.py` yet.
+#   - AC3: `config.write_install_toml` writes via `tempfile.mkstemp`, whose
+#     default mode is 0600, not 0644.
+#   - AC4: the `init` failure envelope is `envelope("init", False,
+#     warnings=[str(exc)], dry_run=False)` (scaffold.py:752-755) -- no
+#     `emitted` field at all, even though `_emit_plan` may already have
+#     written several files before the failure.
+#   - The module docstring (scaffold.py:20) still reads "`--dry-run` (and
+#     any failure) writes NOTHING under `--target`."
+# ---------------------------------------------------------------------------
+
+
+def _write_full_install_toml(home: str, harnesses=("claude-code",)) -> Path:
+    """A §S1-valid ``install.toml`` (records ``target_root`` and all three
+    per-class dirs, the shape ``InstallTomlSchemaKeysTest`` already pins as
+    GREEN) -- the C2 (§S2/§S4) fixtures need a manifest that PASSES §S1's
+    own strict rule so a §S2/§S4 test never fails on an unrelated §S1
+    defect. Mirrors ``tests/test_scaffold.py::_write_install_toml`` plus the
+    ``target_root``/``skills_dir``/``tool_scripts_dir`` keys §S1 added."""
+    harnesses_toml = ", ".join(f'"{h}"' for h in harnesses)
+    target_root = Path(home) / "target-root-placeholder"
+    skills_dir = target_root / ".agents" / "skills"
+    hooks_scripts_dir = target_root / ".agents" / "hooks" / "scripts"
+    tool_scripts_dir = target_root / ".agents" / "scripts"
+    install_toml = Path(home) / "install.toml"
+    install_toml.write_text(
+        "[install]\n"
+        'version = "0.1.0"\n'
+        f"harnesses = [{harnesses_toml}]\n"
+        f'target_root = "{target_root}"\n'
+        'asset_root = "/tmp/does-not-matter-for-this-test"\n'
+        f'skills_dir = "{skills_dir}"\n'
+        f'hooks_scripts_dir = "{hooks_scripts_dir}"\n'
+        f'tool_scripts_dir = "{tool_scripts_dir}"\n'
+        "\n"
+        "[deps]\n"
+        'uv = "detected"\n'
+        "\n"
+        "[files]\n",
+        encoding="utf-8",
+    )
+    return install_toml
+
+
+def _init_args(target, dry_run: bool, no_commit: bool = True, harnesses=None) -> argparse.Namespace:
+    """A minimal, valid ``argparse.Namespace`` for a direct in-process
+    ``scaffold.run_init(args, home)`` call -- used by the AC4 test, which
+    needs to monkeypatch a production function mid-emission; a subprocess
+    run cannot be monkeypatched (see class docstring for the justification
+    already established by ``ManifestAlwaysConsultedWithoutReinstallFlagTest``
+    above, which drives ``cli._deploy_stage`` the same way)."""
+    return argparse.Namespace(
+        name="X", token="xproj", acronym="XP", mode="solo",
+        repo_shape="standalone", stacks="python", owner="tester",
+        target=str(target), dry_run=dry_run, no_commit=no_commit,
+        register=False, harnesses=harnesses,
+    )
+
+
+class AtomicWriteSixSitesTest(unittest.TestCase):
+    """AC1 (§S2, C2) -- each of the six write sites --
+    ``deploy._deploy_file``, ``hooks._emit_claude_code``,
+    ``hooks._emit_opencode``, ``hooks._emit_pi``,
+    ``hooks._emit_hermes_advisory``, ``scaffold._emit_plan``'s inner writer
+    -- must write through an atomic helper (tmp-in-the-same-directory +
+    ``os.replace``): with ``os.replace`` monkeypatched to raise, re-running
+    that site over an EXISTING destination must leave the prior file
+    byte-identical and leave no temp file in its directory. Asserted per
+    site via ``subTest`` -- a site not asserted here is a site not wired
+    (§S2's own wording). Each subtest drives the real function/entry point
+    directly (never a mock of the function itself -- only ``os.replace`` is
+    mocked), with a scenario shaped to reach that function's real write
+    branch (e.g. site 1's ``prior_hashes`` entry must match the current
+    destination hash, or ``_deploy_file`` takes an earlier ``return`` before
+    ever reaching the copy)."""
+
+    def test_all_six_sites_preserve_prior_file_when_os_replace_fails(self):
+        with self.subTest(site="deploy._deploy_file"):
+            self._check_deploy_deploy_file()
+        with self.subTest(site="hooks._emit_claude_code"):
+            self._check_hooks_emitter("_emit_claude_code", Path(".claude") / "settings.json")
+        with self.subTest(site="hooks._emit_opencode"):
+            self._check_hooks_emitter("_emit_opencode", Path(".opencode") / "plugin" / "modelb-hooks.ts")
+        with self.subTest(site="hooks._emit_pi"):
+            self._check_hooks_emitter("_emit_pi", Path(".pi") / "extensions" / "guard-example.ts")
+        with self.subTest(site="hooks._emit_hermes_advisory"):
+            self._check_hooks_emitter("_emit_hermes_advisory", Path("hooks") / "hermes-manual.yaml")
+        with self.subTest(site="scaffold._emit_plan"):
+            self._check_scaffold_emit_plan()
+
+    def _check_deploy_deploy_file(self):
+        from modelb_axi import deploy
+
+        with tempfile.TemporaryDirectory(prefix="modelb-axi-c2-ac1-deploy-") as tmp:
+            tmp_path = Path(tmp)
+            src = tmp_path / "src.txt"
+            dest = tmp_path / "dest.txt"
+            prior_content = b"PRIOR DEST CONTENT -- must survive an os.replace failure\n"
+            new_content = b"NEW SOURCE CONTENT -- must NOT land when os.replace fails\n"
+            src.write_bytes(new_content)
+            dest.write_bytes(prior_content)
+            # `recorded == dest_hash`: dest is UNCHANGED since the prior
+            # install, so `_deploy_file` takes the real upgrade-copy branch
+            # (not the unmanaged/hand-modified early returns) -- this is the
+            # scenario that reaches `shutil.copyfile` today.
+            prior_hash = hashlib.sha256(prior_content).hexdigest()
+            skipped: list = []
+            unmanaged: list = []
+            with mock.patch("os.replace", side_effect=OSError("AC1 injected os.replace failure")):
+                deploy._deploy_file(
+                    src, dest, "dest.txt", {"dest.txt": prior_hash},
+                    False, skipped, unmanaged,
+                )
+            self.assertEqual(
+                dest.read_bytes(), prior_content,
+                "AC1/§S2 site=deploy._deploy_file: the prior destination "
+                "content must survive an os.replace failure byte-identical; "
+                f"got {dest.read_bytes()!r} (prior was {prior_content!r})",
+            )
+            extra = sorted(
+                p.name for p in tmp_path.iterdir()
+                if p.name not in {"src.txt", "dest.txt"}
+            )
+            self.assertEqual(
+                extra, [],
+                "AC1/§S2 site=deploy._deploy_file: no temp file may remain "
+                f"in the destination directory; found {extra!r}",
+            )
+
+    def _check_hooks_emitter(self, emitter_name: str, dest_rel: Path):
+        from modelb_axi import hooks
+
+        with tempfile.TemporaryDirectory(prefix=f"modelb-axi-c2-ac1-{emitter_name}-") as tmp:
+            target = Path(tmp)
+            dest = target / dest_rel
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            prior_content = f"PRIOR {emitter_name} CONTENT -- must survive\n".encode()
+            dest.write_bytes(prior_content)
+            instances = [{
+                "event": "pre-tool-use",
+                "command": "guard-example",
+                "matcher": None,
+                "timeout": None,
+                "fail_direction": None,
+            }]
+            entry = hooks._new_report_entry()
+            scripts_root = target / "scripts-root-placeholder"
+            emitter = getattr(hooks, emitter_name)
+            with mock.patch("os.replace", side_effect=OSError("AC1 injected os.replace failure")):
+                emitter(instances, target, scripts_root, entry)
+            self.assertEqual(
+                dest.read_bytes(), prior_content,
+                f"AC1/§S2 site=hooks.{emitter_name}: the prior destination "
+                f"content must survive an os.replace failure byte-identical; "
+                f"got {dest.read_bytes()!r} (prior was {prior_content!r})",
+            )
+            extra = sorted(p.name for p in dest.parent.iterdir() if p.name != dest.name)
+            self.assertEqual(
+                extra, [],
+                f"AC1/§S2 site=hooks.{emitter_name}: no temp file may remain "
+                f"in the destination directory; found {extra!r}",
+            )
+
+    def _check_scaffold_emit_plan(self):
+        from modelb_axi import scaffold
+
+        with tempfile.TemporaryDirectory(prefix="modelb-axi-c2-ac1-home-") as home_dir, \
+             tempfile.TemporaryDirectory(prefix="modelb-axi-c2-ac1-target-") as target_dir:
+            home = Path(home_dir)
+            target = Path(target_dir)
+            target.mkdir(parents=True, exist_ok=True)
+            env_path = target / ".env"
+            prior_content = "PRIOR ENV CONTENT -- must survive an os.replace failure\n"
+            env_path.write_text(prior_content, encoding="utf-8")
+            with mock.patch("os.replace", side_effect=OSError("AC1 injected os.replace failure")):
+                scaffold._emit_plan(
+                    target,
+                    name="X", token="xproj", acronym="XP", mode="solo",
+                    owner="tester", stacks=["python"], harnesses=[],
+                    sub_projects=[], no_commit=True, home=home,
+                    hook_scripts_root=None,
+                )
+            self.assertEqual(
+                env_path.read_text(encoding="utf-8"), prior_content,
+                "AC1/§S2 site=scaffold._emit_plan: the prior .env content "
+                "must survive an os.replace failure byte-identical; got "
+                f"{env_path.read_text(encoding='utf-8')!r} (prior was "
+                f"{prior_content!r})",
+            )
+            top_level = {p.name for p in target.iterdir() if p.is_file()}
+            stray = sorted(
+                n for n in top_level
+                if n.startswith(".env") and n not in {".env", ".env.local"}
+            )
+            self.assertEqual(
+                stray, [],
+                "AC1/§S2 site=scaffold._emit_plan: no temp file may remain "
+                f"beside .env in --target; found {stray!r}",
+            )
+
+
+class NoDirectWriteCallsOutsideFsutilTest(unittest.TestCase):
+    """AC2 (§S2, C2) -- grep gate: no ``shutil.copyfile``, ``.write_text(``
+    or ``.write_bytes(`` remains anywhere in ``modelb_axi/`` outside
+    ``modelb_axi/_fsutil.py`` (which does not exist yet on this branch --
+    the gate tolerates its absence rather than requiring it, so this test
+    is meaningful both before and after ``_fsutil.py`` lands). Scans real
+    source files only (skips ``__pycache__``)."""
+
+    _FORBIDDEN_PATTERNS = ("shutil.copyfile", ".write_text(", ".write_bytes(")
+
+    def test_no_direct_write_calls_remain_outside_fsutil_module(self):
+        module_dir = REPO_ROOT / "modelb_axi"
+        offenders = []
+        for path in sorted(module_dir.rglob("*.py")):
+            if "__pycache__" in path.parts:
+                continue
+            if path.name == "_fsutil.py":
+                continue
+            text = path.read_text(encoding="utf-8")
+            for lineno, line in enumerate(text.splitlines(), start=1):
+                for pattern in self._FORBIDDEN_PATTERNS:
+                    if pattern in line:
+                        offenders.append(
+                            f"{path.relative_to(REPO_ROOT)}:{lineno}: {line.strip()}"
+                        )
+        self.assertEqual(
+            offenders, [],
+            "AC2/§S2: no shutil.copyfile/.write_text(/.write_bytes( may "
+            "remain in modelb_axi/ outside _fsutil.py -- every write site "
+            f"must go through the atomic helper; found: {offenders!r}",
+        )
+
+
+class InstallTomlWrittenWithMode0644Test(unittest.TestCase):
+    """AC3 (§S2, C2) -- ``install.toml`` is written with mode 0644 (today
+    0600, ``tempfile.mkstemp``'s default rather than a decision -- it
+    holds no secrets)."""
+
+    def setUp(self):
+        self._tmp_home = tempfile.mkdtemp(prefix="modelb-axi-c2-mode-home-")
+        self._tmp_bin = tempfile.mkdtemp(prefix="modelb-axi-c2-mode-bin-")
+        self._tmp_target_root = tempfile.mkdtemp(prefix="modelb-axi-c2-mode-target-")
+        _write_fake_executable(self._tmp_bin, "uv", _FAKE_UV_SCRIPT)
+        _write_fake_executable(self._tmp_bin, "sandesh", _FAKE_SANDESH_SCRIPT)
+
+    def tearDown(self):
+        for root in (self._tmp_home, self._tmp_bin, self._tmp_target_root):
+            shutil.rmtree(root, ignore_errors=True)
+
+    def test_fresh_install_writes_install_toml_with_mode_0644(self):
+        result = _run_module(
+            "--yes", "--harnesses", "claude-code",
+            "--modelb-home", self._tmp_home,
+            "--target-root", self._tmp_target_root,
+            env_overrides={"PATH": self._tmp_bin},
+        )
+        self.assertEqual(
+            result.returncode, 0,
+            f"precondition: the real install must succeed; got "
+            f"exit={result.returncode} stdout={result.stdout!r} "
+            f"stderr={result.stderr!r}",
+        )
+        install_toml = Path(self._tmp_home) / "install.toml"
+        self.assertTrue(
+            install_toml.is_file(),
+            f"precondition: {install_toml} must exist after a real install",
+        )
+        mode = stat.S_IMODE(install_toml.stat().st_mode)
+        self.assertEqual(
+            mode, 0o644,
+            f"AC3/§S2: install.toml must be written with mode 0644; got "
+            f"{oct(mode)}",
+        )
+
+
+class MidEmissionFailureHonestPartialEmissionTest(unittest.TestCase):
+    """AC4 (§S4, C2) -- ``init`` with an ``OSError`` injected mid-emission
+    (after SOME files are already written) exits non-zero, and the failure
+    envelope's ``emitted`` field lists EXACTLY the files present under
+    ``--target`` (compared as sets of relative paths, excluding ``.git/``)
+    -- the same field name the success envelope already uses
+    (scaffold.py ~line 767). ``--dry-run`` still writes nothing even with
+    the same failure injected.
+
+    In-process call to ``scaffold.run_init`` (not a subprocess): a
+    subprocess invocation cannot have a production function monkeypatched
+    mid-run, and an in-process call is the only way to guarantee the
+    injection lands AFTER some files are written but BEFORE emission
+    finishes -- the same idiom this file's own
+    ``ManifestAlwaysConsultedWithoutReinstallFlagTest`` already uses for
+    ``cli._deploy_stage``. The injection point is ``scaffold._render_agents_md``
+    (patched to raise), reached from ``_emit_plan`` only AFTER `.env`,
+    `.env.local`, `.gitignore`, `docs/changes/README.md` and
+    `docs/research/.gitkeep` are already written -- a genuinely non-empty
+    partial tree, not the §S1 write-before-check case (which leaves zero
+    files)."""
+
+    def setUp(self):
+        self._tmp_home = tempfile.mkdtemp(prefix="modelb-axi-c2-partial-home-")
+        self._tmp_target = tempfile.mkdtemp(prefix="modelb-axi-c2-partial-target-")
+        self._tmp_dry_target = tempfile.mkdtemp(prefix="modelb-axi-c2-partial-dry-target-")
+        _write_full_install_toml(self._tmp_home, harnesses=("claude-code",))
+
+    def tearDown(self):
+        for root in (self._tmp_home, self._tmp_target, self._tmp_dry_target):
+            shutil.rmtree(root, ignore_errors=True)
+
+    def test_mid_emission_oserror_exits_nonzero_and_emitted_lists_exact_partial_tree(self):
+        from modelb_axi import scaffold
+
+        args = _init_args(self._tmp_target, dry_run=False)
+        out = io.StringIO()
+        with mock.patch(
+            "modelb_axi.scaffold._render_agents_md",
+            side_effect=OSError("CR-MDB-033 C2 injected mid-emission failure"),
+        ):
+            with contextlib.redirect_stdout(out):
+                exit_code = scaffold.run_init(args, Path(self._tmp_home))
+        combined = out.getvalue()
+
+        # POSITIVE -- non-zero exit is the failure signal.
+        self.assertNotEqual(
+            exit_code, 0,
+            f"AC4/§S4: a mid-emission OSError must exit non-zero; got "
+            f"exit={exit_code} stdout={combined!r}",
+        )
+
+        leftover = _files_under_excluding_git(self._tmp_target)
+        # NEGATIVE / bound -- the injection point is reached only AFTER
+        # five files are written, so the partial tree must be genuinely
+        # non-empty (never zero -- that would be the §S1 defect, not §S4's).
+        self.assertTrue(
+            len(leftover) > 0,
+            f"AC4 precondition: the injection point must leave a NON-EMPTY "
+            f"partial tree under --target; found nothing -- got "
+            f"exit={exit_code} stdout={combined!r}",
+        )
+
+        envelope = _decode_envelope(combined)
+        axi = envelope.get("axi", {})
+        # POSITIVE -- axi.ok is false on this path.
+        self.assertIs(
+            axi.get("ok"), False,
+            f"AC4: the failure envelope must report axi.ok false; got "
+            f"envelope={envelope!r}",
+        )
+        emitted = axi.get("emitted")
+        # POSITIVE -- `emitted` is present (the SAME field name the success
+        # envelope already uses) and its value, compared as a SET of
+        # relative paths, equals EXACTLY the files present under --target.
+        self.assertEqual(
+            set(emitted or []), set(leftover),
+            "AC4/§S4: the failure envelope's `emitted` field must list "
+            "EXACTLY the files present under --target (compared as sets of "
+            f"relative paths); got emitted={emitted!r} leftover on disk="
+            f"{leftover!r}; envelope={envelope!r}",
+        )
+
+        # AC4 (continued) -- --dry-run must still write nothing even with
+        # the same failure injected (asserted after the primary emitted-
+        # field claim above, which is the new C2 behaviour this test
+        # exists to pin).
+        dry_args = _init_args(self._tmp_dry_target, dry_run=True)
+        with mock.patch(
+            "modelb_axi.scaffold._render_agents_md",
+            side_effect=OSError("CR-MDB-033 C2 injected mid-emission failure"),
+        ):
+            with contextlib.redirect_stdout(io.StringIO()):
+                scaffold.run_init(dry_args, Path(self._tmp_home))
+        dry_leftover = _files_under_excluding_git(self._tmp_dry_target)
+        self.assertEqual(
+            dry_leftover, [],
+            f"AC4/§S4: --dry-run must still write NOTHING even when a "
+            f"mid-emission failure is injected; found {dry_leftover!r}",
+        )
+
+
+class ScaffoldDocstringNoLongerClaimsFailureWritesNothingTest(unittest.TestCase):
+    """AC4 (§S4, C2) -- the module docstring of ``modelb_axi/scaffold.py``
+    no longer contains the claim "(and any failure) writes NOTHING" (§S4:
+    a failure mid-emission may leave a partial tree; the docstring must say
+    so, and the failure envelope now carries ``emitted`` instead of a bare
+    promise of nothing)."""
+
+    def test_module_docstring_does_not_claim_failure_writes_nothing(self):
+        import ast
+
+        source = (REPO_ROOT / "modelb_axi" / "scaffold.py").read_text(encoding="utf-8")
+        docstring = ast.get_docstring(ast.parse(source)) or ""
+        self.assertNotIn(
+            "(and any failure) writes NOTHING", docstring,
+            "AC4/§S4: modelb_axi/scaffold.py's module docstring must no "
+            "longer claim a failure writes nothing -- a mid-emission "
+            "failure may leave a partial tree, and the failure envelope "
+            f"now carries `emitted` instead; got docstring={docstring!r}",
         )
 
 
