@@ -30,7 +30,7 @@ Queue rows enumerate the whole delivery (structure only). **Live status lives on
 | [CR-MDB-018](CR-MDB-018-crucible-discovery-capture.md) | Crucible discovery capture: probe `crucible-axi`, read the client manifest, persist `[install].clients_dir` | 5 | 014, 015 |
 | [CR-MDB-019](CR-MDB-019-hook-runtime-correctness.md) | Hook runtime correctness: status-contract-document re-pin, arduino stack marker (§S3 opencode emitter struck 2026-09-21 — non-target) | 5 | 015, 018 |
 | [CR-MDB-020](CR-MDB-020-client-path-anchoring.md) | Client-path anchoring: every client reference resolves to Crucible's published contract; Model B maintains none of their clients | 5 | 017, 022 |
-| [CR-MDB-024](CR-MDB-024-rust-stack-adoption.md) | Rust as a fifth generated stack + retire the vscode agents (an IDE is not a stack) | 5 | 017 |
+| [CR-MDB-024](CR-MDB-024-rust-stack-adoption.md) | Rust as a fifth generated stack, and retire the vscode agents | 5 | 017 |
 | [CR-MDB-021](CR-MDB-021-chezmoi-retirement.md) | Retire chezmoi introspection from the test suite: eight false-green release gates removed, policy self-enforcing | 5 | — |
 | [CR-MDB-033](CR-MDB-033-installer-correctness.md) | Installer correctness: one `target_root` in `install.toml`, atomic writes everywhere, unmanaged files never clobbered, manifest always consulted | 5 | — |
 | [CR-MDB-030](CR-MDB-030-pi-hook-runtime.md) | Pi hook runtime: default-export factory, payload transport, Pi tool-name contract in the seven scripts, matcher honoured, real fail-closed, worktrees carry `.pi/extensions/` (P0 — every hook is a no-op on the only target today) | 5 | — |
