@@ -144,18 +144,19 @@ class VscodeReferenceGrepGateS3Test(unittest.TestCase):
 
 
 class SkillsSrcBundleCensusS3Test(unittest.TestCase):
-    """\u00a7S3 AC2 \u2014 skills-src/ carries 12 bundles and CRUCIBLE-HANDOVER.md
-    documents 6 imported ones."""
+    """\u00a7S3 AC2 \u2014 skills-src/ carries 13 bundles (7 Model B-owned + 6
+    imported) and CRUCIBLE-HANDOVER.md documents 6 imported ones."""
 
-    def test_skills_src_carries_exactly_twelve_skill_md_bundles(self):
+    def test_skills_src_carries_exactly_thirteen_skill_md_bundles(self):
         bundles = sorted(
             p.name for p in SKILLS_SRC_DIR.iterdir()
             if p.is_dir() and (p / "SKILL.md").is_file()
         )
-        # POSITIVE/EXACT -- 13 today, 12 once the retired bundle is deleted.
+        # POSITIVE/EXACT -- 14 before this CR (7 Model B-owned + 7 imported),
+        # 13 once the retired bundle is deleted (7 owned + 6 imported).
         self.assertEqual(
-            len(bundles), 12,
-            f"skills-src/ must carry exactly 12 SKILL.md bundles once the "
+            len(bundles), 13,
+            f"skills-src/ must carry exactly 13 SKILL.md bundles once the "
             f"retired IDE-stack bundle is deleted outright; found "
             f"{len(bundles)}: {bundles}",
         )
@@ -228,12 +229,12 @@ class AgentsMdBundleEnumerationS3Test(unittest.TestCase):
     """\u00a7S3 AC \u2014 AGENTS.md's crucible-report-* enumeration and bundle count
     are corrected."""
 
-    def test_agents_md_states_twelve_bundles_and_zero_vscode(self):
+    def test_agents_md_states_thirteen_bundles_and_zero_vscode(self):
         self.assertTrue(AGENTS_MD.is_file(), f"{AGENTS_MD} must exist")
         content = _read(AGENTS_MD)
         self.assertIn(
-            "12 skill bundles", content,
-            "AGENTS.md's skills-src/ row must state '12 skill bundles' once "
+            "13 skill bundles", content,
+            "AGENTS.md's skills-src/ row must state '13 skill bundles' once "
             "the retired IDE-stack bundle drops out",
         )
         self.assertNotIn(
@@ -307,16 +308,19 @@ class ScaffoldRejectsRetiredStackS3Test(unittest.TestCase):
             f"the rejection must name the SUPPORTED stacks (a 'valid "
             f"stacks:' line); stderr={result.stderr!r}",
         )
+        # Only the text AFTER "valid stacks:" is the supported-stacks list;
+        # the same line also carries the rejected id before it.
+        valid_list = valid_line.split("valid stacks:", 1)[1] if valid_line else ""
         self.assertNotIn(
-            retired_stack, valid_line,
+            retired_stack, valid_list,
             f"the supported-stacks list must not include the retired IDE "
-            f"stack: {valid_line!r}",
+            f"stack: {valid_list!r}",
         )
         for supported in ("arduino", "bun", "python", "quarkus", "rust"):
             self.assertIn(
-                supported, valid_line,
+                supported, valid_list,
                 f"the supported-stacks list must still include {supported!r}: "
-                f"{valid_line!r}",
+                f"{valid_list!r}",
             )
 
     def test_init_stacks_python_is_still_accepted(self):

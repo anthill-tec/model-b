@@ -991,8 +991,8 @@ class BundleEndpointTierAndVerbTest(unittest.TestCase):
         ]
         self.assertEqual(
             len(report_bundles),
-            6,
-            "the six per-stack report bundles must all be measured; found "
+            5,
+            "the five per-stack report bundles must all be measured; found "
             f"{[p.name for p in report_bundles]}",
         )
         silent = [
