@@ -257,7 +257,9 @@ the package warns against it. The policy that works names what the workflow uses
   keys take no wildcard, so each is listed), the built-in file tools, the sub-agent tools
   (`subagent`, `get_subagent_result`, `steer_subagent`), `todo` and `ask_user_question`;
 - `skill: allow`; `external_directory_read` allowing `~/.agents/*`, `~/.crucible/*`,
-  `~/.pi/agent/*` and `/tmp/*`; `external_directory_write` allowing `/tmp/*`; both else `ask`.
+  `~/.pi/agent/*`, the installed harness's own code (`~/.bun/install/*` for the bun-installed Pi,
+  added 2026-09-23 after CR-MDB-030's RED stalled 35 minutes on unanswered prompts reading Pi's
+  loader) and `/tmp/*`; `external_directory_write` allowing `/tmp/*`; both else `ask`.
 
 The installer ships that policy as a template and, when the permission system is present, reports
 whether the global config carries it: absent, missing the `"*"` fallback, or missing a
