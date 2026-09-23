@@ -96,6 +96,13 @@ that text).
 match, so `write|edit` also covers `ctx_patch` and `ctx_edit`, and `bash` covers `ctx_shell`.
 `scaffold._hook_instances` uses the neutral vocabulary.
 
+**Every emitter translates the neutral matcher into its own harness's tool names** — the neutral
+name is the schema's, never a harness's. `_emit_pi` does it through §S3's table. `_emit_claude_code`
+writes Claude Code's names into `settings.json`: `bash`→`Bash`, `write`→`Write`,
+`edit`→`Edit|MultiEdit|NotebookEdit`, `read`→`Read`, `grep`→`Grep`, `find`→`Glob`, `ls`→`LS`, an
+alternation translated per member; a name with no Claude Code equivalent passes through unchanged.
+(Claude Code is retiring under CR-MDB-031, but until it is removed its emitted wiring must work.)
+
 ### §S5 — Fail-closed that is real
 For `fail_direction: closed`, the shim blocks with a reason on any outcome other than exit 0
 (allow) or exit 2 with a parseable `{"decision":"block"}` (block): spawn error, any other exit
@@ -149,6 +156,9 @@ agents is not re-tested per run: it was measured on 2026-09-23 (Context).
       asserted through the emitted shim, eight subtests.
 - [ ] `matcher` filters on the neutral name: a `write|edit` hook does not spawn for `bash` or
       `ctx_shell`, and does spawn for `ctx_patch` — asserted by a counting fake script.
+- [ ] `.claude/settings.json` carries Claude Code's own tool names for every neutral matcher —
+      `bash`→`Bash`, `write|edit`→`Write|Edit|MultiEdit|NotebookEdit`, and each other class in
+      §S4's list — never the neutral name.
 - [ ] `session_before_compact` is emitted for `pre-compact`; no "no documented pi counterpart"
       note remains.
 - [ ] A fresh `git worktree add` of a scaffolded project contains its `.pi/extensions/` and
