@@ -26,11 +26,26 @@ INSTALL_TOML_NAME = "install.toml"
 _INSTALL_TOML_MODE = 0o644
 
 
+#: Characters with a TOML short escape; every other C0 control and DEL
+#: is written as ``\uXXXX`` (CR-MDB-033 §S5).
+_TOML_SHORT_ESCAPES = {"\\": "\\\\", '"': '\\"', "\n": "\\n", "\t": "\\t", "\r": "\\r"}
+
+
+def _toml_escape_char(char: str) -> str:
+    short = _TOML_SHORT_ESCAPES.get(char)
+    if short is not None:
+        return short
+    if ord(char) < 0x20 or ord(char) == 0x7F:
+        return f"\\u{ord(char):04X}"
+    return char
+
+
 def _toml_string(value: str) -> str:
-    """Serialize a basic TOML string (escape backslash, quote, control)."""
-    escaped = value.replace("\\", "\\\\").replace('"', '\\"')
-    escaped = escaped.replace("\n", "\\n").replace("\t", "\\t").replace("\r", "\\r")
-    return f'"{escaped}"'
+    """Serialize a basic TOML string — the ONE TOML string writer in the
+    package (CR-MDB-033 §S5): backslash, quote, ``\\n``/``\\t``/``\\r``
+    take their short escapes; every other C0 control (U+0000–U+001F) and
+    DEL (U+007F) is written as ``\\uXXXX``."""
+    return '"' + "".join(_toml_escape_char(c) for c in value) + '"'
 
 
 def _toml_value(value) -> str:

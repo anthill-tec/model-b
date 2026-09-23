@@ -4,21 +4,21 @@ Manifest-driven copy of the package's skill assets into the target root:
 
 - Skill bundles (any ``skills-src/`` subdirectory carrying a ``SKILL.md``
   marker — e.g. ``crucible``; ``memory-templates`` is scaffold material,
-  not a skill bundle) deploy ONCE into the harness-neutral Vercel store
+  not a skill bundle) deploy ONCE into the harness-neutral shared store
   ``<target-root>/.agents/skills/<name>/`` (PRD §D2).
 - Each selected harness then gets a SYMLINK into its own skills dir per
   the mapping table below (Claude Code mapping complete in v1; the other
-  roster harnesses have no skills-dir mapping yet — DN §5).
+  roster harnesses have no skills-dir mapping yet — DN-scaffold-packaging §5).
 - Every deployed FILE yields a manifest entry ``{path, sha256}`` with
   ``path`` target-root-relative.
 
-Idempotent upgrade (AC5, DN §5): a target file whose hash matches the
+Idempotent upgrade (AC5, DN-scaffold-packaging §5): a target file whose hash matches the
 source is untouched; a file whose hash differs from BOTH the source and
 its recorded manifest hash is hand-modified — skipped (surfaced to the
 caller) unless ``force_managed`` overwrites it and refreshes its entry.
 
 Stdlib only. Never touches the real ``~/.claude``/``~/.agents`` in
-tests — callers pass sandboxed target roots (repo-local rule, DN §7).
+tests — callers pass sandboxed target roots (repo-local rule, DN-scaffold-packaging §7).
 """
 
 import hashlib
@@ -130,7 +130,7 @@ def _deploy_file(
 
     * identical to the source — untouched, recorded unchanged;
     * present but ABSENT from the prior manifest — unmanaged: not Model
-      B's to overwrite (DN §D3), so it is left byte-identical, reported
+      B's to overwrite (DN-multi-harness-deploy-model §D3), so it is left byte-identical, reported
       through ``unmanaged``, and recorded in NO manifest entry (recording
       it would adopt it, and a later run could then clobber it);
     * present, recorded in the prior manifest, hash-mismatched — a
@@ -144,7 +144,7 @@ def _deploy_file(
         recorded = prior_hashes.get(rel)
         if recorded is None:
             # Unmanaged file at a path Model B deploys to: no flag
-            # overwrites it (CR-MDB-033 §S3 / DN §D3).
+            # overwrites it (CR-MDB-033 §S3 / DN-multi-harness-deploy-model §D3).
             unmanaged.append(rel)
             return None
         if dest_hash != recorded and not force_managed:
@@ -160,7 +160,7 @@ def _deploy_file(
 def _link_harness_skills(
     target_root: Path, harnesses: list[str], bundle_names: list[str]
 ) -> None:
-    """Create per-harness symlinks into the Vercel store (one link per
+    """Create per-harness symlinks into the shared store (one link per
     skill bundle, pointing at the store dir — never a second copy)."""
     for harness_id in harnesses:
         skills_reldir = HARNESS_SKILL_DIRS.get(harness_id)

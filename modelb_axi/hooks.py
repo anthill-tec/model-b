@@ -12,8 +12,8 @@ per-harness native wiring (DN-harness-agnostic-hooks §4): claude-code
 ``.claude/settings.json``; opencode a generated TS spawn shim; pi full TS
 extensions under ``.pi/extensions/``; hermes declared degradation (advisory
 user-scope snippet only). ``fail_direction=closed`` hooks are REFUSED for
-harnesses that cannot honor fail-closed (claude-code, hermes — DN §4.4);
-pi and opencode honor it via shim-blocks-on-spawn-failure (DN §2 roster
+harnesses that cannot honor fail-closed (claude-code, hermes — DN-harness-agnostic-hooks §4.4);
+pi and opencode honor it via shim-blocks-on-spawn-failure (DN-harness-agnostic-hooks §2 roster
 addendum). Every (hook x harness) pairing is accounted for in the report —
 emitted, refused, or degraded-noted; when every requested harness refuses
 every hook, :class:`AllTargetsRefusedError` is raised.
@@ -131,20 +131,20 @@ _CLAUDE_EVENT_KEYS = {
 }
 
 #: Harnesses whose shims block on spawn failure, so fail-closed IS honorable
-#: (DN §2 roster addendum: pi explicitly; opencode is the same spawn-shim
-#: emitter class). claude-code and hermes are fail-open-only (DN §2/§4.4).
+#: (DN-harness-agnostic-hooks §2 roster addendum: pi explicitly; opencode is the same spawn-shim
+#: emitter class). claude-code and hermes are fail-open-only (DN-harness-agnostic-hooks §2/§4.4).
 _HONORS_FAIL_CLOSED = frozenset({"pi", "opencode"})
 
 _REFUSAL_REASONS = {
     "claude-code": (
         "fail_direction=closed cannot be honored: claude-code hooks are "
-        "fail-open (a hook error allows the action; DN §2) — a guard that "
-        "silently degrades is worse than none (DN §4.4)"
+        "fail-open (a hook error allows the action; DN-harness-agnostic-hooks §2) — a guard that "
+        "silently degrades is worse than none (DN-harness-agnostic-hooks §4.4)"
     ),
     "hermes": (
         "fail_direction=closed cannot be honored: hermes blocking semantics "
         "are unverifiable (exit-code contract under-documented, user-scope "
-        "hooks only; DN §2 roster addendum)"
+        "hooks only; DN-harness-agnostic-hooks §2 roster addendum)"
     ),
 }
 
@@ -165,7 +165,7 @@ def _new_report_entry() -> dict:
 
 
 def _partition(instances: list[dict], harness: str) -> tuple[list[dict], list[dict]]:
-    """Split instances into (emittable, refused) for one harness (DN §4.4)."""
+    """Split instances into (emittable, refused) for one harness (DN-harness-agnostic-hooks §4.4)."""
     emittable: list[dict] = []
     refused: list[dict] = []
     for instance in instances:
@@ -256,7 +256,7 @@ def _emit_opencode(
         script_path = str(scripts_root / instance["command"])
         # Mirror the pi _spawn_shim_body semantics: honor the declared fail
         # direction on spawn failure (status null / thrown) — a fail-closed
-        # guard must BLOCK when its script cannot run (DN §4.4).
+        # guard must BLOCK when its script cannot run (DN-harness-agnostic-hooks §4.4).
         fail_closed = instance.get("fail_direction") == "closed"
         on_spawn_failure = (
             '    return { block: true, reason: "fail-closed guard: hook spawn'
@@ -290,7 +290,7 @@ def _emit_opencode(
     _record_emitted(entry, str(shim_rel), emitted)
 
 
-#: pi extension event names (DN §2 roster addendum, event-map citations) per
+#: pi extension event names (DN-harness-agnostic-hooks §2 roster addendum, event-map citations) per
 #: universal event. ``pre-compact`` has NO documented pi counterpart —
 #: DECLARED GAP: not emitted for pi, noted in the compiler report (same
 #: declared-degradation idiom as hermes; NOT a refusal).
@@ -317,13 +317,13 @@ def _emit_pi(
     for instance in instances:
         pi_event = _PI_EVENTS.get(instance["event"])
         if pi_event is None:
-            # DECLARED GAP (DN §2 roster addendum): the universal event has
+            # DECLARED GAP (DN-harness-agnostic-hooks §2 roster addendum): the universal event has
             # no pi counterpart — not emitted, reported, never silent.
             entry["degraded"] = True
             entry["notes"].append(
                 "pi: DECLARED GAP — universal event "
                 f"'{instance['event']}' has no pi counterpart; hook "
-                f"'{instance['command']}' not emitted for pi (DN §2 roster "
+                f"'{instance['command']}' not emitted for pi (DN-harness-agnostic-hooks §2 roster "
                 "addendum)"
             )
             continue
@@ -342,7 +342,7 @@ def _emit_pi(
         entry["notes"].append(
             "pi loads .pi/extensions/*.ts only after the project-TRUST prompt "
             "(recorded in ~/.pi/agent/trust.json); regeneration re-triggers the "
-            "trust re-confirm step (DN §4.5)"
+            "trust re-confirm step (DN-harness-agnostic-hooks §4.5)"
         )
 
 

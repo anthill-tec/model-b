@@ -1,6 +1,6 @@
 """Harness targeting — installer-flow stage 2 (CR-MDB-014 §S5).
 
-The initial harness roster (DN §5) maps stable harness ids to the binary
+The initial harness roster (DN-scaffold-packaging §1 decision H) maps stable harness ids to the binary
 names probed on ``PATH``; the probed binary differs from the harness id
 in exactly one case (``claude`` → ``claude-code``):
 
