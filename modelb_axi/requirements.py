@@ -197,7 +197,6 @@ _ARDUINO_CLI_INSTALLER = (
 #: ``unittest-xml-reporting`` package (orchestrator ruling, C2).
 _PIP_INSTALL = "python3 -m pip install unittest-xml-reporting coverage"
 _PIP_HOW = "install the Crucible python client's modules with pip"
-_ELEVATED = "(needs elevated privileges — named, never run by modelb-axi)"
 
 
 def install_display(install: tuple[str, ...]) -> str:
@@ -218,9 +217,9 @@ def _probe(
 
 _JVM_PROBES: tuple[dict, ...] = (
     _probe("mvn", "install Maven from a JDK/Maven source (a distro package or "
-                  f"https://maven.apache.org) {_ELEVATED}", None),
+                  "https://maven.apache.org)", None),
     _probe("java", "install a JDK from a JDK/Maven source (a distro package or "
-                   f"https://adoptium.net) {_ELEVATED}", None),
+                   "https://adoptium.net)", None),
 )
 
 #: Stack -> its toolchain probes, in §S8 table order. ``kind`` is
@@ -228,10 +227,12 @@ _JVM_PROBES: tuple[dict, ...] = (
 #: (imported by the PATH ``python3``). ``remediation`` is always named;
 #: ``install`` is the provider's own installer as an argv — offered only on
 #: an explicit interactive yes, its ``[0]`` resolved on PATH first — or
-#: ``None`` when it needs elevated privileges (named, never run).
+#: ``None`` when it needs elevated privileges. ``remediation`` states the
+#: remediation only (the scaffold writes it into AGENTS.md); what the
+#: installer does about it is the installer's wording, not data.
 STACK_TOOLCHAINS: dict[str, tuple[dict, ...]] = {
     "python": (
-        _probe("python3", f"install python3 with the OS package manager {_ELEVATED}", None),
+        _probe("python3", "install python3 with the OS package manager", None),
         _probe("xmlrunner", _PIP_HOW, tuple(_PIP_INSTALL.split()), kind="module"),
         _probe("coverage", _PIP_HOW, tuple(_PIP_INSTALL.split()), kind="module"),
     ),
@@ -247,12 +248,12 @@ STACK_TOOLCHAINS: dict[str, tuple[dict, ...]] = {
     "bun": (
         _probe("bun", "install bun with bun's installer", ("sh", "-c", _BUN_INSTALLER)),
         _probe("node", "install Node.js from https://nodejs.org or the OS package "
-                       f"manager {_ELEVATED}", None),
+                       "manager", None),
     ),
     "arduino": (
         _probe("arduino-cli", "install arduino-cli with its installer",
                ("sh", "-c", _ARDUINO_CLI_INSTALLER)),
-        _probe("g++", f"install g++ with the OS package manager {_ELEVATED}", None),
+        _probe("g++", "install g++ with the OS package manager", None),
     ),
 }
 

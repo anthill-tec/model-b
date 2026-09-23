@@ -28,6 +28,10 @@ from modelb_axi.requirements import STACK_TOOLCHAINS, install_display
 
 INSTALLED = "installed"
 
+#: Appended to the warning for a tool whose installer needs elevated
+#: privileges (``install`` is ``None``): the installer names it, never runs it.
+_ELEVATED_NOTE = " (needs elevated privileges — named, never run by modelb-axi)"
+
 #: Upper bound on one ``python3 -c "import …"`` check.
 _IMPORT_CHECK_TIMEOUT_S = 30
 
@@ -133,10 +137,11 @@ def remediate_toolchains(
                 row[name] = outcomes[install]
                 continue
             # The remediation is prose with any command set apart in
-            # backticks by the data (``requirements._probe``).
+            # backticks by the data (``requirements._probe``); the
+            # elevated-privilege note is installer wording, never data.
             warn(
                 f"stack {stack}: {name}={row[name]} — {stack} tests cannot run on "
-                f"this machine; {command}"
+                f"this machine; {command}" + (_ELEVATED_NOTE if install is None else "")
             )
             if install is None or offer is None:
                 continue
