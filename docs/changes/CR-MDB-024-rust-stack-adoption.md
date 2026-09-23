@@ -80,8 +80,9 @@ message.
 
 ### §S4 — Records
 PRD §D6's bespoke enumeration, `docs/research/DN-rationalization-plan-review.md`'s "rust agents are
-never generated", and CR-MDB-008's bespoke-exclusion list are corrected to cite the 2026-09-16 rust
-ruling and the 2026-09-22 vscode ruling. PRD §4.4's counts are left to CR-MDB-035, which owns
+never generated" are corrected to cite the 2026-09-16 rust ruling and the 2026-09-22 vscode
+ruling. CR-MDB-008 is a closed spec and is not edited (PRD D9; `ClosedCrSpecsUntouchedTest`): its
+exclusion list is superseded by `generator/build.py`'s bespoke list, which this CR corrects. PRD §4.4's counts are left to CR-MDB-035, which owns
 §4. The queue footer records the vscode retirement and its reason, so the category error is not
 re-made by a future reader who sees TypeScript extension work.
 
@@ -117,7 +118,8 @@ pending outbound item and sent the next time they are listening.
 ### §S3
 - [ ] Zero `vscode` references under `skills-src/`, `generator/`, `modelb_axi/` and `tests/`
       (compiled caches excluded) — grep gate.
-- [ ] `skills-src/` carries 12 bundles and `CRUCIBLE-HANDOVER.md` documents 6 imported ones; the
+- [ ] `skills-src/` carries 13 bundles (7 Model B-owned + 6 imported; it carried 14 before this CR)
+      and `CRUCIBLE-HANDOVER.md` documents 6 imported ones; the
       handover gates assert the new counts rather than being deleted.
 - [ ] The bespoke list names only definitions that still exist: electronics ×4 and `inbox-analyst`.
 - [ ] `modelb-axi init --stacks vscode` is rejected with a message naming the supported stacks.
@@ -128,7 +130,7 @@ pending outbound item and sent the next time they are listening.
       RED report.
 
 ### §S4
-- [ ] PRD §D6, `DN-rationalization-plan-review.md` and CR-MDB-008's exclusion list no longer state
+- [ ] PRD §D6 and `DN-rationalization-plan-review.md` no longer state
       rust agents are never generated or that vscode agents exist, and cite the two rulings.
 - [ ] The queue footer records the vscode retirement and its reason.
 
