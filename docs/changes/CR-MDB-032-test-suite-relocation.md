@@ -104,6 +104,10 @@ dropped. The `MODELB_REALHOME_GATE` paragraph is deleted with the module.
 
 
 - **Added 2026-09-23 (pi-lens, pre-existing):** `generator/build.py:161` reads `__doc__.splitlines()` without narrowing an `Optional[str]`; `build.py:27`, `tests/test_rust_stack_generator.py:43` have unsorted import blocks; `tests/test_client_verb_sweep.py:554` uses a `str.format` call. None is a behaviour defect; all are the type-narrowing/hygiene class this CR already carries.
+- **Added 2026-09-24 (pi-lens, from CR-MDB-025's merged test edits):** `tests/test_agent_generator.py:103`
+  has an unsorted import block; `tests/test_installer_assets.py:140-141` passes an unnarrowed
+  `ModuleSpec | None` to `module_from_spec` and calls `.loader.exec_module` on it, and `:1223`
+  iterates a possibly-`None` value. Same hygiene class; no behaviour defect.
 
 ## Acceptance criteria
 
