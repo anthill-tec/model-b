@@ -145,6 +145,59 @@ _INIT_REQUIRED_FLAGS = [
 ]
 
 
+def _write_legacy_manifest_missing_hooks_scripts_dir(home: str, harnesses=("claude-code",)) -> Path:
+    """A pre-CR-MDB-033 ``install.toml``: harnesses/version/asset_root/
+    tool_scripts_dir present (exactly what a v1 install wrote), but NO
+    ``target_root``/``hooks_scripts_dir`` -- the AC-a fixture ("an
+    install.toml lacking hooks_scripts_dir"). Mirrors the inline fixture
+    already used by ``InstallTomlSchemaKeysTest.
+    test_legacy_manifest_missing_hooks_scripts_dir_fails_naming_reinstall_flag``,
+    extracted here for reuse by the RED2 (§S1 write-ordering) tests."""
+    harnesses_toml = ", ".join(f'"{h}"' for h in harnesses)
+    install_toml = Path(home) / "install.toml"
+    install_toml.write_text(
+        "[install]\n"
+        'version = "0.1.0"\n'
+        f"harnesses = [{harnesses_toml}]\n"
+        'asset_root = "/tmp/does-not-matter-for-this-test"\n'
+        'tool_scripts_dir = "/tmp/does-not-matter-for-this-test/.agents/scripts"\n'
+        "\n"
+        "[deps]\n"
+        'uv = "detected"\n'
+        "\n"
+        "[files]\n",
+        encoding="utf-8",
+    )
+    return install_toml
+
+
+def _files_under_excluding_git(root: str) -> list:
+    """Relative file paths under ``root``, recursively, skipping
+    anything inside a ``.git`` directory -- the AC-a/AC-b/AC-c "leaves
+    NO FILE under --target" checks must not trip on git's own
+    bookkeeping (which is irrelevant to whether `init` clobbered the
+    target with scaffold output)."""
+    base = Path(root)
+    found = []
+    for path in base.rglob("*"):
+        if not path.is_file():
+            continue
+        rel = path.relative_to(base)
+        if ".git" in rel.parts:
+            continue
+        found.append(str(rel))
+    return sorted(found)
+
+
+def _decode_envelope(stdout: str) -> dict:
+    """Decode a `modelb_axi` TOON envelope printed on stdout, using the
+    package's OWN codec (in-process import of the SUT package, the same
+    idiom ``ManifestAlwaysConsultedWithoutReinstallFlagTest`` already
+    uses for ``modelb_axi.cli._deploy_stage``)."""
+    from modelb_axi.toon import decode
+    return decode(stdout)
+
+
 class PiExtensionTargetRootRoundTripTest(unittest.TestCase):
     """AC1 (§S1) -- installing to `--target-root /tmp/x` then `init`-ing
     a project must compile `.pi/extensions/*.ts` wiring that calls the
@@ -507,6 +560,260 @@ class ManifestAlwaysConsultedWithoutReinstallFlagTest(unittest.TestCase):
             f"AC5/§S3: the hash-mismatch detection must name the "
             f"affected file even without --reinstall; got "
             f"combined={second_combined!r}",
+        )
+
+
+class RealInitLegacyManifestNoWriteBeforeFailureTest(unittest.TestCase):
+    """AC-a (§S1, RED2) -- with an `install.toml` lacking
+    `hooks_scripts_dir`, a REAL (non-dry) `init` must exit non-zero AND
+    leave NO FILE under `--target`. MEASURED current defect: exit=3 but
+    11 files already written (`_hook_scripts_root` is called from
+    inside `_emit_plan`, mid-emission, after writes) -- this test pins
+    the write-BEFORE-check ordering bug that
+    `InstallTomlSchemaKeysTest.
+    test_legacy_manifest_missing_hooks_scripts_dir_fails_naming_reinstall_flag`
+    (same fixture) does not: that test only asserts the error text, not
+    that the target tree stayed empty."""
+
+    def setUp(self):
+        self._tmp_home = tempfile.mkdtemp(prefix="modelb-axi-c1-red2-legacy-home-")
+        self._tmp_target = tempfile.mkdtemp(prefix="modelb-axi-c1-red2-legacy-target-")
+        _write_legacy_manifest_missing_hooks_scripts_dir(self._tmp_home)
+
+    def tearDown(self):
+        for root in (self._tmp_home, self._tmp_target):
+            shutil.rmtree(root, ignore_errors=True)
+
+    def test_real_init_exits_nonzero_and_leaves_target_empty(self):
+        result = _run_module(
+            "--yes", "init", *_INIT_REQUIRED_FLAGS,
+            "--target", self._tmp_target,
+            "--modelb-home", self._tmp_home,
+            "--no-commit",
+        )
+        combined = result.stdout + result.stderr
+        # POSITIVE -- non-zero exit is the failure signal.
+        self.assertNotEqual(
+            result.returncode, 0,
+            f"AC-a: a real init against an install.toml lacking "
+            f"hooks_scripts_dir must exit non-zero; got "
+            f"exit={result.returncode} combined={combined!r}",
+        )
+        # Confirm the RIGHT reason (the §S1 named-key defect), not
+        # some unrelated failure (e.g. missing flags/unknown stack).
+        self.assertIn(
+            "hooks_scripts_dir", combined,
+            f"AC-a precondition: the failure must be the missing "
+            f"hooks_scripts_dir key, not an unrelated error; got "
+            f"combined={combined!r}",
+        )
+        # NEGATIVE / bound -- the exact defect: NO file anywhere under
+        # --target, not merely "fewer files than a full run".
+        leftover = _files_under_excluding_git(self._tmp_target)
+        self.assertEqual(
+            leftover, [],
+            f"AC-a: a real init that fails on the missing "
+            f"hooks_scripts_dir key must leave NO FILE under --target "
+            f"(the check must run BEFORE the first write); found "
+            f"{leftover!r}; run combined={combined!r}",
+        )
+
+
+class RealInitWithoutInstallTomlNoWriteBeforeFailureTest(unittest.TestCase):
+    """AC-b (§S1, RED2) -- with NO `install.toml` at all (the
+    `--harnesses` dev override), a real `init` must exit non-zero, leave
+    no file under `--target`, and its error must state that no
+    `install.toml` exists at the resolved home and name the installer --
+    it must NOT say the file "does not record" a key (that wording is
+    only correct when the file exists but lacks the key -- AC-a).
+    MEASURED current defect: exit=3 after 11 files, message reads
+    "<home>/install.toml does not record [install].hooks_scripts_dir
+    ..." even though that file does not exist on disk."""
+
+    def setUp(self):
+        self._tmp_home = tempfile.mkdtemp(prefix="modelb-axi-c1-red2-nomanifest-home-")
+        self._tmp_target = tempfile.mkdtemp(prefix="modelb-axi-c1-red2-nomanifest-target-")
+        # Deliberately no install.toml under self._tmp_home.
+
+    def tearDown(self):
+        for root in (self._tmp_home, self._tmp_target):
+            shutil.rmtree(root, ignore_errors=True)
+
+    def test_real_init_exits_nonzero_leaves_target_empty_and_names_installer_not_does_not_record(self):
+        result = _run_module(
+            "--yes", "init", *_INIT_REQUIRED_FLAGS,
+            "--harnesses", "claude-code",
+            "--target", self._tmp_target,
+            "--modelb-home", self._tmp_home,
+            "--no-commit",
+        )
+        combined = result.stdout + result.stderr
+        # POSITIVE -- non-zero exit is the failure signal.
+        self.assertNotEqual(
+            result.returncode, 0,
+            f"AC-b: a real init with no install.toml at all (dev-override "
+            f"--harnesses) must exit non-zero; got "
+            f"exit={result.returncode} combined={combined!r}",
+        )
+        # NEGATIVE / bound -- the exact defect: no file anywhere under
+        # --target.
+        leftover = _files_under_excluding_git(self._tmp_target)
+        self.assertEqual(
+            leftover, [],
+            f"AC-b: a real init that fails because no install.toml exists "
+            f"must leave NO FILE under --target; found {leftover!r}; run "
+            f"combined={combined!r}",
+        )
+        combined_lower = combined.lower()
+        # POSITIVE -- the error states that no install.toml EXISTS at
+        # the resolved home (not that a present file "does not record" a
+        # key), and names the resolved home path.
+        self.assertIn(
+            "no install.toml", combined_lower,
+            f"AC-b: the error must state that no install.toml exists at "
+            f"the resolved home; got combined={combined!r}",
+        )
+        self.assertIn(
+            self._tmp_home, combined,
+            f"AC-b: the error must name the resolved home it looked "
+            f"under; got home={self._tmp_home!r} combined={combined!r}",
+        )
+        # POSITIVE -- the error names the installer as the remedy.
+        self.assertIn(
+            "modelb-axi", combined_lower,
+            f"AC-b: the error must name the installer (modelb-axi) as "
+            f"the remedy for a home with no install.toml; got "
+            f"combined={combined!r}",
+        )
+        # NEGATIVE -- this is the exact measured defect: the v1 message
+        # is reused verbatim even though the file does not exist, wrongly
+        # claiming a present file "does not record" the key.
+        self.assertNotIn(
+            "does not record", combined,
+            f"AC-b: a home with NO install.toml at all must never be "
+            f"told the file 'does not record' a key -- that wording "
+            f"implies the file exists; got combined={combined!r}",
+        )
+
+
+class DryRunSurfacesSameErrorTextAsWarningTest(unittest.TestCase):
+    """AC-c (§S1, RED2) -- in both the AC-a (legacy manifest
+    missing the key) and AC-b (no install.toml at all) cases, `--dry-run`
+    must still write nothing, exit 0, and its envelope must carry the
+    SAME error text the real (non-dry) run fails with, as a warning --
+    so a plan real `init` cannot emit is never previewed as clean.
+    MEASURED current defect: `--dry-run` exits 0 with `ok: true` and NO
+    warning in both cases (`_hook_scripts_root` is never called under
+    `if not dry_run:`)."""
+
+    def setUp(self):
+        self._tmp_home = tempfile.mkdtemp(prefix="modelb-axi-c1-red2-dryrun-home-")
+        self._tmp_real_target = tempfile.mkdtemp(prefix="modelb-axi-c1-red2-dryrun-real-target-")
+        self._tmp_dry_target = tempfile.mkdtemp(prefix="modelb-axi-c1-red2-dryrun-dry-target-")
+
+    def tearDown(self):
+        for root in (self._tmp_home, self._tmp_real_target, self._tmp_dry_target):
+            shutil.rmtree(root, ignore_errors=True)
+
+    def _real_error_text(self, *extra_flags):
+        """Run the REAL (non-dry) init and return the exact warning text
+        it fails with, per the envelope's own `warnings[0]` field --
+        never a hand-typed guess at the message."""
+        result = _run_module(
+            "--yes", "init", *_INIT_REQUIRED_FLAGS, *extra_flags,
+            "--target", self._tmp_real_target,
+            "--modelb-home", self._tmp_home,
+            "--no-commit",
+        )
+        self.assertNotEqual(
+            result.returncode, 0,
+            f"precondition: the real (non-dry) run must fail so there is "
+            f"an error text to compare the dry-run warning against; got "
+            f"exit={result.returncode} stdout={result.stdout!r} "
+            f"stderr={result.stderr!r}",
+        )
+        envelope = _decode_envelope(result.stdout)
+        warnings = envelope.get("axi", {}).get("warnings", [])
+        self.assertEqual(
+            len(warnings), 1,
+            f"precondition: the real run's failure envelope must carry "
+            f"exactly one warning (the error text); got envelope={envelope!r}",
+        )
+        return warnings[0]
+
+    def test_legacy_manifest_missing_key_dry_run_writes_nothing_exits_zero_and_warns_same_text(self):
+        _write_legacy_manifest_missing_hooks_scripts_dir(self._tmp_home)
+        real_error = self._real_error_text()
+
+        dry_result = _run_module(
+            "--yes", "init", *_INIT_REQUIRED_FLAGS,
+            "--target", self._tmp_dry_target,
+            "--modelb-home", self._tmp_home,
+            "--no-commit", "--dry-run",
+        )
+        combined = dry_result.stdout + dry_result.stderr
+        # POSITIVE -- dry-run still exits 0.
+        self.assertEqual(
+            dry_result.returncode, 0,
+            f"AC-c: --dry-run must exit 0 even when the real run would "
+            f"fail on the missing hooks_scripts_dir key; got "
+            f"exit={dry_result.returncode} combined={combined!r}",
+        )
+        # NEGATIVE / bound -- dry-run writes nothing, as always.
+        leftover = _files_under_excluding_git(self._tmp_dry_target)
+        self.assertEqual(
+            leftover, [],
+            f"AC-c: --dry-run must write NOTHING under --target even when "
+            f"it detects the missing-key defect; found {leftover!r}; "
+            f"combined={combined!r}",
+        )
+        dry_envelope = _decode_envelope(dry_result.stdout)
+        dry_warnings = dry_envelope.get("axi", {}).get("warnings", [])
+        # POSITIVE -- the exact same error text the real run fails with
+        # is carried as a dry-run warning, not a paraphrase or omission.
+        self.assertIn(
+            real_error, dry_warnings,
+            f"AC-c: the dry-run envelope must carry the SAME error text "
+            f"the real run fails with, as a warning; real_error="
+            f"{real_error!r} dry_warnings={dry_warnings!r}",
+        )
+
+    def test_missing_install_toml_dry_run_writes_nothing_exits_zero_and_warns_same_text(self):
+        # Deliberately no install.toml under self._tmp_home for either run.
+        real_error = self._real_error_text("--harnesses", "claude-code")
+
+        dry_result = _run_module(
+            "--yes", "init", *_INIT_REQUIRED_FLAGS,
+            "--harnesses", "claude-code",
+            "--target", self._tmp_dry_target,
+            "--modelb-home", self._tmp_home,
+            "--no-commit", "--dry-run",
+        )
+        combined = dry_result.stdout + dry_result.stderr
+        # POSITIVE -- dry-run still exits 0.
+        self.assertEqual(
+            dry_result.returncode, 0,
+            f"AC-c: --dry-run must exit 0 even when the real run would "
+            f"fail because no install.toml exists; got "
+            f"exit={dry_result.returncode} combined={combined!r}",
+        )
+        # NEGATIVE / bound -- dry-run writes nothing, as always.
+        leftover = _files_under_excluding_git(self._tmp_dry_target)
+        self.assertEqual(
+            leftover, [],
+            f"AC-c: --dry-run must write NOTHING under --target even when "
+            f"it detects the missing-install.toml defect; found "
+            f"{leftover!r}; combined={combined!r}",
+        )
+        dry_envelope = _decode_envelope(dry_result.stdout)
+        dry_warnings = dry_envelope.get("axi", {}).get("warnings", [])
+        # POSITIVE -- the exact same error text the real run fails with
+        # is carried as a dry-run warning.
+        self.assertIn(
+            real_error, dry_warnings,
+            f"AC-c: the dry-run envelope must carry the SAME error text "
+            f"the real run fails with, as a warning; real_error="
+            f"{real_error!r} dry_warnings={dry_warnings!r}",
         )
 
 
