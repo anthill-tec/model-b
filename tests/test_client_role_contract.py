@@ -52,12 +52,15 @@ ROLE_ENUM = ("RED", "GREEN", "FIX", "VERIFY", "ORCHESTRATOR", "report")
 # The roles the SERVER refuses (409) when they register without a cycle binding.
 TDD_ROLES = ("RED", "GREEN", "FIX", "VERIFY")
 
-# Bundles that talk to Crucible over the v2 HTTP API and own NO CLI client, and
-# are therefore EXEMPT BY NAME from the register-flag families below.  The
-# exemption is an explicit constant so the bundle can never pass those families
-# by incidental zero-match; `test_s3_exempted_bundle_has_no_register_example`
-# proves the exemption is truthful rather than a silent skip.
-API_PATH_BUNDLES = ("crucible-report-vscode",)
+# CR-MDB-024 \u00a7S3 (this cycle, C2 RED, 2026-09-22 VS Code ruling): the
+# single-member API-path exemption this constant existed for
+# (the VS Code crucible-report bundle) is retired outright, not migrated -- the bundle
+# is deleted, so nothing needs exempting from the register-flag families any
+# more. Left EMPTY rather than deleted so `_register_examples`' existing
+# `include_exempt` plumbing (line ~116) stays syntactically valid without a
+# structural rewrite; an empty exemption set is itself the correct S3 state
+# ("an exemption whose only member is gone").
+API_PATH_BUNDLES = ()
 
 # Bundles that DO ship a CLI register example; each must contribute at least one,
 # so an accidental deletion cannot turn the flag gates green.
@@ -377,34 +380,14 @@ class ClientRoleContractS3Test(unittest.TestCase):
                 f"CYCLE_FLAG_RE must match a real cycle binding: {accepted!r}",
             )
 
-    def test_s3_api_path_exemption_constant_names_vscode_bundle(self):
-        self.assertIn(
-            "crucible-report-vscode",
-            API_PATH_BUNDLES,
-            "the vscode bundle must be exempted from the register-flag families BY NAME "
-            "via API_PATH_BUNDLES — it has no CLI register example and no client "
-            "(user ruling, Sandesh #1370) — never by incidental zero-match.",
-        )
-        for bundle in API_PATH_BUNDLES:
-            self.assertTrue(
-                (SKILLS_SRC / bundle).is_dir(),
-                f"API_PATH_BUNDLES names {bundle!r}, which does not exist under "
-                "skills-src/ — a stale exemption silently widens the gate's blind spot.",
-            )
-
-    def test_s3_exempted_bundle_has_no_register_example(self):
-        leaked = [
-            f"{_rel(path)}:{lineno}: {line}"
-            for path, lineno, line in _register_examples(include_exempt=True)
-            if any(f"skills-src/{b}/" in _rel(path) for b in API_PATH_BUNDLES)
-        ]
-        self.assertEqual(
-            leaked,
-            [],
-            "an API-path bundle now carries a CLI register example, so its exemption is "
-            "no longer truthful — either sync the example's flags or drop the bundle "
-            "from API_PATH_BUNDLES:\n  " + "\n  ".join(leaked),
-        )
+    # CR-MDB-024 \u00a7S3 (this cycle, C2 RED, 2026-09-22 VS Code ruling):
+    # test_s3_api_path_exemption_constant_names_VS_Code_bundle and
+    # test_s3_exempted_bundle_has_no_register_example are DELETED, not
+    # migrated -- the VS Code bundle they asserted about is retired outright,
+    # so API_PATH_BUNDLES above is now empty and there is nothing left for
+    # either test to name or prove truthful ("an exemption whose only member
+    # is gone"). The retirement itself is gated by
+    # tests/test_ide_overlay_retirement.py.
 
 
 if __name__ == "__main__":

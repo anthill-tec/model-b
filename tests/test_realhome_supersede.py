@@ -72,6 +72,9 @@ DEPLOYED_CRUCIBLE_SKILL_DIR = CLAUDE_SKILLS_DIR / "crucible"
 DEPLOYED_CRUCIBLE_SKILL_MD = DEPLOYED_CRUCIBLE_SKILL_DIR / "SKILL.md"
 DEPLOYED_CRUCIBLE_REFERENCES_DIR = DEPLOYED_CRUCIBLE_SKILL_DIR / "references"
 
+# CR-MDB-024 \u00a7S3 (this cycle, C2 RED, 2026-09-22 VS Code ruling): narrowed
+# from 7 to 6 -- the VS Code crucible-report bundle is retired outright (an
+# IDE is not a stack).
 IMPORTED_BUNDLE_NAMES = (
     "crucible-register",
     "crucible-report-arduino",
@@ -79,7 +82,6 @@ IMPORTED_BUNDLE_NAMES = (
     "crucible-report-java",
     "crucible-report-python",
     "crucible-report-rust",
-    "crucible-report-vscode",
 )
 
 # Live-reference pattern: a path token that names ~/.claude/scripts/ (the
@@ -295,18 +297,26 @@ class DeployedHandoverBundlesTest(unittest.TestCase):
     """AC5 (bundles) -- the 7 handover bundles are present in the deployed
     skill set (store copy under ~/.agents/skills/<name>/SKILL.md and/or
     the ~/.claude/skills symlink layer, per deploy.py's model); NO
-    deployed agent-protocol skill exists in either layer."""
+    deployed agent-protocol skill exists in either layer.
 
-    def test_all_seven_handover_bundles_deployed(self):
+    CR-MDB-024 \u00a7S3 AMENDMENT (this cycle, C2 RED, 2026-09-22 VS Code ruling):
+    narrowed from 7 to 6 -- the VS Code crucible-report bundle is retired
+    outright and no longer deployed as source (skills-src/ side); this
+    class asserts DEPLOYED machine state and is gated off by default
+    (MODELB_REALHOME_GATE), so it never runs in this cycle's own RED
+    verification.
+    """
+
+    def test_all_six_handover_bundles_deployed(self):
         missing = [
             name for name in IMPORTED_BUNDLE_NAMES
             if not _bundle_is_deployed(name)
         ]
-        # POSITIVE/EXACT -- all 7 bundles resolve to a real SKILL.md in
+        # POSITIVE/EXACT -- all 6 bundles resolve to a real SKILL.md in
         # at least one deploy layer.
         self.assertEqual(
             missing, [],
-            f"Sec4 must deploy all 7 handover bundles {IMPORTED_BUNDLE_NAMES} "
+            f"Sec4 must deploy all 6 handover bundles {IMPORTED_BUNDLE_NAMES} "
             f"(store copy under {AGENTS_STORE_SKILLS_DIR}/<name>/SKILL.md "
             f"and/or the {CLAUDE_SKILLS_DIR} symlink layer); missing today: "
             f"{missing}",

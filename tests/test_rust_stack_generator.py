@@ -9,8 +9,9 @@ exist yet and `build.py` does not know the stack name `"rust"`.
 
 Scope boundary (dispatch, cycle C1): this module covers §S1 (the stack TOML's
 own shape and content) and §S2 (the generator's census widening from 16 to 20
-targets). It does NOT touch §S3 (vscode retirement) or §S4 (doc/record
-corrections) — those are cycle C2. The pre-existing generic gates in
+targets). It does NOT touch §S3 (VS Code retirement) or §S4 (doc/record
+corrections) — those are cycle C2, gated in tests/test_ide_overlay_retirement.py
+and this cycle's migrated files. The pre-existing generic gates in
 `test_generator_role_contract.py` (§S6a/§S6b) already derive their stack and
 role lists by globbing `generator/stacks/*.toml` / `generator/templates/*.tmpl`
 / `generator/agents/*.md` rather than hardcoding the current four, so they

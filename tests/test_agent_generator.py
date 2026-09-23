@@ -63,9 +63,9 @@ CR-MDB-024 \u00a7S1/\u00a7S2 AMENDMENT (sanctioned follow-up, cycle C1 RED): a f
 stack, ``rust``, joins the generator's own target census (``generator/agents/
 rust-{red,green,verify,fix}-agent.md``), widening the SMALL-STACK build/list/
 check/content/bespoke gates from 16 to 20 targets and dropping the 4 rust
-names out of the 13-strong bespoke list (13 -> 9; vscode x4 + electronics x4 +
-inbox-analyst stay bespoke -- CR-MDB-024 \u00a7S3 is cycle C2, out of this cycle's
-scope). Two pins are DELIBERATELY left untouched at their ORIGINAL 16/four-
+names out of the 13-strong bespoke list (13 -> 9 at C1; VS Code's four +
+electronics x4 + inbox-analyst stayed bespoke then -- CR-MDB-024 \u00a7S3, cycle
+C2, narrows it further to 5; see the \u00a7S3 amendment below). Two pins are DELIBERATELY left untouched at their ORIGINAL 16/four-
 stack semantics because they assert real machine/repo state this CR does not
 touch: ``ArchiveOriginalsS4Test`` (the pre-CR-MDB-008 archive under
 ``archive/wave3/agents/`` never gained rust originals -- they were never
@@ -78,6 +78,19 @@ this CR does not create and is not asked to close. A new module-level
 ``TARGET_AGENT_NAMES_WITH_RUST`` (20) is used ONLY by the generator's-own-
 census assertions (build/list/check/content/bespoke); ``TARGET_AGENT_NAMES``
 (16) keeps its original meaning and its original two consumers.
+
+CR-MDB-024 \u00a7S3 AMENDMENT (this cycle, C2 RED, 2026-09-22 VS Code ruling): the
+four VS Code agent names now drop out of the bespoke list too -- an IDE is
+not a stack, so they are retired outright rather than adopted as a
+generated one. ``BESPOKE_AGENT_NAMES`` narrows from 9 to 5 (electronics x4
++ inbox-analyst). The generator's own target census
+(``TARGET_AGENT_NAMES_WITH_RUST``, the build/list/check/content gates) is
+UNAFFECTED -- the retired stack was never one of its targets either before
+or after -- so only the bespoke-negative assertions move.
+``tests/test_ide_overlay_retirement.py`` carries the new module-level gates
+this cycle adds (the zero-reference sweep, the skills-src/ bundle census,
+the CLI stack-rejection and DN/PRD/README record checks); this file's
+amendment is the narrower BESPOKE_AGENT_NAMES migration only.
 
 Stdlib only (unittest + subprocess + pathlib + shutil + sys + tomllib +
 importlib.util). build.py is still driven as a SUBPROCESS for every gate,
@@ -133,16 +146,14 @@ TARGET_AGENT_NAMES_WITH_RUST = [
     f"{stack}-{role}-agent.md" for stack in GENERATED_STACKS for role in ROLES
 ]
 
-# The 9 bespoke defs build.py must NEVER touch (vscode x4, electronics x4,
-# inbox-analyst). CR-MDB-024 \u00a7S2 drops the 4 rust names that were bespoke
-# before this CR -- rust is now a generated stack, not a hand-maintained one.
-# vscode's 4 names stay bespoke here: their retirement is CR-MDB-024 \u00a7S3,
-# cycle C2, out of this cycle's scope.
+# The 5 bespoke defs build.py must NEVER touch (electronics x4,
+# inbox-analyst). CR-MDB-024 \u00a7S2 (2026-09-16 rust ruling) dropped the 4
+# rust names that were bespoke before this CR -- rust is now a generated
+# stack. CR-MDB-024 \u00a7S3 (2026-09-22 VS Code ruling) drops the four
+# VS Code agent names too -- those definitions were retired outright (an
+# IDE is not a stack), not adopted as a generated stack, so they leave the
+# bespoke list rather than moving to TARGET_AGENT_NAMES_WITH_RUST.
 BESPOKE_AGENT_NAMES = [
-    "vscode-red-agent.md",
-    "vscode-green-agent.md",
-    "vscode-verify-agent.md",
-    "vscode-fix-agent.md",
     "electronics-bench-test-engineer.md",
     "electronics-board-designer.md",
     "electronics-production-engineer.md",
@@ -528,7 +539,7 @@ class BespokeUntouchedS4Test(unittest.TestCase):
     asserts, from build.py's own declared targets, that (a) the written-file
     set is exactly the generator's declared targets -- the 16 stack x role
     agent definitions plus the one generated codec -- and (b) none of the 13
-    bespoke names (rust x4, vscode x4, electronics x4, inbox-analyst) is ever
+    bespoke names (rust x4, VS Code x4, electronics x4, inbox-analyst) is ever
     in that set or ever written to disk by a build."""
 
     def setUp(self):
