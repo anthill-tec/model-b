@@ -4,7 +4,7 @@
 projects and redirects to the rust-crucible.py wrapper.
 
 Normalized from the deployed ~/.claude/hooks/block-direct-cargo-test.sh
-baseline (CR-MDB-015 §S3): same stdin contract (JSON `tool_name` /
+baseline (CR-MDB-015 §S3): stdin contract on the neutral payload (CR-MDB-030 §S3: `tool_name` `bash` /
 `tool_input.command` / `cwd`), same exit protocol (allow -> 0, block -> 2 +
 `{"decision":"block","reason":...}` on stdout), same command-position-aware
 detector (formerly lib/detect-cargo-test.py, now inlined — self-contained,
@@ -120,7 +120,7 @@ def main() -> int:
         payload = json.load(sys.stdin)
     except (json.JSONDecodeError, OSError):
         return 0  # unreadable payload -> fail open (deterrent, not security boundary)
-    if not isinstance(payload, dict) or payload.get("tool_name") != "Bash":
+    if not isinstance(payload, dict) or payload.get("tool_name") != "bash":  # neutral shell class (schema.md)
         return 0
     tool_input = payload.get("tool_input") or {}
     command = tool_input.get("command") or ""

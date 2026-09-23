@@ -227,14 +227,97 @@ def _emit_claude_code(
 _PI_DEFAULT_TIMEOUT_S = 60
 
 #: TS body of every emitted pi extension, after its generated constants
-#: (``SCRIPT``, ``TIMEOUT_MS``, ``FAIL_CLOSED``) — CR-MDB-030 §S1/§S2/§S5.
+#: (``SCRIPT``, ``TIMEOUT_MS``, ``FAIL_CLOSED``, ``MATCH``) — CR-MDB-030
+#: §S1–§S5.
 #: The protocol script is spawned with ``node:child_process`` (``pi.exec``
 #: has no stdin option), the payload is written to its piped stdin, and the
 #: outcome is decided here: exit 0 allows; exit 2 with a parseable
 #: ``{"decision":"block"}`` blocks; ANY other outcome (spawn error, other
 #: exit code, kill on timeout, unparseable output) blocks with a reason when
-#: fail-closed and allows when fail-open.
+#: fail-closed and allows when fail-open. Before any of that, the Pi event
+#: is mapped into the NEUTRAL payload of hooks-src/schema.md (CR-MDB-030
+#: §S3) and a tool event whose neutral ``tool_name`` the instance's ``MATCH``
+#: does not name returns before spawning (CR-MDB-030 §S4).
 _PI_SHIM_RUNTIME = """\
+const SHELL_LANGUAGES = new Set(["shell", "bash", "sh"]);
+
+// Pi toolName -> neutral file class (hooks-src/schema.md, Pi mapping).
+const FILE_TOOLS = new Map([
+  ["write", "write"],
+  ["edit", "edit"],
+  ["ctx_edit", "edit"],
+  ["ctx_patch", "edit"],
+  ["read", "read"],
+  ["grep", "grep"],
+  ["find", "find"],
+  ["ls", "ls"],
+]);
+
+type NeutralPayload = {
+  tool_name: string | null;
+  tool_input: unknown;
+  cwd: string;
+  session_id: string | null;
+  harness_tool: string | null;
+};
+
+function nonEmptyString(value: unknown): string | null {
+  return typeof value === "string" && value !== "" ? value : null;
+}
+
+// Every path the call targets: the primary `path`, plus each per-operation
+// `path` a ctx_patch call carries -- de-duplicated, in order.
+function targetPaths(toolName: string, input: any): string[] {
+  const paths: string[] = [];
+  const add = (value: unknown) => {
+    const path = nonEmptyString(value);
+    if (path !== null && !paths.includes(path)) paths.push(path);
+  };
+  add(input.path);
+  if (toolName === "ctx_patch" && Array.isArray(input.ops)) {
+    for (const op of input.ops) {
+      if (op !== null && typeof op === "object") add(op.path);
+    }
+  }
+  return paths;
+}
+
+function neutralTool(toolName: string, rawInput: unknown) {
+  const input: any = rawInput !== null && typeof rawInput === "object" ? rawInput : {};
+  if (toolName === "bash" || toolName === "ctx_shell") {
+    return { tool_name: "bash", tool_input: { command: String(input.command ?? "") } };
+  }
+  if (toolName === "ctx_execute" && SHELL_LANGUAGES.has(input.language)) {
+    return { tool_name: "bash", tool_input: { command: String(input.code ?? "") } };
+  }
+  const fileClass = FILE_TOOLS.get(toolName);
+  if (fileClass !== undefined) {
+    return {
+      tool_name: fileClass,
+      tool_input: { path: nonEmptyString(input.path), paths: targetPaths(toolName, input) },
+    };
+  }
+  return { tool_name: toolName, tool_input: rawInput ?? {} }; // unmapped: passed through
+}
+
+function toNeutral(event: any, ctx: any): NeutralPayload {
+  const cwd = typeof ctx?.cwd === "string" ? ctx.cwd : process.cwd();
+  const id = ctx?.sessionManager?.getSessionId?.();
+  const session_id = typeof id === "string" ? id : null;
+  if (typeof event?.toolName !== "string") {
+    // Not a tool event (session start, turn end, input, compaction).
+    return { tool_name: null, tool_input: {}, cwd, session_id, harness_tool: null };
+  }
+  const { tool_name, tool_input } = neutralTool(event.toolName, event.input);
+  return { tool_name, tool_input, cwd, session_id, harness_tool: event.toolName };
+}
+
+// matcher on the NEUTRAL tool_name; it filters tool events only.
+function matches(payload: NeutralPayload): boolean {
+  if (MATCH === null || payload.harness_tool === null) return true;
+  return payload.tool_name !== null && MATCH.includes(payload.tool_name);
+}
+
 type HookOutcome = {
   code: number | null;
   stdout: string;
@@ -317,26 +400,44 @@ async function decide(payload: unknown) {
 """
 
 
+def _pi_matcher(matcher: str | None) -> list[str] | None:
+    """The instance ``matcher`` as the neutral tool names it names
+    (CR-MDB-030 §S4): ``|``-separated exact names; ``None`` (unfiltered)
+    for an absent matcher or one containing ``*``."""
+    if not matcher:
+        return None
+    names = [name.strip() for name in matcher.split("|") if name.strip()]
+    if not names or "*" in names:
+        return None
+    return names
+
+
 def _pi_extension_text(instance: dict, pi_event: str, script_path: str) -> str:
-    """Full TS source of one pi extension (CR-MDB-030 §S1/§S2/§S5): a
+    """Full TS source of one pi extension (CR-MDB-030 §S1–§S5): a
     default-export factory registering one handler with the 0.87.1
-    ``(event, ctx)`` signature. Every interpolated string goes through
-    ``json.dumps`` so no raw ``"`` reaches a TypeScript literal."""
+    ``(event, ctx)`` signature that maps the event into the neutral payload,
+    honours the matcher, then runs the script. Every interpolated string
+    goes through ``json.dumps`` so no raw ``"`` reaches a TypeScript
+    literal."""
     timeout_s = instance.get("timeout") or _PI_DEFAULT_TIMEOUT_S
     fail_closed = instance.get("fail_direction") == "closed"
+    match = _pi_matcher(instance.get("matcher"))
     return (
-        "// Generated by modelb_axi hooks compiler (CR-MDB-030 §S1/§S2/§S5) — do not edit.\n"
+        "// Generated by modelb_axi hooks compiler (CR-MDB-030 §S1–§S5) — do not edit.\n"
         'import { spawn } from "node:child_process";\n'
         "\n"
         f"const SCRIPT = {json.dumps(script_path)};\n"
         f"const TIMEOUT_MS = {timeout_s * 1000};\n"
         f"const FAIL_CLOSED = {'true' if fail_closed else 'false'};\n"
+        f"const MATCH: string[] | null = {json.dumps(match)};\n"
         "\n"
         + _PI_SHIM_RUNTIME
         + "\n"
         "export default function (pi) {\n"
         f"  pi.on({json.dumps(pi_event)}, async (event, ctx) => {{\n"
-        "    return decide(event);\n"
+        "    const payload = toNeutral(event, ctx);\n"
+        "    if (!matches(payload)) return {}; // matcher: never spawned\n"
+        "    return decide(payload);\n"
         "  });\n"
         "}\n"
     )
