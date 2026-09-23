@@ -78,11 +78,39 @@ the success envelope uses — listing exactly the files written before the failu
 staged through a temp dir.
 
 ### §S5 — Validation and hygiene
-Validate `install.toml` harness ids against the roster like the override; single TOML writer
-(`config._toml_string` used by scaffold; C0/DEL escaped as `\uXXXX`; schema assertion at
-`serialize_install_toml`); installer human lines to stderr; the `deps:` line keeps both its
-pre-remediation and post-install emissions (CR-MDB-014 AC4); docstring citations name the DN
-file; "Vercel store" → "shared store".
+- Harness ids read from `install.toml` are validated against the roster exactly like the
+  `--harnesses` override: the same `UnknownHarnessError`, naming the id, with the same exit code,
+  raised in `init`'s validation phase before any write — on `--dry-run` too.
+- One TOML string writer: `scaffold._render_instance_toml` writes its string values through
+  `config._toml_string`, which escapes every C0 control (U+0000–U+001F) and DEL (U+007F) not
+  already given a short escape, as `\uXXXX`.
+- Every `DN §` citation in `modelb_axi/` names its DN file; "Vercel store" becomes "shared
+  store".
+
+### §S6 — The installer's result is one AXI envelope on stdout
+Every bare `modelb-axi` invocation — the installer flow and the already-installed notice —
+writes exactly one AXI envelope to stdout through `modelb_axi.axi.envelope`, verb `install`, as
+`init` does. Every human line — banners, stage lines, `harnesses selected:`, warnings, and both
+`deps:` lines (the pre-remediation report and the post-install update, CR-MDB-014 AC4) — goes to
+stderr, from `cli.py` and `preflight.py` alike.
+
+| Exit path | `outcome` | `ok` | exit |
+|---|---|---|---|
+| `install.toml` already present (scaffold-mode notice) | `already_installed` | true | 0 |
+| user declines "Proceed?" | `aborted` | false | 1 |
+| pre-flight fails (e.g. `uv` absent) | `preflight_failed` | false | 1 |
+| unknown harness id | `harness_rejected` | false | 1 |
+| user declines the detected harness set | `aborted` | false | 1 |
+| deploy fails (no `install.toml` written) | `deploy_failed` | false | 1 |
+| no target root given — deploy skipped | `deploy_skipped` | true | 0 |
+| complete | `installed` | true | 0 |
+
+Fields beside `outcome`: `deps` — the `{uv, sandesh, crucible}` verdicts as recorded in
+`install.toml [deps]`, present once pre-flight has run; `harnesses` — the selected ids, present
+once targeting succeeded; `target_root`, `install_toml`, `managed_files` (the count of `[[files]]`
+entries), `skipped` and `unmanaged` (relative paths) — present when `install.toml` was written;
+`warnings` — every warning the run printed to stderr. Exit codes are unchanged. Argparse usage
+errors are argparse's own and outside this contract.
 
 ## Acceptance criteria
 
@@ -128,12 +156,28 @@ file; "Vercel store" → "shared store".
       exits non-zero, and its failure envelope's `emitted` lists exactly the files present under
       `--target`; `--dry-run` still writes nothing. The module docstring no longer claims a
       failure writes nothing.
-- [ ] `install.toml` listing a non-roster harness id fails fast with the id named.
-- [ ] Every human progress line in `modelb_axi/cli.py` is written with `file=sys.stderr`;
-      stdout from an installer run contains no human prose (asserted by capturing both streams).
-      The `deps:` line is emitted before remediation and again after a Sandesh install.
-- [ ] Both TOML serialisations go through `config._toml_string`; a value containing `\x1b`
-      round-trips through `tomllib`.
+- [ ] An `install.toml` listing a non-roster harness id makes `init` fail with the same
+      `UnknownHarnessError` and exit code as the `--harnesses` override, naming the id, before any
+      file is written under `--target` — and on `--dry-run` too.
+- [ ] Each of the eight exit paths in §S6's table writes exactly one envelope to stdout that
+      decodes with `modelb_axi.toon`, with verb `install` and that path's `outcome`, `ok` and exit
+      code — asserted per path, eight subtests.
+- [ ] On every path stdout carries nothing but that envelope, and every human line from `cli.py`
+      and `preflight.py` is on stderr — including both `deps:` lines on a run that installs
+      Sandesh.
+- [ ] On `installed`, the envelope's `deps` equals `install.toml [deps]`, `managed_files` equals
+      the number of `[[files]]` entries, and a foreign `<target-root>/.agents/scripts/gate-lock.sh`
+      appears in `unmanaged`.
+- [ ] Existing tests that read installer FACTS from stdout text (in `tests/test_installer.py`: the
+      `deps:` verdicts, `_extract_selected_harnesses`, the already-installed notice) read them from
+      the envelope; tests asserting prose or ordering read stderr; and the absence checks that
+      guard against a fabricated `deps:` report or a re-entered installer flow assert against
+      stderr, so they still fail when that happens.
+- [ ] `config._toml_string` round-trips every character U+0000–U+001F and U+007F through
+      `tomllib`, and `scaffold._render_instance_toml` writes its strings through it.
+- [ ] Every `DN §` citation in `modelb_axi/*.py` names its DN file, and "Vercel" appears nowhere
+      in `modelb_axi/` — a grep gate.
+- [ ] `tests/test_tooling_adoption.py` cites `modelb_axi/cli.py` by function, never by line range.
 
 ## Estimated size
 
@@ -146,10 +190,10 @@ module, ~12 tests. Small–medium.
   remedy. Upgrade note for the release ritual (`skills-src/git-workflow/SKILL.md` §Releases).
 - Changing first-install semantics (skip unmanaged) may surprise a user who expected a takeover;
   the warning says no flag overwrites the file, and a future `--adopt <name>` is the follow-up.
-- `tests/test_tooling_adoption.py` cites `modelb_axi/cli.py` by line range in its module
-  docstring and a comment, and cites `config.py::_toml_value serializes only strings`; §S1 and
-  §S5 move both targets. The citations are prose, not assertions, and are re-recorded once in the
-  final cycle.
+- §S6 moves every installer line off stdout; anything reading the installer's text output —
+  inside this repo, the `tests/test_installer.py` assertions named in the ACs — must read the
+  envelope or stderr instead. CR-MDB-036's `doctor` and CR-MDB-029's package consume the
+  envelope rather than text.
 
 ## Non-goals
 
