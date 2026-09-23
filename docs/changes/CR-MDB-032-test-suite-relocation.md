@@ -113,6 +113,10 @@ dropped. The `MODELB_REALHOME_GATE` paragraph is deleted with the module.
   `~/.crucible` manifest; since CR-MDB-036 the default stack selection includes python, so they
   also run the PATH `python3` import check for `xmlrunner`/`coverage`. Read-only and harmless, but
   not hermetic — the same real-home-read class this CR removes.
+- **Added 2026-09-24 (pi-lens, pre-existing):** `tests/test_installer.py:1022,1026` (CR-MDB-014) and
+  `tests/test_installer_correctness.py:44,918,974,1015,1042` (CR-MDB-033) — unsorted import block,
+  unnarrowed `Optional` values reaching `write_bytes`/`chmod`/`iter`/`rstrip`/`startswith`, and
+  string concatenation in loops. Same hygiene class; no behaviour defect.
 
 ## Acceptance criteria
 

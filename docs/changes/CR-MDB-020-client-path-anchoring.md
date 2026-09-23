@@ -140,6 +140,10 @@ The generator half of this section — `generator/stacks/*.toml` `test_command`,
 `skills-src/memory-templates/{java,rust}-orchestration.md`: the two occurrences of
 `~/.claude/scripts/<stack>-crucible.py` resolve to Crucible's contract location.
 
+`skills-src/memory-templates/java-orchestration.md` also says the quarkus VERIFY agent loads the
+`reviewer-quarkus`, `reviewer-architecture` and `reviewer-security` skills. Since CR-MDB-036 §S9 the
+agent definitions name only skills Model B ships, so that sentence is corrected in the same edit.
+
 ### §S3 — Regenerate and prove determinism
 Moved to CR-MDB-025 §S8 with the generator half of §S2.
 
