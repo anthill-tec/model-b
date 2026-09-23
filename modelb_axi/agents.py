@@ -43,6 +43,11 @@ PI_TOOL_NAMES = {
 
 SKILLS_LINE_PREFIX = "Load these skills first:"
 
+# §S4 — tool intents a role's permission policy denies outright, beside the
+# allowlist. VERIFY is read-only, so the policy states it as well as the
+# tools line (the allowlist never admits these for VERIFY — §S2).
+ROLE_DENIED_TOOLS = {"verify": ("write", "edit")}
+
 
 def load_stack_params(stacks_dir: Path, stack: str) -> dict:
     """Parse one stack TOML (``<stacks_dir>/<stack>.toml``) via tomllib."""
@@ -72,6 +77,7 @@ def neutral_definition(stack: str, role: str, params: dict, templates_dir: Path)
         "tools": list(role_table["tools"]),
         "thinking": role_table["thinking"],
         "skills": list(role_table.get("skills", [])),
+        "deny": list(ROLE_DENIED_TOOLS.get(role, ())),
     }
     if role_table.get("model"):
         defn["model"] = role_table["model"]
@@ -100,20 +106,26 @@ def _emit_pi(defn: dict, drops: list[dict] | None = None) -> str:
     """Serialise a neutral definition as a Pi (``@gotgenes/pi-subagents``) file.
 
     Frontmatter carries only what the reader reads (§S3): ``name``,
-    ``description``, ``tools`` (one comma-separated string), ``thinking``, and
-    ``model`` only when the definition sets one. Skills become one body line.
+    ``description``, ``tools`` (one comma-separated string), ``thinking``,
+    ``permission`` (§S4: ``allow`` for exactly the emitted tools, then
+    ``deny`` for the definition's optional ``deny`` intents), and ``model``
+    only when the definition sets one. Skills become one body line.
     Dropped tool intents are appended to ``drops`` (when given), each tagged
     with the definition name.
     """
     tools, dropped = translate_tools(defn["tools"], PI_TOOL_NAMES)
+    denied, dropped_denies = translate_tools(defn.get("deny", []), PI_TOOL_NAMES)
     if drops is not None:
-        drops.extend({"name": defn["name"], **d} for d in dropped)
+        drops.extend({"name": defn["name"], **d} for d in dropped + dropped_denies)
     lines = [
         "---",
         f"name: {defn['name']}",
         f"description: {defn['description']}",
         f"tools: {', '.join(tools)}",
         f"thinking: {defn['thinking']}",
+        "permission:",
+        *(f"  {tool}: allow" for tool in tools),
+        *(f"  {tool}: deny" for tool in denied if tool not in tools),
     ]
     if defn.get("model"):
         lines.append(f"model: {defn['model']}")

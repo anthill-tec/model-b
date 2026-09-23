@@ -56,7 +56,7 @@ skills = ["crucible", "refactorer-java", "reviewer-coverage"]
 
 [gotchas]
 red = '''
-- **Refactoring test code (Mode 2):** use the `refactorer-java` skill (OpenRewrite + tool-first) for cross-file mechanical changes; `Edit` only for trivial known old→new in one file; avoid `sed`.
+- **Refactoring test code (Mode 2):** use the `refactorer-java` skill (OpenRewrite + tool-first) for cross-file mechanical changes; `edit` only for trivial known old→new in one file; avoid `sed`.
 - **Quarkus test annotations:** `@QuarkusTest` — CDI beans, services, REST endpoints with full DI container; `@QuarkusIntegrationTest` — the packaged app (failsafe after `mvn package`, the E2E tier); plain JUnit 5 `@Test` — pure POJO/utility/mapper unit tests, no CDI.
 - **CDI:** `@Inject` real bean; `@InjectMock` Mockito mock into CDI. **NEVER `@Mock` + `@InjectMocks`** (standalone Mockito). NEVER `new MyService()` in a `@QuarkusTest` — let CDI inject.
 - **REST Assured:** `given().contentType(JSON).body(b).when().post("/api/x").then().statusCode(200).body("field", equalTo(v))`; static-import `io.restassured.RestAssured.given`, `org.hamcrest.Matchers.*`. Assert exact status codes (200/201/204/400/404) and body shape.
@@ -106,5 +106,5 @@ fix = '''
 | `@Mock`+`@InjectMocks` | Quarkus `@InjectMock`. |
 | Missing layer separation | Move logic to Service, data to Repository, HTTP to Resource. |
 | Test-quality finding | Add error/edge/mock-verification assertions per java-testing-practices.md. |
-Use the `refactorer-java` skill for cross-file mechanical changes (renames, import rewrites, signature updates) — tool-first, do NOT improvise; `Edit` for trivial known old→new; avoid `sed`. Coverage NEVER on targeted runs — full coverage is the orchestrator's gate.
+Use the `refactorer-java` skill for cross-file mechanical changes (renames, import rewrites, signature updates) — tool-first, do NOT improvise; `edit` for trivial known old→new; avoid `sed`. Coverage NEVER on targeted runs — full coverage is the orchestrator's gate.
 '''

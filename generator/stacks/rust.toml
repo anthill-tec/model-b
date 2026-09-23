@@ -66,7 +66,7 @@ skills = ["crucible", "refactorer-rust", "reviewer-coverage"]
 red = '''
 - **Run only YOUR tests:** `test --crate <c> --filter 'test(/<your_pattern>/)' --agent YOUR_AGENT_ID` — never a whole test file unfiltered; report only your new tests' results, not pass counts carried over from prior cycles. Compile-failure RED: `check --crate <c> --tests --agent YOUR_AGENT_ID`.
 - **SUT compile failure vs. RED-agent bug.** A compile error because the target type/field/fn does not exist YET is a valid RED. A compile error because you called a method that does not exist on a THIRD-PARTY type is your bug and wastes a cycle — verify every unfamiliar crate API against the source at the `Cargo.lock` version before using it (see "Stack mechanics"), and match how sibling tests already use that crate.
-- **Mode 2 (fix test compilation):** use the `refactorer-rust` skill for renames, `use` rewrites and signature migrations across files — its tool priority is `cargo fix` > `ast-grep` > `cargo clippy --fix` > manual `Edit`. No `sed`/`awk` on `.rs` files. Tests must COMPILE after Mode 2; they may still fail.
+- **Mode 2 (fix test compilation):** use the `refactorer-rust` skill for renames, `use` rewrites and signature migrations across files — its tool priority is `cargo fix` > `ast-grep` > `cargo clippy --fix` > manual `edit`. No `sed`/`awk` on `.rs` files. Tests must COMPILE after Mode 2; they may still fail.
 - **Structure:** `#[cfg(test)] mod tests { use super::*; … }` at the bottom of the module; group with nested `mod`s if organisation matters — never a separate `<thing>_tests.rs` in `src/`. Cross-module tests go in `<crate>/tests/<feature>.rs`.
 - **Async:** `#[tokio::test]` only in crates that already depend on tokio. Respect the project's crate-boundary rules in tests too — a test must not pull an async runtime or I/O crate into a crate whose boundary forbids it.
 - **Assertions:** `assert_eq!`/`assert_ne!` with a message naming the expectation; for a `Result`, assert the specific `Err` variant or message, not just `is_err()`; use `pretty_assertions::assert_eq` for large structures when the workspace already depends on it.
@@ -114,7 +114,7 @@ fix = '''
 | Clippy warnings | `clippy --crate <c> --deny-warnings --agent YOUR_AGENT_ID`; typical fixes: `&String` → `&str` in params, drop a `.clone()` where a borrow suffices, `if let Some(x) = o { x } else { d }` → `o.unwrap_or(d)`. |
 | Test in a CR/cycle-named file | ESCALATE — relocating it is a separate orchestrator-approved consolidation step, not a one-off fix. |
 - **Per finding:** `test --crate <c> --filter 'test(/<relevant_test>/)' --agent YOUR_AGENT_ID`, then `check --crate <c> --agent YOUR_AGENT_ID` to catch cascades, then commit that one fix.
-- **Mechanical multi-file changes:** the `refactorer-rust` skill (`cargo fix` > `ast-grep` > `cargo clippy --fix` > manual); `Edit` for a trivial known old→new; no `sed` on `.rs`.
+- **Mechanical multi-file changes:** the `refactorer-rust` skill (`cargo fix` > `ast-grep` > `cargo clippy --fix` > manual); `edit` for a trivial known old→new; no `sed` on `.rs`.
 - **Respect crate boundaries** (a fix in a pure crate must not introduce an I/O or async dependency) and **feature gates** (test gated code with its `--features`; confirm the test count).
 - Targeted crates only — never a workspace run, never llvm-cov; coverage is the orchestrator's gate.
 '''
