@@ -146,6 +146,12 @@ The emitter MUST write an explicit `tools:` line. Omission is not "use the defau
   proved by showing it fails against the regression it guards, and reports both proofs. The
   orchestrator then accepts the phase from those proofs and its Crucible ingest instead of
   re-running it.
+- **The RED template also governs test migration** (user-approved 2026-09-23, applied by hand to the
+  live red-agent definitions after CR-MDB-030). When a contract changes, the RED agent searches for
+  both kinds of affected test — those asserting the old value and those that DEPEND on removed
+  behaviour without naming it — and a migrated assertion takes its new value from the spec, never
+  from what the changed code produces. Measured cost of omitting it, CR-MDB-030: two dependent tests
+  missed (C2, C3), and one assertion re-pinned to a regression, which VERIFY had to catch.
 
 **§S7 acceptance criteria**
 
@@ -156,6 +162,8 @@ The emitter MUST write an explicit `tools:` line. Omission is not "use the defau
 - [ ] Every emitted RED/GREEN/FIX definition names `ctx_shell` and at least `ctx_read`,
       `ctx_grep`; every emitted VERIFY definition names the read-only `ctx_*` subset and omits
       `write`, `edit` and `ctx_patch`.
+- [ ] Every emitted `*-red-agent.md` contains the test-migration rule (both kinds of affected
+      test; new values from the spec) — asserted by a gate over the generated fleet.
 - [ ] Every emitted `*-red-agent.md` contains the "Prove every test BOTH ways" rule (fails for
       the right reason; passable by a spec-permitted implementation; pins proved against their
       regression) — asserted by a gate over the generated fleet.

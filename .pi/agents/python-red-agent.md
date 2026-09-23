@@ -94,6 +94,13 @@ defective test. A regression PIN that passes today is proved by showing it would
 specific regression it guards. Report both proofs; the orchestrator accepts your output from them
 and does not re-run your work.
 
+**Migrating existing tests when the contract changes (NON-NEGOTIABLE).** Search for BOTH kinds of
+affected test: (1) tests that assert the old value, and (2) tests that DEPEND on behaviour the change
+removes without ever naming it (a test that expects a guard to be wired, a payload to be raw, a file
+to be ignored). Kind (2) is the one that gets missed. A migrated assertion takes its new value FROM
+THE SPEC — never from what the changed code now produces; re-pinning a test to whatever the code
+emits turns a regression into a green test. List every migrated test by id in your report.
+
 ## End-to-end / integration outcome quality (general)
 
 An E2E (or integration) test must DRIVE the real path end-to-end and **ASSERT THE REAL OBSERVABLE OUTCOME** — the result the caller/user actually observes (returned value, response body + status, persisted record, emitted event, device/serial output, rendered effect) — **never merely that the run finished without an error/exception/panic.**
