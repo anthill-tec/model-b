@@ -494,13 +494,15 @@ class DependencyPreflightReportingTest(unittest.TestCase):
         lives entirely on stderr, not stdout)."""
         _write_fake_executable(self._tmp_bin, "uv", _FAKE_UV_SCRIPT)
         _write_fake_executable(self._tmp_bin, "sandesh", _FAKE_SANDESH_SCRIPT)
+        # CR-MDB-036 C2 migration: HOME pinned to a manifest-less sandbox --
+        # this run used to read the real ~/.crucible (found at C1 GREEN).
         result = _run_module(
             "--yes", "--harnesses", "claude-code",
             "--modelb-home", self._tmp_home,
-            env_overrides={"PATH": self._tmp_bin},
+            env_overrides={"PATH": self._tmp_bin, "HOME": shared_home_without_crucible()},
         )
         stderr = result.stderr
-        deps_index = stderr.find("deps: uv=")
+        deps_index = stderr.find("deps: uv=detected sandesh=detected crucible=absent")
         harness_index = stderr.lower().find("harness targeting")
         self.assertNotEqual(
             deps_index, -1,

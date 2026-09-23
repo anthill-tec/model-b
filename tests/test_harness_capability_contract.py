@@ -598,6 +598,84 @@ class NoThirdPartyInstallUnderYesTest(_SandboxedInstallerCase):
             self.assertIn(f"pi install npm:{pkg}", result.stderr)
 
 
+class InteractivePiInstallOfferTest(_SandboxedInstallerCase):
+    """\u00a7S3 AC3 (amended at C1): for a missing extension an INTERACTIVE run
+    offers Pi's own ``pi install npm:<package>`` and runs it only after an
+    explicit yes; declining is recorded and the policy then applies. Under
+    ``--yes`` it is never run (see :class:`NoThirdPartyInstallUnderYesTest`).
+
+    Driven in-process on a scripted TTY (``tests.scripted_terminal``) with
+    ``HOME``, ``PATH`` and ``PI_CODING_AGENT_DIR`` pinned to the sandbox; a
+    recording ``pi`` shim on PATH proves what was (not) executed, and
+    ``--stacks python`` with a succeeding ``python3`` shim keeps the
+    toolchain pre-flight free of other offers."""
+
+    def setUp(self):
+        super().setUp()
+        self.pi_marker = self._root / "pi-ran"
+        _write_exe(
+            self.bin_dir, "pi",
+            f'#!/bin/sh\nprintf \'%s\\n\' "$*" >> "{self.pi_marker}"\nexit 0\n',
+        )
+        _write_exe(self.bin_dir, "python3", "#!/bin/sh\nexit 0\n")
+
+    def _pi_runs(self) -> list[str]:
+        if not self.pi_marker.exists():
+            return []
+        return [ln for ln in self.pi_marker.read_text(encoding="utf-8").splitlines() if ln]
+
+    def _run(self, missing: str, answer: str, *extra):
+        from tests.scripted_terminal import make_responder, run_installer_interactive
+        make_provisioned_agent_dir(self.agent_dir, omit=(missing,))
+        self.settings_before = (self.agent_dir / "settings.json").read_bytes()
+        needle = f"pi install npm:{TIER1_PACKAGES[missing]}"
+        responder = make_responder([(lambda chunk: needle in chunk, answer)])
+        argv = ["--harnesses", "pi", "--modelb-home", str(self.modelb_home),
+                "--target-root", str(self.target_root), "--stacks", "python", *extra]
+        env = {"HOME": str(self.home), "PATH": str(self.bin_dir),
+               AGENT_DIR_ENV: str(self.agent_dir)}
+        result = run_installer_interactive(argv, env, responder)
+        offers = result.offers_naming(needle)
+        self.assertEqual(
+            len(offers), 1,
+            f"\u00a7S3: an interactive run must offer `{needle}` exactly once; "
+            f"reads={result.reads!r} stderr={result.stderr!r}",
+        )
+        self.assertEqual(
+            (self.agent_dir / "settings.json").read_bytes(), self.settings_before,
+            "\u00a7S3: Model B never edits settings.json",
+        )
+        return result
+
+    def test_explicit_yes_runs_pi_install_for_the_missing_extension(self):
+        self._run("dispatch", "y")
+        self.assertEqual(self._pi_runs(), [f"install npm:{DISPATCH_PKG}"])
+
+    def test_blank_enter_is_not_an_explicit_yes(self):
+        self._run("dispatch", "")
+        self.assertEqual(self._pi_runs(), [], "\u00a7S3: only an explicit yes runs pi install")
+
+    def test_declining_is_recorded_and_the_recommended_policy_applies(self):
+        result = self._run("permissions", "n")
+        self.assertEqual(self._pi_runs(), [])
+        axi = _decode(result.stdout)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(axi.get("outcome"), "installed", f"axi={axi!r}")
+        toml_text = (self.modelb_home / "install.toml").read_text(encoding="utf-8")
+        declined = any(
+            "declin" in w.lower() and (PERMISSIONS_PKG in w or "permissions" in w)
+            for w in axi.get("warnings", [])
+        ) or ("declin" in toml_text.lower() and "permissions" in toml_text)
+        self.assertTrue(declined, f"\u00a7S3: the decline must be recorded; axi={axi!r}")
+        self.assertEqual(self.install_toml()["capabilities"].get("permissions"), "absent")
+
+    def test_declining_a_required_extension_then_fails_the_preflight(self):
+        result = self._run("lean-ctx", "n")
+        self.assertEqual(self._pi_runs(), [])
+        self.assertNotEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(_decode(result.stdout).get("outcome"), "preflight_failed")
+
+
 class PreflightReportLinesTest(_SandboxedInstallerCase):
     """§S3 AC4: one line per group on stderr, in order — ``harness:``,
     then ``deps:``, then one ``stack <name>:`` line per selected stack —
@@ -641,10 +719,12 @@ class PreflightReportLinesTest(_SandboxedInstallerCase):
         self.assertLess(max(stack_idx), post_line, "stack lines precede remediation")
 
     def test_one_stack_line_per_selected_stack_with_client_verdict(self):
-        result = self.run_installer()
+        # CR-MDB-036 C2 migration (\u00a7S7/\u00a7S8): lines follow the SELECTION,
+        # not every supported stack.
+        result = self.run_installer("--stacks", "python,rust")
         lines = [ln for ln in result.stderr.splitlines() if ln.startswith("stack ")]
         names = [ln.split(":", 1)[0][len("stack "):] for ln in lines]
-        self.assertEqual(sorted(names), sorted(ALL_STACKS), f"stack lines: {lines}")
+        self.assertEqual(sorted(names), ["python", "rust"], f"stack lines: {lines}")
         deps_at = result.stderr.index("deps: ")
         self.assertTrue(all(result.stderr.index(ln) > deps_at for ln in lines))
         python = self.group(result, "stack python:")
