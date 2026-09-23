@@ -12,8 +12,8 @@ per-harness native wiring (DN-harness-agnostic-hooks §4): claude-code
 ``.claude/settings.json``; opencode a generated TS spawn shim; pi full TS
 extensions under ``.pi/extensions/``; hermes declared degradation (advisory
 user-scope snippet only). ``fail_direction=closed`` hooks are REFUSED for
-harnesses that cannot honor fail-closed (claude-code, hermes — DN §4.4);
-pi and opencode honor it via shim-blocks-on-spawn-failure (DN §2 roster
+harnesses that cannot honor fail-closed (claude-code, hermes — DN-harness-agnostic-hooks §4.4);
+pi and opencode honor it via shim-blocks-on-spawn-failure (DN-harness-agnostic-hooks §2 roster
 addendum). Every (hook x harness) pairing is accounted for in the report —
 emitted, refused, or degraded-noted; when every requested harness refuses
 every hook, :class:`AllTargetsRefusedError` is raised.
@@ -24,6 +24,7 @@ Stdlib only (pure runtime path).
 import json
 from pathlib import Path
 
+from modelb_axi._fsutil import atomic_write
 from modelb_axi.harness import HARNESS_ROSTER_IDS, UnknownHarnessError
 
 SCHEMA_VERSION = "v1"
@@ -130,20 +131,20 @@ _CLAUDE_EVENT_KEYS = {
 }
 
 #: Harnesses whose shims block on spawn failure, so fail-closed IS honorable
-#: (DN §2 roster addendum: pi explicitly; opencode is the same spawn-shim
-#: emitter class). claude-code and hermes are fail-open-only (DN §2/§4.4).
+#: (DN-harness-agnostic-hooks §2 roster addendum: pi explicitly; opencode is the same spawn-shim
+#: emitter class). claude-code and hermes are fail-open-only (DN-harness-agnostic-hooks §2/§4.4).
 _HONORS_FAIL_CLOSED = frozenset({"pi", "opencode"})
 
 _REFUSAL_REASONS = {
     "claude-code": (
         "fail_direction=closed cannot be honored: claude-code hooks are "
-        "fail-open (a hook error allows the action; DN §2) — a guard that "
-        "silently degrades is worse than none (DN §4.4)"
+        "fail-open (a hook error allows the action; DN-harness-agnostic-hooks §2) — a guard that "
+        "silently degrades is worse than none (DN-harness-agnostic-hooks §4.4)"
     ),
     "hermes": (
         "fail_direction=closed cannot be honored: hermes blocking semantics "
         "are unverifiable (exit-code contract under-documented, user-scope "
-        "hooks only; DN §2 roster addendum)"
+        "hooks only; DN-harness-agnostic-hooks §2 roster addendum)"
     ),
 }
 
@@ -164,7 +165,7 @@ def _new_report_entry() -> dict:
 
 
 def _partition(instances: list[dict], harness: str) -> tuple[list[dict], list[dict]]:
-    """Split instances into (emittable, refused) for one harness (DN §4.4)."""
+    """Split instances into (emittable, refused) for one harness (DN-harness-agnostic-hooks §4.4)."""
     emittable: list[dict] = []
     refused: list[dict] = []
     for instance in instances:
@@ -178,8 +179,21 @@ def _partition(instances: list[dict], harness: str) -> tuple[list[dict], list[di
     return emittable, refused
 
 
+def _record_emitted(entry: dict, rel: str, emitted: list[str] | None) -> None:
+    """Record a just-written wiring file (relative to ``target``) in the
+    harness report entry and, when given, the caller's ``emitted`` out-list.
+    Called only AFTER the file's ``atomic_write`` succeeds (CR-MDB-033 §S4)."""
+    entry["emitted_files"].append(rel)
+    if emitted is not None:
+        emitted.append(rel)
+
+
 def _emit_claude_code(
-    instances: list[dict], target: Path, scripts_root: Path, entry: dict
+    instances: list[dict],
+    target: Path,
+    scripts_root: Path,
+    entry: dict,
+    emitted: list[str] | None = None,
 ) -> None:
     """Emit ``.claude/settings.json`` in the native Claude Code hooks shape."""
     hooks_by_event: dict[str, list[dict]] = {}
@@ -195,10 +209,11 @@ def _emit_claude_code(
         )
     settings_path = target / ".claude" / "settings.json"
     settings_path.parent.mkdir(parents=True, exist_ok=True)
-    settings_path.write_text(
-        json.dumps({"hooks": hooks_by_event}, indent=2) + "\n", encoding="utf-8"
+    atomic_write(
+        settings_path,
+        (json.dumps({"hooks": hooks_by_event}, indent=2) + "\n").encode("utf-8"),
     )
-    entry["emitted_files"].append(".claude/settings.json")
+    _record_emitted(entry, ".claude/settings.json", emitted)
 
 
 def _spawn_shim_body(instance: dict, script_path: str) -> str:
@@ -225,7 +240,11 @@ def _spawn_shim_body(instance: dict, script_path: str) -> str:
 
 
 def _emit_opencode(
-    instances: list[dict], target: Path, scripts_root: Path, entry: dict
+    instances: list[dict],
+    target: Path,
+    scripts_root: Path,
+    entry: dict,
+    emitted: list[str] | None = None,
 ) -> None:
     """Emit a generated TS spawn-shim plugin under ``.opencode/``."""
     lines = [
@@ -237,7 +256,7 @@ def _emit_opencode(
         script_path = str(scripts_root / instance["command"])
         # Mirror the pi _spawn_shim_body semantics: honor the declared fail
         # direction on spawn failure (status null / thrown) — a fail-closed
-        # guard must BLOCK when its script cannot run (DN §4.4).
+        # guard must BLOCK when its script cannot run (DN-harness-agnostic-hooks §4.4).
         fail_closed = instance.get("fail_direction") == "closed"
         on_spawn_failure = (
             '    return { block: true, reason: "fail-closed guard: hook spawn'
@@ -267,11 +286,11 @@ def _emit_opencode(
     shim_rel = Path(".opencode") / "plugin" / "modelb-hooks.ts"
     shim_path = target / shim_rel
     shim_path.parent.mkdir(parents=True, exist_ok=True)
-    shim_path.write_text("\n".join(lines), encoding="utf-8")
-    entry["emitted_files"].append(str(shim_rel))
+    atomic_write(shim_path, "\n".join(lines).encode("utf-8"))
+    _record_emitted(entry, str(shim_rel), emitted)
 
 
-#: pi extension event names (DN §2 roster addendum, event-map citations) per
+#: pi extension event names (DN-harness-agnostic-hooks §2 roster addendum, event-map citations) per
 #: universal event. ``pre-compact`` has NO documented pi counterpart —
 #: DECLARED GAP: not emitted for pi, noted in the compiler report (same
 #: declared-degradation idiom as hermes; NOT a refusal).
@@ -285,7 +304,11 @@ _PI_EVENTS = {
 
 
 def _emit_pi(
-    instances: list[dict], target: Path, scripts_root: Path, entry: dict
+    instances: list[dict],
+    target: Path,
+    scripts_root: Path,
+    entry: dict,
+    emitted: list[str] | None = None,
 ) -> None:
     """Emit one full TS extension per hook under ``.pi/extensions/``."""
     extensions_dir = target / ".pi" / "extensions"
@@ -294,13 +317,13 @@ def _emit_pi(
     for instance in instances:
         pi_event = _PI_EVENTS.get(instance["event"])
         if pi_event is None:
-            # DECLARED GAP (DN §2 roster addendum): the universal event has
+            # DECLARED GAP (DN-harness-agnostic-hooks §2 roster addendum): the universal event has
             # no pi counterpart — not emitted, reported, never silent.
             entry["degraded"] = True
             entry["notes"].append(
                 "pi: DECLARED GAP — universal event "
                 f"'{instance['event']}' has no pi counterpart; hook "
-                f"'{instance['command']}' not emitted for pi (DN §2 roster "
+                f"'{instance['command']}' not emitted for pi (DN-harness-agnostic-hooks §2 roster "
                 "addendum)"
             )
             continue
@@ -312,19 +335,23 @@ def _emit_pi(
             + "});\n"
         )
         ext_rel = Path(".pi") / "extensions" / f"{instance['command']}.ts"
-        (target / ext_rel).write_text(text, encoding="utf-8")
-        entry["emitted_files"].append(str(ext_rel))
+        atomic_write(target / ext_rel, text.encode("utf-8"))
+        _record_emitted(entry, str(ext_rel), emitted)
         emitted_any = True
     if emitted_any:
         entry["notes"].append(
             "pi loads .pi/extensions/*.ts only after the project-TRUST prompt "
             "(recorded in ~/.pi/agent/trust.json); regeneration re-triggers the "
-            "trust re-confirm step (DN §4.5)"
+            "trust re-confirm step (DN-harness-agnostic-hooks §4.5)"
         )
 
 
 def _emit_hermes_advisory(
-    instances: list[dict], target: Path, scripts_root: Path, entry: dict
+    instances: list[dict],
+    target: Path,
+    scripts_root: Path,
+    entry: dict,
+    emitted: list[str] | None = None,
 ) -> None:
     """Emit the hermes ADVISORY snippet — never project-level wiring."""
     lines = [
@@ -345,8 +372,8 @@ def _emit_hermes_advisory(
     advisory_rel = Path("hooks") / "hermes-manual.yaml"
     advisory_path = target / advisory_rel
     advisory_path.parent.mkdir(parents=True, exist_ok=True)
-    advisory_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    entry["emitted_files"].append(str(advisory_rel))
+    atomic_write(advisory_path, ("\n".join(lines) + "\n").encode("utf-8"))
+    _record_emitted(entry, str(advisory_rel), emitted)
 
 
 def compile_wiring(
@@ -354,9 +381,18 @@ def compile_wiring(
     harnesses: list[str],
     target: Path,
     scripts_root: Path,
+    *,
+    emitted: list[str] | None = None,
 ) -> dict:
     """Compile neutral schema instances into per-harness wiring under
     ``target`` (§S4).
+
+    ``emitted`` is an optional caller-owned out-list: when given, each
+    wiring file's path (relative to ``target``, the same form as the
+    report's ``emitted_files``) is appended to it immediately AFTER that
+    file's write succeeds, so the caller still holds exactly the files
+    written if compilation raises part-way (CR-MDB-033 §S4). When ``None``
+    (the default) nothing beyond the returned report is recorded.
 
     Returns a report dict keyed by harness id, each value
     ``{"emitted_files": list[str], "refusals": list[dict], "degraded": bool,
@@ -395,14 +431,16 @@ def compile_wiring(
                 "manual adoption (consent allowlist forces human approval)"
             )
             if emittable:
-                _emit_hermes_advisory(emittable, target, scripts_root, entry)
+                _emit_hermes_advisory(
+                    emittable, target, scripts_root, entry, emitted
+                )
         elif emittable:
             if harness == "claude-code":
-                _emit_claude_code(emittable, target, scripts_root, entry)
+                _emit_claude_code(emittable, target, scripts_root, entry, emitted)
             elif harness == "opencode":
-                _emit_opencode(emittable, target, scripts_root, entry)
+                _emit_opencode(emittable, target, scripts_root, entry, emitted)
             else:  # pi — the roster is validated above
-                _emit_pi(emittable, target, scripts_root, entry)
+                _emit_pi(emittable, target, scripts_root, entry, emitted)
         # Uniform accounting: wiring counts as emitted exactly when this
         # harness entry reports emitted files (hermes advisory included).
         if entry["emitted_files"]:

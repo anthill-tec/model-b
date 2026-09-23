@@ -575,6 +575,15 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   the better ask directly with Crucible: voiding should take a CR OFF the queue while retaining
   its DB entry. Evidence travels with the request in
   `docs/research/CREQ-crucible-queue-projection.md` §Addendum.
+- 2026-09-23 — **Deferred for filing at the next between-runs review (found during CR-MDB-033 C2,
+  deliberately NOT folded in):** `modelb-axi init` into a NON-EMPTY `--target` silently
+  overwrites existing files. Measured: a target holding a user-written `AGENTS.md` ("mine")
+  exits 0 and the file is replaced by the scaffold's. Same defect class as CR-MDB-033 §S3
+  (unmanaged files clobbered) but on the scaffold side, which 033 does not own — §S3 governs the
+  installer's `_deploy_file` only. `init` neither refuses a non-empty target nor skips files it
+  did not write. Candidate CR: refuse a non-empty target unless an explicit flag, or skip-and-warn
+  per file as §S3 does. Also note for that CR: it changes what `emitted` can mean on an existing
+  directory.
 - 2026-09-23 — **To revisit after CR-MDB-033 closes: how the generator and the installer
   connect.** User-stated purpose (the design anchor for that discussion): **the generator exists
   to tailor agent definitions to each install-target harness, because each harness supports its

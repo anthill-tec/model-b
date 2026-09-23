@@ -9,15 +9,18 @@ Checks the three ecosystem dependencies in order against the CURRENT
 2. ``sandesh`` — absent triggers a proactive install THROUGH the
    provider's own method (``uv tool install sandesh-relay``, via the
    PATH-resolved ``uv``) on confirm; ``--yes`` supplies the implicit
-   confirm (DN §4 "on confirm").
-3. ``crucible`` — Crucible ships its own installer (DN §4 / decision D):
+   confirm (DN-scaffold-packaging §4 "on confirm").
+3. ``crucible`` — Crucible ships its own installer (DN-scaffold-packaging §4 / decision D):
    absent means WARN pointing at Crucible's own installer and record
    ``absent`` — never hand-deploy their assets.
 
 Emits the machine-greppable ``deps: uv=... sandesh=... crucible=...``
-line on stdout and returns the final verdicts for ``[deps]``
-persistence into ``install.toml`` (§S6) — this module itself writes
-nothing to disk.
+line on STDERR — the human channel; stdout is reserved for the
+installer's one AXI envelope (CR-MDB-033 §S6) — and returns the final
+verdicts for ``[deps]`` persistence into ``install.toml`` (§S6). Every
+warning printed is also appended, unprefixed, to the caller's
+``warnings`` list so the envelope can carry it. This module itself
+writes nothing to disk.
 
 Stdlib only.
 """
@@ -30,19 +33,26 @@ from collections.abc import Callable
 SANDESH_PACKAGE = "sandesh-relay"
 
 _UV_BOOTSTRAP_MESSAGE = (
-    "modelb-axi: pre-flight failed — `uv` not found on PATH.\n"
+    "pre-flight failed — `uv` not found on PATH.\n"
     "  uv is the bootstrap dependency; install uv first, e.g.:\n"
     "    curl -LsSf https://astral.sh/uv/install.sh | sh\n"
     "  then re-run modelb-axi."
 )
 
 _CRUCIBLE_ABSENT_WARNING = (
-    "modelb-axi: warning: Crucible not found on PATH — install it with "
-    "Crucible's own installer; modelb-axi never deploys Crucible assets."
+    "Crucible not found on PATH — install it with Crucible's own "
+    "installer; modelb-axi never deploys Crucible assets."
 )
 
 
-def _install_sandesh(uv_path: str) -> str:
+def _warn(message: str, warnings: list[str]) -> None:
+    """Print one warning on the human channel (stderr) and record it,
+    unprefixed, for the installer envelope (CR-MDB-033 §S6)."""
+    print(f"modelb-axi: warning: {message}", file=sys.stderr)
+    warnings.append(message)
+
+
+def _install_sandesh(uv_path: str, warnings: list[str]) -> str:
     """Install Sandesh via the provider's own method (`uv tool install
     sandesh-relay`) through the PATH-resolved ``uv``. Returns the deps
     verdict: ``installed`` on success, ``absent`` on failure."""
@@ -51,46 +61,59 @@ def _install_sandesh(uv_path: str) -> str:
         capture_output=True, text=True, check=False,
     )
     if result.returncode != 0:
-        print(
-            f"modelb-axi: warning: `uv tool install {SANDESH_PACKAGE}` "
-            f"failed (exit={result.returncode}); recording sandesh=absent",
-            file=sys.stderr,
+        _warn(
+            f"`uv tool install {SANDESH_PACKAGE}` failed "
+            f"(exit={result.returncode}); recording sandesh=absent",
+            warnings,
         )
         return "absent"
     return "installed"
 
 
-def run_preflight(confirm: Callable[[str], bool]) -> tuple[int, dict[str, str]]:
+def run_preflight(
+    confirm: Callable[[str], bool], warnings: list[str] | None = None,
+) -> tuple[int, dict[str, str]]:
     """Run the §S4 dependency pre-flight (installer-flow stage 1).
 
     ``confirm`` is the CLI's prompt seam, pre-bound to the run's
-    interactivity (always-True under ``--yes``). Returns ``(exit_code,
-    verdicts)``: exit 0 on success (with the final per-dep verdicts for
-    ``[deps]`` persistence), non-zero when ``uv`` is absent.
+    interactivity (always-True under ``--yes``). ``warnings``, when
+    given, collects the text of every warning and error printed
+    (CR-MDB-033 §S6). Returns ``(exit_code, verdicts)``: exit 0 on
+    success (with the final per-dep verdicts for ``[deps]``
+    persistence), non-zero when ``uv`` is absent.
     """
+    if warnings is None:
+        warnings = []
     uv_path = shutil.which("uv")
     if uv_path is None:
-        print(_UV_BOOTSTRAP_MESSAGE, file=sys.stderr)
+        print(f"modelb-axi: {_UV_BOOTSTRAP_MESSAGE}", file=sys.stderr)
+        warnings.append(_UV_BOOTSTRAP_MESSAGE)
         return 1, {}
 
     sandesh_verdict = "detected" if shutil.which("sandesh") is not None else "absent"
     if shutil.which("crucible") is not None:
         crucible_verdict = "detected"
     else:
-        print(_CRUCIBLE_ABSENT_WARNING, file=sys.stderr)
+        _warn(_CRUCIBLE_ABSENT_WARNING, warnings)
         crucible_verdict = "absent"
 
     # Truthful DETECTION report first (AC4: "records ... detection
     # truthfully") — before any remediation mutates the picture.
-    print(f"deps: uv=detected sandesh={sandesh_verdict} crucible={crucible_verdict}")
+    print(
+        f"deps: uv=detected sandesh={sandesh_verdict} crucible={crucible_verdict}",
+        file=sys.stderr,
+    )
 
     if sandesh_verdict == "absent" and confirm(
         f"Sandesh not found — install via `uv tool install {SANDESH_PACKAGE}`?"
     ):
-        sandesh_verdict = _install_sandesh(uv_path)
+        sandesh_verdict = _install_sandesh(uv_path, warnings)
         if sandesh_verdict == "installed":
             # Updated deps line reflecting the proactive install.
-            print(f"deps: uv=detected sandesh=installed crucible={crucible_verdict}")
+            print(
+                f"deps: uv=detected sandesh=installed crucible={crucible_verdict}",
+                file=sys.stderr,
+            )
 
     return 0, {
         "uv": "detected",

@@ -4,27 +4,30 @@ Manifest-driven copy of the package's skill assets into the target root:
 
 - Skill bundles (any ``skills-src/`` subdirectory carrying a ``SKILL.md``
   marker — e.g. ``crucible``; ``memory-templates`` is scaffold material,
-  not a skill bundle) deploy ONCE into the harness-neutral Vercel store
+  not a skill bundle) deploy ONCE into the harness-neutral shared store
   ``<target-root>/.agents/skills/<name>/`` (PRD §D2).
 - Each selected harness then gets a SYMLINK into its own skills dir per
   the mapping table below (Claude Code mapping complete in v1; the other
-  roster harnesses have no skills-dir mapping yet — DN §5).
+  roster harnesses have no skills-dir mapping yet — DN-scaffold-packaging §5).
 - Every deployed FILE yields a manifest entry ``{path, sha256}`` with
   ``path`` target-root-relative.
 
-Idempotent upgrade (AC5, DN §5): a target file whose hash matches the
+Idempotent upgrade (AC5, DN-scaffold-packaging §5): a target file whose hash matches the
 source is untouched; a file whose hash differs from BOTH the source and
 its recorded manifest hash is hand-modified — skipped (surfaced to the
 caller) unless ``force_managed`` overwrites it and refreshes its entry.
 
 Stdlib only. Never touches the real ``~/.claude``/``~/.agents`` in
-tests — callers pass sandboxed target roots (repo-local rule, DN §7).
+tests — callers pass sandboxed target roots (repo-local rule, DN-scaffold-packaging §7).
 """
 
 import hashlib
 import os
 import shutil
+import stat
 from pathlib import Path
+
+from modelb_axi._fsutil import atomic_write
 
 # Per-harness skills-dir mapping (target-root-relative). Only harnesses
 # listed here receive symlinks; the rest of the roster is deploy-inert
@@ -117,27 +120,47 @@ def _deploy_file(
     prior_hashes: dict[str, str],
     force_managed: bool,
     skipped: list[str],
-) -> dict:
-    """Deploy one file into the store; return its manifest entry."""
+    unmanaged: list[str],
+) -> dict | None:
+    """Deploy one file into the store; return its manifest entry, or
+    ``None`` when the destination is UNMANAGED (CR-MDB-033 §S3).
+
+    Three destination states are distinguished, and only the last is a
+    write:
+
+    * identical to the source — untouched, recorded unchanged;
+    * present but ABSENT from the prior manifest — unmanaged: not Model
+      B's to overwrite (DN-multi-harness-deploy-model §D3), so it is left byte-identical, reported
+      through ``unmanaged``, and recorded in NO manifest entry (recording
+      it would adopt it, and a later run could then clobber it);
+    * present, recorded in the prior manifest, hash-mismatched — a
+      hand-modified MANAGED file: skipped unless ``force_managed``.
+    """
     src_hash = sha256_file(src)
     if dest.is_file():
         dest_hash = sha256_file(dest)
         if dest_hash == src_hash:
             return {"path": rel, "sha256": src_hash}  # unchanged — untouched
         recorded = prior_hashes.get(rel)
-        if recorded is not None and dest_hash != recorded and not force_managed:
+        if recorded is None:
+            # Unmanaged file at a path Model B deploys to: no flag
+            # overwrites it (CR-MDB-033 §S3 / DN-multi-harness-deploy-model §D3).
+            unmanaged.append(rel)
+            return None
+        if dest_hash != recorded and not force_managed:
             # Hand-modified managed file: never silently clobbered (AC5).
             skipped.append(rel)
             return {"path": rel, "sha256": recorded}
     dest.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(src, dest)
+    # CR-MDB-033 §S2: atomic, carrying the source mode (exec bit included).
+    atomic_write(dest, src.read_bytes(), mode=stat.S_IMODE(src.stat().st_mode))
     return {"path": rel, "sha256": src_hash}
 
 
 def _link_harness_skills(
     target_root: Path, harnesses: list[str], bundle_names: list[str]
 ) -> None:
-    """Create per-harness symlinks into the Vercel store (one link per
+    """Create per-harness symlinks into the shared store (one link per
     skill bundle, pointing at the store dir — never a second copy)."""
     for harness_id in harnesses:
         skills_reldir = HARNESS_SKILL_DIRS.get(harness_id)
@@ -164,16 +187,25 @@ def deploy_assets(
     harnesses: list[str],
     prior_hashes: dict[str, str] | None = None,
     force_managed: bool = False,
+    unmanaged: list[str] | None = None,
 ) -> tuple[list[dict], list[str]]:
     """Run the §S6 deploy: store copies + harness symlinks.
 
     Returns ``(manifest_entries, skipped_paths)`` — ``skipped_paths`` are
     hand-modified managed files left untouched (AC5). Raises
     :class:`DeployError` on any filesystem failure so the caller exits
-    non-zero WITHOUT writing install.toml (atomicity)."""
+    non-zero WITHOUT writing install.toml (atomicity).
+
+    ``unmanaged`` is a caller-supplied out-list filled with the relative
+    paths left untouched because they are ABSENT from the prior manifest
+    (CR-MDB-033 §S3). It is an out-parameter rather than a third return
+    value because ``(manifest, skipped)`` is a pinned return shape
+    (CR-MDB-022 §S4): the two skip vocabularies stay distinct without
+    breaking existing callers."""
     prior = prior_hashes or {}
     manifest: list[dict] = []
     skipped: list[str] = []
+    unmanaged_paths = unmanaged if unmanaged is not None else []
     try:
         bundles = _skill_bundles(asset_root)
         skills_src = asset_root / "skills-src"
@@ -184,21 +216,26 @@ def deploy_assets(
                 rel_path = STORE_RELDIR / src.relative_to(skills_src)
                 rel = str(rel_path)
                 dest = target_root / rel_path
-                manifest.append(
-                    _deploy_file(src, dest, rel, prior, force_managed, skipped)
+                entry = _deploy_file(
+                    src, dest, rel, prior, force_managed, skipped,
+                    unmanaged_paths,
                 )
+                if entry is not None:
+                    manifest.append(entry)
         # CR-MDB-015 §S6: the seven protocol scripts, once, user-scope.
         for src in _hook_scripts(asset_root):
             rel_path = HOOKS_SCRIPTS_STORE_RELDIR / src.name
             rel = str(rel_path)
             dest = target_root / rel_path
-            manifest.append(
-                _deploy_file(src, dest, rel, prior, force_managed, skipped)
+            entry = _deploy_file(
+                src, dest, rel, prior, force_managed, skipped, unmanaged_paths,
             )
-            if rel not in skipped:
+            if entry is not None:
+                manifest.append(entry)
+            if entry is not None and rel not in skipped:
                 # Executable bit preserved (protocol scripts are run
-                # directly by harness wiring); hand-modified skips are
-                # left byte-AND-mode untouched.
+                # directly by harness wiring); hand-modified skips and
+                # unmanaged files are left byte-AND-mode untouched.
                 shutil.copymode(src, dest)
         # CR-MDB-022 §S4: the eight adopted workflow tools, once,
         # user-scope — NO per-harness symlink (see the store constant).
@@ -206,10 +243,12 @@ def deploy_assets(
             rel_path = TOOL_SCRIPTS_STORE_RELDIR / src.name
             rel = str(rel_path)
             dest = target_root / rel_path
-            manifest.append(
-                _deploy_file(src, dest, rel, prior, force_managed, skipped)
+            entry = _deploy_file(
+                src, dest, rel, prior, force_managed, skipped, unmanaged_paths,
             )
-            if rel not in skipped:
+            if entry is not None:
+                manifest.append(entry)
+            if entry is not None and rel not in skipped:
                 shutil.copymode(src, dest)
         _link_harness_skills(target_root, harnesses, [b.name for b in bundles])
     except OSError as exc:

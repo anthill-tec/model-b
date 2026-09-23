@@ -110,14 +110,18 @@ def _run_module(*args, env_overrides=None, timeout=15, stdin=subprocess.DEVNULL)
 
 def _write_install_toml(home: str, harnesses=("claude-code",)) -> Path:
     """Valid install.toml fixture -- the seam §S2 reads the installed
-    harness set from (DN-scaffold-packaging.md §3)."""
+    harness set from (DN-scaffold-packaging.md §3). Records
+    ``hooks_scripts_dir`` as every install after CR-MDB-033 §S1 does,
+    pointed at the sandbox (never the real home)."""
     harnesses_toml = ", ".join(f'"{h}"' for h in harnesses)
+    hooks_scripts_dir = Path(home) / ".agents" / "hooks" / "scripts"
     install_toml = Path(home) / "install.toml"
     install_toml.write_text(
         "[install]\n"
         'version = "0.1.0"\n'
         f"harnesses = [{harnesses_toml}]\n"
         'asset_root = "/tmp/does-not-matter-for-this-test"\n'
+        f'hooks_scripts_dir = "{hooks_scripts_dir}"\n'
         "\n"
         "[deps]\n"
         'uv = "present"\n'
@@ -203,20 +207,23 @@ class ScaffoldModeEntryTest(unittest.TestCase):
             f"must exit 0; got exit={result.returncode} "
             f"stdout={result.stdout!r} stderr={result.stderr!r}",
         )
+        # CR-MDB-033 \u00a7S6: stdout carries nothing but the AXI envelope
+        # now (verb `install`); these are PROSE checks over the human
+        # scaffold-mode banner, which moved to stderr.
         self.assertIn(
-            "scaffold", result.stdout.lower(),
-            "S2: with install.toml present, stdout must banner scaffold "
-            f"mode; got stdout={result.stdout!r}",
+            "scaffold", result.stderr.lower(),
+            "S2: with install.toml present, stderr must banner scaffold "
+            f"mode; got stderr={result.stderr!r}",
         )
         self.assertIn(
-            "init", result.stdout.lower(),
+            "init", result.stderr.lower(),
             "S2: the scaffold-mode banner must propose running `init`; got "
-            f"stdout={result.stdout!r}",
+            f"stderr={result.stderr!r}",
         )
         # NEGATIVE -- must not re-enter the installer flow.
         self.assertNotIn(
-            "installer flow", result.stdout.lower(),
-            f"S2: must not re-enter the installer flow; got stdout={result.stdout!r}",
+            "installer flow", result.stderr.lower(),
+            f"S2: must not re-enter the installer flow; got stderr={result.stderr!r}",
         )
 
 
