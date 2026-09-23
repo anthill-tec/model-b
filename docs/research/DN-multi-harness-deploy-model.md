@@ -653,7 +653,38 @@ per project:
 
 ## Open, deliberately not decided here
 
-- Whether `hermes`/`opencode` should also receive agent definitions. (`pi` is now decided — §D16.)
+- Whether `hermes`/`opencode` should also receive agent definitions. (`pi` is now decided — §D17.)
   They are present on this machine but Model B has never emitted definitions for them, and
   nothing yet establishes their frontmatter contracts. Out of scope until a CR needs it — and
   CR-MDB-031 removes them from the roster until one does.
+
+### OPEN (drafted 2026-09-23 for user review) — How a harness-neutral skill names harness-specific tools
+
+**The problem, measured.** Skills are shipped once, user-scope, and read by every targeted harness
+(§D15.1). Their text nevertheless instructs tools only one harness has. In `skills-src/` today:
+`TaskList`/`TaskUpdate`/`TaskStop` (Claude Code's task tools — Pi's is `todo`) ×3, and the
+`sandesh_send`/`sandesh_fetch`/`sandesh_register`/`sandesh_addressbook`/`sandesh_inbox` MCP verbs
+×20 — on Pi, Sandesh is reached through its CLI and no such tools exist. An agent following the
+skill literally calls a tool that is not there; one that improvises may improvise wrongly. §D17
+answered this for agent definitions (render per harness); skills were left harness-neutral by
+§D2/§D15.1, so the same question now stands for them.
+
+**Options.**
+
+| | What a skill says | What makes it concrete | Cost |
+|---|---|---|---|
+| **A. Capability words** | "record it in your task list", "send it via Sandesh" — never a tool name | The harness's own tool set; agent definitions (rendered per harness, §D17) carry the tool names in their `tools:` allowlist and body | Cheapest; one text pass. Loses precision where the exact verb matters (Sandesh flags, Crucible verbs) |
+| **B. Per-harness blocks** | The neutral instruction plus a short "On Pi: … / On Claude Code: …" block | The skill itself, read by every harness | Each block is prose that drifts; every new harness edits every skill |
+| **C. Render skills per harness** | Template placeholders (`{task_tool}`, `{sandesh_send}`) filled per harness | The same emitter model as agents (§D17), writing per-harness skill copies | Contradicts §D15.1's one shared store; per-harness skill directories return (what §D2 removed for OMP) |
+| **D. Tool contract only** | Unchanged | CR-MDB-020 §S5's tool contract fails any skill naming a tool the target harness lacks | Detects, does not resolve — pairs with A, B or C |
+
+**Recommendation (for review, not decided): A + D.** Skills describe the capability; where an exact
+invocation is load-bearing — a CLI with flags, like `sandesh send --to … --project …` or a Crucible
+client verb — the skill names the **CLI**, which is harness-neutral by construction, rather than a
+harness's tool wrapper around it. The tool contract (D) keeps harness-specific tool names from
+creeping back. C is held back because it reopens the per-harness skill copies §D15.1 closed; it
+becomes the answer only if A proves too vague in practice.
+
+**Owner once decided:** CR-MDB-031 already removes the Claude-era tool names; the chosen option
+would widen it (or a new CR) to cover the Sandesh MCP verbs and state the rule in `skills-src`.
+
