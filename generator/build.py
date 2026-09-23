@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""CR-MDB-008 — generator: renders the 16 small-stack agent definitions, plus
-the generated TOON codec copy that ships beside the tooling (CR-MDB-022 §S2).
+"""CR-MDB-008 — generator: renders the 20 generated stack agent definitions
+(CR-MDB-024 §S2 added rust as the fifth stack), plus the generated TOON codec
+copy that ships beside the tooling (CR-MDB-022 §S2).
 
 Renders ``generator/templates/{red,green,verify,fix}.md.tmpl`` (string.Template)
 with the per-stack parameters from ``generator/stacks/{arduino,bun,python,
-quarkus}.toml`` into the repo-local package asset dir ``generator/agents/``
+quarkus,rust}.toml`` into the repo-local package asset dir ``generator/agents/``
 (CR-MDB-014 §S7 retarget), and renders ``scripts/toon.py`` from
 ``modelb_axi/toon.py`` — a real, self-contained module (never a re-export: a
 deployed ``worktree-flow.py`` runs under a bare ``python3`` that cannot reach
@@ -19,8 +20,8 @@ Verbs:
   --roles R,..   restrict to the given roles (agent targets only)
 
 Stdlib only. Deterministic output: stable target ordering, no timestamps.
-The 13 bespoke defs (rust x4, vscode x4, electronics x4, inbox-analyst) are
-NEVER targets. The codec copy is not stack- or role-scoped, so it is a target
+The 9 bespoke defs (vscode x4, electronics x4, inbox-analyst) are NEVER
+targets. The codec copy is not stack- or role-scoped, so it is a target
 of every invocation.
 """
 
@@ -37,10 +38,10 @@ TEMPLATES_DIR = GENERATOR_DIR / "templates"
 STACKS_DIR = GENERATOR_DIR / "stacks"
 AGENTS_DIR = GENERATOR_DIR / "agents"
 
-STACKS = ("arduino", "bun", "python", "quarkus")
+STACKS = ("arduino", "bun", "python", "quarkus", "rust")
 ROLES = ("red", "green", "verify", "fix")
 
-# The 16 small-stack agent files this generator owns — never the bespoke defs.
+# The 20 stack agent files this generator owns — never the bespoke defs.
 TARGETS = tuple(f"{stack}-{role}-agent.md" for stack in STACKS for role in ROLES)
 
 REPO_ROOT = GENERATOR_DIR.parent
