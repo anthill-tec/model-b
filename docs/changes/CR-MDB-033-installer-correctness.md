@@ -41,6 +41,14 @@ is **no** fallback to `Path.home()` and no partial-key heuristic: it raises a na
 the missing key and `modelb-axi --reinstall`. `_hook_scripts_root`'s docstring states the new
 rule; the "forward-compatible; the v1 installer does not record it" sentence is removed.
 
+The hook-scripts dir is resolved during `init`'s validation, **before its first write** — a
+failure `init` can know in advance never leaves a partial tree. The two failure cases carry
+distinct messages: an `install.toml` that lacks the key (remedy: `--reinstall`), and no
+`install.toml` at all, which is the `--harnesses` dev-override path (remedy: run the installer,
+since no hook scripts have been deployed anywhere). `--dry-run` runs the same check: it still
+writes nothing and exits 0, and it carries the error text as an envelope warning, so a plan real
+`init` cannot emit is never previewed as clean.
+
 Test fixtures follow the contract rather than the contract following the fixtures:
 `tests/test_scaffold.py`'s `install.toml` fixture records `hooks_scripts_dir`, as every install
 after this CR does; and `tests/test_tooling_adoption.py` locates the tool-scripts dir by its key
@@ -79,6 +87,14 @@ file; "Vercel store" → "shared store".
 - [ ] `install.toml` carries `target_root`, `skills_dir`, `hooks_scripts_dir` and
       `tool_scripts_dir`; an `install.toml` missing `hooks_scripts_dir` makes scaffold raise an
       error naming the key and `modelb-axi --reinstall` — no home fallback, no partial-key rule.
+- [ ] With an `install.toml` lacking `hooks_scripts_dir`, a real `init` exits non-zero and leaves
+      **no file** under `--target`.
+- [ ] With no `install.toml` at all (the `--harnesses` dev override), a real `init` exits
+      non-zero and leaves no file under `--target`; the error states that no `install.toml`
+      exists at the resolved home and names the installer — it never says the file "does not
+      record" a key.
+- [ ] In both cases `--dry-run` writes nothing, exits 0, and its envelope carries the same error
+      text as a warning.
 - [ ] `tests/test_scaffold.py`'s `install.toml` fixture records `hooks_scripts_dir`, and every
       real-`init` test using it passes under the strict §S1 rule.
 - [ ] `tests/test_tooling_adoption.py` asserts the tool-scripts location through the key named
