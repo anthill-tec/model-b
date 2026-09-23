@@ -425,14 +425,25 @@ def _hook_scripts_root(home: Path) -> Path:
     (`<target-root>/.agents/hooks/scripts/…`, CR-MDB-015 §S6/PRD D10.7)
     — the one location the installer manifests the protocol scripts to —
     never a per-project copy (none exists) and never the repo checkout.
-    The target root is derived from install config where available
-    (``install.toml [install].target_root``, forward-compatible; the v1
-    installer does not record it) and otherwise defaults to the user
-    home the installer targets by default. Read-only derivation — nothing
-    is ever written there by the scaffold."""
-    configured = load_install_toml(home).get("install", {}).get("target_root")
-    base = Path(str(configured)).expanduser() if configured else Path.home()
-    return base / ".agents" / "hooks" / "scripts"
+    The directory is read DIRECTLY from ``install.toml
+    [install].hooks_scripts_dir``, the one place the installer records
+    where it deployed the scripts (CR-MDB-033 §S1) — the scaffold never
+    re-derives it. When that key is absent there is no fallback to
+    ``Path.home()`` and no partial-key heuristic: :class:`ScaffoldError`
+    is raised naming the missing key and ``modelb-axi --reinstall``, the
+    run that records it. Read-only — nothing is ever written there by
+    the scaffold."""
+    configured = load_install_toml(home).get("install", {}).get(
+        "hooks_scripts_dir"
+    )
+    if not configured:
+        raise ScaffoldError(
+            f"{home / 'install.toml'} does not record "
+            "[install].hooks_scripts_dir, so init cannot tell where the "
+            "hook scripts were deployed; run `modelb-axi --reinstall` to "
+            "record it, then re-run init"
+        )
+    return Path(str(configured)).expanduser()
 
 
 def _render_hooks_readme(

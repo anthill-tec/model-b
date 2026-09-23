@@ -110,14 +110,18 @@ def _run_module(*args, env_overrides=None, timeout=15, stdin=subprocess.DEVNULL)
 
 def _write_install_toml(home: str, harnesses=("claude-code",)) -> Path:
     """Valid install.toml fixture -- the seam §S2 reads the installed
-    harness set from (DN-scaffold-packaging.md §3)."""
+    harness set from (DN-scaffold-packaging.md §3). Records
+    ``hooks_scripts_dir`` as every install after CR-MDB-033 §S1 does,
+    pointed at the sandbox (never the real home)."""
     harnesses_toml = ", ".join(f'"{h}"' for h in harnesses)
+    hooks_scripts_dir = Path(home) / ".agents" / "hooks" / "scripts"
     install_toml = Path(home) / "install.toml"
     install_toml.write_text(
         "[install]\n"
         'version = "0.1.0"\n'
         f"harnesses = [{harnesses_toml}]\n"
         'asset_root = "/tmp/does-not-matter-for-this-test"\n'
+        f'hooks_scripts_dir = "{hooks_scripts_dir}"\n'
         "\n"
         "[deps]\n"
         'uv = "present"\n'

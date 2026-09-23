@@ -154,9 +154,6 @@ RELEASED_CLAIM_NEGATIONS = re.compile(
 #: §S4/AC2 -- the pinned store path value (discovered by value, not name).
 TOOLING_STORE_RELDIR_VALUE = Path(".agents") / "scripts"
 
-#: §S4/AC4 -- keys already written to `[install]` (cli.py:233-237); the
-#: deployed-tooling-location key is the one this CR adds.
-EXISTING_INSTALL_KEYS = frozenset({"version", "harnesses", "asset_root"})
 INSTALL_KEY_HINT = re.compile(r"script|tool", re.IGNORECASE)
 
 #: §S4/AC6 + §S1/AC6 -- tokens that would mean this module resolved a real
@@ -607,33 +604,31 @@ class ToolingDeployS4Test(unittest.TestCase):
             str(self._deployed_tooling_dir),
             str(TOOLING_STORE_RELDIR_VALUE),
         }
-        candidates = {
-            key: value for key, value in install_table.items()
-            if key not in EXISTING_INSTALL_KEYS
-            and (INSTALL_KEY_HINT.search(key) or str(value) in expected_values)
-        }
-        self.assertNotEqual(
-            candidates, {},
+        # Located BY KEY NAME (CR-MDB-033 §S1): a sweep for /script|tool/
+        # keys would also catch the per-class dirs §S1 records
+        # (e.g. hooks_scripts_dir), which are not the tooling location.
+        key = "tool_scripts_dir"
+        self.assertIn(
+            key, install_table,
             f"S4/AC4: install.toml's [install] table must record the "
-            f"deployed tooling location (expected one of "
+            f"deployed tooling location under {key!r} (expected one of "
             f"{sorted(expected_values)}); [install] holds "
             f"{install_table}",
         )
-        for key, value in candidates.items():
-            with self.subTest(install_key=key):
-                self.assertIsInstance(
-                    value, str,
-                    f"S4/AC4: [install].{key} must be a STRING "
-                    f"(config.py::_toml_value serializes only strings and "
-                    f"lists of strings); got {type(value)!r} value="
-                    f"{value!r}",
-                )
-                self.assertIn(
-                    value, expected_values,
-                    f"S4/AC4: [install].{key} must name the deployed "
-                    f"tooling location; got {value!r}, expected one of "
-                    f"{sorted(expected_values)}",
-                )
+        value = install_table[key]
+        self.assertIsInstance(
+            value, str,
+            f"S4/AC4: [install].{key} must be a STRING "
+            f"(config.py::_toml_value serializes only strings and "
+            f"lists of strings); got {type(value)!r} value="
+            f"{value!r}",
+        )
+        self.assertIn(
+            value, expected_values,
+            f"S4/AC4: [install].{key} must name the deployed "
+            f"tooling location; got {value!r}, expected one of "
+            f"{sorted(expected_values)}",
+        )
 
     def test_s4_real_installer_deploys_an_executable_worktree_flow(self):
         self._run_real_installer()
