@@ -188,7 +188,9 @@ def _render_gitignore() -> str:
         ".claude/\n"
         ".opencode/\n"
         ".hermes/\n"
-        ".pi/\n"
+        # `.pi/` is NOT ignored: `.pi/extensions/` (compiled hook shims) and
+        # `.pi/agents/` are tracked so every worktree carries them
+        # (CR-MDB-030 §S6).
         "\n"
         "# Tooling debris.\n"
         "__pycache__/\n"
@@ -348,11 +350,9 @@ def _render_sub_agents_md(name: str, sub: str, token: str, acronym: str) -> str:
 # name (CR-MDB-030 §S4).
 #
 # fail_direction choice: every scaffold-emitted security-class (block-*)
-# guard declares `fail_direction = "open"` — declaring `closed` would make
-# the §S4 compiler REFUSE the guard on the fail-open harnesses (claude-code,
-# hermes; DN-harness-agnostic-hooks §4.4), stripping it entirely from the primary harness. The
-# imported baselines are fail-open advisory guards, so `open` is the honest
-# intent, not a downgrade.
+# guard is `closed` (CR-MDB-030 §S6) — Pi, the primary harness, honours it.
+# The fail-open-only harnesses (claude-code, hermes) refuse closed hooks,
+# so they wire no block-* guard; hooks/README.md reports each refusal.
 
 
 def _hook_instances(stacks: list[str], mode: str) -> list[dict]:
@@ -378,7 +378,7 @@ def _hook_instances(stacks: list[str], mode: str) -> list[dict]:
             "matcher": "bash",
             "command": "block-direct-cargo-test",
             "tier": "core",
-            "fail_direction": "open",
+            "fail_direction": "closed",
         })
     if {"java", "quarkus"} & set(stacks):
         instances.append({
@@ -386,7 +386,7 @@ def _hook_instances(stacks: list[str], mode: str) -> list[dict]:
             "matcher": "bash",
             "command": "block-direct-mvn-test",
             "tier": "core",
-            "fail_direction": "open",
+            "fail_direction": "closed",
         })
     if mode != "solo":
         instances.append({
@@ -394,14 +394,14 @@ def _hook_instances(stacks: list[str], mode: str) -> list[dict]:
             "matcher": "write|edit",
             "command": "block-write-outside-worktree",
             "tier": "core",
-            "fail_direction": "open",
+            "fail_direction": "closed",
         })
         instances.append({
             "event": "pre-tool-use",
             "matcher": "bash",
             "command": "block-cr-completed-without-spec-update",
             "tier": "core",
-            "fail_direction": "open",
+            "fail_direction": "closed",
         })
     return instances
 
