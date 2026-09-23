@@ -2,9 +2,9 @@
 # Distilled from the pre-CR-MDB-008 agent originals (archive/wave3/agents/arduino-*).
 
 display_name = "Arduino firmware (Sheetal)"
-test_command = "~/.claude/scripts/arduino-crucible.py unit --agent YOUR_AGENT_ID --project-dir sheetal-firmware"
-register_command = "~/.claude/scripts/arduino-crucible.py register --agent YOUR_AGENT_ID --project-dir sheetal-firmware"
-unregister_command = "~/.claude/scripts/arduino-crucible.py unregister --agent YOUR_AGENT_ID"
+test_command = "~/.crucible/clients/arduino-crucible.py unit --agent YOUR_AGENT_ID --project-dir sheetal-firmware"
+register_command = "~/.crucible/clients/arduino-crucible.py register --agent YOUR_AGENT_ID --project-dir sheetal-firmware"
+unregister_command = "~/.crucible/clients/arduino-crucible.py unregister --agent YOUR_AGENT_ID"
 crucible_reference = "~/.claude/skills/crucible/SKILL.md (no per-stack reference file for arduino yet — client limits: `arduino-crucible.py` currently offers the `unit` and `compile` tiers with `--project-dir sheetal-firmware`; the `regression` tier with lcov coverage lands with CR-SHE-006 — until then use `unit`)"
 
 mechanics = '''

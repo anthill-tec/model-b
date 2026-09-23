@@ -2,9 +2,9 @@
 # Distilled from the pre-CR-MDB-008 agent originals (archive/wave3/agents/python-*).
 
 display_name = "Python"
-test_command = "python3 ~/.claude/scripts/python-crucible.py test --tests tests.test_<feature>[.<Class>[.<method>]] --agent YOUR_AGENT_ID"
-register_command = "python3 ~/.claude/scripts/python-crucible.py register --agent YOUR_AGENT_ID"
-unregister_command = "python3 ~/.claude/scripts/python-crucible.py unregister --agent YOUR_AGENT_ID"
+test_command = "python3 ~/.crucible/clients/python-crucible.py test --tests tests.test_<feature>[.<Class>[.<method>]] --agent YOUR_AGENT_ID"
+register_command = "python3 ~/.crucible/clients/python-crucible.py register --agent YOUR_AGENT_ID"
+unregister_command = "python3 ~/.crucible/clients/python-crucible.py unregister --agent YOUR_AGENT_ID"
 crucible_reference = "~/.claude/skills/crucible/references/python.md"
 
 mechanics = '''

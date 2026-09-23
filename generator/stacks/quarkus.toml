@@ -2,9 +2,9 @@
 # Distilled from the pre-CR-MDB-008 agent originals (archive/wave3/agents/quarkus-*).
 
 display_name = "Quarkus/Java"
-test_command = "python3 ~/.claude/scripts/mvn-crucible.py unit --test <TestClass> --agent YOUR_AGENT_ID [--module m] [--maven-dir backend]"
-register_command = "python3 ~/.claude/scripts/mvn-crucible.py register --agent YOUR_AGENT_ID"
-unregister_command = "python3 ~/.claude/scripts/mvn-crucible.py unregister --agent YOUR_AGENT_ID"
+test_command = "python3 ~/.crucible/clients/mvn-crucible.py unit --test <TestClass> --agent YOUR_AGENT_ID [--module m] [--maven-dir backend]"
+register_command = "python3 ~/.crucible/clients/mvn-crucible.py register --agent YOUR_AGENT_ID"
+unregister_command = "python3 ~/.crucible/clients/mvn-crucible.py unregister --agent YOUR_AGENT_ID"
 crucible_reference = "~/.claude/skills/crucible/references/java.md"
 
 mechanics = '''

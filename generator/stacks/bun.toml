@@ -2,9 +2,9 @@
 # Distilled from the pre-CR-MDB-008 agent originals (archive/wave3/agents/bun-*).
 
 display_name = "Bun/TypeScript"
-test_command = "python3 ~/.claude/scripts/bun-crucible.py test --tests <path/to/feature.test.ts> --agent YOUR_AGENT_ID"
-register_command = "python3 ~/.claude/scripts/bun-crucible.py register --agent YOUR_AGENT_ID"
-unregister_command = "python3 ~/.claude/scripts/bun-crucible.py unregister --agent YOUR_AGENT_ID"
+test_command = "python3 ~/.crucible/clients/bun-crucible.py test --tests <path/to/feature.test.ts> --agent YOUR_AGENT_ID"
+register_command = "python3 ~/.crucible/clients/bun-crucible.py register --agent YOUR_AGENT_ID"
+unregister_command = "python3 ~/.crucible/clients/bun-crucible.py unregister --agent YOUR_AGENT_ID"
 crucible_reference = "~/.claude/skills/crucible/references/bun.md"
 
 mechanics = '''
