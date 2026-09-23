@@ -343,7 +343,21 @@ class GeneratorAgentsAssetTest(unittest.TestCase):
     RED-pinned contract) contains the 20 generated agent .md files
     (CR-MDB-024 \u00a7S2: 16 legacy + 4 rust),
     content-identical to build.py's own render() (pure, no I/O -- this
-    test never shells out to build.py's `build` sub-command)."""
+    test never shells out to build.py's `build` sub-command).
+
+    CR-MDB-025 \u00a7S1/\u00a7S3 MIGRATION (this cycle, C1 RED): the byte-identity
+    check above already exercises build.py's own render() output without
+    hardcoding the old params shape (it treats `load_stack_params()`'s
+    return value as opaque), so no value in it needed to change. What DID
+    need migrating is the assumption it carried without ever naming it:
+    that render()'s own output is free of the retired Claude-Code-style
+    frontmatter vocabulary this CR retires (\u00a7S3 AC2 -- zero `sonnet`,
+    `inherit`, `opus`, `haiku`, `effort`, `color`, `maxTurns` or `skills:`
+    in rendered output). Two new assertions pin that against render()'s
+    OWN output directly (not just the static committed files, which
+    tests/test_pi_agent_definitions.py already gates) -- taking the
+    expected (empty) literal set from the CR spec, not from whatever
+    render() currently happens to produce."""
 
     def test_generator_agents_dir_contains_twenty_files_matching_render(self):
         module = _load_build_module()
@@ -363,6 +377,9 @@ class GeneratorAgentsAssetTest(unittest.TestCase):
             f"{GENERATOR_AGENTS_DIR} must contain exactly the 20 "
             f"regenerated stack agent files; found {sorted(found_names)}",
         )
+        banned_literal_re = re.compile(
+            r"\b(sonnet|inherit|opus|haiku|effort|color|maxTurns)\b"
+        )
         for stack in STACKS:
             params = module.load_stack_params(stack)
             for role in ROLES:
@@ -375,8 +392,21 @@ class GeneratorAgentsAssetTest(unittest.TestCase):
                         f"render(); the repo-local asset must be the exact "
                         f"regeneration output"
                     )
+                # NEGATIVE/EXACT -- CR-MDB-025 \u00a7S3 AC2: render()'s OWN output
+                # (not just the committed file) carries none of the retired
+                # Claude-Code-style frontmatter literals.
+                literal_hits = sorted(set(banned_literal_re.findall(expected_content)))
+                if "skills:" in expected_content:
+                    literal_hits.append("skills:")
+                if literal_hits:
+                    failures.append(
+                        f"{name}: render() output must carry none of the "
+                        f"retired frontmatter literals (CR-MDB-025 \u00a7S3 AC2), "
+                        f"found {literal_hits}"
+                    )
         # POSITIVE/EXACT -- every file's content is build.py's own
-        # deterministic render() output, byte for byte.
+        # deterministic render() output, byte for byte, and that output is
+        # itself free of the retired frontmatter vocabulary.
         self.assertEqual(failures, [], "\n".join(failures))
 
 

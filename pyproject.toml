@@ -26,6 +26,22 @@ packages = ["modelb_axi"]
 "scripts" = "modelb_axi/_assets/scripts"
 "hooks-src" = "modelb_axi/_assets/hooks-src"
 
+# uv caches a local-directory build and, by default, rebuilds it only when
+# pyproject.toml/setup.py/setup.cfg change -- so `uv tool install .` after a
+# source change could install a STALE wheel missing new modules or assets (the
+# CR-MDB-014/022 missing-asset class; CR-MDB-025 §S6 AC2). Key the cache on
+# everything the wheel ships.
+[tool.uv]
+cache-keys = [
+    { file = "pyproject.toml" },
+    { file = "modelb_axi/**/*.py" },
+    { file = "skills-src/**" },
+    { file = "generator/**" },
+    { file = "contracts/**" },
+    { file = "scripts/**" },
+    { file = "hooks-src/**" },
+]
+
 [tool.hatch.build.targets.sdist]
 only-include = [
     "modelb_axi",

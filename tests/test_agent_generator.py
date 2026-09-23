@@ -550,11 +550,24 @@ class BespokeUntouchedS4Test(unittest.TestCase):
         # parent dir), not generator/ alone. Every path below is derived from
         # build.py's own constants, so a relocated target relocates the
         # fixture too instead of silently dropping out of the assertions.
+        # CR-MDB-025 §S1 AMENDMENT (this cycle, C1 RED): build.py is expected
+        # to gain a cross-package import of modelb_axi.agents; an isolated
+        # copy that carries only generator/ (plus the single toon.py codec
+        # source file) can no longer resolve that import once GREEN lands
+        # it, since build.py's own REPO_ROOT resolves relative to __file__
+        # (the tmp copy), not the real repo. The fixture now mirrors the
+        # WHOLE modelb_axi/ package into the isolated repo root so a real
+        # `from modelb_axi.agents import ...` in build.py keeps resolving
+        # inside this isolated build -- a migration of the FIXTURE MECHANISM
+        # (kind (2) migration: this class depended on build.py never
+        # importing a sibling package, without ever naming that assumption),
+        # not of any asserted value.
         self._build_module = _load_build_module()
         origin_root = self._build_module.REPO_ROOT
         agents_rel = self._build_module.AGENTS_DIR.relative_to(origin_root)
         codec_source_rel = self._build_module.CODEC_SOURCE.relative_to(origin_root)
         codec_target_rel = self._build_module.CODEC_TARGET.relative_to(origin_root)
+        modelb_axi_pkg_rel = codec_source_rel.parent
 
         self._tmp_repo_root = Path(tempfile.mkdtemp(prefix="modelb-axi-s4-repo-"))
         self._tmp_generator_dir = self._tmp_repo_root / "generator"
@@ -562,9 +575,11 @@ class BespokeUntouchedS4Test(unittest.TestCase):
         shutil.copytree(TEMPLATES_DIR, self._tmp_generator_dir / "templates")
         shutil.copytree(STACKS_DIR, self._tmp_generator_dir / "stacks")
         shutil.copy(BUILD_PY, self._tmp_generator_dir / "build.py")
-        tmp_codec_source = self._tmp_repo_root / codec_source_rel
-        tmp_codec_source.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy(self._build_module.CODEC_SOURCE, tmp_codec_source)
+        shutil.copytree(
+            origin_root / modelb_axi_pkg_rel,
+            self._tmp_repo_root / modelb_axi_pkg_rel,
+            ignore=shutil.ignore_patterns("__pycache__"),
+        )
         (self._tmp_repo_root / codec_target_rel).parent.mkdir(
             parents=True, exist_ok=True
         )

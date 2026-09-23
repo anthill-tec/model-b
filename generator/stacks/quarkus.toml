@@ -2,9 +2,9 @@
 # Distilled from the pre-CR-MDB-008 agent originals (archive/wave3/agents/quarkus-*).
 
 display_name = "Quarkus/Java"
-test_command = "python3 ~/.claude/scripts/mvn-crucible.py unit --test <TestClass> --agent YOUR_AGENT_ID [--module m] [--maven-dir backend]"
-register_command = "python3 ~/.claude/scripts/mvn-crucible.py register --agent YOUR_AGENT_ID"
-unregister_command = "python3 ~/.claude/scripts/mvn-crucible.py unregister --agent YOUR_AGENT_ID"
+test_command = "python3 ~/.crucible/clients/mvn-crucible.py unit --test <TestClass> --agent YOUR_AGENT_ID [--module m] [--maven-dir backend]"
+register_command = "python3 ~/.crucible/clients/mvn-crucible.py register --agent YOUR_AGENT_ID"
+unregister_command = "python3 ~/.crucible/clients/mvn-crucible.py unregister --agent YOUR_AGENT_ID"
 crucible_reference = "~/.claude/skills/crucible/references/java.md"
 
 mechanics = '''
@@ -34,54 +34,29 @@ green = "GREEN phase agent — implements production code to make failing tests 
 verify = "VERIFY agent — reviews a Quarkus/Java feature branch after implementation is complete. Read-only analysis of CR compliance, wiring completeness, test coverage adequacy, layer-boundary adherence, and code quality. Does NOT modify code. Used when an orchestrator dispatches a verification task after GREEN."
 fix = "FIX agent — addresses specific findings from a VERIFY agent report in Quarkus/Java projects. Fixes only what is listed and approved. Does NOT decide what to fix — the orchestrator tells it which findings to address."
 
-[frontmatter]
-red = '''
-model: inherit
-effort: high
-color: red
-maxTurns: 200
-skills:
-  - crucible
-  - refactorer-java
-  - reviewer-coverage
-'''
-green = '''
-model: inherit
-effort: high
-color: green
-maxTurns: 200
-skills:
-  - crucible
-  - refactorer-java
-  - reviewer-coverage
-'''
-verify = '''
-model: inherit
-color: blue
-maxTurns: 150
-skills:
-  - reviewer
-  - reviewer-coverage
-  - reviewer-quarkus
-  - reviewer-architecture
-  - reviewer-security
-  - reviewer-style
-  - reviewer-syntax
-'''
-fix = '''
-model: inherit
-effort: high
-color: yellow
-maxTurns: 150
-skills:
-  - crucible
-  - refactorer-java
-  - reviewer-coverage
-'''
+[roles.red]
+tools = ["read", "write", "edit", "grep", "find", "ls", "ctx_shell", "ctx_read", "ctx_grep", "ctx_glob", "ctx_find", "ctx_ls", "ctx_patch", "ctx_edit", "ctx_search", "ctx_tree"]
+thinking = "high"
+skills = ["crucible", "refactorer-java", "reviewer-coverage"]
+
+[roles.green]
+tools = ["read", "write", "edit", "grep", "find", "ls", "ctx_shell", "ctx_read", "ctx_grep", "ctx_glob", "ctx_find", "ctx_ls", "ctx_patch", "ctx_edit", "ctx_search", "ctx_tree"]
+thinking = "high"
+skills = ["crucible", "refactorer-java", "reviewer-coverage"]
+
+[roles.verify]
+tools = ["read", "grep", "find", "ls", "ctx_shell", "ctx_read", "ctx_grep", "ctx_glob", "ctx_find", "ctx_ls", "ctx_search", "ctx_tree"]
+thinking = "medium"
+skills = ["reviewer", "reviewer-coverage", "reviewer-quarkus", "reviewer-architecture", "reviewer-security", "reviewer-style", "reviewer-syntax"]
+
+[roles.fix]
+tools = ["read", "write", "edit", "grep", "find", "ls", "ctx_shell", "ctx_read", "ctx_grep", "ctx_glob", "ctx_find", "ctx_ls", "ctx_patch", "ctx_edit", "ctx_search", "ctx_tree"]
+thinking = "high"
+skills = ["crucible", "refactorer-java", "reviewer-coverage"]
 
 [gotchas]
 red = '''
-- **Refactoring test code (Mode 2):** use the `refactorer-java` skill (OpenRewrite + tool-first) for cross-file mechanical changes; `Edit` only for trivial known old→new in one file; avoid `sed`.
+- **Refactoring test code (Mode 2):** use the `refactorer-java` skill (OpenRewrite + tool-first) for cross-file mechanical changes; `edit` only for trivial known old→new in one file; avoid `sed`.
 - **Quarkus test annotations:** `@QuarkusTest` — CDI beans, services, REST endpoints with full DI container; `@QuarkusIntegrationTest` — the packaged app (failsafe after `mvn package`, the E2E tier); plain JUnit 5 `@Test` — pure POJO/utility/mapper unit tests, no CDI.
 - **CDI:** `@Inject` real bean; `@InjectMock` Mockito mock into CDI. **NEVER `@Mock` + `@InjectMocks`** (standalone Mockito). NEVER `new MyService()` in a `@QuarkusTest` — let CDI inject.
 - **REST Assured:** `given().contentType(JSON).body(b).when().post("/api/x").then().statusCode(200).body("field", equalTo(v))`; static-import `io.restassured.RestAssured.given`, `org.hamcrest.Matchers.*`. Assert exact status codes (200/201/204/400/404) and body shape.
@@ -131,5 +106,5 @@ fix = '''
 | `@Mock`+`@InjectMocks` | Quarkus `@InjectMock`. |
 | Missing layer separation | Move logic to Service, data to Repository, HTTP to Resource. |
 | Test-quality finding | Add error/edge/mock-verification assertions per java-testing-practices.md. |
-Use the `refactorer-java` skill for cross-file mechanical changes (renames, import rewrites, signature updates) — tool-first, do NOT improvise; `Edit` for trivial known old→new; avoid `sed`. Coverage NEVER on targeted runs — full coverage is the orchestrator's gate.
+Use the `refactorer-java` skill for cross-file mechanical changes (renames, import rewrites, signature updates) — tool-first, do NOT improvise; `edit` for trivial known old→new; avoid `sed`. Coverage NEVER on targeted runs — full coverage is the orchestrator's gate.
 '''

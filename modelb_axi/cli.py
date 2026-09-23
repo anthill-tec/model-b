@@ -35,7 +35,7 @@ from modelb_axi.harness import (
     select_harnesses,
 )
 from modelb_axi.preflight import run_preflight
-from modelb_axi.scaffold import run_init
+from modelb_axi.scaffold import run_agents, run_init
 
 INSTALL_TOML_NAME = "install.toml"
 
@@ -119,7 +119,40 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command", metavar="COMMAND")
     _add_init_parser(subparsers)
+    _add_agents_parser(subparsers)
     return parser
+
+def _add_agents_parser(subparsers) -> None:
+    """The `agents` subcommand — re-render the project's agent definitions
+    (CR-MDB-025 §S6)."""
+    agents_cmd = subparsers.add_parser(
+        "agents",
+        help="re-render the agent definitions of the project in the current directory",
+        description=(
+            "Re-render the agent definitions of the project in the current "
+            "directory from its .env PROJECT_STACKS, into each installed "
+            "harness's project agent directory. Files are owned by marker: "
+            "hand-modified files are skipped unless --force-managed; files "
+            "without a marker are never written."
+        ),
+    )
+    agents_cmd.add_argument(
+        "--stacks", metavar="CSV",
+        help=(
+            "change the stack set (arduino,bun,python,quarkus,rust,java) "
+            "and rewrite PROJECT_STACKS"
+        ),
+    )
+    # Global flags accepted after the subcommand too; SUPPRESS keeps a
+    # pre-subcommand value from being clobbered by a subparser default.
+    agents_cmd.add_argument(
+        "--force-managed", action="store_true", default=argparse.SUPPRESS,
+        help="overwrite hand-modified rendered files (never an unmarked one)",
+    )
+    agents_cmd.add_argument(
+        "--modelb-home", metavar="DIR", default=argparse.SUPPRESS,
+        help="override $MODELB_HOME (default: ${XDG_DATA_HOME:-~/.local/share}/modelb)",
+    )
 
 
 def _add_init_parser(subparsers) -> None:
@@ -408,6 +441,8 @@ def main(argv: list[str] | None = None) -> int:
     if getattr(args, "command", None) == "init":
         # The scaffold flow works in BOTH states (§S2).
         return run_init(args, home)
+    if getattr(args, "command", None) == "agents":
+        return run_agents(args, home)
     harnesses = parse_harnesses(args.harnesses)
     target_root = resolve_target_root(args.target_root)
     interactive = not args.yes and sys.stdin.isatty()
