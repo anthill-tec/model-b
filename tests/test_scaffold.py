@@ -805,7 +805,11 @@ class HooksSeamSoloRustEmissionTest(unittest.TestCase):
             "S5: solo mode must not emit the CR-completion guard instance",
         )
 
-    def test_claude_code_settings_json_wires_cargo_guard_and_ambient_status_commands(self):
+    def test_claude_code_refuses_closed_cargo_guard_and_still_wires_ambient_status(self):
+        # CR-MDB-030 \u00a7S6 migration (orchestrator-approved): block-* guards
+        # are `closed`, and claude-code cannot honour `closed`
+        # (hooks._HONORS_FAIL_CLOSED), so the \u00a7S4 compiler REFUSES the cargo
+        # guard there and reports the refusal in hooks/README.md.
         settings_path = self._target / ".claude" / "settings.json"
         self.assertTrue(
             settings_path.is_file(),
@@ -828,12 +832,35 @@ class HooksSeamSoloRustEmissionTest(unittest.TestCase):
                 commands.extend(_commands_for(event))
             return commands
 
-        # POSITIVE -- the cargo guard is wired under PreToolUse.
-        pre_tool_commands = _commands_for("PreToolUse")
+        # NEGATIVE -- the closed cargo guard is NOT wired anywhere in the
+        # claude-code settings (refused, CR-MDB-030 \u00a7S6).
+        cargo_wired = [
+            cmd for cmd in _all_commands()
+            if cmd.endswith("block-direct-cargo-test")
+        ]
+        self.assertEqual(
+            cargo_wired, [],
+            "S6: the closed cargo guard must be refused on claude-code, not "
+            f"wired; found {cargo_wired!r} in settings={settings!r}",
+        )
+        # POSITIVE -- the refusal is surfaced in the compiler report
+        # (hooks/README.md), under the claude-code section.
+        report_path = self._target / "hooks" / "README.md"
         self.assertTrue(
-            any(cmd.endswith("block-direct-cargo-test") for cmd in pre_tool_commands),
-            "S5: PreToolUse must wire the cargo guard; got PreToolUse commands="
-            f"{pre_tool_commands!r} (full settings={settings!r})",
+            report_path.is_file(),
+            f"S6: init must emit the hook compiler report at {report_path}",
+        )
+        report = report_path.read_text(encoding="utf-8")
+        section = report.split("### claude-code", 1)
+        self.assertEqual(
+            len(section), 2,
+            f"S6: hooks/README.md must carry a claude-code section; got {report!r}",
+        )
+        claude_section = section[1].split("\n### ", 1)[0]
+        self.assertIn(
+            "- REFUSED `block-direct-cargo-test`:", claude_section,
+            "S6: hooks/README.md must report the cargo guard REFUSED for "
+            f"claude-code; got claude-code section={claude_section!r}",
         )
         # POSITIVE -- ambient-board-status is wired under SessionStart.
         session_start_commands = _commands_for("SessionStart")
