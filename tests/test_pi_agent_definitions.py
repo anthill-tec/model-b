@@ -300,6 +300,25 @@ REGISTER_FIRST_ANCHOR = "Register with Crucible"
 # false-positive).
 BASH_TOKEN_RE = re.compile(r"\bBash\b")
 
+# \u00a7S5 AC2, second clause -- "no body instructs a tool its own frontmatter
+# does not grant". A Pi tool is named in a body either as a backticked
+# built-in (`read`, `write`, `edit`, `bash`, `grep`, `find`, `ls` -- the
+# backticks disambiguate the tool from the ordinary English word) or as any
+# `ctx_*` identifier (unambiguous bare or backticked). A mention inside a
+# DENIAL run -- a negation word heading a list of tool names, e.g. VERIFY's
+# "(VERIFY is granted none: no `write`, `edit`, `ctx_patch` or `ctx_edit`)"
+# -- is a statement of what is NOT granted, never an instruction.
+_PI_BUILTIN_TOOL_NAMES = ("read", "write", "edit", "bash", "grep", "find", "ls")
+TOOL_MENTION_RE = re.compile(
+    r"(?<![`\w])`(" + "|".join(_PI_BUILTIN_TOOL_NAMES) + r")`(?!`)"
+    r"|\b(ctx_[a-z_]+)\b"
+)
+_TOOL_NAME_PATTERN = r"(?:`[a-z_]+`|\bctx_[a-z_]+\b)"
+TOOL_DENIAL_RUN_RE = re.compile(
+    r"\b(?:[Nn]o|[Nn]ever|[Nn]ot|[Ww]ithout|[Nn]or)\s+" + _TOOL_NAME_PATTERN
+    + r"(?:(?:\s*,\s*|\s+(?:or|and|nor)\s+|\s*,\s*(?:or|and|nor)\s+)" + _TOOL_NAME_PATTERN + r")*"
+)
+
 # §S3, this cycle's snapshot: the skill list each stack x role currently
 # declares under [frontmatter].<role>'s "skills:" sub-list (read 2026-09-23
 # from generator/stacks/*.toml). §S1-§S3 change HOW skills are declared and
@@ -403,6 +422,30 @@ def _permission_dict(frontmatter: str) -> dict:
 def _capitalised_tool_names(tools_value: str) -> list:
     names = [n.strip() for n in tools_value.split(",") if n.strip()]
     return [n for n in names if n[:1].isupper()]
+
+
+def _tool_mentions(body: str) -> list:
+    """\u00a7S5 AC2 -- every Pi tool named in ``body`` as [(name, offset,
+    is_denial)], where ``is_denial`` is True when the mention sits inside a
+    TOOL_DENIAL_RUN_RE span (a negation, not an instruction)."""
+    denial_spans = [m.span() for m in TOOL_DENIAL_RUN_RE.finditer(body)]
+    mentions = []
+    for m in TOOL_MENTION_RE.finditer(body):
+        name = m.group(1) or m.group(2)
+        pos = m.start()
+        is_denial = any(start <= pos < end for start, end in denial_spans)
+        mentions.append((name, pos, is_denial))
+    return mentions
+
+
+def _ungranted_tool_instructions(body: str, granted) -> list:
+    """\u00a7S5 AC2 -- sorted distinct tool names ``body`` instructs (names
+    outside a denial run) that are absent from ``granted``."""
+    granted = set(granted)
+    return sorted({
+        name for name, _, is_denial in _tool_mentions(body)
+        if not is_denial and name not in granted
+    })
 
 
 def _role_of(agent_filename: str) -> str:
@@ -1057,6 +1100,81 @@ class ToolNamesRuleS5Test(unittest.TestCase):
         self.assertEqual(
             len(BASH_TOKEN_RE.findall("```bash\npython3 foo.py\n```")), 0,
             "the detector must not fire on a lowercase ```bash``` fence tag",
+        )
+
+    def test_s5_no_body_instructs_a_tool_absent_from_its_own_tools_line(self):
+        # \u00a7S5 AC2, second clause -- fleet gate over all 20 rendered
+        # definitions: every Pi tool a body names as an instruction (i.e.
+        # outside a denial run) is in that file's own tools: set.
+        failures = []
+        agent_files = _all_agent_files()
+        self.assertEqual(
+            len(agent_files), 20,
+            f"expected exactly 20 generated agent files under {AGENTS_DIR}, "
+            f"found {len(agent_files)}",
+        )
+        instruction_count = 0
+        denial_count = 0
+        for path in agent_files:
+            tools_value = _tools_line_value(path)
+            self.assertIsNotNone(tools_value, f"{path.name}: no tools: line")
+            granted = {n.strip() for n in (tools_value or "").split(",") if n.strip()}
+            _, body = _split_frontmatter(_read(path))
+            mentions = _tool_mentions(body)
+            instruction_count += sum(1 for _, _, d in mentions if not d)
+            denial_count += sum(1 for _, _, d in mentions if d)
+            ungranted = _ungranted_tool_instructions(body, granted)
+            if ungranted:
+                failures.append(
+                    f"{path.name}: body instructs tool(s) {ungranted} absent "
+                    f"from its own tools: line (\u00a7S5 AC2)"
+                )
+        # Non-vacuity: the detector actually sees tool instructions in the
+        # fleet, and the VERIFY denial sentence is exercised as a denial.
+        self.assertGreater(instruction_count, 0, "detector saw no tool instructions in the fleet")
+        self.assertGreater(denial_count, 0, "detector saw no denial run in the fleet (VERIFY's)")
+        self.assertEqual(failures, [], "\n".join(failures))
+
+    def test_s5_ungranted_tool_detector_bites_on_instruction_not_on_denial(self):
+        # Fixture proof, independent of any live file.
+        verify_granted = set(READ_ONLY_TOOLS)
+        # BITES -- a VERIFY-shaped body instructing ctx_patch / `write`.
+        self.assertEqual(
+            _ungranted_tool_instructions(
+                "3. Apply the correction with `ctx_patch` on the reported line.",
+                verify_granted,
+            ),
+            ["ctx_patch"],
+        )
+        self.assertEqual(
+            _ungranted_tool_instructions("Save the report with `write`.", verify_granted),
+            ["write"],
+        )
+        # DOES NOT BITE -- the live VERIFY denial sentence, verbatim.
+        denial = (
+            "any file-writing tool on repo files (VERIFY is granted none: no "
+            "`write`, `edit`, `ctx_patch` or `ctx_edit`)."
+        )
+        self.assertEqual(_ungranted_tool_instructions(denial, verify_granted), [])
+        # A denial does not launder an instruction later on the same line.
+        self.assertEqual(
+            _ungranted_tool_instructions(denial + " Then fix it with `edit`.", verify_granted),
+            ["edit"],
+        )
+        # DOES NOT BITE -- the same instruction where the tool IS granted,
+        # nor on plain-English 'write'/'edit' (no backticks = not a tool).
+        self.assertEqual(
+            _ungranted_tool_instructions(
+                "Apply the fix with `ctx_patch`.", set(WRITE_CAPABLE_TOOLS)
+            ),
+            [],
+        )
+        self.assertEqual(
+            _ungranted_tool_instructions(
+                "never let any incidental write land outside /tmp; edit nothing",
+                verify_granted,
+            ),
+            [],
         )
 
 
