@@ -198,12 +198,12 @@ def remediate_toolchains(
             runner = resolve(install[0], resolved)
             if runner is None:
                 continue
-            env = _installer_env(probe)
             with_env = "".join(
                 f" with {var}={raw}" for var, raw in (probe.get("env_dirs") or {}).items()
             )
             if offer(f"Run `{display}`{with_env} to install {name} for stack {stack}?"):
-                ran = _run_installer([runner, *install[1:]], display, warn, env)
+                # env dirs are created only once the user has said yes.
+                ran = _run_installer([runner, *install[1:]], display, warn, _installer_env(probe))
                 row[name] = _reprobe(probe, resolved, display, warn) if ran else ABSENT
             else:
                 ran = False
