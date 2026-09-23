@@ -768,6 +768,36 @@ class SkillsBodyLineS3Test(unittest.TestCase):
 
 SKILLS_SRC_DIR = REPO_ROOT / "skills-src"
 
+#: This repository's own project agent directory, rendered for its
+#: PROJECT_STACKS=python (\u00a7S9: "The fleet and this repository's
+#: `.pi/agents/` are re-rendered").
+PI_AGENTS_DIR = REPO_ROOT / agents_mod.PROJECT_AGENT_DIRS["pi"]
+REPO_PROJECT_STACKS = ("python",)
+
+#: CR-MDB-036 \u00a7S9 -- the nine retired non-Model-B skill names.
+RETIRED_SKILL_NAMES = (
+    "reviewer", "reviewer-coverage", "reviewer-architecture", "reviewer-security",
+    "reviewer-style", "reviewer-syntax", "reviewer-quarkus", "refactorer-java",
+    "refactorer-rust",
+)
+
+#: A retired name as a whole skill token: never part of a longer
+#: hyphenated name (so ``reviewer`` does not match inside ``reviewer-style``).
+_RETIRED_SKILL_RE = re.compile(
+    r"(?<![\w-])(" + "|".join(re.escape(n) for n in RETIRED_SKILL_NAMES) + r")(?![\w-])"
+)
+
+
+def _retired_skill_mentions(text: str) -> list[str]:
+    """Every retired name ``text`` mentions, in any form (skills line,
+    prose, a parenthesised pair)."""
+    return sorted(set(_RETIRED_SKILL_RE.findall(text)))
+
+
+def _rendered_definitions() -> list[Path]:
+    """Every rendered definition in both directories \u00a7S9 AC2 names."""
+    return sorted(AGENTS_DIR.glob("*-agent.md")) + sorted(PI_AGENTS_DIR.glob("*.md"))
+
 #: A skill named in prose: "the `<name>` skill".
 _PROSE_SKILL_RE = re.compile(r"`([a-z0-9][a-z0-9-]*)` skill\b")
 
@@ -823,13 +853,50 @@ class ShippedSkillsOnlyS9Test(unittest.TestCase):
 
     def test_s9_no_rendered_definition_names_an_unshipped_skill(self):
         shipped = _shipped_skills()
-        rendered = sorted(AGENTS_DIR.glob("*-agent.md"))
-        self.assertEqual(len(rendered), len(STACKS) * len(ROLES), "precondition: 20 definitions")
+        rendered = _rendered_definitions()
+        self.assertEqual(
+            len(rendered), len(STACKS) * len(ROLES) + len(REPO_PROJECT_STACKS) * len(ROLES),
+            "precondition: 20 generator/agents + 4 .pi/agents definitions",
+        )
         failures = {
-            p.name: hits for p in rendered
+            str(p.relative_to(REPO_ROOT)): hits for p in rendered
             if (hits := _unshipped_skill_mentions(_read(p), shipped))
         }
         self.assertEqual(failures, {}, f"\u00a7S9: definitions naming unshipped skills: {failures}")
+
+    def test_s9_pi_agents_equal_the_agents_render_for_python(self):
+        # \u00a7S9 AC2: `.pi/agents/` equals `modelb-axi agents` output for this
+        # repository's PROJECT_STACKS=python -- the exact file set, and each
+        # file byte-equal to agents.render().
+        expected = {
+            f"{stack}-{role}-agent.md": agents_mod.render(
+                stack, role, agents_mod.load_stack_params(STACKS_DIR, stack), TEMPLATES_DIR,
+            )
+            for stack in REPO_PROJECT_STACKS for role in ROLES
+        }
+        actual = {p.name: _read(p) for p in sorted(PI_AGENTS_DIR.glob("*.md"))}
+        self.assertEqual(sorted(actual), sorted(expected), "\u00a7S9: .pi/agents file set")
+        stale = sorted(name for name in expected if actual.get(name) != expected[name])
+        self.assertEqual(stale, [], f"\u00a7S9: .pi/agents differs from agents.render(): {stale}")
+
+    def test_s9_no_rendered_definition_names_a_retired_skill(self):
+        rendered = _rendered_definitions()
+        self.assertTrue(rendered, "precondition: rendered definitions found")
+        failures = {
+            str(p.relative_to(REPO_ROOT)): hits for p in rendered
+            if (hits := _retired_skill_mentions(_read(p)))
+        }
+        self.assertEqual(failures, {}, f"\u00a7S9: definitions naming retired skills: {failures}")
+
+    def test_s9_retired_skill_gate_bites_on_the_quarkus_prose_pair(self):
+        # The pre-\u00a7S9 quarkus-verify prose form, which the "`<name>` skill"
+        # prose pattern does not see.
+        self.assertEqual(
+            _retired_skill_mentions("- **Per-layer deep review** (`reviewer-quarkus`/`reviewer-architecture`):"),
+            ["reviewer-architecture", "reviewer-quarkus"],
+        )
+        self.assertEqual(_retired_skill_mentions("Load these skills first: reviewer."), ["reviewer"])
+        self.assertEqual(_retired_skill_mentions("the `crucible` skill; reviewer-coveragex"), [])
 
     def test_s9_rendered_definition_gate_bites_on_reviewer_coverage(self):
         shipped = _shipped_skills()

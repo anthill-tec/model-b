@@ -869,6 +869,64 @@ class ProviderInstallerReprobeTest(_StackSandboxCase):
         self.assert_installed(result)
         self.assertEqual(self.install_toml()["capabilities"].get("arduino.arduino-cli"), "installed")
 
+    def test_declining_the_arduino_cli_installer_leaves_local_bin_absent(self):
+        # Finding 1 (C3 VERIFY): env dirs are created only after an explicit
+        # yes — a decline must leave ~/.local/bin exactly as it was.
+        local_bin = self.home / ".local" / "bin"
+        self.assertFalse(local_bin.exists(), "precondition: ~/.local/bin is missing")
+        self._sh_shim()  # the runner resolves, so the offer is really made
+        result = self.run_interactive(
+            make_responder([(self._offer_naming("arduino-cli"), "n")]), "--stacks", "arduino",
+        )
+        self.assertEqual(len(result.offers_naming("BINDIR=~/.local/bin")), 1,
+                         f"precondition: the installer is offered; reads={result.reads!r}")
+        self.assertEqual(self._sh_runs(), [], "declined: the installer never runs")
+        self.assert_installed(result)
+        self.assertFalse(local_bin.exists(),
+                         "a declined installer must not create its BINDIR ~/.local/bin")
+        self.assertFalse((self.home / ".local").exists(), "nor any parent of it")
+
+    def test_yes_with_arduino_selected_leaves_local_bin_absent(self):
+        # Finding 1 (C3 VERIFY): --yes never confirms an installer, so it
+        # never creates the installer's env dirs either.
+        local_bin = self.home / ".local" / "bin"
+        self.assertFalse(local_bin.exists(), "precondition: ~/.local/bin is missing")
+        self._sh_shim()
+        self.assert_installed(self.run_installer("--stacks", "arduino"))
+        self.assertEqual(self._sh_runs(), [], "§S8: --yes never runs the installer")
+        self.assertFalse(local_bin.exists(), "--yes must not create the installer's BINDIR")
+        self.assertFalse((self.home / ".local").exists(), "nor any parent of it")
+
+    def _assert_env_dir_failure_warns_and_records_absent(self, local_bin: Path):
+        self._sh_shim()
+        result = self.run_interactive(
+            make_responder([(self._offer_naming("arduino-cli"), "y")]), "--stacks", "arduino",
+        )
+        axi = self.assert_installed(result)
+        self.assertEqual(self._sh_runs(), [],
+                         "an installer whose BINDIR cannot be created is not run")
+        self.assertEqual(self.install_toml()["capabilities"].get("arduino.arduino-cli"), "absent")
+        hits = [w for w in axi.get("warnings", []) if str(local_bin) in w]
+        self.assertTrue(hits, f"finding 4: the warning names {local_bin}; {axi!r}")
+
+    def test_non_directory_local_warns_naming_the_path_and_records_absent(self):
+        # Finding 4 (C3 VERIFY): ~/.local exists as a FILE, so creating
+        # ~/.local/bin fails — WARN naming the path, record absent, never raise.
+        (self.home / ".local").write_text("not a directory\n", encoding="utf-8")
+        self._assert_env_dir_failure_warns_and_records_absent(self.home / ".local" / "bin")
+
+    def test_unwritable_local_warns_naming_the_path_and_records_absent(self):
+        # Finding 4 (C3 VERIFY): ~/.local exists but is read-only.
+        if hasattr(os, "geteuid") and os.geteuid() == 0:
+            self.skipTest("root ignores directory permissions")
+        local = self.home / ".local"
+        local.mkdir()
+        local.chmod(0o500)
+        try:
+            self._assert_env_dir_failure_warns_and_records_absent(local / "bin")
+        finally:
+            local.chmod(0o700)
+
 
 class SharedInstallCommandWarningTest(_StackSandboxCase):
     """Finding 5 (§S8): xmlrunner and coverage share one install command.
