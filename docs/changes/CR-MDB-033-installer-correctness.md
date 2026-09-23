@@ -56,9 +56,12 @@ name `tool_scripts_dir`, not by sweeping `[install]` for keys matching `/script|
 
 ### §S2 — Atomic writes everywhere
 One helper `modelb_axi/_fsutil.py::atomic_write(path, data: bytes, mode=None)` (tmp in the same
-directory + `os.replace`, mode preserved from source for assets), used by `deploy._deploy_file`,
-every `hooks.py` emitter, and `scaffold._emit_plan`. `install.toml` mode becomes 0644 (or
-documented).
+directory + `os.replace`; the tmp file is removed if the replace fails; mode preserved from source
+for assets). It replaces every in-place write in the package — six call sites:
+`deploy._deploy_file`, `hooks._emit_claude_code`, `hooks._emit_opencode`, `hooks._emit_pi`,
+`hooks._emit_hermes_advisory`, and `scaffold._emit_plan`'s writer. `install.toml` is written
+with mode 0644; it holds no secrets, and its current 0600 is `mkstemp`'s default rather than a
+decision.
 
 ### §S3 — Unmanaged files are skipped, never clobbered
 `_deploy_file`: dest exists ∧ differs ∧ not in manifest → **skip**, reported with the warning
@@ -70,8 +73,9 @@ unmanaged file. The manifest is loaded whenever it exists, not only with `--rein
 
 ### §S4 — Scaffold emission is honest about partial failure
 `--dry-run` writes nothing, as today. A failure mid-emission may leave a partial tree; the module
-docstring claims only that, and the `init` failure envelope lists exactly the files written
-before the failure. Emission is not staged through a temp dir.
+docstring claims only that, and the `init` failure envelope carries `emitted` — the same field
+the success envelope uses — listing exactly the files written before the failure. Emission is not
+staged through a temp dir.
 
 ### §S5 — Validation and hygiene
 Validate `install.toml` harness ids against the roster like the override; single TOML writer
@@ -99,8 +103,15 @@ file; "Vercel store" → "shared store".
       real-`init` test using it passes under the strict §S1 rule.
 - [ ] `tests/test_tooling_adoption.py` asserts the tool-scripts location through the key named
       `tool_scripts_dir`; the presence of `hooks_scripts_dir` in `[install]` does not trip it.
-- [ ] Killing the process between tmp-write and rename leaves the destination untouched —
-      asserted by monkeypatching `os.replace` to raise and checking the prior file is intact.
+- [ ] Each of the six write sites — `deploy._deploy_file`, `hooks._emit_claude_code`,
+      `hooks._emit_opencode`, `hooks._emit_pi`, `hooks._emit_hermes_advisory`,
+      `scaffold._emit_plan` — writes through `_fsutil.atomic_write`: with `os.replace`
+      monkeypatched to raise, re-running that site over an existing destination leaves the prior
+      file byte-identical and leaves no temp file in its directory. Asserted per site, six
+      subtests; a site not asserted is a site not wired.
+- [ ] No `shutil.copyfile`, `.write_text(` or `.write_bytes(` remains in `modelb_axi/` outside
+      `_fsutil.py` — a grep gate.
+- [ ] `install.toml` is written with mode 0644.
 - [ ] First install into a root that already holds a foreign `<target-root>/.agents/scripts/gate-lock.sh`:
       the file is byte-identical afterwards; the run reports it with the `unmanaged:` warning; a
       second run with `--force-managed` still leaves it byte-identical.
@@ -109,8 +120,10 @@ file; "Vercel store" → "shared store".
       the existing `tests/test_installer.py` tests for this behaviour, not in duplicates.
 - [ ] Without `--reinstall`, a second run over the same root reports every managed file
       unchanged (manifest consulted).
-- [ ] `init` with a mid-plan failure: the envelope lists exactly the files written; `--dry-run`
-      still writes nothing.
+- [ ] `init` with a mid-emission failure (an `OSError` injected after some files are written)
+      exits non-zero, and its failure envelope's `emitted` lists exactly the files present under
+      `--target`; `--dry-run` still writes nothing. The module docstring no longer claims a
+      failure writes nothing.
 - [ ] `install.toml` listing a non-roster harness id fails fast with the id named.
 - [ ] Every human progress line in `modelb_axi/cli.py` is written with `file=sys.stderr`;
       stdout from an installer run contains no human prose (asserted by capturing both streams).
