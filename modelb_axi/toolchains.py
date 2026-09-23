@@ -14,14 +14,18 @@
   elevated privileges has no ``install`` argv and is never offered.
   Declining is recorded as a warning.
 
-Verdicts: ``detected`` / ``absent`` / ``unknown``, and ``installed`` after a
-provider installer the user confirmed exits 0. Stdlib only.
+Verdicts: ``detected`` / ``absent`` / ``unknown``, and ``installed`` when a
+provider installer the user confirmed exits 0 AND a re-probe of that one
+tool then finds it (else ``absent``, warning where it was expected).
+Stdlib only.
 """
 
+import os
 import shutil
 import subprocess
 import sys
 from collections.abc import Callable, Iterable
+from pathlib import Path
 
 from modelb_axi.capabilities import ABSENT, DETECTED, UNKNOWN
 from modelb_axi.requirements import STACK_TOOLCHAINS, install_display
@@ -101,18 +105,58 @@ def run_on_terminal(argv: list[str], env: dict[str, str] | None = None) -> int:
     return subprocess.run(argv, stdout=human_channel_fd(), env=env, check=False).returncode
 
 
-def _run_installer(argv: list[str], command: str, warn: Callable[[str], None]) -> str:
+def _installer_env(probe: dict) -> dict[str, str] | None:
+    """The environment a probe's installer runs with: the current one plus
+    its ``env_dirs`` (``~`` expanded), each directory created if missing;
+    ``None`` (inherit) when it declares none."""
+    env_dirs = probe.get("env_dirs") or {}
+    if not env_dirs:
+        return None
+    env = dict(os.environ)
+    for var, raw in env_dirs.items():
+        path = Path(raw).expanduser()
+        path.mkdir(parents=True, exist_ok=True)
+        env[var] = str(path)
+    return env
+
+
+def _run_installer(
+    argv: list[str], command: str, warn: Callable[[str], None],
+    env: dict[str, str] | None = None,
+) -> bool:
     """Run one confirmed provider installer on the user's terminal
-    (:func:`run_on_terminal`)."""
+    (:func:`run_on_terminal`); True when it exits 0."""
     try:
-        returncode = run_on_terminal(argv)
+        returncode = run_on_terminal(argv, env)
     except OSError as exc:
         warn(f"`{command}` could not run ({exc}); recording absent")
-        return ABSENT
+        return False
     if returncode != 0:
         warn(f"`{command}` failed (exit={returncode}); recording absent")
-        return ABSENT
-    return INSTALLED
+        return False
+    return True
+
+
+def _reprobe(
+    probe: dict, resolved: dict[str, str | None], command: str,
+    warn: Callable[[str], None],
+) -> str:
+    """Probe ONE tool again after its confirmed installer exited 0 \u2014 the
+    only probe beyond one per tool: ``installed`` iff it is now found, else
+    ``absent`` with a warning naming where it was expected."""
+    name = probe["name"]
+    if probe["kind"] == "module":
+        found = _import_verdict(resolve("python3", resolved), name) == DETECTED
+    else:
+        resolved.pop(name, None)
+        found = resolve(name, resolved) is not None
+    if found:
+        return INSTALLED
+    warn(
+        f"`{command}` exited 0 but {name} is still not found \u2014 expected "
+        f"{probe.get('expected') or 'on PATH'}; recording absent"
+    )
+    return ABSENT
 
 
 def remediate_toolchains(
@@ -149,8 +193,13 @@ def remediate_toolchains(
             if runner is None:
                 continue
             display = install_display(install)
-            if offer(f"Run `{display}` to install {name} for stack {stack}?"):
-                row[name] = _run_installer([runner, *install[1:]], display, warn)
+            env = _installer_env(probe)
+            with_env = "".join(
+                f" with {var}={raw}" for var, raw in (probe.get("env_dirs") or {}).items()
+            )
+            if offer(f"Run `{display}`{with_env} to install {name} for stack {stack}?"):
+                ran = _run_installer([runner, *install[1:]], display, warn, env)
+                row[name] = _reprobe(probe, resolved, display, warn) if ran else ABSENT
             else:
                 warn(f"declined `{display}` — {name} stays {row[name]} for stack {stack}")
             outcomes[install] = row[name]

@@ -36,6 +36,7 @@ import shutil
 import subprocess
 import sys
 from collections.abc import Callable, Iterable
+from pathlib import Path
 
 from modelb_axi.capabilities import (
     ABSENT,
@@ -47,7 +48,13 @@ from modelb_axi.capabilities import (
     resolve_agent_dir,
 )
 from modelb_axi.requirements import REQUIREMENTS, requirement
-from modelb_axi.toolchains import probe_toolchains, remediate_toolchains, resolve, run_on_terminal
+from modelb_axi.toolchains import (
+    INSTALLED,
+    probe_toolchains,
+    remediate_toolchains,
+    resolve,
+    run_on_terminal,
+)
 
 SANDESH_PACKAGE = "sandesh-relay"
 
@@ -108,21 +115,26 @@ def _families(row: dict) -> str:
 
 def _offer_pi_installs(
     harness: dict[str, str], offer: Callable[[str], bool] | None, warnings: list[str],
-) -> bool:
+    agent_dir: Path,
+) -> None:
     """§S3: for each ABSENT tier-1 extension, offer Pi's own
     ``pi install npm:<package>`` — run only on an explicit interactive yes
     (``offer`` is ``None`` under ``--yes``). Model B never edits Pi's
     ``settings.json``; Pi does. A decline is recorded as a warning.
-    Returns True when any install ran and exited 0 (re-probe)."""
+
+    After an install exits 0 that ONE capability is re-probed: its verdict
+    in ``harness`` (updated in place) becomes ``installed`` iff Pi now
+    loads it, else keeps the re-probed verdict with a warning naming where
+    it was expected."""
     missing = [cap for cap, verdict in harness.items() if verdict == ABSENT]
     if offer is None or not missing:
-        return False
+        return
     pi_path = shutil.which("pi")
     if pi_path is None:
-        return False
-    ran = False
+        return
     for cap in missing:
-        spec = f"npm:{requirement(cap)['provider']}"
+        package = requirement(cap)["provider"]
+        spec = f"npm:{package}"
         command = f"pi install {spec}"
         if not offer(f"{cap}=absent — run Pi's own `{command}`?"):
             _warn(f"declined `{command}` — {cap} stays absent", warnings)
@@ -135,8 +147,17 @@ def _offer_pi_installs(
         if returncode != 0:
             _warn(f"`{command}` failed (exit={returncode})", warnings)
             continue
-        ran = True
-    return ran
+        verdict = probe_harness({cap: package}, agent_dir)[cap]
+        if verdict == DETECTED:
+            harness[cap] = INSTALLED
+            continue
+        harness[cap] = verdict
+        _warn(
+            f"`{command}` exited 0 but {cap} is still {verdict} — expected "
+            f"{agent_dir / 'settings.json'} packages[] to list {spec} and "
+            f"{agent_dir / 'npm' / 'node_modules' / package / 'package.json'} to exist",
+            warnings,
+        )
 
 
 def _harness_policy(
@@ -148,7 +169,7 @@ def _harness_policy(
     failed: list[str] = []
     for cap, verdict in harness.items():
         row = requirement(cap)
-        if verdict == DETECTED:
+        if verdict in (DETECTED, INSTALLED):
             continue
         fix = f"install it with Pi's own command: `{row['remediation']}`"
         if verdict == UNKNOWN:
@@ -238,8 +259,7 @@ def run_preflight(
         probes = "".join(f"{name}={v} " for name, v in toolchains[stack].items())
         print(f"stack {stack}: {probes}client={client}", file=sys.stderr)
 
-    if _offer_pi_installs(harness, offer, warnings):
-        harness = probe_harness(tier1, agent_dir)
+    _offer_pi_installs(harness, offer, warnings, agent_dir)
     failed = _harness_policy(
         harness, str(agent_dir / "settings.json"), allow_missing_capabilities, warnings,
     )

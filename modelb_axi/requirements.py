@@ -197,6 +197,8 @@ _ARDUINO_CLI_INSTALLER = (
 #: ``unittest-xml-reporting`` package (orchestrator ruling, C2).
 _PIP_INSTALL = "python3 -m pip install unittest-xml-reporting coverage"
 _PIP_HOW = "install the Crucible python client's modules with pip"
+_CARGO_BIN = "in ~/.cargo/bin, which must be on PATH"
+_LOCAL_BIN = "~/.local/bin"
 
 
 def install_display(install: tuple[str, ...]) -> str:
@@ -207,12 +209,21 @@ def install_display(install: tuple[str, ...]) -> str:
 
 def _probe(
     name: str, how: str, install: tuple[str, ...] | None, kind: str = "binary",
+    *, expected: str | None = None, env_dirs: dict[str, str] | None = None,
 ) -> dict:
     """One toolchain probe. Its ``remediation`` is ``how`` \u2014 prose \u2014 and,
     when the provider's installer can be run, that command set apart in
-    backticks: ``<how>: `<command>` `` (the command never carries prose)."""
+    backticks: ``<how>: `<command>` `` (the command never carries prose).
+    ``expected`` names where a re-probe looks for the tool after its
+    installer ran; ``env_dirs`` are environment variables the installer is
+    run with, each naming a directory (``~`` expanded) created if missing."""
     remediation = f"{how}: `{install_display(install)}`" if install else how
-    return {"name": name, "kind": kind, "remediation": remediation, "install": install}
+    if expected is None:
+        expected = "importable by the PATH python3" if kind == "module" else "on PATH"
+    return {
+        "name": name, "kind": kind, "remediation": remediation, "install": install,
+        "expected": expected, "env_dirs": dict(env_dirs or {}),
+    }
 
 
 _JVM_PROBES: tuple[dict, ...] = (
@@ -237,22 +248,28 @@ STACK_TOOLCHAINS: dict[str, tuple[dict, ...]] = {
         _probe("coverage", _PIP_HOW, tuple(_PIP_INSTALL.split()), kind="module"),
     ),
     "rust": (
-        _probe("cargo", "install Rust with rustup", ("sh", "-c", _RUSTUP_INSTALLER)),
+        _probe("cargo", "install Rust with rustup", ("sh", "-c", _RUSTUP_INSTALLER),
+               expected=_CARGO_BIN),
         _probe("cargo-nextest", "install it with cargo",
-               ("cargo", "install", "cargo-nextest")),
+               ("cargo", "install", "cargo-nextest"), expected=_CARGO_BIN),
         _probe("cargo-llvm-cov", "install it with cargo",
-               ("cargo", "install", "cargo-llvm-cov")),
+               ("cargo", "install", "cargo-llvm-cov"), expected=_CARGO_BIN),
     ),
     "quarkus": _JVM_PROBES,
     "java": _JVM_PROBES,
     "bun": (
-        _probe("bun", "install bun with bun's installer", ("sh", "-c", _BUN_INSTALLER)),
+        _probe("bun", "install bun with bun's installer", ("sh", "-c", _BUN_INSTALLER),
+               expected="in ~/.bun/bin, which must be on PATH"),
         _probe("node", "install Node.js from https://nodejs.org or the OS package "
                        "manager", None),
     ),
     "arduino": (
+        # The installer drops the binary in $BINDIR (default ./bin, the
+        # cwd): pin it to ~/.local/bin (finding 2).
         _probe("arduino-cli", "install arduino-cli with its installer",
-               ("sh", "-c", _ARDUINO_CLI_INSTALLER)),
+               ("sh", "-c", _ARDUINO_CLI_INSTALLER),
+               expected="in ~/.local/bin (the installer's BINDIR), which must be on PATH",
+               env_dirs={"BINDIR": _LOCAL_BIN}),
         _probe("g++", "install g++ with the OS package manager", None),
     ),
 }
