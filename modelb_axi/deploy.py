@@ -24,7 +24,10 @@ tests — callers pass sandboxed target roots (repo-local rule, DN §7).
 import hashlib
 import os
 import shutil
+import stat
 from pathlib import Path
+
+from modelb_axi._fsutil import atomic_write
 
 # Per-harness skills-dir mapping (target-root-relative). Only harnesses
 # listed here receive symlinks; the rest of the roster is deploy-inert
@@ -149,7 +152,8 @@ def _deploy_file(
             skipped.append(rel)
             return {"path": rel, "sha256": recorded}
     dest.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(src, dest)
+    # CR-MDB-033 §S2: atomic, carrying the source mode (exec bit included).
+    atomic_write(dest, src.read_bytes(), mode=stat.S_IMODE(src.stat().st_mode))
     return {"path": rel, "sha256": src_hash}
 
 

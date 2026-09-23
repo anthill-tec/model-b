@@ -17,8 +17,13 @@ refuses to guess and fails naming ``install.toml``.
 Channels: stdout carries exactly one TOON AXI envelope
 (``modelb_axi.axi``); ALL human progress goes to stderr.
 
-Repo-local rule: ``--dry-run`` (and any failure) writes NOTHING under
-``--target``. Stdlib only.
+Repo-local rule: ``--dry-run`` writes NOTHING under ``--target``, and a
+failure init can detect in validation (CR-MDB-033 §S1) is raised before
+the first write. A failure DURING emission may leave a partial tree:
+emission is not staged through a temp dir, so the ``init`` failure
+envelope carries ``emitted`` -- the same field the success envelope uses
+-- listing exactly the files written before the failure (CR-MDB-033 §S4).
+Each file is itself written atomically (§S2). Stdlib only.
 """
 
 import argparse
@@ -27,6 +32,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from modelb_axi._fsutil import atomic_write
 from modelb_axi.axi import envelope
 from modelb_axi.config import INSTALL_TOML_NAME, load_install_toml
 from modelb_axi.deploy import default_asset_root
@@ -590,19 +596,25 @@ def _emit_plan(
     no_commit: bool,
     home: Path,
     hook_scripts_root: Path | None,
+    emitted: list[str] | None = None,
 ) -> list[str]:
     """Perform the real §S3/§S4 emission under ``target``; returns the
     emitted file paths (relative to ``target``).
 
     ``hook_scripts_root`` is resolved by :func:`run_init` during
     validation (CR-MDB-033 §S1) — ``None`` only when no roster harness
-    needs compiled wiring; emission never resolves it itself."""
-    emitted: list[str] = []
+    needs compiled wiring; emission never resolves it itself.
+
+    ``emitted`` is an optional caller-owned out-list, appended to only
+    AFTER each write succeeds, so the caller still holds exactly the
+    files written when emission raises (CR-MDB-033 §S4)."""
+    if emitted is None:
+        emitted = []
 
     def write(rel: str, text: str) -> None:
         path = target / rel
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text, encoding="utf-8")
+        atomic_write(path, text.encode("utf-8"))
         emitted.append(rel)
 
     templates = _select_memory_templates(_memory_templates_dir(home), stacks)
@@ -735,7 +747,7 @@ def run_init(args: argparse.Namespace, home: Path) -> int:
     emitted: list[str] = []
     if not dry_run:
         try:
-            emitted = _emit_plan(
+            _emit_plan(
                 target,
                 name=args.name,
                 token=args.token,
@@ -748,10 +760,16 @@ def run_init(args: argparse.Namespace, home: Path) -> int:
                 no_commit=bool(getattr(args, "no_commit", False)),
                 home=home,
                 hook_scripts_root=hook_scripts_root,
+                emitted=emitted,
             )
         except (ScaffoldError, OSError) as exc:
+            # CR-MDB-033 §S4: a mid-emission failure may leave a partial
+            # tree; `emitted` lists exactly the files written before it.
             print(f"modelb-axi: error: {exc}", file=sys.stderr)
-            print(envelope("init", False, warnings=[str(exc)], dry_run=False))
+            print(envelope(
+                "init", False, warnings=[str(exc)], dry_run=False,
+                emitted=emitted,
+            ))
             return 3
         print(
             "  note: registrations are manual in scaffold v1 — steps "

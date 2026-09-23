@@ -15,12 +15,15 @@ invoke :func:`write_install_toml` AFTER every deploy step has succeeded
 — a failed deploy leaves no ``install.toml`` at all.
 """
 
-import os
-import tempfile
 import tomllib
 from pathlib import Path
 
+from modelb_axi._fsutil import atomic_write
+
 INSTALL_TOML_NAME = "install.toml"
+#: install.toml holds no secrets, so 0644 is a decision rather than
+#: tempfile's 0600 default (CR-MDB-033 §S2).
+_INSTALL_TOML_MODE = 0o644
 
 
 def _toml_string(value: str) -> str:
@@ -60,21 +63,13 @@ def serialize_install_toml(
 def write_install_toml(
     home: Path, install: dict, deps: dict, files: list[dict]
 ) -> Path:
-    """Atomically write ``install.toml`` under ``home`` (temp + rename)."""
+    """Atomically write ``install.toml`` under ``home`` (temp + rename).
+
+    Mode 0644: the file holds no secrets (CR-MDB-033 §S2)."""
     home.mkdir(parents=True, exist_ok=True)
     text = serialize_install_toml(install, deps, files)
-    fd, tmp_path = tempfile.mkstemp(
-        prefix=f".{INSTALL_TOML_NAME}.", suffix=".tmp", dir=home,
-    )
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            fh.write(text)
-        target = home / INSTALL_TOML_NAME
-        os.replace(tmp_path, target)
-    except OSError:
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
-        raise
+    target = home / INSTALL_TOML_NAME
+    atomic_write(target, text.encode("utf-8"), mode=_INSTALL_TOML_MODE)
     return target
 
 

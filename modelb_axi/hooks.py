@@ -24,6 +24,7 @@ Stdlib only (pure runtime path).
 import json
 from pathlib import Path
 
+from modelb_axi._fsutil import atomic_write
 from modelb_axi.harness import HARNESS_ROSTER_IDS, UnknownHarnessError
 
 SCHEMA_VERSION = "v1"
@@ -195,8 +196,9 @@ def _emit_claude_code(
         )
     settings_path = target / ".claude" / "settings.json"
     settings_path.parent.mkdir(parents=True, exist_ok=True)
-    settings_path.write_text(
-        json.dumps({"hooks": hooks_by_event}, indent=2) + "\n", encoding="utf-8"
+    atomic_write(
+        settings_path,
+        (json.dumps({"hooks": hooks_by_event}, indent=2) + "\n").encode("utf-8"),
     )
     entry["emitted_files"].append(".claude/settings.json")
 
@@ -267,7 +269,7 @@ def _emit_opencode(
     shim_rel = Path(".opencode") / "plugin" / "modelb-hooks.ts"
     shim_path = target / shim_rel
     shim_path.parent.mkdir(parents=True, exist_ok=True)
-    shim_path.write_text("\n".join(lines), encoding="utf-8")
+    atomic_write(shim_path, "\n".join(lines).encode("utf-8"))
     entry["emitted_files"].append(str(shim_rel))
 
 
@@ -312,7 +314,7 @@ def _emit_pi(
             + "});\n"
         )
         ext_rel = Path(".pi") / "extensions" / f"{instance['command']}.ts"
-        (target / ext_rel).write_text(text, encoding="utf-8")
+        atomic_write(target / ext_rel, text.encode("utf-8"))
         entry["emitted_files"].append(str(ext_rel))
         emitted_any = True
     if emitted_any:
@@ -345,7 +347,7 @@ def _emit_hermes_advisory(
     advisory_rel = Path("hooks") / "hermes-manual.yaml"
     advisory_path = target / advisory_rel
     advisory_path.parent.mkdir(parents=True, exist_ok=True)
-    advisory_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    atomic_write(advisory_path, ("\n".join(lines) + "\n").encode("utf-8"))
     entry["emitted_files"].append(str(advisory_rel))
 
 
