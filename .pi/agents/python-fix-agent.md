@@ -26,6 +26,13 @@ permission:
   ctx_edit: allow
 ---
 
+
+**Reading outside the repository (NON-NEGOTIABLE).** For any path outside the project — installed
+skills (`~/.agents/`), Crucible clients (`~/.crucible/`), the installed harness — use the built-in
+`read`, `grep`, `find` or `ls`, never a `ctx_*` tool. The permission system proves the built-ins
+read-only; an extension tool's direction is unproven, so it is also checked against the write
+policy and prompts the user. Inside the project, `ctx_*` stays the default.
+
 ## Universal procedure — READ FIRST (cited, not restated)
 
 The common sub-agent procedure — worktree write boundary, Crucible lifecycle (register FIRST / unregister LAST), report-every-run, scope discipline, code quality, consequences — lives in:
