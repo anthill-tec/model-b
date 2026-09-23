@@ -598,3 +598,8 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   pre-rendered files as CR-MDB-025 §S4 now specifies; how that composes with CR-MDB-036 §S7's
   stack selector (render only selected stacks × targeted harnesses); and CR-MDB-025 §S1's
   "`_emit_pi()` is the only serialiser", which reads as one emitter of many, not the only one.
+- 2026-09-23 — **Deferred (found by CR-MDB-024 VERIFY, not folded in):**
+  `skills-src/memory-templates/rust-orchestration.md`'s Tooling section lists `smoke-test
+  [--all-features] [--clean] [--with-docker]` without `--profile`, which the released client
+  supports (default `ci`) and CR-024's generated tier guidance uses. A skills-src edit needs a CR;
+  CR-MDB-020 already edits that template's client paths — fold it in there.

@@ -255,11 +255,17 @@ the package warns against it. The policy that works names what the workflow uses
 - `"*": "ask"` as the explicit fallback;
 - `allow` by exact tool name for the lean-ctx family (every `ctx_*` tool and `lean_ctx` — tool
   keys take no wildcard, so each is listed), the built-in file tools, the sub-agent tools
-  (`subagent`, `get_subagent_result`, `steer_subagent`), `todo` and `ask_user_question`;
+  (`subagent`, `get_subagent_result`, `steer_subagent`, and the child-side `notify_parent` and
+  `ask_parent`), `todo` and `ask_user_question`;
 - `skill: allow`; `external_directory_read` allowing `~/.agents/*`, `~/.crucible/*`,
   `~/.pi/agent/*`, the installed harness's own code (`~/.bun/install/*` for the bun-installed Pi,
   added 2026-09-23 after CR-MDB-030's RED stalled 35 minutes on unanswered prompts reading Pi's
   loader) and `/tmp/*`; `external_directory_write` allowing `/tmp/*`; both else `ask`.
+
+An extension tool's access direction is unproven to the permission system, so it is checked against
+both the read and the write policy; reads outside the project are therefore made with the built-in
+tools, which the policy proves read-only (the agent-side rule is CR-MDB-025 §S7). No write
+allowance outside `/tmp` is added to silence those prompts.
 
 The installer ships that policy as a template and, when the permission system is present, reports
 whether the global config carries it: absent, missing the `"*"` fallback, or missing a
