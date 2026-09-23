@@ -116,6 +116,24 @@ this file. §S7 (Model B dog-fooding, measured at close-out) stays out of
 scope -- nothing below asserts against THIS repo's own `.pi/agents/` or
 regenerates `generator/agents/*.md`.
 
+CR-MDB-025 CYCLE C3 RED2 AMENDMENT (this round, committed amendment
+bcd5cf6, cycle 83): new §S5 AC3 -- "Every rendered definition's First
+Actions list has registration with Crucible as item 1, ahead of the AC
+cross-check" -- joins the covered scope via `RegisterFirstOrderS5Test`.
+Written BEFORE the amendment's production code lands (measured 2026-09-2x
+directly from `generator/templates/{red,green}.md.tmpl` and their
+`generator/agents/*-{red,green}-agent.md` renders): both templates' First
+Actions item 1 is `**AC Cross-Check** (below/above) -- BEFORE/before
+Crucible registration.`, with `**Register with Crucible**` as item 2 --
+the pre-amendment order the new detector fixture reproduces verbatim.
+`fix.md.tmpl` and `verify.md.tmpl` (and their ten rendered fix/verify
+files) already open item 1 with `**Register with Crucible**` and pass this
+gate already; only the ten red/green files fail it. Migration (this
+slice): grepped this whole `tests/` directory for `First Actions`,
+`AC Cross-Check` and `Register with Crucible` -- zero matches outside this
+file's own new class, so no existing test asserts the pre-amendment order
+and none needs migrating.
+
 Written BEFORE any §S6 production code exists (measured 2026-09-2x):
 `scaffold.py::_emit_plan` has no `agents` import and no `.pi/agents` write
 site at all -- `init` today emits nothing under `.pi/agents/` for any
@@ -270,6 +288,13 @@ OUT_OF_REPO_READ_RULE_ANCHOR = "Reading outside the repository (NON-NEGOTIABLE)"
 PROVE_BOTH_WAYS_RULE_ANCHOR = "Prove every test BOTH ways before you report (NON-NEGOTIABLE)"
 TEST_MIGRATION_RULE_ANCHOR = "Migrating existing tests when the contract changes (NON-NEGOTIABLE)"
 
+# \u00a7S5 AC3 (bcd5cf6 amendment) -- the "## First Actions" heading anchor and
+# the phrase that must open item 1: registration with Crucible, ahead of
+# the AC cross-check. Measured verbatim from generator/templates/*.md.tmpl
+# (all four roles share the identical heading text).
+FIRST_ACTIONS_HEADING = "## First Actions (IN THIS ORDER \u2014 NON-NEGOTIABLE)"
+REGISTER_FIRST_ANCHOR = "Register with Crucible"
+
 # §S5 AC2 -- no rendered body names this token (case-sensitive, word-
 # boundary matched so lowercase markdown fence tags like ```bash`` never
 # false-positive).
@@ -383,6 +408,28 @@ def _capitalised_tool_names(tools_value: str) -> list:
 def _role_of(agent_filename: str) -> str:
     stem = agent_filename[: -len("-agent.md")]
     return stem.rsplit("-", 1)[-1]
+
+
+def _first_actions_section(body: str) -> str:
+    """\u00a7S5 AC3 -- the text of the '## First Actions' section only, up to
+    (not including) the next '## ' heading. Empty string if the section is
+    absent from this body."""
+    idx = body.find(FIRST_ACTIONS_HEADING)
+    if idx == -1:
+        return ""
+    rest = body[idx + len(FIRST_ACTIONS_HEADING):]
+    end = rest.find("\n## ")
+    return rest if end == -1 else rest[:end]
+
+
+def _first_actions_item_one(body: str) -> str:
+    """\u00a7S5 AC3 -- the rest-of-line text of numbered item '1.' inside the
+    '## First Actions' section, e.g. '**Register with Crucible** via ...'
+    or '**AC Cross-Check** (below) -- BEFORE Crucible registration.'.
+    Empty string if no numbered item 1 is found in that section."""
+    section = _first_actions_section(body)
+    m = re.search(r"^\s*1\.\s+(.*)$", section, re.MULTILINE)
+    return m.group(1).strip() if m else ""
 
 
 def _all_agent_files():
@@ -1010,6 +1057,90 @@ class ToolNamesRuleS5Test(unittest.TestCase):
         self.assertEqual(
             len(BASH_TOKEN_RE.findall("```bash\npython3 foo.py\n```")), 0,
             "the detector must not fire on a lowercase ```bash``` fence tag",
+        )
+
+
+class RegisterFirstOrderS5Test(unittest.TestCase):
+    """\u00a7S5 AC3 (2026-09-23 amendment, commit bcd5cf6) -- every rendered
+    definition's First Actions list carries registration with Crucible as
+    item 1, ahead of the AC cross-check -- a gate over the fleet (all 20),
+    with a detector fixture proving it bites on the pre-amendment order.
+    Measured 2026-09-2x directly from generator/templates/{red,green}.md.tmpl
+    and their generator/agents/*-{red,green}-agent.md renders: item 1 today
+    is '**AC Cross-Check** (below/above) -- BEFORE/before Crucible
+    registration.', with registration as item 2 -- the exact pre-amendment
+    order this AC's detector fixture reproduces verbatim below.
+    generator/templates/{fix,verify}.md.tmpl (and their ten rendered
+    fix/verify files) already comply."""
+
+    def test_s5_every_definitions_first_actions_item_one_is_register_with_crucible(self):
+        failures = []
+        agent_files = _all_agent_files()
+        self.assertEqual(
+            len(agent_files), 20,
+            f"expected exactly 20 generated agent files under {AGENTS_DIR}, "
+            f"found {len(agent_files)}",
+        )
+        for path in agent_files:
+            _, body = _split_frontmatter(_read(path))
+            item_one = _first_actions_item_one(body)
+            self.assertNotEqual(
+                item_one, "",
+                f"{path.name}: no numbered item 1 found under "
+                f"{FIRST_ACTIONS_HEADING!r} (\u00a7S5 AC3)",
+            )
+            if REGISTER_FIRST_ANCHOR not in item_one:
+                failures.append(
+                    f"{path.name}: First Actions item 1 must open with "
+                    f"registration ahead of the AC cross-check (\u00a7S5 AC3), "
+                    f"found: {item_one!r}"
+                )
+        # POSITIVE -- all four roles, every stack, register first.
+        self.assertEqual(failures, [], "\n".join(failures))
+
+    def test_s5_detector_bites_on_pre_amendment_order_but_not_on_register_first_order(self):
+        # Fixture proof the DETECTOR itself fires correctly, independent of
+        # any live file. The pre-amendment fixture text is measured
+        # verbatim from generator/templates/red.md.tmpl's own First Actions
+        # list today (item 1 = AC Cross-Check, item 2 = Register); the
+        # post-amendment fixture is the compliant order \u00a7S5 AC3 requires.
+        pre_amendment_body = (
+            FIRST_ACTIONS_HEADING + "\n\n"
+            "1. **AC Cross-Check** (below) \u2014 BEFORE Crucible registration.\n"
+            "2. **Register with Crucible** via the stable stack client "
+            "(NOT inline curl/python), with the agentId from your dispatch "
+            "prompt.\n"
+            "3. **Read project context** \u2014 CLAUDE.md, then any docs it "
+            "references.\n"
+            "\n## Acceptance Criteria Cross-Check (STEP 1 \u2014 BEFORE CRUCIBLE, BEFORE ANYTHING)\n"
+        )
+        pre_item_one = _first_actions_item_one(pre_amendment_body)
+        self.assertEqual(
+            pre_item_one,
+            "**AC Cross-Check** (below) \u2014 BEFORE Crucible registration.",
+            "the detector's own item-1 extraction must return the AC "
+            "cross-check text unmodified from the pre-amendment fixture",
+        )
+        self.assertNotIn(
+            REGISTER_FIRST_ANCHOR, pre_item_one,
+            "the detector must BITE (the anchor must be absent from item 1) "
+            "on the pre-amendment order",
+        )
+
+        post_amendment_body = (
+            FIRST_ACTIONS_HEADING + "\n\n"
+            "1. **Register with Crucible** via the stable stack client "
+            "(NOT inline curl/python), with the agentId from your dispatch "
+            "prompt.\n"
+            "2. **Read project context** \u2014 CLAUDE.md, then any docs it "
+            "references.\n"
+            "\n## Acceptance Criteria Cross-Check (STEP 1 \u2014 BEFORE CRUCIBLE, BEFORE ANYTHING)\n"
+        )
+        post_item_one = _first_actions_item_one(post_amendment_body)
+        self.assertIn(
+            REGISTER_FIRST_ANCHOR, post_item_one,
+            "the detector must NOT bite (the anchor must be present in item "
+            "1) on the compliant, post-amendment register-first order",
         )
 
 
