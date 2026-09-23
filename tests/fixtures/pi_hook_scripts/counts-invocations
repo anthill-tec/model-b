@@ -1,0 +1,22 @@
+#!/usr/bin/env python3
+"""Test-only protocol-script fixture (CR-MDB-030 §S4) — NOT a real
+hooks-src/scripts/ hook. Reads and discards stdin, appends one line to the
+file named by $HOOK_INVOCATION_COUNTER_FILE (created if missing) each time
+it runs -- so a driving test can prove WHETHER the shim spawned this script
+at all for a given event, independent of its (always-allow) exit code. A
+missing/unset env var makes this a silent no-op (never a counting side
+channel a test forgot to wire)."""
+
+import os
+import sys
+
+def main() -> int:
+    sys.stdin.read()
+    counter_path = os.environ.get("HOOK_INVOCATION_COUNTER_FILE")
+    if counter_path:
+        with open(counter_path, "a", encoding="utf-8") as fh:
+            fh.write("1\n")
+    return 0
+
+if __name__ == "__main__":
+    sys.exit(main())
