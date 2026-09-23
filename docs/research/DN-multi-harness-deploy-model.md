@@ -136,7 +136,7 @@ single implementation; the factory is a per-harness adapter, exactly as the neut
 already intends.
 
 ### D6 — The OMP agent directory is RESOLVED, never hardcoded
-> *SUPERSEDED 2026-09-21 — no OMP target. The Pi target directory is `~/.agents/agents/` (§D16).*
+> *SUPERSEDED 2026-09-21 — no OMP target. The Pi target directory is `~/.agents/agents/` (§D16); corrected 2026-09-23 to the project's `.pi/agents/`, rendered by `init` (§D17).*
 `~/.omp/agent` is only the default. `omp --profile <name>` moves it to
 `~/.omp/profiles/<name>/agent/`, and `PI_CODING_AGENT_DIR` overrides it outright. Every OMP path
 this model writes — agents, skills, tools, hooks — resolves the active agent directory first. A
@@ -544,6 +544,11 @@ which is exactly why owning the harness remains a NON-GOAL (§D11).
 
 ### D16 — Sub-agent dispatch on Pi is provided by `pi-archimedes`; the emitter target is `~/.agents/agents/`
 
+> *SUPERSEDED IN PART 2026-09-23 by §D17.* The dispatcher and the emitter target below no longer
+> hold: the live dispatcher is `@gotgenes/pi-subagents` (measured 2026-09-22, CR-MDB-025
+> amendment), which does not read `~/.agents/agents/` at all, and agent definitions are rendered
+> per project (§D17). Consequences 1 and 3 are superseded; 2, 4 and 5 are re-read against §D17.
+
 **User ruling 2026-09-21**, closing CR-MDB-027. Measurement in CR-MDB-027 §S1.1 (sources: the
 installed package's `package.json`/`README.md`/`src/spawn.ts`/`src/agents.ts` and the npm
 registry — mechanism read from source, not inferred from this session working).
@@ -591,6 +596,48 @@ nested dispatch. Agent files: `.md` + frontmatter `name`/`description` (required
 **Release scope, ruled 2026-09-21:** CR-MDB-027 and its implementation (the CR-MDB-025 re-spec)
 are both in release 1.0.0; 025 stays on CR-MDB-012's dependency list.
 
+### D17 — Agent definitions are rendered per project, per harness, by `init`
+
+**User ruling 2026-09-23.** Supersedes §D16 consequences 1 and 3.
+
+**Why.** An agent definition is harness-specific in two ways at once: its **format** (each
+harness supports its own frontmatter — the generator exists to tailor definitions to that) and
+its **location** (each harness discovers agents in its own directories). It also carries
+**project** facts — the project's stacks, acronym and orchestrator label, its agent-id
+conventions, which Crucible client it runs. One global fleet can express none of the project
+facts, and there is no location every harness reads.
+
+**Measured, 2026-09-23** (`@gotgenes/pi-subagents` `docs/configuration.md`): Pi discovers agents
+in exactly two places — `<project>/.pi/agents/<name>.md` (priority 1) and
+`~/.pi/agent/agents/<name>.md` (priority 2) — and a project definition overrides a global one of
+the same name. `~/.agents/agents/` is not read; the fleet placed there has had no effect since
+pi-archimedes was replaced.
+
+**The rule — agents follow the hooks model (PRD D10.7).** Behaviour ships once; configuration is
+per project:
+
+| Asset | Shipped once (installed package / user scope) | Per project (written by `init`) |
+|---|---|---|
+| Hooks | protocol scripts in `~/.agents/hooks/scripts/` | instances + per-harness wiring (`.pi/extensions/`, `.claude/settings.json`) |
+| **Agents** | neutral stack × role definitions + one emitter per harness | rendered definitions in each targeted harness's project directory (Pi: `.pi/agents/`) for the project's stacks |
+| Skills, tool scripts | `~/.agents/skills/`, `~/.agents/scripts/` | selected by the project's `AGENTS.md` (PRD D10.3) |
+
+**Consequences.**
+
+1. The installer deploys **no** agent definitions. CR-MDB-025 §S4 is redirected accordingly.
+2. `init` renders agents for the project's stacks × the installation's harnesses, and a re-render
+   command exists for an already-initialised project (a template change reaches a project only
+   when it re-renders).
+3. The global fleet is legacy. **`~/.agents/agents/`** — read by no harness Model B targets — had
+   its 20 Model B definitions **removed** 2026-09-23 (user direction: it only pollutes; backup in
+   `~/.cache/`), leaving `inbox-analyst.md`, which is not Model B's (§D3). **`~/.pi/agent/agents/`**
+   — Pi's global scope — is left in place and never written by Model B, so projects not yet
+   re-rendered keep working.
+4. Stack scoping of agents follows the project's stacks, not an installer selection; CR-MDB-036
+   §S7's selector scopes skills and report bundles only.
+5. Model B dog-foods this first: `model-b/.pi/agents/` holds its python agents (hand-made in the
+   interim, 2026-09-23; rendered once CR-MDB-025 lands).
+
 ## Consequences per CR
 
 | CR | What this DN changes |
@@ -599,10 +646,10 @@ are both in release 1.0.0; 025 stays on CR-MDB-012's dependency list.
 | **020** (client paths) | §D8's never-a-checkout rule is its §S0; the anchor is now real, not aspirational. |
 | **018** (discovery) | The manifest exists with six keys; resolution SUCCEEDS, so the unresolved degrade is no longer the expected outcome. |
 | **019** (hook runtime) | Re-scoped 2026-09-21: §S3 (opencode emitter) struck; keeps the status-contract re-pin and the arduino marker. The Pi emitter's runtime is CR-MDB-030. |
-| **024** (rust) | Its four definitions are generated into `generator/agents/` and reach Pi through CR-025's `.agents/agents` class; nothing under `~/.claude/agents/` is superseded (§D14). |
-| **014** (installer) | Gains the agent-definition asset class (CR-025 §S4) and `pi install` orchestration for the package (CR-029 §S4). CR-033 fixes `target_root`, atomic writes and the unmanaged-file clobber first. |
+| **024** (rust) | Its four definitions are generated into `generator/agents/` and reach Pi the way every stack's do — rendered per project by `init` into `.pi/agents/` (§D17); nothing under `~/.claude/agents/` is superseded (§D14). |
+| **014** (installer) | Deploys **no** agent-definition class (§D17 — agents are rendered per project by `init`, superseding the CR-025 §S4 asset class this row once named); gains `pi install` orchestration for the package (CR-029 §S4). CR-033 fixes `target_root`, atomic writes and the unmanaged-file clobber first. |
 | **012** (release) | The release gate must prove Pi resolves an emitted definition by name (`list_agents` via archimedes). §D15.2 adds a publication step for the Pi package (extensions + skills): tag, `pi install …@<version>` (CR-029 §S5). No byte-identity gate (§D14). |
-| **NEW CR — CR-MDB-029** | Authoring the Pi package itself per §D15.2: `package.json` `pi` manifest, `extensions/` (the CR-026 watcher per §D15.3; hooks currently emitted per-project by 015), `skills/`. **Agent definitions cannot ride it** — Pi packages carry only extensions/skills/prompts/themes — so the split is: package = extensions + skills; installer = agents + tool scripts. (The number 027 this row once reserved was consumed by the dispatch decision CR.) |
+| **NEW CR — CR-MDB-029** | Authoring the Pi package itself per §D15.2: `package.json` `pi` manifest, `extensions/` (the CR-026 watcher per §D15.3; hooks currently emitted per-project by 015), `skills/`. **Agent definitions cannot ride it** — Pi packages carry only extensions/skills/prompts/themes — so the split is: package = extensions + skills; installer = tool scripts; `init` = agents, per project (§D17). (The number 027 this row once reserved was consumed by the dispatch decision CR.) |
 
 ## Open, deliberately not decided here
 
