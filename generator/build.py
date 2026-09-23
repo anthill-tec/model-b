@@ -20,8 +20,7 @@ Verbs:
   --roles R,..   restrict to the given roles (agent targets only)
 
 Stdlib only. Deterministic output: stable target ordering, no timestamps.
-The 9 bespoke defs (vscode x4, electronics x4, inbox-analyst) are NEVER
-targets. The codec copy is not stack- or role-scoped, so it is a target
+The 5 bespoke defs (electronics x4, inbox-analyst) are NEVER targets. The codec copy is not stack- or role-scoped, so it is a target
 of every invocation.
 """
 

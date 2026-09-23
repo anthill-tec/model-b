@@ -76,7 +76,8 @@ model-b/
 ├── plans/                       # wave plans + close-out reports
 └── .lavish/                     # review artifacts
 ```
-Generated: arduino/bun/python/quarkus × red/green/verify/fix (16 agents). Bespoke kept: rust ×4, vscode ×4, electronics ×4, `inbox-analyst`. ALL agents repointed `memory/agent-baseline.md` → `AGENTS.md`.
+Generated: arduino/bun/python/quarkus × red/green/verify/fix (16 agents). Bespoke kept: electronics ×4, `inbox-analyst`. ALL agents repointed `memory/agent-baseline.md` → `AGENTS.md`.
+> Corrected by CR-MDB-024 §S4: rust ×4 is no longer bespoke — it became the fifth generated stack (2026-09-16 rust ruling; 20 generated agents); the editor-overlay ×4 set was retired outright, an IDE is not a stack (2026-09-22 ruling).
 
 ### Scripts / AXI wave
 - `bun-crucible.py` is the **reference implementation** for the Crucible V2 client API (decision 11); all clients converge on it.

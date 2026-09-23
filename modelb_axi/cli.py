@@ -145,7 +145,7 @@ def _add_init_parser(subparsers) -> None:
     )
     init.add_argument(
         "--stacks", metavar="CSV",
-        help="stack csv: arduino,bun,python,quarkus,rust,vscode,java",
+        help="stack csv: arduino,bun,python,quarkus,rust,java",
     )
     init.add_argument(
         "--harnesses", metavar="CSV", default=argparse.SUPPRESS,

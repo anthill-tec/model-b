@@ -101,6 +101,12 @@ hand-modified destinations rather than clobbering them. Consequences, stated so 
   installer itself previously wrote, and only when the manifest says so.
 
 ### D4 — VS Code is owned as an editor overlay, not a stack
+> **SUPERSEDED (user ruling 2026-09-22, CR-MDB-024 §S3).** VS Code is an editor, not a stack —
+> so there is no editor overlay either. The four `vscode-*` definitions are retired outright, not
+> regenerated: a VS Code extension is TypeScript tested with vitest/mocha, which is the bun stack.
+> The `crucible-report-vscode` bundle, its reference router and `vscode` as a selectable
+> `--stacks` id are deleted with them. The text below is kept as the superseded record.
+
 User ruling: VS Code is an **editor**, not a language stack. The four `vscode-*` definitions are
 generated from the **bun/TypeScript** stack plus an editor-overlay layer (npm, vitest,
 `@vscode/test-electron`). **No `generator/stacks/vscode.toml` is created** — that would re-assert

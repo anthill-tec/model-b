@@ -45,7 +45,7 @@ from modelb_axi.hooks import compile_wiring
 
 # §S2 stack roster for --stacks validation.
 KNOWN_STACKS: tuple[str, ...] = (
-    "arduino", "bun", "python", "quarkus", "rust", "vscode", "java",
+    "arduino", "bun", "python", "quarkus", "rust", "java",
 )
 
 # Registry/plan inputs every init needs (flag dest -> flag name).
