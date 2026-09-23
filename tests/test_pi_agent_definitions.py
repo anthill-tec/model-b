@@ -9,6 +9,51 @@ rules, §S6 `init`/`agents` verb and file-ownership, §S7 Model B dog-fooding.
 No test below asserts permission: block CONTENT, a template-body rule, the
 `agents` CLI verb, `PROJECT_STACKS`, or the real `~/.pi/agents/` tree.
 
+CR-MDB-025 CYCLE C2 AMENDMENT (this cycle, C2 RED, 2026-09-2x): §S4
+(permission policy beside the tools) and §S5 (the role templates carry the
+rules the live definitions carry) join the covered scope below via three
+new test classes -- `PermissionPolicyS4Test`, `TemplateRulesS5Test`,
+`ToolNamesRuleS5Test`. §S6/§S7 remain out of scope (no test asserts the
+`agents` CLI verb, `PROJECT_STACKS`, file-ownership markers, or the real
+`~/.pi/agents/` tree). Written BEFORE §S4/§S5's production code lands: the
+20 committed `generator/agents/*.md` files (post-C1 GREEN) carry a `tools:`
+line but NO `permission:` key at all, and their bodies still carry the
+pre-CR-025 Claude-Code-shaped prose -- `Bash` named repeatedly as the tool
+to run the crucible client and git writes, no out-of-repository read rule,
+no RED prove-both-ways rule, no RED test-migration rule (measured
+2026-09-2x by reading `generator/templates/*.md.tmpl` and one rendered
+file per role directly).
+
+Exact wording source for §S5 AC1's three named rules: the CR's own Scope
+prose says the templates "gain what was applied by hand to the live
+definitions on 2026-09-22/23, so the next render does not erase it" --
+that hand-made source is `.pi/agents/python-{red,green,verify,fix}-agent.md`
+in THIS repo, dated 2026-09-23. Its wording is measured, not invented: the
+out-of-repository read rule's anchor ("Reading outside the repository
+(NON-NEGOTIABLE)") is present verbatim in all four hand-made role files;
+the prove-both-ways and test-migration rule anchors are present verbatim
+only in the hand-made RED file, matching §S5 AC1's RED-only scoping; none
+of the three anchors, and zero capitalised `Bash` mentions, appear
+anywhere in `generator/templates/*.md.tmpl` today (grepped 2026-09-2x).
+
+Migration (§ Migration AC, THIS cycle's slice -- §S4/§S5 only): re-grepped
+all five gap-analysis-named files for `permission`, `Bash` (as a positive
+expected-value assertion), `generator`, `.pi/agents`, and `render(`. Zero
+matches requiring migration for this slice:
+  - tests/test_agent_generator.py -- no `permission`/`Bash` assertions at all.
+  - tests/test_installer_assets.py::GeneratorAgentsAssetTest -- its
+    byte-identity check treats render()'s output as opaque (no old-shape
+    coupling) and its banned-literal set does not include `Bash` or
+    `permission`; unaffected by §S4/§S5's changes to that same opaque
+    output.
+  - tests/test_realhome_supersede.py, tests/test_tooling_adoption.py,
+    tests/test_git_chezmoi_skills.py -- zero `generator`/`.pi/agents`/
+    `render(` references (confirmed by the same grep C1 already ran for
+    the §S1-§S3 slice; nothing new for §S4/§S5 either).
+No test anywhere in the suite asserts `Bash` as an EXPECTED (positive)
+body value (grepped `assertIn("Bash"` / `assertIn('Bash'` fleet-wide --
+zero hits), so removing it from the templates regresses nothing.
+
 Written BEFORE any of §S1-§S3's production code lands:
   - `modelb_axi/agents.py` does not exist yet -- the neutral render + Pi
     emitter (`_emit_pi`, the one name §S1 pins verbatim) have not moved out
@@ -112,6 +157,27 @@ ALLOWED_FRONTMATTER_KEYS = {"name", "description", "tools", "thinking", "permiss
 # already disambiguates it from ordinary English "skills").
 BANNED_LITERAL_RE = re.compile(r"\b(sonnet|inherit|opus|haiku|effort|color|maxTurns)\b")
 
+# §S4 AC2 -- VERIFY's tools: line never admits write/edit (§S2), so its
+# permission: block must ALSO state both denies explicitly (belt-and-
+# suspenders: the CR's own §S4 prose -- "so the read-only property is
+# enforced by both the allowlist and the policy").
+VERIFY_DENIED_TOOLS = ("write", "edit")
+
+# §S5 AC1 -- exact anchor phrases, measured from the hand-made 2026-09-23
+# live definitions this repo already carries at .pi/agents/python-*-agent.md
+# (the CR's own Scope prose: the templates "gain what was applied by hand
+# to the live definitions on 2026-09-22/23"). Present verbatim in all four
+# hand-made role files (out-of-repo rule) or only the RED one (the other
+# two), and absent everywhere under generator/templates/ today.
+OUT_OF_REPO_READ_RULE_ANCHOR = "Reading outside the repository (NON-NEGOTIABLE)"
+PROVE_BOTH_WAYS_RULE_ANCHOR = "Prove every test BOTH ways before you report (NON-NEGOTIABLE)"
+TEST_MIGRATION_RULE_ANCHOR = "Migrating existing tests when the contract changes (NON-NEGOTIABLE)"
+
+# §S5 AC2 -- no rendered body names this token (case-sensitive, word-
+# boundary matched so lowercase markdown fence tags like ```bash`` never
+# false-positive).
+BASH_TOKEN_RE = re.compile(r"\bBash\b")
+
 # §S3, this cycle's snapshot: the skill list each stack x role currently
 # declares under [frontmatter].<role>'s "skills:" sub-list (read 2026-09-23
 # from generator/stacks/*.toml). §S1-§S3 change HOW skills are declared and
@@ -188,6 +254,28 @@ def _tools_line_value(path: Path):
         if ln.strip().startswith("tools:"):
             return ln.split(":", 1)[1].strip()
     return None
+
+def _permission_dict(frontmatter: str) -> dict:
+    """§S4 -- the permission: block as {tool: status}, read from its
+    indented child lines only (never the top-level 'permission:' line
+    itself). Returns {} when no top-level 'permission:' key is present
+    (the pre-§S4 state)."""
+    lines = frontmatter.splitlines()
+    result: dict = {}
+    in_block = False
+    for ln in lines:
+        if not in_block:
+            if ln == "permission:":
+                in_block = True
+            continue
+        if ln[:1] in (" ", "\t"):
+            stripped = ln.strip()
+            if stripped:
+                key, _, value = stripped.partition(":")
+                result[key.strip()] = value.strip()
+            continue
+        break
+    return result
 
 
 def _capitalised_tool_names(tools_value: str) -> list:
@@ -616,6 +704,216 @@ class UnknownIntentDropS2Test(unittest.TestCase):
             "a role with skills must carry the 'Load these skills first:' body line (§S3 AC3)",
         )
         self.assertIn("reviewer-coverage", body)
+
+
+class PermissionPolicyS4Test(unittest.TestCase):
+    """\u00a7S4 AC1/AC2 -- every definition's permission: block grants allow to
+    exactly the tools its tools: line admits (a gate cross-checking the two
+    keys across the fleet); every VERIFY definition additionally states
+    write: deny and edit: deny, so the read-only property is enforced by
+    both the allowlist and the policy."""
+
+    def test_s4_emit_pi_permission_allow_set_tracks_an_arbitrary_tools_list(self):
+        # Module-level, controlled fixture -- proves the MECHANISM derives
+        # allow from the tools actually passed, not a per-stack hardcode
+        # that would merely happen to agree with today's 20 committed
+        # files (would FAIL against a no-op stub that emits an empty or
+        # constant permission: block).
+        from modelb_axi import agents
+        fixture_tools = ["read", "ctx_shell", "ctx_search"]
+        defn = {
+            "name": "fixture-red-agent",
+            "description": "fixture description for \u00a7S4",
+            "body": "fixture body\n",
+            "tools": list(fixture_tools),
+            "thinking": "medium",
+            "skills": [],
+        }
+        rendered = agents._emit_pi(defn)
+        frontmatter, _ = _split_frontmatter(rendered)
+        permission = _permission_dict(frontmatter)
+        allowed = {tool for tool, status in permission.items() if status == "allow"}
+        # POSITIVE/EXACT -- allow grants exactly the fixture's own tools.
+        self.assertEqual(
+            allowed, set(fixture_tools),
+            f"permission: must grant allow to exactly the tools: line "
+            f"admits (\u00a7S4 AC1), got allow={sorted(allowed)} for tools={fixture_tools}",
+        )
+        # NEGATIVE -- a tool this fixture did not admit must not appear in
+        # the permission block at all (nothing to grant or deny for it).
+        self.assertNotIn(
+            "write", permission,
+            "permission: must not mention a tool absent from this "
+            "definition's own tools: line",
+        )
+
+    def test_s4_permission_allow_set_equals_tools_line_exactly_across_the_fleet(self):
+        failures = []
+        agent_files = _all_agent_files()
+        self.assertEqual(
+            len(agent_files), 20,
+            f"expected exactly 20 generated agent files under {AGENTS_DIR}, "
+            f"found {len(agent_files)}",
+        )
+        for path in agent_files:
+            frontmatter, _ = _split_frontmatter(_read(path))
+            tools_value = _tools_line_value(path) or ""
+            tool_names = {n.strip() for n in tools_value.split(",") if n.strip()}
+            permission = _permission_dict(frontmatter)
+            allowed = {tool for tool, status in permission.items() if status == "allow"}
+            if allowed != tool_names:
+                failures.append(
+                    f"{path.name}: permission allow-set {sorted(allowed)} "
+                    f"!= tools: set {sorted(tool_names)} (\u00a7S4 AC1)"
+                )
+        # POSITIVE/EXACT -- every one of the 20 files grants allow to
+        # exactly the tools its own tools: line admits, no gate skipped.
+        self.assertEqual(failures, [], "\n".join(failures))
+
+    def test_s4_every_verify_definition_states_write_deny_and_edit_deny(self):
+        failures = []
+        verify_files = [p for p in _all_agent_files() if _role_of(p.name) == "verify"]
+        self.assertEqual(
+            len(verify_files), 5,
+            f"expected exactly 5 VERIFY definitions (one per stack), found {len(verify_files)}",
+        )
+        for path in verify_files:
+            frontmatter, _ = _split_frontmatter(_read(path))
+            permission = _permission_dict(frontmatter)
+            for tool in VERIFY_DENIED_TOOLS:
+                if permission.get(tool) != "deny":
+                    failures.append(
+                        f"{path.name}: permission.{tool} must be 'deny' "
+                        f"(\u00a7S4 AC2), got {permission.get(tool)!r}"
+                    )
+        # POSITIVE/EXACT -- every VERIFY definition states both denies.
+        self.assertEqual(failures, [], "\n".join(failures))
+
+    def test_s4_non_verify_definitions_carry_no_write_or_edit_deny_entry(self):
+        # NEGATIVE/bound -- AC2 names VERIFY only; RED/GREEN/FIX admit
+        # write+edit in their own tools: line (\u00a7S2), so a deny entry
+        # there would directly contradict their own grant.
+        failures = []
+        for path in _all_agent_files():
+            if _role_of(path.name) == "verify":
+                continue
+            frontmatter, _ = _split_frontmatter(_read(path))
+            permission = _permission_dict(frontmatter)
+            for tool in VERIFY_DENIED_TOOLS:
+                if permission.get(tool) == "deny":
+                    failures.append(
+                        f"{path.name}: non-VERIFY definition must not deny {tool}"
+                    )
+        self.assertEqual(failures, [], "\n".join(failures))
+
+
+class TemplateRulesS5Test(unittest.TestCase):
+    """\u00a7S5 AC1 -- every rendered definition carries the
+    out-of-repository read rule; every rendered RED definition additionally
+    carries the prove-both-ways rule and the test-migration rule (gates
+    over the fleet). Anchor phrases are measured verbatim from this repo's
+    own hand-made .pi/agents/python-*-agent.md (see module docstring)."""
+
+    def test_s5_every_definition_carries_the_out_of_repository_read_rule(self):
+        failures = []
+        agent_files = _all_agent_files()
+        self.assertEqual(
+            len(agent_files), 20,
+            f"expected exactly 20 generated agent files under {AGENTS_DIR}, "
+            f"found {len(agent_files)}",
+        )
+        for path in agent_files:
+            _, body = _split_frontmatter(_read(path))
+            if OUT_OF_REPO_READ_RULE_ANCHOR not in body:
+                failures.append(
+                    f"{path.name}: body must carry the out-of-repository "
+                    f"read rule (\u00a7S5 AC1): {OUT_OF_REPO_READ_RULE_ANCHOR!r}"
+                )
+        # POSITIVE -- all four roles, every stack, carry the rule.
+        self.assertEqual(failures, [], "\n".join(failures))
+
+    def test_s5_every_red_definition_carries_the_prove_both_ways_rule(self):
+        failures = []
+        red_files = [p for p in _all_agent_files() if _role_of(p.name) == "red"]
+        self.assertEqual(len(red_files), 5, f"expected exactly 5 RED definitions, found {len(red_files)}")
+        for path in red_files:
+            _, body = _split_frontmatter(_read(path))
+            if PROVE_BOTH_WAYS_RULE_ANCHOR not in body:
+                failures.append(
+                    f"{path.name}: RED body must carry the prove-both-ways "
+                    f"rule (\u00a7S5 AC1): {PROVE_BOTH_WAYS_RULE_ANCHOR!r}"
+                )
+        # POSITIVE -- every one of the 5 RED definitions carries the rule.
+        self.assertEqual(failures, [], "\n".join(failures))
+
+    def test_s5_every_red_definition_carries_the_test_migration_rule(self):
+        failures = []
+        red_files = [p for p in _all_agent_files() if _role_of(p.name) == "red"]
+        self.assertEqual(len(red_files), 5, f"expected exactly 5 RED definitions, found {len(red_files)}")
+        for path in red_files:
+            _, body = _split_frontmatter(_read(path))
+            if TEST_MIGRATION_RULE_ANCHOR not in body:
+                failures.append(
+                    f"{path.name}: RED body must carry the test-migration "
+                    f"rule (\u00a7S5 AC1): {TEST_MIGRATION_RULE_ANCHOR!r}"
+                )
+        # POSITIVE -- every one of the 5 RED definitions carries the rule.
+        self.assertEqual(failures, [], "\n".join(failures))
+
+    def test_s5_non_red_definitions_carry_no_prove_both_ways_or_migration_rule(self):
+        # NEGATIVE/bound -- AC1 scopes these two rules to RED only; a
+        # GREEN/VERIFY/FIX body carrying either would be scope creep the
+        # spec's own template-per-role rendering must not introduce.
+        failures = []
+        for path in _all_agent_files():
+            if _role_of(path.name) == "red":
+                continue
+            _, body = _split_frontmatter(_read(path))
+            if PROVE_BOTH_WAYS_RULE_ANCHOR in body:
+                failures.append(f"{path.name}: non-RED body must not carry the RED-only prove-both-ways rule")
+            if TEST_MIGRATION_RULE_ANCHOR in body:
+                failures.append(f"{path.name}: non-RED body must not carry the RED-only test-migration rule")
+        self.assertEqual(failures, [], "\n".join(failures))
+
+
+class ToolNamesRuleS5Test(unittest.TestCase):
+    """\u00a7S5 AC2 -- no rendered body names Bash, and no body instructs a
+    tool absent from its own tools: line. The CR's own Context section
+    measures 'Bash' as the concrete instance of this drift (a capitalised
+    Claude Code tool name matching no registered Pi tool), so a zero-count
+    gate over the literal token is the direct, currently-failing proof of
+    both clauses of this AC bullet."""
+
+    def test_s5_zero_bash_mentions_across_every_rendered_body(self):
+        failures = []
+        agent_files = _all_agent_files()
+        self.assertEqual(
+            len(agent_files), 20,
+            f"expected exactly 20 generated agent files under {AGENTS_DIR}, "
+            f"found {len(agent_files)}",
+        )
+        for path in agent_files:
+            _, body = _split_frontmatter(_read(path))
+            hits = len(BASH_TOKEN_RE.findall(body))
+            if hits:
+                failures.append(f"{path.name}: body names 'Bash' {hits} time(s) (\u00a7S5 AC2)")
+        # NEGATIVE/EXACT bound -- zero of the 20 rendered bodies name Bash.
+        self.assertEqual(failures, [], "\n".join(failures))
+
+    def test_s5_detector_bites_on_bash_but_not_on_lowercase_bash_fence_tag(self):
+        # Fixture proof the DETECTOR itself fires correctly, independent of
+        # any live file -- a capitalised 'Bash' mention must bite, while a
+        # markdown fenced-code-block language tag (lowercase ```bash```)
+        # must not false-positive (it names a syntax highlighter, not a
+        # tool the agent is instructed to use).
+        self.assertEqual(
+            len(BASH_TOKEN_RE.findall("Run via `Bash` for this.")), 1,
+            "the Bash-token detector must fire on a capitalised 'Bash' mention",
+        )
+        self.assertEqual(
+            len(BASH_TOKEN_RE.findall("```bash\npython3 foo.py\n```")), 0,
+            "the detector must not fire on a lowercase ```bash``` fence tag",
+        )
 
 
 if __name__ == "__main__":
