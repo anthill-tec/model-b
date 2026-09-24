@@ -5,7 +5,9 @@ Manifest-driven copy of the package's skill assets into the target root:
 - Skill bundles (any ``skills-src/`` subdirectory carrying a ``SKILL.md``
   marker — e.g. ``crucible``; ``memory-templates`` is scaffold material,
   not a skill bundle) deploy ONCE into the harness-neutral shared store
-  ``<target-root>/.agents/skills/<name>/`` (PRD §D2).
+  ``<target-root>/.agents/skills/<name>/`` (PRD §D2). Stack-scoped bundles
+  (``crucible-report-*``, CR-MDB-036 §S7; ``code-health`` -> rust,
+  CR-MDB-023 §S4) deploy only for a selected stack or no stack filter.
 - Each selected harness then gets a SYMLINK into its own skills dir per
   the mapping table below (Claude Code mapping complete in v1; the other
   roster harnesses have no skills-dir mapping yet — DN-scaffold-packaging §5).
@@ -39,6 +41,11 @@ HARNESS_SKILL_DIRS: dict[str, str] = {
 SKILL_BUNDLE_MARKER = "SKILL.md"
 #: Stack-scoped skill bundles (CR-MDB-036 §S7) share this name prefix.
 REPORT_BUNDLE_PREFIX = "crucible-report-"
+#: Other stack-scoped skill bundles (CR-MDB-023 §S4): bundle name -> the
+#: stack whose selection deploys it, under the same rule as the
+#: ``crucible-report-*`` bundles (deployed when that stack is selected or
+#: no stack filter is given).
+STACK_SCOPED_BUNDLES: dict[str, str] = {"code-health": "rust"}
 STORE_RELDIR = Path(".agents") / "skills"
 
 #: CR-MDB-015 §S6: the shared protocol scripts deploy ONCE user-scope into
@@ -84,15 +91,23 @@ def report_bundle(stack: str) -> str:
 
 
 def _skill_bundles(asset_root: Path, stacks: list[str] | None = None) -> list[Path]:
+    """The ``skills-src/`` bundles to deploy. ``stacks`` scopes the
+    ``crucible-report-*`` bundles (CR-MDB-036 §S7) and the
+    :data:`STACK_SCOPED_BUNDLES` (CR-MDB-023 §S4) to the selection;
+    ``None`` deploys every bundle."""
     skills_src = asset_root / "skills-src"
     if not skills_src.is_dir():
         raise DeployError(f"asset root has no skills-src/ directory: {asset_root}")
-    wanted = None if stacks is None else {report_bundle(s) for s in stacks}
+    wanted = None if stacks is None else (
+        {report_bundle(s) for s in stacks}
+        | {name for name, stack in STACK_SCOPED_BUNDLES.items() if stack in stacks}
+    )
     return sorted(
         child for child in skills_src.iterdir()
         if child.is_dir() and (child / SKILL_BUNDLE_MARKER).is_file()
-        and (wanted is None or not child.name.startswith(REPORT_BUNDLE_PREFIX)
-             or child.name in wanted)
+        and (wanted is None or child.name in wanted
+             or not (child.name.startswith(REPORT_BUNDLE_PREFIX)
+                     or child.name in STACK_SCOPED_BUNDLES))
     )
 
 
@@ -216,7 +231,8 @@ def deploy_assets(
     breaking existing callers.
 
     ``stacks`` (CR-MDB-036 §S7) scopes the ``crucible-report-*`` bundles
-    to the selection (``None`` = every stack); every other bundle, the
+    and (CR-MDB-023 §S4) the ``code-health`` bundle to the selection
+    (``None`` = every stack); every other bundle, the
     hook scripts and the tool scripts always deploy."""
     prior = prior_hashes or {}
     manifest: list[dict] = []

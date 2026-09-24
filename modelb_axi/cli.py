@@ -143,6 +143,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help=(
             "stacks to install for (arduino,bun,python,quarkus,rust,java): "
             "scopes the crucible-report-* bundles and the toolchain probes; "
+            "rust also deploys the code-health bundle; "
             "default: every stack (offered interactively without --yes)"
         ),
     )

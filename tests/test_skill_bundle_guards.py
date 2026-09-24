@@ -126,6 +126,21 @@ REPORT_BUNDLE_PREFIX = "crucible-report-"
 # The flag Crucible retired in 0.1.0 with no alias.
 RETIRED_REGISTER_FLAG = "--phase"
 
+# CR-MDB-023: `--phase` is ALSO the live flag of `rust-code-health.py snapshot`
+# (a Model B tool, not a Crucible client). Only that exact occurrence is
+# stripped before the retired-flag check; every other `--phase` still bites.
+RUST_SNAPSHOT_PHASE_RE = re.compile(r"rust-code-health\.py\s+snapshot\s+--phase\b")
+
+# CR-MDB-023 detector lines: the retired register flag, the exempt snapshot
+# flag, and both on one line (which must still bite).
+FIXTURE_LINE_SNAPSHOT_PHASE = (
+    "python3 ~/.agents/scripts/rust-code-health.py snapshot --phase post --slice CR-X"
+)
+FIXTURE_LINE_SNAPSHOT_AND_RETIRED = (
+    FIXTURE_LINE_SNAPSHOT_PHASE
+    + " && python3 clients/rust-crucible.py register --agent X --phase RED"
+)
+
 # Case-exact: five uppercase, `report` lowercase.
 ROLE_ENUM = ("RED", "GREEN", "FIX", "VERIFY", "ORCHESTRATOR", "report")
 
@@ -436,7 +451,7 @@ def _register_flag_findings(root):
     for path in _iter_files(root):
         rel = _rel(path, root)
         for lineno, line in enumerate(_read(path).splitlines(), 1):
-            if RETIRED_REGISTER_FLAG in line:
+            if _carries_retired_register_flag(line):
                 findings.append(
                     (FINDING_RETIRED_FLAG, f"{rel}:{lineno}: {line.strip()}")
                 )
@@ -551,6 +566,13 @@ def _documents_endpoint(text, endpoint):
 
 def _codes(findings):
     return sorted({code for code, _ in findings})
+
+
+def _carries_retired_register_flag(line):
+    """True when `line` carries the retired register flag once the
+    `rust-code-health.py snapshot --phase` occurrences are removed
+    (CR-MDB-023) -- the guard's intent is otherwise unchanged."""
+    return RETIRED_REGISTER_FLAG in RUST_SNAPSHOT_PHASE_RE.sub("", line)
 
 
 def _write_fixture_bundle(tmpdir, register_line):
@@ -726,6 +748,26 @@ class RegisterFlagFixtureTest(unittest.TestCase):
             "a register example carrying the retired flag must be reported; the "
             f"checker returned {_codes(findings)} for: {FIXTURE_LINE_RETIRED_FLAG}",
         )
+
+    def test_fixture_rust_code_health_snapshot_phase_is_exempt_from_retired_flag(self):
+        # CR-MDB-023: the exemption spares ONLY `rust-code-health.py snapshot
+        # --phase`; the retired register flag bites alone and alongside it.
+        cases = (
+            (FIXTURE_LINE_RETIRED_FLAG, True),
+            (FIXTURE_LINE_SNAPSHOT_PHASE, False),
+            (FIXTURE_LINE_SNAPSHOT_AND_RETIRED, True),
+        )
+        for line, bites in cases:
+            with self.subTest(line=line):
+                with tempfile.TemporaryDirectory() as tmp:
+                    root = _write_fixture_bundle(tmp, line)
+                    findings = _register_flag_findings(root)
+                self.assertEqual(
+                    FINDING_RETIRED_FLAG in _codes(findings),
+                    bites,
+                    f"retired-flag finding expected={bites}; checker returned "
+                    f"{_codes(findings)} for: {line}",
+                )
 
     def test_fixture_register_example_missing_role_is_reported(self):
         with tempfile.TemporaryDirectory() as tmp:
