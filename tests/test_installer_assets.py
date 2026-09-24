@@ -137,6 +137,7 @@ def _load_build_module():
     __init__.py so this goes through importlib.util rather than a normal
     package import."""
     spec = importlib.util.spec_from_file_location("_cr_mdb_014_c4_build", BUILD_PY)
+    assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -1140,10 +1141,8 @@ class DeployEngineAllBundlesEndToEndTest(unittest.TestCase):
         with open(Path(self._tmp_home) / "install.toml", "rb") as fh:
             data = tomllib.load(fh)
         files_section = data.get("files")
-        self.assertIsInstance(
-            files_section, list,
-            f"[[files]] must parse as a list of entries; got {type(files_section)}",
-        )
+        if not isinstance(files_section, list):
+            self.fail(f"[[files]] must parse as a list of entries; got {type(files_section)}")
         skill_md_names = set()
         for entry in files_section:
             if not isinstance(entry, dict):

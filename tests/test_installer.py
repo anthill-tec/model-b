@@ -1020,11 +1020,11 @@ class DeployEngineTest(unittest.TestCase):
             f"got {data.get('deps')!r}",
         )
         files_section = data.get("files")
-        self.assertIsInstance(
-            files_section, list,
-            f"AC2: [[files]] must parse as a list of entries; got "
-            f"{type(files_section)}",
-        )
+        if not isinstance(files_section, list):
+            self.fail(
+                f"AC2: [[files]] must parse as a list of entries; got "
+                f"{type(files_section)}"
+            )
         self.assertGreaterEqual(
             len(files_section), 1,
             "AC2: [[files]] must record at least one deployed file entry",

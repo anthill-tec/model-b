@@ -936,12 +936,14 @@ class AtomicWriteSixSitesTest(unittest.TestCase):
             prior_hash = hashlib.sha256(prior_content).hexdigest()
             skipped: list = []
             unmanaged: list = []
-            with mock.patch("os.replace", side_effect=OSError("AC1 injected os.replace failure")):
-                with self.assertRaises(OSError):
-                    deploy._deploy_file(
-                        src, dest, "dest.txt", {"dest.txt": prior_hash},
-                        False, skipped, unmanaged,
-                    )
+            with (
+                mock.patch("os.replace", side_effect=OSError("AC1 injected os.replace failure")),
+                self.assertRaises(OSError),
+            ):
+                deploy._deploy_file(
+                    src, dest, "dest.txt", {"dest.txt": prior_hash},
+                    False, skipped, unmanaged,
+                )
             self.assertEqual(
                 dest.read_bytes(), prior_content,
                 "AC1/§S2 site=deploy._deploy_file: the prior destination "
@@ -977,9 +979,11 @@ class AtomicWriteSixSitesTest(unittest.TestCase):
             entry = hooks._new_report_entry()
             scripts_root = target / "scripts-root-placeholder"
             emitter = getattr(hooks, emitter_name)
-            with mock.patch("os.replace", side_effect=OSError("AC1 injected os.replace failure")):
-                with self.assertRaises(OSError):
-                    emitter(instances, target, scripts_root, entry)
+            with (
+                mock.patch("os.replace", side_effect=OSError("AC1 injected os.replace failure")),
+                self.assertRaises(OSError),
+            ):
+                emitter(instances, target, scripts_root, entry)
             self.assertEqual(
                 dest.read_bytes(), prior_content,
                 f"AC1/§S2 site=hooks.{emitter_name}: the prior destination "
@@ -1004,15 +1008,17 @@ class AtomicWriteSixSitesTest(unittest.TestCase):
             env_path = target / ".env"
             prior_content = "PRIOR ENV CONTENT -- must survive an os.replace failure\n"
             env_path.write_text(prior_content, encoding="utf-8")
-            with mock.patch("os.replace", side_effect=OSError("AC1 injected os.replace failure")):
-                with self.assertRaises(OSError):
-                    scaffold._emit_plan(
-                        target,
-                        name="X", token="xproj", acronym="XP", mode="solo",
-                        owner="tester", stacks=["python"], harnesses=[],
-                        sub_projects=[], no_commit=True, home=home,
-                        hook_scripts_root=None,
-                    )
+            with (
+                mock.patch("os.replace", side_effect=OSError("AC1 injected os.replace failure")),
+                self.assertRaises(OSError),
+            ):
+                scaffold._emit_plan(
+                    target,
+                    name="X", token="xproj", acronym="XP", mode="solo",
+                    owner="tester", stacks=["python"], harnesses=[],
+                    sub_projects=[], no_commit=True, home=home,
+                    hook_scripts_root=None,
+                )
             self.assertEqual(
                 env_path.read_text(encoding="utf-8"), prior_content,
                 "AC1/§S2 site=scaffold._emit_plan: the prior .env content "
@@ -1144,12 +1150,14 @@ class MidEmissionFailureHonestPartialEmissionTest(unittest.TestCase):
 
         args = _init_args(self._tmp_target, dry_run=False)
         out = io.StringIO()
-        with mock.patch(
-            "modelb_axi.scaffold._render_agents_md",
-            side_effect=OSError("CR-MDB-033 C2 injected mid-emission failure"),
+        with (
+            mock.patch(
+                "modelb_axi.scaffold._render_agents_md",
+                side_effect=OSError("CR-MDB-033 C2 injected mid-emission failure"),
+            ),
+            contextlib.redirect_stdout(out),
         ):
-            with contextlib.redirect_stdout(out):
-                exit_code = scaffold.run_init(args, Path(self._tmp_home))
+            exit_code = scaffold.run_init(args, Path(self._tmp_home))
         combined = out.getvalue()
 
         # POSITIVE -- non-zero exit is the failure signal.
@@ -1195,12 +1203,14 @@ class MidEmissionFailureHonestPartialEmissionTest(unittest.TestCase):
         # field claim above, which is the new C2 behaviour this test
         # exists to pin).
         dry_args = _init_args(self._tmp_dry_target, dry_run=True)
-        with mock.patch(
-            "modelb_axi.scaffold._render_agents_md",
-            side_effect=OSError("CR-MDB-033 C2 injected mid-emission failure"),
+        with (
+            mock.patch(
+                "modelb_axi.scaffold._render_agents_md",
+                side_effect=OSError("CR-MDB-033 C2 injected mid-emission failure"),
+            ),
+            contextlib.redirect_stdout(io.StringIO()),
         ):
-            with contextlib.redirect_stdout(io.StringIO()):
-                scaffold.run_init(dry_args, Path(self._tmp_home))
+            scaffold.run_init(dry_args, Path(self._tmp_home))
         dry_leftover = _files_under_excluding_git(self._tmp_dry_target)
         self.assertEqual(
             dry_leftover, [],
