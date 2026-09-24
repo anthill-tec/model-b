@@ -41,6 +41,7 @@ from pathlib import Path
 from unittest import mock
 
 from modelb_axi import requirements as _requirements
+from tests._helpers import md_section as _md_section, parse_env_file as _parse_env_file
 from tests.pi_capability_sandbox import AGENT_DIR_ENV, shared_provisioned_agent_dir, with_agent_dir
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -99,25 +100,6 @@ def _load_toon_codec():
     the envelope. No Crucible checkout is loaded (CR-MDB-032 §S1)."""
     from modelb_axi import toon
     return toon
-
-
-def _parse_env_file(path: Path) -> dict:
-    """Minimal ``KEY=VALUE`` parser for the emitted ``.env``/``.env.local``
-    files (values may be bare or double-quoted; blank lines and
-    ``#``-comments are skipped) -- test-side only, no production coupling."""
-    values: dict = {}
-    if not path.is_file():
-        return values
-    for line in path.read_text(encoding="utf-8").splitlines():
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#") or "=" not in stripped:
-            continue
-        key, _, raw_value = stripped.partition("=")
-        value = raw_value.strip()
-        if len(value) >= 2 and value[0] == value[-1] == '"':
-            value = value[1:-1]
-        values[key.strip()] = value
-    return values
 
 
 class InitHelpFlagsTest(unittest.TestCase):
@@ -1372,24 +1354,6 @@ class RegisterHonestNoOpTest(unittest.TestCase):
             "F1: the failure output must say registration is not "
             f"implemented; got stdout={result.stdout!r} stderr={result.stderr!r}",
         )
-
-
-def _md_section(content: str, heading_prefix: str) -> str:
-    """The Markdown section whose heading line starts with
-    ``heading_prefix``, up to (not including) the next ``## `` heading;
-    ``""`` when no such heading exists. Test-side only."""
-    out: list[str] = []
-    inside = False
-    for line in content.splitlines():
-        if not inside and line.startswith(heading_prefix):
-            inside = True
-            out.append(line)
-            continue
-        if inside and line.startswith("## "):
-            break
-        if inside:
-            out.append(line)
-    return "\n".join(out)
 
 
 def _names(text: str, token: str) -> bool:

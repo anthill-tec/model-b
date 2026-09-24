@@ -142,6 +142,44 @@ def split_frontmatter(content: str):
     return "", content
 
 
+def md_section(content: str, heading_prefix: str) -> str:
+    """The Markdown section whose heading line starts with
+    ``heading_prefix``, up to (not including) the next ``## `` heading;
+    ``""`` when no such heading exists."""
+    out: list[str] = []
+    inside = False
+    for line in content.splitlines():
+        if not inside and line.startswith(heading_prefix):
+            inside = True
+            out.append(line)
+            continue
+        if inside and line.startswith("## "):
+            break
+        if inside:
+            out.append(line)
+    return "\n".join(out)
+
+
+def parse_env_file(path: Path) -> dict:
+    """Minimal ``KEY=VALUE`` parser for an emitted ``.env``/``.env.local``
+    (values may be bare or double-quoted; blank lines and ``#``-comments are
+    skipped; ``{}`` when the file is absent) -- test-side only, no production
+    coupling."""
+    values: dict = {}
+    if not path.is_file():
+        return values
+    for line in path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        key, _, raw_value = stripped.partition("=")
+        value = raw_value.strip()
+        if len(value) >= 2 and value[0] == value[-1] == '"':
+            value = value[1:-1]
+        values[key.strip()] = value
+    return values
+
+
 # ------------------------------------------------------------------ fixtures ----
 
 def write_executable(bin_dir, name: str, body: str) -> Path:

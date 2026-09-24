@@ -241,6 +241,7 @@ from tests.pi_capability_sandbox import with_agent_dir
 from modelb_axi import agents as agents_mod
 from tests._helpers import (
     decode_envelope as _decode_envelope_c3,
+    parse_env_file as _parse_env_file_c3,
     read_text_lenient as _read,
     split_frontmatter as _split_frontmatter,
 )
@@ -1476,25 +1477,6 @@ def _write_install_toml_c3(home: Path, asset_root: Path, harnesses=("pi",)) -> P
         encoding="utf-8",
     )
     return install_toml
-
-
-def _parse_env_file_c3(path: Path) -> dict:
-    """Minimal `KEY=VALUE` parser for the emitted `.env` -- mirrors
-    tests/test_scaffold.py's own `_parse_env_file` (test-side only, no
-    production coupling)."""
-    values: dict = {}
-    if not path.is_file():
-        return values
-    for line in path.read_text(encoding="utf-8").splitlines():
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#") or "=" not in stripped:
-            continue
-        key, _, raw_value = stripped.partition("=")
-        value = raw_value.strip()
-        if len(value) >= 2 and value[0] == value[-1] == '"':
-            value = value[1:-1]
-        values[key.strip()] = value
-    return values
 
 
 def _snapshot_hashes(root: Path) -> dict:
