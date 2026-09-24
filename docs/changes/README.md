@@ -39,7 +39,7 @@ Queue rows enumerate the whole delivery (structure only). **Live status lives on
 | [CR-MDB-036](CR-MDB-036-harness-capability-contract.md) | Harness capability contract and installer stack selection | 5 | — |
 | [CR-MDB-037](CR-MDB-037-install-guide-freshness-policy.md) | Install guide, deployed-asset freshness, the per-project permission policy, and project trust | 5 | 036 |
 | [CR-MDB-038](CR-MDB-038-pypi-publishing.md) | Make modelb-axi publishable on PyPI, and retire the global permission report | 5 | 037 |
-| [CR-MDB-029](CR-MDB-029-pi-package.md) | The Model B Pi package: extensions (incl. the 026 watcher supervisor) + skills as one `pi install`-able unit; agents and tool scripts stay installer-deployed | 5 | 025, 030 |
+| [CR-MDB-029](CR-MDB-029-pi-package.md) | The Model B Pi package: the Sandesh watcher supervisor, published as `@anthill-tec/modelb-pi` | 5 | — |
 | [CR-MDB-031](CR-MDB-031-claude-era-substrate-retirement.md) | Retire the Claude-era substrate: roster → `pi`, non-Pi emitters, `.claude/skills` symlink writer, `CLAUDE.md` emission, `chezmoi` bundle, `/tmp/claude-1000` wrapper, `.claude/worktrees` convention, skills' Claude Code dispatch/worktree/todo mechanics, `~/.claude/skills` body citations | 5 | 025, 026, 030 |
 | [CR-MDB-032](CR-MDB-032-test-suite-relocation.md) | Test-suite relocation: no dev-checkout reach, no real-home assertions, no dead/self-defeating gates, one helper module, a Pi end-to-end | 5 | 020, 021 |
 | [CR-MDB-027](CR-MDB-027-subagent-dispatch-on-pi.md) | Sub-agent dispatch on Pi: decide what provides it, given Pi core has none (decision CR — RULED 2026-09-21: `pi-archimedes`, DN §D16; unblocks the CR-025 rewrite) | 5 | — |
@@ -621,3 +621,9 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   the PyPI readme and links to its own headings nine times (e.g. `#warnings-what-stops-working`);
   `readme_renderer` prefixes heading ids with `user-content-`, so those in-page links may not resolve
   on the PyPI page. Check on the TestPyPI rehearsal page before the first PyPI upload.
+- 2026-09-24 — **Stack-level, not this layer (CR-MDB-029 gap-analysis, user ruling):** Model B and its
+  sibling projects (Roundhouse, Switchyard, Lemonade) move to the `anthill-tec` GitHub organisation,
+  and the Pi package publishes as `@anthill-tec/modelb-pi` (needs the `anthill-tec` npm org). The
+  move touches remotes, `.gitmodules`, `REPO_OWNER` in each `.env`, and docs naming `antojk` — a
+  `CR-RND` for the Roundhouse root session. CR-MDB-026's three-exit taxonomy is also stale against
+  Sandesh 0.3.5's six exits (see CR-MDB-029 §Context); fold at 026's gap-analysis.
