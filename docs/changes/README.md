@@ -25,7 +25,7 @@ Queue rows enumerate the whole delivery (structure only). **Live status lives on
 | [CR-MDB-015](CR-MDB-015-harness-agnostic-hooks.md) | Harness-agnostic hooks: neutral schema + per-harness emitters + shared script protocol (DN-harness-agnostic-hooks) | 3 | 013, 014 |
 | [CR-MDB-016](CR-MDB-016-crucible-skills-handover.md) | Crucible skills handover: adopt clients/skills/ as canonical, bundle to published artifact, supersede stale deployed skill | 4 | 011, 014 |
 | [CR-MDB-022](CR-MDB-022-tooling-adoption.md) | Tooling adoption (WAVE 5 FIRST): eight workflow scripts into `scripts/`, one Model B-owned TOON codec, bundled + installer-deployed, every reference detached from the local machine | 5 | — |
-| [CR-MDB-023](CR-MDB-023-code-health-skill-adoption.md) | `code-health` skill adopted as a published bundle: detached tool paths, recorded drift closed, bundle accounting corrected | 5 | 022 |
+| [CR-MDB-023](CR-MDB-023-code-health-skill-adoption.md) | Adopt the code-health skill as a published Model B bundle, detached from the local machine and current with the Crucible board | 5 | 022, 028, 036 |
 | [CR-MDB-017](CR-MDB-017-client-role-contract-sync.md) | Client-verb contract sync: `--role` + mandatory `--cycle` binding replace the retired `--phase` across the seven owned bundles | 5 | 016 |
 | [CR-MDB-018](CR-MDB-018-crucible-discovery-capture.md) | Crucible discovery: the ambient hook reads Crucible's client manifest, and the client lifecycle rules are gated | 5 | 015, 036 |
 | [CR-MDB-019](CR-MDB-019-hook-runtime-correctness.md) | The ambient hook renders the current status contract: the 2.0.0 pin, lastClosedCr, open plans only, and arduino projects | 5 | 018 |
@@ -697,3 +697,14 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   fields cannot contain commas); any status other than `closed` counts as open; python wins over a
   sketch in the same folder (table order, unspecified). Crucible told of the open-plans
   document/verb mismatch (#1389, FYI).
+- 2026-09-24 — **CR-MDB-023 gap analysis (SPEC_UPDATE_NEEDED):** the ledger no longer mirrors itself
+  — CR-MDB-028 removed `cs` and `worktree-flow`'s DB half, nothing calls `schedule_db.set_state`, and
+  `ledger sync` without `--slice/--db-state` is a no-op without the legacy DB — so the adopted skill
+  teaches explicit `ledger assign` / `ledger sync --db-state …` tied to cycle activation and
+  `cr-close`, and files CRs with `rust-crucible.py cr-plan`. Bundle accounting re-measured: 13 today
+  (7 owned + 6 imported after 024 retired the editor bundle), 14 after; `code-health` deploys under
+  CR-MDB-036's stack scoping (rust). **Routed:** `scripts/rust-code-health.py:36`'s docstring still
+  says board transitions mirror via `schedule_db.set_state` — fix with `schedule_db.py`'s retirement.
+  **CR-MDB-032 (pre-existing lint, pi-lens):** add `tests/test_hooks.py:80` (unsorted import block,
+  from CR-MDB-015's `e03cff2`) to the list with `test_package_publishing.py:39`,
+  `test_scaffold.py:1679` (false positive: `init`'s project `token`) and `generator/build.py:221`.
