@@ -202,7 +202,6 @@ git push origin <branch>           # (and: git push origin --tags)
 - Single-remote repos: ensure the correct account is active (`gh auth status`), then `git push origin <branch>`
 - Releases: push tags to BOTH remotes with the same account-switch dance
 - Troubleshooting a wrong-account push: `gh auth switch --user <correct-account>`, and verify the remote URL uses the right host alias (`git remote get-url origin|mirror`)
-- The chezmoi dotfiles source repo uses the personal account — its push discipline lives in the `chezmoi` skill
 
 ## What NOT To Do
 

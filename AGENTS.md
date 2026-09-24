@@ -43,7 +43,7 @@ Key invariants:
 | Path | Purpose |
 |---|---|
 | `modelb_axi/` | The CLI package. `cli.py` (argparse shell), `scaffold.py` (init/emit), `deploy.py` (manifest deploy), `hooks.py` (schema + per-harness compiler), `config.py` (install.toml r/w), `harness.py` (roster/detect), `preflight.py` (dep probes), `axi.py` (envelope codec) |
-| `skills-src/` | 14 skill bundles. Model-B-owned: `model-b`, `crucible`, `cr-authoring`, `git-workflow`, `chezmoi`, `bootstrap`, `shutdown`, `code-health` (deployed with the rust stack). Imported from Crucible (byte-identical, see `CRUCIBLE-HANDOVER.md`): `crucible-register`, `crucible-report-{arduino,bun,java,python,rust}`. Plus `memory-templates/` |
+| `skills-src/` | 13 skill bundles. Model-B-owned: `model-b`, `crucible`, `cr-authoring`, `git-workflow`, `bootstrap`, `shutdown`, `code-health` (deployed with the rust stack). Imported from Crucible (byte-identical, see `CRUCIBLE-HANDOVER.md`): `crucible-register`, `crucible-report-{arduino,bun,java,python,rust}`. Plus `memory-templates/` |
 | `generator/` | `build.py` renders `templates/{red,green,verify,fix}.md.tmpl` × `stacks/{arduino,bun,python,quarkus}.toml` → `agents/<stack>-<role>-agent.md` (16 files) |
 | `hooks-src/` | `schema.md` (neutral schema v1) + `scripts/` (7 executable stdin/exit protocol scripts, no file extension) |
 | `scripts/` | The tool-script asset class (7 adopted + 1 generated): `worktree-flow.py`, `schedule_db.py` (TRANSITIONAL), `skill-release-gate.py`, `rust-code-health.py`, `rust-crate-map.py`, `rust-dead-scan.py`, `gate-lock.sh`, and `toon.py` generated from `modelb_axi/toon.py`. Deployed to `~/.agents/scripts/` (`deploy.TOOL_SCRIPTS_STORE_RELDIR`) — the ONLY path a Model B surface names; never a `~/.claude` path (not Model B-owned) |
@@ -106,7 +106,7 @@ There is **no** Makefile/justfile, **no** CI test workflow (the only workflow is
 - Crucible's installed clients, `~/.crucible/clients/<stack>-crucible.py` (listed in `~/.crucible/crucible-clients.json`, installed by Crucible's own installer), are the only sanctioned client surface — never a checkout of the Crucible project. Model B ships, vendors and maintains none of them.
 - Prefer lean-ctx reads (`ctx_read`/`ctx_search`/`ctx_shell`/`ctx_tree`) over raw file/grep/shell calls.
 - Confirm destructive operations; delegate super-user ops to the user.
-- Model B never mutates `~/.claude` directly — the `modelb-axi` installer is the only deployment channel (PRD §D9/§D10), and the repo-local authoring rule means no CR writes there at all. The user's own dotfile-manager discipline is out of scope for this file; see the `chezmoi` skill for that.
+- Model B never mutates `~/.claude` directly — the `modelb-axi` installer is the only deployment channel (PRD §D9/§D10), and the repo-local authoring rule means no CR writes there at all. The user's own dotfile-manager discipline is out of scope for this file.
 - **Electronics stack is EXCLUDED** (anthill-forge dead) — never migrate, document, or generate it.
 
 ## Testing & QA
@@ -146,4 +146,4 @@ python3 ~/.crucible/clients/python-crucible.py regression --coverage \
 - Post a `milestone` at every workflow moment: `--type gap-analysis` when gap analysis completes, `--type stage-flip --label "<CR> <cycle> done"` at each cycle-done; `cr-merged` fires automatically from `cr-close --commit <sha> --agent <id>`.
 - Wave-boundary gate: no-mistakes via `gate-run --intent <goal> --agent vidushi-mdb --skip ci`, ingested as gate evidence. `--skip` is needed because no-mistakes' `ci` step is PR-based and a git-flow project merging directly has no PR to watch, so the gate would block until `ci_timeout`. The gate reads `REPO_OWNER` from `.env`.
 - Ontology `docs/research/DN-model-b-language.md` is **LOCKED** — a frozen import of Crucible's `DN-model-b-language.md` (origin `a9a8f57`, imported 2026-09-21 by user ruling so no Model B surface reads the Crucible checkout). Cite it, never fork it; divergence goes to Crucible over Sandesh (#1336 lineage).
-- Load-on-demand references: `model-b` skill (orchestration), `crucible` skill (test lifecycle), `cr-authoring` (CR/PRD/DN), `gap-analysis` (before any CR), `git-workflow`, `chezmoi`, `bootstrap`/`shutdown`.
+- Load-on-demand references: `model-b` skill (orchestration), `crucible` skill (test lifecycle), `cr-authoring` (CR/PRD/DN), `gap-analysis` (before any CR), `git-workflow`, `bootstrap`/`shutdown`.
