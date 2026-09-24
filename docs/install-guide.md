@@ -11,15 +11,13 @@ Every command below is run in an ordinary shell. Lines the installer prints go t
 <!-- install-guide:begin quick-start -->
 ## Quick start
 
-If you already have Pi and `uv`, the whole install is:
+If you already have Pi and the `modelb-axi` command (see [Prerequisites](#prerequisites), step
+4), the whole install is:
 
 ```sh
 pi install npm:@gotgenes/pi-subagents
 pi install npm:pi-lean-ctx
 pi install npm:@gotgenes/pi-permission-system
-git clone https://github.com/antojk/model-b.git
-cd model-b
-uv tool install .
 modelb-axi --yes --harnesses pi --target-root ~ --stacks python
 ```
 
@@ -43,16 +41,17 @@ Install these in the order given; each step relies on the one before it.
    - `permissions` — recommended: `pi install npm:@gotgenes/pi-permission-system`
 3. **`uv`** — required. It installs the installer itself:
    `curl -LsSf https://astral.sh/uv/install.sh | sh`
-4. **The installer.** Clone the repository and install the `modelb-axi` command from it:
+4. **The installer.** Model B's installer, the `modelb-axi` command, is distributed as the
+   Model B Pi package, published with Model B's first release. Until then, installing it
+   needs access to Model B's source repository, which you get from its maintainer; from the
+   root of your copy of it, run:
 
    ```sh
-   git clone https://github.com/antojk/model-b.git
-   cd model-b
    uv tool install .
    modelb-axi --version
    ```
 
-   To update later, pull the repository and run `uv tool install --reinstall .` from it.
+   To update later, get the newer source and run `uv tool install --reinstall .` from it.
 5. **Recommended tools.** The install goes ahead without them, but some assets will not work
    (see [Warnings: what stops working](#warnings-what-stops-working)):
    - `sandesh` — `uv tool install sandesh-relay` (the installer offers to run this for you);
@@ -61,8 +60,7 @@ Install these in the order given; each step relies on the one before it.
    - `python3`, `bash` and `jq` — from your operating system's package manager;
    - `gh` — the GitHub CLI, from https://cli.github.com.
 
-`git` is also needed, to clone the repository and because every project `modelb-axi init`
-creates is a git repository.
+`git` is also needed, because every project `modelb-axi init` creates is a git repository.
 <!-- install-guide:end prerequisites -->
 
 <!-- install-guide:begin choosing-stacks -->
