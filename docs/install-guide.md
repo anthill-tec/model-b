@@ -244,7 +244,8 @@ install compares what is deployed with what the installed package ships. `freshn
 `current` when everything matches, `outdated` when one of these lists is not empty:
 
 - `stale` — unchanged since it was deployed, but the package now ships a newer version:
-  re-run with `--reinstall` (and your `--target-root` and `--stacks`).
+  re-run with `--reinstall` (and your `--target-root`, `--stacks` and `--harnesses`, plus
+  `--modelb-home` if you used one).
 - `hand_modified` — edited since it was deployed: keep it, or re-run with `--reinstall` and
   `--force-managed` to replace it.
 - `retired` — deployed earlier, but no longer shipped: remove it by hand.
