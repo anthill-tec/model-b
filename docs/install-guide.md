@@ -12,7 +12,7 @@ Every command below is run in an ordinary shell. Lines the installer prints go t
 ## Quick start
 
 If you already have Pi and the `modelb-axi` command (see [Prerequisites](#prerequisites), step
-4), the whole install is:
+5), the whole install is:
 
 ```sh
 pi install npm:@gotgenes/pi-subagents
@@ -41,7 +41,9 @@ Install these in the order given; no step relies on one that comes after it.
    - `permissions` — recommended: `pi install npm:@gotgenes/pi-permission-system`
 3. **`uv`** — required. It installs the installer itself:
    `curl -LsSf https://astral.sh/uv/install.sh | sh`
-4. **The installer.** Model B's installer, the `modelb-axi` command, is distributed as the
+4. **`git`** — required to create a project: every project `modelb-axi init` creates is a
+   git repository. Install it from your operating system's package manager.
+5. **The installer.** Model B's installer, the `modelb-axi` command, is distributed as the
    Model B Pi package, published with Model B's first release. Until then, installing it
    needs access to Model B's source repository, which you get from its maintainer; from the
    root of your copy of it, run:
@@ -52,8 +54,6 @@ Install these in the order given; no step relies on one that comes after it.
    ```
 
    To update later, get the newer source and run `uv tool install --reinstall .` from it.
-5. **`git`** — required to create a project: every project `modelb-axi init` creates is a
-   git repository. Install it from your operating system's package manager.
 6. **Recommended tools.** The install goes ahead without them, but some assets will not work
    (see [Warnings: what stops working](#warnings-what-stops-working)):
    - `sandesh` — `uv tool install sandesh-relay` (the installer offers to run this for you);
