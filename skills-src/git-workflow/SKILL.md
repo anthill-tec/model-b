@@ -156,6 +156,22 @@ git checkout master && ./mvnw clean install   # ✅ the only correct branch
 
 After building: switch back to develop for continued work. Bump develop to the next `-SNAPSHOT` after a release, and update consumer `pom.xml`s that depend on the released library.
 
+### Python package releases (PyPI)
+
+1. **Build** — on the release branch, set the version in its single source (the one place the
+   package reads it from), commit, then build the sdist and wheel with `uv build`.
+2. **Rehearse on TestPyPI** — upload the release candidate to TestPyPI and install it into an
+   isolated tool directory (`UV_TOOL_DIR` / `UV_TOOL_BIN_DIR` pointed at a scratch path), then
+   run it there before anything reaches the real index.
+3. **Upload to PyPI** — only after `git flow release finish`, build from the tagged commit and
+   upload with a token the user supplies at upload time; never store the token in the repository
+   or in agent-readable config.
+4. **Post-release maintenance** — on the maintainer's machine: install the released version from
+   PyPI; replace the prior installation with
+   `--reinstall --target-root ~ --harnesses <harnesses> --stacks <stacks>`; remove workflow
+   entries from any global permission config in favour of per-project policies; and confirm a
+   dispatched agent in a trusted project runs without a permission prompt.
+
 ## Multi-Account Pushing (dual remote: origin + mirror)
 
 Some repos carry two remotes on two GitHub accounts: `origin` (work account, e.g. `Antojk71`, host alias `github.com-4property`) and `mirror` (personal account, e.g. `antojk`, host alias `github.com-antojk`). SSH host aliases in `~/.ssh/config` select the key; the **gh CLI account must be switched around each push**.
