@@ -81,6 +81,7 @@ from pathlib import Path
 from tests.pi_capability_sandbox import with_agent_dir
 
 from modelb_axi import deploy
+from tests._helpers import write_executable as _write_fake_executable
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS_DIR = REPO_ROOT / "scripts"
@@ -186,13 +187,6 @@ _FAKE_SANDESH_SCRIPT = (
     'echo "sandesh-relay 0.0.0-fake"\n'
     "exit 0\n"
 )
-
-
-def _write_fake_executable(bin_dir: str, name: str, script_body: str) -> Path:
-    path = Path(bin_dir) / name
-    path.write_text(script_body, encoding="utf-8")
-    path.chmod(0o755)
-    return path
 
 
 def _run_installer(*args, env_overrides=None, timeout=60):

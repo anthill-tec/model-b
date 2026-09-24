@@ -58,6 +58,7 @@ import tomllib
 import unittest
 from pathlib import Path
 
+from tests._helpers import write_executable as _write_fake_executable
 from tests.pi_capability_sandbox import with_agent_dir
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -139,13 +140,6 @@ def _load_build_module():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
-
-
-def _write_fake_executable(bin_dir: str, name: str, script_body: str) -> Path:
-    path = Path(bin_dir) / name
-    path.write_text(script_body, encoding="utf-8")
-    path.chmod(0o755)
-    return path
 
 
 _FAKE_UV_SCRIPT = (

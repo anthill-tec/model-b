@@ -33,7 +33,7 @@ import tomllib
 import unittest
 from pathlib import Path
 
-from tests._helpers import decode_axi as _decode
+from tests._helpers import decode_axi as _decode, write_executable as _write_exe
 from tests.pi_capability_sandbox import (
     AGENT_DIR_ENV,
     make_home,
@@ -85,12 +85,6 @@ def _recording_shim(marker: Path, exit_code: int = 0) -> str:
         f'printf \'%s %s\\n\' "${{0##*/}}" "$*" >> "{marker}"\n'
         f"exit {exit_code}\n"
     )
-
-def _write_exe(bin_dir: Path, name: str, body: str) -> Path:
-    path = Path(bin_dir) / name
-    path.write_text(body, encoding="utf-8")
-    path.chmod(0o755)
-    return path
 
 
 def _report_bundles() -> set[str]:

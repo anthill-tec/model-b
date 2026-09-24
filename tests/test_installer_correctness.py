@@ -57,7 +57,10 @@ from pathlib import Path
 from unittest import mock
 
 from modelb_axi.harness import HARNESS_ROSTER_IDS
-from tests._helpers import decode_envelope as _decode_envelope
+from tests._helpers import (
+    decode_envelope as _decode_envelope,
+    write_executable as _write_fake_executable,
+)
 from tests.pi_capability_sandbox import shared_home_without_crucible, with_agent_dir
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -81,13 +84,6 @@ def _run_module(*args, env_overrides=None, timeout=20, stdin=subprocess.DEVNULL)
     return subprocess.run(
         cmd, capture_output=True, text=True, timeout=timeout, stdin=stdin, env=env,
     )
-
-
-def _write_fake_executable(bin_dir: str, name: str, script_body: str) -> Path:
-    path = Path(bin_dir) / name
-    path.write_text(script_body, encoding="utf-8")
-    path.chmod(0o755)
-    return path
 
 
 # Fake `uv`/`sandesh` fixtures (mirror tests/test_installer.py exactly):

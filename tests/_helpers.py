@@ -141,3 +141,14 @@ def split_frontmatter(content: str):
             return frontmatter, body
     return "", content
 
+
+# ------------------------------------------------------------------ fixtures ----
+
+def write_executable(bin_dir, name: str, body: str) -> Path:
+    """Write an executable script fixture at ``bin_dir/name`` (mode 0755) and return its path --
+    the seam for fake ``uv``/``sandesh``/``pi`` binaries on an isolated tmp ``PATH``."""
+    path = Path(bin_dir) / name
+    path.write_text(body, encoding="utf-8")
+    path.chmod(0o755)
+    return path
+

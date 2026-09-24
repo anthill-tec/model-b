@@ -36,7 +36,10 @@ import tomllib
 import unittest
 from pathlib import Path
 
-from tests._helpers import decode_envelope as _decode_envelope
+from tests._helpers import (
+    decode_envelope as _decode_envelope,
+    write_executable as _write_fake_executable,
+)
 from tests.pi_capability_sandbox import shared_home_without_crucible, with_agent_dir
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -100,18 +103,6 @@ def _run_module(*args, env_overrides=None, timeout=15, stdin=subprocess.DEVNULL)
     return subprocess.run(
         cmd, capture_output=True, text=True, timeout=timeout, stdin=stdin, env=env,
     )
-
-
-def _write_fake_executable(bin_dir: str, name: str, script_body: str) -> Path:
-    """Write an executable shell-script fixture at ``bin_dir/name`` -- the
-    dependency-injection seam pinned for CR-MDB-014 C2 §S4 pre-flight
-    tests: fake `uv`/`sandesh` binaries on an isolated tmp PATH, so
-    detection/install is exercised with zero real network or install
-    side effects."""
-    path = Path(bin_dir) / name
-    path.write_text(script_body, encoding="utf-8")
-    path.chmod(0o755)
-    return path
 
 
 # Fake `uv` fixture: `uv tool install <pkg>` writes an invocation marker

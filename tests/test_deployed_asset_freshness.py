@@ -52,7 +52,7 @@ import tomllib
 import unittest
 from pathlib import Path
 
-from tests._helpers import decode_axi as _decode
+from tests._helpers import decode_axi as _decode, write_executable as _write_exe
 from tests.pi_capability_sandbox import (
     AGENT_DIR_ENV,
     make_home,
@@ -100,13 +100,6 @@ atexit.register(_dump)
 from modelb_axi.cli import main
 sys.exit(main(sys.argv[1:]))
 """
-
-
-def _write_exe(bin_dir: Path, name: str, body: str) -> Path:
-    path = Path(bin_dir) / name
-    path.write_text(body, encoding="utf-8")
-    path.chmod(0o755)
-    return path
 
 
 def _sha256(path: Path) -> str:

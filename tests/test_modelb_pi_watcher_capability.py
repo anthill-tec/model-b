@@ -35,7 +35,7 @@ import tomllib
 import unittest
 from pathlib import Path
 
-from tests._helpers import decode_axi as _decode
+from tests._helpers import decode_axi as _decode, write_executable as _write_exe
 from tests.pi_capability_sandbox import (
     AGENT_DIR_ENV,
     MODELB_PI_PACKAGE,
@@ -52,12 +52,6 @@ WATCHER_PI_ARGS = f"install npm:{MODELB_PI_PACKAGE}"
 
 _FAKE_UV = "#!/bin/sh\necho uv-fake\nexit 0\n"
 _FAKE_OK = "#!/bin/sh\nexit 0\n"
-
-def _write_exe(bin_dir: Path, name: str, body: str) -> Path:
-    path = Path(bin_dir) / name
-    path.write_text(body, encoding="utf-8")
-    path.chmod(0o755)
-    return path
 
 
 def _watcher_row() -> dict:

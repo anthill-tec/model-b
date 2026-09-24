@@ -37,7 +37,7 @@ import tomllib
 import unittest
 from pathlib import Path
 
-from tests._helpers import decode_axi as _decode
+from tests._helpers import decode_axi as _decode, write_executable as _write_exe
 from tests.pi_capability_sandbox import (
     AGENT_DIR_ENV,
     make_home,
@@ -47,13 +47,6 @@ from tests.pi_capability_sandbox import (
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SANDESH_INSTALL = "uv tool install sandesh-relay"
 _FAKE_TOOL = "#!/bin/sh\necho fake\nexit 0\n"
-
-
-def _write_exe(bin_dir: Path, name: str, body: str) -> Path:
-    path = Path(bin_dir) / name
-    path.write_text(body, encoding="utf-8")
-    path.chmod(0o755)
-    return path
 
 
 def _chmod_path() -> str:
