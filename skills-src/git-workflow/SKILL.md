@@ -176,12 +176,15 @@ After building: switch back to develop for continued work. Bump develop to the n
 
 ### Pi package releases (npm)
 
-1. **Publish** — after the version is set, publish the Pi package with `npm publish`, using
-   credentials the user supplies at publish time; never store them in the repository or in
-   agent-readable config.
+1. **Publish** — after the version is set, publish the Pi package with `npm publish` (a scoped
+   package with `npm publish --access public`), using credentials the user supplies at publish
+   time; never store them in the repository or in agent-readable config.
 2. **Verify the published version** — install the published version with `pi install` into an
    isolated Pi agent directory (`PI_CODING_AGENT_DIR` pointed at a temp dir) and confirm the
    extension loads there.
+3. **Post-release live check** — as part of the post-release maintenance, once the published
+   package is installed into the maintainer's real Pi configuration, start the watcher there and
+   confirm a Sandesh message wakes the session.
 
 ## Multi-Account Pushing (dual remote: origin + mirror)
 
