@@ -47,6 +47,18 @@ CRUCIBLE_SKILL = SKILLS_SRC / "crucible" / "SKILL.md"
 # The flag Crucible retired fleet-wide in their 0.1.0 clean break (no alias).
 RETIRED_REGISTER_FLAG = "--phase"
 
+# CR-MDB-023: `--phase` is ALSO the live flag of `rust-code-health.py snapshot`
+# (a Model B tool, not a Crucible client). Only that exact occurrence is
+# stripped before the retired-flag check; every other `--phase` still bites.
+RUST_SNAPSHOT_PHASE_RE = re.compile(r"rust-code-health\.py\s+snapshot\s+--phase\b")
+
+
+def _carries_retired_register_flag(line):
+    """True when `line` carries the retired register flag once the
+    `rust-code-health.py snapshot --phase` occurrences are removed
+    (CR-MDB-023) -- the guard's intent is otherwise unchanged."""
+    return RETIRED_REGISTER_FLAG in RUST_SNAPSHOT_PHASE_RE.sub("", line)
+
 # Case-exact; five uppercase, `report` lowercase.
 ROLE_ENUM = ("RED", "GREEN", "FIX", "VERIFY", "ORCHESTRATOR", "report")
 # The roles the SERVER refuses (409) when they register without a cycle binding.
@@ -283,7 +295,7 @@ class ClientRoleContractS3Test(unittest.TestCase):
         hits = [
             f"{_rel(path)}:{lineno}: {line.strip()}"
             for path, lineno, line in _scan_roots()
-            if RETIRED_REGISTER_FLAG in line
+            if _carries_retired_register_flag(line)
         ]
         self.assertEqual(
             hits,
@@ -294,6 +306,17 @@ class ClientRoleContractS3Test(unittest.TestCase):
             "these teaches a command that cannot parse. Work list:\n  "
             + "\n  ".join(hits),
         )
+
+    def test_s3_retired_flag_detector_exempts_only_rust_code_health_snapshot(self):
+        # CR-MDB-023: the exemption spares ONLY `rust-code-health.py snapshot
+        # --phase`; the retired register flag bites alone and alongside it.
+        retired = "python3 clients/rust-crucible.py register --agent X --phase RED"
+        snapshot = (
+            "python3 ~/.agents/scripts/rust-code-health.py snapshot --phase post --slice CR-X"
+        )
+        self.assertTrue(_carries_retired_register_flag(retired))
+        self.assertFalse(_carries_retired_register_flag(snapshot))
+        self.assertTrue(_carries_retired_register_flag(f"{snapshot} && {retired}"))
 
     def test_s3_every_register_example_carries_role_from_enumeration(self):
         examples = _register_examples()
