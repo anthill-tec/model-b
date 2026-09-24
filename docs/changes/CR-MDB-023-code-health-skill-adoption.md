@@ -68,8 +68,8 @@ clients are named as `rust-crucible.py` at the path in Crucible's client manifes
   sign-off" unchanged.
 - **The recorded drift:** the `rust-dead-scan.py` mode list includes `hot-path`; the ledger is
   documented as multi-domain (`--domain cull|temporal|<name>`), and no sentence calls it cull-only.
-- **No `worktree-flow.py cs`, no `schedule_db` instruction, no claim that Crucible's scheduling is
-  unreleased.**
+- **No `worktree-flow.py cs` (removed by CR-MDB-028), no `schedule_db` instruction, no claim that
+  Crucible's scheduling is unreleased.**
 
 ### §S4 — Ship it, scoped to Rust
 The bundle joins the installer's asset set (store, per-harness symlinks, sha256 manifest), and is
@@ -106,9 +106,10 @@ bundles wherever it counts them.
       the tool's own `--help`.
 - [ ] `--domain` with `cull` and `temporal` is documented; no sentence describes the ledger as
       cull-only.
-- [ ] Zero occurrences of `worktree-flow.py cs`, `set_state`, or `schedule_db` as an instruction;
-      no statement that Crucible's scheduling is unreleased. Across `skills-src/` and `scripts/`,
-      `worktree-flow.py cs` appears nowhere as an instruction.
+- [ ] Zero occurrences of `worktree-flow.py cs` (removed by CR-MDB-028), `set_state`, or
+      `schedule_db` as an instruction; no statement that Crucible's scheduling is unreleased. Across
+      `skills-src/` and `scripts/`, the removed `worktree-flow.py cs` appears nowhere as an
+      instruction.
 - [ ] The bundle names no harness tool (DN §D18).
 
 ### §S4
