@@ -9,7 +9,7 @@ description: Model B workflow model — the canonical home. Load for orchestrati
 
 > **Model B is a flow of ACTIONS triggered by ACTORS with specific ROLES.**
 
-Ontology (LOCKED): `crucible:docs/research/DN-model-b-language.md` — cite it, never fork it. Summary (≤10 lines):
+Ontology (LOCKED): Model B's `docs/research/DN-model-b-language.md` (a frozen import) — cite it, never fork it. Summary (≤10 lines):
 - Multi-track (parallel) and single-track (sequential) execution differ ONLY in which actor roles are present and how actions are scheduled — the model itself is uniform.
 - Crucible is the TRACKING system fronting this workflow: it tracks the actors and their actions without ever being an actor in it.
 - Every level is an agent to Crucible (registers, heartbeats, carries a runtime, tombstones).

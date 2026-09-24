@@ -1,22 +1,22 @@
 ---
 name: sandesh
-description: "GENERIC Sandesh (MCP) usage for the Model-B agentic workflow — a Mainline coordinator + Track worker orchestrators that cannot message each other directly. Bootstrap (setup→register→wake watcher: the Model B watcher first — it relaunches itself, so a woken session only fetches; fallback: `sandesh notify` as a background process that notifies you when it exits), the watcher PRIME-DIRECTIVE (never leave it dead; the seven-row exit table — on the fallback path fetch then relaunch the same turn, never relaunch after a terminal exit `3`/`4`/`5`; exactly one), addressing (`Mainline - <Project>` / `Track N - <Project>`), verbs (request/directive/reply; to=wakes, cc=silent, all-tracks=broadcast; fetch=received/acting, reply=done), roster/liveness via sandesh_addressbook (read it, never guess; dispatch only to listening:true), and the Mainline inbox-watcher loop. Each project supplies its own project_id + address suffix in its own Sandesh note."
+description: "GENERIC Sandesh (`sandesh` CLI) usage for the Model-B agentic workflow — a Mainline coordinator + Track worker orchestrators that cannot message each other directly. Bootstrap (setup→register→wake watcher: the Model B watcher first — it relaunches itself, so a woken session only fetches; fallback: `sandesh notify` as a background process that notifies you when it exits), the watcher PRIME-DIRECTIVE (never leave it dead; the seven-row exit table — on the fallback path fetch then relaunch the same turn, never relaunch after a terminal exit `3`/`4`/`5`; exactly one), addressing (`Mainline - <Project>` / `Track N - <Project>`), verbs (request/directive/reply; --to wakes, --cc silent, --to all-tracks broadcasts; fetch=received/acting, reply=done), roster/liveness via `sandesh addressbook --project <Project>` (read it, never guess; dispatch only to listening:true), and the Mainline inbox-watcher loop. Each project supplies its own project id + address suffix in its own Sandesh note."
 metadata:
   type: reference
 ---
 
-Sandesh (MCP) is the addressed/threaded mailbox that lets Model-B orchestrators coordinate — a **Mainline** coordinator session + parallel **Track** worker sessions that cannot message each other directly. **Generic mechanics live here; each project supplies its own `project_id` + address suffix** in its project Sandesh note.
+Sandesh (the `sandesh` CLI) is the addressed/threaded mailbox that lets Model-B orchestrators coordinate — a **Mainline** coordinator session + parallel **Track** worker sessions that cannot message each other directly. **Generic mechanics live here; each project supplies its own project id (`--project <Project>`) + address suffix** in its project Sandesh note.
 
 ## Two channels, one boundary
-The MCP server carries the VERBS (send/reply/fetch/inbox/register/addressbook). The **WAKE is out-of-band** — an MCP server cannot re-invoke a sleeping agent. The standalone `sandesh notify` watcher exits when To-addressed mail arrives → the host re-invokes the session → it fetches (`sandesh fetch --project <Project> --to '<your address>'`) → and, on the fallback path, relaunches the watcher (the Model B watcher relaunches itself).
+The `sandesh` CLI carries the VERBS (`send`/`reply`/`fetch`/`inbox`/`register`/`addressbook`). The **WAKE is out-of-band** — a mailbox verb cannot re-invoke a sleeping agent. The standalone `sandesh notify` watcher exits when To-addressed mail arrives → the host re-invokes the session → it fetches (`sandesh fetch --project <Project> --to '<your address>'`) → and, on the fallback path, relaunches the watcher (the Model B watcher relaunches itself).
 
 ## Bootstrap — at SESSION START, every session (do NOT defer to first dispatch)
-1. `sandesh_setup(project_id="<Project>")` (idempotent)
-2. `sandesh_register(addr="<your address>")`
+1. `sandesh setup --project <Project>` (idempotent)
+2. `sandesh register --project <Project> --address "<your address>"`
 3. Start the wake watcher with the **Model B watcher** — it supervises `sandesh notify`, stays running and relaunches itself, so a session it wakes **only fetches** (`sandesh fetch --project <Project> --to '<your address>'`). If the Model B watcher is not installed, run `sandesh notify --to "<your address>" --project <Project>` as a background process that notifies you when it exits (your harness's facility for long-running background processes), and answer each exit per the PRIME DIRECTIVE table. NEVER run it inline — it blocks — and never as a job with a deadline shorter than the watcher's own timeout.
-4. Confirm `sandesh_addressbook` shows your address `listening:true`.
+4. Confirm `sandesh addressbook --project <Project>` shows your address `listening:true`.
 
-The CLI REQUIRES `--project <Project>`; a bare `sandesh notify --to …` exits 1 and silently never listens (`listening:false`). Every Sandesh MCP call must pass `project_id` explicitly (the server env may default it wrong, which mismatches the addresses).
+The CLI REQUIRES `--project <Project>`; a bare `sandesh notify --to …` exits 1 and silently never listens (`listening:false`). Every `sandesh` call must pass `--project <Project>` explicitly (the `$SANDESH_PROJECT` default may be wrong, which mismatches the addresses).
 
 ## 🚨 PRIME DIRECTIVE — never leave your watcher dead during a session
 **With the Model B watcher**, it stays running and relaunches itself: on mail it wakes you once and you only fetch (`sandesh fetch --project <Project> --to '<your address>'`); it surfaces an error or a terminal exit and does not relaunch after it — report it.
@@ -33,17 +33,17 @@ The CLI REQUIRES `--project <Project>`; a bare `sandesh notify --to …` exits 1
 | already live (dedup) | `5` | do **not** relaunch — a watcher already holds the address |
 | killed by a signal | `128+n` | relaunch, unless you stopped it yourself |
 
-Only exit `0` means mail arrived — never read a non-zero exit as mail. Keep **exactly ONE** watcher per address (a duplicate exits `5`, already live — benign, the prior is alive; do not relaunch it). Whenever mail may have arrived — you find the watcher stopped or are unsure — fetch FIRST (drain gap mail), THEN relaunch: on the fallback path your `sandesh notify`; with the Model B watcher, restart it once you have fixed what it surfaced — never after a terminal exit (`3`/`4`/`5`); a fresh watcher only fires on mail arriving AFTER it starts, so relaunching blind can MISS gap messages. At any uncertainty, `sandesh_addressbook` to confirm your own `listening:true`.
+Only exit `0` means mail arrived — never read a non-zero exit as mail. Keep **exactly ONE** watcher per address (a duplicate exits `5`, already live — benign, the prior is alive; do not relaunch it). Whenever mail may have arrived — you find the watcher stopped or are unsure — fetch FIRST (drain gap mail), THEN relaunch: on the fallback path your `sandesh notify`; with the Model B watcher, restart it once you have fixed what it surfaced — never after a terminal exit (`3`/`4`/`5`); a fresh watcher only fires on mail arriving AFTER it starts, so relaunching blind can MISS gap messages. At any uncertainty, run `sandesh addressbook --project <Project>` to confirm your own `listening:true`.
 
 ## Addressing + verbs
 - Addresses: `Mainline - <Project>` / `Track N - <Project>`.
-- `kind="request"` — a track raises a question/blocker/approval to Mainline. `kind="directive"` — Mainline assigns/unblocks a track. `sandesh_reply` — answers a request; **reply = the requested work is DONE** ("you're unblocked, proceed").
-- **`to=` WAKES** the recipient; **`cc=` is SILENT** (awareness only, no wake — saves turns); `to=["all-tracks"]` broadcasts to every active address minus the sender.
+- `sandesh send --project <Project> --from "<your address>" --to "<address>" --kind request --subject … --body …` — a track raises a question/blocker/approval to Mainline. `--kind directive` — Mainline assigns/unblocks a track. `sandesh reply --project <Project> --to-msg <id> --body …` — answers a request; **reply = the requested work is DONE** ("you're unblocked, proceed").
+- **`--to` WAKES** the recipient; **`--cc` is SILENT** (awareness only, no wake — saves turns); `--to all-tracks` broadcasts to every active address minus the sender.
 - Lifecycle has no status field: `fetch` = received/being-acted-on (the waiting sender can observe read-state); `reply` = done.
 
 ## Roster / liveness — READ it, never guess
-`sandesh_addressbook(project_id="<Project>")` lists every registered address with `active` + `listening`. **How many tracks exist + whether they're alive comes from the addressbook, never assumption** ("N tracks" is not a given). Dispatch a `to=` directive ONLY to a `listening:true` address; if a needed track isn't alive, surface it (the human must launch that session) — don't dispatch into the void.
+`sandesh addressbook --project <Project>` lists every registered address with `active` + `listening`. **How many tracks exist + whether they're alive comes from the addressbook, never assumption** ("N tracks" is not a given). Dispatch a `--to` directive ONLY to a `listening:true` address; if a needed track isn't alive, surface it (the human must launch that session) — don't dispatch into the void.
 
 ## Roles
-- **Track**: raises `kind=request` to Mainline for anything needing a decision; then **HOLDS** until Mainline replies/directs — idle on the watcher, **zero LLM turns, never self-poll**. Signals cycle completion with `sandesh_reply` threaded under the assignment message.
+- **Track**: raises a `--kind request` to Mainline for anything needing a decision; then **HOLDS** until Mainline replies/directs — idle on the watcher, **zero LLM turns, never self-poll**. Signals cycle completion with `sandesh reply --to-msg <id>` threaded under the assignment message.
 - **Mainline**: runs its own inbox watcher (`sandesh notify --to "Mainline - <Project>" --project <Project>`); on a To-addressed request → re-invoked → fetch + decide/schedule + reply/directive → **relaunch the watcher** (fallback path only — the Model B watcher relaunches itself). **ALWAYS reply the moment a disposition is done** — the raising track HOLDS until it hears back. If consuming a request needs the human, surface it and hold (don't busy-relaunch).

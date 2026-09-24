@@ -52,9 +52,9 @@ takes **no role argument**. A shutdown is always contextual:
    <Project>` vs `Track <N> - <Project>`) or worktree (`/.claude/worktrees/<cr>` ⟹ a Track). It
    selects your branch below (2A Track / 2B Mainline). A running orchestrator always knows this;
    only if one genuinely cannot, ask.
-2. **Project** — `<Project>` from CLAUDE.md / `ORCHESTRATOR-<Project>`. **Casing is load-bearing
-   for Sandesh** (NAI = `Nai`, capital): every Sandesh MCP call passes `project_id="<Project>"`;
-   the `sandesh notify` CLI passes `--project <Project>`.
+2. **Project** — `<Project>` from AGENTS.md / `ORCHESTRATOR-<Project>`. **Casing is load-bearing
+   for Sandesh** (NAI = `Nai`, capital): every `sandesh` CLI call (`addressbook`, `notify`,
+   `send`, `reply`, `unregister`, …) passes `--project <Project>`.
 3. **Emergency flag — the only argument that matters.** Scan the command/directive for
    `emergency` (or `--emergency`). Present ⟹ **EMERGENCY** (Step 1B); absent ⟹ **GRACEFUL**
    (Step 1A). A Mainline-dispatched directive carries the flag in its subject/body; the Track
@@ -70,12 +70,12 @@ takes **no role argument**. A shutdown is always contextual:
 Before tearing anything down, **load and read the memory that binds your resolved role** —
 exactly as bootstrap requires — so the teardown is performed the way YOUR role must perform
 it. Mandatory, not a skim. In order:
-1. `~/.claude/skills/model-b/references/orchestration-common.md` — universal orchestrator rules (EVERY role).
+1. `~/.agents/skills/model-b/references/orchestration-common.md` — universal orchestrator rules (EVERY role).
 2. Your role file: Mainline → `orchestration-mainline.md` · Track → `orchestration-track.md`.
 3. The project `ORCHESTRATOR-<Project>` note — project deltas that override the generic tiers.
 4. The project memory index `MEMORY.md` — standing feedback (e.g. commit-design-docs-promptly,
    worktree-flow finish-merge-not-rebase, watcher-relaunch discipline) that this teardown obeys.
-5. `~/.claude/skills/model-b/references/sandesh.md` — the channel mechanics for the ack + (Mainline) the
+5. `~/.agents/skills/model-b/references/sandesh.md` — the channel mechanics for the ack + (Mainline) the
    collect-acks loop.
 
 If a later step conflicts with a role rule, the **role rule wins** — re-read rather than guess.
@@ -86,7 +86,7 @@ If a later step conflicts with a role rule, the **role rule wins** — re-read r
 
 The active-step rule applies to **both** modes and comes first, always:
 
-- **Close the active step.** If a tool thread is mid-flight — a file Write/Edit, a commit,
+- **Close the active step.** If a tool thread is mid-flight — a file write/edit, a commit,
   an in-progress agent — let it finish so nothing is left half-written or a repo half-mutated.
   Never begin teardown on top of an open write. This holds even in an emergency (a corrupt
   half-written file helps no one).
@@ -113,7 +113,8 @@ Host is going down (power failure, forced stop). After closing the active write:
 **Graceful (1A):**
 1. **Finish the active step** (Step 1) — wait for any in-flight write/tool thread to close.
 2. **Mid CR-cycle with active todos? ESCALATE first, do NOT abruptly stop.** Tell Mainline
-   you are mid-cycle — `sandesh_send(kind="request", to=["Mainline - <Project>"])`:
+   you are mid-cycle —
+   `sandesh send --project <Project> --from "<your address>" --to "Mainline - <Project>" --kind request --subject "…" --body "…"`:
    *"Track N got a shutdown; mid CR-XXX at <phase>, <N> active todos. Non-emergency → I'll
    drain to exhaustion + merge, then ack. Say `emergency` if you need an immediate stop."*
    - **Non-emergency (default):** keep working — drain the todo list to exhaustion and get
@@ -126,7 +127,9 @@ Host is going down (power failure, forced stop). After closing the active write:
 3. **No dangling work.** Ensure your working folder (worktree) is clean: **commit any
    uncommitted changes** (never leave WIP on disk) and confirm the active CR is merged (no
    unmerged commits left stranded on the feature branch). `git status --porcelain` empty.
-4. **ACK that you are safe to shut down** — to **Mainline** (`sandesh_reply`/`sandesh_send`),
+4. **ACK that you are safe to shut down** — to **Mainline** (`sandesh reply --project <Project>
+   --to-msg <id> …` threaded under the shutdown directive, or `sandesh send --project <Project>
+   --to "Mainline - <Project>" …`),
    or to the **user** if the command came on this session:
    *"Track N safe to shut down — CR-XXX merged @ <HEAD>, lane drained, worktree clean / no
    carried work."* The ack IS the shutdown indicator.
@@ -147,8 +150,9 @@ The command is issued **directly by the User**. Mainline orchestrates the team's
 and goes **last**.
 
 1. **Dispatch the shutdown to ALL active Tracks — propagating the `emergency` flag.** A Mainline
-   shutdown is NEVER just Mainline. From `sandesh_addressbook(project_id="<Project>")` take every
-   active track and send a `kind="directive"` (`to=["all-tracks"]`, or each) telling them to shut
+   shutdown is NEVER just Mainline. From `sandesh addressbook --project <Project>` take every
+   active track and send a directive (`sandesh send --project <Project> --kind directive
+   --to all-tracks …`, or `--to` each) telling them to shut
    down so each runs its own Step 2A. **If the User's shutdown carried `emergency`, the directive
    to EVERY track MUST carry `emergency` too** — the host is going down and takes the tracks with
    it, so they fast-abort rather than drain. A graceful Mainline shutdown dispatches a graceful
@@ -194,7 +198,7 @@ ONLY here, at a confirmed shutdown's last step.
     `pkill -f "sandesh notify --to '<your exact address>'"`.
   - **Never** a machine-wide `pkill sandesh` / broad kill — that would take down OTHER
     orchestrators' watchers. Kill only the one you own.
-  - Then `sandesh_unregister(addr="<your address>", project_id="<Project>")` for a clean
+  - Then `sandesh unregister --project <Project> --address "<your address>"` for a clean
     addressbook (`active:false`), so the roster reflects you are down.
 - Next run, `/bootstrap` brings you back (re-register + relaunch the watcher). Shutdown
   kills; bootstrap revives.
