@@ -268,6 +268,13 @@ class WorktreeFlowDblessS1Test(unittest.TestCase):
                          f"axi.verb must be 'status', got {axi.get('verb')!r}")
         self.assertIs(axi.get("ok"), True,
                       f"axi.ok must be True (bool), got {axi.get('ok')!r}")
+        # Machine channel is stdout (the envelope above); the human board
+        # goes to stderr. Pinned here after the retired envelope test.
+        self.assertNotEqual(
+            result.stderr.strip(), "",
+            "`status` must print the human board to stderr alongside the "
+            "stdout envelope; stderr was empty",
+        )
 
 
 class WorktreeFlowDblessS2Test(unittest.TestCase):
