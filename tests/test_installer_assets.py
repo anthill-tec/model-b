@@ -465,7 +465,10 @@ class BuildPyCliRetargetTest(unittest.TestCase):
         expected_paths = {
             GENERATOR_AGENTS_DIR / f"{stack}-{role}-agent.md"
             for stack in STACKS for role in ROLES
-        } | {module.CODEC_TARGET}
+        } | {module.CODEC_TARGET, REPO_ROOT / "pi-package" / "README.md"}
+        # CR-MDB-029 \u00a7S1 MIGRATION (orchestrator-approved, ruling D3; missed
+        # at RED): the Pi package README is a target of every invocation, so
+        # --list also prints pi-package/README.md (spec path).
         # POSITIVE/EXACT -- the listed target set is exactly the pinned
         # repo-local agent assets plus the generated codec.
         self.assertEqual(

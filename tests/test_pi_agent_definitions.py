@@ -948,6 +948,14 @@ class UnknownIntentDropS2Test(unittest.TestCase):
             ignore=shutil.ignore_patterns("__pycache__"),
         )
         (self._tmp_repo_root / codec_target_rel).parent.mkdir(parents=True, exist_ok=True)
+        # CR-MDB-029 \u00a7S1 MIGRATION (orchestrator-approved, kind 2, as
+        # BespokeUntouchedS4Test under ruling D6; missed at RED): a build now
+        # renders pi-package/README.md from docs/install-guide.md, so the
+        # isolated repo root carries the guide and the package's directory.
+        (self._tmp_repo_root / "docs").mkdir(parents=True, exist_ok=True)
+        shutil.copy(REPO_ROOT / "docs" / "install-guide.md",
+                    self._tmp_repo_root / "docs" / "install-guide.md")
+        (self._tmp_repo_root / "pi-package").mkdir(parents=True, exist_ok=True)
 
         fixture_toml = tmp_generator_dir / "stacks" / "python.toml"
         original_text = fixture_toml.read_text(encoding="utf-8")

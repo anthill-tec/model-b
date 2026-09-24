@@ -328,7 +328,10 @@ class RustStackGeneratorCensusS2Test(unittest.TestCase):
         build_module = _load_build_module()
         expected_paths = {
             AGENTS_DIR / f"rust-{role}-agent.md" for role in ROLES
-        } | {build_module.CODEC_TARGET}
+        } | {build_module.CODEC_TARGET, REPO_ROOT / "pi-package" / "README.md"}
+        # CR-MDB-029 \u00a7S1 MIGRATION (orchestrator-approved, ruling D3; missed
+        # at RED): the Pi package README is listed on every invocation, stack
+        # filter or not, like the codec (spec path).
         # POSITIVE/EXACT — restricted to the rust stack, the target list is
         # exactly the 4 rust role files plus the always-present codec target.
         self.assertEqual(
