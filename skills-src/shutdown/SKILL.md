@@ -26,8 +26,10 @@ kills the Sandesh notifier it owns.
   MAINLINE** that it is safe to stop (or to the USER if the command came on its own session).
   A Track never tears down before its active CR is settled, unless told to emergency-stop.
 
-**The one overridden rule:** everywhere else, a watcher that exits is relaunched in the
-same turn (the relaunch-on-exit PRIME DIRECTIVE). **Shutdown is the single exception** —
+**The one overridden rule:** everywhere else, a stopped watcher is relaunched in the
+same turn — by the Model B watcher itself, or by you on the fallback path — except after a
+terminal exit (`3`/`4`/`5`, per the PRIME DIRECTIVE table in `sandesh.md`), which is never
+relaunched (the relaunch-on-exit PRIME DIRECTIVE). **Shutdown is the single exception** —
 its final step kills the notifier and does **not** relaunch. Keep the notifier ALIVE
 through the whole teardown (you need it to receive acks and a possible late emergency-stop);
 kill it only once everything else is done.
@@ -183,9 +185,11 @@ ONLY here, at a confirmed shutdown's last step.
 - **Why last:** you need the notifier alive throughout the teardown — a Track to receive a
   late emergency-stop, Mainline to receive every track's ack. Kill it only when everything
   else (drain, merge, commit, ack/report) is done.
-- **How:** stop the background watcher you launched —
-  - `TaskStop` on its background task id (the one returned when you `run_in_background` the
-    `sandesh notify`), **or** a targeted kill of *your own* process only:
+- **How:** stop your watcher, in this order:
+  - through the **Model B watcher**'s stop, when it runs your notifier; **or**
+  - on the fallback path, through the harness facility that runs your background process,
+    stopping your own process only; **or**
+  - as the last resort, a targeted kill of *your own* address's notifier only:
     `pkill -f "sandesh notify --to '<your exact address>'"`.
   - **Never** a machine-wide `pkill sandesh` / broad kill — that would take down OTHER
     orchestrators' watchers. Kill only the one you own.

@@ -116,13 +116,19 @@ do the minimum:
    when the check shows they're missing.)
 2. **Launch the watcher ONLY if not already `listening:true`.** If the addressbook already
    shows your address `listening:true`, a live watcher exists — do NOT spawn a duplicate.
-   Otherwise launch it in the BACKGROUND (Bash `run_in_background`), PLAIN — no
-   `while`/retry wrapper, exactly ONE per address:
+   Otherwise start it with the **Model B watcher** — it supervises `sandesh notify`, stays
+   running and relaunches itself; when it wakes you, you only fetch:
+   `sandesh fetch --project <Project> --to '<your address>'`. If the Model B watcher is not
+   installed, run the notifier as a background process that notifies you when it exits —
+   PLAIN, no `while`/retry wrapper, exactly ONE per address, never inline (it blocks), and
+   never as a job with a deadline shorter than the watcher's own timeout:
    ```
    sandesh notify --to "<your address>" --project <Project>
    ```
-   It blocks until To-addressed mail arrives, then exits; on that exit you `sandesh_fetch`
-   AND relaunch in the same turn (the PRIME DIRECTIVE — never leave the watcher dead).
+   It blocks until To-addressed mail arrives, then exits. Read the reason from its last log
+   line and respond per the PRIME DIRECTIVE table in `sandesh.md`: exit `0` (mail) → fetch,
+   then relaunch in the same turn; exit `3`/`4`/`5` (tombstoned / evicted / already live) →
+   do not relaunch, report it. Never leave the watcher dead otherwise.
 3. **Re-confirm** `sandesh_addressbook` shows your address `listening:true`. A bare
    `sandesh notify` without `--project` silently never listens — if `listening:false`,
    fix the command and relaunch.
@@ -173,7 +179,8 @@ you recover it — both roles recover.
    - any incomplete Mainline tasks reloaded in Step 2;
    - any pending Track requests in the inbox.
 5. **Do NOT auto-dispatch, auto-schedule, or merge.** Mainline surfaces the board and
-   waits for the user's go. Relaunch the Mainline inbox watcher after any fetch.
+   waits for the user's go. Relaunch the Mainline inbox watcher after any fetch (fallback
+   path only — the Model B watcher relaunches itself).
 
 ---
 
@@ -209,10 +216,11 @@ you recover it — both roles recover.
 
 - **Never** start CR work, dispatch sub-agents, or merge as part of bootstrap — this is
   setup + status only. Mainline waits for the user; a Track waits for Mainline.
-- Watcher is launched PLAIN via `run_in_background`, exactly one per address; never a
-  `while … sleep` retry wrapper.
+- The watcher runs through the Model B watcher or, when it is not installed, as a PLAIN
+  background process that notifies you when it exits; exactly one per address; never
+  inline, never a `while … sleep` retry wrapper.
 - Never machine-wide process kills to "clean up" a stale watcher — `sandesh_addressbook`
-  confirms liveness; a duplicate watcher exits benign on the lock.
+  confirms liveness; a duplicate watcher exits `5` (already live), which is benign.
 - Mainline reports to the USER; a Track reports to MAINLINE. Do not cross these.
 - If you are a Solo orchestrator (no tracks, no worktrees), follow the MAINLINE branch
   for queue + user reporting; the Sandesh/Track machinery is inert.

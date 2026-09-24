@@ -37,7 +37,7 @@ Coordinator-only rules. Read COMMON + MAINLINE. (Worker rules → TRACK; sub-age
 - A CR introducing a new PRD design concept: update the PRD section first (commit promptly), then the CR cites it.
 
 ## Inbox / coordination
-- Run the inbox watcher in the background at session start; on a request → fetch + reschedule (incl. filing a requested NEW CR into the owner track's lane) + reply/directive → relaunch the watcher.
+- Run the inbox watcher through the Model B watcher (or, without it, as a background process that notifies you when it exits) from session start; on a request → fetch + reschedule (incl. filing a requested NEW CR into the owner track's lane) + reply/directive → relaunch the watcher (fallback path only; the Model B watcher relaunches itself).
 - Re-read a request at consume-time before acting (the watcher can fire before the write completes).
 - If consuming a request needs the user, surface it and hold.
 
