@@ -223,7 +223,7 @@ Every run ends with one summary on standard output, whose `outcome` is one of:
 | Outcome | Meaning | Exit code |
 |---|---|---|
 | `installed` | The assets were deployed and `install.toml` written. The summary lists the target root, the number of managed files, and any files it left alone. | 0 |
-| `deploy_skipped` | The checks ran, but no `--target-root` (or `MODELB_TARGET_ROOT`) was given, so nothing was written. See [Installing into your home directory](#installing-into-your-home-directory). | 0 |
+| `deploy_skipped` | The checks ran, but no `--target-root` (or `MODELB_TARGET_ROOT`) was given, so no assets and no `install.toml` were written (a `sandesh` install the checks made still happened). See [Installing into your home directory](#installing-into-your-home-directory). | 0 |
 | `already_installed` | `install.toml` already exists and `--reinstall` was not given. Nothing is deployed; the summary reports the state of what is deployed (below). | 0 |
 | `preflight_failed` | `uv` is missing, or a required Pi package is missing without `--allow-missing-capabilities`. Nothing was written. | 1 |
 | `stacks_rejected` | `--stacks` (or your answer to the stacks question) named an unsupported stack. Nothing was written. | 1 |
@@ -271,10 +271,16 @@ With `--target-root ~` it writes:
 - the record of the install, `install.toml`, to `~/.local/share/modelb/` (or
   `$XDG_DATA_HOME/modelb`; override with `--modelb-home` or `MODELB_HOME`).
 
-Without `--target-root` (and without `MODELB_TARGET_ROOT` set), every check still runs but
-nothing is written, and the outcome is `deploy_skipped`. That makes a run without it a safe
-dry run. To try a full install without touching your home directory, point both locations at a
-scratch directory:
+Without `--target-root` (and without `MODELB_TARGET_ROOT` set), every check still runs but no
+asset and no `install.toml` is written, and the outcome is `deploy_skipped`. That is not
+quite a dry run: the checks' install offers still act on your machine, whatever the target.
+If `sandesh` is missing, a run with `--yes`, or one whose input is not a terminal, installs it
+into your home directory (`uv tool install sandesh-relay`) before it ends; an interactive run
+installs it unless you answer no, and runs any other offer you accept. For a run that changes
+nothing, have `sandesh` installed first and answer no to every offer.
+
+To try a full install without touching your home directory's Model B files, point both
+locations at a scratch directory (the same caveat about `sandesh` applies):
 
 ```sh
 modelb-axi --yes --harnesses pi --stacks python --target-root /tmp/modelb-trial --modelb-home /tmp/modelb-trial/state
