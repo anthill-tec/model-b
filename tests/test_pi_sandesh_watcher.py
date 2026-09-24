@@ -1,0 +1,401 @@
+"""Behaviour tests for the Model B Pi package's Sandesh watcher supervisor,
+``pi-package/extensions/sandesh-watcher.ts`` (CR-MDB-029 \u00a7S2).
+
+The extension is loaded by ``tests/fixtures/pi_watcher_harness.mjs``, which
+uses the ``jiti`` mechanism Pi's own loader uses (the CR-MDB-030 \u00a7S8
+pattern, ``tests/test_pi_hook_runtime.py``). The harness hands the factory
+a recording fake ``pi`` and runs a JSON step script against the registered
+``sandesh_watcher`` tool and ``/watcher`` command. The extension's real
+child processes are a fake ``sandesh`` (a POSIX ``sh`` script written per
+test into a temp ``bin/`` placed FIRST on ``PATH``). The real ``sandesh`` is
+never run. ``HOME`` and ``PI_CODING_AGENT_DIR`` are sandboxed temp dirs.
+
+The fake ``sandesh`` takes one plan line per launch; the last line repeats.
+It appends its pid to ``launches.log`` and its argv to ``argv.<n>``, prints
+``[notify] watching <to> in <project> (pid <pid>)`` (the Sandesh 0.3.5
+banner), then acts:
+
+- ``exit N`` -- exit ``N`` at once;
+- ``signal TERM`` -- kill itself with ``SIGTERM``;
+- ``alive`` -- ``exec sleep 30``, keeping its pid;
+- ``late`` -- sleep 0.7 s and touch ``banner.marker`` BEFORE printing the
+  banner, then ``exec sleep 30``;
+- ``hold N`` -- wait until ``release.<n>`` exists, then exit ``N``;
+- ``nobanner N`` -- print an error on stderr and exit ``N`` without a banner.
+
+Orchestrator rulings (2026-09-24, on the cycle-112 RED design):
+
+- W -- the 3-timeouts-in-a-minute cap. The AC cap test needs no clock seam,
+  because the fake exits in milliseconds. A NEGATIVE test is added too:
+  ``2`` exits spread more than a minute apart do NOT surface and keep
+  relaunching. Without it, a cap on three timeouts in TOTAL would pass, and
+  that watcher would die after three normal multi-hour timeouts. The
+  harness fakes time by overriding ``Date.now`` before load, so GREEN must
+  use ``Date.now()`` for the window.
+- C -- "surfaced" is observed on three channels: ``pi.sendUserMessage``,
+  ``pi.sendMessage`` and ``ctx.ui.notify``. Expectations per exit:
+  - ``0`` -- exactly one ``sendUserMessage`` naming the address and
+    ``sandesh fetch --project <p> --to <address>``, and no relaunch;
+  - ``2`` -- exactly one relaunch and nothing on any channel;
+  - ``1``/``3``/``4``/``5``/signal -- exactly one surfacing whose text holds
+    the code and a meaning keyword, and no relaunch. The keywords are:
+    ``1`` usage|configuration, ``3`` tombston, ``4`` evict,
+    ``5`` already|dedup, SIGTERM signal + (SIGTERM|15|143);
+  - three ``2`` exits -- exactly one surfacing and exactly three launches.
+- T -- tool and command results:
+  - ``start`` answers /ready/i naming the address, and resolves only once
+    the banner is out (the fake's marker exists when ``execute`` resolves);
+  - a second ``start`` answers /already|running/i and spawns nothing;
+  - ``stop`` (the tool, and ``/watcher stop``) ends the child's pid within
+    3 s;
+  - ``status`` / ``/watcher status`` names the address while the watcher
+    runs;
+  - the child's argv is exactly ``notify --to <addr> --project <p>``.
+- H -- a new fixture, this test file, and an exact ``pi.extensions`` pin in
+  ``tests/test_pi_package.py::PiPackageManifestTest``. No existing test is
+  migrated.
+
+Stdlib only.
+"""
+
+import contextlib
+import json
+import os
+import re
+import shutil
+import signal
+import subprocess
+import tempfile
+import unittest
+from pathlib import Path
+
+from tests.test_pi_hook_runtime import _require_loader_env
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+EXTENSION = REPO_ROOT / "pi-package" / "extensions" / "sandesh-watcher.ts"
+HARNESS_MJS = REPO_ROOT / "tests" / "fixtures" / "pi_watcher_harness.mjs"
+
+ADDRESS = "Mainline - WatcherTest"
+PROJECT = "WatcherTest"
+FETCH = f"sandesh fetch --project {PROJECT} --to {ADDRESS}"
+
+_HARNESS_BUDGET_S = 45.0
+_SETTLE_MS = 2000
+
+FAKE_SANDESH = r"""#!/bin/sh
+# Fake `sandesh` for CR-MDB-029 S2 tests -- never the real one.
+dir="$FAKE_SANDESH_DIR"
+log="$dir/launches.log"
+touch "$log"
+n=$(( $(wc -l < "$log") + 1 ))
+echo "$$" >> "$log"
+: > "$dir/argv.$n"
+for a in "$@"; do printf '%s\n' "$a" >> "$dir/argv.$n"; done
+to=""; project=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --to) to="$2"; shift 2 ;;
+    --project) project="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+lines=$(wc -l < "$dir/plan")
+if [ "$n" -le "$lines" ]; then line=$(sed -n "${n}p" "$dir/plan"); else line=$(sed -n "${lines}p" "$dir/plan"); fi
+set -- $line
+banner() { echo "[notify] watching $to in $project (pid $$)"; }
+case "$1" in
+  exit) banner; exit "$2" ;;
+  signal) banner; kill -"$2" $$; sleep 5; exit 99 ;;
+  alive) banner; exec sleep 30 ;;
+  late) sleep 0.7; touch "$dir/banner.marker"; banner; exec sleep 30 ;;
+  hold)
+    banner
+    i=0
+    while [ ! -e "$dir/release.$n" ] && [ $i -lt 300 ]; do sleep 0.1; i=$((i+1)); done
+    exit "$2" ;;
+  nobanner) echo "error: usage: sandesh notify --to ADDR --project P" >&2; exit "$2" ;;
+  *) echo "fake sandesh: bad plan line: $line" >&2; exit 97 ;;
+esac
+"""
+
+
+def _start(**extra) -> dict:
+    return {"op": "tool", "params": {"action": "start", "address": ADDRESS, "project": PROJECT}, **extra}
+
+
+def _stop() -> dict:
+    return {"op": "tool", "params": {"action": "stop", "address": ADDRESS}}
+
+
+class SandeshWatcherTestCase(unittest.TestCase):
+    """Sandbox + drive fixture: a fake ``sandesh`` first on ``PATH``, a temp
+    ``HOME`` and ``PI_CODING_AGENT_DIR``, the extension loaded by jiti."""
+
+    @classmethod
+    def setUpClass(cls):
+        env = _require_loader_env()
+        cls.node_bin = env["node_bin"]
+        cls.jiti_mjs = env["jiti_mjs"]
+        cls.pi_pkg_root = env["pi_pkg_root"]
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="modelb-pi-watcher-"))
+        self.bin = self.tmp / "bin"
+        self.fake_dir = self.tmp / "fake"
+        for d in (self.bin, self.fake_dir, self.tmp / "home", self.tmp / "pi-agent"):
+            d.mkdir()
+        shim = self.bin / "sandesh"
+        shim.write_text(FAKE_SANDESH, encoding="utf-8")
+        shim.chmod(0o755)
+        self.addCleanup(self._cleanup)
+
+    def _cleanup(self):
+        for pid in self._launch_pids():
+            try:
+                cmdline = Path(f"/proc/{pid}/cmdline").read_bytes()
+            except OSError:
+                continue
+            if b"sleep" in cmdline or b"sandesh" in cmdline:
+                with contextlib.suppress(OSError):
+                    os.kill(pid, signal.SIGKILL)
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _launch_pids(self) -> list[int]:
+        log = self.fake_dir / "launches.log"
+        if not log.is_file():
+            return []
+        return [int(x) for x in log.read_text().split() if x.strip()]
+
+    def argv_of(self, launch: int) -> list[str]:
+        return (self.fake_dir / f"argv.{launch}").read_text(encoding="utf-8").splitlines()
+
+    def drive(self, plan: list[str], steps: list[dict], fake_clock: bool = False) -> dict:
+        (self.fake_dir / "plan").write_text("\n".join(plan) + "\n", encoding="utf-8")
+        env = dict(os.environ)
+        env.update({
+            "PATH": f"{self.bin}{os.pathsep}{env.get('PATH', '')}",
+            "HOME": str(self.tmp / "home"),
+            "PI_CODING_AGENT_DIR": str(self.tmp / "pi-agent"),
+            "FAKE_SANDESH_DIR": str(self.fake_dir),
+        })
+        scenario = {
+            "fakeClock": fake_clock,
+            "fakeDir": str(self.fake_dir),
+            "markerPath": str(self.fake_dir / "banner.marker"),
+            "steps": steps,
+        }
+        try:
+            result = subprocess.run(
+                [self.node_bin, str(HARNESS_MJS), str(EXTENSION), str(self.jiti_mjs), str(self.pi_pkg_root)],
+                input=json.dumps(scenario), capture_output=True, text=True,
+                timeout=_HARNESS_BUDGET_S, env=env, cwd=str(self.tmp),
+            )
+        except subprocess.TimeoutExpired as exc:
+            self.fail(f"watcher harness did not exit within {_HARNESS_BUDGET_S}s: {exc}")
+        self.assertEqual(result.returncode, 0, f"harness crashed: {result.stderr[-2000:]}")
+        try:
+            out = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            self.fail(f"harness emitted no JSON: stdout={result.stdout[-2000:]!r} stderr={result.stderr[-2000:]!r}")
+        self.assertIsNone(out["harnessError"], out["harnessError"])
+        self.assertIsNone(
+            out["importError"],
+            f"jiti could not load {EXTENSION}: {str(out['importError'])[:1500]}",
+        )
+        self.assertTrue(out["defaultIsFunction"], "the extension must default-export a factory")
+        for step in out["steps"]:
+            self.assertFalse(step.get("missing"), f"a step addressed an unregistered tool/command: {step}")
+        return out
+
+    # -- helpers over a harness report ------------------------------------
+
+    @staticmethod
+    def surfacings(out: dict) -> list[str]:
+        return [r["text"] for r in out["userMessages"] + out["messages"] + out["notifies"]]
+
+    def tool_steps(self, out: dict) -> list[dict]:
+        return [s for s in out["steps"] if s["op"] == "tool"]
+
+
+class SandeshWatcherRegistrationTest(SandeshWatcherTestCase):
+    """\u00a7S2 AC1 -- the extension registers the tool and the command."""
+
+    def test_factory_registers_the_sandesh_watcher_tool_and_the_watcher_command(self):
+        out = self.drive(["alive"], [])
+        self.assertEqual(out["tools"], ["sandesh_watcher"], "exactly one tool, sandesh_watcher")
+        self.assertEqual(out["commands"], ["watcher"], "exactly one command, /watcher")
+        self.assertEqual(out["launches"], [], "loading the extension must spawn nothing")
+
+    def test_tool_schema_declares_start_status_stop_and_address_project(self):
+        out = self.drive(["alive"], [])
+        schema = out["toolParameters"].get("sandesh_watcher", "")
+        for word in ("start", "status", "stop", "address", "project", "action"):
+            self.assertIn(f'"{word}"', schema, f"the sandesh_watcher schema must name {word!r}: {schema[:800]}")
+
+
+class SandeshWatcherStartTest(SandeshWatcherTestCase):
+    """\u00a7S2 AC3 -- readiness on the banner, one watcher per address, stop,
+    status, and the exact child argv (ruling T)."""
+
+    def test_start_spawns_sandesh_notify_with_exactly_to_and_project(self):
+        out = self.drive(["alive"], [_start(), _stop()])
+        self.assertEqual(len(out["launches"]), 1)
+        self.assertEqual(self.argv_of(1), ["notify", "--to", ADDRESS, "--project", PROJECT])
+
+    def test_start_reports_ready_naming_the_address_only_after_the_banner(self):
+        out = self.drive(["late"], [_start(), {"op": "snapshot", "label": "after"}, _stop()])
+        start = self.tool_steps(out)[0]
+        self.assertFalse(start["timedOut"], "start must resolve once the banner appears")
+        self.assertIsNone(start["threw"])
+        self.assertRegex(start["text"] or "", re.compile("ready", re.I))
+        self.assertIn(ADDRESS, start["text"] or "")
+        self.assertTrue(
+            start["markerExistedAtResolve"],
+            "start resolved before the fake printed its banner (the marker is touched just before it)",
+        )
+        self.assertEqual(out["snapshots"]["after"]["launches"], 1)
+
+    def test_start_does_not_hang_when_the_child_exits_without_a_banner(self):
+        out = self.drive(["nobanner 1"], [_start(), {"op": "sleep", "ms": 500}])
+        start = self.tool_steps(out)[0]
+        self.assertFalse(start["timedOut"], "a child dying before its banner must still end start")
+        if start["threw"] is None:
+            self.assertRegex(
+                start["text"] or "", re.compile(r"\b1\b|exit|usage|configuration", re.I),
+                "start must report the pre-banner exit, not success",
+            )
+        self.assertEqual(len(out["launches"]), 1, "no relaunch after an exit-1 before the banner")
+
+    def test_start_while_one_runs_reports_it_and_spawns_nothing(self):
+        out = self.drive(["alive"], [
+            _start(), _start(), {"op": "sleep", "ms": 500},
+            {"op": "snapshot", "label": "twice"}, _stop(),
+        ])
+        second = self.tool_steps(out)[1]
+        self.assertIsNone(second["threw"])
+        self.assertRegex(second["text"] or "", re.compile("already|running", re.I))
+        self.assertEqual(out["snapshots"]["twice"]["launches"], 1, "a second start must spawn nothing")
+
+    def test_stop_tool_terminates_the_child(self):
+        out = self.drive(["alive"], [
+            _start(), _stop(), {"op": "waitPidDead", "launch": 1, "timeoutMs": 3000},
+        ])
+        dead = out["steps"][-1]
+        self.assertIsNotNone(dead["pid"])
+        self.assertTrue(dead["dead"], f"stop must terminate the child pid {dead['pid']}")
+        self.assertEqual(len(out["launches"]), 1, "stop must not relaunch")
+
+    def test_watcher_stop_command_terminates_the_child(self):
+        out = self.drive(["alive"], [
+            _start(), {"op": "command", "name": "watcher", "args": "stop"},
+            {"op": "waitPidDead", "launch": 1, "timeoutMs": 3000},
+        ])
+        cmd = [s for s in out["steps"] if s["op"] == "command"][0]
+        self.assertFalse(cmd["timedOut"])
+        self.assertIsNone(cmd["threw"])
+        self.assertTrue(out["steps"][-1]["dead"], "/watcher stop must terminate the child")
+
+    def test_status_tool_names_the_running_address(self):
+        out = self.drive(["alive"], [_start(), {"op": "tool", "params": {"action": "status"}}, _stop()])
+        status = self.tool_steps(out)[1]
+        self.assertIsNone(status["threw"])
+        self.assertIn(ADDRESS, status["text"] or "")
+
+    def test_watcher_status_command_names_the_running_address(self):
+        out = self.drive(["alive"], [
+            _start(), {"op": "snapshot", "label": "before"},
+            {"op": "command", "name": "watcher", "args": "status"},
+            {"op": "snapshot", "label": "after"}, _stop(),
+        ])
+        before, after = out["snapshots"]["before"], out["snapshots"]["after"]
+        new = (out["notifies"][before["notifies"]:after["notifies"]]
+               + out["messages"][before["messages"]:after["messages"]])
+        self.assertTrue(
+            any(ADDRESS in r["text"] for r in new),
+            f"/watcher status must report the running address, got {[r['text'] for r in new]}",
+        )
+
+
+class SandeshWatcherExitTest(SandeshWatcherTestCase):
+    """\u00a7S2 AC2 -- one test per exit code (ruling C)."""
+
+    def test_exit_0_wakes_once_naming_the_fetch_and_does_not_relaunch(self):
+        out = self.drive(["exit 0", "alive"], [
+            _start(), {"op": "waitUntil", "userMessages": 1, "timeoutMs": 5000},
+            {"op": "sleep", "ms": _SETTLE_MS}, {"op": "snapshot", "label": "woken"},
+            _start(), {"op": "waitUntil", "launches": 2, "timeoutMs": 5000}, _stop(),
+        ])
+        woken = out["snapshots"]["woken"]
+        self.assertEqual(woken["launches"], 1, "exit 0 must not relaunch")
+        self.assertEqual(len(out["userMessages"]), 1, f"exactly one wake message, got {out['userMessages']}")
+        self.assertEqual(out["messages"], [], "the wake is sendUserMessage only")
+        text = out["userMessages"][0]["text"]
+        self.assertIn(FETCH, text)
+        self.assertIn(ADDRESS, text)
+        # The watcher is left stopped, not running: start works again.
+        self.assertEqual(len(out["launches"]), 2, "start after an exit-0 wake must spawn again")
+
+    def test_exit_2_relaunches_once_silently(self):
+        out = self.drive(["exit 2", "alive"], [
+            _start(), {"op": "waitUntil", "launches": 2, "timeoutMs": 5000},
+            {"op": "sleep", "ms": _SETTLE_MS // 2}, {"op": "snapshot", "label": "relaunched"}, _stop(),
+        ])
+        snap = out["snapshots"]["relaunched"]
+        self.assertEqual(snap["launches"], 2, "exit 2 must relaunch exactly once")
+        self.assertEqual(snap["surfaced"], 0, f"exit 2 must be silent, got {self.surfacings(out)}")
+        self.assertEqual(self.argv_of(2), ["notify", "--to", ADDRESS, "--project", PROJECT])
+
+    def test_three_exit_2_within_a_minute_surface_and_stop_relaunching(self):
+        out = self.drive(["exit 2"], [
+            _start(), {"op": "waitUntil", "surfaced": 1, "timeoutMs": 8000},
+            {"op": "sleep", "ms": _SETTLE_MS}, {"op": "snapshot", "label": "capped"},
+        ])
+        snap = out["snapshots"]["capped"]
+        self.assertEqual(snap["launches"], 3, "three launches, never a fourth")
+        self.assertEqual(snap["surfaced"], 1, f"exactly one surfacing, got {self.surfacings(out)}")
+
+    def test_exit_2_spread_over_more_than_a_minute_keeps_relaunching_silently(self):
+        # Ruling W: a cap on three timeouts in total would die here.
+        steps = [_start(), {"op": "waitUntil", "launches": 1, "timeoutMs": 5000}]
+        for n in range(1, 5):
+            steps += [
+                {"op": "advanceClock", "ms": 61_000},
+                {"op": "touch", "path": str(self.fake_dir / f"release.{n}")},
+                {"op": "waitUntil", "launches": n + 1, "timeoutMs": 5000},
+            ]
+        steps += [{"op": "sleep", "ms": 1000}, {"op": "snapshot", "label": "spread"}, _stop()]
+        out = self.drive(["hold 2", "hold 2", "hold 2", "hold 2", "alive"], steps, fake_clock=True)
+        snap = out["snapshots"]["spread"]
+        self.assertEqual(snap["launches"], 5, "each spread-out exit 2 must relaunch")
+        self.assertEqual(snap["surfaced"], 0, f"spread-out timeouts must not surface, got {self.surfacings(out)}")
+
+    def _assert_surfaced_once_without_relaunch(self, plan_line: str, code_re: str, meaning_re: str):
+        out = self.drive([plan_line], [
+            _start(), {"op": "waitUntil", "surfaced": 1, "timeoutMs": 5000},
+            {"op": "sleep", "ms": _SETTLE_MS}, {"op": "snapshot", "label": "stopped"},
+        ])
+        snap = out["snapshots"]["stopped"]
+        self.assertEqual(snap["launches"], 1, f"{plan_line!r} must never relaunch")
+        texts = self.surfacings(out)
+        self.assertEqual(len(texts), 1, f"{plan_line!r} must surface exactly once, got {texts}")
+        self.assertRegex(texts[0], re.compile(code_re), f"the surfacing must name the code: {texts[0]!r}")
+        self.assertRegex(texts[0], re.compile(meaning_re, re.I), f"the surfacing must give the meaning: {texts[0]!r}")
+
+    def test_exit_1_surfaces_usage_or_configuration_error_without_relaunch(self):
+        self._assert_surfaced_once_without_relaunch("exit 1", r"\b1\b", "usage|configuration")
+
+    def test_exit_3_surfaces_tombstoned_project_without_relaunch(self):
+        self._assert_surfaced_once_without_relaunch("exit 3", r"\b3\b", "tombston")
+
+    def test_exit_4_surfaces_eviction_without_relaunch(self):
+        self._assert_surfaced_once_without_relaunch("exit 4", r"\b4\b", "evict")
+
+    def test_exit_5_surfaces_already_live_dedup_without_relaunch(self):
+        self._assert_surfaced_once_without_relaunch("exit 5", r"\b5\b", "already|dedup")
+
+    def test_signal_exit_surfaces_the_signal_without_relaunch(self):
+        self._assert_surfaced_once_without_relaunch("signal TERM", r"SIGTERM|\b15\b|\b143\b", "signal")
+
+
+if __name__ == "__main__":
+    unittest.main()
