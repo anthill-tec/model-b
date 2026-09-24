@@ -33,7 +33,6 @@ nothing to disk. Stdlib only.
 """
 
 import shutil
-import subprocess
 import sys
 from collections.abc import Callable, Iterable
 from pathlib import Path
@@ -93,20 +92,30 @@ def _warn(message: str, warnings: list[str], level: str = "warning") -> None:
 
 def _install_sandesh(uv_path: str, warnings: list[str]) -> str:
     """Install Sandesh via the provider's own method (`uv tool install
-    sandesh-relay`) through the PATH-resolved ``uv``. Returns the deps
-    verdict: ``installed`` on success, ``absent`` on failure."""
-    result = subprocess.run(
-        [uv_path, "tool", "install", SANDESH_PACKAGE],
-        capture_output=True, text=True, check=False,
-    )
-    if result.returncode != 0:
+    sandesh-relay`) through the PATH-resolved ``uv``, its output on the
+    user's terminal (CR-MDB-036's :func:`run_on_terminal`), then RE-PROBE
+    (CR-MDB-037 §S5). Returns the deps verdict: ``installed`` only when
+    ``sandesh`` is then found on PATH, else ``absent`` with a warning."""
+    command = f"uv tool install {SANDESH_PACKAGE}"
+    try:
+        returncode = run_on_terminal([uv_path, "tool", "install", SANDESH_PACKAGE])
+    except OSError as exc:
+        _warn(f"`{command}` could not run ({exc}); recording sandesh=absent", warnings)
+        return ABSENT
+    if returncode != 0:
         _warn(
-            f"`uv tool install {SANDESH_PACKAGE}` failed "
-            f"(exit={result.returncode}); recording sandesh=absent",
+            f"`{command}` failed (exit={returncode}); recording sandesh=absent",
             warnings,
         )
-        return "absent"
-    return "installed"
+        return ABSENT
+    if shutil.which("sandesh") is None:
+        _warn(
+            f"`{command}` exited 0 but `sandesh` is still not on PATH; "
+            f"recording sandesh=absent",
+            warnings,
+        )
+        return ABSENT
+    return INSTALLED
 
 
 def _client_gap(stack: str, clients: dict) -> str:
@@ -304,7 +313,7 @@ def run_preflight(
         f"Sandesh not found — install via `uv tool install {SANDESH_PACKAGE}`?"
     ):
         sandesh_verdict = _install_sandesh(uv_path, warnings)
-        if sandesh_verdict == "installed":
+        if sandesh_verdict == INSTALLED:
             # Updated deps line reflecting the proactive install.
             print(
                 f"deps: uv=detected sandesh=installed crucible={crucible_verdict}",

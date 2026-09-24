@@ -15,12 +15,17 @@ Stdlib only.
 import argparse
 import os
 import sys
+import tomllib
 from pathlib import Path
 
 from modelb_axi import __version__
 from modelb_axi.axi import envelope
 from modelb_axi.capabilities import resolve_agent_dir
-from modelb_axi.config import load_manifest_hashes, write_install_toml
+from modelb_axi.config import (
+    load_install_toml,
+    load_manifest_hashes,
+    write_install_toml,
+)
 from modelb_axi.deploy import (
     HOOKS_SCRIPTS_STORE_RELDIR,
     STORE_RELDIR,
@@ -28,6 +33,7 @@ from modelb_axi.deploy import (
     DeployError,
     default_asset_root,
     deploy_assets,
+    deployed_freshness,
 )
 from modelb_axi.harness import (
     UnknownHarnessError,
@@ -515,13 +521,55 @@ def _run_scaffold_mode(home: Path) -> int:
     human prose on stderr; stdout carries the ``already_installed``
     envelope (CR-MDB-033 §S6)."""
     _say("modelb-axi: scaffold mode")
+    warnings: list[str] = []
     _say(f"  {INSTALL_TOML_NAME} found under {home}")
     _say(
         "  scaffold flow (CR-MDB-013): run `modelb-axi init` to scaffold "
         "a Model B project (see `init --help`)"
     )
-    _emit_install_envelope("already_installed", True, [], {})
+    _emit_install_envelope("already_installed", True, warnings, _freshness_fields(home, warnings))
     return 0
+
+
+def _freshness_fields(home: Path, warnings: list[str]) -> dict:
+    """CR-MDB-037 \u00a7S2: the ``already_installed`` envelope's report of
+    deployed-asset state. With a recorded ``target_root``: sorted
+    ``stale``, ``hand_modified`` and ``retired`` lists. Without one (an
+    older, or unreadable, ``install.toml``): ``freshness: unknown`` and a
+    warning naming the re-run \u2014 no location is guessed and no deployed
+    file is read. Findings never change ok or the exit code."""
+    try:
+        data = load_install_toml(home)
+    except (OSError, tomllib.TOMLDecodeError) as exc:
+        _say(f"  {INSTALL_TOML_NAME} could not be read ({exc})")
+        data = {}
+    install = data.get("install")
+    target_root = install.get("target_root") if isinstance(install, dict) else None
+    files = data.get("files")
+    if not isinstance(target_root, str) or not target_root:
+        _warn(
+            f"freshness unknown \u2014 {INSTALL_TOML_NAME} records no target_root, "
+            "so the deployed assets cannot be checked; re-run "
+            "`modelb-axi --reinstall --target-root <dir>` to record it",
+            warnings,
+        )
+        return {"freshness": "unknown"}
+    found = deployed_freshness(
+        default_asset_root(), Path(target_root),
+        files if isinstance(files, list) else [],
+    )
+    _say(
+        f"  deployed assets under {target_root}: "
+        + ", ".join(f"{state}={len(paths)}" for state, paths in found.items())
+    )
+    if found["stale"]:
+        _say("    stale: re-run `modelb-axi --reinstall` to refresh them")
+    if found["hand_modified"]:
+        _say("    hand_modified: re-run with `--force-managed` to overwrite them")
+    if found["retired"]:
+        _say("    retired: no longer shipped \u2014 remove them by hand")
+    freshness = "current" if not any(found.values()) else "outdated"
+    return {"freshness": freshness, **found}
 
 
 def main(argv: list[str] | None = None) -> int:
