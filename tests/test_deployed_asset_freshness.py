@@ -42,6 +42,8 @@ Stdlib only.
 import hashlib
 import json
 import os
+import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -123,15 +125,22 @@ class _InstalledMachineCase(unittest.TestCase):
     sandbox target root, then helpers to mutate the deployed tree and the
     manifest, and to run bare ``modelb-axi`` against it."""
 
+    #: The sandbox root's prefix (a subclass may put a space in it).
+    ROOT_PREFIX = "modelb-cr037-freshness-"
+
     def setUp(self):
-        self._root = Path(tempfile.mkdtemp(prefix="modelb-cr037-freshness-"))
+        self._root = Path(tempfile.mkdtemp(prefix=self.ROOT_PREFIX))
         self.modelb_home = self._root / "modelb-home"
         self.target_root = self._root / "target"
         self.bin_dir = self._root / "bin"
         self.home = self._root / "home"
         self.agent_dir = self._root / "agent"
         self.cwd = self._root / "cwd"
-        for d in (self.modelb_home, self.target_root, self.bin_dir, self.cwd):
+        #: XDG_DATA_HOME for every run — a sandbox, never the real one;
+        #: the default home (``<it>/modelb``) is NOT ``self.modelb_home``.
+        self.xdg_data_home = self._root / "xdg-data"
+        for d in (self.modelb_home, self.target_root, self.bin_dir, self.cwd,
+                  self.xdg_data_home):
             d.mkdir(parents=True)
         make_home(self.home, crucible_manifest=False)
         make_provisioned_agent_dir(self.agent_dir)
@@ -154,6 +163,7 @@ class _InstalledMachineCase(unittest.TestCase):
             "HOME": str(self.home),
             "PATH": str(self.bin_dir),
             "MODELB_HOME": str(self.modelb_home),
+            "XDG_DATA_HOME": str(self.xdg_data_home),
             AGENT_DIR_ENV: str(self.agent_dir),
         })
         env.update(extra or {})
@@ -257,6 +267,13 @@ class _InstalledMachineCase(unittest.TestCase):
 
     # -- assertions ----------------------------------------------------------
 
+    def _hint(self, stderr: str, state: str) -> str:
+        """The one stderr hint line for ``state`` (``<state>: re-run …``)."""
+        hits = [ln.strip() for ln in stderr.splitlines()
+                if ln.strip().startswith(f"{state}:")]
+        self.assertEqual(len(hits), 1, f"exactly one `{state}:` hint; stderr={stderr!r}")
+        return hits[0]
+
     def assert_already_installed(self, result, axi):
         self.assertEqual(result.returncode, 0,
                          f"exit={result.returncode} stdout={result.stdout!r} stderr={result.stderr!r}")
@@ -319,13 +336,6 @@ class DeployedAssetFreshnessTest(_InstalledMachineCase):
         self.assert_lists(axi, stale=[SKILL_REL], hand_modified=[OTHER_SKILL_REL],
                           retired=[RETIRED_REL])
 
-    def _hint(self, stderr: str, state: str) -> str:
-        """The one stderr hint line for ``state`` (``<state>: re-run …``)."""
-        hits = [ln.strip() for ln in stderr.splitlines()
-                if ln.strip().startswith(f"{state}:")]
-        self.assertEqual(len(hits), 1, f"exactly one `{state}:` hint; stderr={stderr!r}")
-        return hits[0]
-
     def test_stale_hint_names_the_re_run_that_works(self):
         """VERIFY finding 1: a bare ``--reinstall`` is not a re-run that
         works — it needs the target root and the stacks, as the guide says."""
@@ -367,6 +377,106 @@ class DeployedAssetFreshnessTest(_InstalledMachineCase):
             self.assertEqual((self.target_root / rel).read_bytes(), content,
                              f"a report never rewrites {rel}")
 
+
+def _tree_snapshot(root: Path) -> dict:
+    """Every file under ``root`` (relative path -> bytes)."""
+    return {str(p.relative_to(root)): p.read_bytes()
+            for p in sorted(Path(root).rglob("*")) if p.is_file()}
+
+
+class _ExecutedHintCase(_InstalledMachineCase):
+    """VERIFY (cycle 100) findings 1 and 3: the printed re-run is EXECUTED
+    — parsed with ``shlex.split`` as a shell would — and must act on the
+    very install it was printed for. A ``pi`` shim stands in for the
+    harness the install targeted (the re-run detects it on ``PATH``).
+
+    Sandbox guard: a hint is executed only after it is shown to carry
+    ``--modelb-home`` and ``--target-root`` naming THIS sandbox, so no
+    executed hint ever relies on a default."""
+
+    def setUp(self):
+        super().setUp()
+        _write_exe(self.bin_dir, "pi", _FAKE_TOOL)
+
+    def hint_argv(self, stderr: str, state: str) -> list[str]:
+        line = self._hint(stderr, state)
+        match = re.search(r"`([^`]+)`", line)
+        if match is None:
+            self.fail(f"the `{state}:` hint quotes a command; line={line!r}")
+        return shlex.split(match.group(1))
+
+    def assert_hint_targets_this_install(self, argv: list[str]) -> None:
+        self.assertEqual(argv[:1], ["modelb-axi"], f"argv={argv!r}")
+        # No subTest: a failed guard must abort BEFORE the hint is executed.
+        for flag, expected in (("--modelb-home", self.modelb_home),
+                               ("--target-root", self.target_root)):
+            self.assertIn(flag, argv, f"the re-run must carry {flag}; argv={argv!r}")
+            at = argv.index(flag)
+            self.assertEqual(
+                argv[at + 1:at + 2], [str(expected)],
+                f"{flag} must name {expected} as ONE shell word; argv={argv!r}",
+            )
+
+    def run_hint(self, argv: list[str]):
+        result = subprocess.run(
+            [sys.executable, "-m", "modelb_axi", *argv[1:]],
+            capture_output=True, text=True, timeout=120, stdin=subprocess.DEVNULL,
+            env=self._env(), cwd=str(self.cwd),
+        )
+        return result, _decode(result.stdout)
+
+    def assert_executed_stale_hint_refreshes_this_install(self):
+        self.make_stale(SKILL_REL)
+        result, axi = self.run_bare()
+        self.assert_already_installed(result, axi)
+        self.assert_lists(axi, stale=[SKILL_REL])
+        argv = self.hint_argv(result.stderr, "stale")
+        self.assert_hint_targets_this_install(argv)
+        before_toml = self.install_toml_path.read_bytes()
+        other_before = _tree_snapshot(self.xdg_data_home)
+
+        rerun, rerun_axi = self.run_hint(argv)
+        self.assertEqual(rerun.returncode, 0,
+                         f"the hinted re-run must succeed; axi={rerun_axi!r} "
+                         f"stderr={rerun.stderr!r}")
+        self.assertEqual(rerun_axi.get("outcome"), "installed", f"axi={rerun_axi!r}")
+        self.assertTrue(self.install_toml_path.read_bytes() != before_toml,
+                        "the hinted re-run must update THIS install's install.toml")
+        self.assertEqual(_tree_snapshot(self.xdg_data_home), other_before,
+                         "the hinted re-run must leave the default MODELB_HOME untouched")
+
+        after, after_axi = self.run_bare()
+        self.assert_already_installed(after, after_axi)
+        self.assertEqual(after_axi.get("freshness"), "current",
+                         f"following the hint leaves the install current; axi={after_axi!r}")
+        self.assert_lists(after_axi)
+
+
+class ReinstallHintActsOnTheSameInstallTest(_ExecutedHintCase):
+    """Finding 1: installed with ``--modelb-home <A>`` while the default
+    home (``$XDG_DATA_HOME/modelb``, and ``MODELB_HOME`` too) is another
+    sandbox B, the printed re-run updates A's install and leaves B alone."""
+
+    def _env(self, extra=None) -> dict:
+        env = super()._env(extra)
+        env["MODELB_HOME"] = str(self.xdg_data_home / "modelb")
+        return env
+
+    def test_executed_stale_hint_updates_the_install_it_was_printed_for(self):
+        self.assertNotEqual(self.xdg_data_home / "modelb", self.modelb_home,
+                            "fixture: the default home is another sandbox")
+        self.assert_executed_stale_hint_refreshes_this_install()
+
+
+class ReinstallHintQuotesPathsWithSpacesTest(_ExecutedHintCase):
+    """Finding 3: the target root and the Model B home contain a space;
+    the hint quotes each as one shell word, and following it works."""
+
+    ROOT_PREFIX = "modelb cr037 spaced "
+
+    def test_hint_quotes_each_path_as_one_shell_word_and_works(self):
+        self.assertIn(" ", str(self.target_root), "fixture: the path has a space")
+        self.assert_executed_stale_hint_refreshes_this_install()
 
 class FreshnessUnknownWithoutTargetRootTest(_InstalledMachineCase):
     """§S2: an install.toml older than CR-MDB-033 (no ``target_root`` nor

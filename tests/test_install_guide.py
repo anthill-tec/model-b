@@ -122,6 +122,17 @@ RELEASE_STEP_PHRASES = (
 )
 CR_029_S1_TERMS = ("install-guide.md", "marked region", "README")
 
+# (G) — where the installer comes from (VERIFY cycle 100 findings 2/6).
+INSTALLER_INSTALL = "uv tool install modelb-axi"
+INTERIM_INSTALL = "uv tool install ."
+REPOSITORY_PATTERNS = (
+    ("git clone", re.compile(r"(?<![\w-])git clone(?![\w-])")),
+    ("repository URL", re.compile(
+        r"git\+\S+|git@\S+|git://\S+|(?<![\w-])git:\S+"
+        r"|https?://(?:www\.)?(?:github|gitlab|bitbucket|codeberg)\.(?:com|org)/[\w.-]+/[\w.-]+")),
+)
+PI_PACKAGE_CLAIM = re.compile(r"(?<![\w-])Pi package(?![\w-])")
+
 
 # ---------------------------------------------------------------------------
 # Markdown helpers
@@ -565,6 +576,58 @@ def check_cr029_s1(text: str) -> list[str]:
 # that a correct guide CAN pass every checker.
 # ---------------------------------------------------------------------------
 
+def check_installer_source(text: str) -> list[str]:
+    """The installer comes from PyPI (``uv tool install modelb-axi``), with
+    an interim source-copy note (``uv tool install .``, from the
+    maintainer); it is not claimed to ship as the Pi package; the guide
+    names no ``git clone`` and no repository URL; and ``git`` is a
+    prerequisite that comes before the installer step."""
+    sec = _section(text, PREREQUISITES)
+    out = []
+    if not has_code_token(sec, INSTALLER_INSTALL):
+        out.append(f"{PREREQUISITES}: the installer step must name `{INSTALLER_INSTALL}`")
+    if not re.search(r"(?<![\w-])PyPI(?![\w-])", sec):
+        out.append(f"{PREREQUISITES}: must say the installer comes from PyPI")
+    if not has_code_token(sec, INTERIM_INSTALL) or "maintainer" not in sec:
+        out.append(f"{PREREQUISITES}: must carry the interim note (`{INTERIM_INSTALL}` "
+                   "from a source copy obtained from the maintainer)")
+    out.extend(f"{PREREQUISITES}: must not claim the installer ships as the Pi package: "
+               f"{m.group(0)!r}" for m in PI_PACKAGE_CLAIM.finditer(sec))
+    out.extend(f"{label}: {m.group(0)!r}"
+               for label, pattern in REPOSITORY_PATTERNS for m in pattern.finditer(text))
+    git_at = sec.find("`git`")
+    installer_at = [at for at in (sec.find(INSTALLER_INSTALL), sec.find(INTERIM_INSTALL))
+                    if at != -1]
+    if git_at == -1:
+        out.append(f"{PREREQUISITES}: `git` must be named")
+    elif installer_at and min(installer_at) < git_at:
+        out.append(f"{PREREQUISITES}: `git` must come before the installer step")
+    return out
+
+
+def check_cr029_acceptance(text: str) -> list[str]:
+    """CR-MDB-029's acceptance criteria take the package README from the
+    guide's marked regions, and no longer own the guide's install step."""
+    sec = next((body for head, body in sections(text).items()
+                if head.startswith("Acceptance criteria")), "")
+    if not sec:
+        return ["no '## Acceptance criteria' section"]
+    out = []
+    if not re.search(r"README.*marked region|marked region.*README", sec, re.S):
+        out.append("ACs: the Pi package README must come from the guide's marked regions")
+    for term in ("check_prerequisites", "install step"):
+        if term in sec:
+            out.append(f"ACs: must not name {term!r}")
+    return out
+
+
+#: The conforming guide's installer step (PyPI + the interim source note).
+_CONFORMING_INSTALLER_LINE = (
+    f"- The installer, from PyPI: `{INSTALLER_INSTALL}`; until then, from a source copy "
+    f"obtained from the maintainer: `{INTERIM_INSTALL}`"
+)
+
+
 def conforming_guide() -> str:
     rows = _requirements()
     uv = next(r for r in rows if r["id"] == "uv")
@@ -572,7 +635,8 @@ def conforming_guide() -> str:
     always_rest = [r for r in rows if r["scope"] == "always" and r["tier"] != 1 and r["id"] != "uv"]
     prereq = ["Install Pi first; its packages come next."]
     prereq += [f"- `{r['remediation']}`" for r in tier1]
-    prereq += [f"- `{uv['remediation']}`", "- `uv tool install git+https://example.invalid/model-b`"]
+    prereq += [f"- `{uv['remediation']}`", "- `git`, from your package manager.",
+               _CONFORMING_INSTALLER_LINE]
     prereq += [f"- `{r['id']}`: `{r['remediation']}`" for r in always_rest]
     stack_lines = ["Choose with `--stacks " + ",".join(known_stacks()) + "`.",
                    " ".join(f"`{s}`" for s in known_stacks()),
@@ -660,6 +724,21 @@ class InstallGuideTopicsTest(unittest.TestCase):
         self.assertEqual(check_trust(self.text), [])
 
 
+class InstallGuideInstallerSourceTest(unittest.TestCase):
+    """VERIFY (cycle 100) findings 2 and 6: the installer is installed from
+    PyPI (interim: a source copy from the maintainer), never from a clone
+    or a repository URL, and not as the Pi package; ``git`` is a
+    prerequisite ahead of the installer step. CR-MDB-029's acceptance
+    criteria no longer own the guide's install step."""
+
+    def test_guide_installs_the_installer_from_pypi_after_git_with_no_repository(self):
+        self.assertTrue(GUIDE.is_file(), f"{GUIDE.relative_to(REPO_ROOT)} must exist")
+        self.assertEqual(check_installer_source(_read(GUIDE)), [])
+
+    def test_cr029_acceptance_takes_only_the_readme_from_the_guide(self):
+        self.assertEqual(check_cr029_acceptance(_read(CR_029)), [])
+
+
 class InstallGuideMarkedRegionsTest(unittest.TestCase):
 
     def test_install_topics_sit_in_well_formed_regions_and_convention_is_documented(self):
@@ -711,6 +790,59 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
                 self.assertEqual(checker(self.guide), [])
         self.assertEqual(check_marked_regions(self.guide), [])
         self.assertEqual(check_vocabulary(self.guide), [])
+        self.assertEqual(check_installer_source(self.guide), [])
+
+    def test_installer_source_faults_are_reported(self):
+        git_line = "- `git`, from your package manager.\n"
+        cases = {
+            "no PyPI install": (
+                self.guide.replace(f"`{INSTALLER_INSTALL}`", "the installer"),
+                f"{PREREQUISITES}: the installer step must name `{INSTALLER_INSTALL}`"),
+            "no PyPI": (self.guide.replace("from PyPI", "from the index"),
+                        f"{PREREQUISITES}: must say the installer comes from PyPI"),
+            "no interim note": (
+                self.guide.replace(f"`{INTERIM_INSTALL}`", "a copy"),
+                f"{PREREQUISITES}: must carry the interim note (`{INTERIM_INSTALL}` "
+                "from a source copy obtained from the maintainer)"),
+            "Pi package claim": (
+                self.guide.replace("from PyPI:", "from PyPI, as the Model B Pi package:"),
+                f"{PREREQUISITES}: must not claim the installer ships as the Pi package: "
+                "'Pi package'"),
+            "git clone": (self.guide + "\nRun `git clone x`.\n", "git clone: 'git clone'"),
+            "repository URL": (
+                self.guide + "\nSee https://github.com/owner/model-b.\n",
+                "repository URL: 'https://github.com/owner/model-b.'"),
+            "git+ source": (self.guide + "\n`uv tool install git+https://x.invalid/y`\n",
+                            "repository URL: 'git+https://x.invalid/y`'"),
+            "git missing": (self.guide.replace(git_line, ""),
+                            f"{PREREQUISITES}: `git` must be named"),
+            "git after installer": (
+                self.guide.replace(git_line, "").replace(
+                    _CONFORMING_INSTALLER_LINE, _CONFORMING_INSTALLER_LINE + "\n" + git_line.rstrip()),
+                f"{PREREQUISITES}: `git` must come before the installer step"),
+        }
+        for label, (text, expected) in cases.items():
+            with self.subTest(case=label):
+                self.assertIn(expected, check_installer_source(text))
+        self.assertEqual(
+            check_installer_source(self.guide + "\nThe GitHub CLI, from https://cli.github.com.\n"),
+            [], "a host without an owner/repo path is not a repository URL")
+
+    def test_cr029_acceptance_checker_both_ways(self):
+        good = ("## Acceptance criteria\n\n- [ ] The package README is the guide's marked "
+                "regions, copied verbatim.\n\n## Risk\n")
+        self.assertEqual(check_cr029_acceptance(good), [])
+        self.assertEqual(
+            check_cr029_acceptance(good.replace("guide's marked regions", "guide")),
+            ["ACs: the Pi package README must come from the guide's marked regions"])
+        self.assertEqual(
+            check_cr029_acceptance(good.replace(
+                "## Risk", "- [ ] check_prerequisites is migrated.\n\n## Risk")),
+            ["ACs: must not name 'check_prerequisites'"])
+        self.assertEqual(
+            check_cr029_acceptance(good.replace(
+                "## Risk", "- [ ] The guide's install step names it.\n\n## Risk")),
+            ["ACs: must not name 'install step'"])
 
     def test_derived_vocabulary_matches_the_code(self):
         self.assertIn("preflight_failed", install_outcomes())
@@ -757,8 +889,7 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
         rows = _requirements()
         uv = next(r for r in rows if r["id"] == "uv")["remediation"]
         broken = self.guide.replace(f"- `{uv}`\n", "").replace(
-            "- `uv tool install git+https://example.invalid/model-b`",
-            f"- `uv tool install git+https://example.invalid/model-b`\n- `{uv}`")
+            _CONFORMING_INSTALLER_LINE, f"{_CONFORMING_INSTALLER_LINE}\n- `{uv}`")
         self.assertEqual(len([v for v in check_prerequisites(broken) if "must precede" in v]), 1)
         no_pi = self.guide.replace("Install Pi first; its packages come next.", "Start here.")
         self.assertEqual(len([v for v in check_prerequisites(no_pi) if "Pi must" in v]),

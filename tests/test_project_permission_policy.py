@@ -625,6 +625,36 @@ class InitPolicyOwnershipSurfaceTest(_InitSandbox):
                          f"warnings={axi.get('warnings')!r}")
         self.assertIn(POLICY_REL, result.stderr, "the summary on stderr names it too")
 
+    def test_unmarked_policy_is_reported_unmanaged_in_the_envelope(self):
+        """VERIFY (cycle 100) finding 4: the ``unmanaged`` branch \u2014
+        an unmarked policy is left alone and reported in ``unmanaged`` (not
+        ``skipped``) with one warning naming the file and no flag."""
+        unmarked = '{\n  "permission": {\n    "*": "ask"\n  }\n}\n'
+        target = self.new_target("unmarked-surface")
+        path = target / POLICY_REL
+        path.parent.mkdir(parents=True)
+        path.write_text(unmarked, encoding="utf-8")
+        result = self.run_init(target, force_managed=True)
+        self.assert_ok(result)
+        self.assertEqual(path.read_text(encoding="utf-8"), unmarked,
+                         "precondition: an unmarked policy is never written")
+        axi = decode_axi(result.stdout)
+        self.assertEqual(axi.get("unmanaged"), [POLICY_REL],
+                         f"init's envelope lists the unmanaged policy; axi={axi!r}")
+        self.assertNotIn(POLICY_REL, axi.get("skipped") or [],
+                         f"unmanaged is not skipped; axi={axi!r}")
+        self.assertNotIn(POLICY_REL, axi.get("emitted") or [],
+                         f"an unmanaged file is not emitted; axi={axi!r}")
+        hits = [w for w in axi.get("warnings", [])
+                if POLICY_REL in w and w.startswith("unmanaged:")]
+        self.assertEqual(len(hits), 1,
+                         f"one `unmanaged:` warning naming the file; "
+                         f"warnings={axi.get('warnings')!r}")
+        self.assertNotIn("--force-managed", hits[0],
+                         "no flag overwrites an unmanaged file, so none is named")
+        self.assertIn(f"unmanaged: {POLICY_REL}", result.stderr,
+                      "the warning reaches stderr too")
+
 
 # ---------------------------------------------------------------------------
 # §S3 AC4 — the installer reports the GLOBAL config (rulings P1/P2)
