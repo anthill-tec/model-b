@@ -32,6 +32,18 @@ the entries are tried in order. Parity: every ``stack`` is a key of
 ``STACK_CLIENT_KEYS[stack]``. The table is read by loading the hook with
 ``importlib.machinery.SourceFileLoader`` (its file name has no ``.py`` and
 carries a hyphen), so it must stay importable without side effects.
+
+MIGRATED by CR-MDB-019 §S5 (arduino sketch marker): a ``marker_filename``
+may be a TEMPLATE carrying the literal placeholder ``{dir}``, which the hook
+replaces with the NAME of the candidate directory being tried (so
+``"{dir}.ino"`` at ``.../sheetal-firmware/`` means
+``sheetal-firmware/sheetal-firmware.ino``, the arduino-cli sketch rule).
+The arduino entry is exactly ``("{dir}.ino", "arduino", "arduino")``; every
+other marker is a literal filename with no ``{dir}``. The entry is still a
+``str`` 3-tuple, so the same parity check covers arduino ->
+``STACK_CLIENT_KEYS["arduino"]``. ``_marker_filename`` below materialises
+a marker for a given directory. The fixture envelope is STATUS-CONTRACT
+document 2.0.0's: it carries ``lastClosedCr`` (``lastRunCr`` is gone).
 """
 
 import ast
@@ -63,28 +75,35 @@ LEGACY_DEGRADE_TEXT = "no status feed resolved"
 #: rendered" is asserted against.
 FIXTURE_CR = "CR-MDB-018"
 FIXTURE_CYCLE = "C1"
-FIXTURE_LAST_RUN_CR = "CR-MDB-036"
+FIXTURE_LAST_CLOSED_CR = "CR-MDB-036"
 FIXTURE_ENVELOPE = toon.encode({"axi": {
     "verb": "status",
     "ok": True,
     "plans": [{"cr": FIXTURE_CR, "wave": 2, "status": "open",
                "activeCycleId": FIXTURE_CYCLE}],
-    "lastRunCr": FIXTURE_LAST_RUN_CR,
+    "lastClosedCr": FIXTURE_LAST_CLOSED_CR,
     "count": 1,
     "help": ["cr-close --commit"],
     "context": {"projectKey": "fixture-project-key"},
     "warnings": [],
 }})
 
-#: The marker files the hook recognises today, and the manifest key each
-#: must resolve to. Arduino's marker is CR-MDB-019's, not this CR's.
+#: The markers the hook recognises, and the manifest key each must resolve
+#: to. ``{dir}.ino`` is the arduino sketch template (CR-MDB-019 §S5).
 EXPECTED_MARKER_KEYS = {
     "Cargo.toml": "rust",
     "pom.xml": "mvn",
     "bun.lock": "bun",
     "bun.lockb": "bun",
     "pyproject.toml": "python",
+    "{dir}.ino": "arduino",
 }
+
+
+def _marker_filename(marker: str, directory: Path) -> str:
+    """The file name ``marker`` denotes in ``directory``: the ``{dir}``
+    placeholder (if any) replaced by the directory's own name."""
+    return marker.replace("{dir}", directory.name)
 
 #: The six top-level keys measured in Crucible's real manifest (0.2.2).
 MEASURED_MANIFEST_KEYS = ("clients", "version", "status", "config",
@@ -97,7 +116,7 @@ MEASURED_MANIFEST_KEYS = ("clients", "version", "status", "config",
 
 def _client_source(key: str, log_path: Path, envelope: str = FIXTURE_ENVELOPE) -> str:
     """An executable fixture client: logs its key + argv, prints a valid
-    STATUS-CONTRACT 1.0.0 ``status`` envelope, exits 0."""
+    STATUS-CONTRACT 2.0.0 ``status`` envelope, exits 0."""
     return (
         f"#!{sys.executable}\n"
         "import json, sys\n"
@@ -201,7 +220,7 @@ class _SandboxCase(unittest.TestCase):
                          f"got {result.stdout!r}")
         self.assertIn(FIXTURE_CR, result.stdout, "the plan's cr must be rendered")
         self.assertIn(FIXTURE_CYCLE, result.stdout, "the activeCycleId must be rendered")
-        self.assertIn(FIXTURE_LAST_RUN_CR, result.stdout, "lastRunCr must be rendered")
+        self.assertIn(FIXTURE_LAST_CLOSED_CR, result.stdout, "lastClosedCr must be rendered")
         calls = self.sb.invocations()
         self.assertEqual(calls, [{"key": via_key, "argv": ["status"]}],
                          f"exactly one client — clients[{via_key!r}] — run with `status`")
@@ -258,7 +277,7 @@ class ManifestFeedResolutionS1Test(_SandboxCase):
                 clients = {k: sb.write_client(k, sb.root / "released" / k)
                            for k in sorted(set(EXPECTED_MARKER_KEYS.values()))}
                 sb.write_manifest(clients)
-                sb.mark(marker)
+                sb.mark(_marker_filename(marker, sb.project))
                 self.assert_board_rendered(sb.run_hook(), via_key=key)
 
     def test_s1_marker_is_found_walking_up_from_a_nested_cwd(self):
@@ -339,7 +358,7 @@ class ManifestFeedResolutionS1Test(_SandboxCase):
         self.assertEqual(result.returncode, 0)
         self.assertIn(FIXTURE_CR, result.stdout)
         self.assertIn(FIXTURE_CYCLE, result.stdout)
-        self.assertIn(FIXTURE_LAST_RUN_CR, result.stdout)
+        self.assertIn(FIXTURE_LAST_CLOSED_CR, result.stdout)
         self.assertEqual(self.sb.invocations(), [{"key": "python", "argv": ["status"]}])
 
 
@@ -427,9 +446,10 @@ class UnresolvedFeedDegradesS2Test(_SandboxCase):
                                 for k in sorted(set(STACK_CLIENT_KEYS.values()))})
         for directory in (self.sb.project, *self.sb.project.parents):
             for marker in EXPECTED_MARKER_KEYS:
-                self.assertFalse((directory / marker).exists(),
+                concrete = _marker_filename(marker, directory)
+                self.assertFalse((directory / concrete).exists(),
                                  f"precondition: no marker above the sandbox "
-                                 f"({directory / marker})")
+                                 f"({directory / concrete})")
         self.assert_degraded_without_invocation(self.sb.run_hook(), manifest_related=False)
 
     def test_s2_manifest_with_extra_unknown_keys_still_resolves(self):
@@ -688,7 +708,7 @@ class ManifestSeamEndToEndS4Test(_SandboxCase):
         self.assertNotIn(LEGACY_DEGRADE_TEXT, result.stdout)
         self.assertIn(f"cr={FIXTURE_CR}", result.stdout)
         self.assertIn(f"activeCycleId={FIXTURE_CYCLE}", result.stdout)
-        self.assertIn(f"lastRunCr: {FIXTURE_LAST_RUN_CR}", result.stdout)
+        self.assertIn(f"last closed: {FIXTURE_LAST_CLOSED_CR}", result.stdout)
         self.assertEqual(self.sb.invocations(), [{"key": "python", "argv": ["status"]}])
 
 
