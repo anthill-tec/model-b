@@ -70,10 +70,13 @@ CLI_FETCH_RE = re.compile(
 
 MODEL_B_WATCHER_RE = re.compile(r"model b watcher", re.IGNORECASE)
 #: The fallback capability: "a background process that notifies you when it
-#: exits" — the words may move, the two ideas may not.
+#: exits" — the words may move, the two ideas may not. The notification is
+#: addressed to the SESSION ("notifies you / the session when"), so a bare
+#: mention of the ``sandesh notify`` command near the word "exits" (e.g. "a
+#: bare `sandesh notify --to …` exits 1") does not satisfy it (VERIFY F5).
 BACKGROUND_PROCESS_RE = re.compile(r"background[- ]process", re.IGNORECASE)
 NOTIFIES_ON_EXIT_RE = re.compile(
-    r"notif(?:y|ies|ied|ication)\b[^.|\n]{0,60}\bexit", re.IGNORECASE
+    r"\bnotif\w*\s+(?:you|the session)\s+when\b[^.|\n]{0,40}\bexit", re.IGNORECASE
 )
 NEGATED_RELAUNCH_RE = re.compile(
     r"\b(?:do not|don't|never|not|no)\b[^|.;]{0,30}\brelaunch", re.IGNORECASE
@@ -95,7 +98,7 @@ UNQUALIFIED_EXIT_RE = re.compile(
 #: A unit that names which exit it means is qualified, not a violation.
 EXIT_QUALIFIER_RE = re.compile(
     r"unless|except|terminal|tombston|evict|already[- ]live|dedup"
-    r"|exit\s*`?\d|\bcode\b|128\s*\+\s*n",
+    r"|exit\s*`?\d|exit code\s*`?\d|128\s*\+\s*n",
     re.IGNORECASE,
 )
 
@@ -208,6 +211,51 @@ def _exit_as_mail_claims(text: str):
             and re.search(r"fetch|relaunch|mail", unit, re.IGNORECASE)
             and not EXIT_QUALIFIER_RE.search(unit)
         ):
+            hits.append((lineno, unit))
+    return hits
+
+
+#: VERIFY F6 — a relaunch the session performs must be qualified as the
+#: fallback path ("without the Model B watcher") or as a terminal-exit
+#: exception; the Model B watcher relaunches itself.
+RELAUNCH_QUALIFIER_RE = re.compile(
+    r"fallback|without (?:it|the model b watcher)|model b watcher is not installed"
+    r"|terminal|tombston|evict|already[- ]live",
+    re.IGNORECASE,
+)
+#: Mentions of relaunch that are names, the Model B watcher's own behaviour, or
+#: a roster-liveness description ("not reachable \u2026 until it relaunches"),
+#: never an instruction to the session.
+RELAUNCH_NON_INSTRUCTION_RE = re.compile(
+    r"relaunch-on-exit|watcher-relaunch|relaunch\w*\s+itself|until it relaunches",
+    re.IGNORECASE,
+)
+#: VERIFY F6 — the explicit allowlist beyond the exit-table rows:
+#: bootstrap's "fix the command and relaunch" after ``listening:false``, and
+#: shutdown's "next run, /bootstrap relaunches the watcher".
+RELAUNCH_ALLOWLIST = {
+    BOOTSTRAP_SKILL: (re.compile(r"listening:false`?, fix the command and relaunch"),),
+    SHUTDOWN_SKILL: (re.compile(r"`/bootstrap` brings you back \(re-register \+ relaunch the watcher\)"),),
+}
+
+
+def _is_exit_table_row(unit: str) -> bool:
+    if not unit.startswith("|"):
+        return False
+    cells = [c.strip() for c in unit.strip("|").split("|")]
+    return any(_exit_cell_key(c) in EXIT_ROWS for c in cells)
+
+
+def _unqualified_relaunch_claims(text: str, allow=()):
+    """Units instructing a relaunch without naming the fallback path or a
+    terminal-exit exception (VERIFY F6). Exit-table rows and ``allow``
+    patterns are exempt; negated relaunches are not instructions."""
+    hits = []
+    for lineno, unit in _units(text):
+        if _is_exit_table_row(unit) or any(p.search(unit) for p in allow):
+            continue
+        residue = NEGATED_RELAUNCH_RE.sub(" ", RELAUNCH_NON_INSTRUCTION_RE.sub(" ", unit))
+        if RELAUNCH_RE.search(residue) and not RELAUNCH_QUALIFIER_RE.search(unit):
             hits.append((lineno, unit))
     return hits
 
@@ -450,6 +498,58 @@ class NoRelaunchAfterTerminalExitS1Test(unittest.TestCase):
             "A watcher that exits is relaunched unless the exit was terminal (tombstoned, evicted, already live).",
         ):
             self.assertEqual(_exit_as_mail_claims(permitted), [], permitted)
+
+    def test_s1_notifies_on_exit_detector_ignores_a_bare_notify_that_exits(self):
+        """VERIFY F5 \u2014 the command merely exiting is not the fallback
+        capability; the process must notify the SESSION when it exits."""
+        bare = ("The CLI REQUIRES `--project <Project>`; a bare `sandesh notify --to \u2026` "
+                "exits 1 and silently never listens (`listening:false`).")
+        self.assertNotRegex(bare, NOTIFIES_ON_EXIT_RE, bare)
+        for permitted in (
+            "run it as a background process that notifies you when it exits",
+            "a background process that notifies the session when it exits",
+        ):
+            self.assertRegex(permitted, NOTIFIES_ON_EXIT_RE, permitted)
+
+
+class RelaunchIsQualifiedF6Test(unittest.TestCase):
+    """VERIFY F6 \u2014 across the five gated files, every sentence that tells
+    the session to relaunch the watcher names the fallback path ("without the
+    Model B watcher") or a terminal-exit exception. Allowlisted: the exit-table
+    rows, bootstrap's fix-and-relaunch after ``listening:false``, and
+    shutdown's bootstrap-relaunches-next-run line."""
+
+    def test_f6_every_session_relaunch_is_qualified(self):
+        offending = []
+        for path in GATED_FILES:
+            allow = RELAUNCH_ALLOWLIST.get(path, ())
+            for lineno, unit in _unqualified_relaunch_claims(_read(path), allow):
+                offending.append(f"{path.relative_to(REPO_ROOT)}:{lineno} unqualified relaunch: {unit}")
+        self.assertEqual(offending, [], "\n  ".join(["unqualified relaunch instructions:"] + offending))
+
+    def test_f6_allowlist_entries_still_match_their_lines(self):
+        for path, patterns in RELAUNCH_ALLOWLIST.items():
+            text = _norm(_read(path))
+            for pattern in patterns:
+                self.assertRegex(text, pattern, f"stale allowlist entry for {path.relative_to(REPO_ROOT)}")
+
+    def test_f6_unqualified_relaunch_detector_bites(self):
+        for violating in (
+            "The standalone `sandesh notify` watcher exits when To-addressed mail arrives \u2192 "
+            "the host re-invokes the session \u2192 it `sandesh_fetch`es \u2192 **relaunches the watcher**.",
+            "Acks arrive as Sandesh mail; your watcher wakes on them (fetch + relaunch as normal \u2014 the "
+            "notifier stays up until *your* final step).",
+        ):
+            self.assertEqual(len(_unqualified_relaunch_claims(violating)), 1, violating)
+        for permitted in (
+            "The standalone `sandesh notify` watcher exits when To-addressed mail arrives \u2192 the host "
+            "re-invokes the session \u2192 it fetches (`sandesh fetch --project <Project> --to '<your address>'`) "
+            "\u2192 and, on the fallback path, relaunches the watcher (the Model B watcher relaunches itself).",
+            "It supervises `sandesh notify`, stays running and relaunches itself.",
+            "Do not relaunch.",
+            "| error (usage or configuration) | `1` | fix the command, then relaunch |",
+        ):
+            self.assertEqual(_unqualified_relaunch_claims(permitted), [], permitted)
 
 
 # ---------------------------------------------------------------------------
