@@ -621,6 +621,23 @@ def check_cr029_acceptance(text: str) -> list[str]:
     return out
 
 
+#: The flags the ``stale`` re-run must name so it acts on the same install
+#: (VERIFY cycle 102 finding 3), derived from the parser.
+def _stale_rerun_flags() -> list[str]:
+    return [parser_flag(f) for f in ("--reinstall", "--target-root", "--stacks",
+                                     "--harnesses", "--modelb-home")]
+
+
+def check_stale_rerun(text: str) -> list[str]:
+    """The ``stale`` bullet of the install-outcomes section names every
+    flag of the re-run that refreshes the same install."""
+    sec = _section(text, OUTCOMES)
+    bullet = re.search(r"^- `stale`.*?(?=^- |^\s*$|\Z)", sec, re.M | re.S)
+    if bullet is None:
+        return [f"{OUTCOMES}: no `stale` bullet"]
+    return _missing_tokens(bullet.group(0), _stale_rerun_flags(), f"{OUTCOMES} `stale`")
+
+
 #: The conforming guide's installer step (PyPI + the interim source note).
 _CONFORMING_INSTALLER_LINE = (
     f"- The installer, from PyPI: `{INSTALLER_INSTALL}`; until then, from a source copy "
@@ -737,6 +754,29 @@ class InstallGuideInstallerSourceTest(unittest.TestCase):
 
     def test_cr029_acceptance_takes_only_the_readme_from_the_guide(self):
         self.assertEqual(check_cr029_acceptance(_read(CR_029)), [])
+
+
+class InstallGuideStaleRerunTest(unittest.TestCase):
+    """VERIFY (cycle 102) finding 3: the ``stale`` re-run guidance names
+    ``--harnesses`` and ``--modelb-home`` as well as the target root and
+    stacks, so following it acts on the same install."""
+
+    def test_stale_rerun_names_every_flag_of_the_same_install(self):
+        self.assertTrue(GUIDE.is_file(), f"{GUIDE.relative_to(REPO_ROOT)} must exist")
+        self.assertEqual(check_stale_rerun(_read(GUIDE)), [])
+
+    def test_stale_rerun_checker_both_ways(self):
+        good = (f"## {OUTCOMES}\n\n- `stale` \u2014 newer: re-run with `--reinstall` (and your\n"
+                "  `--target-root`, `--stacks`, `--harnesses` and `--modelb-home`).\n"
+                "- `retired` \u2014 gone.\n")
+        self.assertEqual(check_stale_rerun(good), [])
+        self.assertEqual(check_stale_rerun(good.replace("`--harnesses` and ", "")),
+                         [f"{OUTCOMES} `stale`: missing `--harnesses`"])
+        self.assertEqual(
+            check_stale_rerun(good.replace("`--modelb-home`", "home") + "`--modelb-home`\n"),
+            [f"{OUTCOMES} `stale`: missing `--modelb-home`"])
+        self.assertEqual(check_stale_rerun(good.replace("- `stale`", "- stale")),
+                         [f"{OUTCOMES}: no `stale` bullet"])
 
 
 class InstallGuideMarkedRegionsTest(unittest.TestCase):

@@ -478,6 +478,32 @@ class ReinstallHintQuotesPathsWithSpacesTest(_ExecutedHintCase):
         self.assertIn(" ", str(self.target_root), "fixture: the path has a space")
         self.assert_executed_stale_hint_refreshes_this_install()
 
+
+class ReinstallHintKeepsTheRecordedHarnessesTest(_ExecutedHintCase):
+    """VERIFY (cycle 102) finding 1: the printed re-run carries the
+    harnesses ``install.toml`` records, so following it targets the same
+    harnesses whatever is on ``PATH`` now. Installed with ``--harnesses pi``."""
+
+    def recorded_harnesses(self):
+        return self.load_install()["install"].get("harnesses")
+
+    def test_hint_ignores_a_harness_detected_since_the_install(self):
+        self.assertEqual(self.recorded_harnesses(), ["pi"], "fixture: installed for pi only")
+        _write_exe(self.bin_dir, "claude", _FAKE_TOOL)
+        self.assert_executed_stale_hint_refreshes_this_install()
+        self.assertEqual(self.recorded_harnesses(), ["pi"],
+                         "following the hint must keep the recorded harnesses exactly")
+        self.assertFalse((self.target_root / ".claude").exists(),
+                         "following the hint must deploy nothing for a harness the "
+                         "install never targeted")
+
+    def test_hint_keeps_a_recorded_harness_no_longer_on_path(self):
+        self.assertEqual(self.recorded_harnesses(), ["pi"], "fixture: installed for pi only")
+        (self.bin_dir / "pi").unlink()
+        self.assert_executed_stale_hint_refreshes_this_install()
+        self.assertEqual(self.recorded_harnesses(), ["pi"],
+                         "following the hint must still record the install's harness")
+
 class FreshnessUnknownWithoutTargetRootTest(_InstalledMachineCase):
     """§S2: an install.toml older than CR-MDB-033 (no ``target_root`` nor
     the per-class dirs) yields ``freshness: unknown`` and a warning naming
@@ -523,6 +549,68 @@ class FreshnessUnknownWithoutTargetRootTest(_InstalledMachineCase):
                         f"audit hook live: install.toml must be seen opened; opened={opened!r}")
         touched = sorted({p for p in opened for rel in self.manifest if p.endswith(rel)})
         self.assertEqual(touched, [], "no deployed file may be read without a target_root")
+
+    # -- VERIFY (cycle 102) finding 2: the warning names the full re-run --
+
+    def unknown_rerun_argv(self):
+        """The re-run the ``freshness unknown`` warning quotes, split as a
+        shell would; asserts the scaffold-mode guard phrase stays absent."""
+        result, axi = self.run_bare()
+        self.assert_already_installed(result, axi)
+        self.assertEqual(axi.get("freshness"), "unknown", f"axi={axi!r}")
+        self.assertNotIn("installer flow", result.stderr.lower())
+        hits = [w for w in axi.get("warnings", []) if "freshness unknown" in w]
+        self.assertEqual(len(hits), 1, f"warnings={axi.get('warnings')!r}")
+        match = re.search(r"`([^`]+)`", hits[0])
+        if match is None:
+            self.fail(f"the warning quotes a command; warning={hits[0]!r}")
+        return shlex.split(match.group(1))
+
+    def assert_flag(self, argv, flag, value):
+        self.assertIn(flag, argv, f"the re-run must carry {flag}; argv={argv!r}")
+        at = argv.index(flag)
+        self.assertEqual(argv[at + 1:at + 2], [value],
+                         f"{flag} must be followed by {value!r}; argv={argv!r}")
+
+    def test_warning_names_home_stacks_and_harnesses_the_install_records(self):
+        self.assertNotEqual(self.xdg_data_home / "modelb", self.modelb_home,
+                            "fixture: the install's home is not the default")
+        argv = self.unknown_rerun_argv()
+        self.assertEqual(argv[:2], ["modelb-axi", "--reinstall"], f"argv={argv!r}")
+        self.assert_flag(argv, "--target-root", "<dir>")
+        self.assert_flag(argv, "--modelb-home", str(self.modelb_home))
+        self.assert_flag(argv, "--stacks", "bun")
+        self.assert_flag(argv, "--harnesses", "pi")
+
+    def test_warning_omits_modelb_home_when_the_install_uses_the_default(self):
+        default_home = self.xdg_data_home / "modelb"
+        default_home.mkdir(parents=True)
+        shutil.copy2(self.install_toml_path, default_home / "install.toml")
+        self.modelb_home = default_home
+        argv = self.unknown_rerun_argv()
+        self.assertNotIn("--modelb-home", argv, f"a default home needs no flag; argv={argv!r}")
+        self.assert_flag(argv, "--target-root", "<dir>")
+        self.assert_flag(argv, "--stacks", "bun")
+        self.assert_flag(argv, "--harnesses", "pi")
+
+    def test_warning_omits_stacks_and_harnesses_the_install_does_not_record(self):
+        data = self.load_install()
+        for key in ("stacks", "harnesses"):
+            data["install"].pop(key, None)
+        self.write_install(data)
+        argv = self.unknown_rerun_argv()
+        self.assertEqual(argv[:2], ["modelb-axi", "--reinstall"], f"argv={argv!r}")
+        self.assert_flag(argv, "--target-root", "<dir>")
+        for flag in ("--stacks", "--harnesses"):
+            with self.subTest(flag=flag):
+                self.assertNotIn(flag, argv, f"nothing recorded, nothing named; argv={argv!r}")
+
+
+class FreshnessUnknownQuotesPathsWithSpacesTest(FreshnessUnknownWithoutTargetRootTest):
+    """Finding 2, shlex quoting: a Model B home with a space stays one word."""
+
+    ROOT_PREFIX = "modelb cr037 unknown spaced "
+
 
 
 if __name__ == "__main__":
