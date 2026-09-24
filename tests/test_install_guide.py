@@ -503,7 +503,13 @@ TOPIC_CHECKERS = {
 }
 
 
-def check_marked_regions(text: str) -> list[str]:
+def parse_marked_regions(text: str) -> tuple[list[tuple[str, int, int]], list[str]]:
+    """The guide's marked regions, in order: ``(name, begin_line, end_line)``
+    with 0-based indices of the two marker lines, plus the marker faults
+    (malformed, nested, unmatched, never-ended). Markers inside fenced blocks
+    are ignored. The one parser of the convention: :func:`check_marked_regions`
+    and the Pi package README gate (``tests/test_pi_package.py``) both use it
+    (CR-MDB-029 \u00a7S1, orchestrator ruling D2, 2026-09-24)."""
     lines = text.splitlines()
     mask = _fence_mask(lines)
     out: list[str] = []
@@ -529,6 +535,13 @@ def check_marked_regions(text: str) -> list[str]:
             out.append(f"line {i + 1}: malformed marker {stripped!r}")
     if open_region is not None:
         out.append(f"region {open_region[0]!r} is never ended")
+    return regions, out
+
+
+def check_marked_regions(text: str) -> list[str]:
+    lines = text.splitlines()
+    mask = _fence_mask(lines)
+    regions, out = parse_marked_regions(text)
     if not regions:
         out.append("no marked region")
     names = [r[0] for r in regions]
