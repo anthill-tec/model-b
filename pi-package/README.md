@@ -20,12 +20,13 @@ Install these in the order given; no step relies on one that comes after it.
 
 1. **Pi.** The `pi` command must be on your `PATH`. Install it by Pi's own instructions.
    Model B deploys into Pi's reach; it does not install Pi.
-2. **Pi's packages.** Model B's assets rely on three Pi packages. Install them with Pi's own
+2. **Pi's packages.** Model B's assets rely on four Pi packages. Install them with Pi's own
    command (the installer can also offer to run these for you, see
    [Install offers](#install-offers)):
    - `dispatch` — required: `pi install npm:@gotgenes/pi-subagents`
    - `lean-ctx` — required: `pi install npm:pi-lean-ctx`
    - `permissions` — recommended: `pi install npm:@gotgenes/pi-permission-system`
+   - `watcher` — recommended, Model B's own package: `pi install npm:@anthill-tec/modelb-pi`
 3. **`uv`** — required. It installs the installer itself:
    `curl -LsSf https://astral.sh/uv/install.sh | sh`
 4. **`git`** — required to create a project: every project `modelb-axi init` creates is a
@@ -80,12 +81,12 @@ Before it writes anything, the installer checks the machine and prints one line 
 typical run with `--stacks python` prints:
 
 ```text
-harness: dispatch=detected lean-ctx=detected permissions=detected
+harness: dispatch=detected lean-ctx=detected permissions=detected watcher=detected
 deps: uv=detected sandesh=detected crucible=detected
 stack python: python3=detected xmlrunner=absent coverage=detected client=detected
 ```
 
-- `harness:` — the three Pi packages. A package counts as `detected` only when Pi would load
+- `harness:` — the four Pi packages. A package counts as `detected` only when Pi would load
   it: it is listed in `packages` in `~/.pi/agent/settings.json` (not switched off with
   `"extensions": []`) and it is present under `~/.pi/agent/npm/node_modules/`. If you keep
   Pi's settings elsewhere, set `PI_CODING_AGENT_DIR` and the installer looks there instead.
@@ -122,6 +123,7 @@ provides it. By requirement:
 | `dispatch` | the agent definitions and the orchestration skills are inert: nothing can start a sub-agent. Required — see [Missing capabilities](#missing-capabilities). |
 | `lean-ctx` | the agent definitions and the tool scripts are inert: they call its tools. Required — see [Missing capabilities](#missing-capabilities). |
 | `permissions` | the agent definitions' permission: frontmatter is ignored, so sub-agents run without their declared tool limits, and a project's permission policy has nothing to enforce it. |
+| `watcher` | the orchestration skills cannot keep a session listening for Sandesh messages: nothing wakes the session when a message arrives. |
 | `uv` | the modelb-axi installer cannot be installed or updated and the Sandesh install cannot run; the pre-flight stops at once. |
 | `sandesh` | the bootstrap and shutdown skills cannot send or watch for messages. |
 | `crucible` | the crucible skills and the crucible-report-* skill bundles have no client to report test runs through. |
@@ -163,10 +165,13 @@ keyboard, accepts the defaults (proceed; all stacks unless `--stacks` is given; 
 harnesses unless `--harnesses` is given), and skips every offer above, leaving its warning. A
 run whose input is not a terminal behaves the same way.
 
-The one install `--yes` does accept is Model B's own: when `sandesh` is absent the installer
-asks ``Sandesh not found — install via `uv tool install sandesh-relay`? [Y/n]``, where Enter
-means yes and a decline is recorded as a warning. Under `--yes`, and in a run whose input is
-not a terminal, it runs without asking.
+The installs `--yes` does accept are Model B's own. When `sandesh` is absent the installer
+asks ``Sandesh not found — install via `uv tool install sandesh-relay`? [Y/n]``. When `pi` is
+among the harnesses you install for and Model B's own Pi package is absent, it asks
+``watcher=absent — install Model B's own Pi package via `pi install npm:@anthill-tec/modelb-pi`? [Y/n]``.
+In both, Enter means yes and a decline is recorded as a warning. Under `--yes`, and in a run
+whose input is not a terminal, they run without asking. The command runs in your terminal and
+the package is checked again afterwards, exactly as for the offers above.
 
 ## Missing capabilities
 
@@ -187,8 +192,8 @@ missing package stay inert until you install it, and `install.toml` records that
 was used.
 
 A required package reported `unknown` does not stop the install; it is a warning, because the
-installer cannot prove the package is missing. `permissions` is recommended rather than
-required: when it is absent you get a warning, never a failure.
+installer cannot prove the package is missing. `permissions` and `watcher` are recommended
+rather than required: when either is absent you get a warning, never a failure.
 
 ## Install outcomes
 

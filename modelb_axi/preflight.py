@@ -5,7 +5,8 @@ Probes, in order, against the CURRENT environment (``shutil.which`` and
 ``$HOME``/``$PI_CODING_AGENT_DIR`` — the tests' isolation seams):
 
 1. **Harness capabilities** (tier 1, :mod:`modelb_axi.capabilities`) —
-   reported as ``harness: dispatch=<v> lean-ctx=<v> permissions=<v>``.
+   reported as ``harness: dispatch=<v> lean-ctx=<v> permissions=<v>
+   watcher=<v>``.
 2. ``uv`` — the bootstrap dependency everything else rides on. Absent is
    the pre-flight FAILURE mode: non-zero exit with bootstrap
    instructions.
@@ -25,7 +26,9 @@ pre-flight naming the asset families it leaves inert, unless the caller
 allows missing capabilities; ``unknown`` and a missing RECOMMENDED one
 WARN and continue. Model B never installs a third-party extension and
 never edits Pi's ``settings.json`` — it names ``pi install npm:<pkg>``.
-Sandesh (Model B's own ecosystem) keeps its install-on-confirm.
+Sandesh (Model B's own ecosystem) keeps its install-on-confirm, and so
+does Model B's own Pi package, ``pi install npm:@anthill-tec/modelb-pi``
+(the ``watcher`` capability, CR-MDB-029 §S3), when ``pi`` is targeted.
 
 Every warning printed is also appended, unprefixed, to the caller's
 ``warnings`` list so the envelope can carry it. This module writes
@@ -56,6 +59,10 @@ from modelb_axi.toolchains import (
 )
 
 SANDESH_PACKAGE = "sandesh-relay"
+
+#: Model B's own Pi package (the ``watcher`` capability, CR-MDB-029 §S3):
+#: the one tier-1 provider ``--yes`` installs — never a third-party one.
+MODELB_PI_PACKAGE = requirement("watcher")["provider"]
 
 #: The requirement ``probe`` kind of a tier-2 tool judged by
 #: ``shutil.which`` and recorded only in ``[capabilities]`` — ``[deps]``
@@ -138,19 +145,23 @@ def _families(row: dict) -> str:
 
 def _offer_pi_installs(
     harness: dict[str, str], offer: Callable[[str], bool] | None, warnings: list[str],
-    agent_dir: Path,
+    agent_dir: Path, *, confirm: Callable[[str], bool], pi_targeted: bool,
 ) -> None:
     """§S3: for each ABSENT tier-1 extension, offer Pi's own
-    ``pi install npm:<package>`` — run only on an explicit interactive yes
-    (``offer`` is ``None`` under ``--yes``). Model B never edits Pi's
-    ``settings.json``; Pi does. A decline is recorded as a warning.
+    ``pi install npm:<package>``. A THIRD-PARTY extension runs only on an
+    explicit interactive yes (``offer`` is ``None`` under ``--yes``). Model
+    B's OWN package (:data:`MODELB_PI_PACKAGE`, CR-MDB-029 §S3) goes through
+    ``confirm`` like Sandesh — so ``--yes`` runs it — and only when
+    ``pi_targeted`` (``pi`` is among the run's harnesses). Model B never
+    edits Pi's ``settings.json``; Pi does. A decline is recorded as a
+    warning.
 
     After an install exits 0 that ONE capability is re-probed: its verdict
     in ``harness`` (updated in place) becomes ``installed`` iff Pi now
     loads it, else keeps the re-probed verdict with a warning naming where
     it was expected."""
     missing = [cap for cap, verdict in harness.items() if verdict == ABSENT]
-    if offer is None or not missing:
+    if not missing:
         return
     pi_path = shutil.which("pi")
     if pi_path is None:
@@ -159,7 +170,17 @@ def _offer_pi_installs(
         package = requirement(cap)["provider"]
         spec = f"npm:{package}"
         command = f"pi install {spec}"
-        if not offer(f"{cap}=absent — run Pi's own `{command}`?"):
+        if package == MODELB_PI_PACKAGE:
+            if not pi_targeted:
+                continue
+            ask = confirm
+            prompt = f"{cap}=absent — install Model B's own Pi package via `{command}`?"
+        elif offer is None:
+            continue
+        else:
+            ask = offer
+            prompt = f"{cap}=absent — run Pi's own `{command}`?"
+        if not ask(prompt):
             _warn(f"declined `{command}` — {cap} stays absent", warnings)
             continue
         try:
@@ -225,16 +246,20 @@ def run_preflight(
     stacks: Iterable[str] = (),
     allow_missing_capabilities: bool = False,
     offer: Callable[[str], bool] | None = None,
+    harnesses: Iterable[str] = (),
 ) -> tuple[int, dict[str, str], dict[str, str]]:
     """Run the dependency and capability pre-flight (installer stage 1).
 
     ``confirm`` is the CLI's prompt seam, pre-bound to the run's
     interactivity (always-True under ``--yes``) — used only for Model B's
-    own Sandesh install, never for a third-party extension. ``offer`` is the
+    own Sandesh install and its own Pi package, never for a third-party
+    extension. ``offer`` is the
     explicit-yes seam (``None`` under ``--yes``) for Pi's own ``pi install``
     and the §S8 provider installers. ``warnings``,
     when given, collects every warning and error printed. ``stacks`` are
-    the selected stacks, one ``stack <name>:`` line each.
+    the selected stacks, one ``stack <name>:`` line each. ``harnesses`` are
+    the harnesses the run targets: Model B's own Pi package is offered only
+    when ``pi`` is among them (CR-MDB-029 §S3).
 
     Returns ``(exit_code, deps, capabilities)``: ``deps`` is exactly
     uv/sandesh/crucible for ``[deps]``; ``capabilities`` maps every probed
@@ -282,7 +307,10 @@ def run_preflight(
         probes = "".join(f"{name}={v} " for name, v in toolchains[stack].items())
         print(f"stack {stack}: {probes}client={client}", file=sys.stderr)
 
-    _offer_pi_installs(harness, offer, warnings, agent_dir)
+    _offer_pi_installs(
+        harness, offer, warnings, agent_dir,
+        confirm=confirm, pi_targeted="pi" in set(harnesses),
+    )
     failed = _harness_policy(
         harness, str(agent_dir / "settings.json"), allow_missing_capabilities, warnings,
     )
