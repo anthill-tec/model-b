@@ -810,5 +810,113 @@ class ModelBOwnedTestSetS4Test(unittest.TestCase):
                                         "seven-count assertion on the Model B-owned bundles")
 
 
+# ---------------------------------------------------------------------------
+# C3 VERIFY findings F2 / F3 / F5 -- pinned before the fix
+# ---------------------------------------------------------------------------
+
+INSTALL_GUIDE = REPO_ROOT / "docs" / "install-guide.md"
+RUST_ORCHESTRATION = SKILLS_SRC / "memory-templates" / "rust-orchestration.md"
+
+#: F3 -- the flags ``rust-crucible.py cr-close --help`` takes: ``--commit``
+#: (required by argparse), ``--agent`` (required by the server, §S2b: every
+#: workflow verb posts as a live registered caller) and ``--cr`` (names the
+#: plan being closed). Pinned, not read from the installed client, so no test
+#: reads the real home.
+CR_CLOSE_FLAGS = ("--cr", "--commit", "--agent")
+
+#: F2 -- `rust` paired with `code-health` inside one sentence.
+_RUST_CODE_HEALTH_PAIR_RE = re.compile(r"`rust`[^.]{0,80}`code-health`")
+
+
+def _guide_region(test: unittest.TestCase, name: str) -> str:
+    """The body of one ``install-guide:begin/end <name>`` region."""
+    text = INSTALL_GUIDE.read_text(encoding="utf-8")
+    match = re.search(
+        rf"<!-- install-guide:begin {re.escape(name)} -->\n(.*?)"
+        rf"<!-- install-guide:end {re.escape(name)} -->",
+        text, re.DOTALL,
+    )
+    if match is None:
+        test.fail(f"precondition: docs/install-guide.md carries the `{name}` region")
+    return match.group(1)
+
+
+def _sentences(text: str) -> list[str]:
+    """Sentences of prose, line breaks folded."""
+    return [s.strip() for s in re.split(r"(?<=[.!?])\s+", " ".join(text.split())) if s.strip()]
+
+
+class CodeHealthCrCloseFlagsTest(unittest.TestCase):
+    """F3 -- the skill's ``cr-close`` invocation carries the flags the
+    client takes; without ``--agent`` the server refuses the verb."""
+
+    def test_cr_close_invocation_carries_cr_commit_and_agent(self):
+        lines = _bundle_text(self).splitlines()
+        sites = [(i + 1, ln) for i, ln in enumerate(lines)
+                 if re.search(r"rust-crucible\.py\s+cr-close\b", ln)]
+        self.assertTrue(sites, "F3: the skill shows `rust-crucible.py cr-close …`")
+        missing = [
+            (n, [f for f in CR_CLOSE_FLAGS if not re.search(re.escape(f) + r"\s+\S+", ln)])
+            for n, ln in sites
+        ]
+        self.assertEqual([m for m in missing if m[1]], [],
+                         f"F3: every cr-close invocation carries {CR_CLOSE_FLAGS} with a value")
+
+
+class CodeHealthStackScopeDocsTest(unittest.TestCase):
+    """F2 -- the install guide and the ``--stacks`` help say that `rust`
+    also deploys the ``code-health`` bundle."""
+
+    def test_choosing_stacks_pairs_rust_with_code_health(self):
+        self.assertRegex(_guide_region(self, "choosing-stacks"), _RUST_CODE_HEALTH_PAIR_RE,
+                         "F2: `Choosing stacks` says selecting `rust` also deploys `code-health`")
+
+    def test_adding_stacks_later_pairs_rust_with_code_health(self):
+        self.assertRegex(_guide_region(self, "adding-stacks-later"), _RUST_CODE_HEALTH_PAIR_RE,
+                         "F2: `Adding stacks later` says adding `rust` also deploys `code-health`")
+
+    def test_guide_no_longer_deploys_every_other_skill_whatever_the_stacks(self):
+        text = INSTALL_GUIDE.read_text(encoding="utf-8")
+        offenders = [s for s in _sentences(text)
+                     if re.search(r"\bskills?\b", s) and re.search(r"whatever stacks", s)
+                     and "code-health" not in s]
+        self.assertEqual(offenders, [], "F2: code-health is stack-scoped; no sentence may say "
+                                        "every non-report skill deploys whatever stacks are chosen")
+
+    def test_stacks_help_pairs_rust_with_code_health(self):
+        from modelb_axi.cli import _build_parser
+        action = next(a for a in _build_parser()._actions if "--stacks" in a.option_strings)
+        self.assertRegex(action.help or "", re.compile(r"\brust\b[^()]{0,40}\bcode-health\b"),
+                         "F2: the --stacks help says `rust` also deploys code-health")
+
+
+class RustOrchestrationLedgerTemplateTest(unittest.TestCase):
+    """F5 -- the Rust memory template teaches the ledger as it works after
+    CR-MDB-028: cr-plan on rust-crucible.py, ledger assign, hand sync."""
+
+    def setUp(self):
+        self.text = RUST_ORCHESTRATION.read_text(encoding="utf-8")
+
+    def test_no_present_tense_set_state_auto_mirror_claim(self):
+        claims = [s for s in _sentences(self.text)
+                  if re.search(r"set_state[^.]{0,200}\b(?:auto-?mirrors|mirrors)\b", s)]
+        self.assertEqual(claims, [], "F5: `schedule_db.set_state` no longer mirrors the ledger")
+
+    def test_filing_names_rust_crucible_cr_plan(self):
+        wrong = [ln.strip()[:160] for ln in self.text.splitlines()
+                 if re.search(r"python-crucible\.py[^\n]{0,20}\bcr-plan\b", ln)]
+        self.assertEqual(wrong, [], "F5: the Rust template files with rust-crucible.py, "
+                                    "not python-crucible.py")
+        self.assertRegex(self.text, r"rust-crucible\.py[^\n]{0,20}\bcr-plan\b",
+                         "F5: filing is `rust-crucible.py cr-plan`")
+
+    def test_points_at_the_code_health_skills_manual_ledger_sync(self):
+        hits = [s for s in _sentences(self.text)
+                if re.search(r"ledger sync[^.]*--db-state", s)
+                and "code-health" in s and re.search(r"(?i)by hand|manual", s)]
+        self.assertTrue(hits, "F5: the template points at the code-health skill's manual "
+                              "`ledger sync --db-state …` steps")
+
+
 if __name__ == "__main__":
     unittest.main()
