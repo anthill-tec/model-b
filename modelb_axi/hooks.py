@@ -1,4 +1,4 @@
-"""Neutral hook-definition schema validation + per-harness wiring compiler
+"""Neutral hook-definition schema validation + Pi wiring compiler
 (CR-MDB-015 §S2 + §S4).
 
 §S2: validates a parsed schema instance (one TOML table -> ``dict``) against
@@ -7,18 +7,13 @@
 set, and the security-class rule — a hook whose ``command`` targets a
 ``block-*`` guard script MUST declare ``fail_direction``.
 
-§S4: :func:`compile_wiring` compiles validated neutral instances into
-per-harness native wiring (DN-harness-agnostic-hooks §4): claude-code
-``.claude/settings.json``; opencode a generated TS spawn shim; pi full TS
-extensions under ``.pi/extensions/``; hermes declared degradation (advisory
-user-scope snippet only). ``fail_direction=closed`` hooks are REFUSED for
-harnesses that cannot honor fail-closed (claude-code, hermes — DN-harness-agnostic-hooks §4.4);
-pi honors it because its shim blocks on every non-protocol outcome (spawn
-error, other exit code, kill on timeout, unparseable output — CR-MDB-030
-§S5), opencode via shim-blocks-on-spawn-failure (DN-harness-agnostic-hooks §2
-roster addendum). Every (hook x harness) pairing is accounted for in the report —
-emitted, refused, or degraded-noted; when every requested harness refuses
-every hook, :class:`AllTargetsRefusedError` is raised.
+§S4: :func:`compile_wiring` compiles validated neutral instances into Pi
+wiring (DN-harness-agnostic-hooks §4): one full TS extension per hook under
+``.pi/extensions/``. Pi is the only roster harness (CR-MDB-031 §S1) and it
+honours ``fail_direction=closed`` — its shim blocks on every non-protocol
+outcome (spawn error, other exit code, kill on timeout, unparseable output —
+CR-MDB-030 §S5) — so the compiler has no refusal path. Every hook is
+accounted for in the report.
 
 Stdlib only (pure runtime path).
 """
@@ -119,91 +114,11 @@ def validate_schema(instance: dict) -> list[str]:
 
 
 # --------------------------------------------------------------------------
-# §S4 compiler: neutral schema -> per-harness wiring
+# §S4 compiler: neutral schema -> Pi wiring
 # --------------------------------------------------------------------------
 
-#: Universal-event -> Claude Code settings.json event-key mapping (v1 pin).
-_CLAUDE_EVENT_KEYS = {
-    "pre-tool-use": "PreToolUse",
-    "post-tool-use": "PostToolUse",
-    "session-start": "SessionStart",
-    "turn-stop": "Stop",
-    "prompt-submit": "UserPromptSubmit",
-    "pre-compact": "PreCompact",
-}
-
-#: Neutral tool class -> Claude Code tool-name alternation (CR-MDB-030 §S4).
-#: A name absent here has no Claude Code equivalent and passes through.
-_CLAUDE_TOOL_NAMES = {
-    "bash": "Bash",
-    "write": "Write",
-    "edit": "Edit|MultiEdit|NotebookEdit",
-    "read": "Read",
-    "grep": "Grep",
-    "find": "Glob",
-    "ls": "LS",
-}
-
-
-def _claude_matcher(matcher: str | None) -> str:
-    """The neutral ``matcher`` in Claude Code's own tool names, translated
-    per alternation member; ``*`` for an absent matcher (CR-MDB-030 §S4)."""
-    if not matcher:
-        return "*"
-    return "|".join(
-        _CLAUDE_TOOL_NAMES.get(member, member) for member in matcher.split("|")
-    )
-
-#: Harnesses whose shims can honor fail-closed. pi: its shim blocks on every
-#: non-protocol outcome — spawn error, other exit code, kill on timeout,
-#: unparseable output (CR-MDB-030 §S5, proven through Pi's own loader by §S8).
-#: opencode: its spawn shim blocks on spawn failure (DN-harness-agnostic-hooks
-#: §2 roster addendum). claude-code and hermes are fail-open-only
-#: (DN-harness-agnostic-hooks §2/§4.4).
-_HONORS_FAIL_CLOSED = frozenset({"pi", "opencode"})
-
-_REFUSAL_REASONS = {
-    "claude-code": (
-        "fail_direction=closed cannot be honored: claude-code hooks are "
-        "fail-open (a hook error allows the action; DN-harness-agnostic-hooks §2) — a guard that "
-        "silently degrades is worse than none (DN-harness-agnostic-hooks §4.4)"
-    ),
-    "hermes": (
-        "fail_direction=closed cannot be honored: hermes blocking semantics "
-        "are unverifiable (exit-code contract under-documented, user-scope "
-        "hooks only; DN-harness-agnostic-hooks §2 roster addendum)"
-    ),
-}
-
-
-class AllTargetsRefusedError(Exception):
-    """Every requested harness refused every hook — zero wiring emitted."""
-
-    def __init__(self, commands: list[str]):
-        self.commands = commands
-        super().__init__(
-            "all requested harnesses refused all hooks; no wiring emitted "
-            f"for command(s): {', '.join(commands)}"
-        )
-
-
 def _new_report_entry() -> dict:
-    return {"emitted_files": [], "refusals": [], "degraded": False, "notes": []}
-
-
-def _partition(instances: list[dict], harness: str) -> tuple[list[dict], list[dict]]:
-    """Split instances into (emittable, refused) for one harness (DN-harness-agnostic-hooks §4.4)."""
-    emittable: list[dict] = []
-    refused: list[dict] = []
-    for instance in instances:
-        if (
-            instance.get("fail_direction") == "closed"
-            and harness not in _HONORS_FAIL_CLOSED
-        ):
-            refused.append(instance)
-        else:
-            emittable.append(instance)
-    return emittable, refused
+    return {"emitted_files": [], "degraded": False, "notes": []}
 
 
 def _record_emitted(entry: dict, rel: str, emitted: list[str] | None) -> None:
@@ -213,34 +128,6 @@ def _record_emitted(entry: dict, rel: str, emitted: list[str] | None) -> None:
     entry["emitted_files"].append(rel)
     if emitted is not None:
         emitted.append(rel)
-
-
-def _emit_claude_code(
-    instances: list[dict],
-    target: Path,
-    scripts_root: Path,
-    entry: dict,
-    emitted: list[str] | None = None,
-) -> None:
-    """Emit ``.claude/settings.json`` in the native Claude Code hooks shape."""
-    hooks_by_event: dict[str, list[dict]] = {}
-    for instance in instances:
-        command_spec = {
-            "type": "command",
-            "command": str(scripts_root / instance["command"]),
-        }
-        if instance.get("timeout") is not None:
-            command_spec["timeout"] = instance["timeout"]
-        hooks_by_event.setdefault(_CLAUDE_EVENT_KEYS[instance["event"]], []).append(
-            {"matcher": _claude_matcher(instance.get("matcher")), "hooks": [command_spec]}
-        )
-    settings_path = target / ".claude" / "settings.json"
-    settings_path.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write(
-        settings_path,
-        (json.dumps({"hooks": hooks_by_event}, indent=2) + "\n").encode("utf-8"),
-    )
-    _record_emitted(entry, ".claude/settings.json", emitted)
 
 
 #: Hook budget applied when an instance declares no ``timeout`` (seconds) —
@@ -465,57 +352,6 @@ def _pi_extension_text(instance: dict, pi_event: str, script_path: str) -> str:
     )
 
 
-def _emit_opencode(
-    instances: list[dict],
-    target: Path,
-    scripts_root: Path,
-    entry: dict,
-    emitted: list[str] | None = None,
-) -> None:
-    """Emit a generated TS spawn-shim plugin under ``.opencode/``."""
-    lines = [
-        "// Generated by modelb_axi hooks compiler (CR-MDB-015 §S4) — do not edit.",
-        'import { spawnSync } from "node:child_process";',
-        "",
-    ]
-    for instance in instances:
-        script_path = str(scripts_root / instance["command"])
-        # Honor the declared fail
-        # direction on spawn failure (status null / thrown) — a fail-closed
-        # guard must BLOCK when its script cannot run (DN-harness-agnostic-hooks §4.4).
-        fail_closed = instance.get("fail_direction") == "closed"
-        on_spawn_failure = (
-            '    return { block: true, reason: "fail-closed guard: hook spawn'
-            ' failed: " + String(result.error) };'
-            if fail_closed
-            else "    return {}; // fail-open: spawn failure allows the action"
-        )
-        lines += [
-            f"// {instance['event']} (matcher: {instance.get('matcher') or '*'})",
-            f'export async function {instance["command"].replace("-", "_")}(payload: unknown) {{',
-            "  let result;",
-            "  try {",
-            f'    result = spawnSync("{script_path}", {{ input: JSON.stringify(payload) }});',
-            "  } catch (err) {",
-            "    result = { error: err, status: null };",
-            "  }",
-            "  if (result.error || result.status === null) { // spawn failed",
-            on_spawn_failure,
-            "  }",
-            "  if (result.status === 2) { // protocol: exit code 2 blocks",
-            "    return { block: true, reason: result.stdout?.toString() };",
-            "  }",
-            "  return {};",
-            "}",
-            "",
-        ]
-    shim_rel = Path(".opencode") / "plugin" / "modelb-hooks.ts"
-    shim_path = target / shim_rel
-    shim_path.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write(shim_path, "\n".join(lines).encode("utf-8"))
-    _record_emitted(entry, str(shim_rel), emitted)
-
-
 #: pi extension event names (DN-harness-agnostic-hooks §2 roster addendum,
 #: event-map citations; ``pre-compact`` -> ``session_before_compact`` per
 #: CR-MDB-030 §S5) per universal event.
@@ -556,36 +392,6 @@ def _emit_pi(
         )
 
 
-def _emit_hermes_advisory(
-    instances: list[dict],
-    target: Path,
-    scripts_root: Path,
-    entry: dict,
-    emitted: list[str] | None = None,
-) -> None:
-    """Emit the hermes ADVISORY snippet — never project-level wiring."""
-    lines = [
-        "# Hermes advisory hook config (CR-MDB-015 §S4) — MANUAL adoption only.",
-        "# Hermes has no project-level hook declaration; shell hooks are",
-        "# USER-SCOPE ONLY. Merge the snippet below into ~/.hermes/config.yaml",
-        "# yourself. First use requires human consent via the allowlist at",
-        "# ~/.hermes/shell-hooks-allowlist.json (hermes prompts per hook).",
-        "hooks:",
-    ]
-    for instance in instances:
-        lines += [
-            f"  - event: {instance['event']}",
-            f"    command: {scripts_root / instance['command']}",
-        ]
-        if instance.get("timeout") is not None:
-            lines.append(f"    timeout: {instance['timeout']}")
-    advisory_rel = Path("hooks") / "hermes-manual.yaml"
-    advisory_path = target / advisory_rel
-    advisory_path.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write(advisory_path, ("\n".join(lines) + "\n").encode("utf-8"))
-    _record_emitted(entry, str(advisory_rel), emitted)
-
-
 def compile_wiring(
     schema_instances: list[dict],
     harnesses: list[str],
@@ -594,8 +400,9 @@ def compile_wiring(
     *,
     emitted: list[str] | None = None,
 ) -> dict:
-    """Compile neutral schema instances into per-harness wiring under
-    ``target`` (§S4).
+    """Compile neutral schema instances into Pi wiring under ``target``
+    (§S4; CR-MDB-031 §S1 — Pi is the only roster harness and honours
+    ``fail_direction``, so there is no refusal path).
 
     ``emitted`` is an optional caller-owned out-list: when given, each
     wiring file's path (relative to ``target``, the same form as the
@@ -605,12 +412,10 @@ def compile_wiring(
     (the default) nothing beyond the returned report is recorded.
 
     Returns a report dict keyed by harness id, each value
-    ``{"emitted_files": list[str], "refusals": list[dict], "degraded": bool,
-    "notes": list[str]}`` accounting for every (hook x harness) pairing.
-    Raises :class:`ValueError` for invalid instances,
-    :class:`modelb_axi.harness.UnknownHarnessError` for harness ids outside
-    the roster, and :class:`AllTargetsRefusedError` when every requested
-    harness refuses every hook (zero wiring emitted anywhere).
+    ``{"emitted_files": list[str], "degraded": bool, "notes": list[str]}``
+    accounting for every hook. Raises :class:`ValueError` for invalid
+    instances and :class:`modelb_axi.harness.UnknownHarnessError` for
+    harness ids outside the roster (before anything is written).
     """
     for instance in schema_instances:
         errors = validate_schema(instance)
@@ -624,42 +429,9 @@ def compile_wiring(
         raise UnknownHarnessError(unknown)
 
     report: dict = {}
-    any_wiring_emitted = False
-    for harness in harnesses:
+    for harness in harnesses:  # the roster is validated above: pi only
         entry = _new_report_entry()
         report[harness] = entry
-        emittable, refused = _partition(schema_instances, harness)
-        for instance in refused:
-            entry["refusals"].append(
-                {"command": instance["command"], "reason": _REFUSAL_REASONS[harness]}
-            )
-        if harness == "hermes":
-            entry["degraded"] = True
-            entry["notes"].append(
-                "hermes: DECLARED DEGRADATION — no project-level hook "
-                "declaration exists; advisory user-scope snippet emitted for "
-                "manual adoption (consent allowlist forces human approval)"
-            )
-            if emittable:
-                _emit_hermes_advisory(
-                    emittable, target, scripts_root, entry, emitted
-                )
-        elif emittable:
-            if harness == "claude-code":
-                _emit_claude_code(emittable, target, scripts_root, entry, emitted)
-            elif harness == "opencode":
-                _emit_opencode(emittable, target, scripts_root, entry, emitted)
-            else:  # pi — the roster is validated above
-                _emit_pi(emittable, target, scripts_root, entry, emitted)
-        # Uniform accounting: wiring counts as emitted exactly when this
-        # harness entry reports emitted files (hermes advisory included).
-        if entry["emitted_files"]:
-            any_wiring_emitted = True
-
-    if not any_wiring_emitted and all(
-        len(report[h]["refusals"]) == len(schema_instances) for h in harnesses
-    ):
-        refused_commands = sorted({i["command"] for i in schema_instances})
-        raise AllTargetsRefusedError(refused_commands)
-
+        if schema_instances:
+            _emit_pi(schema_instances, target, scripts_root, entry, emitted)
     return report

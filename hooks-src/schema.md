@@ -4,9 +4,9 @@
 
 This is the harness-agnostic hook-definition schema for Model B. A hook is
 declared once as a neutral instance in this schema (machine format: **TOML**,
-one instance per hook) and compiled per harness (claude-code, opencode,
-hermes, pi) by the §S4 compiler. The instance never encodes harness-specific
-wiring — that is the compiler's job.
+one instance per hook) and compiled into Pi wiring by the §S4 compiler.
+The instance never encodes harness-specific wiring — that is the compiler's
+job.
 
 ## Fields (six)
 
@@ -17,7 +17,7 @@ wiring — that is the compiler's job.
 | `command` | string | yes | The protocol script this hook targets — a bare script name from `hooks-src/scripts/` (no `.sh` suffix, no path). The script speaks the stdin/exit protocol below. |
 | `tier` | string | no | Portability tier: `core` (every harness must wire it or DECLARE degradation), `extended` (wired where the harness supports it), `harness-specific` (escape hatch — explicitly non-portable, compiled only for its named harness). |
 | `timeout` | integer | no | Hook budget in SECONDS (positive). The compiler converts units to whatever the target harness expects. |
-| `fail_direction` | string | see below | Failure-intent declaration: `open` (on hook error, allow the action) or `closed` (on hook error, the action must not proceed). REQUIRED for security-class hooks; the compiler REFUSES a `closed` hook on a harness that cannot honor fail-closed. |
+| `fail_direction` | string | see below | Failure-intent declaration: `open` (on hook error, allow the action) or `closed` (on hook error, the action must not proceed). REQUIRED for security-class hooks; Pi honours `closed` (its shim blocks on every non-protocol outcome). |
 
 Optional per-harness escape fields may accompany an instance but MUST be
 marked non-portable (`tier = "harness-specific"`); they are outside the
