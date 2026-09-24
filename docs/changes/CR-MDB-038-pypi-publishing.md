@@ -54,6 +54,9 @@ At the release's maintenance step, the machine's July install is replaced by the
 - [ ] An isolated install of the built wheel runs the installer (`--modelb-home`, `--target-root`
       and `HOME` all sandboxed) to outcome `installed`, and `init` into a sandbox succeeds, rendering
       the Pi agents and policy from the wheel's assets.
+- [ ] Once published, the install guide's interim source-copy note is removed, and
+      `tests/test_install_guide.py`'s `check_installer_source` stops requiring it (it would
+      otherwise be copied into the release notes after it stopped being true).
 - [ ] `skills-src/git-workflow/SKILL.md` §Releases names the TestPyPI rehearsal and the PyPI upload
       for a Python project, with the token supplied by the user at upload time.
 - [ ] **Close-out (user action, recorded):** `uv tool install modelb-axi` from PyPI succeeds on this
