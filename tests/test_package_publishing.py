@@ -23,9 +23,10 @@ Orchestrator rulings (2026-09-24, cycle 106) these tests pin:
 - R3 (the guide names the PyPI project page) lives in
   ``tests/test_install_guide.py`` — prose in ``## Marked regions``.
 - R4 (§S2): an acceptance pin that passes before the metadata change (the
-  sdist already carries every asset root); proven the other way by
-  mutation — an sdist built without ``hooks-src`` fails it. §S1 assertions
-  are deliberately NOT folded into it.
+  sdist already carries every asset root); proven the other way by a
+  mutation done by hand at RED time (not a committed test) — an sdist
+  built without ``hooks-src`` failed it. §S1 assertions are deliberately
+  NOT folded into it.
 
 Sandbox: every ``modelb-axi`` run passes ``--modelb-home`` and
 ``--target-root`` into a temp dir, with ``MODELB_HOME``, ``XDG_DATA_HOME``,
@@ -465,8 +466,7 @@ def strip_line_comments(text: str) -> str:
 def exercise_sdist(test: unittest.TestCase, sdist: Path) -> None:
     """§S2: build a wheel FROM ``sdist``, install it into an isolated tool
     dir, run the installed installer and ``init`` into sandboxes. Raises
-    the test's failure on the first broken step (reused by the mutation
-    proof with a defective sdist)."""
+    the test's failure on the first broken step."""
     root = Path(tempfile.mkdtemp(prefix="modelb-publish-s2-")).resolve()
     test.addCleanup(shutil.rmtree, root, ignore_errors=True)
     wheel = build_wheel(sdist, root / "wheel")

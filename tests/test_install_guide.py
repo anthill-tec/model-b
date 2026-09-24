@@ -931,6 +931,9 @@ class InstallGuidePypiSurfaceTest(unittest.TestCase):
         self.assertTrue(GUIDE.is_file(), f"{GUIDE.relative_to(REPO_ROOT)} must exist")
         self.assertEqual(check_pypi_surface(_read(GUIDE)), [])
 
+
+class InstallGuideVocabularyTest(unittest.TestCase):
+
     def test_guide_carries_no_section_refs_cr_ids_or_internal_vocabulary(self):
         self.assertTrue(GUIDE.is_file(), f"{GUIDE.relative_to(REPO_ROOT)} must exist")
         text = _read(GUIDE)
