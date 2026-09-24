@@ -28,9 +28,8 @@ current tree:
 
 All CLI-level invocations are subprocess probes against tmp sandboxes
 (``--modelb-home``/``--target-root``/``--target``) -- nothing here ever
-deploys into the real ``~/.claude`` or ``~/.agents``, mirroring
-``tests/test_installer.py``/``tests/test_scaffold.py``'s AC7 sandbox
-guard. The §S3-no-flag test (AC5) drives ``modelb_axi.cli._deploy_stage``
+deploys into the real ``~/.claude`` or ``~/.agents`` (the AC7 real-home
+mtime guard was dropped by CR-MDB-032 §S2). The §S3-no-flag test (AC5) drives ``modelb_axi.cli._deploy_stage``
 directly in-process (same idiom ``tests/test_tooling_adoption.py`` uses
 for ``modelb_axi.deploy.deploy_assets``) because the CLI's own state
 gate (``main()``: an existing ``install.toml`` without ``--reinstall``
@@ -63,49 +62,8 @@ from modelb_axi.harness import HARNESS_ROSTER_IDS
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-CLAUDE_DIR = Path.home() / ".claude"
-AGENTS_HOME_DIR = Path.home() / ".agents"
-# AC7-style sandbox guard (mirrors tests/test_installer.py): these two
-# real, live trees must never be touched by anything in this module.
-_GUARD_DIRS = [CLAUDE_DIR / "skills", AGENTS_HOME_DIR]
-
-
-def _snapshot_mtimes(roots):
-    snap = {}
-    for root in roots:
-        if not root.exists():
-            continue
-        snap[root] = root.stat().st_mtime
-        for child in root.rglob("*"):
-            try:
-                snap[child] = child.stat().st_mtime
-            except OSError:
-                continue
-    return snap
-
-
-_guard_snapshot_before = {}
-
-
-def setUpModule():
-    global _guard_snapshot_before
-    _guard_snapshot_before = _snapshot_mtimes(_GUARD_DIRS)
-
-
-def tearDownModule():
-    after = _snapshot_mtimes(_GUARD_DIRS)
-    if after != _guard_snapshot_before:
-        all_paths = set(_guard_snapshot_before) | set(after)
-        changed = sorted(
-            str(p) for p in all_paths
-            if _guard_snapshot_before.get(p) != after.get(p)
-        )
-        raise AssertionError(
-            "AC7 sandbox guard violated: the real ~/.claude/skills and/or "
-            "~/.agents tree changed mtime while running "
-            f"tests/test_installer_correctness.py; changed paths (up to "
-            f"20): {changed[:20]}"
-        )
+# CR-MDB-032 §S2: the AC7 real-home mtime guard over ~/.claude/skills and
+# ~/.agents is dropped -- every deploy run here pins --target-root.
 
 
 def _run_module(*args, env_overrides=None, timeout=20, stdin=subprocess.DEVNULL):
