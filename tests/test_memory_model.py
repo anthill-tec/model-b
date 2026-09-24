@@ -36,12 +36,6 @@ OPERATIONAL_COMMANDS_TEMPLATE = MEMORY_TEMPLATES_DIR / "operational-commands.md"
 
 ARCHIVE_WAVE2 = REPO_ROOT / "archive" / "wave2"
 
-# SS4's relocated scaffold templates left ~/.claude/memory, so the live SS5
-# gate never scanned them; the repo gate keeps that scope.
-SS5_GATE_EXCLUDED = frozenset({
-    JAVA_ORCHESTRATION_TEMPLATE, RUST_ORCHESTRATION_TEMPLATE, OPERATIONAL_COMMANDS_TEMPLATE,
-})
-
 # SS5's AC names this exact grep invocation verbatim.
 STALE_REF_PATTERN = (
     r"QUICK_REFERENCE\|stack-detection\|plan_b_workflow\|devops-environment"
@@ -191,10 +185,7 @@ class MemoryModelS5Test(unittest.TestCase):
             text=True,
             timeout=30,
         )
-        matched_files = [
-            ln for ln in result.stdout.splitlines()
-            if ln.strip() and Path(ln) not in SS5_GATE_EXCLUDED
-        ]
+        matched_files = [ln for ln in result.stdout.splitlines() if ln.strip()]
         # EXACT bound -- the AC requires this exact grep invocation to
         # return zero files.
         self.assertEqual(
