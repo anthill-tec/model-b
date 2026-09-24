@@ -119,6 +119,9 @@ export default function sandeshWatcher(pi: ExtensionAPI) {
 	function launch(watcher: Watcher): Promise<string | null> {
 		return new Promise((resolve) => {
 			const child = spawn("sandesh", ["notify", "--to", watcher.address, "--project", watcher.project], {
+				// Sandesh prints its banner with an unflushed print(); piped, it would
+				// be held until exit without this (CR-MDB-029 §S2, amended at C5).
+				env: { ...process.env, PYTHONUNBUFFERED: "1" },
 				stdio: ["ignore", "pipe", "pipe"],
 			});
 			watcher.child = child;
