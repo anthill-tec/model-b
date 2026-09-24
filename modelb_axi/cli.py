@@ -14,6 +14,7 @@ Stdlib only.
 
 import argparse
 import os
+import shlex
 import sys
 import tomllib
 from pathlib import Path
@@ -584,15 +585,15 @@ def _reinstall_command(home: Path, target_root: str, stacks) -> str:
     recorded target root and stacks (a bare ``--reinstall`` would deploy
     nothing, and ``--stacks`` would otherwise default to all), plus
     ``--modelb-home`` whenever ``home`` is not the default one \u2014 so the
-    re-run acts on this install."""
+    re-run acts on this install. Paths are shell-quoted."""
     if isinstance(stacks, list) and stacks and all(isinstance(s, str) for s in stacks):
         stacks_csv = ",".join(stacks)
     else:
         stacks_csv = "<stacks>"
     home_flag = ("" if home == _default_modelb_home()
-                 else f"--modelb-home {home} ")
+                 else f"--modelb-home {shlex.quote(str(home))} ")
     return (f"modelb-axi --reinstall {home_flag}"
-            f"--target-root {target_root} --stacks {stacks_csv}")
+            f"--target-root {shlex.quote(target_root)} --stacks {stacks_csv}")
 
 
 def main(argv: list[str] | None = None) -> int:
