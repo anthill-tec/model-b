@@ -11,9 +11,9 @@ baseline (CR-MDB-015 §S3): stdin contract on the neutral payload (CR-MDB-030 §
 `{"decision":"block","reason":...}` on stdout), the quote-aware
 command-position detector (formerly lib/detect-mvn-test.py) inlined —
 self-contained, stdlib only — and the same `ALLOW_RAW_MVN=1` escape hatch.
-Client invocation guidance follows the discovery convention (installed
-clients dir from install config; the crucible repo `clients/` dir in dev)
-instead of a hardcoded user-dotfile script path.
+Client invocation guidance names the client listed in Crucible's manifest
+`~/.crucible/crucible-clients.json` — `~/.crucible/clients/mvn-crucible.py`,
+installed by Crucible's own installer — instead of a user-dotfile script path.
 """
 
 import json
@@ -33,18 +33,18 @@ These are wrapped by mvn-crucible.py, which runs the SAME mvn goals AND ingests
 results (surefire/failsafe JUnit + JaCoCo) to Crucible in one approved invocation.
 Raw mvn bypasses ingest and re-prompts permission every run.
 
-Use instead (register first if you haven't; <crucible-clients> = the installed
-clients dir from install config, or the crucible repo `clients/` dir in dev):
+Use instead (register first if you haven't) the installed client listed in
+Crucible's manifest `~/.crucible/crucible-clients.json`:
   • Single test class/method (surefire) — replaces `mvn test -Dtest=…`:
-      python3 <crucible-clients>/mvn-crucible.py unit --test <Class[#method]> --agent <id>
+      python3 ~/.crucible/clients/mvn-crucible.py unit --test <Class[#method]> --agent <id>
   • A module's full surefire suite — replaces `mvn test [-pl m]`:
-      python3 <crucible-clients>/mvn-crucible.py module [--module <m> --also-make] --agent <id>
+      python3 ~/.crucible/clients/mvn-crucible.py module [--module <m> --also-make] --agent <id>
   • Compile-only / RED compile-fail — replaces `mvn test-compile`:
-      python3 <crucible-clients>/mvn-crucible.py compile --agent <id>
+      python3 ~/.crucible/clients/mvn-crucible.py compile --agent <id>
   • Integration tests (failsafe IT / @QuarkusIntegrationTest) — replaces `mvn verify`:
-      python3 <crucible-clients>/mvn-crucible.py e2e [--failsafe-only] [--native] --agent <id>
+      python3 ~/.crucible/clients/mvn-crucible.py e2e [--failsafe-only] [--native] --agent <id>
   • Full reactor regression + coverage (pre-merge gate) — replaces `mvn clean verify`:
-      python3 <crucible-clients>/mvn-crucible.py regression --agent <id>
+      python3 ~/.crucible/clients/mvn-crucible.py regression --agent <id>
 
 Build/release goals (mvn package / install / compile) are allowed and unaffected.
 See the project's instantiated orchestration memory (template: model-b repo

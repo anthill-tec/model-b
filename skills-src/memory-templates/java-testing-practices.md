@@ -727,7 +727,7 @@ RestAssured remains the right tool for raw HTTP status/body/SSE assertions; the 
 
 ## Crucible reporting — `mvn-crucible.py` (use the CLI, not inline curl/python)
 
-Route every Maven test run + Crucible ingest through `~/Documents/data_projects/crucible/clients/mvn-crucible.py` (the Java sibling of `rust-crucible.py`). A stable command signature gets one-time permission approval; inline `curl`/python re-prompts every run. The script embodies the four test tiers and the ingest routing below — don't hand-roll the surefire/JaCoCo parsing.
+Route every Maven test run + Crucible ingest through `~/.crucible/clients/mvn-crucible.py` (Crucible's installed client, listed in `~/.crucible/crucible-clients.json`) (the Java sibling of `rust-crucible.py`). A stable command signature gets one-time permission approval; inline `curl`/python re-prompts every run. The script embodies the four test tiers and the ingest routing below — don't hand-roll the surefire/JaCoCo parsing.
 
 **Subcommands by tier** (all take `--agent <id>`; project key read from `<project-dir>/.env` `CRUCIBLE_PROJECT_KEY`, a UUID):
 

@@ -9,10 +9,14 @@ metadata:
 # Crucible Report — Python
 
 Python parallel of `crucible-report-rust` / `crucible-report-bun`. Tests run via **pytest** (or
-unittest) producing **JUnit XML**; coverage via **coverage.py**. `clients/python-crucible.py`
+unittest) producing **JUnit XML**; coverage via **coverage.py**. `~/.crucible/clients/python-crucible.py`
 is the CLI client (modelled on `rust-crucible.py`); the urllib helpers below are the direct-call
 fallback. All Crucible calls use Python `urllib`. Pass the agent ID and the project `.env` path
 explicitly — no shell env vars for identity.
+
+That path is the default location of Crucible's installed clients: the client
+is listed in `~/.crucible/crucible-clients.json` and installed by Crucible's own
+installer, and it is not shipped, vendored or maintained by Model B.
 
 > **MANDATORY for RED/GREEN/regression cycle runs:** run the tests **through
 > `python-crucible.py`** (`test` for a targeted cycle, `regression` for the gate) — it runs the
@@ -36,17 +40,17 @@ workflow context read from the environment:
 ```bash
 VENV=$PWD/.venv/bin/python
 # register / unregister the agent
-python3 clients/python-crucible.py register --agent CR-OA-002-A-RED --role RED --cycle <cycleId> --project-dir $PWD
+python3 ~/.crucible/clients/python-crucible.py register --agent CR-OA-002-A-RED --role RED --cycle <cycleId> --project-dir $PWD
 # targeted RED/GREEN run + ingest (dotted test path; tier: unit)
 WORKFLOW_CYCLE="my cycle label" PY_CRUCIBLE_PYTHON=$VENV \
-python3 clients/python-crucible.py test --tests tests.test_mongo_connection --agent CR-OA-002-A-RED --project-dir $PWD
+python3 ~/.crucible/clients/python-crucible.py test --tests tests.test_mongo_connection --agent CR-OA-002-A-RED --project-dir $PWD
 # full regression + coverage.py (orchestrator gate; tier: regression)
 WORKFLOW_CYCLE="my cycle label" PY_CRUCIBLE_PYTHON=$VENV \
-python3 clients/python-crucible.py regression --coverage --agent verify-office-assistant --project-dir $PWD
+python3 ~/.crucible/clients/python-crucible.py regression --coverage --agent verify-office-assistant --project-dir $PWD
 # syntax gate (py_compile → /api/v2/runs/compile)
-python3 clients/python-crucible.py check
+python3 ~/.crucible/clients/python-crucible.py check
 # ingest an already-produced reports dir
-python3 clients/python-crucible.py auto-ingest --agent CR-OA-002-A-RED --project-dir $PWD
+python3 ~/.crucible/clients/python-crucible.py auto-ingest --agent CR-OA-002-A-RED --project-dir $PWD
 ```
 The script reads `CRUCIBLE_PROJECT_KEY` from `<project-dir>/.env`.
 

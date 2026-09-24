@@ -8,9 +8,13 @@ metadata:
 
 # Crucible Report — Bun / TypeScript
 
-`clients/bun-crucible.py` is the CLI client — it runs the tests AND ingests to
+`~/.crucible/clients/bun-crucible.py` is the CLI client — it runs the tests AND ingests to
 the Crucible v2 API in one call under your agent id. Direct `curl`/`fetch`
 against the v2 endpoints is the fallback for edge cases only.
+
+That path is the default location of Crucible's installed clients: the client
+is listed in `~/.crucible/crucible-clients.json` and installed by Crucible's own
+installer, and it is not shipped, vendored or maintained by Model B.
 
 > **MANDATORY for RED/GREEN/regression cycle runs:** run the tests **through
 > the client** (`test` for a targeted cycle, `regression` for the gate). Do NOT
@@ -33,16 +37,16 @@ environment — set these on every call so runs land on the right cycle:
 ### Lifecycle
 
 ```bash
-python3 clients/bun-crucible.py register --agent AGENT_ID --role RED --cycle <cycleId>
+python3 ~/.crucible/clients/bun-crucible.py register --agent AGENT_ID --role RED --cycle <cycleId>
 # ... work ...
-python3 clients/bun-crucible.py unregister --agent AGENT_ID
+python3 ~/.crucible/clients/bun-crucible.py unregister --agent AGENT_ID
 ```
 
 ### Targeted Run (RED or GREEN — no coverage; tier: unit)
 
 ```bash
 WORKFLOW_CYCLE="my cycle label" \
-python3 clients/bun-crucible.py test --tests tests/my-feature.test.ts --agent AGENT_ID
+python3 ~/.crucible/clients/bun-crucible.py test --tests tests/my-feature.test.ts --agent AGENT_ID
 ```
 
 Runs `bun test` with a JUnit reporter, parses the XML, and POSTs
@@ -52,7 +56,7 @@ Runs `bun test` with a JUnit reporter, parses the XML, and POSTs
 
 ```bash
 WORKFLOW_CYCLE="my cycle label" \
-python3 clients/bun-crucible.py regression --coverage --agent AGENT_ID
+python3 ~/.crucible/clients/bun-crucible.py regression --coverage --agent AGENT_ID
 ```
 
 Coverage is parsed from `coverage/lcov.info` and sent in the SAME
@@ -61,8 +65,8 @@ Coverage is parsed from `coverage/lcov.info` and sent in the SAME
 ### Type gate
 
 ```bash
-python3 clients/bun-crucible.py check --agent AGENT_ID     # tsc → /api/v2/runs/compile
-python3 clients/bun-crucible.py auto-ingest --agent AGENT_ID  # ingest an existing report
+python3 ~/.crucible/clients/bun-crucible.py check --agent AGENT_ID     # tsc → /api/v2/runs/compile
+python3 ~/.crucible/clients/bun-crucible.py auto-ingest --agent AGENT_ID  # ingest an existing report
 ```
 
 ### Report Locations (Bun)

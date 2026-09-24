@@ -61,12 +61,14 @@ ingests in one call under your agent id. Never hand-roll `curl`; the client
 | arduino | `arduino-crucible.py` | `test`/`unit` (native host make junit), `regression`, `auto-ingest`, `check`/`compile` (arduino-cli), `pre-merge-gate` + the plan verbs | `references/arduino.md` → bundled `crucible-report-arduino` |
 | electronics/hardware | excluded — under revision | — | — |
 
-Clients live in the CRUCIBLE project's own `clients/` directory —
-`~/Documents/data_projects/crucible/clients/<stack>-crucible.py` — the source
-of truth Crucible owns, tests, and fixes; run any client with `-h` for its own
-help. A project-vendored `clients/<stack>-crucible.py` copy is valid ONLY
-while a CR in that project is changing the client itself. Any other deployed
-placement arrives only with Crucible's own installer.
+Clients are Crucible's installed, published clients —
+`~/.crucible/clients/<stack>-crucible.py`, the default location Crucible's own
+installer writes to and lists in `~/.crucible/crucible-clients.json`; run any
+client with `-h` for its own help. Model B does not ship, vendor or maintain
+them. Never run a client from a checkout of the Crucible project: a checkout
+carries its own `crucible.toml`, and a client resolves its configuration from
+its own location, so a run from a checkout posts to that checkout's board while
+reporting the right project key.
 
 ## Bundled per-stack docs — the authority (routing note)
 

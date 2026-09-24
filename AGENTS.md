@@ -103,7 +103,7 @@ There is **no** Makefile/justfile, **no** CI test workflow (the only workflow is
 ## Runtime/Tooling Preferences
 
 - **Python ≥ 3.11** (`tomllib`). Package manager: **uv** (`uv tool install .`); no `uv.lock`, no `requirements.txt`.
-- Sibling projects referenced by path prefix: `crucible:` = `~/Documents/data_projects/crucible`. Its `clients/*-crucible.py` are the *source of truth* — never vendor a copy unless a CR is changing the client itself.
+- Crucible's installed clients, `~/.crucible/clients/<stack>-crucible.py` (listed in `~/.crucible/crucible-clients.json`, installed by Crucible's own installer), are the only sanctioned client surface — never a checkout of the Crucible project. Model B ships, vendors and maintains none of them.
 - Prefer lean-ctx reads (`ctx_read`/`ctx_search`/`ctx_shell`/`ctx_tree`) over raw file/grep/shell calls.
 - Confirm destructive operations; delegate super-user ops to the user.
 - Model B never mutates `~/.claude` directly — the `modelb-axi` installer is the only deployment channel (PRD §D9/§D10), and the repo-local authoring rule means no CR writes there at all. The user's own dotfile-manager discipline is out of scope for this file; see the `chezmoi` skill for that.
@@ -126,7 +126,7 @@ Canonical runs go through the Crucible client so results are ingested:
 # never a cycle id — attach is server-driven). Recreate it if /tmp was cleared.
 /tmp/claude-1000/modelb-crucible test --tests tests.test_hooks --agent CR-MDB-NNN-C1-RED
 # Direct client equivalent:
-python3 ~/Documents/data_projects/crucible/clients/python-crucible.py regression --coverage \
+python3 ~/.crucible/clients/python-crucible.py regression --coverage \
   --agent vidushi-mdb --project-dir "$PWD"
 ```
 
