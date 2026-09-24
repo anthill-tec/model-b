@@ -77,8 +77,6 @@ CHEZMOI_INVOCATION_SCAN_ROOTS = (
     REPO_ROOT / "hooks-src" / "scripts",
 )
 
-CLAUDE_SKILLS_DIR = Path.home() / ".claude" / "skills"
-
 # CR-MDB-024 \u00a7S3 (this cycle, C2 RED, 2026-09-22 VS Code ruling): narrowed
 # from 7 to 6 handover bundles -- the VS Code crucible-report bundle is
 # retired outright (an IDE is not a stack). Extending this file's durable
@@ -90,9 +88,6 @@ CRUCIBLE_HANDOVER_BUNDLE_NAMES = (
     "crucible-report-java",
     "crucible-report-python",
     "crucible-report-rust",
-)
-ORIGIN_CRUCIBLE_SKILLS_DIR = (
-    Path.home() / "Documents" / "data_projects" / "crucible" / "clients" / "skills"
 )
 
 # §S7's six Model B-owned skill imports (crucible is the pre-existing 011
@@ -133,10 +128,6 @@ HOOK_SCRIPT_NAMES = (
     "block-write-outside-worktree",
     "post-regression-disk-reminder",
 )
-
-
-def _relative_file_set(root: Path) -> set:
-    return {str(p.relative_to(root)) for p in root.rglob("*") if p.is_file()}
 
 
 def _load_build_module():
@@ -188,93 +179,14 @@ def _run_module(*args, env_overrides=None, timeout=20):
     )
 
 
-class ImportedSkillBundleFidelityTest(unittest.TestCase):
-    """AC6 pin #1 (amended, CR-MDB-013 F1 orchestrator disposition) -- the
-    six imported bundles exist under skills-src/ with a SKILL.md, and each
-    bundle's relative-path file set is a SUPERSET of the deployed
-    ~/.claude/skills/<name>/ set (a deletion would break deployed
-    consumers; evolution/additions are fine).
-
-    Byte-for-byte fidelity was an IMPORT-TIME property, verified at
-    CR-MDB-014 C4 (2026-07-22). Under the repo-local authoring rule the
-    repo copy deliberately evolves AHEAD of the deployed tree between
-    installer deploys (e.g. CR-MDB-013 §S5 evolved
-    skills-src/model-b/SKILL.md), so per-file sha256 equality no longer
-    holds by design and is no longer asserted here."""
-
-    def test_each_imported_bundle_exists_and_covers_deployed_file_set(self):
-        failures = []
-        for name in IMPORTED_BUNDLE_NAMES:
-            deployed_dir = CLAUDE_SKILLS_DIR / name
-            imported_dir = SKILLS_SRC_DIR / name
-            # The pin is explicit: a missing deployed dir must FAIL with a
-            # clear message, never be silently skipped.
-            if not deployed_dir.is_dir():
-                failures.append(
-                    f"{name}: deployed dir {deployed_dir} does not exist -- "
-                    f"cannot verify the import covers it"
-                )
-                continue
-            if not (imported_dir / "SKILL.md").is_file():
-                failures.append(
-                    f"{name}: skills-src/{name}/SKILL.md does not exist "
-                    f"(import not yet authored)"
-                )
-                continue
-            deployed_files = _relative_file_set(deployed_dir)
-            imported_files = _relative_file_set(imported_dir)
-            missing = sorted(deployed_files - imported_files)
-            if missing:
-                failures.append(
-                    f"{name}: repo bundle must cover every deployed file "
-                    f"(superset of {deployed_dir}); missing from "
-                    f"skills-src/{name}/: {missing}"
-                )
-        # POSITIVE/EXACT -- every one of the six bundles exists and covers
-        # the deployed file set completely; zero deletions.
-        self.assertEqual(failures, [], "\n".join(failures))
-
-
 class CrucibleHandoverBundleFidelityTest(unittest.TestCase):
-    """CR-MDB-016 AC4 -- extends the CR-MDB-014 import-fidelity gate
-    (ImportedSkillBundleFidelityTest above) to the 7 handover bundles:
-    each must exist under skills-src/ with a SKILL.md, its file set must
-    be a superset of its origin counterpart under crucible:clients/skills/
-    (WHEN that origin still exists -- it freezes/retires post-handover,
-    same durability guard CR-MDB-016's own AC1 test uses), and the deploy
-    engine's bundle-discovery function must find it (so the wheel/_assets
-    coverage this AC gates actually reaches it, additively -- the
-    pre-existing seven-bundle exact-match test below is untouched)."""
-
-    def test_each_handover_bundle_exists_and_covers_origin_file_set(self):
-        if not ORIGIN_CRUCIBLE_SKILLS_DIR.is_dir():
-            self.skipTest(
-                f"{ORIGIN_CRUCIBLE_SKILLS_DIR} absent -- origin has "
-                f"frozen/retired post-handover; coverage-superset fidelity "
-                f"is no longer checkable against it"
-            )
-        failures = []
-        for name in CRUCIBLE_HANDOVER_BUNDLE_NAMES:
-            origin_dir = ORIGIN_CRUCIBLE_SKILLS_DIR / name
-            imported_dir = SKILLS_SRC_DIR / name
-            if not (imported_dir / "SKILL.md").is_file():
-                failures.append(
-                    f"{name}: skills-src/{name}/SKILL.md does not exist "
-                    f"(handover import not yet authored)"
-                )
-                continue
-            origin_files = _relative_file_set(origin_dir)
-            imported_files = _relative_file_set(imported_dir)
-            missing = sorted(origin_files - imported_files)
-            if missing:
-                failures.append(
-                    f"{name}: repo bundle must cover every origin file "
-                    f"(superset of {origin_dir}); missing from "
-                    f"skills-src/{name}/: {missing}"
-                )
-        # POSITIVE/EXACT -- every one of the 6 handover bundles exists and
-        # covers the origin file set completely.
-        self.assertEqual(failures, [], "\n".join(failures))
+    """CR-MDB-016 AC4 -- the deploy engine's bundle-discovery function must
+    find every handover bundle (so the wheel/_assets coverage this AC gates
+    actually reaches it). The origin-file-set coverage test compared against
+    the retired Crucible origin tree and could only ever skip; CR-MDB-032
+    §S1 deleted it. The CR-MDB-014 real-home import-fidelity gate
+    (ImportedSkillBundleFidelityTest) is deleted too (CR-MDB-032 §S2):
+    CR-MDB-025's rendering tests and the sandboxed installer e2e prove it."""
 
     def test_deploy_module_discovers_all_six_handover_bundle_names(self):
         sys.path.insert(0, str(REPO_ROOT))

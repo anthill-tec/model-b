@@ -15,11 +15,9 @@ Written before any of Sec1-Sec3's production content lands:
   - skills-src/crucible/references/arduino.md does not exist yet -- the
     AC7 router-parity assertion fails cleanly.
 
-Byte-identity assertions compare against the origin repo copy
-(~/Documents/data_projects/crucible/clients/skills/) WHEN that directory
-exists on this machine; the origin freezes/retires after handover per the
-CR context, so those specific assertions pytest-skip (not fail) when the
-directory is absent -- keeping the gate durable post-freeze.
+The byte-identity-to-origin test (ImportedBundleByteIdentityTest) compared
+against the Crucible origin tree, which froze/retired after handover, so it
+could only ever skip; CR-MDB-032 §S1 deleted it.
 
 The heartbeat grep gate (AC8) is scoped to the LIVE artifact tree this
 CR produces -- skills-src/ -- per the amended spec (AC8 names the
@@ -28,12 +26,11 @@ the identical PRD Sec4.2 criterion. Historical CR/PRD/DN/audit documents
 legitimately quote the retired phantom-heartbeat defect while describing
 it and are out of gate scope per the cr-authoring convention.
 
-Stdlib only: unittest + subprocess + re + hashlib + pathlib. No SUT
+Stdlib only: unittest + subprocess + re + pathlib. No SUT
 import: this CR's Sec1-Sec3 deliverable is markdown/skill content, not
 Python modules.
 """
 
-import hashlib
 import re
 import unittest
 from pathlib import Path
@@ -44,10 +41,6 @@ HANDOVER_MD = SKILLS_SRC_DIR / "CRUCIBLE-HANDOVER.md"
 CRUCIBLE_SKILL_DIR = SKILLS_SRC_DIR / "crucible"
 CRUCIBLE_SKILL_MD = CRUCIBLE_SKILL_DIR / "SKILL.md"
 REFERENCES_DIR = CRUCIBLE_SKILL_DIR / "references"
-
-ORIGIN_SKILLS_DIR = (
-    Path.home() / "Documents" / "data_projects" / "crucible" / "clients" / "skills"
-)
 
 # CR-MDB-024 \u00a7S3 (this cycle, C2 RED, 2026-09-22 VS Code ruling): the 6
 # bundles Sec1 imports verbatim (agent-protocol deliberately excluded --
@@ -83,15 +76,6 @@ def _split_frontmatter(content: str):
             body = "\n".join(lines[idx + 1:])
             return frontmatter, body
     return "", content
-
-
-def _relative_file_hashes(root: Path) -> dict:
-    hashes = {}
-    for p in sorted(root.rglob("*")):
-        if p.is_file():
-            rel = str(p.relative_to(root))
-            hashes[rel] = hashlib.sha256(p.read_bytes()).hexdigest()
-    return hashes
 
 
 def _missing_imported_bundles():
@@ -185,41 +169,6 @@ class HandoverProvenanceDocTest(unittest.TestCase):
         self.assertIn(
             "Option B", content,
             "CRUCIBLE-HANDOVER.md must cite the ratified 'Option B' exclusion decision",
-        )
-
-
-class ImportedBundleByteIdentityTest(unittest.TestCase):
-    """AC1 -- each imported bundle is byte-identical to its counterpart
-    under crucible:clients/skills/, WHEN that origin dir still exists on
-    this machine (it freezes/retires post-handover, per CR context)."""
-
-    def test_each_bundle_byte_identical_to_origin(self):
-        if not ORIGIN_SKILLS_DIR.is_dir():
-            self.skipTest(
-                f"{ORIGIN_SKILLS_DIR} absent -- origin has frozen/retired "
-                f"post-handover; byte-identity is no longer checkable"
-            )
-        mismatches = {}
-        for name in IMPORTED_BUNDLE_NAMES:
-            origin_dir = ORIGIN_SKILLS_DIR / name
-            imported_dir = SKILLS_SRC_DIR / name
-            if not origin_dir.is_dir():
-                mismatches[name] = f"origin dir {origin_dir} missing"
-                continue
-            if not imported_dir.is_dir():
-                mismatches[name] = f"imported dir {imported_dir} missing"
-                continue
-            origin_hashes = _relative_file_hashes(origin_dir)
-            imported_hashes = _relative_file_hashes(imported_dir)
-            if origin_hashes != imported_hashes:
-                mismatches[name] = (
-                    f"origin={origin_hashes} imported={imported_hashes}"
-                )
-        # POSITIVE/EXACT -- byte-for-byte identical file sets + content.
-        self.assertEqual(
-            mismatches, {},
-            f"expected every imported bundle to be byte-identical to its "
-            f"origin counterpart under {ORIGIN_SKILLS_DIR}; mismatches: {mismatches}",
         )
 
 
