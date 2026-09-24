@@ -47,7 +47,6 @@ _EXTERNAL_READS: tuple[str, ...] = ("~/.agents/*", "~/.crucible/*", "~/.pi/agent
 _TMP = "/tmp/*"  # noqa: S108 -- the spec's pattern, not a temp file
 
 
-
 def workflow_tools() -> list[str]:
     """The §S3 allow-set, sorted, derived from ``REQUIREMENTS`` now."""
     tools: set[str] = set(BUILTIN_FILE_TOOLS) | set(FIXED_WORKFLOW_TOOLS)
