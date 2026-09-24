@@ -43,17 +43,19 @@ Install these in the order given; no step relies on one that comes after it.
    `curl -LsSf https://astral.sh/uv/install.sh | sh`
 4. **`git`** — required to create a project: every project `modelb-axi init` creates is a
    git repository. Install it from your operating system's package manager.
-5. **The installer.** Model B's installer, the `modelb-axi` command, is distributed as the
-   Model B Pi package, published with Model B's first release. Until then, installing it
-   needs access to Model B's source repository, which you get from its maintainer; from the
-   root of your copy of it, run:
+5. **The installer.** Model B's installer, the `modelb-axi` command, is installed from PyPI
+   with `uv`:
 
    ```sh
-   uv tool install .
+   uv tool install modelb-axi
    modelb-axi --version
    ```
 
-   To update later, get the newer source and run `uv tool install --reinstall .` from it.
+   To update later, run `uv tool upgrade modelb-axi`.
+
+   The installer is published on PyPI with Model B's first release. Until then, get a copy of
+   Model B's source from its maintainer and, from the root of that copy, run
+   `uv tool install .` instead; to update, run `uv tool install --reinstall .` from a newer copy.
 6. **Recommended tools.** The install goes ahead without them, but some assets will not work
    (see [Warnings: what stops working](#warnings-what-stops-working)):
    - `sandesh` — `uv tool install sandesh-relay` (the installer offers to run this for you);
