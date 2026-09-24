@@ -1,15 +1,11 @@
 """RED-phase tests for CR-MDB-005 (git-workflow + chezmoi skills: memory-twin
 merges + delete procedure).
 
-These tests assert the acceptance criteria of CR-MDB-005 SS2-SS5 against the
-LIVE ~/.claude tree on this machine. They are intentionally written before
-the GREEN-phase work (git-workflow SKILL.md absorbing the memory-twin
-content, the NEW chezmoi skill, deletion of the three redundant memory
-files, and repointing consumers) lands, so most of them are expected to FAIL
-against the current (pre-CR-MDB-005) state of ~/.claude. The suite overall
-must be RED, not necessarily every single test (some content greps may
-vacuously pass or fail depending on what already happens to be true of the
-live tree today -- that is still correct behaviour, not a test bug).
+Originally written against the LIVE ~/.claude tree. CR-MDB-032 SS2
+retargeted them to the repo (the 2026-07-22 repo-local authoring rule): the
+skills under skills-src/, the archive/wave2/ copies, the consumer grep gate
+over skills-src/ + generator/agents/ + the repo AGENTS.md, and the repo
+AGENTS.md itself. The live-memory absence half of SS4 was deleted.
 
 Stdlib only (unittest + subprocess + pathlib + os). No SUT import: this CR's
 deliverable is markdown/skill content, not Python modules.
@@ -20,25 +16,22 @@ import subprocess
 import unittest
 from pathlib import Path
 
-CLAUDE_DIR = Path.home() / ".claude"
 REPO_ROOT = Path(__file__).resolve().parent.parent
+SKILLS_SRC_DIR = REPO_ROOT / "skills-src"
+REPO_AGENTS_MD = REPO_ROOT / "AGENTS.md"
 
-GIT_WORKFLOW_SKILL_MD = CLAUDE_DIR / "skills" / "git-workflow" / "SKILL.md"
+GIT_WORKFLOW_SKILL_MD = SKILLS_SRC_DIR / "git-workflow" / "SKILL.md"
 
-CHEZMOI_SKILL_DIR = CLAUDE_DIR / "skills" / "chezmoi"
+CHEZMOI_SKILL_DIR = SKILLS_SRC_DIR / "chezmoi"
 CHEZMOI_SKILL_MD = CHEZMOI_SKILL_DIR / "SKILL.md"
-
-GIT_WORKFLOW_MEMORY_MD = CLAUDE_DIR / "memory" / "git-workflow.md"
-GIT_MULTI_ACCOUNT_MD = CLAUDE_DIR / "memory" / "git-multi-account.md"
-CHEZMOI_INTEGRATION_MD = CLAUDE_DIR / "memory" / "chezmoi-integration.md"
 
 ARCHIVE_WAVE2 = REPO_ROOT / "archive" / "wave2"
 
 # CR-MDB-021 §S2 retired the chezmoi-diff scope-path constant along
 # with its sole consumer, the chezmoi-diff invocation test that used
 # to close out DeletionsS4Test below. That test duplicated coverage
-# already carried directly against the repo and the live ~/.claude
-# tree by test_s4_legacy_memory_files_removed_with_archived_content,
+# already carried directly against the repo
+# by test_s4_legacy_memory_files_removed_with_archived_content,
 # with no dependency on the user's chezmoi source repo or on the
 # chezmoi binary being present on PATH -- see
 # docs/changes/CR-MDB-021-chezmoi-retirement.md §S2 for the full
@@ -232,20 +225,10 @@ class ChezmoiSkillS3Test(unittest.TestCase):
 
 class DeletionsS4Test(unittest.TestCase):
     """SS4 -- memory/git-workflow.md, memory/git-multi-account.md,
-    memory/chezmoi-integration.md: archived to <repo>/archive/wave2/,
-    then physically removed."""
+    memory/chezmoi-integration.md: archived to <repo>/archive/wave2/
+    (CR-MDB-032 SS2 dropped the live ~/.claude absence half)."""
 
     def test_s4_legacy_memory_files_removed_with_archived_content(self):
-        still_present = []
-        for path in (GIT_WORKFLOW_MEMORY_MD, GIT_MULTI_ACCOUNT_MD, CHEZMOI_INTEGRATION_MD):
-            if path.exists():
-                still_present.append(str(path))
-        # NEGATIVE -- none of the three legacy memory files may still exist live.
-        self.assertEqual(
-            still_present, [],
-            f"expected zero legacy memory files still present, found: {still_present}",
-        )
-
         # POSITIVE -- an archived, content-preserving copy of each must
         # exist under <repo>/archive/wave2/ (tolerant of exact layout: name
         # as a path component or matching filename, plus a content anchor
@@ -282,11 +265,10 @@ class DeletionsS4Test(unittest.TestCase):
     # drift at all (CR-MDB-016 de-chezmoi'd the skills tree).
     #
     # The real acceptance criterion -- that memory/git-workflow.md,
-    # memory/git-multi-account.md and memory/chezmoi-integration.md are
-    # gone from the live ~/.claude tree AND have a content-preserving
-    # archived copy under <repo>/archive/wave2/ -- is already carried in
-    # full by test_s4_legacy_memory_files_removed_with_archived_content
-    # above, asserted directly against the repo and the live tree with no
+    # memory/git-multi-account.md and memory/chezmoi-integration.md
+    # have a content-preserving archived copy under <repo>/archive/wave2/
+    # -- is carried by test_s4_legacy_memory_files_removed_with_archived_content
+    # above, asserted directly against the repo (CR-MDB-032 SS2) with no
     # dependency on the user's chezmoi source repo or on the chezmoi
     # binary being present on PATH.
     #
@@ -302,18 +284,16 @@ class DeletionsS4Test(unittest.TestCase):
 class ConsumerRepointS5Test(unittest.TestCase):
     """SS5 -- repoint consumers: skills/git-flow-release/SKILL.md citations
     of memory/git-workflow.md -> the skill; memory/QUICK_REFERENCE.md
-    repointed; ~/.claude/AGENTS.md chezmoi trigger row -> the chezmoi skill,
-    dropping "until Wave 2"."""
+    repointed; AGENTS.md names the chezmoi skill without "until Wave 2"."""
 
     def test_s5_grep_gate_zero_stale_references_across_consumers(self):
         # EXACT -- the AC names this exact grep invocation verbatim.
         result = subprocess.run(
             [
                 "grep", "-rl", STALE_REF_PATTERN,
-                str(CLAUDE_DIR / "skills"),
-                str(CLAUDE_DIR / "memory"),
-                str(CLAUDE_DIR / "AGENTS.md"),
-                str(CLAUDE_DIR / "agents"),
+                str(SKILLS_SRC_DIR),
+                str(REPO_AGENTS_MD),
+                str(REPO_ROOT / "generator" / "agents"),
             ],
             capture_output=True,
             text=True,
@@ -331,7 +311,7 @@ class ConsumerRepointS5Test(unittest.TestCase):
     def test_s5_agents_md_no_longer_ties_chezmoi_trigger_to_wave2(self):
         """AGENTS.md's chezmoi trigger row must repoint to the chezmoi skill
         and drop the "until Wave 2" qualifier now that Wave 2 delivers it."""
-        agents_md = CLAUDE_DIR / "AGENTS.md"
+        agents_md = REPO_AGENTS_MD
         self.assertTrue(agents_md.is_file(), f"{agents_md} must exist")
         content = _read(agents_md)
         # NEGATIVE -- the stale "until Wave 2" qualifier must be gone.

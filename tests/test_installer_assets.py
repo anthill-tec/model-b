@@ -629,26 +629,29 @@ class ChezmoiInvocationGateTest(unittest.TestCase):
         lines = source.splitlines()
         # POSITIVE -- the two retained content-assertion lines this CR
         # deliberately keeps are still exactly where the spec pins them.
+        # (Re-pinned 169->162 and 344->324 by CR-MDB-032 §S2, which
+        # retargeted that module's real-home constants and dropped its
+        # live-memory absence half; the two assertions are unchanged.)
         self.assertIn(
-            '"chezmoi"', lines[168],
-            f"{git_chezmoi_skills}:169 must still read the literal \"chezmoi\" "
-            f"(shipped SKILL.md frontmatter name assertion), got: {lines[168]!r}",
+            '"chezmoi"', lines[161],
+            f"{git_chezmoi_skills}:162 must still read the literal \"chezmoi\" "
+            f"(shipped SKILL.md frontmatter name assertion), got: {lines[161]!r}",
         )
-        self.assertIn("assertEqual", lines[167], f"{git_chezmoi_skills}:168 must be an assertEqual(")
+        self.assertIn("assertEqual", lines[160], f"{git_chezmoi_skills}:161 must be an assertEqual(")
         self.assertIn(
-            '"chezmoi"', lines[343],
-            f"{git_chezmoi_skills}:344 must still read the literal \"chezmoi\" "
-            f"(AGENTS.md content assertion), got: {lines[343]!r}",
+            '"chezmoi"', lines[323],
+            f"{git_chezmoi_skills}:324 must still read the literal \"chezmoi\" "
+            f"(AGENTS.md content assertion), got: {lines[323]!r}",
         )
-        self.assertIn("assertIn", lines[342], f"{git_chezmoi_skills}:343 must be an assertIn(")
+        self.assertIn("assertIn", lines[322], f"{git_chezmoi_skills}:323 must be an assertIn(")
 
         hits = find_chezmoi_invocations(source, filename=str(git_chezmoi_skills))
-        offending_at_retained_lines = [h for h in hits if h[0] in (168, 169, 343, 344)]
+        offending_at_retained_lines = [h for h in hits if h[0] in (161, 162, 323, 324)]
         # NEGATIVE -- neither retained line trips the matcher.
         self.assertEqual(
             offending_at_retained_lines, [],
             f"matcher must not trip on the retained content-assertion lines "
-            f"168-169/343-344 of {git_chezmoi_skills}; got "
+            f"161-162/323-324 of {git_chezmoi_skills}; got "
             f"{offending_at_retained_lines}",
         )
 

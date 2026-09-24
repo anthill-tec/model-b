@@ -1,14 +1,13 @@
 """RED-phase tests for CR-MDB-003 (crucible skill rewrite: real surfaces,
 absorb report skills + agent-protocol).
 
-These tests assert the acceptance criteria of CR-MDB-003 SS2-SS5 against the
-LIVE ~/.claude tree on this machine. They are intentionally written before
-the GREEN-phase work (SKILL.md rewrite, references/ population, the 10-dir +
-1-file deletion/archival, consumer repointing) lands, so most of them are
-expected to FAIL against the current (pre-CR-MDB-003) state of ~/.claude.
-The suite overall must be RED, not necessarily every single test (some
-content greps may vacuously fail because the terms are simply absent yet --
-that is still a correct FAIL, not a vacuous pass).
+SS4/SS5 were originally written against the LIVE ~/.claude tree. CR-MDB-032
+SS2 retargeted them to the repo (the 2026-07-22 repo-local authoring rule):
+the archive/wave2/ copies, and the consumer grep gate over skills-src/, the
+rendered agents under generator/agents/ and the repo AGENTS.md. The live-home
+halves (deletion targets absent from ~/.claude, crucible-report-* deployed as
+symlinks) were deleted -- the installer's sha256 manifest proves deployed
+state.
 
 Stdlib only (unittest + subprocess + pathlib + os). No SUT import: this CR's
 deliverable is markdown/skill content, not Python modules.
@@ -20,7 +19,6 @@ import subprocess
 import unittest
 from pathlib import Path
 
-CLAUDE_DIR = Path.home() / ".claude"
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 SKILL_DIR = REPO_ROOT / "skills-src" / "crucible"
@@ -324,9 +322,8 @@ class CrucibleSkillS3Test(unittest.TestCase):
 
 
 class CrucibleSkillS4Test(unittest.TestCase):
-    """SS4 -- deletions (removal plus content-preserving archive): the 10
-    skill dirs + the one memory stub are archived into the repo then
-    physically removed."""
+    """SS4 -- deletions: the retired skill dirs + the one memory stub have
+    content-preserving archived copies in the repo."""
 
     def test_s4_ten_skill_dirs_and_memory_stub_removed_with_archived_content(self):
         """CR-MDB-016 (handover rebirth, supersession class): the wave-2
@@ -338,28 +335,15 @@ class CrucibleSkillS4Test(unittest.TestCase):
         applies unchanged. CR-MDB-024 \u00a7S3 (this cycle, 2026-09-22 VS Code
         ruling) drops the VS Code crucible-report bundle out of that legitimate-reappear
         set entirely -- its dedicated retirement gate lives in
-        tests/test_ide_overlay_retirement.py, not here."""
-        still_present = []
+        tests/test_ide_overlay_retirement.py, not here. CR-MDB-032 SS2 dropped
+        the live ~/.claude halves (absence, symlink shape)."""
         not_archived = []
         for name, anchor in DELETION_TARGET_SKILLS.items():
-            live_dir = CLAUDE_DIR / "skills" / name
-            if live_dir.exists():
-                still_present.append(str(live_dir))
             if not _archive_has_content_move(name, anchor):
                 not_archived.append(name)
-
-        live_memory = CLAUDE_DIR / "memory" / MEMORY_DELETION_TARGET
-        if live_memory.exists():
-            still_present.append(str(live_memory))
         if not _archive_has_content_move(MEMORY_DELETION_TARGET, MEMORY_DELETION_ANCHOR):
             not_archived.append(MEMORY_DELETION_TARGET)
 
-        # NEGATIVE -- none of the remaining deletion-target skill dirs +
-        # memory/crucible-ingest.md may still exist in the live ~/.claude tree.
-        self.assertEqual(
-            still_present, [],
-            f"expected zero deletion-target paths still present, found: {still_present}",
-        )
         # POSITIVE -- every deleted item must have a content-preserving
         # archived copy under <repo>/archive/wave2/.
         self.assertEqual(
@@ -368,48 +352,41 @@ class CrucibleSkillS4Test(unittest.TestCase):
             f"for every deletion target, missing/anchor-less for: {not_archived}",
         )
 
-        # STRENGTHEN -- any crucible-report-* handover bundle present under
-        # ~/.claude/skills must be an installer-owned symlink, never a plain
-        # re-created directory (CR-MDB-016 §S4 deploy-as-symlink contract).
-        non_symlink_report_skills = []
-        for name in CRUCIBLE_REPORT_HANDOVER_SKILLS:
-            live_dir = CLAUDE_DIR / "skills" / name
-            if live_dir.exists() and not live_dir.is_symlink():
-                non_symlink_report_skills.append(str(live_dir))
-        self.assertEqual(
-            non_symlink_report_skills, [],
-            "expected any present crucible-report-* skill path to be an "
-            f"installer-owned symlink, found plain dir(s): {non_symlink_report_skills}",
-        )
-
 
 class CrucibleSkillS5Test(unittest.TestCase):
     """SS5 -- repoint consumers away from the retired skills/paths."""
 
+    #: The provenance record names the deliberately NOT-imported
+    #: agent-protocol bundle (Option B) -- a record, not a consumer.
+    GREP_GATE_EXEMPT = ("CRUCIBLE-HANDOVER.md",)
+
     def test_s5_grep_gate_zero_stale_references_across_consumers(self):
-        pattern = (
-            r"crucible-report\|agent-protocol\|crucible-ingest\|"
-            r"bun-red-testing\|bun-green-testing\|bun-regression-testing\|"
-            r"quarkus-regression-testing"
+        """The consumers (skill sources, rendered agents, AGENTS.md) name no
+        retired skill or memory stub. `crucible-report` left the pattern with
+        CR-MDB-016, which re-ships those bundles as live handover bundles
+        (the supersession SS4's DELETION_TARGET_SKILLS already records)."""
+        pattern = r"\|".join(
+            [*DELETION_TARGET_SKILLS, MEMORY_DELETION_TARGET.removesuffix(".md")]
         )
         result = subprocess.run(
             [
                 "grep", "-rl", pattern,
-                str(CLAUDE_DIR / "memory"),
-                str(CLAUDE_DIR / "skills"),
-                str(CLAUDE_DIR / "AGENTS.md"),
-                str(CLAUDE_DIR / "agents"),
+                str(REPO_ROOT / "skills-src"),
+                str(REPO_ROOT / "AGENTS.md"),
+                str(REPO_ROOT / "generator" / "agents"),
             ],
             capture_output=True,
             text=True,
             timeout=30,
         )
-        matched_files = [ln for ln in result.stdout.splitlines() if ln.strip()]
-        # EXACT bound -- the AC requires this exact grep invocation to
-        # return zero files.
+        matched_files = [
+            ln for ln in result.stdout.splitlines()
+            if ln.strip() and Path(ln).name not in self.GREP_GATE_EXEMPT
+        ]
+        # EXACT bound -- zero consumer files.
         self.assertEqual(
             matched_files, [],
-            f"grep gate must return 0 files referencing crucible-report/agent-protocol/"
+            f"grep gate must return 0 files referencing agent-protocol/"
             f"crucible-ingest/bun-*-testing/quarkus-regression-testing, found: {matched_files}",
         )
 

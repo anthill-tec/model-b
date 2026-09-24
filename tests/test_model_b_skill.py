@@ -1,14 +1,12 @@
 """RED-phase tests for CR-MDB-002 (model-b skill: canonical definition +
 universal conventions).
 
-These tests assert the acceptance criteria of CR-MDB-002 SS2-SS5 against the
-LIVE ~/.claude tree on this machine. They are intentionally written before
-the GREEN-phase work (SKILL.md full body, references/ population, memory
-deletions, consumer repointing) lands, so most of them are expected to FAIL
-against the current (pre-CR-MDB-002) state of ~/.claude. A few ACs may
-already hold true incidentally (e.g. the stub's description already
-mentions "orchestration" and "sub-agent") -- that is fine, the SUITE overall
-must be RED, not necessarily every single test.
+Originally written against the LIVE ~/.claude tree. CR-MDB-032 SS2
+retargeted them to the repo (the 2026-07-22 repo-local authoring rule): the
+skill under skills-src/model-b/, the archive/wave2/ copies, and the grep gate
+over skills-src/ + the repo AGENTS.md. The live-memory absence half of SS4 and
+the ~/.claude/AGENTS.md trigger-table row check (the repo AGENTS.md carries no
+trigger table) were deleted.
 
 Stdlib only (unittest + subprocess + pathlib + os).
 """
@@ -18,10 +16,9 @@ import subprocess
 import unittest
 from pathlib import Path
 
-CLAUDE_DIR = Path.home() / ".claude"
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-SKILL_DIR = CLAUDE_DIR / "skills" / "model-b"
+SKILL_DIR = REPO_ROOT / "skills-src" / "model-b"
 SKILL_MD = SKILL_DIR / "SKILL.md"
 REFERENCES_DIR = SKILL_DIR / "references"
 ARCHIVE_WAVE2 = REPO_ROOT / "archive" / "wave2"
@@ -129,7 +126,10 @@ class ModelBSkillS2Test(unittest.TestCase):
             "sync boundary",
             "plan-file",
             "--wave",
-            "--orchestrator",
+            # The plan idiom's orchestrator flag: `--orchestrator` was retired by
+            # the CR-MDB-017 verb sweep (the registered `--agent` id IS the plan's
+            # orchestrator); the stale deployed copy still said `--orchestrator`.
+            "--agent",
             "PROJECT_ACRONYM",
             "release",
         ]
@@ -199,9 +199,8 @@ class ModelBSkillS3Test(unittest.TestCase):
 
 
 class ModelBSkillS4Test(unittest.TestCase):
-    """SS4 -- memory deletions (removal plus content-preserving archive):
-    the four source files are archived into the repo then physically
-    removed from ~/.claude/memory."""
+    """SS4 -- memory deletions: the four source files have content-preserving
+    archived copies in the repo."""
 
     MEMORY_FILES = (
         "orchestration-common.md",
@@ -212,10 +211,6 @@ class ModelBSkillS4Test(unittest.TestCase):
 
     def test_s4_memory_shim_files_removed_and_archived_under_wave2_with_preserved_content(self):
         for filename in self.MEMORY_FILES:
-            live = CLAUDE_DIR / "memory" / filename
-            # NEGATIVE -- must NOT exist any more in the live memory tree.
-            self.assertFalse(live.exists(), f"{live} must be removed from ~/.claude/memory")
-
             archived = ARCHIVE_WAVE2 / filename
             # POSITIVE -- an archived copy must exist in the repo.
             self.assertTrue(archived.is_file(), f"{archived} must exist")
@@ -232,16 +227,15 @@ class ModelBSkillS4Test(unittest.TestCase):
 
 
 class ModelBSkillS5Test(unittest.TestCase):
-    """SS5 -- repoint consumers away from the retired memory/orchestration-*
-    and memory/sandesh.md paths, and drop the transitional "until Wave 2"
-    caveat from AGENTS.md's trigger table."""
+    """SS5 -- consumers are repointed away from the retired
+    memory/orchestration-* and memory/sandesh.md paths."""
 
     def test_s5_grep_gate_zero_stale_memory_references_in_skills_and_agents_md(self):
         result = subprocess.run(
             [
                 "grep", "-rl", "memory/orchestration-\\|memory/sandesh",
-                str(CLAUDE_DIR / "skills"),
-                str(CLAUDE_DIR / "AGENTS.md"),
+                str(REPO_ROOT / "skills-src"),
+                str(REPO_ROOT / "AGENTS.md"),
             ],
             capture_output=True,
             text=True,
@@ -254,40 +248,6 @@ class ModelBSkillS5Test(unittest.TestCase):
             f"grep gate must return 0 files referencing memory/orchestration-* or "
             f"memory/sandesh, found: {matched_files}",
         )
-
-    def test_s5_agents_md_trigger_table_model_b_row_has_no_until_wave_2_caveat(self):
-        """The Model B WORKFLOW trigger-table row (topic cell starts with
-        'Model B workflow', target `model-b` skill) must exist exactly once
-        and carry no transitional "until Wave 2" caveat. Selects by the
-        topic cell -- not by any-row-containing-"model-b" -- so other rows
-        that merely mention the model-b repo (e.g. the memory-templates
-        row added by CR-MDB-006) don't trip the exactly-one bound."""
-        self.assertTrue(
-            (CLAUDE_DIR / "AGENTS.md").is_file(),
-            f"{CLAUDE_DIR / 'AGENTS.md'} must exist",
-        )
-        content = _read(CLAUDE_DIR / "AGENTS.md")
-        lines = content.splitlines()
-        model_b_workflow_rows = [
-            ln for ln in lines
-            if ln.strip().startswith("|")
-            and ln.strip().lstrip("|").strip().startswith("Model B workflow")
-        ]
-        # POSITIVE -- the trigger table must still carry the Model B workflow
-        # row after repointing.
-        self.assertEqual(
-            len(model_b_workflow_rows), 1,
-            f"expected exactly one 'Model B workflow' trigger-table row, "
-            f"found {len(model_b_workflow_rows)}: {model_b_workflow_rows}",
-        )
-        # NEGATIVE/EXACT bound -- that row must no longer carry the
-        # transitional "until Wave 2" caveat.
-        self.assertNotIn(
-            "until Wave 2", model_b_workflow_rows[0],
-            f"'Model B workflow' trigger-table row must not contain "
-            f"'until Wave 2': {model_b_workflow_rows[0]!r}",
-        )
-
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,19 +1,14 @@
 """RED-phase tests for CR-MDB-006 (memory model: global -> project-level
 migration).
 
-These tests assert the acceptance criteria of CR-MDB-006 SS2-SS5 against the
-LIVE ~/.claude tree on this machine AND this repo. They are intentionally
-written before the GREEN-phase work (the devops-environment.md merge into
-java-testing-practices.md, the java-modern-syntax.md AGENTS.md wiring, the
-SS3 deletions with archival, the SS4 relocations to
-skills-src/memory-templates/, and the SS5 consumer repoints) lands, so most
-of them are expected to FAIL against the current (pre-CR-MDB-006) state.
-The suite overall must be RED, not necessarily every single test (some
-content greps may vacuously pass depending on what already happens to be
-true of the live tree today -- that is still correct behaviour, not a test
-bug; see e.g. the SS2 merge-anchor test, and the SS4 chezmoi-diff test which
-is a no-drift regression guard that legitimately holds before any live edits
-have been made).
+Originally written against the LIVE ~/.claude tree AND this repo. CR-MDB-032
+SS2 retargeted them to the repo only (the 2026-07-22 repo-local authoring
+rule): the memory templates under skills-src/memory-templates/, the
+archive/wave2/ copies, and the consumer grep gate over skills-src/,
+generator/agents/ and the repo AGENTS.md. Deleted as real-home-only: the
+~/.claude/memory set equality (SS4), the live absence half of SS3, and the
+two ~/.claude/AGENTS.md trigger-row checks (SS2 Java row, SS5
+scaffold-instantiated row) -- the repo AGENTS.md carries no trigger table.
 
 Stdlib only (unittest + subprocess + pathlib + os). No SUT import: this CR's
 deliverable is markdown/template content, not Python modules.
@@ -24,40 +19,26 @@ import subprocess
 import unittest
 from pathlib import Path
 
-CLAUDE_DIR = Path.home() / ".claude"
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-MEMORY_DIR = CLAUDE_DIR / "memory"
-AGENTS_MD = CLAUDE_DIR / "AGENTS.md"
+SKILLS_SRC_DIR = REPO_ROOT / "skills-src"
+AGENTS_MD = REPO_ROOT / "AGENTS.md"
+MEMORY_TEMPLATES_DIR = SKILLS_SRC_DIR / "memory-templates"
 
-JAVA_TESTING_PRACTICES_MD = MEMORY_DIR / "java-testing-practices.md"
-
-# SS3 deletion targets (post SS2-merge for devops-environment.md).
-QUICK_REFERENCE_MD = MEMORY_DIR / "QUICK_REFERENCE.md"
-STACK_DETECTION_MD = MEMORY_DIR / "stack-detection.md"
-PLAN_B_WORKFLOW_MODEL_MD = MEMORY_DIR / "plan_b_workflow_model.md"
-DEVOPS_ENVIRONMENT_MD = MEMORY_DIR / "devops-environment.md"
+JAVA_TESTING_PRACTICES_MD = MEMORY_TEMPLATES_DIR / "java-testing-practices.md"
 
 # SS4 relocation targets.
-MEMORY_TEMPLATES_DIR = REPO_ROOT / "skills-src" / "memory-templates"
 JAVA_ORCHESTRATION_TEMPLATE = MEMORY_TEMPLATES_DIR / "java-orchestration.md"
 RUST_ORCHESTRATION_TEMPLATE = MEMORY_TEMPLATES_DIR / "rust-orchestration.md"
 OPERATIONAL_COMMANDS_TEMPLATE = MEMORY_TEMPLATES_DIR / "operational-commands.md"
 
 ARCHIVE_WAVE2 = REPO_ROOT / "archive" / "wave2"
 
-# D5's exact end-state global memory set (PRD-model-b-rationalization.md
-# SD5): cross-project LANGUAGE references only.
-D5_GLOBAL_MEMORY_FILES = frozenset(
-    {
-        "convex-client-server.md",
-        "java-coding-standards.md",
-        "java-modern-syntax.md",
-        "java-testing-practices.md",
-        "maven-best-practices.md",
-        "quarkus-patterns.md",
-    }
-)
+# SS4's relocated scaffold templates left ~/.claude/memory, so the live SS5
+# gate never scanned them; the repo gate keeps that scope.
+SS5_GATE_EXCLUDED = frozenset({
+    JAVA_ORCHESTRATION_TEMPLATE, RUST_ORCHESTRATION_TEMPLATE, OPERATIONAL_COMMANDS_TEMPLATE,
+})
 
 # SS5's AC names this exact grep invocation verbatim.
 STALE_REF_PATTERN = (
@@ -102,7 +83,8 @@ class MemoryModelS2Test(unittest.TestCase):
     memory/java-testing-practices.md (TestContainers, DevServices, @Nested
     continuous-testing gotcha, container-runtime/Podman, CI considerations),
     and wire the orphaned java-modern-syntax.md into the AGENTS.md Java
-    stack-reference row."""
+    stack-reference row (the AGENTS.md half was real-home only and is
+    deleted, CR-MDB-032 SS2)."""
 
     def test_s2_java_testing_practices_contains_full_merge_anchor_set(self):
         self.assertTrue(
@@ -129,43 +111,14 @@ class MemoryModelS2Test(unittest.TestCase):
             f"tried {container_runtime_variants}",
         )
 
-    def test_s2_agents_md_java_row_contains_java_modern_syntax(self):
-        self.assertTrue(AGENTS_MD.is_file(), f"{AGENTS_MD} must exist")
-        content = _read(AGENTS_MD)
-        java_rows = [
-            ln for ln in content.splitlines()
-            if "Java" in ln and "memory" in ln.lower()
-        ]
-        # POSITIVE -- the AGENTS.md Java stack-reference row must cite
-        # java-modern-syntax.md (currently orphaned since the audit).
-        self.assertIn(
-            "java-modern-syntax.md", content,
-            f"{AGENTS_MD} Java stack row must contain 'java-modern-syntax.md', "
-            f"Java-related rows found: {java_rows}",
-        )
-
-
 class MemoryModelS3Test(unittest.TestCase):
     """SS3 -- delete QUICK_REFERENCE.md (superseded by the trigger table),
     stack-detection.md (superseded by the crucible skill),
     plan_b_workflow_model.md (broken mis-paste; canonical = model-b skill),
-    devops-environment.md (after SS2 merge) -- removed and archived,
-    content preserved under <repo>/archive/wave2/."""
+    devops-environment.md (after SS2 merge) -- archived, content preserved
+    under <repo>/archive/wave2/."""
 
     def test_s3_deletion_targets_removed_with_content_preserving_archive(self):
-        deletion_targets = (
-            QUICK_REFERENCE_MD,
-            STACK_DETECTION_MD,
-            PLAN_B_WORKFLOW_MODEL_MD,
-            DEVOPS_ENVIRONMENT_MD,
-        )
-        still_present = [str(p) for p in deletion_targets if p.exists()]
-        # NEGATIVE -- none of the four deletion targets may still exist live.
-        self.assertEqual(
-            still_present, [],
-            f"expected zero SS3 deletion targets still present, found: {still_present}",
-        )
-
         # POSITIVE -- an archived, content-preserving copy of each must
         # exist under <repo>/archive/wave2/ (tolerant of exact layout, plus
         # a content anchor proving it's a real move, not a stub).
@@ -199,9 +152,9 @@ class MemoryModelS4Test(unittest.TestCase):
     operational-commands.md to <repo>/skills-src/memory-templates/ (D10.6
     scaffold source material), fixing rust-orchestration.md's dangling
     memory/sandesh.md reference to
-    ~/.claude/skills/model-b/references/sandesh.md, then delete the three
-    from ~/.claude/memory/. Global memory end state: EXACTLY the 6 D5
-    files."""
+    ~/.claude/skills/model-b/references/sandesh.md. (The ~/.claude/memory
+    end-state set equality was real-home only and is dropped, CR-MDB-032
+    SS2.)"""
 
     def test_s4_relocated_template_files_exist_in_repo(self):
         template_files = {
@@ -248,27 +201,6 @@ class MemoryModelS4Test(unittest.TestCase):
             f"the dangling 'memory/sandesh.md' reference, found {dangling_count}",
         )
 
-    def test_s4_global_memory_has_exactly_the_six_d5_files(self):
-        self.assertTrue(MEMORY_DIR.is_dir(), f"{MEMORY_DIR} must exist")
-        live_files = frozenset(
-            entry.name
-            for entry in MEMORY_DIR.iterdir()
-            if entry.is_file() and not entry.name.startswith(".")
-        )
-        # EXACT set equality -- not just a count of 6, the SIX NAMED D5
-        # files specifically.
-        self.assertEqual(
-            live_files, D5_GLOBAL_MEMORY_FILES,
-            f"{MEMORY_DIR} must contain exactly the 6 D5 files "
-            f"{sorted(D5_GLOBAL_MEMORY_FILES)}, found {sorted(live_files)} "
-            f"(extra: {sorted(live_files - D5_GLOBAL_MEMORY_FILES)}, "
-            f"missing: {sorted(D5_GLOBAL_MEMORY_FILES - live_files)})",
-        )
-        # Redundant explicit count check per the AC's literal
-        # `ls ~/.claude/memory/ | wc -l` == 6 wording.
-        self.assertEqual(len(live_files), 6, f"found {len(live_files)} files: {sorted(live_files)}")
-
-
 class MemoryModelS5Test(unittest.TestCase):
     """SS5 -- repoint consumers: AGENTS.md Java row adds java-modern-syntax.md
     and drops java-orchestration.md; Rust-stack row and Operational-commands
@@ -276,20 +208,21 @@ class MemoryModelS5Test(unittest.TestCase):
     java-orchestration.md citations repointed."""
 
     def test_s5_grep_gate_zero_stale_references_across_consumers(self):
-        # EXACT -- the AC names this exact grep invocation verbatim.
         result = subprocess.run(
             [
                 "grep", "-rl", STALE_REF_PATTERN,
-                str(MEMORY_DIR),
-                str(CLAUDE_DIR / "skills"),
+                str(SKILLS_SRC_DIR),
                 str(AGENTS_MD),
-                str(CLAUDE_DIR / "agents"),
+                str(REPO_ROOT / "generator" / "agents"),
             ],
             capture_output=True,
             text=True,
             timeout=30,
         )
-        matched_files = [ln for ln in result.stdout.splitlines() if ln.strip()]
+        matched_files = [
+            ln for ln in result.stdout.splitlines()
+            if ln.strip() and Path(ln) not in SS5_GATE_EXCLUDED
+        ]
         # EXACT bound -- the AC requires this exact grep invocation to
         # return zero files.
         self.assertEqual(
@@ -299,27 +232,6 @@ class MemoryModelS5Test(unittest.TestCase):
             f"memory/java-orchestration, memory/rust-orchestration or "
             f"memory/operational-commands, found: {matched_files}",
         )
-
-    def test_s5_agents_md_scaffold_instantiated_row_and_no_rust_orchestration_ref(self):
-        self.assertTrue(AGENTS_MD.is_file(), f"{AGENTS_MD} must exist")
-        content = _read(AGENTS_MD)
-
-        # POSITIVE -- the AC's exact required term for the merged
-        # Rust-stack + Operational-commands replacement row.
-        self.assertIn(
-            "scaffold-instantiated", content,
-            f"{AGENTS_MD} must contain 'scaffold-instantiated' (the project-level row)",
-        )
-
-        # NEGATIVE/bound -- exactly zero occurrences of the stale
-        # memory/rust-orchestration.md reference, not "fewer".
-        stale_count = content.count("memory/rust-orchestration.md")
-        self.assertEqual(
-            stale_count, 0,
-            f"{AGENTS_MD} must contain zero occurrences of "
-            f"'memory/rust-orchestration.md', found {stale_count}",
-        )
-
 
 if __name__ == "__main__":
     unittest.main()
