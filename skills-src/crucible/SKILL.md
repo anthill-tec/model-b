@@ -65,10 +65,11 @@ Clients are Crucible's installed, published clients —
 `~/.crucible/clients/<stack>-crucible.py`, the default location Crucible's own
 installer writes to and lists in `~/.crucible/crucible-clients.json`; run any
 client with `-h` for its own help. Model B does not ship, vendor or maintain
-them. Never run a client from a checkout of the Crucible project: a checkout
-carries its own `crucible.toml`, and a client resolves its configuration from
-its own location, so a run from a checkout posts to that checkout's board while
-reporting the right project key.
+them. Never run a client from a checkout of the Crucible project: a client reads
+the project's `crucible.toml` first and falls back to the `crucible.toml` beside
+its own location, and a checkout carries its own, so whenever the project has
+none a run from a checkout posts to that checkout's board while reporting the
+right project key.
 
 ## Bundled per-stack docs — the authority (routing note)
 
