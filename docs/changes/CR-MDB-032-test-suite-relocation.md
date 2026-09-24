@@ -122,6 +122,10 @@ dropped. The `MODELB_REALHOME_GATE` paragraph is deleted with the module.
 - **Added 2026-09-24 (pi-lens, pre-existing):** `tests/test_scaffold.py:153` (CR-MDB-013) and `:1678`
   (CR-MDB-036) — unnarrowed `Optional`, repeated `.endswith` calls; `tests/test_installer.py:1053`
   (CR-MDB-014) — unnarrowed `Optional` passed to `write_text`. Same hygiene class.
+- **Added 2026-09-24 (pi-lens):** `tests/test_package_publishing.py:39` (CR-MDB-038) unsorted import
+  block; `tests/test_scaffold.py:1679` flagged as a hardcoded password — a false positive, the
+  argument is `init`'s project `token`; `generator/build.py`'s `__doc__.splitlines()` (above, now
+  near line 221 after CR-MDB-029's README renderer).
 
 ## Acceptance criteria
 

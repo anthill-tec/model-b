@@ -120,7 +120,8 @@ extension loads.
 - [ ] `REQUIREMENTS` carries the `watcher` row with the §S3 fields; the harness probe reports
       `watcher=` on the `harness:` line.
 - [ ] With the package absent: `--yes` runs `pi install npm:@anthill-tec/modelb-pi` exactly once
-      (shim), an already-listed package runs nothing, the verdict is re-probed, and `settings.json`
+      (shim), a `detected` package runs nothing (a package listed in `settings.json` but missing from
+      disk probes `absent` and is offered like any absent one — amended at C3), the verdict is re-probed, and `settings.json`
       is never written by Model B — all against a sandboxed `PI_CODING_AGENT_DIR`.
 
 ### §S4
