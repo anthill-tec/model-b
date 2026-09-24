@@ -1,0 +1,13 @@
+{
+  "name": "@anthill-tec/modelb-pi",
+  "version": "0.1.0-dev.0",
+  "description": "Model B workflow extensions for the Pi coding agent.",
+  "keywords": ["pi-package"],
+  "license": "MIT",
+  "pi": {
+    "extensions": []
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  }
+}
