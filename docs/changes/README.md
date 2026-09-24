@@ -768,3 +768,29 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   "nothing under `.claude/`" assertion. 45 duplicated helper copies across 16 helpers. The pi-lens
   backlog collected from earlier CRs becomes §S5 with an AC. `test_realhome_supersede`'s retained
   mirror-absence assertion is superseded by CR-MDB-020's anchoring gate.
+- 2026-09-24 — **CR-MDB-032 MERGED** (develop `a4a02e1`; plan 109, cycles 134–137). The suite runs on
+  any machine: **real `HOME` 1053 tests / 0 failures / 0 errors / 0 skips; empty `HOME` 1053 / 0 / 0 /
+  8 skips** (all eight = installed Crucible clients absent, each naming `~/.crucible/crucible-clients.json`
+  or `~/.crucible/clients/`); the empty dir stays empty and the real `install.toml`, `~/.agents` and
+  `~/.claude` are untouched. The reviewed `Path.home()` list is `HOME_READ_ALLOWLIST` in
+  `tests/test_suite_hermeticity.py`, gated. No checkout loads (toon oracle + gate-lock read resolve
+  through the manifest), the CR-MDB-022 AST gate catches `spec_from_file_location` and `-c` programs,
+  CR-MDB-020's anchoring gate scans `tests/`, 18 helper families live once in `tests/_helpers.py`
+  (AST gate), `AGENTS.md` Testing & QA states 49 modules and both baselines. **Closes the 2026-08-27
+  DEFERRED register items (i) and (ii)** (`test_worktree_flow_axi` stale-copy classes deleted; the
+  subprocess-string path now caught by the extended AST gate). C4 FIX (verify F1/F2/F3/F5/F7):
+  stderr board pinned; `operational-commands.md` Related line repointed to
+  `java-testing-practices.md, java-quarkus-patterns.md` and the SS5 exclusion dropped; obsolete
+  trigger-table test deleted; `pi` on PATH named as the second skip cause (10 classes). Recorded, not
+  fixed: commits `7b81219`..`1f02f78` each fail one line-number pin (re-pinned at `dc95b97`) — bisect
+  skips them; the ruff/pi-lens backlog items `**kwargs`, loop concatenation and repeated `.endswith`
+  were not reproducible at `develop` (F4), `test_toon_codec.py:468` repeated `startswith` (PIE810) and
+  four pre-existing I001 wraps (`test_code_health_skill`, `test_pi_agent_definitions`, `test_scaffold`,
+  `test_tooling_adoption`) are left as nits; pi-lens's fallback ruff config has no target version and
+  flags `tomllib` as third-party (19 false I001s); the `token=` S106 hits are false positives.
+  Most deleted-test ids are listed in GREEN `1d3b18f`'s body rather than a RED/FIX body (F6). Gate
+  limits (F10): the home-read detector misses `expandvars("$HOME")`/`pwd.getpwuid`, the child-env spy
+  covers `test_installer` only (the empty-`HOME` run covers the rest), and `installed_crucible_file`
+  skips on a manifest naming a missing file. The suite needs a git checkout (F11: 4F+1E from a
+  `git archive` tree, same at `develop`). Root **CR-RND** follow-up: the root `AGENTS.md` still says
+  "16 unittest modules … 194 tests".
