@@ -215,6 +215,10 @@ its commit body. `TOOL_BASELINE` becomes `{}`.
       `sandesh_(send|reply|fetch|inbox|register|unregister|addressbook|setup)` in `skills-src/`,
       `generator/`, `hooks-src/` and `scripts/` — a grep gate. The 026-owned watcher fallback
       sentence is rewritten in capability words too (no exemption).
+- [ ] Zero `CLAUDE.md` in `skills-src/`, `generator/` (templates, stacks, agents), `hooks-src/`,
+      `scripts/`, `modelb_axi/` and `.pi/agents/` — a grep gate; project context is named
+      `AGENTS.md` (Sheetal, the one real project named, carries `AGENTS.md` at both levels and no
+      `sheetal-firmware/CLAUDE.md`; added at C2 RED, 2026-09-24).
 - [ ] CR-MDB-020 §S4's ratchet passes with `TOOL_BASELINE == {}` and no exemption added.
 - [ ] Every Sandesh step in `skills-src/` names the `sandesh` CLI (`sandesh <verb> …`); the gate
       asserts at least one `sandesh send`, `sandesh fetch` and `sandesh reply` form survives in
