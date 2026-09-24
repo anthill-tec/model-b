@@ -81,7 +81,10 @@ the trusted-publisher configurations exactly.
 - [x] `anthill-tec/model-b` public (verified: `visibility: public`, license detected as MIT)
 - [x] Pending Trusted Publishers for `modelb-axi` on pypi.org and test.pypi.org
 - [x] npm account in the `anthill-tec` organisation
-- [ ] Repository secret `RELEASE_PAT`
+- [x] Repository secret `RELEASE_PAT` (verified by name, 2026-09-24). User ruling: one fine-grained
+      token owned by `antojk` (owner of `anthill-tec`) is reused across the anthill-tec projects;
+      its **Repository access must include `model-b`** (Contents read/write), or `create-release`
+      fails at the first tag
 - [ ] Environments `pypi`, `testpypi`, `npm` (required reviewers now available)
 - [x] One-time `NPM_TOKEN` (granular, `@anthill-tec` scope, read/write, 2FA bypass) stored as a
       repository secret (verified by name, 2026-09-24)
