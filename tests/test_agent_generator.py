@@ -92,6 +92,13 @@ this cycle adds (the zero-reference sweep, the skills-src/ bundle census,
 the CLI stack-rejection and DN/PRD/README record checks); this file's
 amendment is the narrower BESPOKE_AGENT_NAMES migration only.
 
+CR-MDB-032 \u00a7S2 AMENDMENT: ``DeployedAgentsConsumerConstraintTest`` is
+deleted -- it asserted the user's real ``~/.claude/agents/`` tree; CR-MDB-025's
+rendering tests and the sandboxed installer e2e prove the same. The
+``--check`` drift test mutates a TEMP COPY of the build inputs and drives the
+copy's build.py, never a tracked file in place. No test here reads the real
+home.
+
 Stdlib only (unittest + subprocess + pathlib + shutil + sys + tomllib +
 importlib.util). build.py is still driven as a SUBPROCESS for every gate,
 per the CR's own mechanics (`python3 generator/build.py --check`), matching
@@ -111,10 +118,6 @@ import unittest
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-CLAUDE_DIR = Path.home() / ".claude"
-# The real DEPLOYED tree: still used by BespokeUntouchedS4Test (the 13
-# bespoke defs never move) and by the new §S7 consumer-constraint test.
-AGENTS_DIR = CLAUDE_DIR / "agents"
 
 GENERATOR_DIR = REPO_ROOT / "generator"
 TEMPLATES_DIR = GENERATOR_DIR / "templates"
@@ -301,40 +304,50 @@ class BuildPyIdempotenceS3Test(unittest.TestCase):
         )
 
     def test_s3_check_flag_exits_one_and_names_the_mutated_file(self):
+        """CR-MDB-032 \u00a7S2: the drift is injected into a TEMP COPY of the
+        build inputs (generator/, modelb_axi/ and build.py's other declared
+        targets/sources) and the COPY's build.py is driven, so no tracked file
+        is ever mutated in place -- build.py resolves every path from its own
+        location."""
         self.assertTrue(BUILD_PY.is_file(), f"{BUILD_PY} must exist to run --check")
-        target = GENERATOR_AGENTS_DIR / "python-red-agent.md"
-        self.assertTrue(target.is_file(), f"{target} must exist to be mutated")
-        original_bytes = target.read_bytes()
-        try:
+        tracked = GENERATOR_AGENTS_DIR / "python-red-agent.md"
+        self.assertTrue(tracked.is_file(), f"{tracked} must exist to be copied")
+        original_bytes = tracked.read_bytes()
+        with tempfile.TemporaryDirectory(prefix="mdb-drift-") as tmp:
+            copy_root = Path(tmp)
+            ignore = shutil.ignore_patterns("__pycache__")
+            for rel in ("generator", "modelb_axi"):
+                shutil.copytree(REPO_ROOT / rel, copy_root / rel, ignore=ignore)
+            for rel in (
+                Path("scripts") / "toon.py", INSTALL_GUIDE_REL, PI_README_REL,
+            ):
+                (copy_root / rel).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(REPO_ROOT / rel, copy_root / rel)
+            target = copy_root / "generator" / "agents" / tracked.name
             with target.open("a", encoding="utf-8") as fh:
                 fh.write("\n<!-- CR-MDB-008 drift-marker (test-injected) -->\n")
             result = subprocess.run(
-                [sys.executable, str(BUILD_PY), "--check"],
+                [sys.executable, str(copy_root / "generator" / "build.py"), "--check"],
                 capture_output=True, text=True, timeout=60,
             )
-            # EXACT -- a drifted live file must be reported as exit 1.
-            self.assertEqual(
-                result.returncode, 1,
-                "generator/build.py --check must exit 1 when a generated live "
-                f"file has been mutated, got rc={result.returncode}\n"
-                f"stdout:\n{result.stdout[:2000]}\nstderr:\n{result.stderr[:2000]}",
-            )
-            # POSITIVE -- the mutated file's name must be named in the output.
-            combined_output = result.stdout + result.stderr
-            self.assertIn(
-                target.name, combined_output,
-                f"--check output must name the drifted file {target.name!r}, "
-                f"got:\n{combined_output[:2000]}",
-            )
-        finally:
-            # Restore regardless of pass/fail -- never leave the live agent
-            # tree mutated by this test.
-            target.write_bytes(original_bytes)
-        # NEGATIVE/bound -- after restoration the file is back to its
-        # original content (no residual drift left behind by the test itself).
+        # EXACT -- a drifted generated file must be reported as exit 1.
         self.assertEqual(
-            target.read_bytes(), original_bytes,
-            f"{target} must be restored to its original content after the test",
+            result.returncode, 1,
+            "generator/build.py --check must exit 1 when a generated "
+            f"file has been mutated, got rc={result.returncode}\n"
+            f"stdout:\n{result.stdout[:2000]}\nstderr:\n{result.stderr[:2000]}",
+        )
+        # POSITIVE -- the mutated file's name must be named in the output.
+        combined_output = result.stdout + result.stderr
+        self.assertIn(
+            tracked.name, combined_output,
+            f"--check output must name the drifted file {tracked.name!r}, "
+            f"got:\n{combined_output[:2000]}",
+        )
+        # NEGATIVE/bound -- the tracked file was never touched.
+        self.assertEqual(
+            tracked.read_bytes(), original_bytes,
+            f"{tracked} must be untouched by the drift test",
         )
 
     def test_s3_build_py_target_list_is_exactly_the_20_generated_files(self):
@@ -679,31 +692,6 @@ class BespokeUntouchedS4Test(unittest.TestCase):
             bespoke_overlap, set(),
             f"a build must never write a bespoke agent file, found: "
             f"{bespoke_overlap}",
-        )
-
-
-class DeployedAgentsConsumerConstraintTest(unittest.TestCase):
-    """CR-MDB-014 §S7 addition -- the opposite-direction guarantee from the
-    build.py retarget: the DEPLOYED ~/.claude/agents/ tree still carries
-    all 16 generated agent files (existence only, no content coupling --
-    they stay live from a prior build run until the installer actually
-    redeploys them there). Mirrors the CR-MDB-011 AC6 pattern of pinning
-    that already-deployed content remains reachable across a source-side
-    reorganisation."""
-
-    def test_s7_deployed_claude_agents_still_contains_sixteen_generated_files(self):
-        missing = [
-            name for name in TARGET_AGENT_NAMES
-            if not (AGENTS_DIR / name).is_file()
-        ]
-        # POSITIVE/EXACT, existence-only -- all 16 generated files remain
-        # reachable at the real deployed location; content is deliberately
-        # NOT asserted here (that coupling now lives with GENERATOR_AGENTS_DIR).
-        self.assertEqual(
-            missing, [],
-            f"deployed {AGENTS_DIR} must still contain all 16 generated "
-            f"agent files (existence only) until the installer redeploys "
-            f"them there; missing: {missing}",
         )
 
 
