@@ -794,3 +794,18 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   skips on a manifest naming a missing file. The suite needs a git checkout (F11: 4F+1E from a
   `git archive` tree, same at `develop`). Root **CR-RND** follow-up: the root `AGENTS.md` still says
   "16 unittest modules … 194 tests".
+- 2026-09-24 — **CR-MDB-031 gap analysis (SPEC_UPDATE_NEEDED; §S0 ruled by the user):** worktrees move
+  to `.worktrees/<cr>` inside the repo (inherits Pi's closest-ancestor project trust and the permission
+  scope; `contracts/worktree-layout.md`); the `chezmoi` bundle is retired (CR-037's `retired` report
+  covers deployed copies); the `/tmp/claude-1000` wrapper is retired (every ingest 026–032 ran the
+  client directly); the §D18 rule lives once in `skills-src/README.md`; roster `pi` only. Found at
+  analysis: `--stacks quarkus` scaffolds none of the six `java-*` templates its agents cite (template
+  prefix filtered through `KNOWN_STACKS`) — fixed by a stack-family map in §S1; `vscode` already
+  gone (024); `block-direct-cargo-test`'s `dangerouslyDisableSandbox` closer is dead on Pi and is
+  deleted; §S2 no longer names a dispatch tool (it contradicted §D18); the §S4-ratchet reference
+  was mis-cited as §S5; symlinks were never recorded in `install.toml`, so that AC became "no
+  symlink created"; the queued "harness-link collision should warn" follow-up is voided by deleting
+  the linker; gates scope to shipped surfaces (closed CRs, audits and research stay untouched).
+  Folds in the CR-020 follow-ups (`find()`, Monitor, `crucible:` prefix, `~/.claude/skills`
+  citations, `TOOL_BASELINE` → `{}`). Cycles: C1 code, C2 skill/template text + regeneration,
+  C3 worktree + bundles/contracts, C4 verify.
