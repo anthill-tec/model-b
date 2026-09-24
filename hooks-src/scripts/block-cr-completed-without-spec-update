@@ -3,8 +3,8 @@
 claims a CR is COMPLETED but the staged diff doesn't include that CR's spec
 file under `docs/changes/`.
 
-Normalized from the deployed
-~/.claude/hooks/block-cr-completed-without-spec-update.sh baseline
+Normalized from the earlier deployed
+block-cr-completed-without-spec-update.sh baseline
 (CR-MDB-015 §S3): stdin contract on the neutral payload (CR-MDB-030 §S3: `tool_name` `bash` /
 `tool_input.command` / `cwd`), same exit protocol (allow -> 0, block -> 2 +
 `{"decision":"block","reason":...}` on stdout), same gating (project must

@@ -3,7 +3,7 @@
 OUTSIDE the active Model-B worktree (stops a dispatched sub-agent leaking
 edits into the main tree or a sibling worktree).
 
-Normalized from the deployed ~/.claude/hooks/block-write-outside-worktree.sh
+Normalized from the earlier deployed block-write-outside-worktree.sh
 baseline (CR-MDB-015 §S3), on the neutral payload (CR-MDB-030 §S3): the
 neutral `tool_name` in write|edit; targets from `tool_input.paths` (every
 path the call targets — each is checked) plus `tool_input.path`; `cwd`),

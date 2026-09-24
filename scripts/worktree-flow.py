@@ -457,7 +457,7 @@ def cmd_start(args):
             print(f"  env: copied .env → {env_dst}  (gitignored; Crucible ingest ready)")
     except Exception as _env_err:
         print(f"  NOTE: could not auto-copy .env into worktree: {_env_err} (continuing)")
-    print(f"  → enter it: EnterWorktree(path=\"{wt_dir}\")  (or: cd {wt_dir})")
+    print(f"  → enter it: cd {wt_dir}")
     if label:
         _set_track(main_wt, args.cr, label)
         print(f"  track: {label}  ({'--track' if args.track else '$WF_TRACK'} → shown in `status`)")
@@ -685,7 +685,7 @@ def cmd_finish(args):
     cwd_real = os.path.realpath(os.getcwd())
     if cwd_real == os.path.realpath(wt_dir) or cwd_real.startswith(os.path.realpath(wt_dir) + os.sep):
         sys.exit(f"[worktree-flow] ERROR: you are INSIDE the worktree being removed "
-                 f"({wt_dir}). Step out first (ExitWorktree, or cd {main_wt}), then re-run.")
+                 f"({wt_dir}). Step out first (cd {main_wt}), then re-run.")
     if not _is_clean(wt_dir):
         sys.exit(f"[worktree-flow] ERROR: worktree {wt_dir} has uncommitted changes. "
                  f"Commit the CR's work before finishing (no work is silently dropped).")
