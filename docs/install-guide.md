@@ -318,8 +318,9 @@ A project created with `modelb-axi init` depends on two things under `.pi/extens
 - its permission policy, `.pi/extensions/pi-permission-system/config.json`, read by the
   `pi-permission-system` package: anything not listed is asked about (`"*": "ask"`); the
   workflow's tools and skills are allowed; reads of `~/.agents/*`, `~/.crucible/*`,
-  `~/.pi/agent/*` and `/tmp/*` are allowed; writes outside the project are allowed only
-  under `/tmp/*`.
+  `~/.pi/agent/*` and `/tmp/*` are allowed, and so are reads of `~/.bun/install/*` when the
+  `pi` on your `PATH` was installed with bun (Pi's own code); writes outside the project are
+  allowed only under `/tmp/*`.
 
 Until the project is trusted, Pi does not load either of them: the hooks do not run and the
 policy does not apply. If a saved decision says the project is untrusted, Pi skips them without
