@@ -50,7 +50,7 @@ Key invariants:
 | `contracts/` | Cross-project interface contracts: `crucible-envelope.md`, `gate-lock.md`, `sandesh-cli.md`, `lean-ctx.md`, `mail-axi.md` |
 | `docs/research/` | `PRD-model-b-rationalization.md` (D1–D10) + `DN-*.md` design notes |
 | `docs/changes/` | `README.md` = CR queue (structure only) + `CR-MDB-NNN-*.md` specs |
-| `tests/` | 49 `unittest` modules; mostly structural/contract gates |
+| `tests/` | 50 `unittest` modules; mostly structural/contract gates |
 | `archive/` | `BASELINE.md` + `wave1..3/` historical records — read-only history |
 | `audits/` | Dated evidence files backing PRD decisions |
 
@@ -111,7 +111,7 @@ There is **no** Makefile/justfile, **no** CI test workflow (the only workflow is
 
 ## Testing & QA
 
-Pure **`unittest`** — no pytest, no `conftest.py`, no fixtures/markers. 49 modules in `tests/` (`tests/test_*.py`), each file ending in `if __name__ == "__main__": unittest.main()`. Naming as practised: the wave-1/2 modules use `<Topic><Section>Test` classes (e.g. `ContractsS2Test`) with `test_s<n>_<assertion>` methods; later modules use `<Feature>Test` classes (e.g. `BlockDirectCargoTestScriptTest`) with descriptive method names. A helper more than one module needs lives once in `tests/_helpers.py` and is imported (CR-MDB-032 §S3 gates a module-level helper body defined in two modules).
+Pure **`unittest`** — no pytest, no `conftest.py`, no fixtures/markers. 50 modules in `tests/` (`tests/test_*.py`), each file ending in `if __name__ == "__main__": unittest.main()`. Naming as practised: the wave-1/2 modules use `<Topic><Section>Test` classes (e.g. `ContractsS2Test`) with `test_s<n>_<assertion>` methods; later modules use `<Feature>Test` classes (e.g. `BlockDirectCargoTestScriptTest`) with descriptive method names. A helper more than one module needs lives once in `tests/_helpers.py` and is imported (CR-MDB-032 §S3 gates a module-level helper body defined in two modules).
 
 ```bash
 python3 -m unittest tests.test_hooks                       # one module
