@@ -1,207 +1,120 @@
-# CR-MDB-026 — The wake watcher must stay alive: supervised process + `restart: on-failure`, and the three-exit taxonomy the bundles conflate
+# CR-MDB-026 — The wake watcher stays alive: the Model B watcher first, and the six exits Sandesh reports
 
-**Status:** PENDING
+**Status:** PENDING (filed 2026-09-16; rewritten at its gap-analysis 2026-09-24 — earlier text is git
+history and is not to be consulted for contracts)
 **Type:** bugfix
-**Priority:** P1 (blocks release 1.0.0 — TWO independent guarantees of a dead watcher, both
-measured this session. (a) Launching it as a backgrounded shell job means any harness with a job
-deadline shorter than the watcher's timeout kills it — observed at 300s against a 14400s timeout,
-a 48x mismatch. (b) Even supervised, the watcher exits code 2 at its own 14400s timeout, so the
-default no-restart policy leaves it dead after ~4 hours of any long session. A dead Mainline
-watcher silently stops waking on Track mail while a blocked track HOLDS forever, which is the
-exact failure the prime directive exists to prevent — and because a timeout exit and the
-mail-arrival exit are both just "the process is gone", the bundles' current two-case reading of
-an exit is itself part of the defect)
-**Depends on:** CR-MDB-029 (on Pi the supervised process with `restart: on-failure` is a
-Model-B-built Pi extension — DN §D15.3, user ruling; without it this CR's §S1 has no mechanism
-on the only target and the watcher regresses to the very defect it exists to fix, DN §D13 (3)).
-Until 029 ships, the `run_in_background` fallback §S4 names is the Pi path, and the bundles must
-say so explicitly.
-**Labels:** skills, hooks, orchestration, sandesh, bugfix
-**Design reference:** measured failure this session (2026-09-16, Mainline - ModelB) · `skills-src/bootstrap/SKILL.md` §Step-1 · `skills-src/shutdown/SKILL.md` §common-final-step · `skills-src/model-b/references/sandesh.md` §Bootstrap + §PRIME-DIRECTIVE · project memory `sandesh-mcp-only-boundary` (the CLI verbs an agent session may run)
+**Priority:** P1 — in release 1.0.0, wave 2. A dead watcher silently stops waking a session, and a
+track that raised a blocker then holds forever — the failure the prime directive exists to prevent.
+**Depends on:** — (CR-MDB-029, the Model B watcher, has shipped)
+**Labels:** skills, orchestration, sandesh, bugfix
+**Design reference:** CR-MDB-029 §Context (Sandesh 0.3.5's exit contract, measured) and §S2 (the
+Model B watcher's behaviour) · `sandesh notify --help` §"Why the listener stopped" (Sandesh's own
+statement of each reason) · DN §D18 (shared skills name capabilities and CLIs, never harness tools)
+· project memory `sandesh-mcp-only-boundary`
 
-## Amendments 2026-09-21 (from `audits/2026-09-21-codebase-review-docs.md`)
+## Context — measured
 
-- Dependency on **CR-MDB-029** added (header). §S1 names the Pi mechanism: the `sandesh-watcher`
-  extension (029 §S2) implements this CR's three-exit taxonomy and readiness-on-banner; 029's
-  AC asserts mail / timeout / lock-conflict handling with a faked `sandesh notify`. The three
-  instruction-level edits (§S2/§S3) reference that extension's command, with the backgrounded
-  fallback labelled as such.
-- The other `run_in_background` uses in the skills (dispatching RED/GREEN/VERIFY/FIX,
-  `orchestration-track.md:39`; `crucible:114`) are NOT the watcher and are NOT this CR's — they
-  are rewritten for archimedes' blocking dispatch by CR-MDB-031 §S2.
+- **Every skill that launches the watcher says "in the background (`run_in_background`)"**:
+  `skills-src/bootstrap/SKILL.md` Step 1 and Guardrails, `skills-src/model-b/references/sandesh.md`
+  §Bootstrap step 3, and the inbox-watcher line in `orchestration-mainline.md`. `shutdown`'s final
+  step stops it with `TaskStop` or a targeted `pkill`. Those are one harness's tool names, and a
+  background job can be killed by a harness deadline shorter than the watcher's own timeout
+  (observed once at 300 s against Sandesh's 14400 s default).
+- **The Model B watcher (CR-MDB-029)** supervises `sandesh notify`, stays running at all times, and
+  handles every exit itself: on mail it wakes the session once and relaunches; the same unread mail
+  never wakes it twice; a timeout relaunches silently; an error or a terminal exit is surfaced and
+  never relaunched. With it, a woken session **only fetches** — the watcher relaunches itself.
+- **Without the Model B watcher** (the package is recommended, not required — CR-MDB-036 §S1), the
+  session runs `sandesh notify` through its harness's facility for long-running background
+  processes that notify it when they exit, and responds to each exit itself.
+- **Sandesh 0.3.5 names the reason in its last log line** (`sandesh notify --help` lists them):
 
-## Context
+  | Reason (last log line) | Exit | The session's response without the Model B watcher |
+  |---|---|---|
+  | mail arrived (`✉ … unread`) | `0` | fetch, then relaunch |
+  | timed out | `2` | relaunch; nothing to fetch |
+  | error (usage or configuration) | `1` | fix the command, then relaunch |
+  | tombstoned (project retired) | `3` | do **not** relaunch; report it |
+  | evicted (another notifier took the address) | `4` | do **not** relaunch; report it |
+  | already live (dedup) | `5` | do **not** relaunch — a watcher already holds the address |
+  | killed by a signal | `128+n` | relaunch, unless you stopped it yourself |
 
-`bootstrap` tells every orchestrator to launch its wake watcher as a **backgrounded shell job**:
-
-> Launch the wake watcher **in the background** (`run_in_background`):
-> `sandesh notify --to "<your address>" --project <Project>`. NEVER run it inline — it blocks.
-
-The reasoning is sound — the watcher blocks, so it cannot run inline. The **mechanism** is wrong
-on any harness that imposes a deadline on backgrounded jobs.
-
-**Measured, this session, twice.** The watcher was launched exactly as the skill instructs and
-was killed at 300 seconds by the harness job deadline, mid-poll, with no mail involved:
-
-```
-[notify] watching Mainline - ModelB in ModelB  (pid 668564, interval 10s, timeout 14400s)
-[notify] 15:48:51 no 'to' mail — next check in 10s
-…30 healthy polls…
-[notify] 15:53:41 no 'to' mail — next check in 10s
-[Command timed out after 300 seconds]
-```
-
-The watcher's own timeout is **14400s**; the harness killed it at **300s** — a 48× mismatch. It
-was polling healthily at the moment it died. Relaunching it the same way just restarts the same
-5-minute clock, so the steady state is a watcher that is dead far more often than alive.
-
-**Why this is a correctness bug and not an inconvenience.** The whole point of the watcher is
-out-of-band wake: an MCP server cannot re-invoke a sleeping agent, so `sandesh notify` exiting on
-mail arrival IS the wake mechanism (`sandesh.md` §Two-channels). A watcher killed by a deadline
-exits **exactly like a watcher that received mail** — same process gone, and on some harnesses
-the same exit code. So:
-
-- Mainline stops waking on Track requests; a track that raised a blocker HOLDS forever (`sandesh.md`:
-  a track holds with "zero LLM turns, never self-poll" — it is structurally incapable of nudging).
-- The deadline-kill is **indistinguishable from the mail-arrival exit** without reading the log,
-  so the documented `fetch`-then-relaunch response fires on a false signal.
-- A relaunched watcher only fires on mail arriving **after** it starts (`sandesh.md` PRIME
-  DIRECTIVE), so every deadline-kill opens a gap in which arriving mail produces no wake at all.
-  The prime directive's own `fetch`-FIRST ordering exists for this gap — but it only helps if the
-  session happens to be awake to notice the exit.
-
-**The correct mechanism already exists and is not used.** A long-running, supervised process with
-no job deadline, addressed by a stable name, with readiness gated on the watcher's own log line.
-Verified working this session:
-
-```
-Started sandesh-watcher-modelb: ready pid=672627 uptime=155ms restarts=0
-Ready log matched: watching Mainline - ModelB
-```
-
-Readiness matched on the watcher's real banner, so "launched" and "actually listening" became one
-observable fact instead of two hopes — which also closes the `listening:false` trap the bundles
-currently handle with a manual re-probe step.
-
-**Supervision alone is NOT sufficient — measured later the same session.** The supervised watcher
-then exited **code 2** after ~4 hours with `timed out (1441 polls)` in its own log (1441 × 10s
-≈ 14410s, i.e. the CLI's documented 14400s timeout). So the watcher has a finite natural
-lifetime and dies at it, supervised or not. A supervised process with the default `restart: no`
-policy is therefore still guaranteed to be dead after ~4 hours of a long session.
-
-**There are THREE distinct exits and the bundles conflate them.** This taxonomy is the CR's
-central content, because the response differs per case and two of the three look identical:
-
-| exit | meaning | correct response |
-|---|---|---|
-| `0` | mail arrived — this IS the wake mechanism | `fetch` FIRST, then relaunch (the session's job) |
-| `2` | the 14400s timeout expired; no mail involved | relaunch; no fetch needed (nothing was delivered) |
-| non-zero, immediately after launch | a duplicate hit the lock | **do nothing** — the prior watcher is alive |
-
-**`restart: on-failure` is the correct policy and discriminates by construction:** mail arrival
-exits `0`, which a failure-only policy does NOT restart — so the session is still woken and still
-performs the mandatory `fetch`-then-relaunch — while timeout expiry and transient faults exit
-non-zero and self-heal under bounded backoff. Verified working this session; a duplicate-lock
-exit also self-limits because the backoff applies while the live watcher keeps the lock.
-
-
-**Scope is two bundles plus one reference, and the instruction appears more than once.** It is in
-`bootstrap` (Step 1), in `shutdown` (the kill step names the same launch mechanism it is undoing),
-and in `model-b/references/sandesh.md` (§Bootstrap step 3 — the generic mechanics every project
-inherits). All three must move together or a reader following one will contradict another.
+  The skills today know three exits and read "the process is gone" as mail.
 
 ## Scope
 
-### §S1 — Correct the launch instruction in `sandesh.md` (the generic authority)
-§Bootstrap step 3 names a **supervised long-running process** as the launch mechanism, keyed by a
-stable per-address name, with readiness gated on the `watching <address> in <Project>` banner,
-**and an explicit `restart: on-failure` policy** — supervision without it still leaves the
-watcher dead at its own 14400s timeout.
-`run_in_background` is retained as an explicitly-labelled **fallback for harnesses with no process
-supervisor**, together with the consequence of using it (the watcher dies at the harness job
-deadline and must be treated as unreliable).
+### §S1 — `sandesh.md`: the launch mechanism and the exit table
+§Bootstrap step 3 names the **Model B watcher** as the way to start the notifier, and states that
+with it a woken session only fetches. It names, as the fallback when the Model B watcher is not
+installed, running `sandesh notify --to "<your address>" --project <Project>` through the harness's
+long-running background-process facility that notifies on exit — never inline (it blocks), and
+never as a job with a deadline shorter than the watcher's timeout.
 
-The PRIME DIRECTIVE section carries the **three-exit taxonomy** (exit `0` = mail arrived, the wake
-itself, answer with `fetch` FIRST then relaunch; exit `2` = the 14400s timeout expired, relaunch
-with no fetch owed; immediate non-zero = a duplicate hit the lock, do NOTHING because the prior
-watcher is alive). It states that the log tail is what distinguishes them, that `fetch` precedes
-relaunch whenever mail could have arrived, and that a failure-only restart policy is safe
-precisely because the mail-arrival case exits `0` and is therefore never auto-restarted behind the
-session's back.
+The PRIME DIRECTIVE section carries the table above: each reason, how to recognise it from the last
+log line, and the response. It states that `sandesh notify --help` is Sandesh's authority for the
+reasons, and that fetching precedes relaunching whenever mail may have arrived.
 
-### §S2 — Correct `bootstrap` Step 1
-Same substitution, phrased for the bootstrap flow, keeping the existing "never run it inline" and
-"exactly ONE per address" rules intact. The existing manual `listening:true` re-probe is retained
-(it verifies the addressbook, which readiness-matching does not), but is no longer the only signal
-that the launch worked.
+### §S2 — `bootstrap` Step 1 and Guardrails
+Same mechanism, phrased for the bootstrap flow. The existing rules stay: check the addressbook first
+and start a watcher only if the address is not `listening:true`; exactly one per address; never
+inline; re-probe `listening:true` after starting.
 
-### §S3 — Correct `shutdown`'s final step
-The kill step names how to stop a **supervised** watcher by name, keeping the existing targeted-kill
-guidance as the fallback path and the absolute prohibition on machine-wide `pkill` untouched. The
-"kill it LAST, do not relaunch" semantics are unchanged — this CR changes the mechanism, never the
-lifecycle.
+### §S3 — `shutdown`'s final step
+The notifier is stopped through the Model B watcher's stop, or, on the fallback path, through the
+harness facility that runs it (stopping your own process only) — with the targeted kill of your own
+address's `sandesh notify` as the last resort. The prohibition on machine-wide kills, and the
+"kill it last, never relaunch" lifecycle, are unchanged.
 
-### §S4 — No new coupling
-No change to `sandesh` CLI usage beyond the launch/stop mechanism, no new dependency, and no
-filesystem access to the Sandesh store (project memory `sandesh-mcp-only-boundary` stands).
+### §S4 — The other watcher lines agree
+`orchestration-mainline.md`'s inbox-watcher line and `orchestration-common.md`'s bracket lines name
+the same mechanism as §S1, and no longer name a single harness's background-job tool.
+
+### §S5 — Capabilities, not harness tools (DN §D18)
+The rewritten text names the capability — "the Model B watcher", "a background process that
+notifies you when it exits", "stop your watcher" — and the `sandesh` CLI where precision matters. It
+names no harness tool: not `run_in_background`, `TaskStop`, `process`, or the Model B watcher's own
+tool name. Fetching, where these lines mention it, uses the CLI form
+(`sandesh fetch --project <Project> --to '<your address>'`).
 
 ## Acceptance criteria
 
 ### §S1
-- [ ] `skills-src/model-b/references/sandesh.md` §Bootstrap names a supervised named process as the
-      primary launch mechanism, with readiness gated on the watcher's own banner line.
-- [ ] `run_in_background` appears only as an explicitly-labelled fallback, and the text states the
-      deadline-kill consequence of using it.
-- [ ] The launch instruction specifies `restart: on-failure` (or the harness equivalent), and the
-      text states WHY a failure-only policy is correct: mail arrival exits `0` and must NOT be
-      auto-restarted, because the session owes a `fetch` on that path.
-- [ ] The PRIME DIRECTIVE section enumerates all THREE exits with a distinct response each —
-      `0` mail-arrived (fetch first, then relaunch), `2` timeout-expired (relaunch, no fetch owed),
-      immediate non-zero (duplicate hit the lock, do nothing, prior watcher alive) — and names the
-      log tail as what distinguishes them.
-- [ ] No instruction anywhere treats a non-zero watcher exit as proof that mail arrived, or a
-      zero exit as proof that it did not.
+- [ ] `sandesh.md` §Bootstrap names the Model B watcher first, states that with it a woken session
+      only fetches, and names the background-process fallback with its "never inline, no shorter
+      deadline" conditions.
+- [ ] `sandesh.md`'s PRIME DIRECTIVE names all seven rows of the table — each reason with its exit
+      and its response — and cites `sandesh notify --help` as the authority for the reasons.
+- [ ] No text under `skills-src/` tells a session to relaunch after tombstoned, evicted or already
+      live, or treats any non-zero exit as proof that mail arrived.
 
 ### §S2
-- [ ] `skills-src/bootstrap/SKILL.md` Step 1 matches §S1's mechanism; the "exactly ONE per address"
-      and "never inline" rules survive verbatim in substance.
-- [ ] The `listening:true` addressbook re-probe is still required after launch.
+- [ ] `bootstrap` Step 1 and Guardrails name the §S1 mechanism; the addressbook-first check,
+      exactly-one-per-address, never-inline and `listening:true` re-probe rules remain.
 
 ### §S3
-- [ ] `skills-src/shutdown/SKILL.md`'s final step stops the watcher by its supervised name, retains
-      the targeted-kill fallback, and still forbids machine-wide kills.
-- [ ] The kill-last / no-relaunch lifecycle is unchanged — asserted by diffing the lifecycle
-      sentences, which must not move.
+- [ ] `shutdown`'s final step stops the watcher through the Model B watcher, then the harness
+      facility, then a targeted kill of the session's own address, and still forbids machine-wide
+      kills; the kill-last / no-relaunch sentences are unchanged.
 
-### §S4
-- [ ] Zero occurrences of a watcher-launch instruction that names ONLY `run_in_background` across
-      `skills-src/` — asserted by grep over all three files.
-- [ ] No test or skill instructs any direct read/write of the Sandesh data directory.
-
-## Estimated size
-
-Three files, instruction-level edits; no `modelb_axi/` logic change. One test extension asserting
-the grep gate in §S4/AC1 (the gate is the only thing that stops the old instruction reappearing in
-a future bundle).
+### §S4 / §S5
+- [ ] A gate over `bootstrap/SKILL.md`, `shutdown/SKILL.md`, `model-b/references/sandesh.md`,
+      `orchestration-common.md` and `orchestration-mainline.md` finds none of `run_in_background`,
+      `TaskStop` or `sandesh_watcher`, with a detector fixture proving it bites. (The sub-agent
+      dispatch uses of `run_in_background` in `orchestration-track.md` and `crucible/SKILL.md` are
+      CR-MDB-031's and outside this gate.)
+- [ ] No skill instructs any direct read or write of the Sandesh data directory.
+- [ ] Section headings and anchors that existing tests pin are unchanged; tests asserting the old
+      launch wording are migrated and listed by id.
 
 ## Risk
 
-- **The three files must move in one commit.** A reader following a half-updated set gets
-  contradictory instructions, which is worse than the current uniformly-wrong state.
-- **Do not weaken the prime directive while rewording it.** The `fetch`-before-relaunch ordering
-  and the exactly-one-watcher rule are load-bearing; this CR makes the launch durable, it does not
-  relax the discipline.
-- **Supervisor availability is harness-dependent.** The fallback must stay genuinely usable, and
-  must not be written as an afterthought — a harness without a supervisor still needs a correct,
-  if degraded, procedure.
-- `bootstrap`/`shutdown` are deployed bundles; their gates assert structure and anchors, so the
-  edits must keep section headings the existing tests pin.
+- The five files move together in one change: a half-updated set gives contradictory instructions.
+- The fetch-before-relaunch ordering and the exactly-one-watcher rule are load-bearing; this CR
+  changes the mechanism and the exit reading, never the discipline.
 
 ## Non-goals
 
-- No change to the `sandesh` CLI itself (not Model B's code) and no request to Crucible or Sandesh.
-- No change to the wake protocol, the addressing scheme, or the request/directive/reply verbs.
-- No change to the watcher's own poll interval or timeout — those are the CLI's defaults and are
-  correct; the defect is purely in how Model B's bundles tell a session to launch it.
-- No retrofit of other long-running processes; this CR is scoped to the Sandesh watcher, which is
-  the one whose death is silent.
+- No change to Sandesh (not Model B's code), the wake protocol, addressing, or the verbs.
+- No general conversion of the skills' MCP verb references to the CLI (CR-MDB-031); only the lines
+  this CR rewrites use the CLI fetch form.
+- No change to the Model B watcher (CR-MDB-029).

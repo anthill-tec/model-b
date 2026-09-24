@@ -34,7 +34,7 @@ Queue rows enumerate the whole delivery (structure only). **Live status lives on
 | [CR-MDB-021](CR-MDB-021-chezmoi-retirement.md) | Retire chezmoi introspection from the test suite: eight false-green release gates removed, policy self-enforcing | 5 | — |
 | [CR-MDB-033](CR-MDB-033-installer-correctness.md) | Installer correctness: one `target_root` in `install.toml`, atomic writes everywhere, unmanaged files never clobbered, manifest always consulted | 5 | — |
 | [CR-MDB-030](CR-MDB-030-pi-hook-runtime.md) | Pi hook runtime: default-export factory, payload transport, Pi tool-name contract in the seven scripts, matcher honoured, real fail-closed, worktrees carry `.pi/extensions/` (P0 — every hook is a no-op on the only target today) | 5 | — |
-| [CR-MDB-026](CR-MDB-026-watcher-launch-supervision.md) | The wake watcher must stay alive: supervised process + `restart: on-failure`, and the three-exit taxonomy (mail / timeout / lock-conflict) the bundles conflate | 5 | 029 |
+| [CR-MDB-026](CR-MDB-026-watcher-launch-supervision.md) | The wake watcher stays alive: the Model B watcher first, and the six exits Sandesh reports | 5 | — |
 | [CR-MDB-025](CR-MDB-025-pi-agent-definitions.md) | Pi agent definitions: neutral schema, per-harness emitter, rendered per project | 5 | 017, 024, 027, 030, 033 |
 | [CR-MDB-036](CR-MDB-036-harness-capability-contract.md) | Harness capability contract and installer stack selection | 5 | — |
 | [CR-MDB-037](CR-MDB-037-install-guide-freshness-policy.md) | Install guide, deployed-asset freshness, the per-project permission policy, and project trust | 5 | 036 |
