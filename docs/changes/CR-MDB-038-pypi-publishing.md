@@ -44,8 +44,9 @@ report this CR removes) · `skills-src/git-workflow/SKILL.md` §Releases
   version); `pyproject.toml` carries no literal version.
 - The sdist includes `LICENSE` and `docs/install-guide.md`; the wheel's metadata carries the license
   and the readme.
-- CR-MDB-037's derived-surfaces table in the guide gains the PyPI project page (the whole guide, as
-  the package readme).
+- The guide's `## Marked regions` section names the PyPI project page as showing the whole guide
+  (the package readme), beside the release notes and the Pi package README (amended at C1: the
+  guide carries prose there, not a table).
 
 ### §S2 — The built artifacts install and work
 A wheel built from the sdist (the path PyPI users take) installs into an isolated tool directory, and
@@ -85,7 +86,7 @@ needs editing after the upload.
       `modelb_axi.__version__`.
 - [ ] The sdist contains `LICENSE` and `docs/install-guide.md`; neither artifact contains any file
       under `tests/`, `archive/` or `audits/`, and the wheel contains every `force-include` root.
-- [ ] The guide's derived-surfaces table names the PyPI project page.
+- [ ] The guide's `## Marked regions` section names the PyPI project page as showing the whole guide.
 
 ### §S2
 - [ ] A wheel built from the sdist installs into an isolated `UV_TOOL_DIR`/`UV_TOOL_BIN_DIR`; the
