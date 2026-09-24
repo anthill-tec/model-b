@@ -551,9 +551,9 @@ class ClientVerbSweepS4cTest(unittest.TestCase):
         )
         self.assertTrue(
             covers or declares_subset,
-            "{0}:{1}: §D7's endpoint list predates the queue, release-proposal, milestone "
+            f"{PRD}:{anchor}: §D7's endpoint list predates the queue, release-proposal, milestone "
             "and gate routes this project uses — extend it or state that it enumerates a "
-            "subset.".format(PRD, anchor),
+            "subset.",
         )
 
     def test_s4c_prd_d7_vscode_client_request_reads_as_declined(self):

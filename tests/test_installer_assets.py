@@ -58,6 +58,7 @@ import tomllib
 import unittest
 from pathlib import Path
 
+from tests._helpers import write_executable as _write_fake_executable
 from tests.pi_capability_sandbox import with_agent_dir
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -77,8 +78,6 @@ CHEZMOI_INVOCATION_SCAN_ROOTS = (
     REPO_ROOT / "hooks-src" / "scripts",
 )
 
-CLAUDE_SKILLS_DIR = Path.home() / ".claude" / "skills"
-
 # CR-MDB-024 \u00a7S3 (this cycle, C2 RED, 2026-09-22 VS Code ruling): narrowed
 # from 7 to 6 handover bundles -- the VS Code crucible-report bundle is
 # retired outright (an IDE is not a stack). Extending this file's durable
@@ -90,9 +89,6 @@ CRUCIBLE_HANDOVER_BUNDLE_NAMES = (
     "crucible-report-java",
     "crucible-report-python",
     "crucible-report-rust",
-)
-ORIGIN_CRUCIBLE_SKILLS_DIR = (
-    Path.home() / "Documents" / "data_projects" / "crucible" / "clients" / "skills"
 )
 
 # §S7's six Model B-owned skill imports (crucible is the pre-existing 011
@@ -135,26 +131,16 @@ HOOK_SCRIPT_NAMES = (
 )
 
 
-def _relative_file_set(root: Path) -> set:
-    return {str(p.relative_to(root)) for p in root.rglob("*") if p.is_file()}
-
-
 def _load_build_module():
     """Import generator/build.py as a standalone module (pure -- no I/O,
     never invokes cmd_build/cmd_check/cmd_list). generator/ has no
     __init__.py so this goes through importlib.util rather than a normal
     package import."""
     spec = importlib.util.spec_from_file_location("_cr_mdb_014_c4_build", BUILD_PY)
+    assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
-
-
-def _write_fake_executable(bin_dir: str, name: str, script_body: str) -> Path:
-    path = Path(bin_dir) / name
-    path.write_text(script_body, encoding="utf-8")
-    path.chmod(0o755)
-    return path
 
 
 _FAKE_UV_SCRIPT = (
@@ -188,93 +174,14 @@ def _run_module(*args, env_overrides=None, timeout=20):
     )
 
 
-class ImportedSkillBundleFidelityTest(unittest.TestCase):
-    """AC6 pin #1 (amended, CR-MDB-013 F1 orchestrator disposition) -- the
-    six imported bundles exist under skills-src/ with a SKILL.md, and each
-    bundle's relative-path file set is a SUPERSET of the deployed
-    ~/.claude/skills/<name>/ set (a deletion would break deployed
-    consumers; evolution/additions are fine).
-
-    Byte-for-byte fidelity was an IMPORT-TIME property, verified at
-    CR-MDB-014 C4 (2026-07-22). Under the repo-local authoring rule the
-    repo copy deliberately evolves AHEAD of the deployed tree between
-    installer deploys (e.g. CR-MDB-013 §S5 evolved
-    skills-src/model-b/SKILL.md), so per-file sha256 equality no longer
-    holds by design and is no longer asserted here."""
-
-    def test_each_imported_bundle_exists_and_covers_deployed_file_set(self):
-        failures = []
-        for name in IMPORTED_BUNDLE_NAMES:
-            deployed_dir = CLAUDE_SKILLS_DIR / name
-            imported_dir = SKILLS_SRC_DIR / name
-            # The pin is explicit: a missing deployed dir must FAIL with a
-            # clear message, never be silently skipped.
-            if not deployed_dir.is_dir():
-                failures.append(
-                    f"{name}: deployed dir {deployed_dir} does not exist -- "
-                    f"cannot verify the import covers it"
-                )
-                continue
-            if not (imported_dir / "SKILL.md").is_file():
-                failures.append(
-                    f"{name}: skills-src/{name}/SKILL.md does not exist "
-                    f"(import not yet authored)"
-                )
-                continue
-            deployed_files = _relative_file_set(deployed_dir)
-            imported_files = _relative_file_set(imported_dir)
-            missing = sorted(deployed_files - imported_files)
-            if missing:
-                failures.append(
-                    f"{name}: repo bundle must cover every deployed file "
-                    f"(superset of {deployed_dir}); missing from "
-                    f"skills-src/{name}/: {missing}"
-                )
-        # POSITIVE/EXACT -- every one of the six bundles exists and covers
-        # the deployed file set completely; zero deletions.
-        self.assertEqual(failures, [], "\n".join(failures))
-
-
 class CrucibleHandoverBundleFidelityTest(unittest.TestCase):
-    """CR-MDB-016 AC4 -- extends the CR-MDB-014 import-fidelity gate
-    (ImportedSkillBundleFidelityTest above) to the 7 handover bundles:
-    each must exist under skills-src/ with a SKILL.md, its file set must
-    be a superset of its origin counterpart under crucible:clients/skills/
-    (WHEN that origin still exists -- it freezes/retires post-handover,
-    same durability guard CR-MDB-016's own AC1 test uses), and the deploy
-    engine's bundle-discovery function must find it (so the wheel/_assets
-    coverage this AC gates actually reaches it, additively -- the
-    pre-existing seven-bundle exact-match test below is untouched)."""
-
-    def test_each_handover_bundle_exists_and_covers_origin_file_set(self):
-        if not ORIGIN_CRUCIBLE_SKILLS_DIR.is_dir():
-            self.skipTest(
-                f"{ORIGIN_CRUCIBLE_SKILLS_DIR} absent -- origin has "
-                f"frozen/retired post-handover; coverage-superset fidelity "
-                f"is no longer checkable against it"
-            )
-        failures = []
-        for name in CRUCIBLE_HANDOVER_BUNDLE_NAMES:
-            origin_dir = ORIGIN_CRUCIBLE_SKILLS_DIR / name
-            imported_dir = SKILLS_SRC_DIR / name
-            if not (imported_dir / "SKILL.md").is_file():
-                failures.append(
-                    f"{name}: skills-src/{name}/SKILL.md does not exist "
-                    f"(handover import not yet authored)"
-                )
-                continue
-            origin_files = _relative_file_set(origin_dir)
-            imported_files = _relative_file_set(imported_dir)
-            missing = sorted(origin_files - imported_files)
-            if missing:
-                failures.append(
-                    f"{name}: repo bundle must cover every origin file "
-                    f"(superset of {origin_dir}); missing from "
-                    f"skills-src/{name}/: {missing}"
-                )
-        # POSITIVE/EXACT -- every one of the 6 handover bundles exists and
-        # covers the origin file set completely.
-        self.assertEqual(failures, [], "\n".join(failures))
+    """CR-MDB-016 AC4 -- the deploy engine's bundle-discovery function must
+    find every handover bundle (so the wheel/_assets coverage this AC gates
+    actually reaches it). The origin-file-set coverage test compared against
+    the retired Crucible origin tree and could only ever skip; CR-MDB-032
+    §S1 deleted it. The CR-MDB-014 real-home import-fidelity gate
+    (ImportedSkillBundleFidelityTest) is deleted too (CR-MDB-032 §S2):
+    CR-MDB-025's rendering tests and the sandboxed installer e2e prove it."""
 
     def test_deploy_module_discovers_all_six_handover_bundle_names(self):
         sys.path.insert(0, str(REPO_ROOT))
@@ -717,26 +624,31 @@ class ChezmoiInvocationGateTest(unittest.TestCase):
         lines = source.splitlines()
         # POSITIVE -- the two retained content-assertion lines this CR
         # deliberately keeps are still exactly where the spec pins them.
+        # (Re-pinned 169->162 and 344->324 by CR-MDB-032 §S2, which
+        # retargeted that module's real-home constants and dropped its
+        # live-memory absence half; then 162->120 and 324->282 by §S3,
+        # which moved that module's private helpers to tests/_helpers.py.
+        # The two assertions are unchanged.)
         self.assertIn(
-            '"chezmoi"', lines[168],
-            f"{git_chezmoi_skills}:169 must still read the literal \"chezmoi\" "
-            f"(shipped SKILL.md frontmatter name assertion), got: {lines[168]!r}",
+            '"chezmoi"', lines[119],
+            f"{git_chezmoi_skills}:120 must still read the literal \"chezmoi\" "
+            f"(shipped SKILL.md frontmatter name assertion), got: {lines[119]!r}",
         )
-        self.assertIn("assertEqual", lines[167], f"{git_chezmoi_skills}:168 must be an assertEqual(")
+        self.assertIn("assertEqual", lines[118], f"{git_chezmoi_skills}:119 must be an assertEqual(")
         self.assertIn(
-            '"chezmoi"', lines[343],
-            f"{git_chezmoi_skills}:344 must still read the literal \"chezmoi\" "
-            f"(AGENTS.md content assertion), got: {lines[343]!r}",
+            '"chezmoi"', lines[281],
+            f"{git_chezmoi_skills}:282 must still read the literal \"chezmoi\" "
+            f"(AGENTS.md content assertion), got: {lines[281]!r}",
         )
-        self.assertIn("assertIn", lines[342], f"{git_chezmoi_skills}:343 must be an assertIn(")
+        self.assertIn("assertIn", lines[280], f"{git_chezmoi_skills}:281 must be an assertIn(")
 
         hits = find_chezmoi_invocations(source, filename=str(git_chezmoi_skills))
-        offending_at_retained_lines = [h for h in hits if h[0] in (168, 169, 343, 344)]
+        offending_at_retained_lines = [h for h in hits if h[0] in (119, 120, 281, 282)]
         # NEGATIVE -- neither retained line trips the matcher.
         self.assertEqual(
             offending_at_retained_lines, [],
             f"matcher must not trip on the retained content-assertion lines "
-            f"168-169/343-344 of {git_chezmoi_skills}; got "
+            f"119-120/281-282 of {git_chezmoi_skills}; got "
             f"{offending_at_retained_lines}",
         )
 
@@ -1229,10 +1141,8 @@ class DeployEngineAllBundlesEndToEndTest(unittest.TestCase):
         with open(Path(self._tmp_home) / "install.toml", "rb") as fh:
             data = tomllib.load(fh)
         files_section = data.get("files")
-        self.assertIsInstance(
-            files_section, list,
-            f"[[files]] must parse as a list of entries; got {type(files_section)}",
-        )
+        if not isinstance(files_section, list):
+            self.fail(f"[[files]] must parse as a list of entries; got {type(files_section)}")
         skill_md_names = set()
         for entry in files_section:
             if not isinstance(entry, dict):

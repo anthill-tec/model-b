@@ -50,7 +50,7 @@ Key invariants:
 | `contracts/` | Cross-project interface contracts: `crucible-envelope.md`, `gate-lock.md`, `sandesh-cli.md`, `lean-ctx.md`, `mail-axi.md` |
 | `docs/research/` | `PRD-model-b-rationalization.md` (D1–D10) + `DN-*.md` design notes |
 | `docs/changes/` | `README.md` = CR queue (structure only) + `CR-MDB-NNN-*.md` specs |
-| `tests/` | 19 `unittest` modules; mostly structural/contract gates |
+| `tests/` | 49 `unittest` modules; mostly structural/contract gates |
 | `archive/` | `BASELINE.md` + `wave1..3/` historical records — read-only history |
 | `audits/` | Dated evidence files backing PRD decisions |
 
@@ -111,12 +111,13 @@ There is **no** Makefile/justfile, **no** CI test workflow (the only workflow is
 
 ## Testing & QA
 
-Pure **`unittest`** — no pytest, no `conftest.py`, no fixtures/markers. 19 modules in `tests/`, classes named `<Topic><Section>Test` (e.g. `ContractsS2Test`, `BlockDirectCargoTestScriptTest`), methods `test_s2_<assertion>` in the wave-1/2 modules (wave-3+ modules use `<Feature>Test` and descriptive names — CR-MDB-032 §S6 settles the convention), each file ending in `if __name__ == "__main__": unittest.main()`.
+Pure **`unittest`** — no pytest, no `conftest.py`, no fixtures/markers. 49 modules in `tests/` (`tests/test_*.py`), each file ending in `if __name__ == "__main__": unittest.main()`. Naming as practised: the wave-1/2 modules use `<Topic><Section>Test` classes (e.g. `ContractsS2Test`) with `test_s<n>_<assertion>` methods; later modules use `<Feature>Test` classes (e.g. `BlockDirectCargoTestScriptTest`) with descriptive method names. A helper more than one module needs lives once in `tests/_helpers.py` and is imported (CR-MDB-032 §S3 gates a module-level helper body defined in two modules).
 
 ```bash
 python3 -m unittest tests.test_hooks                       # one module
 python3 -m unittest tests.test_contracts.ContractsS2Test   # one class
-MODELB_REALHOME_GATE=1 python3 tests/test_realhome_supersede.py
+python3 -m unittest discover -s tests -t .                 # full suite
+env HOME="$(mktemp -d)" PYTHONUSERBASE="$HOME/.local" python3 -m unittest discover -s tests -t .  # empty HOME
 ```
 
 Canonical runs go through the Crucible client so results are ingested:
@@ -132,10 +133,12 @@ python3 ~/.crucible/clients/python-crucible.py regression --coverage \
 
 - **Agent ids:** free-form, and a READABILITY habit rather than a parsed key — TDD-role agents by convention `CR-MDB-NNN-<cycle>-<ROLE>` (e.g. `CR-MDB-017-F1-FIX`), orchestrator ops `vidushi-mdb`. The id is assigned by the dispatcher and never minted by the agent; the ROLE is declared at registration via `--role` from the case-exact set `{RED, GREEN, FIX, VERIFY, ORCHESTRATOR, report}` and is never inferred from the id's shape, and the four TDD roles must additionally bind their cycle with `--cycle <id>` (the server refuses an unbound TDD registration 409). Read the client's agent-naming header rather than improvising.
 - JUnit XML lands in `test-reports/` as `TEST-<module>.<Class>-<YYYYMMDDHHMMSS>.xml` (gitignored; the client wipes it before each run). Plain `unittest` produces console output only.
-- **Most tests are structural gates, so ordinary edits break them.** They assert repo layout, deployed `~/.claude`/`~/.agents` state, SKILL.md frontmatter, byte-identity of imported bundles, reference-router parity, and grep-gates for retired terms (e.g. zero `WORKFLOW_CYCLE_ID`). Renaming a skill, doc, or reference file requires updating its gate.
-- `tests/test_realhome_supersede.py` touches the real home directory and **skips unless `MODELB_REALHOME_GATE=1`**.
+- **Most tests are structural gates, so ordinary edits break them.** They assert repo layout, the state a sandboxed install deploys, SKILL.md frontmatter, byte-identity of imported bundles, reference-router parity, and grep-gates for retired terms (e.g. zero `WORKFLOW_CYCLE_ID`). Renaming a skill, doc, or reference file requires updating its gate.
 - Tests import `modelb_axi` directly — install the package (`pip install -e .`) or run from the repo root.
-- Baseline for `python3 -m unittest discover -s tests -t .`: **359 tests, 0 failures, 11 skips** (measured 2026-09-22 at CR-MDB-021 C2 GREEN on `feature/CR-MDB-021-chezmoi-retirement`; the earlier 361/6F/12S, 270/7F/12S and 240/1F/12S figures are superseded). **The suite is expected to be GREEN** — this is the first baseline with no "expected failures" bucket. This reflects CR-MDB-021's retirement of the eight `chezmoi diff`/`apply` gates (`test_core_split.py::CoreSplitS5ShimRemovalAndArchiveTest`, `test_cr_authoring_skill.py::CrAuthoringSkillS3Test`, `test_crucible_skill.py::CrucibleSkillS4Test`, `test_git_chezmoi_skills.py::DeletionsS4Test`, `test_memory_model.py::MemoryModelS4Test`, `test_model_b_skill.py::ModelBSkillS4Test`, and `ChezmoiRoundTripPreconditionTest` in `test_realhome_supersede.py`) — they compared the user's dotfile source to the user's home and flapped on drift that is not a Model B property. Arithmetic: 361 − 8 removed + 3 (§S1 guard + two detector-bites tests) = 356 after C1; + 3 (§S4 prose gate, its detector fixture, the closed-CR-untouched gate) = **359** after C2. Two skips are permanently dead tests waiting for a retired origin directory (CR-MDB-032 §S1); the other nine are the real-home gate (`MODELB_REALHOME_GATE=1`) and the absent Crucible origin tree. **A failure is now a regression, not a known-bad** — investigate it rather than comparing to a list; `audits/2026-09-21-codebase-review-tests.md` diagnoses the pre-CR-MDB-021 state.
+- **The suite is expected to be GREEN, and hermetic** — no test writes to or depends on the real home, except to read Crucible's installed clients (CR-MDB-032 §S1/§S2). Baselines for `python3 -m unittest discover -s tests -t .`, measured 2026-09-24 at CR-MDB-032 C4 FIX with `MODELB_HOME`/`XDG_DATA_HOME` pointed at temp dirs:
+  - real `HOME` (Crucible clients installed): **1053 tests, 0 failures, 0 errors, 0 skips**.
+  - empty `HOME` (a fresh temp dir; `PYTHONUSERBASE` keeps user site-packages): **1053 tests, 0 failures, 0 errors, 8 skips**; the temp dir is still empty afterwards.
+- **Every skip is an absent installed Crucible client or an absent `pi` CLI.** A test that reads Crucible's released surface resolves it through `~/.crucible/crucible-clients.json` and skips, naming that manifest, when the manifest, its entry or the file is missing — the toon conformance oracle (2), the gate-lock read (1), the present-manifest half of `ManifestResolvedOracleS1Test` (1) — and `ClientContractS3Test` skips its four checks when the released client files under `~/.crucible/clients/` are absent. The `pi` CLI (with `node` and the jiti it ships) must be on `PATH`: without it the loader-driven classes skip in `setUpClass`, seven in `test_pi_hook_runtime` and three in `test_pi_sandesh_watcher`. Nothing else skips. **A failure is a regression, not a known-bad** — investigate it; `audits/2026-09-21-codebase-review-tests.md` diagnoses the pre-CR-MDB-021 state.
 - TDD is mandatory: RED before GREEN, never commit failing tests, clean build before every commit.
 
 ## Workflow Rules (Model B, solo)

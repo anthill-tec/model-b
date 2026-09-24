@@ -50,6 +50,7 @@ import unittest
 import zipfile
 from pathlib import Path
 
+from tests._helpers import decode_axi
 from tests.pi_capability_sandbox import (
     AGENT_DIR_ENV,
     make_home,
@@ -450,13 +451,6 @@ class ArtifactContentsTest(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # §S2 — sdist -> wheel -> isolated install -> installer + init
 # ---------------------------------------------------------------------------
-
-def decode_axi(stdout: str) -> dict:
-    from modelb_axi.toon import decode
-    try:
-        return decode(stdout).get("axi", {})
-    except Exception:  # noqa: BLE001 -- a non-envelope stdout is reported by the caller
-        return {}
 
 
 def strip_line_comments(text: str) -> str:

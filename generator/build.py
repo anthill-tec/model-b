@@ -218,7 +218,8 @@ def parse_filter(raw: str | None, allowed: tuple[str, ...], label: str) -> tuple
     return picked
 
 def main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(
+        description=(__doc__ or "CR-MDB-008 \u2014 generator").splitlines()[0])
     parser.add_argument("command", nargs="?", choices=["build"],
                         help="build: render and write the live agent files")
     parser.add_argument("--check", action="store_true",

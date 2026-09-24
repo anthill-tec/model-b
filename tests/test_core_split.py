@@ -1,9 +1,12 @@
 """RED-phase tests for CR-MDB-001 (Model B core split).
 
-These tests assert the acceptance criteria of CR-MDB-001 §S2-§S5 against the
-LIVE ~/.claude tree on this machine. They are intentionally written before
-the GREEN-phase reorganization runs, so most of them are expected to FAIL
-against the current (pre-CR-MDB-001) state of ~/.claude.
+Originally written against the LIVE ~/.claude tree. CR-MDB-032 §S2 retargeted
+them to the repo (the 2026-07-22 repo-local authoring rule): the model-b skill
+under skills-src/, the rendered agents under generator/agents/, the memory
+templates under skills-src/memory-templates/, the archive/ copies, and the
+repo AGENTS.md / CLAUDE.md symlink. Assertions that could only ever describe
+the user's real home (the universal ~/.claude/AGENTS.md line budget, the
+shim files' absence from ~/.claude/memory) were deleted.
 
 Stdlib only (unittest + pathlib + re).
 """
@@ -13,53 +16,19 @@ import re
 import unittest
 from pathlib import Path
 
-CLAUDE_DIR = Path.home() / ".claude"
+from tests._helpers import files_containing as _files_containing
+from tests._helpers import read_text_lenient as _read
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
-
-
-def _read(path: Path) -> str:
-    return path.read_text(encoding="utf-8", errors="replace")
-
-
-def _files_under(dir_path: Path):
-    """Yield all regular files under dir_path (recursive). Empty if dir absent."""
-    if not dir_path.is_dir():
-        return
-    for root, _dirs, files in os.walk(dir_path):
-        for name in files:
-            yield Path(root) / name
-
-
-def _files_containing(dir_path: Path, needle: str):
-    """Return sorted relative paths of files under dir_path whose content contains needle."""
-    hits = []
-    for f in _files_under(dir_path):
-        try:
-            content = _read(f)
-        except (UnicodeDecodeError, OSError):
-            continue
-        if needle in content:
-            hits.append(str(f.relative_to(dir_path)))
-    return sorted(hits)
+MODEL_B_SKILL_DIR = REPO_ROOT / "skills-src" / "model-b"
 
 
 class CoreSplitS2AgentsMdTest(unittest.TestCase):
-    """§S2 — ~/.claude/AGENTS.md is the new, trimmed universal sub-agent doc,
-    and ~/.claude/CLAUDE.md is a symlink to it."""
+    """§S2 — the repo AGENTS.md is the project contract, and CLAUDE.md is a
+    symlink to it (harness compatibility; never de-symlinked)."""
 
-    AGENTS_MD = CLAUDE_DIR / "AGENTS.md"
-    CLAUDE_MD = CLAUDE_DIR / "CLAUDE.md"
-
-    def test_s2_agents_md_line_count_at_most_100(self):
-        self.assertTrue(self.AGENTS_MD.is_file(), f"{self.AGENTS_MD} must exist")
-        lines = _read(self.AGENTS_MD).splitlines()
-        line_count = len(lines)
-        # POSITIVE (exact bound) + implicit lower bound sanity (non-empty doc).
-        self.assertLessEqual(
-            line_count, 100,
-            f"AGENTS.md must be trimmed to <=100 lines, found {line_count}",
-        )
-        self.assertGreater(line_count, 0, "AGENTS.md must not be empty")
+    AGENTS_MD = REPO_ROOT / "AGENTS.md"
+    CLAUDE_MD = REPO_ROOT / "CLAUDE.md"
 
     def test_s2_claude_md_symlinks_to_agents_md(self):
         self.assertTrue(
@@ -67,33 +36,21 @@ class CoreSplitS2AgentsMdTest(unittest.TestCase):
             f"{self.CLAUDE_MD} must be a symlink to AGENTS.md",
         )
         target = os.readlink(self.CLAUDE_MD)
-        # POSITIVE — exact target match.
-        self.assertEqual(target, str(self.AGENTS_MD))
-        # NEGATIVE bound — must not point at some other file.
-        self.assertNotEqual(target, str(CLAUDE_DIR / "memory" / "agent-baseline.md"))
-
-    def test_s2_agents_md_trigger_table_contains_model_b_and_crucible(self):
-        content = _read(self.AGENTS_MD)
-        lines = content.splitlines()
-        model_b_lines = [ln for ln in lines if "model-b" in ln]
-        crucible_lines = [ln for ln in lines if "crucible" in ln]
-        # POSITIVE — at least one line for each trigger keyword.
-        self.assertGreaterEqual(
-            len(model_b_lines), 1,
-            "AGENTS.md must contain at least one line mentioning 'model-b'",
-        )
-        self.assertGreaterEqual(
-            len(crucible_lines), 1,
-            "AGENTS.md must contain at least one line mentioning 'crucible'",
-        )
+        # POSITIVE — exact (relative) target match, resolving to AGENTS.md.
+        self.assertEqual(target, "AGENTS.md")
+        self.assertEqual(self.CLAUDE_MD.resolve(), self.AGENTS_MD.resolve())
+        # NEGATIVE bound — must not point at the retired shim.
+        self.assertNotIn("agent-baseline", target)
 
     def test_s2_agents_md_contains_no_attribution_clause(self):
-        content = _read(self.AGENTS_MD)
+        # The universal sub-agent procedure CR-MDB-001 split out carries the
+        # clause; in the repo that is the model-b skill's reference.
+        content = _read(MODEL_B_SKILL_DIR / "references" / "sub-agent-procedure.md")
         pattern = re.compile(r"(no (ai|claude) attribution|never add claude attribution)", re.IGNORECASE)
         match = pattern.search(content)
         self.assertIsNotNone(
             match,
-            "AGENTS.md must contain a 'no AI/Claude attribution' clause",
+            "sub-agent-procedure.md must contain a 'no AI/Claude attribution' clause",
         )
 
     def test_s2_agents_md_zero_worktree_boundary_mentions(self):
@@ -108,11 +65,11 @@ class CoreSplitS2AgentsMdTest(unittest.TestCase):
 
 class CoreSplitS3ModelBSkillTest(unittest.TestCase):
     """§S3 — sub-agent procedure lives at
-    ~/.claude/skills/model-b/references/sub-agent-procedure.md, and the
+    skills-src/model-b/references/sub-agent-procedure.md, and the
     model-b skill has a valid SKILL.md."""
 
-    PROCEDURE_MD = CLAUDE_DIR / "skills" / "model-b" / "references" / "sub-agent-procedure.md"
-    SKILL_MD = CLAUDE_DIR / "skills" / "model-b" / "SKILL.md"
+    PROCEDURE_MD = MODEL_B_SKILL_DIR / "references" / "sub-agent-procedure.md"
+    SKILL_MD = MODEL_B_SKILL_DIR / "SKILL.md"
 
     def test_s3_sub_agent_procedure_exists_and_contains_key_phrases(self):
         self.assertTrue(
@@ -168,12 +125,13 @@ class CoreSplitS3ModelBSkillTest(unittest.TestCase):
 
 
 class CoreSplitS4NoStaleShimReferencesTest(unittest.TestCase):
-    """§S4 — nothing under agents/memory/skills references the retired
-    agent-baseline / orchestration-universal shim files by name."""
+    """§S4 — nothing under the rendered agents, the memory templates or the
+    skill sources references the retired agent-baseline /
+    orchestration-universal shim files by name."""
 
-    AGENTS_DIR = CLAUDE_DIR / "agents"
-    MEMORY_DIR = CLAUDE_DIR / "memory"
-    SKILLS_DIR = CLAUDE_DIR / "skills"
+    AGENTS_DIR = REPO_ROOT / "generator" / "agents"
+    MEMORY_DIR = REPO_ROOT / "skills-src" / "memory-templates"
+    SKILLS_DIR = REPO_ROOT / "skills-src"
 
     def test_s4_agents_dir_no_agent_baseline_mentions(self):
         self.assertTrue(self.AGENTS_DIR.is_dir(), f"{self.AGENTS_DIR} must exist")
@@ -202,24 +160,11 @@ class CoreSplitS4NoStaleShimReferencesTest(unittest.TestCase):
 
 
 class CoreSplitS5ShimRemovalAndArchiveTest(unittest.TestCase):
-    """§S5 — the shim files are physically removed from ~/.claude/memory,
-    and content-preserving archived copies exist in the repo."""
+    """§S5 — content-preserving archived copies of the retired shim files
+    exist in the repo."""
 
-    AGENT_BASELINE_SHIM = CLAUDE_DIR / "memory" / "agent-baseline.md"
-    ORCH_UNIVERSAL_SHIM = CLAUDE_DIR / "memory" / "orchestration-universal.md"
     ARCHIVE_AGENT_BASELINE = REPO_ROOT / "archive" / "wave1" / "agent-baseline.md"
     ARCHIVE_ORCH_UNIVERSAL = REPO_ROOT / "archive" / "wave1" / "orchestration-universal.md"
-
-    def test_s5_shim_files_removed_from_memory(self):
-        # NEGATIVE — these must NOT exist anymore (bound: exactly absent, not "reduced").
-        self.assertFalse(
-            self.AGENT_BASELINE_SHIM.exists(),
-            f"{self.AGENT_BASELINE_SHIM} must be removed",
-        )
-        self.assertFalse(
-            self.ORCH_UNIVERSAL_SHIM.exists(),
-            f"{self.ORCH_UNIVERSAL_SHIM} must be removed",
-        )
 
     def test_s5_archive_wave1_copies_exist(self):
         self.assertTrue(

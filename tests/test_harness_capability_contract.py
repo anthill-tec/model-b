@@ -27,6 +27,9 @@ import tomllib
 import unittest
 from pathlib import Path
 
+from tests._helpers import decode_axi as _decode
+from tests._helpers import requirements_rows as _requirements
+from tests._helpers import write_executable as _write_exe
 from tests.pi_capability_sandbox import (
     AGENT_DIR_ENV,
     MODELB_PI_PACKAGE,
@@ -82,28 +85,6 @@ def _fake_uv_placing_sandesh(bin_dir: Path) -> str:
 def _marker_shim(marker: Path) -> str:
     """A fake binary that records every invocation in ``marker``."""
     return f'#!/bin/sh\nprintf \'%s\\n\' "$0 $*" >> "{marker}"\nexit 0\n'
-
-
-def _write_exe(bin_dir: Path, name: str, body: str) -> Path:
-    path = Path(bin_dir) / name
-    path.write_text(body, encoding="utf-8")
-    path.chmod(0o755)
-    return path
-
-
-def _decode(stdout: str) -> dict:
-    from modelb_axi.toon import decode
-    try:
-        return decode(stdout).get("axi", {})
-    except Exception:  # noqa: BLE001 — a non-envelope stdout is a test failure, reported by callers
-        return {}
-
-
-def _requirements():
-    """The §S1 declarative structure: ``modelb_axi.requirements.REQUIREMENTS``,
-    a sequence of plain-dict rows keyed by the §S1 field names."""
-    from modelb_axi.requirements import REQUIREMENTS
-    return list(REQUIREMENTS)
 
 
 def _row(requirement_id: str) -> dict:

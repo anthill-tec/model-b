@@ -19,6 +19,8 @@ markdown contract content, not Python modules.
 import unittest
 from pathlib import Path
 
+from tests._helpers import read_text_lenient as _read
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CONTRACTS_DIR = REPO_ROOT / "contracts"
 
@@ -40,10 +42,6 @@ SANDESH_MESSAGE_VERBS = (
     "register",
     "unregister",
 )
-
-
-def _read(path: Path) -> str:
-    return path.read_text(encoding="utf-8", errors="replace")
 
 
 class ContractsS2Test(unittest.TestCase):

@@ -77,6 +77,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from tests._helpers import (
+    carries_retired_register_flag as _carries_retired_register_flag,
+)
+from tests._helpers import read_text_lenient as _read
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SKILLS_SRC = REPO_ROOT / "skills-src"
 
@@ -123,13 +128,8 @@ REPORT_BUNDLE_PREFIX = "crucible-report-"
 
 # ------------------------------------------------- the register-flag surface ---
 
-# The flag Crucible retired in 0.1.0 with no alias.
-RETIRED_REGISTER_FLAG = "--phase"
-
-# CR-MDB-023: `--phase` is ALSO the live flag of `rust-code-health.py snapshot`
-# (a Model B tool, not a Crucible client). Only that exact occurrence is
-# stripped before the retired-flag check; every other `--phase` still bites.
-RUST_SNAPSHOT_PHASE_RE = re.compile(r"rust-code-health\.py\s+snapshot\s+--phase\b")
+# The retired register flag, its CR-MDB-023 `rust-code-health.py snapshot
+# --phase` exemption and the check itself live in tests/_helpers.py.
 
 # CR-MDB-023 detector lines: the retired register flag, the exempt snapshot
 # flag, and both on one line (which must still bite).
@@ -138,7 +138,7 @@ FIXTURE_LINE_SNAPSHOT_PHASE = (
 )
 FIXTURE_LINE_SNAPSHOT_AND_RETIRED = (
     FIXTURE_LINE_SNAPSHOT_PHASE
-    + " && python3 clients/rust-crucible.py register --agent X --phase RED"
+    + " && python3 clients/" "rust-crucible.py register --agent X --phase RED"
 )
 
 # Case-exact: five uppercase, `report` lowercase.
@@ -333,19 +333,19 @@ CLIENT_INVOCATION_RE = re.compile(
 # Genuine register examples, each carrying exactly one defect. The first is the
 # historic pre-CR-MDB-017 form the bundles actually shipped.
 FIXTURE_LINE_RETIRED_FLAG = (
-    "python3 clients/arduino-crucible.py register --agent AGENT_ID --phase RED"
+    "python3 clients/" "arduino-crucible.py register --agent AGENT_ID --phase RED"
 )
 FIXTURE_LINE_NO_ROLE = (
-    "python3 clients/bun-crucible.py register --agent AGENT_ID --cycle 60"
+    "python3 clients/" "bun-crucible.py register --agent AGENT_ID --cycle 60"
 )
 FIXTURE_LINE_BAD_ROLE = (
-    "python3 clients/mvn-crucible.py register --agent AGENT_ID --role red --cycle 60"
+    "python3 clients/" "mvn-crucible.py register --agent AGENT_ID --role red --cycle 60"
 )
 FIXTURE_LINE_NO_CYCLE = (
-    "python3 clients/python-crucible.py register --agent AGENT_ID --role GREEN"
+    "python3 clients/" "python-crucible.py register --agent AGENT_ID --role GREEN"
 )
 FIXTURE_LINE_CLEAN = (
-    "python3 clients/rust-crucible.py register --agent AGENT_ID --role VERIFY --cycle 60"
+    "python3 clients/" "rust-crucible.py register --agent AGENT_ID --role VERIFY --cycle 60"
 )
 
 # Register BODY fixtures -- the wire-key equivalents of the four above. The
@@ -379,9 +379,6 @@ FIXTURE_BODY = """# Fixture bundle
 
 
 # ---------------------------------------------------------------- helpers ----
-
-def _read(path):
-    return path.read_text(encoding="utf-8", errors="replace")
 
 
 def _iter_files(root):
@@ -566,13 +563,6 @@ def _documents_endpoint(text, endpoint):
 
 def _codes(findings):
     return sorted({code for code, _ in findings})
-
-
-def _carries_retired_register_flag(line):
-    """True when `line` carries the retired register flag once the
-    `rust-code-health.py snapshot --phase` occurrences are removed
-    (CR-MDB-023) -- the guard's intent is otherwise unchanged."""
-    return RETIRED_REGISTER_FLAG in RUST_SNAPSHOT_PHASE_RE.sub("", line)
 
 
 def _write_fixture_bundle(tmpdir, register_line):

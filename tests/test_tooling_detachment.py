@@ -54,8 +54,8 @@ not one:
   None of the seven consuming surfaces names the deployed store path today:
   `grep -c '.agents/scripts'` is 0 in all seven.
   `tests/test_realhome_supersede.py` mentions NONE of the eight names
-  (grep count 0 for each), so its retired-referencer gate still covers only
-  the CR-MDB-016 `*crucible*` mirrors.
+  (grep count 0 for each). CR-MDB-032 §S2 deleted that module, and with it
+  the test of its skip guards; CR-MDB-020's anchoring gate covers the mirror.
 
 §S7 — the slot is full but ungated. `scripts/` holds exactly the seven
   ADOPTED names plus the one GENERATED `toon.py`; `toon.py:5` carries the
@@ -70,7 +70,7 @@ not one:
 STANDING GUARDS — tests that PASS today, deliberately, and must keep passing:
   - `test_s5_both_projects_derive_a_byte_identical_lock_path` and
     `test_s5_lock_filename_literal_is_unchanged`. C1 adopted `gate-lock.sh`
-    verbatim and Crucible's `clients/rust-crucible.py` is the live
+    verbatim and Crucible's `rust-crucible.py` is the live
     gate-runner half, so the two derivations already agree
     (`<git-common-dir parent>/nai-gate.lock`, measured identical from BOTH
     the main tree and a linked worktree of the same fixture repo). These are
@@ -100,13 +100,14 @@ Test boundary (PRD §D9): every sandbox is a `tempfile` directory removed in
 Nothing here reads, writes or deletes under the real `~/.claude` or
 `~/.agents`, nothing invokes `chezmoi`, and the only real path this module
 compares is a STRING built from `modelb_axi.deploy`'s own constant — never
-stat'ed, never opened. `tests/test_realhome_supersede.py` is PARSED, never
-imported or run.
+stat'ed, never opened.
 
-Crucible's `clients/rust-crucible.py` is a read-only REFERENCE plus an
+Crucible's installed `rust-crucible.py` (resolved through
+`~/.crucible/crucible-clients.json`, CR-MDB-032 §S1; the test SKIPS naming
+the manifest when it is absent) is a read-only REFERENCE plus an
 OUT-OF-PROCESS oracle: its `_gate_lock_path` source segment is extracted by
 `ast` and executed by a SEPARATE interpreter, so no module from their
-checkout is ever imported into this process and no file of theirs is
+installed clients is ever imported into this process and no file of theirs is
 modified.
 
 Stdlib only: ast, importlib.util, os, re, shutil, subprocess, sys, tempfile,
@@ -126,6 +127,9 @@ import zipfile
 from pathlib import Path
 
 from modelb_axi import deploy
+from tests._helpers import installed_crucible_file
+from tests._helpers import read_text_lenient as _read
+from tests._helpers import rel_to_repo as _rel
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS_DIR = REPO_ROOT / "scripts"
@@ -133,7 +137,6 @@ CONTRACTS_DIR = REPO_ROOT / "contracts"
 GATE_LOCK_SH = SCRIPTS_DIR / "gate-lock.sh"
 GATE_LOCK_CONTRACT = CONTRACTS_DIR / "gate-lock.md"
 ORCH_COMMON = REPO_ROOT / "skills-src" / "model-b" / "references" / "orchestration-common.md"
-REALHOME_MODULE = REPO_ROOT / "tests" / "test_realhome_supersede.py"
 DN_RATIONALIZATION = REPO_ROOT / "docs" / "research" / "DN-rationalization-plan-review.md"
 
 #: §S7 — the asset class is SEVEN adopted scripts plus ONE generated artifact.
@@ -179,12 +182,12 @@ GATE_LOCK_EXIT_CODES = (
 )
 
 #: §S5 — the shared mutex path. NOT a stray project name: Crucible's
-#: `clients/rust-crucible.py` writes and reclaims this exact file.
+#: `rust-crucible.py` writes and reclaims this exact file.
 LOCK_FILENAME = "nai-gate.lock"
 LOCK_FALLBACK_PATH = "/tmp/" + LOCK_FILENAME
 RENAME_IS_A_CREQ = (
     f"{LOCK_FILENAME} is a CROSS-PROJECT WIRE CONTRACT, not a stray project "
-    f"name to tidy up. Crucible's clients/rust-crucible.py is the GATE-RUNNER "
+    f"name to tidy up. Crucible's rust-crucible.py is the GATE-RUNNER "
     f"half of the same protocol: it derives the identical path "
     f"(_gate_lock_path), CREATES the file, DELETES it on finish/signal and "
     f"reclaims it when stale (STALE_LOCK_MAX_AGE_S), and names our script in "
@@ -297,7 +300,7 @@ S6_EXCLUDED_ROOT = "archive"
 S6_EXCLUSION_IS_LOAD_BEARING = ("docs/changes", "archive", "tests")
 
 #: The retired mirror location paired with one of the eight. Same shape as
-#: `tests/test_realhome_supersede.py`'s `LIVE_SCRIPTS_CRUCIBLE_REF_RE`:
+#: the retired `tests/test_realhome_supersede.py`'s `LIVE_SCRIPTS_CRUCIBLE_REF_RE`:
 #: prose that merely NAMES a tool without the retired path prefix is not a
 #: home-anchored reference and is not flagged.
 HOME_ANCHORED_TOOL_REF_RE = re.compile(
@@ -327,9 +330,6 @@ STORE_RELDIR_TOKEN = (
 #: `Path.home()` as the default target root, so the path a track types is the
 #: reldir under `~`.
 DEPLOYED_STORE_PATH_TOKEN = f"~/{STORE_RELDIR_TOKEN}" if STORE_RELDIR_TOKEN else None
-
-#: §S6/AC3 — the real-home module's durability gate.
-REALHOME_GATE_ENV_VAR = "MODELB_REALHOME_GATE"
 
 #: §S6/AC4 — the degrade marker `worktree-flow.py` prints when it cannot
 #: resolve `schedule_db` from beside itself (C2 measured it at `:1060`/`:1130`).
@@ -371,9 +371,13 @@ WHEEL_ASSET_PREFIX = "modelb_axi/_assets/scripts/"
 _CRUCIBLE_DERIVATION_FN = "_gate_lock_path"
 _CRUCIBLE_ORACLE_PREAMBLE = "import os\nimport subprocess\nimport sys\n"
 _CRUCIBLE_ORACLE_TAIL = f"sys.stdout.write(str({_CRUCIBLE_DERIVATION_FN}(sys.argv[1])))\n"
-CRUCIBLE_RUST_CLIENT = (
-    Path.home() / "Documents" / "data_projects" / "crucible" / "clients" / "rust-crucible.py"
-)
+
+
+def _crucible_rust_client():
+    """``(path, "")`` for Crucible's installed gate-runner, or ``(None, reason)`` naming
+    ``~/.crucible/crucible-clients.json`` (CR-MDB-032 §S1)."""
+    return installed_crucible_file("rust")
+
 
 GIT_FIXTURE_CONFIG = (
     "-c", "user.name=CR-MDB-022 fixture",
@@ -381,17 +385,6 @@ GIT_FIXTURE_CONFIG = (
     "-c", "commit.gpgsign=false",
     "-c", "init.defaultBranch=main",
 )
-
-
-def _read(path: Path) -> str:
-    return path.read_text(encoding="utf-8", errors="replace")
-
-
-def _rel(path: Path) -> str:
-    try:
-        return str(path.relative_to(REPO_ROOT))
-    except ValueError:
-        return str(path)
 
 
 def _scan_files(root_rel: str) -> list:
@@ -559,10 +552,11 @@ def _gate_lock_derived_path(check_dir: Path) -> str:
     )
 
 
-def _crucible_derivation_source() -> str:
-    """AST-extract Crucible's `_gate_lock_path` source segment. Never
-    imported — the segment is handed to a separate interpreter."""
-    text = _read(CRUCIBLE_RUST_CLIENT)
+def _crucible_derivation_source(client: Path) -> str:
+    """AST-extract Crucible's `_gate_lock_path` source segment from the
+    installed ``client``. Never imported — the segment is handed to a
+    separate interpreter."""
+    text = _read(client)
     tree = ast.parse(text)
     for node in tree.body:
         if isinstance(node, ast.FunctionDef) and node.name == _CRUCIBLE_DERIVATION_FN:
@@ -570,14 +564,16 @@ def _crucible_derivation_source() -> str:
             if segment:
                 return segment
     raise AssertionError(
-        f"{_CRUCIBLE_DERIVATION_FN} not found in {CRUCIBLE_RUST_CLIENT} — the "
+        f"{_CRUCIBLE_DERIVATION_FN} not found in {client} — the "
         f"gate-runner half of the protocol moved; re-measure before trusting "
         f"either derivation."
     )
 
 
-def _crucible_derived_path(project_dir: Path) -> str:
-    program = _CRUCIBLE_ORACLE_PREAMBLE + _crucible_derivation_source() + "\n" + _CRUCIBLE_ORACLE_TAIL
+def _crucible_derived_path(client: Path, project_dir: Path) -> str:
+    program = (
+        _CRUCIBLE_ORACLE_PREAMBLE + _crucible_derivation_source(client) + "\n" + _CRUCIBLE_ORACLE_TAIL
+    )
     result = _run([sys.executable, "-c", program, str(project_dir)])
     if result.returncode != 0:
         raise AssertionError(
@@ -594,7 +590,7 @@ class GateLockContractS5Test(unittest.TestCase):
             self.fail(
                 f"§S5/AC2: {_rel(GATE_LOCK_CONTRACT)} does not exist. The "
                 f"serialize-heavy-gates protocol is shared with Crucible's "
-                f"clients/rust-crucible.py and is recorded nowhere in this "
+                f"rust-crucible.py and is recorded nowhere in this "
                 f"repo, so neither side can check the other's half."
             )
         return _read(GATE_LOCK_CONTRACT)
@@ -695,12 +691,12 @@ class GateLockContractS5Test(unittest.TestCase):
         Crucible's `_gate_lock_path` extracted and evaluated out of process.
         Neither side is read and trusted."""
         self.assertTrue(GATE_LOCK_SH.is_file(), f"{_rel(GATE_LOCK_SH)} is missing")
-        if not CRUCIBLE_RUST_CLIENT.is_file():
+        client, reason = _crucible_rust_client()
+        if client is None:
             self.skipTest(
-                f"Crucible's gate-runner {CRUCIBLE_RUST_CLIENT} is not on this "
-                f"machine, so the other half of the derivation cannot be "
-                f"evaluated; the contract in "
-                f"{_rel(GATE_LOCK_CONTRACT)} is then the only record."
+                f"Crucible's gate-runner is not installed ({reason}), so the "
+                f"other half of the derivation cannot be evaluated; the contract "
+                f"in {_rel(GATE_LOCK_CONTRACT)} is then the only record."
             )
         sandbox = Path(tempfile.mkdtemp(prefix="mdb022-c3-lockpath-"))
         try:
@@ -711,7 +707,7 @@ class GateLockContractS5Test(unittest.TestCase):
                 if not probe_dir.is_dir():
                     self.skipTest(f"git could not create the {label} fixture")
                 ours = _gate_lock_derived_path(probe_dir)
-                theirs = _crucible_derived_path(probe_dir)
+                theirs = _crucible_derived_path(client, probe_dir)
                 self.assertEqual(
                     ours, theirs,
                     f"§S5/AC3: from the {label}, scripts/gate-lock.sh derives "
@@ -944,48 +940,6 @@ class DetachmentS6Test(unittest.TestCase):
         finally:
             shutil.rmtree(sandbox, ignore_errors=True)
 
-    def test_s6_realhome_gate_covers_the_eight_and_stays_behind_its_env_gate(self):
-        """Static only: the real-home module is PARSED, never imported or run."""
-        self.assertTrue(
-            REALHOME_MODULE.is_file(), f"{_rel(REALHOME_MODULE)} is missing"
-        )
-        source = _read(REALHOME_MODULE)
-        tree = ast.parse(source)
-
-        self.assertIn(
-            f'"{REALHOME_GATE_ENV_VAR}"', source,
-            f"§S6/AC3: {_rel(REALHOME_MODULE)} must stay behind "
-            f"{REALHOME_GATE_ENV_VAR}=1 so the suite stays green on any "
-            f"machine with no deployed real home.",
-        )
-        ungated = []
-        for node in tree.body:
-            if not isinstance(node, ast.ClassDef):
-                continue
-            if not any(
-                isinstance(base, ast.Attribute) and base.attr == "TestCase"
-                for base in node.bases
-            ):
-                continue
-            decorators = " ".join(
-                ast.unparse(dec) for dec in node.decorator_list
-            )
-            if "skipUnless" not in decorators or "GATE_ENABLED" not in decorators:
-                ungated.append(node.name)
-        self.assertEqual(
-            [], ungated,
-            f"§S6/AC3: every TestCase in {_rel(REALHOME_MODULE)} must carry "
-            f"`@unittest.skipUnless(GATE_ENABLED, ...)`; ungated: {ungated}.",
-        )
-
-        uncovered = [name for name in TOOL_SCRIPT_NAMES if name not in source]
-        self.assertEqual(
-            [], uncovered,
-            f"§S6/AC3: {_rel(REALHOME_MODULE)}'s retired-referencer gate "
-            f"already asserts the absence of the CR-MDB-016 `*crucible*` "
-            f"mirrors and must be extended, in the same shape, to the eight "
-            f"adopted names. Not enumerated: {uncovered}.",
-        )
 
 
 class AssetSlotGatesS7Test(unittest.TestCase):

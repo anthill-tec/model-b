@@ -239,6 +239,10 @@ from pathlib import Path
 from tests.pi_capability_sandbox import with_agent_dir
 
 from modelb_axi import agents as agents_mod
+from tests._helpers import decode_envelope as _decode_envelope_c3
+from tests._helpers import parse_env_file as _parse_env_file_c3
+from tests._helpers import read_text_lenient as _read
+from tests._helpers import split_frontmatter as _split_frontmatter
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 GENERATOR_DIR = REPO_ROOT / "generator"
@@ -351,25 +355,6 @@ CURRENT_SKILLS = {
     ("rust", "verify"): [],
     ("rust", "fix"): ["crucible"],
 }
-
-
-def _read(path: Path) -> str:
-    return path.read_text(encoding="utf-8", errors="replace")
-
-
-def _split_frontmatter(content: str):
-    """Split a markdown file into (frontmatter, body) on the '---'
-    delimiters. Returns ("", content) if there is no well-formed '---'
-    frontmatter block."""
-    lines = content.splitlines()
-    if not lines or lines[0].strip() != "---":
-        return "", content
-    for idx in range(1, len(lines)):
-        if lines[idx].strip() == "---":
-            frontmatter = "\n".join(lines[1:idx])
-            body = "\n".join(lines[idx + 1:])
-            return frontmatter, body
-    return "", content
 
 
 def _frontmatter_keys(path: Path) -> list:
@@ -1492,33 +1477,6 @@ def _write_install_toml_c3(home: Path, asset_root: Path, harnesses=("pi",)) -> P
     return install_toml
 
 
-def _parse_env_file_c3(path: Path) -> dict:
-    """Minimal `KEY=VALUE` parser for the emitted `.env` -- mirrors
-    tests/test_scaffold.py's own `_parse_env_file` (test-side only, no
-    production coupling)."""
-    values: dict = {}
-    if not path.is_file():
-        return values
-    for line in path.read_text(encoding="utf-8").splitlines():
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#") or "=" not in stripped:
-            continue
-        key, _, raw_value = stripped.partition("=")
-        value = raw_value.strip()
-        if len(value) >= 2 and value[0] == value[-1] == '"':
-            value = value[1:-1]
-        values[key.strip()] = value
-    return values
-
-
-def _decode_envelope_c3(stdout: str) -> dict:
-    """Decode a TOON AXI envelope via Model B's OWN codec
-    (`modelb_axi.toon`) -- the production emitter's exact counterpart, per
-    `axi.py`'s own module docstring (never Crucible's client copy)."""
-    from modelb_axi.toon import decode
-    return decode(stdout)
-
-
 def _snapshot_hashes(root: Path) -> dict:
     """{relpath: sha256} for every regular file under `root`, `.git/`
     excluded (internal git housekeeping can touch loose-object files for
@@ -2307,8 +2265,8 @@ class AgentOwnershipRulesS6Test(unittest.TestCase):
 # \u00a7S8 -- the released client in the generator inputs (moved from CR-MDB-020
 # \u00a7S2 by user ruling 2026-09-23, committed 0246f6a). The three command
 # strings in every generator/stacks/*.toml name the released Crucible client
-# ~/.crucible/clients/<client>-crucible.py, never the retired mirror
-# ~/.claude/scripts/<client>-crucible.py (absent on a Pi install, so First
+# ~/.crucible/clients/<client>-crucible.py, never the retired
+# ~/.claude/scripts/ mirror of the client (absent on a Pi install, so First
 # Action 1 of every rendered definition could not run). Measured at 0246f6a:
 # arduino/bun/python/quarkus carry the retired form in all three commands
 # (17 occurrences each across stacks + rendered output); rust alone already
@@ -2349,7 +2307,7 @@ RETIRED_CLIENT_PATH_RE = re.compile(r"\.claude/scripts/[\w./-]*-crucible\.py")
 
 
 def _retired_client_paths(text: str) -> list:
-    """\u00a7S8 AC2 -- every `.claude/scripts/...-crucible.py` pairing in ``text``."""
+    """\u00a7S8 AC2 -- every retired-mirror (`.claude/scripts/`) client pairing in ``text``."""
     return RETIRED_CLIENT_PATH_RE.findall(text)
 
 
@@ -2398,16 +2356,17 @@ class ReleasedClientPathS8Test(unittest.TestCase):
         self.assertEqual(changed, [], "\n".join(changed))
 
     def test_s8_detector_bites_on_retired_client_path_but_not_on_released(self):
-        retired = "python3 ~/.claude/scripts/python-crucible.py register --agent X"
+        # Split literals (CR-MDB-032 \u00a7S1): the anchoring gate scans tests/.
+        retired = "python3 ~/.claude/scripts/" "python-crucible.py register --agent X"
         released = "python3 ~/.crucible/clients/python-crucible.py register --agent X"
         unrelated = "see ~/.claude/scripts/toon.py and `arduino-crucible.py` (bare)"
         self.assertEqual(
-            _retired_client_paths(retired), [".claude/scripts/python-crucible.py"]
+            _retired_client_paths(retired), [".claude/scripts/" "python-crucible.py"]
         )
         self.assertEqual(_retired_client_paths(released), [])
         self.assertEqual(_retired_client_paths(unrelated), [])
         self.assertEqual(
-            _non_released_client_tokens(retired), ["~/.claude/scripts/python-crucible.py"]
+            _non_released_client_tokens(retired), ["~/.claude/scripts/" "python-crucible.py"]
         )
         self.assertEqual(_non_released_client_tokens(released), [])
 

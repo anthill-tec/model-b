@@ -73,6 +73,8 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from modelb_axi import toon  # noqa: E402
 from modelb_axi.requirements import STACK_CLIENT_KEYS  # noqa: E402
+from tests._helpers import client_source as _client_source  # noqa: E402
+from tests._helpers import code_string_literals as _code_string_literals  # noqa: E402
 
 HOOK_PATH = REPO_ROOT / "hooks-src" / "scripts" / "ambient-board-status"
 MANIFEST_RELPATH = Path(".crucible") / "crucible-clients.json"
@@ -126,18 +128,6 @@ def _envelope(plans: list[dict], *, last_closed=None, count=None,
 FIXTURE_CR = "CR-MDB-019"
 DEFAULT_ENVELOPE = _envelope([_plan(FIXTURE_CR, "open", wave=2, cycle="C1")],
                              last_closed=LAST_CLOSED)
-
-
-def _client_source(key: str, log_path: Path, envelope: str) -> str:
-    """An executable fixture client: logs its key + argv, prints
-    ``envelope``, exits 0."""
-    return (
-        f"#!{sys.executable}\n"
-        "import json, sys\n"
-        f"with open({str(log_path)!r}, 'a', encoding='utf-8') as fh:\n"
-        f"    fh.write(json.dumps({{'key': {key!r}, 'argv': sys.argv[1:]}}) + '\\n')\n"
-        f"print({envelope!r})\n"
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -264,28 +254,6 @@ class _SandboxCase(unittest.TestCase):
 
 def _hook_source() -> str:
     return HOOK_PATH.read_text(encoding="utf-8")
-
-
-def _docstring_nodes(tree: ast.AST) -> set[int]:
-    ids = set()
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef,
-                             ast.ClassDef)):
-            body = getattr(node, "body", [])
-            if (body and isinstance(body[0], ast.Expr)
-                    and isinstance(body[0].value, ast.Constant)
-                    and isinstance(body[0].value.value, str)):
-                ids.add(id(body[0].value))
-    return ids
-
-
-def _code_string_literals(source: str) -> list[str]:
-    """Every string constant in ``source`` except docstrings."""
-    tree = ast.parse(source)
-    skip = _docstring_nodes(tree)
-    return [n.value for n in ast.walk(tree)
-            if isinstance(n, ast.Constant) and isinstance(n.value, str)
-            and id(n) not in skip]
 
 
 def _load_hook_module():

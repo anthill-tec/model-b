@@ -69,6 +69,8 @@ import unittest
 from functools import lru_cache
 from pathlib import Path
 
+from tests._helpers import requirements_rows as _requirements
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 GUIDE = REPO_ROOT / "docs" / "install-guide.md"
 README = REPO_ROOT / "README.md"
@@ -260,10 +262,6 @@ def heading_counts(text: str) -> dict[str, int]:
 # ---------------------------------------------------------------------------
 # Derived vocabulary (the gate follows the code)
 # ---------------------------------------------------------------------------
-
-def _requirements() -> list[dict]:
-    from modelb_axi.requirements import REQUIREMENTS
-    return list(REQUIREMENTS)
 
 
 def _parser_flags() -> set[str]:

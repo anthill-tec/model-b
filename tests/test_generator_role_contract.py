@@ -32,6 +32,8 @@ import tomllib
 import unittest
 from pathlib import Path
 
+from tests._helpers import read_text as _text
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 GENERATOR_DIR = REPO_ROOT / "generator"
 TEMPLATES_DIR = GENERATOR_DIR / "templates"
@@ -73,10 +75,6 @@ UNREACHABLE_RE = re.compile(
 def _rel(path):
     """Repo-relative POSIX path for a failure message."""
     return path.relative_to(REPO_ROOT).as_posix()
-
-
-def _text(path):
-    return path.read_text(encoding="utf-8")
 
 
 def _lines(path):

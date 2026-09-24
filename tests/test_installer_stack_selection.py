@@ -33,6 +33,8 @@ import tomllib
 import unittest
 from pathlib import Path
 
+from tests._helpers import decode_axi as _decode
+from tests._helpers import write_executable as _write_exe
 from tests.pi_capability_sandbox import (
     AGENT_DIR_ENV,
     make_home,
@@ -85,18 +87,6 @@ def _recording_shim(marker: Path, exit_code: int = 0) -> str:
         f"exit {exit_code}\n"
     )
 
-def _write_exe(bin_dir: Path, name: str, body: str) -> Path:
-    path = Path(bin_dir) / name
-    path.write_text(body, encoding="utf-8")
-    path.chmod(0o755)
-    return path
-
-def _decode(stdout: str) -> dict:
-    from modelb_axi.toon import decode
-    try:
-        return decode(stdout).get("axi", {})
-    except Exception:  # noqa: BLE001 — a non-envelope stdout fails the caller's asserts
-        return {}
 
 def _report_bundles() -> set[str]:
     return {

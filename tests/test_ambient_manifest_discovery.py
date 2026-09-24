@@ -64,6 +64,8 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from modelb_axi import toon  # noqa: E402
 from modelb_axi.requirements import STACK_CLIENT_KEYS  # noqa: E402
+from tests._helpers import client_source as _client_source  # noqa: E402
+from tests._helpers import code_string_literals as _code_string_literals  # noqa: E402
 
 HOOK_PATH = REPO_ROOT / "hooks-src" / "scripts" / "ambient-board-status"
 CRUCIBLE_SKILL = REPO_ROOT / "skills-src" / "crucible" / "SKILL.md"
@@ -114,17 +116,6 @@ MEASURED_MANIFEST_KEYS = ("clients", "version", "status", "config",
 # sandbox helpers
 # ---------------------------------------------------------------------------
 
-def _client_source(key: str, log_path: Path, envelope: str = FIXTURE_ENVELOPE) -> str:
-    """An executable fixture client: logs its key + argv, prints a valid
-    STATUS-CONTRACT 2.0.0 ``status`` envelope, exits 0."""
-    return (
-        f"#!{sys.executable}\n"
-        "import json, sys\n"
-        f"with open({str(log_path)!r}, 'a', encoding='utf-8') as fh:\n"
-        f"    fh.write(json.dumps({{'key': {key!r}, 'argv': sys.argv[1:]}}) + '\\n')\n"
-        f"print({envelope!r})\n"
-    )
-
 
 class _Sandbox:
     """A temp HOME, a temp project dir and an invocation log."""
@@ -145,7 +136,7 @@ class _Sandbox:
         directory = where if where is not None else self.home / ".crucible" / "clients"
         directory.mkdir(parents=True, exist_ok=True)
         path = directory / f"{key}-crucible.py"
-        path.write_text(_client_source(key, self.log), encoding="utf-8")
+        path.write_text(_client_source(key, self.log, FIXTURE_ENVELOPE), encoding="utf-8")
         path.chmod(0o755)
         return path
 
@@ -303,7 +294,7 @@ class ManifestFeedResolutionS1Test(_SandboxCase):
         """A ``~``-relative client path resolves under ``$HOME``, as
         ``capabilities.probe_crucible_client`` does (``expanduser``)."""
         self.sb.write_client("python", self.sb.home / "cl")
-        self.sb.write_manifest({"python": "~/cl/python-crucible.py"})
+        self.sb.write_manifest({"python": "~/cl/" + "python-crucible.py"})
         self.sb.mark("pyproject.toml")
         self.assert_board_rendered(self.sb.run_hook(), via_key="python")
 
@@ -326,7 +317,7 @@ class ManifestFeedResolutionS1Test(_SandboxCase):
         legacy_dir = self.sb.root / "legacy-clients"
         legacy_dir.mkdir()
         (legacy_dir / "python-crucible.py").write_text(
-            _client_source("legacy-install-toml", self.sb.log), encoding="utf-8")
+            _client_source("legacy-install-toml", self.sb.log, FIXTURE_ENVELOPE), encoding="utf-8")
         (legacy_dir / "python-crucible.py").chmod(0o755)
         modelb_home = self.sb.root / "modelb-home"
         modelb_home.mkdir()
@@ -543,28 +534,6 @@ _FORBIDDEN_PATH_TOKENS = (
 _FORBIDDEN_IMPORTS = ("site", "sysconfig", "importlib", "modelb_axi")
 
 
-def _docstring_nodes(tree: ast.AST) -> set[int]:
-    ids = set()
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef,
-                             ast.ClassDef)):
-            body = getattr(node, "body", [])
-            if (body and isinstance(body[0], ast.Expr)
-                    and isinstance(body[0].value, ast.Constant)
-                    and isinstance(body[0].value.value, str)):
-                ids.add(id(body[0].value))
-    return ids
-
-
-def _code_string_literals(source: str) -> list[str]:
-    """Every string constant in ``source`` except docstrings."""
-    tree = ast.parse(source)
-    skip = _docstring_nodes(tree)
-    return [n.value for n in ast.walk(tree)
-            if isinstance(n, ast.Constant) and isinstance(n.value, str)
-            and id(n) not in skip]
-
-
 def _imported_modules(source: str) -> list[str]:
     names = []
     for node in ast.walk(ast.parse(source)):
@@ -603,8 +572,9 @@ class NoSubstituteLocationS2Test(unittest.TestCase):
                          ["literal '.claude' names '.claude'"])
 
     def test_s2_detector_flags_site_packages_and_checkout_paths(self):
+        # Split literals (CR-MDB-032 S1): the fixture carries a checkout path at run time only.
         src = ('import site\nA = "lib/python3/site-packages/crucible"\n'
-               'B = "~/Documents/data_projects/crucible/clients"\n')
+               'B = "~/Documents/data' '_projects/crucible/clients"\n')
         findings = _substitute_path_findings(src)
         self.assertIn("imports 'site'", findings)
         self.assertTrue(any("site-packages" in f for f in findings), findings)
@@ -613,7 +583,7 @@ class NoSubstituteLocationS2Test(unittest.TestCase):
 
     def test_s2_detector_ignores_a_docstring_mention(self):
         src = ('"""Never tries ~/.claude/scripts or site-packages."""\n'
-               'def f():\n    """Nor data_projects/crucible/clients."""\n    return 1\n')
+               'def f():\n    """Nor data' '_projects/crucible/clients."""\n    return 1\n')
         self.assertEqual(_substitute_path_findings(src), [])
 
 

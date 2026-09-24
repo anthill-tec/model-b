@@ -16,11 +16,10 @@ is expected to FAIL against the current tree:
 All invocations are subprocess probes (`uv tool install`, `python -m
 modelb_axi`) against tmp sandboxes (`UV_TOOL_DIR`/`UV_TOOL_BIN_DIR`,
 `MODELB_HOME`/`--modelb-home`) -- per the CR's binding rule and DN §7,
-nothing here ever deploys into the real `~/.claude` or `~/.agents`. A
-module-level `setUpModule`/`tearDownModule` fixture snapshots the mtimes of
-the real `~/.claude/skills` and `~/.agents` trees before and after the
-whole module runs and fails loudly if anything in this file touched them
-(AC7 sandbox-guard slice for C1).
+nothing here ever deploys into the real `~/.claude` or `~/.agents`. Every
+`python -m modelb_axi` child runs with `HOME` and `PATH` pinned to a
+module-wide sandbox (CR-MDB-032 §S2, which also dropped the AC7
+real-home mtime guard).
 
 Stdlib only: unittest + subprocess + sys + os + shutil + tempfile +
 tomllib + pathlib.
@@ -37,6 +36,8 @@ import tomllib
 import unittest
 from pathlib import Path
 
+from tests._helpers import decode_envelope as _decode_envelope
+from tests._helpers import write_executable as _write_fake_executable
 from tests.pi_capability_sandbox import shared_home_without_crucible, with_agent_dir
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -47,50 +48,34 @@ MODULE_INIT = MODULE_DIR / "__init__.py"
 PACKAGE_NAME = "modelb-axi"
 CONSOLE_SCRIPT_NAME = "modelb-axi"
 
-CLAUDE_DIR = Path.home() / ".claude"
-AGENTS_HOME_DIR = Path.home() / ".agents"
-# AC7 sandbox-guard slice (C1): these two real, live trees must never be
-# touched by anything in this test module.
-_GUARD_DIRS = [CLAUDE_DIR / "skills", AGENTS_HOME_DIR]
+# CR-MDB-032 \u00a7S2: the AC7 real-home mtime guard over ~/.claude/skills and
+# ~/.agents is dropped. Every `python -m modelb_axi` child now runs with HOME
+# and PATH pinned to a module-wide sandbox (below), so no run can reach the
+# real home, the real ~/.crucible manifest or the PATH `python3`.
+_SANDBOX: dict = {}
 
 
-def _snapshot_mtimes(roots):
-    """Best-effort recursive mtime snapshot of `roots` for the AC7 guard.
-    Missing roots are simply absent from the snapshot (not an error)."""
-    snap = {}
-    for root in roots:
-        if not root.exists():
-            continue
-        snap[root] = root.stat().st_mtime
-        for child in root.rglob("*"):
-            try:
-                snap[child] = child.stat().st_mtime
-            except OSError:
-                continue
-    return snap
-
-
-_guard_snapshot_before = {}
-
-
-def setUpModule():
-    global _guard_snapshot_before
-    _guard_snapshot_before = _snapshot_mtimes(_GUARD_DIRS)
+def _sandbox_home_and_path() -> tuple:
+    """``(home, path)`` -- one module-wide sandbox ``$HOME`` (empty: no
+    ``.crucible`` manifest, no ``.pi``) and a sandbox ``PATH`` holding only
+    ``python3`` -> this interpreter. Stable across calls, so a test that runs
+    the installer twice sees one home; removed in ``tearDownModule``."""
+    if not _SANDBOX:
+        root = Path(tempfile.mkdtemp(prefix="modelb-installer-sandbox-"))
+        home = root / "home"
+        bin_dir = root / "bin"
+        home.mkdir()
+        bin_dir.mkdir()
+        (bin_dir / "python3").symlink_to(sys.executable)
+        _SANDBOX.update(root=str(root), home=str(home), path=str(bin_dir))
+    return _SANDBOX["home"], _SANDBOX["path"]
 
 
 def tearDownModule():
-    after = _snapshot_mtimes(_GUARD_DIRS)
-    if after != _guard_snapshot_before:
-        all_paths = set(_guard_snapshot_before) | set(after)
-        changed = sorted(
-            str(p) for p in all_paths
-            if _guard_snapshot_before.get(p) != after.get(p)
-        )
-        raise AssertionError(
-            "AC7 sandbox guard violated: the real ~/.claude/skills and/or "
-            "~/.agents tree changed mtime while running "
-            f"tests/test_installer.py; changed paths (up to 20): {changed[:20]}"
-        )
+    root = _SANDBOX.pop("root", None)
+    _SANDBOX.clear()
+    if root:
+        shutil.rmtree(root, ignore_errors=True)
 
 
 def _run_module(*args, env_overrides=None, timeout=15, stdin=subprocess.DEVNULL):
@@ -103,37 +88,19 @@ def _run_module(*args, env_overrides=None, timeout=15, stdin=subprocess.DEVNULL)
     CR-MDB-036 migration: every run pins ``PI_CODING_AGENT_DIR`` to a
     sandboxed, fully provisioned Pi agent dir (unless the caller pins its
     own) -- the installer's pre-flight now probes harness capabilities,
-    and no test may read the real ``~/.pi``."""
+    and no test may read the real ``~/.pi``.
+
+    CR-MDB-032 \u00a7S2: ``HOME`` and ``PATH`` are pinned to the module
+    sandbox (``_sandbox_home_and_path``) unless the caller pins its own."""
     env = dict(os.environ)
     existing_pp = env.get("PYTHONPATH", "")
     env["PYTHONPATH"] = str(REPO_ROOT) + (os.pathsep + existing_pp if existing_pp else "")
+    env["HOME"], env["PATH"] = _sandbox_home_and_path()
     env.update(with_agent_dir(env_overrides))
     cmd = [sys.executable, "-m", "modelb_axi", *args]
     return subprocess.run(
         cmd, capture_output=True, text=True, timeout=timeout, stdin=stdin, env=env,
     )
-
-
-def _write_fake_executable(bin_dir: str, name: str, script_body: str) -> Path:
-    """Write an executable shell-script fixture at ``bin_dir/name`` -- the
-    dependency-injection seam pinned for CR-MDB-014 C2 §S4 pre-flight
-    tests: fake `uv`/`sandesh` binaries on an isolated tmp PATH, so
-    detection/install is exercised with zero real network or install
-    side effects."""
-    path = Path(bin_dir) / name
-    path.write_text(script_body, encoding="utf-8")
-    path.chmod(0o755)
-    return path
-
-
-def _decode_envelope(stdout: str) -> dict:
-    """Decode a `modelb_axi` TOON AXI envelope printed on stdout, using
-    the package's OWN codec (CR-MDB-033 §S6 migration: the `deps:`
-    verdicts, `_extract_selected_harnesses`, and the already-installed
-    notice read installer FACTS from here now, not from stdout text --
-    per the CR's own AC)."""
-    from modelb_axi.toon import decode
-    return decode(stdout)
 
 
 # Fake `uv` fixture: `uv tool install <pkg>` writes an invocation marker
@@ -393,15 +360,23 @@ class NonInteractivePromptsTest(unittest.TestCase):
 
     def setUp(self):
         self._tmp_home = tempfile.mkdtemp(prefix="modelb-axi-home-")
+        # CR-MDB-032 \u00a7S2: the child's PATH is a sandbox, never the real
+        # one -- fake `uv`/`sandesh` stand in for the bootstrap deps this
+        # run previously found on the developer's PATH.
+        self._tmp_bin = tempfile.mkdtemp(prefix="modelb-axi-fakebin-")
+        _write_fake_executable(self._tmp_bin, "uv", _FAKE_UV_SCRIPT)
+        _write_fake_executable(self._tmp_bin, "sandesh", _FAKE_SANDESH_SCRIPT)
 
     def tearDown(self):
         shutil.rmtree(self._tmp_home, ignore_errors=True)
+        shutil.rmtree(self._tmp_bin, ignore_errors=True)
 
     def test_yes_flag_completes_without_blocking_on_stdin(self):
         try:
             result = _run_module(
                 "--yes", "--harnesses", "claude-code",
                 "--modelb-home", self._tmp_home,
+                env_overrides={"PATH": self._tmp_bin},
                 stdin=subprocess.DEVNULL,
                 timeout=10,
             )
@@ -773,9 +748,8 @@ class UvAbsentBootstrapFailureTest(unittest.TestCase):
 # per-harness/Vercel-store deploy roots default to the real user home
 # (~/.agents, ~/.claude) -- UNTESTED BY DESIGN. Every test below pins a
 # `--target-root <dir>` flag that overrides those roots to a tmp sandbox,
-# so the deploy engine under test NEVER touches the real trees (on top
-# of the module-level AC7 mtime guard already in force for this whole
-# file). A `MODELB_TARGET_ROOT` env var is the documented flag/env
+# so the deploy engine under test NEVER touches the real trees (and
+# every child's HOME is a sandbox, CR-MDB-032 §S2). A `MODELB_TARGET_ROOT` env var is the documented flag/env
 # alternative (mirroring --modelb-home/MODELB_HOME) but is not itself
 # exercised here -- these tests pin the flag form only.
 #
@@ -1044,11 +1018,11 @@ class DeployEngineTest(unittest.TestCase):
             f"got {data.get('deps')!r}",
         )
         files_section = data.get("files")
-        self.assertIsInstance(
-            files_section, list,
-            f"AC2: [[files]] must parse as a list of entries; got "
-            f"{type(files_section)}",
-        )
+        if not isinstance(files_section, list):
+            self.fail(
+                f"AC2: [[files]] must parse as a list of entries; got "
+                f"{type(files_section)}"
+            )
         self.assertGreaterEqual(
             len(files_section), 1,
             "AC2: [[files]] must record at least one deployed file entry",

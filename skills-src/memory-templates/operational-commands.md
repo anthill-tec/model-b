@@ -371,4 +371,4 @@ curl -X DELETE http://localhost:8082/apis/ccompat/v7/subjects/<subject>/versions
 
 **Version**: 1.0.0
 **Last Updated**: 2025-12-13
-**Related**: devops-environment.md, quarkus-patterns.md
+**Related**: java-testing-practices.md, java-quarkus-patterns.md

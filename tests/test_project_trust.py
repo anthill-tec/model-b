@@ -28,6 +28,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from tests._helpers import decode_axi, md_section
 from tests.pi_capability_sandbox import (
     AGENT_DIR_ENV,
     make_home,
@@ -44,31 +45,6 @@ _INIT_FLAGS = (
 )
 
 _TRUST_STATES = ("trusted", "untrusted", "ask", "unknown")
-
-
-def decode_axi(stdout: str) -> dict:
-    from modelb_axi.toon import decode
-    try:
-        return decode(stdout).get("axi", {})
-    except Exception:  # noqa: BLE001 -- a non-envelope stdout is reported by the caller
-        return {}
-
-
-def md_section(content: str, heading_prefix: str) -> str:
-    """The Markdown section whose heading starts with ``heading_prefix``,
-    up to the next ``## `` heading; ``""`` when absent."""
-    out: list[str] = []
-    inside = False
-    for line in content.splitlines():
-        if not inside and line.startswith(heading_prefix):
-            inside = True
-            out.append(line)
-            continue
-        if inside and line.startswith("## "):
-            break
-        if inside:
-            out.append(line)
-    return "\n".join(out)
 
 
 def trust_warnings(axi: dict) -> list[str]:

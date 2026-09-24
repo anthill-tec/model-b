@@ -28,9 +28,8 @@ current tree:
 
 All CLI-level invocations are subprocess probes against tmp sandboxes
 (``--modelb-home``/``--target-root``/``--target``) -- nothing here ever
-deploys into the real ``~/.claude`` or ``~/.agents``, mirroring
-``tests/test_installer.py``/``tests/test_scaffold.py``'s AC7 sandbox
-guard. The §S3-no-flag test (AC5) drives ``modelb_axi.cli._deploy_stage``
+deploys into the real ``~/.claude`` or ``~/.agents`` (the AC7 real-home
+mtime guard was dropped by CR-MDB-032 §S2). The §S3-no-flag test (AC5) drives ``modelb_axi.cli._deploy_stage``
 directly in-process (same idiom ``tests/test_tooling_adoption.py`` uses
 for ``modelb_axi.deploy.deploy_assets``) because the CLI's own state
 gate (``main()``: an existing ``install.toml`` without ``--reinstall``
@@ -57,55 +56,15 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from tests.pi_capability_sandbox import shared_home_without_crucible, with_agent_dir
-
 from modelb_axi.harness import HARNESS_ROSTER_IDS
+from tests._helpers import decode_envelope as _decode_envelope
+from tests._helpers import write_executable as _write_fake_executable
+from tests.pi_capability_sandbox import shared_home_without_crucible, with_agent_dir
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-CLAUDE_DIR = Path.home() / ".claude"
-AGENTS_HOME_DIR = Path.home() / ".agents"
-# AC7-style sandbox guard (mirrors tests/test_installer.py): these two
-# real, live trees must never be touched by anything in this module.
-_GUARD_DIRS = [CLAUDE_DIR / "skills", AGENTS_HOME_DIR]
-
-
-def _snapshot_mtimes(roots):
-    snap = {}
-    for root in roots:
-        if not root.exists():
-            continue
-        snap[root] = root.stat().st_mtime
-        for child in root.rglob("*"):
-            try:
-                snap[child] = child.stat().st_mtime
-            except OSError:
-                continue
-    return snap
-
-
-_guard_snapshot_before = {}
-
-
-def setUpModule():
-    global _guard_snapshot_before
-    _guard_snapshot_before = _snapshot_mtimes(_GUARD_DIRS)
-
-
-def tearDownModule():
-    after = _snapshot_mtimes(_GUARD_DIRS)
-    if after != _guard_snapshot_before:
-        all_paths = set(_guard_snapshot_before) | set(after)
-        changed = sorted(
-            str(p) for p in all_paths
-            if _guard_snapshot_before.get(p) != after.get(p)
-        )
-        raise AssertionError(
-            "AC7 sandbox guard violated: the real ~/.claude/skills and/or "
-            "~/.agents tree changed mtime while running "
-            f"tests/test_installer_correctness.py; changed paths (up to "
-            f"20): {changed[:20]}"
-        )
+# CR-MDB-032 §S2: the AC7 real-home mtime guard over ~/.claude/skills and
+# ~/.agents is dropped -- every deploy run here pins --target-root.
 
 
 def _run_module(*args, env_overrides=None, timeout=20, stdin=subprocess.DEVNULL):
@@ -123,13 +82,6 @@ def _run_module(*args, env_overrides=None, timeout=20, stdin=subprocess.DEVNULL)
     return subprocess.run(
         cmd, capture_output=True, text=True, timeout=timeout, stdin=stdin, env=env,
     )
-
-
-def _write_fake_executable(bin_dir: str, name: str, script_body: str) -> Path:
-    path = Path(bin_dir) / name
-    path.write_text(script_body, encoding="utf-8")
-    path.chmod(0o755)
-    return path
 
 
 # Fake `uv`/`sandesh` fixtures (mirror tests/test_installer.py exactly):
@@ -237,15 +189,6 @@ def _files_under_excluding_git(root: str) -> list:
             continue
         found.append(str(rel))
     return sorted(found)
-
-
-def _decode_envelope(stdout: str) -> dict:
-    """Decode a `modelb_axi` TOON envelope printed on stdout, using the
-    package's OWN codec (in-process import of the SUT package, the same
-    idiom ``ManifestAlwaysConsultedWithoutReinstallFlagTest`` already
-    uses for ``modelb_axi.cli._deploy_stage``)."""
-    from modelb_axi.toon import decode
-    return decode(stdout)
 
 
 class PiExtensionTargetRootRoundTripTest(unittest.TestCase):
@@ -991,12 +934,14 @@ class AtomicWriteSixSitesTest(unittest.TestCase):
             prior_hash = hashlib.sha256(prior_content).hexdigest()
             skipped: list = []
             unmanaged: list = []
-            with mock.patch("os.replace", side_effect=OSError("AC1 injected os.replace failure")):
-                with self.assertRaises(OSError):
-                    deploy._deploy_file(
-                        src, dest, "dest.txt", {"dest.txt": prior_hash},
-                        False, skipped, unmanaged,
-                    )
+            with (
+                mock.patch("os.replace", side_effect=OSError("AC1 injected os.replace failure")),
+                self.assertRaises(OSError),
+            ):
+                deploy._deploy_file(
+                    src, dest, "dest.txt", {"dest.txt": prior_hash},
+                    False, skipped, unmanaged,
+                )
             self.assertEqual(
                 dest.read_bytes(), prior_content,
                 "AC1/§S2 site=deploy._deploy_file: the prior destination "
@@ -1032,9 +977,11 @@ class AtomicWriteSixSitesTest(unittest.TestCase):
             entry = hooks._new_report_entry()
             scripts_root = target / "scripts-root-placeholder"
             emitter = getattr(hooks, emitter_name)
-            with mock.patch("os.replace", side_effect=OSError("AC1 injected os.replace failure")):
-                with self.assertRaises(OSError):
-                    emitter(instances, target, scripts_root, entry)
+            with (
+                mock.patch("os.replace", side_effect=OSError("AC1 injected os.replace failure")),
+                self.assertRaises(OSError),
+            ):
+                emitter(instances, target, scripts_root, entry)
             self.assertEqual(
                 dest.read_bytes(), prior_content,
                 f"AC1/§S2 site=hooks.{emitter_name}: the prior destination "
@@ -1059,15 +1006,17 @@ class AtomicWriteSixSitesTest(unittest.TestCase):
             env_path = target / ".env"
             prior_content = "PRIOR ENV CONTENT -- must survive an os.replace failure\n"
             env_path.write_text(prior_content, encoding="utf-8")
-            with mock.patch("os.replace", side_effect=OSError("AC1 injected os.replace failure")):
-                with self.assertRaises(OSError):
-                    scaffold._emit_plan(
-                        target,
-                        name="X", token="xproj", acronym="XP", mode="solo",
-                        owner="tester", stacks=["python"], harnesses=[],
-                        sub_projects=[], no_commit=True, home=home,
-                        hook_scripts_root=None,
-                    )
+            with (
+                mock.patch("os.replace", side_effect=OSError("AC1 injected os.replace failure")),
+                self.assertRaises(OSError),
+            ):
+                scaffold._emit_plan(
+                    target,
+                    name="X", token="xproj", acronym="XP", mode="solo",
+                    owner="tester", stacks=["python"], harnesses=[],
+                    sub_projects=[], no_commit=True, home=home,
+                    hook_scripts_root=None,
+                )
             self.assertEqual(
                 env_path.read_text(encoding="utf-8"), prior_content,
                 "AC1/§S2 site=scaffold._emit_plan: the prior .env content "
@@ -1199,12 +1148,14 @@ class MidEmissionFailureHonestPartialEmissionTest(unittest.TestCase):
 
         args = _init_args(self._tmp_target, dry_run=False)
         out = io.StringIO()
-        with mock.patch(
-            "modelb_axi.scaffold._render_agents_md",
-            side_effect=OSError("CR-MDB-033 C2 injected mid-emission failure"),
+        with (
+            mock.patch(
+                "modelb_axi.scaffold._render_agents_md",
+                side_effect=OSError("CR-MDB-033 C2 injected mid-emission failure"),
+            ),
+            contextlib.redirect_stdout(out),
         ):
-            with contextlib.redirect_stdout(out):
-                exit_code = scaffold.run_init(args, Path(self._tmp_home))
+            exit_code = scaffold.run_init(args, Path(self._tmp_home))
         combined = out.getvalue()
 
         # POSITIVE -- non-zero exit is the failure signal.
@@ -1250,12 +1201,14 @@ class MidEmissionFailureHonestPartialEmissionTest(unittest.TestCase):
         # field claim above, which is the new C2 behaviour this test
         # exists to pin).
         dry_args = _init_args(self._tmp_dry_target, dry_run=True)
-        with mock.patch(
-            "modelb_axi.scaffold._render_agents_md",
-            side_effect=OSError("CR-MDB-033 C2 injected mid-emission failure"),
+        with (
+            mock.patch(
+                "modelb_axi.scaffold._render_agents_md",
+                side_effect=OSError("CR-MDB-033 C2 injected mid-emission failure"),
+            ),
+            contextlib.redirect_stdout(io.StringIO()),
         ):
-            with contextlib.redirect_stdout(io.StringIO()):
-                scaffold.run_init(dry_args, Path(self._tmp_home))
+            scaffold.run_init(dry_args, Path(self._tmp_home))
         dry_leftover = _files_under_excluding_git(self._tmp_dry_target)
         self.assertEqual(
             dry_leftover, [],
