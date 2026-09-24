@@ -238,6 +238,10 @@ def _add_init_parser(subparsers) -> None:
         help="non-interactive mode: accept all defaults, never read stdin",
     )
     init.add_argument(
+        "--force-managed", action="store_true", default=argparse.SUPPRESS,
+        help="overwrite a hand-modified rendered permission policy (never an unmarked one)",
+    )
+    init.add_argument(
         "--modelb-home", metavar="DIR", default=argparse.SUPPRESS,
         help="override $MODELB_HOME (default: ${XDG_DATA_HOME:-~/.local/share}/modelb)",
     )

@@ -689,6 +689,7 @@ def _emit_plan(
     emitted: list[str] | None = None,
     agent_sources: tuple[Path, Path] | None = None,
     force_managed: bool = False,
+    ownership: dict | None = None,
 ) -> list[str]:
     """Perform the real §S3/§S4 emission under ``target``; returns the
     emitted file paths (relative to ``target``).
@@ -706,7 +707,10 @@ def _emit_plan(
 
     ``agent_sources`` is the ``(templates_dir, stacks_dir)`` pair resolved
     by :func:`run_init` during validation (CR-MDB-025 §S6); ``None``
-    renders no agent definitions."""
+    renders no agent definitions.
+
+    ``ownership``, when given, receives the permission policy's
+    ``skipped`` (hand-edited) and ``unmanaged`` paths (CR-MDB-037 §S3)."""
     if emitted is None:
         emitted = []
 
@@ -785,6 +789,9 @@ def _emit_plan(
             )
         finally:
             emitted.extend(policy_report.get("written", []))
+            if ownership is not None:
+                for key in ("skipped", "unmanaged"):
+                    ownership.setdefault(key, []).extend(policy_report.get(key, []))
 
     # §S3 monorepo: per-sub-project registry + override.
     for sub in sub_projects:
@@ -879,6 +886,7 @@ def run_init(args: argparse.Namespace, home: Path) -> int:
             plan_warnings.append(str(exc))
 
     emitted: list[str] = []
+    ownership: dict = {"skipped": [], "unmanaged": []}
     if not dry_run:
         try:
             _emit_plan(
@@ -897,6 +905,7 @@ def run_init(args: argparse.Namespace, home: Path) -> int:
                 emitted=emitted,
                 agent_sources=agent_sources,
                 force_managed=bool(getattr(args, "force_managed", False)),
+                ownership=ownership,
             )
         except (ScaffoldError, OSError) as exc:
             # CR-MDB-033 §S4: a mid-emission failure may leave a partial
@@ -912,6 +921,19 @@ def run_init(args: argparse.Namespace, home: Path) -> int:
             "recorded in docs/changes/README.md setup tasks",
             file=sys.stderr,
         )
+
+    # CR-MDB-037 §S3: a policy left alone under the ownership rules is
+    # reported, in the wording `agents` uses for its own files.
+    for rel in ownership["skipped"]:
+        warning = (f"skipping hand-modified managed file {rel} (marker hash "
+                   "mismatch; re-run with --force-managed to overwrite)")
+        print(f"modelb-axi: warning: {warning}", file=sys.stderr)
+        plan_warnings.append(warning)
+    for rel in ownership["unmanaged"]:
+        warning = (f"unmanaged: {rel} — no Model B marker; left untouched (no "
+                   "flag overwrites it)")
+        print(f"modelb-axi: warning: {warning}", file=sys.stderr)
+        plan_warnings.append(warning)
 
     # CR-MDB-037 §S4: report Pi's saved trust decision whenever this run
     # wrote under .pi/extensions/ (read-only; never edits trust.json).
@@ -944,6 +966,8 @@ def run_init(args: argparse.Namespace, home: Path) -> int:
             no_commit=bool(getattr(args, "no_commit", False)),
             register=bool(getattr(args, "register", False)),
             planned=plan,
+            skipped=ownership["skipped"],
+            unmanaged=ownership["unmanaged"],
             **trust_fields,
         )
     )
