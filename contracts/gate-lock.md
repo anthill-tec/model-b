@@ -2,7 +2,8 @@
 
 **Owner:** SHARED — Model B holds the WAITER half (`scripts/gate-lock.sh`, deployed to
 `~/.agents/scripts/gate-lock.sh`); the CRUCIBLE project holds the GATE-RUNNER half
-(`crucible:clients/rust-crucible.py`).
+(`~/.crucible/clients/rust-crucible.py`, the installed client listed in
+`~/.crucible/crucible-clients.json`).
 **Status:** LIVE on both sides. Neither half is a copy of the other: they are two
 programs that must derive the SAME path and agree on who mutates the file. This
 document records the protocol so either side can check the other's behaviour without
@@ -28,7 +29,7 @@ track:
 | No-git fallback | `/tmp/nai-gate.lock` — Model B only. |
 
 - Model B: `scripts/gate-lock.sh::lock_path()`.
-- Crucible: `clients/rust-crucible.py::_gate_lock_path()`, whose docstring names
+- Crucible: `~/.crucible/clients/rust-crucible.py::_gate_lock_path()`, whose docstring names
   `gate-lock.sh`'s `lock_path()` as the thing it matches. It has NO `/tmp` fallback —
   it returns `None` and the run proceeds UNLOCKED (degraded, deliberately non-blocking),
   so the `/tmp` branch is Model B's alone and is still part of this contract because a
@@ -74,7 +75,7 @@ Local, non-protocol codes: `3` = usage error (a verb called without `--cr`/`--tr
 - **Model B WAITS and observes.** `wait-free` only OBSERVES the lock and never creates
   it; it polls, reports the holder, and escalates on timeout. Model B is not the
   arbiter of the file's lifecycle.
-- **Crucible OWNS the lock FILE.** `clients/rust-crucible.py::_acquire_gate_lock`
+- **Crucible OWNS the lock FILE.** `~/.crucible/clients/rust-crucible.py::_acquire_gate_lock`
   CREATES it atomically (`O_CREAT | O_EXCL`) stamped with its own pid at the start of a
   gated run, and REFUSES to start when a live holder is already present rather than
   running a second concurrent regression.

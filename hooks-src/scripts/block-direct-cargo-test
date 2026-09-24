@@ -10,9 +10,9 @@ baseline (CR-MDB-015 §S3): stdin contract on the neutral payload (CR-MDB-030 §
 detector (formerly lib/detect-cargo-test.py, now inlined — self-contained,
 stdlib only, no jq / no lib/ helpers), same `ALLOW_RAW_CARGO=1` escape hatch
 and `dangerouslyDisableSandbox` bypass-closer. Client invocation guidance in
-the block reason follows the discovery convention (installed clients dir from
-install config; the crucible repo `clients/` dir in dev) instead of a
-hardcoded user-dotfile script path.
+the block reason names the client listed in Crucible's manifest
+`~/.crucible/crucible-clients.json` — `~/.crucible/clients/rust-crucible.py`,
+installed by Crucible's own installer — instead of a user-dotfile script path.
 """
 
 import json
@@ -28,12 +28,11 @@ OPS = {"|", "||", "&&", ";", ";;", "&", "(", ")", "\n"}
 DS_REASON = """⛔ BLOCKED: `dangerouslyDisableSandbox: true` is not allowed on a `cargo` command.
 
 This flag bypasses the cargo→Crucible enforcement hook. rust-crucible.py runs the
-SAME cargo command AND ingests results to Crucible (ORCHESTRATOR-RULES §4) — use it
-from the Crucible clients dir (installed location per install config; the crucible
-repo `clients/` dir in dev):
-  • compile / RED-compile:  python3 <crucible-clients>/rust-crucible.py check  --crate <c> [--tests] --agent <id>
-  • run tests:              python3 <crucible-clients>/rust-crucible.py test   --crate <c> [--filter <e>] --agent <id>
-  • clippy:                 python3 <crucible-clients>/rust-crucible.py clippy --crate <c> [--deny-warnings] --agent <id>
+SAME cargo command AND ingests results to Crucible (ORCHESTRATOR-RULES §4) — use the
+installed client listed in Crucible's manifest `~/.crucible/crucible-clients.json`:
+  • compile / RED-compile:  python3 ~/.crucible/clients/rust-crucible.py check  --crate <c> [--tests] --agent <id>
+  • run tests:              python3 ~/.crucible/clients/rust-crucible.py test   --crate <c> [--filter <e>] --agent <id>
+  • clippy:                 python3 ~/.crucible/clients/rust-crucible.py clippy --crate <c> [--deny-warnings] --agent <id>
 
 Genuine raw-cargo need (rare, needs justification): prefix with ALLOW_RAW_CARGO=1
 (an explicit, auditable opt-out) — NOT a silent dangerouslyDisableSandbox."""
@@ -44,14 +43,14 @@ These are wrapped by rust-crucible.py, which runs the SAME cargo command AND ing
 results to Crucible in one approved invocation (ORCHESTRATOR-RULES.md §4). Raw cargo
 bypasses ingest and re-prompts permission every run.
 
-Use instead (register first if you haven't; <crucible-clients> = the installed
-clients dir from install config, or the crucible repo `clients/` dir in dev):
+Use instead (register first if you haven't) the installed client listed in
+Crucible's manifest `~/.crucible/crucible-clients.json`:
   • Run tests — one crate (add --test <bin> / --filter <expr> for a single test):
-      python3 <crucible-clients>/rust-crucible.py test --crate <crate> --agent <id>
+      python3 ~/.crucible/clients/rust-crucible.py test --crate <crate> --agent <id>
   • Full coverage regression (pre-merge gate — replaces `cargo llvm-cov`):
-      python3 <crucible-clients>/rust-crucible.py workspace-regression --agent <id> --all-features
+      python3 ~/.crucible/clients/rust-crucible.py workspace-regression --agent <id> --all-features
   • Compile-only / RED compile-fail (replaces `cargo check`):
-      python3 <crucible-clients>/rust-crucible.py check --crate <crate> --agent <id>
+      python3 ~/.crucible/clients/rust-crucible.py check --crate <crate> --agent <id>
 
 See the project's instantiated orchestration memory (template: model-b repo
 skills-src/memory-templates/rust-orchestration.md) for the full tier.

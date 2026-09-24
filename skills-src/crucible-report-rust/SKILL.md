@@ -8,10 +8,14 @@ metadata:
 
 # Crucible Report — Rust / Cargo
 
-`clients/rust-crucible.py` is the CLI client — it runs cargo AND ingests to the
+`~/.crucible/clients/rust-crucible.py` is the CLI client — it runs cargo AND ingests to the
 Crucible v2 API in one call under your agent id. The urllib helpers below are
 the direct-call fallback. The agent MUST pass its own agent ID explicitly — no
 shell env vars for identity.
+
+That path is the default location of Crucible's installed clients: the client
+is listed in `~/.crucible/crucible-clients.json` and installed by Crucible's own
+installer, and it is not shipped, vendored or maintained by Model B.
 
 > **MANDATORY for RED/GREEN/regression cycle runs:** run the tests **through
 > `rust-crucible.py`** (`test` for a targeted cycle, `regression-ingest` for the
@@ -35,16 +39,16 @@ environment — set these on every call so runs land on the right cycle:
 ### Lifecycle
 
 ```bash
-python3 clients/rust-crucible.py register --agent red-nai-042 --role RED --cycle <cycleId>
+python3 ~/.crucible/clients/rust-crucible.py register --agent red-nai-042 --role RED --cycle <cycleId>
 # ... work ...
-python3 clients/rust-crucible.py unregister --agent red-nai-042
+python3 ~/.crucible/clients/rust-crucible.py unregister --agent red-nai-042
 ```
 
 ### 1. After/for any targeted run (RED / GREEN / FIX — tier: unit)
 
 ```bash
 WORKFLOW_CYCLE="my cycle label" \
-python3 clients/rust-crucible.py test --crate nai_runtime --agent red-nai-042
+python3 ~/.crucible/clients/rust-crucible.py test --crate nai_runtime --agent red-nai-042
 ```
 
 Runs `cargo nextest run -p <crate>` and ingests the JUnit XML. If you already
@@ -52,7 +56,7 @@ ran the tests yourself, `auto-ingest` detects: JUnit XML exists → ingest as
 tests; no XML → capture `cargo check` stderr → ingest as rustc compile errors:
 
 ```bash
-python3 clients/rust-crucible.py auto-ingest --agent red-nai-042 --crate nai_runtime
+python3 ~/.crucible/clients/rust-crucible.py auto-ingest --agent red-nai-042 --crate nai_runtime
 ```
 
 RED agents with compile failures get their errors tracked correctly.
@@ -61,7 +65,7 @@ RED agents with compile failures get their errors tracked correctly.
 
 ```bash
 WORKFLOW_CYCLE="my cycle label" \
-python3 clients/rust-crucible.py regression-ingest --agent vd-orchestrator --crates nai_ast,nai_runtime
+python3 ~/.crucible/clients/rust-crucible.py regression-ingest --agent vd-orchestrator --crates nai_ast,nai_runtime
 ```
 
 Runs: clean → `cargo llvm-cov nextest` → parse JUnit + lcov → ingest tests +
@@ -70,7 +74,7 @@ coverage in one `POST /api/v2/runs/parsed`.
 ### 3. Compile-only gates
 
 ```bash
-python3 clients/rust-crucible.py check --crate nai_runtime --agent green-nai-017
+python3 ~/.crucible/clients/rust-crucible.py check --crate nai_runtime --agent green-nai-017
 ```
 
 Runs `cargo check` and ingests stderr as rustc compile errors when it fails.

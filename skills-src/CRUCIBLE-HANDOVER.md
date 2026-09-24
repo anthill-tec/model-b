@@ -3,7 +3,8 @@
 Provenance of the skill bundles imported verbatim into `skills-src/` — seven at
 handover, six since CR-MDB-024 §S3 (see *Retirement* below).
 This document is the ONLY place under `skills-src/` allowed to cite the origin
-path; the imported files themselves were never edited.
+path; the bundles were imported byte-identical and have since been maintained as
+Model B doc-syncs (CR-MDB-017, CR-MDB-020).
 
 ## Origin
 

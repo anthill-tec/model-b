@@ -8,10 +8,14 @@ metadata:
 
 # Crucible Report — Quarkus / Java
 
-`clients/mvn-crucible.py` is the CLI client — it runs Maven AND ingests to the
+`~/.crucible/clients/mvn-crucible.py` is the CLI client — it runs Maven AND ingests to the
 Crucible v2 API in one call under your agent id (tiers: `unit` / `module` /
 `e2e` / `regression`, plus `compile`, `auto-ingest`, `docker-up`/`docker-down`,
 `pre-merge-gate`). Direct curl against the v2 endpoints is the fallback only.
+
+That path is the default location of Crucible's installed clients: the client
+is listed in `~/.crucible/crucible-clients.json` and installed by Crucible's own
+installer, and it is not shipped, vendored or maintained by Model B.
 
 ## Workflow context (env convention)
 
@@ -29,9 +33,9 @@ environment — set these on every call so runs land on the right cycle:
 ### Lifecycle
 
 ```bash
-python3 clients/mvn-crucible.py register --agent AGENT_ID --role RED --cycle <cycleId>
+python3 ~/.crucible/clients/mvn-crucible.py register --agent AGENT_ID --role RED --cycle <cycleId>
 # ... work ...
-python3 clients/mvn-crucible.py unregister --agent AGENT_ID
+python3 ~/.crucible/clients/mvn-crucible.py unregister --agent AGENT_ID
 ```
 
 ### Targeted Run (RED or GREEN — NEVER include coverage; tier: unit)
@@ -42,7 +46,7 @@ accurate. A compile failure is auto-routed to `/api/v2/runs/compile`.
 
 ```bash
 WORKFLOW_CYCLE="my cycle label" \
-python3 clients/mvn-crucible.py unit --test MyServiceTest --module backend --agent AGENT_ID
+python3 ~/.crucible/clients/mvn-crucible.py unit --test MyServiceTest --module backend --agent AGENT_ID
 ```
 
 **NEVER report coverage on targeted runs** — JaCoCo data from a single-class,
@@ -51,15 +55,15 @@ partial, or failed run is incomplete and misleading.
 ### Module / E2E tiers
 
 ```bash
-python3 clients/mvn-crucible.py module --module backend --agent AGENT_ID
-python3 clients/mvn-crucible.py e2e --agent AGENT_ID
+python3 ~/.crucible/clients/mvn-crucible.py module --module backend --agent AGENT_ID
+python3 ~/.crucible/clients/mvn-crucible.py e2e --agent AGENT_ID
 ```
 
 ### Regression Run (full suite — with JaCoCo coverage; tier: regression)
 
 ```bash
 WORKFLOW_CYCLE="my cycle label" \
-python3 clients/mvn-crucible.py regression --agent AGENT_ID
+python3 ~/.crucible/clients/mvn-crucible.py regression --agent AGENT_ID
 ```
 
 Parses all surefire XML plus the JaCoCo CSV and sends test results and
@@ -73,7 +77,7 @@ If Maven fails to compile (no surefire reports generated), the tier commands
 ingest the compiler output automatically; standalone:
 
 ```bash
-python3 clients/mvn-crucible.py compile --agent AGENT_ID
+python3 ~/.crucible/clients/mvn-crucible.py compile --agent AGENT_ID
 ```
 
 Crucible parses Maven/javac error output into structured per-file errors

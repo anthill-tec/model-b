@@ -28,8 +28,8 @@ product or release number and must never be read as one.
 - The envelope is the SHIPPED, fleet-wide current state: every client verb on every
   stack client (`bun-crucible.py`, `python-crucible.py`, `mvn-crucible.py`,
   `rust-crucible.py`, `arduino-crucible.py`) emits it via the shared
-  `crucible:clients/_crucible_axi.py`.
-- The client-side TOON codec is `crucible:clients/toon.py` (`encode(dict) -> str` /
+  `~/.crucible/clients/_crucible_axi.py`.
+- The client-side TOON codec is `~/.crucible/clients/toon.py` (`encode(dict) -> str` /
   `decode(str) -> dict`) — Crucible's spec-conformant port of the official grammar,
   validated upstream against the first-party reference library. It DOES emit the inline
   primitive-array short form (`help[2]: cycle-done <id>,status`); an earlier "strict
@@ -40,7 +40,7 @@ product or release number and must never be read as one.
 ## TOON wire contract
 
 **The wire contract is the OFFICIAL TOON spec** — toonformat.dev and the `toon-format`
-GitHub org. `crucible:docs/research/DN-crucible-toon-subset.md` is **RETIRED** (their
+GitHub org. Crucible's `DN-crucible-toon-subset.md` is **RETIRED** (their
 CR-CRU-046, 2026-08-01) and survives only as a pointer at that spec. It is NOT a live
 contract, no Model B file may treat it as one, and there is no private four-construct
 subset to be pinned against.
@@ -53,7 +53,7 @@ from beside itself) and held byte-identical by `generator/build.py --check`. The
 ENCODES a documented valid SUBSET and DECODES what Model B's own tools emit.
 
 Conformance is PROVEN, not asserted: `tests/test_toon_codec.py` round-trips the encoder's
-output through `crucible:clients/toon.py` **out of process** — subprocess only, never an
+output through `~/.crucible/clients/toon.py` **out of process** — subprocess only, never an
 import, so no Crucible module is ever forked into a Model B process. That port is an
 ORACLE and nothing else; Model B holds no copy of it and maintains none of their clients.
 

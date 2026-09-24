@@ -8,10 +8,14 @@ metadata:
 
 # Crucible Report — Arduino firmware
 
-`clients/arduino-crucible.py` is the CLI client — it runs the native host tests
+`~/.crucible/clients/arduino-crucible.py` is the CLI client — it runs the native host tests
 (`make junit`) AND ingests to the Crucible v2 API in one call under your agent
 id. Direct `curl`/`fetch` against the v2 endpoints is the fallback for edge
 cases only.
+
+That path is the default location of Crucible's installed clients: the client
+is listed in `~/.crucible/crucible-clients.json` and installed by Crucible's own
+installer, and it is not shipped, vendored or maintained by Model B.
 
 > **MANDATORY for RED/GREEN/regression cycle runs:** run the tests **through
 > the client** (`test`/`unit` for a targeted cycle, `regression` for the gate).
@@ -34,16 +38,16 @@ environment — set these on every call so runs land on the right cycle:
 ### Lifecycle
 
 ```bash
-python3 clients/arduino-crucible.py register --agent AGENT_ID --role RED --cycle <cycleId>
+python3 ~/.crucible/clients/arduino-crucible.py register --agent AGENT_ID --role RED --cycle <cycleId>
 # ... work ...
-python3 clients/arduino-crucible.py unregister --agent AGENT_ID
+python3 ~/.crucible/clients/arduino-crucible.py unregister --agent AGENT_ID
 ```
 
 ### Targeted Run (RED or GREEN — no coverage; tier: unit)
 
 ```bash
 WORKFLOW_CYCLE="my cycle label" \
-python3 clients/arduino-crucible.py test --agent AGENT_ID
+python3 ~/.crucible/clients/arduino-crucible.py test --agent AGENT_ID
 ```
 
 Runs the native host suite (`make junit`), parses the JUnit XML, and POSTs
@@ -55,7 +59,7 @@ default `tests/native`.
 
 ```bash
 WORKFLOW_CYCLE="my cycle label" \
-python3 clients/arduino-crucible.py regression --coverage --agent AGENT_ID
+python3 ~/.crucible/clients/arduino-crucible.py regression --coverage --agent AGENT_ID
 ```
 
 The server discards coverage on failing runs.
@@ -63,14 +67,14 @@ The server discards coverage on failing runs.
 ### Compile gate (arduino-cli)
 
 ```bash
-python3 clients/arduino-crucible.py check --agent AGENT_ID    # arduino-cli compile → /api/v2/runs/compile on failure
-python3 clients/arduino-crucible.py auto-ingest --agent AGENT_ID  # ingest a PRE-EXISTING native reports dir
+python3 ~/.crucible/clients/arduino-crucible.py check --agent AGENT_ID    # arduino-cli compile → /api/v2/runs/compile on failure
+python3 ~/.crucible/clients/arduino-crucible.py auto-ingest --agent AGENT_ID  # ingest a PRE-EXISTING native reports dir
 ```
 
 ### Pre-merge gate
 
 ```bash
-python3 clients/arduino-crucible.py pre-merge-gate --agent AGENT_ID  # fail-fast compile → regression --coverage
+python3 ~/.crucible/clients/arduino-crucible.py pre-merge-gate --agent AGENT_ID  # fail-fast compile → regression --coverage
 ```
 
 ## Rules
