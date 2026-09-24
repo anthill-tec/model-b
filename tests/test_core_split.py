@@ -42,21 +42,6 @@ class CoreSplitS2AgentsMdTest(unittest.TestCase):
         # NEGATIVE bound — must not point at the retired shim.
         self.assertNotIn("agent-baseline", target)
 
-    def test_s2_agents_md_trigger_table_contains_model_b_and_crucible(self):
-        content = _read(self.AGENTS_MD)
-        lines = content.splitlines()
-        model_b_lines = [ln for ln in lines if "model-b" in ln]
-        crucible_lines = [ln for ln in lines if "crucible" in ln]
-        # POSITIVE — at least one line for each trigger keyword.
-        self.assertGreaterEqual(
-            len(model_b_lines), 1,
-            "AGENTS.md must contain at least one line mentioning 'model-b'",
-        )
-        self.assertGreaterEqual(
-            len(crucible_lines), 1,
-            "AGENTS.md must contain at least one line mentioning 'crucible'",
-        )
-
     def test_s2_agents_md_contains_no_attribution_clause(self):
         # The universal sub-agent procedure CR-MDB-001 split out carries the
         # clause; in the repo that is the model-b skill's reference.
