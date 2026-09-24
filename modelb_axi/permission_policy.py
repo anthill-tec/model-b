@@ -159,8 +159,10 @@ def strip_comments(text: str) -> str:
 def global_policy_state(agent_dir: Path) -> tuple[str, list[str]]:
     """``(verdict, missing tools)`` for ``<agent-dir>/extensions/
     pi-permission-system/config.json`` — precedence absent -> unknown ->
-    no-fallback -> missing-tools -> ok (ruling P2). A tool is missing
-    unless ``permission[<tool>] == "allow"``. Read-only."""
+    no-fallback -> missing-tools -> ok (ruling P2). A tool is allowed when
+    its own entry is ``"allow"``, or it has no entry and the ``"*"``
+    fallback is ``"allow"`` (the package's last matching pattern wins).
+    Read-only."""
     path = agent_dir / POLICY_RELPATH
     if not path.is_file():
         return ABSENT, []
@@ -175,7 +177,9 @@ def global_policy_state(agent_dir: Path) -> tuple[str, list[str]]:
         return UNKNOWN, []
     if "*" not in permission:
         return NO_FALLBACK, []
-    missing = [tool for tool in workflow_tools() if permission.get(tool) != "allow"]
+    fallback = permission["*"]
+    missing = [tool for tool in workflow_tools()
+               if permission.get(tool, fallback) != "allow"]
     if missing:
         return MISSING_TOOLS, missing
     return OK, []
