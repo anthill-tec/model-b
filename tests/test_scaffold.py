@@ -17,17 +17,16 @@ is not a spec-behavior assertion.
 All invocations are subprocess probes (`python -m modelb_axi ...`) against
 tmp sandboxes (`$MODELB_HOME`, `--target`) -- per the CR's binding rule and
 DN-scaffold-packaging.md §7, nothing here ever deploys into the real
-`~/.claude` or `~/.agents`. Reuses the AC7-style module-level mtime sandbox
-guard from `tests/test_installer.py`.
+`~/.claude` or `~/.agents`. (CR-MDB-032 §S2 dropped the module-level
+real-home mtime guard: every run pins its own sandbox.)
 
 Stdlib only: ast + unittest + subprocess + sys + os + shutil + tempfile +
-importlib.util + pathlib.
+pathlib.
 """
 
 import argparse
 import ast
 import contextlib
-import importlib.util
 import io
 import json
 import os
@@ -47,57 +46,8 @@ from tests.pi_capability_sandbox import AGENT_DIR_ENV, shared_provisioned_agent_
 REPO_ROOT = Path(__file__).resolve().parent.parent
 MODULE_DIR = REPO_ROOT / "modelb_axi"
 
-CLAUDE_DIR = Path.home() / ".claude"
-AGENTS_HOME_DIR = Path.home() / ".agents"
-# Sandbox guard (mirrors tests/test_installer.py's AC7 slice): these two
-# real, live trees must never be touched by anything in this test module.
-_GUARD_DIRS = [CLAUDE_DIR / "skills", AGENTS_HOME_DIR]
-
-# READ-ONLY test-side import of Crucible's TOON codec -- production
-# `modelb_axi` code must never depend on it; the envelope is Model B's own
-# emitter per contracts/crucible-envelope.md's non-client-adopter shape.
-TOON_CODEC_PATH = (
-    Path.home() / "Documents" / "data_projects" / "crucible" / "clients" / "toon.py"
-)
-
-
-def _snapshot_mtimes(roots):
-    """Best-effort recursive mtime snapshot of `roots` for the sandbox
-    guard."""
-    snap = {}
-    for root in roots:
-        if not root.exists():
-            continue
-        snap[root] = root.stat().st_mtime
-        for child in root.rglob("*"):
-            try:
-                snap[child] = child.stat().st_mtime
-            except OSError:
-                continue
-    return snap
-
-
-_guard_snapshot_before = {}
-
-
-def setUpModule():
-    global _guard_snapshot_before
-    _guard_snapshot_before = _snapshot_mtimes(_GUARD_DIRS)
-
-
-def tearDownModule():
-    after = _snapshot_mtimes(_GUARD_DIRS)
-    if after != _guard_snapshot_before:
-        all_paths = set(_guard_snapshot_before) | set(after)
-        changed = sorted(
-            str(p) for p in all_paths
-            if _guard_snapshot_before.get(p) != after.get(p)
-        )
-        raise AssertionError(
-            "sandbox guard violated: the real ~/.claude/skills and/or "
-            "~/.agents tree changed mtime while running "
-            f"tests/test_scaffold.py; changed paths (up to 20): {changed[:20]}"
-        )
+# CR-MDB-032 §S2: the real-home mtime guard over ~/.claude/skills and
+# ~/.agents is dropped -- every deploy/init run here pins its own sandbox.
 
 
 def _run_module(*args, env_overrides=None, timeout=15, stdin=subprocess.DEVNULL):
@@ -145,14 +95,10 @@ def _write_install_toml(home: str, harnesses=("claude-code",)) -> Path:
 
 
 def _load_toon_codec():
-    """READ-ONLY import of Crucible's TOON codec for TEST-side parsing
-    only."""
-    spec = importlib.util.spec_from_file_location(
-        "crucible_toon_readonly_for_tests", TOON_CODEC_PATH,
-    )
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    """Model B's own TOON codec (`modelb_axi.toon`) for TEST-side parsing of
+    the envelope. No Crucible checkout is loaded (CR-MDB-032 §S1)."""
+    from modelb_axi import toon
+    return toon
 
 
 def _parse_env_file(path: Path) -> dict:

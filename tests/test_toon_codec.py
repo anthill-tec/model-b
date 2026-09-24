@@ -87,6 +87,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from modelb_axi import axi  # noqa: E402  (repo-local envelope emit seam)
+from tests._helpers import installed_crucible_file  # noqa: E402
 
 SCRIPTS_DIR = REPO_ROOT / "scripts"
 SCRIPTS_TOON = SCRIPTS_DIR / "toon.py"
@@ -95,9 +96,9 @@ PYPROJECT = REPO_ROOT / "pyproject.toml"
 GENERATOR_BUILD = REPO_ROOT / "generator" / "build.py"
 MODELB_TOON = REPO_ROOT / "modelb_axi" / "toon.py"
 
-#: Crucible's spec-conformant port, used as an out-of-process oracle only.
-CRUCIBLE_CLIENTS_DIR = Path.home() / "Documents/data_projects/crucible/clients"
-CRUCIBLE_TOON = CRUCIBLE_CLIENTS_DIR / "toon.py"
+#: Crucible's spec-conformant port, used as an out-of-process oracle only. It ships beside the
+#: installed clients, resolved through ``~/.crucible/crucible-clients.json`` (CR-MDB-032 S1).
+_TOON_ORACLE_SIBLING = "toon.py"
 
 #: The §S2/§S3 gate surface, positively enumerated. `docs/changes/` is
 #: deliberately absent: the CR ledger is the SPECIFICATION of these gates and
@@ -132,9 +133,9 @@ STALE_SUBSET_CLAIM = "4-construct" + " TOON subset"
 #: §S2/AC6. Module names that must never resolve to Crucible's checkout.
 CRUCIBLE_MODULE_NAMES = ("toon", "_crucible_axi")
 
-#: §S2/AC7. The sanctioned exception: INVOKING their client as a subprocess is
-#: required, not forbidden.
-SANCTIONED_INVOCATION = "clients/python-crucible.py"
+#: §S2/AC7. The sanctioned exception: INVOKING their installed client as a
+#: subprocess is required, not forbidden.
+SANCTIONED_INVOCATION = "~/.crucible/clients/python-crucible.py"
 
 #: §S2/AC1. Distribution names that must never be declared.
 FORBIDDEN_DISTRIBUTIONS = frozenset({"toon", "toon-format", "toon_format"})
@@ -163,9 +164,12 @@ class OracleRejected(AssertionError):
 
 
 def _oracle_decode(text: str):
-    """Decode ``text`` with `crucible:clients/toon.py` OUT OF PROCESS."""
+    """Decode ``text`` with Crucible's installed ``toon.py`` OUT OF PROCESS."""
+    oracle, reason = installed_crucible_file("python", _TOON_ORACLE_SIBLING)
+    if oracle is None:
+        raise unittest.SkipTest(reason)
     result = subprocess.run(
-        [sys.executable, "-c", _ORACLE_PROGRAM, str(CRUCIBLE_CLIENTS_DIR)],
+        [sys.executable, "-c", _ORACLE_PROGRAM, str(oracle.parent)],
         input=text, capture_output=True, text=True, timeout=60,
     )
     if result.returncode != 0:
@@ -310,36 +314,84 @@ def _resolve_literal(node: ast.expr, consts: dict):
     return None
 
 
-def _path_inserts_outside_repo(path: Path) -> list:
-    """AST-level `sys.path` mutations whose literal argument is an absolute
-    path outside this repo.
+def _is_spec_from_file_location(func: ast.expr) -> bool:
+    """``importlib.util.spec_from_file_location`` however it was imported."""
+    return (
+        (isinstance(func, ast.Attribute) and func.attr == "spec_from_file_location")
+        or (isinstance(func, ast.Name) and func.id == "spec_from_file_location")
+    )
 
-    Matching the CALL NODE rather than file text is what makes §S2's
-    IMPORT-vs-INVOCATION distinction mechanical: a path string handed to
-    `subprocess.run`, or embedded in a program text a child interpreter runs,
-    is never a `sys.path` mutation node in THIS process and so cannot be
-    swept. An argument computed at run time (`str(REPO_ROOT)`,
-    `os.path.dirname(os.path.abspath(__file__))`) is repo-relative by
-    construction and is not flagged.
+
+def _loaded_path_arguments(call: ast.Call, consts: dict) -> list:
+    """The literal (or module-constant) path strings ``call`` loads code from: the
+    directory a ``sys.path`` mutation adds, or the file ``spec_from_file_location``
+    loads (positional ``location`` or keyword). Run-time values are not resolved."""
+    func = call.func
+    if _is_sys_path_mutation(func) and isinstance(func, ast.Attribute):
+        index = 1 if func.attr == "insert" else 0
+        nodes = call.args[index:index + 1]
+    elif _is_spec_from_file_location(call.func):
+        nodes = call.args[1:2] + [kw.value for kw in call.keywords if kw.arg == "location"]
+    else:
+        return []
+    return [raw for raw in (_resolve_literal(n, consts) for n in nodes) if raw is not None]
+
+
+def _child_programs(call: ast.Call, consts: dict) -> list:
+    """Program strings ``call`` hands a child interpreter: the element after a
+    literal ``"-c"`` in any list/tuple argument (``subprocess.run([python, "-c",
+    PROGRAM])``), resolved through module string constants."""
+    programs = []
+    for arg in [*call.args, *(kw.value for kw in call.keywords if kw.arg == "args")]:
+        if not isinstance(arg, (ast.List, ast.Tuple)):
+            continue
+        elts = arg.elts
+        for i, elt in enumerate(elts[:-1]):
+            if isinstance(elt, ast.Constant) and elt.value == "-c":
+                program = _resolve_literal(elts[i + 1], consts)
+                if program is not None:
+                    programs.append(program)
+    return programs
+
+
+def _path_inserts_outside_repo(path: Path) -> list:
+    """AST-level code loads whose literal path is an absolute path outside this
+    repo: a `sys.path` mutation, an `importlib.util.spec_from_file_location`
+    (CR-MDB-032 §S1), and either of those inside a program string handed to a
+    child interpreter with `-c` (CR-MDB-032 §S1) — reported at the line of the
+    call that spawns the child. A literal is a string constant or a module-level
+    string constant.
+
+    Matching the LOAD rather than file text is what makes §S2's
+    IMPORT-vs-INVOCATION distinction mechanical: a client path handed to
+    `subprocess.run` as the script to RUN is an invocation, never a load, and so
+    cannot be swept. An argument computed at run time (`str(REPO_ROOT)`,
+    `os.path.dirname(os.path.abspath(__file__))`, `sys.argv[1]`) is not resolved
+    and is not flagged.
     """
-    tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"), str(path))
-    consts = _module_string_constants(tree)
     offenders = []
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call) or not _is_sys_path_mutation(node.func):
-            continue
-        index = 1 if node.func.attr == "insert" else 0
-        if len(node.args) <= index:
-            continue
-        raw = _resolve_literal(node.args[index], consts)
-        if raw is None:
-            continue
-        candidate = Path(raw).expanduser()
-        if not candidate.is_absolute():
-            continue
-        if not candidate.is_relative_to(REPO_ROOT):
-            offenders.append((node.lineno, raw))
-    return offenders
+    pending: list[tuple[str, int | None]] = [
+        (path.read_text(encoding="utf-8", errors="replace"), None)
+    ]
+    while pending:
+        source, spawned_at = pending.pop()
+        try:
+            tree = ast.parse(source, str(path))
+        except SyntaxError:
+            if spawned_at is None:
+                raise
+            continue  # a child program that is not Python loads nothing we can see
+        consts = _module_string_constants(tree)
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            lineno = node.lineno if spawned_at is None else spawned_at
+            for raw in _loaded_path_arguments(node, consts):
+                candidate = Path(raw).expanduser()
+                if candidate.is_absolute() and not candidate.is_relative_to(REPO_ROOT):
+                    offenders.append((lineno, raw))
+            pending.extend((program, lineno) for program in _child_programs(node, consts))
+    return sorted(offenders)
 
 
 def _crucible_imports(path: Path) -> list:
@@ -635,8 +687,9 @@ class ToonCodecS2Test(unittest.TestCase):
                 import_offenders[_rel(path)] = imports
         self.assertEqual(
             insert_offenders, {},
-            "§S2/AC6: zero `sys.path` inserts naming a path outside this repo "
-            f"are permitted under {', '.join(PYTHON_GATE_DIRS)}; found "
+            "§S2/AC6 + CR-MDB-032 §S1: zero code loads naming a path outside this "
+            "repo (a `sys.path` insert, a `spec_from_file_location`, or either inside "
+            f"a `-c` child program) are permitted under {', '.join(PYTHON_GATE_DIRS)}; found "
             f"{insert_offenders}",
         )
         self.assertEqual(
@@ -646,11 +699,9 @@ class ToonCodecS2Test(unittest.TestCase):
             f"process; found {import_offenders}",
         )
         # SANCTIONED, asserted as PERMITTED rather than forbidden: INVOKING
-        # clients/python-crucible.py as a subprocess is how a consumer uses
-        # their tool. Model B dogfoods Crucible and this machine drives their
-        # DEV server, so the checkout is the live client source. The gate
-        # distinguishes IMPORT (forbidden) from INVOCATION (required) and must
-        # never sweep an invocation site.
+        # the installed python-crucible.py as a subprocess is how a consumer uses
+        # their tool. The gate distinguishes IMPORT (forbidden) from INVOCATION
+        # (required) and must never sweep an invocation site.
         invocation_sites = sorted(
             _rel(path) for path in _live_surface_files()
             if SANCTIONED_INVOCATION
@@ -767,10 +818,11 @@ class ToonEnvelopeS3Test(unittest.TestCase):
         return CODEC
 
     def _require_oracle(self):
-        if not CRUCIBLE_TOON.is_file():
+        oracle, reason = installed_crucible_file("python", _TOON_ORACLE_SIBLING)
+        if oracle is None:
             self.skipTest(
-                f"Crucible's port {CRUCIBLE_TOON} is not on this machine, so "
-                "the out-of-process conformance oracle cannot run"
+                f"Crucible's port is not installed ({reason}), so the out-of-process "
+                "conformance oracle cannot run"
             )
 
     def _assert_string_survives(self, label, value, why):

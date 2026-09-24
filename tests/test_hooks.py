@@ -50,8 +50,8 @@ PINNED CONTRACTS (RED-authored, since none of this exists in code yet):
    Envelope shape pin: per `STATUS-CONTRACT.md` DOCUMENT VERSION 2.0.0
    (MIGRATED CR-MDB-019 from 1.0.0 / CR-CRU-035; the number is the
    contract document's own semver, never a Crucible product release), a
-   real `status` feed's stdout is a TOON-AXI envelope (`clients/toon.py`
-   `encode()`) shaped
+   real `status` feed's stdout is a TOON-AXI envelope (a TOON `encode()`)
+   shaped
    ``axi: {verb, ok, plans[]{cr,wave,status,activeCycleId}, lastClosedCr,
    count, help[], context{...}, warnings[]{code,detail}}``. Three DISTINCT
    exit-0 terminal states matter here: (a) board present, (b) no plan filed
@@ -59,19 +59,16 @@ PINNED CONTRACTS (RED-authored, since none of this exists in code yet):
    tolerant degrade -- `ok:true`, empty `plans`/`count:0`, but `warnings`
    carries a `{code:"status-unavailable"}` entry (THAT is the signal
    distinguishing (b) from (c), not emptiness alone). The fake status-feed
-   fixtures below emit real `toon.encode()` output (imported directly from
-   the pinned `crucible:clients/toon.py` path) for exactly these three
+   fixtures below emit real `toon.encode()` output (Model B's own codec,
+   `modelb_axi.toon`, CR-MDB-032 §S1) for exactly these three
    shapes, plus a fourth "hard-fail/absent" case (defense in depth -- the
    feed command itself is missing/broken, distinct from the feed
    CONTRACT-COMPLIANTLY reporting `status-unavailable`) that the hook must
    still degrade past on its own.
 
-Sandbox guard: this module only ever READS `~/.claude/hooks/` (the pinned
-read-only import baseline for §S3) and writes solely under `hooks-src/` (not
-created by this RED pass) and `tempfile.mkdtemp()` scratch dirs. A
-module-level mtime-snapshot guard (reused from
-`tests/test_installer.py`'s AC7 pattern) fails loudly if anything in this
-file touched the real `~/.claude/hooks/` tree.
+Sandbox: this module writes solely under `tempfile.mkdtemp()` scratch dirs and
+never reads the real home. CR-MDB-032 §S2 dropped the module-level mtime
+guard over the real `~/.claude/hooks/` tree: nothing here names that tree.
 
 Stdlib only: unittest + subprocess + json + os + sys + shutil + stat + time +
 tempfile + tomllib + pathlib.
@@ -107,51 +104,6 @@ IMPORTED_SCRIPT_NAMES = [
     "post-regression-disk-reminder",
 ]
 ALL_SIX_SCRIPT_NAMES = IMPORTED_SCRIPT_NAMES + ["ambient-board-status"]
-
-CLAUDE_HOOKS_DIR = Path.home() / ".claude" / "hooks"
-
-# ---------------------------------------------------------------------------
-# Sandbox guard (reused pattern from tests/test_installer.py's AC7
-# mtime-snapshot fixture): ~/.claude/hooks/ is a READ-ONLY import baseline
-# for this CR -- nothing in this file may write to it.
-# ---------------------------------------------------------------------------
-
-
-def _snapshot_mtimes(roots):
-    snap = {}
-    for root in roots:
-        if not root.exists():
-            continue
-        snap[root] = root.stat().st_mtime
-        for child in root.rglob("*"):
-            try:
-                snap[child] = child.stat().st_mtime
-            except OSError:
-                continue
-    return snap
-
-
-_guard_snapshot_before = {}
-
-
-def setUpModule():
-    global _guard_snapshot_before
-    _guard_snapshot_before = _snapshot_mtimes([CLAUDE_HOOKS_DIR])
-
-
-def tearDownModule():
-    after = _snapshot_mtimes([CLAUDE_HOOKS_DIR])
-    if after != _guard_snapshot_before:
-        all_paths = set(_guard_snapshot_before) | set(after)
-        changed = sorted(
-            str(p) for p in all_paths
-            if _guard_snapshot_before.get(p) != after.get(p)
-        )
-        raise AssertionError(
-            "sandbox guard violated: the real ~/.claude/hooks tree (read-only "
-            "§S3 import baseline) changed mtime while running "
-            f"tests/test_hooks.py; changed paths (up to 20): {changed[:20]}"
-        )
 
 
 def _run_script(name, payload, env_overrides=None, timeout=5):
@@ -431,24 +383,13 @@ class RemainingGuardScriptsSmokeTest(unittest.TestCase):
                 )
 
 
-CRUCIBLE_CLIENTS_DIR = Path("/home/antonyj/Documents/data_projects/crucible/clients")
-
-
 def _toon_encode(obj):
-    """Encode `obj` via the REAL crucible:clients/toon.py codec (imported by
-    path -- mirrors python-crucible.py's own lazy-by-path load), so the fake
-    status-feed fixtures below emit byte-faithful TOON-AXI envelopes rather
-    than a hand-rolled approximation of the format."""
-    import importlib.util
-    spec = importlib.util.spec_from_file_location(
-        "test_hooks_toon", str(CRUCIBLE_CLIENTS_DIR / "toon.py")
-    )
-    assert spec is not None and spec.loader is not None, (
-        f"could not build a module spec for {CRUCIBLE_CLIENTS_DIR / 'toon.py'}"
-    )
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module.encode(obj)
+    """Encode `obj` via Model B's own TOON codec (`modelb_axi.toon`, the one
+    hand-maintained codec since CR-MDB-022), so the fake status-feed fixtures
+    below emit real TOON-AXI envelopes rather than a hand-rolled approximation
+    of the format. No Crucible checkout is loaded (CR-MDB-032 \u00a7S1)."""
+    from modelb_axi import toon
+    return toon.encode(obj)
 
 
 def _fake_status_feed_script(envelope_axi_fields):
