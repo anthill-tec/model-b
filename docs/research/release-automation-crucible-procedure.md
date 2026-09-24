@@ -61,6 +61,21 @@ the trusted-publisher configurations exactly.
    release day, or plan the first release without provenance.
 3. **The default-token trap** — the Release appears and nothing publishes.
 
+## What Model B adopted (2026-09-24, user rulings)
+
+- **Automate like Crucible, no CR:** `.github/workflows/release.yml` runs `create-release`
+  (`RELEASE_PAT`), `publish-pypi` (Trusted Publishing), `publish-npm` (provenance; the one-time
+  `NPM_TOKEN` for the first publish) and a manual `rehearse-testpypi`, inside the existing git-flow
+  release and no-mistakes gate. `create-release` refuses a tag that differs from
+  `modelb_axi.__version__`. Every action is pinned to a commit SHA.
+- **`anthill-tec/model-b` becomes public** under the MIT license (CR-MDB-038), so `--provenance` and
+  environment reviewers are available.
+- **Maintainer's one-time setup** (none of it is automatable from here): the `RELEASE_PAT` secret;
+  environments `pypi`, `testpypi`, `npm` (add required reviewers once public); pending Trusted
+  Publishers on pypi.org and test.pypi.org (owner `anthill-tec`, repository `model-b`, workflow
+  `release.yml`); `NPM_TOKEN` for the first npm publish, then the npm trusted publisher, then delete
+  `NPM_TOKEN`.
+
 ## What this means for Model B
 
 Model B has **no** `release.yml`. CR-MDB-038 and CR-MDB-029 wrote the release steps as **manual**

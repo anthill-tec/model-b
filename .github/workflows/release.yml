@@ -1,0 +1,117 @@
+# Release workflow: publishes Model B when a release tag is pushed.
+#
+# A git-flow release pushes an unprefixed version tag
+# (`git flow release finish X.Y.Z`, then
+# `git push origin master develop --tags`). This workflow then:
+#
+# 1. create-release: creates the GitHub Release with RELEASE_PAT.
+#    A Release made with the default GITHUB_TOKEN does not fire
+#    `on: release` workflows, so nothing would publish.
+# 2. publish-pypi: builds and uploads `modelb-axi` through PyPI
+#    Trusted Publishing (no token).
+# 3. publish-npm: publishes `@anthill-tec/modelb-pi` with provenance
+#    through npm Trusted Publishing. The very first publish of the
+#    package uses the one-time NPM_TOKEN secret instead, because npm
+#    cannot bootstrap a trusted publisher.
+#
+# A manual run (workflow_dispatch) rehearses the Python upload on
+# TestPyPI.
+#
+# One-time setup by the maintainer:
+# - repository secret RELEASE_PAT: fine-grained, owner anthill-tec,
+#   this repository only, Contents read/write;
+# - environments `pypi`, `testpypi` and `npm`;
+# - pending Trusted Publishers on pypi.org and test.pypi.org for this
+#   workflow;
+# - NPM_TOKEN for the first npm publish, deleted once the npm trusted
+#   publisher exists.
+# See docs/research/release-automation-crucible-procedure.md.
+
+name: release
+
+on:
+  push:
+    tags:
+      - "[0-9]+.[0-9]+.[0-9]+"
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  create-release:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Tag matches the package version
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, re, sys
+          text = pathlib.Path("modelb_axi/__init__.py").read_text()
+          version = re.search(r'__version__\s*=\s*"([^"]+)"', text)[1]
+          tag = os.environ["GITHUB_REF_NAME"]
+          if version != tag:
+              sys.exit(f"tag {tag} != __version__ {version}")
+          PY
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --generate-notes --verify-tag
+          fi
+
+  publish-pypi:
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+      - run: uv build
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
+
+  rehearse-testpypi:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment: testpypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+      - run: uv build
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+  publish-npm:
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: pi-package
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+          registry-url: https://registry.npmjs.org
+      - name: npm new enough for Trusted Publishing
+        run: npm install -g npm@latest
+      - name: Publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --provenance --access public

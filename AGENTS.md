@@ -75,7 +75,7 @@ python3 generator/build.py --stacks python --roles red,green
 python3 -m unittest discover -s tests -t .
 ```
 
-There is **no** Makefile/justfile, **no** CI (`.github/` absent), and **no** linter/formatter/type-checker configured (no `[tool.ruff|black|mypy|pytest]`). Do not invent lint commands; match surrounding style by hand.
+There is **no** Makefile/justfile, **no** CI test workflow (the only workflow is `.github/workflows/release.yml`, which publishes a pushed release tag to PyPI and npm), and **no** linter/formatter/type-checker configured (no `[tool.ruff|black|mypy|pytest]`). Do not invent lint commands; match surrounding style by hand.
 
 ## Code Conventions & Common Patterns
 
