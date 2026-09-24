@@ -9,6 +9,9 @@
 // argv: <extensionPath> <jitiMjsPath> <piPackageRoot>
 // stdin: JSON {
 //   "fakeClock": bool,          // install a Date.now offset BEFORE load
+//   "timeScale": number|null,   // wrap global setTimeout BEFORE load: every
+//                               // delay the extension asks for is recorded in
+//                               // `timerDelays` and run scaled by this factor
 //   "fakeDir": string,          // the fake sandesh's state dir (launches.log)
 //   "markerPath": string|null,  // sampled when each tool call resolves
 //   "steps": [ {op: ...}, ... ]
@@ -43,10 +46,14 @@ const out = {
   steps: [],
   snapshots: {},
   launches: [],
+  timerDelays: [],
   harnessError: null,
 };
 
 let fakeDir = null;
+
+// The harness's own waits use the real timer, never the scaled one.
+const realSetTimeout = globalThis.setTimeout;
 
 function launchPids() {
   if (!fakeDir) return [];
@@ -81,7 +88,7 @@ function surfacedCount() {
 }
 
 function sleep(ms) {
-  return new Promise((r) => setTimeout(r, ms));
+  return new Promise((r) => realSetTimeout(r, ms));
 }
 
 function pidAlive(pid) {
@@ -101,7 +108,7 @@ function noopProxy(target) {
 async function withTimeout(promiseFactory, ms) {
   let timer;
   const timeout = new Promise((resolve) => {
-    timer = setTimeout(() => resolve({ timedOut: true }), ms);
+    timer = realSetTimeout(() => resolve({ timedOut: true }), ms);
   });
   const run = (async () => {
     try {
@@ -129,6 +136,13 @@ async function main() {
   if (scenario.fakeClock) {
     const realNow = Date.now.bind(Date);
     Date.now = () => realNow() + clockOffset;
+  }
+  if (typeof scenario.timeScale === "number") {
+    const scale = scenario.timeScale;
+    globalThis.setTimeout = (fn, ms, ...args) => {
+      out.timerDelays.push(ms ?? 0);
+      return realSetTimeout(fn, Math.max(1, Math.round((ms ?? 0) * scale)), ...args);
+    };
   }
 
   // The same aliases Pi's loader gives an unbundled Node install

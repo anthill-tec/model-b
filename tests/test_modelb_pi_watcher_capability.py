@@ -146,6 +146,16 @@ class _WatcherSandboxCase(unittest.TestCase):
         own package neither listed nor on disk."""
         return make_provisioned_agent_dir(self.agent_dir, omit=("watcher",))
 
+    def agent_listing_missing_watcher(self) -> bytes:
+        """Model B's own package LISTED in ``settings.json`` but missing from
+        disk (VERIFY finding 4, the C3 amendment). Returns the settings bytes."""
+        import json
+        make_provisioned_agent_dir(self.agent_dir, omit=("watcher",))
+        settings = json.loads(self.settings_bytes())
+        settings["packages"].append(npm_spec(MODELB_PI_PACKAGE))
+        (self.agent_dir / "settings.json").write_text(json.dumps(settings), encoding="utf-8")
+        return self.settings_bytes()
+
     def recording_pi(self, extra: str = "") -> None:
         """A ``pi`` shim recording ``$*`` per run, then running ``extra``."""
         _write_exe(self.bin_dir, "pi", (
@@ -314,6 +324,19 @@ class WatcherInstallUnderYesTest(_WatcherSandboxCase):
         self.assertEqual(self.capabilities().get("watcher"), "detected")
         self.assertEqual(self.settings_bytes(), before)
 
+    def test_yes_installs_a_package_listed_but_missing_from_disk(self):
+        # C3 amendment / VERIFY finding 4: listed in settings.json but not
+        # on disk is absent, so --yes installs it and the re-probe records it.
+        self.agent_listing_missing_watcher()
+        pi_written = self.provisioning_pi()
+        result = self.run_yes()
+        self.assertEqual(self.harness_line(result.stderr).get("watcher"), "absent", result.stderr)
+        self.assertEqual(self.pi_runs(), [WATCHER_PI_ARGS],
+                         f"a listed-but-missing package is installed under --yes; stderr={result.stderr!r}")
+        self.assertEqual(self.capabilities().get("watcher"), "installed")
+        self.assertEqual(self.settings_bytes(), pi_written.read_bytes(),
+                         "settings.json holds exactly what Pi wrote — never a Model B edit")
+
     def test_yes_runs_only_model_bs_own_install_never_a_third_party_one(self):
         """The separation: third-party extensions missing too, ``--yes``
         runs the watcher install and nothing else."""
@@ -421,6 +444,17 @@ class WatcherInteractiveOfferTest(_WatcherSandboxCase):
         self.assertEqual(result.offers_naming(WATCHER_INSTALL), [], result.stderr)
         self.assertEqual(self.pi_runs(), [])
         self.assertEqual(self.capabilities().get("watcher"), "detected")
+
+    def test_listed_but_missing_from_disk_is_offered_like_an_absent_one(self):
+        # C3 amendment / VERIFY finding 4: a listed-but-missing package
+        # probes absent and is OFFERED; confirming runs the install once.
+        before = self.agent_listing_missing_watcher()
+        self.recording_pi()
+        result = self.run_interactive("y")
+        self.assertEqual(len(result.offers_naming(WATCHER_INSTALL)), 1,
+                         f"one offer naming `{WATCHER_INSTALL}`; reads={result.reads!r}")
+        self.assertEqual(self.pi_runs(), [WATCHER_PI_ARGS], result.stderr)
+        self.assertEqual(self.settings_bytes(), before, "Model B never writes settings.json")
 
 if __name__ == "__main__":
     unittest.main()

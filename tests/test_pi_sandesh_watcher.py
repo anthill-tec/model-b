@@ -11,11 +11,15 @@ test into a temp ``bin/`` placed FIRST on ``PATH``). The real ``sandesh`` is
 never run. ``HOME`` and ``PI_CODING_AGENT_DIR`` are sandboxed temp dirs.
 
 The fake ``sandesh`` takes one plan line per launch; the last line repeats.
-It appends its pid to ``launches.log`` and its argv to ``argv.<n>``, prints
+It appends its pid to ``launches.log``, its argv to ``argv.<n>`` and the
+``PYTHONUNBUFFERED`` it was given to ``env.<n>``, prints
 ``[notify] watching <to> in <project> (pid <pid>)`` (the Sandesh 0.3.5
 banner), then acts:
 
 - ``exit N`` -- exit ``N`` at once;
+- ``mail IDS`` -- print Sandesh 0.3.5's exit-0 lines for the comma-separated
+  ids (``[notify] <time> \u2709 N unread 'to' message(s): [a, b]`` and the
+  ``WAKE`` fetch line), then exit ``0``;
 - ``signal TERM`` -- kill itself with ``SIGTERM``;
 - ``alive`` -- ``exec sleep 30``, keeping its pid;
 - ``late`` -- sleep 0.7 s and touch ``banner.marker`` BEFORE printing the
@@ -23,7 +27,14 @@ banner), then acts:
 - ``hold N`` -- wait until ``release.<n>`` exists, then exit ``N``;
 - ``nobanner N`` -- print an error on stderr and exit ``N`` without a banner.
 
-Orchestrator rulings (2026-09-24, on the cycle-112 RED design):
+Like Sandesh's own ``print()`` into a pipe, the fake BUFFERS its stdout
+unless ``PYTHONUNBUFFERED`` is set: buffered, nothing reaches the pipe until
+it exits, so a ``sleep``-ing child never shows its banner (CR-MDB-029 \u00a7S2,
+amended at C5, VERIFY finding 1). ``drive`` removes the variable from the
+harness's environment, so only the extension can supply it.
+
+Orchestrator rulings (2026-09-24, on the cycle-112 RED design), as amended
+by the C5 user ruling (the watcher runs at all times):
 
 - W -- the 3-timeouts-in-a-minute cap. The AC cap test needs no clock seam,
   because the fake exits in milliseconds. A NEGATIVE test is added too:
@@ -34,8 +45,12 @@ Orchestrator rulings (2026-09-24, on the cycle-112 RED design):
   use ``Date.now()`` for the window.
 - C -- "surfaced" is observed on three channels: ``pi.sendUserMessage``,
   ``pi.sendMessage`` and ``ctx.ui.notify``. Expectations per exit:
-  - ``0`` -- exactly one ``sendUserMessage`` naming the address and
-    ``sandesh fetch --project <p> --to <address>``, and no relaunch;
+  - ``0`` -- exactly one ``sendUserMessage`` naming the address, the ids
+    Sandesh printed and ``sandesh fetch --project <p> --to '<address>'``
+    (address shell-quoted), and a relaunch at once; a relaunch exiting ``0``
+    with the SAME ids wakes nothing and retries every 30 s (observed through
+    the harness's ``timeScale`` timer wrapper, which records the requested
+    delay and runs it scaled); NEW ids wake again;
   - ``2`` -- exactly one relaunch and nothing on any channel;
   - ``1``/``3``/``4``/``5``/signal -- exactly one surfacing whose text holds
     the code and a meaning keyword, and no relaunch. The keywords are:
@@ -77,7 +92,10 @@ HARNESS_MJS = REPO_ROOT / "tests" / "fixtures" / "pi_watcher_harness.mjs"
 
 ADDRESS = "Mainline - WatcherTest"
 PROJECT = "WatcherTest"
-FETCH = f"sandesh fetch --project {PROJECT} --to {ADDRESS}"
+FETCH = f"sandesh fetch --project {PROJECT} --to '{ADDRESS}'"
+RETRY_MS = 30_000
+#: The retry wait is run at 1/100 of what the extension asks for.
+_TIME_SCALE = 0.01
 
 _HARNESS_BUDGET_S = 45.0
 _SETTLE_MS = 2000
@@ -91,6 +109,7 @@ n=$(( $(wc -l < "$log") + 1 ))
 echo "$$" >> "$log"
 : > "$dir/argv.$n"
 for a in "$@"; do printf '%s\n' "$a" >> "$dir/argv.$n"; done
+printf '%s\n' "${PYTHONUNBUFFERED-<unset>}" > "$dir/env.$n"
 to=""; project=""
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -102,9 +121,23 @@ done
 lines=$(wc -l < "$dir/plan")
 if [ "$n" -le "$lines" ]; then line=$(sed -n "${n}p" "$dir/plan"); else line=$(sed -n "${lines}p" "$dir/plan"); fi
 set -- $line
-banner() { echo "[notify] watching $to in $project (pid $$)"; }
+# Sandesh's print() into a pipe is block-buffered unless PYTHONUNBUFFERED is
+# set: buffered, nothing reaches the pipe until the process exits (flush).
+buf="$dir/stdout.$n"
+say() {
+  if [ -n "${PYTHONUNBUFFERED:-}" ]; then printf '%s\n' "$1"; else printf '%s\n' "$1" >> "$buf"; fi
+}
+flush() { if [ -f "$buf" ]; then cat "$buf"; fi; }
+banner() { say "[notify] watching $to in $project (pid $$)"; }
 case "$1" in
-  exit) banner; exit "$2" ;;
+  exit) banner; flush; exit "$2" ;;
+  mail)
+    banner
+    count=$(printf '%s\n' "$2" | tr ',' '\n' | wc -l)
+    list=$(printf '%s' "$2" | sed 's/,/, /g')
+    say "[notify] 12:00:00 ✉ $((count)) unread 'to' message(s): [$list]"
+    say "[notify] WAKE — fetch with: sandesh fetch --project $project --to '$to'"
+    flush; exit 0 ;;
   signal) banner; kill -"$2" $$; sleep 5; exit 99 ;;
   alive) banner; exec sleep 30 ;;
   late) sleep 0.7; touch "$dir/banner.marker"; banner; exec sleep 30 ;;
@@ -112,7 +145,7 @@ case "$1" in
     banner
     i=0
     while [ ! -e "$dir/release.$n" ] && [ $i -lt 300 ]; do sleep 0.1; i=$((i+1)); done
-    exit "$2" ;;
+    flush; exit "$2" ;;
   nobanner) echo "error: usage: sandesh notify --to ADDR --project P" >&2; exit "$2" ;;
   *) echo "fake sandesh: bad plan line: $line" >&2; exit 97 ;;
 esac
@@ -169,9 +202,16 @@ class SandeshWatcherTestCase(unittest.TestCase):
     def argv_of(self, launch: int) -> list[str]:
         return (self.fake_dir / f"argv.{launch}").read_text(encoding="utf-8").splitlines()
 
-    def drive(self, plan: list[str], steps: list[dict], fake_clock: bool = False) -> dict:
+    def env_of(self, launch: int) -> str:
+        """The ``PYTHONUNBUFFERED`` value launch ``launch`` was given."""
+        return (self.fake_dir / f"env.{launch}").read_text(encoding="utf-8").strip()
+
+    def drive(self, plan: list[str], steps: list[dict], fake_clock: bool = False,
+              time_scale: float | None = None) -> dict:
         (self.fake_dir / "plan").write_text("\n".join(plan) + "\n", encoding="utf-8")
         env = dict(os.environ)
+        # Only the extension may make the child unbuffered.
+        env.pop("PYTHONUNBUFFERED", None)
         env.update({
             "PATH": f"{self.bin}{os.pathsep}{env.get('PATH', '')}",
             "HOME": str(self.tmp / "home"),
@@ -180,6 +220,7 @@ class SandeshWatcherTestCase(unittest.TestCase):
         })
         scenario = {
             "fakeClock": fake_clock,
+            "timeScale": time_scale,
             "fakeDir": str(self.fake_dir),
             "markerPath": str(self.fake_dir / "banner.marker"),
             "steps": steps,
@@ -242,6 +283,14 @@ class SandeshWatcherStartTest(SandeshWatcherTestCase):
         self.assertEqual(len(out["launches"]), 1)
         self.assertEqual(self.argv_of(1), ["notify", "--to", ADDRESS, "--project", PROJECT])
 
+    def test_start_spawns_the_child_with_pythonunbuffered_so_the_banner_is_not_held(self):
+        # VERIFY finding 1 (C5): Sandesh prints its banner with an unflushed
+        # print(); piped and buffered, the banner arrives only at exit.
+        out = self.drive(["alive"], [_start(), _stop()])
+        start = self.tool_steps(out)[0]
+        self.assertEqual(self.env_of(1), "1", "the child must run with PYTHONUNBUFFERED=1")
+        self.assertFalse(start["timedOut"], "a buffered child hides its banner and start hangs")
+        self.assertRegex(start["text"] or "", re.compile("ready", re.I))
     def test_start_reports_ready_naming_the_address_only_after_the_banner(self):
         out = self.drive(["late"], [_start(), {"op": "snapshot", "label": "after"}, _stop()])
         start = self.tool_steps(out)[0]
@@ -319,21 +368,59 @@ class SandeshWatcherStartTest(SandeshWatcherTestCase):
 class SandeshWatcherExitTest(SandeshWatcherTestCase):
     """\u00a7S2 AC2 -- one test per exit code (ruling C)."""
 
-    def test_exit_0_wakes_once_naming_the_fetch_and_does_not_relaunch(self):
-        out = self.drive(["exit 0", "alive"], [
+    def test_exit_0_wakes_once_naming_the_ids_and_quoted_fetch_and_relaunches_at_once(self):
+        out = self.drive(["mail 12,13", "alive"], [
             _start(), {"op": "waitUntil", "userMessages": 1, "timeoutMs": 5000},
+            {"op": "waitUntil", "launches": 2, "timeoutMs": 5000},
             {"op": "sleep", "ms": _SETTLE_MS}, {"op": "snapshot", "label": "woken"},
-            _start(), {"op": "waitUntil", "launches": 2, "timeoutMs": 5000}, _stop(),
+            _start(), {"op": "snapshot", "label": "restarted"}, _stop(),
+            {"op": "waitPidDead", "launch": 2, "timeoutMs": 3000},
         ])
         woken = out["snapshots"]["woken"]
-        self.assertEqual(woken["launches"], 1, "exit 0 must not relaunch")
+        self.assertEqual(woken["launches"], 2, "exit 0 must relaunch at once, and only once")
         self.assertEqual(len(out["userMessages"]), 1, f"exactly one wake message, got {out['userMessages']}")
         self.assertEqual(out["messages"], [], "the wake is sendUserMessage only")
+        self.assertEqual(out["notifies"], [], "the wake is sendUserMessage only")
         text = out["userMessages"][0]["text"]
-        self.assertIn(FETCH, text)
+        self.assertIn(FETCH, text, "the fetch must shell-quote the address")
         self.assertIn(ADDRESS, text)
-        # The watcher is left stopped, not running: start works again.
-        self.assertEqual(len(out["launches"]), 2, "start after an exit-0 wake must spawn again")
+        self.assertRegex(text, r"\b12\b", "the wake must name the unread ids Sandesh printed")
+        self.assertRegex(text, r"\b13\b", "the wake must name the unread ids Sandesh printed")
+        second = self.tool_steps(out)[1]
+        self.assertRegex(second["text"] or "", re.compile("already|running", re.I),
+                         "after a wake the watcher is still running")
+        self.assertEqual(out["snapshots"]["restarted"]["launches"], 2, "a start while it runs spawns nothing")
+        self.assertTrue(out["steps"][-1]["dead"], "stop must terminate the relaunched child")
+
+    def test_exit_0_again_with_the_same_ids_does_not_wake_and_retries_every_30s(self):
+        out = self.drive(["mail 7"], [
+            _start(), {"op": "waitUntil", "launches": 4, "timeoutMs": 8000},
+            {"op": "sleep", "ms": 400}, {"op": "snapshot", "label": "retrying"},
+            {"op": "tool", "params": {"action": "status"}}, _stop(),
+        ], time_scale=_TIME_SCALE)
+        snap = out["snapshots"]["retrying"]
+        self.assertEqual(len(out["userMessages"]), 1, f"the same ids must not wake again, got {out['userMessages']}")
+        self.assertEqual(out["messages"] + out["notifies"], [], "retries are silent")
+        self.assertGreaterEqual(snap["launches"], 4, "relaunches must keep going while the mail waits")
+        self.assertLessEqual(snap["launches"], 10, "same-ids relaunches must wait, not spin")
+        self.assertGreaterEqual(out["timerDelays"].count(RETRY_MS), 2,
+                                f"each same-ids retry waits 30 s; delays asked for: {out['timerDelays']}")
+        self.assertIn(ADDRESS, self.tool_steps(out)[1]["text"] or "", "status names the retrying watcher")
+
+    def test_exit_0_with_new_ids_wakes_again(self):
+        out = self.drive(["mail 41", "mail 41", "mail 41,42", "alive"], [
+            _start(), {"op": "waitUntil", "userMessages": 2, "timeoutMs": 8000},
+            {"op": "waitUntil", "launches": 4, "timeoutMs": 5000},
+            {"op": "sleep", "ms": 500}, {"op": "snapshot", "label": "woken"}, _stop(),
+        ], time_scale=_TIME_SCALE)
+        snap = out["snapshots"]["woken"]
+        wakes = [m["text"] for m in out["userMessages"]]
+        self.assertEqual(len(wakes), 2, f"one wake for 41, one for the new 42, got {wakes}")
+        self.assertRegex(wakes[0], r"\b41\b")
+        self.assertNotRegex(wakes[0], r"\b42\b")
+        self.assertRegex(wakes[1], r"\b42\b", "the second wake names the new id")
+        self.assertEqual(snap["launches"], 4, "relaunched after each exit, then watching")
+        self.assertEqual(out["messages"] + out["notifies"], [])
 
     def test_exit_2_relaunches_once_silently(self):
         out = self.drive(["exit 2", "alive"], [
