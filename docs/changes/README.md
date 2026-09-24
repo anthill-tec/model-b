@@ -27,7 +27,7 @@ Queue rows enumerate the whole delivery (structure only). **Live status lives on
 | [CR-MDB-022](CR-MDB-022-tooling-adoption.md) | Tooling adoption (WAVE 5 FIRST): eight workflow scripts into `scripts/`, one Model B-owned TOON codec, bundled + installer-deployed, every reference detached from the local machine | 5 | — |
 | [CR-MDB-023](CR-MDB-023-code-health-skill-adoption.md) | `code-health` skill adopted as a published bundle: detached tool paths, recorded drift closed, bundle accounting corrected | 5 | 022 |
 | [CR-MDB-017](CR-MDB-017-client-role-contract-sync.md) | Client-verb contract sync: `--role` + mandatory `--cycle` binding replace the retired `--phase` across the seven owned bundles | 5 | 016 |
-| [CR-MDB-018](CR-MDB-018-crucible-discovery-capture.md) | Crucible discovery capture: probe `crucible-axi`, read the client manifest, persist `[install].clients_dir` | 5 | 014, 015 |
+| [CR-MDB-018](CR-MDB-018-crucible-discovery-capture.md) | Crucible discovery: the ambient hook reads Crucible's client manifest, and the client lifecycle rules are gated | 5 | 015, 036 |
 | [CR-MDB-019](CR-MDB-019-hook-runtime-correctness.md) | Hook runtime correctness: status-contract-document re-pin, arduino stack marker (§S3 opencode emitter struck 2026-09-21 — non-target) | 5 | 015, 018 |
 | [CR-MDB-020](CR-MDB-020-client-path-anchoring.md) | Client-path anchoring: every client reference resolves to Crucible's published contract; Model B maintains none of their clients | 5 | 017, 022 |
 | [CR-MDB-024](CR-MDB-024-rust-stack-adoption.md) | Rust as a fifth generated stack, and retire the vscode agents | 5 | 017 |
@@ -644,3 +644,12 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   tokens, and **delete `NPM_TOKEN`** from npm and the repository. For model-b, remove it once
   `@anthill-tec/modelb-pi` is on npmjs. **Release doc review:** `skills-src/git-workflow/SKILL.md`
   §Releases (project-neutral) should state this bootstrap-then-delete step for any npm package.
+- 2026-09-24 — **CR-MDB-018 gap analysis (SPEC_UPDATE_NEEDED, user ruling):** the ambient hook reads
+  `~/.crucible/crucible-clients.json` directly; no `[install].clients_dir` copy is ever written, and
+  the hook stops reading `MODELB_HOME` (measured: the variable is never exported, so the old design
+  could not resolve even with the key written). The old §S1 (`crucible-axi` probe) is dropped as done
+  by CR-MDB-036's manifest verdict. **CR-MDB-019's gap analysis must reconcile:** its dependency text
+  says 018 "supplies the `clients_dir`" — it now supplies manifest-based resolution, and 019's
+  arduino marker must extend the hook's marker → key table (kept in parity with
+  `STACK_CLIENT_KEYS` by 018 §S3). Measured: the live `status` envelope carries `lastClosedCr`, not
+  `lastRunCr` (019 §S1).
