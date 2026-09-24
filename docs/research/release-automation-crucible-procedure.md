@@ -76,6 +76,16 @@ the trusted-publisher configurations exactly.
   `release.yml`); `NPM_TOKEN` for the first npm publish, then the npm trusted publisher, then delete
   `NPM_TOKEN`.
 
+### Setup status (user, 2026-09-24)
+
+- [x] `anthill-tec/model-b` public (verified: `visibility: public`, license detected as MIT)
+- [x] Pending Trusted Publishers for `modelb-axi` on pypi.org and test.pypi.org
+- [x] npm account in the `anthill-tec` organisation
+- [ ] Repository secret `RELEASE_PAT`
+- [ ] Environments `pypi`, `testpypi`, `npm` (required reviewers now available)
+- [ ] One-time `NPM_TOKEN` for the first publish of `@anthill-tec/modelb-pi`, then the npm trusted
+      publisher, then delete the token
+
 ## What this means for Model B
 
 Model B has **no** `release.yml`. CR-MDB-038 and CR-MDB-029 wrote the release steps as **manual**
