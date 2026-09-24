@@ -627,3 +627,7 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   move touches remotes, `.gitmodules`, `REPO_OWNER` in each `.env`, and docs naming `antojk` — a
   `CR-RND` for the Roundhouse root session. CR-MDB-026's three-exit taxonomy is also stale against
   Sandesh 0.3.5's six exits (see CR-MDB-029 §Context); fold at 026's gap-analysis.
+- 2026-09-24 — **Publishing prerequisites confirmed (user):** the `anthill-tec` npm organisation
+  already exists (Crucible publishes there), and a PyPI account exists. The release's PyPI upload
+  (CR-MDB-038) and npm publish of `@anthill-tec/modelb-pi` (CR-MDB-029) wait on no account setup —
+  only the credentials supplied at publish time.
