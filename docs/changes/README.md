@@ -29,7 +29,7 @@ Queue rows enumerate the whole delivery (structure only). **Live status lives on
 | [CR-MDB-017](CR-MDB-017-client-role-contract-sync.md) | Client-verb contract sync: `--role` + mandatory `--cycle` binding replace the retired `--phase` across the seven owned bundles | 5 | 016 |
 | [CR-MDB-018](CR-MDB-018-crucible-discovery-capture.md) | Crucible discovery: the ambient hook reads Crucible's client manifest, and the client lifecycle rules are gated | 5 | 015, 036 |
 | [CR-MDB-019](CR-MDB-019-hook-runtime-correctness.md) | The ambient hook renders the current status contract: the 2.0.0 pin, lastClosedCr, open plans only, and arduino projects | 5 | 018 |
-| [CR-MDB-020](CR-MDB-020-client-path-anchoring.md) | Client-path anchoring: every client reference resolves to Crucible's published contract; Model B maintains none of their clients | 5 | 017, 022 |
+| [CR-MDB-020](CR-MDB-020-client-path-anchoring.md) | Anchor every Crucible client reference on the installed, published clients, and check the text against the released client | 5 | 017, 022, 025, 036 |
 | [CR-MDB-024](CR-MDB-024-rust-stack-adoption.md) | Rust as a fifth generated stack, and retire the vscode agents | 5 | 017 |
 | [CR-MDB-021](CR-MDB-021-chezmoi-retirement.md) | Retire chezmoi introspection from the test suite: eight false-green release gates removed, policy self-enforcing | 5 | — |
 | [CR-MDB-033](CR-MDB-033-installer-correctness.md) | Installer correctness: one `target_root` in `install.toml`, atomic writes everywhere, unmanaged files never clobbered, manifest always consulted | 5 | — |
@@ -725,3 +725,15 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   later re-add counts them `unmanaged` — the whole stack-scoped family (`crucible-report-*`,
   `code-health`). **Queue (F7):** the skill's `query ledger OPEN` (inherited) matches no status the
   tools produce (PROPOSED/APPROVED/IN_PROGRESS/COMPLETED/STRUCK).
+- 2026-09-24 — **CR-MDB-020 gap analysis (SPEC_UPDATE_NEEDED):** the anchor is real
+  (`~/.crucible/clients/`, manifest 0.2.2); the generator half went to 025 §S8; contracts/ and
+  docs/research are clean. Remaining text: personal-checkout paths in `crucible/SKILL.md`, the five
+  `crucible/references/*.md`, `java-testing-practices.md` and `AGENTS.md:106,129`; 36 unrooted
+  `clients/` in the five report bundles; the `~/.claude/scripts` mirror in two memory templates; the
+  `block-direct-*` hooks' stale discovery wording (routed from 018); the quarkus reviewer sentence. The
+  §S5 tool contract becomes a **ratchet** (baseline of today's harness-tool names in `skills-src/`,
+  may only shrink) that CR-MDB-031 drains — per DN §D18 — plus a strict `PI_TOOL_NAMES` check over
+  `generator/` templates. `tests/` stays CR-MDB-032's, which then extends 020's gate to `tests/`.
+  **Root CR-RND:** the roundhouse root `AGENTS.md` still names the Crucible checkout's clients.
+  **CR-MDB-032 (pi-lens, pre-existing):** add `tests/test_installer_assets.py:148`
+  (`spec.loader` unnarrowed, from `d34b725b`, July).
