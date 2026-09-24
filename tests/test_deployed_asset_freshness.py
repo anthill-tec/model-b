@@ -52,6 +52,7 @@ import tomllib
 import unittest
 from pathlib import Path
 
+from tests._helpers import decode_axi as _decode
 from tests.pi_capability_sandbox import (
     AGENT_DIR_ENV,
     make_home,
@@ -110,14 +111,6 @@ def _write_exe(bin_dir: Path, name: str, body: str) -> Path:
 
 def _sha256(path: Path) -> str:
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
-
-
-def _decode(stdout: str) -> dict:
-    from modelb_axi.toon import decode
-    try:
-        return decode(stdout).get("axi", {})
-    except Exception:  # noqa: BLE001 — a non-envelope stdout fails the caller's asserts
-        return {}
 
 
 class _InstalledMachineCase(unittest.TestCase):

@@ -36,6 +36,7 @@ import tomllib
 import unittest
 from pathlib import Path
 
+from tests._helpers import decode_envelope as _decode_envelope
 from tests.pi_capability_sandbox import shared_home_without_crucible, with_agent_dir
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -111,16 +112,6 @@ def _write_fake_executable(bin_dir: str, name: str, script_body: str) -> Path:
     path.write_text(script_body, encoding="utf-8")
     path.chmod(0o755)
     return path
-
-
-def _decode_envelope(stdout: str) -> dict:
-    """Decode a `modelb_axi` TOON AXI envelope printed on stdout, using
-    the package's OWN codec (CR-MDB-033 §S6 migration: the `deps:`
-    verdicts, `_extract_selected_harnesses`, and the already-installed
-    notice read installer FACTS from here now, not from stdout text --
-    per the CR's own AC)."""
-    from modelb_axi.toon import decode
-    return decode(stdout)
 
 
 # Fake `uv` fixture: `uv tool install <pkg>` writes an invocation marker

@@ -239,7 +239,11 @@ from pathlib import Path
 from tests.pi_capability_sandbox import with_agent_dir
 
 from modelb_axi import agents as agents_mod
-from tests._helpers import read_text_lenient as _read, split_frontmatter as _split_frontmatter
+from tests._helpers import (
+    decode_envelope as _decode_envelope_c3,
+    read_text_lenient as _read,
+    split_frontmatter as _split_frontmatter,
+)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 GENERATOR_DIR = REPO_ROOT / "generator"
@@ -1491,14 +1495,6 @@ def _parse_env_file_c3(path: Path) -> dict:
             value = value[1:-1]
         values[key.strip()] = value
     return values
-
-
-def _decode_envelope_c3(stdout: str) -> dict:
-    """Decode a TOON AXI envelope via Model B's OWN codec
-    (`modelb_axi.toon`) -- the production emitter's exact counterpart, per
-    `axi.py`'s own module docstring (never Crucible's client copy)."""
-    from modelb_axi.toon import decode
-    return decode(stdout)
 
 
 def _snapshot_hashes(root: Path) -> dict:

@@ -27,6 +27,7 @@ import tomllib
 import unittest
 from pathlib import Path
 
+from tests._helpers import decode_axi as _decode
 from tests.pi_capability_sandbox import (
     AGENT_DIR_ENV,
     MODELB_PI_PACKAGE,
@@ -89,14 +90,6 @@ def _write_exe(bin_dir: Path, name: str, body: str) -> Path:
     path.write_text(body, encoding="utf-8")
     path.chmod(0o755)
     return path
-
-
-def _decode(stdout: str) -> dict:
-    from modelb_axi.toon import decode
-    try:
-        return decode(stdout).get("axi", {})
-    except Exception:  # noqa: BLE001 — a non-envelope stdout is a test failure, reported by callers
-        return {}
 
 
 def _requirements():

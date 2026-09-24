@@ -57,6 +57,7 @@ from pathlib import Path
 from unittest import mock
 
 from modelb_axi.harness import HARNESS_ROSTER_IDS
+from tests._helpers import decode_envelope as _decode_envelope
 from tests.pi_capability_sandbox import shared_home_without_crucible, with_agent_dir
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -194,15 +195,6 @@ def _files_under_excluding_git(root: str) -> list:
             continue
         found.append(str(rel))
     return sorted(found)
-
-
-def _decode_envelope(stdout: str) -> dict:
-    """Decode a `modelb_axi` TOON envelope printed on stdout, using the
-    package's OWN codec (in-process import of the SUT package, the same
-    idiom ``ManifestAlwaysConsultedWithoutReinstallFlagTest`` already
-    uses for ``modelb_axi.cli._deploy_stage``)."""
-    from modelb_axi.toon import decode
-    return decode(stdout)
 
 
 class PiExtensionTargetRootRoundTripTest(unittest.TestCase):

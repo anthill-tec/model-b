@@ -106,6 +106,25 @@ def archive_has_content_move(name: str, anchor: str) -> bool:
     return False
 
 
+# ------------------------------------------------------------------ AXI envelopes ----
+
+def decode_axi(stdout: str) -> dict:
+    """The ``axi`` mapping of a TOON envelope printed on stdout, decoded with the package's OWN
+    codec; ``{}`` when stdout is not an envelope (the caller's assertions then report it)."""
+    from modelb_axi.toon import decode
+    try:
+        return decode(stdout).get("axi", {})
+    except Exception:  # noqa: BLE001 -- a non-envelope stdout fails the caller's asserts
+        return {}
+
+
+def decode_envelope(stdout: str) -> dict:
+    """Decode a ``modelb_axi`` TOON envelope printed on stdout, whole, using the package's OWN
+    codec (a decode error raises)."""
+    from modelb_axi.toon import decode
+    return decode(stdout)
+
+
 # ------------------------------------------------------------------ markdown ----
 
 def split_frontmatter(content: str):

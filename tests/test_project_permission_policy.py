@@ -48,6 +48,7 @@ from pathlib import Path
 from unittest import mock
 
 from modelb_axi import requirements as _requirements
+from tests._helpers import decode_axi
 from tests.pi_capability_sandbox import (
     AGENT_DIR_ENV,
     make_home,
@@ -108,14 +109,6 @@ def split_marker(text: str) -> tuple[str, str]:
 
 def sha256_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
-
-
-def decode_axi(stdout: str) -> dict:
-    from modelb_axi.toon import decode
-    try:
-        return decode(stdout).get("axi", {})
-    except Exception:  # noqa: BLE001 -- a non-envelope stdout is reported by the caller
-        return {}
 
 
 def write_install_toml(modelb_home: Path, harnesses=("pi",)) -> None:
