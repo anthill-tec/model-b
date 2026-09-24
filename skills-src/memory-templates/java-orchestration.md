@@ -2,7 +2,7 @@
 
 Java/Quarkus-stack embodiment of `orchestration-common.md` (workflow, approval gates,
 dispatch, verify-independently — not restated here) and
-`~/.claude/skills/model-b/references/sub-agent-procedure.md` (sub-agent procedure). This file is the Java mechanics: the scripts, the test tiers, the gate sequence,
+`~/.agents/skills/model-b/references/sub-agent-procedure.md` (sub-agent procedure). This file is the Java mechanics: the scripts, the test tiers, the gate sequence,
 the Quarkus-specific gotchas. Sub-agent test/impl conventions live in `java-testing-practices.md`
 + `java-coding-standards.md`; the quarkus-{red,green,verify,fix}-agent definitions reference all four.
 
@@ -24,7 +24,7 @@ the Quarkus-specific gotchas. Sub-agent test/impl conventions live in `java-test
   - `docker-up`/`docker-down`, `pre-merge-gate` (docker-up → regression → docker-down).
   - Common flags: `--module`/`--also-make` (`-pl`/`-am`), `--native` (`-Dnative`), `--profile P` (`-P`), `--system-prop k=v` (`-Dk=v`), `--update-snapshots` (`-U`), `--maven-dir backend` (monorepo), `--coverage-profile`, `--log <file>`.
   - No project hardcoded — defaults to the git repo of CWD; `--project-dir`/`$MVN_CRUCIBLE_PROJECT_DIR`; reads `CRUCIBLE_PROJECT_KEY` (a UUID) from `<project-dir>/.env`. Optional `.env`: `CRUCIBLE_MAVEN_DIR`, `CRUCIBLE_COMPOSE_FILE`, `CRUCIBLE_DOCKER_SERVICES`, `CRUCIBLE_BIND_MOUNT_PATHS`, `CRUCIBLE_COVERAGE_PROFILE`.
-- **`~/.agents/scripts/worktree-flow.py`** — parallel-CR isolation: `start`/`status`/`sync`/`finish`/`abort`. Git-based, **stack-agnostic** — Java CRs use it unchanged. `finish` = `merge --no-ff` → `worktree remove` → `branch -d`; run from the integration tree, not inside the worktree (`ExitWorktree` first); atomic merge lock serializes parallel finishes. Does NOT replace `git flow feature start` for sequential single-CR work.
+- **`~/.agents/scripts/worktree-flow.py`** — parallel-CR isolation: `start`/`status`/`sync`/`finish`/`abort`. Git-based, **stack-agnostic** — Java CRs use it unchanged. `finish` = `merge --no-ff` → `worktree remove` → `branch -d`; run from the integration tree, not inside the worktree (leave the worktree first); atomic merge lock serializes parallel finishes. Does NOT replace `git flow feature start` for sequential single-CR work.
   - **Scheduling is stack-agnostic — a Java track gets its next CR exactly like Rust.** Readiness is asked of Crucible, never of the tool: `python3 ~/.crucible/clients/python-crucible.py next --track "Track N - <Project>"` → `NEXT <cr>` | `HOLD <cr>` (deps not all COMPLETED) | `DRAINED`. Loop + HOLD/DRAINED semantics are documented in `orchestration-track.md`; the `worktree-flow` command set is in `rust-orchestration.md`.
   - **The split (CR-MDB-028, 2026-09-21):** `worktree-flow` owns what it derives from git — worktrees, ahead/behind, phase, merge; Crucible owns queue membership, release, wave, seq, dependencies and readiness. The tool's ChangeSet DB half is gone.
 - **`crucible` skill, `references/java.md`** — documents the underlying surefire/JaCoCo ingest API. `mvn-crucible.py` automates it; the reference file is the API doc.
@@ -69,7 +69,7 @@ When chopping a layered feature into cycles, sequence bottom-up and choose the r
 
 Full order: **Model → DTO → Repository → Service → Resource.**
 
-**Reuse shared-library components before creating new ones.** Check the project's CLAUDE.md for the shared lib (e.g. `4pm-Store-utils`) and maximize reuse; common components live under `org.fourpm.utils.*` — `IdGenerator` (use instead of `UUID.randomUUID()`), exception types (`org.fourpm.utils.exception.*`), `ModelIdCache`, `GlobalExceptionMappers`.
+**Reuse shared-library components before creating new ones.** Check the project's AGENTS.md for the shared lib (e.g. `4pm-Store-utils`) and maximize reuse; common components live under `org.fourpm.utils.*` — `IdGenerator` (use instead of `UUID.randomUUID()`), exception types (`org.fourpm.utils.exception.*`), `ModelIdCache`, `GlobalExceptionMappers`.
 
 **RediSearch (projects using Redis search):** TAG-field queries use uppercase values in curly braces (`@status:{AVAILABLE}`); always pass `DD=true` on index cleanup (`ftDropIndex(indexName, true)`) so the doc-hashes are dropped too.
 

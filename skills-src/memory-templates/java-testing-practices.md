@@ -16,7 +16,7 @@
 4. **Run tests AGAIN** to verify import removal didn't break anything
 5. **Git commit** (only if tests still GREEN)
 
-(Dispatched sub-agents: the Model B sub-agent procedure (`~/.claude/skills/model-b/references/sub-agent-procedure.md`) §TDD is authoritative — a compile failure IS a RED state (ingest it); do NOT run the full suite, that's the orchestrator's pre-merge gate.)
+(Dispatched sub-agents: the Model B sub-agent procedure (`~/.agents/skills/model-b/references/sub-agent-procedure.md`) §TDD is authoritative — a compile failure IS a RED state (ingest it); do NOT run the full suite, that's the orchestrator's pre-merge gate.)
 
 ### Refactoring with TDD
 **ALWAYS read the TESTS FIRST** before refactoring:
@@ -373,7 +373,7 @@ public class BusinessEntityRepositoryIT {
 **Write BOTH:**
 
 1. **Unit tests** with PanacheMock:
-   - Mock static query methods (`findById`, `find`, etc.)
+   - Mock static query methods (`findById()`, `find()`, etc.)
    - Validate business logic and query delegation
    
 2. **Integration tests** with TestContainers:
