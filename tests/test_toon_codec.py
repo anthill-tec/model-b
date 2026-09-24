@@ -669,7 +669,7 @@ class ToonCodecS2Test(unittest.TestCase):
                 "§S2/AC5: the in-repo `status` stdout must decode with Model "
                 f"B's own codec ({type(exc).__name__}: {exc}); stdout was:\n"
                 f"{result.stdout[:2000]}"
-            )
+            ) from exc
         self.assertIn(
             "axi", decoded,
             "§S2/AC5: the in-repo `status` envelope must carry a top-level "
@@ -836,7 +836,7 @@ class ToonEnvelopeS3Test(unittest.TestCase):
             raise AssertionError(
                 f"§S3/AC4 type preservation ({label}): decode raised "
                 f"{type(exc).__name__}: {exc} on:\n{text}"
-            )
+            ) from exc
         note = decoded.get("axi", {}).get("note")
         items = decoded.get("axi", {}).get("warnings")
         self.assertIsInstance(
@@ -937,7 +937,7 @@ class ToonEnvelopeS3Test(unittest.TestCase):
             raise AssertionError(
                 f"§S3/AC5: the real envelope must decode "
                 f"({type(exc).__name__}: {exc}); emitted:\n{text}"
-            )
+            ) from exc
         wave = decoded.get("axi", {}).get("context", {}).get("wave")
         self.assertIsInstance(
             wave, str,
@@ -999,7 +999,7 @@ class ToonEnvelopeS3Test(unittest.TestCase):
             raise AssertionError(
                 f"§S3/AC2: Crucible's spec-conformant port REJECTED Model B's "
                 f"non-empty-list envelope ({exc}); emitted:\n{text}"
-            )
+            ) from exc
 
         # The quoting rule, item by item. `must_quote` items would change TYPE
         # or split on the delimiter if emitted bare; the em dash must NOT be
@@ -1069,7 +1069,7 @@ class ToonEnvelopeS3Test(unittest.TestCase):
                 "§S3/AC3: `status`'s empty list headers decode cleanly against "
                 f"Crucible's port TODAY and must keep doing so; got {exc} on:\n"
                 f"{result.stdout}"
-            )
+            ) from exc
         codec = self._require_codec()
         try:
             after = codec.decode(result.stdout)
@@ -1077,7 +1077,7 @@ class ToonEnvelopeS3Test(unittest.TestCase):
             raise AssertionError(
                 "§S3/AC3: `status` must ALSO decode with Model B's own codec "
                 f"({type(exc).__name__}: {exc}); stdout was:\n{result.stdout}"
-            )
+            ) from exc
         self.assertEqual(
             after, before,
             "§S3/AC3: Model B's decoder and the reference port must agree on "
