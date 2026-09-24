@@ -56,9 +56,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from tests.pi_capability_sandbox import shared_home_without_crucible, with_agent_dir
-
 from modelb_axi.harness import HARNESS_ROSTER_IDS
+from tests.pi_capability_sandbox import shared_home_without_crucible, with_agent_dir
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
