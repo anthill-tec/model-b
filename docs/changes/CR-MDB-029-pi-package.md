@@ -52,13 +52,16 @@ CR-MDB-030 §S8 (loading a `.ts` extension in a test through the `jiti` package)
 ### §S1 — The package
 `pi-package/` holds `package.json`:
 - `"name": "@anthill-tec/modelb-pi"`;
-- `"version"` equal to `modelb_axi.__version__`, the single version source (CR-MDB-038 §S1);
+- `"version"`: the npm-semver form of `modelb_axi.__version__`, the single version source
+  (CR-MDB-038 §S1) — `X.Y.Z` unchanged, `X.Y.Z.devN` → `X.Y.Z-dev.N`, `X.Y.ZaN`/`bN`/`rcN` →
+  `X.Y.Z-alpha.N`/`-beta.N`/`-rc.N` (amended at C1: a PEP 440 version such as `0.1.0.dev0` is not
+  valid npm semver);
 - `"keywords": ["pi-package"]`, `"license": "MIT"`;
 - `"pi": {"extensions": ["extensions/sandesh-watcher.ts"]}`;
 - `peerDependencies` on `@earendil-works/pi-coding-agent`, and no `dependencies`.
 
 It holds `extensions/sandesh-watcher.ts` and `README.md`, and no `skills/`. `README.md` is the
-install guide's marked regions (CR-MDB-037 §S1) rendered by `generator/build.py`, so
+marked regions of `docs/install-guide.md` (CR-MDB-037 §S1) rendered by `generator/build.py`, so
 `build.py --check` fails when it drifts from the guide; it carries no install text of its own.
 
 ### §S2 — The watcher supervisor extension
@@ -96,8 +99,8 @@ extension loads.
 ## Acceptance criteria
 
 ### §S1
-- [ ] `pi-package/package.json` carries the §S1 fields exactly; its `version` equals
-      `modelb_axi.__version__`; `pi.extensions` lists every file under `pi-package/extensions/`;
+- [ ] `pi-package/package.json` carries the §S1 fields exactly; its `version` is the npm-semver form
+      of `modelb_axi.__version__` and matches the semver 2.0.0 grammar; `pi.extensions` lists every file under `pi-package/extensions/`;
       there is no `dependencies` key and no `skills/` directory.
 - [ ] `pi-package/README.md` equals the install guide's marked regions as `generator/build.py`
       renders them; `build.py --check` fails on a one-byte drift in either.
