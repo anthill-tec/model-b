@@ -46,6 +46,7 @@ from modelb_axi.scaffold import (
     KNOWN_STACKS,
     ScaffoldError,
     parse_stacks,
+    reject_recorded_harnesses,
     run_agents,
     run_init,
 )
@@ -75,8 +76,8 @@ def resolve_target_root(flag_value: str | None) -> Path | None:
     ``MODELB_TARGET_ROOT`` env > ``None``.
 
     ``None`` means "not explicitly supplied": the DOCUMENTED default is
-    the real user home (``Path.home()`` — the live ``~/.claude`` /
-    ``~/.agents`` trees), but v1 only executes the deploy stage against
+    the real user home (``Path.home()`` — the live ``~/.agents``
+    tree), but v1 only executes the deploy stage against
     an EXPLICIT target root. The C2 pre-flight contract pins that a run
     without ``--target-root`` writes neither deployed files nor
     ``install.toml`` (and the repo-local rule / AC7 guard forbids the
@@ -109,7 +110,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--harnesses", metavar="LIST",
-        help="comma/space-separated harness targets (e.g. claude-code,hermes)",
+        help="comma/space-separated harness targets (roster: pi)",
     )
     parser.add_argument(
         "--modelb-home", metavar="DIR",
@@ -118,8 +119,8 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--target-root", metavar="DIR",
         help=(
-            "root for deployed assets (.agents/skills store + per-harness "
-            "skills dirs); default: the real user home"
+            "root for deployed assets (the .agents/ skills, hooks and "
+            "scripts stores); default: the real user home"
         ),
     )
     parser.add_argument(
@@ -192,7 +193,7 @@ def _add_init_parser(subparsers) -> None:
         help="scaffold a Model B project under --target",
         description=(
             "Scaffold a Model B project: registry (.env), docs model, "
-            "AGENTS.md + harness anchors for the installed set, in-repo "
+            "AGENTS.md for the installed harness set, in-repo "
             "memory, git+git-flow, and (opt-in) registrations."
         ),
     )
@@ -449,6 +450,16 @@ def _run_installer_flow(
     _say(f"  MODELB_HOME: {home}")
     if harnesses:
         _say(f"  harnesses requested: {', '.join(harnesses)}")
+    else:
+        # CR-MDB-031 §S1: a harness id recorded by an older install and
+        # no longer in the roster is refused before any stage runs —
+        # nothing is written; the message names the recovery re-run.
+        try:
+            reject_recorded_harnesses(home)
+        except UnknownHarnessError as exc:
+            _warn(str(exc), warnings, level="error")
+            _emit_install_envelope("harness_rejected", False, warnings, fields)
+            return 1
     if not _confirm("Proceed with installation?", interactive):
         _say("modelb-axi: installer flow aborted by user")
         _emit_install_envelope("aborted", False, warnings, fields)

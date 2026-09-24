@@ -28,6 +28,7 @@ Each file is itself written atomically (§S2). Stdlib only.
 
 import argparse
 import datetime
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -84,9 +85,8 @@ def resolve_harnesses(home: Path, dev_override: str | None) -> tuple[list[str], 
     """
     installed = load_install_toml(home).get("install", {}).get("harnesses")
     if installed:
-        installed_ids = [str(h) for h in installed]
-        _reject_unknown_harnesses(installed_ids)
-        return installed_ids, "install.toml"
+        reject_recorded_harnesses(home)
+        return [str(h) for h in installed], "install.toml"
     requested = parse_harnesses(dev_override)
     if requested:
         _reject_unknown_harnesses(requested)
@@ -103,6 +103,42 @@ def _reject_unknown_harnesses(harness_ids: list[str]) -> None:
     unknown = [h for h in harness_ids if h not in HARNESS_ROSTER_IDS]
     if unknown:
         raise UnknownHarnessError(unknown)
+
+
+def harness_recovery_command(home: Path) -> str:
+    """The re-run that replaces a stale recorded harness set
+    (CR-MDB-031 §S1): ``modelb-axi --reinstall`` against ``home`` with the
+    recorded target root and stacks (``<dir>`` when none is recorded) and
+    ``--harnesses`` set to the roster. Values are shell-quoted."""
+    install = load_install_toml(home).get("install", {})
+    target_root = install.get("target_root")
+    stacks = install.get("stacks")
+    parts = ["modelb-axi", "--reinstall", "--modelb-home", shlex.quote(str(home)),
+             "--target-root",
+             shlex.quote(target_root) if isinstance(target_root, str) and target_root
+             else "<dir>"]
+    if isinstance(stacks, list) and stacks and all(isinstance(s, str) for s in stacks):
+        parts += ["--stacks", shlex.quote(",".join(stacks))]
+    parts += ["--harnesses", ",".join(HARNESS_ROSTER_IDS)]
+    return " ".join(parts)
+
+
+def reject_recorded_harnesses(home: Path) -> None:
+    """Refuse an ``install.toml`` whose ``[install].harnesses`` records an
+    id outside the roster (CR-MDB-033 §S5; CR-MDB-031 §S1 — e.g. a retired
+    harness recorded by an older install). The raised
+    :class:`UnknownHarnessError` names the id(s) and the recovery re-run;
+    nothing is written. A no-op when no harness set is recorded."""
+    installed = load_install_toml(home).get("install", {}).get("harnesses")
+    if not installed:
+        return
+    unknown = [str(h) for h in installed if str(h) not in HARNESS_ROSTER_IDS]
+    if unknown:
+        raise UnknownHarnessError(
+            unknown,
+            recovery=(f"{home / INSTALL_TOML_NAME} records it; recover with "
+                      f"`{harness_recovery_command(home)}`"),
+        )
 
 
 def parse_stacks(raw: str) -> list[str]:
@@ -199,15 +235,14 @@ def _render_env_local() -> str:
 
 
 def _render_gitignore() -> str:
-    """``.gitignore`` incl. ``.env.local`` + harness caches (§S3.5)."""
+    """``.gitignore`` incl. ``.env.local`` and the in-repo worktree
+    segment ``.worktrees/`` (§S3.5; CR-MDB-031 §S0.1/§S3)."""
     return (
         "# Local-only registry overlay — never committed.\n"
         ".env.local\n"
         "\n"
-        "# Harness caches / local harness state.\n"
-        ".claude/\n"
-        ".opencode/\n"
-        ".hermes/\n"
+        "# CR worktrees live inside the repo (inheriting Pi's project trust).\n"
+        ".worktrees/\n"
         # `.pi/` is NOT ignored: `.pi/extensions/` (compiled hook shims) and
         # `.pi/agents/` are tracked so every worktree carries them
         # (CR-MDB-030 §S6).
@@ -237,7 +272,7 @@ def _render_queue_readme(
         f"**Project:** {name} (acronym: {acronym} · orchestrator: `{label}`) · "
         "**Design contract:** _fill in (`docs/research/PRD-….md`)_ · "
         "**Evidence base:** _fill in_ · "
-        "**Ontology:** `crucible:docs/research/DN-model-b-language.md` · "
+        "**Ontology:** `~/.agents/skills/model-b/SKILL.md` · "
         "**Target release:** 0.1.0\n"
         "\n"
         "Queue rows enumerate the whole delivery (STRUCTURE only). Live "
@@ -265,23 +300,12 @@ def _render_queue_readme(
     )
 
 
-_HARNESS_NATIVE_NOTES: dict[str, str] = {
-    # DN-harness-agnostic-hooks §2 supplies no concrete project-config
-    # anchor for these three — each reads AGENTS.md natively, so the
-    # scaffold emits NO anchor file and notes that fact here (§S3.3).
-    "hermes": (
-        "- hermes: reads `AGENTS.md` natively — no separate anchor file "
-        "emitted."
-    ),
-    "pi": (
-        "- pi (pi.dev): reads `AGENTS.md` natively — no separate anchor "
-        "file emitted."
-    ),
-    "opencode": (
-        "- opencode: reads `AGENTS.md` natively — no separate anchor file "
-        "emitted."
-    ),
-}
+#: Pi reads ``AGENTS.md`` natively, so the scaffold emits no anchor file
+#: and notes that fact (§S3.3).
+_PI_ANCHOR_NOTE = (
+    "- pi (pi.dev): reads `AGENTS.md` natively — no separate anchor file "
+    "emitted."
+)
 
 
 def _render_capability_contract(stacks: list[str], harnesses: tuple[str, ...] = ()) -> str:
@@ -333,15 +357,7 @@ def _render_agents_md(
         f"RED/GREEN/VERIFY/FIX agents as frozen at scaffold time."
         for stack in stacks
     )
-    anchor_lines = []
-    if "claude-code" in harnesses:
-        anchor_lines.append(
-            "- claude-code: `CLAUDE.md` symlink → `AGENTS.md` (emitted by "
-            "the scaffold)."
-        )
-    anchor_lines += [
-        _HARNESS_NATIVE_NOTES[h] for h in harnesses if h in _HARNESS_NATIVE_NOTES
-    ]
+    anchor_lines = [_PI_ANCHOR_NOTE] if "pi" in harnesses else []
     return (
         f"# {name} — project AGENTS.md\n"
         "\n"
@@ -406,9 +422,8 @@ def _render_sub_agents_md(name: str, sub: str, token: str, acronym: str) -> str:
 # name (CR-MDB-030 §S4).
 #
 # fail_direction choice: every scaffold-emitted security-class (block-*)
-# guard is `closed` (CR-MDB-030 §S6) — Pi, the primary harness, honours it.
-# The fail-open-only harnesses (claude-code, hermes) refuse closed hooks,
-# so they wire no block-* guard; hooks/README.md reports each refusal.
+# guard is `closed` (CR-MDB-030 §S6) — Pi, the only roster harness,
+# honours it.
 
 
 def _hook_instances(stacks: list[str], mode: str) -> list[dict]:
@@ -536,8 +551,8 @@ def _render_hooks_readme(
     report: dict, instances: list[dict], harnesses: list[str],
 ) -> str:
     """`hooks/README.md` = the human-readable §S4 compiler report (§S5):
-    per-harness accounting — emitted files, wired hooks, refusals with
-    reasons, declared degradations — nothing silent."""
+    per-harness accounting — emitted files, wired hooks, declared
+    degradations — nothing silent."""
     lines = [
         "# hooks — compiler report",
         "",
@@ -564,17 +579,12 @@ def _render_hooks_readme(
             )
             lines.append("")
             continue
-        refused = {r["command"] for r in entry["refusals"]}
-        wired = [i["command"] for i in instances if i["command"] not in refused]
+        wired = [i["command"] for i in instances]
         if wired:
             lines.append(f"- wired hooks: {', '.join(wired)}")
         if entry["emitted_files"]:
             lines.append(
                 f"- emitted files: {', '.join(entry['emitted_files'])}"
-            )
-        for refusal in entry["refusals"]:
-            lines.append(
-                f"- REFUSED `{refusal['command']}`: {refusal['reason']}"
             )
         if entry["degraded"]:
             lines.append("- DEGRADED (declared):")
@@ -629,14 +639,25 @@ def _renders_agents(harnesses: list[str]) -> bool:
     return any(h in agents.PROJECT_AGENT_DIRS for h in harnesses)
 
 
+#: Memory-template family prefix -> the stacks whose selection emits it
+#: (CR-MDB-031 §S1): the quarkus agent definitions read the ``java-*``
+#: templates, so a ``java-*`` template is emitted for ``java`` OR
+#: ``quarkus``. A prefix absent here is stack-neutral.
+MEMORY_TEMPLATE_FAMILIES: dict[str, frozenset[str]] = {
+    "java": frozenset({"java", "quarkus"}),
+    "rust": frozenset({"rust"}),
+}
+
+
 def _select_memory_templates(templates_dir: Path, stacks: list[str]) -> list[Path]:
-    """Filter templates by ``--stacks``: a ``<stack>-*.md`` template is
-    emitted only when its stack is selected; stack-neutral templates
-    (e.g. ``operational-commands.md``) are always emitted."""
+    """Filter templates by ``--stacks``: a ``<prefix>-*.md`` template of a
+    family in :data:`MEMORY_TEMPLATE_FAMILIES` is emitted only when a stack
+    of that family is selected; stack-neutral templates (e.g.
+    ``operational-commands.md``) are always emitted."""
     selected = []
     for path in sorted(templates_dir.glob("*.md")):
-        prefix = path.name.split("-", 1)[0]
-        if prefix in KNOWN_STACKS and prefix not in stacks:
+        family = MEMORY_TEMPLATE_FAMILIES.get(path.name.split("-", 1)[0])
+        if family is not None and not family & set(stacks):
             continue
         selected.append(path)
     return selected
@@ -733,14 +754,11 @@ def _emit_plan(
     write("docs/changes/README.md", _render_queue_readme(name, acronym, label, mode))
     write("docs/research/.gitkeep", "")
 
-    # §S3.3 AGENTS.md + per-installed-harness anchors.
+    # §S3.3 AGENTS.md (Pi reads it natively — no anchor file).
     write(
         "AGENTS.md",
         _render_agents_md(name, token, acronym, mode, owner, stacks, harnesses),
     )
-    if "claude-code" in harnesses:
-        (target / "CLAUDE.md").symlink_to("AGENTS.md")
-        emitted.append("CLAUDE.md")
 
     # §S3.4 in-repo project memory.
     for template in templates:
