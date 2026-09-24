@@ -41,7 +41,7 @@ Queue rows enumerate the whole delivery (structure only). **Live status lives on
 | [CR-MDB-038](CR-MDB-038-pypi-publishing.md) | Make modelb-axi publishable on PyPI, and retire the global permission report | 5 | 037 |
 | [CR-MDB-029](CR-MDB-029-pi-package.md) | The Model B Pi package: the Sandesh watcher supervisor, published as `@anthill-tec/modelb-pi` | 5 | — |
 | [CR-MDB-031](CR-MDB-031-claude-era-substrate-retirement.md) | Retire the Claude-era substrate: roster → `pi`, non-Pi emitters, `.claude/skills` symlink writer, `CLAUDE.md` emission, `chezmoi` bundle, `/tmp/claude-1000` wrapper, `.claude/worktrees` convention, skills' Claude Code dispatch/worktree/todo mechanics, `~/.claude/skills` body citations | 5 | 025, 026, 030 |
-| [CR-MDB-032](CR-MDB-032-test-suite-relocation.md) | Test-suite relocation: no dev-checkout reach, no real-home assertions, no dead/self-defeating gates, one helper module, a Pi end-to-end | 5 | 020, 021 |
+| [CR-MDB-032](CR-MDB-032-test-suite-relocation.md) | The test suite runs on any machine: no Crucible checkout, no real-home assertions, one copy of each helper, and the hygiene backlog cleared | 5 | 020, 021 |
 | [CR-MDB-027](CR-MDB-027-subagent-dispatch-on-pi.md) | Sub-agent dispatch on Pi: decide what provides it, given Pi core has none (decision CR — RULED 2026-09-21: `pi-archimedes`, DN §D16; unblocks the CR-025 rewrite) | 5 | — |
 | [CR-MDB-028](CR-MDB-028-worktree-flow-scheduling-migration.md) | Retire `worktree-flow.py`'s DB half: scheduling moves to Crucible's API (P0 — above the routing strategy, user ruling) | 5 | 022 |
 | [CR-MDB-035](CR-MDB-035-prd-criteria-reconciliation.md) | Reconcile PRD §4 success criteria with the shipped tree | 5 | 021, 025, 031 |
@@ -760,3 +760,11 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   and "nothing open" distinguishable (a board of only aborted plans has `lastClosedCr: null`). When the
   release carrying it ships: re-pin the ambient hook to 3.0.0 and render the none-open case. Until
   then the hook counts any non-`closed` status (e.g. `aborted`) as open — known, superseded by 150.
+- 2026-09-24 — **CR-MDB-032 gap analysis (SPEC_UPDATE_NEEDED):** re-measured — 51 modules, 1021
+  tests; with `HOME` pointed at an empty dir the suite has 32 failures + 6 errors in the wave-1/2
+  real-home gates, `test_worktree_flow_axi`, `test_scaffold` and two deploy-fidelity tests. The spec's
+  "fail, not skip" for the manifest-resolved toon oracle contradicted its own empty-`HOME` criterion:
+  now skip-with-reason when the manifest is absent. Pi e2e already exists (036/037); §S4 adds only the
+  "nothing under `.claude/`" assertion. 45 duplicated helper copies across 16 helpers. The pi-lens
+  backlog collected from earlier CRs becomes §S5 with an AC. `test_realhome_supersede`'s retained
+  mirror-absence assertion is superseded by CR-MDB-020's anchoring gate.
