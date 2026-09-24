@@ -166,14 +166,18 @@ class _Sandbox:
                 self.log.read_text(encoding="utf-8").splitlines() if line.strip()]
 
     def run_hook(self, *, cwd: Path | None = None,
-                 env_overrides: dict | None = None) -> subprocess.CompletedProcess:
+                 env_overrides: dict | None = None,
+                 argv_prefix: list[str] | None = None) -> subprocess.CompletedProcess:
+        """Run the real hook. ``argv_prefix`` (e.g. a wrapper that alters
+        the child's process state, then execs the hook) goes before the
+        hook path, replacing the bare ``sys.executable``."""
         env = dict(os.environ)
         env.pop("MODELB_STATUS_CMD", None)
         env.pop("MODELB_HOME", None)
         env["HOME"] = str(self.home)
         env.update(env_overrides or {})
         return subprocess.run(
-            [sys.executable, str(HOOK_PATH)],
+            [*(argv_prefix or [sys.executable]), str(HOOK_PATH)],
             input="{}", capture_output=True, text=True, timeout=15,
             cwd=str(cwd if cwd is not None else self.project), env=env,
         )
@@ -275,6 +279,14 @@ class ManifestFeedResolutionS1Test(_SandboxCase):
         inner = self.sb.project / "bindings" / "py"
         self.sb.mark("pyproject.toml", where=inner)      # nearest: python
         self.assert_board_rendered(self.sb.run_hook(cwd=inner), via_key="python")
+
+    def test_s1_manifest_client_path_with_a_tilde_is_expanded_under_home(self):
+        """A ``~``-relative client path resolves under ``$HOME``, as
+        ``capabilities.probe_crucible_client`` does (``expanduser``)."""
+        self.sb.write_client("python", self.sb.home / "cl")
+        self.sb.write_manifest({"python": "~/cl/python-crucible.py"})
+        self.sb.mark("pyproject.toml")
+        self.assert_board_rendered(self.sb.run_hook(), via_key="python")
 
     def test_s1_install_toml_clients_dir_under_modelb_home_is_never_read(self):
         """A ``$MODELB_HOME/install.toml`` whose ``clients_dir`` names a
@@ -433,6 +445,72 @@ class UnresolvedFeedDegradesS2Test(_SandboxCase):
         self.sb.mark("pyproject.toml")
         self.assert_board_rendered(self.sb.run_hook(), via_key="python")
 
+    # -- hardening: filesystem errors and malformed shapes never raise --------
+    # Permission-denied stats raise PermissionError from ``Path.is_file()`` on
+    # Python 3.11/3.12 (only ENOENT/ENOTDIR/EBADF/ELOOP are swallowed there);
+    # 3.13+ swallows every OSError, so run under 3.11 to see these bite.
+
+    def _deny(self, directory: Path):
+        """chmod 000 ``directory``, restored before the sandbox is removed."""
+        if hasattr(os, "geteuid") and os.geteuid() == 0:
+            self.skipTest("root ignores directory permissions")
+        directory.chmod(0o000)
+        self.addCleanup(directory.chmod, 0o755)
+
+    def test_s2_unreadable_crucible_dir_degrades_without_raising(self):
+        client = self.sb.write_client("python", self.sb.root / "released")
+        self.plant_substitutes("python")
+        self.sb.write_manifest({"python": client})
+        self.sb.mark("pyproject.toml")
+        self._deny(self.sb.home / ".crucible")
+        self.assert_degraded_without_invocation(self.sb.run_hook(), manifest_related=True)
+
+    def test_s2_unreadable_client_parent_dir_degrades_without_raising(self):
+        released = self.sb.root / "released"
+        client = self.sb.write_client("python", released)
+        self.plant_substitutes("python")
+        self.sb.write_manifest({"python": client})
+        self.sb.mark("pyproject.toml")
+        self._deny(released)
+        self.assert_degraded_without_invocation(self.sb.run_hook(), manifest_related=True)
+
+    def test_s2_manifest_whose_top_level_is_not_an_object_degrades(self):
+        for bad in ([{"clients": {"python": "x"}}], "python-crucible.py"):
+            with self.subTest(manifest=bad):
+                self.sb.log.unlink(missing_ok=True)
+                self.plant_substitutes("python")
+                self.sb.write_manifest(text=json.dumps(bad))
+                self.sb.mark("pyproject.toml")
+                self.assert_degraded_without_invocation(
+                    self.sb.run_hook(), manifest_related=True)
+
+    def test_s2_manifest_client_entry_that_is_not_a_path_string_degrades(self):
+        for bad in (123, ["a"], ""):
+            with self.subTest(client=bad):
+                self.sb.log.unlink(missing_ok=True)
+                self.plant_substitutes("python")
+                self.sb.write_manifest(text=json.dumps(
+                    {"clients": {"python": bad}, "version": "0.2.2"}))
+                self.sb.mark("pyproject.toml")
+                self.assert_degraded_without_invocation(
+                    self.sb.run_hook(), manifest_related=True)
+
+    def test_s2_deleted_working_directory_degrades_without_raising(self):
+        """The child chdirs into a temp dir, removes it, then execs the hook:
+        ``os.getcwd()`` fails, which must degrade, never raise."""
+        client = self.sb.write_client("python", self.sb.root / "released")
+        self.sb.write_manifest({"python": client})
+        self.sb.mark("pyproject.toml")
+        doomed = self.sb.project / "doomed"
+        doomed.mkdir()
+        wrapper = ("import os, sys\n"
+                   "os.chdir(sys.argv[1]); os.rmdir(sys.argv[1])\n"
+                   "os.execv(sys.executable, [sys.executable, sys.argv[2]])\n")
+        result = self.sb.run_hook(
+            argv_prefix=[sys.executable, "-c", wrapper, str(doomed)])
+        self.assertFalse(doomed.exists(), "precondition: the cwd was removed")
+        self.assert_degraded_without_invocation(result, manifest_related=False)
+
 
 _FORBIDDEN_PATH_TOKENS = (
     ".claude",            # ~/.claude/scripts or any ~/.claude location
@@ -524,12 +602,19 @@ class NoSubstituteLocationS2Test(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 def _load_hook_module():
+    """Load the hook as a module without writing bytecode beside it (a
+    ``__pycache__`` in ``hooks-src/scripts/`` would pollute the asset tree)."""
     loader = importlib.machinery.SourceFileLoader("ambient_board_status_hook",
                                                   str(HOOK_PATH))
     spec = importlib.util.spec_from_loader(loader.name, loader)
     assert spec is not None, f"could not build a module spec for {HOOK_PATH}"
     module = importlib.util.module_from_spec(spec)
-    loader.exec_module(module)
+    saved = sys.dont_write_bytecode
+    sys.dont_write_bytecode = True
+    try:
+        loader.exec_module(module)
+    finally:
+        sys.dont_write_bytecode = saved
     return module
 
 
