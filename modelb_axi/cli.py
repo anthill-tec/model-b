@@ -466,6 +466,7 @@ def _run_installer_flow(
         lambda prompt: _confirm(prompt, interactive), warnings,
         stacks=stacks, allow_missing_capabilities=allow_missing_capabilities,
         offer=_offer if interactive else None,
+        harnesses=harnesses or detect_harnesses(),
     )
     if preflight_exit != 0:
         _emit_install_envelope("preflight_failed", False, warnings, fields)

@@ -1,14 +1,3 @@
-# Installing Model B
-
-Model B is a set of agent skills, sub-agent definitions, lifecycle hooks and workflow scripts
-for the Pi coding agent, delivered by one installer,
-`modelb-axi`. This guide takes you from a fresh machine to a working install and a first
-project. You do not need to know anything about how Model B is built to follow it.
-
-Every command below is run in an ordinary shell. Lines the installer prints go to the terminal
-(standard error); the one machine-readable summary it prints at the end goes to standard output.
-
-<!-- install-guide:begin quick-start -->
 ## Quick start
 
 If you already have Pi and the `modelb-axi` command (see [Prerequisites](#prerequisites), step
@@ -24,9 +13,7 @@ modelb-axi --yes --harnesses pi --target-root ~ --stacks python
 Replace `python` with the stacks you work in (see [Choosing stacks](#choosing-stacks)). The
 rest of this guide explains each step, every line the installer prints, and what to do when a
 line is not what you expected.
-<!-- install-guide:end quick-start -->
 
-<!-- install-guide:begin prerequisites -->
 ## Prerequisites
 
 Install these in the order given; no step relies on one that comes after it.
@@ -63,9 +50,7 @@ Install these in the order given; no step relies on one that comes after it.
      installer looks for their manifest at `~/.crucible/crucible-clients.json`;
    - `python3`, `bash` and `jq` — from your operating system's package manager;
    - `gh` — the GitHub CLI, from https://cli.github.com.
-<!-- install-guide:end prerequisites -->
 
-<!-- install-guide:begin choosing-stacks -->
 ## Choosing stacks
 
 A *stack* is a language toolchain you write and test code in. The installer supports six:
@@ -89,9 +74,7 @@ installer can run without elevated privileges the installer offers to run it —
 It does not install Crucible's clients either. Every other skill, the hook scripts and the
 workflow scripts are deployed whatever stacks you choose, and a project's own stacks are chosen
 separately, when you create it with `modelb-axi init --stacks`.
-<!-- install-guide:end choosing-stacks -->
 
-<!-- install-guide:begin reading-the-pre-flight -->
 ## Reading the pre-flight
 
 Before it writes anything, the installer checks the machine and prints one line per group. A
@@ -129,9 +112,7 @@ Each check ends in one of four verdicts:
 
 All warnings are printed after these lines, so the lines always show what was found before
 anything was changed.
-<!-- install-guide:end reading-the-pre-flight -->
 
-<!-- install-guide:begin warnings -->
 ## Warnings: what stops working
 
 Each warning names the missing piece, what will not work without it, and the command that
@@ -155,9 +136,7 @@ provides it. By requirement:
 
 Only `uv`, `dispatch` and `lean-ctx` stop an install. Every other warning is recorded and the
 install continues, so you can fix it later and re-run.
-<!-- install-guide:end warnings -->
 
-<!-- install-guide:begin install-offers -->
 ## Install offers
 
 When something is missing and there is a command that would provide it, an interactive run can
@@ -193,9 +172,7 @@ among the harnesses you install for and Model B's own Pi package is absent, it a
 In both, Enter means yes and a decline is recorded as a warning. Under `--yes`, and in a run
 whose input is not a terminal, they run without asking. The command runs in your terminal and
 the package is checked again afterwards, exactly as for the offers above.
-<!-- install-guide:end install-offers -->
 
-<!-- install-guide:begin missing-capabilities -->
 ## Missing capabilities
 
 `dispatch` and `lean-ctx` are required. If either is `absent`, the installer prints an error
@@ -217,9 +194,7 @@ was used.
 A required package reported `unknown` does not stop the install; it is a warning, because the
 installer cannot prove the package is missing. `permissions` and `watcher` are recommended
 rather than required: when either is absent you get a warning, never a failure.
-<!-- install-guide:end missing-capabilities -->
 
-<!-- install-guide:begin install-outcomes -->
 ## Install outcomes
 
 Every run ends with one summary on standard output, whose `outcome` is one of:
@@ -255,9 +230,7 @@ install compares what is deployed with what the installed package ships. `freshn
 
 An `install.toml` written by an older version records no target root; the report is then
 `freshness: unknown` with a warning telling you to re-run with `--reinstall --target-root`.
-<!-- install-guide:end install-outcomes -->
 
-<!-- install-guide:begin installing-into-your-home-directory -->
 ## Installing into your home directory
 
 The installer deploys into your home directory only when you say so. Pass the target
@@ -289,9 +262,7 @@ locations at a scratch directory (the same caveat about `sandesh` applies):
 ```sh
 modelb-axi --yes --harnesses pi --stacks python --target-root /tmp/modelb-trial --modelb-home /tmp/modelb-trial/state
 ```
-<!-- install-guide:end installing-into-your-home-directory -->
 
-<!-- install-guide:begin adding-stacks-later -->
 ## Adding stacks later
 
 The installer does not remember your earlier stack choice when you run it again, so name every
@@ -313,9 +284,7 @@ modelb-axi agents --stacks python,rust
 
 This re-renders the project's agent definitions for the new list and records it in the
 project's `.env`. Agent definitions you have edited are left alone.
-<!-- install-guide:end adding-stacks-later -->
 
-<!-- install-guide:begin project-trust -->
 ## Project trust
 
 Pi loads a project's own settings, extensions, skills, prompts and themes (`.pi/settings.json`,
@@ -360,19 +329,3 @@ modelb-axi init --name "My Project" --token myproject --acronym MYP --mode solo 
 ```
 
 Add `--dry-run` to see what would be written without writing anything.
-<!-- install-guide:end project-trust -->
-
-## Marked regions
-
-Each section above sits between two marker lines, so its text can be copied, unchanged, into
-the release notes and the Pi package's README:
-
-- a region opens with `<!-- install-guide:begin <name> -->` on a line of its own;
-- a region closes with `<!-- install-guide:end <name> -->` on a line of its own, with the same
-  name.
-
-Names are lower-case words joined by hyphens, each name is used once, regions are never
-nested and never empty. This section is outside every region and is not copied. To change the
-install instructions, edit this file; the other copies are taken from it at release time.
-
-The PyPI project page shows the whole guide, this file unchanged, as the package readme.

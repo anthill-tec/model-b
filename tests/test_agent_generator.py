@@ -126,6 +126,12 @@ GENERATOR_AGENTS_DIR = GENERATOR_DIR / "agents"
 
 ARCHIVE_WAVE3_AGENTS = REPO_ROOT / "archive" / "wave3" / "agents"
 
+# CR-MDB-029 \u00a7S1: the Pi package README build.py renders from the guide's
+# marked regions (orchestrator ruling D3) -- repo-root-relative spec paths.
+PI_README_REL = Path("pi-package") / "README.md"
+PI_README_TARGET = REPO_ROOT / PI_README_REL
+INSTALL_GUIDE_REL = Path("docs") / "install-guide.md"
+
 STACKS = ["arduino", "bun", "python", "quarkus"]
 ROLES = ["red", "green", "verify", "fix"]
 
@@ -357,9 +363,13 @@ class BuildPyIdempotenceS3Test(unittest.TestCase):
         # 21st stray target, a missing target, a relocated target and a
         # renamed directory all still fail here.
         build_module = _load_build_module()
+        # CR-MDB-029 \u00a7S1 MIGRATION (orchestrator ruling D3/D6, 2026-09-24):
+        # the Pi package README, rendered from the install guide's marked
+        # regions, is a target of every invocation like the codec, so --list
+        # also prints pi-package/README.md (spec path, not a build.py name).
         expected_paths = {
             GENERATOR_AGENTS_DIR / name for name in TARGET_AGENT_NAMES_WITH_RUST
-        } | {build_module.CODEC_TARGET}
+        } | {build_module.CODEC_TARGET, PI_README_TARGET}
         # POSITIVE/EXACT -- the target list is exactly the 20 small-stack
         # agent files (16 legacy + 4 rust) plus the generated codec.
         self.assertEqual(
@@ -583,6 +593,13 @@ class BespokeUntouchedS4Test(unittest.TestCase):
         (self._tmp_repo_root / codec_target_rel).parent.mkdir(
             parents=True, exist_ok=True
         )
+        # CR-MDB-029 \u00a7S1 MIGRATION (kind 2, orchestrator ruling D6): a build
+        # now renders pi-package/README.md from docs/install-guide.md, so the
+        # isolated repo root carries the guide (an input) and the package's
+        # committed directory, as it carries the codec target's parent.
+        (self._tmp_repo_root / INSTALL_GUIDE_REL).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(REPO_ROOT / INSTALL_GUIDE_REL, self._tmp_repo_root / INSTALL_GUIDE_REL)
+        (self._tmp_repo_root / PI_README_REL).parent.mkdir(parents=True, exist_ok=True)
 
         self._tmp_build_py = self._tmp_generator_dir / "build.py"
         self._tmp_output_agents_dir = self._tmp_repo_root / agents_rel
@@ -591,7 +608,7 @@ class BespokeUntouchedS4Test(unittest.TestCase):
         # pre-024 TARGET_AGENT_NAMES (16) -- repo-root-relative.
         self._expected_written = {
             (agents_rel / name).as_posix() for name in TARGET_AGENT_NAMES_WITH_RUST
-        } | {codec_target_rel.as_posix()}
+        } | {codec_target_rel.as_posix(), PI_README_REL.as_posix()}
         # The fixture inputs, so a build's written-file set is the exact
         # difference against the whole isolated tree afterwards.
         self._inputs_before_build = _relative_file_set(self._tmp_repo_root)
@@ -634,12 +651,13 @@ class BespokeUntouchedS4Test(unittest.TestCase):
             f"20 small-stack agent files plus the generated codec), got "
             f"{sorted(written)}, expected {sorted(self._expected_written)}",
         )
-        # bound -- exactly 21 files land on disk (20 agent defs + 1 codec),
+        # bound -- exactly 22 files land on disk (20 agent defs + 1 codec +
+        # the Pi package README, CR-MDB-029 \u00a7S1 migration 21 -> 22),
         # nothing extra silently emitted alongside them.
         self.assertEqual(
-            len(written), 21,
-            f"expected exactly 21 written files (20 agent defs + 1 generated "
-            f"codec), got {len(written)}",
+            len(written), 22,
+            f"expected exactly 22 written files (20 agent defs + 1 generated "
+            f"codec + pi-package/README.md), got {len(written)}",
         )
 
     def test_s4_isolated_build_never_writes_a_bespoke_agent_file(self):

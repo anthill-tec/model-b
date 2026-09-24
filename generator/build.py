@@ -31,6 +31,7 @@ reported on stderr with its reason (CR-MDB-025 §S2).
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from pathlib import Path
 
@@ -72,6 +73,17 @@ CODEC_BANNER = """\
 # `python3` resolves it from beside itself with no modelb_axi on sys.path.
 """
 
+# The Pi package README (CR-MDB-029 §S1): rendered from the install guide's
+# marked regions, a target of every invocation like the codec copy.
+GUIDE_SOURCE = REPO_ROOT / "docs" / "install-guide.md"
+PI_README_TARGET = REPO_ROOT / "pi-package" / "README.md"
+
+_FENCE_RE = re.compile(r"^\s*(```|~~~)")
+_MARKER_PREFIX = "<!-- install-guide:"
+_REGION_NAME = r"[a-z0-9]+(?:-[a-z0-9]+)*"
+_BEGIN_RE = re.compile(rf"^<!-- install-guide:begin ({_REGION_NAME}) -->$")
+_END_RE = re.compile(rf"^<!-- install-guide:end ({_REGION_NAME}) -->$")
+
 def load_stack_params(stack: str) -> dict:
     """Parse one stack TOML via tomllib."""
     return agents.load_stack_params(STACKS_DIR, stack)
@@ -101,6 +113,57 @@ def render_codec() -> str:
     """The generated ``scripts/toon.py``: the banner plus its source verbatim."""
     return CODEC_BANNER + "\n" + CODEC_SOURCE.read_text(encoding="utf-8")
 
+def _fence_mask(lines: list[str]) -> list[bool]:
+    """True for every line inside (or delimiting) a fenced code block."""
+    mask, inside, fence = [], False, None
+    for line in lines:
+        match = _FENCE_RE.match(line)
+        if match and (not inside or match.group(1) == fence):
+            mask.append(True)
+            inside, fence = (not inside), (match.group(1) if not inside else None)
+            continue
+        mask.append(inside)
+    return mask
+
+def _marked_regions(lines: list[str]) -> list[tuple[int, int]]:
+    """The ``(begin, end)`` marker-line indices of every marked region, in
+    order; markers inside fenced blocks are ignored. A malformed, nested,
+    unmatched or unterminated marker raises ``ValueError``."""
+    regions: list[tuple[int, int]] = []
+    open_region: tuple[str, int] | None = None
+    for i, (line, fenced) in enumerate(zip(lines, _fence_mask(lines), strict=True)):
+        stripped = line.strip()
+        if fenced or not stripped.startswith(_MARKER_PREFIX):
+            continue
+        begin, end = _BEGIN_RE.match(stripped), _END_RE.match(stripped)
+        if begin and open_region is None:
+            open_region = (begin.group(1), i)
+        elif end and open_region is not None and open_region[0] == end.group(1):
+            regions.append((open_region[1], i))
+            open_region = None
+        else:
+            raise ValueError(f"{GUIDE_SOURCE.name} line {i + 1}: bad marker {stripped!r}")
+    if open_region is not None:
+        raise ValueError(f"{GUIDE_SOURCE.name}: region {open_region[0]!r} is never ended")
+    if not regions:
+        raise ValueError(f"{GUIDE_SOURCE.name}: no marked region")
+    return regions
+
+def render_pi_readme() -> str:
+    """The generated ``pi-package/README.md``: the guide's marked regions in
+    order, marker lines dropped, each region's edge blank lines trimmed,
+    regions joined by one blank line, ending in a single newline."""
+    lines = GUIDE_SOURCE.read_text(encoding="utf-8").splitlines()
+    blocks = []
+    for begin, end in _marked_regions(lines):
+        body = lines[begin + 1:end]
+        while body and not body[0].strip():
+            body.pop(0)
+        while body and not body[-1].strip():
+            body.pop()
+        blocks.append("\n".join(body))
+    return "\n\n".join(blocks) + "\n"
+
 def cmd_build(stacks, roles) -> int:
     AGENTS_DIR.mkdir(parents=True, exist_ok=True)
     drops: list[dict] = []
@@ -111,6 +174,8 @@ def cmd_build(stacks, roles) -> int:
     _report_drops(drops)
     CODEC_TARGET.write_text(render_codec(), encoding="utf-8")
     print(f"wrote {CODEC_TARGET}")
+    PI_README_TARGET.write_text(render_pi_readme(), encoding="utf-8")
+    print(f"wrote {PI_README_TARGET}")
     return 0
 
 def cmd_check(stacks, roles) -> int:
@@ -125,6 +190,9 @@ def cmd_check(stacks, roles) -> int:
     if (not CODEC_TARGET.is_file()
             or CODEC_TARGET.read_text(encoding="utf-8") != render_codec()):
         drifted.append(str(CODEC_TARGET.relative_to(REPO_ROOT)))
+    if (not PI_README_TARGET.is_file()
+            or PI_README_TARGET.read_text(encoding="utf-8") != render_pi_readme()):
+        drifted.append(PI_README_TARGET.relative_to(REPO_ROOT).as_posix())
     if drifted:
         print("drifted (live differs from regeneration):")
         for name in drifted:
@@ -137,6 +205,7 @@ def cmd_list(stacks, roles) -> int:
     for _stack, _role, name, _params in selected_targets(stacks, roles):
         print(AGENTS_DIR / name)
     print(CODEC_TARGET)
+    print(PI_README_TARGET)
     return 0
 
 def parse_filter(raw: str | None, allowed: tuple[str, ...], label: str) -> tuple[str, ...]:

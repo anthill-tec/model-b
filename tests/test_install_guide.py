@@ -141,6 +141,28 @@ PYTHON_RELEASE_STEPS = (
 )
 #: The skill is used across projects: its release steps name no one project.
 PROJECT_SPECIFIC_NAMES = ("modelb", "model b", "model-b")
+#: CR-MDB-029 \u00a7S4 — the Pi package release step, same shape as
+#: PYTHON_RELEASE_STEPS: after the version is set, npm publish with credentials
+#: the user supplies at publish time; then install the published version into
+#: an isolated Pi agent directory (``PI_CODING_AGENT_DIR``) and confirm the
+#: extension loads. The publish anchor must precede the isolated-install one.
+#: Amended at C5 (VERIFY finding 3): a scoped package publishes with
+#: ``--access public``, and the post-release maintenance gains the live check
+#: (the watcher started in the real Pi configuration; a Sandesh message wakes
+#: the session), anchored on "live check" after the isolated install.
+PI_PACKAGE_RELEASE_STEPS = (
+    ("npm publish", ("npm publish",),
+     (("pi package",), ("version is set",),
+      ("credentials the user supplies", "user-supplied credentials"),
+      ("at publish time",), ("--access public",))),
+    ("isolated pi install", ("pi_coding_agent_dir",),
+     (("pi install",), ("published version",), ("extension loads",))),
+    ("live check", ("live check",),
+     (("real pi configuration",), ("watcher",), ("sandesh message",),
+      ("wakes the session",))),
+)
+#: The Pi step names no project, and not the npm scope of any one project.
+PI_PROJECT_SPECIFIC_NAMES = PROJECT_SPECIFIC_NAMES + ("anthill-tec",)
 
 # (G) — where the installer comes from (VERIFY cycle 100 findings 2/6), and
 # the source-copy note that stays true after publishing (CR-MDB-038 \u00a7S4).
@@ -503,7 +525,13 @@ TOPIC_CHECKERS = {
 }
 
 
-def check_marked_regions(text: str) -> list[str]:
+def parse_marked_regions(text: str) -> tuple[list[tuple[str, int, int]], list[str]]:
+    """The guide's marked regions, in order: ``(name, begin_line, end_line)``
+    with 0-based indices of the two marker lines, plus the marker faults
+    (malformed, nested, unmatched, never-ended). Markers inside fenced blocks
+    are ignored. The one parser of the convention: :func:`check_marked_regions`
+    and the Pi package README gate (``tests/test_pi_package.py``) both use it
+    (CR-MDB-029 \u00a7S1, orchestrator ruling D2, 2026-09-24)."""
     lines = text.splitlines()
     mask = _fence_mask(lines)
     out: list[str] = []
@@ -529,6 +557,13 @@ def check_marked_regions(text: str) -> list[str]:
             out.append(f"line {i + 1}: malformed marker {stripped!r}")
     if open_region is not None:
         out.append(f"region {open_region[0]!r} is never ended")
+    return regions, out
+
+
+def check_marked_regions(text: str) -> list[str]:
+    lines = text.splitlines()
+    mask = _fence_mask(lines)
+    regions, out = parse_marked_regions(text)
     if not regions:
         out.append("no marked region")
     names = [r[0] for r in regions]
@@ -643,6 +678,33 @@ def check_python_release_steps(text: str) -> list[str]:
     if [lbl for _, lbl in sorted(anchors)] != [lbl for _, lbl in anchors]:
         out.append("## Releases: python release steps out of order")
     out += [f"## Releases: names project {n!r}" for n in PROJECT_SPECIFIC_NAMES if n in flat]
+    return out
+
+
+def check_pi_package_release_steps(text: str) -> list[str]:
+    """CR-MDB-029 \u00a7S4: ``## Releases`` names the project-neutral Pi package
+    step — npm publish (``--access public``) with user-supplied credentials,
+    then an isolated ``PI_CODING_AGENT_DIR`` install confirming the extension
+    loads, then the post-release live check in the real Pi configuration."""
+    sec = next((body for head, body in sections(text).items()
+                if head.startswith("Releases")), "")
+    if not sec:
+        return ["no '## Releases' section"]
+    flat = " ".join(sec.lower().split())
+    out: list[str] = []
+    anchors: list[tuple[int, str]] = []
+    for label, anchor, terms in PI_PACKAGE_RELEASE_STEPS:
+        found = [flat.find(a) for a in anchor if a in flat]
+        if found:
+            anchors.append((min(found), label))
+        else:
+            out.append(f"## Releases: {label}: missing {anchor[0]!r}")
+        for alts in terms:
+            if not any(a in flat for a in alts):
+                out.append(f"## Releases: {label}: missing {alts[0]!r}")
+    if [lbl for _, lbl in sorted(anchors)] != [lbl for _, lbl in anchors]:
+        out.append("## Releases: pi package steps out of order")
+    out += [f"## Releases: names project {n!r}" for n in PI_PROJECT_SPECIFIC_NAMES if n in flat]
     return out
 
 
@@ -955,6 +1017,9 @@ class ReleaseDocsTest(unittest.TestCase):
 
     def test_git_workflow_releases_names_the_four_python_release_steps_in_order(self):
         self.assertEqual(check_python_release_steps(_read(GIT_WORKFLOW_SKILL)), [])
+
+    def test_git_workflow_releases_names_the_pi_package_publish_and_isolated_install(self):
+        self.assertEqual(check_pi_package_release_steps(_read(GIT_WORKFLOW_SKILL)), [])
 
     def test_pi_package_cr_s1_names_guide_marked_regions_as_readme_source(self):
         self.assertEqual(check_cr029_s1(_read(CR_029)), [])
@@ -1324,6 +1389,124 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
                          ["## Releases: python release steps out of order"])
         self.assertEqual(check_python_release_steps("## Other\n\nuv build TestPyPI\n"),
                          ["no '## Releases' section"])
+
+    def test_pi_package_release_steps_checker_both_ways(self):
+        pi_step = ("### Publishing a Pi package\n\n"
+                   "1. Once the version is set, run `npm publish --access public` with\n"
+                   "   credentials the user\n"
+                   "   supplies at publish time; never store them.\n"
+                   "2. Point `PI_CODING_AGENT_DIR` at a scratch path, `pi install` the\n"
+                   "   published version there, and confirm the extension loads.\n"
+                   "3. Live check, post-release: installed into the real Pi configuration,\n"
+                   "   start the watcher and confirm a Sandesh message wakes the session.\n")
+        good = ("## Releases (NON-NEGOTIABLE)\n\n" + pi_step + "\n## Next\n\n"
+                "npm publish PI_CODING_AGENT_DIR anthill-tec\n")
+        self.assertEqual(check_pi_package_release_steps(good), [])
+        self.assertEqual(check_pi_package_release_steps(
+            good.replace("credentials the user\n   supplies", "user-supplied credentials")), [])
+        bad = {
+            "no publish": (good.replace("`npm publish --access public`", "`npm pack`"),
+                           "## Releases: npm publish: missing 'npm publish'"),
+            "scoped package not public": (good.replace(" --access public", ""),
+                                          "## Releases: npm publish: missing '--access public'"),
+            "no live check": (good.replace("Live check, post-release", "Post-release"),
+                              "## Releases: live check: missing 'live check'"),
+            "live check not in the real configuration": (
+                good.replace("the real Pi configuration", "a scratch directory"),
+                "## Releases: live check: missing 'real pi configuration'"),
+            "watcher not started": (good.replace("start the watcher and ", ""),
+                                    "## Releases: live check: missing 'watcher'"),
+            "no sandesh message": (good.replace("a Sandesh message", "it"),
+                                   "## Releases: live check: missing 'sandesh message'"),
+            "wake unconfirmed": (good.replace("wakes the session", "is delivered"),
+                                 "## Releases: live check: missing 'wakes the session'"),
+            "not a pi package": (good.replace("a Pi package", "an npm module"),
+                                 "## Releases: npm publish: missing 'pi package'"),
+            "version not set first": (good.replace("Once the version is set, run", "Run"),
+                                      "## Releases: npm publish: missing 'version is set'"),
+            "stored credentials": (good.replace("credentials the user\n   supplies",
+                                                "the stored npm token"),
+                                   "## Releases: npm publish: missing "
+                                   "'credentials the user supplies'"),
+            "credentials not at publish time": (good.replace(" at publish time", ""),
+                                                "## Releases: npm publish: missing "
+                                                "'at publish time'"),
+            "not isolated": (good.replace("Point `PI_CODING_AGENT_DIR` at a scratch path,",
+                                          "Then"),
+                             "## Releases: isolated pi install: missing 'pi_coding_agent_dir'"),
+            "no pi install": (good.replace("`pi install` the", "fetch the"),
+                              "## Releases: isolated pi install: missing 'pi install'"),
+            "local copy installed": (good.replace("published version", "working tree"),
+                                     "## Releases: isolated pi install: missing "
+                                     "'published version'"),
+            "load unconfirmed": (good.replace(", and confirm the extension loads", ""),
+                                 "## Releases: isolated pi install: missing 'extension loads'"),
+            "project named": (good.replace("`pi install` the", "`pi install npm:@x/modelb-pi`, the"),
+                              "## Releases: names project 'modelb'"),
+            "scope named": (good.replace("`pi install` the",
+                                         "`pi install npm:@anthill-tec/x`, the"),
+                            "## Releases: names project 'anthill-tec'"),
+        }
+        for label, (text, expected) in bad.items():
+            with self.subTest(case=label):
+                self.assertIn(expected, check_pi_package_release_steps(text))
+        reordered = ("## Releases\n\nFor a Pi package: point PI_CODING_AGENT_DIR at a scratch "
+                     "path, pi install the published version, confirm the extension loads. "
+                     "Once the version is set, npm publish --access public with credentials "
+                     "the user supplies at publish time. Live check: in the real Pi "
+                     "configuration, start the watcher; a Sandesh message wakes the session.\n")
+        self.assertEqual(check_pi_package_release_steps(reordered),
+                         ["## Releases: pi package steps out of order"])
+        live_first = ("## Releases\n\nLive check: in the real Pi configuration, start the "
+                      "watcher; a Sandesh message wakes the session. For a Pi package, once "
+                      "the version is set, npm publish --access public with credentials the "
+                      "user supplies at publish time; then point PI_CODING_AGENT_DIR at a "
+                      "scratch path, pi install the published version, confirm the extension "
+                      "loads.\n")
+        self.assertEqual(check_pi_package_release_steps(live_first),
+                         ["## Releases: pi package steps out of order"])
+        self.assertEqual(check_pi_package_release_steps("## Other\n\nnpm publish\n"),
+                         ["no '## Releases' section"])
+
+    def test_pi_package_step_keeps_python_and_documentation_steps_intact(self):
+        """Adding the Pi step to a section already carrying the two
+        documentation steps and the four Python steps leaves both their
+        checkers clean, and the Pi checker does not accept Python-only text."""
+        docs = ("Copy the install guide's marked regions verbatim into the release notes, "
+                "then hold a documentation review.\n\n")
+        python = ("1. Set the version in its single source, then `uv build`.\n"
+                  "2. TestPyPI into an isolated tool directory.\n"
+                  "3. After git flow release finish, upload with a token the user supplies.\n"
+                  "4. Install from PyPI with `--reinstall`; drop global permission config "
+                  "entries for per-project policies; a trusted project runs without a "
+                  "permission prompt.\n\n")
+        pi = ("For a Pi package, once the version is set, npm publish --access public with "
+              "credentials the user supplies at publish time; then with PI_CODING_AGENT_DIR on "
+              "a scratch path, pi install the published version and confirm the extension "
+              "loads. Live check, post-release: in the real Pi configuration start the "
+              "watcher and confirm a Sandesh message wakes the session.\n")
+        combined = "## Releases\n\n" + docs + python + pi
+        self.assertEqual(check_release_steps(combined), [])
+        self.assertEqual(check_python_release_steps(combined), [])
+        self.assertEqual(check_pi_package_release_steps(combined), [])
+        python_only = "## Releases\n\n" + docs + python
+        self.assertEqual(check_pi_package_release_steps(python_only), [
+            "## Releases: npm publish: missing 'npm publish'",
+            "## Releases: npm publish: missing 'pi package'",
+            "## Releases: npm publish: missing 'version is set'",
+            "## Releases: npm publish: missing 'credentials the user supplies'",
+            "## Releases: npm publish: missing 'at publish time'",
+            "## Releases: npm publish: missing '--access public'",
+            "## Releases: isolated pi install: missing 'pi_coding_agent_dir'",
+            "## Releases: isolated pi install: missing 'pi install'",
+            "## Releases: isolated pi install: missing 'published version'",
+            "## Releases: isolated pi install: missing 'extension loads'",
+            "## Releases: live check: missing 'live check'",
+            "## Releases: live check: missing 'real pi configuration'",
+            "## Releases: live check: missing 'watcher'",
+            "## Releases: live check: missing 'sandesh message'",
+            "## Releases: live check: missing 'wakes the session'",
+        ])
 
 
 if __name__ == "__main__":

@@ -174,6 +174,18 @@ After building: switch back to develop for continued work. Bump develop to the n
    entries from any global permission config in favour of per-project policies; and confirm a
    dispatched agent in a trusted project runs without a permission prompt.
 
+### Pi package releases (npm)
+
+1. **Publish** — after the version is set, publish the Pi package with `npm publish` (a scoped
+   package with `npm publish --access public`), using credentials the user supplies at publish
+   time; never store them in the repository or in agent-readable config.
+2. **Verify the published version** — install the published version with `pi install` into an
+   isolated Pi agent directory (`PI_CODING_AGENT_DIR` pointed at a temp dir) and confirm the
+   extension loads there.
+3. **Post-release live check** — as part of the post-release maintenance, once the published
+   package is installed into the maintainer's real Pi configuration, start the watcher there and
+   confirm a Sandesh message wakes the session.
+
 ## Multi-Account Pushing (dual remote: origin + mirror)
 
 Some repos carry two remotes on two GitHub accounts: `origin` (work account, e.g. `Antojk71`, host alias `github.com-4property`) and `mirror` (personal account, e.g. `antojk`, host alias `github.com-antojk`). SSH host aliases in `~/.ssh/config` select the key; the **gh CLI account must be switched around each push**.

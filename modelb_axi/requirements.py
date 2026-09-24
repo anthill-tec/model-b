@@ -89,6 +89,19 @@ REQUIREMENTS: tuple[dict, ...] = (
         "tools": (),
     },
     {
+        # CR-MDB-029 §S3: Model B's own Pi package — the Sandesh watcher
+        # supervisor. Offered (and run under ``--yes``) by the installer.
+        "id": "watcher",
+        "tier": 1,
+        "provider": "@anthill-tec/modelb-pi",
+        "policy": "recommended",
+        "scope": "always",
+        "probe": "pi-package",
+        "asset_families": ("orchestration skills",),
+        "remediation": "pi install npm:@anthill-tec/modelb-pi",
+        "tools": ("sandesh_watcher",),
+    },
+    {
         "id": "uv",
         "tier": 2,
         "provider": "uv",

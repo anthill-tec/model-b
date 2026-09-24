@@ -19,12 +19,23 @@ import shutil
 import tempfile
 from pathlib import Path
 
+#: Model B's own Pi package — the Sandesh watcher supervisor — providing
+#: the tier-1 ``watcher`` capability (CR-MDB-029 §S3).
+MODELB_PI_PACKAGE = "@anthill-tec/modelb-pi"
+
+#: The THIRD-PARTY tier-1 capabilities (CR-MDB-036 §S1): ``--yes`` never
+#: runs ``pi install`` for these (only for Model B's own package).
+THIRD_PARTY_TIER1 = ("dispatch", "lean-ctx", "permissions")
+
 #: Tier-1 harness capability id -> the npm package that provides it
-#: (CR-MDB-036 §S1 table).
+#: (CR-MDB-036 §S1 table + CR-MDB-029 §S3's ``watcher`` row). A
+#: "provisioned" agent dir lists and holds every one of them, so a
+#: default run never triggers the ``--yes`` watcher install.
 TIER1_PACKAGES = {
     "dispatch": "@gotgenes/pi-subagents",
     "lean-ctx": "pi-lean-ctx",
     "permissions": "@gotgenes/pi-permission-system",
+    "watcher": MODELB_PI_PACKAGE,
 }
 
 #: The environment variable the probe honours before ``~/.pi/agent``.
