@@ -43,7 +43,7 @@ Key invariants:
 | Path | Purpose |
 |---|---|
 | `modelb_axi/` | The CLI package. `cli.py` (argparse shell), `scaffold.py` (init/emit), `deploy.py` (manifest deploy), `hooks.py` (schema + per-harness compiler), `config.py` (install.toml r/w), `harness.py` (roster/detect), `preflight.py` (dep probes), `axi.py` (envelope codec) |
-| `skills-src/` | 13 skill bundles. Model-B-owned: `model-b`, `crucible`, `cr-authoring`, `git-workflow`, `chezmoi`, `bootstrap`, `shutdown`. Imported from Crucible (byte-identical, see `CRUCIBLE-HANDOVER.md`): `crucible-register`, `crucible-report-{arduino,bun,java,python,rust}`. Plus `memory-templates/` |
+| `skills-src/` | 14 skill bundles. Model-B-owned: `model-b`, `crucible`, `cr-authoring`, `git-workflow`, `chezmoi`, `bootstrap`, `shutdown`, `code-health` (deployed with the rust stack). Imported from Crucible (byte-identical, see `CRUCIBLE-HANDOVER.md`): `crucible-register`, `crucible-report-{arduino,bun,java,python,rust}`. Plus `memory-templates/` |
 | `generator/` | `build.py` renders `templates/{red,green,verify,fix}.md.tmpl` × `stacks/{arduino,bun,python,quarkus}.toml` → `agents/<stack>-<role>-agent.md` (16 files) |
 | `hooks-src/` | `schema.md` (neutral schema v1) + `scripts/` (7 executable stdin/exit protocol scripts, no file extension) |
 | `scripts/` | The tool-script asset class (7 adopted + 1 generated): `worktree-flow.py`, `schedule_db.py` (TRANSITIONAL), `skill-release-gate.py`, `rust-code-health.py`, `rust-crate-map.py`, `rust-dead-scan.py`, `gate-lock.sh`, and `toon.py` generated from `modelb_axi/toon.py`. Deployed to `~/.agents/scripts/` (`deploy.TOOL_SCRIPTS_STORE_RELDIR`) — the ONLY path a Model B surface names; never a `~/.claude` path (not Model B-owned) |
@@ -95,7 +95,7 @@ There is **no** Makefile/justfile, **no** CI test workflow (the only workflow is
 - `pyproject.toml` — hatchling; `force-include` maps `skills-src`, `generator`, `contracts`, `scripts`, `hooks-src` into `modelb_axi/_assets/`. **Any new asset root must be added there or it will not ship in the wheel.**
 - `.env` — static naming registry (gitignored; must exist locally): `PROJECT_NAME`, `PROJECT_TOKEN=modelb`, `PROJECT_ACRONYM=MDB`, `ORCHESTRATOR_LABEL=vidushi-mdb`, `REPO_OWNER=antojk`, `CRUCIBLE_PROJECT_KEY`.
 - `hooks-src/schema.md` — the neutral hook schema v1; the compiler in `hooks.py` is its only consumer.
-- `skills-src/CRUCIBLE-HANDOVER.md` — provenance + maintenance contract for the 7 imported bundles. Model B owns their content/bundling/deploy; the Crucible repo owns the client code. Keep imported bundles byte-faithful unless a doc-sync is explicitly in scope.
+- `skills-src/CRUCIBLE-HANDOVER.md` — provenance + maintenance contract for the 6 imported bundles. Model B owns their content/bundling/deploy; the Crucible repo owns the client code. Keep imported bundles byte-faithful unless a doc-sync is explicitly in scope.
 - `docs/changes/README.md` — the CR queue: `| CR | Title | Wave | Depends-on |` + dated Notes. **Structure only** — live status is derived on the Crucible board, never hand-maintained here.
 - `contracts/*.md` — the interface you must honour when touching Crucible/Sandesh/lean-ctx integration.
 - `.claude/settings.local.json` — local tool permission allowlist only.
