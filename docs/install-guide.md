@@ -187,7 +187,8 @@ run whose input is not a terminal behaves the same way.
 
 The one install `--yes` does accept is Model B's own: when `sandesh` is absent the installer
 asks ``Sandesh not found — install via `uv tool install sandesh-relay`? [Y/n]``, where Enter
-means yes, and under `--yes` it runs without asking.
+means yes and a decline is recorded as a warning. Under `--yes`, and in a run whose input is
+not a terminal, it runs without asking.
 <!-- install-guide:end install-offers -->
 
 <!-- install-guide:begin missing-capabilities -->

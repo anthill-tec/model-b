@@ -309,16 +309,18 @@ def run_preflight(
         warnings.append(message)
         return 1, {}, capabilities
 
-    if sandesh_verdict == ABSENT and confirm(
-        f"Sandesh not found — install via `uv tool install {SANDESH_PACKAGE}`?"
-    ):
-        sandesh_verdict = _install_sandesh(uv_path, warnings)
-        if sandesh_verdict == INSTALLED:
-            # Updated deps line reflecting the proactive install.
-            print(
-                f"deps: uv=detected sandesh=installed crucible={crucible_verdict}",
-                file=sys.stderr,
-            )
+    if sandesh_verdict == ABSENT:
+        command = f"uv tool install {SANDESH_PACKAGE}"
+        if confirm(f"Sandesh not found — install via `{command}`?"):
+            sandesh_verdict = _install_sandesh(uv_path, warnings)
+            if sandesh_verdict == INSTALLED:
+                # Updated deps line reflecting the proactive install.
+                print(
+                    f"deps: uv=detected sandesh=installed crucible={crucible_verdict}",
+                    file=sys.stderr,
+                )
+        else:
+            _warn(f"declined `{command}` — sandesh stays absent", warnings)
     capabilities["sandesh"] = sandesh_verdict
 
     remediate_toolchains(
