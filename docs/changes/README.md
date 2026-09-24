@@ -608,3 +608,6 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   captures and discards `uv tool install sandesh-relay` output (a failure shows only the exit code)
   and is the one confirmed install without a re-probe. CR-036 §S3 kept Sandesh's behaviour as-is;
   folded into CR-MDB-037 §S5 at its gap-analysis (2026-09-24).
+- 2026-09-24 — **Deferred (CR-MDB-037 F1):** `init --force-managed` reaches the permission policy
+  but not agent-definition rendering, and `init`'s `skipped`/`unmanaged` envelope lists cover only
+  the policy; `modelb-axi agents --force-managed` is the workaround.

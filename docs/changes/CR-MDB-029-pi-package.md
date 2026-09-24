@@ -98,6 +98,9 @@ smoke on a fresh Pi profile. Recorded here so 012's spec inherits it.
       fresh reader how to obtain the installer) names this package's concrete install command,
       replacing the interim note CR-MDB-037 left there (user ruling 2026-09-24: the guide points at
       the Pi package, not at a clone of the private repository).
+- [ ] `tests/test_install_guide.py`'s prerequisites ordering check (`check_prerequisites`, which
+      today requires uv's install command before the `uv tool install` of the installer) is migrated
+      to require this package's install command after the `pi` step.
 
 - [ ] `package.json` validates as a Pi package (`keywords` contains `pi-package`, `pi.extensions`
       lists every extension file, no Pi core package in `dependencies`).
