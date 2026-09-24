@@ -19,6 +19,7 @@ from pathlib import Path
 
 from modelb_axi import __version__
 from modelb_axi.axi import envelope
+from modelb_axi.capabilities import resolve_agent_dir
 from modelb_axi.config import load_manifest_hashes, write_install_toml
 from modelb_axi.deploy import (
     HOOKS_SCRIPTS_STORE_RELDIR,
@@ -34,6 +35,7 @@ from modelb_axi.harness import (
     parse_harnesses,
     select_harnesses,
 )
+from modelb_axi.permission_policy import global_policy_state
 from modelb_axi.preflight import run_preflight
 from modelb_axi.scaffold import (
     KNOWN_STACKS,
@@ -493,6 +495,15 @@ def _run_installer_flow(
         _emit_install_envelope("deploy_failed", False, warnings, fields)
         return deploy_exit
     fields.update(report)
+    if "pi" in selected:
+        # CR-MDB-037 §S3: the GLOBAL permission config applies in an
+        # untrusted project — report it, read-only; never write it.
+        policy, missing_tools = global_policy_state(resolve_agent_dir())
+        fields["global_permission_policy"] = policy
+        if missing_tools:
+            fields["global_permission_missing_tools"] = missing_tools
+        _say(f"  global permission policy: {policy}"
+             + (f" (missing: {', '.join(missing_tools)})" if missing_tools else ""))
     _say("modelb-axi: installer flow complete")
     _emit_install_envelope("installed", True, warnings, fields)
     return 0
