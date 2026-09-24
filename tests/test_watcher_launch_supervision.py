@@ -588,7 +588,7 @@ class BootstrapNotifierS2Test(unittest.TestCase):
         self.assertNotIn("sandesh_fetch", self.step1, "the rewritten Step 1 fetch is the CLI form, not the MCP verb")
 
     def test_s2_step1_keeps_the_addressbook_check_before_any_launch(self):
-        addressbook = self.step1.find("sandesh_addressbook")
+        addressbook = self.step1.find("sandesh addressbook")
         launch = self.step1.find("sandesh notify --to")
         self.assertNotEqual(addressbook, -1, "Step 1 checks the addressbook first")
         self.assertNotEqual(launch, -1, "Step 1 still names the notify command")

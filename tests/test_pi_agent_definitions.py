@@ -2286,17 +2286,19 @@ STACK_CLIENT_SCRIPT = {
     "rust": "rust-crucible.py",
 }
 S8_COMMAND_KEYS = ("test_command", "register_command", "unregister_command")
-# \u00a7S8 AC1 "crucible_reference is unchanged" -- the exact 0246f6a values.
-CRUCIBLE_REFERENCE_AT_0246F6A = {
+# \u00a7S8 AC1 pinned crucible_reference values. The 0246f6a values cited
+# ~/.claude/skills/...; CR-MDB-031 \u00a7S2 re-pinned every stack to the ~/.agents
+# store and pointed arduino at its shipped references/arduino.md.
+CRUCIBLE_REFERENCE_PINNED = {
     "arduino": (
-        "~/.claude/skills/crucible/SKILL.md (no per-stack reference file for arduino "
-        "yet \u2014 client limits: `arduino-crucible.py` currently offers the `unit` and "
+        "~/.agents/skills/crucible/references/arduino.md (client limits: "
+        "`arduino-crucible.py` currently offers the `unit` and "
         "`compile` tiers with `--project-dir sheetal-firmware`; the `regression` tier "
         "with lcov coverage lands with CR-SHE-006 \u2014 until then use `unit`)"
     ),
-    "bun": "~/.claude/skills/crucible/references/bun.md",
-    "python": "~/.claude/skills/crucible/references/python.md",
-    "quarkus": "~/.claude/skills/crucible/references/java.md",
+    "bun": "~/.agents/skills/crucible/references/bun.md",
+    "python": "~/.agents/skills/crucible/references/python.md",
+    "quarkus": "~/.agents/skills/crucible/references/java.md",
     "rust": "~/.agents/skills/crucible/references/rust.md",
 }
 # A path-qualified client token: everything up to the last '/' is the
@@ -2347,11 +2349,11 @@ class ReleasedClientPathS8Test(unittest.TestCase):
                     )
         self.assertEqual(problems, [], "\n".join(problems))
 
-    def test_s8_crucible_reference_is_unchanged_from_0246f6a(self):
+    def test_s8_crucible_reference_is_pinned_to_the_agents_store(self):
         changed = []
         for stack in STACKS:
             actual = self._stack_toml(stack).get("crucible_reference")
-            if actual != CRUCIBLE_REFERENCE_AT_0246F6A[stack]:
+            if actual != CRUCIBLE_REFERENCE_PINNED[stack]:
                 changed.append(f"{stack}.toml: crucible_reference = {actual!r}")
         self.assertEqual(changed, [], "\n".join(changed))
 

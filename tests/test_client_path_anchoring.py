@@ -462,34 +462,11 @@ def _ratchet_violations(observed, baseline):
     return out
 
 
-#: §S4 — today's occurrences (11 files, 43 occurrences). Measured at RED as 11 files / 42; re-taken
-#: at C3 FIX after F3/F4 widened the vocabulary (MCP-qualified names, `dangerouslyDisableSandbox`,
-#: `<Name> tool`), which added exactly sub-agent-procedure.md dangerouslyDisableSandbox=1. May
-#: only shrink; CR-MDB-031 drains it to zero without adding exemptions. File -> {tool: count}.
-TOOL_BASELINE = {
-    "skills-src/bootstrap/SKILL.md": {
-        "TaskList": 1, "TaskUpdate": 1, "sandesh_addressbook": 6, "sandesh_inbox": 1,
-        "sandesh_register": 2, "sandesh_send": 1, "sandesh_setup": 2,
-    },
-    "skills-src/crucible/SKILL.md": {"run_in_background": 1},
-    "skills-src/memory-templates/java-orchestration.md": {"ExitWorktree": 1},
-    "skills-src/memory-templates/java-testing-practices.md": {"find": 1},
-    "skills-src/memory-templates/rust-orchestration.md": {"ExitWorktree": 1},
-    "skills-src/model-b/references/orchestration-common.md": {"EnterWorktree": 1, "ExitWorktree": 1},
-    "skills-src/model-b/references/orchestration-mainline.md": {"AskUserQuestion": 1},
-    "skills-src/model-b/references/orchestration-track.md": {
-        "EnterWorktree": 2, "ExitWorktree": 1, "run_in_background": 1, "sandesh_reply": 1,
-    },
-    "skills-src/model-b/references/sandesh.md": {
-        "sandesh_addressbook": 4, "sandesh_register": 1, "sandesh_reply": 2, "sandesh_setup": 1,
-    },
-    "skills-src/model-b/references/sub-agent-procedure.md": {
-        "Edit": 1, "NotebookEdit": 1, "Write": 1, "dangerouslyDisableSandbox": 1,
-    },
-    "skills-src/shutdown/SKILL.md": {
-        "sandesh_addressbook": 1, "sandesh_reply": 1, "sandesh_send": 2, "sandesh_unregister": 1,
-    },
-}
+#: §S4 — the harness-tool baseline. Measured at RED as 11 files / 42 occurrences, re-taken at
+#: CR-MDB-020 C3 FIX as 11 files / 43; CR-MDB-031 §S2 drained it to empty without adding
+#: exemptions (AC: ``TOOL_BASELINE == {}``). It stays empty: any harness tool name in
+#: ``skills-src/`` is a ratchet violation. File -> {tool: count}.
+TOOL_BASELINE = {}
 
 
 def _pi_tool_violations(stack_tomls):
@@ -988,9 +965,9 @@ class ToolContractS4Test(unittest.TestCase):
             violations = _ratchet_violations(_tool_occurrences(root), baseline)
         self.assertEqual(violations, ["skills-src/b/SKILL.md: new harness tool 'Monitor' (1x; not in baseline)"])
 
-    def test_s4_baseline_is_committed_and_non_empty(self):
-        self.assertTrue(TOOL_BASELINE, "§S4: the tool baseline must be committed")
-        self.assertIn("TaskUpdate", TOOL_BASELINE.get("skills-src/bootstrap/SKILL.md", {}))
+    def test_s4_baseline_is_committed_and_drained(self):
+        # CR-MDB-031 §S2 AC: the ratchet passes with ``TOOL_BASELINE == {}`` and no exemption.
+        self.assertEqual(TOOL_BASELINE, {}, "§S4/CR-MDB-031 §S2: the tool baseline is drained to {}")
 
     def test_s4_skills_tree_does_not_exceed_the_tool_baseline(self):
         violations = _ratchet_violations(_tool_occurrences(REPO_ROOT), TOOL_BASELINE)
