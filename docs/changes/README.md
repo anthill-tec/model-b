@@ -708,3 +708,20 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   **CR-MDB-032 (pre-existing lint, pi-lens):** add `tests/test_hooks.py:80` (unsorted import block,
   from CR-MDB-015's `e03cff2`) to the list with `test_package_publishing.py:39`,
   `test_scaffold.py:1679` (false positive: `init`'s project `token`) and `generator/build.py:221`.
+- 2026-09-24 — **CR-MDB-023 MERGED** (develop `312495a`; plan 107). `skills-src/code-health/` adopted
+  from the deployed copy: `~/.agents/scripts/` paths, filing = `rust-crucible.py cr-plan` + `ledger
+  assign`, hand-mirrored `ledger sync --db-state IN_PROGRESS|COMPLETED --commit` tied to cycle
+  activation / `cr-close`, ratification after the COMPLETED sync, `hot-path`, `--domain`. Deployed
+  only for `rust` or no stack filter (`deploy.STACK_SCOPED_BUNDLES`). 14 bundles (8 owned, 6 imported).
+  Approved test edit (`0a4e40f`): the retired register-`--phase` guards exempt only
+  `rust-code-health.py snapshot --phase`, with detectors. Follow-ups:
+  **Release ritual (VERIFY F1):** `~/.claude/skills/code-health` is a real directory (the July local
+  copy), and `deploy` aborts a whole install when a harness skills path exists and is not a symlink —
+  so replacing the July install must target `pi` (no skills-link dir), or, if `claude-code` is ever
+  targeted, move that directory aside first (a user step; Model B never writes `~/.claude`).
+  **CR-MDB-031:** the abort-on-collision behaviour itself (warn and skip instead), with the claude-code
+  wiring it retires. **Queue (F4):** narrowing `--stacks` drops stack-scoped bundles from the manifest
+  but leaves their store files and harness links on disk, unreported by the freshness report, and a
+  later re-add counts them `unmanaged` — the whole stack-scoped family (`crucible-report-*`,
+  `code-health`). **Queue (F7):** the skill's `query ledger OPEN` (inherited) matches no status the
+  tools produce (PROPOSED/APPROVED/IN_PROGRESS/COMPLETED/STRUCK).
