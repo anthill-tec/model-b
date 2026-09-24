@@ -29,7 +29,7 @@ line is not what you expected.
 <!-- install-guide:begin prerequisites -->
 ## Prerequisites
 
-Install these in the order given; each step relies on the one before it.
+Install these in the order given; no step relies on one that comes after it.
 
 1. **Pi.** The `pi` command must be on your `PATH`. Install it by Pi's own instructions.
    Model B deploys into Pi's reach; it does not install Pi.
@@ -52,15 +52,15 @@ Install these in the order given; each step relies on the one before it.
    ```
 
    To update later, get the newer source and run `uv tool install --reinstall .` from it.
-5. **Recommended tools.** The install goes ahead without them, but some assets will not work
+5. **`git`** — required to create a project: every project `modelb-axi init` creates is a
+   git repository. Install it from your operating system's package manager.
+6. **Recommended tools.** The install goes ahead without them, but some assets will not work
    (see [Warnings: what stops working](#warnings-what-stops-working)):
    - `sandesh` — `uv tool install sandesh-relay` (the installer offers to run this for you);
    - `crucible` — Crucible's released clients, installed with Crucible's own installer; the
      installer looks for their manifest at `~/.crucible/crucible-clients.json`;
    - `python3`, `bash` and `jq` — from your operating system's package manager;
    - `gh` — the GitHub CLI, from https://cli.github.com.
-
-`git` is also needed, because every project `modelb-axi init` creates is a git repository.
 <!-- install-guide:end prerequisites -->
 
 <!-- install-guide:begin choosing-stacks -->
