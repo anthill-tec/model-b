@@ -19,7 +19,7 @@ import subprocess
 import unittest
 from pathlib import Path
 
-from tests._helpers import read_text_lenient as _read
+from tests._helpers import read_text_lenient as _read, split_frontmatter as _split_frontmatter
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -147,22 +147,6 @@ def _archive_has_content_move(name: str, anchor: str) -> bool:
         if anchor in content:
             return True
     return False
-
-
-def _split_frontmatter(content: str):
-    """Split a skill markdown file into (frontmatter, body) on the '---' delimiters.
-
-    Returns ("", content) if the file has no well-formed '---' frontmatter block.
-    """
-    lines = content.splitlines()
-    if not lines or lines[0].strip() != "---":
-        return "", content
-    for idx in range(1, len(lines)):
-        if lines[idx].strip() == "---":
-            frontmatter = "\n".join(lines[1:idx])
-            body = "\n".join(lines[idx + 1:])
-            return frontmatter, body
-    return "", content
 
 
 class CrucibleSkillS2Test(unittest.TestCase):

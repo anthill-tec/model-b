@@ -117,7 +117,7 @@ import unittest
 
 from pathlib import Path
 
-from tests._helpers import read_text_lenient as _read
+from tests._helpers import read_text_lenient as _read, split_frontmatter as _split_frontmatter
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -187,21 +187,6 @@ RETIRED_ARTIFACT_PATTERN = (
     r"agent-baseline\|crucible-report\|orchestration-universal\|"
     r"bun-red-testing\|quarkus-regression-testing"
 )
-
-
-def _split_frontmatter(content: str):
-    """Split a markdown file into (frontmatter, body) on the '---'
-    delimiters. Returns ("", content) if there is no well-formed '---'
-    frontmatter block."""
-    lines = content.splitlines()
-    if not lines or lines[0].strip() != "---":
-        return "", content
-    for idx in range(1, len(lines)):
-        if lines[idx].strip() == "---":
-            frontmatter = "\n".join(lines[1:idx])
-            body = "\n".join(lines[idx + 1:])
-            return frontmatter, body
-    return "", content
 
 
 def _load_build_module():

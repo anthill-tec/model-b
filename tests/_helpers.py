@@ -59,3 +59,20 @@ def read_text_lenient(path: Path) -> str:
     """``path`` as UTF-8 text with undecodable bytes replaced (never raises on encoding)."""
     return path.read_text(encoding="utf-8", errors="replace")
 
+
+# ------------------------------------------------------------------ markdown ----
+
+def split_frontmatter(content: str):
+    """Split a markdown file into (frontmatter, body) on the '---'
+    delimiters. Returns ("", content) if there is no well-formed '---'
+    frontmatter block."""
+    lines = content.splitlines()
+    if not lines or lines[0].strip() != "---":
+        return "", content
+    for idx in range(1, len(lines)):
+        if lines[idx].strip() == "---":
+            frontmatter = "\n".join(lines[1:idx])
+            body = "\n".join(lines[idx + 1:])
+            return frontmatter, body
+    return "", content
+

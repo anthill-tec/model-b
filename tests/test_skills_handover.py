@@ -35,7 +35,7 @@ import re
 import unittest
 from pathlib import Path
 
-from tests._helpers import read_text_lenient as _read
+from tests._helpers import read_text_lenient as _read, split_frontmatter as _split_frontmatter
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SKILLS_SRC_DIR = REPO_ROOT / "skills-src"
@@ -59,21 +59,6 @@ IMPORTED_BUNDLE_NAMES = (
 )
 
 ALL_STACKS = ("rust", "java", "bun", "python", "arduino")
-
-
-def _split_frontmatter(content: str):
-    """Split a skill markdown file into (frontmatter, body) on the '---'
-    delimiters. Returns ("", content) if there is no well-formed
-    frontmatter block."""
-    lines = content.splitlines()
-    if not lines or lines[0].strip() != "---":
-        return "", content
-    for idx in range(1, len(lines)):
-        if lines[idx].strip() == "---":
-            frontmatter = "\n".join(lines[1:idx])
-            body = "\n".join(lines[idx + 1:])
-            return frontmatter, body
-    return "", content
 
 
 def _missing_imported_bundles():
