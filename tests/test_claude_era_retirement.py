@@ -23,9 +23,11 @@ Class map (one per C1 acceptance criterion):
   under ``<target-root>`` and nothing under ``<target-root>/.claude/`` (regression pin: passes
   today for a Pi-only selection; its scan is proven by ``RetiredScanDetectorTest``).
 - ``ScaffoldPiProjectTest`` — a sandboxed ``init``: no ``CLAUDE.md``, no ``.opencode/`` line, a
-  ``.worktrees/`` line in ``.gitignore``; ``AGENTS.md`` cites
-  ``docs/research/DN-model-b-language.md`` with no ``crucible:`` prefix (and the queue README's
-  ontology line drops the prefix too, §S1 scope); ``_HARNESS_NATIVE_NOTES`` is gone.
+  ``.worktrees/`` line in ``.gitignore``; the queue README's ontology line cites the deployed
+  ``model-b`` skill (``~/.agents/skills/model-b/SKILL.md``) with no ``crucible:`` prefix (§S1 as
+  amended at a8540df — a scaffolded project has no ``docs/research/DN-model-b-language.md``);
+  ``AGENTS.md`` carries no ``crucible:``-prefixed ontology citation (it need not cite the
+  ontology at all); ``_HARNESS_NATIVE_NOTES`` is gone.
 - ``MemoryTemplateFamilyTest`` — ``--stacks quarkus`` and ``--stacks java`` scaffold all six
   ``java-*.md``; ``--stacks rust`` scaffolds ``rust-orchestration.md``; ``--stacks python`` neither.
 - ``StaleHarnessIdRefusedTest`` — with ``install.toml`` recording ``harnesses = ["claude-code"]``,
@@ -70,9 +72,11 @@ CARGO_GUARD = HOOK_SCRIPTS / "block-direct-cargo-test"
 #: The retired harness names (§S0.5): case-insensitive, anywhere on a line.
 RETIRED_HARNESS_RE = re.compile(r"claude|hermes|opencode", re.IGNORECASE)
 
-#: The ontology citation §S1 requires, and the undefined checkout prefix it retires.
-ONTOLOGY_PATH = "docs/research/DN-model-b-language.md"
-CHECKOUT_PREFIXED_ONTOLOGY = "crucible:" + ONTOLOGY_PATH
+#: The ontology citation §S1 (amended a8540df) requires in the scaffolded queue README — the
+#: deployed ``model-b`` skill, which carries the ontology summary and names its source — and the
+#: undefined checkout-prefixed citation it retires.
+ONTOLOGY_PATH = "~/.agents/skills/model-b/SKILL.md"
+CHECKOUT_PREFIXED_ONTOLOGY = "crucible:docs/research/DN-model-b-language.md"
 
 #: The stale id the real July install records, and the recovery §S1 requires every refusal to name
 #: (``modelb-axi --reinstall … --harnesses pi``: ``--reinstall`` first, ``--harnesses pi`` later on
@@ -469,15 +473,13 @@ class ScaffoldPiProjectTest(_SandboxedInitCase):
                          f"§S1: .gitignore must not ignore a retired harness cache; got {retired!r}")
         self.assertIn(".env.local", lines, "the overlay is still ignored")
 
-    def test_agents_md_cites_the_repo_local_ontology_without_the_crucible_prefix(self):
+    def test_agents_md_carries_no_crucible_prefixed_ontology_citation(self):
+        # §S1 as amended (a8540df): the rendered AGENTS.md need not cite the ontology; it must
+        # only never use the undefined checkout-prefixed citation.
         self._require_scaffold()
         agents_md = (self.target / "AGENTS.md").read_text(encoding="utf-8")
         self.assertNotIn(CHECKOUT_PREFIXED_ONTOLOGY, agents_md,
                          "§S1: AGENTS.md must not use the undefined crucible: ontology prefix")
-        self.assertIn(
-            ONTOLOGY_PATH, agents_md,
-            f"§S1 AC: the rendered AGENTS.md must name {ONTOLOGY_PATH}; got {agents_md!r}",
-        )
 
     def test_queue_readme_ontology_line_has_no_crucible_prefix(self):
         self._require_scaffold()
