@@ -676,13 +676,14 @@ class CodeHealthBundleScopeS4Test(unittest.TestCase):
 
 class CodeHealthInstallS4Test(_StackSandboxCase):
     """§S4 AC1 -- sandboxed installer runs (HOME, PATH, agent dir,
-    --modelb-home, --target-root all sandboxed). claude-code is selected
-    because it is the harness with a per-harness skills dir."""
+    --modelb-home, --target-root all sandboxed), for the Pi-only roster
+    (CR-MDB-031 §S1: flipped from claude-code; the per-harness skills-dir
+    link asserts are retired with the link writer)."""
 
     STORE_REL = f".agents/skills/{BUNDLE_NAME}/SKILL.md"
 
     def _installer_args(self, *extra) -> list[str]:
-        return ["--harnesses", "claude-code", "--modelb-home", str(self.modelb_home),
+        return ["--harnesses", "pi", "--modelb-home", str(self.modelb_home),
                 "--target-root", str(self.target_root), *extra]
 
     def _manifest(self) -> dict[str, str]:
@@ -694,9 +695,6 @@ class CodeHealthInstallS4Test(_StackSandboxCase):
         self.assertTrue(SKILL_MD.is_file(), "§S4: the source bundle must exist")
         self.assertEqual(store_md.read_bytes(), SKILL_MD.read_bytes(),
                          "§S4: the store copy is the source bundle, byte for byte")
-        link = self.target_root / ".claude" / "skills" / BUNDLE_NAME
-        self.assertTrue(link.is_symlink(), f"§S4: {link} must be a per-harness symlink")
-        self.assertEqual(link.resolve(), (self.target_root / ".agents" / "skills" / BUNDLE_NAME).resolve())
         self.assertEqual(self._manifest().get(self.STORE_REL), deploy.sha256_file(SKILL_MD),
                          "§S4: install.toml records the bundle's sha256")
 
@@ -730,7 +728,6 @@ class CodeHealthInstallS4Test(_StackSandboxCase):
         # deploy is not scoped to rust.
         self.assert_installed(self.run_installer("--stacks", "python"))
         self.assertFalse((self.target_root / ".agents" / "skills" / BUNDLE_NAME).exists())
-        self.assertFalse((self.target_root / ".claude" / "skills" / BUNDLE_NAME).is_symlink())
         self.assertEqual([p for p in self._manifest()
                           if p.startswith(f".agents/skills/{BUNDLE_NAME}/")], [])
 

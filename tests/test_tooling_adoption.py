@@ -158,8 +158,6 @@ RELEASED_CLAIM_NEGATIONS = re.compile(
 #: §S4/AC2 -- the pinned store path value (discovered by value, not name).
 TOOLING_STORE_RELDIR_VALUE = Path(".agents") / "scripts"
 
-INSTALL_KEY_HINT = re.compile(r"script|tool", re.IGNORECASE)
-
 #: §S4/AC6 + §S1/AC6 -- tokens that would mean this module resolved a real
 #: deployed path (or drove the dotfiles manager) instead of a temp sandbox.
 #: Assembled from fragments so the scanner never matches its own source.
@@ -400,7 +398,7 @@ class ToolingDeployS4Test(unittest.TestCase):
 
     def _run_real_installer(self, *extra_args):
         result = _run_installer(
-            "--yes", "--harnesses", "claude-code",
+            "--yes", "--harnesses", "pi",
             "--modelb-home", self._tmp_home,
             "--target-root", self._tmp_target_root,
             *extra_args,
@@ -490,38 +488,9 @@ class ToolingDeployS4Test(unittest.TestCase):
                     f"the eight tools; got {sorted(p.name for p in value)}",
                 )
 
-    def test_s4_harness_skill_dirs_gains_no_tooling_entry(self):
-        # Negative AC, made non-vacuous: the tooling asset class must
-        # EXIST (store constant present) and still have no place in the
-        # per-harness symlink map -- a script is invoked by the path a
-        # skill names, so a harness-specific tool path would defeat the
-        # detachment (§S4 scope, :162-166).
-        self.assertNotEqual(
-            _tooling_store_constants(), [],
-            "S4/AC3: the tooling asset class must exist before its "
-            "absence from HARNESS_SKILL_DIRS means anything; no "
-            "Path('.agents')/'scripts' constant exists in "
-            "modelb_axi.deploy",
-        )
-        self.assertEqual(
-            deploy.HARNESS_SKILL_DIRS, {"claude-code": ".claude/skills"},
-            f"S4/AC3: HARNESS_SKILL_DIRS must be UNCHANGED by this CR -- "
-            f"its only key stays 'claude-code' -> '.claude/skills'; got "
-            f"{deploy.HARNESS_SKILL_DIRS}",
-        )
-        tooling_entries = sorted(
-            f"{key} -> {value}" for key, value in deploy.HARNESS_SKILL_DIRS.items()
-            if INSTALL_KEY_HINT.search(str(value)) or INSTALL_KEY_HINT.search(str(key))
-        )
-        self.assertEqual(
-            tooling_entries, [],
-            f"S4/AC3: no tooling/scripts entry may be added to "
-            f"HARNESS_SKILL_DIRS; found {tooling_entries}",
-        )
-
     def test_s4_deploy_places_eight_in_store_with_no_harness_symlink(self):
         target_root = Path(self._tmp_target_root)
-        deploy.deploy_assets(REPO_ROOT, target_root, ["claude-code"])
+        deploy.deploy_assets(REPO_ROOT, target_root, ["pi"])
         missing = [
             name for name in TOOL_SCRIPT_NAMES
             if not (self._deployed_tooling_dir / name).is_file()
@@ -552,7 +521,7 @@ class ToolingDeployS4Test(unittest.TestCase):
     def test_s4_second_deploy_reports_tooling_files_unchanged(self):
         target_root = Path(self._tmp_target_root)
         first_manifest, first_skipped = deploy.deploy_assets(
-            REPO_ROOT, target_root, ["claude-code"]
+            REPO_ROOT, target_root, ["pi"]
         )
         expected_rels = {
             str(TOOLING_STORE_RELDIR_VALUE / name) for name in TOOL_SCRIPT_NAMES
@@ -570,7 +539,7 @@ class ToolingDeployS4Test(unittest.TestCase):
         }
         prior_hashes = {entry["path"]: entry["sha256"] for entry in first_manifest}
         second_manifest, second_skipped = deploy.deploy_assets(
-            REPO_ROOT, target_root, ["claude-code"], prior_hashes=prior_hashes
+            REPO_ROOT, target_root, ["pi"], prior_hashes=prior_hashes
         )
         second_rels = {entry["path"] for entry in second_manifest}
         self.assertEqual(
@@ -667,7 +636,7 @@ class ToolingDeployS4Test(unittest.TestCase):
         # Dynamic half: the tooling store this module drives must actually
         # materialize INSIDE the temp sandbox -- proving the boundary
         # holds against a real deploy, not just in this file's source.
-        deploy.deploy_assets(REPO_ROOT, Path(self._tmp_target_root), ["claude-code"])
+        deploy.deploy_assets(REPO_ROOT, Path(self._tmp_target_root), ["pi"])
         deployed = sorted(
             path for path in self._deployed_tooling_dir.glob("*")
             if path.is_file()

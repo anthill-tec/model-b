@@ -191,7 +191,8 @@ class ProjectTrustResolutionTest(_TrustSandbox):
 class ProjectTrustFieldPresenceTest(_TrustSandbox):
     """§S4 AC3 — ``trust`` is reported only when init writes under
     ``.pi/extensions/``: a Pi init reports one of the four states; a
-    no-Pi init and a ``--dry-run`` (writes nothing) report no field."""
+    ``--dry-run`` (writes nothing) reports no field. (The no-Pi half is
+    retired by CR-MDB-031 §S1: the roster is Pi alone.)"""
 
     def test_trust_field_present_only_when_init_writes_under_pi_extensions(self):
         axi = self.run_init()
@@ -204,14 +205,6 @@ class ProjectTrustFieldPresenceTest(_TrustSandbox):
         dry_target.mkdir()
         dry = self.run_init(dry_run=True, target=dry_target)
         self.assertNotIn("trust", dry, f"§S4: --dry-run writes nothing, reports no trust; {dry!r}")
-
-        self.write_install_toml(("claude-code",))
-        cc_target = self.work / "cc"
-        cc_target.mkdir()
-        cc = self.run_init(target=cc_target)
-        self.assertFalse((cc_target / ".pi" / "extensions").exists(), "precondition: no .pi writes")
-        self.assertNotIn("trust", cc, f"§S4: nothing under .pi/extensions/, no trust field; {cc!r}")
-        self.assertEqual(trust_warnings(cc), [])
 
 
 class AgentsMdProjectTrustLineTest(_TrustSandbox):

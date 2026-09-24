@@ -72,7 +72,7 @@ def _run_module(*args, env_overrides=None, timeout=15, stdin=subprocess.DEVNULL)
     )
 
 
-def _write_install_toml(home: str, harnesses=("claude-code",)) -> Path:
+def _write_install_toml(home: str, harnesses=("pi",)) -> Path:
     """Valid install.toml fixture -- the seam §S2 reads the installed
     harness set from (DN-scaffold-packaging.md §3). Records
     ``hooks_scripts_dir`` as every install after CR-MDB-033 §S1 does,
@@ -280,12 +280,12 @@ class HarnessSeamTest(unittest.TestCase):
     def test_dev_override_harnesses_without_install_toml_dry_run_succeeds(self):
         # No install.toml written under self._tmp_home -- installer-state.
         result = _run_module(
-            "--yes", *self._full_flags(harnesses="claude-code"),
+            "--yes", *self._full_flags(harnesses="pi"),
             "--modelb-home", self._tmp_home,
         )
         self.assertEqual(
             result.returncode, 0,
-            "S2: `init --dry-run --harnesses claude-code` without "
+            "S2: `init --dry-run --harnesses pi` without "
             "install.toml (dev override) must still succeed; got "
             f"exit={result.returncode} stdout={result.stdout!r} "
             f"stderr={result.stderr!r}",
@@ -357,9 +357,9 @@ class StdlibOnlyImportScanTest(unittest.TestCase):
 
 class InitEmissionSoloRunTest(unittest.TestCase):
     """§S3 AC -- a solo, standalone, single-stack `init` run (installed
-    harness set = claude-code per the test's install.toml fixture) emits
-    the full committed set: registry `.env`/`.env.local`, the docs model,
-    `AGENTS.md` + the claude-code anchor, in-repo memory, the git+commit
+    harness set = pi per the test's install.toml fixture -- flipped from
+    claude-code by CR-MDB-031 §S1) emits the full committed set: registry
+    `.env`/`.env.local`, the docs model, `AGENTS.md`, in-repo memory, the git+commit
     state, and the hooks seam note. One subprocess run shared read-only
     across the test methods below (mirrors the class-level shared-fixture
     style already used for HarnessTargetingTest in test_installer.py)."""
@@ -368,7 +368,7 @@ class InitEmissionSoloRunTest(unittest.TestCase):
     def setUpClass(cls):
         cls._tmp_home = tempfile.mkdtemp(prefix="modelb-axi-emit-home-")
         cls._tmp_target = tempfile.mkdtemp(prefix="modelb-axi-emit-target-")
-        _write_install_toml(cls._tmp_home, harnesses=("claude-code",))
+        _write_install_toml(cls._tmp_home, harnesses=("pi",))
         cls._result = _run_module(
             "--yes", "init",
             "--name", "X", "--token", "xproj", "--acronym", "XP",
@@ -466,17 +466,8 @@ class InitEmissionSoloRunTest(unittest.TestCase):
             "WORKFLOW_CYCLE_ID", content,
             f"S3.3: AGENTS.md must carry zero WORKFLOW_CYCLE_ID occurrences; got content={content!r}",
         )
-        claude_md = self._target / "CLAUDE.md"
-        self.assertTrue(
-            claude_md.is_symlink(),
-            "S3.3: CLAUDE.md must be a symlink for the claude-code anchor; "
-            f"target listing={list(self._target.iterdir()) if self._target.exists() else 'MISSING'}",
-        )
-        self.assertEqual(
-            claude_md.resolve(), agents_path.resolve(),
-            "S3.3: CLAUDE.md symlink must resolve to AGENTS.md; got resolved="
-            f"{claude_md.resolve() if claude_md.exists() else 'MISSING'}",
-        )
+        # CR-MDB-031 §S1: the CLAUDE.md symlink half is retired with the
+        # claude-code anchor.
 
     def test_memory_docs_index_and_stack_filtered_templates(self):
         memory_dir = self._target / "docs" / "memory"
@@ -565,7 +556,8 @@ class InitEmissionSoloRunTest(unittest.TestCase):
         `{"hooks": []}` JSON block). Now that §S5 fills the seam for real,
         the placeholder is retired -- the gate retargets to the REAL
         emission: `hooks/README.md` must carry the §S4 compiler's
-        per-harness report, naming the installed harness ("claude-code")
+        per-harness report, naming the installed harness ("pi" -- flipped
+        from "claude-code" by CR-MDB-031 §S1)
         and the always-on `ambient-board-status` hook, rather than the
         old placeholder. The method name is kept unchanged (it is cited by
         name in the CR's Context section as "the sanctioned gate") -- only
@@ -579,9 +571,9 @@ class InitEmissionSoloRunTest(unittest.TestCase):
         content = hooks_readme.read_text(encoding="utf-8")
         # POSITIVE -- the real compiler report names the installed harness.
         self.assertIn(
-            "claude-code", content,
+            "### pi", content,
             "S5: hooks/README.md must carry the compiler report naming the "
-            f"emitted harness 'claude-code'; got content={content!r}",
+            f"emitted harness 'pi'; got content={content!r}",
         )
         # POSITIVE -- and the always-on ambient-board-status hook.
         self.assertIn(
@@ -635,12 +627,12 @@ class InitEmissionSoloRunTest(unittest.TestCase):
 
 
 class HooksSeamSoloRustEmissionTest(unittest.TestCase):
-    """§S5 AC (CR-MDB-015) -- a solo, single-stack `rust` init (claude-code
-    -only install.toml fixture) fills the hooks seam: stack/mode-derived
-    neutral-schema TOML instances land under `hooks/instances/<command>.toml`
-    (one instance per hook -- schema.md v1's "one instance per hook" line),
-    and the §S4 compiler wires the emitted instances into
-    `.claude/settings.json` for the installed claude-code harness.
+    """§S5 AC (CR-MDB-015) -- a solo, single-stack `rust` init (pi-only
+    install.toml fixture -- flipped from claude-code by CR-MDB-031 §S1)
+    fills the hooks seam: stack/mode-derived neutral-schema TOML instances
+    land under `hooks/instances/<command>.toml` (one instance per hook --
+    schema.md v1's "one instance per hook" line), and the §S4 compiler
+    wires the emitted instances for the installed harness.
 
     Derived stack/mode selection table (documented per dispatch instruction,
     from §S5's "cargo guard only for rust stacks; worktree/CR guards only
@@ -668,7 +660,7 @@ class HooksSeamSoloRustEmissionTest(unittest.TestCase):
     def setUpClass(cls):
         cls._tmp_home = tempfile.mkdtemp(prefix="modelb-axi-hooks-rust-home-")
         cls._tmp_target = tempfile.mkdtemp(prefix="modelb-axi-hooks-rust-target-")
-        _write_install_toml(cls._tmp_home, harnesses=("claude-code",))
+        _write_install_toml(cls._tmp_home, harnesses=("pi",))
         cls._result = _run_module(
             "--yes", "init",
             "--name", "X", "--token", "xproj", "--acronym", "XP",
@@ -750,86 +742,6 @@ class HooksSeamSoloRustEmissionTest(unittest.TestCase):
             "S5: solo mode must not emit the CR-completion guard instance",
         )
 
-    def test_claude_code_refuses_closed_cargo_guard_and_still_wires_ambient_status(self):
-        # CR-MDB-030 \u00a7S6 migration (orchestrator-approved): block-* guards
-        # are `closed`, and claude-code cannot honour `closed`
-        # (hooks._HONORS_FAIL_CLOSED), so the \u00a7S4 compiler REFUSES the cargo
-        # guard there and reports the refusal in hooks/README.md.
-        settings_path = self._target / ".claude" / "settings.json"
-        self.assertTrue(
-            settings_path.is_file(),
-            "S5: compiled claude-code wiring must land at "
-            f".claude/settings.json under --target; init stderr={self._result.stderr!r}",
-        )
-        settings = json.loads(settings_path.read_text(encoding="utf-8"))
-        hooks_by_event = settings.get("hooks", {})
-
-        def _commands_for(event):
-            return [
-                spec.get("command", "")
-                for entry in hooks_by_event.get(event, [])
-                for spec in entry.get("hooks", [])
-            ]
-
-        def _all_commands():
-            commands = []
-            for event in hooks_by_event:
-                commands.extend(_commands_for(event))
-            return commands
-
-        # NEGATIVE -- the closed cargo guard is NOT wired anywhere in the
-        # claude-code settings (refused, CR-MDB-030 \u00a7S6).
-        cargo_wired = [
-            cmd for cmd in _all_commands()
-            if cmd.endswith("block-direct-cargo-test")
-        ]
-        self.assertEqual(
-            cargo_wired, [],
-            "S6: the closed cargo guard must be refused on claude-code, not "
-            f"wired; found {cargo_wired!r} in settings={settings!r}",
-        )
-        # POSITIVE -- the refusal is surfaced in the compiler report
-        # (hooks/README.md), under the claude-code section.
-        report_path = self._target / "hooks" / "README.md"
-        self.assertTrue(
-            report_path.is_file(),
-            f"S6: init must emit the hook compiler report at {report_path}",
-        )
-        report = report_path.read_text(encoding="utf-8")
-        section = report.split("### claude-code", 1)
-        self.assertEqual(
-            len(section), 2,
-            f"S6: hooks/README.md must carry a claude-code section; got {report!r}",
-        )
-        claude_section = section[1].split("\n### ", 1)[0]
-        self.assertIn(
-            "- REFUSED `block-direct-cargo-test`:", claude_section,
-            "S6: hooks/README.md must report the cargo guard REFUSED for "
-            f"claude-code; got claude-code section={claude_section!r}",
-        )
-        # POSITIVE -- ambient-board-status is wired under SessionStart.
-        session_start_commands = _commands_for("SessionStart")
-        self.assertTrue(
-            any(cmd.endswith("ambient-board-status") for cmd in session_start_commands),
-            "S5: SessionStart must wire ambient-board-status; got SessionStart "
-            f"commands={session_start_commands!r} (full settings={settings!r})",
-        )
-        # NEGATIVE / bound -- zero mvn/worktree/cr-completed commands
-        # anywhere in the compiled wiring.
-        forbidden = (
-            "block-direct-mvn-test", "block-write-outside-worktree",
-            "block-cr-completed-without-spec-update",
-        )
-        leaked = [
-            cmd for cmd in _all_commands()
-            if any(cmd.endswith(f) for f in forbidden)
-        ]
-        self.assertEqual(
-            leaked, [],
-            "S5: solo/rust wiring must carry zero mvn/worktree/CR-completion "
-            f"commands; found {leaked!r} in settings={settings!r}",
-        )
-
 
 class HooksSeamMultiPythonEmissionTest(unittest.TestCase):
     """§S5 AC (CR-MDB-015) -- a `--mode multi:2 --stacks python` init emits
@@ -843,7 +755,7 @@ class HooksSeamMultiPythonEmissionTest(unittest.TestCase):
     def setUpClass(cls):
         cls._tmp_home = tempfile.mkdtemp(prefix="modelb-axi-hooks-multi-home-")
         cls._tmp_target = tempfile.mkdtemp(prefix="modelb-axi-hooks-multi-target-")
-        _write_install_toml(cls._tmp_home, harnesses=("claude-code",))
+        _write_install_toml(cls._tmp_home, harnesses=("pi",))
         cls._result = _run_module(
             "--yes", "init",
             "--name", "X", "--token", "xproj", "--acronym", "XP",
@@ -911,9 +823,9 @@ class PiWorktreeCarryAndClosedGuardsTest(unittest.TestCase):
     Claude-refusal rationale comment that justified `open` is gone from
     `scaffold.py`'s source.
 
-    RUN CONTEXT -- one `--mode multi:2 --stacks rust,java --harnesses
-    claude-code,pi` init fixture, shared by every test method below: multi
-    mode + rust + java together select ALL FOUR block-* instances (see
+    RUN CONTEXT -- one `--mode multi:2 --stacks rust,java` init fixture for
+    a pi install (flipped from claude-code,pi by CR-MDB-031 §S1), shared by
+    every test method below: multi mode + rust + java together select ALL FOUR block-* instances (see
     HooksSeamSoloRustEmissionTest's derived selection table), and `pi` in
     the installed harness roster makes the \u00a7S4 compiler
     (`hooks.compile_wiring` -> `_emit_pi`) emit one `.pi/extensions/
@@ -924,7 +836,7 @@ class PiWorktreeCarryAndClosedGuardsTest(unittest.TestCase):
     def setUpClass(cls):
         cls._tmp_home = tempfile.mkdtemp(prefix="modelb-axi-pi-worktree-home-")
         cls._tmp_target = tempfile.mkdtemp(prefix="modelb-axi-pi-worktree-target-")
-        _write_install_toml(cls._tmp_home, harnesses=("claude-code", "pi"))
+        _write_install_toml(cls._tmp_home, harnesses=("pi",))
         cls._result = _run_module(
             "--yes", "init",
             "--name", "X", "--token", "xproj", "--acronym", "XP",
@@ -1129,88 +1041,6 @@ class PiWorktreeCarryAndClosedGuardsTest(unittest.TestCase):
         )
 
 
-class HarnessAnchorMatrixTest(unittest.TestCase):
-    """§S3.3 AC -- per-harness anchors are emitted ONLY for the harnesses
-    the INSTALLATION declares. `DN-harness-agnostic-hooks.md` §2 surveys
-    Codex/Gemini/Cursor/Copilot/opencode/Amp project-config paths but
-    names neither `Hermes` nor `pi` (pi.dev) at all, and even for
-    opencode gives only a plugin mechanism (no concrete anchor-file
-    path) -- so for all three of hermes/pi/opencode the DN supplies no
-    concrete anchor location and §S3.3's fallback applies: "where a
-    harness reads AGENTS.md natively, emit nothing and note it" i.e. a
-    documented native-AGENTS.md note naming the harness, not a separate
-    anchor file."""
-
-    def _run_with_harnesses(self, harnesses):
-        tmp_home = tempfile.mkdtemp(prefix="modelb-axi-anchor-home-")
-        tmp_target = tempfile.mkdtemp(prefix="modelb-axi-anchor-target-")
-        self.addCleanup(shutil.rmtree, tmp_home, ignore_errors=True)
-        self.addCleanup(shutil.rmtree, tmp_target, ignore_errors=True)
-        _write_install_toml(tmp_home, harnesses=harnesses)
-        result = _run_module(
-            "--yes", "init",
-            "--name", "X", "--token", "xproj", "--acronym", "XP",
-            "--mode", "solo", "--repo-shape", "standalone",
-            "--stacks", "python", "--owner", "tester",
-            "--target", tmp_target,
-            "--modelb-home", tmp_home,
-        )
-        return result, Path(tmp_target)
-
-    def test_all_four_installed_harnesses_get_documented_anchors(self):
-        result, target = self._run_with_harnesses(
-            ("claude-code", "hermes", "pi", "opencode"),
-        )
-        claude_md = target / "CLAUDE.md"
-        self.assertTrue(
-            claude_md.is_symlink(),
-            f"S3.3: CLAUDE.md symlink anchor must exist for claude-code; "
-            f"init stderr={result.stderr!r}",
-        )
-        agents_path = target / "AGENTS.md"
-        self.assertTrue(
-            agents_path.is_file(),
-            f"S3.3: AGENTS.md must be emitted; init stderr={result.stderr!r}",
-        )
-        content = _md_section(
-            agents_path.read_text(encoding="utf-8"), "## Harness anchors",
-        ).lower()
-        for marker in ("hermes", "pi.dev", "opencode"):
-            self.assertIn(
-                marker, content,
-                "S3.3: with all four roster harnesses installed, AGENTS.md's harness-anchors section "
-                f"must carry a native-anchor note naming {marker!r}; got content={content!r}",
-            )
-
-    def test_claude_only_install_emits_no_hermes_pi_opencode_anchors(self):
-        result, target = self._run_with_harnesses(("claude-code",))
-        claude_md = target / "CLAUDE.md"
-        self.assertTrue(
-            claude_md.is_symlink(),
-            f"S3.3: CLAUDE.md symlink anchor must still exist for claude-code; "
-            f"init stderr={result.stderr!r}",
-        )
-        agents_path = target / "AGENTS.md"
-        # Migrated (CR-MDB-036 \u00a7S6): the Pi capability contract may name Pi
-        # anywhere in the file; the anchor rule governs the anchors section.
-        self.assertTrue(
-            agents_path.is_file(),
-            f"S3.3: AGENTS.md must be emitted; init stderr={result.stderr!r}",
-        )
-        full = agents_path.read_text(encoding="utf-8")
-        self.assertIn(
-            "## Harness anchors", full,
-            f"S3.3: AGENTS.md must carry its harness-anchors section; got content={full!r}",
-        )
-        content = _md_section(full, "## Harness anchors").lower()
-        for marker in ("hermes", "pi.dev", "opencode"):
-            self.assertNotIn(
-                marker, content,
-                "S3.3: with only claude-code installed, NO hermes/pi/opencode "
-                f"anchor note may appear; found {marker!r} in content={content!r}",
-            )
-
-
 class MonorepoEmissionTest(unittest.TestCase):
     """§S3 AC -- `--repo-shape monorepo:a,b` emits per-sub-project `.env`
     + `AGENTS.md` under each sub-project dir (`a/`, `b/`)."""
@@ -1218,7 +1048,7 @@ class MonorepoEmissionTest(unittest.TestCase):
     def setUp(self):
         self._tmp_home = tempfile.mkdtemp(prefix="modelb-axi-mono-home-")
         self._tmp_target = tempfile.mkdtemp(prefix="modelb-axi-mono-target-")
-        _write_install_toml(self._tmp_home, harnesses=("claude-code",))
+        _write_install_toml(self._tmp_home, harnesses=("pi",))
 
     def tearDown(self):
         shutil.rmtree(self._tmp_home, ignore_errors=True)
@@ -1260,7 +1090,7 @@ class NoCommitPolicyTest(unittest.TestCase):
     def setUp(self):
         self._tmp_home = tempfile.mkdtemp(prefix="modelb-axi-nocommit-home-")
         self._tmp_target = tempfile.mkdtemp(prefix="modelb-axi-nocommit-target-")
-        _write_install_toml(self._tmp_home, harnesses=("claude-code",))
+        _write_install_toml(self._tmp_home, harnesses=("pi",))
 
     def tearDown(self):
         shutil.rmtree(self._tmp_home, ignore_errors=True)
@@ -1314,7 +1144,7 @@ class RegisterHonestNoOpTest(unittest.TestCase):
     def setUp(self):
         self._tmp_home = tempfile.mkdtemp(prefix="modelb-axi-register-home-")
         self._tmp_target = tempfile.mkdtemp(prefix="modelb-axi-register-target-")
-        _write_install_toml(self._tmp_home, harnesses=("claude-code",))
+        _write_install_toml(self._tmp_home, harnesses=("pi",))
 
     def tearDown(self):
         shutil.rmtree(self._tmp_home, ignore_errors=True)

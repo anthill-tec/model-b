@@ -261,7 +261,7 @@ class ScaffoldRejectsRetiredStackS3Test(unittest.TestCase):
         (Path(self._home) / "install.toml").write_text(
             '[install]\n'
             'version = "0.1.0"\n'
-            'harnesses = ["claude-code"]\n'
+            'harnesses = ["pi"]\n'
             'asset_root = "/tmp/does-not-matter-for-this-test"\n'
             f'hooks_scripts_dir = "{hooks_scripts_dir}"\n'
             "\n"

@@ -1127,7 +1127,7 @@ class DeployEngineAllBundlesEndToEndTest(unittest.TestCase):
 
     def test_end_to_end_install_deploys_every_skill_bundle_with_manifest_and_symlinks(self):
         result = _run_module(
-            "--yes", "--harnesses", "claude-code",
+            "--yes", "--harnesses", "pi",
             "--modelb-home", self._tmp_home,
             "--target-root", self._tmp_target_root,
             env_overrides={"PATH": self._tmp_bin},
@@ -1167,7 +1167,6 @@ class DeployEngineAllBundlesEndToEndTest(unittest.TestCase):
             f"found {sorted(skill_md_names)}",
         )
         store_root = Path(self._tmp_target_root) / ".agents" / "skills"
-        harness_root = Path(self._tmp_target_root) / ".claude" / "skills"
         missing_store = [
             name for name in MODELB_OWNED_BUNDLE_NAMES
             if not (store_root / name / "SKILL.md").is_file()
@@ -1179,17 +1178,8 @@ class DeployEngineAllBundlesEndToEndTest(unittest.TestCase):
             f"Vercel store must contain SKILL.md for every bundle under "
             f"{store_root}; missing: {missing_store}",
         )
-        missing_symlink = [
-            name for name in MODELB_OWNED_BUNDLE_NAMES
-            if not (harness_root / name).is_symlink()
-        ]
-        # POSITIVE/EXACT -- every bundle symlinked into the claude-code
-        # harness skills dir (never a second physical copy).
-        self.assertEqual(
-            missing_symlink, [],
-            f"claude-code harness skills dir must symlink every bundle "
-            f"under {harness_root}; missing symlinks: {missing_symlink}",
-        )
+        # CR-MDB-031 §S1: the per-harness skills-dir symlink half is
+        # retired (Pi reads the store natively; no link writer).
 
 
 class InstalledPackageAssetRootEndToEndTest(unittest.TestCase):
@@ -1265,7 +1255,7 @@ class InstalledPackageAssetRootEndToEndTest(unittest.TestCase):
         # CR-MDB-036: sandboxed, provisioned Pi agent dir -- never ~/.pi.
         run_env.update(with_agent_dir(None))
         result = subprocess.run(
-            [str(installed_bin), "--yes", "--harnesses", "claude-code",
+            [str(installed_bin), "--yes", "--harnesses", "pi",
              "--modelb-home", self._tmp_home,
              "--target-root", self._tmp_target_root],
             capture_output=True, text=True, timeout=60,
@@ -1393,7 +1383,7 @@ class HookScriptsDeployEndToEndTest(unittest.TestCase):
 
     def test_end_to_end_install_deploys_six_hook_scripts_with_manifest_entries(self):
         result = _run_module(
-            "--yes", "--harnesses", "claude-code",
+            "--yes", "--harnesses", "pi",
             "--modelb-home", self._tmp_home,
             "--target-root", self._tmp_target_root,
             env_overrides={"PATH": self._tmp_bin},
