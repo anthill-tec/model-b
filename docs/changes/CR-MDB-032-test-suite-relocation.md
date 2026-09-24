@@ -119,6 +119,9 @@ dropped. The `MODELB_REALHOME_GATE` paragraph is deleted with the module.
   string concatenation in loops. Same hygiene class; no behaviour defect. Also `tests/test_installer_correctness.py:1046`
   (unannotated `**kwargs` passed through) and `:1182`, `:1233` (nested `with` statements), all
   CR-MDB-033.
+- **Added 2026-09-24 (pi-lens, pre-existing):** `tests/test_scaffold.py:153` (CR-MDB-013) and `:1678`
+  (CR-MDB-036) — unnarrowed `Optional`, repeated `.endswith` calls; `tests/test_installer.py:1053`
+  (CR-MDB-014) — unnarrowed `Optional` passed to `write_text`. Same hygiene class.
 
 ## Acceptance criteria
 
