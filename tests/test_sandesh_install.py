@@ -266,5 +266,40 @@ class SandeshInstallReprobeMissesSandeshTest(_SandeshSandboxCase):
                          "no `installed` deps line for a Sandesh the re-probe did not find")
 
 
+class SandeshDeclineRecordsWarningTest(_SandeshSandboxCase):
+    """VERIFY finding 4: declining the Sandesh install at the prompt records
+    a warning naming ``uv tool install sandesh-relay``, as a declined
+    ``pi install`` or toolchain offer does — and runs nothing. In-process
+    ``run_preflight`` with the confirm seam answering no, ``HOME``/``PATH``/
+    ``PI_CODING_AGENT_DIR`` pinned to the sandbox."""
+
+    def test_declined_sandesh_install_is_recorded_as_a_warning(self):
+        import contextlib
+        import io
+        from unittest import mock
+
+        from modelb_axi.preflight import run_preflight
+        prompts: list[str] = []
+
+        def decline(prompt: str) -> bool:
+            prompts.append(prompt)
+            return False
+
+        warnings: list[str] = []
+        env = {"HOME": str(self.home), "PATH": str(self.bin_dir),
+               AGENT_DIR_ENV: str(self.agent_dir)}
+        with mock.patch.dict(os.environ, env), \
+                contextlib.redirect_stderr(io.StringIO()) as err:
+            code, deps, _caps = run_preflight(decline, warnings, stacks=())
+        self.assertEqual(code, 0, err.getvalue())
+        self.assertTrue(any("Sandesh not found" in p for p in prompts),
+                        f"precondition: the Sandesh install was offered; prompts={prompts!r}")
+        self.assertEqual(self.uv_runs(), [], "a declined install runs nothing")
+        self.assertEqual(deps.get("sandesh"), "absent", f"deps={deps!r}")
+        hits = [w for w in warnings if "declined" in w and SANDESH_INSTALL in w]
+        self.assertEqual(len(hits), 1,
+                         f"one warning naming the declined install; warnings={warnings!r}")
+
+
 if __name__ == "__main__":
     unittest.main()

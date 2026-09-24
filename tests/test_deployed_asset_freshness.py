@@ -319,6 +319,39 @@ class DeployedAssetFreshnessTest(_InstalledMachineCase):
         self.assert_lists(axi, stale=[SKILL_REL], hand_modified=[OTHER_SKILL_REL],
                           retired=[RETIRED_REL])
 
+    def _hint(self, stderr: str, state: str) -> str:
+        """The one stderr hint line for ``state`` (``<state>: re-run …``)."""
+        hits = [ln.strip() for ln in stderr.splitlines()
+                if ln.strip().startswith(f"{state}:")]
+        self.assertEqual(len(hits), 1, f"exactly one `{state}:` hint; stderr={stderr!r}")
+        return hits[0]
+
+    def test_stale_hint_names_the_re_run_that_works(self):
+        """VERIFY finding 1: a bare ``--reinstall`` is not a re-run that
+        works — it needs the target root and the stacks, as the guide says."""
+        self.make_stale(SKILL_REL)
+        result, axi = self.run_bare()
+        self.assert_already_installed(result, axi)
+        hint = self._hint(result.stderr, "stale")
+        for flag in ("--reinstall", "--target-root", "--stacks"):
+            with self.subTest(flag=flag):
+                self.assertIn(flag, hint, f"the stale hint must name {flag}; hint={hint!r}")
+        self.assertNotIn("--force-managed", hint,
+                         f"a stale file needs no --force-managed; hint={hint!r}")
+
+    def test_hand_modified_hint_names_the_re_run_with_force_managed(self):
+        """VERIFY finding 1: ``--force-managed`` alone never reaches the
+        installer on an installed machine — the re-run needs ``--reinstall``
+        with the target root and stacks as well."""
+        self.make_hand_modified(SKILL_REL)
+        result, axi = self.run_bare()
+        self.assert_already_installed(result, axi)
+        hint = self._hint(result.stderr, "hand_modified")
+        for flag in ("--reinstall", "--target-root", "--stacks", "--force-managed"):
+            with self.subTest(flag=flag):
+                self.assertIn(flag, hint,
+                              f"the hand_modified hint must name {flag}; hint={hint!r}")
+
     def test_reporting_writes_neither_the_deployed_tree_nor_install_toml(self):
         self.make_stale(SKILL_REL)
         self.make_hand_modified(OTHER_SKILL_REL)

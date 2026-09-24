@@ -22,8 +22,10 @@ Orchestrator rulings (2026-09-24, cycle 95) these tests pin:
   ``modelb-axi --yes [--force-managed] init ... --no-commit``.
 - P4: the marker is the FIRST line, starts ``//``, names ``modelb-axi`` and
   ends with the sha256 hex of the file minus that line.
-- P5: built-in file tools = read, write, edit, grep, find, ls (no bash);
-  ``~/.bun/install/*`` is not asserted.
+- P5: built-in file tools = read, write, edit, grep, find, ls (no bash).
+  ``~/.bun/install/*`` is asserted in-process only, by
+  :class:`HarnessCodeReadsTest` (VERIFY finding 5), against a sandbox
+  ``HOME`` holding a ``pi`` stand-in.
 
 Isolation: every run pins ``HOME`` and ``PI_CODING_AGENT_DIR`` to a
 throw-away sandbox; the real ``~/.pi`` is never read.
@@ -359,6 +361,63 @@ class PermissionPolicyContentTest(_InitSandbox):
 
 
 # ---------------------------------------------------------------------------
+# §S3 — the installed harness's own code (VERIFY finding 5)
+# ---------------------------------------------------------------------------
+
+class HarnessCodeReadsTest(unittest.TestCase):
+    """§S3: ``external_directory_read`` allows ``~/.bun/install/*`` exactly
+    when the ``pi`` on PATH is a bun-installed Pi — its resolved path lies
+    under ``$HOME/.bun/install``. In-process ``render_policy`` with ``HOME``
+    and ``PATH`` pinned to a sandbox; a ``pi`` stand-in shaped like bun's
+    global install (``~/.bun/bin/pi`` -> ``~/.bun/install/global/...``)."""
+
+    BUN_READ = "~/.bun/install/*"
+
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp(prefix="modelb-cr037-bunread-")).resolve()
+        self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
+        self.home = self.root / "home"
+        self.home.mkdir()
+
+    @staticmethod
+    def _exe(path: Path) -> Path:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        path.chmod(0o755)
+        return path
+
+    def _reads(self, path_dir: Path) -> dict:
+        from modelb_axi import permission_policy
+        with mock.patch.dict(os.environ, {"HOME": str(self.home), "PATH": str(path_dir)}):
+            text = permission_policy.render_policy()
+        return _parsed_policy(self, text)["permission"]["external_directory_read"]
+
+    def test_bun_installed_pi_allows_reading_bun_install(self):
+        cli = self._exe(self.home / ".bun" / "install" / "global" / "node_modules"
+                        / "pi-coding-agent" / "dist" / "cli.js")
+        bin_dir = self.home / ".bun" / "bin"
+        bin_dir.mkdir(parents=True)
+        (bin_dir / "pi").symlink_to(cli)
+        reads = self._reads(bin_dir)
+        self.assertEqual(reads.get(self.BUN_READ), "allow",
+                         f"§S3: a bun-installed Pi's own code is readable; reads={reads!r}")
+
+    def test_pi_resolving_elsewhere_adds_no_bun_read(self):
+        bin_dir = self.root / "elsewhere" / "bin"
+        self._exe(bin_dir / "pi")
+        (self.home / ".bun" / "install").mkdir(parents=True)
+        reads = self._reads(bin_dir)
+        self.assertNotIn(self.BUN_READ, reads,
+                         f"§S3: no bun read for a Pi installed elsewhere; reads={reads!r}")
+
+    def test_no_pi_on_path_adds_no_bun_read(self):
+        empty = self.root / "empty-bin"
+        empty.mkdir()
+        reads = self._reads(empty)
+        self.assertNotIn(self.BUN_READ, reads, f"reads={reads!r}")
+
+
+# ---------------------------------------------------------------------------
 # §S3 AC2 — the dispatch / lean-ctx names are READ from REQUIREMENTS
 # ---------------------------------------------------------------------------
 
@@ -510,6 +569,64 @@ class PermissionPolicyOwnershipTest(_InitSandbox):
 
 
 # ---------------------------------------------------------------------------
+# §S3 AC3 — init's surface for the ownership rules (VERIFY finding 6)
+# ---------------------------------------------------------------------------
+
+class InitPolicyOwnershipSurfaceTest(_InitSandbox):
+    """``init`` accepts ``--force-managed`` after the subcommand too (as
+    ``agents`` does), and its envelope reports a hand-edited policy it
+    skipped — in ``skipped`` and as a warning naming ``--force-managed``."""
+
+    def setUp(self):
+        super().setUp()
+        self.fresh, _ = self.render("reference")
+        first, rest = split_marker(self.fresh)
+        data = json.loads(strip_line_comments(rest))
+        data["permission"]["bash"] = "allow"
+        self.edited = f"{first}\n{json.dumps(data, indent=2)}\n"
+        self.assertNotEqual(self.edited, self.fresh, "fixture precondition")
+
+    def _seed_hand_edited(self, name: str) -> Path:
+        target = self.new_target(name)
+        path = target / POLICY_REL
+        path.parent.mkdir(parents=True)
+        path.write_text(self.edited, encoding="utf-8")
+        return target
+
+    def test_force_managed_after_the_subcommand_rewrites_a_hand_edited_policy(self):
+        target = self._seed_hand_edited("post-flag")
+        result = subprocess.run(
+            [sys.executable, "-m", "modelb_axi", "--yes", "init", *_INIT_FLAGS,
+             "--target", str(target), "--modelb-home", str(self.modelb_home),
+             "--no-commit", "--force-managed"],
+            capture_output=True, text=True, timeout=90,
+            stdin=subprocess.DEVNULL, env=self.env(),
+        )
+        self.assert_ok(result)
+        self.assertEqual(
+            (target / POLICY_REL).read_text(encoding="utf-8"), self.fresh,
+            "`init ... --force-managed` (flag after the subcommand) rewrites a "
+            "hand-edited policy, as the flag before it does",
+        )
+
+    def test_skipped_hand_edited_policy_is_reported_in_the_envelope(self):
+        target = self._seed_hand_edited("skipped")
+        result = self.run_init(target)
+        self.assert_ok(result)
+        self.assertEqual((target / POLICY_REL).read_text(encoding="utf-8"), self.edited,
+                         "precondition: the hand-edited policy is left alone")
+        axi = decode_axi(result.stdout)
+        self.assertEqual(axi.get("skipped"), [POLICY_REL],
+                         f"init's envelope lists the skipped policy; axi={axi!r}")
+        hits = [w for w in axi.get("warnings", [])
+                if POLICY_REL in w and "--force-managed" in w]
+        self.assertEqual(len(hits), 1,
+                         f"one warning naming the file and --force-managed; "
+                         f"warnings={axi.get('warnings')!r}")
+        self.assertIn(POLICY_REL, result.stderr, "the summary on stderr names it too")
+
+
+# ---------------------------------------------------------------------------
 # §S3 AC4 — the installer reports the GLOBAL config (rulings P1/P2)
 # ---------------------------------------------------------------------------
 
@@ -609,6 +726,27 @@ class GlobalPermissionPolicyReportTest(unittest.TestCase):
             sorted([dispatch_tool, "ask_parent"]),
             f"P2: the missing workflow tools are named, exactly; axi={axi!r}",
         )
+        self.assertEqual(self.global_policy.read_bytes(), before, "global config untouched")
+
+    def test_star_allow_fallback_counts_every_workflow_tool_as_allowed(self):
+        """VERIFY finding 7: the package's last matching pattern wins, so a
+        ``"*": "allow"`` fallback allows every workflow tool without an
+        entry of its own — ``ok``, never ``missing-tools`` listing them all."""
+        before = self._seed_global(self._policy({"*": "allow"}))
+        axi = self._install()
+        self.assertEqual(axi.get("global_permission_policy"), "ok", f"axi={axi!r}")
+        self.assertNotIn("global_permission_missing_tools", axi)
+        self.assertEqual(self.global_policy.read_bytes(), before, "global config untouched")
+
+    def test_star_allow_fallback_with_an_explicit_ask_names_only_that_tool(self):
+        """VERIFY finding 7: under ``"*": "allow"`` a tool's own non-allow
+        entry still wins, and is the only one missing."""
+        dispatch_tool = _requirements.requirement("dispatch")["tools"][0]
+        before = self._seed_global(self._policy({"*": "allow", dispatch_tool: "ask"}))
+        axi = self._install()
+        self.assertEqual(axi.get("global_permission_policy"), "missing-tools", f"axi={axi!r}")
+        self.assertEqual(axi.get("global_permission_missing_tools"), [dispatch_tool],
+                         f"only the explicitly-asked tool is missing; axi={axi!r}")
         self.assertEqual(self.global_policy.read_bytes(), before, "global config untouched")
 
     def test_global_config_with_fallback_and_every_workflow_tool_is_ok(self):
