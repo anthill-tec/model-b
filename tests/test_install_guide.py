@@ -525,6 +525,33 @@ def check_marked_regions(text: str) -> list[str]:
     return out
 
 
+#: The PyPI project page shows the whole guide as the package readme
+#: (orchestrator ruling R3, 2026-09-24, cycle 106: prose, not a table).
+PYPI_PAGE = "PyPI project page"
+
+
+def _prose_blocks(section: str) -> list[str]:
+    """Paragraphs and list items of ``section`` (fenced code excluded)."""
+    lines = section.splitlines()
+    mask = _fence_mask(lines)
+    text = "\n".join("" if fenced else ln for ln, fenced in zip(lines, mask, strict=True))
+    return [b for b in re.split(r"\n\s*\n|\n(?=\s*[-*] )", text) if b.strip()]
+
+
+def check_pypi_surface(text: str) -> list[str]:
+    """The ``Marked regions`` section (outside every region) names the PyPI
+    project page and says, in the same paragraph or list item, that it
+    shows the whole guide as the package readme."""
+    blocks = [b for b in _prose_blocks(_section(text, MARKED)) if PYPI_PAGE in " ".join(b.split())]
+    if not blocks:
+        return [f"section '{MARKED}' must name the {PYPI_PAGE}"]
+    if not any("whole guide" in " ".join(b.split()).lower() and "readme" in b.lower()
+               for b in blocks):
+        return [f"section '{MARKED}' must say the {PYPI_PAGE} shows the whole guide "
+                "as the package readme"]
+    return []
+
+
 def check_vocabulary(text: str) -> list[str]:
     out = [f"{label}: {m.group(0)!r}" for label, pattern in BLOCKED_PATTERNS
            for m in pattern.finditer(text)]
@@ -680,7 +707,8 @@ def conforming_guide() -> str:
         out += [f"## {heading}", "", *bodies[heading], ""]
     out += ["<!-- install-guide:end install -->", "", f"## {MARKED}", "",
             "Regions open with `<!-- install-guide:begin <name> -->` and close with "
-            "`<!-- install-guide:end <name> -->`.", ""]
+            "`<!-- install-guide:end <name> -->`.", "",
+            f"The {PYPI_PAGE} shows the whole guide, as the package readme.", ""]
     return "\n".join(out)
 
 
@@ -786,7 +814,14 @@ class InstallGuideMarkedRegionsTest(unittest.TestCase):
         self.assertEqual(check_marked_regions(_read(GUIDE)), [])
 
 
-class InstallGuideVocabularyTest(unittest.TestCase):
+class InstallGuidePypiSurfaceTest(unittest.TestCase):
+    """The PyPI project page is a surface derived from the guide (the whole
+    guide, as the package readme); the guide says so outside every region
+    (orchestrator ruling R3, 2026-09-24, cycle 106)."""
+
+    def test_marked_regions_section_names_the_pypi_project_page_as_the_whole_guide(self):
+        self.assertTrue(GUIDE.is_file(), f"{GUIDE.relative_to(REPO_ROOT)} must exist")
+        self.assertEqual(check_pypi_surface(_read(GUIDE)), [])
 
     def test_guide_carries_no_section_refs_cr_ids_or_internal_vocabulary(self):
         self.assertTrue(GUIDE.is_file(), f"{GUIDE.relative_to(REPO_ROOT)} must exist")
@@ -831,6 +866,33 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
         self.assertEqual(check_marked_regions(self.guide), [])
         self.assertEqual(check_vocabulary(self.guide), [])
         self.assertEqual(check_installer_source(self.guide), [])
+        self.assertEqual(check_pypi_surface(self.guide), [])
+
+    def test_pypi_surface_faults_are_reported(self):
+        line = f"The {PYPI_PAGE} shows the whole guide, as the package readme."
+        cases = {
+            "not named": (self.guide.replace(line, "The release notes are copied."),
+                          f"section '{MARKED}' must name the {PYPI_PAGE}"),
+            "not the whole guide": (
+                self.guide.replace(line, f"The {PYPI_PAGE} shows the marked regions, as the "
+                                         "package readme."),
+                f"section '{MARKED}' must say the {PYPI_PAGE} shows the whole guide as the "
+                "package readme"),
+            "only inside a region": (
+                self.guide.replace(line, "").replace(
+                    "<!-- install-guide:end install -->", f"{line}\n\n<!-- install-guide:end install -->"),
+                f"section '{MARKED}' must name the {PYPI_PAGE}"),
+            "split across paragraphs": (
+                self.guide.replace(line, f"The {PYPI_PAGE} exists.\n\nThe whole guide is the readme."),
+                f"section '{MARKED}' must say the {PYPI_PAGE} shows the whole guide as the "
+                "package readme"),
+        }
+        for label, (text, expected) in cases.items():
+            with self.subTest(case=label):
+                self.assertEqual(check_pypi_surface(text), [expected])
+        wrapped = self.guide.replace(line, "The PyPI project\npage shows the whole guide,\n"
+                                           "as the package README.")
+        self.assertEqual(check_pypi_surface(wrapped), [])
 
     def test_installer_source_faults_are_reported(self):
         git_line = "- `git`, from your package manager.\n"
