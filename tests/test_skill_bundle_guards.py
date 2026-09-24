@@ -77,7 +77,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tests._helpers import read_text_lenient as _read
+from tests._helpers import (
+    carries_retired_register_flag as _carries_retired_register_flag,
+    read_text_lenient as _read,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SKILLS_SRC = REPO_ROOT / "skills-src"
@@ -125,13 +128,8 @@ REPORT_BUNDLE_PREFIX = "crucible-report-"
 
 # ------------------------------------------------- the register-flag surface ---
 
-# The flag Crucible retired in 0.1.0 with no alias.
-RETIRED_REGISTER_FLAG = "--phase"
-
-# CR-MDB-023: `--phase` is ALSO the live flag of `rust-code-health.py snapshot`
-# (a Model B tool, not a Crucible client). Only that exact occurrence is
-# stripped before the retired-flag check; every other `--phase` still bites.
-RUST_SNAPSHOT_PHASE_RE = re.compile(r"rust-code-health\.py\s+snapshot\s+--phase\b")
+# The retired register flag, its CR-MDB-023 `rust-code-health.py snapshot
+# --phase` exemption and the check itself live in tests/_helpers.py.
 
 # CR-MDB-023 detector lines: the retired register flag, the exempt snapshot
 # flag, and both on one line (which must still bite).
@@ -565,13 +563,6 @@ def _documents_endpoint(text, endpoint):
 
 def _codes(findings):
     return sorted({code for code, _ in findings})
-
-
-def _carries_retired_register_flag(line):
-    """True when `line` carries the retired register flag once the
-    `rust-code-health.py snapshot --phase` occurrences are removed
-    (CR-MDB-023) -- the guard's intent is otherwise unchanged."""
-    return RETIRED_REGISTER_FLAG in RUST_SNAPSHOT_PHASE_RE.sub("", line)
 
 
 def _write_fixture_bundle(tmpdir, register_line):

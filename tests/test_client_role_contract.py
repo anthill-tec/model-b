@@ -37,7 +37,12 @@ import re
 import unittest
 from pathlib import Path
 
-from tests._helpers import read_text_lenient as _read
+from tests._helpers import (
+    RETIRED_REGISTER_FLAG,
+    carries_retired_register_flag as _carries_retired_register_flag,
+    read_text_lenient as _read,
+    rel_to_repo as _rel,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SKILLS_SRC = REPO_ROOT / "skills-src"
@@ -46,20 +51,9 @@ AGENTS_MD = REPO_ROOT / "AGENTS.md"
 TESTS_DIR = REPO_ROOT / "tests"
 CRUCIBLE_SKILL = SKILLS_SRC / "crucible" / "SKILL.md"
 
-# The flag Crucible retired fleet-wide in their 0.1.0 clean break (no alias).
-RETIRED_REGISTER_FLAG = "--phase"
+# RETIRED_REGISTER_FLAG and its CR-MDB-023 `rust-code-health.py snapshot
+# --phase` exemption live in tests/_helpers.py with the check that uses them.
 
-# CR-MDB-023: `--phase` is ALSO the live flag of `rust-code-health.py snapshot`
-# (a Model B tool, not a Crucible client). Only that exact occurrence is
-# stripped before the retired-flag check; every other `--phase` still bites.
-RUST_SNAPSHOT_PHASE_RE = re.compile(r"rust-code-health\.py\s+snapshot\s+--phase\b")
-
-
-def _carries_retired_register_flag(line):
-    """True when `line` carries the retired register flag once the
-    `rust-code-health.py snapshot --phase` occurrences are removed
-    (CR-MDB-023) -- the guard's intent is otherwise unchanged."""
-    return RETIRED_REGISTER_FLAG in RUST_SNAPSHOT_PHASE_RE.sub("", line)
 
 # Case-exact; five uppercase, `report` lowercase.
 ROLE_ENUM = ("RED", "GREEN", "FIX", "VERIFY", "ORCHESTRATOR", "report")
@@ -101,13 +95,6 @@ def _iter_files(root):
     if root.is_file():
         return [root]
     return sorted(p for p in root.rglob("*") if p.is_file())
-
-
-def _rel(path):
-    try:
-        return str(path.relative_to(REPO_ROOT))
-    except ValueError:  # pragma: no cover - defensive
-        return str(path)
 
 
 def _scan_roots():

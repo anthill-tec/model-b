@@ -17,6 +17,7 @@ Stdlib only.
 import ast
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -228,4 +229,37 @@ def code_string_literals(source: str) -> list[str]:
     return [n.value for n in ast.walk(tree)
             if isinstance(n, ast.Constant) and isinstance(n.value, str)
             and id(n) not in skip]
+
+
+def rel_to_repo(path) -> str:
+    """``path`` relative to the repo root, or ``path`` itself when it lies outside."""
+    try:
+        return str(path.relative_to(REPO_ROOT))
+    except ValueError:  # pragma: no cover - defensive
+        return str(path)
+
+
+def requirements_rows():
+    """The \u00a7S1 declarative structure: ``modelb_axi.requirements.REQUIREMENTS``,
+    a sequence of plain-dict rows keyed by the \u00a7S1 field names."""
+    from modelb_axi.requirements import REQUIREMENTS
+    return list(REQUIREMENTS)
+
+
+# ------------------------------------------------------------------ register flag ----
+
+#: The register flag Crucible retired fleet-wide in their 0.1.0 clean break (no alias).
+RETIRED_REGISTER_FLAG = "--phase"
+
+#: CR-MDB-023: ``--phase`` is ALSO the live flag of ``rust-code-health.py snapshot`` (a Model B
+#: tool, not a Crucible client). Only that exact occurrence is stripped before the retired-flag
+#: check; every other ``--phase`` still bites.
+RUST_SNAPSHOT_PHASE_RE = re.compile(r"rust-code-health\.py\s+snapshot\s+--phase\b")
+
+
+def carries_retired_register_flag(line):
+    """True when `line` carries the retired register flag once the
+    `rust-code-health.py snapshot --phase` occurrences are removed
+    (CR-MDB-023) -- the guard's intent is otherwise unchanged."""
+    return RETIRED_REGISTER_FLAG in RUST_SNAPSHOT_PHASE_RE.sub("", line)
 

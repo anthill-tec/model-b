@@ -127,7 +127,7 @@ import zipfile
 from pathlib import Path
 
 from modelb_axi import deploy
-from tests._helpers import installed_crucible_file, read_text_lenient as _read
+from tests._helpers import installed_crucible_file, read_text_lenient as _read, rel_to_repo as _rel
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS_DIR = REPO_ROOT / "scripts"
@@ -383,13 +383,6 @@ GIT_FIXTURE_CONFIG = (
     "-c", "commit.gpgsign=false",
     "-c", "init.defaultBranch=main",
 )
-
-
-def _rel(path: Path) -> str:
-    try:
-        return str(path.relative_to(REPO_ROOT))
-    except ValueError:
-        return str(path)
 
 
 def _scan_files(root_rel: str) -> list:

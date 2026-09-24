@@ -27,7 +27,11 @@ import tomllib
 import unittest
 from pathlib import Path
 
-from tests._helpers import decode_axi as _decode, write_executable as _write_exe
+from tests._helpers import (
+    decode_axi as _decode,
+    requirements_rows as _requirements,
+    write_executable as _write_exe,
+)
 from tests.pi_capability_sandbox import (
     AGENT_DIR_ENV,
     MODELB_PI_PACKAGE,
@@ -83,13 +87,6 @@ def _fake_uv_placing_sandesh(bin_dir: Path) -> str:
 def _marker_shim(marker: Path) -> str:
     """A fake binary that records every invocation in ``marker``."""
     return f'#!/bin/sh\nprintf \'%s\\n\' "$0 $*" >> "{marker}"\nexit 0\n'
-
-
-def _requirements():
-    """The §S1 declarative structure: ``modelb_axi.requirements.REQUIREMENTS``,
-    a sequence of plain-dict rows keyed by the §S1 field names."""
-    from modelb_axi.requirements import REQUIREMENTS
-    return list(REQUIREMENTS)
 
 
 def _row(requirement_id: str) -> dict:
