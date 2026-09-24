@@ -32,9 +32,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-from modelb_axi import agents, requirements
+from modelb_axi import agents, permission_policy, project_trust, requirements
 from modelb_axi._fsutil import atomic_write
 from modelb_axi.axi import envelope
+from modelb_axi.capabilities import resolve_agent_dir
 from modelb_axi.config import INSTALL_TOML_NAME, _toml_string, load_install_toml
 from modelb_axi.deploy import default_asset_root
 from modelb_axi.harness import (
@@ -283,7 +284,7 @@ _HARNESS_NATIVE_NOTES: dict[str, str] = {
 }
 
 
-def _render_capability_contract(stacks: list[str]) -> str:
+def _render_capability_contract(stacks: list[str], harnesses: tuple[str, ...] = ()) -> str:
     """The §S6 capability contract, rendered from
     :mod:`modelb_axi.requirements` at call time (never hand-copied): one
     line per tier-1 capability and per selected stack's toolchain probe,
@@ -302,6 +303,13 @@ def _render_capability_contract(stacks: list[str]) -> str:
             lines.append(
                 f"- `{probe['name']}` ({stack} toolchain): {probe['remediation']}"
             )
+    if "pi" in harnesses:
+        # CR-MDB-037 §S4: Pi loads .pi/extensions only in a trusted project.
+        lines.append(
+            "- project trust (Pi): this project's hooks and permission "
+            "policy under `.pi/extensions/` load only once the project is "
+            "trusted: run `/trust` in Pi from the project root"
+        )
     return (
         "## Harness capability contract (from the installation's requirements)\n"
         "Each line names what this project's assets need and how to provide "
@@ -365,7 +373,7 @@ def _render_agents_md(
         f"## Harness anchors (installed set: {', '.join(harnesses)})\n"
         + "\n".join(anchor_lines) + "\n"
         "\n"
-        + _render_capability_contract(stacks)
+        + _render_capability_contract(stacks, tuple(harnesses))
         + "\n"
         "## Generator note\n"
         "- Agents regenerate from the INSTALLATION's generator assets — "
@@ -680,6 +688,8 @@ def _emit_plan(
     hook_scripts_root: Path | None,
     emitted: list[str] | None = None,
     agent_sources: tuple[Path, Path] | None = None,
+    force_managed: bool = False,
+    ownership: dict | None = None,
 ) -> list[str]:
     """Perform the real §S3/§S4 emission under ``target``; returns the
     emitted file paths (relative to ``target``).
@@ -697,7 +707,10 @@ def _emit_plan(
 
     ``agent_sources`` is the ``(templates_dir, stacks_dir)`` pair resolved
     by :func:`run_init` during validation (CR-MDB-025 §S6); ``None``
-    renders no agent definitions."""
+    renders no agent definitions.
+
+    ``ownership``, when given, receives the permission policy's
+    ``skipped`` (hand-edited) and ``unmanaged`` paths (CR-MDB-037 §S3)."""
     if emitted is None:
         emitted = []
 
@@ -765,6 +778,20 @@ def _emit_plan(
             )
         finally:
             emitted.extend(agent_report.get("written", []))
+
+    # CR-MDB-037 §S3: the workflow permission policy, for a Pi project,
+    # under the CR-MDB-025 §S6 ownership rules.
+    if "pi" in harnesses:
+        policy_report: dict = {}
+        try:
+            permission_policy.place_project_policy(
+                target, force_managed=force_managed, report=policy_report,
+            )
+        finally:
+            emitted.extend(policy_report.get("written", []))
+            if ownership is not None:
+                for key in ("skipped", "unmanaged"):
+                    ownership.setdefault(key, []).extend(policy_report.get(key, []))
 
     # §S3 monorepo: per-sub-project registry + override.
     for sub in sub_projects:
@@ -859,6 +886,7 @@ def run_init(args: argparse.Namespace, home: Path) -> int:
             plan_warnings.append(str(exc))
 
     emitted: list[str] = []
+    ownership: dict = {"skipped": [], "unmanaged": []}
     if not dry_run:
         try:
             _emit_plan(
@@ -876,6 +904,8 @@ def run_init(args: argparse.Namespace, home: Path) -> int:
                 hook_scripts_root=hook_scripts_root,
                 emitted=emitted,
                 agent_sources=agent_sources,
+                force_managed=bool(getattr(args, "force_managed", False)),
+                ownership=ownership,
             )
         except (ScaffoldError, OSError) as exc:
             # CR-MDB-033 §S4: a mid-emission failure may leave a partial
@@ -891,6 +921,31 @@ def run_init(args: argparse.Namespace, home: Path) -> int:
             "recorded in docs/changes/README.md setup tasks",
             file=sys.stderr,
         )
+
+    # CR-MDB-037 §S3: a policy left alone under the ownership rules is
+    # reported, in the wording `agents` uses for its own files.
+    for rel in ownership["skipped"]:
+        warning = (f"skipping hand-modified managed file {rel} (marker hash "
+                   "mismatch; re-run with --force-managed to overwrite)")
+        print(f"modelb-axi: warning: {warning}", file=sys.stderr)
+        plan_warnings.append(warning)
+    for rel in ownership["unmanaged"]:
+        warning = (f"unmanaged: {rel} — no Model B marker; left untouched (no "
+                   "flag overwrites it)")
+        print(f"modelb-axi: warning: {warning}", file=sys.stderr)
+        plan_warnings.append(warning)
+
+    # CR-MDB-037 §S4: report Pi's saved trust decision whenever this run
+    # wrote under .pi/extensions/ (read-only; never edits trust.json).
+    trust_fields: dict = {}
+    extensions_prefix = f"{Path('.pi') / 'extensions'}/"
+    if any(rel.startswith(extensions_prefix) for rel in emitted):
+        trust = project_trust.resolve_trust(target, resolve_agent_dir())
+        trust_fields["trust"] = trust
+        if trust in (project_trust.UNTRUSTED, project_trust.ASK):
+            warning = project_trust.UNTRUSTED_WARNING.format(state=trust)
+            print(f"modelb-axi: warning: {warning}", file=sys.stderr)
+            plan_warnings.append(warning)
 
     print(
         envelope(
@@ -911,6 +966,9 @@ def run_init(args: argparse.Namespace, home: Path) -> int:
             no_commit=bool(getattr(args, "no_commit", False)),
             register=bool(getattr(args, "register", False)),
             planned=plan,
+            skipped=ownership["skipped"],
+            unmanaged=ownership["unmanaged"],
+            **trust_fields,
         )
     )
     return 0

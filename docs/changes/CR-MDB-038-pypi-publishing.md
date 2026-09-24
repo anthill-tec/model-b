@@ -45,6 +45,14 @@ At the release's maintenance step, the machine's July install is replaced by the
 --harnesses pi --stacks <chosen>`), and the resulting `install.toml` records `pi`, the stacks and a
 `target_root`. This is the user's action on their own home, recorded at close-out.
 
+### §S5 — Retire the global workflow policy in favour of project-level trust (user ruling 2026-09-24)
+Once the published package is installed, the workflow allow-list is removed from the user's global
+permission config (`~/.pi/agent/extensions/pi-permission-system/config.json`): workflow permissions
+come only from each project's rendered policy (CR-MDB-037 §S3), loaded when the project is trusted
+(`/trust`, CR-MDB-037 §S4). The installer's global-policy report changes meaning accordingly: a
+global config without the workflow tools is the expected state, not a finding. Removing the entries
+is the user's action on their own config; Model B never writes it.
+
 ## Acceptance criteria
 
 - [ ] `pyproject.toml` carries description, `readme`, license, `requires-python`, classifiers and
@@ -54,11 +62,21 @@ At the release's maintenance step, the machine's July install is replaced by the
 - [ ] An isolated install of the built wheel runs the installer (`--modelb-home`, `--target-root`
       and `HOME` all sandboxed) to outcome `installed`, and `init` into a sandbox succeeds, rendering
       the Pi agents and policy from the wheel's assets.
+- [ ] Once published, the install guide's interim source-copy note is removed, and
+      `tests/test_install_guide.py`'s `check_installer_source` stops requiring it (it would
+      otherwise be copied into the release notes after it stopped being true).
 - [ ] `skills-src/git-workflow/SKILL.md` §Releases names the TestPyPI rehearsal and the PyPI upload
       for a Python project, with the token supplied by the user at upload time.
 - [ ] **Close-out (user action, recorded):** `uv tool install modelb-axi` from PyPI succeeds on this
       machine, and the re-run installer's `install.toml` records `harnesses = ["pi"]`, the chosen
       stacks and a `target_root`.
+
+- [ ] The installer's global-policy report no longer reports a global config lacking the workflow
+      tools as a problem (it reports whether a project policy will be needed, or is removed — settled
+      at this CR's gap-analysis); the install guide says workflow permissions are per project.
+- [ ] **Close-out (user action, recorded):** the global config no longer carries the workflow
+      allow-list, and a dispatched agent in a trusted, `init`-scaffolded project still runs
+      `ctx_shell` and reads `~/.agents/skills/` without a prompt.
 
 ## Non-goals
 

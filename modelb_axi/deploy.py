@@ -270,3 +270,50 @@ def deploy_assets(
     except OSError as exc:
         raise DeployError(f"deploy step failed: {exc}") from exc
     return manifest, skipped
+
+
+#: CR-MDB-037 \u00a7S2: where each deployed store's packaged source lives,
+#: relative to the asset root (the inverse of :func:`deploy_assets`).
+_STORE_SOURCES: tuple[tuple[Path, Path], ...] = (
+    (STORE_RELDIR, Path("skills-src")),
+    (HOOKS_SCRIPTS_STORE_RELDIR, Path("hooks-src") / "scripts"),
+    (TOOL_SCRIPTS_STORE_RELDIR, Path("scripts")),
+)
+
+
+def packaged_source(asset_root: Path, rel: str) -> Path | None:
+    """The packaged source a manifest path was deployed from, or ``None``
+    when the path lies in no store Model B deploys to."""
+    rel_path = Path(rel)
+    for store, source in _STORE_SOURCES:
+        if rel_path.is_relative_to(store) and rel_path != store:
+            return asset_root / source / rel_path.relative_to(store)
+    return None
+
+
+def _file_hash(path: Path) -> str | None:
+    return sha256_file(path) if path.is_file() else None
+
+
+def deployed_freshness(
+    asset_root: Path, target_root: Path, files: list[dict],
+) -> dict[str, list[str]]:
+    """Judge each manifest entry against its deployed copy under
+    ``target_root`` and its packaged source under ``asset_root``
+    (CR-MDB-037 \u00a7S2). Returns the sorted target-root-relative paths that
+    are ``stale`` (deployed = manifest \u2260 source), ``hand_modified``
+    (deployed \u2260 manifest) and ``retired`` (no packaged source); a
+    ``current`` entry is in none. Reads only; writes nothing."""
+    found: dict[str, list[str]] = {"stale": [], "hand_modified": [], "retired": []}
+    for entry in files:
+        if not isinstance(entry, dict) or "path" not in entry or "sha256" not in entry:
+            continue
+        rel, recorded = str(entry["path"]), str(entry["sha256"])
+        source = packaged_source(asset_root, rel)
+        if source is None or not source.is_file():
+            found["retired"].append(rel)
+        elif _file_hash(target_root / rel) != recorded:
+            found["hand_modified"].append(rel)
+        elif sha256_file(source) != recorded:
+            found["stale"].append(rel)
+    return {state: sorted(paths) for state, paths in found.items()}

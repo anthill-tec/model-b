@@ -56,6 +56,27 @@ _FAKE_UV = (
 _FAKE_SANDESH = "#!/bin/sh\necho sandesh-fake\nexit 0\n"
 
 
+def _fake_uv_placing_sandesh(bin_dir: Path) -> str:
+    """CR-MDB-037 \u00a7S5 migration: a confirmed Sandesh install is RE-PROBED
+    before ``installed`` is recorded, so a fake ``uv`` standing for a
+    successful install leaves ``sandesh`` on the sandbox PATH (the real
+    ``chmod`` is resolved on the test's PATH)."""
+    chmod = shutil.which("chmod")
+    if chmod is None:
+        raise unittest.SkipTest("chmod not available to build the uv shim")
+    sandesh = Path(bin_dir) / "sandesh"
+    return (
+        "#!/bin/sh\n"
+        'if [ "$1" = "tool" ] && [ "$2" = "install" ]; then\n'
+        f"    printf '#!/bin/sh\\nexit 0\\n' > \"{sandesh}\"\n"
+        f"    \"{chmod}\" 755 \"{sandesh}\"\n"
+        "    exit 0\n"
+        "fi\n"
+        'echo "uv 0.0.0-fake"\n'
+        "exit 0\n"
+    )
+
+
 def _marker_shim(marker: Path) -> str:
     """A fake binary that records every invocation in ``marker``."""
     return f'#!/bin/sh\nprintf \'%s\\n\' "$0 $*" >> "{marker}"\nexit 0\n'
@@ -884,6 +905,8 @@ class PreflightReportLinesTest(_SandboxedInstallerCase):
 
     def test_report_lines_precede_the_sandesh_remediation(self):
         (self.bin_dir / "sandesh").unlink()
+        # CR-MDB-037 \u00a7S5 migration: `installed` needs the re-probe to find it.
+        _write_exe(self.bin_dir, "uv", _fake_uv_placing_sandesh(self.bin_dir))
         result = self.run_installer()
         stderr = result.stderr
         pre = stderr.find("deps: uv=detected sandesh=absent")

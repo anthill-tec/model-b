@@ -66,6 +66,9 @@ Model B release), `"keywords": ["pi-package"]`, `"pi": {"extensions": [...], "sk
 **no** bundled Pi core. `pi install <local path>` is the dev loop (added to settings without
 copying).
 
+**The package README** (CR-MDB-037 §S1): the package's `README.md` carries no install text of its
+own — it is the marked regions of `docs/install-guide.md`, copied verbatim at publish time.
+
 ### §S2 — The watcher supervisor extension (CR-026 on Pi)
 `extensions/sandesh-watcher.ts`: spawns `sandesh notify --to <addr> --project <p>` as a supervised
 child, restarts on exit code ≠ 0 with backoff, and reports 026's **three-exit taxonomy** — mail
@@ -90,6 +93,9 @@ CR-MDB-012 gains: tag → package version bump → publish (npm or git tag) → 
 smoke on a fresh Pi profile. Recorded here so 012's spec inherits it.
 
 ## Acceptance criteria
+
+- [ ] The package's `README.md` is the marked regions of `docs/install-guide.md`, copied verbatim
+      at publish time (CR-MDB-037 §S1); it carries no install text of its own.
 
 - [ ] `package.json` validates as a Pi package (`keywords` contains `pi-package`, `pi.extensions`
       lists every extension file, no Pi core package in `dependencies`).

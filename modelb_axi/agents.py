@@ -246,14 +246,26 @@ def render_project(
             for role in ROLES:
                 rel = reldir / f"{stack}-{role}-agent.md"
                 content = render(stack, role, params, templates_dir, harness=harness)
-                _place(project_root / rel, str(rel), content, force_managed, report)
+                place_owned(project_root / rel, str(rel), content, force_managed, report)
     return report
 
-def _place(path: Path, rel: str, content: str, force_managed: bool, report: dict) -> None:
-    """Apply the §S6 ownership rules to one target file."""
+def place_owned(
+    path: Path,
+    rel: str,
+    content: str,
+    force_managed: bool,
+    report: dict,
+    classify=ownership_state,
+) -> None:
+    """Apply the §S6 ownership rules to one target file: write it if
+    missing, rewrite it when ``classify`` finds the marker intact, skip it
+    when hand-modified (unless ``force_managed``), never write it without a
+    marker. ``classify`` maps existing text to ``intact`` /
+    ``hand_modified`` / ``unmanaged`` (default: the agent-definition
+    frontmatter marker; CR-MDB-037 §S3 passes the policy's ``//`` one)."""
     if path.exists():
         existing = path.read_bytes().decode("utf-8", errors="replace")
-        state = ownership_state(existing)
+        state = classify(existing)
         if state == NOT_OWNED:
             report["unmanaged"].append(rel)
             return

@@ -98,6 +98,15 @@ that empties is a signal, not a decision.
 
 **ALL releases MUST use `git flow release` commands.** Never manually tag, never bump version directly on develop/main. **Ask before releasing** — version bumps and releases require human approval.
 
+**Two documentation steps belong to every release** (on the release branch, before finishing):
+
+1. **Install text from its single source.** If the project keeps an install guide with marked
+   regions, copy those marked regions verbatim into the release notes (and into any other
+   surface that takes them, such as a package README) — never rewrite install text by hand.
+2. **A documentation review** over the doc set: the install guide, the README and any other
+   user-facing docs are read against the code being released, and every inaccuracy is fixed
+   before the tag.
+
 ### The 10-step git flow release (Java Maven projects)
 
 ```bash
