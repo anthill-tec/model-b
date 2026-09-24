@@ -1,23 +1,22 @@
-"""The workflow permission policy, rendered per project, and the installer's
-report on the GLOBAL permission config (CR-MDB-037 §S3).
+"""The workflow permission policy, rendered per project (CR-MDB-037 §S3),
+and the RETIRED installer report on the GLOBAL permission config
+(CR-MDB-038 §S3).
 
 ``init`` renders ``<target>/.pi/extensions/pi-permission-system/config.json``
 for every project with Pi among its harnesses: JSON carrying CR-MDB-025
 §S6's ownership marker as a leading ``//`` comment, ``"*": "ask"`` as the
 fallback, ``allow`` by exact tool name for the §S3 tool set (the
 ``dispatch`` and ``lean-ctx`` names READ FROM ``REQUIREMENTS``), ``skill:
-allow`` and the §S3 external-directory rules. The installer reports the
-global config as ``absent | no-fallback | missing-tools | ok | unknown`` and
-never writes it.
+allow`` and the §S3 external-directory rules. CR-MDB-038 §S3 (user ruling
+2026-09-24) removes the installer's global-config report: no install
+envelope carries ``global_permission_policy`` or
+``global_permission_missing_tools``, and the installer never opens the
+global config (observed with an audit hook, as CR-MDB-037's freshness test
+does).
 
 Orchestrator rulings (2026-09-24, cycle 95) these tests pin:
-- P1: the install envelope carries ``global_permission_policy`` (+
-  ``global_permission_missing_tools`` only for ``missing-tools``), asserted
-  on the ``installed`` outcome only.
-- P2: "workflow tools" = exactly the §S3 project allow-set; a tool is
-  missing unless ``permission[<tool>] == "allow"``; precedence absent ->
-  unknown (unparseable after stripping ``//`` comments, or non-object) ->
-  no-fallback -> missing-tools -> ok.
+- P1 / P2: RETIRED by CR-MDB-038 §S3 (they classified the global config
+  as ``absent | no-fallback | missing-tools | ok | unknown``).
 - P3: ownership is driven through the real CLI into a pre-seeded target,
   ``modelb-axi --yes [--force-managed] init ... --no-commit``.
 - P4: the marker is the FIRST line, starts ``//``, names ``modelb-axi`` and
@@ -657,7 +656,8 @@ class InitPolicyOwnershipSurfaceTest(_InitSandbox):
 
 
 # ---------------------------------------------------------------------------
-# §S3 AC4 — the installer reports the GLOBAL config (rulings P1/P2)
+# CR-MDB-038 §S3 — the global permission report is REMOVED (user ruling
+# 2026-09-24): no install envelope carries it; the global config is unread.
 # ---------------------------------------------------------------------------
 
 _FAKE_UV = (
@@ -668,23 +668,72 @@ _FAKE_UV = (
 )
 _FAKE_SANDESH = "#!/bin/sh\necho sandesh-fake\nexit 0\n"
 
+#: The two envelope fields CR-MDB-038 §S3 removes.
+RETIRED_GLOBAL_FIELDS = ("global_permission_policy", "global_permission_missing_tools")
+#: The stderr line the retired report printed (``  global permission policy: <state>``).
+RETIRED_GLOBAL_STDERR = "global permission policy"
 
-class GlobalPermissionPolicyReportTest(unittest.TestCase):
-    """§S3 AC4 — the ``installed`` envelope's ``global_permission_policy``
-    is ``absent`` / ``no-fallback`` / ``missing-tools`` (with
-    ``global_permission_missing_tools``) / ``ok`` / ``unknown``, one test
-    each, against a sandboxed ``PI_CODING_AGENT_DIR``; the global file is
-    byte-identical afterwards (Model B never writes it)."""
+#: Runs ``modelb_axi.cli.main`` with an audit hook logging every path
+#: OPENED (builtins/io/os.open all raise the ``open`` audit event) — the
+#: technique of CR-MDB-037's freshness test
+#: (``tests/test_deployed_asset_freshness.py``).
+_OPEN_LOGGING_WRAPPER = r"""
+import json, os, sys
+_log_path = os.environ["MODELB_TEST_OPEN_LOG"]
+_opened = []
+def _hook(event, args):
+    if event == "open" and args:
+        target = args[0]
+        if isinstance(target, (str, bytes, os.PathLike)):
+            _opened.append(os.fsdecode(target))
+sys.addaudithook(_hook)
+import atexit
+def _dump():
+    snapshot = list(_opened)
+    with open(_log_path, "w", encoding="utf-8") as fh:
+        json.dump(snapshot, fh)
+atexit.register(_dump)
+from modelb_axi.cli import main
+sys.exit(main(sys.argv[1:]))
+"""
+
+
+def _policy_text(permission: dict, comment: str | None = None) -> str:
+    text = json.dumps({"permission": permission}, indent=2) + "\n"
+    return f"// {comment}\n{text}" if comment else text
+
+
+def _global_config_shapes() -> dict[str, str | None]:
+    """Every shape the retired report used to classify, keyed by the state
+    it reported (``None`` = no global config at all)."""
+    everything = {"*": "ask"}
+    everything.update(dict.fromkeys(sorted(expected_allow_tools()), "allow"))
+    lacking = dict(everything)
+    lacking[_requirements.requirement("dispatch")["tools"][0]] = "ask"
+    del lacking["ask_parent"]
+    return {
+        "absent": None,
+        "no-fallback": _policy_text(dict.fromkeys(sorted(expected_allow_tools()), "allow")),
+        "missing-tools": _policy_text(lacking),
+        "ok": _policy_text(everything, comment="user's own policy"),
+        "unknown": '{ "permission": { "*": "ask", \n',
+    }
+
+
+class InstallerGlobalPolicyRetiredTest(unittest.TestCase):
+    """CR-MDB-038 §S3 — against a sandboxed ``PI_CODING_AGENT_DIR``, no
+    install outcome's envelope carries ``global_permission_policy`` or
+    ``global_permission_missing_tools``, the installer prints no global-policy
+    line, and a present global config is never opened (nor written)."""
 
     def setUp(self):
-        self.root = Path(tempfile.mkdtemp(prefix="modelb-cr037-global-")).resolve()
+        self.root = Path(tempfile.mkdtemp(prefix="modelb-cr038-global-")).resolve()
         self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
         self.home = make_home(self.root / "home", crucible_manifest=False)
         self.agent_dir = make_provisioned_agent_dir(self.root / "agent")
-        self.modelb_home = self.root / "modelb-home"
-        self.target_root = self.root / "target"
         self.bin_dir = self.root / "bin"
-        for d in (self.modelb_home, self.target_root, self.bin_dir):
+        self.xdg = self.root / "xdg"
+        for d in (self.bin_dir, self.xdg):
             d.mkdir(parents=True)
         for name, body in (("uv", _FAKE_UV), ("sandesh", _FAKE_SANDESH)):
             exe = self.bin_dir / name
@@ -692,107 +741,121 @@ class GlobalPermissionPolicyReportTest(unittest.TestCase):
             exe.chmod(0o755)
         self.global_policy = self.agent_dir / GLOBAL_POLICY_RELPATH
 
-    def _seed_global(self, text: str) -> bytes:
+    def _seed_global(self, text: str | None) -> bytes | None:
+        if self.global_policy.exists():
+            self.global_policy.unlink()
+        if text is None:
+            return None
         self.global_policy.parent.mkdir(parents=True, exist_ok=True)
         self.global_policy.write_text(text, encoding="utf-8")
         return self.global_policy.read_bytes()
 
-    def _install(self) -> dict:
+    def _sandbox(self, label: str) -> tuple[Path, Path]:
+        """A fresh (modelb home, target root) pair — a fresh home means the
+        run reaches ``installed``, not ``already_installed``."""
+        modelb_home = self.root / label / "modelb-home"
+        target_root = self.root / label / "target"
+        for d in (modelb_home, target_root):
+            d.mkdir(parents=True)
+        return modelb_home, target_root
+
+    def _env(self, modelb_home: Path, extra: dict | None = None) -> dict:
         env = dict(os.environ)
         existing_pp = env.get("PYTHONPATH", "")
         env["PYTHONPATH"] = str(REPO_ROOT) + (os.pathsep + existing_pp if existing_pp else "")
         env["PATH"] = str(self.bin_dir)
         env["HOME"] = str(self.home)
+        env["XDG_DATA_HOME"] = str(self.xdg)
+        env["MODELB_HOME"] = str(modelb_home)
         env[AGENT_DIR_ENV] = str(self.agent_dir)
+        env.pop("MODELB_TARGET_ROOT", None)
+        env.update(extra or {})
+        return env
+
+    @staticmethod
+    def _argv(modelb_home: Path, target_root: Path) -> list[str]:
+        return ["--yes", "--harnesses", "pi", "--stacks", "python",
+                "--modelb-home", str(modelb_home), "--target-root", str(target_root)]
+
+    def _install(self, modelb_home: Path, target_root: Path,
+                 want: str = "installed") -> tuple[dict, subprocess.CompletedProcess]:
         result = subprocess.run(
-            [sys.executable, "-m", "modelb_axi", "--yes", "--harnesses", "pi",
-             "--stacks", "python", "--modelb-home", str(self.modelb_home),
-             "--target-root", str(self.target_root)],
+            [sys.executable, "-m", "modelb_axi", *self._argv(modelb_home, target_root)],
             capture_output=True, text=True, timeout=90,
-            stdin=subprocess.DEVNULL, env=env,
+            stdin=subprocess.DEVNULL, env=self._env(modelb_home),
         )
         axi = decode_axi(result.stdout)
         self.assertEqual(
-            axi.get("outcome"), "installed",
-            f"precondition: the install must reach `installed`; exit="
+            axi.get("outcome"), want,
+            f"precondition: the run must reach `{want}`; exit="
             f"{result.returncode} stdout={result.stdout!r} stderr={result.stderr!r}",
         )
-        return axi
+        return axi, result
 
-    @staticmethod
-    def _policy(permission: dict, comment: str | None = None) -> str:
-        text = json.dumps({"permission": permission}, indent=2) + "\n"
-        return f"// {comment}\n{text}" if comment else text
+    def _assert_no_global_report(self, axi: dict, stderr: str) -> None:
+        for field in RETIRED_GLOBAL_FIELDS:
+            self.assertNotIn(field, axi,
+                             f"CR-MDB-038 \u00a7S3: the envelope must not carry {field!r}; "
+                             f"axi={axi!r}")
+        self.assertNotIn(RETIRED_GLOBAL_STDERR, stderr.lower(),
+                         "CR-MDB-038 \u00a7S3: no global-policy report line on stderr")
 
-    def test_absent_global_config_is_reported_absent_and_not_created(self):
-        axi = self._install()
-        self.assertEqual(axi.get("global_permission_policy"), "absent", f"axi={axi!r}")
-        self.assertNotIn("global_permission_missing_tools", axi)
-        self.assertFalse(
-            self.global_policy.exists(),
-            "§S3 / Non-goals: the installer never writes the global config",
+    def test_installed_envelope_carries_no_global_report_for_any_global_config(self):
+        """Replaces the seven CR-MDB-037 value tests: whatever the global
+        config's shape, ``installed`` reports nothing about it and the file
+        is byte-identical (never created when absent)."""
+        for state, text in _global_config_shapes().items():
+            with self.subTest(retired_state=state):
+                before = self._seed_global(text)
+                modelb_home, target_root = self._sandbox(f"installed-{state}")
+                axi, result = self._install(modelb_home, target_root)
+                self._assert_no_global_report(axi, result.stderr)
+                self.assertTrue(axi.get("ok"), f"the install still succeeds; axi={axi!r}")
+                if before is None:
+                    self.assertFalse(self.global_policy.exists(),
+                                     "the installer never creates the global config")
+                else:
+                    self.assertEqual(self.global_policy.read_bytes(), before,
+                                     "the installer never writes the global config")
+
+    def test_already_installed_envelope_carries_no_global_report(self):
+        """A re-run on an installed machine (``already_installed``) carries
+        no global report either — \u00a7S3 covers every install outcome."""
+        self._seed_global(_global_config_shapes()["missing-tools"])
+        modelb_home, target_root = self._sandbox("rerun")
+        self._install(modelb_home, target_root)
+        axi, result = self._install(modelb_home, target_root, want="already_installed")
+        self._assert_no_global_report(axi, result.stderr)
+
+    def test_installer_never_opens_a_present_global_config(self):
+        """CR-MDB-038 \u00a7S3: with a global config present, an install that
+        reaches ``installed`` leaves it UNREAD \u2014 no ``open`` audit event
+        names it. The hook is proved live by the files the install writes
+        under the target root."""
+        before = self._seed_global(_global_config_shapes()["ok"])
+        modelb_home, target_root = self._sandbox("audit")
+        log_path = self.root / "open-log.json"
+        result = subprocess.run(
+            [sys.executable, "-c", _OPEN_LOGGING_WRAPPER, *self._argv(modelb_home, target_root)],
+            capture_output=True, text=True, timeout=90, stdin=subprocess.DEVNULL,
+            env=self._env(modelb_home, {"MODELB_TEST_OPEN_LOG": str(log_path)}),
         )
-
-    def test_global_config_without_star_fallback_is_no_fallback(self):
-        before = self._seed_global(
-            self._policy(dict.fromkeys(sorted(expected_allow_tools()), "allow")),
+        if not log_path.is_file():
+            self.fail(f"open log not written; exit={result.returncode} stderr={result.stderr!r}")
+        opened = json.loads(log_path.read_text(encoding="utf-8"))
+        axi = decode_axi(result.stdout)
+        self.assertEqual(axi.get("outcome"), "installed",
+                         f"precondition: the install reaches `installed`; stderr={result.stderr!r}")
+        resolved = {Path(p).resolve() for p in opened}
+        self.assertTrue(
+            any(target_root in p.parents for p in resolved),
+            f"audit hook live: the deployed files must be seen opened; opened={opened!r}",
         )
-        axi = self._install()
-        self.assertEqual(axi.get("global_permission_policy"), "no-fallback", f"axi={axi!r}")
-        self.assertNotIn("global_permission_missing_tools", axi)
-        self.assertEqual(self.global_policy.read_bytes(), before, "global config untouched")
-
-    def test_global_config_lacking_workflow_tools_names_them(self):
-        dispatch_tool = _requirements.requirement("dispatch")["tools"][0]
-        permission = {"*": "ask"}
-        permission.update(dict.fromkeys(sorted(expected_allow_tools()), "allow"))
-        permission[dispatch_tool] = "ask"   # present but not allowed -> missing
-        del permission["ask_parent"]        # absent -> missing
-        before = self._seed_global(self._policy(permission))
-        axi = self._install()
-        self.assertEqual(axi.get("global_permission_policy"), "missing-tools", f"axi={axi!r}")
+        global_reads = [p for p in opened if Path(p).resolve() == self.global_policy.resolve()]
         self.assertEqual(
-            sorted(axi.get("global_permission_missing_tools") or []),
-            sorted([dispatch_tool, "ask_parent"]),
-            f"P2: the missing workflow tools are named, exactly; axi={axi!r}",
+            global_reads, [],
+            "CR-MDB-038 \u00a7S3: the installer must not read the global permission config",
         )
-        self.assertEqual(self.global_policy.read_bytes(), before, "global config untouched")
-
-    def test_star_allow_fallback_counts_every_workflow_tool_as_allowed(self):
-        """VERIFY finding 7: the package's last matching pattern wins, so a
-        ``"*": "allow"`` fallback allows every workflow tool without an
-        entry of its own — ``ok``, never ``missing-tools`` listing them all."""
-        before = self._seed_global(self._policy({"*": "allow"}))
-        axi = self._install()
-        self.assertEqual(axi.get("global_permission_policy"), "ok", f"axi={axi!r}")
-        self.assertNotIn("global_permission_missing_tools", axi)
-        self.assertEqual(self.global_policy.read_bytes(), before, "global config untouched")
-
-    def test_star_allow_fallback_with_an_explicit_ask_names_only_that_tool(self):
-        """VERIFY finding 7: under ``"*": "allow"`` a tool's own non-allow
-        entry still wins, and is the only one missing."""
-        dispatch_tool = _requirements.requirement("dispatch")["tools"][0]
-        before = self._seed_global(self._policy({"*": "allow", dispatch_tool: "ask"}))
-        axi = self._install()
-        self.assertEqual(axi.get("global_permission_policy"), "missing-tools", f"axi={axi!r}")
-        self.assertEqual(axi.get("global_permission_missing_tools"), [dispatch_tool],
-                         f"only the explicitly-asked tool is missing; axi={axi!r}")
-        self.assertEqual(self.global_policy.read_bytes(), before, "global config untouched")
-
-    def test_global_config_with_fallback_and_every_workflow_tool_is_ok(self):
-        permission = {"*": "ask"}
-        permission.update(dict.fromkeys(sorted(expected_allow_tools()), "allow"))
-        before = self._seed_global(self._policy(permission, comment="user's own policy"))
-        axi = self._install()
-        self.assertEqual(axi.get("global_permission_policy"), "ok", f"axi={axi!r}")
-        self.assertNotIn("global_permission_missing_tools", axi)
-        self.assertEqual(self.global_policy.read_bytes(), before, "global config untouched")
-
-    def test_unparseable_global_config_is_unknown(self):
-        before = self._seed_global('{ "permission": { "*": "ask", \n')
-        axi = self._install()
-        self.assertEqual(axi.get("global_permission_policy"), "unknown", f"axi={axi!r}")
-        self.assertNotIn("global_permission_missing_tools", axi)
         self.assertEqual(self.global_policy.read_bytes(), before, "global config untouched")
 
 
