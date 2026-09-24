@@ -737,3 +737,26 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   **Root CR-RND:** the roundhouse root `AGENTS.md` still names the Crucible checkout's clients.
   **CR-MDB-032 (pi-lens, pre-existing):** add `tests/test_installer_assets.py:148`
   (`spec.loader` unnarrowed, from `d34b725b`, July).
+- 2026-09-24 — **CR-MDB-020 MERGED** (develop `8b91959`; plan 108). Every Crucible client reference
+  names `~/.crucible/clients/<stack>-crucible.py` (report bundles, the `crucible` skill and its
+  references, memory templates, `AGENTS.md`, `contracts/gate-lock.md`, `contracts/crucible-envelope.md`,
+  the `block-direct-*` hook reasons); the `crucible` skill states the checkout rule (project
+  `crucible.toml` first, then the one beside the client — measured in the released `_crucible_axi.py`).
+  Gates in `tests/test_client_path_anchoring.py`: §S2 anchoring (any client directory other than
+  `~/.crucible/clients/` fails; exact exemptions incl. the verbatim
+  `docs/research/crucible-clients-skills-guard.test.ts`, orchestrator ruling), §S3 client contract
+  (74 invocations vs the installed clients' `--help`, per-tree/per-source minimums), §S4 tool ratchet
+  (baseline 43 in 11 files). Follow-ups:
+  **CR-MDB-031** drains the §S4 baseline to zero; note `java-testing-practices.md:376`'s backticked
+  `find` is Panache's method, not the Pi tool (reword to `find()`); `crucible/SKILL.md:181`'s bare
+  "Monitor" is not counted by the ratchet (goes with the `run_in_background` line 031 rewrites); and
+  the now-undefined `crucible:` prefix remains at `skills-src/model-b/SKILL.md:12` and
+  `modelb_axi/scaffold.py:240` (031 §S2 already owns them). **CR-MDB-032:** extend the §S2 gate to
+  `tests/` after its repoint; add `tests/test_installer_assets.py:1237` (optional iterable, July
+  `d34b725b`) to the pi-lens list.
+  **Crucible CR-CRU-150 (#1390/#1391):** Crucible will make `status` return open plans only
+  (STATUS-CONTRACT 3.0.0, `count` = open plans) in a future release. Model B accepted, reads no
+  closed/aborted rows, prefers `queue` over an `--all` flag, and asked that 3.0.0 keep "no plan filed"
+  and "nothing open" distinguishable (a board of only aborted plans has `lastClosedCr: null`). When the
+  release carrying it ships: re-pin the ambient hook to 3.0.0 and render the none-open case. Until
+  then the hook counts any non-`closed` status (e.g. `aborted`) as open — known, superseded by 150.
