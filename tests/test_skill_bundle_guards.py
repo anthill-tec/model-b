@@ -79,8 +79,8 @@ from pathlib import Path
 
 from tests._helpers import (
     carries_retired_register_flag as _carries_retired_register_flag,
-    read_text_lenient as _read,
 )
+from tests._helpers import read_text_lenient as _read
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SKILLS_SRC = REPO_ROOT / "skills-src"

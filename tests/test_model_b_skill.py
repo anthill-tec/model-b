@@ -15,11 +15,9 @@ import subprocess
 import unittest
 from pathlib import Path
 
-from tests._helpers import (
-    files_containing as _files_containing,
-    read_text_lenient as _read,
-    split_frontmatter as _split_frontmatter,
-)
+from tests._helpers import files_containing as _files_containing
+from tests._helpers import read_text_lenient as _read
+from tests._helpers import split_frontmatter as _split_frontmatter
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 

@@ -239,12 +239,10 @@ from pathlib import Path
 from tests.pi_capability_sandbox import with_agent_dir
 
 from modelb_axi import agents as agents_mod
-from tests._helpers import (
-    decode_envelope as _decode_envelope_c3,
-    parse_env_file as _parse_env_file_c3,
-    read_text_lenient as _read,
-    split_frontmatter as _split_frontmatter,
-)
+from tests._helpers import decode_envelope as _decode_envelope_c3
+from tests._helpers import parse_env_file as _parse_env_file_c3
+from tests._helpers import read_text_lenient as _read
+from tests._helpers import split_frontmatter as _split_frontmatter
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 GENERATOR_DIR = REPO_ROOT / "generator"

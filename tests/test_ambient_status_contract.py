@@ -73,10 +73,8 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from modelb_axi import toon  # noqa: E402
 from modelb_axi.requirements import STACK_CLIENT_KEYS  # noqa: E402
-from tests._helpers import (  # noqa: E402
-    client_source as _client_source,
-    code_string_literals as _code_string_literals,
-)
+from tests._helpers import client_source as _client_source  # noqa: E402
+from tests._helpers import code_string_literals as _code_string_literals  # noqa: E402
 
 HOOK_PATH = REPO_ROOT / "hooks-src" / "scripts" / "ambient-board-status"
 MANIFEST_RELPATH = Path(".crucible") / "crucible-clients.json"

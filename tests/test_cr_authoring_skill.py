@@ -17,11 +17,9 @@ import subprocess
 import unittest
 from pathlib import Path
 
-from tests._helpers import (
-    archive_has_content_move as _archive_has_content_move,
-    read_text_lenient as _read,
-    split_frontmatter as _split_frontmatter,
-)
+from tests._helpers import archive_has_content_move as _archive_has_content_move
+from tests._helpers import read_text_lenient as _read
+from tests._helpers import split_frontmatter as _split_frontmatter
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SKILLS_SRC_DIR = REPO_ROOT / "skills-src"

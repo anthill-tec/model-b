@@ -52,7 +52,8 @@ import tomllib
 import unittest
 from pathlib import Path
 
-from tests._helpers import decode_axi as _decode, write_executable as _write_exe
+from tests._helpers import decode_axi as _decode
+from tests._helpers import write_executable as _write_exe
 from tests.pi_capability_sandbox import (
     AGENT_DIR_ENV,
     make_home,

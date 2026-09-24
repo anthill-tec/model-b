@@ -37,12 +37,12 @@ import re
 import unittest
 from pathlib import Path
 
+from tests._helpers import RETIRED_REGISTER_FLAG
 from tests._helpers import (
-    RETIRED_REGISTER_FLAG,
     carries_retired_register_flag as _carries_retired_register_flag,
-    read_text_lenient as _read,
-    rel_to_repo as _rel,
 )
+from tests._helpers import read_text_lenient as _read
+from tests._helpers import rel_to_repo as _rel
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SKILLS_SRC = REPO_ROOT / "skills-src"

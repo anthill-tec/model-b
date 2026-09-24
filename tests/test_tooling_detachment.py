@@ -127,7 +127,9 @@ import zipfile
 from pathlib import Path
 
 from modelb_axi import deploy
-from tests._helpers import installed_crucible_file, read_text_lenient as _read, rel_to_repo as _rel
+from tests._helpers import installed_crucible_file
+from tests._helpers import read_text_lenient as _read
+from tests._helpers import rel_to_repo as _rel
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS_DIR = REPO_ROOT / "scripts"

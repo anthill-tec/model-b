@@ -116,7 +116,8 @@ import tomllib
 import unittest
 from pathlib import Path
 
-from tests._helpers import read_text_lenient as _read, split_frontmatter as _split_frontmatter
+from tests._helpers import read_text_lenient as _read
+from tests._helpers import split_frontmatter as _split_frontmatter
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
