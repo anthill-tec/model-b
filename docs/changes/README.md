@@ -28,7 +28,7 @@ Queue rows enumerate the whole delivery (structure only). **Live status lives on
 | [CR-MDB-023](CR-MDB-023-code-health-skill-adoption.md) | `code-health` skill adopted as a published bundle: detached tool paths, recorded drift closed, bundle accounting corrected | 5 | 022 |
 | [CR-MDB-017](CR-MDB-017-client-role-contract-sync.md) | Client-verb contract sync: `--role` + mandatory `--cycle` binding replace the retired `--phase` across the seven owned bundles | 5 | 016 |
 | [CR-MDB-018](CR-MDB-018-crucible-discovery-capture.md) | Crucible discovery: the ambient hook reads Crucible's client manifest, and the client lifecycle rules are gated | 5 | 015, 036 |
-| [CR-MDB-019](CR-MDB-019-hook-runtime-correctness.md) | Hook runtime correctness: status-contract-document re-pin, arduino stack marker (§S3 opencode emitter struck 2026-09-21 — non-target) | 5 | 015, 018 |
+| [CR-MDB-019](CR-MDB-019-hook-runtime-correctness.md) | The ambient hook renders the current status contract: the 2.0.0 pin, lastClosedCr, open plans only, and arduino projects | 5 | 018 |
 | [CR-MDB-020](CR-MDB-020-client-path-anchoring.md) | Client-path anchoring: every client reference resolves to Crucible's published contract; Model B maintains none of their clients | 5 | 017, 022 |
 | [CR-MDB-024](CR-MDB-024-rust-stack-adoption.md) | Rust as a fifth generated stack, and retire the vscode agents | 5 | 017 |
 | [CR-MDB-021](CR-MDB-021-chezmoi-retirement.md) | Retire chezmoi introspection from the test suite: eight false-green release gates removed, policy self-enforcing | 5 | — |
