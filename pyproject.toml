@@ -27,7 +27,8 @@ modelb-axi = "modelb_axi.cli:main"
 [tool.hatch.version]
 path = "modelb_axi/__init__.py"
 
-# Flat layout next to unrelated repo dirs (tests/, docs/, audits/, ...): ship
+# Flat layout next to unrelated repo dirs (tests/, docs/, audits/, contracts/, ...):
+# contracts/ is repo-only documentation with no runtime consumer (CR-MDB-031 §S4). Ship
 # the modelb_axi package as code, plus the asset roots (CR-MDB-014 §S2 tail)
 # force-included INSIDE the package under modelb_axi/_assets/ so an installed
 # wheel resolves default_asset_root() to real package data. Hatchling prunes
@@ -38,7 +39,6 @@ packages = ["modelb_axi"]
 [tool.hatch.build.targets.wheel.force-include]
 "skills-src" = "modelb_axi/_assets/skills-src"
 "generator" = "modelb_axi/_assets/generator"
-"contracts" = "modelb_axi/_assets/contracts"
 "scripts" = "modelb_axi/_assets/scripts"
 "hooks-src" = "modelb_axi/_assets/hooks-src"
 
@@ -55,7 +55,6 @@ cache-keys = [
     { file = "modelb_axi/**/*.py" },
     { file = "skills-src/**" },
     { file = "generator/**" },
-    { file = "contracts/**" },
     { file = "scripts/**" },
     { file = "hooks-src/**" },
 ]
@@ -68,7 +67,6 @@ only-include = [
     "docs/install-guide.md",
     "skills-src",
     "generator",
-    "contracts",
     "scripts",
     "hooks-src",
 ]

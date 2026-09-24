@@ -47,7 +47,7 @@ Key invariants:
 | `generator/` | `build.py` renders `templates/{red,green,verify,fix}.md.tmpl` × `stacks/{arduino,bun,python,quarkus}.toml` → `agents/<stack>-<role>-agent.md` (16 files) |
 | `hooks-src/` | `schema.md` (neutral schema v1) + `scripts/` (7 executable stdin/exit protocol scripts, no file extension) |
 | `scripts/` | The tool-script asset class (7 adopted + 1 generated): `worktree-flow.py`, `schedule_db.py` (TRANSITIONAL), `skill-release-gate.py`, `rust-code-health.py`, `rust-crate-map.py`, `rust-dead-scan.py`, `gate-lock.sh`, and `toon.py` generated from `modelb_axi/toon.py`. Deployed to `~/.agents/scripts/` (`deploy.TOOL_SCRIPTS_STORE_RELDIR`) — the ONLY path a Model B surface names; never a `~/.claude` path (not Model B-owned) |
-| `contracts/` | Interface contracts: `crucible-envelope.md`, `gate-lock.md`, `sandesh-cli.md`, `lean-ctx.md` (cross-project), `worktree-layout.md` (the `.worktrees/<cr>` string and its six consumers) |
+| `contracts/` | Interface contracts: `crucible-envelope.md`, `gate-lock.md`, `sandesh-cli.md`, `lean-ctx.md` (cross-project), `worktree-layout.md` (the `.worktrees/<cr>` string and its six consumers). Repo-only — not shipped in the wheel |
 | `docs/research/` | `PRD-model-b-rationalization.md` (D1–D10) + `DN-*.md` design notes |
 | `docs/changes/` | `README.md` = CR queue (structure only) + `CR-MDB-NNN-*.md` specs |
 | `tests/` | 51 `unittest` modules; mostly structural/contract gates |
@@ -92,7 +92,7 @@ There is **no** Makefile/justfile, **no** CI test workflow (the only workflow is
 ## Important Files
 
 - `modelb_axi/cli.py` — entry point (`[project.scripts] modelb-axi = "modelb_axi.cli:main"`), also runnable as `python3 -m modelb_axi`.
-- `pyproject.toml` — hatchling; `force-include` maps `skills-src`, `generator`, `contracts`, `scripts`, `hooks-src` into `modelb_axi/_assets/`. **Any new asset root must be added there or it will not ship in the wheel.**
+- `pyproject.toml` — hatchling; `force-include` maps `skills-src`, `generator`, `scripts`, `hooks-src` into `modelb_axi/_assets/` (`contracts/` is repo-only: no runtime consumer, not in the wheel or the sdist). **Any new asset root must be added there or it will not ship in the wheel.**
 - `.env` — static naming registry (gitignored; must exist locally): `PROJECT_NAME`, `PROJECT_TOKEN=modelb`, `PROJECT_ACRONYM=MDB`, `ORCHESTRATOR_LABEL=vidushi-mdb`, `REPO_OWNER=antojk`, `CRUCIBLE_PROJECT_KEY`.
 - `hooks-src/schema.md` — the neutral hook schema v1; the compiler in `hooks.py` is its only consumer.
 - `skills-src/CRUCIBLE-HANDOVER.md` — provenance + maintenance contract for the 6 imported bundles. Model B owns their content/bundling/deploy; the Crucible repo owns the client code. Keep imported bundles byte-faithful unless a doc-sync is explicitly in scope.
