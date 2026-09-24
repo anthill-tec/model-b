@@ -36,7 +36,11 @@ Design (proposed at RED, approved by the orchestrator):
 (F) git-workflow ``## Releases`` names both release steps (copying the
     guide's marked regions verbatim into the release notes; a documentation
     review); CR-MDB-029 ``### §S1`` names the guide's marked regions as the
-    Pi package README's source.
+    Pi package README's source. CR-MDB-038 §S5: ``## Releases`` also names
+    the four Python release steps in order (single-source version + ``uv
+    build``; TestPyPI rehearsal into an isolated tool directory; PyPI upload
+    after ``git flow release finish`` with a token the user supplies; the
+    post-release maintenance) and names no one project.
 
 Orchestrator rulings (2026-09-24, on the RED design):
 
@@ -121,6 +125,22 @@ RELEASE_STEP_PHRASES = (
     "install guide", "marked region", "verbatim", "release notes", "documentation review",
 )
 CR_029_S1_TERMS = ("install-guide.md", "marked region", "README")
+#: CR-MDB-038 \u00a7S5 — the four Python release steps, in ritual order. Each
+#: step is (label, anchor alternatives, further required terms); a term is an
+#: alternatives tuple, matched case-insensitively on whitespace-normalised
+#: ``## Releases`` text. The first anchor found of each step must appear in
+#: step order (build, rehearse, upload, maintain).
+PYTHON_RELEASE_STEPS = (
+    ("build", ("uv build",), (("version in its single source",),)),
+    ("testpypi rehearsal", ("testpypi",), (("isolated tool directory",),)),
+    ("pypi upload", ("token the user supplies", "user-supplied token"),
+     (("git flow release finish",),)),
+    ("post-release maintenance", ("--reinstall",),
+     (("from pypi",), ("global permission config",), ("per-project",),
+      ("trusted project",), ("without a permission prompt",))),
+)
+#: The skill is used across projects: its release steps name no one project.
+PROJECT_SPECIFIC_NAMES = ("modelb", "model b", "model-b")
 
 # (G) — where the installer comes from (VERIFY cycle 100 findings 2/6), and
 # the source-copy note that stays true after publishing (CR-MDB-038 \u00a7S4).
@@ -601,6 +621,31 @@ def check_release_steps(text: str) -> list[str]:
     return [f"## Releases: missing {p!r}" for p in RELEASE_STEP_PHRASES if p not in sec]
 
 
+def check_python_release_steps(text: str) -> list[str]:
+    """CR-MDB-038 \u00a7S5: ``## Releases`` names the four Python release
+    steps, in order, without naming any one project."""
+    sec = next((body for head, body in sections(text).items()
+                if head.startswith("Releases")), "")
+    if not sec:
+        return ["no '## Releases' section"]
+    flat = " ".join(sec.lower().split())
+    out: list[str] = []
+    anchors: list[tuple[int, str]] = []
+    for label, anchor, terms in PYTHON_RELEASE_STEPS:
+        found = [flat.find(a) for a in anchor if a in flat]
+        if found:
+            anchors.append((min(found), label))
+        else:
+            out.append(f"## Releases: {label}: missing {anchor[0]!r}")
+        for alts in terms:
+            if not any(a in flat for a in alts):
+                out.append(f"## Releases: {label}: missing {alts[0]!r}")
+    if [lbl for _, lbl in sorted(anchors)] != [lbl for _, lbl in anchors]:
+        out.append("## Releases: python release steps out of order")
+    out += [f"## Releases: names project {n!r}" for n in PROJECT_SPECIFIC_NAMES if n in flat]
+    return out
+
+
 def check_cr029_s1(text: str) -> list[str]:
     sec = next((body for head, body in sections(text, "### ").items()
                 if head.startswith("§S1")), "")
@@ -904,6 +949,9 @@ class ReleaseDocsTest(unittest.TestCase):
 
     def test_git_workflow_releases_names_guide_copy_and_documentation_review(self):
         self.assertEqual(check_release_steps(_read(GIT_WORKFLOW_SKILL)), [])
+
+    def test_git_workflow_releases_names_the_four_python_release_steps_in_order(self):
+        self.assertEqual(check_python_release_steps(_read(GIT_WORKFLOW_SKILL)), [])
 
     def test_pi_package_cr_s1_names_guide_marked_regions_as_readme_source(self):
         self.assertEqual(check_cr029_s1(_read(CR_029)), [])
@@ -1216,6 +1264,63 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
         self.assertEqual(check_cr029_s1(cr), [])
         self.assertEqual(check_cr029_s1(cr.replace("marked regions", "text")),
                          ["§S1: missing 'marked region'"])
+
+    def test_python_release_steps_checker_both_ways(self):
+        good = ("## Releases (NON-NEGOTIABLE)\n\n"
+                "### Publishing a Python package\n\n"
+                "1. On the release branch, set the version in its\n   single source, then "
+                "build with `uv build`.\n"
+                "2. Rehearse: upload to TestPyPI and install into an isolated tool\n"
+                "   directory.\n"
+                "3. After `git flow release finish`, upload to PyPI with a token the user\n"
+                "   supplies at upload time.\n"
+                "4. Post-release: install from PyPI, replace the previous installation\n"
+                "   (`--reinstall --target-root ~`), remove workflow entries from any global\n"
+                "   permission config in favour of per-project policies, and confirm a\n"
+                "   dispatched agent in a trusted project runs without a permission prompt.\n"
+                "\n## Next\n\nuv build, TestPyPI, --reinstall\n")
+        self.assertEqual(check_python_release_steps(good), [])
+        self.assertEqual(check_python_release_steps(
+            good.replace("a token the user\n   supplies", "a user-supplied token")), [])
+        bad = {
+            "no build": (good.replace("`uv build`", "make"),
+                         "## Releases: build: missing 'uv build'"),
+            "no single-source version": (good.replace("version in its", "version in"),
+                                         "## Releases: build: missing "
+                                         "'version in its single source'"),
+            "no rehearsal": (good.replace("TestPyPI", "a staging index"),
+                             "## Releases: testpypi rehearsal: missing 'testpypi'"),
+            "no isolation": (good.replace("an isolated tool\n   directory", "~"),
+                             "## Releases: testpypi rehearsal: missing "
+                             "'isolated tool directory'"),
+            "stored token": (good.replace("a token the user\n   supplies at upload time",
+                                          "the stored token"),
+                             "## Releases: pypi upload: missing 'token the user supplies'"),
+            "no reinstall": (good.replace("--reinstall ", ""),
+                             "## Releases: post-release maintenance: missing '--reinstall'"),
+            "global kept": (good.replace("global\n   permission config", "settings"),
+                            "## Releases: post-release maintenance: missing "
+                            "'global permission config'"),
+            "no prompt-free check": (good.replace("without a permission prompt", ""),
+                                     "## Releases: post-release maintenance: missing "
+                                     "'without a permission prompt'"),
+            "project named": (good.replace("(`--reinstall", "(`modelb-axi --reinstall"),
+                              "## Releases: names project 'modelb'"),
+        }
+        for label, (text, expected) in bad.items():
+            with self.subTest(case=label):
+                self.assertIn(expected, check_python_release_steps(text))
+        reordered = ("## Releases\n\n"
+                     "1. Post-release: install from PyPI with `--reinstall`, remove the global "
+                     "permission config entries for per-project policies, confirm a trusted "
+                     "project runs without a permission prompt.\n"
+                     "2. Set the version in its single source; `uv build`.\n"
+                     "3. TestPyPI into an isolated tool directory.\n"
+                     "4. After git flow release finish, upload with a token the user supplies.\n")
+        self.assertEqual(check_python_release_steps(reordered),
+                         ["## Releases: python release steps out of order"])
+        self.assertEqual(check_python_release_steps("## Other\n\nuv build TestPyPI\n"),
+                         ["no '## Releases' section"])
 
 
 if __name__ == "__main__":
