@@ -77,7 +77,10 @@ on exit it follows the table above, and only `stop` or a terminal exit ends it.
   printed, and the fetch to run, with the address shell-quoted
   (`sandesh fetch --project <p> --to '<address>'`); then relaunches at once. A relaunch that exits
   `0` again with **the same** message ids does not wake the session again and retries every 30
-  seconds until the mail is fetched and the banner reappears; **new** ids wake the session again;
+  seconds until a relaunch stays up (the mail was fetched); **new** ids wake the session again. An
+  exit `0` whose output names no readable ids wakes once; that suppression, like the same-ids one,
+  clears as soon as a relaunch reports no mail (Sandesh's `no 'to' mail` line) or exits `2`
+  (amended at C6);
 - `2`: relaunches silently; three `2` exits within one minute surface instead of looping;
 - `1`, `3`, `4`, `5`, `128+n`: stop, and surface the code and its meaning, never relaunching.
 
