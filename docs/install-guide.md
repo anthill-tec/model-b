@@ -374,3 +374,5 @@ the release notes and the Pi package's README:
 Names are lower-case words joined by hyphens, each name is used once, regions are never
 nested and never empty. This section is outside every region and is not copied. To change the
 install instructions, edit this file; the other copies are taken from it at release time.
+
+The PyPI project page shows the whole guide, this file unchanged, as the package readme.
