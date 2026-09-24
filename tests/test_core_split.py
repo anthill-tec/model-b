@@ -16,32 +16,13 @@ import re
 import unittest
 from pathlib import Path
 
-from tests._helpers import read_text_lenient as _read
+from tests._helpers import (
+    files_containing as _files_containing,
+    read_text_lenient as _read,
+)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 MODEL_B_SKILL_DIR = REPO_ROOT / "skills-src" / "model-b"
-
-
-def _files_under(dir_path: Path):
-    """Yield all regular files under dir_path (recursive). Empty if dir absent."""
-    if not dir_path.is_dir():
-        return
-    for root, _dirs, files in os.walk(dir_path):
-        for name in files:
-            yield Path(root) / name
-
-
-def _files_containing(dir_path: Path, needle: str):
-    """Return sorted relative paths of files under dir_path whose content contains needle."""
-    hits = []
-    for f in _files_under(dir_path):
-        try:
-            content = _read(f)
-        except (UnicodeDecodeError, OSError):
-            continue
-        if needle in content:
-            hits.append(str(f.relative_to(dir_path)))
-    return sorted(hits)
 
 
 class CoreSplitS2AgentsMdTest(unittest.TestCase):

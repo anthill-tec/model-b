@@ -11,12 +11,15 @@ Stdlib only (unittest + subprocess + pathlib + os). No SUT import: this CR's
 deliverable is markdown/skill content, not Python modules.
 """
 
-import os
 import subprocess
 import unittest
 from pathlib import Path
 
-from tests._helpers import read_text_lenient as _read, split_frontmatter as _split_frontmatter
+from tests._helpers import (
+    archive_has_content_move as _archive_has_content_move,
+    read_text_lenient as _read,
+    split_frontmatter as _split_frontmatter,
+)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SKILLS_SRC_DIR = REPO_ROOT / "skills-src"
@@ -41,32 +44,6 @@ ARCHIVE_WAVE2 = REPO_ROOT / "archive" / "wave2"
 
 # §S5's AC names this exact grep invocation verbatim.
 STALE_REF_PATTERN = r"memory/git-workflow\|git-multi-account\|chezmoi-integration"
-
-
-def _files_under(dir_path: Path):
-    """Yield all regular files under dir_path (recursive). Empty if dir absent."""
-    if not dir_path.is_dir():
-        return
-    for root, _dirs, files in os.walk(dir_path):
-        for name in files:
-            yield Path(root) / name
-
-
-def _archive_has_content_move(name: str, anchor: str) -> bool:
-    """True if some file under archive/wave2/ has `name` as a path component
-    (or matching filename) and its content contains `anchor` -- tolerant of
-    exact archival layout (flat file vs mirrored subdirectory) while still
-    proving it is a REAL content-preserving copy, not a stub."""
-    for f in _files_under(ARCHIVE_WAVE2):
-        if name not in f.parts and f.name != name:
-            continue
-        try:
-            content = _read(f)
-        except (UnicodeDecodeError, OSError):
-            continue
-        if anchor in content:
-            return True
-    return False
 
 
 class GitWorkflowSkillS2Test(unittest.TestCase):

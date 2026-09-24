@@ -15,7 +15,10 @@ Stdlib only.
 """
 
 import json
+import os
 from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
 
 #: How every skip reason spells the manifest, so a reader can find it on any machine.
 CRUCIBLE_MANIFEST_SPELLING = "~/.crucible/crucible-clients.json"
@@ -58,6 +61,49 @@ def read_text(path: Path) -> str:
 def read_text_lenient(path: Path) -> str:
     """``path`` as UTF-8 text with undecodable bytes replaced (never raises on encoding)."""
     return path.read_text(encoding="utf-8", errors="replace")
+
+
+def files_under(dir_path: Path):
+    """Yield all regular files under dir_path (recursive). Empty if dir absent."""
+    if not dir_path.is_dir():
+        return
+    for root, _dirs, files in os.walk(dir_path):
+        for name in files:
+            yield Path(root) / name
+
+
+def files_containing(dir_path: Path, needle: str):
+    """Return sorted relative paths of files under dir_path whose content contains needle."""
+    hits = []
+    for f in files_under(dir_path):
+        try:
+            content = read_text_lenient(f)
+        except (UnicodeDecodeError, OSError):
+            continue
+        if needle in content:
+            hits.append(str(f.relative_to(dir_path)))
+    return sorted(hits)
+
+
+#: The wave-2 archive the retired-content moves landed in.
+ARCHIVE_WAVE2 = REPO_ROOT / "archive" / "wave2"
+
+
+def archive_has_content_move(name: str, anchor: str) -> bool:
+    """True if some file under archive/wave2/ has `name` as a path component
+    (or matching filename) and its content contains `anchor` -- tolerant of
+    exact archival layout (flat file vs mirrored subdirectory) while still
+    proving it is a REAL content-preserving copy, not a stub."""
+    for f in files_under(ARCHIVE_WAVE2):
+        if name not in f.parts and f.name != name:
+            continue
+        try:
+            content = read_text_lenient(f)
+        except (UnicodeDecodeError, OSError):
+            continue
+        if anchor in content:
+            return True
+    return False
 
 
 # ------------------------------------------------------------------ markdown ----
