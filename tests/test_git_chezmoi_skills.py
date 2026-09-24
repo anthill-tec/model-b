@@ -16,6 +16,8 @@ import subprocess
 import unittest
 from pathlib import Path
 
+from tests._helpers import read_text_lenient as _read
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SKILLS_SRC_DIR = REPO_ROOT / "skills-src"
 REPO_AGENTS_MD = REPO_ROOT / "AGENTS.md"
@@ -39,10 +41,6 @@ ARCHIVE_WAVE2 = REPO_ROOT / "archive" / "wave2"
 
 # §S5's AC names this exact grep invocation verbatim.
 STALE_REF_PATTERN = r"memory/git-workflow\|git-multi-account\|chezmoi-integration"
-
-
-def _read(path: Path) -> str:
-    return path.read_text(encoding="utf-8", errors="replace")
 
 
 def _files_under(dir_path: Path):

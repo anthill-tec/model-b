@@ -37,6 +37,8 @@ import re
 import unittest
 from pathlib import Path
 
+from tests._helpers import read_text_lenient as _read
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SKILLS_SRC = REPO_ROOT / "skills-src"
 CONTRACTS = REPO_ROOT / "contracts"
@@ -93,11 +95,6 @@ REQUIRED_TERM_NAME_RE = re.compile(
     r"required|must_contain|must_appear|expected_present|present_terms", re.IGNORECASE
 )
 PRESENCE_ASSERTIONS = {"assertIn", "assertRegex"}
-
-
-def _read(path):
-    """Read any file in the scanned roots; nothing inside a root is excluded."""
-    return path.read_text(encoding="utf-8", errors="replace")
 
 
 def _iter_files(root):

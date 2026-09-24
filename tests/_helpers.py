@@ -6,6 +6,11 @@ manifest ``~/.crucible/crucible-clients.json`` — the one sanctioned out-of-rep
 test that needs an installed client resolves it here and SKIPS, naming the manifest, when the
 manifest, its entry or the file is missing.
 
+Every other helper here is one that several test modules used to define privately with an
+identical body (CR-MDB-032 §S3); a module imports it under its old local name. Where two
+look-alikes behave differently they stay two helpers — ``read_text`` (strict UTF-8) and
+``read_text_lenient`` (undecodable bytes replaced) are not one function.
+
 Stdlib only.
 """
 
@@ -41,3 +46,16 @@ def installed_crucible_file(stack: str, sibling: str | None = None) -> tuple:
         what = f"{sibling} beside clients[{stack!r}]" if sibling else f"clients[{stack!r}]"
         return None, f"{CRUCIBLE_MANIFEST_SPELLING} names {what}, but {target} is not a file"
     return target, ""
+
+
+# ------------------------------------------------------------------ file reads ----
+
+def read_text(path: Path) -> str:
+    """``path`` as strict UTF-8 text (a decode error raises)."""
+    return path.read_text(encoding="utf-8")
+
+
+def read_text_lenient(path: Path) -> str:
+    """``path`` as UTF-8 text with undecodable bytes replaced (never raises on encoding)."""
+    return path.read_text(encoding="utf-8", errors="replace")
+

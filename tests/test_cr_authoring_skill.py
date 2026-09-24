@@ -18,6 +18,8 @@ import subprocess
 import unittest
 from pathlib import Path
 
+from tests._helpers import read_text_lenient as _read
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SKILLS_SRC_DIR = REPO_ROOT / "skills-src"
 MEMORY_TEMPLATES_DIR = SKILLS_SRC_DIR / "memory-templates"
@@ -38,10 +40,6 @@ CONSUMER_SURFACES = (
 )
 
 STALE_REF_PATTERN = r"cr-prd-dn-conventions\|project-management.md"
-
-
-def _read(path: Path) -> str:
-    return path.read_text(encoding="utf-8", errors="replace")
 
 
 def _files_under(dir_path: Path):

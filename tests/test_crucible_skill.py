@@ -19,6 +19,8 @@ import subprocess
 import unittest
 from pathlib import Path
 
+from tests._helpers import read_text_lenient as _read
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 SKILL_DIR = REPO_ROOT / "skills-src" / "crucible"
@@ -119,9 +121,6 @@ CRUCIBLE_REPORT_HANDOVER_SKILLS = (
 
 MEMORY_DELETION_TARGET = "crucible-ingest.md"
 MEMORY_DELETION_ANCHOR = "NEVER hand-roll curl/python"
-
-def _read(path: Path) -> str:
-    return path.read_text(encoding="utf-8", errors="replace")
 
 
 def _files_under(dir_path: Path):

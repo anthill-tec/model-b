@@ -239,6 +239,7 @@ from pathlib import Path
 from tests.pi_capability_sandbox import with_agent_dir
 
 from modelb_axi import agents as agents_mod
+from tests._helpers import read_text_lenient as _read
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 GENERATOR_DIR = REPO_ROOT / "generator"
@@ -351,10 +352,6 @@ CURRENT_SKILLS = {
     ("rust", "verify"): [],
     ("rust", "fix"): ["crucible"],
 }
-
-
-def _read(path: Path) -> str:
-    return path.read_text(encoding="utf-8", errors="replace")
 
 
 def _split_frontmatter(content: str):

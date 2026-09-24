@@ -48,6 +48,8 @@ import tomllib
 import unittest
 from pathlib import Path
 
+from tests._helpers import read_text as _raw
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 GENERATOR_DIR = REPO_ROOT / "generator"
 STACKS_DIR = GENERATOR_DIR / "stacks"
@@ -99,10 +101,6 @@ ORCHESTRATION_FACT_ANCHORS = (
     "workspace-regression",
     "smoke-test",
 )
-
-
-def _raw(path: Path) -> str:
-    return path.read_text(encoding="utf-8")
 
 
 def _load_build_module():

@@ -42,6 +42,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from tests._helpers import read_text_lenient as _read
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SKILLS_SRC_DIR = REPO_ROOT / "skills-src"
 HANDOVER_MD = SKILLS_SRC_DIR / "CRUCIBLE-HANDOVER.md"
@@ -73,10 +75,6 @@ VSCODE_REFERENCE_CARVE_OUTS = {
     # DN's Scripts/AXI-wave section \u2014 also untouched by this CR.
     "tests/test_generator_role_contract.py",
 }
-
-
-def _read(path: Path) -> str:
-    return path.read_text(encoding="utf-8", errors="replace")
 
 
 def _iter_scan_files():

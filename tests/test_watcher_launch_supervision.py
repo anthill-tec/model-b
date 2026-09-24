@@ -37,6 +37,8 @@ import re
 import unittest
 from pathlib import Path
 
+from tests._helpers import read_text as _read
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SKILLS_SRC = REPO_ROOT / "skills-src"
 
@@ -121,10 +123,6 @@ EXIT_ROWS = {
     "5": (r"already[- ]live|dedup", "no-relaunch"),
     "128+n": (r"signal", "relaunch"),
 }
-
-
-def _read(path: Path) -> str:
-    return path.read_text(encoding="utf-8")
 
 
 def _norm(text: str) -> str:

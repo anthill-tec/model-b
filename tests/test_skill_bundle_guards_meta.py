@@ -53,6 +53,8 @@ import tokenize
 import unittest
 from pathlib import Path
 
+from tests._helpers import read_text_lenient as _read
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 TESTS_DIR = REPO_ROOT / "tests"
 SKILLS_SRC = REPO_ROOT / "skills-src"
@@ -179,10 +181,6 @@ EXISTENCE_PREDICATES = ("exists(", "is_dir(", "is_file(", "isdir(", "isfile(")
 
 # Local (non-third-party) import roots a test module may legitimately use.
 LOCAL_IMPORT_ROOTS = ("modelb_axi", "tests", "generator")
-
-
-def _read(path):
-    return path.read_text(encoding="utf-8", errors="replace")
 
 
 def _rel(path):
