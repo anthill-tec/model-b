@@ -143,21 +143,23 @@ class VscodeReferenceGrepGateS3Test(unittest.TestCase):
 
 class SkillsSrcBundleCensusS3Test(unittest.TestCase):
     """\u00a7S3 AC2 \u2014 skills-src/ carries the current bundle roster (Model
-    B-owned + 6 imported; CR-MDB-023 \u00a7S4 adds code-health for 14) and
+    B-owned + 6 imported; CR-MDB-023 \u00a7S4 adds code-health for 14;
+    CR-MDB-031 \u00a7S4 retires chezmoi for 13) and
     CRUCIBLE-HANDOVER.md documents 6 imported ones."""
 
-    def test_skills_src_carries_exactly_fourteen_skill_md_bundles(self):
+    def test_skills_src_carries_exactly_thirteen_skill_md_bundles(self):
         bundles = sorted(
             p.name for p in SKILLS_SRC_DIR.iterdir()
             if p.is_dir() and (p / "SKILL.md").is_file()
         )
         # POSITIVE/EXACT -- 13 after the retired IDE bundle was deleted;
-        # 14 once CR-MDB-023 \u00a7S4 adopts code-health (its AGENTS.md AC
-        # states 14 bundles).
+        # 14 once CR-MDB-023 \u00a7S4 adopts code-health; 13 once CR-MDB-031
+        # \u00a7S4 retires chezmoi (its AGENTS.md AC states 13 bundles).
         self.assertEqual(
-            len(bundles), 14,
-            f"skills-src/ must carry exactly 14 SKILL.md bundles (the "
-            f"retired IDE-stack bundle deleted, code-health adopted); found "
+            len(bundles), 13,
+            f"skills-src/ must carry exactly 13 SKILL.md bundles (the "
+            f"retired IDE-stack bundle deleted, code-health adopted, "
+            f"chezmoi retired); found "
             f"{len(bundles)}: {bundles}",
         )
         self.assertNotIn(
@@ -229,14 +231,14 @@ class AgentsMdBundleEnumerationS3Test(unittest.TestCase):
     """\u00a7S3 AC \u2014 AGENTS.md's crucible-report-* enumeration and bundle count
     are corrected."""
 
-    def test_agents_md_states_fourteen_bundles_and_zero_vscode(self):
+    def test_agents_md_states_thirteen_bundles_and_zero_vscode(self):
         self.assertTrue(AGENTS_MD.is_file(), f"{AGENTS_MD} must exist")
         content = _read(AGENTS_MD)
         self.assertIn(
-            "14 skill bundles", content,
-            "AGENTS.md's skills-src/ row must state '14 skill bundles' "
+            "13 skill bundles", content,
+            "AGENTS.md's skills-src/ row must state '13 skill bundles' "
             "(the retired IDE-stack bundle dropped out; CR-MDB-023 \u00a7S4 "
-            "adopted code-health)",
+            "adopted code-health; CR-MDB-031 \u00a7S4 retired chezmoi)",
         )
         self.assertNotIn(
             "vsc" + "ode", content.lower(),

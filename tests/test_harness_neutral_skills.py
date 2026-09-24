@@ -89,8 +89,8 @@ C3_DEFERRED = ("skills-src/chezmoi/",)
 #: ``CRUCIBLE-HANDOVER.md`` provenance line the AC also allows carries no ``~/.claude`` (measured),
 #: so it needs no entry. ``AGENTS.md:14`` ("nothing writes to ``~/.claude`` except through the
 #: installer") is NOT exempt: it says the installer writes there, which §S1 made false.
-#: C3 NOTE: C3's chezmoi retirement rewrites ``AGENTS.md:109``; it updates this text in the same
-#: commit.
+#: C3 NOTE: C3's chezmoi retirement rewrote ``AGENTS.md:109`` (its chezmoi-skill pointer dropped,
+#: CR-MDB-031 \u00a7S4); this text was updated to match.
 CLAUDE_HOME_EXEMPT_LINES = (
     ("AGENTS.md", 49,
      "| `scripts/` | The tool-script asset class (7 adopted + 1 generated): `worktree-flow.py`, "
@@ -102,7 +102,7 @@ CLAUDE_HOME_EXEMPT_LINES = (
      "- Model B never mutates `~/.claude` directly \u2014 the `modelb-axi` installer is the only "
      "deployment channel (PRD \u00a7D9/\u00a7D10), and the repo-local authoring rule means no CR "
      "writes there at all. The user's own dotfile-manager discipline is out of scope for this "
-     "file; see the `chezmoi` skill for that."),
+     "file."),
 )
 
 # ------------------------------------------------------------------ patterns ----

@@ -91,13 +91,12 @@ CRUCIBLE_HANDOVER_BUNDLE_NAMES = (
     "crucible-report-rust",
 )
 
-# §S7's six Model B-owned skill imports (crucible is the pre-existing 011
-# authorship -- guarded, not re-imported).
+# §S7's Model B-owned skill imports (crucible is the pre-existing 011
+# authorship -- guarded, not re-imported). CR-MDB-031 §S4 retired chezmoi.
 IMPORTED_BUNDLE_NAMES = (
     "model-b",
     "cr-authoring",
     "git-workflow",
-    "chezmoi",
     "bootstrap",
     "shutdown",
 )
@@ -616,59 +615,6 @@ class ChezmoiInvocationGateTest(unittest.TestCase):
             f"detector-bites fixture: expected exactly 2 matched sites inside "
             f"test_real_invocation (shutil.which + subprocess argv head), "
             f"got {len(hits)}: {hits}",
-        )
-
-    def test_retained_live_lines_present_and_do_not_trip_matcher(self):
-        git_chezmoi_skills = REPO_ROOT / "tests" / "test_git_chezmoi_skills.py"
-        source = git_chezmoi_skills.read_text(encoding="utf-8")
-        lines = source.splitlines()
-        # POSITIVE -- the two retained content-assertion lines this CR
-        # deliberately keeps are still exactly where the spec pins them.
-        # (Re-pinned 169->162 and 344->324 by CR-MDB-032 §S2, which
-        # retargeted that module's real-home constants and dropped its
-        # live-memory absence half; then 162->120 and 324->282 by §S3,
-        # which moved that module's private helpers to tests/_helpers.py.
-        # The two assertions are unchanged.)
-        self.assertIn(
-            '"chezmoi"', lines[119],
-            f"{git_chezmoi_skills}:120 must still read the literal \"chezmoi\" "
-            f"(shipped SKILL.md frontmatter name assertion), got: {lines[119]!r}",
-        )
-        self.assertIn("assertEqual", lines[118], f"{git_chezmoi_skills}:119 must be an assertEqual(")
-        self.assertIn(
-            '"chezmoi"', lines[281],
-            f"{git_chezmoi_skills}:282 must still read the literal \"chezmoi\" "
-            f"(AGENTS.md content assertion), got: {lines[281]!r}",
-        )
-        self.assertIn("assertIn", lines[280], f"{git_chezmoi_skills}:281 must be an assertIn(")
-
-        hits = find_chezmoi_invocations(source, filename=str(git_chezmoi_skills))
-        offending_at_retained_lines = [h for h in hits if h[0] in (119, 120, 281, 282)]
-        # NEGATIVE -- neither retained line trips the matcher.
-        self.assertEqual(
-            offending_at_retained_lines, [],
-            f"matcher must not trip on the retained content-assertion lines "
-            f"119-120/281-282 of {git_chezmoi_skills}; got "
-            f"{offending_at_retained_lines}",
-        )
-
-        this_file = REPO_ROOT / "tests" / "test_installer_assets.py"
-        this_source = this_file.read_text(encoding="utf-8")
-        this_lines = this_source.splitlines()
-        bundle_tuple_line = next(
-            i for i, ln in enumerate(this_lines) if '"chezmoi",' in ln
-        )
-        # POSITIVE sanity -- the Model-B-owned bundle-name tuple element this
-        # CR exempts is still present in this very file.
-        self.assertIn('"chezmoi"', this_lines[bundle_tuple_line])
-        hits_here = find_chezmoi_invocations(this_source, filename=str(this_file))
-        bundle_tuple_hits = [h for h in hits_here if h[0] == bundle_tuple_line + 1]
-        # NEGATIVE -- the matcher must not trip on this file's own
-        # IMPORTED_BUNDLE_NAMES tuple element.
-        self.assertEqual(
-            bundle_tuple_hits, [],
-            f"matcher must not trip on this file's own bundle-name tuple "
-            f"element at line {bundle_tuple_line + 1}; got {bundle_tuple_hits}",
         )
 
     def test_zero_chezmoi_invocations_under_tests_modelb_axi_hooks_scripts(self):

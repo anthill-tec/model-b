@@ -756,16 +756,16 @@ class CodeHealthWheelS4Test(unittest.TestCase):
 
 
 class AgentsMdBundleRosterS4Test(unittest.TestCase):
-    """§S4 AC4 -- AGENTS.md: 14 bundles, code-health Model B-owned, 6
-    imported wherever it counts them."""
+    """§S4 AC4 -- AGENTS.md: 13 bundles (14 until CR-MDB-031 §S4 retired
+    chezmoi), code-health Model B-owned, 6 imported wherever it counts them."""
 
     def setUp(self):
         self.text = AGENTS_MD.read_text(encoding="utf-8")
 
-    def test_s4_agents_md_states_fourteen_skill_bundles(self):
+    def test_s4_agents_md_states_thirteen_skill_bundles(self):
         counts = re.findall(r"\b(\d+) skill bundles\b", self.text)
-        self.assertEqual(counts, ["14"],
-                         f"\u00a7S4: AGENTS.md must state '14 skill bundles' (and no other "
+        self.assertEqual(counts, ["13"],
+                         f"\u00a7S4: AGENTS.md must state '13 skill bundles' (and no other "
                          f"count); found counts {counts}")
 
     def test_s4_agents_md_lists_code_health_as_model_b_owned(self):

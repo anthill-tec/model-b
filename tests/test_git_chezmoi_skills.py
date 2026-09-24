@@ -1,5 +1,6 @@
 """RED-phase tests for CR-MDB-005 (git-workflow + chezmoi skills: memory-twin
-merges + delete procedure).
+merges + delete procedure). CR-MDB-031 SS4 retired the chezmoi bundle and
+with it this module's SS3 chezmoi-skill class.
 
 Originally written against the LIVE ~/.claude tree. CR-MDB-032 SS2
 retargeted them to the repo (the 2026-07-22 repo-local authoring rule): the
@@ -17,16 +18,12 @@ from pathlib import Path
 
 from tests._helpers import archive_has_content_move as _archive_has_content_move
 from tests._helpers import read_text_lenient as _read
-from tests._helpers import split_frontmatter as _split_frontmatter
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SKILLS_SRC_DIR = REPO_ROOT / "skills-src"
 REPO_AGENTS_MD = REPO_ROOT / "AGENTS.md"
 
 GIT_WORKFLOW_SKILL_MD = SKILLS_SRC_DIR / "git-workflow" / "SKILL.md"
-
-CHEZMOI_SKILL_DIR = SKILLS_SRC_DIR / "chezmoi"
-CHEZMOI_SKILL_MD = CHEZMOI_SKILL_DIR / "SKILL.md"
 
 ARCHIVE_WAVE2 = REPO_ROOT / "archive" / "wave2"
 
@@ -93,94 +90,6 @@ class GitWorkflowSkillS2Test(unittest.TestCase):
         )
 
 
-class ChezmoiSkillS3Test(unittest.TestCase):
-    """SS3 -- NEW ~/.claude/skills/chezmoi/SKILL.md: add/diff/apply cycle,
-    the DELETE/RENAME procedure, the non-TTY agent-session workaround, the
-    chezmoi side of multi-account, source-ahead-drift reconciliation, and
-    the `diff <dir>` silent-empty quirk."""
-
-    def test_s3_skill_md_frontmatter_name_and_description(self):
-        self.assertTrue(CHEZMOI_SKILL_MD.is_file(), f"{CHEZMOI_SKILL_MD} must exist")
-        content = _read(CHEZMOI_SKILL_MD)
-        frontmatter, _body = _split_frontmatter(content)
-        self.assertNotEqual(
-            frontmatter, "",
-            "SKILL.md must have a well-formed '---' frontmatter block",
-        )
-
-        # POSITIVE -- exact frontmatter key required by the AC.
-        name_lines = [
-            ln for ln in frontmatter.splitlines() if ln.strip().startswith("name:")
-        ]
-        self.assertEqual(
-            len(name_lines), 1,
-            f"frontmatter must have exactly one 'name:' key, found: {name_lines}",
-        )
-        self.assertEqual(
-            name_lines[0].split(":", 1)[1].strip(), "chezmoi",
-            f"frontmatter 'name:' must be exactly 'chezmoi', got: {name_lines[0]!r}",
-        )
-
-        description_lines = [
-            ln for ln in frontmatter.splitlines() if ln.strip().startswith("description:")
-        ]
-        self.assertEqual(
-            len(description_lines), 1,
-            f"frontmatter must have exactly one 'description:' key, found: {description_lines}",
-        )
-        # POSITIVE -- description must actually contain text (non-empty).
-        description = description_lines[0].split(":", 1)[1].strip()
-        self.assertGreater(
-            len(description), 0, "frontmatter 'description:' must be non-empty"
-        )
-
-    def test_s3_skill_md_contains_delete_and_non_tty_workaround_anchors(self):
-        self.assertTrue(CHEZMOI_SKILL_MD.is_file(), f"{CHEZMOI_SKILL_MD} must exist")
-        content = _read(CHEZMOI_SKILL_MD)
-
-        # POSITIVE -- literal, case-sensitive required terms from the AC.
-        required_terms = ["chezmoi destroy", "resurrect", "autoCommit"]
-        missing = [term for term in required_terms if term not in content]
-        self.assertEqual(
-            missing, [],
-            f"{CHEZMOI_SKILL_MD} missing required delete/gotcha terms: {missing}",
-        )
-
-        # POSITIVE -- "no-auto" or the sed workaround verbatim (tolerant,
-        # per the AC's own parenthetical alternative).
-        no_auto_variants = ("no-auto", "autoCommit = false", "chezmoi-noauto")
-        has_no_auto = any(v in content for v in no_auto_variants)
-        self.assertTrue(
-            has_no_auto,
-            f"{CHEZMOI_SKILL_MD} must contain 'no-auto' or the sed workaround "
-            f"verbatim, tried {no_auto_variants}",
-        )
-
-        # POSITIVE -- "never push" case-insensitive per the AC.
-        self.assertIn(
-            "never push", content.lower(),
-            f"{CHEZMOI_SKILL_MD} must contain 'never push' (case-insensitive)",
-        )
-
-        # POSITIVE -- the `diff <dir>` silent-empty quirk mention.
-        self.assertIn(
-            "diff <dir>", content,
-            f"{CHEZMOI_SKILL_MD} must mention the `diff <dir>` silent-empty quirk",
-        )
-
-    def test_s3_skill_dir_and_md_exist_together(self):
-        # NEGATIVE/bound -- the skill directory existing without a SKILL.md
-        # (or vice versa) is not a valid skill; both must hold.
-        self.assertEqual(
-            CHEZMOI_SKILL_DIR.is_dir(), CHEZMOI_SKILL_MD.is_file(),
-            f"{CHEZMOI_SKILL_DIR} directory presence and {CHEZMOI_SKILL_MD} file "
-            "presence must agree -- a half-created skill is not valid",
-        )
-        self.assertTrue(
-            CHEZMOI_SKILL_MD.is_file(), f"{CHEZMOI_SKILL_MD} must exist"
-        )
-
-
 class DeletionsS4Test(unittest.TestCase):
     """SS4 -- memory/git-workflow.md, memory/git-multi-account.md,
     memory/chezmoi-integration.md: archived to <repo>/archive/wave2/
@@ -242,7 +151,8 @@ class DeletionsS4Test(unittest.TestCase):
 class ConsumerRepointS5Test(unittest.TestCase):
     """SS5 -- repoint consumers: skills/git-flow-release/SKILL.md citations
     of memory/git-workflow.md -> the skill; memory/QUICK_REFERENCE.md
-    repointed; AGENTS.md names the chezmoi skill without "until Wave 2"."""
+    repointed. (The AGENTS.md chezmoi-trigger half retired with the chezmoi
+    bundle, CR-MDB-031 SS4.)"""
 
     def test_s5_grep_gate_zero_stale_references_across_consumers(self):
         # EXACT -- the AC names this exact grep invocation verbatim.
@@ -265,24 +175,6 @@ class ConsumerRepointS5Test(unittest.TestCase):
             f"grep gate must return 0 files referencing memory/git-workflow, "
             f"git-multi-account, or chezmoi-integration, found: {matched_files}",
         )
-
-    def test_s5_agents_md_no_longer_ties_chezmoi_trigger_to_wave2(self):
-        """AGENTS.md's chezmoi trigger row must repoint to the chezmoi skill
-        and drop the "until Wave 2" qualifier now that Wave 2 delivers it."""
-        agents_md = REPO_AGENTS_MD
-        self.assertTrue(agents_md.is_file(), f"{agents_md} must exist")
-        content = _read(agents_md)
-        # NEGATIVE -- the stale "until Wave 2" qualifier must be gone.
-        self.assertNotIn(
-            "until Wave 2", content,
-            f"{agents_md} chezmoi trigger row must drop the 'until Wave 2' qualifier",
-        )
-        # POSITIVE -- it must now cite the chezmoi skill by name.
-        self.assertIn(
-            "chezmoi", content.lower(),
-            f"{agents_md} must still mention 'chezmoi' after repointing",
-        )
-
 
 if __name__ == "__main__":
     unittest.main()
