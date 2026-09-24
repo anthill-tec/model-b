@@ -612,7 +612,6 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
 - 2026-09-24 — **Deferred (CR-MDB-037 F1):** `init --force-managed` reaches the permission policy
   but not agent-definition rendering, and `init`'s `skipped`/`unmanaged` envelope lists cover only
   the policy; `modelb-axi agents --force-managed` is the workaround.
-||||||| 522a234
 - 2026-09-24 — **CR-MDB-038 filed (user approval): publish `modelb-axi` to PyPI.** CR-MDB-037 C5 VERIFY
   found the guide's interim note claimed the CLI ships in the Pi package, which carries only
   extensions and skills. User ruling: the guide names `uv tool install modelb-axi` from PyPI (name
