@@ -26,8 +26,11 @@ kills the Sandesh notifier it owns.
   MAINLINE** that it is safe to stop (or to the USER if the command came on its own session).
   A Track never tears down before its active CR is settled, unless told to emergency-stop.
 
-**The one overridden rule:** everywhere else, a watcher that exits is relaunched in the
-same turn (the relaunch-on-exit PRIME DIRECTIVE). **Shutdown is the single exception** —
+**The one overridden rule:** everywhere else, a stopped watcher is relaunched in the
+same turn — by the Model B watcher itself, or by you on the fallback path — except after an
+error or a terminal exit on the Model B watcher, or a terminal exit (`3`/`4`/`5`, per the
+PRIME DIRECTIVE table in `sandesh.md`) on the fallback path, which is never
+relaunched (the relaunch-on-exit PRIME DIRECTIVE). **Shutdown is the single exception** —
 its final step kills the notifier and does **not** relaunch. Keep the notifier ALIVE
 through the whole teardown (you need it to receive acks and a possible late emergency-stop);
 kill it only once everything else is done.
@@ -151,8 +154,8 @@ and goes **last**.
    it, so they fast-abort rather than drain. A graceful Mainline shutdown dispatches a graceful
    track shutdown. State per-track context (CR status, queue for next run).
 2. **WAIT for every active Track to ACK safe-to-shutdown — keep your notifier ALIVE for this.**
-   Acks arrive as Sandesh mail; your watcher wakes on them (fetch + relaunch as normal — the
-   notifier stays up until *your* final step). Two convergent signals, use both:
+   Acks arrive as Sandesh mail; your watcher wakes on them (fetch — and, on the fallback path,
+   relaunch — as normal; the notifier stays up until *your* final step). Two convergent signals, use both:
    - the explicit **ack** from each track, AND
    - the Sandesh **active-state**: a track that has shut down shows `active:false` /
      `listening:false` in the addressbook. Cross-check acks against the roster.
@@ -183,9 +186,11 @@ ONLY here, at a confirmed shutdown's last step.
 - **Why last:** you need the notifier alive throughout the teardown — a Track to receive a
   late emergency-stop, Mainline to receive every track's ack. Kill it only when everything
   else (drain, merge, commit, ack/report) is done.
-- **How:** stop the background watcher you launched —
-  - `TaskStop` on its background task id (the one returned when you `run_in_background` the
-    `sandesh notify`), **or** a targeted kill of *your own* process only:
+- **How:** stop your watcher, in this order:
+  - through the **Model B watcher**'s stop, when it runs your notifier; **or**
+  - on the fallback path, through the harness facility that runs your background process,
+    stopping your own process only; **or**
+  - as the last resort, a targeted kill of *your own* address's notifier only:
     `pkill -f "sandesh notify --to '<your exact address>'"`.
   - **Never** a machine-wide `pkill sandesh` / broad kill — that would take down OTHER
     orchestrators' watchers. Kill only the one you own.
