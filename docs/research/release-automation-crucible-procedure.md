@@ -83,8 +83,10 @@ the trusted-publisher configurations exactly.
 - [x] npm account in the `anthill-tec` organisation
 - [ ] Repository secret `RELEASE_PAT`
 - [ ] Environments `pypi`, `testpypi`, `npm` (required reviewers now available)
-- [ ] One-time `NPM_TOKEN` for the first publish of `@anthill-tec/modelb-pi`, then the npm trusted
-      publisher, then delete the token
+- [x] One-time `NPM_TOKEN` (granular, `@anthill-tec` scope, read/write, 2FA bypass) stored as a
+      repository secret (verified by name, 2026-09-24)
+- [ ] After the first publish: the npm trusted publisher (`model-b`, `release.yml`, environment
+      `npm`), "require 2FA and disallow tokens", then delete `NPM_TOKEN` from npm and the repository
 
 ## What this means for Model B
 
