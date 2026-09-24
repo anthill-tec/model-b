@@ -410,6 +410,21 @@ class LastClosedCrS2Test(_SandboxCase):
         hits = [s for s in _code_string_literals(_hook_source()) if "lastRunCr" in s]
         self.assertEqual(hits, [], f"the hook still looks for lastRunCr: {hits!r}")
 
+    def test_s2_last_run_cr_source_detector_bites_on_a_synthetic_reader(self):
+        """F6b: the ``_code_string_literals`` check above is not vacuous — it
+        finds a code literal reading ``lastRunCr`` and ignores docstrings."""
+        reader = ('def read(envelope):\n'
+                  '    """Docstrings may name lastRunCr freely."""\n'
+                  '    return envelope.get("lastRunCr")\n')
+        hits = [s for s in _code_string_literals(reader) if "lastRunCr" in s]
+        self.assertEqual(hits, ["lastRunCr"], "the detector bites on a code read")
+        docstring_only = ('def read(envelope):\n'
+                          '    """lastRunCr is gone."""\n'
+                          '    return envelope.get("lastClosedCr")\n')
+        self.assertEqual(
+            [s for s in _code_string_literals(docstring_only) if "lastRunCr" in s], [],
+            "a docstring mention is not a read")
+
 
 # ---------------------------------------------------------------------------
 # §S3 — show open plans only
@@ -662,6 +677,182 @@ class ArduinoProjectResolutionS5Test(_SandboxCase):
                     cwd = sb.project
                     sb.touch(cwd / LITERAL_MARKER_FOR_KEY[key])
                 self.assert_resolved_to(sb.run_hook(cwd=cwd), key)
+
+
+# ---------------------------------------------------------------------------
+# feed robustness — hostile or malformed feed output never breaks the hook
+# (C3 FIX findings F1 / F2 / F5a)
+# ---------------------------------------------------------------------------
+
+def _raw_client_source(key: str, log_path: Path, payload: bytes) -> str:
+    """A fixture feed that logs its key + argv and writes ``payload`` as
+    raw bytes (so invalid UTF-8 and hand-shaped envelopes reach the hook
+    verbatim), then exits 0."""
+    return (
+        f"#!{sys.executable}\n"
+        "import json, sys\n"
+        f"with open({str(log_path)!r}, 'a', encoding='utf-8') as fh:\n"
+        f"    fh.write(json.dumps({{'key': {key!r}, 'argv': sys.argv[1:]}}) + '\\n')\n"
+        f"sys.stdout.buffer.write({payload!r})\n"
+        "sys.stdout.buffer.flush()\n"
+    )
+
+
+def _raw_board(*, header: str = "plans[1]{cr,wave,status,activeCycleId}:",
+               rows: tuple[str, ...] = ("CR-R-001,1,open,C1",),
+               last_closed: str = "null", count: str = "1") -> str:
+    """A hand-shaped 2.0.0 ``status`` envelope laid out exactly as
+    ``modelb_axi.toon`` lays one out (table rows one level deeper than their
+    header), so single cells and scalars can carry text toon never emits."""
+    lines = ["axi:", "  verb: status", "  ok: true", f"  {header}",
+             *(f"    {row}" for row in rows),
+             f"  lastClosedCr: {last_closed}", f"  count: {count}",
+             "  warnings[0]:"]
+    return "\n".join(lines) + "\n"
+
+
+def _is_main_test(test: ast.expr) -> bool:
+    return (isinstance(test, ast.Compare) and isinstance(test.left, ast.Name)
+            and test.left.id == "__name__" and len(test.comparators) == 1
+            and isinstance(test.comparators[0], ast.Constant)
+            and test.comparators[0].value == "__main__")
+
+
+def _main_calls(node: ast.AST) -> int:
+    return sum(1 for n in ast.walk(node) if isinstance(n, ast.Call)
+               and isinstance(n.func, ast.Name) and n.func.id == "main")
+
+
+def _catches_exception(handler: ast.ExceptHandler) -> bool:
+    if handler.type is None:
+        return True
+    types = handler.type.elts if isinstance(handler.type, ast.Tuple) else [handler.type]
+    return any(isinstance(t, ast.Name) and t.id in ("Exception", "BaseException")
+               for t in types)
+
+
+def _guarded_main_calls(node: ast.AST) -> int:
+    """``main()`` calls inside the body of a ``try`` that catches Exception."""
+    return sum(sum(_main_calls(stmt) for stmt in t.body) for t in ast.walk(node)
+               if isinstance(t, ast.Try) and any(_catches_exception(h) for h in t.handlers))
+
+
+def _main_guard_findings(source: str) -> list[str]:
+    """Findings unless the script entry runs ``main()`` only under a
+    last-resort ``except Exception`` guard — in the ``__main__`` block itself
+    or in a top-level function that block calls (F2c)."""
+    tree = ast.parse(source)
+    entries = [n for n in tree.body if isinstance(n, ast.If) and _is_main_test(n.test)]
+    if len(entries) != 1:
+        return [f"expected one `if __name__ == '__main__':` entry, found {len(entries)}"]
+    entry = entries[0]
+    findings = []
+    if _main_calls(entry) > _guarded_main_calls(entry):
+        findings.append("the __main__ entry calls main() outside an `except Exception` guard")
+    defs = {n.name: n for n in tree.body if isinstance(n, ast.FunctionDef)}
+    called = {n.func.id for n in ast.walk(entry)
+              if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)}
+    guarded = _guarded_main_calls(entry) > 0 or any(
+        _guarded_main_calls(defs[name]) > 0 for name in called if name in defs)
+    if not guarded:
+        findings.append("no last-resort `except Exception` guard around main()")
+    return findings
+
+
+class FeedRobustnessTest(_SandboxCase):
+    """Hostile or malformed feed output degrades or renders safely; the hook
+    never tracebacks, never exits non-zero, never emits a raw control
+    character (findings F1, F2, F5a)."""
+
+    def render_raw(self, payload: bytes) -> subprocess.CompletedProcess:
+        client = self.sb.root / "feed-bin" / "raw-feed.py"
+        client.parent.mkdir(parents=True, exist_ok=True)
+        client.write_text(_raw_client_source("feed", self.sb.log, payload), encoding="utf-8")
+        client.chmod(0o755)
+        result = self.sb.run_hook(env_overrides={"MODELB_STATUS_CMD": f"{client} status"})
+        self.assertEqual(self.sb.invocations(), [{"key": "feed", "argv": ["status"]}],
+                         "precondition: the fixture feed ran exactly once")
+        self.assertNotIn("Traceback", result.stderr,
+                         f"the hook must never traceback; stderr={result.stderr!r}")
+        self.assertEqual(result.returncode, 0,
+                         f"a SessionStart hook always exits 0; stderr={result.stderr!r}")
+        return result
+
+    def test_raw_board_fixture_renders_as_a_board(self):
+        """Control: the hand-shaped fixture is read like a toon envelope."""
+        result = self.render_raw(_raw_board(last_closed="CR-9").encode())
+        self.assertEqual(_listed_crs(result.stdout), ["CR-R-001"])
+        self.assertIn("last closed: CR-9", result.stdout)
+
+    # --- F1: decoded cells may not smuggle surrogates or control characters
+
+    def test_f1_lone_surrogate_cell_does_not_crash_the_hook(self):
+        result = self.render_raw(_raw_board(rows=('CR-S-001,"\\ud800",open,C1',)).encode())
+        self.assertEqual(_listed_crs(result.stdout), ["CR-S-001"],
+                         f"the row still renders; got {result.stdout!r}")
+
+    def test_f1_escape_sequence_cell_renders_no_raw_control_character(self):
+        board = _raw_board(rows=('CR-E-001,"\\u001b[31mX",open,C1',))
+        self.assertNotIn("\x1b", board, "precondition: the feed carries JSON text, not ESC")
+        result = self.render_raw(board.encode())
+        self.assertEqual(_listed_crs(result.stdout), ["CR-E-001"])
+        self.assertNotIn("\x1b", result.stdout,
+                         f"no raw ESC reaches the session context; got {result.stdout!r}")
+
+    # --- F2: undecodable bytes and overrunning tables
+
+    def test_f2_invalid_utf8_feed_bytes_do_not_crash_the_hook(self):
+        result = self.render_raw(b"\xff\xfe\n" + _raw_board().encode())
+        self.assertEqual(_listed_crs(result.stdout), ["CR-R-001"],
+                         f"the valid envelope still renders; got {result.stdout!r}")
+
+    def test_f2_table_declaring_more_rows_than_it_carries_does_not_swallow_scalars(self):
+        result = self.render_raw(_raw_board(
+            header="plans[3]{cr,wave,status,activeCycleId}:",
+            rows=("CR-O-001,1,open,C1",), last_closed="CR-9", count="3").encode())
+        rows = [line for line in result.stdout.splitlines() if "cr=" in line]
+        self.assertEqual([r for r in rows if "lastClosedCr" in r], [],
+                         f"a scalar was read as a table row; got {result.stdout!r}")
+        self.assertEqual(_listed_crs(result.stdout), ["CR-O-001"])
+        self.assertIn("last closed: CR-9", result.stdout)
+
+    # --- F5a: lastClosedCr quoting and whitespace
+
+    def test_f5a_quoted_last_closed_cr_renders_unquoted(self):
+        result = self.render_raw(_raw_board(last_closed='"CR-X-002"').encode())
+        self.assertIn("last closed: CR-X-002", result.stdout.splitlines(),
+                      f"got {result.stdout!r}")
+
+    def test_f5a_last_closed_cr_surrounding_whitespace_is_stripped(self):
+        board = _raw_board(last_closed="  CR-X-003  ")
+        self.assertIn("lastClosedCr:   CR-X-003  \n", board, "precondition: padded scalar")
+        result = self.render_raw(board.encode())
+        self.assertIn("last closed: CR-X-003", result.stdout.splitlines(),
+                      f"the line is exact; got {result.stdout!r}")
+
+
+class MainGuardF2Test(unittest.TestCase):
+    """F2(c): an internal exception is hard to force from a feed, so the
+    last-resort guard is pinned at source level: the script entry runs
+    main() only under an ``except Exception`` guard."""
+
+    def test_f2_script_entry_runs_main_under_a_last_resort_guard(self):
+        self.assertEqual(_main_guard_findings(_hook_source()), [])
+
+    def test_f2_guard_detector_bites_on_an_unguarded_entry(self):
+        bare = ("import sys\n"
+                "def main():\n    return 0\n"
+                "if __name__ == '__main__':\n    sys.exit(main())\n")
+        self.assertNotEqual(_main_guard_findings(bare), [])
+        narrow = ("import sys\n"
+                  "def main():\n    return 0\n"
+                  "def _run():\n    try:\n        return main()\n"
+                  "    except ValueError:\n        return 0\n"
+                  "if __name__ == '__main__':\n    sys.exit(_run())\n")
+        self.assertNotEqual(_main_guard_findings(narrow), [],
+                            "a narrow except is not a last-resort guard")
+        guarded = narrow.replace("except ValueError", "except Exception")
+        self.assertEqual(_main_guard_findings(guarded), [])
 
 
 if __name__ == "__main__":
