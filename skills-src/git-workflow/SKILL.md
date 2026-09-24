@@ -161,7 +161,9 @@ After building: switch back to develop for continued work. Bump develop to the n
 1. **Build** — on the release branch, set the version in its single source (the one place the
    package reads it from), commit, then build the sdist and wheel with `uv build`.
 2. **Rehearse on TestPyPI** — upload the release candidate to TestPyPI and install it into an
-   isolated tool directory (`UV_TOOL_DIR` / `UV_TOOL_BIN_DIR` pointed at a scratch path), then
+   isolated tool directory (`UV_TOOL_DIR` / `UV_TOOL_BIN_DIR` pointed at a scratch path) from
+   TestPyPI, with PyPI kept only for dependencies:
+   `--index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/`; then
    run it there before anything reaches the real index.
 3. **Upload to PyPI** — only after `git flow release finish`, build from the tagged commit and
    upload with a token the user supplies at upload time; never store the token in the repository
