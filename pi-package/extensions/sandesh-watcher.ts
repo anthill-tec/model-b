@@ -4,10 +4,13 @@
  * Runs `sandesh notify --to <address> --project <project>` as a child and
  * follows its exit contract (Sandesh 0.3.5):
  *
- *   0      mail is waiting   -> wake the session once, leave the watcher stopped
+ *   0      mail is waiting   -> wake the session naming the unread ids, relaunch at
+ *                               once; a relaunch with the same ids wakes nothing
+ *                               and retries every 30 s; new ids wake again
  *   2      timeout, no mail  -> relaunch silently; three within a minute surface
  *   1/3/4/5, signal          -> stop, surface the code and its meaning
  *
+ * The watcher runs at all times: only `stop` or a terminal exit ends it.
  * One watcher per address. Nothing starts at load time; the `sandesh_watcher`
  * tool (start/status/stop) and the `/watcher status|stop` command drive it.
  */
@@ -17,10 +20,15 @@ import { constants } from "node:os";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 
+const MAIL_EXIT = 0;
 const TIMEOUT_EXIT = 2;
 const TIMEOUT_CAP = 3;
 const TIMEOUT_WINDOW_MS = 60_000;
+const RETRY_MS = 30_000;
 const KILL_GRACE_MS = 3_000;
+const STDOUT_KEEP = 8_000;
+/** Sandesh 0.3.5: `[notify] <time> \u2709 N unread 'to' message(s): [12, 13]`. */
+const UNREAD_RE = /unread 'to' message\(s\): \[([^\]]*)\]/g;
 
 const EXIT_MEANINGS: Record<number, string> = {
 	1: "usage or configuration error",
@@ -36,6 +44,12 @@ interface Watcher {
 	ready: boolean;
 	stopping: boolean;
 	timeouts: number[];
+	/** Unread ids the session has already been woken for. */
+	wokenIds: Set<string>;
+	/** The last wake named no ids (Sandesh printed none we could read). */
+	wokeUnnamed: boolean;
+	/** A pending same-ids relaunch. */
+	retryTimer?: ReturnType<typeof setTimeout>;
 }
 
 const WatcherParams = Type.Object({
@@ -74,6 +88,17 @@ function shellQuote(s: string): string {
 	return /^[A-Za-z0-9_./:@%+=,-]+$/.test(s) ? s : `'${s.replace(/'/g, `'\\''`)}'`;
 }
 
+/** The unread ids on Sandesh's last `unread 'to' message(s): [...]` line. */
+function unreadIds(stdout: string): string[] {
+	let last: RegExpMatchArray | undefined;
+	for (const m of stdout.matchAll(UNREAD_RE)) last = m;
+	if (!last) return [];
+	return last[1]
+		.split(",")
+		.map((s) => s.trim().replace(/^['"]|['"]$/g, ""))
+		.filter(Boolean);
+}
+
 export default function sandeshWatcher(pi: ExtensionAPI) {
 	const watchers = new Map<string, Watcher>();
 
@@ -92,19 +117,42 @@ export default function sandeshWatcher(pi: ExtensionAPI) {
 		);
 	}
 
-	function wake(watcher: Watcher): void {
+	function wake(watcher: Watcher, ids: string[]): void {
+		const which = ids.length ? `unread message id(s) ${ids.join(", ")}` : "unread message ids not reported";
 		pi.sendUserMessage(
-			`Sandesh mail is waiting for "${watcher.address}". ` +
-				`Run \`sandesh fetch --project ${shellQuote(watcher.project)} --to ${shellQuote(watcher.address)}\` to read it, ` +
-				"then start the notifier again.",
+			`Sandesh mail is waiting for "${watcher.address}" (${which}). ` +
+				`Run \`sandesh fetch --project ${shellQuote(watcher.project)} --to ${shellQuote(watcher.address)}\` to read it. ` +
+				"The watcher keeps running and wakes the session again for new mail.",
 			{ deliverAs: "followUp" },
 		);
 	}
 
+	/** Exit 0: wake for ids not yet woken for and relaunch at once; else retry in 30 s. */
+	function onMail(watcher: Watcher, stdout: string): void {
+		const ids = unreadIds(stdout);
+		const fresh = ids.length ? ids.some((id) => !watcher.wokenIds.has(id)) : !watcher.wokeUnnamed;
+		if (fresh) {
+			for (const id of ids) watcher.wokenIds.add(id);
+			watcher.wokeUnnamed = ids.length === 0;
+			wake(watcher, ids);
+			launch(watcher);
+			return;
+		}
+		watcher.retryTimer = setTimeout(() => {
+			watcher.retryTimer = undefined;
+			if (!watcher.stopping) launch(watcher);
+		}, RETRY_MS);
+	}
+
 	/** Called when a launch that already printed its banner (or a relaunch) ends. */
-	function onExit(watcher: Watcher, code: number | null, signal: NodeJS.Signals | null): void {
+	function onExit(watcher: Watcher, code: number | null, signal: NodeJS.Signals | null, stdout: string): void {
 		if (watcher.stopping) return;
+		if (code === MAIL_EXIT && !signal) {
+			onMail(watcher, stdout);
+			return;
+		}
 		if (code === TIMEOUT_EXIT && !signal) {
+			watcher.wokeUnnamed = false;
 			const now = Date.now();
 			watcher.timeouts = [...watcher.timeouts.filter((t) => now - t < TIMEOUT_WINDOW_MS), now];
 			if (watcher.timeouts.length < TIMEOUT_CAP) {
@@ -116,8 +164,7 @@ export default function sandeshWatcher(pi: ExtensionAPI) {
 			return;
 		}
 		forget(watcher);
-		if (code === 0 && !signal) wake(watcher);
-		else surface(watcher, describeExit(code, signal));
+		surface(watcher, describeExit(code, signal));
 	}
 
 	/** Spawn one `sandesh notify`; resolves with null on the banner, or the reason it ended first. */
@@ -133,11 +180,12 @@ export default function sandeshWatcher(pi: ExtensionAPI) {
 			let stdout = "";
 			let stderr = "";
 			let ended = false;
+			let bannerSeen = false;
 			const banner = `watching ${watcher.address}`;
 			child.stdout?.on("data", (chunk: Buffer) => {
-				if (watcher.ready && watcher.child === child) return;
-				stdout += chunk.toString();
-				if (stdout.includes(banner)) {
+				stdout = (stdout + chunk.toString()).slice(-STDOUT_KEEP);
+				if (!bannerSeen && stdout.includes(banner)) {
+					bannerSeen = true;
 					watcher.ready = true;
 					resolve(null);
 				}
@@ -155,7 +203,7 @@ export default function sandeshWatcher(pi: ExtensionAPI) {
 					resolve(`${why}${stderr.trim() ? `\n${stderr.trim()}` : ""}`);
 					return;
 				}
-				onExit(watcher, code, signal);
+				onExit(watcher, code, signal, stdout);
 			};
 			child.on("error", (err) => finish(null, null, err));
 			child.on("close", (code, signal) => finish(code, signal));
@@ -165,7 +213,15 @@ export default function sandeshWatcher(pi: ExtensionAPI) {
 	async function start(address: string, project: string): Promise<string> {
 		const running = watchers.get(address);
 		if (running) return `A Sandesh watcher is already running for "${address}" (pid ${running.child?.pid}).`;
-		const watcher: Watcher = { address, project, ready: false, stopping: false, timeouts: [] };
+		const watcher: Watcher = {
+			address,
+			project,
+			ready: false,
+			stopping: false,
+			timeouts: [],
+			wokenIds: new Set(),
+			wokeUnnamed: false,
+		};
 		watchers.set(address, watcher);
 		const failure = await launch(watcher);
 		if (failure !== null) return `The Sandesh watcher for "${address}" did not start: ${failure}`;
@@ -178,6 +234,8 @@ export default function sandeshWatcher(pi: ExtensionAPI) {
 		for (const w of targets) {
 			w.stopping = true;
 			watchers.delete(w.address);
+			if (w.retryTimer) clearTimeout(w.retryTimer);
+			w.retryTimer = undefined;
 			const child = w.child;
 			if (child && child.exitCode === null && child.signalCode === null) {
 				child.kill("SIGTERM");
@@ -192,7 +250,10 @@ export default function sandeshWatcher(pi: ExtensionAPI) {
 	function status(): string {
 		if (watchers.size === 0) return "No Sandesh watcher is running.";
 		return [...watchers.values()]
-			.map((w) => `"${w.address}" in ${w.project}: ${w.ready ? "watching" : "starting"} (pid ${w.child?.pid})`)
+			.map((w) => {
+				const state = w.retryTimer ? "mail waiting, rechecking" : w.ready ? "watching" : "starting";
+				return `"${w.address}" in ${w.project}: ${state} (pid ${w.child?.pid})`;
+			})
 			.join("\n");
 	}
 
