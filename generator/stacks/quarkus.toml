@@ -5,7 +5,7 @@ display_name = "Quarkus/Java"
 test_command = "python3 ~/.crucible/clients/mvn-crucible.py unit --test <TestClass> --agent YOUR_AGENT_ID [--module m] [--maven-dir backend]"
 register_command = "python3 ~/.crucible/clients/mvn-crucible.py register --agent YOUR_AGENT_ID"
 unregister_command = "python3 ~/.crucible/clients/mvn-crucible.py unregister --agent YOUR_AGENT_ID"
-crucible_reference = "~/.claude/skills/crucible/references/java.md"
+crucible_reference = "~/.agents/skills/crucible/references/java.md"
 
 mechanics = '''
 - **Framework/client:** JUnit 5 via Maven surefire/failsafe, driven through `mvn-crucible.py` (tiers `unit` / `module` / `e2e` / `regression`, plus `compile`; `clean` is built in). `unit --test <Class>` runs + parses + ingests in one call and auto-routes: surefire XML → `/api/v2/runs`; compile-fail → `mvn test-compile` → `/api/v2/runs/compile`. A compile failure IS a valid RED — it is ingested, never skipped.
@@ -76,7 +76,7 @@ green = '''
 - **CDI:** `@ApplicationScoped` stateless, `@RequestScoped` per-request; inject via `@Inject`, never `new`.
 - **REST Resource:** `@Path`/`@Produces`/`@Consumes`; inject the Service, never call repositories directly; reactive endpoints return `Uni<Response>` mapping success + failure (`onItem().transform(...)` / `onFailure().recoverWithItem(...)`); exact status codes; `@Valid` request bodies; OpenAPI annotations (`@Operation`, `@APIResponse`); inter-service calls via `@RegisterRestClient(configKey = "...")` reactive clients.
 - **Messaging/events:** SmallRye `@Incoming`/`@Outgoing`, `Emitter<T>`, CDI `Event<T>.fireAsync()`. SSE: `eventBus.emit(type, pk, data, from, to)` — NEVER `new ServerEvent(...)`.
-- **Shared libraries:** check project CLAUDE.md (e.g. store-utils) — reuse library components before creating new ones.
+- **Shared libraries:** check project AGENTS.md (e.g. store-utils) — reuse library components before creating new ones.
 - **Quick gates:** after each file `mvn-crucible.py compile --agent YOUR_AGENT_ID` (or `mvn -q clean test-compile`); module regression before finishing: `mvn-crucible.py module [--module m] --agent YOUR_AGENT_ID`.
 - **Quality checks before completion:** enum comparison uses `==`, not `.equals()`; `.call()` for Uni-returning emits; no blocking; layer order respected.
 - **Prohibited:** `Thread.sleep()` → Awaitility / `Uni.delayIt()`; `UUID.randomUUID()` → `UuidV7Generator.generate()`; `@Mock`+`@InjectMocks`; manual JSON serialization (use Jackson annotations); `new ServerEvent(...)`.

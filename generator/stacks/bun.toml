@@ -5,7 +5,7 @@ display_name = "Bun/TypeScript"
 test_command = "python3 ~/.crucible/clients/bun-crucible.py test --tests <path/to/feature.test.ts> --agent YOUR_AGENT_ID"
 register_command = "python3 ~/.crucible/clients/bun-crucible.py register --agent YOUR_AGENT_ID"
 unregister_command = "python3 ~/.crucible/clients/bun-crucible.py unregister --agent YOUR_AGENT_ID"
-crucible_reference = "~/.claude/skills/crucible/references/bun.md"
+crucible_reference = "~/.agents/skills/crucible/references/bun.md"
 
 mechanics = '''
 - **Framework/client:** `bun test` driven through `bun-crucible.py` (`register` / `test` / `check` / `unregister`). `test` runs `bun test` on the given file(s), wipes the stale `test-reports/junit.xml` so only THIS run ingests, parses + ingests the JUnit XML, and prints `ingest: ok=True ... failed=N` — confirm it.
