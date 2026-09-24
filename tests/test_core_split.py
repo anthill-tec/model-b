@@ -50,7 +50,7 @@ class CoreSplitS2AgentsMdTest(unittest.TestCase):
         match = pattern.search(content)
         self.assertIsNotNone(
             match,
-            "AGENTS.md must contain a 'no AI/Claude attribution' clause",
+            "sub-agent-procedure.md must contain a 'no AI/Claude attribution' clause",
         )
 
     def test_s2_agents_md_zero_worktree_boundary_mentions(self):

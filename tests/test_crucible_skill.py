@@ -94,7 +94,7 @@ def _injection_claims(text, token=CYCLE_ID_ENV_VAR):
 # agent-protocol remains banned (CR-MDB-016 Option B) and stays a target.
 # CR-MDB-024 \u00a7S3 (2026-09-22 VS Code ruling): the VS Code crucible-report
 # bundle is no longer a legitimate handover bundle -- it is retired outright (an IDE is
-# not a stack), so it drops out of CRUCIBLE_REPORT_HANDOVER_SKILLS below
+# not a stack), so it drops out of the handover set
 # and back onto DELETION_TARGET_SKILLS' effective footprint via the
 # dedicated VS Code retirement gates in
 # tests/test_ide_overlay_retirement.py (this file's DELETION_TARGET_SKILLS
@@ -107,17 +107,6 @@ DELETION_TARGET_SKILLS = {
     "bun-regression-testing": "ingest with coverage",
     "quarkus-regression-testing": "ingest with JaCoCo coverage",
 }
-
-# crucible-report-* skills legitimately reappear under ~/.claude/skills post
-# CR-MDB-016, but ONLY as installer-owned symlinks (into ~/.agents/skills),
-# never as plain re-created directories.
-CRUCIBLE_REPORT_HANDOVER_SKILLS = (
-    "crucible-report-rust",
-    "crucible-report-java",
-    "crucible-report-bun",
-    "crucible-report-python",
-    "crucible-report-arduino",
-)
 
 MEMORY_DELETION_TARGET = "crucible-ingest.md"
 MEMORY_DELETION_ANCHOR = "NEVER hand-roll curl/python"

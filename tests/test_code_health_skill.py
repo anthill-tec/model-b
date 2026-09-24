@@ -40,7 +40,6 @@ import unittest
 from pathlib import Path
 
 from modelb_axi import deploy
-from tests._helpers import decode_axi as _decode
 from tests.test_installer_stack_selection import _StackSandboxCase
 from tests.test_package_publishing import build_sdist, build_wheel, wheel_names, wheel_read
 from tests.test_worktree_flow_surfaces import HISTORY_MARK, WF_CS
