@@ -652,20 +652,15 @@ class ClientPathAnchoringS1Test(unittest.TestCase):
                           f"§S1: {label} still names the crucible repo clients/ dir")
 
     def test_s1_cargo_hook_block_reasons_name_the_manifest_listed_client(self):
+        # CR-MDB-031 §S1: the dangerouslyDisableSandbox/DS_REASON half is retired with the
+        # branch it pinned (a Claude Code Bash-tool field Pi's bash tool does not have).
         with tempfile.TemporaryDirectory() as tmp:
             (Path(tmp) / "Cargo.toml").write_text("[package]\nname='x'\n")
             plain = _run_hook("block-direct-cargo-test", {
                 "tool_name": "bash", "tool_input": {"command": "cargo test"}, "cwd": tmp})
-            ds = _run_hook("block-direct-cargo-test", {
-                "tool_name": "bash",
-                "tool_input": {"command": "cargo build", "dangerouslyDisableSandbox": True},
-                "cwd": tmp})
         self.assertEqual(plain.returncode, 2, plain.stderr)
-        self.assertEqual(ds.returncode, 2, ds.stderr)
         self._assert_reason_names_manifest_client(
             "cargo REASON", json.loads(plain.stdout)["reason"], "rust-crucible.py")
-        self._assert_reason_names_manifest_client(
-            "cargo DS_REASON", json.loads(ds.stdout)["reason"], "rust-crucible.py")
 
     def test_s1_mvn_hook_block_reason_names_the_manifest_listed_client(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -308,7 +308,7 @@ class DefaultExportFactoryTest(PiLoaderTestCase):
             "fail_direction": None,
         })
         self.assertEqual(len(ts_files), 1, f"expected exactly one emitted file: {ts_files!r}")
-        self.assertEqual(report["refusals"], [])
+        self.assertNotIn("refusals", report)  # CR-MDB-031 §S1: no refusal path
 
         loaded = self._drive(ts_files[0], event={"type": "session_start"})
         self.assertIsNone(
@@ -563,7 +563,7 @@ class PiHookNeutralPayloadMappingTest(PiLoaderTestCase):
             "fail_direction": "open",
         })
         self.assertEqual(len(ts_files), 1)
-        self.assertEqual(report["refusals"], [])
+        self.assertNotIn("refusals", report)  # CR-MDB-031 §S1: no refusal path
         return ts_files[0]
 
     def _echoed_neutral_payload(self, ext_path, tool_name, tool_input, cwd):
@@ -773,7 +773,7 @@ class PiHookWriteBoundaryAcrossToolsTest(PiLoaderTestCase):
             scripts_root=REAL_SCRIPTS_ROOT,
         )
         self.assertEqual(len(ts_files), 1)
-        self.assertEqual(report["refusals"], [])
+        self.assertNotIn("refusals", report)  # CR-MDB-031 §S1: no refusal path
         return ts_files[0]
 
     def _drive_guard(self, ext_path, tool_name, tool_input):
@@ -868,7 +868,7 @@ class PiHookCargoMvnGuardAcrossToolsTest(PiLoaderTestCase):
             scripts_root=REAL_SCRIPTS_ROOT,
         )
         self.assertEqual(len(ts_files), 1)
-        self.assertEqual(report["refusals"], [])
+        self.assertNotIn("refusals", report)  # CR-MDB-031 §S1: no refusal path
         return ts_files[0]
 
     def _drive_guard(self, ext_path, tool_name, tool_input, cwd):
@@ -972,7 +972,7 @@ class PiHookMatcherFiltersOnNeutralNameTest(PiLoaderTestCase):
             "fail_direction": "open",
         })
         self.assertEqual(len(ts_files), 1)
-        self.assertEqual(report["refusals"], [])
+        self.assertNotIn("refusals", report)  # CR-MDB-031 §S1: no refusal path
         ext_path = ts_files[0]
         counter_file = self.target / "invocation-counter.txt"
 
