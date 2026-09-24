@@ -555,7 +555,7 @@ def _freshness_fields(home: Path, warnings: list[str]) -> dict:
         _warn(
             f"freshness unknown \u2014 {INSTALL_TOML_NAME} records no target_root, "
             "so the deployed assets cannot be checked; re-run "
-            "`modelb-axi --reinstall --target-root <dir>` to record it",
+            f"`{_record_target_root_command(home, install)}` to record it",
             warnings,
         )
         return {"freshness": "unknown"}
@@ -579,6 +579,22 @@ def _freshness_fields(home: Path, warnings: list[str]) -> dict:
         _say("    retired: no longer shipped \u2014 remove them by hand")
     freshness = "current" if not any(found.values()) else "outdated"
     return {"freshness": freshness, **found}
+
+
+def _record_target_root_command(home: Path, install) -> str:
+    """The re-run that records a target root for an install that has none:
+    ``--reinstall --target-root <dir>`` (``<dir>`` stays a placeholder \u2014
+    none is recorded), plus ``--modelb-home`` when ``home`` is not the
+    default and the ``--stacks``/``--harnesses`` ``install.toml`` records.
+    Values are shell-quoted."""
+    parts = ["modelb-axi", "--reinstall", "--target-root", "<dir>"]
+    if home != _default_modelb_home():
+        parts += ["--modelb-home", shlex.quote(str(home))]
+    for key in ("stacks", "harnesses"):
+        value = install.get(key) if isinstance(install, dict) else None
+        if isinstance(value, list) and value and all(isinstance(v, str) for v in value):
+            parts += [f"--{key}", shlex.quote(",".join(value))]
+    return " ".join(parts)
 
 
 def _reinstall_command(home: Path, target_root: str, stacks, harnesses=None) -> str:
