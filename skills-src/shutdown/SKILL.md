@@ -27,8 +27,9 @@ kills the Sandesh notifier it owns.
   A Track never tears down before its active CR is settled, unless told to emergency-stop.
 
 **The one overridden rule:** everywhere else, a stopped watcher is relaunched in the
-same turn — by the Model B watcher itself, or by you on the fallback path — except after a
-terminal exit (`3`/`4`/`5`, per the PRIME DIRECTIVE table in `sandesh.md`), which is never
+same turn — by the Model B watcher itself, or by you on the fallback path — except after an
+error or a terminal exit on the Model B watcher, or a terminal exit (`3`/`4`/`5`, per the
+PRIME DIRECTIVE table in `sandesh.md`) on the fallback path, which is never
 relaunched (the relaunch-on-exit PRIME DIRECTIVE). **Shutdown is the single exception** —
 its final step kills the notifier and does **not** relaunch. Keep the notifier ALIVE
 through the whole teardown (you need it to receive acks and a possible late emergency-stop);
@@ -153,8 +154,8 @@ and goes **last**.
    it, so they fast-abort rather than drain. A graceful Mainline shutdown dispatches a graceful
    track shutdown. State per-track context (CR status, queue for next run).
 2. **WAIT for every active Track to ACK safe-to-shutdown — keep your notifier ALIVE for this.**
-   Acks arrive as Sandesh mail; your watcher wakes on them (fetch + relaunch as normal — the
-   notifier stays up until *your* final step). Two convergent signals, use both:
+   Acks arrive as Sandesh mail; your watcher wakes on them (fetch — and, on the fallback path,
+   relaunch — as normal; the notifier stays up until *your* final step). Two convergent signals, use both:
    - the explicit **ack** from each track, AND
    - the Sandesh **active-state**: a track that has shut down shows `active:false` /
      `listening:false` in the addressbook. Cross-check acks against the roster.
