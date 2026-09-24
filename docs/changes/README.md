@@ -667,3 +667,33 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   reason agents read) and `block-direct-mvn-test` (`:14-15`) still describe the retired discovery
   ("installed clients dir from install config; the crucible repo `clients/` dir in dev").
   `block-direct-mvn-test` is not yet in 020's scope; both should name the manifest.
+- 2026-09-24 — **CR-MDB-019 MERGED** (develop `c31ff5d`; plan 106). The ambient hook pins status
+  contract document 2.0.0, prints `last closed: <id>`, lists and counts open plans only (distinct
+  "no open plan" note), unquotes cells, resolves arduino sketches (`("{dir}.ino", "arduino",
+  "arduino")`, parity with `STACK_CLIENT_KEYS`), and survives hostile feed output (surrogates, control
+  characters, invalid UTF-8, row-count overrun, last-resort guard → exit 0). **Close-out measured:**
+  against the production board the hook prints `1 open plan(s)`, the open row unquoted, and
+  `last closed: CR-MDB-018` (python3.14 and 3.11). **AC "All" record (VERIFY F3/F4):** migrated
+  tests (`64c3a97`) — `tests/test_hooks.py`
+  `AmbientBoardStatusScriptTest.test_surfaces_cr_cycle_lastruncr_from_board_present_v1_envelope` →
+  `…_lastclosedcr_from_board_present_v2_envelope`,
+  `…test_no_plan_filed_feed_surfaces_definitive_empty_note_not_unavailable`,
+  `…test_status_unavailable_warning_feed_surfaces_degradation_note_not_no_plan`;
+  `tests/test_ambient_manifest_discovery.py` —
+  `test_s1_manifest_client_for_the_cwd_stack_is_run_with_status_and_rendered`,
+  `test_s1_marker_is_found_walking_up_from_a_nested_cwd`,
+  `test_s1_nearest_marker_wins_over_an_ancestor_marker`,
+  `test_s1_manifest_client_path_with_a_tilde_is_expanded_under_home`,
+  `test_s1_manifest_client_is_run_even_when_install_toml_names_another`,
+  `test_s2_manifest_with_extra_unknown_keys_still_resolves`,
+  `test_s1_fixture_envelope_is_a_valid_feed_through_the_override_seam`,
+  `test_s4_real_hook_renders_the_board_from_the_manifest_client`,
+  `test_s3_hook_marker_table_covers_every_recognised_marker`,
+  `test_s1_each_recognised_marker_runs_its_own_manifest_key`,
+  `test_s2_no_stack_marker_degrades_and_guesses_no_stack`. The "All" sandboxing/`modelb_axi.toon`
+  criterion holds for the new and discovery modules; `tests/test_hooks.py`'s three
+  `AmbientBoardStatusScriptTest` fixtures still load the Crucible checkout's `toon.py` — excepted here,
+  CR-MDB-032 §S1's sweep. Left as specified (VERIFY F5): the comma split is not quote-aware (the four
+  fields cannot contain commas); any status other than `closed` counts as open; python wins over a
+  sketch in the same folder (table order, unspecified). Crucible told of the open-plans
+  document/verb mismatch (#1389, FYI).
