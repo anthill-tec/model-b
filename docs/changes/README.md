@@ -631,3 +631,11 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   already exists (Crucible publishes there), and a PyPI account exists. The release's PyPI upload
   (CR-MDB-038) and npm publish of `@anthill-tec/modelb-pi` (CR-MDB-029) wait on no account setup —
   only the credentials supplied at publish time.
+- 2026-09-24 — **Release automation + public repository (user rulings):** `.github/workflows/release.yml`
+  publishes a pushed release tag (GitHub Release via `RELEASE_PAT`, PyPI and npm via Trusted
+  Publishing, npm with provenance) — no CR, inside the existing git-flow release and no-mistakes gate.
+  `anthill-tec/model-b` becomes public under the MIT license. **Release doc review:** once public,
+  CR-MDB-038's "no project URLs while private" no longer applies — decide whether `pyproject.toml`
+  gains Homepage/Repository URLs, and whether the git-workflow release steps (written as manual
+  uploads by 038/029) should say the workflow publishes. Maintainer setup list:
+  `docs/research/release-automation-crucible-procedure.md`.
