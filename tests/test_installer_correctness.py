@@ -168,6 +168,26 @@ _FAKE_UV_SCRIPT_WITH_INSTALL_MARKER = (
     "exit 0\n"
 )
 
+
+def _fake_uv_script_placing_sandesh(bin_dir: str) -> str:
+    """CR-MDB-037 \u00a7S5 migration: ``_FAKE_UV_SCRIPT_WITH_INSTALL_MARKER``
+    that also leaves ``sandesh`` on the sandbox PATH, as a real successful
+    ``uv tool install sandesh-relay`` does -- a confirmed install is now
+    RE-PROBED before ``installed`` is recorded. The real ``chmod`` is
+    resolved on the test's PATH (the sandbox PATH holds only ``bin_dir``)."""
+    chmod = shutil.which("chmod")
+    if chmod is None:
+        raise unittest.SkipTest("chmod not available to build the uv shim")
+    sandesh = Path(bin_dir) / "sandesh"
+    return _FAKE_UV_SCRIPT_WITH_INSTALL_MARKER.replace(
+        "    fi\n    exit 0\n",
+        "    fi\n"
+        f"    printf '#!/bin/sh\\nexit 0\\n' > \"{sandesh}\"\n"
+        f"    \"{chmod}\" 755 \"{sandesh}\"\n"
+        "    exit 0\n",
+        1,
+    )
+
 _INIT_REQUIRED_FLAGS = [
     "--name", "X", "--token", "x", "--acronym", "XX",
     "--mode", "solo", "--repo-shape", "standalone",
@@ -2113,10 +2133,13 @@ class StdoutCarriesOnlyEnvelopeAllHumanLinesOnStderrTest(unittest.TestCase):
         marker_fd, self._marker_path = tempfile.mkstemp(prefix="c3-s6-uv-install-marker-")
         os.close(marker_fd)
         os.remove(self._marker_path)  # must NOT exist yet -- proves invocation
-        _write_fake_executable(self._tmp_bin, "uv", _FAKE_UV_SCRIPT_WITH_INSTALL_MARKER)
+        _write_fake_executable(
+            self._tmp_bin, "uv", _fake_uv_script_placing_sandesh(self._tmp_bin),
+        )
         # Deliberately NO fake `sandesh` binary -- triggers the proactive
         # install path, so BOTH `deps:` lines print (pre-remediation +
-        # post-install update).
+        # post-install update). CR-MDB-037 \u00a7S5 migration: the shim puts
+        # `sandesh` on PATH so the re-probe records `installed`.
 
     def tearDown(self):
         for root in (self._tmp_home, self._tmp_bin, self._tmp_target_root):

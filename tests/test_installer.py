@@ -161,6 +161,32 @@ _FAKE_SANDESH_SCRIPT = (
 )
 
 
+def _fake_uv_script_placing_sandesh(bin_dir: str) -> str:
+    """CR-MDB-037 \u00a7S5 migration: a confirmed Sandesh install is RE-PROBED
+    before `installed` is recorded, so a fake `uv` standing for a
+    SUCCESSFUL install must leave `sandesh` on the sandbox PATH -- as the
+    real `uv tool install sandesh-relay` does. Same marker contract as
+    ``_FAKE_UV_SCRIPT``; the real `chmod` is resolved on the TEST's PATH
+    (the sandbox PATH holds only this bin dir)."""
+    chmod = shutil.which("chmod")
+    if chmod is None:
+        raise unittest.SkipTest("chmod not available to build the uv shim")
+    sandesh = Path(bin_dir) / "sandesh"
+    return (
+        "#!/bin/sh\n"
+        'if [ "$1" = "tool" ] && [ "$2" = "install" ]; then\n'
+        '    if [ -n "$FAKE_UV_INSTALL_MARKER" ]; then\n'
+        '        printf \'%s\\n\' "$*" > "$FAKE_UV_INSTALL_MARKER"\n'
+        "    fi\n"
+        f"    printf '#!/bin/sh\\nexit 0\\n' > \"{sandesh}\"\n"
+        f"    \"{chmod}\" 755 \"{sandesh}\"\n"
+        "    exit 0\n"
+        "fi\n"
+        'echo "uv 0.0.0-fake"\n'
+        "exit 0\n"
+    )
+
+
 class PackageSkeletonTest(unittest.TestCase):
     """AC1 -- `pyproject.toml` (package `modelb-axi` + console script
     `modelb-axi`) and `modelb_axi/` module dir skeleton."""
@@ -627,9 +653,14 @@ class SandeshAbsentInstallViaUvShimTest(unittest.TestCase):
             os.remove(self._marker_path)
 
     def test_sandesh_absent_yes_invokes_uv_tool_install_sandesh_relay_via_shim(self):
-        _write_fake_executable(self._tmp_bin, "uv", _FAKE_UV_SCRIPT)
+        _write_fake_executable(
+            self._tmp_bin, "uv", _fake_uv_script_placing_sandesh(self._tmp_bin),
+        )
         # No fake `sandesh` -- absent, which must trigger the proactive
-        # install path under this chosen contract.
+        # install path under this chosen contract. CR-MDB-037 \u00a7S5
+        # migration: the shim now leaves `sandesh` on PATH, as a real
+        # successful install does -- the re-probe records `installed`
+        # only when it finds it.
         result = _run_module(
             "--yes", "--harnesses", "claude-code",
             "--modelb-home", self._tmp_home,
