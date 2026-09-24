@@ -569,6 +569,7 @@ def _freshness_fields(home: Path, warnings: list[str]) -> dict:
     )
     rerun = _reinstall_command(
         home, target_root, install.get("stacks") if isinstance(install, dict) else None,
+        install.get("harnesses") if isinstance(install, dict) else None,
     )
     if found["stale"]:
         _say(f"    stale: re-run `{rerun}` to refresh them")
@@ -580,20 +581,28 @@ def _freshness_fields(home: Path, warnings: list[str]) -> dict:
     return {"freshness": freshness, **found}
 
 
-def _reinstall_command(home: Path, target_root: str, stacks) -> str:
+def _reinstall_command(home: Path, target_root: str, stacks, harnesses=None) -> str:
     """The re-run that refreshes an install: ``--reinstall`` with the
     recorded target root and stacks (a bare ``--reinstall`` would deploy
     nothing, and ``--stacks`` would otherwise default to all), plus
     ``--modelb-home`` whenever ``home`` is not the default one \u2014 so the
-    re-run acts on this install. Paths are shell-quoted."""
+    re-run acts on this install \u2014 and the recorded ``--harnesses`` (the
+    re-run would otherwise target whatever is on ``PATH`` now). Paths are
+    shell-quoted."""
     if isinstance(stacks, list) and stacks and all(isinstance(s, str) for s in stacks):
         stacks_csv = ",".join(stacks)
     else:
         stacks_csv = "<stacks>"
     home_flag = ("" if home == _default_modelb_home()
                  else f"--modelb-home {shlex.quote(str(home))} ")
+    harnesses_flag = (
+        f" --harnesses {shlex.quote(','.join(harnesses))}"
+        if isinstance(harnesses, list) and harnesses
+        and all(isinstance(h, str) for h in harnesses) else ""
+    )
     return (f"modelb-axi --reinstall {home_flag}"
-            f"--target-root {shlex.quote(target_root)} --stacks {stacks_csv}")
+            f"--target-root {shlex.quote(target_root)} --stacks {stacks_csv}"
+            f"{harnesses_flag}")
 
 
 def main(argv: list[str] | None = None) -> int:
