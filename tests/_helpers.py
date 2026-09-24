@@ -14,8 +14,10 @@ look-alikes behave differently they stay two helpers — ``read_text`` (strict U
 Stdlib only.
 """
 
+import ast
 import json
 import os
+import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -189,4 +191,41 @@ def write_executable(bin_dir, name: str, body: str) -> Path:
     path.write_text(body, encoding="utf-8")
     path.chmod(0o755)
     return path
+
+
+def client_source(key: str, log_path: Path, envelope: str) -> str:
+    """An executable fixture client: logs its key + argv to ``log_path``, prints
+    ``envelope``, exits 0."""
+    return (
+        f"#!{sys.executable}\n"
+        "import json, sys\n"
+        f"with open({str(log_path)!r}, 'a', encoding='utf-8') as fh:\n"
+        f"    fh.write(json.dumps({{'key': {key!r}, 'argv': sys.argv[1:]}}) + '\\n')\n"
+        f"print({envelope!r})\n"
+    )
+
+
+# ------------------------------------------------------------------ source scans ----
+
+def docstring_nodes(tree: ast.AST) -> set[int]:
+    """``id()`` of every docstring constant (module, function, class) in ``tree``."""
+    ids = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef,
+                             ast.ClassDef)):
+            body = getattr(node, "body", [])
+            if (body and isinstance(body[0], ast.Expr)
+                    and isinstance(body[0].value, ast.Constant)
+                    and isinstance(body[0].value.value, str)):
+                ids.add(id(body[0].value))
+    return ids
+
+
+def code_string_literals(source: str) -> list[str]:
+    """Every string constant in ``source`` except docstrings."""
+    tree = ast.parse(source)
+    skip = docstring_nodes(tree)
+    return [n.value for n in ast.walk(tree)
+            if isinstance(n, ast.Constant) and isinstance(n.value, str)
+            and id(n) not in skip]
 
