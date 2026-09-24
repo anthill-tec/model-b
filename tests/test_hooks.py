@@ -47,11 +47,12 @@ PINNED CONTRACTS (RED-authored, since none of this exists in code yet):
    fixtures. When unset, absent, or failing, the hook must still exit 0 FAST
    with a degradation note (a SessionStart hook must never block a session).
 
-   Envelope shape pin: per `crucible:clients/STATUS-CONTRACT.md` VERSION
-   1.0.0 (merged CR-CRU-035, read in full before writing these tests), a
+   Envelope shape pin: per `STATUS-CONTRACT.md` DOCUMENT VERSION 2.0.0
+   (MIGRATED CR-MDB-019 from 1.0.0 / CR-CRU-035; the number is the
+   contract document's own semver, never a Crucible product release), a
    real `status` feed's stdout is a TOON-AXI envelope (`clients/toon.py`
    `encode()`) shaped
-   ``axi: {verb, ok, plans[]{cr,wave,status,activeCycleId}, lastRunCr,
+   ``axi: {verb, ok, plans[]{cr,wave,status,activeCycleId}, lastClosedCr,
    count, help[], context{...}, warnings[]{code,detail}}``. Three DISTINCT
    exit-0 terminal states matter here: (a) board present, (b) no plan filed
    -- `ok:true`, empty `plans`/`count:0`, `warnings:[]` (no signal), (c)
@@ -452,7 +453,7 @@ def _toon_encode(obj):
 
 def _fake_status_feed_script(envelope_axi_fields):
     """Build the Python source for a fake $MODELB_STATUS_CMD executable that
-    prints a STATUS-CONTRACT.md v1.0.0 TOON-AXI `status` envelope built from
+    prints a STATUS-CONTRACT.md 2.0.0 TOON-AXI `status` envelope built from
     `envelope_axi_fields` (the inner `axi: {...}` dict) and exits 0 -- a real
     `status` feed NEVER exits non-zero (contract-compliant tolerant degrade)."""
     encoded = _toon_encode({"axi": envelope_axi_fields})
@@ -466,7 +467,7 @@ class AmbientBoardStatusScriptTest(unittest.TestCase):
     """AC3 -- ambient-board-status. Pins $MODELB_STATUS_CMD as the override
     naming an executable status-feed command (dependency-injection seam,
     mirrors tests/test_installer.py::_write_fake_executable). Per
-    STATUS-CONTRACT.md 1.0.0 (CR-CRU-035): a real feed always exits 0 and
+    STATUS-CONTRACT.md 2.0.0 (CR-MDB-019): a real feed always exits 0 and
     reports one of THREE definitive terminal states -- board present, no
     plan filed (empty + no warning), or tolerant-degrade `status-unavailable`
     (empty + a structured warning) -- and the hook must render each
@@ -486,14 +487,18 @@ class AmbientBoardStatusScriptTest(unittest.TestCase):
         path.chmod(0o755)
         return path
 
-    def test_surfaces_cr_cycle_lastruncr_from_board_present_v1_envelope(self):
+    def test_surfaces_cr_cycle_lastclosedcr_from_board_present_v2_envelope(self):
+        """MIGRATED (CR-MDB-019 \u00a7S2): was
+        ``test_surfaces_cr_cycle_lastruncr_from_board_present_v1_envelope``;
+        the 2.0.0 envelope carries ``lastClosedCr`` (``lastRunCr`` is gone)
+        and the hook prints it as ``last closed: <id>``."""
         path = SCRIPTS_DIR / "ambient-board-status"
         self.assertTrue(path.is_file(), f"expected protocol script at {path}")
         fake = self._write_fake_status_cmd(_fake_status_feed_script({
             "verb": "status",
             "ok": True,
             "plans": [{"cr": "CR-MDB-015", "wave": 3, "status": "open", "activeCycleId": "C1"}],
-            "lastRunCr": "CR-MDB-014",
+            "lastClosedCr": "CR-MDB-014",
             "count": 1,
             "help": ["cr-close --commit"],
             "context": {"projectKey": "fixture-project-key"},
@@ -510,18 +515,23 @@ class AmbientBoardStatusScriptTest(unittest.TestCase):
         )
         self.assertIn("CR-MDB-015", result.stdout, "expected the cr value surfaced")
         self.assertIn("C1", result.stdout, "expected the activeCycleId value surfaced")
-        self.assertIn("CR-MDB-014", result.stdout, "expected the lastRunCr value surfaced")
+        self.assertIn("last closed: CR-MDB-014", result.stdout,
+                      "expected the lastClosedCr value surfaced as 'last closed: <id>'")
 
     def test_no_plan_filed_feed_surfaces_definitive_empty_note_not_unavailable(self):
+        """MIGRATED (CR-MDB-019 \u00a7S3): the fixture carries ``lastClosedCr``
+        (was ``lastRunCr``), and "no open plan" is no longer an accepted
+        spelling -- it is now the DISTINCT all-plans-closed note, so the
+        no-plan-filed state must say "no plan filed", never "no open plan"."""
         path = SCRIPTS_DIR / "ambient-board-status"
         self.assertTrue(path.is_file(), f"expected protocol script at {path}")
-        # STATUS-CONTRACT.md 1.0.0 "no plan filed" state: ok:true, empty
+        # STATUS-CONTRACT.md 2.0.0 "no plan filed" state: ok:true, empty
         # plans/count:0, warnings:[] -- NO status-unavailable signal.
         fake = self._write_fake_status_cmd(_fake_status_feed_script({
             "verb": "status",
             "ok": True,
             "plans": [],
-            "lastRunCr": None,
+            "lastClosedCr": None,
             "count": 0,
             "help": ["plan-file --cr <CR-ID> --wave <n>"],
             "context": {"projectKey": "fixture-project-key"},
@@ -533,9 +543,14 @@ class AmbientBoardStatusScriptTest(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, f"got {result.returncode}, stderr={result.stderr!r}")
         lowered = result.stdout.lower()
-        self.assertTrue(
-            any(kw in lowered for kw in ("no plan", "0 plan", "no open plan")),
+        self.assertIn(
+            "no plan filed", lowered,
             f"expected a definitive 'no plan filed' note; got {result.stdout!r}",
+        )
+        self.assertNotIn(
+            "no open plan", lowered,
+            "the 'no plan filed' state must not be blurred with the "
+            "all-plans-closed 'no open plan' note (CR-MDB-019 \u00a7S3)",
         )
         self.assertNotIn(
             "unavailable", lowered,
@@ -546,14 +561,15 @@ class AmbientBoardStatusScriptTest(unittest.TestCase):
     def test_status_unavailable_warning_feed_surfaces_degradation_note_not_no_plan(self):
         path = SCRIPTS_DIR / "ambient-board-status"
         self.assertTrue(path.is_file(), f"expected protocol script at {path}")
-        # STATUS-CONTRACT.md 1.0.0 tolerant-degrade state: ok:true, empty
+        # STATUS-CONTRACT.md 2.0.0 tolerant-degrade state: ok:true, empty
         # plans/count:0 (same shape as "no plan filed"), but the
         # status-unavailable warning is the signal that distinguishes it.
+        # MIGRATED (CR-MDB-019): the fixture carries lastClosedCr, not lastRunCr.
         fake = self._write_fake_status_cmd(_fake_status_feed_script({
             "verb": "status",
             "ok": True,
             "plans": [],
-            "lastRunCr": None,
+            "lastClosedCr": None,
             "count": 0,
             "help": ["check the Crucible server is running / reachable at http://localhost:3849"],
             "context": {"projectKey": "fixture-project-key"},
