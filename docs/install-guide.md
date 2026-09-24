@@ -79,16 +79,16 @@ outcome `stacks_rejected` and the list of supported stacks.
 For each stack you choose, the installer:
 
 - deploys that stack's test-reporting skill, `crucible-report-<stack>` (`quarkus` and `java`
-  share `crucible-report-java`);
+  share `crucible-report-java`); `rust` also deploys the `code-health` skill;
 - checks the stack's toolchain and its Crucible client, one `stack <name>:` line each (see
   [Reading the pre-flight](#reading-the-pre-flight));
 - records the choice in `install.toml`.
 
 A stack does not install its toolchain: a missing tool is reported, and where the tool's own
 installer can run without elevated privileges the installer offers to run it — nothing more.
-It does not install Crucible's clients either. Every other skill, the hook scripts and the
-workflow scripts are deployed whatever stacks you choose, and a project's own stacks are chosen
-separately, when you create it with `modelb-axi init --stacks`.
+It does not install Crucible's clients either. The hook scripts, the workflow scripts and every
+other skill but `code-health` are deployed whatever stacks you choose, and a project's own
+stacks are chosen separately, when you create it with `modelb-axi init --stacks`.
 <!-- install-guide:end choosing-stacks -->
 
 <!-- install-guide:begin reading-the-pre-flight -->
@@ -301,9 +301,9 @@ stack you want, not only the new one. Once installed, re-running needs `--reinst
 modelb-axi --yes --harnesses pi --target-root ~ --reinstall --stacks python,rust
 ```
 
-This deploys the new stack's `crucible-report-<stack>` skill, runs the new `stack <name>:`
-checks, and records the new list in `install.toml`. A `--reinstall` under `--yes` without
-`--stacks` selects all six stacks.
+This deploys the new stack's `crucible-report-<stack>` skill (for `rust`, the `code-health`
+skill too), runs the new `stack <name>:` checks, and records the new list in `install.toml`. A
+`--reinstall` under `--yes` without `--stacks` selects all six stacks.
 
 A project keeps its own list of stacks. To change it, run from the project's root:
 

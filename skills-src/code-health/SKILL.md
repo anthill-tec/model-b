@@ -50,7 +50,7 @@ python3 ~/.agents/scripts/rust-code-health.py ledger assign --slice <CR-id> --id
 # transition: when the CR's first cycle activates on the board
 python3 ~/.agents/scripts/rust-code-health.py ledger sync --slice <CR-id> --db-state IN_PROGRESS
 
-# transition: after the merge is closed with ~/.crucible/clients/rust-crucible.py cr-close --commit <merge sha>
+# transition: after the merge is closed with ~/.crucible/clients/rust-crucible.py cr-close --cr <CR-id> --commit <merge sha> --agent <orchestrator-id>
 python3 ~/.agents/scripts/rust-code-health.py ledger sync --slice <CR-id> --db-state COMPLETED --commit <merge sha>
 # an aborted or superseded CR: --db-state ABORTED / --db-state SUPERSEDED, likewise
 ```
@@ -59,6 +59,9 @@ python3 ~/.agents/scripts/rust-code-health.py ledger sync --slice <CR-id> --db-s
   exists; elsewhere it skips — always pass `--slice` and `--db-state`.
 - The ledger is multi-domain: `--domain cull|temporal|<name>` selects the
   file (`cull` is the default; `<name>` writes `<name>-audit-ledger.jsonl`).
+- `snapshot`, `query ledger` and ratification read the cull domain's ledger
+  file, so a CR synced under another domain (e.g. `temporal`) is not
+  ratified by a post snapshot.
 
 Dataset (all git-committed, lean-ctx-indexed, RAG-able):
 `docs/research/assets/` — living `crate_map_baseline.{json,md}`, rendered map
