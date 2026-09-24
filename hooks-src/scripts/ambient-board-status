@@ -28,8 +28,9 @@ CR-MDB-036), finds the project's stack from the nearest stack marker walking
 up from the cwd, and runs `clients[<key>] status` (CR-MDB-018 §S1). The
 earlier `[install].clients_dir` lookup in `$MODELB_HOME/install.toml` is
 retired: nothing wrote that key, and a copy would go stale. Every unresolved
-case (manifest absent, unparsable, without a `clients` object, without the
-stack's key, or naming a missing file; or no stack marker) is a degrade
+case (manifest absent or not a readable file, unparsable, without a
+`clients` object, without the stack's key, or naming a missing/unreadable
+client; or no stack marker, or an unavailable cwd) is a degrade
 note; no other location is ever tried (§S2). This is a SessionStart hook: it
 NEVER blocks, NEVER exits non-zero, and every subprocess is timeout-bounded.
 Self-contained, stdlib only (deployed standalone, so it carries its own
@@ -41,6 +42,7 @@ import json
 import os
 import re
 import shlex
+import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -73,13 +75,34 @@ class _Unresolved(Exception):
 
 def _find_stack() -> tuple[str, str] | None:
     """(stack, manifest_key) for the nearest marker walking up from the cwd,
-    or None when no marker is found (no stack is ever guessed)."""
-    directory = Path.cwd()
+    or None when no marker is found (no stack is ever guessed). A cwd that
+    cannot be read (e.g. deleted under the session) is a degrade note."""
+    try:
+        directory = Path.cwd()
+    except OSError as exc:
+        raise _Unresolved(
+            f"the working directory is unavailable ({exc}), so no stack "
+            "marker can be found and no Crucible client applies (set "
+            "MODELB_STATUS_CMD to override)") from exc
     for candidate in (directory, *directory.parents):
         for marker, stack, key in _STACK_MARKERS:
-            if (candidate / marker).is_file():
+            # os.path.isfile swallows every OSError on every Python version
+            # (Path.is_file raises e.g. PermissionError on 3.11/3.12).
+            if os.path.isfile(candidate / marker):
                 return stack, key
     return None
+
+def _file_problem(path: Path) -> str | None:
+    """None when ``path`` is a regular file; otherwise "absent" (genuinely
+    not found) or "unreadable" (exists but is not a readable regular file:
+    a directory, an unreadable parent, ...). Never raises."""
+    try:
+        mode = os.stat(path).st_mode
+    except (FileNotFoundError, NotADirectoryError):
+        return "absent"
+    except (OSError, ValueError):
+        return "unreadable"
+    return None if stat.S_ISREG(mode) else "unreadable"
 
 
 def _manifest_note(problem: str) -> str:
@@ -102,8 +125,11 @@ def _discover_feed_argv() -> list[str]:
         )
     stack, key = found
     manifest = Path.home() / _MANIFEST_RELPATH
-    if not manifest.is_file():
+    problem = _file_problem(manifest)
+    if problem == "absent":
         raise _Unresolved(_manifest_note("is absent"))
+    if problem is not None:
+        raise _Unresolved(_manifest_note("is not a readable file"))
     try:
         body = json.loads(manifest.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -115,10 +141,15 @@ def _discover_feed_argv() -> list[str]:
     if not isinstance(client, str) or not client:
         raise _Unresolved(_manifest_note(
             f"has no {key!r} client for the {stack} stack"))
-    client_path = Path(client)
-    if not client_path.is_file():
+    client_path = Path(client).expanduser()
+    problem = _file_problem(client_path)
+    if problem == "absent":
         raise _Unresolved(_manifest_note(
             f"names a missing {key!r} client ({client_path})"))
+    if problem is not None:
+        raise _Unresolved(_manifest_note(
+            f"names a {key!r} client that is not a readable file "
+            f"({client_path})"))
     return [sys.executable, str(client_path), "status"]
 
 
