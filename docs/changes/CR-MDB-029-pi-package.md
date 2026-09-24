@@ -67,12 +67,17 @@ marked regions of `docs/install-guide.md` (CR-MDB-037 §S1) rendered by `generat
 ### §S2 — The watcher supervisor extension
 `extensions/sandesh-watcher.ts` registers a tool, `sandesh_watcher`, with actions `start`
 (address, project), `status` and `stop`, and a `/watcher status|stop` command. `start` spawns
-`sandesh notify --to <address> --project <project>` as a child and reports it ready only when the
-`watching <address>` banner appears. On exit it follows the table above:
+`sandesh notify --to <address> --project <project>` as a child with `PYTHONUNBUFFERED=1` in its
+environment — Sandesh prints its banner with an unflushed `print()`, so a piped child would hold it
+until exit (amended at C5, VERIFY finding 1) — and reports it ready only when the
+`watching <address>` banner appears. **The watcher runs at all times** (user ruling, amended at C5):
+on exit it follows the table above, and only `stop` or a terminal exit ends it.
 
-- `0`: wakes the session with one message naming the address and the fetch to run
-  (`sandesh fetch --project <p> --to <address>`), and leaves the watcher stopped until `start` is
-  called again (the session fetches, then restarts it);
+- `0`: wakes the session with one message naming the address, the unread message ids Sandesh
+  printed, and the fetch to run, with the address shell-quoted
+  (`sandesh fetch --project <p> --to '<address>'`); then relaunches at once. A relaunch that exits
+  `0` again with **the same** message ids does not wake the session again and retries every 30
+  seconds until the mail is fetched and the banner reappears; **new** ids wake the session again;
 - `2`: relaunches silently; three `2` exits within one minute surface instead of looping;
 - `1`, `3`, `4`, `5`, `128+n`: stop, and surface the code and its meaning, never relaunching.
 
@@ -92,9 +97,11 @@ never the tool (DN §D18).
 
 ### §S4 — The release publishes the package
 `skills-src/git-workflow/SKILL.md` §Releases gains a project-neutral step for a Pi package: after
-the version is set, publish to npm with credentials the user supplies at publish time, then install
-the published version into an isolated Pi agent directory (`PI_CODING_AGENT_DIR`) and confirm the
-extension loads.
+the version is set, publish to npm with credentials the user supplies at publish time (a scoped
+package with `--access public`, amended at C5), then install the published version into an isolated
+Pi agent directory (`PI_CODING_AGENT_DIR`) and confirm the extension loads. The post-release
+maintenance gains the live check: after the published package is installed into the maintainer's
+real Pi configuration, start the watcher and confirm a Sandesh message wakes the session.
 
 ## Acceptance criteria
 
@@ -110,9 +117,13 @@ extension loads.
 - [ ] Loaded through the `jiti` package with a fake `sandesh` on PATH, the extension registers the
       `sandesh_watcher` tool and the `/watcher` command.
 - [ ] One test per exit code, each with a fake `sandesh notify` that prints the banner then exits:
-      `0` → exactly one wake message naming the fetch, no relaunch; `2` → a relaunch, no message;
-      three `2`s within a minute → surfaced, no fourth launch; `1`, `3`, `4`, `5` and a signal →
-      surfaced with the code's meaning, no relaunch.
+      `0` → exactly one wake message naming the ids and the shell-quoted fetch, and a relaunch;
+      `0` again with the same ids → no second wake, relaunches keep going; `0` with new ids → a
+      second wake; `2` → a relaunch, no message; three `2`s within a minute → surfaced, no fourth
+      launch; `2`s spread over more than a minute → keep relaunching; `1`, `3`, `4`, `5` and a signal
+      → surfaced with the code's meaning, no relaunch.
+- [ ] The test fake buffers its stdout the way a Python `print()` into a pipe does (unless
+      `PYTHONUNBUFFERED` is set), so a `start` that omits the variable hangs and the test fails.
 - [ ] `start` reports ready only after the banner; a `start` while one runs spawns nothing; `stop`
       terminates the child.
 
@@ -126,13 +137,16 @@ extension loads.
 
 ### §S4
 - [ ] `skills-src/git-workflow/SKILL.md` §Releases names the Pi package step: npm publish with
-      user-supplied credentials, then an isolated install confirming the extension loads.
+      user-supplied credentials and `--access public`, then an isolated install confirming the
+      extension loads; and the post-release live check (watcher started in the real configuration,
+      a Sandesh message wakes the session).
 
 ### Close-out
-- [ ] **Measured, not assumed:** `pi install <local path>/pi-package` into an isolated agent
-      directory loads the extension; in this session, `sandesh_watcher start` for
-      `Mainline - ModelB` reports ready, and a Sandesh message to that address wakes the session —
-      recorded with the transcript reference.
+- [ ] **Measured, not assumed, without touching the real configuration:** Pi run headless with
+      `PI_CODING_AGENT_DIR` pointed at a temp directory, the local package installed there, loads the
+      extension and registers `sandesh_watcher` and `/watcher` — recorded with the transcript
+      reference. The live wake is a post-release step (§S4), never a CR step (user ruling, amended
+      at C5: installing into the real configuration mid-CR would change the live environment).
 
 ## Risk
 
