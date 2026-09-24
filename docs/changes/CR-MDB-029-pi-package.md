@@ -27,7 +27,7 @@ CR-MDB-030 §S8 (loading a `.ts` extension in a test through the `jiti` package)
 
   | Code | Meaning | Response |
   |---|---|---|
-  | `0` | unread `to` mail is waiting | wake the session; do not relaunch until the mail is fetched, since a relaunch with the mail unread returns `0` again at once |
+  | `0` | unread `to` mail is waiting | wake the session once, then relaunch; a relaunch with the same unread ids returns `0` again at once, so it never re-wakes for them and retries until they are fetched |
   | `1` | usage or configuration error | stop; surface the error |
   | `2` | `--timeout` expired with no mail (or the DB stayed locked until the deadline) | relaunch silently |
   | `3` | the project was tombstoned | stop; surface; never relaunch |
