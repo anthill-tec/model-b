@@ -82,6 +82,11 @@ _STACK_MARKERS = (
     ("{dir}.ino", "arduino", "arduino"),
 )
 
+#: A surrogate or a C0/DEL/C1 control character: never rendered from a
+#: decoded cell (a lone surrogate cannot be printed; ESC would reach the
+#: session context as a terminal escape).
+_UNSAFE_CHARS = re.compile(r"[\x00-\x1f\x7f-\x9f\ud800-\udfff]")
+
 
 class _Unresolved(Exception):
     """The feed could not be resolved; the message is the degrade note."""
@@ -109,6 +114,7 @@ def _find_stack() -> tuple[str, str] | None:
             if os.path.isfile(candidate / marker):
                 return stack, key
     return None
+
 
 def _file_problem(path: Path) -> str | None:
     """None when ``path`` is a regular file; otherwise "absent" (genuinely
@@ -173,14 +179,20 @@ def _discover_feed_argv() -> list[str]:
 
 def _unquote(cell: str) -> str:
     """A cell the TOON encoder JSON-quoted (e.g. `"1"`) rendered without its
-    quotes (CR-MDB-019 §S4); any other cell is returned unchanged."""
+    quotes (CR-MDB-019 §S4); any other cell is returned unchanged. A decoded
+    value carrying a surrogate or a control character (e.g. an escaped ESC)
+    is rejected: the raw inner text is used instead, itself stripped of
+    control characters, so nothing unprintable reaches the session."""
     if len(cell) >= 2 and cell.startswith('"') and cell.endswith('"'):
         try:
             value = json.loads(cell)
         except json.JSONDecodeError:
-            return cell[1:-1]
-        return value if isinstance(value, str) else cell[1:-1]
+            value = None
+        if not isinstance(value, str) or _UNSAFE_CHARS.search(value):
+            return _UNSAFE_CHARS.sub("", cell[1:-1])
+        return value
     return cell
+
 
 def _parse_envelope(text: str) -> dict:
     """Minimal TOON-AXI reader for the status envelope contract document
@@ -197,14 +209,22 @@ def _parse_envelope(text: str) -> dict:
         table = re.match(r"(plans|warnings)\[(\d+)\]\{([^}]*)\}:", stripped)
         if table:
             key, rows, fields = table.group(1), int(table.group(2)), table.group(3).split(",")
+            header_indent = len(lines[i]) - len(lines[i].lstrip())
+            consumed = 0
             for j in range(1, rows + 1):
                 if i + j >= len(lines):
                     break
+                line = lines[i + j]
+                # A row sits deeper than its header; a table declaring more
+                # rows than it carries must not swallow the next scalars.
+                if not line.strip() or len(line) - len(line.lstrip()) <= header_indent:
+                    break
                 cells = [_unquote(c.strip()) for c in
-                         lines[i + j].strip().split(",", len(fields) - 1)]
+                         line.strip().split(",", len(fields) - 1)]
                 row = dict(zip(fields, cells))
                 (plans if key == "plans" else warnings).append(row)
-            i += rows + 1
+                consumed = j
+            i += consumed + 1
             continue
         scalar = re.match(r"lastClosedCr:\s*(.*)$", stripped)
         if scalar:
@@ -226,6 +246,11 @@ def _degrade(note: str) -> int:
 
 
 def main() -> int:
+    # Printing never raises on an unencodable character (e.g. a surrogate).
+    try:
+        sys.stdout.reconfigure(errors="backslashreplace")
+    except (AttributeError, ValueError, OSError):
+        pass  # a non-reconfigurable stdout keeps its own error policy
     # Drain the SessionStart stdin payload (unused; keeps the pipe clean).
     try:
         sys.stdin.read()
@@ -248,7 +273,8 @@ def main() -> int:
 
     try:
         result = subprocess.run(
-            argv, capture_output=True, text=True, timeout=_FEED_TIMEOUT_SECONDS,
+            argv, capture_output=True, text=True, errors="replace",
+            timeout=_FEED_TIMEOUT_SECONDS,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         return _degrade(f"status feed could not be run ({exc})")
@@ -290,5 +316,18 @@ def main() -> int:
                     f"contract document {STATUS_CONTRACT_VERSION}")
 
 
+def _run() -> int:
+    """The script entry: a last-resort guard so any unexpected Exception
+    degrades to a note and exit 0 — a session start never fails."""
+    try:
+        return main()
+    except Exception as exc:  # noqa: BLE001 — the hook must never fail
+        try:
+            return _degrade("the ambient hook hit an unexpected error "
+                            f"({type(exc).__name__}: {exc})")
+        except Exception:  # noqa: BLE001 — even the note may not print
+            return 0
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(_run())
