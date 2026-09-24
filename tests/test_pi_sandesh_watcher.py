@@ -27,6 +27,10 @@ banner), then acts:
 - ``hold N`` -- wait until ``release.<n>`` exists, then exit ``N``;
 - ``nobanner N`` -- print an error on stderr and exit ``N`` without a banner.
 
+Any plan line may be prefixed ``nomail`` (``nomail exit 0``, ``nomail mail 7``):
+the fake then prints Sandesh 0.3.5's poll line ``[notify] <time> no 'to' mail
+-- next check in 30s`` right after the banner, before acting on the rest.
+
 Like Sandesh's own ``print()`` into a pipe, the fake BUFFERS its stdout
 unless ``PYTHONUNBUFFERED`` is set: buffered, nothing reaches the pipe until
 it exits, so a ``sleep``-ing child never shows its banner (CR-MDB-029 \u00a7S2,
@@ -121,6 +125,8 @@ done
 lines=$(wc -l < "$dir/plan")
 if [ "$n" -le "$lines" ]; then line=$(sed -n "${n}p" "$dir/plan"); else line=$(sed -n "${lines}p" "$dir/plan"); fi
 set -- $line
+nomail=""
+if [ "$1" = nomail ]; then nomail=1; shift; fi
 # Sandesh's print() into a pipe is block-buffered unless PYTHONUNBUFFERED is
 # set: buffered, nothing reaches the pipe until the process exits (flush).
 buf="$dir/stdout.$n"
@@ -128,7 +134,10 @@ say() {
   if [ -n "${PYTHONUNBUFFERED:-}" ]; then printf '%s\n' "$1"; else printf '%s\n' "$1" >> "$buf"; fi
 }
 flush() { if [ -f "$buf" ]; then cat "$buf"; fi; }
-banner() { say "[notify] watching $to in $project (pid $$)"; }
+banner() {
+  say "[notify] watching $to in $project (pid $$)"
+  if [ -n "$nomail" ]; then say "[notify] 12:00:00 no 'to' mail — next check in 30s"; fi
+}
 case "$1" in
   exit) banner; flush; exit "$2" ;;
   mail)
@@ -397,6 +406,8 @@ class SandeshWatcherExitTest(SandeshWatcherTestCase):
             _start(), {"op": "waitUntil", "launches": 4, "timeoutMs": 8000},
             {"op": "sleep", "ms": 400}, {"op": "snapshot", "label": "retrying"},
             {"op": "tool", "params": {"action": "status"}}, _stop(),
+            {"op": "snapshot", "label": "stopped"}, {"op": "sleep", "ms": 1200},
+            {"op": "snapshot", "label": "after_stop"},
         ], time_scale=_TIME_SCALE)
         snap = out["snapshots"]["retrying"]
         self.assertEqual(len(out["userMessages"]), 1, f"the same ids must not wake again, got {out['userMessages']}")
@@ -406,6 +417,53 @@ class SandeshWatcherExitTest(SandeshWatcherTestCase):
         self.assertGreaterEqual(out["timerDelays"].count(RETRY_MS), 2,
                                 f"each same-ids retry waits 30 s; delays asked for: {out['timerDelays']}")
         self.assertIn(ADDRESS, self.tool_steps(out)[1]["text"] or "", "status names the retrying watcher")
+        # C6 VERIFY finding 2: stop cancels the pending 30 s retry. The retry
+        # runs at 1/100 scale (0.3 s), so 1.2 s after stop spans four of them.
+        self.assertEqual(out["snapshots"]["after_stop"]["launches"], out["snapshots"]["stopped"]["launches"],
+                         "stop must cancel the pending retry: nothing may launch after it")
+
+    def test_status_during_a_retry_does_not_name_the_dead_childs_pid(self):
+        # C6 VERIFY finding 3. Unscaled, the retry waits a real 30 s, so
+        # 0.5 s after the second exit the watcher is certainly waiting and
+        # both children are dead.
+        out = self.drive(["mail 7"], [
+            _start(), {"op": "waitUntil", "launches": 2, "timeoutMs": 5000},
+            {"op": "sleep", "ms": 500}, {"op": "snapshot", "label": "retrying"},
+            {"op": "tool", "params": {"action": "status"}}, _stop(),
+        ])
+        self.assertEqual(out["snapshots"]["retrying"]["launches"], 2, "the watcher must be waiting to retry")
+        status = self.tool_steps(out)[1]["text"] or ""
+        self.assertIn(ADDRESS, status, "status names the retrying watcher")
+        for pid in out["launches"]:
+            self.assertNotRegex(status, rf"\b{pid}\b",
+                                f"status during a retry must not name the dead child's pid {pid}: {status!r}")
+
+    def test_exit_0_without_ids_wakes_again_after_a_relaunch_reports_no_mail(self):
+        # C6 VERIFY finding 1(a): the no-readable-ids suppression clears as
+        # soon as a relaunch prints Sandesh's `no 'to' mail` line.
+        out = self.drive(["exit 0", "nomail exit 0", "alive"], [
+            _start(), {"op": "waitUntil", "launches": 3, "timeoutMs": 8000},
+            {"op": "sleep", "ms": 500}, {"op": "snapshot", "label": "watching"}, _stop(),
+        ], time_scale=_TIME_SCALE)
+        self.assertEqual(len(out["userMessages"]), 2,
+                         f"one wake per exit 0, the relaunch having reported no mail, got {out['userMessages']}")
+        self.assertEqual(out["snapshots"]["watching"]["launches"], 3)
+        self.assertNotIn(RETRY_MS, out["timerDelays"], "a wake relaunches at once, never after a retry wait")
+        self.assertEqual(out["messages"] + out["notifies"], [])
+
+    def test_exit_0_with_the_same_ids_wakes_again_after_a_relaunch_reports_no_mail(self):
+        # C6 VERIFY finding 1(b): the same-ids suppression clears the same way.
+        out = self.drive(["mail 7", "nomail mail 7", "alive"], [
+            _start(), {"op": "waitUntil", "launches": 3, "timeoutMs": 8000},
+            {"op": "sleep", "ms": 500}, {"op": "snapshot", "label": "watching"}, _stop(),
+        ], time_scale=_TIME_SCALE)
+        wakes = [m["text"] for m in out["userMessages"]]
+        self.assertEqual(len(wakes), 2, f"the mail was fetched in between, so 7 wakes again, got {wakes}")
+        for w in wakes:
+            self.assertRegex(w, r"\b7\b")
+        self.assertEqual(out["snapshots"]["watching"]["launches"], 3)
+        self.assertNotIn(RETRY_MS, out["timerDelays"], "a wake relaunches at once, never after a retry wait")
+        self.assertEqual(out["messages"] + out["notifies"], [])
 
     def test_exit_0_with_new_ids_wakes_again(self):
         out = self.drive(["mail 41", "mail 41", "mail 41,42", "alive"], [
