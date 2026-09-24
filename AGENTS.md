@@ -47,7 +47,7 @@ Key invariants:
 | `generator/` | `build.py` renders `templates/{red,green,verify,fix}.md.tmpl` × `stacks/{arduino,bun,python,quarkus}.toml` → `agents/<stack>-<role>-agent.md` (16 files) |
 | `hooks-src/` | `schema.md` (neutral schema v1) + `scripts/` (7 executable stdin/exit protocol scripts, no file extension) |
 | `scripts/` | The tool-script asset class (7 adopted + 1 generated): `worktree-flow.py`, `schedule_db.py` (TRANSITIONAL), `skill-release-gate.py`, `rust-code-health.py`, `rust-crate-map.py`, `rust-dead-scan.py`, `gate-lock.sh`, and `toon.py` generated from `modelb_axi/toon.py`. Deployed to `~/.agents/scripts/` (`deploy.TOOL_SCRIPTS_STORE_RELDIR`) — the ONLY path a Model B surface names; never a `~/.claude` path (not Model B-owned) |
-| `contracts/` | Cross-project interface contracts: `crucible-envelope.md`, `gate-lock.md`, `sandesh-cli.md`, `lean-ctx.md`, `mail-axi.md` |
+| `contracts/` | Interface contracts: `crucible-envelope.md`, `gate-lock.md`, `sandesh-cli.md`, `lean-ctx.md` (cross-project), `worktree-layout.md` (the `.worktrees/<cr>` string and its six consumers) |
 | `docs/research/` | `PRD-model-b-rationalization.md` (D1–D10) + `DN-*.md` design notes |
 | `docs/changes/` | `README.md` = CR queue (structure only) + `CR-MDB-NNN-*.md` specs |
 | `tests/` | 51 `unittest` modules; mostly structural/contract gates |

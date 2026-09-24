@@ -182,8 +182,9 @@ Every client verb emits exactly one TOON envelope on stdout:
 ### Classification context
 Runs and plan verbs are classified by the surviving `WORKFLOW_*` env carriers
 (DN-model-b-language §2, LOCKED): `WORKFLOW_ROLE` (track), `WORKFLOW_WAVE` (wave),
-`WORKFLOW_CYCLE` (cycle label — display). Model B pins these via the per-project context
-wrapper (`/tmp/claude-1000/modelb-crucible`). No env var carries a cycle id.
+`WORKFLOW_CYCLE` (cycle label — display). Model B sets these in the environment of the
+direct client call (`~/.crucible/clients/<stack>-crucible.py <verb> --agent …`). No env var
+carries a cycle id.
 
 ### Server-resolved cycle attach + no-active-cycle withhold (CR-CRU-036) — RETIRED
 
