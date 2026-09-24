@@ -42,6 +42,7 @@ from pathlib import Path
 from unittest import mock
 
 from modelb_axi import requirements as _requirements
+from tests.pi_capability_sandbox import AGENT_DIR_ENV, shared_provisioned_agent_dir, with_agent_dir
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 MODULE_DIR = REPO_ROOT / "modelb_axi"
@@ -109,6 +110,10 @@ def _run_module(*args, env_overrides=None, timeout=15, stdin=subprocess.DEVNULL)
     env["PYTHONPATH"] = str(REPO_ROOT) + (os.pathsep + existing_pp if existing_pp else "")
     if env_overrides:
         env.update(env_overrides)
+    # CR-MDB-037 migration: init now reads Pi's trust.json and settings
+    # from the agent dir (§S4) -- pin PI_CODING_AGENT_DIR to a sandbox so
+    # no run reads the real ~/.pi.
+    env.update(with_agent_dir(env_overrides))
     cmd = [sys.executable, "-m", "modelb_axi", *args]
     return subprocess.run(
         cmd, capture_output=True, text=True, timeout=timeout, stdin=stdin, env=env,
@@ -1680,6 +1685,9 @@ class ScaffoldCapabilityContractReadsRequirementsDataTest(unittest.TestCase):
         ), mock.patch.dict(
             _requirements.requirement("dispatch"),
             {"remediation": self._SENTINEL_TIER1_REMEDIATION},
+        ), mock.patch.dict(
+            # CR-MDB-037 migration: init reads Pi's agent dir (§S4 trust).
+            os.environ, {AGENT_DIR_ENV: shared_provisioned_agent_dir()},
         ), contextlib.redirect_stdout(io.StringIO()), \
                 contextlib.redirect_stderr(io.StringIO()) as err:
             exit_code = scaffold.run_init(args, Path(self._tmp_home))

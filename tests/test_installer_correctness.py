@@ -1483,6 +1483,10 @@ class MidEmissionFailureInsideWiringCompilationEmittedTest(unittest.TestCase):
         out = io.StringIO()
         with mock.patch(
             "modelb_axi.hooks.atomic_write", side_effect=_flaky_atomic_write,
+        ), mock.patch.dict(
+            # CR-MDB-037 migration: a Pi init now reads Pi's agent dir
+            # (\u00a7S4 trust) -- never the real ~/.pi.
+            os.environ, with_agent_dir(None),
         ), contextlib.redirect_stdout(out):
             exit_code = scaffold.run_init(args, Path(self._tmp_home))
         combined = out.getvalue()
