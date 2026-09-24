@@ -617,3 +617,7 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   extensions and skills. User ruling: the guide names `uv tool install modelb-axi` from PyPI (name
   free, measured). 038 makes the package publishable, rehearses on TestPyPI, puts the upload in the
   release ritual, and replaces this machine's stale July install as a pre-1.0.0 maintenance step.
+- 2026-09-24 — **Release doc review item (CR-MDB-038 C4 VERIFY suggestion 2):** the install guide is
+  the PyPI readme and links to its own headings nine times (e.g. `#warnings-what-stops-working`);
+  `readme_renderer` prefixes heading ids with `user-content-`, so those in-page links may not resolve
+  on the PyPI page. Check on the TestPyPI rehearsal page before the first PyPI upload.
