@@ -69,6 +69,11 @@ function text(t: string) {
 	return { content: [{ type: "text" as const, text: t }], details: undefined };
 }
 
+/** POSIX shell quoting: bare when safe, else single-quoted. */
+function shellQuote(s: string): string {
+	return /^[A-Za-z0-9_./:@%+=,-]+$/.test(s) ? s : `'${s.replace(/'/g, `'\\''`)}'`;
+}
+
 export default function sandeshWatcher(pi: ExtensionAPI) {
 	const watchers = new Map<string, Watcher>();
 
@@ -90,7 +95,7 @@ export default function sandeshWatcher(pi: ExtensionAPI) {
 	function wake(watcher: Watcher): void {
 		pi.sendUserMessage(
 			`Sandesh mail is waiting for "${watcher.address}". ` +
-				`Run \`sandesh fetch --project ${watcher.project} --to ${watcher.address}\` to read it, ` +
+				`Run \`sandesh fetch --project ${shellQuote(watcher.project)} --to ${shellQuote(watcher.address)}\` to read it, ` +
 				"then start the notifier again.",
 			{ deliverAs: "followUp" },
 		);
