@@ -29,6 +29,8 @@ const KILL_GRACE_MS = 3_000;
 const STDOUT_KEEP = 8_000;
 /** Sandesh 0.3.5: `[notify] <time> \u2709 N unread 'to' message(s): [12, 13]`. */
 const UNREAD_RE = /unread 'to' message\(s\): \[([^\]]*)\]/g;
+/** Sandesh 0.3.5 polled and found nothing: `[notify] <time> no 'to' mail \u2014 next check in Ns`. */
+const NO_MAIL = "no 'to' mail";
 
 const EXIT_MEANINGS: Record<number, string> = {
 	1: "usage or configuration error",
@@ -127,6 +129,12 @@ export default function sandeshWatcher(pi: ExtensionAPI) {
 		);
 	}
 
+	/** The mail was fetched (no mail reported, or a timeout): later mail wakes again (\u00a7S2, amended at C6). */
+	function clearSuppression(watcher: Watcher): void {
+		watcher.wokenIds.clear();
+		watcher.wokeUnnamed = false;
+	}
+
 	/** Exit 0: wake for ids not yet woken for and relaunch at once; else retry in 30 s. */
 	function onMail(watcher: Watcher, stdout: string): void {
 		const ids = unreadIds(stdout);
@@ -152,7 +160,7 @@ export default function sandeshWatcher(pi: ExtensionAPI) {
 			return;
 		}
 		if (code === TIMEOUT_EXIT && !signal) {
-			watcher.wokeUnnamed = false;
+			clearSuppression(watcher);
 			const now = Date.now();
 			watcher.timeouts = [...watcher.timeouts.filter((t) => now - t < TIMEOUT_WINDOW_MS), now];
 			if (watcher.timeouts.length < TIMEOUT_CAP) {
@@ -181,9 +189,14 @@ export default function sandeshWatcher(pi: ExtensionAPI) {
 			let stderr = "";
 			let ended = false;
 			let bannerSeen = false;
+			let noMailSeen = false;
 			const banner = `watching ${watcher.address}`;
 			child.stdout?.on("data", (chunk: Buffer) => {
 				stdout = (stdout + chunk.toString()).slice(-STDOUT_KEEP);
+				if (!noMailSeen && stdout.includes(NO_MAIL)) {
+					noMailSeen = true;
+					clearSuppression(watcher);
+				}
 				if (!bannerSeen && stdout.includes(banner)) {
 					bannerSeen = true;
 					watcher.ready = true;
