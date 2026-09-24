@@ -567,7 +567,7 @@ def _freshness_fields(home: Path, warnings: list[str]) -> dict:
         + ", ".join(f"{state}={len(paths)}" for state, paths in found.items())
     )
     rerun = _reinstall_command(
-        target_root, install.get("stacks") if isinstance(install, dict) else None,
+        home, target_root, install.get("stacks") if isinstance(install, dict) else None,
     )
     if found["stale"]:
         _say(f"    stale: re-run `{rerun}` to refresh them")
@@ -579,16 +579,20 @@ def _freshness_fields(home: Path, warnings: list[str]) -> dict:
     return {"freshness": freshness, **found}
 
 
-def _reinstall_command(target_root: str, stacks) -> str:
+def _reinstall_command(home: Path, target_root: str, stacks) -> str:
     """The re-run that refreshes an install: ``--reinstall`` with the
     recorded target root and stacks (a bare ``--reinstall`` would deploy
-    nothing, and ``--stacks`` would otherwise default to all)."""
+    nothing, and ``--stacks`` would otherwise default to all), plus
+    ``--modelb-home`` whenever ``home`` is not the default one \u2014 so the
+    re-run acts on this install."""
     if isinstance(stacks, list) and stacks and all(isinstance(s, str) for s in stacks):
         stacks_csv = ",".join(stacks)
     else:
         stacks_csv = "<stacks>"
-    return (f"modelb-axi --reinstall --target-root {target_root} "
-            f"--stacks {stacks_csv}")
+    home_flag = ("" if home == _default_modelb_home()
+                 else f"--modelb-home {home} ")
+    return (f"modelb-axi --reinstall {home_flag}"
+            f"--target-root {target_root} --stacks {stacks_csv}")
 
 
 def main(argv: list[str] | None = None) -> int:
