@@ -21,20 +21,30 @@ A fourth, hook-local defense-in-depth case — the feed command itself is
 missing/broken/hanging — ALSO degrades to exit 0 fast.
 
 Feed resolution: $MODELB_STATUS_CMD (the COMPLETE feed command, shell-split —
-the dependency-injection override) wins; otherwise the discovery convention —
-the installed clients dir from `$MODELB_HOME/install.toml` plus the cwd's
-stack marker — resolves `<stack>-crucible.py status`; no resolution is itself
-a degrade note. This is a SessionStart hook: it NEVER blocks, NEVER exits
-non-zero, and every subprocess is timeout-bounded. Self-contained, stdlib
-only; zero workflow-cycle env coupling.
+the dependency-injection override) wins; otherwise the hook reads Crucible's
+own released-client manifest `~/.crucible/crucible-clients.json` (written by
+Crucible's installer; the same file pre-flight judges Crucible by,
+CR-MDB-036), finds the project's stack from the nearest stack marker walking
+up from the cwd, and runs `clients[<key>] status` (CR-MDB-018 §S1). The
+earlier `[install].clients_dir` lookup in `$MODELB_HOME/install.toml` is
+retired: nothing wrote that key, and a copy would go stale. Every unresolved
+case (manifest absent or not a readable file, unparsable, without a
+`clients` object, without the stack's key, or naming a missing/unreadable
+client; or no stack marker, or an unavailable cwd) is a degrade
+note; no other location is ever tried (§S2). This is a SessionStart hook: it
+NEVER blocks, NEVER exits non-zero, and every subprocess is timeout-bounded.
+Self-contained, stdlib only (deployed standalone, so it carries its own
+marker -> manifest-key table, kept in parity with pre-flight's
+`STACK_CLIENT_KEYS` by test, §S3); zero workflow-cycle env coupling.
 """
 
+import json
 import os
 import re
 import shlex
+import stat
 import subprocess
 import sys
-import tomllib
 from pathlib import Path
 
 STATUS_CONTRACT_VERSION = "1.0.0"
@@ -42,39 +52,105 @@ STATUS_CONTRACT_VERSION = "1.0.0"
 #: Bound on the feed subprocess — a session start must never hang.
 _FEED_TIMEOUT_SECONDS = 2.0
 
+#: Crucible's released-client manifest, relative to the user's home.
+_MANIFEST_RELPATH = Path(".crucible") / "crucible-clients.json"
+_MANIFEST_DISPLAY = "~/.crucible/crucible-clients.json"
+
+#: Ordered (marker_filename, stack, manifest_key): the stack as spelled in
+#: pre-flight's STACK_CLIENT_KEYS and the manifest `clients` key it maps to
+#: (parity enforced by test, CR-MDB-018 §S3). Tried in order at each
+#: directory walking up from the cwd; the nearest marker wins.
 _STACK_MARKERS = (
-    ("Cargo.toml", "rust-crucible.py"),
-    ("pom.xml", "mvn-crucible.py"),
-    ("bun.lock", "bun-crucible.py"),
-    ("bun.lockb", "bun-crucible.py"),
-    ("pyproject.toml", "python-crucible.py"),
+    ("Cargo.toml", "rust", "rust"),
+    ("pom.xml", "quarkus", "mvn"),
+    ("bun.lock", "bun", "bun"),
+    ("bun.lockb", "bun", "bun"),
+    ("pyproject.toml", "python", "python"),
 )
 
 
-def _discover_feed_argv() -> list[str] | None:
-    """Discovery convention: installed clients dir from install config + the
-    cwd's stack marker -> `<stack>-crucible.py status`. None when either half
-    is unresolved (rendered as a degrade note, never an error)."""
-    home = os.environ.get("MODELB_HOME", "")
-    install_toml = Path(home) / "install.toml" if home else None
-    if install_toml is None or not install_toml.is_file():
-        return None
+class _Unresolved(Exception):
+    """The feed could not be resolved; the message is the degrade note."""
+
+
+def _find_stack() -> tuple[str, str] | None:
+    """(stack, manifest_key) for the nearest marker walking up from the cwd,
+    or None when no marker is found (no stack is ever guessed). A cwd that
+    cannot be read (e.g. deleted under the session) is a degrade note."""
     try:
-        config = tomllib.loads(install_toml.read_text(encoding="utf-8"))
-    except (OSError, tomllib.TOMLDecodeError):
-        return None
-    clients_dir = (config.get("install") or {}).get("clients_dir")
-    if not clients_dir:
-        return None
-    directory = Path.cwd()
+        directory = Path.cwd()
+    except OSError as exc:
+        raise _Unresolved(
+            f"the working directory is unavailable ({exc}), so no stack "
+            "marker can be found and no Crucible client applies (set "
+            "MODELB_STATUS_CMD to override)") from exc
     for candidate in (directory, *directory.parents):
-        for marker, client in _STACK_MARKERS:
-            if (candidate / marker).is_file():
-                client_path = Path(clients_dir) / client
-                if client_path.is_file():
-                    return [sys.executable, str(client_path), "status"]
-                return None
+        for marker, stack, key in _STACK_MARKERS:
+            # os.path.isfile swallows every OSError on every Python version
+            # (Path.is_file raises e.g. PermissionError on 3.11/3.12).
+            if os.path.isfile(candidate / marker):
+                return stack, key
     return None
+
+def _file_problem(path: Path) -> str | None:
+    """None when ``path`` is a regular file; otherwise "absent" (genuinely
+    not found) or "unreadable" (exists but is not a readable regular file:
+    a directory, an unreadable parent, ...). Never raises."""
+    try:
+        mode = os.stat(path).st_mode
+    except (FileNotFoundError, NotADirectoryError):
+        return "absent"
+    except (OSError, ValueError):
+        return "unreadable"
+    return None if stat.S_ISREG(mode) else "unreadable"
+
+
+def _manifest_note(problem: str) -> str:
+    """A manifest-related degrade note: names the manifest and the fix."""
+    return (f"Crucible's client manifest {_MANIFEST_DISPLAY} {problem}; "
+            "re-run Crucible's own installer to (re)write it, or set "
+            "MODELB_STATUS_CMD")
+
+
+def _discover_feed_argv() -> list[str]:
+    """Manifest discovery: the cwd's nearest stack marker picks a `clients`
+    key of Crucible's manifest, and that client is run with `status`.
+    Raises `_Unresolved` (rendered as a degrade note, never an error) when
+    either half fails; no substitute location is ever tried."""
+    found = _find_stack()
+    if found is None:
+        raise _Unresolved(
+            "no stack marker found walking up from the working directory, so "
+            "no Crucible client applies (set MODELB_STATUS_CMD to override)"
+        )
+    stack, key = found
+    manifest = Path.home() / _MANIFEST_RELPATH
+    problem = _file_problem(manifest)
+    if problem == "absent":
+        raise _Unresolved(_manifest_note("is absent"))
+    if problem is not None:
+        raise _Unresolved(_manifest_note("is not a readable file"))
+    try:
+        body = json.loads(manifest.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise _Unresolved(_manifest_note(f"is unreadable ({exc})")) from exc
+    clients = body.get("clients") if isinstance(body, dict) else None
+    if not isinstance(clients, dict):
+        raise _Unresolved(_manifest_note("has no `clients` object"))
+    client = clients.get(key)
+    if not isinstance(client, str) or not client:
+        raise _Unresolved(_manifest_note(
+            f"has no {key!r} client for the {stack} stack"))
+    client_path = Path(client).expanduser()
+    problem = _file_problem(client_path)
+    if problem == "absent":
+        raise _Unresolved(_manifest_note(
+            f"names a missing {key!r} client ({client_path})"))
+    if problem is not None:
+        raise _Unresolved(_manifest_note(
+            f"names a {key!r} client that is not a readable file "
+            f"({client_path})"))
+    return [sys.executable, str(client_path), "status"]
 
 
 def _parse_envelope(text: str) -> dict:
@@ -133,12 +209,10 @@ def main() -> int:
         if not argv:
             return _degrade("MODELB_STATUS_CMD is empty")
     else:
-        argv = _discover_feed_argv()
-        if argv is None:
-            return _degrade(
-                "no status feed resolved (set MODELB_STATUS_CMD, or install "
-                "config + a stack marker resolve <stack>-crucible.py)"
-            )
+        try:
+            argv = _discover_feed_argv()
+        except _Unresolved as exc:
+            return _degrade(str(exc))
 
     try:
         result = subprocess.run(

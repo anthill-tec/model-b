@@ -81,9 +81,11 @@ reads the neutral payload (JSON) on stdin and answers by exit code:
   stdout.
 
 Scripts are self-contained (stdlib only), carry zero `WORKFLOW_CYCLE_ID`
-coupling and zero user-dotfile client paths; Crucible client invocation
-honors the discovery convention (installed location from install config;
-repo path in dev).
+coupling and zero user-dotfile client paths. The ambient status hook
+(`ambient-board-status`) discovers its Crucible client from Crucible's own
+released-client manifest `~/.crucible/crucible-clients.json` (the
+`clients[<key>]` entry for the cwd's stack; `MODELB_STATUS_CMD` overrides);
+any unresolved manifest or client degrades, and no other location is tried.
 
 ## Sample instance (TOML)
 
