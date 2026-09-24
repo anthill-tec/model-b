@@ -66,6 +66,9 @@ Model B release), `"keywords": ["pi-package"]`, `"pi": {"extensions": [...], "sk
 **no** bundled Pi core. `pi install <local path>` is the dev loop (added to settings without
 copying).
 
+**The package README** (CR-MDB-037 §S1): the package's `README.md` carries no install text of its
+own — it is the marked regions of `docs/install-guide.md`, copied verbatim at publish time.
+
 ### §S2 — The watcher supervisor extension (CR-026 on Pi)
 `extensions/sandesh-watcher.ts`: spawns `sandesh notify --to <addr> --project <p>` as a supervised
 child, restarts on exit code ≠ 0 with backoff, and reports 026's **three-exit taxonomy** — mail
