@@ -54,7 +54,7 @@ later step conflicts with them, the role rule wins.
    1. Carried session context (a resumed/compacted session almost always states its
       role — e.g. "Mainline coordinator", "Track 2").
    2. Working-tree heuristic: `git rev-parse --show-toplevel` ending in
-      `/.claude/worktrees/<cr>` ⟹ a Track currently inside a worktree.
+      `/.worktrees/<cr>` ⟹ a Track currently inside a worktree.
    3. If still genuinely ambiguous, **ask the user** (Mainline vs Track N) — one
       question — before proceeding. Never assume a role.
 

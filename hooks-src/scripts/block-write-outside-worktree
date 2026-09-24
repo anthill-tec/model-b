@@ -10,7 +10,7 @@ path the call targets — each is checked) plus `tool_input.path`; `cwd`),
 same exit protocol (allow -> 0, block -> 2 +
 `{"decision":"block","reason":...}` on stdout), same SELF-GATING — a strict
 no-op unless EITHER (a) $WF_WORKTREE_ROOT is exported (explicit dispatch
-signal) OR (b) cwd sits inside a real `…/.claude/worktrees/<cr>/` path
+signal) OR (b) cwd sits inside a real `…/.worktrees/<cr>/` path
 confirmed against `git worktree list`. Same allows (inside the worktree
 root; scratch under /tmp or $TMPDIR) and the same
 ALLOW_WRITE_OUTSIDE_WORKTREE=1 escape hatch. Self-contained, stdlib only.
@@ -23,7 +23,7 @@ import sys
 from pathlib import Path
 
 _GATED_TOOLS = {"write", "edit"}  # the neutral file-write classes (schema.md)
-_WORKTREES_SEGMENT = "/.claude/worktrees/"
+_WORKTREES_SEGMENT = "/.worktrees/"
 
 
 def _resolve(path: str) -> str:
@@ -32,7 +32,7 @@ def _resolve(path: str) -> str:
 
 
 def _derive_worktree_root_from_cwd(cwd: str) -> str | None:
-    """Path (b): cwd inside `…/.claude/worktrees/<cr>/…`, confirmed a REAL
+    """Path (b): cwd inside `…/.worktrees/<cr>/…`, confirmed a REAL
     registered git worktree — else None (fail safe toward non-Model-B)."""
     if _WORKTREES_SEGMENT not in cwd:
         return None

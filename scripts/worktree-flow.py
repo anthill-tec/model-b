@@ -7,7 +7,7 @@
 """Git worktree + git-flow orchestration CLI — deterministic start/close ceremony
 for PARALLEL CR execution.
 
-The orchestrator (VD) runs two+ CRs at once in separate Claude sessions on the same
+The orchestrator (VD) runs two+ CRs at once in separate agent sessions on the same
 filesystem. `git flow feature start` does a `checkout` in ONE shared working tree, so
 parallel sessions sharing it collide. The fix is per-CR git worktrees for isolation,
 closed with a direct `git merge --no-ff` into develop (the same result `git flow feature
@@ -33,7 +33,7 @@ Design invariants (see rust-orchestration.md (Tooling — worktree-flow)):
     to preview the exact git commands without mutating anything.
 
 Subcommands:
-  start    git worktree add -b feature/<cr>[-<slug>] .claude/worktrees/<cr> <base>.
+  start    git worktree add -b feature/<cr>[-<slug>] .worktrees/<cr> <base>.
            Branches off LOCAL develop HEAD (NOT origin) so un-pushed design-phase
            commits are included. Refuses if branch/worktree already exist. Optional
            `--track <label>` (or $WF_TRACK env, set once per session) stamps a human
@@ -103,7 +103,7 @@ import subprocess
 import sys
 import time
 
-WORKTREE_SUBDIR = ".claude/worktrees"
+WORKTREE_SUBDIR = ".worktrees"
 
 # Model-B scheduler-note board: if $WF_REQUEST_DIR points at the project's
 # memory dir, `status` also lists pending `reschedule-request-*.md`

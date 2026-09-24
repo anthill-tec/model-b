@@ -49,7 +49,7 @@ takes **no role argument**. A shutdown is always contextual:
 
 1. **Role — resolve from this session's established identity, NOT an argument.** Use the role
    fixed at bootstrap / carried in context / implied by your Sandesh address (`Mainline -
-   <Project>` vs `Track <N> - <Project>`) or worktree (`/.claude/worktrees/<cr>` ⟹ a Track). It
+   <Project>` vs `Track <N> - <Project>`) or worktree (`/.worktrees/<cr>` ⟹ a Track). It
    selects your branch below (2A Track / 2B Mainline). A running orchestrator always knows this;
    only if one genuinely cannot, ask.
 2. **Project** — `<Project>` from AGENTS.md / `ORCHESTRATOR-<Project>`. **Casing is load-bearing
