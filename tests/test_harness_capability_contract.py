@@ -29,6 +29,8 @@ from pathlib import Path
 
 from tests.pi_capability_sandbox import (
     AGENT_DIR_ENV,
+    MODELB_PI_PACKAGE,
+    THIRD_PARTY_TIER1,
     TIER1_PACKAGES,
     install_on_disk,
     make_agent_dir,
@@ -185,6 +187,8 @@ class RequirementsDeclarationTest(unittest.TestCase):
         ("dispatch", 1, "required", True),
         ("lean-ctx", 1, "required", True),
         ("permissions", 1, "recommended", True),
+        # CR-MDB-029 \u00a7S3: Model B's own Pi package.
+        ("watcher", 1, "recommended", True),
         ("uv", 2, "required", True),
         ("sandesh", 2, "recommended", True),
         ("crucible", 2, "recommended", True),
@@ -563,7 +567,8 @@ class HarnessProbeTest(_SandboxedInstallerCase):
         self.assertNotIn("Traceback", result.stderr)
         self.assertEqual(
             self.harness_verdicts(result),
-            {"dispatch": "unknown", "lean-ctx": "unknown", "permissions": "unknown"},
+            {"dispatch": "unknown", "lean-ctx": "unknown", "permissions": "unknown",
+             "watcher": "unknown"},
         )
 
     def test_unrecognised_settings_shape_is_unknown(self):
@@ -574,7 +579,8 @@ class HarnessProbeTest(_SandboxedInstallerCase):
         self.assertNotIn("Traceback", result.stderr)
         self.assertEqual(
             self.harness_verdicts(result),
-            {"dispatch": "unknown", "lean-ctx": "unknown", "permissions": "unknown"},
+            {"dispatch": "unknown", "lean-ctx": "unknown", "permissions": "unknown",
+             "watcher": "unknown"},
         )
 
     def test_env_var_agent_dir_wins_over_home_default(self):
@@ -583,7 +589,8 @@ class HarnessProbeTest(_SandboxedInstallerCase):
         result = self.run_installer()
         self.assertEqual(
             self.harness_verdicts(result),
-            {"dispatch": "absent", "lean-ctx": "absent", "permissions": "absent"},
+            {"dispatch": "absent", "lean-ctx": "absent", "permissions": "absent",
+             "watcher": "absent"},
             f"§S2: $PI_CODING_AGENT_DIR must be read when set; stderr={result.stderr!r}",
         )
 
@@ -592,7 +599,8 @@ class HarnessProbeTest(_SandboxedInstallerCase):
         result = self.run_installer(agent_dir_env=False)
         self.assertEqual(
             self.harness_verdicts(result),
-            {"dispatch": "detected", "lean-ctx": "detected", "permissions": "detected"},
+            {"dispatch": "detected", "lean-ctx": "detected", "permissions": "detected",
+             "watcher": "detected"},
             f"§S2: ~/.pi/agent/settings.json is the default; stderr={result.stderr!r}",
         )
 
@@ -684,7 +692,16 @@ class RecommendedAndUnknownPolicyTest(_SandboxedInstallerCase):
 
 class NoThirdPartyInstallUnderYesTest(_SandboxedInstallerCase):
     """§S3 AC3: ``--yes`` against an agent dir lacking every extension
-    installs nothing and leaves ``settings.json`` byte-identical."""
+    installs no THIRD-PARTY extension and leaves ``settings.json``
+    byte-identical.
+
+    CR-MDB-029 §S3 migration: ``--yes`` now runs ``pi install`` for Model
+    B's OWN package (``npm:@anthill-tec/modelb-pi``, the ``watcher``
+    capability) — so the invariant is separated by package: no ``pi`` run
+    ever names a third-party package (``THIRD_PARTY_TIER1``), no
+    ``npm``/``npx``/``pnpm`` ever runs, and the only permitted run is
+    ``pi install npm:@anthill-tec/modelb-pi``. The marker ``pi`` shim
+    provisions nothing, so the agent dir stays untouched."""
 
     def setUp(self):
         super().setUp()
@@ -703,31 +720,61 @@ class NoThirdPartyInstallUnderYesTest(_SandboxedInstallerCase):
             for p in self.agent_dir.rglob("*")
         }
 
-    def _assert_nothing_installed(self, result, before_bytes, before_tree):
+    def _runs(self) -> list[str]:
+        """Each recorded run as ``<binary basename> <args>``."""
+        if not self.marker.exists():
+            return []
+        runs = []
+        for line in self.marker.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                head, _, args = line.partition(" ")
+                runs.append(f"{Path(head).name} {args}".strip())
+        return runs
+
+    def _assert_no_third_party_install(self, result, before_bytes, before_tree):
         self.assertEqual(self.harness_verdicts(result), {
             "dispatch": "absent", "lean-ctx": "absent", "permissions": "absent",
+            "watcher": "absent",
         })
         self.assertEqual(self.settings.read_bytes(), before_bytes, "settings.json must be byte-identical")
         self.assertEqual(self._snapshot(), before_tree, "the agent dir must be untouched")
-        self.assertFalse(
-            self.marker.exists(),
-            f"§S3: --yes never runs a third-party install; ran: "
-            f"{self.marker.read_text() if self.marker.exists() else ''!r}",
+        runs = self._runs()
+        third_party = [
+            r for r in runs
+            if not r.startswith("pi ")
+            or any(TIER1_PACKAGES[cap] in r for cap in THIRD_PARTY_TIER1)
+        ]
+        self.assertEqual(
+            third_party, [], f"§S3: --yes never runs a third-party install; ran: {runs!r}",
         )
+        own = f"pi install npm:{MODELB_PI_PACKAGE}"
+        self.assertTrue(
+            all(r == own for r in runs),
+            f"the only run --yes may make is `{own}`; ran: {runs!r}",
+        )
+        return runs
 
     def test_yes_run_without_override_installs_nothing(self):
         before_bytes, before_tree = self.settings.read_bytes(), self._snapshot()
         result = self.run_installer()
         self.assertEqual(_decode(result.stdout).get("outcome"), "preflight_failed")
-        self._assert_nothing_installed(result, before_bytes, before_tree)
+        runs = self._assert_no_third_party_install(result, before_bytes, before_tree)
+        # Whether Model B's own install runs before a required-capability
+        # failure is unspecified; it runs at most once either way.
+        self.assertLessEqual(len(runs), 1, runs)
 
     def test_yes_run_with_override_installs_nothing_and_names_pi_install(self):
         before_bytes, before_tree = self.settings.read_bytes(), self._snapshot()
         result = self.run_installer("--allow-missing-capabilities")
         self.assertEqual(_decode(result.stdout).get("outcome"), "installed", result.stderr)
-        self._assert_nothing_installed(result, before_bytes, before_tree)
-        for pkg in TIER1_PACKAGES.values():
-            self.assertIn(f"pi install npm:{pkg}", result.stderr)
+        runs = self._assert_no_third_party_install(result, before_bytes, before_tree)
+        self.assertEqual(
+            runs, [f"pi install npm:{MODELB_PI_PACKAGE}"],
+            "CR-MDB-029 §S3: with pi among the harnesses and Model B's own "
+            "package absent, --yes runs its pi install exactly once",
+        )
+        for cap in THIRD_PARTY_TIER1:
+            self.assertIn(f"pi install npm:{TIER1_PACKAGES[cap]}", result.stderr)
 
 
 class InteractivePiInstallOfferTest(_SandboxedInstallerCase):
@@ -891,7 +938,8 @@ class PreflightReportLinesTest(_SandboxedInstallerCase):
     def test_harness_line_is_exact_and_precedes_deps_line(self):
         result = self.run_installer()
         self.assertIn(
-            "harness: dispatch=detected lean-ctx=detected permissions=detected",
+            "harness: dispatch=detected lean-ctx=detected permissions=detected "
+            "watcher=detected",
             result.stderr,
         )
         self.assertIn("deps: uv=detected sandesh=detected crucible=detected", result.stderr)
@@ -994,7 +1042,8 @@ class InstallTomlCapabilitiesRecordTest(_SandboxedInstallerCase):
             self.fail(f"§S4: [capabilities] missing; got {data!r}")
         self.assertEqual(
             {k: caps.get(k) for k in TIER1_PACKAGES},
-            {"dispatch": "detected", "lean-ctx": "detected", "permissions": "absent"},
+            {"dispatch": "detected", "lean-ctx": "detected", "permissions": "absent",
+             "watcher": "detected"},
         )
         self.assertEqual(caps.get("uv"), "detected")
         self.assertEqual(caps.get("crucible"), "absent")
