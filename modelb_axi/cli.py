@@ -562,14 +562,29 @@ def _freshness_fields(home: Path, warnings: list[str]) -> dict:
         f"  deployed assets under {target_root}: "
         + ", ".join(f"{state}={len(paths)}" for state, paths in found.items())
     )
+    rerun = _reinstall_command(
+        target_root, install.get("stacks") if isinstance(install, dict) else None,
+    )
     if found["stale"]:
-        _say("    stale: re-run `modelb-axi --reinstall` to refresh them")
+        _say(f"    stale: re-run `{rerun}` to refresh them")
     if found["hand_modified"]:
-        _say("    hand_modified: re-run with `--force-managed` to overwrite them")
+        _say(f"    hand_modified: re-run `{rerun} --force-managed` to overwrite them")
     if found["retired"]:
         _say("    retired: no longer shipped \u2014 remove them by hand")
     freshness = "current" if not any(found.values()) else "outdated"
     return {"freshness": freshness, **found}
+
+
+def _reinstall_command(target_root: str, stacks) -> str:
+    """The re-run that refreshes an install: ``--reinstall`` with the
+    recorded target root and stacks (a bare ``--reinstall`` would deploy
+    nothing, and ``--stacks`` would otherwise default to all)."""
+    if isinstance(stacks, list) and stacks and all(isinstance(s, str) for s in stacks):
+        stacks_csv = ",".join(stacks)
+    else:
+        stacks_csv = "<stacks>"
+    return (f"modelb-axi --reinstall --target-root {target_root} "
+            f"--stacks {stacks_csv}")
 
 
 def main(argv: list[str] | None = None) -> int:
