@@ -639,3 +639,8 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   gains Homepage/Repository URLs, and whether the git-workflow release steps (written as manual
   uploads by 038/029) should say the workflow publishes. Maintainer setup list:
   `docs/research/release-automation-crucible-procedure.md`.
+- 2026-09-24 — **Standing pattern for every npm package we publish (user ruling):** the first publish
+  uses a one-time `NPM_TOKEN`; after it, add the npm trusted publisher, require 2FA and disallow
+  tokens, and **delete `NPM_TOKEN`** from npm and the repository. For model-b, remove it once
+  `@anthill-tec/modelb-pi` is on npmjs. **Release doc review:** `skills-src/git-workflow/SKILL.md`
+  §Releases (project-neutral) should state this bootstrap-then-delete step for any npm package.
