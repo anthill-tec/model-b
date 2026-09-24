@@ -31,9 +31,13 @@ the text:
 | **Stale discovery wording in the block reasons agents read** | `hooks-src/scripts/block-direct-cargo-test:14,32-33,48` and `block-direct-mvn-test:15,37` ("installed location per install config; the crucible repo `clients/` dir in dev") |
 | **A reviewer sentence CR-MDB-036 §S9 made false** | `skills-src/memory-templates/java-orchestration.md:60` names the `reviewer-quarkus`, `reviewer-architecture` and `reviewer-security` skills, which Model B does not ship |
 
-Already clean, measured: `contracts/`, `docs/research/`, `generator/` (CR-MDB-025 §S8), no reference
-to the development server's port. Sanctioned and exempt: the provenance line in
-`skills-src/CRUCIBLE-HANDOVER.md`, `archive/`, and the dated records in `audits/` and `docs/changes/`.
+Already clean, measured: `docs/research/` apart from one verbatim record (below), `generator/`
+(CR-MDB-025 §S8), no reference to the development server's port. Not clean, found by RED
+2026-09-24: `contracts/gate-lock.md:5,31,77` cite the client unrooted (`crucible:clients/…`,
+`clients/rust-crucible.py::…`) and are rooted here. Sanctioned and exempt: the provenance line in
+`skills-src/CRUCIBLE-HANDOVER.md`; `docs/research/crucible-clients-skills-guard.test.ts`, a verbatim
+secured record of Crucible's guard suite (a historical artifact, not instructions; orchestrator
+ruling 2026-09-24); `archive/`; and the dated records in `audits/` and `docs/changes/`.
 `tests/` still names the checkout in several modules; CR-MDB-032 §S1 repoints them and then extends
 this CR's gate to `tests/`.
 
@@ -59,8 +63,9 @@ only skills Model B ships.
 A stdlib `unittest` gate over `skills-src/`, `generator/`, `hooks-src/`, `contracts/`, `modelb_axi/`,
 `scripts/`, `docs/research/`, `docs/install-guide.md`, `README.md` and `AGENTS.md`: zero personal-
 checkout Crucible paths, zero unrooted `clients/<stack>-crucible.py`, zero
-`~/.claude/scripts/*-crucible.py`. The exemptions (the handover provenance line; `archive/`,
-`audits/`, `docs/changes/`, `tests/`) are listed in the gate and asserted, so none widens silently.
+`~/.claude/scripts/*-crucible.py`. The exemptions (the handover provenance line; the verbatim
+`docs/research/crucible-clients-skills-guard.test.ts`; `archive/`, `audits/`, `docs/changes/`,
+`tests/`) are listed in the gate and asserted, so none widens silently.
 
 ### §S3 — Client contract against the released client
 Every Crucible client invocation (`<stack>-crucible.py <verb> [--flags]`) under `skills-src/`,
