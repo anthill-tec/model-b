@@ -38,6 +38,7 @@ Queue rows enumerate the whole delivery (structure only). **Live status lives on
 | [CR-MDB-025](CR-MDB-025-pi-agent-definitions.md) | Pi agent definitions: neutral schema, per-harness emitter, rendered per project | 5 | 017, 024, 027, 030, 033 |
 | [CR-MDB-036](CR-MDB-036-harness-capability-contract.md) | Harness capability contract and installer stack selection | 5 | — |
 | [CR-MDB-037](CR-MDB-037-install-guide-freshness-policy.md) | Install guide, deployed-asset freshness, the per-project permission policy, and project trust | 5 | 036 |
+| [CR-MDB-038](CR-MDB-038-pypi-publishing.md) | Publish modelb-axi to PyPI, and replace the stale local install | 5 | 037 |
 | [CR-MDB-029](CR-MDB-029-pi-package.md) | The Model B Pi package: extensions (incl. the 026 watcher supervisor) + skills as one `pi install`-able unit; agents and tool scripts stay installer-deployed | 5 | 025, 030 |
 | [CR-MDB-031](CR-MDB-031-claude-era-substrate-retirement.md) | Retire the Claude-era substrate: roster → `pi`, non-Pi emitters, `.claude/skills` symlink writer, `CLAUDE.md` emission, `chezmoi` bundle, `/tmp/claude-1000` wrapper, `.claude/worktrees` convention, skills' Claude Code dispatch/worktree/todo mechanics, `~/.claude/skills` body citations | 5 | 025, 026, 030 |
 | [CR-MDB-032](CR-MDB-032-test-suite-relocation.md) | Test-suite relocation: no dev-checkout reach, no real-home assertions, no dead/self-defeating gates, one helper module, a Pi end-to-end | 5 | 020, 021 |
@@ -611,3 +612,9 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
 - 2026-09-24 — **Deferred (CR-MDB-037 F1):** `init --force-managed` reaches the permission policy
   but not agent-definition rendering, and `init`'s `skipped`/`unmanaged` envelope lists cover only
   the policy; `modelb-axi agents --force-managed` is the workaround.
+||||||| 522a234
+- 2026-09-24 — **CR-MDB-038 filed (user approval): publish `modelb-axi` to PyPI.** CR-MDB-037 C5 VERIFY
+  found the guide's interim note claimed the CLI ships in the Pi package, which carries only
+  extensions and skills. User ruling: the guide names `uv tool install modelb-axi` from PyPI (name
+  free, measured). 038 makes the package publishable, rehearses on TestPyPI, puts the upload in the
+  release ritual, and replaces this machine's stale July install as a pre-1.0.0 maintenance step.
