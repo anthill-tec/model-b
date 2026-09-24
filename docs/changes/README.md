@@ -653,3 +653,17 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   arduino marker must extend the hook's marker → key table (kept in parity with
   `STACK_CLIENT_KEYS` by 018 §S3). Measured: the live `status` envelope carries `lastClosedCr`, not
   `lastRunCr` (019 §S1).
+- 2026-09-24 — **CR-MDB-018 MERGED** (develop `7512f81`; plan 105). The ambient hook resolves its
+  feed from `~/.crucible/crucible-clients.json` (`_STACK_MARKERS` = `(marker, stack, key)`, parity
+  with `STACK_CLIENT_KEYS` tested); every unresolved case degrades with exit 0, including permission
+  errors on Python 3.11/3.12 and a deleted cwd. **Close-out measured:** from the model-b tree the hook
+  renders the live production board through the real manifest (python3.14 and 3.11), and degrades
+  cleanly with no stack marker. Two follow-ups routed:
+  **CR-MDB-019** — the hook heads its output "N open plan(s)" but Crucible's current `status` returns
+  every plan, closed ones included (measured: "31 open plan(s)" listing `status=closed` rows); 019's
+  contract re-pin must filter or re-label them, alongside `lastRunCr` → `lastClosedCr` and the arduino
+  marker (which joins `_STACK_MARKERS` and must keep §S3 parity).
+  **CR-MDB-020** — `hooks-src/scripts/block-direct-cargo-test` (`:13`, `:29-31`, including the block
+  reason agents read) and `block-direct-mvn-test` (`:14-15`) still describe the retired discovery
+  ("installed clients dir from install config; the crucible repo `clients/` dir in dev").
+  `block-direct-mvn-test` is not yet in 020's scope; both should name the manifest.
