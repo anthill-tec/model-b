@@ -264,7 +264,9 @@ export default function sandeshWatcher(pi: ExtensionAPI) {
 		if (watchers.size === 0) return "No Sandesh watcher is running.";
 		return [...watchers.values()]
 			.map((w) => {
-				const state = w.retryTimer ? "mail waiting, rechecking" : w.ready ? "watching" : "starting";
+				// During a retry the last child has exited: name no pid (C6 VERIFY finding 3).
+				if (w.retryTimer) return `"${w.address}" in ${w.project}: mail waiting, rechecking every 30 s`;
+				const state = w.ready ? "watching" : "starting";
 				return `"${w.address}" in ${w.project}: ${state} (pid ${w.child?.pid})`;
 			})
 			.join("\n");
