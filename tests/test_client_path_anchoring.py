@@ -29,11 +29,14 @@ a placeholder (``<…>``, ``{…}``, ``$…``) is not checked; only ``--long`` f
 against the ``usage:`` block of the verb's ``--help``.
 
 §S4 vocabulary rule. Claude Code tool names that are not ordinary words (``TaskUpdate``,
-``EnterWorktree``, ``run_in_background``, the ``sandesh_*`` MCP verbs, …) count as whole-word,
-case-sensitive matches. Claude Code tool names that ARE ordinary English words (``Bash``, ``Read``,
-``Write``, ``Edit``, ``Monitor``, …) count only when written as a whole inline code span
-(`` `Write` ``). Pi's ``PI_TOOL_NAMES`` keys follow the same split: a key that is a plain word
-(``read``, ``write``, ``edit``, ``grep``, ``find``, ``ls``) counts only as a whole code span, a key
+``EnterWorktree``, ``run_in_background``, ``dangerouslyDisableSandbox``, the ``sandesh_*`` MCP
+verbs, …) count as whole-word, case-sensitive matches bounded by alphanumerics only, so an
+MCP-qualified spelling (``mcp__sandesh__sandesh_send``) still counts. Claude Code tool names that
+ARE ordinary English words (``Bash``, ``Read``, ``Write``, ``Edit``, ``Monitor``, …) count only when
+written as a whole inline code span (`` `Write` ``) or as ``<Name> tool`` ("the Monitor tool").
+Pi's ``PI_TOOL_NAMES`` keys follow the same split: a key that is a plain word
+(``read``, ``write``, ``edit``, ``grep``, ``find``, ``ls``) counts only as a whole code span or
+``<name> tool``, a key
 that is not (``ctx_read``, …) counts whole-word. Without that split the scan would count every
 "read the spec" in the skills and the baseline would measure English, not tool names.
 """
@@ -104,8 +107,12 @@ EXEMPT_FILES = ("docs/research/crucible-clients-skills-guard.test.ts",)
 
 CLIENT_FILE_RE = r"(?:[a-z]+|<stack>|\{stack\}|\*)-crucible\.py"
 RE_CHECKOUT = re.compile(r"data_projects/crucible")
-RE_CLIENTS_PATH = re.compile(r"clients/" + CLIENT_FILE_RE)
-RE_MIRROR = re.compile(r"\.claude/scripts/[\w<>{}*.-]*-crucible\.py")
+#: §S2 — every ``<dir>/<stack>-crucible.py``; group 1 is the directory token (no whitespace, quote,
+#: backtick, bracket or paren), so ``<crucible-clients>/…`` and ``crucible:clients/…`` are read whole.
+RE_CLIENT_IN_DIR = re.compile(r"([^\s`'\"()\[\]]*)/" + CLIENT_FILE_RE)
+#: §S2 — the only directories a client may be named under: the anchor, and its ``$HOME`` spelling.
+ANCHORED_CLIENT_DIRS = ("~/.crucible/clients", "$HOME/.crucible/clients", "${HOME}/.crucible/clients")
+RE_MIRROR = re.compile(r"\.claude/scripts/[\w<>{}*./-]*-crucible\.py")
 
 # ------------------------------------------------------------------ utils -------
 
@@ -155,8 +162,10 @@ def _sentences(text):
 def _anchoring_hits(root, trees=GATED_TREES):
     """Return [(rel, lineno, kind, line)] — every unanchored client path in ``trees``.
 
-    kinds: ``checkout`` (a personal Crucible checkout), ``unrooted`` (``clients/<stack>-crucible.py``
-    not immediately under ``/.crucible/``), ``mirror`` (``~/.claude/scripts/*-crucible.py``).
+    kinds: ``checkout`` (a personal Crucible checkout), ``unrooted`` (a ``<dir>/<stack>-crucible.py``
+    whose directory is not one of ``ANCHORED_CLIENT_DIRS``), ``mirror`` (the retired
+    ``~/.claude/scripts/…-crucible.py``, including sub-directories). A bare ``<stack>-crucible.py``
+    with no directory names no location and is not a hit.
     """
     hits = []
     for tree in trees:
@@ -168,10 +177,12 @@ def _anchoring_hits(root, trees=GATED_TREES):
                     continue
                 if RE_CHECKOUT.search(line):
                     hits.append((rel, lineno, "checkout", line))
-                for m in RE_CLIENTS_PATH.finditer(line):
-                    if not line[: m.start()].endswith("/.crucible/"):
-                        hits.append((rel, lineno, "unrooted", line))
-                        break
+                for m in RE_CLIENT_IN_DIR.finditer(line):
+                    directory = m.group(1).rsplit("=", 1)[-1].lstrip("*")
+                    if directory in ANCHORED_CLIENT_DIRS or ".claude/scripts" in directory:
+                        continue  # anchored, or the mirror (reported under its own kind)
+                    hits.append((rel, lineno, "unrooted", line))
+                    break
                 if RE_MIRROR.search(line):
                     hits.append((rel, lineno, "mirror", line))
     return hits
@@ -258,30 +269,35 @@ def _lineno_at(spans, offset):
 
 
 def _code_segment(line, start, kind, toml):
-    """Return the command text starting at ``start`` if it sits in a code context, else None."""
+    """(command text, source) if ``start`` sits in a code context, else None.
+
+    source: ``fence`` (fenced block), ``span`` (inline code span), ``toml`` (a double-quoted TOML
+    string value).
+    """
     if kind == "fence":
-        return line[start:]
+        return line[start:], "fence"
     before = line[:start]
     if before.count("`") % 2 == 1:
         end = line.find("`", start)
-        return line[start:] if end == -1 else line[start:end]
+        return (line[start:] if end == -1 else line[start:end]), "span"
     if toml and re.match(r"^\s*[\w.-]+\s*=\s*\"", line):
         quotes = len(re.findall(r'(?<!\\)"', before))
         if quotes % 2 == 1:
             m = re.search(r'(?<!\\)"', line[start:])
-            return line[start:] if m is None else line[start : start + m.start()]
+            return (line[start:] if m is None else line[start : start + m.start()]), "toml"
     return None
 
 
 def _parse_invocations(rel, text):
-    """Return [{file, line, client, verb, flags}] for every checkable client invocation."""
+    """Return [{file, line, client, verb, flags, source}] for every checkable client invocation."""
     out = []
     toml = rel.endswith(".toml")
     for spans, line, kind in _logical_lines(text):
         for m in RE_INVOCATION.finditer(line):
-            segment = _code_segment(line, m.start(), kind, toml)
-            if segment is None:
+            code = _code_segment(line, m.start(), kind, toml)
+            if code is None:
                 continue
+            segment, source = code
             tokens = segment.split()[1:]  # drop the client token
             if not tokens:
                 continue
@@ -302,7 +318,7 @@ def _parse_invocations(rel, text):
                 if fm and fm.group(0) == bare:
                     flags.append(bare)
             out.append({"file": rel, "line": _lineno_at(spans, m.start()), "client": client,
-                        "verb": verb, "flags": flags})
+                        "verb": verb, "flags": flags, "source": source})
     return out
 
 
@@ -372,6 +388,7 @@ CLAUDE_TOOLS_WHOLE_WORD = (
     "BashOutput", "KillShell", "SendMessage", "ScheduleWakeup", "EnterPlanMode", "ExitPlanMode",
     "sandesh_send", "sandesh_reply", "sandesh_fetch", "sandesh_inbox",
     "sandesh_register", "sandesh_unregister", "sandesh_addressbook", "sandesh_setup",
+    "dangerouslyDisableSandbox",
 )
 #: Claude Code tool names that are ordinary words — counted only as a whole code span.
 CLAUDE_TOOLS_CODE_SPAN = (
@@ -392,14 +409,22 @@ def _tool_vocabulary():
 
 
 def _count_tools(text):
+    """{tool: count} over ``text``.
+
+    Whole-word names are bounded by alphanumerics only, so an MCP-qualified spelling
+    (``mcp__sandesh__sandesh_send``) still counts its tool (``sandesh_send``). Plain-word names
+    count as a whole code span (`` `Write` ``) or when written as ``<Name> tool`` ("the Monitor
+    tool"); the two spellings never overlap, since a span's closing backtick precedes ``tool``.
+    """
     whole, span = _tool_vocabulary()
     counts = {}
     for name in whole:
-        n = len(re.findall(rf"(?<![A-Za-z0-9_]){re.escape(name)}(?![A-Za-z0-9_])", text))
+        n = len(re.findall(rf"(?<![A-Za-z0-9]){re.escape(name)}(?![A-Za-z0-9_])", text))
         if n:
             counts[name] = counts.get(name, 0) + n
     for name in span:
         n = len(re.findall(rf"`{re.escape(name)}`", text))
+        n += len(re.findall(rf"(?<![A-Za-z0-9_]){re.escape(name)}\s+tool\b", text))
         if n:
             counts[name] = counts.get(name, 0) + n
     return counts
@@ -429,7 +454,9 @@ def _ratchet_violations(observed, baseline):
     return out
 
 
-#: §S4 — today's occurrences, measured on this branch at RED (11 files, 42 occurrences). May
+#: §S4 — today's occurrences (11 files, 43 occurrences). Measured at RED as 11 files / 42; re-taken
+#: at C3 FIX after F3/F4 widened the vocabulary (MCP-qualified names, `dangerouslyDisableSandbox`,
+#: `<Name> tool`), which added exactly sub-agent-procedure.md dangerouslyDisableSandbox=1. May
 #: only shrink; CR-MDB-031 drains it to zero without adding exemptions. File -> {tool: count}.
 TOOL_BASELINE = {
     "skills-src/bootstrap/SKILL.md": {
@@ -448,7 +475,9 @@ TOOL_BASELINE = {
     "skills-src/model-b/references/sandesh.md": {
         "sandesh_addressbook": 4, "sandesh_register": 1, "sandesh_reply": 2, "sandesh_setup": 1,
     },
-    "skills-src/model-b/references/sub-agent-procedure.md": {"Edit": 1, "NotebookEdit": 1, "Write": 1},
+    "skills-src/model-b/references/sub-agent-procedure.md": {
+        "Edit": 1, "NotebookEdit": 1, "Write": 1, "dangerouslyDisableSandbox": 1,
+    },
     "skills-src/shutdown/SKILL.md": {
         "sandesh_addressbook": 1, "sandesh_reply": 1, "sandesh_send": 2, "sandesh_unregister": 1,
     },
@@ -761,10 +790,41 @@ class ClientPathAnchoringS2Test(unittest.TestCase):
         self.assertEqual(self._gate_on("python3 ~/.crucible/clients/rust-crucible.py test --crate c"), [])
         self.assertEqual(self._gate_on("the default `~/.crucible/clients/<stack>-crucible.py`"), [])
 
+    def test_s2_gate_passes_on_the_home_spelling_of_the_anchor(self):
+        self.assertEqual(self._gate_on('python3 "$HOME/.crucible/clients/rust-crucible.py" test'), [])
+        self.assertEqual(self._gate_on("python3 ${HOME}/.crucible/clients/rust-crucible.py test"), [])
+
+    def test_s2_gate_allows_a_bare_client_name_with_no_directory(self):
+        # A bare name names no location; the tree uses it in prose and tables today.
+        self.assertEqual(self._gate_on("run `rust-crucible.py test --crate c` from the anchor"), [])
+
+    def test_s2_gate_fails_on_any_other_client_directory(self):
+        # F2: not only `clients/` — any directory that is not the anchor is unanchored.
+        for line in (
+            "python3 <crucible-clients>/rust-crucible.py test",
+            "python3 ~/.agents/scripts/rust-crucible.py test",
+            "python3 /opt/elsewhere/.crucible/clients/rust-crucible.py test",
+            "python3 crucible:clients/rust-crucible.py test",
+            "CLIENT=./vendor/rust-crucible.py",
+        ):
+            with self.subTest(line=line):
+                self.assertEqual(self._gate_on(line), [("skills-src/x/SKILL.md", 2, "unrooted")])
+
+    def test_s2_gate_fails_on_a_mirror_sub_directory(self):
+        self.assertEqual(self._gate_on("python3 ~/.claude/scripts/crucible/rust-crucible.py test"),
+                         [("skills-src/x/SKILL.md", 2, "mirror")])
+
 
 # ================================================================= §S3 ==========
 
 S3_TREES = ("skills-src", "generator/templates", "generator/stacks", "contracts")
+
+#: §S3 never-vacuous floors (F6), measured at CR-MDB-020 C3 FIX (74 invocations). A tree or parse
+#: source whose count falls below its floor means the parser went blind there, not that the text
+#: got cleaner — lower a floor only with the change that removes those invocations.
+#: generator/templates and contracts carry no invocation today; their floor is recorded as 0.
+S3_MIN_PER_TREE = {"skills-src": 46, "generator/templates": 0, "generator/stacks": 28, "contracts": 0}
+S3_MIN_PER_SOURCE = {"fence": 34, "span": 25, "toml": 15}
 
 
 class ClientContractS3Test(unittest.TestCase):
@@ -787,6 +847,25 @@ class ClientContractS3Test(unittest.TestCase):
             + "\n  ".join(failures),
         )
 
+    def test_s3_invocation_counts_meet_their_floor_per_tree_and_per_source(self):
+        invocations = _collect_invocations(REPO_ROOT, S3_TREES)
+        self.assertEqual(set(S3_MIN_PER_TREE), set(S3_TREES))
+        low = []
+        for tree, floor in S3_MIN_PER_TREE.items():
+            n = sum(1 for inv in invocations if inv["file"].startswith(tree + "/"))
+            if n < floor:
+                low.append(f"tree {tree}: {n} < {floor}")
+        for source, floor in S3_MIN_PER_SOURCE.items():
+            n = sum(1 for inv in invocations if inv["source"] == source)
+            if n < floor:
+                low.append(f"source {source}: {n} < {floor}")
+        self.assertEqual(low, [], "§S3: invocation count below its floor — the parser is vacuous there:\n  "
+                         + "\n  ".join(low))
+
+    def test_s3_every_parse_source_is_exercised(self):
+        self.assertEqual(set(S3_MIN_PER_SOURCE), {"fence", "span", "toml"})
+        self.assertTrue(all(floor > 0 for floor in S3_MIN_PER_SOURCE.values()), S3_MIN_PER_SOURCE)
+
     def test_s3_parser_joins_fenced_backslash_continuations(self):
         text = (
             "Run:\n\n```bash\n"
@@ -796,7 +875,7 @@ class ClientContractS3Test(unittest.TestCase):
         )
         self.assertEqual(_parse_invocations("f.md", text), [{
             "file": "f.md", "line": 4, "client": "python", "verb": "regression",
-            "flags": ["--coverage", "--agent", "--project-dir"],
+            "flags": ["--coverage", "--agent", "--project-dir"], "source": "fence",
         }])
 
     def test_s3_parser_skips_placeholders_and_prose(self):
@@ -808,14 +887,14 @@ class ClientContractS3Test(unittest.TestCase):
         ))
         self.assertEqual(_parse_invocations("f.md", text), [{
             "file": "f.md", "line": 2, "client": "python", "verb": "test",
-            "flags": ["--tests", "--agent"],
+            "flags": ["--tests", "--agent"], "source": "span",
         }])
 
     def test_s3_parser_reads_toml_string_values(self):
         text = 'register_command = "python3 ~/.crucible/clients/mvn-crucible.py register --agent YOUR_AGENT_ID"\n'
         self.assertEqual(_parse_invocations("generator/stacks/q.toml", text), [{
             "file": "generator/stacks/q.toml", "line": 1, "client": "mvn",
-            "verb": "register", "flags": ["--agent"],
+            "verb": "register", "flags": ["--agent"], "source": "toml",
         }])
 
     def _released_or_skip(self):
@@ -880,6 +959,29 @@ class ToolContractS4Test(unittest.TestCase):
     def test_s4_ordinary_word_names_count_only_as_code_spans(self):
         text = "Read the spec, write a test, then `read` it; grep it. Use `Write` and ctx_read and TaskUpdate."
         self.assertEqual(_count_tools(text), {"read": 1, "Write": 1, "ctx_read": 1, "TaskUpdate": 1})
+
+    def test_s4_mcp_qualified_names_count_their_tool(self):
+        # F3: the lookbehind excludes alphanumerics only, so the `mcp__<server>__` prefix is no shield.
+        text = "Call mcp__sandesh__sandesh_send, then mcp__sandesh__sandesh_fetch; sandesh_sendx is not a tool."
+        self.assertEqual(_count_tools(text), {"sandesh_send": 1, "sandesh_fetch": 1})
+
+    def test_s4_dangerously_disable_sandbox_is_in_the_vocabulary(self):
+        # F4: a Claude Code Bash parameter the skills name.
+        self.assertIn("dangerouslyDisableSandbox", _tool_vocabulary()[0])
+        self.assertEqual(_count_tools("no `dangerouslyDisableSandbox`, no workaround"),
+                         {"dangerouslyDisableSandbox": 1})
+
+    def test_s4_plain_word_names_count_when_written_as_name_tool(self):
+        # F4: "the Monitor tool" names the tool as surely as `Monitor` does; the two never double-count.
+        text = "Use the Monitor tool, the `Monitor` tool, the Bash\ntool and the read tool. Monitor the tools."
+        self.assertEqual(_count_tools(text), {"Monitor": 2, "Bash": 1, "read": 1})
+
+    def test_s4_plain_word_name_tool_detector_bites_in_the_ratchet(self):
+        baseline = {"skills-src/b/SKILL.md": {"run_in_background": 1}}
+        tmp, root = _fixture_tree({"skills-src/b/SKILL.md": "run_in_background, then the Monitor tool.\n"})
+        with tmp:
+            violations = _ratchet_violations(_tool_occurrences(root), baseline)
+        self.assertEqual(violations, ["skills-src/b/SKILL.md: new harness tool 'Monitor' (1x; not in baseline)"])
 
     def test_s4_baseline_is_committed_and_non_empty(self):
         self.assertTrue(TOOL_BASELINE, "§S4: the tool baseline must be committed")
