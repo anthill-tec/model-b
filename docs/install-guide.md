@@ -53,9 +53,8 @@ Install these in the order given; no step relies on one that comes after it.
 
    To update later, run `uv tool upgrade modelb-axi`.
 
-   The installer is published on PyPI with Model B's first release. Until then, get a copy of
-   Model B's source from its maintainer and, from the root of that copy, run
-   `uv tool install .` instead; to update, run `uv tool install --reinstall .` from a newer copy.
+   From a source copy of Model B, run `uv tool install .` from the root of that copy instead;
+   to update, run `uv tool install --reinstall .` from a newer copy.
 6. **Recommended tools.** The install goes ahead without them, but some assets will not work
    (see [Warnings: what stops working](#warnings-what-stops-working)):
    - `sandesh` — `uv tool install sandesh-relay` (the installer offers to run this for you);
@@ -231,8 +230,7 @@ Every run ends with one summary on standard output, whose `outcome` is one of:
 | `aborted` | You answered no to "Proceed with installation?" or to the detected-harness question. Nothing was written. | 1 |
 | `deploy_failed` | Copying the assets failed (for example a directory could not be written). No `install.toml` is written, and an existing one is left as it was. | 1 |
 
-The summary also carries every warning printed, the `deps` verdicts, the selected harnesses
-and, for Pi, `global_permission_policy` (see [Project trust](#project-trust)).
+The summary also carries every warning printed, the `deps` verdicts and the selected harnesses.
 
 **Files the installer leaves alone.** A file at a path the installer deploys to that it did not
 put there is reported as `unmanaged` and never overwritten. A file it deployed that you have
@@ -346,12 +344,9 @@ read). For `untrusted` and `ask` it prints a warning naming `/trust`. This is Pi
 decision only; starting Pi with `--approve`, or an extension, can decide differently for one
 session. Model B never changes `trust.json` — trusting a project is always your decision.
 
-**What the installer tells you.** With Pi selected, `installed` reports your global policy as
-`global_permission_policy`: `absent` (no global policy), `unknown` (it does not parse),
-`no-fallback` (no `"*"` entry, so anything unlisted is asked about by default),
-`missing-tools` (some workflow tools are not allowed; they are listed in
-`global_permission_missing_tools`), or `ok`. Model B only reads the global policy; it never
-writes it.
+**Where workflow permissions come from.** Workflow permissions come from each project's policy,
+loaded once you run `/trust` in the project. The installer does not read or report your global
+policy, and Model B never writes it.
 
 **Creating a project.** For example:
 
@@ -374,3 +369,5 @@ the release notes and the Pi package's README:
 Names are lower-case words joined by hyphens, each name is used once, regions are never
 nested and never empty. This section is outside every region and is not copied. To change the
 install instructions, edit this file; the other copies are taken from it at release time.
+
+The PyPI project page shows the whole guide, this file unchanged, as the package readme.

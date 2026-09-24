@@ -11,9 +11,9 @@
   :data:`modelb_axi.requirements.REQUIREMENTS` at call time, never restated.
 - :func:`place_project_policy` writes it under the §S6 ownership rules
   (:func:`modelb_axi.agents.place_owned`).
-- :func:`global_policy_state` classifies the user's GLOBAL config as
-  ``absent | unknown | no-fallback | missing-tools | ok`` — read-only; Model B
-  never writes it.
+
+The installer no longer reads or reports the user's GLOBAL config
+(CR-MDB-038 §S3); Model B never writes it.
 
 Stdlib only.
 """
@@ -25,8 +25,7 @@ from pathlib import Path
 
 from modelb_axi import agents, requirements
 
-#: The policy file, relative to a project root (project scope) or to Pi's
-#: agent dir (global scope).
+#: The policy file, relative to a project's ``.pi`` directory.
 POLICY_RELPATH = Path("extensions") / "pi-permission-system" / "config.json"
 PROJECT_POLICY_RELPATH = Path(".pi") / POLICY_RELPATH
 
@@ -46,13 +45,6 @@ _TOOL_REQUIREMENTS: tuple[str, ...] = ("dispatch", "lean-ctx")
 #: harness's own code is added by :func:`_harness_code_reads`).
 _EXTERNAL_READS: tuple[str, ...] = ("~/.agents/*", "~/.crucible/*", "~/.pi/agent/*")
 _TMP = "/tmp/*"  # noqa: S108 -- the spec's pattern, not a temp file
-
-# Global-config verdicts (§S3, ruling P2).
-ABSENT = "absent"
-UNKNOWN = "unknown"
-NO_FALLBACK = "no-fallback"
-MISSING_TOOLS = "missing-tools"
-OK = "ok"
 
 
 def workflow_tools() -> list[str]:
@@ -123,63 +115,3 @@ def place_project_policy(
         classify=ownership_state,
     )
     return report
-
-
-def strip_comments(text: str) -> str:
-    """Drop ``//`` line and ``/* */`` block comments outside JSON strings."""
-    out: list[str] = []
-    i, n = 0, len(text)
-    in_string = False
-    while i < n:
-        ch = text[i]
-        if in_string:
-            out.append(ch)
-            if ch == "\\" and i + 1 < n:
-                out.append(text[i + 1])
-                i += 1
-            elif ch == '"':
-                in_string = False
-        elif ch == '"':
-            in_string = True
-            out.append(ch)
-        elif text.startswith("//", i):
-            end = text.find("\n", i)
-            i = n if end == -1 else end
-            continue
-        elif text.startswith("/*", i):
-            end = text.find("*/", i + 2)
-            i = n if end == -1 else end + 2
-            continue
-        else:
-            out.append(ch)
-        i += 1
-    return "".join(out)
-
-
-def global_policy_state(agent_dir: Path) -> tuple[str, list[str]]:
-    """``(verdict, missing tools)`` for ``<agent-dir>/extensions/
-    pi-permission-system/config.json`` — precedence absent -> unknown ->
-    no-fallback -> missing-tools -> ok (ruling P2). A tool is allowed when
-    its own entry is ``"allow"``, or it has no entry and the ``"*"``
-    fallback is ``"allow"`` (the package's last matching pattern wins).
-    Read-only."""
-    path = agent_dir / POLICY_RELPATH
-    if not path.is_file():
-        return ABSENT, []
-    try:
-        data = json.loads(strip_comments(path.read_text(encoding="utf-8")))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-        return UNKNOWN, []
-    if not isinstance(data, dict):
-        return UNKNOWN, []
-    permission = data.get("permission", {})
-    if not isinstance(permission, dict):
-        return UNKNOWN, []
-    if "*" not in permission:
-        return NO_FALLBACK, []
-    fallback = permission["*"]
-    missing = [tool for tool in workflow_tools()
-               if permission.get(tool, fallback) != "allow"]
-    if missing:
-        return MISSING_TOOLS, missing
-    return OK, []

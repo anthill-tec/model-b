@@ -36,7 +36,11 @@ Design (proposed at RED, approved by the orchestrator):
 (F) git-workflow ``## Releases`` names both release steps (copying the
     guide's marked regions verbatim into the release notes; a documentation
     review); CR-MDB-029 ``### §S1`` names the guide's marked regions as the
-    Pi package README's source.
+    Pi package README's source. CR-MDB-038 §S5: ``## Releases`` also names
+    the four Python release steps in order (single-source version + ``uv
+    build``; TestPyPI rehearsal into an isolated tool directory; PyPI upload
+    after ``git flow release finish`` with a token the user supplies; the
+    post-release maintenance) and names no one project.
 
 Orchestrator rulings (2026-09-24, on the RED design):
 
@@ -121,10 +125,39 @@ RELEASE_STEP_PHRASES = (
     "install guide", "marked region", "verbatim", "release notes", "documentation review",
 )
 CR_029_S1_TERMS = ("install-guide.md", "marked region", "README")
+#: CR-MDB-038 \u00a7S5 — the four Python release steps, in ritual order. Each
+#: step is (label, anchor alternatives, further required terms); a term is an
+#: alternatives tuple, matched case-insensitively on whitespace-normalised
+#: ``## Releases`` text. The first anchor found of each step must appear in
+#: step order (build, rehearse, upload, maintain).
+PYTHON_RELEASE_STEPS = (
+    ("build", ("uv build",), (("version in its single source",),)),
+    ("testpypi rehearsal", ("testpypi",), (("isolated tool directory",),)),
+    ("pypi upload", ("token the user supplies", "user-supplied token"),
+     (("git flow release finish",),)),
+    ("post-release maintenance", ("--reinstall",),
+     (("from pypi",), ("global permission config",), ("per-project",),
+      ("trusted project",), ("without a permission prompt",))),
+)
+#: The skill is used across projects: its release steps name no one project.
+PROJECT_SPECIFIC_NAMES = ("modelb", "model b", "model-b")
 
-# (G) — where the installer comes from (VERIFY cycle 100 findings 2/6).
+# (G) — where the installer comes from (VERIFY cycle 100 findings 2/6), and
+# the source-copy note that stays true after publishing (CR-MDB-038 \u00a7S4).
 INSTALLER_INSTALL = "uv tool install modelb-axi"
-INTERIM_INSTALL = "uv tool install ."
+SOURCE_COPY_INSTALL = "uv tool install ."
+#: CR-MDB-038 \u00a7S4 — wording that makes the source-copy note expire at the
+#: first upload (case-insensitive, whole word, whitespace-normalised).
+EXPIRING_NOTE_WORDING = (
+    ("until", re.compile(r"(?<![\w-])until(?![\w-])", re.I)),
+    ("interim", re.compile(r"(?<![\w-])interim(?![\w-])", re.I)),
+    ("first release", re.compile(r"(?<![\w-])first release(?![\w-])", re.I)),
+)
+#: CR-MDB-038 \u00a7S3 — the retired global-policy report's vocabulary: its two
+#: envelope fields and the two states only it reported.
+RETIRED_GLOBAL_REPORT_TERMS = (
+    "global_permission_policy", "global_permission_missing_tools", "no-fallback", "missing-tools",
+)
 REPOSITORY_PATTERNS = (
     ("git clone", re.compile(r"(?<![\w-])git clone(?![\w-])")),
     ("repository URL", re.compile(
@@ -525,6 +558,33 @@ def check_marked_regions(text: str) -> list[str]:
     return out
 
 
+#: The PyPI project page shows the whole guide as the package readme
+#: (orchestrator ruling R3, 2026-09-24, cycle 106: prose, not a table).
+PYPI_PAGE = "PyPI project page"
+
+
+def _prose_blocks(section: str) -> list[str]:
+    """Paragraphs and list items of ``section`` (fenced code excluded)."""
+    lines = section.splitlines()
+    mask = _fence_mask(lines)
+    text = "\n".join("" if fenced else ln for ln, fenced in zip(lines, mask, strict=True))
+    return [b for b in re.split(r"\n\s*\n|\n(?=\s*[-*] )", text) if b.strip()]
+
+
+def check_pypi_surface(text: str) -> list[str]:
+    """The ``Marked regions`` section (outside every region) names the PyPI
+    project page and says, in the same paragraph or list item, that it
+    shows the whole guide as the package readme."""
+    blocks = [b for b in _prose_blocks(_section(text, MARKED)) if PYPI_PAGE in " ".join(b.split())]
+    if not blocks:
+        return [f"section '{MARKED}' must name the {PYPI_PAGE}"]
+    if not any("whole guide" in " ".join(b.split()).lower() and "readme" in b.lower()
+               for b in blocks):
+        return [f"section '{MARKED}' must say the {PYPI_PAGE} shows the whole guide "
+                "as the package readme"]
+    return []
+
+
 def check_vocabulary(text: str) -> list[str]:
     out = [f"{label}: {m.group(0)!r}" for label, pattern in BLOCKED_PATTERNS
            for m in pattern.finditer(text)]
@@ -561,6 +621,31 @@ def check_release_steps(text: str) -> list[str]:
     return [f"## Releases: missing {p!r}" for p in RELEASE_STEP_PHRASES if p not in sec]
 
 
+def check_python_release_steps(text: str) -> list[str]:
+    """CR-MDB-038 \u00a7S5: ``## Releases`` names the four Python release
+    steps, in order, without naming any one project."""
+    sec = next((body for head, body in sections(text).items()
+                if head.startswith("Releases")), "")
+    if not sec:
+        return ["no '## Releases' section"]
+    flat = " ".join(sec.lower().split())
+    out: list[str] = []
+    anchors: list[tuple[int, str]] = []
+    for label, anchor, terms in PYTHON_RELEASE_STEPS:
+        found = [flat.find(a) for a in anchor if a in flat]
+        if found:
+            anchors.append((min(found), label))
+        else:
+            out.append(f"## Releases: {label}: missing {anchor[0]!r}")
+        for alts in terms:
+            if not any(a in flat for a in alts):
+                out.append(f"## Releases: {label}: missing {alts[0]!r}")
+    if [lbl for _, lbl in sorted(anchors)] != [lbl for _, lbl in anchors]:
+        out.append("## Releases: python release steps out of order")
+    out += [f"## Releases: names project {n!r}" for n in PROJECT_SPECIFIC_NAMES if n in flat]
+    return out
+
+
 def check_cr029_s1(text: str) -> list[str]:
     sec = next((body for head, body in sections(text, "### ").items()
                 if head.startswith("§S1")), "")
@@ -578,9 +663,10 @@ def check_cr029_s1(text: str) -> list[str]:
 
 def check_installer_source(text: str) -> list[str]:
     """The installer comes from PyPI (``uv tool install modelb-axi``), with
-    an interim source-copy note (``uv tool install .``, from the
-    maintainer); it is not claimed to ship as the Pi package; the guide
-    names no ``git clone`` and no repository URL; and ``git`` is a
+    the always-true source-copy note (``uv tool install .``, "from a source
+    copy") carrying no "until", "interim" or "first release" wording
+    (CR-MDB-038 \u00a7S4); it is not claimed to ship as the Pi package; the
+    guide names no ``git clone`` and no repository URL; and ``git`` is a
     prerequisite that comes before the installer step."""
     sec = _section(text, PREREQUISITES)
     out = []
@@ -588,20 +674,45 @@ def check_installer_source(text: str) -> list[str]:
         out.append(f"{PREREQUISITES}: the installer step must name `{INSTALLER_INSTALL}`")
     if not re.search(r"(?<![\w-])PyPI(?![\w-])", sec):
         out.append(f"{PREREQUISITES}: must say the installer comes from PyPI")
-    if not has_code_token(sec, INTERIM_INSTALL) or "maintainer" not in sec:
-        out.append(f"{PREREQUISITES}: must carry the interim note (`{INTERIM_INSTALL}` "
-                   "from a source copy obtained from the maintainer)")
+    notes = [" ".join(b.split()) for b in _prose_blocks(sec)
+             if has_code_token(b, SOURCE_COPY_INSTALL)]
+    if not any("source copy" in note.lower() for note in notes):
+        out.append(f"{PREREQUISITES}: must carry the source-copy note "
+                   f"(`{SOURCE_COPY_INSTALL}` from a source copy)")
+    out.extend(f"{PREREQUISITES}: the source-copy note must not say {word!r}"
+               for word, pattern in EXPIRING_NOTE_WORDING
+               if any(pattern.search(note) for note in notes))
     out.extend(f"{PREREQUISITES}: must not claim the installer ships as the Pi package: "
                f"{m.group(0)!r}" for m in PI_PACKAGE_CLAIM.finditer(sec))
     out.extend(f"{label}: {m.group(0)!r}"
                for label, pattern in REPOSITORY_PATTERNS for m in pattern.finditer(text))
     git_at = sec.find("`git`")
-    installer_at = [at for at in (sec.find(INSTALLER_INSTALL), sec.find(INTERIM_INSTALL))
+    installer_at = [at for at in (sec.find(INSTALLER_INSTALL), sec.find(SOURCE_COPY_INSTALL))
                     if at != -1]
     if git_at == -1:
         out.append(f"{PREREQUISITES}: `git` must be named")
     elif installer_at and min(installer_at) < git_at:
         out.append(f"{PREREQUISITES}: `git` must come before the installer step")
+    return out
+
+
+def check_permission_source(text: str) -> list[str]:
+    """CR-MDB-038 \u00a7S3: the guide no longer describes the installer's
+    global-policy report (none of :data:`RETIRED_GLOBAL_REPORT_TERMS`,
+    anywhere), and the ``Project trust`` section states \u2014 in one paragraph
+    or list item \u2014 that workflow permissions come from each project's
+    policy, loaded under ``/trust``."""
+    out = [f"guide: must not describe the global-policy report: `{term}`"
+           for term in RETIRED_GLOBAL_REPORT_TERMS if _token_re(term).search(text)]
+
+    def states_it(block: str) -> bool:
+        low = " ".join(block.split()).lower()
+        return ("workflow permissions" in low and "each project" in low and "policy" in low
+                and has_code_token(block, "/trust"))
+
+    if not any(states_it(b) for b in _prose_blocks(_section(text, TRUST))):
+        out.append(f"{TRUST}: must state that workflow permissions come from each "
+                   "project's policy, loaded under `/trust`")
     return out
 
 
@@ -638,10 +749,22 @@ def check_stale_rerun(text: str) -> list[str]:
     return _missing_tokens(bullet.group(0), _stale_rerun_flags(), f"{OUTCOMES} `stale`")
 
 
-#: The conforming guide's installer step (PyPI + the interim source note).
+#: The conforming guide's installer step (PyPI + the always-true source-copy
+#: note, CR-MDB-038 \u00a7S4).
 _CONFORMING_INSTALLER_LINE = (
+    f"- The installer, from PyPI: `{INSTALLER_INSTALL}`; or, from a source copy: "
+    f"`{SOURCE_COPY_INSTALL}`"
+)
+#: The CR-MDB-037 installer step whose note expires at the first upload.
+_EXPIRING_INSTALLER_LINE = (
     f"- The installer, from PyPI: `{INSTALLER_INSTALL}`; until then, from a source copy "
-    f"obtained from the maintainer: `{INTERIM_INSTALL}`"
+    f"obtained from the maintainer: `{SOURCE_COPY_INSTALL}`"
+)
+#: The conforming guide's statement of where workflow permissions come from
+#: (CR-MDB-038 \u00a7S3).
+_CONFORMING_PERMISSION_SOURCE = (
+    "Workflow permissions come from each project's policy, loaded once you run "
+    "`/trust` in the project."
 )
 
 
@@ -673,14 +796,16 @@ def conforming_guide() -> str:
         WARNINGS: warnings, OFFERS: offers, MISSING: missing, OUTCOMES: outcomes,
         REAL_HOME: ["Pass `--target-root ~` explicitly."],
         WIDENING: ["Re-run with `--reinstall --stacks python,rust`."],
-        TRUST: [f"`.pi/extensions` and `{policy_dir_name()}` load once you run `/trust`."],
+        TRUST: [f"`.pi/extensions` and `{policy_dir_name()}` load once you run `/trust`.",
+                "", _CONFORMING_PERMISSION_SOURCE],
     }
     out = ["# Installing", "", "<!-- install-guide:begin install -->", ""]
     for heading in INSTALL_TOPICS:
         out += [f"## {heading}", "", *bodies[heading], ""]
     out += ["<!-- install-guide:end install -->", "", f"## {MARKED}", "",
             "Regions open with `<!-- install-guide:begin <name> -->` and close with "
-            "`<!-- install-guide:end <name> -->`.", ""]
+            "`<!-- install-guide:end <name> -->`.", "",
+            f"The {PYPI_PAGE} shows the whole guide, as the package readme.", ""]
     return "\n".join(out)
 
 
@@ -743,7 +868,8 @@ class InstallGuideTopicsTest(unittest.TestCase):
 
 class InstallGuideInstallerSourceTest(unittest.TestCase):
     """VERIFY (cycle 100) findings 2 and 6: the installer is installed from
-    PyPI (interim: a source copy from the maintainer), never from a clone
+    PyPI (or from a source copy \u2014 a note that stays true after publishing,
+    CR-MDB-038 \u00a7S4), never from a clone
     or a repository URL, and not as the Pi package; ``git`` is a
     prerequisite ahead of the installer step. CR-MDB-029's acceptance
     criteria no longer own the guide's install step."""
@@ -786,6 +912,26 @@ class InstallGuideMarkedRegionsTest(unittest.TestCase):
         self.assertEqual(check_marked_regions(_read(GUIDE)), [])
 
 
+class InstallGuidePermissionSourceTest(unittest.TestCase):
+    """CR-MDB-038 \u00a7S3 (user ruling 2026-09-24): the installer's global-policy
+    report is removed, so the guide no longer describes it, and says that
+    workflow permissions come from each project's policy under ``/trust``."""
+
+    def test_guide_drops_global_report_and_states_permissions_come_from_each_project(self):
+        self.assertTrue(GUIDE.is_file(), f"{GUIDE.relative_to(REPO_ROOT)} must exist")
+        self.assertEqual(check_permission_source(_read(GUIDE)), [])
+
+
+class InstallGuidePypiSurfaceTest(unittest.TestCase):
+    """The PyPI project page is a surface derived from the guide (the whole
+    guide, as the package readme); the guide says so outside every region
+    (orchestrator ruling R3, 2026-09-24, cycle 106)."""
+
+    def test_marked_regions_section_names_the_pypi_project_page_as_the_whole_guide(self):
+        self.assertTrue(GUIDE.is_file(), f"{GUIDE.relative_to(REPO_ROOT)} must exist")
+        self.assertEqual(check_pypi_surface(_read(GUIDE)), [])
+
+
 class InstallGuideVocabularyTest(unittest.TestCase):
 
     def test_guide_carries_no_section_refs_cr_ids_or_internal_vocabulary(self):
@@ -806,6 +952,9 @@ class ReleaseDocsTest(unittest.TestCase):
 
     def test_git_workflow_releases_names_guide_copy_and_documentation_review(self):
         self.assertEqual(check_release_steps(_read(GIT_WORKFLOW_SKILL)), [])
+
+    def test_git_workflow_releases_names_the_four_python_release_steps_in_order(self):
+        self.assertEqual(check_python_release_steps(_read(GIT_WORKFLOW_SKILL)), [])
 
     def test_pi_package_cr_s1_names_guide_marked_regions_as_readme_source(self):
         self.assertEqual(check_cr029_s1(_read(CR_029)), [])
@@ -831,6 +980,88 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
         self.assertEqual(check_marked_regions(self.guide), [])
         self.assertEqual(check_vocabulary(self.guide), [])
         self.assertEqual(check_installer_source(self.guide), [])
+        self.assertEqual(check_pypi_surface(self.guide), [])
+        self.assertEqual(check_permission_source(self.guide), [])
+
+    def test_permission_source_faults_are_reported(self):
+        stated = _CONFORMING_PERMISSION_SOURCE
+        cases = {
+            **{f"describes `{term}`": (
+                self.guide + f"\nThe summary carries `{term}`.\n",
+                [f"guide: must not describe the global-policy report: `{term}`"])
+               for term in RETIRED_GLOBAL_REPORT_TERMS},
+            "not stated": (
+                self.guide.replace(stated, "Pi reads the policy."),
+                [f"{TRUST}: must state that workflow permissions come from each project's "
+                 "policy, loaded under `/trust`"]),
+            "global, not each project's": (
+                self.guide.replace("each project's policy", "your global policy"),
+                [f"{TRUST}: must state that workflow permissions come from each project's "
+                 "policy, loaded under `/trust`"]),
+            "no `/trust` in the statement": (
+                self.guide.replace("loaded once you run `/trust` in the project", "loaded later"),
+                [f"{TRUST}: must state that workflow permissions come from each project's "
+                 "policy, loaded under `/trust`"]),
+            "stated outside Project trust": (
+                self.guide.replace(stated, "").replace(
+                    f"## {WIDENING}\n", f"## {WIDENING}\n\n{stated}\n"),
+                [f"{TRUST}: must state that workflow permissions come from each project's "
+                 "policy, loaded under `/trust`"]),
+        }
+        for label, (text, expected) in cases.items():
+            with self.subTest(case=label):
+                self.assertEqual(check_permission_source(text), expected)
+        wrapped = self.guide.replace(stated, "Workflow permissions come from\neach project's "
+                                            "policy, loaded under\n`/trust`.")
+        self.assertEqual(check_permission_source(wrapped), [],
+                         "a statement wrapped across lines still counts")
+        self.assertEqual(
+            check_permission_source(self.guide + "\nOnly your global policy applies then.\n"), [],
+            "naming Pi's global policy is not describing the installer's report")
+
+    def test_expiring_source_copy_note_is_reported(self):
+        """CR-MDB-038 \u00a7S4: the CR-MDB-037 note ("until then ... from the
+        maintainer") is rejected; each expiring word is caught alone."""
+        old = self.guide.replace(_CONFORMING_INSTALLER_LINE, _EXPIRING_INSTALLER_LINE)
+        self.assertEqual(check_installer_source(old),
+                         [f"{PREREQUISITES}: the source-copy note must not say 'until'"])
+        for injected, word in (("; until PyPI, or", "until"),
+                               ("; in the interim, or", "interim"),
+                               ("; before the first\nrelease, or", "first release"),
+                               ("; Until publishing, or", "until")):
+            with self.subTest(word=injected):
+                text = self.guide.replace("; or", injected, 1)
+                self.assertEqual(check_installer_source(text),
+                                 [f"{PREREQUISITES}: the source-copy note must not say {word!r}"])
+        self.assertEqual(
+            check_installer_source(self.guide.replace("; or,", "; or, continuously")), [],
+            "words merely containing the letters (continuously) are not flagged")
+
+    def test_pypi_surface_faults_are_reported(self):
+        line = f"The {PYPI_PAGE} shows the whole guide, as the package readme."
+        cases = {
+            "not named": (self.guide.replace(line, "The release notes are copied."),
+                          f"section '{MARKED}' must name the {PYPI_PAGE}"),
+            "not the whole guide": (
+                self.guide.replace(line, f"The {PYPI_PAGE} shows the marked regions, as the "
+                                         "package readme."),
+                f"section '{MARKED}' must say the {PYPI_PAGE} shows the whole guide as the "
+                "package readme"),
+            "only inside a region": (
+                self.guide.replace(line, "").replace(
+                    "<!-- install-guide:end install -->", f"{line}\n\n<!-- install-guide:end install -->"),
+                f"section '{MARKED}' must name the {PYPI_PAGE}"),
+            "split across paragraphs": (
+                self.guide.replace(line, f"The {PYPI_PAGE} exists.\n\nThe whole guide is the readme."),
+                f"section '{MARKED}' must say the {PYPI_PAGE} shows the whole guide as the "
+                "package readme"),
+        }
+        for label, (text, expected) in cases.items():
+            with self.subTest(case=label):
+                self.assertEqual(check_pypi_surface(text), [expected])
+        wrapped = self.guide.replace(line, "The PyPI project\npage shows the whole guide,\n"
+                                           "as the package README.")
+        self.assertEqual(check_pypi_surface(wrapped), [])
 
     def test_installer_source_faults_are_reported(self):
         git_line = "- `git`, from your package manager.\n"
@@ -840,10 +1071,14 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
                 f"{PREREQUISITES}: the installer step must name `{INSTALLER_INSTALL}`"),
             "no PyPI": (self.guide.replace("from PyPI", "from the index"),
                         f"{PREREQUISITES}: must say the installer comes from PyPI"),
-            "no interim note": (
-                self.guide.replace(f"`{INTERIM_INSTALL}`", "a copy"),
-                f"{PREREQUISITES}: must carry the interim note (`{INTERIM_INSTALL}` "
-                "from a source copy obtained from the maintainer)"),
+            "no source-copy note": (
+                self.guide.replace(f"`{SOURCE_COPY_INSTALL}`", "a copy"),
+                f"{PREREQUISITES}: must carry the source-copy note (`{SOURCE_COPY_INSTALL}` "
+                "from a source copy)"),
+            "note without 'source copy'": (
+                self.guide.replace("from a source copy:", "otherwise:"),
+                f"{PREREQUISITES}: must carry the source-copy note (`{SOURCE_COPY_INSTALL}` "
+                "from a source copy)"),
             "Pi package claim": (
                 self.guide.replace("from PyPI:", "from PyPI, as the Model B Pi package:"),
                 f"{PREREQUISITES}: must not claim the installer ships as the Pi package: "
@@ -1032,6 +1267,63 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
         self.assertEqual(check_cr029_s1(cr), [])
         self.assertEqual(check_cr029_s1(cr.replace("marked regions", "text")),
                          ["§S1: missing 'marked region'"])
+
+    def test_python_release_steps_checker_both_ways(self):
+        good = ("## Releases (NON-NEGOTIABLE)\n\n"
+                "### Publishing a Python package\n\n"
+                "1. On the release branch, set the version in its\n   single source, then "
+                "build with `uv build`.\n"
+                "2. Rehearse: upload to TestPyPI and install into an isolated tool\n"
+                "   directory.\n"
+                "3. After `git flow release finish`, upload to PyPI with a token the user\n"
+                "   supplies at upload time.\n"
+                "4. Post-release: install from PyPI, replace the previous installation\n"
+                "   (`--reinstall --target-root ~`), remove workflow entries from any global\n"
+                "   permission config in favour of per-project policies, and confirm a\n"
+                "   dispatched agent in a trusted project runs without a permission prompt.\n"
+                "\n## Next\n\nuv build, TestPyPI, --reinstall\n")
+        self.assertEqual(check_python_release_steps(good), [])
+        self.assertEqual(check_python_release_steps(
+            good.replace("a token the user\n   supplies", "a user-supplied token")), [])
+        bad = {
+            "no build": (good.replace("`uv build`", "make"),
+                         "## Releases: build: missing 'uv build'"),
+            "no single-source version": (good.replace("version in its", "version in"),
+                                         "## Releases: build: missing "
+                                         "'version in its single source'"),
+            "no rehearsal": (good.replace("TestPyPI", "a staging index"),
+                             "## Releases: testpypi rehearsal: missing 'testpypi'"),
+            "no isolation": (good.replace("an isolated tool\n   directory", "~"),
+                             "## Releases: testpypi rehearsal: missing "
+                             "'isolated tool directory'"),
+            "stored token": (good.replace("a token the user\n   supplies at upload time",
+                                          "the stored token"),
+                             "## Releases: pypi upload: missing 'token the user supplies'"),
+            "no reinstall": (good.replace("--reinstall ", ""),
+                             "## Releases: post-release maintenance: missing '--reinstall'"),
+            "global kept": (good.replace("global\n   permission config", "settings"),
+                            "## Releases: post-release maintenance: missing "
+                            "'global permission config'"),
+            "no prompt-free check": (good.replace("without a permission prompt", ""),
+                                     "## Releases: post-release maintenance: missing "
+                                     "'without a permission prompt'"),
+            "project named": (good.replace("(`--reinstall", "(`modelb-axi --reinstall"),
+                              "## Releases: names project 'modelb'"),
+        }
+        for label, (text, expected) in bad.items():
+            with self.subTest(case=label):
+                self.assertIn(expected, check_python_release_steps(text))
+        reordered = ("## Releases\n\n"
+                     "1. Post-release: install from PyPI with `--reinstall`, remove the global "
+                     "permission config entries for per-project policies, confirm a trusted "
+                     "project runs without a permission prompt.\n"
+                     "2. Set the version in its single source; `uv build`.\n"
+                     "3. TestPyPI into an isolated tool directory.\n"
+                     "4. After git flow release finish, upload with a token the user supplies.\n")
+        self.assertEqual(check_python_release_steps(reordered),
+                         ["## Releases: python release steps out of order"])
+        self.assertEqual(check_python_release_steps("## Other\n\nuv build TestPyPI\n"),
+                         ["no '## Releases' section"])
 
 
 if __name__ == "__main__":

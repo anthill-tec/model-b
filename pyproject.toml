@@ -4,12 +4,28 @@ build-backend = "hatchling.build"
 
 [project]
 name = "modelb-axi"
-version = "0.1.0.dev0"
-description = "Model B universal installer + scaffold entrypoint (adaptive TUI), per DN-scaffold-packaging."
+dynamic = ["version"]
+description = "Installs agent skills, sub-agents and lifecycle hooks into coding-agent harnesses, and scaffolds new projects to use them."
+readme = "docs/install-guide.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
+classifiers = [
+    "Environment :: Console",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
 
 [project.scripts]
 modelb-axi = "modelb_axi.cli:main"
+
+# One version source: modelb_axi/__init__.py `__version__`, read at build time.
+[tool.hatch.version]
+path = "modelb_axi/__init__.py"
 
 # Flat layout next to unrelated repo dirs (tests/, docs/, audits/, ...): ship
 # the modelb_axi package as code, plus the asset roots (CR-MDB-014 §S2 tail)
@@ -34,6 +50,8 @@ packages = ["modelb_axi"]
 [tool.uv]
 cache-keys = [
     { file = "pyproject.toml" },
+    { file = "LICENSE" },
+    { file = "docs/install-guide.md" },
     { file = "modelb_axi/**/*.py" },
     { file = "skills-src/**" },
     { file = "generator/**" },
@@ -46,6 +64,8 @@ cache-keys = [
 only-include = [
     "modelb_axi",
     "pyproject.toml",
+    "LICENSE",
+    "docs/install-guide.md",
     "skills-src",
     "generator",
     "contracts",
