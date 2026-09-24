@@ -310,7 +310,7 @@ class ClientRoleContractS3Test(unittest.TestCase):
     def test_s3_retired_flag_detector_exempts_only_rust_code_health_snapshot(self):
         # CR-MDB-023: the exemption spares ONLY `rust-code-health.py snapshot
         # --phase`; the retired register flag bites alone and alongside it.
-        retired = "python3 clients/rust-crucible.py register --agent X --phase RED"
+        retired = "python3 clients/" "rust-crucible.py register --agent X --phase RED"
         snapshot = (
             "python3 ~/.agents/scripts/rust-code-health.py snapshot --phase post --slice CR-X"
         )
@@ -389,7 +389,7 @@ class ClientRoleContractS3Test(unittest.TestCase):
         )
         self.assertIsNone(
             CYCLE_FLAG_RE.search(
-                "python3 clients/python-crucible.py plan-file --cr CR-MDB-017 --cycles 3"
+                "python3 clients/" "python-crucible.py plan-file --cr CR-MDB-017 --cycles 3"
             ),
             "a `plan-file --cycles N` line must not satisfy the register cycle gate.",
         )

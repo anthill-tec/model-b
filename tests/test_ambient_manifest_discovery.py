@@ -303,7 +303,7 @@ class ManifestFeedResolutionS1Test(_SandboxCase):
         """A ``~``-relative client path resolves under ``$HOME``, as
         ``capabilities.probe_crucible_client`` does (``expanduser``)."""
         self.sb.write_client("python", self.sb.home / "cl")
-        self.sb.write_manifest({"python": "~/cl/python-crucible.py"})
+        self.sb.write_manifest({"python": "~/cl/" + "python-crucible.py"})
         self.sb.mark("pyproject.toml")
         self.assert_board_rendered(self.sb.run_hook(), via_key="python")
 
@@ -603,8 +603,9 @@ class NoSubstituteLocationS2Test(unittest.TestCase):
                          ["literal '.claude' names '.claude'"])
 
     def test_s2_detector_flags_site_packages_and_checkout_paths(self):
+        # Split literals (CR-MDB-032 S1): the fixture carries a checkout path at run time only.
         src = ('import site\nA = "lib/python3/site-packages/crucible"\n'
-               'B = "~/Documents/data_projects/crucible/clients"\n')
+               'B = "~/Documents/data' '_projects/crucible/clients"\n')
         findings = _substitute_path_findings(src)
         self.assertIn("imports 'site'", findings)
         self.assertTrue(any("site-packages" in f for f in findings), findings)
@@ -613,7 +614,7 @@ class NoSubstituteLocationS2Test(unittest.TestCase):
 
     def test_s2_detector_ignores_a_docstring_mention(self):
         src = ('"""Never tries ~/.claude/scripts or site-packages."""\n'
-               'def f():\n    """Nor data_projects/crucible/clients."""\n    return 1\n')
+               'def f():\n    """Nor data' '_projects/crucible/clients."""\n    return 1\n')
         self.assertEqual(_substitute_path_findings(src), [])
 
 

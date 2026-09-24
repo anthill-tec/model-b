@@ -138,7 +138,7 @@ FIXTURE_LINE_SNAPSHOT_PHASE = (
 )
 FIXTURE_LINE_SNAPSHOT_AND_RETIRED = (
     FIXTURE_LINE_SNAPSHOT_PHASE
-    + " && python3 clients/rust-crucible.py register --agent X --phase RED"
+    + " && python3 clients/" "rust-crucible.py register --agent X --phase RED"
 )
 
 # Case-exact: five uppercase, `report` lowercase.
@@ -333,19 +333,19 @@ CLIENT_INVOCATION_RE = re.compile(
 # Genuine register examples, each carrying exactly one defect. The first is the
 # historic pre-CR-MDB-017 form the bundles actually shipped.
 FIXTURE_LINE_RETIRED_FLAG = (
-    "python3 clients/arduino-crucible.py register --agent AGENT_ID --phase RED"
+    "python3 clients/" "arduino-crucible.py register --agent AGENT_ID --phase RED"
 )
 FIXTURE_LINE_NO_ROLE = (
-    "python3 clients/bun-crucible.py register --agent AGENT_ID --cycle 60"
+    "python3 clients/" "bun-crucible.py register --agent AGENT_ID --cycle 60"
 )
 FIXTURE_LINE_BAD_ROLE = (
-    "python3 clients/mvn-crucible.py register --agent AGENT_ID --role red --cycle 60"
+    "python3 clients/" "mvn-crucible.py register --agent AGENT_ID --role red --cycle 60"
 )
 FIXTURE_LINE_NO_CYCLE = (
-    "python3 clients/python-crucible.py register --agent AGENT_ID --role GREEN"
+    "python3 clients/" "python-crucible.py register --agent AGENT_ID --role GREEN"
 )
 FIXTURE_LINE_CLEAN = (
-    "python3 clients/rust-crucible.py register --agent AGENT_ID --role VERIFY --cycle 60"
+    "python3 clients/" "rust-crucible.py register --agent AGENT_ID --role VERIFY --cycle 60"
 )
 
 # Register BODY fixtures -- the wire-key equivalents of the four above. The

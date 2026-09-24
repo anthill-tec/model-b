@@ -96,19 +96,27 @@ GATED_TREES = (
     "docs/install-guide.md",
     "README.md",
     "AGENTS.md",
+    "tests",
 )
-#: §S2 — exempt path prefixes (dated records and the tests CR-MDB-032 §S1 repoints).
-EXEMPT_PREFIXES = ("archive/", "audits/", "docs/changes/", "tests/")
+#: §S2 — exempt path prefixes (dated records). CR-MDB-032 §S1 dropped ``tests/``: the gate scans
+#: the suite too, so its detector fixtures build every forbidden spelling from split literals.
+EXEMPT_PREFIXES = ("archive/", "audits/", "docs/changes/")
 #: §S2 — the one exempt LINE: the handover's provenance line (file, line prefix).
 PROVENANCE_EXEMPTION = ("skills-src/CRUCIBLE-HANDOVER.md", "- **Origin repo:** ")
 #: §S2 — the one exempt FILE: the verbatim secured record of Crucible's guard suite (a historical
 #: artifact, not instructions) — orchestrator ruling on CR-MDB-020 C1 RED; the spec is amended.
 EXEMPT_FILES = ("docs/research/crucible-clients-skills-guard.test.ts",)
 
+#: Split literals (CR-MDB-032 §S1): with ``tests/`` gated, this module must not itself carry the
+#: checkout, unrooted or mirror spellings its fixtures exercise, so it assembles them from parts.
+_CHECKOUT = "data" + "_projects/crucible"
+_RUST_CLIENT = "rust" + "-crucible.py"
+
 CLIENT_FILE_RE = r"(?:[a-z]+|<stack>|\{stack\}|\*)-crucible\.py"
-RE_CHECKOUT = re.compile(r"data_projects/crucible")
-#: §S2 — every ``<dir>/<stack>-crucible.py``; group 1 is the directory token (no whitespace, quote,
-#: backtick, bracket or paren), so ``<crucible-clients>/…`` and ``crucible:clients/…`` are read whole.
+RE_CHECKOUT = re.compile(re.escape(_CHECKOUT))
+#: §S2 — every client file named under a directory; group 1 is the directory token (no whitespace,
+#: quote, backtick, bracket or paren), so ``<crucible-clients>/…`` and ``crucible:clients/…`` are
+#: read whole.
 RE_CLIENT_IN_DIR = re.compile(r"([^\s`'\"()\[\]]*)/" + CLIENT_FILE_RE)
 #: §S2 — the only directories a client may be named under: the anchor, and its ``$HOME`` spelling.
 ANCHORED_CLIENT_DIRS = ("~/.crucible/clients", "$HOME/.crucible/clients", "${HOME}/.crucible/clients")
@@ -162,8 +170,8 @@ def _sentences(text):
 def _anchoring_hits(root, trees=GATED_TREES):
     """Return [(rel, lineno, kind, line)] — every unanchored client path in ``trees``.
 
-    kinds: ``checkout`` (a personal Crucible checkout), ``unrooted`` (a ``<dir>/<stack>-crucible.py``
-    whose directory is not one of ``ANCHORED_CLIENT_DIRS``), ``mirror`` (the retired
+    kinds: ``checkout`` (a personal Crucible checkout), ``unrooted`` (a client file named under a
+    directory that is not one of ``ANCHORED_CLIENT_DIRS``), ``mirror`` (the retired
     ``~/.claude/scripts/…-crucible.py``, including sub-directories). A bare ``<stack>-crucible.py``
     with no directory names no location and is not a hit.
     """
@@ -584,7 +592,7 @@ class ClientPathAnchoringS1Test(unittest.TestCase):
         self.assertTrue("~/.crucible/clients/<stack>-crucible.py" in text,
                         "§S1: crucible/SKILL.md must name ~/.crucible/clients/<stack>-crucible.py")
         self.assertTrue(MANIFEST_NAME in text, f"§S1: crucible/SKILL.md must name {MANIFEST_NAME}")
-        self.assertFalse("data_projects/crucible" in text, "§S1: crucible/SKILL.md still names the checkout")
+        self.assertFalse(_CHECKOUT in text, "§S1: crucible/SKILL.md still names the checkout")
 
     def test_s1_memory_templates_name_the_installed_client(self):
         expected = {
@@ -598,8 +606,10 @@ class ClientPathAnchoringS1Test(unittest.TestCase):
         self.assertEqual(hits, [], "§S1: unanchored client paths:\n" + _fmt_hits(hits))
 
     def test_s1_no_site_packages_package_internal_copy_or_edit_instruction(self):
+        # The copy/vendor WORDING rule governs instruction text. tests/ is gated for client PATHS
+        # (\u00a7S2, since CR-MDB-032 \u00a7S1) but carries this detector's own patterns and fixtures.
         hits = []
-        for tree in GATED_TREES:
+        for tree in (t for t in GATED_TREES if t != "tests"):
             for rel, text in _iter_text_files(REPO_ROOT, tree):
                 hits.extend(_copy_hits_in_text(rel, text))
         self.assertEqual(hits, [], "§S1: copy/vendor/site-packages client wording:\n" + _fmt_hits(hits))
@@ -608,8 +618,8 @@ class ClientPathAnchoringS1Test(unittest.TestCase):
         fixture = "\n".join((
             "A project-vendored `clients/` copy is valid ONLY while a CR changes it.",
             "never vendor a copy unless a CR is changing the client",
-            "Run it from site-packages/crucible/clients/rust-crucible.py",
-            "Model B ships modelb_axi/_assets/clients/rust-crucible.py",
+            f"Run it from site-packages/crucible/clients/{_RUST_CLIENT}",
+            f"Model B ships modelb_axi/_assets/clients/{_RUST_CLIENT}",
             "Copy the rust-crucible.py into your project and patch it.",
         ))
         labels = sorted({label for _, _, label, _ in _copy_hits_in_text("f.md", fixture)})
@@ -624,7 +634,7 @@ class ClientPathAnchoringS1Test(unittest.TestCase):
 
     def test_s1_agents_md_drops_checkout_prefix_and_runs_the_installed_client(self):
         text = _read("AGENTS.md")
-        self.assertFalse("data_projects/crucible" in text, "§S1: AGENTS.md still names the checkout")
+        self.assertFalse(_CHECKOUT in text, "§S1: AGENTS.md still names the checkout")
         self.assertIsNone(
             re.search(r"`crucible:`\s*=", text),
             "§S1: AGENTS.md still defines the `crucible:` checkout path prefix",
@@ -714,13 +724,13 @@ class ClientPathAnchoringS2Test(unittest.TestCase):
     def test_s2_gated_tree_list_is_exact(self):
         self.assertEqual(GATED_TREES, (
             "skills-src", "generator", "hooks-src", "contracts", "modelb_axi", "scripts",
-            "docs/research", "docs/install-guide.md", "README.md", "AGENTS.md",
+            "docs/research", "docs/install-guide.md", "README.md", "AGENTS.md", "tests",
         ))
         absent = [t for t in GATED_TREES if not (REPO_ROOT / t).exists()]
         self.assertEqual(absent, [], f"§S2: gated trees missing from the repo: {absent}")
 
     def test_s2_exemption_list_is_exact(self):
-        self.assertEqual(EXEMPT_PREFIXES, ("archive/", "audits/", "docs/changes/", "tests/"))
+        self.assertEqual(EXEMPT_PREFIXES, ("archive/", "audits/", "docs/changes/"))
         self.assertEqual(PROVENANCE_EXEMPTION, ("skills-src/CRUCIBLE-HANDOVER.md", "- **Origin repo:** "))
         self.assertEqual(EXEMPT_FILES, ("docs/research/crucible-clients-skills-guard.test.ts",))
         missing = [f for f in EXEMPT_FILES if not (REPO_ROOT / f).is_file()]
@@ -732,13 +742,13 @@ class ClientPathAnchoringS2Test(unittest.TestCase):
         lines = _read(PROVENANCE_EXEMPTION[0]).splitlines()
         covered = [line for line in lines if line.startswith(PROVENANCE_EXEMPTION[1])]
         self.assertEqual(len(covered), 1, f"§S2: provenance exemption must cover one line, covers {covered}")
-        self.assertIn("data_projects/crucible", covered[0])
+        self.assertIn(_CHECKOUT, covered[0])
 
     def test_s2_provenance_exemption_does_not_cover_other_handover_lines(self):
         tmp, root = _fixture_tree({
             "skills-src/CRUCIBLE-HANDOVER.md":
-                "- **Origin repo:** `~/Documents/data_projects/crucible` (the Crucible repo)\n"
-                "Run `~/Documents/data_projects/crucible/clients/rust-crucible.py test`.\n",
+                f"- **Origin repo:** `~/Documents/{_CHECKOUT}` (the Crucible repo)\n"
+                f"Run `~/Documents/{_CHECKOUT}/clients/{_RUST_CLIENT} test`.\n",
         })
         with tmp:
             hits = _anchoring_hits(root)
@@ -749,7 +759,7 @@ class ClientPathAnchoringS2Test(unittest.TestCase):
         )
 
     def test_s2_exempt_file_covers_only_the_guard_record(self):
-        text = 'scriptSubcommandPin(content, "clients/rust-crucible.py", [\n'
+        text = f'scriptSubcommandPin(content, "clients/{_RUST_CLIENT}", [\n'
         tmp, root = _fixture_tree({
             "docs/research/crucible-clients-skills-guard.test.ts": text,
             "docs/research/other-guard.test.ts": text,
@@ -761,8 +771,8 @@ class ClientPathAnchoringS2Test(unittest.TestCase):
 
     def test_s2_exempt_prefixes_are_not_scanned(self):
         tmp, root = _fixture_tree({
-            "docs/changes/CR-X.md": "was `~/Documents/data_projects/crucible/clients/rust-crucible.py`\n",
-            "docs/research/DN-x.md": "run `clients/rust-crucible.py test`\n",
+            "docs/changes/CR-X.md": f"was `~/Documents/{_CHECKOUT}/clients/{_RUST_CLIENT}`\n",
+            "docs/research/DN-x.md": f"run `clients/{_RUST_CLIENT} test`\n",
         })
         with tmp:
             hits = _anchoring_hits(root, ("docs",))
@@ -776,14 +786,14 @@ class ClientPathAnchoringS2Test(unittest.TestCase):
 
     def test_s2_gate_fails_on_a_checkout_path(self):
         self.assertIn(("skills-src/x/SKILL.md", 2, "checkout"),
-                      self._gate_on("python3 ~/Documents/data_projects/crucible/clients/rust-crucible.py test"))
+                      self._gate_on(f"python3 ~/Documents/{_CHECKOUT}/clients/{_RUST_CLIENT} test"))
 
     def test_s2_gate_fails_on_an_unrooted_clients_path(self):
-        self.assertEqual(self._gate_on("python3 clients/rust-crucible.py test --crate c"),
+        self.assertEqual(self._gate_on(f"python3 clients/{_RUST_CLIENT} test --crate c"),
                          [("skills-src/x/SKILL.md", 2, "unrooted")])
 
     def test_s2_gate_fails_on_the_retired_claude_scripts_mirror(self):
-        self.assertEqual(self._gate_on("python3 ~/.claude/scripts/rust-crucible.py test"),
+        self.assertEqual(self._gate_on(f"python3 ~/.claude/scripts/{_RUST_CLIENT} test"),
                          [("skills-src/x/SKILL.md", 2, "mirror")])
 
     def test_s2_gate_passes_on_the_installed_client_path(self):
@@ -801,17 +811,17 @@ class ClientPathAnchoringS2Test(unittest.TestCase):
     def test_s2_gate_fails_on_any_other_client_directory(self):
         # F2: not only `clients/` — any directory that is not the anchor is unanchored.
         for line in (
-            "python3 <crucible-clients>/rust-crucible.py test",
-            "python3 ~/.agents/scripts/rust-crucible.py test",
-            "python3 /opt/elsewhere/.crucible/clients/rust-crucible.py test",
-            "python3 crucible:clients/rust-crucible.py test",
-            "CLIENT=./vendor/rust-crucible.py",
+            f"python3 <crucible-clients>/{_RUST_CLIENT} test",
+            f"python3 ~/.agents/scripts/{_RUST_CLIENT} test",
+            f"python3 /opt/elsewhere/.crucible/clients/{_RUST_CLIENT} test",
+            f"python3 crucible:clients/{_RUST_CLIENT} test",
+            f"CLIENT=./vendor/{_RUST_CLIENT}",
         ):
             with self.subTest(line=line):
                 self.assertEqual(self._gate_on(line), [("skills-src/x/SKILL.md", 2, "unrooted")])
 
     def test_s2_gate_fails_on_a_mirror_sub_directory(self):
-        self.assertEqual(self._gate_on("python3 ~/.claude/scripts/crucible/rust-crucible.py test"),
+        self.assertEqual(self._gate_on(f"python3 ~/.claude/scripts/crucible/{_RUST_CLIENT} test"),
                          [("skills-src/x/SKILL.md", 2, "mirror")])
 
 

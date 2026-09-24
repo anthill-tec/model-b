@@ -2307,8 +2307,8 @@ class AgentOwnershipRulesS6Test(unittest.TestCase):
 # \u00a7S8 -- the released client in the generator inputs (moved from CR-MDB-020
 # \u00a7S2 by user ruling 2026-09-23, committed 0246f6a). The three command
 # strings in every generator/stacks/*.toml name the released Crucible client
-# ~/.crucible/clients/<client>-crucible.py, never the retired mirror
-# ~/.claude/scripts/<client>-crucible.py (absent on a Pi install, so First
+# ~/.crucible/clients/<client>-crucible.py, never the retired
+# ~/.claude/scripts/ mirror of the client (absent on a Pi install, so First
 # Action 1 of every rendered definition could not run). Measured at 0246f6a:
 # arduino/bun/python/quarkus carry the retired form in all three commands
 # (17 occurrences each across stacks + rendered output); rust alone already
@@ -2349,7 +2349,7 @@ RETIRED_CLIENT_PATH_RE = re.compile(r"\.claude/scripts/[\w./-]*-crucible\.py")
 
 
 def _retired_client_paths(text: str) -> list:
-    """\u00a7S8 AC2 -- every `.claude/scripts/...-crucible.py` pairing in ``text``."""
+    """\u00a7S8 AC2 -- every retired-mirror (`.claude/scripts/`) client pairing in ``text``."""
     return RETIRED_CLIENT_PATH_RE.findall(text)
 
 
@@ -2398,16 +2398,17 @@ class ReleasedClientPathS8Test(unittest.TestCase):
         self.assertEqual(changed, [], "\n".join(changed))
 
     def test_s8_detector_bites_on_retired_client_path_but_not_on_released(self):
-        retired = "python3 ~/.claude/scripts/python-crucible.py register --agent X"
+        # Split literals (CR-MDB-032 \u00a7S1): the anchoring gate scans tests/.
+        retired = "python3 ~/.claude/scripts/" "python-crucible.py register --agent X"
         released = "python3 ~/.crucible/clients/python-crucible.py register --agent X"
         unrelated = "see ~/.claude/scripts/toon.py and `arduino-crucible.py` (bare)"
         self.assertEqual(
-            _retired_client_paths(retired), [".claude/scripts/python-crucible.py"]
+            _retired_client_paths(retired), [".claude/scripts/" "python-crucible.py"]
         )
         self.assertEqual(_retired_client_paths(released), [])
         self.assertEqual(_retired_client_paths(unrelated), [])
         self.assertEqual(
-            _non_released_client_tokens(retired), ["~/.claude/scripts/python-crucible.py"]
+            _non_released_client_tokens(retired), ["~/.claude/scripts/" "python-crucible.py"]
         )
         self.assertEqual(_non_released_client_tokens(released), [])
 

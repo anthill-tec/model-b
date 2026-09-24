@@ -123,7 +123,7 @@ CLIENT_PATH_MARKERS = (
     ".crucible/clients",
     "crucible/clients",
     "clients/skills",
-    "data_projects/crucible",
+    "data" "_projects/crucible",  # split literal (CR-MDB-032 S1)
     "--help",
 )
 # Escaping the repo is how a client gets read; the guard must not try.
