@@ -104,10 +104,18 @@ def _report_bundles() -> set[str]:
         if p.is_dir() and p.name.startswith("crucible-report-") and (p / "SKILL.md").is_file()
     }
 
+#: Non-report bundles that are nevertheless STACK-SCOPED (CR-MDB-023 \u00a7S4):
+#: ``code-health`` drives Rust-only tools, so it deploys only when ``rust``
+#: is selected (or no stack filter is given) -- the same CR-MDB-036 \u00a7S7
+#: rule the ``crucible-report-*`` bundles follow. It is therefore NOT an
+#: always-deployed bundle.
+STACK_SCOPED_NON_REPORT_BUNDLES = {"code-health": "rust"}
+
 def _always_bundles() -> set[str]:
     return {
         p.name for p in SKILLS_SRC.iterdir()
         if p.is_dir() and not p.name.startswith("crucible-report-")
+        and p.name not in STACK_SCOPED_NON_REPORT_BUNDLES
         and (p / "SKILL.md").is_file()
     }
 
@@ -429,11 +437,20 @@ class StackSelectionPersistenceTest(_StackSandboxCase):
         changed = {p: (before[p], after.get(p)) for p in before if after.get(p) != before[p]}
         self.assertEqual(changed, {}, "§S7: prior manifest entries must be unchanged")
         added = sorted(set(after) - set(before))
+        # MIGRATED (CR-MDB-023 §S4): selecting rust adds every rust-scoped
+        # bundle -- its report bundle AND code-health. Each bundle's SKILL.md
+        # is expected by name, so an absent bundle cannot vanish from the
+        # expectation.
+        rust_bundles = ("crucible-report-rust", *sorted(
+            name for name, stack in STACK_SCOPED_NON_REPORT_BUNDLES.items() if stack == "rust"
+        ))
         rust_files = sorted(
-            f".agents/skills/{p.relative_to(SKILLS_SRC)}"
-            for p in (SKILLS_SRC / "crucible-report-rust").rglob("*") if p.is_file()
+            {f".agents/skills/{p.relative_to(SKILLS_SRC)}"
+             for bundle in rust_bundles if (SKILLS_SRC / bundle).is_dir()
+             for p in (SKILLS_SRC / bundle).rglob("*") if p.is_file()}
+            | {f".agents/skills/{bundle}/SKILL.md" for bundle in rust_bundles}
         )
-        self.assertEqual(added, rust_files, "§S7: exactly the rust report bundle is added")
+        self.assertEqual(added, rust_files, "§S7: exactly the rust-scoped bundles are added")
         self.assertIn("crucible-report-rust", self.deployed_bundles())
 
 # ---------------------------------------------------------------------------

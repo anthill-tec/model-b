@@ -106,7 +106,13 @@ IMPORTED_BUNDLE_NAMES = (
     "shutdown",
 )
 CRUCIBLE_BUNDLE_NAME = "crucible"
-ALL_SEVEN_BUNDLE_NAMES = frozenset(IMPORTED_BUNDLE_NAMES) | {CRUCIBLE_BUNDLE_NAME}
+# CR-MDB-023 \u00a7S4 -- the adopted code-health bundle is Model B-owned too.
+# The set's name carries no size: it grows as Model B adopts bundles, and a
+# count baked into the identifier goes stale the moment it does.
+CODE_HEALTH_BUNDLE_NAME = "code-health"
+MODELB_OWNED_BUNDLE_NAMES = frozenset(IMPORTED_BUNDLE_NAMES) | {
+    CRUCIBLE_BUNDLE_NAME, CODE_HEALTH_BUNDLE_NAME,
+}
 
 # CR-MDB-024 \u00a7S2 -- rust joined the generator as a fifth stack (16 -> 20).
 STACKS = ("arduino", "bun", "python", "quarkus", "rust")
@@ -293,12 +299,12 @@ class CrucibleHandoverBundleFidelityTest(unittest.TestCase):
 class SkillBundleDiscoveryGuardTest(unittest.TestCase):
     """AC6 pin #2 -- the deploy engine's own bundle-discovery function
     (modelb_axi.deploy._skill_bundles, pure/read-only) finds exactly the
-    seven skill bundles (six imports + crucible) once §S7 lands; the
+    Model B-owned bundles plus the Crucible handover bundles; the
     crucible bundle's content stays exactly as CR-MDB-011 committed it
     (no-active-cycle client present, zero WORKFLOW_CYCLE_ID references --
     the import step must never touch it)."""
 
-    def test_deploy_module_discovers_seven_bundles_with_crucible_content_unchanged(self):
+    def test_deploy_module_discovers_every_bundle_with_crucible_content_unchanged(self):
         sys.path.insert(0, str(REPO_ROOT))
         try:
             from modelb_axi import deploy as deploy_module
@@ -306,19 +312,19 @@ class SkillBundleDiscoveryGuardTest(unittest.TestCase):
             sys.path.remove(str(REPO_ROOT))
         bundles = deploy_module._skill_bundles(REPO_ROOT)
         bundle_names = {b.name for b in bundles}
-        # POSITIVE/EXACT -- CR-MDB-016 supersedes the seven-only bound: the
-        # seven pre-existing bundles UNION the six imported handover
-        # bundles (13 total, CR-MDB-024 \u00a7S3 this cycle -- the VS Code
-        # crucible-report bundle is retired outright), no more (e.g.
+        # POSITIVE/EXACT -- the Model B-owned bundles (code-health joined
+        # them at CR-MDB-023 \u00a7S4; with no stack filter it is discovered)
+        # UNION the six imported handover bundles (CR-MDB-024 \u00a7S3 -- the
+        # VS Code crucible-report bundle is retired outright), no more (e.g.
         # memory-templates/, which has no SKILL.md, must never be picked
         # up) and no fewer.
         expected_bundle_names = (
-            set(ALL_SEVEN_BUNDLE_NAMES) | set(CRUCIBLE_HANDOVER_BUNDLE_NAMES)
+            set(MODELB_OWNED_BUNDLE_NAMES) | set(CRUCIBLE_HANDOVER_BUNDLE_NAMES)
         )
         self.assertEqual(
             bundle_names, expected_bundle_names,
             f"deploy._skill_bundles(REPO_ROOT) must discover exactly the "
-            f"thirteen skill bundles {sorted(expected_bundle_names)}; "
+            f"skill bundles {sorted(expected_bundle_names)}; "
             f"found {sorted(bundle_names)}",
         )
         crucible_skill_md = SKILLS_SRC_DIR / CRUCIBLE_BUNDLE_NAME / "SKILL.md"
@@ -1183,11 +1189,11 @@ class ClosedCrSpecsUntouchedTest(unittest.TestCase):
         )
 
 
-class DeployEngineSevenBundlesEndToEndTest(unittest.TestCase):
+class DeployEngineAllBundlesEndToEndTest(unittest.TestCase):
     """AC6 pin #3 -- a full sandboxed installer run (fakes on PATH, tmp
     MODELB_HOME + tmp target-root -- never the real ~/.claude/~/.agents)
-    deploys ALL SEVEN skill bundles into the sandbox Vercel store with a
-    manifest entry each."""
+    with no stack filter deploys EVERY skill bundle into the sandbox
+    Vercel store with a manifest entry each."""
 
     def setUp(self):
         self._tmp_home = tempfile.mkdtemp(prefix="modelb-axi-s7-home-")
@@ -1207,7 +1213,7 @@ class DeployEngineSevenBundlesEndToEndTest(unittest.TestCase):
         shutil.rmtree(self._tmp_bin, ignore_errors=True)
         shutil.rmtree(self._tmp_target_root, ignore_errors=True)
 
-    def test_end_to_end_install_deploys_seven_skill_bundles_with_manifest_and_symlinks(self):
+    def test_end_to_end_install_deploys_every_skill_bundle_with_manifest_and_symlinks(self):
         result = _run_module(
             "--yes", "--harnesses", "claude-code",
             "--modelb-home", self._tmp_home,
@@ -1235,25 +1241,25 @@ class DeployEngineSevenBundlesEndToEndTest(unittest.TestCase):
             parts = Path(path).parts
             if len(parts) >= 2 and parts[-1] == "SKILL.md":
                 skill_md_names.add(parts[-2])
-        # POSITIVE/EXACT -- CR-MDB-016 supersedes the seven-only bound: a
-        # manifest entry for every one of the seven pre-existing skill
-        # bundles' SKILL.md UNION the six imported handover bundles'
-        # SKILL.md (13 distinct names, exactly -- CR-MDB-024 \u00a7S3 this cycle
-        # narrows the handover half from 7 to 6, the VS Code crucible-report
-        # bundle retired outright).
+        # POSITIVE/EXACT -- a manifest entry for every Model B-owned skill
+        # bundle's SKILL.md (code-health included -- no stack filter
+        # selects every stack, CR-MDB-023 \u00a7S4) UNION the six imported
+        # handover bundles' SKILL.md, exactly (CR-MDB-024 \u00a7S3 narrowed the
+        # handover half from 7 to 6, the VS Code crucible-report bundle
+        # retired outright).
         expected_skill_md_names = (
-            set(ALL_SEVEN_BUNDLE_NAMES) | set(CRUCIBLE_HANDOVER_BUNDLE_NAMES)
+            set(MODELB_OWNED_BUNDLE_NAMES) | set(CRUCIBLE_HANDOVER_BUNDLE_NAMES)
         )
         self.assertEqual(
             skill_md_names, expected_skill_md_names,
             f"install.toml [[files]] must record a SKILL.md entry for "
-            f"exactly the thirteen bundles {sorted(expected_skill_md_names)}; "
+            f"exactly the bundles {sorted(expected_skill_md_names)}; "
             f"found {sorted(skill_md_names)}",
         )
         store_root = Path(self._tmp_target_root) / ".agents" / "skills"
         harness_root = Path(self._tmp_target_root) / ".claude" / "skills"
         missing_store = [
-            name for name in ALL_SEVEN_BUNDLE_NAMES
+            name for name in MODELB_OWNED_BUNDLE_NAMES
             if not (store_root / name / "SKILL.md").is_file()
         ]
         # POSITIVE/EXACT -- every bundle physically deployed once into the
@@ -1264,7 +1270,7 @@ class DeployEngineSevenBundlesEndToEndTest(unittest.TestCase):
             f"{store_root}; missing: {missing_store}",
         )
         missing_symlink = [
-            name for name in ALL_SEVEN_BUNDLE_NAMES
+            name for name in MODELB_OWNED_BUNDLE_NAMES
             if not (harness_root / name).is_symlink()
         ]
         # POSITIVE/EXACT -- every bundle symlinked into the claude-code
@@ -1394,7 +1400,7 @@ class InstalledPackageAssetRootEndToEndTest(unittest.TestCase):
 
         store_root = Path(self._tmp_target_root) / ".agents" / "skills"
         missing_store = [
-            name for name in sorted(ALL_SEVEN_BUNDLE_NAMES)
+            name for name in sorted(MODELB_OWNED_BUNDLE_NAMES)
             if not (store_root / name / "SKILL.md").is_file()
         ]
         # POSITIVE/EXACT -- every bundle (crucible included) physically
