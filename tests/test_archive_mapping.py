@@ -26,15 +26,20 @@ Row rules (§S1/§S4):
 - ``moved``/``absorbed``: **Now** with backticks and any ``#anchor`` stripped is a repo-relative
   path (no leading ``~`` or ``/``, no escape via ``..``) that exists under the repo root;
 - ``deleted``: **Now** is exactly ``—`` and **Authority** (the reason) is non-empty;
-- ``external``: **Authority** names ``Crucible``, ``Sandesh`` or ``the user`` (``The user`` too);
+- ``external``: **Authority** STARTS with its owner — ``Crucible``, ``Sandesh`` or ``the user``
+  (``The user`` too); ``Model B (not Crucible)`` names no owner;
 - **Moved by** is one or more comma-separated tokens (backticks stripped), each either
   ``CR-MDB-NNN`` with a spec ``docs/changes/CR-MDB-NNN-*.md`` (``CR-MDB-007`` is allowed without
   one — superseded, no spec) or a 7–40 lower-case hex sha that ``git cat-file -e <sha>^{commit}``
-  resolves in this repo. Every token must resolve.
+  resolves in this repo. Every token must resolve. When the repo is a shallow clone
+  (``git rev-parse --is-shallow-repository`` prints ``true``) or git is unavailable, sha resolution
+  is skipped — every other rule, CR ids included, is still checked and the real-map test then
+  reports a skip naming why.
 
 Header rule: the text before the table names ``tests/test_archive_mapping.py`` and states the
-update-on-move rule — it contains the words ``update`` and ``move`` (case-insensitive; ``updated``,
-``moves`` count).
+update-on-move rule in ONE sentence containing the words ``update`` and ``move``
+(case-insensitive; ``updated``, ``moves`` count). Sentences end at ``.``/``!``/``?`` followed by
+whitespace, or at a blank line.
 
 Required-row matching rule (how an Old path "is" an archived file's original location). An Old
 path is read as a PATTERN of ``/``-separated components (backticks and one trailing ``/`` stripped);
@@ -53,12 +58,23 @@ of the listed alternatives; everything else is literal. Then:
    ``~/.claude/skills/agent-protocol/`` covers ``skills/agent-protocol/scripts/heartbeat.sh``,
    while a bare grouping directory (``~/.claude/memory/``, ``~/.claude/agents/``, k = 1) covers
    nothing. A basename alone never identifies a file whose ``rel`` has a directory.
+   **A placeholder never identifies a file.** The Old-path component matched against the
+   component that identifies the archived file — its basename in (a), the first component of
+   ``rel`` it is matched against in (b) — must contain no ``<name>``: it matches literally or via
+   ``{a,b}``. So ``~/.claude/skills/<bundle>`` and ``.claude/worktrees/<cr>`` cover no flattened
+   file, ``<a>/<b>/<c>/`` covers nothing, and a family of agents is spelled
+   ``{bun,python}-{red,green}-agent.md``, not ``<stack>-<role>-agent.md``.
 2. **Named paths.** ``skills-src/chezmoi/``, ``contracts/mail-axi.md``, ``.claude/worktrees/<cr>``,
-   ``CLAUDE.md``, ``~/.claude/AGENTS.md``, ``~/.claude/scripts/worktree-flow.py`` and the five
-   ``~/.claude/memory/java-*.md`` references are each covered by a row whose WHOLE Old path
-   matches the named path (trailing ``/`` ignored; same component count) — so a family row
-   ``~/.claude/memory/java-<topic>.md`` covers all five, but ``~/.claude/CLAUDE.md`` does not
-   cover ``CLAUDE.md``.
+   ``CLAUDE.md``, ``~/.claude/AGENTS.md``, ``~/.claude/scripts/worktree-flow.py``, the retired
+   ``~/.claude/agents/<IDE>-<role>-agent.md`` of the retired IDE stack (CR-MDB-024) and the five Java references by their
+   ORIGINAL names (``java-coding-standards``, ``java-testing-practices``, ``java-modern-syntax``,
+   ``maven-best-practices``, ``quarkus-patterns`` — audits/2026-07-20-memory-corpus.md; they became
+   ``java-``-prefixed only as memory templates in 2616ad9) are each covered by a row whose WHOLE Old
+   path matches the named path (trailing ``/`` ignored; same component count) — so
+   ``~/.claude/CLAUDE.md`` does not cover ``CLAUDE.md``. Conversely no row may cover a name that
+   never existed (``NEVER_EXISTED_OLD_PATHS``), and the retired IDE agents' row is ``deleted``: no
+   ``external`` row hands the IDE stack to anyone (the name is spelled non-contiguously here —
+   ``tests/test_ide_overlay_retirement.py`` gates it out of ``tests/``).
 
 Stdlib only.
 """
@@ -69,7 +85,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tests._helpers import REPO_ROOT, files_under, read_text
+from tests._helpers import REPO_ROOT, files_under, read_text, write_executable
 
 MAP_PATH = REPO_ROOT / "archive" / "mapping.md"
 GATE_NAME = "tests/test_archive_mapping.py"
@@ -79,6 +95,9 @@ ARCHIVE_BUCKETS = ("wave1", "wave2", "wave3", "contracts")
 #: Superseded with no spec in docs/changes/ (§S4).
 NO_SPEC_CR_IDS = frozenset({"CR-MDB-007"})
 NO_SUCCESSOR = "—"
+#: The retired IDE stack (CR-MDB-024 §S3), never written contiguously in this module.
+IDE_NAME = "vsc" + "ode"
+RETIRED_IDE_AGENTS = f"~/.claude/agents/{IDE_NAME}-<role>-agent.md"
 REQUIRED_OLD_PATHS = (
     "skills-src/chezmoi/",
     "contracts/mail-axi.md",
@@ -86,14 +105,29 @@ REQUIRED_OLD_PATHS = (
     "CLAUDE.md",
     "~/.claude/AGENTS.md",
     "~/.claude/scripts/worktree-flow.py",
+    RETIRED_IDE_AGENTS,
     "~/.claude/memory/java-coding-standards.md",
     "~/.claude/memory/java-testing-practices.md",
     "~/.claude/memory/java-modern-syntax.md",
+    "~/.claude/memory/maven-best-practices.md",
+    "~/.claude/memory/quarkus-patterns.md",
+)
+#: Names no ``~/.claude/memory/`` file ever had: the template names of the two unprefixed Java
+#: originals, and the unprefixed forms of the three prefixed ones.
+NEVER_EXISTED_OLD_PATHS = (
     "~/.claude/memory/java-maven-best-practices.md",
     "~/.claude/memory/java-quarkus-patterns.md",
+    "~/.claude/memory/coding-standards.md",
+    "~/.claude/memory/testing-practices.md",
+    "~/.claude/memory/modern-syntax.md",
 )
+SHA_SKIP_MESSAGE = ("Moved by shas not resolved: the repository is a shallow clone or git is "
+                    "unavailable (every other row rule, CR ids included, was checked)")
 
-OWNER_RE = re.compile(r"\b(?:Crucible|Sandesh|[Tt]he user)\b")
+OWNER_RE = re.compile(r"(?:Crucible|Sandesh|[Tt]he user)\b")
+PLACEHOLDER_RE = re.compile(r"<[^<>/]+>")
+WHOLE_TEST_MODULE_RE = re.compile(r"test_<[^<>/]+>\.py")
+SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+|\n\s*\n")
 CR_ID_RE = re.compile(r"CR-MDB-\d{3}")
 SHA_RE = re.compile(r"[0-9a-f]{7,40}")
 BACKTICKED_RE = re.compile(r"`([^`]+)`")
@@ -154,12 +188,12 @@ def parse_map(text: str) -> tuple:
 
 
 def header_problems(header: str) -> list[str]:
-    """The header names its gate and states the update-on-move rule."""
+    """The header names its gate and states the update-on-move rule in one sentence."""
     problems = []
     if GATE_NAME not in header:
         problems.append(f"header does not name its gate {GATE_NAME}")
-    lowered = header.lower()
-    if "update" not in lowered or "move" not in lowered:
+    sentences = [s.lower() for s in SENTENCE_SPLIT_RE.split(header)]
+    if not any("update" in s and "move" in s for s in sentences):
         problems.append("header does not state the update-on-move rule (needs 'update' and 'move')")
     return problems
 
@@ -178,6 +212,19 @@ def git_commit_resolves(sha: str, git_dir: Path = REPO_ROOT) -> bool:
     return result.returncode == 0
 
 
+def git_history_available(git_dir: Path = REPO_ROOT, git: str = "git") -> bool:
+    """``git rev-parse --is-shallow-repository`` prints ``false`` in ``git_dir`` — False for a
+    shallow clone, a non-repository, or a git that cannot run (§S4: sha resolution is skipped)."""
+    try:
+        result = subprocess.run(
+            [git, "-C", str(git_dir), "rev-parse", "--is-shallow-repository"],
+            capture_output=True, text=True, check=False,
+        )
+    except OSError:
+        return False
+    return result.returncode == 0 and result.stdout.strip() == "false"
+
+
 def _now_problem(row: dict, repo_root: Path) -> str:
     now = _unticked(row["now"]).split("#", 1)[0].strip()
     root = repo_root.resolve()
@@ -188,7 +235,7 @@ def _now_problem(row: dict, repo_root: Path) -> str:
     return f"line {row['line']} {row['old']}: Now {now!r} does not exist in the repo"
 
 
-def _moved_by_problems(row: dict, repo_root: Path, git_dir: Path) -> list[str]:
+def _moved_by_problems(row: dict, repo_root: Path, git_dir: Path, resolve_shas: bool) -> list[str]:
     where = f"line {row['line']} {row['old']}"
     tokens = [_unticked(t) for t in row["moved_by"].split(",")]
     if not any(tokens):
@@ -201,15 +248,17 @@ def _moved_by_problems(row: dict, repo_root: Path, git_dir: Path) -> list[str]:
             if not list((repo_root / "docs" / "changes").glob(f"{token}-*.md")):
                 problems.append(f"{where}: Moved by {token} has no spec in docs/changes/")
         elif SHA_RE.fullmatch(token):
-            if not git_commit_resolves(token, git_dir):
+            if resolve_shas and not git_commit_resolves(token, git_dir):
                 problems.append(f"{where}: Moved by sha {token} does not resolve to a commit")
         else:
             problems.append(f"{where}: Moved by token {token!r} is neither CR-MDB-NNN nor a sha")
     return problems
 
 
-def check_rows(rows: list, repo_root: Path, git_dir: Path = REPO_ROOT) -> list[str]:
-    """Every §S1/§S4 per-row problem across ``rows`` (``[]`` = clean)."""
+def check_rows(rows: list, repo_root: Path, git_dir: Path = REPO_ROOT,
+               resolve_shas: bool = True) -> list[str]:
+    """Every §S1/§S4 per-row problem across ``rows`` (``[]`` = clean). With ``resolve_shas``
+    False a sha token is checked by shape only; CR ids are always checked."""
     problems = []
     for row in rows:
         where = f"line {row['line']} {row['old']}"
@@ -227,10 +276,10 @@ def check_rows(rows: list, repo_root: Path, git_dir: Path = REPO_ROOT) -> list[s
                 problems.append(f"{where}: deleted row's Now is {row['now']!r}, expected {NO_SUCCESSOR}")
             if not row["authority"].strip():
                 problems.append(f"{where}: deleted row states no reason in Authority")
-        elif not OWNER_RE.search(row["authority"]):
+        elif not OWNER_RE.match(row["authority"].strip()):
             problems.append(f"{where}: external row's Authority {row['authority']!r} names no owner "
-                            "(Crucible, Sandesh, the user)")
-        problems.extend(_moved_by_problems(row, repo_root, git_dir))
+                            "at its start (Crucible, Sandesh, the user)")
+        problems.extend(_moved_by_problems(row, repo_root, git_dir, resolve_shas))
     return problems
 
 # ------------------------------------------------------------------ required rows ----
@@ -247,11 +296,14 @@ def _component_regex(component: str) -> re.Pattern:
     return re.compile("".join(parts))
 
 
-def _pattern_components(old_path: str) -> list[re.Pattern]:
+def _raw_components(old_path: str) -> list[str]:
     path = _unticked(old_path)
     if path.endswith("/"):
         path = path[:-1]
-    return [_component_regex(c) for c in path.split("/")]
+    return path.split("/")
+
+def _pattern_components(old_path: str) -> list[re.Pattern]:
+    return [_component_regex(c) for c in _raw_components(old_path)]
 
 
 def _tail_matches(patterns: list[re.Pattern], target: list[str]) -> bool:
@@ -262,13 +314,16 @@ def _tail_matches(patterns: list[re.Pattern], target: list[str]) -> bool:
 
 
 def covers_archived(old_path: str, rel: str) -> bool:
-    """The Old path is the original location of the archived file ``rel`` (module docstring)."""
-    patterns = _pattern_components(old_path)
+    """The Old path is the original location of the archived file ``rel`` (module docstring): the
+    Old-path component matched against the identifying component never holds a placeholder."""
+    raw = _raw_components(old_path)
+    patterns = [_component_regex(c) for c in raw]
     parts = rel.split("/")
-    if _tail_matches(patterns, parts):
+    if _tail_matches(patterns, parts) and not PLACEHOLDER_RE.search(raw[-1]):
         return True
     if _unticked(old_path).endswith("/"):
-        return any(_tail_matches(patterns, parts[:k]) for k in range(2, len(parts)))
+        return any(_tail_matches(patterns, parts[:k]) and not PLACEHOLDER_RE.search(raw[len(raw) - k])
+                   for k in range(2, len(parts)))
     return False
 
 
@@ -302,6 +357,9 @@ def missing_rows(rows: list, archived: list, required=REQUIRED_OLD_PATHS) -> lis
 class ArchiveMappingS4Test(unittest.TestCase):
     """§S4 — the gate over the real ``archive/mapping.md``."""
 
+    #: Injected so a detector can stand in for a shallow clone or an absent git (§S4).
+    history_available = staticmethod(git_history_available)
+
     def _text(self) -> str:
         if not MAP_PATH.is_file():
             self.fail(f"archive/mapping.md is absent ({MAP_PATH}); CR-MDB-034 §S1 requires the map")
@@ -322,7 +380,10 @@ class ArchiveMappingS4Test(unittest.TestCase):
 
     def test_every_row_passes_the_kind_now_authority_and_moved_by_rules(self):
         _header, rows = self._parsed()
-        self.assertEqual(check_rows(rows, REPO_ROOT), [])
+        resolve = self.history_available(REPO_ROOT)
+        self.assertEqual(check_rows(rows, REPO_ROOT, resolve_shas=resolve), [])
+        if not resolve:
+            self.skipTest(SHA_SKIP_MESSAGE)
 
     def test_every_archived_file_has_a_row_by_its_original_location(self):
         _header, rows = self._parsed()
@@ -333,6 +394,38 @@ class ArchiveMappingS4Test(unittest.TestCase):
     def test_every_named_retired_or_moved_path_has_a_row(self):
         _header, rows = self._parsed()
         self.assertEqual(missing_rows(rows, [], required=REQUIRED_OLD_PATHS), [])
+
+    def test_the_retired_ide_agents_are_deleted_and_no_external_row_hands_them_on(self):
+        _header, rows = self._parsed()
+        retired = [row for row in rows if covers_required(row["old"], RETIRED_IDE_AGENTS)]
+        self.assertEqual([_unticked(row["kind"]) for row in retired], ["deleted"],
+                         f"{RETIRED_IDE_AGENTS} needs exactly one deleted row (CR-MDB-024 §S3)")
+        handed_on = [row["old"] for row in rows if _unticked(row["kind"]) == "external"
+                     and IDE_NAME in row["authority"].lower()]
+        self.assertEqual(handed_on, [], f"an external row names {IDE_NAME} although CR-MDB-024 retired it")
+
+    def test_no_row_claims_an_original_name_that_never_existed(self):
+        _header, rows = self._parsed()
+        claimed = [(row["old"], path) for path in NEVER_EXISTED_OLD_PATHS for row in rows
+                   if covers_required(row["old"], path)]
+        self.assertEqual(claimed, [])
+
+    def test_the_worktree_dn_and_helper_rows_name_what_they_mean(self):
+        _header, rows = self._parsed()
+        worktrees = [row for row in rows if covers_required(row["old"], ".claude/worktrees/<cr>")]
+        self.assertTrue(worktrees, "no .claude/worktrees/<cr> row")
+        for row in worktrees:
+            self.assertIn("`.worktrees/<cr>`", row["authority"])
+            self.assertIn("gitignored", row["authority"])
+            self.assertIn("`contracts/worktree-layout.md`", row["authority"])
+            self.assertIn("d688257", row["moved_by"])
+        dn = [row for row in rows
+              if _unticked(row["old"]) == "crucible:docs/research/DN-model-b-language.md"]
+        self.assertEqual([_unticked(row["kind"]) for row in dn], ["external"])
+        self.assertIn("`docs/research/DN-model-b-language.md`", dn[0]["authority"])
+        whole_modules = [row["old"] for row in rows
+                         if WHOLE_TEST_MODULE_RE.fullmatch(_raw_components(row["old"])[-1])]
+        self.assertEqual(whole_modules, [], "an Old path stands for every live test module")
 
 # ------------------------------------------------------------------ detectors ----
 
@@ -466,6 +559,16 @@ class ArchiveMappingDetectorS4Test(unittest.TestCase):
         self.assertEqual(len(problems), 1, problems)
         self.assertIn("names no owner", problems[0])
 
+    def test_an_external_row_whose_authority_does_not_start_with_its_owner_is_reported(self):
+        problems = self._problems(self._with_row(
+            3, "| `~/.claude/skills/crucible-report-<stack>/` | external | `~/.crucible/clients/` | "
+               "Model B (not Crucible) | CR-MDB-001 |"))
+        self.assertEqual(len(problems), 1, problems)
+        self.assertIn("names no owner at its start", problems[0])
+        self.assertEqual(self._problems(self._with_row(
+            3, "| `~/.claude/skills/crucible-report-<stack>/` | external | `~/.crucible/clients/` | "
+               "The user; kept by hand | CR-MDB-001 |")), [])
+
     def test_a_deleted_row_without_a_reason_or_with_a_successor_is_reported(self):
         problems = self._problems(self._with_row(
             2, "| `~/.claude/skills/agent-protocol/` | deleted | `skills-src/model-b/SKILL.md` |  "
@@ -495,6 +598,18 @@ class ArchiveMappingDetectorS4Test(unittest.TestCase):
             "header does not state the update-on-move rule (needs 'update' and 'move')",
         ])
 
+    def test_an_update_on_move_rule_split_across_sentences_is_reported(self):
+        split = ("# Archive mapping\n\nGated by `tests/test_archive_mapping.py`. A CR may move a "
+                 "mapped path. Its row is then updated.\n")
+        self.assertEqual(header_problems(split), [
+            "header does not state the update-on-move rule (needs 'update' and 'move')",
+        ])
+        paragraphs = "Gated by `tests/test_archive_mapping.py`; a CR that moves a path\n\nupdates it\n"
+        self.assertEqual(len(header_problems(paragraphs)), 1)
+        wrapped = ("Gated by `tests/test_archive_mapping.py`. Any CR that moves a mapped path must\n"
+                   "  update its row in the same change.\n")
+        self.assertEqual(header_problems(wrapped), [])
+
     def test_a_missing_required_row_is_reported(self):
         rows = [r for r in self.rows if "java-" not in r and "agent-protocol" not in r]
         problems = self._problems(self._text(rows))
@@ -508,10 +623,13 @@ class ArchiveMappingDetectorS4Test(unittest.TestCase):
     def test_matching_rule_tail_directory_and_pattern_cases(self):
         self.assertTrue(covers_archived("`~/.claude/memory/agent-baseline.md`", "agent-baseline.md"))
         self.assertTrue(covers_archived("`~/.claude/memory/git-workflow.md`", "memory/git-workflow.md"))
-        self.assertTrue(covers_archived("`~/.claude/agents/<stack>-<role>-agent.md`",
+        self.assertTrue(covers_archived("`~/.claude/agents/{arduino,bun}-{red,green}-agent.md`",
                                         "agents/bun-red-agent.md"))
         self.assertTrue(covers_archived("`~/.claude/skills/agent-protocol/`",
                                         "skills/agent-protocol/scripts/heartbeat.sh"))
+        # A placeholder never matches the component that identifies an archived file.
+        self.assertFalse(covers_archived("`~/.claude/agents/<stack>-<role>-agent.md`",
+                                         "agents/bun-red-agent.md"))
         # A bare grouping directory (k = 1) or a same-basename file elsewhere covers nothing.
         self.assertFalse(covers_archived("`~/.claude/memory/`", "memory/git-workflow.md"))
         self.assertFalse(covers_archived("`~/.claude/agents/`", "agents/bun-red-agent.md"))
@@ -521,6 +639,53 @@ class ArchiveMappingDetectorS4Test(unittest.TestCase):
                                          "skills/agent-protocol/scripts/heartbeat.sh"))
         self.assertFalse(covers_archived("`~/.claude/memory/git-workflow.md`",
                                          "memory/git-workflow.md.bak"))
+
+    def test_a_placeholder_never_identifies_an_archived_file(self):
+        for flattened in ("agent-baseline.md", "sandesh.md", "mail-axi.md"):
+            self.assertFalse(covers_archived("`~/.claude/skills/<bundle>`", flattened))
+            self.assertFalse(covers_archived("`.claude/worktrees/<cr>`", flattened))
+            self.assertFalse(covers_archived("`~/.claude/memory/<topic>.md`", flattened))
+        archived = FIXTURE_ARCHIVED + archived_files(REPO_ROOT)
+        self.assertEqual([rel for _bucket, rel in archived
+                          if covers_archived("`<a>/<b>/<c>/`", rel)], [])
+        self.assertEqual([rel for _bucket, rel in archived
+                          if covers_archived("`<a>/<b>/<c>`", rel)], [])
+        # The legitimate family rows still match: literal or {a,b} on the identifying component.
+        self.assertTrue(covers_archived("`~/.claude/memory/{orchestration-common,sandesh}.md`",
+                                        "sandesh.md"))
+        self.assertTrue(covers_archived("`~/.claude/skills/crucible-report-{bun,java}/`",
+                                        "skills/crucible-report-bun/SKILL.md"))
+        self.assertTrue(covers_archived("`~/.claude/skills/crucible-report-<stack>/`",
+                                        "skills/crucible-report-bun/SKILL.md"))
+        self.assertTrue(covers_archived("`~/.claude/skills/{bun-red-testing,bun-green-testing}/`",
+                                        "skills/bun-green-testing/SKILL.md"))
+        # The same placeholder rows still match NAMED paths, which are matched whole.
+        self.assertTrue(covers_required("`.claude/worktrees/<cr>`", ".claude/worktrees/<cr>"))
+
+    def test_sha_resolution_is_skipped_on_a_shallow_clone_or_without_git_but_cr_ids_are_not(self):
+        bin_dir = self.root / "bin"
+        bin_dir.mkdir()
+        shallow = write_executable(bin_dir, "git-shallow", "#!/bin/sh\necho true\n")
+        full = write_executable(bin_dir, "git-full", "#!/bin/sh\necho false\n")
+        self.assertFalse(git_history_available(REPO_ROOT, git=str(shallow)))
+        self.assertTrue(git_history_available(REPO_ROOT, git=str(full)))
+        self.assertFalse(git_history_available(REPO_ROOT, git=str(bin_dir / "no-such-git")))
+        self.assertFalse(git_history_available(self.root))
+        # Without resolution an unknown sha passes by shape; an unknown CR id is still reported.
+        _header, rows, _problems = parse_map(self._with_row(
+            1, "| `~/.claude/memory/git-workflow.md` | moved | `skills-src/model-b/SKILL.md` | "
+               f"Model B | CR-MDB-999, {UNKNOWN_SHA} |"))
+        problems = check_rows(rows, self.root, resolve_shas=False)
+        self.assertEqual(len(problems), 1, problems)
+        self.assertIn("CR-MDB-999 has no spec in docs/changes/", problems[0])
+
+        class ShallowClone(ArchiveMappingS4Test):
+            history_available = staticmethod(lambda _git_dir: False)
+
+        result = unittest.TestResult()
+        ShallowClone("test_every_row_passes_the_kind_now_authority_and_moved_by_rules").run(result)
+        self.assertEqual(result.failures + result.errors, [])
+        self.assertEqual([reason for _test, reason in result.skipped], [SHA_SKIP_MESSAGE])
 
     def test_matching_rule_named_paths_match_the_whole_old_path(self):
         self.assertTrue(covers_required("`skills-src/chezmoi/`", "skills-src/chezmoi/"))
