@@ -46,6 +46,7 @@ Queue rows enumerate the whole delivery (structure only). **Live status lives on
 | [CR-MDB-028](CR-MDB-028-worktree-flow-scheduling-migration.md) | Retire `worktree-flow.py`'s DB half: scheduling moves to Crucible's API (P0 — above the routing strategy, user ruling) | 5 | 022 |
 | [CR-MDB-035](CR-MDB-035-prd-criteria-reconciliation.md) | Reconcile PRD §4 success criteria with the shipped tree | 5 | 021, 025, 031 |
 | [CR-MDB-034](CR-MDB-034-archive-mapping.md) | `archive/mapping.md`: where every relocated file went (supersedes CR-MDB-012 — a release is NOT a CR) | 5 | — |
+| [CR-MDB-039](CR-MDB-039-worktree-isolation-on-pi.md) | Worktree isolation on Pi: a write boundary that holds without a movable session directory | 5 | 031 |
 
 **— v1.0.0 ships here —** (the release is a BOUNDARY EVENT, not a queue row: the wave drains, the user approves, `git-workflow` §Releases executes it, a milestone records it afterwards. No release CR, no close-out wave.)
 
@@ -809,3 +810,30 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   Folds in the CR-020 follow-ups (`find()`, Monitor, `crucible:` prefix, `~/.claude/skills`
   citations, `TOOL_BASELINE` → `{}`). Cycles: C1 code, C2 skill/template text + regeneration,
   C3 worktree + bundles/contracts, C4 verify.
+- 2026-09-25 — **CR-MDB-031 MERGED** (develop `e2c9272`; plan 110, cycles 138–142). Roster `pi`
+  only; one hook emitter (`_emit_pi`), no refusal path; the `.claude/skills` link writer, `CLAUDE.md`
+  emission and `block-direct-cargo-test`'s `dangerouslyDisableSandbox` closer are gone; a stale harness
+  id in `install.toml` is refused by `init`, `agents` and the installer flow, naming the
+  `--reinstall … --harnesses pi` recovery (carrying `--allow-missing-capabilities` when recorded) —
+  **the real July `install.toml` (`harnesses = ["claude-code"]`) is refused until the release-step
+  reinstall**. `--stacks quarkus` now scaffolds the six `java-*` templates (stack-family map). Skills
+  and templates are harness-neutral (DN §D18 option A): capability words, the `sandesh` CLI with
+  `--from`/`--as`/`--project`, the installed Crucible client directly (wrapper retired),
+  `~/.agents/skills` citations, `AGENTS.md` as project context; `TOOL_BASELINE` drained to `{}`; the
+  rule lives once in `skills-src/README.md` (ships in the wheel, never deployed). Worktrees live at
+  `.worktrees/<cr>` (`contracts/worktree-layout.md`; one-commit rename across six consumers). The
+  `chezmoi` bundle is retired (13 bundles, 7 owned); `contracts/mail-axi.md` → `archive/contracts/`;
+  `contracts/lean-ctx.md` rewritten against `pi-lean-ctx` 3.10.2; `contracts/` leaves the wheel, the
+  sdist and the uv cache-keys. Suite **1138 / 0 / 0 (real `HOME`), 1138 / 0 / 8 skips (empty `HOME`)**,
+  53 modules. Spec amended in flight: the scaffolded ontology line cites the deployed `model-b` skill
+  (a8540df); a `CLAUDE.md` AC was added (82305e2). VERIFY F3 → **CR-MDB-039 filed**: on Pi a session
+  cannot be "rooted" in a worktree and pi-subagents has no per-dispatch cwd, so the write-boundary
+  hook enforces only for a session launched inside the worktree or with `WF_WORKTREE_ROOT` exported;
+  today the boundary is prompt discipline. Recorded, not fixed: C2 GREEN intermediates
+  `c4a1d27`..`78261cf` and the C1/C3 GREEN intermediates are red (bisect skips them); a bare
+  `modelb-axi` over a stale `install.toml` reports `already_installed` with no hint (F9);
+  `scripts/skill-release-gate.py:129-131` still auto-discovers a project's `.claude/skills/` (a
+  third-party skill layout, not a Model B write); preflight's `pi_targeted` check is kept (it guards
+  an explicit non-pi `--harnesses` that reaches preflight before validation);
+  `test_watcher_launch_supervision.py:162` repeated `startswith` (PIE810, from 026) is a nit. Voided:
+  the queued "harness-link collision should warn" follow-up (the linker is gone).
