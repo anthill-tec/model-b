@@ -160,9 +160,16 @@ AGENTS_MD_LINE_LIMIT = 100
 
 
 class ScaffoldedAgentsMdLineBudgetTest(unittest.TestCase):
-    """PRD §4 criterion 1 — the project ``AGENTS.md`` that ``init`` scaffolds for every stack in
-    ``multi:3`` mode (the largest stack set and mode) is at most 100 lines. Real ``init`` entry,
-    fully sandboxed."""
+    """PRD §4 criterion 1 — the project ``AGENTS.md`` that ``init`` scaffolds for the five
+    generated stacks in ``multi:3`` mode is at most 100 lines. Real ``init`` entry, fully
+    sandboxed.
+
+    This is not the largest possible input: the file grows by one skill-freeze line per
+    ``--stacks`` token (``java``, which renders no agents of its own, adds a sixth), and neither
+    the mode nor the track count changes its length. Measured 2026-09-25: 47 lines here, 48 with
+    all six known stack tokens, the same in ``solo``, ``multi:99`` and a monorepo. The budget
+    therefore leaves roughly half its lines as margin, far more than the one line per stack
+    token that separates this input from the largest one."""
 
     @classmethod
     def setUpClass(cls):
