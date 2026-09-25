@@ -711,14 +711,20 @@ directory is fixed at launch, and the dispatch tool has no working-directory par
 **The rule.** The Model B Pi package provides worktree isolation:
 
 - **Dispatches are routed by CR.** A workspace provider relocates each dispatched agent whose
-  description names a CR id (`CR-<ACRONYM>-<NNN>`) with a registered `.worktrees/<cr>` worktree into
-  that worktree. The hook then confines the agent by its own cwd. No state is held per dispatch,
-  so two CRs dispatched from one session each land in their own worktree.
+  description opens with a CR id (`CR-<ACRONYM>-<NNN>`) that has a registered `.worktrees/<cr>`
+  worktree into that worktree. When no worktree is entered, the hook confines the agent by its own
+  cwd. No state is held per dispatch, so two CRs dispatched from one session each land in their own
+  worktree. The provider reads records from the service instance it registered with. Each child
+  session loads pi-subagents too, and a child republishes, then deletes, the global service entry,
+  so a lookup through `globalThis` finds nothing after the first child ends.
 - **Entering confines the orchestrator.** `modelb_worktree_enter` sets `WF_WORKTREE_ROOT` in the
   orchestrator's process, so the hook blocks the orchestrator's own writes outside its CR's worktree
   (its session cwd stays the main tree; reads, `git -C` and test runs in the worktree are
   unaffected), and it is the routing fallback for a dispatch whose description names no CR.
-  `modelb_worktree_exit` lifts it.
+  `modelb_worktree_exit` lifts it. The hook prefers `WF_WORKTREE_ROOT` over the cwd, and the
+  variable is process-wide, so while a worktree is entered every child is confined to it. A
+  dispatch routed to a different CR's worktree is therefore refused, not relocated. An entered Track
+  works one CR.
 - The worktree's files remain the orchestrator's to read by path: `.worktrees/` lives inside the
   repository. It is gitignored, so a gitignore-aware listing does not show it; explicit paths do.
 
@@ -732,6 +738,15 @@ directory is fixed at launch, and the dispatch tool has no working-directory par
    would be a change to that ontology, not to this mechanism.
 3. Implementation: CR-MDB-039. It ships in `@anthill-tec/modelb-pi`; publishing that package is a
    release step.
+4. **Limits, measured 2026-09-25 (CR-MDB-039 VERIFY):**
+   - pi-subagents refuses to resume a relocated child once it has completed, because its workspace
+     is disposed. Asking the parent a question during the run still works.
+   - A child with no `tools:` allowlist inherits the two worktree tools, and its `exit` would lift
+     the orchestrator's boundary. Model B's generated agents list their tools explicitly.
+   - The hook governs file-tool writes. A write made by a shell command is not blocked.
+   - A child session loads project extensions regardless of the saved trust decision, because
+     pi-subagents creates its settings with project trust on. So the hook runs in a worktree whose
+     `.pi/extensions` is tracked, as scaffolded projects' are.
 
 ## Consequences per CR
 
