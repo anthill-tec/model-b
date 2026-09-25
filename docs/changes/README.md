@@ -43,9 +43,10 @@ Queue rows enumerate the whole delivery (structure only). **Live status lives on
 | [CR-MDB-032](CR-MDB-032-test-suite-relocation.md) | The test suite runs on any machine: no Crucible checkout, no real-home assertions, one copy of each helper, and the hygiene backlog cleared | 5 | 020, 021 |
 | [CR-MDB-027](CR-MDB-027-subagent-dispatch-on-pi.md) | Sub-agent dispatch on Pi: decide what provides it, given Pi core has none (decision CR — RULED 2026-09-21: `pi-archimedes`, DN §D16; unblocks the CR-025 rewrite) | 5 | — |
 | [CR-MDB-028](CR-MDB-028-worktree-flow-scheduling-migration.md) | Retire `worktree-flow.py`'s DB half: scheduling moves to Crucible's API (P0 — above the routing strategy, user ruling) | 5 | 022 |
-| [CR-MDB-035](CR-MDB-035-prd-criteria-reconciliation.md) | Reconcile PRD §4 success criteria with the shipped tree | 5 | 021, 025, 031 |
+| [CR-MDB-035](CR-MDB-035-prd-criteria-reconciliation.md) | Reconcile the PRD with the shipped tree: §4 success criteria, §3 invariants and the design sections merged CRs moved | 5 | 021, 025, 031 |
 | [CR-MDB-034](CR-MDB-034-archive-mapping.md) | `archive/mapping.md`: where every relocated file went (supersedes CR-MDB-012 — a release is NOT a CR) | 5 | — |
 | [CR-MDB-039](CR-MDB-039-worktree-isolation-on-pi.md) | Worktree isolation on Pi: a write boundary that holds without a movable session directory | 5 | 031 |
+| [CR-MDB-040](CR-MDB-040-installer-prune.md) | A redeploy removes what it no longer deploys (PRD §4 criterion 6) | 5 | 035 |
 
 **— v1.0.0 ships here —** (the release is a BOUNDARY EVENT, not a queue row: the wave drains, the user approves, `git-workflow` §Releases executes it, a milestone records it afterwards. No release CR, no close-out wave.)
 
@@ -836,3 +837,12 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   an explicit non-pi `--harnesses` that reaches preflight before validation);
   `test_watcher_launch_supervision.py:162` repeated `startswith` (PIE810, from 026) is a nit. Voided:
   the queued "harness-link collision should warn" follow-up (the linker is gone).
+- 2026-09-25 — **CR-MDB-035 gap analysis: SPEC_UPDATE_NEEDED** (develop `b237b63`, suite 1138 OK).
+  Criterion 1 had been measured against `~/.claude/CLAUDE.md`, a user dotfile; the scaffolded
+  `AGENTS.md` measures 38/47 lines (typical/worst case). Criterion 3's "every reference resolves" held
+  but was ungated. Criterion 4's counts are 20 generated, rendered per project. Criterion 5's VS Code
+  client was declined (#1370), not pending. Criterion 6's replacement is false today (a narrowed
+  `--stacks` orphans `crucible-report-rust` outside the manifest). **User rulings:** widen to every PRD
+  sentence contradicting a merged CR/DN (§3 invariant 1, D1, D2, D4, D9, D10.4, D10.7, D10(e), the
+  installer split); **CR-MDB-040 FILED** for installer pruning, criterion 6 stays unmet until it
+  merges. Subsumes the CR-036 queue note F4 (narrowing `--stacks` orphans bundles).
