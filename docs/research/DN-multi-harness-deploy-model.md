@@ -683,6 +683,56 @@ becomes the answer only if A proves too vague in practice.
 **Owner:** CR-MDB-031, widened 2026-09-23 to cover the Sandesh MCP verbs and to state the rule
 once in `skills-src`, gated by CR-MDB-020 §S5.
 
+### D19 — Worktree isolation on Pi: one Pi session per orchestrator; dispatches routed by CR
+
+**User ruling 2026-09-25**, at CR-MDB-039's gap analysis.
+
+**The session model.** Parallel execution means several Pi sessions on one repository: one
+Mainline orchestrator and one per Track, each its own Pi process, however launched — separate
+terminals, or panes of a multiplexer such as tmux (a recommendation for watching them side by side,
+never a requirement). Mainline keeps its view of every Track through Crucible (the board, plans,
+cycles, runs) and Sandesh (requests, directives, replies), never through a shared process. A Track
+creates a worktree per CR (`.worktrees/<cr>`, `contracts/worktree-layout.md`) so that the writes of
+the sub-agents it dispatches for that CR are isolated from the main tree and from the other Tracks.
+
+**Measured 2026-09-25** (Pi 0.87.1, `@gotgenes/pi-subagents` 21.7.6). A Pi session's working
+directory is fixed at launch, and the dispatch tool has no working-directory parameter. But:
+
+1. pi-subagents exposes a **workspace seam**: `getSubagentsService()` (on `globalThis`, key
+   `Symbol.for("@gotgenes/pi-subagents:service")`) offers `registerWorkspaceProvider`, one provider
+   per process, whose `prepare({agentId, agentType, baseCwd})` returns the child's directory. The
+   child's record — including the dispatch `description` — is registered before `prepare` runs.
+2. A relocated child is created **rooted there**: its session cwd, its shell (`ctx?.cwd || cwd`),
+   its file tools, its `.pi/agents` and its project extensions — including the write-boundary hook,
+   which derives the worktree from the child's cwd — all follow.
+3. Children share the parent's process, and hook scripts are spawned with the process environment,
+   so `WF_WORKTREE_ROOT` set inside the process reaches every later hook run.
+
+**The rule.** The Model B Pi package provides worktree isolation:
+
+- **Dispatches are routed by CR.** A workspace provider relocates each dispatched agent whose
+  description names a CR id (`CR-<ACRONYM>-<NNN>`) with a registered `.worktrees/<cr>` worktree into
+  that worktree. The hook then confines the agent by its own cwd. No state is held per dispatch,
+  so two CRs dispatched from one session each land in their own worktree.
+- **Entering confines the orchestrator.** `modelb_worktree_enter` sets `WF_WORKTREE_ROOT` in the
+  orchestrator's process, so the hook blocks the orchestrator's own writes outside its CR's worktree
+  (its session cwd stays the main tree; reads, `git -C` and test runs in the worktree are
+  unaffected), and it is the routing fallback for a dispatch whose description names no CR.
+  `modelb_worktree_exit` lifts it.
+- The worktree's files remain the orchestrator's to read by path: `.worktrees/` lives inside the
+  repository. It is gitignored, so a gitignore-aware listing does not show it; explicit paths do.
+
+**Consequences.**
+
+1. The per-dispatch `cd` + `git rev-parse --show-toplevel` check stays as the agent's own first
+   check, no longer the boundary itself.
+2. The mechanism does not require one orchestrator per session — routing by CR also works in a
+   single session dispatching for several CRs. The workflow model still runs one orchestrator per
+   session (DN-model-b-language: Mainline and Track orchestrators); collapsing them into one session
+   would be a change to that ontology, not to this mechanism.
+3. Implementation: CR-MDB-039. It ships in `@anthill-tec/modelb-pi`; publishing that package is a
+   release step.
+
 ## Consequences per CR
 
 | CR | What this DN changes |
@@ -695,6 +745,7 @@ once in `skills-src`, gated by CR-MDB-020 §S5.
 | **014** (installer) | Deploys **no** agent-definition class (§D17 — agents are rendered per project by `init`, superseding the CR-025 §S4 asset class this row once named); gains `pi install` orchestration for the package (CR-029 §S4). CR-033 fixes `target_root`, atomic writes and the unmanaged-file clobber first. |
 | **012** (release) | The release gate must prove Pi resolves an emitted definition by name (`list_agents` via archimedes). §D15.2 adds a publication step for the Pi package (extensions + skills): tag, `pi install …@<version>` (CR-029 §S5). No byte-identity gate (§D14). |
 | **NEW CR — CR-MDB-029** | Authoring the Pi package itself per §D15.2: `package.json` `pi` manifest, `extensions/` (the CR-026 watcher per §D15.3; hooks currently emitted per-project by 015), `skills/`. **Agent definitions cannot ride it** — Pi packages carry only extensions/skills/prompts/themes — so the split is: package = extensions + skills; installer = tool scripts; `init` = agents, per project (§D17). (The number 027 this row once reserved was consumed by the dispatch decision CR.) |
+| **039** (worktree isolation) | §D19: the Model B Pi package routes each dispatch into its CR's worktree through pi-subagents' workspace seam, and `modelb_worktree_enter`/`_exit` confine the orchestrator's own writes via `WF_WORKTREE_ROOT`. |
 
 ## Open, deliberately not decided here
 

@@ -1,4 +1,4 @@
-# CR-MDB-039 — Worktree isolation on Pi: enter and exit a worktree from the Model B Pi package
+# CR-MDB-039 — Worktree isolation on Pi: dispatches routed by CR, orchestrator confined on enter
 
 **Status:** PENDING
 **Type:** fix
@@ -6,7 +6,8 @@
 isolation floor
 **Depends on:** CR-MDB-031 (the `.worktrees/<cr>` layout, `contracts/worktree-layout.md`)
 **Labels:** worktree, pi-package, hooks, skills, isolation
-**Design reference:** DN-multi-harness §D16 (dispatch), §D18 (capability words);
+**Design reference:** **DN-multi-harness §D19** (the design this CR implements), §D16 (dispatch),
+§D18 (capability words);
 `contracts/worktree-layout.md`; CR-MDB-029 (the Model B Pi package); PRD D11 (capability contract)
 
 ## Context
@@ -34,27 +35,47 @@ Measured 2026-09-25 on the installed Pi 0.87.1 with `@gotgenes/pi-subagents` 21.
    [], …)`). `process.env.WF_WORKTREE_ROOT` set inside the Pi process therefore reaches every later
    hook run, for the orchestrator and for its children.
 
-Design (user ruling 2026-09-25): the Model B Pi package gains enter/exit tools that use (1) and (3).
+The child's record, including the dispatch `description`, is registered before `prepare` runs
+("Create, register, and start (or queue)", `subagent-manager.ts:342`), so
+`getSubagentsService().getRecord(agentId).description` is readable inside `prepare`.
+
+Design (user rulings 2026-09-25, recorded as DN-multi-harness §D19): one Pi session per
+orchestrator, launched however the user likes (tmux is a recommendation, never a requirement);
+Mainline follows the Tracks through Crucible and Sandesh. The Model B Pi package routes each
+dispatch into its CR's worktree, and enter/exit confines the orchestrator's own writes.
 
 ## Scope
 
-### §S1 — The worktree tools
-`pi-package/extensions/worktree.ts`, listed in `pi-package/package.json` `pi.extensions`, registers
-two LLM-callable tools:
+### §S1 — The worktree extension
+`pi-package/extensions/worktree.ts`, listed in `pi-package/package.json` `pi.extensions`.
+
+**Routing.** When the extension loads, and the pi-subagents service is present (looked up lazily,
+at first use, so load order does not matter), it registers **one** workspace provider. For each
+dispatch, `prepare({agentId, baseCwd})`:
+1. reads the dispatch description via `getRecord(agentId)`, and takes the first CR id matching
+   `CR-[A-Z][A-Z0-9]*-[0-9]+`;
+2. if the repository containing `baseCwd` has a registered git worktree at `.worktrees/<that CR>`,
+   returns it as the child's cwd;
+3. otherwise, if an orchestrator root is entered (below), returns that root;
+4. otherwise returns `undefined`, so the child keeps the parent's cwd.
+`prepare` throws a clear error if the entered root in step 3 no longer exists, for example after
+`worktree-flow finish`. So no child silently lands in the main tree when a worktree was intended.
+`dispose` returns nothing.
+
+**Tools.** It registers two LLM-callable tools:
 
 - **`modelb_worktree_enter`** `{ path: string }` — resolves `path` against the session cwd, then
   refuses (tool error, nothing changed) unless the resolved directory exists, sits under a
   `/.worktrees/<cr>` segment, and appears in `git worktree list --porcelain` of the repository
   containing it. On success it sets `process.env.WF_WORKTREE_ROOT` to the resolved path and
-  registers a workspace provider whose `prepare` returns `{cwd: <root>, dispose: () => undefined}`.
-  A second enter while one is active replaces the first (unregister, then register). If the
-  pi-subagents service is absent, it still sets `WF_WORKTREE_ROOT`, and its result says dispatched
-  agents will not be relocated.
-- **`modelb_worktree_exit`** `{}` — unregisters the provider and deletes `WF_WORKTREE_ROOT`;
+  records it as the entered root (routing step 3). A second enter replaces the first. If the
+  pi-subagents service is absent, the result says that dispatched agents will not be relocated.
+- **`modelb_worktree_exit`** `{}` — deletes `WF_WORKTREE_ROOT` and clears the entered root; it is
   idempotent.
-- `prepare` **throws** a clear error when the entered root no longer exists (e.g. after
-  `worktree-flow finish`), so no child silently runs in the main tree.
 - Each tool's result text names the active root (or none).
+- The orchestrator's session cwd never changes. Its reads, `git -C .worktrees/<cr>` and test runs
+  in the worktree are unaffected. While it has entered a worktree, the hook blocks its writes outside
+  that worktree.
 
 Generated sub-agent definitions do not list these tools; only the orchestrator uses them.
 
@@ -71,6 +92,10 @@ Generated sub-agent definitions do not list these tools; only the orchestrator u
   check an agent makes before its first write. Exit after `finish` or `abort`.
 - `contracts/worktree-layout.md` records the tools as a consumer of the layout and restates
   "Permission scope" in these terms.
+- The skills say that the worktree's files stay readable by path from the orchestrator's session.
+  `.worktrees/` is gitignored, so a gitignore-aware listing does not show it; explicit paths do.
+- The skills state the session model of §D19: one Pi session per orchestrator, launched however the
+  user likes, with Mainline following Tracks through Crucible and Sandesh.
 - Naming the tool: `modelb_worktree_enter` is a Model B surface shipped by Model B's own package,
   not a harness tool; DN §D18 bars naming harness tools. The skills name it once where the invocation
   is load-bearing, as `skills-src/README.md` already allows.
@@ -84,21 +109,29 @@ the two new tools, so an absent package reports what is lost.
 
 - [ ] `pi-package/extensions/worktree.ts` registers `modelb_worktree_enter` and
       `modelb_worktree_exit` with the §S1 parameters, and `package.json` lists the extension.
-- [ ] Entering a registered `.worktrees/<cr>` worktree sets `process.env.WF_WORKTREE_ROOT` and
-      registers exactly one workspace provider through the service found under
-      `Symbol.for("@gotgenes/pi-subagents:service")`. Its `prepare` returns that root, and it throws
-      once the root is deleted.
+- [ ] The extension registers exactly one workspace provider through the service found under
+      `Symbol.for("@gotgenes/pi-subagents:service")`. Its `prepare` follows the §S1 routing steps:
+      - a dispatch whose description names a CR with a registered `.worktrees/<cr>` goes to that
+        worktree;
+      - two dispatches naming two such CRs go to their own worktrees;
+      - a description naming no CR, or a CR with no worktree, goes to the entered root if there is
+        one, otherwise to the parent's cwd;
+      - `prepare` throws when the entered root has been deleted.
+- [ ] Entering a registered `.worktrees/<cr>` worktree sets `process.env.WF_WORKTREE_ROOT`; exit
+      deletes it.
 - [ ] Entering refuses a path that does not exist, is not under `/.worktrees/<cr>`, or is not a
       registered git worktree. A refusal changes neither the environment nor the provider.
-- [ ] A second enter replaces the provider (the first is unregistered). Exit unregisters it and
-      deletes the variable, and a repeated exit is a no-op. With no service present, enter sets the
-      variable and says children will not be relocated.
-- [ ] Integration: with the variable set by the tool, the real `block-write-outside-worktree`
-      script blocks a write outside the entered worktree and allows one inside it. This runs against
-      a real `/tmp` git worktree, with the payload the compiled Pi hook extension sends.
+- [ ] A second enter replaces the entered root, and a repeated exit is a no-op. With no service
+      present, enter sets the variable and says children will not be relocated.
+- [ ] Integration: against a real `/tmp` git worktree, with the payload the compiled Pi hook
+      extension sends, the real `block-write-outside-worktree` script
+      - with the variable set by the tool, blocks a write outside the entered worktree and allows one
+        inside it;
+      - with the cwd `prepare` returned, blocks a write outside that worktree.
 - [ ] The extension's service key equals the key in the installed pi-subagents
       (`src/service/service.ts`). The check skips, naming the path, when pi-subagents is not
       installed.
+- [ ] The skills state the §D19 session model and the read-by-path note for `.worktrees/`.
 - [ ] `worktree-flow.py start` names `modelb_worktree_enter` with the worktree path; `finish` and
       `abort` remind the orchestrator to exit.
 - [ ] No shipped skill, template or contract instructs making the worktree "the session's working
@@ -117,5 +150,7 @@ the two new tools, so an absent package reports what is lost.
 - No change to the `.worktrees/<cr>` layout.
 - No relocation of the orchestrator's own session cwd. Its relative paths still resolve against the
   main tree, and the hook blocks its writes outside the worktree.
-- No provider for sessions that do not enter a worktree. The default, the parent's cwd, stands.
+- No change to the workflow model's one-orchestrator-per-session rule (§D19 consequence 2). Routing
+  works in a single session, but collapsing Mainline and Tracks into one session is an ontology
+  change, not this CR.
 - Publishing the package stays a release step.
