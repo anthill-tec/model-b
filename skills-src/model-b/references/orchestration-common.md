@@ -45,14 +45,20 @@ Universal rules for ANY orchestrator, ANY project/stack. Verbose detail + failur
 - Integration tests drive PRODUCTION wiring (real boot/entry point), never hand-wired struct-literal fixtures.
 - Merge sign-off NAMES the integration test that proves the call path; unwired/unit-in-disguise → FIX_REQUIRED.
 
+## Sessions
+- One Pi session per orchestrator — Mainline and each Track — launched however the user likes: separate terminals, or panes of a multiplexer such as tmux (optional, a convenience for watching them side by side).
+- Mainline follows the Tracks through Crucible (board, plans, cycles, runs) and Sandesh (requests, directives, replies), never through a shared process.
+
 ## Worktree isolation (basics)
 - **`worktree-flow` owns what it derives from git** (worktrees, ahead/behind, phase, merge). **Crucible owns what used to live in the DB** (queue membership, release, wave, seq, dependencies, readiness) — CR-MDB-028.
 - Readiness is `~/.crucible/clients/python-crucible.py next`'s answer (`NEXT` / `HOLD` / `DRAINED`) — never a local board, never a schedule md.
 - Each parallel CR gets its own working folder via the worktree tool; the merge is a serialized critical section.
 - Once your worktree exists, the MAIN tree is HANDS-OFF — all CR-coupled edits land in the worktree.
-- **Root the SESSION in the worktree right after `start`** — make the worktree your session's working directory and dispatch every sub-agent with the worktree as its working directory, so you AND every sub-agent operate from it — don't rely on per-command / per-agent `cd` (that's what leaks). ONE exception: `worktree-flow finish` removes the worktree + merges to develop, so it runs from the integration tree — leave the worktree (working directory back to the main tree) before calling it. `worktree-flow` status/sync resolve the main tree from git → run them FROM the worktree, never cd to develop.
+- **Enter the worktree right after `start`** with the Model B worktree tool `modelb_worktree_enter` and the path `start` prints. Every agent you dispatch for the CR then runs rooted in its worktree, and the `block-write-outside-worktree` hook blocks writes outside it — yours and the agents'. Your session cwd never changes: reads, `git -C` and test runs in the worktree are unaffected.
+- **Exit after `finish` or `abort`** with `modelb_worktree_exit`. Both remove the worktree and run from the main tree, where the session already is; `status`/`sync` resolve the main tree from git and run from anywhere.
+- The worktree's files stay readable from your session by path: `.worktrees/` is gitignored, so a gitignore-aware listing does not show it — read `.worktrees/<cr>/…` by explicit path.
 - You own ONLY your CR — never run another CR's finish/merge or edit its tree.
-- Sub-agents default cwd to the MAIN repo root: every dispatch prompt makes the agent `cd` + assert `git rev-parse --show-toplevel` == worktree before any write; use absolute worktree paths; re-check the main tree is clean after each agent returns.
+- Name the CR id in every dispatch description (that routes the agent into the CR's worktree). The dispatch prompt still makes the agent `cd` + assert `git rev-parse --show-toplevel` == worktree before its first write — the agent's own first check; use absolute worktree paths; re-check the main tree is clean after each agent returns.
 - Throwaway/scratch/probe files → `/tmp` via `mktemp` (absolute), NEVER the repo or any worktree.
 - No detached poll-loops (`until … sleep … done`) — the test/build wrapper returns synchronously; wait on that.
 - Keep `Depends on:` metadata CURRENT on every CR (parallel ordering derives from it; a stale dep is a hazard). Allocate the next-free CR id against CURRENT integration HEAD, never a stale tree/worktree. Resync a stale branch by merging `develop` INTO the feature branch (not a long re-conflicting rebase).
