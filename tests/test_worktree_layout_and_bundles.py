@@ -3,7 +3,8 @@ contracts), cycle C3.
 
 Contract: ``docs/changes/CR-MDB-031-claude-era-substrate-retirement.md`` §S0.1–§S0.2, §S3, §S4 and
 the matching acceptance criteria. Worktrees live at ``.worktrees/<cr>`` inside the repository, the
-string is declared once in ``contracts/worktree-layout.md`` and six consumers carry it; the
+string is declared once in ``contracts/worktree-layout.md`` and its consumers carry it (six at
+CR-MDB-031; CR-MDB-039 §S2 adds the Model B Pi package's ``pi-package/extensions/worktree.ts``); the
 ``chezmoi`` bundle is retired; ``contracts/mail-axi.md`` moves to ``archive/``; ``contracts/lean-ctx.md``
 is rewritten against Pi and the ``pi-lean-ctx`` extension; ``contracts/`` stops shipping in the wheel.
 
@@ -11,11 +12,11 @@ Class map (one per C3 acceptance criterion or part of one):
 
 - ``WorktreeLayoutContractTest`` — ``contracts/worktree-layout.md`` declares exactly
   ``.worktrees/<cr>``, the §S0.1 placement rationale (project trust + permission scope) and names
-  its six consumers.
-- ``WorktreeConsumersTest`` — PARSES the six consumers: the hook's ``_WORKTREES_SEGMENT``
+  its consumers.
+- ``WorktreeConsumersTest`` — PARSES the consumers: the hook's ``_WORKTREES_SEGMENT``
   constant, ``worktree-flow.py``'s ``WORKTREE_SUBDIR`` and its docstring ``start`` usage line, and
-  every ``…worktrees/<cr>`` spelling in the four skill files; each carries exactly the declared
-  string.
+  every ``…worktrees/<cr>`` spelling in the four skill files and the worktree extension; each
+  carries exactly the declared string.
 - ``LegacyWorktreeSegmentGateTest`` — ``.claude/worktrees`` appears nowhere in the shipped
   surfaces (the C2 ``~/.claude`` gate's surfaces plus ``contracts/``).
 - ``WorktreeLayoutBehaviourTest`` — the real ``block-write-outside-worktree`` hook, self-gating from
@@ -91,8 +92,11 @@ SKILL_CONSUMERS = (
     "skills-src/model-b/references/orchestration-track.md",
     "skills-src/model-b/references/sub-agent-procedure.md",
 )
-#: The six consumers §S3 and the AC name, in the AC's order.
-WORKTREE_CONSUMERS = (HOOK_SCRIPT, WORKTREE_FLOW) + SKILL_CONSUMERS
+#: The six consumers CR-MDB-031 §S3 and its AC name, in the AC's order, plus the Model B Pi
+#: package's worktree extension, which CR-MDB-039 §S2 records as a consumer of the layout (it routes
+#: dispatches to ``.worktrees/<cr>`` and ``modelb_worktree_enter`` accepts only such a path).
+WORKTREE_EXTENSION = "pi-package/extensions/worktree.ts"
+WORKTREE_CONSUMERS = (HOOK_SCRIPT, WORKTREE_FLOW) + SKILL_CONSUMERS + (WORKTREE_EXTENSION,)
 
 #: The shipped surfaces: the C2 ``~/.claude`` gate's surfaces plus ``contracts/`` (C3's addition).
 SHIPPED_SURFACES = CLAUDE_HOME_SURFACES + ("contracts",)
@@ -209,7 +213,7 @@ def _write_payload(target: str, cwd: Path) -> dict:
 
 class WorktreeLayoutContractTest(unittest.TestCase):
     """AC — ``contracts/worktree-layout.md`` declares ``.worktrees/<cr>``, the placement rationale
-    (§S0.1) and its six consumers."""
+    (§S0.1) and its consumers."""
 
     def _contract(self) -> str:
         self.assertTrue(WORKTREE_LAYOUT_MD.is_file(),
@@ -224,7 +228,7 @@ class WorktreeLayoutContractTest(unittest.TestCase):
                          f"§S3: the contract must declare exactly `{DECLARED_WORKTREE}` as the "
                          f"worktree string; backticked worktree strings found: {declared}")
 
-    def test_contract_names_all_six_consumers(self):
+    def test_contract_names_every_consumer(self):
         text = self._contract()
         missing = [rel for rel in WORKTREE_CONSUMERS if rel not in text]
         self.assertEqual(missing, [], f"§S3: the contract must name each consumer by path; missing {missing}")
@@ -237,7 +241,7 @@ class WorktreeLayoutContractTest(unittest.TestCase):
         self.assertEqual(missing, [], f"§S3/§S0.1: the rationale must name {missing}")
 
 class WorktreeConsumersTest(unittest.TestCase):
-    """AC — a test parses all six consumers and finds exactly the declared string."""
+    """AC — a test parses every consumer and finds exactly the declared string."""
 
     def _source(self, rel: str) -> str:
         path = REPO_ROOT / rel
