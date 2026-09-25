@@ -49,7 +49,7 @@ Key invariants:
 | `contracts/` | Interface contracts: `crucible-envelope.md`, `gate-lock.md`, `sandesh-cli.md`, `lean-ctx.md` (cross-project), `worktree-layout.md` (the `.worktrees/<cr>` string and its six consumers). Repo-only — not shipped in the wheel |
 | `docs/research/` | `PRD-model-b-rationalization.md` (D1–D10) + `DN-*.md` design notes |
 | `docs/changes/` | `README.md` = CR queue (structure only) + `CR-MDB-NNN-*.md` specs |
-| `tests/` | 53 `unittest` modules; mostly structural/contract gates |
+| `tests/` | 54 `unittest` modules; mostly structural/contract gates |
 | `archive/` | `BASELINE.md` + `wave1..3/` historical records — read-only history |
 | `audits/` | Dated evidence files backing PRD decisions |
 
@@ -110,7 +110,7 @@ There is **no** Makefile/justfile, **no** CI test workflow (the only workflow is
 
 ## Testing & QA
 
-Pure **`unittest`** — no pytest, no `conftest.py`, no fixtures/markers. 53 modules in `tests/` (`tests/test_*.py`), each file ending in `if __name__ == "__main__": unittest.main()`. Naming as practised: the wave-1/2 modules use `<Topic><Section>Test` classes (e.g. `ContractsS2Test`) with `test_s<n>_<assertion>` methods; later modules use `<Feature>Test` classes (e.g. `BlockDirectCargoTestScriptTest`) with descriptive method names. A helper more than one module needs lives once in `tests/_helpers.py` and is imported (CR-MDB-032 §S3 gates a module-level helper body defined in two modules).
+Pure **`unittest`** — no pytest, no `conftest.py`, no fixtures/markers. 54 modules in `tests/` (`tests/test_*.py`), each file ending in `if __name__ == "__main__": unittest.main()`. Naming as practised: the wave-1/2 modules use `<Topic><Section>Test` classes (e.g. `ContractsS2Test`) with `test_s<n>_<assertion>` methods; later modules use `<Feature>Test` classes (e.g. `BlockDirectCargoTestScriptTest`) with descriptive method names. A helper more than one module needs lives once in `tests/_helpers.py` and is imported (CR-MDB-032 §S3 gates a module-level helper body defined in two modules).
 
 ```bash
 python3 -m unittest tests.test_hooks                       # one module
@@ -131,9 +131,9 @@ python3 ~/.crucible/clients/python-crucible.py regression --coverage \
 - JUnit XML lands in `test-reports/` as `TEST-<module>.<Class>-<YYYYMMDDHHMMSS>.xml` (gitignored; the client wipes it before each run). Plain `unittest` produces console output only.
 - **Most tests are structural gates, so ordinary edits break them.** They assert repo layout, the state a sandboxed install deploys, SKILL.md frontmatter, byte-identity of imported bundles, reference-router parity, and grep-gates for retired terms (e.g. zero `WORKFLOW_CYCLE_ID`). Renaming a skill, doc, or reference file requires updating its gate.
 - Tests import `modelb_axi` directly — install the package (`pip install -e .`) or run from the repo root.
-- **The suite is expected to be GREEN, and hermetic** — no test writes to or depends on the real home, except to read Crucible's installed clients (CR-MDB-032 §S1/§S2). Baselines for `python3 -m unittest discover -s tests -t .`, measured 2026-09-24 at CR-MDB-031 C5 FIX with `MODELB_HOME`/`XDG_DATA_HOME` pointed at temp dirs:
-  - real `HOME` (Crucible clients installed): **1138 tests, 0 failures, 0 errors, 0 skips**.
-  - empty `HOME` (a fresh temp dir; `PYTHONUSERBASE` keeps user site-packages): **1138 tests, 0 failures, 0 errors, 8 skips**; the temp dir is still empty afterwards.
+- **The suite is expected to be GREEN, and hermetic** — no test writes to or depends on the real home, except to read Crucible's installed clients (CR-MDB-032 §S1/§S2). Baselines for `python3 -m unittest discover -s tests -t .`, measured 2026-09-25 at CR-MDB-035 C1 GREEN with `MODELB_HOME`/`XDG_DATA_HOME` pointed at temp dirs:
+  - real `HOME` (Crucible clients installed): **1171 tests, 0 failures, 0 errors, 0 skips**.
+  - empty `HOME` (a fresh temp dir; `PYTHONUSERBASE` keeps user site-packages): **1171 tests, 0 failures, 0 errors, 8 skips**; the temp dir is still empty afterwards.
 - **Every skip is an absent installed Crucible client, an absent `pi` CLI or an absent `sandesh` CLI.** A test that reads Crucible's released surface resolves it through `~/.crucible/crucible-clients.json` and skips, naming that manifest, when the manifest, its entry or the file is missing — the toon conformance oracle (2), the gate-lock read (1), the present-manifest half of `ManifestResolvedOracleS1Test` (1) — and `ClientContractS3Test` skips its four checks when the released client files under `~/.crucible/clients/` are absent. The `pi` CLI (with `node` and the jiti it ships) must be on `PATH`: without it the loader-driven classes skip in `setUpClass`, seven in `test_pi_hook_runtime` and three in `test_pi_sandesh_watcher`. Without `sandesh` on `PATH`, `test_sandesh_cli_forms`'s `--help` conformance class skips its three checks in `setUpClass`. Nothing else skips. **A failure is a regression, not a known-bad** — investigate it; `audits/2026-09-21-codebase-review-tests.md` diagnoses the pre-CR-MDB-021 state.
 - TDD is mandatory: RED before GREEN, never commit failing tests, clean build before every commit.
 
