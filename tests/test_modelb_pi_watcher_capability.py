@@ -87,11 +87,22 @@ class WatcherRequirementRowTest(unittest.TestCase):
             _watcher_row()["remediation"], "pi install npm:@anthill-tec/modelb-pi",
         )
 
-    def test_watcher_tools_are_exactly_sandesh_watcher(self):
-        self.assertEqual(list(_watcher_row()["tools"]), ["sandesh_watcher"])
+    def test_watcher_tools_are_exactly_sandesh_watcher_and_the_two_worktree_tools(self):
+        # MIGRATED at CR-MDB-039 C1 RED (S3: the watcher capability's tools
+        # list the two new tools); was test_watcher_tools_are_exactly_sandesh_watcher.
+        self.assertEqual(
+            sorted(_watcher_row()["tools"]),
+            ["modelb_worktree_enter", "modelb_worktree_exit", "sandesh_watcher"],
+        )
 
-    def test_watcher_dependents_are_the_orchestration_skills(self):
-        self.assertEqual(list(_watcher_row()["asset_families"]), ["orchestration skills"])
+    def test_watcher_dependents_are_the_orchestration_skills_and_worktree_isolation(self):
+        # MIGRATED at CR-MDB-039 C1 RED (S3: asset_families name the worktree
+        # isolation); was test_watcher_dependents_are_the_orchestration_skills.
+        families = list(_watcher_row()["asset_families"])
+        self.assertEqual(len(families), 2, families)
+        self.assertIn("orchestration skills", families)
+        others = [f for f in families if f != "orchestration skills"]
+        self.assertRegex(others[0] if others else "", r"(?i)worktree isolation")
 
     def test_watcher_is_probed_as_a_pi_package_like_the_other_tier1_rows(self):
         """"reports it like the other tier-1 capabilities" — the same probe

@@ -24,7 +24,8 @@ Class map:
   directory they SKIP naming that manifest, and with the manifest present they RUN.
 - ``DeadOriginTreeTestsS1Test`` — §S1: the two permanently-skipped origin-tree tests are deleted.
 - ``RealHomeReadsS2Test`` — §S2: no test module reads the real home outside the reviewed
-  ``HOME_READ_ALLOWLIST`` below (AST scan of ``tests/*.py``).
+  ``HOME_READ_ALLOWLIST`` and the one ``INSTALLED_PI_PACKAGE_READS`` entry below (AST scan of
+  ``tests/*.py``).
 - ``SupersededRealHomeTestsS2Test`` — §S2: ``test_realhome_supersede.py`` and the superseded or
   real-home classes are deleted; ``WorktreeFlowSkillConsumerNotesTest`` stays and reads
   ``skills-src/``.
@@ -49,6 +50,14 @@ Permitted reads, and ONLY these:
    opens or lists anything under it. ``test_s2_every_allowlist_entry_names_a_live_use`` keeps the
    list from going stale. This is the "reviewed list of remaining ``Path.home()`` uses" the §S2
    acceptance criterion records in the merge note.
+3. ``INSTALLED_PI_PACKAGE_READS`` (CR-MDB-039) — ``(file, enclosing scope)`` → the reason. A
+   separately named exception, parallel to rule 1 and NOT part of the allowlist (whose "never
+   stat, open or list" rule stays true): an installed Pi package's RELEASED source, read-only,
+   resolved ``$PI_CODING_AGENT_DIR`` first and then ``~/.pi/agent``; the reading test skips,
+   naming the path, when it is absent. It holds exactly one entry — the contract read of the
+   installed pi-subagents service key — and the scope must be a function that names both
+   ``PI_CODING_AGENT_DIR`` and ``.pi``. A same-named function in another module, or any other
+   function in the listed module, is not covered.
 
 §S2's empty-``HOME`` full-suite property is proved by the orchestrator / VERIFY with a full run,
 never by a test here that recurses into the whole suite.
@@ -517,6 +526,15 @@ HOME_READ_ALLOWLIST = {
         "reads the ambient HOME value only to prove the children did NOT inherit it",
 }
 
+#: §S2 rule 3 (CR-MDB-039) — the ONE sanctioned read of an installed Pi package's released
+#: source, parallel to the installed Crucible reads and deliberately NOT an allowlist entry (it
+#: opens the file). ``(file, enclosing scope)`` → reason; read-only, ``$PI_CODING_AGENT_DIR``
+#: first then ``~/.pi/agent``, the reading test skips naming the path when it is absent.
+INSTALLED_PI_PACKAGE_READS = {
+    ("test_pi_worktree_isolation.py", "_installed_service_ts"):
+        "CR-MDB-039 AC: contract read of the installed pi-subagents service key",
+}
+
 _HOME_ENV_KEY = "HOME"
 
 
@@ -590,24 +608,25 @@ def _home_reads(path: Path) -> list:
     return sorted(reads)
 
 
-def _unpermitted_home_reads(tests_dir: Path, allowlist: dict) -> list:
+def _unpermitted_home_reads(tests_dir: Path, allowlist: dict, pi_package_reads=None) -> list:
+    permitted = set(allowlist) | set(pi_package_reads or {})
     offenders = []
     for path in sorted(tests_dir.glob("*.py")):
         for lineno, form, scope, crucible in _home_reads(path):
-            if crucible or (path.name, scope) in allowlist:
+            if crucible or (path.name, scope) in permitted:
                 continue
             offenders.append((path.name, lineno, form, scope))
     return offenders
 
 
 class RealHomeReadsS2Test(unittest.TestCase):
-    """§S2 — no test reads the real home except the installed Crucible surface and the reviewed
-    allowlist."""
+    """§S2 — no test reads the real home except the installed Crucible surface, the reviewed
+    allowlist and the one installed-Pi-package read (rule 3)."""
 
     maxDiff = None
 
     def test_s2_no_test_module_reads_the_real_home_outside_the_allowlist(self):
-        offenders = _unpermitted_home_reads(TESTS_DIR, HOME_READ_ALLOWLIST)
+        offenders = _unpermitted_home_reads(TESTS_DIR, HOME_READ_ALLOWLIST, INSTALLED_PI_PACKAGE_READS)
         self.assertEqual(
             offenders, [],
             "§S2: real-home reads outside the reviewed allowlist — retarget to skills-src/, "
@@ -662,6 +681,57 @@ class RealHomeReadsS2Test(unittest.TestCase):
             "an allowlisted (file, scope) permits exactly that scope's reads",
         )
         self.assertEqual(len(allowed), 4)
+
+
+class InstalledPiPackageReadS2Test(unittest.TestCase):
+    """§S2 rule 3 (CR-MDB-039) — the one installed-Pi-package read is a separate, single-entry
+    exception that names a live use, and the gate still bites around it."""
+
+    maxDiff = None
+
+    def test_s2_the_installed_pi_package_exception_is_exactly_one_entry_apart_from_the_allowlist(self):
+        self.assertEqual(sorted(INSTALLED_PI_PACKAGE_READS),
+                         [("test_pi_worktree_isolation.py", "_installed_service_ts")])
+        self.assertEqual(set(INSTALLED_PI_PACKAGE_READS) & set(HOME_READ_ALLOWLIST), set(),
+                         "rule 3 is not an allowlist entry: the allowlist's never-open rule stays true")
+        for reason in INSTALLED_PI_PACKAGE_READS.values():
+            self.assertIn("CR-MDB-039", reason)
+
+    def test_s2_the_installed_pi_package_read_is_live_and_resolves_the_pi_agent_dir(self):
+        for file_name, scope in INSTALLED_PI_PACKAGE_READS:
+            with self.subTest(scope=f"{file_name}:{scope}"):
+                path = TESTS_DIR / file_name
+                self.assertIn(scope, {s for _, _, s, _ in _home_reads(path)},
+                              f"§S2 rule 3: {file_name}:{scope} no longer reads the home — drop it")
+                tree = ast.parse(path.read_text(encoding="utf-8"))
+                funcs = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == scope]
+                self.assertEqual(len(funcs), 1, f"{scope} is one module-level function")
+                source = ast.get_source_segment(path.read_text(encoding="utf-8"), funcs[0]) or ""
+                self.assertIn("PI_CODING_AGENT_DIR", source, "$PI_CODING_AGENT_DIR is resolved first")
+                self.assertIn('".pi"', source, "then ~/.pi/agent")
+
+    def test_s2_the_gate_still_bites_an_unlisted_read_and_a_listed_name_in_another_module(self):
+        reader = (
+            "from pathlib import Path\n"                                          # 1
+            "def _installed_service_ts():\n"                                      # 2
+            "    return Path.home() / '.pi' / 'agent'\n"                          # 3 sanctioned
+            "def _other_reader():\n"                                              # 4
+            "    return Path.home() / '.pi' / 'agent'\n"                          # 5 flagged
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            tests_dir = Path(tmp) / "tests"
+            tests_dir.mkdir()
+            (tests_dir / "test_pi_worktree_isolation.py").write_text(reader, encoding="utf-8")
+            (tests_dir / "test_elsewhere.py").write_text(reader, encoding="utf-8")
+            with_rule = _unpermitted_home_reads(tests_dir, {}, INSTALLED_PI_PACKAGE_READS)
+            without_rule = _unpermitted_home_reads(tests_dir, {})
+        self.assertEqual(with_rule, [
+            ("test_elsewhere.py", 3, "Path.home()", "_installed_service_ts"),
+            ("test_elsewhere.py", 5, "Path.home()", "_other_reader"),
+            ("test_pi_worktree_isolation.py", 5, "Path.home()", "_other_reader"),
+        ])
+        self.assertIn(("test_pi_worktree_isolation.py", 3, "Path.home()", "_installed_service_ts"),
+                      without_rule, "without rule 3 the sanctioned read is an offender too")
 
 
 # ------------------------------------------------------ §S2 superseded tests ----
