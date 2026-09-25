@@ -106,7 +106,8 @@ A new module `tests/test_prd_criteria.py` asserts:
 - the `AGENTS.md` scaffolded for all five stacks in `multi:3` mode, in a sandbox, is ≤100 lines
   (criterion 1);
 - PRD §3 and §4 name no `CLAUDE.md`, `chezmoi`, `Claude Code`, `Hermes` or `OpenCode` except
-  inside a dated amendment note; every §4 criterion carries a **Check:** and every `tests/…py`
+  inside a dated amendment note or as a stated absence (a term directly preceded by "no", as in
+  §S2's "emits no `CLAUDE.md`"); every §4 criterion carries a **Check:** and every `tests/…py`
   path it names exists.
 
 `tests/test_client_verb_sweep.py:96` and `:689` cite "PRD §11 criterion 2"; they become "PRD §4
