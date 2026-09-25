@@ -147,7 +147,7 @@ _INIT_REQUIRED_FLAGS = [
 ]
 
 
-def _write_legacy_manifest_missing_hooks_scripts_dir(home: str, harnesses=("claude-code",)) -> Path:
+def _write_legacy_manifest_missing_hooks_scripts_dir(home: str, harnesses=("pi",)) -> Path:
     """A pre-CR-MDB-033 ``install.toml``: harnesses/version/asset_root/
     tool_scripts_dir present (exactly what a v1 install wrote), but NO
     ``target_root``/``hooks_scripts_dir`` -- the AC-a fixture ("an
@@ -212,7 +212,7 @@ class PiExtensionTargetRootRoundTripTest(unittest.TestCase):
 
     def test_compiled_pi_extension_references_target_root_not_real_home(self):
         install_result = _run_module(
-            "--yes", "--harnesses", "claude-code,pi",
+            "--yes", "--harnesses", "pi",
             "--modelb-home", self._tmp_home,
             "--target-root", self._tmp_target_root,
             env_overrides={"PATH": self._tmp_bin},
@@ -294,7 +294,7 @@ class InstallTomlSchemaKeysTest(unittest.TestCase):
 
     def test_fresh_install_records_target_root_and_per_class_dirs(self):
         result = _run_module(
-            "--yes", "--harnesses", "claude-code",
+            "--yes", "--harnesses", "pi",
             "--modelb-home", self._tmp_home,
             "--target-root", self._tmp_target_root,
             env_overrides={"PATH": self._tmp_bin},
@@ -348,7 +348,7 @@ class InstallTomlSchemaKeysTest(unittest.TestCase):
         install_toml.write_text(
             "[install]\n"
             'version = "0.1.0"\n'
-            'harnesses = ["claude-code", "pi"]\n'
+            'harnesses = ["pi"]\n'
             'asset_root = "/tmp/does-not-matter-for-this-test"\n'
             'tool_scripts_dir = "/tmp/does-not-matter-for-this-test/.agents/scripts"\n'
             "\n"
@@ -420,7 +420,7 @@ class FirstInstallNeverClobbersForeignFileTest(unittest.TestCase):
 
     def _run_install(self, *extra_args):
         return _run_module(
-            "--yes", "--harnesses", "claude-code",
+            "--yes", "--harnesses", "pi",
             "--modelb-home", self._tmp_home,
             "--target-root", self._tmp_target_root,
             *extra_args,
@@ -495,7 +495,7 @@ class ManifestAlwaysConsultedWithoutReinstallFlagTest(unittest.TestCase):
         out, err = io.StringIO(), io.StringIO()
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
             exit_code = _deploy_stage(
-                self._tmp_home, self._tmp_target_root, ["claude-code"],
+                self._tmp_home, self._tmp_target_root, ["pi"],
                 {"uv": "detected", "sandesh": "detected", "crucible": "absent"},
                 reinstall, force_managed,
             )
@@ -635,7 +635,7 @@ class RealInitWithoutInstallTomlNoWriteBeforeFailureTest(unittest.TestCase):
     def test_real_init_exits_nonzero_leaves_target_empty_and_names_installer_not_does_not_record(self):
         result = _run_module(
             "--yes", "init", *_INIT_REQUIRED_FLAGS,
-            "--harnesses", "claude-code",
+            "--harnesses", "pi",
             "--target", self._tmp_target,
             "--modelb-home", self._tmp_home,
             "--no-commit",
@@ -773,11 +773,11 @@ class DryRunSurfacesSameErrorTextAsWarningTest(unittest.TestCase):
 
     def test_missing_install_toml_dry_run_writes_nothing_exits_zero_and_warns_same_text(self):
         # Deliberately no install.toml under self._tmp_home for either run.
-        real_error = self._real_error_text("--harnesses", "claude-code")
+        real_error = self._real_error_text("--harnesses", "pi")
 
         dry_result = _run_module(
             "--yes", "init", *_INIT_REQUIRED_FLAGS,
-            "--harnesses", "claude-code",
+            "--harnesses", "pi",
             "--target", self._tmp_dry_target,
             "--modelb-home", self._tmp_home,
             "--no-commit", "--dry-run",
@@ -838,7 +838,7 @@ class DryRunSurfacesSameErrorTextAsWarningTest(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 
-def _write_full_install_toml(home: str, harnesses=("claude-code",)) -> Path:
+def _write_full_install_toml(home: str, harnesses=("pi",)) -> Path:
     """A §S1-valid ``install.toml`` (records ``target_root`` and all three
     per-class dirs, the shape ``InstallTomlSchemaKeysTest`` already pins as
     GREEN) -- the C2 (§S2/§S4) fixtures need a manifest that PASSES §S1's
@@ -886,10 +886,9 @@ def _init_args(target, dry_run: bool, no_commit: bool = True, harnesses=None) ->
 
 
 class AtomicWriteSixSitesTest(unittest.TestCase):
-    """AC1 (§S2, C2) -- each of the six write sites --
-    ``deploy._deploy_file``, ``hooks._emit_claude_code``,
-    ``hooks._emit_opencode``, ``hooks._emit_pi``,
-    ``hooks._emit_hermes_advisory``, ``scaffold._emit_plan``'s inner writer
+    """AC1 (§S2, C2) -- each write site -- ``deploy._deploy_file``,
+    ``hooks._emit_pi``, ``scaffold._emit_plan``'s inner writer (the three
+    non-Pi emitters and their subtests were retired by CR-MDB-031 §S1)
     -- must write through an atomic helper (tmp-in-the-same-directory +
     ``os.replace``): with ``os.replace`` monkeypatched to raise, re-running
     that site over an EXISTING destination must leave the prior file
@@ -905,14 +904,8 @@ class AtomicWriteSixSitesTest(unittest.TestCase):
     def test_all_six_sites_preserve_prior_file_when_os_replace_fails(self):
         with self.subTest(site="deploy._deploy_file"):
             self._check_deploy_deploy_file()
-        with self.subTest(site="hooks._emit_claude_code"):
-            self._check_hooks_emitter("_emit_claude_code", Path(".claude") / "settings.json")
-        with self.subTest(site="hooks._emit_opencode"):
-            self._check_hooks_emitter("_emit_opencode", Path(".opencode") / "plugin" / "modelb-hooks.ts")
         with self.subTest(site="hooks._emit_pi"):
             self._check_hooks_emitter("_emit_pi", Path(".pi") / "extensions" / "guard-example.ts")
-        with self.subTest(site="hooks._emit_hermes_advisory"):
-            self._check_hooks_emitter("_emit_hermes_advisory", Path("hooks") / "hermes-manual.yaml")
         with self.subTest(site="scaffold._emit_plan"):
             self._check_scaffold_emit_plan()
 
@@ -1087,7 +1080,7 @@ class InstallTomlWrittenWithMode0644Test(unittest.TestCase):
 
     def test_fresh_install_writes_install_toml_with_mode_0644(self):
         result = _run_module(
-            "--yes", "--harnesses", "claude-code",
+            "--yes", "--harnesses", "pi",
             "--modelb-home", self._tmp_home,
             "--target-root", self._tmp_target_root,
             env_overrides={"PATH": self._tmp_bin},
@@ -1137,7 +1130,7 @@ class MidEmissionFailureHonestPartialEmissionTest(unittest.TestCase):
         self._tmp_home = tempfile.mkdtemp(prefix="modelb-axi-c2-partial-home-")
         self._tmp_target = tempfile.mkdtemp(prefix="modelb-axi-c2-partial-target-")
         self._tmp_dry_target = tempfile.mkdtemp(prefix="modelb-axi-c2-partial-dry-target-")
-        _write_full_install_toml(self._tmp_home, harnesses=("claude-code",))
+        _write_full_install_toml(self._tmp_home, harnesses=("pi",))
 
     def tearDown(self):
         for root in (self._tmp_home, self._tmp_target, self._tmp_dry_target):
@@ -1251,7 +1244,7 @@ class RegressionPinFilePermissionsUnaffectedByAtomicWritesTest(unittest.TestCase
 
     Umask is set EXPLICITLY (0o022, saved/restored in setUp/tearDown) so
     the expected mode is computed from it rather than hard-coded 0o644 --
-    a real installer run (`--harnesses claude-code,pi`) followed by a real
+    a real installer run (`--harnesses pi`) followed by a real
     `init` reading that install.toml drives every site under test through
     a subprocess that inherits the parent's umask at fork time (verified
     inheritance, not assumed)."""
@@ -1274,7 +1267,7 @@ class RegressionPinFilePermissionsUnaffectedByAtomicWritesTest(unittest.TestCase
 
     def _run_real_install_and_init(self):
         install_result = _run_module(
-            "--yes", "--harnesses", "claude-code,pi",
+            "--yes", "--harnesses", "pi",
             "--modelb-home", self._tmp_home,
             "--target-root", self._tmp_target_root,
             env_overrides={"PATH": self._tmp_bin},
@@ -1399,39 +1392,27 @@ class MidEmissionFailureInsideWiringCompilationEmittedTest(unittest.TestCase):
     all. Here the injection is on ``hooks.atomic_write`` (the name
     ``hooks.py`` imports it under), patched to call the REAL
     ``_fsutil.atomic_write`` for its first two successful calls and then
-    raise -- landing the failure mid-way through the FIRST (roster-order)
-    harness's wiring emission, after real files already landed on disk.
+    raise -- landing the failure mid-way through the Pi wiring emission,
+    after a real file already landed on disk.
 
-    Measured (orchestrator repro): with harnesses ``["pi", "claude-code",
-    "opencode", "hermes"]`` recorded in that order in ``install.toml``,
-    ``scaffold._emit_plan``'s ``roster_harnesses`` preserves that order,
-    so ``compile_wiring`` starts wiring "pi" first; for the default
-    ``python``/``solo`` args this test uses, ``pi``'s ONLY two instances
-    (``ambient-board-status``, ``post-regression-disk-reminder`` -- the
-    cycle-todo-naming guard between them retired under CR-MDB-030 \u00a7S7)
-    both land on disk, exhausting pi's ENTIRE wiring within the 2-write
-    budget; the injection then fires on the FIRST write of the NEXT
-    harness in roster order (``claude-code``'s single
-    ``.claude/settings.json``), which never lands. Since
-    ``scaffold._emit_plan`` only calls
-    ``emitted.extend(harness_entry["emitted_files"])`` AFTER
-    ``compile_wiring`` RETURNS for a harness, and ``compile_wiring``
-    raised mid-way instead of returning at all, NEITHER of pi's two real
-    files is listed in the failure envelope's ``emitted``, even though
-    both are really on disk under ``--target``. This breaks the \u00a7S4
-    AC's "exactly the files present" contract specifically for wiring
-    output, which the ``_render_agents_md``-injection test above cannot
-    reach -- now proven ACROSS a harness boundary rather than within a
-    single harness's per-instance loop, since pi's post-\u00a7S7 instance
-    count (2) exactly matches ``FAIL_AFTER``."""
+    Re-derived for the Pi-only roster (CR-MDB-031 §S1 -- the cross-harness
+    premise, a failure on the first write of the NEXT roster harness, is
+    retired with the non-Pi emitters): for the default ``python``/``solo``
+    args this test uses, ``pi`` has exactly two instances
+    (``ambient-board-status``, then ``post-regression-disk-reminder``).
+    ``FAIL_AFTER = 1`` lets the first extension land and raises on the
+    second, INSIDE ``compile_wiring``'s per-instance loop -- so
+    ``compile_wiring`` never returns, and the first file must still be
+    listed in the failure envelope's ``emitted`` (it is recorded per write,
+    CR-MDB-033 §S4) while the second must be neither on disk nor listed.
+    This keeps the §S4 AC's "exactly the files present" contract proven
+    for wiring output, which the ``_render_agents_md``-injection test
+    above cannot reach."""
 
     def setUp(self):
         self._tmp_home = tempfile.mkdtemp(prefix="modelb-axi-c2-wiring-partial-home-")
         self._tmp_target = tempfile.mkdtemp(prefix="modelb-axi-c2-wiring-partial-target-")
-        _write_full_install_toml(
-            self._tmp_home,
-            harnesses=("pi", "claude-code", "opencode", "hermes"),
-        )
+        _write_full_install_toml(self._tmp_home, harnesses=("pi",))
 
     def tearDown(self):
         for root in (self._tmp_home, self._tmp_target):
@@ -1442,7 +1423,7 @@ class MidEmissionFailureInsideWiringCompilationEmittedTest(unittest.TestCase):
         from modelb_axi._fsutil import atomic_write as real_atomic_write
 
         call_count = {"n": 0}
-        FAIL_AFTER = 2  # let exactly two real wiring files land, then raise.
+        FAIL_AFTER = 1  # let exactly one real wiring file land, then raise.
 
         def _flaky_atomic_write(path, data, mode=None):
             call_count["n"] += 1
@@ -1473,32 +1454,25 @@ class MidEmissionFailureInsideWiringCompilationEmittedTest(unittest.TestCase):
 
         leftover = _files_under_excluding_git(self._tmp_target)
 
-        # NEGATIVE / bound -- the injection lands after exactly two real
-        # wiring writes succeed; post-\u00a7S7 (CR-MDB-030) pi has EXACTLY two
-        # instances for these default args, so BOTH its files must be
-        # genuinely present on disk (never zero -- and never a THIRD pi
-        # file, which would mean pi's instance count changed again and
-        # this precondition needs re-deriving).
+        # NEGATIVE / bound -- the injection lands after exactly one real
+        # wiring write succeeds: pi's FIRST extension must be genuinely on
+        # disk, and its SECOND (the write that raised) must not be.
         expected_partial_wiring = {
             str(Path(".pi") / "extensions" / "ambient-board-status.ts"),
-            str(Path(".pi") / "extensions" / "post-regression-disk-reminder.ts"),
         }
         self.assertTrue(
             expected_partial_wiring.issubset(set(leftover)),
-            "AC4 precondition: the injection must leave BOTH of pi's "
-            f"wiring files on disk; expected "
+            "AC4 precondition: the injection must leave pi's first "
+            f"wiring file on disk; expected "
             f"{sorted(expected_partial_wiring)} to be a subset of leftover "
             f"{leftover!r} -- got exit={exit_code} stdout={combined!r}",
         )
-        first_claude_code_file = str(Path(".claude") / "settings.json")
+        raised_file = str(Path(".pi") / "extensions" / "post-regression-disk-reminder.ts")
         self.assertNotIn(
-            first_claude_code_file, leftover,
-            "AC4 precondition: pi's wiring must complete WITHIN the "
-            "2-write budget (its instance count post-\u00a7S7 is exactly 2), "
-            "so the 3rd atomic_write call -- the NEXT harness in roster "
-            f"order (claude-code) -- must be the one that raised; "
-            f"{first_claude_code_file!r} must NOT be on disk; got "
-            f"leftover={leftover!r}",
+            raised_file, leftover,
+            "AC4 precondition: the 2nd atomic_write call -- pi's second "
+            f"instance -- must be the one that raised; {raised_file!r} must "
+            f"NOT be on disk; got leftover={leftover!r}",
         )
 
         envelope = _decode_envelope(combined)
@@ -1511,8 +1485,8 @@ class MidEmissionFailureInsideWiringCompilationEmittedTest(unittest.TestCase):
         )
         emitted = axi.get("emitted")
 
-        # THE BUG this test pins: the two pi wiring files that are REALLY
-        # on disk must be listed in `emitted` -- today they are not,
+        # THE BUG this test pins: the pi wiring file that is REALLY on
+        # disk must be listed in `emitted` -- today they are not,
         # because `scaffold._emit_plan` only calls
         # `emitted.extend(harness_entry["emitted_files"])` AFTER
         # `compile_wiring` returns, and `compile_wiring` raised instead of
@@ -1926,7 +1900,7 @@ class InstallerEightExitPathsEnvelopeTest(unittest.TestCase):
     def _check_already_installed(self):
         home = tempfile.mkdtemp(prefix="modelb-axi-c3-envelope-installed-notice-")
         try:
-            _write_full_install_toml(home, harnesses=("claude-code",))
+            _write_full_install_toml(home, harnesses=("pi",))
             result = _run_module("--yes", "--modelb-home", home)
             self._assert_path(
                 "already_installed", result.returncode, result.stdout,
@@ -2000,16 +1974,19 @@ class InstallerEightExitPathsEnvelopeTest(unittest.TestCase):
         home = tempfile.mkdtemp(prefix="modelb-axi-c3-envelope-deployfailed-home-")
         target_root = tempfile.mkdtemp(prefix="modelb-axi-c3-envelope-deployfailed-target-")
         try:
-            # A non-symlink file already occupying the harness-skill link
-            # path makes `deploy._link_harness_skills` raise DeployError
-            # deterministically (the claude-code skills-dir mapping).
-            blocker = Path(target_root) / ".claude" / "skills" / "crucible"
+            # A regular file occupying the skills-store directory path
+            # (`<target-root>/.agents/skills`) makes the store copy's
+            # directory creation raise, so `deploy.deploy_assets` raises
+            # DeployError deterministically. Re-pointed at the Pi path by
+            # CR-MDB-031 §S1: the former blocker sat on the retired
+            # per-harness link path.
+            blocker = Path(target_root) / ".agents" / "skills"
             blocker.parent.mkdir(parents=True, exist_ok=True)
             blocker.write_text(
-                "not a symlink -- blocks the harness link step\n", encoding="utf-8",
+                "not a directory -- blocks the skills-store deploy\n", encoding="utf-8",
             )
             result = _run_module(
-                "--yes", "--harnesses", "claude-code",
+                "--yes", "--harnesses", "pi",
                 "--modelb-home", home,
                 "--target-root", target_root,
                 env_overrides={"PATH": self._tmp_bin},
@@ -2032,7 +2009,7 @@ class InstallerEightExitPathsEnvelopeTest(unittest.TestCase):
         home = tempfile.mkdtemp(prefix="modelb-axi-c3-envelope-noroot-")
         try:
             result = _run_module(
-                "--yes", "--harnesses", "claude-code",
+                "--yes", "--harnesses", "pi",
                 "--modelb-home", home,
                 env_overrides={"PATH": self._tmp_bin},
             )
@@ -2048,7 +2025,7 @@ class InstallerEightExitPathsEnvelopeTest(unittest.TestCase):
         target_root = tempfile.mkdtemp(prefix="modelb-axi-c3-envelope-installed-target-")
         try:
             result = _run_module(
-                "--yes", "--harnesses", "claude-code",
+                "--yes", "--harnesses", "pi",
                 "--modelb-home", home,
                 "--target-root", target_root,
                 env_overrides={"PATH": self._tmp_bin},
@@ -2102,7 +2079,7 @@ class StdoutCarriesOnlyEnvelopeAllHumanLinesOnStderrTest(unittest.TestCase):
 
     def test_stdout_is_exactly_one_envelope_and_both_deps_lines_are_on_stderr(self):
         result = _run_module(
-            "--yes", "--harnesses", "claude-code",
+            "--yes", "--harnesses", "pi",
             "--modelb-home", self._tmp_home,
             "--target-root", self._tmp_target_root,
             env_overrides={
@@ -2206,7 +2183,7 @@ class InstalledEnvelopeFieldsMatchInstallTomlAndForeignFileTest(unittest.TestCas
 
     def test_installed_envelope_deps_managed_files_and_unmanaged_match_install_toml(self):
         result = _run_module(
-            "--yes", "--harnesses", "claude-code",
+            "--yes", "--harnesses", "pi",
             "--modelb-home", self._tmp_home,
             "--target-root", self._tmp_target_root,
             env_overrides={"PATH": self._tmp_bin},

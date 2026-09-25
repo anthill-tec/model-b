@@ -1,13 +1,9 @@
-"""Harness targeting — installer-flow stage 2 (CR-MDB-014 §S5).
+"""Harness targeting — installer-flow stage 2 (CR-MDB-014 §S5; CR-MDB-031 §S1).
 
-The initial harness roster (DN-scaffold-packaging §1 decision H) maps stable harness ids to the binary
-names probed on ``PATH``; the probed binary differs from the harness id
-in exactly one case (``claude`` → ``claude-code``):
+The roster maps stable harness ids to the binary names probed on ``PATH``. The target set is Pi
+alone (CR-MDB-031 §S0.5 — a harness returns to the roster only when a CR measures it):
 
-    claude-code ← ``claude``
-    hermes      ← ``hermes``
-    pi          ← ``pi``
-    opencode    ← ``opencode``
+    pi ← ``pi``
 
 Detection (``shutil.which`` against the current ``PATH`` — the tests'
 isolation seam) proposes a default set; an explicit ``--harnesses``
@@ -20,24 +16,27 @@ import shutil
 
 # Roster order is canonical: selections are always reported in this order.
 HARNESS_ROSTER: tuple[tuple[str, str], ...] = (
-    ("claude-code", "claude"),
-    ("hermes", "hermes"),
     ("pi", "pi"),
-    ("opencode", "opencode"),
 )
 
 HARNESS_ROSTER_IDS: tuple[str, ...] = tuple(hid for hid, _ in HARNESS_ROSTER)
 
 
 class UnknownHarnessError(ValueError):
-    """Raised when ``--harnesses`` names an id outside the roster."""
+    """Raised when ``--harnesses`` (or a recorded ``install.toml``) names an
+    id outside the roster. ``recovery``, when given, is appended to the
+    message so the refusal names how to recover (CR-MDB-031 §S1)."""
 
-    def __init__(self, unknown: list[str]):
+    def __init__(self, unknown: list[str], recovery: str | None = None):
         self.unknown = unknown
-        super().__init__(
+        self.recovery = recovery
+        message = (
             f"unknown harness id(s): {', '.join(unknown)}; "
             f"valid roster: {', '.join(HARNESS_ROSTER_IDS)}"
         )
+        if recovery:
+            message += f"; {recovery}"
+        super().__init__(message)
 
 
 def parse_harnesses(raw: str | None) -> list[str]:

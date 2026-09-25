@@ -3,7 +3,9 @@
 These tests assert the acceptance criteria of CR-MDB-009 SS2-SS5 against the
 LIVE repo tree: each of the four `contracts/*.md` files must exist and carry
 the exact anchor strings its AC bullet names, proving the doc was actually
-authored (not stubbed) with the required content.
+authored (not stubbed) with the required content. CR-MDB-031 SS4 moved
+`contracts/mail-axi.md` to `archive/contracts/` and retired its SS4 class;
+tests/test_worktree_layout_and_bundles.py pins the archived copy.
 
 Repo-only CR (per SS1: "no ~/.claude writes, no chezmoi ops") -- these tests
 assert repo-relative paths only, no ~/.claude / chezmoi checks (unlike
@@ -26,7 +28,6 @@ CONTRACTS_DIR = REPO_ROOT / "contracts"
 
 CRUCIBLE_ENVELOPE_MD = CONTRACTS_DIR / "crucible-envelope.md"
 SANDESH_CLI_MD = CONTRACTS_DIR / "sandesh-cli.md"
-MAIL_AXI_MD = CONTRACTS_DIR / "mail-axi.md"
 LEAN_CTX_MD = CONTRACTS_DIR / "lean-ctx.md"
 
 # The exact phase-agent id form cited verbatim in the SS2 AC bullet.
@@ -152,33 +153,6 @@ class ContractsS3Test(unittest.TestCase):
         self.assertGreater(
             len(content.strip()), 0,
             f"{SANDESH_CLI_MD} must not be empty",
-        )
-
-
-class ContractsS4Test(unittest.TestCase):
-    """SS4 -- contracts/mail-axi.md: the TBD-owned contract consolidating
-    the mail MCP dependencies (Fastmail, Gmail, Calendar) into an AXI CLI,
-    enabling the D8 migration off the mail MCP servers."""
-
-    def test_s4_mail_axi_exists_with_required_anchors(self):
-        self.assertTrue(
-            MAIL_AXI_MD.is_file(),
-            f"{MAIL_AXI_MD} must exist",
-        )
-        content = _read(MAIL_AXI_MD)
-
-        # POSITIVE -- the AC's conjunction of 5 literal required terms.
-        required_terms = ["Fastmail", "Gmail", "Calendar", "mail-tracking-core", "TOON"]
-        missing = [term for term in required_terms if term not in content]
-        self.assertEqual(
-            missing, [],
-            f"{MAIL_AXI_MD} missing required anchor terms: {missing}",
-        )
-
-        # NEGATIVE/bound -- not a stub.
-        self.assertGreater(
-            len(content.strip()), 0,
-            f"{MAIL_AXI_MD} must not be empty",
         )
 
 

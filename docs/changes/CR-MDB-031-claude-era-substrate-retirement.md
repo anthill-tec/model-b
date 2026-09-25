@@ -121,7 +121,10 @@ targeting `pi`; the refusal must say how to recover.
   `hooks-src/schema.md` drops "compiled per harness (claude-code, opencode, hermes, pi)".
 - `scaffold.py`: no `CLAUDE.md`, no `_HARNESS_NATIVE_NOTES`, no claude-code anchor line, no
   `.opencode/` ignore line; `.gitignore` gains `.worktrees/` (§S3); `hooks/README.md` drops refusal
-  accounting; the ontology line cites `docs/research/DN-model-b-language.md` with no `crucible:` prefix.
+  accounting; the queue README's ontology line cites the deployed `model-b` skill
+  (`~/.agents/skills/model-b/SKILL.md`, which carries the ontology summary and names its source) with
+  no `crucible:` prefix \u2014 a scaffolded project has no `docs/research/DN-model-b-language.md`, so a
+  repo-relative citation would dangle (amended at C1 RED, 2026-09-24).
 - **Template selection by stack family:** a `<prefix>-*.md` memory template is emitted when any
   stack of its family is selected — `java-*` for `java` or `quarkus`, `rust-*` for `rust` — through a
   named prefix→stacks map, not `KNOWN_STACKS`.
@@ -154,7 +157,8 @@ orchestration-mainline,sub-agent-procedure,sandesh}.md`, `bootstrap`, `shutdown`
   `~/.agents/skills/<name>/…`; `arduino.toml` points at `crucible/references/arduino.md`;
 - the NAI project-memory examples (bootstrap:89,92) are removed;
 - `java-testing-practices.md:376` writes Panache's method as `find()`;
-- `skills-src/model-b/SKILL.md:12` cites `docs/research/DN-model-b-language.md` without `crucible:`.
+- `skills-src/model-b/SKILL.md:12` cites the ontology as Model B's `docs/research/DN-model-b-language.md`
+  (the frozen import) without `crucible:`.
 Then regenerate `generator/agents/` (`python3 generator/build.py`) and re-render this repository's
 `.pi/agents/` through `modelb-axi agents` (sandboxed `--modelb-home`) — never hand-edited.
 `skills-src/README.md` states the §D18 rule once, citing DN §D18 and the ratchet test.
@@ -192,8 +196,8 @@ its commit body. `TOOL_BASELINE` becomes `{}`.
 - [ ] A sandboxed Pi install creates no symlink anywhere under `<target-root>` and nothing under
       `<target-root>/.claude/`; `deploy.py` defines no `HARNESS_SKILL_DIRS`.
 - [ ] Scaffold output contains no `CLAUDE.md`, no `.opencode/` line, and a `.worktrees/` line in
-      `.gitignore`; the rendered `AGENTS.md` names `docs/research/DN-model-b-language.md` with no
-      `crucible:` prefix.
+      `.gitignore`; the rendered queue README's ontology line cites `~/.agents/skills/model-b/SKILL.md`
+      with no `crucible:` prefix.
 - [ ] `init --stacks quarkus` (sandboxed) scaffolds all six `java-*.md` templates;
       `--stacks java` does too; `--stacks rust` scaffolds `rust-orchestration.md`;
       `--stacks python` scaffolds neither family.
@@ -211,6 +215,10 @@ its commit body. `TOOL_BASELINE` becomes `{}`.
       `sandesh_(send|reply|fetch|inbox|register|unregister|addressbook|setup)` in `skills-src/`,
       `generator/`, `hooks-src/` and `scripts/` — a grep gate. The 026-owned watcher fallback
       sentence is rewritten in capability words too (no exemption).
+- [ ] Zero `CLAUDE.md` in `skills-src/`, `generator/` (templates, stacks, agents), `hooks-src/`,
+      `scripts/`, `modelb_axi/` and `.pi/agents/` — a grep gate; project context is named
+      `AGENTS.md` (Sheetal, the one real project named, carries `AGENTS.md` at both levels and no
+      `sheetal-firmware/CLAUDE.md`; added at C2 RED, 2026-09-24).
 - [ ] CR-MDB-020 §S4's ratchet passes with `TOOL_BASELINE == {}` and no exemption added.
 - [ ] Every Sandesh step in `skills-src/` names the `sandesh` CLI (`sandesh <verb> …`); the gate
       asserts at least one `sandesh send`, `sandesh fetch` and `sandesh reply` form survives in

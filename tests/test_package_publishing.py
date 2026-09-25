@@ -433,8 +433,8 @@ class ArtifactContentsTest(unittest.TestCase):
                          .get("targets", {}).get("wheel", {}).get("force-include", {}))
         self.assertEqual(
             sorted(force_include),
-            ["contracts", "generator", "hooks-src", "scripts", "skills-src"],
-            "precondition: the five force-include asset roots",
+            ["generator", "hooks-src", "scripts", "skills-src"],
+            "precondition: the four force-include asset roots (CR-MDB-031 \u00a7S4 dropped contracts)",
         )
         names = set(wheel_names(self.wheel))
         for src, dest in force_include.items():

@@ -12,15 +12,15 @@ Worker-orchestrator-only rules. Read COMMON + TRACK. (Coordinator rules → MAIN
 - `python3 ~/.crucible/clients/python-crucible.py next --track "Track N - <Project>"` → `NEXT <cr>` / `HOLD <cr>` (not yet ready — its `depends_on` CRs aren't all COMPLETED) / `DRAINED`. A held track idles for Mainline's dispatch; readiness is `depends_on`-driven.
 - `start --cr <CR>` → claim → IN_PROGRESS. `finish --cr <CR>` → COMPLETED; it prints NO next line — ask `python-crucible.py next` again (that answer IS your instruction).
 - Loop = ask Crucible → `start` → `finish`. NEVER parse md lane sections for the next CR.
-- On `HOLD` or `DRAINED`: do NOT self-poll. Report your state to Mainline via Sandesh (`kind=request`) and idle on your Sandesh watcher (zero LLM turns). Mainline detects the gate-clear (it watches the Crucible board) and sends you a `directive` to start — which wakes you. NEVER poll from the orchestrator loop.
+- On `HOLD` or `DRAINED`: do NOT self-poll. Report your state to Mainline via Sandesh (`sandesh send --project <Project> --from "<your address>" --to "Mainline - <Project>" --kind request …`) and idle on your Sandesh watcher (zero LLM turns). Mainline detects the gate-clear (it watches the Crucible board) and sends you a `directive` to start — which wakes you. NEVER poll from the orchestrator loop.
 - At every CR boundary, re-read your PAUSE-WHEN and HOLD until the gate clears.
 
-## Root your SESSION in the worktree — `EnterWorktree` (the isolation floor; user 2026-06-25, hard-escalated)
-- The MOMENT `worktree-flow start` creates the worktree, **`EnterWorktree` to root your session in it** — do NOT keep operating from the repo-root / develop CWD. A rooted session means you AND every sub-agent you spawn structurally inherit the worktree cwd; never rely on per-command / per-agent `cd` (that is exactly what leaked — an empty-var `git -C ""` and an agent dispatched from repo-root both fell back to develop).
-- ASSERT once, before any other action: `git rev-parse --show-toplevel` ends in `/.claude/worktrees/<cr>` AND `git branch --show-current` == `feature/<cr>-…`.
+## Root your SESSION in the worktree (the isolation floor; user 2026-06-25, hard-escalated)
+- The MOMENT `worktree-flow start` creates the worktree, **make it your session's working directory** (the `cd <path>` it prints) — do NOT keep operating from the repo-root / develop CWD. A rooted session, with every sub-agent dispatched with the worktree as its working directory, means you AND every sub-agent operate from the worktree; never rely on per-command / per-agent `cd` (that is exactly what leaked — an empty-var `git -C ""` and an agent dispatched from repo-root both fell back to develop).
+- ASSERT once, before any other action: `git rev-parse --show-toplevel` ends in `/.worktrees/<cr>` AND `git branch --show-current` == `feature/<cr>-…`.
 - **100% of CR work is in-worktree** — investigation / §S1 / gap-analysis / spec-writing / RED / GREEN / VERIFY / builds. There is NO "pre-worktree" or "investigate-first on develop" phase: investigate-first = investigate-first INSIDE the worktree (its checkout == develop's content, so nothing is lost).
 - `worktree-flow` (status / sync) resolves the main tree from git, so it runs fine FROM the worktree — never cd to develop for it. Resync = merge develop INTO your branch, from the worktree.
-- **The ONE exception — `finish`.** `worktree-flow finish` removes the worktree and merges into develop, so it is precondition-gated to NOT run from inside the target worktree. AFTER the user's merge sign-off (relayed by Mainline): `ExitWorktree` back to the integration tree (develop) and call `finish` from there. That is the ONLY time a track operates from develop.
+- **The ONE exception — `finish`.** `worktree-flow finish` removes the worktree and merges into develop, so it is precondition-gated to NOT run from inside the target worktree. AFTER the user's merge sign-off (relayed by Mainline): leave the worktree — working directory back to the integration tree (develop) — and call `finish` from there. That is the ONLY time a track operates from develop.
 - develop is the integration tree — MAINLINE-only otherwise. Any develop-level need → relay to Mainline; never edit develop yourself.
 
 ## Write the code-level spec in YOUR OWN worktree
@@ -30,13 +30,13 @@ Worker-orchestrator-only rules. Read COMMON + TRACK. (Coordinator rules → MAIN
 - Design-first todo ordering: implementation cycles before chores within the plan.
 
 ## Raise every approval/request to Mainline — NEVER the user
-- A track's SOLE contact is Mainline. Send `kind=request` for every question / blocker / approval / go-ahead; Mainline disposes or escalates and relays back.
+- A track's SOLE contact is Mainline. Send a `--kind request` (`sandesh send`) for every question / blocker / approval / go-ahead; Mainline disposes or escalates and relays back.
 - A user-approved block authorizes the full RED→GREEN→VERIFY cycle — do NOT stop after gap-analysis to ask permission to start RED.
-- Signal completion with `sandesh_reply` threaded under the START (assignment) message, never a later GO/approval message.
+- Signal completion with `sandesh reply --project <Project> --from "<your address>" --to-msg <START message id>` threaded under the START (assignment) message, never a later GO/approval message.
 - Cull/re-scope spanning multiple CRs by SUT: re-home ONLY your CR's SUT subset, LEAVE the file-disjoint subset, and RAISE a reschedule-request for the owning CR (touching a sibling's file is a parallel-execution hazard).
 
 ## Run captive sub-agents in the BACKGROUND
-- Dispatch RED/GREEN/VERIFY/FIX `run_in_background` so the session stays responsive to Mainline's mail during agent runs.
+- Dispatch RED/GREEN/VERIFY/FIX in the background — if your harness can run it in the background, do so and wait for its completion notice — so the session stays responsive to Mainline's mail during agent runs.
 - This applies to your OWN isolated worktree. **EXCEPTION — run FOREGROUND** for: writes to a shared live tree, and delete-heavy / large cross-file cycles (a background agent can leak for minutes before the post-run check fires).
 
 ## HOLD the merge for Mainline's relayed approval

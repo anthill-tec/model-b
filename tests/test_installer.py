@@ -269,7 +269,7 @@ class StateDetectionTest(unittest.TestCase):
 
     def test_missing_install_toml_enters_installer_flow_via_modelb_home_flag(self):
         result = _run_module(
-            "--yes", "--harnesses", "claude-code",
+            "--yes", "--harnesses", "pi",
             "--modelb-home", self._tmp_home,
         )
         # POSITIVE -- CR-MDB-033 §S6 migration: this is a PROSE check
@@ -292,7 +292,7 @@ class StateDetectionTest(unittest.TestCase):
         """Confirms $MODELB_HOME (the env var, not just --modelb-home)
         also resolves the config seam per DN §3."""
         result = _run_module(
-            "--yes", "--harnesses", "claude-code",
+            "--yes", "--harnesses", "pi",
             env_overrides={"MODELB_HOME": self._tmp_home},
         )
         self.assertIn(
@@ -315,7 +315,7 @@ class StateDetectionTest(unittest.TestCase):
         install_toml.write_text(
             '[install]\n'
             'version = "0.1.0"\n'
-            'harnesses = ["claude-code"]\n'
+            'harnesses = ["pi"]\n'
             'asset_root = "/tmp/does-not-matter-for-this-test"\n'
             '\n'
             '[deps]\n'
@@ -374,7 +374,7 @@ class NonInteractivePromptsTest(unittest.TestCase):
     def test_yes_flag_completes_without_blocking_on_stdin(self):
         try:
             result = _run_module(
-                "--yes", "--harnesses", "claude-code",
+                "--yes", "--harnesses", "pi",
                 "--modelb-home", self._tmp_home,
                 env_overrides={"PATH": self._tmp_bin},
                 stdin=subprocess.DEVNULL,
@@ -431,7 +431,7 @@ class DependencyPreflightReportingTest(unittest.TestCase):
         # never a `crucible` binary -- an EMPTY sandbox HOME is what makes
         # it truthfully absent, independent of the machine running this.
         result = _run_module(
-            "--yes", "--harnesses", "claude-code",
+            "--yes", "--harnesses", "pi",
             "--modelb-home", self._tmp_home,
             env_overrides={"PATH": self._tmp_bin, "HOME": shared_home_without_crucible()},
         )
@@ -466,7 +466,7 @@ class DependencyPreflightReportingTest(unittest.TestCase):
         # absence regardless of what's installed on the machine running
         # this test.
         result = _run_module(
-            "--yes", "--harnesses", "claude-code",
+            "--yes", "--harnesses", "pi",
             "--modelb-home", self._tmp_home,
             env_overrides={"PATH": self._tmp_bin, "HOME": shared_home_without_crucible()},  # CR-MDB-036: crucible=absent needs a manifest-less HOME
         )
@@ -498,7 +498,7 @@ class DependencyPreflightReportingTest(unittest.TestCase):
         # CR-MDB-036 C2 migration: HOME pinned to a manifest-less sandbox --
         # this run used to read the real ~/.crucible (found at C1 GREEN).
         result = _run_module(
-            "--yes", "--harnesses", "claude-code",
+            "--yes", "--harnesses", "pi",
             "--modelb-home", self._tmp_home,
             env_overrides={"PATH": self._tmp_bin, "HOME": shared_home_without_crucible()},
         )
@@ -545,7 +545,7 @@ class CrucibleAbsentWarnsRecordsAbsentAndDeploysNothingTest(unittest.TestCase):
         # client manifest at ~/.crucible/crucible-clients.json -- an EMPTY sandbox
         # HOME, never the machine's real one.
         result = _run_module(
-            "--yes", "--harnesses", "claude-code",
+            "--yes", "--harnesses", "pi",
             "--modelb-home", self._tmp_home,
             env_overrides={"PATH": self._tmp_bin, "HOME": shared_home_without_crucible()},
         )
@@ -637,7 +637,7 @@ class SandeshAbsentInstallViaUvShimTest(unittest.TestCase):
         # successful install does -- the re-probe records `installed`
         # only when it finds it.
         result = _run_module(
-            "--yes", "--harnesses", "claude-code",
+            "--yes", "--harnesses", "pi",
             "--modelb-home", self._tmp_home,
             env_overrides={
                 "PATH": self._tmp_bin,
@@ -701,7 +701,7 @@ class UvAbsentBootstrapFailureTest(unittest.TestCase):
         # have a real `uv` on its real PATH, per PackageSkeletonTest's
         # integration probe).
         result = _run_module(
-            "--yes", "--harnesses", "claude-code",
+            "--yes", "--harnesses", "pi",
             "--modelb-home", self._tmp_home,
             env_overrides={"PATH": self._tmp_bin},
         )
@@ -753,19 +753,15 @@ class UvAbsentBootstrapFailureTest(unittest.TestCase):
 # alternative (mirroring --modelb-home/MODELB_HOME) but is not itself
 # exercised here -- these tests pin the flag form only.
 #
-# Roster-to-harness-id mapping pinned for this cycle: the probed binary
-# name differs from the harness id in exactly one case --
-#   claude   -> "claude-code"
-#   hermes   -> "hermes"
+# Roster-to-harness-id mapping (CR-MDB-031 §S1 -- Pi-only roster):
 #   pi       -> "pi"
-#   opencode -> "opencode"
 #
 # New flags pinned by this cycle's tests: `--target-root`, `--reinstall`
 # (forces a run with an existing install.toml back into the installer
 # flow instead of the scaffold stub), `--force-managed` (overwrite a
 # hash-mismatched managed file and update its manifest entry).
 
-HARNESS_ROSTER_IDS = ["claude-code", "hermes", "pi", "opencode"]
+HARNESS_ROSTER_IDS = ["pi"]
 
 _FAKE_HARNESS_BIN_SCRIPT = (
     "#!/bin/sh\n"
@@ -802,7 +798,7 @@ def _snapshot_relpaths(root: Path):
 
 
 class HarnessTargetingTest(unittest.TestCase):
-    """§S5 -- roster probe of claude/hermes/pi/opencode binaries on an
+    """§S5 -- roster probe of the pi binary (CR-MDB-031 §S1) on an
     isolated PATH; explicit --harnesses wins over the detected set;
     unknown harness names in --harnesses are rejected naming the valid
     roster."""
@@ -829,10 +825,7 @@ class HarnessTargetingTest(unittest.TestCase):
     def test_detected_roster_binaries_proposed_as_default_selection_without_harnesses_flag(self):
         _write_fake_executable(self._tmp_bin, "uv", _FAKE_UV_SCRIPT)
         _write_fake_executable(self._tmp_bin, "sandesh", _FAKE_SANDESH_SCRIPT)
-        _write_fake_executable(self._tmp_bin, "claude", _FAKE_HARNESS_BIN_SCRIPT)
-        _write_fake_executable(self._tmp_bin, "opencode", _FAKE_HARNESS_BIN_SCRIPT)
-        # No "hermes"/"pi" binaries written -- must be excluded from the
-        # detected set.
+        _write_fake_executable(self._tmp_bin, "pi", _FAKE_HARNESS_BIN_SCRIPT)
         result = _run_module(
             "--yes", "--modelb-home", self._tmp_home,
             "--target-root", self._tmp_target_root,
@@ -841,11 +834,10 @@ class HarnessTargetingTest(unittest.TestCase):
         selected = self._extract_selected_harnesses(result.stdout)
         # POSITIVE -- exact detected set, roster order preserved.
         self.assertEqual(
-            selected, ["claude-code", "opencode"],
-            "§S5: with only `claude`+`opencode` binaries on PATH and no "
-            "--harnesses flag, the proposed/selected set must be exactly "
-            f"['claude-code', 'opencode']; got stdout={result.stdout!r} "
-            f"stderr={result.stderr!r}",
+            selected, ["pi"],
+            "§S5: with a `pi` binary on PATH and no --harnesses flag, the "
+            "proposed/selected set must be exactly ['pi']; got "
+            f"stdout={result.stdout!r} stderr={result.stderr!r}",
         )
         self.assertEqual(
             result.returncode, 0,
@@ -856,12 +848,10 @@ class HarnessTargetingTest(unittest.TestCase):
     def test_explicit_harnesses_flag_wins_over_detected_set(self):
         _write_fake_executable(self._tmp_bin, "uv", _FAKE_UV_SCRIPT)
         _write_fake_executable(self._tmp_bin, "sandesh", _FAKE_SANDESH_SCRIPT)
-        # Detected set would be hermes+pi -- but explicit --harnesses
-        # claude-code must win outright.
-        _write_fake_executable(self._tmp_bin, "hermes", _FAKE_HARNESS_BIN_SCRIPT)
-        _write_fake_executable(self._tmp_bin, "pi", _FAKE_HARNESS_BIN_SCRIPT)
+        # Detected set is EMPTY (no `pi` binary on PATH) -- the explicit
+        # --harnesses pi must win outright (CR-MDB-031 §S1 flip).
         result = _run_module(
-            "--yes", "--harnesses", "claude-code",
+            "--yes", "--harnesses", "pi",
             "--modelb-home", self._tmp_home,
             "--target-root", self._tmp_target_root,
             env_overrides={"PATH": self._tmp_bin},
@@ -869,14 +859,10 @@ class HarnessTargetingTest(unittest.TestCase):
         selected = self._extract_selected_harnesses(result.stdout)
         # POSITIVE -- explicit selection wins outright.
         self.assertEqual(
-            selected, ["claude-code"],
-            "§S5: explicit --harnesses claude-code must win over the "
-            f"detected (hermes, pi) set; got selected={selected} "
-            f"stdout={result.stdout!r}",
+            selected, ["pi"],
+            "§S5: explicit --harnesses pi must win over the (empty) "
+            f"detected set; got selected={selected} stdout={result.stdout!r}",
         )
-        # NEGATIVE -- detected-but-not-selected harnesses must not leak in.
-        self.assertNotIn("hermes", selected)
-        self.assertNotIn("pi", selected)
 
     def test_unknown_harness_name_in_flag_exits_nonzero_naming_valid_roster(self):
         _write_fake_executable(self._tmp_bin, "uv", _FAKE_UV_SCRIPT)
@@ -938,7 +924,7 @@ class DeployEngineTest(unittest.TestCase):
         if env_overrides:
             overrides.update(env_overrides)
         return _run_module(
-            "--yes", "--harnesses", "claude-code",
+            "--yes", "--harnesses", "pi",
             "--modelb-home", self._tmp_home,
             "--target-root", self._tmp_target_root,
             *extra_args,
@@ -947,9 +933,6 @@ class DeployEngineTest(unittest.TestCase):
 
     def _store_skill_dir(self) -> Path:
         return Path(self._tmp_target_root) / ".agents" / "skills" / "crucible"
-
-    def _harness_symlink(self) -> Path:
-        return Path(self._tmp_target_root) / ".claude" / "skills" / "crucible"
 
     def _read_install_toml(self) -> dict:
         with open(Path(self._tmp_home) / "install.toml", "rb") as fh:
@@ -980,19 +963,8 @@ class DeployEngineTest(unittest.TestCase):
             "AC2: the deployed crucible SKILL.md must match "
             "skills-src/crucible/SKILL.md byte-for-byte",
         )
-        # POSITIVE -- the harness's skills dir gets a SYMLINK pointing at
-        # the store copy, not a second physical copy.
-        symlink_path = self._harness_symlink()
-        self.assertTrue(
-            symlink_path.is_symlink(),
-            f"AC2/§S6: {symlink_path} must be a symlink into the Vercel "
-            f"store (not a physical copy)",
-        )
-        self.assertEqual(
-            symlink_path.resolve(), store_dir.resolve(),
-            f"AC2: {symlink_path} must resolve to the store dir "
-            f"{store_dir}; got {symlink_path.resolve()}",
-        )
+        # CR-MDB-031 §S1: the per-harness skills-dir symlink half is
+        # retired (Pi reads the store natively; no link writer).
         # install.toml structure -- parsed via tomllib, not string greps.
         data = self._read_install_toml()
         install_section = data.get("install", {})
@@ -1002,8 +974,8 @@ class DeployEngineTest(unittest.TestCase):
             f"({_package_version()!r}); got {install_section.get('version')!r}",
         )
         self.assertEqual(
-            install_section.get("harnesses"), ["claude-code"],
-            f"AC2: [install].harnesses must be exactly ['claude-code']; "
+            install_section.get("harnesses"), ["pi"],
+            f"AC2: [install].harnesses must be exactly ['pi']; "
             f"got {install_section.get('harnesses')!r}",
         )
         self.assertEqual(

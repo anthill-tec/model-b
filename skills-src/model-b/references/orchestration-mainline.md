@@ -13,7 +13,7 @@ Coordinator-only rules. Read COMMON + MAINLINE. (Worker rules → TRACK; sub-age
 - **DISCUSS design/architecture WITH the user BEFORE designing** — bring options + a recommendation, the user decides, THEN spec. Never unilaterally architect a finished design.
 - Mid-course re-spec: send the Track the settled FEATURES; the TRACK writes the code-level spec in its worktree. Mainline does not rewrite the spec ahead.
 - **Design→execution gate:** gap-analysis → lock the spec → present → WAIT for explicit approval → ONLY THEN cycle plan. Answering a design question is NOT approval to start cycles; if the spec moves, design wasn't final.
-- **Question economy:** make reasonable scoping calls and proceed, surfacing assumptions inline; reserve AskUserQuestion for genuine forks only the user owns. Prefer one focused question over a battery.
+- **Question economy:** make reasonable scoping calls and proceed, surfacing assumptions inline; ask the user only at genuine forks the user owns. Prefer one focused question over a battery.
 
 ## Mainline is the PROXY for ALL approvals
 - Tracks route every approval (cycle plans, gap-verdicts, spec/scope/design questions, merge sign-offs) to Mainline — never the user.

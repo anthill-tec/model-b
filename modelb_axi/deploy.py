@@ -8,9 +8,9 @@ Manifest-driven copy of the package's skill assets into the target root:
   ``<target-root>/.agents/skills/<name>/`` (PRD §D2). Stack-scoped bundles
   (``crucible-report-*``, CR-MDB-036 §S7; ``code-health`` -> rust,
   CR-MDB-023 §S4) deploy only for a selected stack or no stack filter.
-- Each selected harness then gets a SYMLINK into its own skills dir per
-  the mapping table below (Claude Code mapping complete in v1; the other
-  roster harnesses have no skills-dir mapping yet — DN-scaffold-packaging §5).
+- No per-harness link is written: Pi reads ``~/.agents/skills`` natively
+  (DN-multi-harness-deploy-model §D15.1; CR-MDB-031 §S1 retired the
+  per-harness link writer).
 - Every deployed FILE yields a manifest entry ``{path, sha256}`` with
   ``path`` target-root-relative.
 
@@ -19,24 +19,16 @@ source is untouched; a file whose hash differs from BOTH the source and
 its recorded manifest hash is hand-modified — skipped (surfaced to the
 caller) unless ``force_managed`` overwrites it and refreshes its entry.
 
-Stdlib only. Never touches the real ``~/.claude``/``~/.agents`` in
-tests — callers pass sandboxed target roots (repo-local rule, DN-scaffold-packaging §7).
+Stdlib only. Never touches the real ``~/.agents`` in tests — callers pass
+sandboxed target roots (repo-local rule, DN-scaffold-packaging §7).
 """
 
 import hashlib
-import os
 import shutil
 import stat
 from pathlib import Path
 
 from modelb_axi._fsutil import atomic_write
-
-# Per-harness skills-dir mapping (target-root-relative). Only harnesses
-# listed here receive symlinks; the rest of the roster is deploy-inert
-# in v1 (anchor-file mappings arrive with later cycles).
-HARNESS_SKILL_DIRS: dict[str, str] = {
-    "claude-code": ".claude/skills",
-}
 
 SKILL_BUNDLE_MARKER = "SKILL.md"
 #: Stack-scoped skill bundles (CR-MDB-036 §S7) share this name prefix.
@@ -183,40 +175,18 @@ def _deploy_file(
     return {"path": rel, "sha256": src_hash}
 
 
-def _link_harness_skills(
-    target_root: Path, harnesses: list[str], bundle_names: list[str]
-) -> None:
-    """Create per-harness symlinks into the shared store (one link per
-    skill bundle, pointing at the store dir — never a second copy)."""
-    for harness_id in harnesses:
-        skills_reldir = HARNESS_SKILL_DIRS.get(harness_id)
-        if skills_reldir is None:
-            continue  # no skills-dir mapping for this harness in v1
-        for name in bundle_names:
-            store_dir = target_root / STORE_RELDIR / name
-            link = target_root / skills_reldir / name
-            if link.is_symlink():
-                if link.resolve() == store_dir.resolve():
-                    continue
-                link.unlink()
-            elif link.exists():
-                raise DeployError(
-                    f"harness skills path exists and is not a symlink: {link}"
-                )
-            link.parent.mkdir(parents=True, exist_ok=True)
-            os.symlink(store_dir, link)
-
-
 def deploy_assets(
     asset_root: Path,
     target_root: Path,
-    harnesses: list[str],
     prior_hashes: dict[str, str] | None = None,
     force_managed: bool = False,
     unmanaged: list[str] | None = None,
     stacks: list[str] | None = None,
 ) -> tuple[list[dict], list[str]]:
-    """Run the §S6 deploy: store copies + harness symlinks.
+    """Run the §S6 deploy: store copies only (no per-harness links).
+
+    The store is harness-neutral, so the selected harness set selects no
+    writes and is not a parameter (CR-MDB-031 §S1; C5 F8).
 
     Returns ``(manifest_entries, skipped_paths)`` — ``skipped_paths`` are
     hand-modified managed files left untouched (AC5). Raises
@@ -282,7 +252,6 @@ def deploy_assets(
                 manifest.append(entry)
             if entry is not None and rel not in skipped:
                 shutil.copymode(src, dest)
-        _link_harness_skills(target_root, harnesses, [b.name for b in bundles])
     except OSError as exc:
         raise DeployError(f"deploy step failed: {exc}") from exc
     return manifest, skipped

@@ -58,7 +58,7 @@ fix: CR-CF-049 deduplicate imports + add @NotNull validation
 - **Commit after GREEN — never commit RED state** (unless it's a test-only commit in a TDD test-write step): no failing tests, no compilation errors, nothing that breaks the build
 - TDD discipline before every commit: RED → GREEN → clean up (remove unused imports) → run tests AGAIN (still GREEN) → commit
 - **Always `git add -A`** before commit — don't leave unstaged changes
-- Dispatched sub-agents: the Model B sub-agent procedure (`~/.claude/skills/model-b/references/sub-agent-procedure.md`) §TDD is authoritative — a compile failure IS a RED state (ingest it); do NOT run the full suite (that's the orchestrator's pre-merge gate)
+- Dispatched sub-agents: the Model B sub-agent procedure (`~/.agents/skills/model-b/references/sub-agent-procedure.md`) §TDD is authoritative — a compile failure IS a RED state (ingest it); do NOT run the full suite (that's the orchestrator's pre-merge gate)
 
 ## Working Directory
 
@@ -202,7 +202,6 @@ git push origin <branch>           # (and: git push origin --tags)
 - Single-remote repos: ensure the correct account is active (`gh auth status`), then `git push origin <branch>`
 - Releases: push tags to BOTH remotes with the same account-switch dance
 - Troubleshooting a wrong-account push: `gh auth switch --user <correct-account>`, and verify the remote URL uses the right host alias (`git remote get-url origin|mirror`)
-- The chezmoi dotfiles source repo uses the personal account — its push discipline lives in the `chezmoi` skill
 
 ## What NOT To Do
 

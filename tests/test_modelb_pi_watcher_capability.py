@@ -337,16 +337,6 @@ class WatcherInstallUnderYesTest(_WatcherSandboxCase):
         self.assertEqual(self.pi_runs(), [WATCHER_PI_ARGS],
                          "--yes never confirms a third-party pi install")
 
-    def test_pi_not_among_the_harnesses_runs_no_install(self):
-        self.agent_without_watcher()
-        self.recording_pi()
-        result = self.run_yes("claude-code")
-        self.assertEqual(_decode(result.stdout).get("outcome"), "installed", result.stderr)
-        self.assertEqual(self.harness_line(result.stderr).get("watcher"), "absent",
-                         "the probe still reports the capability; only the offer is gated")
-        self.assertEqual(self.pi_runs(), [],
-                         "the offer is conditional on pi among the harnesses")
-
     def test_install_output_goes_to_the_users_terminal_not_a_capture(self):
         """The child's stdout is the user's terminal (``[ -t 1 ]``), never a
         capture re-printed later; the envelope on stdout stays clean. Driven

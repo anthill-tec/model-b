@@ -130,10 +130,6 @@ Display/classification context survives as env vars:
 | `WORKFLOW_WAVE` | Wave number |
 | `WORKFLOW_ROLE` | Role / track label |
 
-- **Per-project wrapper pattern:** projects ship a context wrapper (e.g.
-  `/tmp/claude-1000/<project>-crucible`) that pins the project key/dir and the
-  `WORKFLOW_CYCLE` label + `WORKFLOW_WAVE` only — it never injects a cycle id
-  (attach is server-driven). When your prompt names a wrapper, use it.
 - **Plan verbs (universal — fleet-wide on all five clients), every one posting
   under a registered `--agent` id:**
   `plan-file --cr <id> --title <t> --cycle "C1 <label>" --cycle-kind red-green --cycle "C2 <label>" --cycle-kind verify --wave <w> --agent <id>`,
@@ -179,7 +175,7 @@ name the next step.
 
 - **RED / GREEN / FIX agents** — run ONLY their TARGETED tests (`test`/`unit`
   scoped to their SUT), FOREGROUND (400000 ms timeout); never the full suite,
-  never `run_in_background` / Monitor. RED ingests the failing run (a compile
+  never run in the background. RED ingests the failing run (a compile
   failure IS a RED); GREEN ingests the passing run.
 - **VERIFY agent** — registers + REVIEWS (ACs, wiring, coverage adequacy,
   quality). Does NOT run the regression.
@@ -187,5 +183,5 @@ name the next step.
   coverage) PLUS the e2e suite, under its OWN identity, with the verify cycle
   activated (`cycle-activate`) so the gate attaches as that cycle's LAST
   linked run — then the user-gated merge. (sub-agent procedure —
-  `~/.claude/skills/model-b/references/sub-agent-procedure.md` — TDD step 6:
+  `~/.agents/skills/model-b/references/sub-agent-procedure.md` — TDD step 6:
   the full suite is orchestrator-owned.)

@@ -11,7 +11,7 @@ Project-level contract for every agent/session in this repo. `CLAUDE.md` is a sy
 - **Portable lifecycle hooks** (`hooks-src/`) — one neutral schema compiled into per-harness wiring.
 - **`modelb_axi`** — the `modelb-axi` CLI: universal installer (deploys the above into a user's harness dirs) + project scaffolder (`init`).
 
-Design contract: `docs/research/PRD-model-b-rationalization.md` (decisions **D1–D10**). Everything is authored repo-locally; nothing writes to `~/.claude` except through the installer (D9/D10).
+Design contract: `docs/research/PRD-model-b-rationalization.md` (decisions **D1–D10**). Everything is authored repo-locally and reaches a user's machine only through the installer (D9/D10), which writes under `~/.agents`.
 
 ## Architecture & Data Flow
 
@@ -20,9 +20,8 @@ Two flows, one CLI (`modelb_axi/cli.py:main`), selected by whether `$MODELB_HOME
 ```
 INSTALLER (no install.toml)
   preflight.run_preflight()      # probe uv / Crucible / Sandesh -> deps verdicts
-  -> harness.detect|select()     # roster: claude-code, hermes, pi, opencode (shutil.which)
-  -> deploy.deploy_assets()      # skills-src/* -> <target>/.agents/skills (store)
-                                 #   + per-harness symlinks (HARNESS_SKILL_DIRS)
+  -> harness.detect|select()     # roster: pi alone (shutil.which("pi"))
+  -> deploy.deploy_assets()      # skills-src/* -> <target>/.agents/skills (store; no per-harness links)
                                  # hooks-src/scripts/* -> <target>/.agents/hooks/scripts
   -> config.write_install_toml() # LAST, atomic (tmp + os.replace); sha256 manifest
 
@@ -34,7 +33,7 @@ SCAFFOLD (`modelb-axi init`, scaffold.run_init)
 
 Key invariants:
 - **Idempotence by hash.** `deploy.sha256_file` compares source/dest/prior-manifest hashes; hand-modified destinations are *skipped*, not clobbered, unless `--force-managed`.
-- **Hook compilation is one-way.** Neutral instance `{event, matcher, command, tier, timeout, fail_direction}` → `hooks.validate_schema` → `hooks.compile_wiring` emits `.claude/settings.json` (claude-code), `.opencode/plugin/modelb-hooks.ts` (opencode), `.pi/extensions/*.ts` (pi), `hooks/hermes-manual.yaml` (hermes, advisory). A `fail_direction: closed` hook is **refused** on harnesses that cannot honour it; all-refused raises `AllTargetsRefusedError`.
+- **Hook compilation is one-way.** Neutral instance `{event, matcher, command, tier, timeout, fail_direction}` → `hooks.validate_schema` → `hooks.compile_wiring` emits `.pi/extensions/*.ts` for Pi, the only harness. Pi honours `fail_direction`, so a `closed` hook is emitted like any other — there is no refusal path; a harness id outside the roster raises `UnknownHarnessError` before anything is written.
 - **Machine channel vs human channel.** AXI envelopes (`modelb_axi/axi.py:envelope`) go to **stdout**; human progress lines to **stderr**.
 - **Asset root resolution.** `deploy.default_asset_root()` prefers packaged `modelb_axi/_assets/…` (wheel force-include), falls back to the repo dirs.
 
@@ -43,14 +42,14 @@ Key invariants:
 | Path | Purpose |
 |---|---|
 | `modelb_axi/` | The CLI package. `cli.py` (argparse shell), `scaffold.py` (init/emit), `deploy.py` (manifest deploy), `hooks.py` (schema + per-harness compiler), `config.py` (install.toml r/w), `harness.py` (roster/detect), `preflight.py` (dep probes), `axi.py` (envelope codec) |
-| `skills-src/` | 14 skill bundles. Model-B-owned: `model-b`, `crucible`, `cr-authoring`, `git-workflow`, `chezmoi`, `bootstrap`, `shutdown`, `code-health` (deployed with the rust stack). Imported from Crucible (byte-identical, see `CRUCIBLE-HANDOVER.md`): `crucible-register`, `crucible-report-{arduino,bun,java,python,rust}`. Plus `memory-templates/` |
+| `skills-src/` | 13 skill bundles. Model-B-owned: `model-b`, `crucible`, `cr-authoring`, `git-workflow`, `bootstrap`, `shutdown`, `code-health` (deployed with the rust stack). Imported from Crucible (byte-identical, see `CRUCIBLE-HANDOVER.md`): `crucible-register`, `crucible-report-{arduino,bun,java,python,rust}`. Plus `memory-templates/` |
 | `generator/` | `build.py` renders `templates/{red,green,verify,fix}.md.tmpl` × `stacks/{arduino,bun,python,quarkus}.toml` → `agents/<stack>-<role>-agent.md` (16 files) |
 | `hooks-src/` | `schema.md` (neutral schema v1) + `scripts/` (7 executable stdin/exit protocol scripts, no file extension) |
 | `scripts/` | The tool-script asset class (7 adopted + 1 generated): `worktree-flow.py`, `schedule_db.py` (TRANSITIONAL), `skill-release-gate.py`, `rust-code-health.py`, `rust-crate-map.py`, `rust-dead-scan.py`, `gate-lock.sh`, and `toon.py` generated from `modelb_axi/toon.py`. Deployed to `~/.agents/scripts/` (`deploy.TOOL_SCRIPTS_STORE_RELDIR`) — the ONLY path a Model B surface names; never a `~/.claude` path (not Model B-owned) |
-| `contracts/` | Cross-project interface contracts: `crucible-envelope.md`, `gate-lock.md`, `sandesh-cli.md`, `lean-ctx.md`, `mail-axi.md` |
+| `contracts/` | Interface contracts: `crucible-envelope.md`, `gate-lock.md`, `sandesh-cli.md`, `lean-ctx.md` (cross-project), `worktree-layout.md` (the `.worktrees/<cr>` string and its six consumers). Repo-only — not shipped in the wheel |
 | `docs/research/` | `PRD-model-b-rationalization.md` (D1–D10) + `DN-*.md` design notes |
 | `docs/changes/` | `README.md` = CR queue (structure only) + `CR-MDB-NNN-*.md` specs |
-| `tests/` | 49 `unittest` modules; mostly structural/contract gates |
+| `tests/` | 53 `unittest` modules; mostly structural/contract gates |
 | `archive/` | `BASELINE.md` + `wave1..3/` historical records — read-only history |
 | `audits/` | Dated evidence files backing PRD decisions |
 
@@ -62,7 +61,7 @@ uv tool install .                       # or: pip install -e .
 modelb-axi --version
 
 # Installer / scaffold (always sandbox with --target-root when experimenting)
-modelb-axi --yes --harnesses claude-code --target-root /tmp/mdb-sandbox
+modelb-axi --yes --harnesses pi --target-root /tmp/mdb-sandbox
 modelb-axi init --name "Foo" --token foo --acronym FOO --stacks python \
   --mode solo --target /tmp/foo --dry-run     # --dry-run writes NOTHING
 
@@ -81,7 +80,7 @@ There is **no** Makefile/justfile, **no** CI test workflow (the only workflow is
 
 - **Stdlib only.** `pyproject.toml` declares zero runtime dependencies. `argparse`, `pathlib`, `tomllib`, `hashlib`, `subprocess`, `shutil`, `string.Template`, `json`, `re`. Adding a third-party import is a design change — raise it first. There is no TOML *writer* in stdlib, hence the hand-rolled serializer in `config.py`.
 - **Plain dicts, not dataclasses.** Hook instances, manifests, and compiler reports are `dict` / `list[dict]`. Type hints on signatures (`def compile_wiring(...) -> dict:`), module-level docstrings citing the governing CR section (`"""… (CR-MDB-015 §S2/§S4)."""`).
-- **Typed exceptions, exit codes from `main()`.** `ScaffoldError`, `DeployError`, `UnknownHarnessError`, `AllTargetsRefusedError`. Validate everything *before* the first write; a failed run leaves no `install.toml`.
+- **Typed exceptions, exit codes from `main()`.** `ScaffoldError`, `DeployError`, `UnknownHarnessError`. Validate everything *before* the first write; a failed run leaves no `install.toml`.
 - **Atomicity.** Config writes go through a temp file + `os.replace` in the same directory.
 - **No async, no DI, no globals-as-state.** State flows through function arguments and return values; subprocess calls are synchronous.
 - **Naming.** Private helpers `_leading_underscore`; env/flag precedence is always *flag > env > default* (`resolve_modelb_home`, `resolve_target_root`).
@@ -92,7 +91,7 @@ There is **no** Makefile/justfile, **no** CI test workflow (the only workflow is
 ## Important Files
 
 - `modelb_axi/cli.py` — entry point (`[project.scripts] modelb-axi = "modelb_axi.cli:main"`), also runnable as `python3 -m modelb_axi`.
-- `pyproject.toml` — hatchling; `force-include` maps `skills-src`, `generator`, `contracts`, `scripts`, `hooks-src` into `modelb_axi/_assets/`. **Any new asset root must be added there or it will not ship in the wheel.**
+- `pyproject.toml` — hatchling; `force-include` maps `skills-src`, `generator`, `scripts`, `hooks-src` into `modelb_axi/_assets/` (`contracts/` is repo-only: no runtime consumer, not in the wheel or the sdist). **Any new asset root must be added there or it will not ship in the wheel.**
 - `.env` — static naming registry (gitignored; must exist locally): `PROJECT_NAME`, `PROJECT_TOKEN=modelb`, `PROJECT_ACRONYM=MDB`, `ORCHESTRATOR_LABEL=vidushi-mdb`, `REPO_OWNER=antojk`, `CRUCIBLE_PROJECT_KEY`.
 - `hooks-src/schema.md` — the neutral hook schema v1; the compiler in `hooks.py` is its only consumer.
 - `skills-src/CRUCIBLE-HANDOVER.md` — provenance + maintenance contract for the 6 imported bundles. Model B owns their content/bundling/deploy; the Crucible repo owns the client code. Keep imported bundles byte-faithful unless a doc-sync is explicitly in scope.
@@ -106,12 +105,12 @@ There is **no** Makefile/justfile, **no** CI test workflow (the only workflow is
 - Crucible's installed clients, `~/.crucible/clients/<stack>-crucible.py` (listed in `~/.crucible/crucible-clients.json`, installed by Crucible's own installer), are the only sanctioned client surface — never a checkout of the Crucible project. Model B ships, vendors and maintains none of them.
 - Prefer lean-ctx reads (`ctx_read`/`ctx_search`/`ctx_shell`/`ctx_tree`) over raw file/grep/shell calls.
 - Confirm destructive operations; delegate super-user ops to the user.
-- Model B never mutates `~/.claude` directly — the `modelb-axi` installer is the only deployment channel (PRD §D9/§D10), and the repo-local authoring rule means no CR writes there at all. The user's own dotfile-manager discipline is out of scope for this file; see the `chezmoi` skill for that.
+- Model B never mutates `~/.claude` directly — the `modelb-axi` installer is the only deployment channel (PRD §D9/§D10), and the repo-local authoring rule means no CR writes there at all. The user's own dotfile-manager discipline is out of scope for this file.
 - **Electronics stack is EXCLUDED** (anthill-forge dead) — never migrate, document, or generate it.
 
 ## Testing & QA
 
-Pure **`unittest`** — no pytest, no `conftest.py`, no fixtures/markers. 49 modules in `tests/` (`tests/test_*.py`), each file ending in `if __name__ == "__main__": unittest.main()`. Naming as practised: the wave-1/2 modules use `<Topic><Section>Test` classes (e.g. `ContractsS2Test`) with `test_s<n>_<assertion>` methods; later modules use `<Feature>Test` classes (e.g. `BlockDirectCargoTestScriptTest`) with descriptive method names. A helper more than one module needs lives once in `tests/_helpers.py` and is imported (CR-MDB-032 §S3 gates a module-level helper body defined in two modules).
+Pure **`unittest`** — no pytest, no `conftest.py`, no fixtures/markers. 53 modules in `tests/` (`tests/test_*.py`), each file ending in `if __name__ == "__main__": unittest.main()`. Naming as practised: the wave-1/2 modules use `<Topic><Section>Test` classes (e.g. `ContractsS2Test`) with `test_s<n>_<assertion>` methods; later modules use `<Feature>Test` classes (e.g. `BlockDirectCargoTestScriptTest`) with descriptive method names. A helper more than one module needs lives once in `tests/_helpers.py` and is imported (CR-MDB-032 §S3 gates a module-level helper body defined in two modules).
 
 ```bash
 python3 -m unittest tests.test_hooks                       # one module
@@ -123,10 +122,7 @@ env HOME="$(mktemp -d)" PYTHONUSERBASE="$HOME/.local" python3 -m unittest discov
 Canonical runs go through the Crucible client so results are ingested:
 
 ```bash
-# Per-project context wrapper (pins CRUCIBLE_PROJECT_KEY + WORKFLOW_CYCLE/WORKFLOW_WAVE,
-# never a cycle id — attach is server-driven). Recreate it if /tmp was cleared.
-/tmp/claude-1000/modelb-crucible test --tests tests.test_hooks --agent CR-MDB-NNN-C1-RED
-# Direct client equivalent:
+python3 ~/.crucible/clients/python-crucible.py test --tests tests.test_hooks --agent CR-MDB-NNN-C1-RED
 python3 ~/.crucible/clients/python-crucible.py regression --coverage \
   --agent vidushi-mdb --project-dir "$PWD"
 ```
@@ -135,10 +131,10 @@ python3 ~/.crucible/clients/python-crucible.py regression --coverage \
 - JUnit XML lands in `test-reports/` as `TEST-<module>.<Class>-<YYYYMMDDHHMMSS>.xml` (gitignored; the client wipes it before each run). Plain `unittest` produces console output only.
 - **Most tests are structural gates, so ordinary edits break them.** They assert repo layout, the state a sandboxed install deploys, SKILL.md frontmatter, byte-identity of imported bundles, reference-router parity, and grep-gates for retired terms (e.g. zero `WORKFLOW_CYCLE_ID`). Renaming a skill, doc, or reference file requires updating its gate.
 - Tests import `modelb_axi` directly — install the package (`pip install -e .`) or run from the repo root.
-- **The suite is expected to be GREEN, and hermetic** — no test writes to or depends on the real home, except to read Crucible's installed clients (CR-MDB-032 §S1/§S2). Baselines for `python3 -m unittest discover -s tests -t .`, measured 2026-09-24 at CR-MDB-032 C4 FIX with `MODELB_HOME`/`XDG_DATA_HOME` pointed at temp dirs:
-  - real `HOME` (Crucible clients installed): **1053 tests, 0 failures, 0 errors, 0 skips**.
-  - empty `HOME` (a fresh temp dir; `PYTHONUSERBASE` keeps user site-packages): **1053 tests, 0 failures, 0 errors, 8 skips**; the temp dir is still empty afterwards.
-- **Every skip is an absent installed Crucible client or an absent `pi` CLI.** A test that reads Crucible's released surface resolves it through `~/.crucible/crucible-clients.json` and skips, naming that manifest, when the manifest, its entry or the file is missing — the toon conformance oracle (2), the gate-lock read (1), the present-manifest half of `ManifestResolvedOracleS1Test` (1) — and `ClientContractS3Test` skips its four checks when the released client files under `~/.crucible/clients/` are absent. The `pi` CLI (with `node` and the jiti it ships) must be on `PATH`: without it the loader-driven classes skip in `setUpClass`, seven in `test_pi_hook_runtime` and three in `test_pi_sandesh_watcher`. Nothing else skips. **A failure is a regression, not a known-bad** — investigate it; `audits/2026-09-21-codebase-review-tests.md` diagnoses the pre-CR-MDB-021 state.
+- **The suite is expected to be GREEN, and hermetic** — no test writes to or depends on the real home, except to read Crucible's installed clients (CR-MDB-032 §S1/§S2). Baselines for `python3 -m unittest discover -s tests -t .`, measured 2026-09-24 at CR-MDB-031 C5 FIX with `MODELB_HOME`/`XDG_DATA_HOME` pointed at temp dirs:
+  - real `HOME` (Crucible clients installed): **1138 tests, 0 failures, 0 errors, 0 skips**.
+  - empty `HOME` (a fresh temp dir; `PYTHONUSERBASE` keeps user site-packages): **1138 tests, 0 failures, 0 errors, 8 skips**; the temp dir is still empty afterwards.
+- **Every skip is an absent installed Crucible client, an absent `pi` CLI or an absent `sandesh` CLI.** A test that reads Crucible's released surface resolves it through `~/.crucible/crucible-clients.json` and skips, naming that manifest, when the manifest, its entry or the file is missing — the toon conformance oracle (2), the gate-lock read (1), the present-manifest half of `ManifestResolvedOracleS1Test` (1) — and `ClientContractS3Test` skips its four checks when the released client files under `~/.crucible/clients/` are absent. The `pi` CLI (with `node` and the jiti it ships) must be on `PATH`: without it the loader-driven classes skip in `setUpClass`, seven in `test_pi_hook_runtime` and three in `test_pi_sandesh_watcher`. Without `sandesh` on `PATH`, `test_sandesh_cli_forms`'s `--help` conformance class skips its three checks in `setUpClass`. Nothing else skips. **A failure is a regression, not a known-bad** — investigate it; `audits/2026-09-21-codebase-review-tests.md` diagnoses the pre-CR-MDB-021 state.
 - TDD is mandatory: RED before GREEN, never commit failing tests, clean build before every commit.
 
 ## Workflow Rules (Model B, solo)
@@ -149,4 +145,4 @@ python3 ~/.crucible/clients/python-crucible.py regression --coverage \
 - Post a `milestone` at every workflow moment: `--type gap-analysis` when gap analysis completes, `--type stage-flip --label "<CR> <cycle> done"` at each cycle-done; `cr-merged` fires automatically from `cr-close --commit <sha> --agent <id>`.
 - Wave-boundary gate: no-mistakes via `gate-run --intent <goal> --agent vidushi-mdb --skip ci`, ingested as gate evidence. `--skip` is needed because no-mistakes' `ci` step is PR-based and a git-flow project merging directly has no PR to watch, so the gate would block until `ci_timeout`. The gate reads `REPO_OWNER` from `.env`.
 - Ontology `docs/research/DN-model-b-language.md` is **LOCKED** — a frozen import of Crucible's `DN-model-b-language.md` (origin `a9a8f57`, imported 2026-09-21 by user ruling so no Model B surface reads the Crucible checkout). Cite it, never fork it; divergence goes to Crucible over Sandesh (#1336 lineage).
-- Load-on-demand references: `model-b` skill (orchestration), `crucible` skill (test lifecycle), `cr-authoring` (CR/PRD/DN), `gap-analysis` (before any CR), `git-workflow`, `chezmoi`, `bootstrap`/`shutdown`.
+- Load-on-demand references: `model-b` skill (orchestration), `crucible` skill (test lifecycle), `cr-authoring` (CR/PRD/DN), `gap-analysis` (before any CR), `git-workflow`, `bootstrap`/`shutdown`.

@@ -3,13 +3,13 @@
 `cargo nextest` / `cargo llvm-cov` (+ `check`/`clippy`) invocations in Rust
 projects and redirects to the rust-crucible.py wrapper.
 
-Normalized from the deployed ~/.claude/hooks/block-direct-cargo-test.sh
+Normalized from the earlier deployed block-direct-cargo-test.sh
 baseline (CR-MDB-015 §S3): stdin contract on the neutral payload (CR-MDB-030 §S3: `tool_name` `bash` /
 `tool_input.command` / `cwd`), same exit protocol (allow -> 0, block -> 2 +
 `{"decision":"block","reason":...}` on stdout), same command-position-aware
 detector (formerly lib/detect-cargo-test.py, now inlined — self-contained,
-stdlib only, no jq / no lib/ helpers), same `ALLOW_RAW_CARGO=1` escape hatch
-and `dangerouslyDisableSandbox` bypass-closer. Client invocation guidance in
+stdlib only, no jq / no lib/ helpers) and the same `ALLOW_RAW_CARGO=1` escape
+hatch. Client invocation guidance in
 the block reason names the client listed in Crucible's manifest
 `~/.crucible/crucible-clients.json` — `~/.crucible/clients/rust-crucible.py`,
 installed by Crucible's own installer — instead of a user-dotfile script path.
@@ -24,18 +24,6 @@ from pathlib import Path
 # Cargo verbs with an ingesting rust-crucible.py wrapper equivalent.
 TARGETS = {"test", "nextest", "llvm-cov", "check", "clippy"}
 OPS = {"|", "||", "&&", ";", ";;", "&", "(", ")", "\n"}
-
-DS_REASON = """⛔ BLOCKED: `dangerouslyDisableSandbox: true` is not allowed on a `cargo` command.
-
-This flag bypasses the cargo→Crucible enforcement hook. rust-crucible.py runs the
-SAME cargo command AND ingests results to Crucible (ORCHESTRATOR-RULES §4) — use the
-installed client listed in Crucible's manifest `~/.crucible/crucible-clients.json`:
-  • compile / RED-compile:  python3 ~/.crucible/clients/rust-crucible.py check  --crate <c> [--tests] --agent <id>
-  • run tests:              python3 ~/.crucible/clients/rust-crucible.py test   --crate <c> [--filter <e>] --agent <id>
-  • clippy:                 python3 ~/.crucible/clients/rust-crucible.py clippy --crate <c> [--deny-warnings] --agent <id>
-
-Genuine raw-cargo need (rare, needs justification): prefix with ALLOW_RAW_CARGO=1
-(an explicit, auditable opt-out) — NOT a silent dangerouslyDisableSandbox."""
 
 REASON = """⛔ BLOCKED: direct `cargo test` / `cargo nextest` / `cargo llvm-cov` is not allowed in Rust projects.
 
@@ -59,7 +47,7 @@ Escape hatch (rare, needs justification): prefix with ALLOW_RAW_CARGO=1
   e.g.  ALLOW_RAW_CARGO=1 cargo nextest run -p <crate>"""
 
 
-def _is_cargo_invocation(command: str, match_any: bool = False) -> bool:
+def _is_cargo_invocation(command: str) -> bool:
     """Command-position-aware detector (inlined from the deployed
     lib/detect-cargo-test.py). True only when `cargo` is the COMMAND WORD at a
     command position (start of line / after a control operator, past leading
@@ -86,8 +74,6 @@ def _is_cargo_invocation(command: str, match_any: bool = False) -> bool:
                 i += 1
                 continue  # still at a command-start position
             if tok == "cargo":
-                if match_any:
-                    return True
                 j = i + 1
                 if j < n and tokens[j].startswith("+"):  # +toolchain selector
                     j += 1
@@ -133,12 +119,6 @@ def main() -> int:
     # Cheap pre-filter: most commands never mention cargo.
     if "cargo" not in command:
         return 0
-
-    # Bypass-closer: sandbox off on ANY real cargo command -> block.
-    if tool_input.get("dangerouslyDisableSandbox") is True and _is_cargo_invocation(
-        command, match_any=True
-    ):
-        return _block(DS_REASON)
 
     if not _is_cargo_invocation(command):
         return 0

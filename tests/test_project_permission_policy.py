@@ -212,7 +212,8 @@ def _parsed_policy(test: unittest.TestCase, text: str) -> dict:
 
 class PermissionPolicyEmissionTest(_InitSandbox):
     """§S3 AC1 — ``init`` with Pi among the harnesses writes the policy (and
-    lists it in the envelope's ``emitted``); with no Pi it writes none."""
+    lists it in the envelope's ``emitted``). The "without Pi" half is retired
+    by CR-MDB-031 §S1: the roster is Pi alone, so no init runs without Pi."""
 
     def test_init_with_pi_writes_the_policy_and_without_pi_writes_none(self):
         text, axi = self.render("with-pi")
@@ -222,21 +223,6 @@ class PermissionPolicyEmissionTest(_InitSandbox):
             f"§S3 / CR-MDB-033 §S4: the written policy must be listed in the "
             f"envelope's `emitted`; got axi={axi!r}",
         )
-
-        # NEGATIVE — no Pi among the harnesses, no policy.
-        write_install_toml(self.modelb_home, harnesses=("claude-code",))
-        target = self.new_target("without-pi")
-        result = self.run_init(target)
-        self.assert_ok(result)
-        self.assertFalse(
-            (target / POLICY_REL).exists(),
-            "§S3: init without Pi among the harnesses must write no permission policy",
-        )
-        self.assertFalse(
-            (target / ".pi" / "extensions" / "pi-permission-system").exists(),
-            "§S3: without Pi, nothing is written under .pi/extensions/pi-permission-system",
-        )
-        self.assertNotIn(POLICY_REL, decode_axi(result.stdout).get("emitted") or [])
 
 
 # ---------------------------------------------------------------------------

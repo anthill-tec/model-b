@@ -5,7 +5,7 @@ surefire/failsafe goals; mvn / mvnw / ./mvnw / mvnd) in Java projects and
 redirects to the mvn-crucible.py wrapper. Build/release goals (package,
 install, deploy, compile) are NOT blocked.
 
-Normalized from the deployed ~/.claude/hooks/block-direct-mvn-test.sh
+Normalized from the earlier deployed block-direct-mvn-test.sh
 baseline (CR-MDB-015 §S3): stdin contract on the neutral payload (CR-MDB-030 §S3: `tool_name` `bash` /
 `tool_input.command` / `cwd`), same exit protocol (allow -> 0, block -> 2 +
 `{"decision":"block","reason":...}` on stdout), the quote-aware

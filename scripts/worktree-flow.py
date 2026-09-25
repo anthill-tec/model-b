@@ -7,7 +7,7 @@
 """Git worktree + git-flow orchestration CLI — deterministic start/close ceremony
 for PARALLEL CR execution.
 
-The orchestrator (VD) runs two+ CRs at once in separate Claude sessions on the same
+The orchestrator (VD) runs two+ CRs at once in separate agent sessions on the same
 filesystem. `git flow feature start` does a `checkout` in ONE shared working tree, so
 parallel sessions sharing it collide. The fix is per-CR git worktrees for isolation,
 closed with a direct `git merge --no-ff` into develop (the same result `git flow feature
@@ -33,7 +33,7 @@ Design invariants (see rust-orchestration.md (Tooling — worktree-flow)):
     to preview the exact git commands without mutating anything.
 
 Subcommands:
-  start    git worktree add -b feature/<cr>[-<slug>] .claude/worktrees/<cr> <base>.
+  start    git worktree add -b feature/<cr>[-<slug>] .worktrees/<cr> <base>.
            Branches off LOCAL develop HEAD (NOT origin) so un-pushed design-phase
            commits are included. Refuses if branch/worktree already exist. Optional
            `--track <label>` (or $WF_TRACK env, set once per session) stamps a human
@@ -103,7 +103,7 @@ import subprocess
 import sys
 import time
 
-WORKTREE_SUBDIR = ".claude/worktrees"
+WORKTREE_SUBDIR = ".worktrees"
 
 # Model-B scheduler-note board: if $WF_REQUEST_DIR points at the project's
 # memory dir, `status` also lists pending `reschedule-request-*.md`
@@ -457,7 +457,7 @@ def cmd_start(args):
             print(f"  env: copied .env → {env_dst}  (gitignored; Crucible ingest ready)")
     except Exception as _env_err:
         print(f"  NOTE: could not auto-copy .env into worktree: {_env_err} (continuing)")
-    print(f"  → enter it: EnterWorktree(path=\"{wt_dir}\")  (or: cd {wt_dir})")
+    print(f"  → enter it: cd {wt_dir}")
     if label:
         _set_track(main_wt, args.cr, label)
         print(f"  track: {label}  ({'--track' if args.track else '$WF_TRACK'} → shown in `status`)")
@@ -685,7 +685,7 @@ def cmd_finish(args):
     cwd_real = os.path.realpath(os.getcwd())
     if cwd_real == os.path.realpath(wt_dir) or cwd_real.startswith(os.path.realpath(wt_dir) + os.sep):
         sys.exit(f"[worktree-flow] ERROR: you are INSIDE the worktree being removed "
-                 f"({wt_dir}). Step out first (ExitWorktree, or cd {main_wt}), then re-run.")
+                 f"({wt_dir}). Step out first (cd {main_wt}), then re-run.")
     if not _is_clean(wt_dir):
         sys.exit(f"[worktree-flow] ERROR: worktree {wt_dir} has uncommitted changes. "
                  f"Commit the CR's work before finishing (no work is silently dropped).")

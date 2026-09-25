@@ -5,7 +5,7 @@ display_name = "Python"
 test_command = "python3 ~/.crucible/clients/python-crucible.py test --tests tests.test_<feature>[.<Class>[.<method>]] --agent YOUR_AGENT_ID"
 register_command = "python3 ~/.crucible/clients/python-crucible.py register --agent YOUR_AGENT_ID"
 unregister_command = "python3 ~/.crucible/clients/python-crucible.py unregister --agent YOUR_AGENT_ID"
-crucible_reference = "~/.claude/skills/crucible/references/python.md"
+crucible_reference = "~/.agents/skills/crucible/references/python.md"
 
 mechanics = '''
 - **Framework/client:** unittest (or pytest) + xmlrunner, driven through `python-crucible.py` (`register` / `test` / `check` / `unregister`). `test` runs xmlrunner, wipes stale `TEST-*.xml` so only THIS run's results ingest, parses + ingests the JUnit XML, and routes collection/import failures through too (a collection error is never lost). It prints `ingest junit: ok=True ... failed=N` — confirm it.
@@ -15,7 +15,7 @@ mechanics = '''
 - **`__pycache__`:** rarely the culprit, but a renamed/moved module can leave a stale `.pyc` shadowing it — if an import resolves to something impossible, clear `__pycache__`.
 - **Quick syntax gate:** `python-crucible.py check` (py_compile) — or a quick import — after each file change.
 - **Third-party API sources:** `opensrc fetch pypi:<pkg>` then `rg "def <name>" $(opensrc path pypi:<pkg>)/...`, or read the installed copy under `<project>/.venv/lib/python*/site-packages/<pkg>/`. Confirm the exact installed version with `<venv>/bin/python -m pip show <pkg>` — APIs differ across versions. For async APIs, confirm whether the call is a coroutine (needs `await`) and its real return shape.
-- **Stdlib-only runtime is a common project constraint** (see CLAUDE.md): third-party deps belong only in the modules/venv that need them, never leaked into the pure runtime path.
+- **Stdlib-only runtime is a common project constraint** (see AGENTS.md): third-party deps belong only in the modules/venv that need them, never leaked into the pure runtime path.
 '''
 
 # CR-MDB-017 §S6b — the per-stack half of the tier-guidance section. Python's

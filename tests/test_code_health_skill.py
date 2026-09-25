@@ -676,13 +676,14 @@ class CodeHealthBundleScopeS4Test(unittest.TestCase):
 
 class CodeHealthInstallS4Test(_StackSandboxCase):
     """§S4 AC1 -- sandboxed installer runs (HOME, PATH, agent dir,
-    --modelb-home, --target-root all sandboxed). claude-code is selected
-    because it is the harness with a per-harness skills dir."""
+    --modelb-home, --target-root all sandboxed), for the Pi-only roster
+    (CR-MDB-031 §S1: flipped from claude-code; the per-harness skills-dir
+    link asserts are retired with the link writer)."""
 
     STORE_REL = f".agents/skills/{BUNDLE_NAME}/SKILL.md"
 
     def _installer_args(self, *extra) -> list[str]:
-        return ["--harnesses", "claude-code", "--modelb-home", str(self.modelb_home),
+        return ["--harnesses", "pi", "--modelb-home", str(self.modelb_home),
                 "--target-root", str(self.target_root), *extra]
 
     def _manifest(self) -> dict[str, str]:
@@ -694,9 +695,6 @@ class CodeHealthInstallS4Test(_StackSandboxCase):
         self.assertTrue(SKILL_MD.is_file(), "§S4: the source bundle must exist")
         self.assertEqual(store_md.read_bytes(), SKILL_MD.read_bytes(),
                          "§S4: the store copy is the source bundle, byte for byte")
-        link = self.target_root / ".claude" / "skills" / BUNDLE_NAME
-        self.assertTrue(link.is_symlink(), f"§S4: {link} must be a per-harness symlink")
-        self.assertEqual(link.resolve(), (self.target_root / ".agents" / "skills" / BUNDLE_NAME).resolve())
         self.assertEqual(self._manifest().get(self.STORE_REL), deploy.sha256_file(SKILL_MD),
                          "§S4: install.toml records the bundle's sha256")
 
@@ -730,7 +728,6 @@ class CodeHealthInstallS4Test(_StackSandboxCase):
         # deploy is not scoped to rust.
         self.assert_installed(self.run_installer("--stacks", "python"))
         self.assertFalse((self.target_root / ".agents" / "skills" / BUNDLE_NAME).exists())
-        self.assertFalse((self.target_root / ".claude" / "skills" / BUNDLE_NAME).is_symlink())
         self.assertEqual([p for p in self._manifest()
                           if p.startswith(f".agents/skills/{BUNDLE_NAME}/")], [])
 
@@ -759,16 +756,16 @@ class CodeHealthWheelS4Test(unittest.TestCase):
 
 
 class AgentsMdBundleRosterS4Test(unittest.TestCase):
-    """§S4 AC4 -- AGENTS.md: 14 bundles, code-health Model B-owned, 6
-    imported wherever it counts them."""
+    """§S4 AC4 -- AGENTS.md: 13 bundles (14 until CR-MDB-031 §S4 retired
+    chezmoi), code-health Model B-owned, 6 imported wherever it counts them."""
 
     def setUp(self):
         self.text = AGENTS_MD.read_text(encoding="utf-8")
 
-    def test_s4_agents_md_states_fourteen_skill_bundles(self):
+    def test_s4_agents_md_states_thirteen_skill_bundles(self):
         counts = re.findall(r"\b(\d+) skill bundles\b", self.text)
-        self.assertEqual(counts, ["14"],
-                         f"\u00a7S4: AGENTS.md must state '14 skill bundles' (and no other "
+        self.assertEqual(counts, ["13"],
+                         f"\u00a7S4: AGENTS.md must state '13 skill bundles' (and no other "
                          f"count); found counts {counts}")
 
     def test_s4_agents_md_lists_code_health_as_model_b_owned(self):
