@@ -20,9 +20,8 @@ Two flows, one CLI (`modelb_axi/cli.py:main`), selected by whether `$MODELB_HOME
 ```
 INSTALLER (no install.toml)
   preflight.run_preflight()      # probe uv / Crucible / Sandesh -> deps verdicts
-  -> harness.detect|select()     # roster: claude-code, hermes, pi, opencode (shutil.which)
-  -> deploy.deploy_assets()      # skills-src/* -> <target>/.agents/skills (store)
-                                 #   + per-harness symlinks (HARNESS_SKILL_DIRS)
+  -> harness.detect|select()     # roster: pi alone (shutil.which("pi"))
+  -> deploy.deploy_assets()      # skills-src/* -> <target>/.agents/skills (store; no per-harness links)
                                  # hooks-src/scripts/* -> <target>/.agents/hooks/scripts
   -> config.write_install_toml() # LAST, atomic (tmp + os.replace); sha256 manifest
 
@@ -34,7 +33,7 @@ SCAFFOLD (`modelb-axi init`, scaffold.run_init)
 
 Key invariants:
 - **Idempotence by hash.** `deploy.sha256_file` compares source/dest/prior-manifest hashes; hand-modified destinations are *skipped*, not clobbered, unless `--force-managed`.
-- **Hook compilation is one-way.** Neutral instance `{event, matcher, command, tier, timeout, fail_direction}` → `hooks.validate_schema` → `hooks.compile_wiring` emits `.claude/settings.json` (claude-code), `.opencode/plugin/modelb-hooks.ts` (opencode), `.pi/extensions/*.ts` (pi), `hooks/hermes-manual.yaml` (hermes, advisory). A `fail_direction: closed` hook is **refused** on harnesses that cannot honour it; all-refused raises `AllTargetsRefusedError`.
+- **Hook compilation is one-way.** Neutral instance `{event, matcher, command, tier, timeout, fail_direction}` → `hooks.validate_schema` → `hooks.compile_wiring` emits `.pi/extensions/*.ts` for Pi, the only harness. Pi honours `fail_direction`, so a `closed` hook is emitted like any other — there is no refusal path; a harness id outside the roster raises `UnknownHarnessError` before anything is written.
 - **Machine channel vs human channel.** AXI envelopes (`modelb_axi/axi.py:envelope`) go to **stdout**; human progress lines to **stderr**.
 - **Asset root resolution.** `deploy.default_asset_root()` prefers packaged `modelb_axi/_assets/…` (wheel force-include), falls back to the repo dirs.
 
@@ -50,7 +49,7 @@ Key invariants:
 | `contracts/` | Interface contracts: `crucible-envelope.md`, `gate-lock.md`, `sandesh-cli.md`, `lean-ctx.md` (cross-project), `worktree-layout.md` (the `.worktrees/<cr>` string and its six consumers). Repo-only — not shipped in the wheel |
 | `docs/research/` | `PRD-model-b-rationalization.md` (D1–D10) + `DN-*.md` design notes |
 | `docs/changes/` | `README.md` = CR queue (structure only) + `CR-MDB-NNN-*.md` specs |
-| `tests/` | 52 `unittest` modules; mostly structural/contract gates |
+| `tests/` | 53 `unittest` modules; mostly structural/contract gates |
 | `archive/` | `BASELINE.md` + `wave1..3/` historical records — read-only history |
 | `audits/` | Dated evidence files backing PRD decisions |
 
@@ -62,7 +61,7 @@ uv tool install .                       # or: pip install -e .
 modelb-axi --version
 
 # Installer / scaffold (always sandbox with --target-root when experimenting)
-modelb-axi --yes --harnesses claude-code --target-root /tmp/mdb-sandbox
+modelb-axi --yes --harnesses pi --target-root /tmp/mdb-sandbox
 modelb-axi init --name "Foo" --token foo --acronym FOO --stacks python \
   --mode solo --target /tmp/foo --dry-run     # --dry-run writes NOTHING
 
@@ -81,7 +80,7 @@ There is **no** Makefile/justfile, **no** CI test workflow (the only workflow is
 
 - **Stdlib only.** `pyproject.toml` declares zero runtime dependencies. `argparse`, `pathlib`, `tomllib`, `hashlib`, `subprocess`, `shutil`, `string.Template`, `json`, `re`. Adding a third-party import is a design change — raise it first. There is no TOML *writer* in stdlib, hence the hand-rolled serializer in `config.py`.
 - **Plain dicts, not dataclasses.** Hook instances, manifests, and compiler reports are `dict` / `list[dict]`. Type hints on signatures (`def compile_wiring(...) -> dict:`), module-level docstrings citing the governing CR section (`"""… (CR-MDB-015 §S2/§S4)."""`).
-- **Typed exceptions, exit codes from `main()`.** `ScaffoldError`, `DeployError`, `UnknownHarnessError`, `AllTargetsRefusedError`. Validate everything *before* the first write; a failed run leaves no `install.toml`.
+- **Typed exceptions, exit codes from `main()`.** `ScaffoldError`, `DeployError`, `UnknownHarnessError`. Validate everything *before* the first write; a failed run leaves no `install.toml`.
 - **Atomicity.** Config writes go through a temp file + `os.replace` in the same directory.
 - **No async, no DI, no globals-as-state.** State flows through function arguments and return values; subprocess calls are synchronous.
 - **Naming.** Private helpers `_leading_underscore`; env/flag precedence is always *flag > env > default* (`resolve_modelb_home`, `resolve_target_root`).
@@ -111,7 +110,7 @@ There is **no** Makefile/justfile, **no** CI test workflow (the only workflow is
 
 ## Testing & QA
 
-Pure **`unittest`** — no pytest, no `conftest.py`, no fixtures/markers. 52 modules in `tests/` (`tests/test_*.py`), each file ending in `if __name__ == "__main__": unittest.main()`. Naming as practised: the wave-1/2 modules use `<Topic><Section>Test` classes (e.g. `ContractsS2Test`) with `test_s<n>_<assertion>` methods; later modules use `<Feature>Test` classes (e.g. `BlockDirectCargoTestScriptTest`) with descriptive method names. A helper more than one module needs lives once in `tests/_helpers.py` and is imported (CR-MDB-032 §S3 gates a module-level helper body defined in two modules).
+Pure **`unittest`** — no pytest, no `conftest.py`, no fixtures/markers. 53 modules in `tests/` (`tests/test_*.py`), each file ending in `if __name__ == "__main__": unittest.main()`. Naming as practised: the wave-1/2 modules use `<Topic><Section>Test` classes (e.g. `ContractsS2Test`) with `test_s<n>_<assertion>` methods; later modules use `<Feature>Test` classes (e.g. `BlockDirectCargoTestScriptTest`) with descriptive method names. A helper more than one module needs lives once in `tests/_helpers.py` and is imported (CR-MDB-032 §S3 gates a module-level helper body defined in two modules).
 
 ```bash
 python3 -m unittest tests.test_hooks                       # one module
