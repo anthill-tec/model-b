@@ -32,8 +32,14 @@ integration drives the REAL ``hooks-src/scripts/block-write-outside-worktree``
 through a hook extension compiled by ``modelb_axi.hooks.compile_wiring``,
 loaded into the SAME harness process, so the ``WF_WORKTREE_ROOT`` the tool
 set is the one the hook's child process inherits. The script allows every
-write under ``/tmp`` (scratch), so "outside" targets are ``/etc`` and the
-Model B checkout itself -- the script only decides, it never writes.
+write under ``/tmp`` and ``$TMPDIR`` (scratch), so "outside" targets lie
+under neither -- they are fixed system paths, never the checkout (which may
+itself live under ``/tmp``). The script only decides, it never writes.
+
+A child session loads pi-subagents too: its own service instance republishes,
+then deletes, the global service entry (pi-subagents ``src/index.ts``,
+``handlers/lifecycle.ts``). The harness's ``replaceService`` and
+``deleteService`` steps reproduce that.
 
 Stdlib only.
 """
@@ -72,9 +78,23 @@ PI_SUBAGENTS_SERVICE_TS_REL = Path("npm/node_modules/@gotgenes/pi-subagents/src/
 _HARNESS_BUDGET_S = 60.0
 
 #: Write targets outside every fixture worktree AND outside /tmp and
-#: $TMPDIR (the script's scratch allowance). Never written -- only judged.
+#: $TMPDIR (the script's scratch allowance), wherever the checkout lives.
+#: Never written -- only judged. ``WorktreeOutsideTargetsTest`` pins that
+#: neither lies under the scratch allowance.
 OUTSIDE_ETC = "/etc/modelb-cr039-outside-fixture.txt"
-OUTSIDE_CHECKOUT = str(REPO_ROOT / "modelb-cr039-outside-fixture.txt")
+OUTSIDE_VAR = "/var/lib/modelb-cr039-outside-fixture/another-tree/src/x.py"
+
+
+def _under_scratch(path: str) -> bool:
+    """``path`` lies under ``/tmp`` or ``$TMPDIR`` (both resolved), the hook
+    script's scratch allowance."""
+    real = os.path.realpath(path)
+    roots = ["/tmp", os.path.realpath("/tmp")]
+    tmpdir = os.environ.get("TMPDIR", "")
+    if tmpdir:
+        roots.append(os.path.realpath(tmpdir))
+    roots.append(os.path.realpath(tempfile.gettempdir()))
+    return any(f"{real}/".startswith(f"{root.rstrip('/')}/") for root in roots)
 
 _SYMBOL_FOR = re.compile(r"""Symbol\.for\(\s*(["'`])(.*?)\1\s*\)""")
 _TOOLS_LINE = re.compile(r"^tools:\s*(.*)$", re.M)
@@ -127,6 +147,29 @@ class WorktreeDetectorsTest(unittest.TestCase):
 
     def test_frontmatter_tools_is_empty_without_frontmatter(self):
         self.assertEqual(_frontmatter_tools("tools: modelb_worktree_enter\n"), [])
+
+
+class WorktreeOutsideTargetsTest(unittest.TestCase):
+    """The integration's "outside" targets lie outside the hook script's
+    scratch allowance wherever the checkout is (CR-MDB-039 VERIFY F8)."""
+
+    def test_under_scratch_bites_on_tmp_and_spares_etc(self):
+        self.assertTrue(_under_scratch("/tmp/x/y.txt"))
+        self.assertTrue(_under_scratch(os.path.join(tempfile.gettempdir(), "y.txt")))
+        self.assertFalse(_under_scratch("/etc/y.txt"))
+
+    def test_no_outside_target_lies_under_tmp_or_tmpdir(self):
+        for target in (OUTSIDE_ETC, OUTSIDE_VAR):
+            with self.subTest(target=target):
+                self.assertTrue(os.path.isabs(target), target)
+                self.assertFalse(_under_scratch(target),
+                                 f"{target} is under the scratch allowance: the hook would allow it")
+
+    def test_no_outside_target_depends_on_the_checkout_location(self):
+        for target in (OUTSIDE_ETC, OUTSIDE_VAR):
+            with self.subTest(target=target):
+                self.assertFalse(f"{target}/".startswith(f"{REPO_ROOT}/"),
+                                 f"{target} is inside the checkout, which may itself be under /tmp")
 
 
 # ============================================================ fixtures =====
@@ -355,6 +398,30 @@ class WorktreeEnterExitTest(WorktreeExtensionTestCase):
                                  f"{why}: a refusal registers no provider")
                 self.assert_prepared_to(dispatch, self.wt_foo, f"{why}: the entered root is unchanged")
 
+    def test_enter_through_a_symlinked_path_records_and_exports_the_real_path(self):
+        link_repo = self.base / "repo-link"
+        link_repo.symlink_to(self.repo, target_is_directory=True)
+        link_wt = self.base / "foo-link"
+        link_wt.symlink_to(self.wt_foo, target_is_directory=True)
+        for why, path in (("a symlinked repository", link_repo / ".worktrees" / "CR-FOO-001"),
+                          ("a symlink to the worktree itself", link_wt)):
+            with self.subTest(entered_through=why):
+                out = self.drive([self.enter(path), self.prepare("no change request here")])
+                step, dispatch = out["steps"]
+                self.assertIsNone(step["threw"], f"{why}: {step}")
+                self.assertEqual(step["env"], str(self.wt_foo), f"{why}: the real path is exported")
+                self.assertIn(str(self.wt_foo), step["text"] or "", f"{why}: the real path is named")
+                self.assert_prepared_to(dispatch, self.wt_foo, f"{why}: the real path is recorded")
+
+    def test_enter_says_the_boundary_governs_file_tool_writes(self):
+        out = self.drive([self.enter(self.wt_foo)])
+        step = out["steps"][0]
+        self.assertIsNone(step["threw"], step)
+        self.assertRegex(step["text"] or "", r"(?i)\bfile-tool writes\b",
+                         "the hook governs file-tool writes, not a shell command's writes")
+        self.assertNotRegex(step["text"] or "", r"(?<!File-tool )(?<!file-tool )\bWrites outside it are blocked",
+                            "no unqualified claim that every write outside is blocked")
+
     def test_enter_without_the_service_sets_the_variable_and_says_no_relocation(self):
         out = self.drive([self.enter(self.wt_foo)], service_at_load=False)
         step = out["steps"][0]
@@ -412,6 +479,57 @@ class WorktreeRoutingTest(WorktreeExtensionTestCase):
         out = self.drive([self.prepare("CR-BAR-002 follow-up to CR-FOO-001")])
         self.assert_prepared_to(out["steps"][0], self.wt_bar, "first match of CR-[A-Z][A-Z0-9]*-[0-9]+")
 
+    def test_only_a_cr_id_opening_the_description_routes(self):
+        out = self.drive([
+            self.prepare("Review CR-BAR-002 interplay for CR-FOO-001", "a1"),
+            self.prepare("CR-FOO-001 C1 RED", "a2"),
+            self.enter(self.wt_foo),
+            self.prepare("Review CR-BAR-002 interplay for CR-FOO-001", "a3"),
+        ])
+        s = out["steps"]
+        self.assert_prepared_undefined(s[0], "a CR id not opening the description does not route")
+        self.assert_prepared_to(s[1], self.wt_foo, "the agent-id convention `CR-FOO-001 C1 RED` routes")
+        self.assert_prepared_to(s[3], self.wt_foo,
+                                "entered: a CR named mid-description neither routes nor is refused")
+
+    def test_records_are_read_from_the_service_that_accepted_the_provider(self):
+        # Each child session loads pi-subagents: its own service republishes the
+        # global entry (holding none of the parent's records), then deletes it.
+        out = self.drive([
+            self.prepare("CR-FOO-001-C1-RED: first dispatch", "a1"),
+            {"op": "replaceService"},
+            self.prepare("CR-BAR-002-C1-RED: after a child republished the service", "a2"),
+            self.enter(self.wt_bar),
+            {"op": "deleteService"},
+            self.prepare("CR-BAR-002-C2-GREEN: after a child deleted the service", "a3"),
+            self.exit_(),
+            self.prepare("CR-FOO-001-C2-GREEN: still no global service", "a4"),
+        ])
+        s = out["steps"]
+        self.assert_prepared_to(s[0], self.wt_foo, "before any child")
+        self.assert_prepared_to(s[2], self.wt_bar, "global entry replaced by another instance")
+        self.assert_prepared_to(s[5], self.wt_bar, "global entry deleted, root entered")
+        self.assert_prepared_to(s[7], self.wt_foo, "global entry deleted, nothing entered")
+        self.assertEqual(out["providerRegistrations"], 1)
+        self.assertEqual(out["otherRegistrations"], 0,
+                         "the provider is never re-registered on a child's service")
+
+    def test_entered_a_dispatch_whose_cr_has_another_worktree_is_refused_naming_both(self):
+        out = self.drive([
+            self.enter(self.wt_foo),
+            self.prepare("CR-BAR-002-C1-RED: a different CR's worktree", "a1"),
+            self.prepare("CR-FOO-001-C1-RED: the entered CR", "a2"),
+        ])
+        other, same = out["steps"][1], out["steps"][2]
+        self.assertFalse(other.get("noProvider"), other)
+        self.assertIsNotNone(other.get("threw"),
+                             f"entered CR-FOO-001: a CR-BAR-002 child would be confined to the wrong "
+                             f"worktree: {other}")
+        self.assertIn(str(self.wt_foo), other["threw"], "the error names the entered worktree")
+        self.assertIn(str(self.wt_bar), other["threw"], "the error names the CR's worktree")
+        self.assertIsNone(other.get("cwd"), other)
+        self.assert_prepared_to(same, self.wt_foo, "the entered CR is routed normally")
+
     def test_no_cr_or_no_worktree_without_an_entered_root_keeps_the_parent_cwd(self):
         out = self.drive([
             self.prepare("tidy the README", "a1"),
@@ -427,13 +545,13 @@ class WorktreeRoutingTest(WorktreeExtensionTestCase):
             self.enter(self.wt_foo),
             self.prepare("tidy the README", "a1"),
             self.prepare("CR-BAZ-009-C1-RED: no worktree exists for this CR", "a2"),
-            self.prepare("CR-BAR-002-C1-RED: its own worktree beats the entered root", "a3"),
+            self.prepare("CR-FOO-001-C1-RED: the entered CR's own worktree", "a3"),
             self.exit_(),
             self.prepare("tidy the README again", "a4"),
         ])
         self.assert_prepared_to(out["steps"][1], self.wt_foo, "no CR -> entered root")
         self.assert_prepared_to(out["steps"][2], self.wt_foo, "CR without worktree -> entered root")
-        self.assert_prepared_to(out["steps"][3], self.wt_bar, "a CR's own worktree comes first")
+        self.assert_prepared_to(out["steps"][3], self.wt_foo, "the entered CR -> its own worktree")
         self.assert_prepared_undefined(out["steps"][5], "after exit there is no entered root")
 
     def test_prepare_throws_when_the_entered_root_has_been_deleted(self):
@@ -502,7 +620,7 @@ class WorktreeHookIntegrationTest(WorktreeExtensionTestCase):
             self.write(OUTSIDE_ETC, cwd=main),
             self.enter(self.wt_foo),
             self.write(OUTSIDE_ETC, cwd=main),
-            self.write(OUTSIDE_CHECKOUT, cwd=main),
+            self.write(OUTSIDE_VAR, cwd=main),
             self.write(str(self.wt_foo / "src" / "new.py"), cwd=main),
             self.exit_(),
             self.write(OUTSIDE_ETC, cwd=main),
@@ -511,7 +629,7 @@ class WorktreeHookIntegrationTest(WorktreeExtensionTestCase):
         self.assert_allowed(s[0], "before enter the main-tree session has no worktree context")
         self.assertEqual(s[1]["env"], str(self.wt_foo))
         self.assert_blocked(s[2], "entered: a write to /etc")
-        self.assert_blocked(s[3], "entered: a write into another tree")
+        self.assert_blocked(s[3], "entered: a write to /var")
         self.assert_allowed(s[4], "entered: a write inside the entered worktree")
         self.assert_allowed(s[6], "after exit the boundary is lifted")
 
@@ -519,7 +637,7 @@ class WorktreeHookIntegrationTest(WorktreeExtensionTestCase):
         out = self.drive([
             self.prepare("CR-FOO-001-C1-GREEN: implement", label="child"),
             self.write(OUTSIDE_ETC, cwd_from="child"),
-            self.write(OUTSIDE_CHECKOUT, cwd_from="child"),
+            self.write(OUTSIDE_VAR, cwd_from="child"),
             self.write("src/impl.py", cwd_from="child"),
         ])
         s = out["steps"]
@@ -527,8 +645,30 @@ class WorktreeHookIntegrationTest(WorktreeExtensionTestCase):
         self.assertIsNone(s[1]["env"], "no enter: the boundary comes from the child's cwd alone")
         self.assertEqual(s[1]["ctxCwd"], str(self.wt_foo))
         self.assert_blocked(s[1], "a child rooted in the worktree writing to /etc")
-        self.assert_blocked(s[2], "a child rooted in the worktree writing into another tree")
+        self.assert_blocked(s[2], "a child rooted in the worktree writing to /var")
         self.assert_allowed(s[3], "a relative write resolves inside the child's worktree")
+
+    def test_entered_a_dispatch_routed_to_another_crs_worktree_is_refused(self):
+        # Why (F1): the hook prefers the process-wide WF_WORKTREE_ROOT over the
+        # child's cwd, so a child rooted in CR-BAR-002's worktree while CR-FOO-001
+        # is entered is judged against FOO's root -- prepare refuses it instead.
+        # (The fixture is under /tmp, the script's scratch allowance, so the why
+        # is shown by the root the block names, not by a write into BAR.)
+        out = self.drive([
+            self.enter(self.wt_foo),
+            self.write(OUTSIDE_ETC, cwd=str(self.wt_bar)),
+            self.prepare("CR-BAR-002-C1-GREEN: implement", label="child"),
+        ])
+        s = out["steps"]
+        self.assert_blocked(s[1], "entered FOO: a BAR-rooted writer")
+        reason = s[1]["result"].get("reason") or ""
+        self.assertIn(f"worktree root: {self.wt_foo}", reason,
+                      "the hook judges a BAR-rooted writer against the entered FOO root")
+        self.assertFalse(s[2].get("noProvider"), s[2])
+        self.assertIsNotNone(s[2].get("threw"), f"a BAR dispatch while FOO is entered must fail: {s[2]}")
+        self.assertIn(str(self.wt_foo), s[2]["threw"], "the error names the entered worktree")
+        self.assertIn(str(self.wt_bar), s[2]["threw"], "the error names the CR's worktree")
+        self.assertIsNone(s[2].get("cwd"), s[2])
 
 
 # ============================================================ contract =====

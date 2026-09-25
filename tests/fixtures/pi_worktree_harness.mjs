@@ -24,6 +24,12 @@
 // ops (every step records `env` = process.env.WF_WORKTREE_ROOT ?? null
 // AFTER it ran, and `registrations` = provider registrations so far):
 //   {"op":"installService"}                     // publish the fake service now
+//   {"op":"replaceService"}                     // publish a DIFFERENT service instance
+//        // under the key, as a child session's pi-subagents does
+//        // (src/index.ts): it holds none of the parent's records and
+//        // counts its own provider registrations (`otherRegistrations`)
+//   {"op":"deleteService"}                      // delete the global entry, as a child's
+//        // shutdown does (handlers/lifecycle.ts)
 //   {"op":"event", "name":"session_start"}      // fire that event's handlers
 //   {"op":"tool", "name":N, "params":{...}}     // execute a registered tool
 //   {"op":"prepare", "label":L, "agentId":A, "description":D, "baseCwd":B}
@@ -53,6 +59,7 @@ const out = {
   events: [],
   providerRegistrations: 0,
   providerUnregistrations: 0,
+  otherRegistrations: 0,
   steps: [],
   harnessError: null,
 };
@@ -130,6 +137,17 @@ async function main() {
   });
   const serviceKey = Symbol.for(scenario.serviceKey);
   const installService = () => { globalThis[serviceKey] = service; };
+  // A child session's own pi-subagents service: a separate manager with its
+  // own (here: empty) record store. The parent's records are not in it.
+  const otherService = noopProxy({
+    registerWorkspaceProvider() {
+      out.otherRegistrations += 1;
+      return () => undefined;
+    },
+    getRecord() {
+      return undefined;
+    },
+  });
   if (scenario.serviceAtLoad) installService();
 
   // --- load the extension as Pi does -----------------------------------
@@ -204,6 +222,10 @@ async function main() {
     const rec = { op: step.op };
     if (step.op === "installService") {
       installService();
+    } else if (step.op === "replaceService") {
+      globalThis[serviceKey] = otherService;
+    } else if (step.op === "deleteService") {
+      delete globalThis[serviceKey];
     } else if (step.op === "event") {
       rec.results = await fire(step.name, { type: step.name });
     } else if (step.op === "tool") {

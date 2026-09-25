@@ -21,7 +21,10 @@ Class map:
 - ``SubAgentProcedureEnforcementTest`` — ``sub-agent-procedure.md`` says what enforces the
   boundary: the ``block-write-outside-worktree`` hook, active while the orchestrator has entered
   the worktree (``modelb_worktree_enter``); "HARD-ENFORCED" survives only in that bullet; the
-  ``git rev-parse --show-toplevel`` check stays in the Worktree boundary section.
+  ``git rev-parse --show-toplevel`` check stays in the Worktree boundary section; that bullet also
+  says the hook governs file-tool writes, not writes a shell command makes (VERIFY F9).
+- ``HookWriteClaimDetectorTest`` / ``HookWriteClaimGateTest`` — no shipped sentence naming the
+  hook says it blocks writes without qualifying them as file-tool writes.
 - ``OrchestrationWorktreeToolsTest`` — ``orchestration-common.md`` and ``orchestration-track.md``
   each name ``modelb_worktree_enter`` with ``start`` and ``modelb_worktree_exit`` with ``finish``
   and with ``abort``; neither says the session's working directory goes "back to" the main tree
@@ -107,6 +110,10 @@ LAUNCH_FREEDOM_RE = re.compile(
 FOLLOW_RE = re.compile(r"\b(?:follow\w*|view\w*|watch\w*)\b", re.IGNORECASE)
 GITIGNORED_RE = re.compile(r"\bgit-?ignore[ds]?\b|\.gitignore\b", re.IGNORECASE)
 BY_PATH_RE = re.compile(r"\bpaths?\b", re.IGNORECASE)
+#: The hook governs the file-tool write classes (``write|edit``), not a shell command's writes.
+FILE_TOOL_WRITES_RE = re.compile(r"\bfile-tool\s+writes?\b", re.IGNORECASE)
+SHELL_COMMAND_RE = re.compile(r"\bshell\s+commands?\b", re.IGNORECASE)
+BLOCKS_WRITES_RE = re.compile(r"\bblocks?\b[^.]{0,60}?\bwrites\b", re.IGNORECASE)
 #: The session's working directory going "back to" the main/integration tree (the cwd never moves).
 WORKDIR_BACK_RE = re.compile(r"\bworking\s+directory\s+back\s+to\b", re.IGNORECASE)
 #: "the `cd <path>` it prints" — the retired hint the track file pointed at.
@@ -157,6 +164,12 @@ def working_directory_violations(text: str) -> list:
 def tmux_violations(text: str) -> list:
     """Sentences that name tmux without an optional/recommendation qualifier."""
     return [s for s in sentences(text) if TMUX_RE.search(s) and not TMUX_QUALIFIER_RE.search(s)]
+
+
+def unqualified_hook_write_claims(text: str) -> list:
+    """Sentences that name the hook and say it blocks writes, without saying file-tool writes."""
+    return [s for s in sentences(text)
+            if HOOK_NAME in s and BLOCKS_WRITES_RE.search(s) and not FILE_TOOL_WRITES_RE.search(s)]
 
 
 def shipped_surface_texts():
@@ -347,6 +360,15 @@ class SubAgentProcedureEnforcementTest(unittest.TestCase):
                       "§S2: the `git rev-parse --show-toplevel` check stays as the check an agent "
                       "makes before its first write")
 
+    def test_the_boundary_bullet_says_the_hook_governs_file_tool_writes_not_shell_writes(self):
+        units = [u for u in markdown_units(self.section)
+                 if HOOK_NAME in u and ENTER_TOOL in u and re.search(r"\borchestrator\b", u, re.I)]
+        self.assertEqual(len(units), 1, units)
+        self.assertRegex(units[0], FILE_TOOL_WRITES_RE,
+                         "F9: the enforcement bullet says the hook governs file-tool writes")
+        self.assertRegex(units[0], SHELL_COMMAND_RE,
+                         "F9: the enforcement bullet says a write a shell command makes is not blocked")
+
     def test_detector_hard_enforced_rule_bites_without_the_tool_and_spares_with_it(self):
         bare = "- **This is HARD-ENFORCED.** The `block-write-outside-worktree` hook blocks writes.\n"
         named = ("- **This is HARD-ENFORCED** while the orchestrator has entered the worktree "
@@ -358,6 +380,32 @@ class SubAgentProcedureEnforcementTest(unittest.TestCase):
 
 
 # =================================================================== orchestration skills ====
+
+class HookWriteClaimDetectorTest(unittest.TestCase):
+    """Detector fixtures — a sentence naming the hook as blocking writes must say file-tool writes."""
+
+    def test_bites_on_an_unqualified_blocks_writes_claim(self):
+        text = "- The `block-write-outside-worktree` hook then blocks your writes outside it.\n"
+        self.assertEqual(len(unqualified_hook_write_claims(text)), 1)
+
+    def test_spares_a_file_tool_writes_claim(self):
+        text = ("- The `block-write-outside-worktree` hook then blocks your file-tool writes outside it; "
+                "a write a shell command makes is not blocked.\n")
+        self.assertEqual(unqualified_hook_write_claims(text), [])
+
+    def test_spares_a_sentence_not_naming_the_hook(self):
+        self.assertEqual(unqualified_hook_write_claims("The sandbox blocks writes to /etc.\n"), [])
+
+
+class HookWriteClaimGateTest(unittest.TestCase):
+    """F9 — no shipped sentence claims the hook blocks every write: it governs file-tool writes."""
+
+    def test_no_shipped_surface_claims_the_hook_blocks_all_writes(self):
+        hits = [f"{rel}: {s[:160]}" for rel, text in shipped_surface_texts()
+                for s in unqualified_hook_write_claims(text)]
+        self.assertEqual(hits, [], "F9: the hook governs file-tool writes, not writes a shell command "
+                                   "makes; say file-tool writes:\n" + "\n".join(hits))
+
 
 class OrchestrationWorktreeToolsTest(unittest.TestCase):
     """AC — the orchestration skills name the enter/exit tools where they are load-bearing, state the
