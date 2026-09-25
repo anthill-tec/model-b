@@ -54,7 +54,7 @@ Universal rules for ANY orchestrator, ANY project/stack. Verbose detail + failur
 - Readiness is `~/.crucible/clients/python-crucible.py next`'s answer (`NEXT` / `HOLD` / `DRAINED`) — never a local board, never a schedule md.
 - Each parallel CR gets its own working folder via the worktree tool; the merge is a serialized critical section.
 - Once your worktree exists, the MAIN tree is HANDS-OFF — all CR-coupled edits land in the worktree.
-- **Enter the worktree right after `start`** with the Model B worktree tool `modelb_worktree_enter` and the path `start` prints. Every agent you dispatch for the CR then runs rooted in its worktree, and the `block-write-outside-worktree` hook blocks writes outside it — yours and the agents'. Your session cwd never changes: reads, `git -C` and test runs in the worktree are unaffected.
+- **Enter the worktree right after `start`** with the Model B worktree tool `modelb_worktree_enter` and the path `start` prints. Every agent you dispatch for the CR then runs rooted in its worktree, and the `block-write-outside-worktree` hook blocks file-tool writes outside it — yours and the agents' (not writes a shell command makes). Your session cwd never changes: reads, `git -C` and test runs in the worktree are unaffected.
 - **Exit after `finish` or `abort`** with `modelb_worktree_exit`. Both remove the worktree and run from the main tree, where the session already is; `status`/`sync` resolve the main tree from git and run from anywhere.
 - The worktree's files stay readable from your session by path: `.worktrees/` is gitignored, so a gitignore-aware listing does not show it — read `.worktrees/<cr>/…` by explicit path.
 - You own ONLY your CR — never run another CR's finish/merge or edit its tree.
