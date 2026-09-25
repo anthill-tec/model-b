@@ -168,15 +168,15 @@ Implementation: **CR-MDB-036**. Audit evidence: that CR's "Audit 2026-09-22" sec
    `tests/test_prd_criteria.py`, `tests/test_scaffold.py`.
 4. **Generated agents.** `python3 generator/build.py --check` reports clean; every generated
    definition comes from one `generator/stacks/*.toml` × one `generator/templates/*.md.tmpl`;
-   `init` and `agents` render definitions per project and never overwrite an unmarked or
-   hand-modified definition (skipped unless `--force-managed`). *Amended 2026-09-25 (CR-MDB-035):
+   `init` and `agents` render definitions per project; a hand-modified definition is skipped
+   unless `--force-managed`, and an unmarked one is never written. *Amended 2026-09-25 (CR-MDB-035):
    the literal counts are retired — CR-MDB-024 made rust the fifth generated stack, and DN §D17 /
    CR-MDB-025 moved definitions to per-project rendering; the installer deploys none.* **Check:**
    `generator/build.py --check`, `tests/test_agent_generator.py`,
    `tests/test_pi_agent_definitions.py`.
-5. **Crucible clients.** *Model B's half:* every Crucible client invocation in shipped skills and
-   templates matches the released client's surface at `~/.crucible/clients/`, resolved through
-   `~/.crucible/crucible-clients.json`. *Crucible's half:* the per-stack clients ship in a Crucible
+5. **Crucible clients.** *Model B's half:* every Crucible client invocation in shipped skills,
+   templates, stack parameters and contracts matches the released client's surface at
+   `~/.crucible/clients/`. *Crucible's half:* the per-stack clients ship in a Crucible
    release (0.2.2: arduino, bun, mvn, python, rust); a register→test→unregister smoke per client is
    Crucible's release gate, not Model B's. `vscode-crucible.py` was declined (D7, Sandesh #1370):
    no VS Code client exists or is pending. *Amended 2026-09-25 (CR-MDB-035): Crucible shipped
