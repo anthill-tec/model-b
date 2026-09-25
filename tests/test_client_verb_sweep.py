@@ -93,7 +93,7 @@ BAN_DEFINING_FILES = (
 # NARRATE this very migration — they name the defect, the v1→v2 mapping, and
 # the grep-gate list — so they describe the ban exactly as the PRD/DN/audit
 # hits do, and a sweep there would falsify a record rather than fix an
-# instruction. PRD §11 criterion 2 carries the same carve-out in prose.
+# instruction. PRD §4 criterion 2 carries the same carve-out in prose.
 #
 # It is spelled out here because until now the directory escaped this scan
 # TWICE BY ACCIDENT: every dot-prefixed path part is skipped, and `.html` is
@@ -686,7 +686,7 @@ class ClientVerbSweepS4cTest(unittest.TestCase):
 
 
 class ClientVerbSweepS4dTest(unittest.TestCase):
-    """§S4d — the retired v1 ``/api/ingest`` endpoints (PRD §11 criterion 2).
+    """§S4d — the retired v1 ``/api/ingest`` endpoints (PRD §4 criterion 2).
 
     **Expected-RED note:** ``generator/stacks/quarkus.toml`` and the four rendered
     ``generator/agents/quarkus-*`` files are inside this gate's scope but are C3's edit surface.

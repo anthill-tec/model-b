@@ -44,57 +44,15 @@ from unittest import mock
 from modelb_axi import requirements as _requirements
 from tests._helpers import md_section as _md_section
 from tests._helpers import parse_env_file as _parse_env_file
-from tests.pi_capability_sandbox import AGENT_DIR_ENV, shared_provisioned_agent_dir, with_agent_dir
+from tests._helpers import run_module as _run_module
+from tests._helpers import write_install_toml as _write_install_toml
+from tests.pi_capability_sandbox import AGENT_DIR_ENV, shared_provisioned_agent_dir
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 MODULE_DIR = REPO_ROOT / "modelb_axi"
 
 # CR-MDB-032 §S2: the real-home mtime guard over ~/.claude/skills and
 # ~/.agents is dropped -- every deploy/init run here pins its own sandbox.
-
-
-def _run_module(*args, env_overrides=None, timeout=15, stdin=subprocess.DEVNULL):
-    """Invoke `python -m modelb_axi <args>` with the repo root on
-    PYTHONPATH (mirrors tests/test_installer.py's `_run_module`), so a
-    not-yet-existing subcommand surfaces as a clean subprocess-level
-    argparse failure instead of an in-process error."""
-    env = dict(os.environ)
-    existing_pp = env.get("PYTHONPATH", "")
-    env["PYTHONPATH"] = str(REPO_ROOT) + (os.pathsep + existing_pp if existing_pp else "")
-    if env_overrides:
-        env.update(env_overrides)
-    # CR-MDB-037 migration: init now reads Pi's trust.json and settings
-    # from the agent dir (§S4) -- pin PI_CODING_AGENT_DIR to a sandbox so
-    # no run reads the real ~/.pi.
-    env.update(with_agent_dir(env_overrides))
-    cmd = [sys.executable, "-m", "modelb_axi", *args]
-    return subprocess.run(
-        cmd, capture_output=True, text=True, timeout=timeout, stdin=stdin, env=env,
-    )
-
-
-def _write_install_toml(home: str, harnesses=("pi",)) -> Path:
-    """Valid install.toml fixture -- the seam §S2 reads the installed
-    harness set from (DN-scaffold-packaging.md §3). Records
-    ``hooks_scripts_dir`` as every install after CR-MDB-033 §S1 does,
-    pointed at the sandbox (never the real home)."""
-    harnesses_toml = ", ".join(f'"{h}"' for h in harnesses)
-    hooks_scripts_dir = Path(home) / ".agents" / "hooks" / "scripts"
-    install_toml = Path(home) / "install.toml"
-    install_toml.write_text(
-        "[install]\n"
-        'version = "0.1.0"\n'
-        f"harnesses = [{harnesses_toml}]\n"
-        'asset_root = "/tmp/does-not-matter-for-this-test"\n'
-        f'hooks_scripts_dir = "{hooks_scripts_dir}"\n'
-        "\n"
-        "[deps]\n"
-        'uv = "present"\n'
-        "\n"
-        "[files]\n",
-        encoding="utf-8",
-    )
-    return install_toml
 
 
 def _load_toon_codec():

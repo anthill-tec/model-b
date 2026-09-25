@@ -18,8 +18,11 @@ import ast
 import json
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path
+
+from tests.pi_capability_sandbox import with_agent_dir
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -145,10 +148,12 @@ def split_frontmatter(content: str):
     return "", content
 
 
-def md_section(content: str, heading_prefix: str) -> str:
+def md_section(content: str, heading_prefix: str, stop_prefix: str = "## ") -> str:
     """The Markdown section whose heading line starts with
-    ``heading_prefix``, up to (not including) the next ``## `` heading;
-    ``""`` when no such heading exists."""
+    ``heading_prefix``, up to (not including) the next line starting with
+    ``stop_prefix`` -- by default the next ``## `` heading; ``stop_prefix="#"``
+    stops at the next heading of any level (a ``### `` subsection). ``""``
+    when no such heading exists."""
     out: list[str] = []
     inside = False
     for line in content.splitlines():
@@ -156,7 +161,7 @@ def md_section(content: str, heading_prefix: str) -> str:
             inside = True
             out.append(line)
             continue
-        if inside and line.startswith("## "):
+        if inside and line.startswith(stop_prefix):
             break
         if inside:
             out.append(line)
@@ -184,6 +189,49 @@ def parse_env_file(path: Path) -> dict:
 
 
 # ------------------------------------------------------------------ fixtures ----
+
+def run_module(*args, env_overrides=None, timeout=15, stdin=subprocess.DEVNULL):
+    """Invoke `python -m modelb_axi <args>` with the repo root on
+    PYTHONPATH (mirrors tests/test_installer.py's `_run_module`), so a
+    not-yet-existing subcommand surfaces as a clean subprocess-level
+    argparse failure instead of an in-process error."""
+    env = dict(os.environ)
+    existing_pp = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = str(REPO_ROOT) + (os.pathsep + existing_pp if existing_pp else "")
+    if env_overrides:
+        env.update(env_overrides)
+    # CR-MDB-037 migration: init now reads Pi's trust.json and settings
+    # from the agent dir (§S4) -- pin PI_CODING_AGENT_DIR to a sandbox so
+    # no run reads the real ~/.pi.
+    env.update(with_agent_dir(env_overrides))
+    cmd = [sys.executable, "-m", "modelb_axi", *args]
+    return subprocess.run(
+        cmd, capture_output=True, text=True, timeout=timeout, stdin=stdin, env=env,
+    )
+
+
+def write_install_toml(home: str, harnesses=("pi",)) -> Path:
+    """Valid install.toml fixture -- the seam §S2 reads the installed
+    harness set from (DN-scaffold-packaging.md §3). Records
+    ``hooks_scripts_dir`` as every install after CR-MDB-033 §S1 does,
+    pointed at the sandbox (never the real home)."""
+    harnesses_toml = ", ".join(f'"{h}"' for h in harnesses)
+    hooks_scripts_dir = Path(home) / ".agents" / "hooks" / "scripts"
+    install_toml = Path(home) / "install.toml"
+    install_toml.write_text(
+        "[install]\n"
+        'version = "0.1.0"\n'
+        f"harnesses = [{harnesses_toml}]\n"
+        'asset_root = "/tmp/does-not-matter-for-this-test"\n'
+        f'hooks_scripts_dir = "{hooks_scripts_dir}"\n'
+        "\n"
+        "[deps]\n"
+        'uv = "present"\n'
+        "\n"
+        "[files]\n",
+        encoding="utf-8",
+    )
+    return install_toml
 
 def write_executable(bin_dir, name: str, body: str) -> Path:
     """Write an executable script fixture at ``bin_dir/name`` (mode 0755) and return its path --
