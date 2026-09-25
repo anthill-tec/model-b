@@ -556,8 +556,10 @@ def _render_hooks_readme(
     report: dict, instances: list[dict], harnesses: list[str],
 ) -> str:
     """`hooks/README.md` = the human-readable §S4 compiler report (§S5):
-    per-harness accounting — emitted files, wired hooks, declared
-    degradations — nothing silent."""
+    per-harness accounting — emitted files, wired hooks and notes —
+    nothing silent. ``report`` carries an entry for every harness in
+    ``harnesses``: :func:`run_init` validates the set against the roster
+    and resolves the scripts root before emission (CR-MDB-031 C5 F8)."""
     lines = [
         "# hooks — compiler report",
         "",
@@ -575,15 +577,9 @@ def _render_hooks_readme(
         )
     lines += ["", "## Per-harness accounting", ""]
     for harness in harnesses:
-        entry = report.get(harness)
+        entry = report[harness]
         lines.append(f"### {harness}")
         lines.append("")
-        if entry is None:
-            lines.append(
-                "- not in the compiler's harness roster — no wiring emitted."
-            )
-            lines.append("")
-            continue
         wired = [i["command"] for i in instances]
         if wired:
             lines.append(f"- wired hooks: {', '.join(wired)}")
@@ -591,10 +587,8 @@ def _render_hooks_readme(
             lines.append(
                 f"- emitted files: {', '.join(entry['emitted_files'])}"
             )
-        if entry["degraded"]:
-            lines.append("- DEGRADED (declared):")
         for note in entry["notes"]:
-            lines.append(f"  - {note}" if entry["degraded"] else f"- {note}")
+            lines.append(f"- {note}")
         lines.append("")
     return "\n".join(lines)
 

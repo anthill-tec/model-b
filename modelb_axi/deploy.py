@@ -178,7 +178,6 @@ def _deploy_file(
 def deploy_assets(
     asset_root: Path,
     target_root: Path,
-    harnesses: list[str],
     prior_hashes: dict[str, str] | None = None,
     force_managed: bool = False,
     unmanaged: list[str] | None = None,
@@ -186,9 +185,8 @@ def deploy_assets(
 ) -> tuple[list[dict], list[str]]:
     """Run the §S6 deploy: store copies only (no per-harness links).
 
-    ``harnesses`` is the selected set; the store is harness-neutral, so it
-    selects no extra writes (CR-MDB-031 §S1) — it stays in the pinned
-    signature for the installer's call site.
+    The store is harness-neutral, so the selected harness set selects no
+    writes and is not a parameter (CR-MDB-031 §S1; C5 F8).
 
     Returns ``(manifest_entries, skipped_paths)`` — ``skipped_paths`` are
     hand-modified managed files left untouched (AC5). Raises

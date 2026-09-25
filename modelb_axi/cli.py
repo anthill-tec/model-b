@@ -368,7 +368,7 @@ def _deploy_stage(
     unmanaged: list[str] = []
     try:
         manifest, skipped = deploy_assets(
-            asset_root, target_root, selected,
+            asset_root, target_root,
             prior_hashes=prior_hashes, force_managed=force_managed,
             unmanaged=unmanaged, stacks=stacks,
         )

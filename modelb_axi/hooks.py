@@ -118,7 +118,7 @@ def validate_schema(instance: dict) -> list[str]:
 # --------------------------------------------------------------------------
 
 def _new_report_entry() -> dict:
-    return {"emitted_files": [], "degraded": False, "notes": []}
+    return {"emitted_files": [], "notes": []}
 
 
 def _record_emitted(entry: dict, rel: str, emitted: list[str] | None) -> None:
@@ -412,7 +412,7 @@ def compile_wiring(
     (the default) nothing beyond the returned report is recorded.
 
     Returns a report dict keyed by harness id, each value
-    ``{"emitted_files": list[str], "degraded": bool, "notes": list[str]}``
+    ``{"emitted_files": list[str], "notes": list[str]}``
     accounting for every hook. Raises :class:`ValueError` for invalid
     instances and :class:`modelb_axi.harness.UnknownHarnessError` for
     harness ids outside the roster (before anything is written).
