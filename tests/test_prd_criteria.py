@@ -12,9 +12,11 @@ criteria executable and pins the PRD text that CR-MDB-035 reconciles (§S1-§S4)
   five stacks in ``multi:3`` mode is at most 100 lines. Driven through the real ``init`` entry
   in a sandbox (``HOME``, ``MODELB_HOME``, ``XDG_DATA_HOME``, ``PI_CODING_AGENT_DIR`` and
   ``--target``/``--modelb-home`` all temporary).
-- **The PRD text.** §3 and §4 name no ``CLAUDE.md``, ``chezmoi``, ``Claude Code``, ``Hermes`` or
-  ``OpenCode`` outside a dated amendment note; every §4 criterion carries a **Check:**; every
-  ``tests/…py`` path §4 names exists; the §S1/§S2 content; every §S3 site carries its dated
+- **The PRD text.** §3 and §4 name no ``CLAUDE.md``, ``chezmoi``, ``Claude Code``, ``Hermes``,
+  ``OpenCode`` or ``~/.claude``/``$HOME/.claude`` path outside a dated amendment note (matched
+  case-insensitively, ``claude-code`` included); every §4 criterion carries a **Check:**; every
+  ``tests/…py`` path §4 names and every repo script a **Check:** invokes (``generator/build.py``)
+  exists; the §S1/§S2 content; every §S3 site carries its dated
   ``AMENDED 2026-09-25 (CR-MDB-035…`` line; and outside §1, the header and the amendment notes
   the PRD requires no ``CLAUDE.md``, chezmoi bundle, ``~/.claude`` path or non-Pi harness.
 
@@ -217,26 +219,38 @@ AMENDED_LINE = re.compile(r"AMENDED \d{4}-\d{2}-\d{2} \(")
 #: A term directly preceded by ``no`` (optionally opening a code span) states an absence.
 NEGATED = re.compile(r"\bno\s+`?$")
 
+#: A home-relative ``.claude`` path in any spelling: ``~/.claude``, ``$HOME/.claude``,
+#: ``${HOME}/.claude``.
+HOME_CLAUDE_PATH = re.compile(r"(?:~|\$HOME|\$\{HOME\})/\.claude\b")
+#: The retired names, matched case-insensitively; the harness names also with ``-`` or
+#: whitespace between words (``Claude Code``, ``claude-code``, ``CLAUDE CODE``; ``OpenCode``,
+#: ``open-code``).
+CLAUDE_MD = re.compile(r"CLAUDE\.md", re.I)
+CLAUDE_CODE = re.compile(r"\bclaude[\s-]+code\b", re.I)
+HERMES = re.compile(r"\bhermes\b", re.I)
+OPENCODE = re.compile(r"\bopen-?code\b", re.I)
+
 #: §3/§4 (CR-MDB-035 §S4): these names may appear only inside a dated amendment note.
 SECTION_BANNED_TERMS = {
-    "CLAUDE.md": re.compile(r"CLAUDE\.md"),
+    "CLAUDE.md": CLAUDE_MD,
     "chezmoi": re.compile(r"\bchezmoi\b", re.I),
-    "Claude Code": re.compile(r"\bClaude Code\b"),
-    "Hermes": re.compile(r"\bHermes\b"),
-    "OpenCode": re.compile(r"\bOpenCode\b"),
+    "Claude Code": CLAUDE_CODE,
+    "Hermes": HERMES,
+    "OpenCode": OPENCODE,
+    "~/.claude path": HOME_CLAUDE_PATH,
 }
 
 #: Whole PRD (acceptance criteria): what a sentence must not REQUIRE — a ``CLAUDE.md``, a
 #: chezmoi bundle (the skill, or ``chezmoi diff``/``apply`` as a Model B step), a ``~/.claude``
 #: path or a ``.claude/`` harness directory, or a harness other than Pi.
 REQUIREMENT_TERMS = {
-    "CLAUDE.md": re.compile(r"CLAUDE\.md"),
+    "CLAUDE.md": CLAUDE_MD,
     "chezmoi bundle": re.compile(r"`chezmoi`|\bchezmoi\s+(?:skill|bundle|diff|apply)\b"),
-    "~/.claude path": re.compile(r"~/\.claude\b"),
+    "~/.claude path": HOME_CLAUDE_PATH,
     ".claude/ harness dir": re.compile(r"(?<![~/\w])\.claude/"),
-    "Claude Code": re.compile(r"\bClaude Code\b"),
-    "Hermes": re.compile(r"\bHermes\b"),
-    "OpenCode": re.compile(r"\bOpenCode\b"),
+    "Claude Code": CLAUDE_CODE,
+    "Hermes": HERMES,
+    "OpenCode": OPENCODE,
 }
 
 
@@ -333,6 +347,26 @@ def _missing_tests_paths(section: str, root: Path) -> list:
     return sorted({p for p in TESTS_PATH.findall(section) if not (root / p).is_file()})
 
 
+#: A repo-relative script path (``generator/build.py``, ``scripts/x.sh``): at least one directory
+#: component, a ``.py``/``.sh``/``.fish`` suffix, and not the tail of a longer or home path.
+REPO_SCRIPT_PATH = re.compile(r"(?<![\w./~$-])((?:[\w-]+/)+[\w.-]+\.(?:py|sh|fish))\b")
+
+
+def _check_scripts(criteria: list) -> list:
+    """Every repo script path a criterion's **Check:** names (the text after the marker)."""
+    found = []
+    for _number, body in criteria:
+        marker = CHECK_MARKER.search(body)
+        if marker:
+            found += REPO_SCRIPT_PATH.findall(body[marker.end():])
+    return found
+
+
+def _missing_check_scripts(criteria: list, root: Path) -> list:
+    """Every repo script a **Check:** invokes that is not a file under ``root``."""
+    return sorted({p for p in _check_scripts(criteria) if not (root / p).is_file()})
+
+
 def _subsection(text: str, heading_prefix: str) -> str:
     """The ``### `` (or ``## ``) section whose heading starts with ``heading_prefix``, up to the
     next heading of any level; ``""`` when absent."""
@@ -390,6 +424,20 @@ S3_SITES = (
      "Claude Code: the project's `.claude/settings.json`", ".pi/extensions/"),
     ("D10 installer-vs-scaffold split", "### D10 ", "**Installer vs scaffold split", "Pi"),
     ("D10(e) harness roster", "### D10 ", "(e) **Initial harness roster**", "§D14"),
+    ("D2 Tier-3 memory/ library", "### D2 ", "the `memory/` reference library",
+     "skills-src/memory-templates/"),
+    ("D2 global language refs", "### D2 ", "global language refs per D5", "no global memory tier"),
+    ("D3 status-report skill", "### D3 ",
+     "`bootstrap` / `shutdown` / `code-health` / `status-report` reference `model-b`",
+     "no `status-report` bundle"),
+    ("D6 generated set (20 files)", "### D6 ", "(20 files)", "rendered per project"),
+    ("D6 bespoke list", "### D6 ", "Bespoke (not generated)", "no bespoke agents"),
+    ("D7 bundle path crucible:clients/", "### D7 ", "bundle path `crucible:clients/`",
+     "~/.crucible/clients/"),
+    ("D8 mail-axi contract", "### D8 ", "`mail-axi` (Fastmail/Gmail/Calendar)",
+     "archive/contracts/mail-axi.md"),
+    ("D10.5 run-context wrapper plumbing", "### D10 ", "the run-context wrapper plumbing",
+     "installed Crucible client"),
 )
 
 
@@ -509,6 +557,34 @@ class PrdScanDetectorTest(unittest.TestCase):
                                 "generated stack."),
             [])
 
+    def test_section_scan_matches_retired_names_case_insensitively_and_home_claude_paths(self):
+        text = ("- Wire claude-code, CLAUDE CODE and opencode; a claude.md; HERMES.\n"
+                "- Write `$HOME/.claude/settings.json` and `~/.claude/hooks`.\n"
+                "- It emits no `claude.md` and no opencode anchor.\n")
+        self.assertEqual(_banned_terms_outside_notes(text),
+                         [(1, "CLAUDE.md"), (1, "Claude Code"), (1, "Claude Code"), (1, "Hermes"),
+                          (1, "OpenCode"), (2, "~/.claude path"), (2, "~/.claude path")])
+
+    def test_whole_prd_scan_matches_case_insensitively_and_home_claude_paths(self):
+        text = ("## 2. Design\n- Roster: pi, hermes, claude-code, opencode.\n"
+                "- Hooks go to `$HOME/.claude/hooks` and `${HOME}/.claude/skills`.\n")
+        self.assertEqual(_unamended_requirements(text),
+                         [(2, "Claude Code"), (2, "Hermes"), (2, "OpenCode"),
+                          (3, "~/.claude path"), (3, "~/.claude path")])
+
+    def test_a_missing_script_a_check_invokes_is_reported_and_prose_before_check_is_not(self):
+        section = ("## 4. Success criteria\n"
+                   "1. One. **Check:** `generator/build.py --check`, "
+                   "`tests/test_suite_hygiene.py`.\n"
+                   "2. Two. **Check:** `python3 generator/no_such_build.py --check`, "
+                   "`scripts/gone.sh`.\n"
+                   "3. Three cites `generator/also_missing.py` in prose. **Check:** "
+                   "`tests/test_suite_hygiene.py`.\n")
+        # The tests/…py matcher alone accepted this section: it names no missing tests path.
+        self.assertEqual(_missing_tests_paths(section, REPO_ROOT), [])
+        self.assertEqual(_missing_check_scripts(_criteria(section), REPO_ROOT),
+                         ["generator/no_such_build.py", "scripts/gone.sh"])
+
 
 # ------------------------------------------------------------------ the PRD itself ----
 
@@ -564,6 +640,13 @@ class PrdSectionsThreeAndFourTest(unittest.TestCase):
         self.assertEqual(_missing_tests_paths(self.s4, REPO_ROOT), [],
                          "§S4: §4 names these tests/…py paths, which do not exist")
 
+    def test_every_repo_script_a_section_four_check_invokes_exists(self):
+        criteria = _criteria(self.s4)
+        self.assertIn("generator/build.py", _check_scripts(criteria),
+                      "non-vacuity: criterion 4's Check invokes generator/build.py")
+        self.assertEqual(_missing_check_scripts(criteria, REPO_ROOT), [],
+                         "§S4: a §4 **Check:** invokes these repo scripts, which do not exist")
+
 
 class PrdSuccessCriteriaContentTest(unittest.TestCase):
     """CR-MDB-035 §S1 and its acceptance criteria — the mechanically testable content of §4."""
@@ -593,6 +676,17 @@ class PrdSuccessCriteriaContentTest(unittest.TestCase):
                    if s not in body]
         self.assertEqual(missing, [], "§S1: criterion 4 states the generation/render property")
 
+    def test_criterion_four_skips_hand_modified_definitions_and_never_writes_unmarked_ones(self):
+        body = " ".join(self.criteria.get(4, "").split())
+        missing = [s for s in ("a hand-modified definition is skipped unless `--force-managed`",
+                               "an unmarked one is never written")
+                   if s not in body]
+        self.assertEqual(missing, [], "§S1 (amended f395454): criterion 4 states the ownership "
+                                      "rule as §S1 writes it")
+        self.assertNotIn("never overwrite an unmarked", body,
+                         "§S1: an unmarked definition is never written, not merely never "
+                         "overwritten")
+
     def test_criterion_five_splits_the_halves_and_declines_the_vscode_client(self):
         body = self.criteria.get(5, "")
         missing = [s for s in ("Model B's half", "Crucible's half", "vscode-crucible.py",
@@ -600,6 +694,16 @@ class PrdSuccessCriteriaContentTest(unittest.TestCase):
                    if s not in body]
         self.assertEqual(missing, [], "§S1: criterion 5 separates the halves and states "
                                       "vscode-crucible.py as declined (D7, Sandesh #1370)")
+
+    def test_criterion_five_names_the_scanned_surfaces_and_claims_no_manifest_resolution(self):
+        body = " ".join(self.criteria.get(5, "").split())
+        self.assertIn("every Crucible client invocation in shipped skills, templates, stack "
+                      "parameters and contracts matches the released client's surface at "
+                      "`~/.crucible/clients/`", body,
+                      "§S1 (amended f395454): criterion 5 names the surfaces its Check scans")
+        claims = [s for s in ("crucible-clients.json", "resolved through") if s in body]
+        self.assertEqual(claims, [], "§S1: ClientContractS3Test reads ~/.crucible/clients/ "
+                                     "directly; criterion 5 must not claim manifest resolution")
 
     def test_criterion_six_is_the_manifest_property_unmet_until_cr_mdb_040(self):
         body = self.criteria.get(6, "")
