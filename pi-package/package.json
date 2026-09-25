@@ -5,7 +5,7 @@
   "keywords": ["pi-package"],
   "license": "MIT",
   "pi": {
-    "extensions": ["extensions/sandesh-watcher.ts"]
+    "extensions": ["extensions/sandesh-watcher.ts", "extensions/worktree.ts"]
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*"
