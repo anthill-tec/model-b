@@ -846,3 +846,20 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   sentence contradicting a merged CR/DN (§3 invariant 1, D1, D2, D4, D9, D10.4, D10.7, D10(e), the
   installer split); **CR-MDB-040 FILED** for installer pruning, criterion 6 stays unmet until it
   merges. Subsumes the CR-036 queue note F4 (narrowing `--stacks` orphans bundles).
+- 2026-09-25 — **CR-MDB-035 MERGED** (develop `b8dd543`; plan 111, cycles 143–145). PRD §4 is six
+  criteria, each naming the check that measures it; §3 invariant 1 is "`AGENTS.md` only, no
+  `CLAUDE.md`"; sixteen design-section sentences keep their original text and gain a dated AMENDED
+  line (D1, D2 ×3, D3, D4, D6 ×2, D7, D8, D9, D10.4, D10.5, D10.7, check-in policy, installer split,
+  D10(e)). New gate `tests/test_prd_criteria.py`; helpers `run_module`/`write_install_toml` and
+  `md_section(stop_prefix=)` now live in `tests/_helpers.py`. Suite **1177 / 0 / 0 (real `HOME`),
+  1177 / 0 / 8 skips (empty `HOME`)**, 54 modules. Criteria measured at merge:
+  (1) scaffolded `AGENTS.md` 34–48 lines across solo/multi:3/multi:20, standalone/monorepo, one to six
+  stack tokens — `tests/test_prd_criteria.py` (budget 100); (2) `python3 -m unittest
+  tests.test_client_verb_sweep` OK; (3) every `~/.agents/skills/…` citation resolves —
+  `tests/test_prd_criteria.py` OK; (4) `python3 generator/build.py --check` → clean, 20 files in
+  `generator/agents`; (5) `test_client_path_anchoring.ClientContractS3Test` OK against Crucible 0.2.2's
+  five clients; (6) **unmet** — CR-MDB-040. Red intermediates (bisect skips): `2105217` (module count),
+  `0f485a1` and `9b274a2` (FIX test-first). Recorded, not fixed: the gate's "no X" negation exemption and
+  its AMENDED-line exemptions can hide a newly written requirement (VERIFY F4/F5 — a mutation that
+  adds "AMENDED … : init MUST write a CLAUDE.md" passes); spelled-out counts ("sixteen agents") are not
+  matched; D10's "chezmoi-managed user space" is descriptive and stays.
