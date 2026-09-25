@@ -47,6 +47,7 @@ Queue rows enumerate the whole delivery (structure only). **Live status lives on
 | [CR-MDB-034](CR-MDB-034-archive-mapping.md) | `archive/mapping.md`: a living, gated map of where every relocated path went (supersedes CR-MDB-012 — a release is NOT a CR) | 5 | — |
 | [CR-MDB-039](CR-MDB-039-worktree-isolation-on-pi.md) | Worktree isolation on Pi: a write boundary that holds without a movable session directory | 5 | 031 |
 | [CR-MDB-040](CR-MDB-040-installer-prune.md) | A redeploy removes what it no longer deploys (PRD §4 criterion 6) | 5 | 035 |
+| [CR-MDB-041](CR-MDB-041-bootstrap-reads-scaffolded-files.md) | Bootstrap and shutdown read the files `init` scaffolds (`AGENTS.md`, `.env`, `docs/memory/INDEX.md`), not `ORCHESTRATOR-<Project>`/`MEMORY.md` | 5 | — |
 
 **— v1.0.0 ships here —** (the release is a BOUNDARY EVENT, not a queue row: the wave drains, the user approves, `git-workflow` §Releases executes it, a milestone records it afterwards. No release CR, no close-out wave.)
 
@@ -870,3 +871,9 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   a LIVING map with a gate** (`tests/test_archive_mapping.py`) instead of an ungated snapshot, so a
   later move must update its row. Spec rewritten: five-column table with a closed `Kind` vocabulary
   (moved/absorbed/deleted/external), required rows asserted by old path, CR/commit citations checked.
+- 2026-09-25 — **CR-MDB-041 FILED** (user) from Crucible Mainline's #1392: under Pi it found no
+  `ORCHESTRATOR-Crucible` note — `bootstrap`/`shutdown` require an `ORCHESTRATOR-<Project>` note and a
+  `MEMORY.md` that no Model B tool creates. Interim answer #1393: read the project `AGENTS.md` + `.env`
+  and the project memory index. Also told Crucible the machine's deployed skills predate CR-MDB-031
+  (they still cite `~/.claude/skills/…`, which resolves through a July symlink) until the release
+  reinstall. **CR-MDB-034 spec APPROVED** (user).
