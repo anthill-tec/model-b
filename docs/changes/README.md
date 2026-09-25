@@ -897,3 +897,23 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   cwd), and hooks spawn with the Pi process environment, so `WF_WORKTREE_ROOT` set in-process reaches
   every hook. **User ruling: Model B Pi package enter/exit tools** (`modelb_worktree_enter`/`_exit`)
   over launching Tracks inside worktrees or an honest-floor rewording. Spec rewritten to that design.
+- 2026-09-25 — **CR-MDB-039 MERGED** (develop `7ee09c6`; plan 113, cycles 149–152). Design: DN-multi-harness
+  **§D19** (new) — one Pi session per orchestrator, launched however the user likes (tmux optional);
+  Mainline follows Tracks through Crucible and Sandesh. `@anthill-tec/modelb-pi` gains
+  `extensions/worktree.ts`: a pi-subagents workspace provider routes each dispatch whose description
+  OPENS with a CR id into that CR's registered `.worktrees/<cr>` (records read from the service
+  instance it registered with — children republish and delete the global entry), and
+  `modelb_worktree_enter`/`_exit` set/clear the process-wide `WF_WORKTREE_ROOT` so the hook confines
+  the orchestrator's file-tool writes; while entered, a dispatch routed to another CR's worktree is
+  refused. `worktree-flow start` names the enter tool, `finish`/`abort` the exit tool; the skills,
+  `contracts/worktree-layout.md` (seven consumers) and the `watcher` capability follow. Suite
+  **1288 / 0 / 0 (real `HOME`), 1288 / 0 / 9 skips (empty `HOME`)**, 57 modules; a new, single-entry
+  hermeticity exception reads the installed pi-subagents service key. Red intermediates (bisect skips):
+  `38a27b3`, `00d7d35`, `78b3d82` (module count / text gates), `c1c8275` (FIX test-first). Recorded, not
+  fixed (DN §D19 consequence 4): a relocated child cannot be resumed after completion (pi-subagents
+  disposes its workspace); a child with no `tools:` allowlist inherits enter/exit (generated agents
+  are safe); the hook governs file-tool writes, not shell writes; child sessions load project
+  extensions regardless of saved trust. VERIFY F6 (bootstrap/shutdown detect a Track by a
+  `/.worktrees/` toplevel, now never true) → **folded into CR-MDB-041** (this commit). Pre-existing
+  pi-lens nits, not this CR's: `worktree-flow.py` f-strings without placeholders (`91ff12f`);
+  `tests/test_worktree_layout_and_bundles.py` I001 import order (CR-MDB-031).

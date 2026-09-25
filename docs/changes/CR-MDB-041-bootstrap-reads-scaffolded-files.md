@@ -6,7 +6,7 @@
 and end of every session, and today they send it looking for files that do not exist.
 **Depends on:** —
 **Labels:** skills, bootstrap, shutdown, scaffold
-**Design reference:** PRD D3.1 (the `.env` naming registry), D10 (what `init` scaffolds), D5 (the
+**Design reference:** DN-multi-harness §D19 (session model); PRD D3.1 (the `.env` naming registry), D10 (what `init` scaffolds), D5 (the
 project memory tier); DN-multi-harness §D14 (Pi only)
 
 ## Context
@@ -48,6 +48,12 @@ In `skills-src/bootstrap/SKILL.md` and `skills-src/shutdown/SKILL.md`:
 `memory-templates/rust-orchestration.md:7` stops naming another project's private note; it points
 at the project's own `AGENTS.md`.
 
+**Track detection.** `bootstrap` (Step 0, role fallback 2) and `shutdown` (Step 0.1) recognise a
+Track by `git rev-parse --show-toplevel` ending in `/.worktrees/<cr>`. Since CR-MDB-039 (DN
+§D19) a Track's session cwd stays in the main tree, so that never matches. The fallback becomes the
+session's Sandesh address (`Track <N> - <Project>`) or the carried context. A worktree path is not a
+role signal.
+
 ### §S2 — The gate
 A test asserts, over `skills-src/`:
 - no `ORCHESTRATOR-<` / `ORCHESTRATOR-NAI` note and no `MEMORY.md` is named;
@@ -64,6 +70,8 @@ A test asserts, over `skills-src/`:
 - [ ] `bootstrap` resolves `<Project>` from `PROJECT_NAME` and the own-run id from
       `ORCHESTRATOR_LABEL` in `.env`.
 - [ ] The pre-`init` fallback is stated and treats a missing file as non-fatal.
+- [ ] Neither skill infers the Track role from the working directory or a `/.worktrees/` toplevel;
+      the fallback is the Sandesh address or the carried context.
 - [ ] The §S2 gate exists, with detector fixtures, and fails on today's `skills-src/`.
 - [ ] Suite baselines re-measured and recorded in `AGENTS.md`.
 - [ ] Crucible Mainline is told on thread #1392 when this merges (a release step for the deployed
