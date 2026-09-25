@@ -15,7 +15,6 @@ Queue rows enumerate the whole delivery (structure only). **Live status lives on
 | [CR-MDB-004](CR-MDB-004-cr-authoring-skill.md) | cr-authoring skill: cr-prd-dn-conventions + project-management split | 2 | 001 |
 | [CR-MDB-005](CR-MDB-005-git-chezmoi-skills.md) | git-workflow + chezmoi skills: memory-twin merges + delete/rename procedure | 2 | 001 |
 | [CR-MDB-006](CR-MDB-006-memory-model.md) | Memory model: global→project-level migration (D5) — only language refs stay global; merges + deletions | 2 | 002, 003, 004, 005 |
-| [CR-MDB-007](README.md#footer-notes) | "Plan B" → "Model B" naming sweep across skills + memory | 2 | 002 |
 | [CR-MDB-008](CR-MDB-008-agent-generator.md) | Agent generator: role templates + stack params + build.py --check gate; regenerate 16 agents | 3 | 002, 006 |
 | [CR-MDB-009](CR-MDB-009-contracts.md) | contracts/: crucible-envelope mirror, sandesh-cli, mail-axi, lean-ctx specs | 3 | — |
 | [CR-MDB-010](CR-MDB-010-worktree-flow-axi.md) | worktree-flow.py AXI output: TOON envelope for status/next/finish + lane boards | 3 | 009 |
