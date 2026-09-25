@@ -33,9 +33,10 @@ path, never copied):
     fail-closed, so a `fail_direction=closed` guard is EMITTED.
 
 Report shape (pinned): `dict` keyed by harness id; each value a `dict`
-with keys `emitted_files` (list[str], paths relative to `target`),
-`degraded` (bool), `notes` (list[str]) -- and no `refusals` key
-(CR-MDB-031 §S1: there is no refusal path). Every input schema-instance
+with keys `emitted_files` (list[str], paths relative to `target`) and
+`notes` (list[str]) -- no `refusals` key (CR-MDB-031 §S1: there is no
+refusal path) and no `degraded` flag (CR-MDB-031 C5 F8: nothing ever set
+it). Every input schema-instance
 `command` must be accounted for (AC4/AC6).
 
 Stdlib only: unittest + json + tempfile + shutil + pathlib.
@@ -145,7 +146,7 @@ class PiExtensionEmitterTest(HooksCompilerTestCase):
         )
 
         pi_report = report["pi"]
-        self.assertFalse(pi_report["degraded"])
+        self.assertNotIn("degraded", pi_report)
         self.assertNotIn("refusals", pi_report)
 
         extensions_dir = self.target / ".pi" / "extensions"
@@ -236,7 +237,7 @@ class PiExtensionEmitterTest(HooksCompilerTestCase):
 
         pi_report = report["pi"]
         self.assertNotIn("refusals", pi_report)
-        self.assertFalse(pi_report["degraded"])
+        self.assertNotIn("degraded", pi_report)
         self.assertEqual(
             pi_report["emitted_files"],
             [str(Path(".pi") / "extensions" / "post-regression-disk-reminder.ts")],
@@ -263,9 +264,10 @@ class ReportAccountingTest(HooksCompilerTestCase):
     """AC4/AC6 report shape: every input hook accounted for per harness,
     nothing silent."""
 
-    def test_report_accounts_for_every_hook_across_all_four_harnesses(self):
+    def test_report_accounts_for_every_hook_for_the_pi_harness(self):
         # CR-MDB-031 §S1: flipped to the Pi-only roster; the report entry
-        # carries no `refusals` key (no refusal path).
+        # carries no `refusals` key (no refusal path) and, C5 F8, no
+        # `degraded` flag (nothing ever set it).
         from modelb_axi.hooks import compile_wiring
 
         harnesses = ["pi"]
@@ -280,19 +282,13 @@ class ReportAccountingTest(HooksCompilerTestCase):
 
         for harness in harnesses:
             entry = report[harness]
-            for key in ("emitted_files", "degraded", "notes"):
-                self.assertIn(key, entry, f"{harness} report missing {key!r} key")
-            self.assertNotIn("refusals", entry, f"{harness} report carries a refusals key")
-
-            if entry["degraded"]:
-                # A degraded entry must still name why, in notes.
-                self.assertTrue(entry["notes"])
-            else:
-                # Non-degraded harnesses emitted something for our 2 hooks.
-                self.assertTrue(
-                    entry["emitted_files"],
-                    f"{harness} neither degraded nor emitted anything",
-                )
+            self.assertEqual(sorted(entry), ["emitted_files", "notes"],
+                             f"{harness} report keys")
+            # Pi emits something for our 2 hooks.
+            self.assertTrue(
+                entry["emitted_files"],
+                f"{harness} emitted nothing",
+            )
 
 
 if __name__ == "__main__":

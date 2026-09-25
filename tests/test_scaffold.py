@@ -31,6 +31,7 @@ import io
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -320,6 +321,99 @@ class HarnessSeamTest(unittest.TestCase):
         self.assertEqual(
             listing, [],
             f"S2: a failed init must write NOTHING under --target; found {listing!r}",
+        )
+
+
+def _stale_install_toml(home: Path, *, allow_missing: bool) -> None:
+    """An ``install.toml`` recording a retired harness id, a target root and stacks, and
+    (when ``allow_missing``) ``allow_missing_capabilities = true``."""
+    home.mkdir(parents=True, exist_ok=True)
+    lines = ["[install]", 'version = "0.1.0"', 'harnesses = ["claude-code"]',
+             'target_root = "/nonexistent/mdb recovery target"', 'stacks = ["bun", "python"]']
+    if allow_missing:
+        lines.append("allow_missing_capabilities = true")
+    (home / "install.toml").write_text("\n".join(lines + ["", "[files]", ""]), encoding="utf-8")
+
+
+class HarnessRecoveryCommandTest(unittest.TestCase):
+    """CR-MDB-031 C5 F6 -- the recovery re-run printed for a stale recorded harness id keeps
+    ``--allow-missing-capabilities`` when ``install.toml`` recorded it true (the re-run would
+    otherwise fail the pre-flight the original install passed with the override)."""
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp(prefix="modelb-axi-recovery-")
+
+    def tearDown(self):
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def _argv(self, *, allow_missing: bool) -> list:
+        from modelb_axi import scaffold
+
+        home = Path(self._tmp) / ("allow" if allow_missing else "strict")
+        _stale_install_toml(home, allow_missing=allow_missing)
+        argv = shlex.split(scaffold.harness_recovery_command(home))
+        self.assertEqual(argv[:2], ["modelb-axi", "--reinstall"], f"argv={argv!r}")
+        for flag, value in (("--modelb-home", str(home)),
+                            ("--target-root", "/nonexistent/mdb recovery target"),
+                            ("--stacks", "bun,python"), ("--harnesses", "pi")):
+            self.assertEqual(argv[argv.index(flag) + 1], value, f"{flag}: argv={argv!r}")
+        return argv
+
+    def test_recorded_allow_missing_capabilities_is_carried_into_the_recovery(self):
+        self.assertIn("--allow-missing-capabilities", self._argv(allow_missing=True))
+
+    def test_recovery_omits_the_override_when_install_toml_did_not_record_it(self):
+        self.assertNotIn("--allow-missing-capabilities", self._argv(allow_missing=False))
+
+    def test_the_refusal_message_carries_the_same_recovery(self):
+        from modelb_axi import scaffold
+        from modelb_axi.harness import UnknownHarnessError
+
+        home = Path(self._tmp) / "refusal"
+        _stale_install_toml(home, allow_missing=True)
+        with self.assertRaises(UnknownHarnessError) as raised:
+            scaffold.reject_recorded_harnesses(home)
+        self.assertIn(f"`{scaffold.harness_recovery_command(home)}`", str(raised.exception))
+        self.assertIn("--allow-missing-capabilities", str(raised.exception))
+
+
+def _uncovered_stack_templates(names, stack_names, families) -> list:
+    """Sorted memory-template names ``<prefix>-*.md`` whose prefix is a stack name but which no
+    selection of that stack would emit: the prefix is not a ``families`` key, or its family does
+    not list the prefix's own stack."""
+    uncovered = []
+    for name in names:
+        prefix = name.split("-", 1)[0] if "-" in name else None
+        if prefix in stack_names and prefix not in families.get(prefix, frozenset()):
+            uncovered.append(name)
+    return sorted(uncovered)
+
+
+class MemoryTemplateFamilyCoverageTest(unittest.TestCase):
+    """CR-MDB-031 C5 F7 -- every stack-prefixed memory template (``<prefix>-*.md`` where the
+    prefix is a ``KNOWN_STACKS`` entry or a generator stack) is covered by
+    ``MEMORY_TEMPLATE_FAMILIES``; otherwise it would ship to every project as if stack-neutral."""
+
+    def test_every_stack_prefixed_memory_template_has_a_family(self):
+        from modelb_axi import scaffold
+
+        templates = REPO_ROOT / "skills-src" / "memory-templates"
+        names = sorted(p.name for p in templates.glob("*.md"))
+        self.assertTrue(names, "precondition: memory templates exist")
+        stack_names = set(scaffold.KNOWN_STACKS) | {
+            p.stem for p in (REPO_ROOT / "generator" / "stacks").glob("*.toml")}
+        self.assertEqual(
+            _uncovered_stack_templates(names, stack_names, scaffold.MEMORY_TEMPLATE_FAMILIES), [],
+            "stack-prefixed memory templates with no MEMORY_TEMPLATE_FAMILIES entry",
+        )
+
+    def test_detector_bites_on_an_unmapped_or_self_excluding_prefix(self):
+        families = {"java": frozenset({"quarkus"}), "rust": frozenset({"rust"})}
+        names = ["java-a.md", "rust-b.md", "python-c.md", "quarkus-d.md",
+                 "operational-commands.md", "notes.md"]
+        self.assertEqual(
+            _uncovered_stack_templates(names, {"java", "rust", "python", "quarkus"}, families),
+            ["java-a.md", "python-c.md", "quarkus-d.md"],
         )
 
 

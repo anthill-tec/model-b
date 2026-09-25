@@ -27,15 +27,14 @@ Class map (one per C2 acceptance criterion):
 - ``TargetedTextFixesTest`` — the named one-line fixes: ``arduino.toml``'s ``crucible_reference``,
   Panache's ``find()``, the ontology line of the ``model-b`` skill, no NAI project-memory example.
 
-Scope boundaries with CR-MDB-031 C3 (deliberate, not omissions):
+Scope boundaries (C3 is done — no scope boundary remains):
 
-- ``contracts/`` is NOT scanned here. C3 rewrites ``contracts/lean-ctx.md`` and archives
-  ``contracts/mail-axi.md``; C3 extends ``CLAUDE_HOME_SURFACES`` (and the wrapper gate) with
-  ``contracts``.
-- ``skills-src/chezmoi/`` is excluded (``C3_DEFERRED``): C3 deletes the bundle outright.
-- The worktree PATH segment ``.claude/worktrees`` is C3's atomic six-consumer rename. It is not a
-  ``~/.claude`` path — the home gate requires the ``~/`` (or ``$HOME/``) prefix — and it is not
-  gated here.
+- ``contracts/`` IS scanned by the ``~/.claude`` and wrapper gates (``CLAUDE_HOME_SURFACES``): C3
+  rewrote ``contracts/lean-ctx.md`` and archived ``contracts/mail-axi.md``.
+- Nothing under ``skills-src/`` is excluded: C3 deleted the ``chezmoi`` bundle, so every gate
+  scans the whole tree.
+- The worktree PATH segment ``.worktrees/<cr>`` (C3's rename) is not a ``~/.claude`` path — the
+  home gate requires the ``~/`` (or ``$HOME/``) prefix.
 
 Every scan gate has a detector fixture proving it bites (and spares what it must spare), and every
 failure names the offending ``file:line``. Stdlib only.
@@ -71,17 +70,15 @@ BUILD_PY = REPO_ROOT / "generator" / "build.py"
 
 # ------------------------------------------------------------------ surfaces ----
 
-#: The shipped surfaces of the ``~/.claude`` gate (AC 9), minus ``contracts/`` (C3's).
+#: The shipped surfaces of the ``~/.claude`` gate (AC 9), plus ``contracts/`` (C3's rewrite).
 CLAUDE_HOME_SURFACES = (
     "skills-src", "generator", "hooks-src", "scripts", "modelb_axi", ".pi/agents",
-    "AGENTS.md", "docs/install-guide.md",
+    "AGENTS.md", "docs/install-guide.md", "contracts",
 )
 #: The tool-name gate's surfaces (AC 10), exactly as the spec lists them.
 TOOL_SURFACES = ("skills-src", "generator", "hooks-src", "scripts")
 #: The ``CLAUDE.md`` gate's surfaces (AC 11), exactly as the spec lists them.
 CLAUDE_MD_SURFACES = ("skills-src", "generator", "hooks-src", "scripts", "modelb_axi", ".pi/agents")
-#: Excluded because C3 deletes it (§S4); never an exemption, a scope boundary.
-C3_DEFERRED = ("skills-src/chezmoi/",)
 
 #: AC 9's exemptions, as MEASURED at C2 RED (develop-line ``82305e2``): prose that names
 #: ``~/.claude`` as the tree Model B never writes. Matched on (file, exact line text) so a rewrite
@@ -204,7 +201,7 @@ class ClaudeHomePathGateTest(_SurfacesExist):
     def test_zero_live_claude_home_paths_in_the_shipped_surfaces(self):
         self.assert_surfaces_exist(CLAUDE_HOME_SURFACES)
         hits = _gate_hits(REPO_ROOT, CLAUDE_HOME_SURFACES, CLAUDE_HOME_RE,
-                          C3_DEFERRED, CLAUDE_HOME_EXEMPT_LINES)
+                          exempt=CLAUDE_HOME_EXEMPT_LINES)
         self.assertEqual(hits, [], _report("§S2 ~/.claude gate (cite ~/.agents/skills/<name>/…)", hits))
 
     def test_every_exemption_is_a_live_line_that_names_the_tree_model_b_never_writes(self):
@@ -218,7 +215,7 @@ class ClaudeHomePathGateTest(_SurfacesExist):
                 self.assertIn("never", text)
         self.assertEqual(len(CLAUDE_HOME_EXEMPT_LINES), 2, "the exemption list stays minimal")
 
-    def test_detector_bites_on_home_paths_and_spares_worktrees_agents_contracts_chezmoi_and_exempt_lines(self):
+    def test_detector_bites_on_home_paths_in_contracts_and_every_bundle_and_spares_worktrees_agents_and_exempt_lines(self):
         exempt_rel, exempt_lineno, exempt_text = CLAUDE_HOME_EXEMPT_LINES[0]
         tmp, root = _fixture_root({
             "skills-src/b/SKILL.md": (
@@ -234,13 +231,15 @@ class ClaudeHomePathGateTest(_SurfacesExist):
             "generator/__pycache__/x.md": "~/.claude\n",
         })
         with tmp:
-            hits = _gate_hits(root, CLAUDE_HOME_SURFACES, CLAUDE_HOME_RE, C3_DEFERRED,
-                              CLAUDE_HOME_EXEMPT_LINES)
+            hits = _gate_hits(root, CLAUDE_HOME_SURFACES, CLAUDE_HOME_RE,
+                              exempt=CLAUDE_HOME_EXEMPT_LINES)
         self.assertEqual(sorted(h.split(": ", 1)[0] for h in hits), [
             ".pi/agents/python-red-agent.md:1",
             f"{exempt_rel}:2",
+            "contracts/lean-ctx.md:1",
             "skills-src/b/SKILL.md:1",
             "skills-src/b/SKILL.md:4",
+            "skills-src/chezmoi/SKILL.md:1",
         ])
 
 
@@ -255,7 +254,7 @@ class HarnessToolNameGateTest(_SurfacesExist):
 
     def test_zero_harness_tool_names_in_skills_generator_hooks_and_scripts(self):
         self.assert_surfaces_exist(TOOL_SURFACES)
-        hits = _gate_hits(REPO_ROOT, TOOL_SURFACES, HARNESS_TOOL_RE, C3_DEFERRED)
+        hits = _gate_hits(REPO_ROOT, TOOL_SURFACES, HARNESS_TOOL_RE)
         self.assertEqual(hits, [], _report("§S2 tool gate (capability words / the sandesh CLI)", hits))
 
     def test_detector_bites_on_every_listed_name_and_spares_cli_forms(self):
@@ -272,9 +271,10 @@ class HarnessToolNameGateTest(_SurfacesExist):
                                    "scripts/w.py": "print('EnterWorktree(x)')\n",
                                    "skills-src/chezmoi/SKILL.md": "TaskUpdate\n"})
         with tmp:
-            hits = _gate_hits(root, TOOL_SURFACES, HARNESS_TOOL_RE, C3_DEFERRED)
+            hits = _gate_hits(root, TOOL_SURFACES, HARNESS_TOOL_RE)
         self.assertEqual(sorted(h.split(": ", 1)[0] for h in hits),
-                         sorted(["scripts/w.py:1"] + [f"skills-src/b/SKILL.md:{n}" for n in range(1, len(names) + 1)]))
+                         sorted(["scripts/w.py:1", "skills-src/chezmoi/SKILL.md:1"]
+                                + [f"skills-src/b/SKILL.md:{n}" for n in range(1, len(names) + 1)]))
 
 
 # ------------------------------------------------------------------ AC 11: CLAUDE.md ----
@@ -287,7 +287,7 @@ class ClaudeMdGateTest(_SurfacesExist):
 
     def test_zero_claude_md_in_the_shipped_surfaces(self):
         self.assert_surfaces_exist(CLAUDE_MD_SURFACES)
-        hits = _gate_hits(REPO_ROOT, CLAUDE_MD_SURFACES, CLAUDE_MD_RE, C3_DEFERRED)
+        hits = _gate_hits(REPO_ROOT, CLAUDE_MD_SURFACES, CLAUDE_MD_RE)
         self.assertEqual(hits, [], _report("§S2 CLAUDE.md gate (project context is AGENTS.md)", hits))
 
     def test_every_role_template_reads_agents_md_as_project_context(self):
@@ -316,8 +316,9 @@ class ClaudeMdGateTest(_SurfacesExist):
             "skills-src/chezmoi/SKILL.md": "CLAUDE.md\n",
         })
         with tmp:
-            hits = _gate_hits(root, CLAUDE_MD_SURFACES, CLAUDE_MD_RE, C3_DEFERRED)
-        self.assertEqual(sorted(h.split(": ", 1)[0] for h in hits), [".pi/agents/a.md:1", "modelb_axi/s.py:1"])
+            hits = _gate_hits(root, CLAUDE_MD_SURFACES, CLAUDE_MD_RE)
+        self.assertEqual(sorted(h.split(": ", 1)[0] for h in hits),
+                         [".pi/agents/a.md:1", "modelb_axi/s.py:1", "skills-src/chezmoi/SKILL.md:1"])
 
 
 # ------------------------------------------------------------------ AC 12: ratchet ----
@@ -342,7 +343,7 @@ class ToolRatchetDrainedTest(unittest.TestCase):
 def _sandesh_cli_forms(root: Path) -> dict:
     """``{verb: first "<rel>:<lineno>"}`` for each ``sandesh <verb>`` CLI form under skills-src/."""
     found = {}
-    for rel, text in _surface_texts(root, ("skills-src",), C3_DEFERRED):
+    for rel, text in _surface_texts(root, ("skills-src",)):
         for lineno, line in enumerate(text.splitlines(), 1):
             for verb in SANDESH_CLI_RE.findall(line):
                 found.setdefault(verb, f"{rel}:{lineno}")
@@ -366,7 +367,8 @@ class SandeshCliFormTest(unittest.TestCase):
             "skills-src/chezmoi/SKILL.md": "sandesh send --to X\n",
         })
         with tmp:
-            self.assertEqual(_sandesh_cli_forms(root), {"fetch": "skills-src/b/SKILL.md:2"})
+            self.assertEqual(_sandesh_cli_forms(root), {"fetch": "skills-src/b/SKILL.md:2",
+                                                        "send": "skills-src/chezmoi/SKILL.md:1"})
 
 
 # ------------------------------------------------------------------ AC 15: wrapper ----
@@ -374,15 +376,15 @@ class SandeshCliFormTest(unittest.TestCase):
 
 class CrucibleWrapperRetiredTest(_SurfacesExist):
     """AC 15 — zero ``/tmp/claude-1000`` and zero Crucible "wrapper" instructions in the
-    ``~/.claude`` gate's surfaces (``contracts/`` is C3's): skills name the installed client."""
+    ``~/.claude`` gate's surfaces (``contracts/`` included): skills name the installed client."""
 
     def test_zero_tmp_claude_1000_in_the_shipped_surfaces(self):
         self.assert_surfaces_exist(CLAUDE_HOME_SURFACES)
-        hits = _gate_hits(REPO_ROOT, CLAUDE_HOME_SURFACES, TMP_CLAUDE_RE, C3_DEFERRED)
+        hits = _gate_hits(REPO_ROOT, CLAUDE_HOME_SURFACES, TMP_CLAUDE_RE)
         self.assertEqual(hits, [], _report("§S2 /tmp/claude-1000 gate", hits))
 
     def test_zero_crucible_wrapper_instructions_in_the_shipped_surfaces(self):
-        hits = _gate_hits(REPO_ROOT, CLAUDE_HOME_SURFACES, CRUCIBLE_WRAPPER_RE, C3_DEFERRED)
+        hits = _gate_hits(REPO_ROOT, CLAUDE_HOME_SURFACES, CRUCIBLE_WRAPPER_RE)
         self.assertEqual(hits, [], _report(
             "§S2 wrapper gate (name ~/.crucible/clients/<stack>-crucible.py directly)", hits))
 
@@ -399,8 +401,8 @@ class CrucibleWrapperRetiredTest(_SurfacesExist):
             "AGENTS.md": "# Per-project context wrapper (pins CRUCIBLE_PROJECT_KEY)\n",
         })
         with tmp:
-            wrapper = _gate_hits(root, CLAUDE_HOME_SURFACES, CRUCIBLE_WRAPPER_RE, C3_DEFERRED)
-            tmp_dir = _gate_hits(root, CLAUDE_HOME_SURFACES, TMP_CLAUDE_RE, C3_DEFERRED)
+            wrapper = _gate_hits(root, CLAUDE_HOME_SURFACES, CRUCIBLE_WRAPPER_RE)
+            tmp_dir = _gate_hits(root, CLAUDE_HOME_SURFACES, TMP_CLAUDE_RE)
         self.assertEqual(sorted(h.split(": ", 1)[0] for h in wrapper), [
             "AGENTS.md:1",
             "skills-src/crucible/references/python.md:1",

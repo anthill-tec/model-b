@@ -809,6 +809,30 @@ def check_stale_rerun(text: str) -> list[str]:
     return _missing_tokens(bullet.group(0), _stale_rerun_flags(), f"{OUTCOMES} `stale`")
 
 
+#: Harness ids the installer no longer accepts (Pi is the only harness).
+RETIRED_HARNESS_IDS = ("claude-code", "hermes", "opencode")
+_HARNESS_RECOVERY_RE = re.compile(r"^modelb-axi --reinstall\b.*(?<![\w-])--harnesses pi(?![\w-])")
+
+
+def check_harness_rejected(text: str) -> list[str]:
+    """The ``harness_rejected`` outcome row lists no retired harness id as
+    valid, names a stale ``install.toml`` id as a cause, and names the
+    recovery re-run (``modelb-axi --reinstall \u2026 --harnesses pi``) in one
+    code span."""
+    where = f"{OUTCOMES} `harness_rejected`"
+    row = re.search(r"^\| `harness_rejected` \|.*$", _section(text, OUTCOMES), re.M)
+    if row is None:
+        return [f"{OUTCOMES}: no `harness_rejected` row"]
+    line = row.group(0)
+    problems = [f"{where}: names retired `{h}`" for h in RETIRED_HARNESS_IDS
+                if re.search(rf"(?<![\w-]){re.escape(h)}(?![\w-])", line, re.IGNORECASE)]
+    problems += _missing_tokens(line, ("install.toml", "pi"), where)
+    if not any(_HARNESS_RECOVERY_RE.search(code) for code in code_texts(line)):
+        problems.append(f"{where}: missing the `modelb-axi --reinstall \u2026 --harnesses pi` "
+                        "recovery")
+    return problems
+
+
 #: The conforming guide's installer step (PyPI + the always-true source-copy
 #: note, CR-MDB-038 \u00a7S4).
 _CONFORMING_INSTALLER_LINE = (
@@ -963,6 +987,37 @@ class InstallGuideStaleRerunTest(unittest.TestCase):
             [f"{OUTCOMES} `stale`: missing `--modelb-home`"])
         self.assertEqual(check_stale_rerun(good.replace("- `stale`", "- stale")),
                          [f"{OUTCOMES}: no `stale` bullet"])
+
+
+class InstallGuideHarnessRejectedTest(unittest.TestCase):
+    """CR-MDB-031 C5 F4: ``harness_rejected`` is described for the Pi-only
+    installer \u2014 a stale ``install.toml`` id is a cause and the recovery is
+    named; no retired harness is listed as valid. ``pi-package/README.md``
+    carries the same row (it is the guide's marked regions, byte for byte)."""
+
+    def test_harness_rejected_row_is_pi_only_and_names_the_recovery(self):
+        self.assertTrue(GUIDE.is_file(), f"{GUIDE.relative_to(REPO_ROOT)} must exist")
+        self.assertEqual(check_harness_rejected(_read(GUIDE)), [])
+
+    def test_harness_rejected_checker_both_ways(self):
+        good = (f"## {OUTCOMES}\n\n| Outcome | Meaning | Exit code |\n|---|---|---|\n"
+                "| `harness_rejected` | `--harnesses` named something other than `pi`, or "
+                "`install.toml` records a harness this version no longer supports. Re-run "
+                "`modelb-axi --reinstall --target-root <dir> --stacks <stacks> --harnesses pi`. "
+                "| 1 |\n")
+        where = f"{OUTCOMES} `harness_rejected`"
+        self.assertEqual(check_harness_rejected(good), [])
+        self.assertEqual(
+            check_harness_rejected(good.replace("other than `pi`",
+                                                "other than `claude-code`, `Hermes` or `pi`")),
+            [f"{where}: names retired `claude-code`", f"{where}: names retired `hermes`"])
+        self.assertEqual(check_harness_rejected(good.replace("`install.toml`", "the record")),
+                         [f"{where}: missing `install.toml`"])
+        self.assertEqual(
+            check_harness_rejected(good.replace(" --harnesses pi`", "`")),
+            [f"{where}: missing the `modelb-axi --reinstall \u2026 --harnesses pi` recovery"])
+        self.assertEqual(check_harness_rejected(good.replace("| `harness_rejected` |", "| x |")),
+                         [f"{OUTCOMES}: no `harness_rejected` row"])
 
 
 class InstallGuideMarkedRegionsTest(unittest.TestCase):

@@ -490,7 +490,7 @@ class ToolingDeployS4Test(unittest.TestCase):
 
     def test_s4_deploy_places_eight_in_store_with_no_harness_symlink(self):
         target_root = Path(self._tmp_target_root)
-        deploy.deploy_assets(REPO_ROOT, target_root, ["pi"])
+        deploy.deploy_assets(REPO_ROOT, target_root)
         missing = [
             name for name in TOOL_SCRIPT_NAMES
             if not (self._deployed_tooling_dir / name).is_file()
@@ -521,7 +521,7 @@ class ToolingDeployS4Test(unittest.TestCase):
     def test_s4_second_deploy_reports_tooling_files_unchanged(self):
         target_root = Path(self._tmp_target_root)
         first_manifest, first_skipped = deploy.deploy_assets(
-            REPO_ROOT, target_root, ["pi"]
+            REPO_ROOT, target_root
         )
         expected_rels = {
             str(TOOLING_STORE_RELDIR_VALUE / name) for name in TOOL_SCRIPT_NAMES
@@ -539,7 +539,7 @@ class ToolingDeployS4Test(unittest.TestCase):
         }
         prior_hashes = {entry["path"]: entry["sha256"] for entry in first_manifest}
         second_manifest, second_skipped = deploy.deploy_assets(
-            REPO_ROOT, target_root, ["pi"], prior_hashes=prior_hashes
+            REPO_ROOT, target_root, prior_hashes=prior_hashes
         )
         second_rels = {entry["path"] for entry in second_manifest}
         self.assertEqual(
@@ -636,7 +636,7 @@ class ToolingDeployS4Test(unittest.TestCase):
         # Dynamic half: the tooling store this module drives must actually
         # materialize INSIDE the temp sandbox -- proving the boundary
         # holds against a real deploy, not just in this file's source.
-        deploy.deploy_assets(REPO_ROOT, Path(self._tmp_target_root), ["pi"])
+        deploy.deploy_assets(REPO_ROOT, Path(self._tmp_target_root))
         deployed = sorted(
             path for path in self._deployed_tooling_dir.glob("*")
             if path.is_file()

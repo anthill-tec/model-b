@@ -49,6 +49,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -71,6 +72,12 @@ CARGO_GUARD = HOOK_SCRIPTS / "block-direct-cargo-test"
 
 #: The retired harness names (§S0.5): case-insensitive, anywhere on a line.
 RETIRED_HARNESS_RE = re.compile(r"claude|hermes|opencode", re.IGNORECASE)
+#: What ``AGENTS.md`` must no longer name (CR-MDB-031 C5 F2): a retired harness id or a retired
+#: symbol. Narrower than ``RETIRED_HARNESS_RE`` on purpose — ``AGENTS.md`` legitimately names
+#: ``CLAUDE.md`` (its own symlink) and ``~/.claude`` (the tree Model B never writes).
+RETIRED_DOC_RE = re.compile(r"claude-code|hermes|opencode|AllTargetsRefusedError|HARNESS_SKILL_DIRS",
+                            re.IGNORECASE)
+AGENTS_MD = REPO_ROOT / "AGENTS.md"
 
 #: The ontology citation §S1 (amended a8540df) requires in the scaffolded queue README — the
 #: deployed ``model-b`` skill, which carries the ontology summary and names its source — and the
@@ -102,6 +109,11 @@ def retired_harness_lines(package_dir: Path) -> list:
                   if RETIRED_HARNESS_RE.search(text)]
     return found
 
+
+def retired_doc_lines(text: str) -> list:
+    """``"<n>: <line>"`` for every line of ``text`` naming ``RETIRED_DOC_RE``."""
+    return [f"{n}: {line.strip()[:160]}" for n, line in enumerate(text.splitlines(), start=1)
+            if RETIRED_DOC_RE.search(line)]
 
 def top_level_definitions(source: str) -> set:
     """Names bound at module level by ``def``/``class``/assignment in ``source``."""
@@ -343,6 +355,16 @@ class RetiredHarnessNameGateTest(unittest.TestCase):
             "(claude|hermes|opencode, case-insensitive):\n  " + "\n  ".join(hits),
         )
 
+    def test_agents_md_names_no_retired_harness_id_or_symbol(self):
+        # CR-MDB-031 C5 F2: the repo contract describes the Pi-only code that exists.
+        hits = retired_doc_lines(AGENTS_MD.read_text(encoding="utf-8"))
+        self.assertEqual(
+            hits, [],
+            f"AGENTS.md: {len(hits)} line(s) name a retired harness id or symbol "
+            "(claude-code|hermes|opencode|AllTargetsRefusedError|HARNESS_SKILL_DIRS):\n  "
+            + "\n  ".join(hits),
+        )
+
 
 class RetiredScanDetectorTest(unittest.TestCase):
     """The scans behind the gates bite on synthetic fixtures (and only where they should)."""
@@ -353,6 +375,17 @@ class RetiredScanDetectorTest(unittest.TestCase):
 
     def tearDown(self):
         self._tmp.cleanup()
+
+    def test_retired_doc_scan_bites_on_ids_and_symbols_and_spares_claude_md_and_home_tree(self):
+        text = ("`CLAUDE.md` is a symlink to this file.\n"            # spared
+                "never a `~/.claude` path\n"                         # spared
+                "roster: claude-code, pi\n"                          # 3
+                "`hooks/hermes-manual.yaml` (Hermes)\n"              # 4
+                "`.opencode/plugin/x.ts`\n"                          # 5
+                "raises `AllTargetsRefusedError`\n"                  # 6
+                "symlinks (HARNESS_SKILL_DIRS)\n")                   # 7
+        self.assertEqual([h.split(":", 1)[0] for h in retired_doc_lines(text)],
+                         ["3", "4", "5", "6", "7"])
 
     def test_retired_name_scan_reports_each_spelling_and_ignores_out_of_scope_files(self):
         (self.root / "mod.py").write_text(
@@ -617,14 +650,21 @@ class StaleHarnessIdRefusedTest(freshness._InstalledMachineCase):
             self.cwd,
         )
         self._assert_refused("the installer flow", result, before, self._world())
-        # The named recovery works: the same re-run with --harnesses pi reinstalls for pi.
-        recovered = self._run(
-            ["--yes", "--reinstall", "--modelb-home", str(self.modelb_home),
-             "--target-root", str(self.target_root), "--stacks", "bun", "--harnesses", "pi"],
-            self.cwd,
-        )
+        # The named recovery works: the command the refusal PRINTED is run as a shell would split
+        # it (CR-MDB-031 C5 F11) — after checking it acts on THIS sandbox.
+        printed = re.findall(r"`(modelb-axi --reinstall[^`]*)`", result.stderr)
+        self.assertEqual(len(printed), 1,
+                         f"the refusal prints one recovery command; stderr={result.stderr!r}")
+        argv = shlex.split(printed[0])
+        for flag, expected in (("--modelb-home", self.modelb_home),
+                               ("--target-root", self.target_root)):
+            self.assertIn(flag, argv, f"the printed recovery names {flag}; argv={argv!r}")
+            self.assertEqual(argv[argv.index(flag) + 1], str(expected),
+                             f"the printed recovery's {flag} names this sandbox; argv={argv!r}")
+        recovered = self._run(argv[1:], self.cwd)
         self.assertEqual(decode_axi(recovered.stdout).get("outcome"), "installed",
-                         f"the recovery re-run must install; stderr={recovered.stderr!r}")
+                         f"the printed recovery {printed[0]!r} must install; "
+                         f"stderr={recovered.stderr!r}")
         self.assertEqual(self.load_install()["install"]["harnesses"], ["pi"])
 
 
