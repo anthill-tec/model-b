@@ -24,7 +24,7 @@ already has a precedent for exactly this shape of self-reference \u2014
 ``tests/test_client_verb_sweep.py``'s own ``BAN_DEFINING_FILES``/``GUARD_TEST``
 carve-out excludes the files that DEFINE a ban from the ban's own scan. The
 gate below follows the same convention: a short, explicit, justified
-carve-out list (this module itself, plus the two modules that keep a
+carve-out list (this module itself, plus the modules that keep a
 legitimate historical citation), rather than obfuscating the search token.
 Every OTHER test file in this cycle's migration was cleaned to a genuine
 zero \u2014 see the RED report for the full migrated-test-id list.
@@ -74,6 +74,11 @@ VSCODE_REFERENCE_CARVE_OUTS = {
     # the same kind of legitimate historical-record citation, against the
     # DN's Scripts/AXI-wave section \u2014 also untouched by this CR.
     "tests/test_generator_role_contract.py",
+    # Keeps test_criterion_five_splits_the_halves_and_declines_the_vscode_client,
+    # which verifies PRD \u00a74 criterion 5 states the vscode-crucible.py request as
+    # DECLINED (D7, Sandesh #1370) per CR-MDB-035 \u00a7S1 \u2014 the same kind of
+    # legitimate historical-record citation.
+    "tests/test_prd_criteria.py",
 }
 
 

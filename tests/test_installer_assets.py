@@ -917,8 +917,8 @@ CLOSED_CR_SPEC_NAME_RE = re.compile(r'^CR-MDB-0(0[1-9]|1[0-6])-.*\.md$')
 
 def _closed_cr_spec_files():
     """Every docs/changes/CR-MDB-0{01..16}-*.md file that exists (007 has
-    no separate spec file -- see docs/changes/README.md's queue row, which
-    points CR-MDB-007 at README.md#footer-notes instead)."""
+    no separate spec file and no queue row -- the row was removed in
+    b237b63; see docs/changes/README.md's 2026-07-20 CR-MDB-007 note)."""
     return sorted(
         p for p in CHANGES_DIR.glob("CR-MDB-0*.md")
         if CLOSED_CR_SPEC_NAME_RE.match(p.name)
