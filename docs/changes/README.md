@@ -925,3 +925,4 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   prunes against this run's `--target-root`, and a differing recorded root prunes nothing and warns.
   Hand-modified leftovers are kept even under `--force-managed`; empty bundle dirs are removed up to,
   never including, the store roots; the `retired` hint becomes "re-run `--reinstall`".
+- 2026-09-25 — **CR-MDB-040 spec + plan APPROVED** (user): C1 red-green (prune + reporting, §S1–§S2), C2 verify. Execution held by user direction — no plan filed, no branch cut.
