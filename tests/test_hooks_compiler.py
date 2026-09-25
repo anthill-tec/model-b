@@ -39,10 +39,9 @@ refusal path) and no `degraded` flag (CR-MDB-031 C5 F8: nothing ever set
 it). Every input schema-instance
 `command` must be accounted for (AC4/AC6).
 
-Stdlib only: unittest + json + tempfile + shutil + pathlib.
+Stdlib only: unittest + tempfile + shutil + pathlib.
 """
 
-import json
 import shutil
 import tempfile
 import unittest
