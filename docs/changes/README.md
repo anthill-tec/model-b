@@ -44,7 +44,7 @@ Queue rows enumerate the whole delivery (structure only). **Live status lives on
 | [CR-MDB-027](CR-MDB-027-subagent-dispatch-on-pi.md) | Sub-agent dispatch on Pi: decide what provides it, given Pi core has none (decision CR — RULED 2026-09-21: `pi-archimedes`, DN §D16; unblocks the CR-025 rewrite) | 5 | — |
 | [CR-MDB-028](CR-MDB-028-worktree-flow-scheduling-migration.md) | Retire `worktree-flow.py`'s DB half: scheduling moves to Crucible's API (P0 — above the routing strategy, user ruling) | 5 | 022 |
 | [CR-MDB-035](CR-MDB-035-prd-criteria-reconciliation.md) | Reconcile the PRD with the shipped tree: §4 success criteria, §3 invariants and the design sections merged CRs moved | 5 | 021, 025, 031 |
-| [CR-MDB-034](CR-MDB-034-archive-mapping.md) | `archive/mapping.md`: where every relocated file went (supersedes CR-MDB-012 — a release is NOT a CR) | 5 | — |
+| [CR-MDB-034](CR-MDB-034-archive-mapping.md) | `archive/mapping.md`: a living, gated map of where every relocated path went (supersedes CR-MDB-012 — a release is NOT a CR) | 5 | — |
 | [CR-MDB-039](CR-MDB-039-worktree-isolation-on-pi.md) | Worktree isolation on Pi: a write boundary that holds without a movable session directory | 5 | 031 |
 | [CR-MDB-040](CR-MDB-040-installer-prune.md) | A redeploy removes what it no longer deploys (PRD §4 criterion 6) | 5 | 035 |
 
@@ -863,3 +863,10 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   its AMENDED-line exemptions can hide a newly written requirement (VERIFY F4/F5 — a mutation that
   adds "AMENDED … : init MUST write a CLAUDE.md" passes); spelled-out counts ("sixteen agents") are not
   matched; D10's "chezmoi-managed user space" is descriptive and stays.
+- 2026-09-25 — **CR-MDB-034 gap analysis: SPEC_UPDATE_NEEDED** (develop `4d4f139`, suite 1177 OK). The
+  spec predated CR-024/025/028/031/032 and the D5 amendment, whose moves it did not name; "every new
+  path resolves in the tree" could not hold for external authorities (Crucible clients, the user's
+  chezmoi) or deletions; its PRD §4 design reference no longer exists after CR-MDB-035. **User ruling:
+  a LIVING map with a gate** (`tests/test_archive_mapping.py`) instead of an ungated snapshot, so a
+  later move must update its row. Spec rewritten: five-column table with a closed `Kind` vocabulary
+  (moved/absorbed/deleted/external), required rows asserted by old path, CR/commit citations checked.
