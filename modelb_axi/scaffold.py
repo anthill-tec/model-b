@@ -108,8 +108,10 @@ def _reject_unknown_harnesses(harness_ids: list[str]) -> None:
 def harness_recovery_command(home: Path) -> str:
     """The re-run that replaces a stale recorded harness set
     (CR-MDB-031 §S1): ``modelb-axi --reinstall`` against ``home`` with the
-    recorded target root and stacks (``<dir>`` when none is recorded) and
-    ``--harnesses`` set to the roster. Values are shell-quoted."""
+    recorded target root and stacks (``<dir>`` when none is recorded),
+    ``--harnesses`` set to the roster, and ``--allow-missing-capabilities``
+    when the install recorded it (the re-run would otherwise fail the
+    pre-flight the recorded install passed). Values are shell-quoted."""
     install = load_install_toml(home).get("install", {})
     target_root = install.get("target_root")
     stacks = install.get("stacks")
@@ -120,6 +122,9 @@ def harness_recovery_command(home: Path) -> str:
     if isinstance(stacks, list) and stacks and all(isinstance(s, str) for s in stacks):
         parts += ["--stacks", shlex.quote(",".join(stacks))]
     parts += ["--harnesses", ",".join(HARNESS_ROSTER_IDS)]
+    allow_missing = install.get("allow_missing_capabilities")
+    if isinstance(allow_missing, bool) and allow_missing:
+        parts.append("--allow-missing-capabilities")
     return " ".join(parts)
 
 
