@@ -54,15 +54,15 @@ merge note, not the PRD.
    `tests/test_prd_criteria.py`, `tests/test_scaffold.py`.
 4. **Generated agents.** `python3 generator/build.py --check` reports clean; every generated
    definition comes from one `generator/stacks/*.toml` × one `generator/templates/*.md.tmpl`;
-   `init` and `agents` render definitions per project and never overwrite an unmarked or
-   hand-modified definition (skipped unless `--force-managed`). *Amended 2026-09-25 (CR-MDB-035):
+   `init` and `agents` render definitions per project; a hand-modified definition is skipped
+   unless `--force-managed`, and an unmarked one is never written. *Amended 2026-09-25 (CR-MDB-035):
    the literal counts are retired — CR-MDB-024 made rust the fifth generated stack, and DN §D17 /
    CR-MDB-025 moved definitions to per-project rendering; the installer deploys none.* **Check:**
    `generator/build.py --check`, `tests/test_agent_generator.py`,
    `tests/test_pi_agent_definitions.py`.
-5. **Crucible clients.** *Model B's half:* every Crucible client invocation in shipped skills and
-   templates matches the released client's surface at `~/.crucible/clients/`, resolved through
-   `~/.crucible/crucible-clients.json`. *Crucible's half:* the per-stack clients ship in a Crucible
+5. **Crucible clients.** *Model B's half:* every Crucible client invocation in shipped skills,
+   templates, stack parameters and contracts matches the released client's surface at
+   `~/.crucible/clients/`. *Crucible's half:* the per-stack clients ship in a Crucible
    release (0.2.2: arduino, bun, mvn, python, rust); a register→test→unregister smoke per client is
    Crucible's release gate, not Model B's. `vscode-crucible.py` was declined (D7, Sandesh #1370):
    no VS Code client exists or is pending. *Amended 2026-09-25 (CR-MDB-035): Crucible shipped
@@ -95,6 +95,13 @@ line — the pattern D5 already uses — stating the current design and the CR/D
 | D10.7, "Claude Code: the project's `.claude/settings.json`" | Pi: the project's `.pi/extensions/` (CR-MDB-030/-031) |
 | D10 installer-vs-scaffold bullet, "global memory (language refs) … per the targeted harnesses" | no global memory tier (D5 amendment); the only harness is Pi |
 | D10(e), the four-harness roster | Pi only (DN §D14; CR-MDB-031) |
+| D2, Tier 3 "the `memory/` reference library" | the library is `skills-src/memory-templates/`, scaffolded into `<project>/docs/memory/` (D5 amendment; criterion 3) |
+| D2, "global language refs per D5" | there is no global memory tier (D5 amendment) |
+| D3, the `status-report` skill | no `status-report` bundle exists; `bootstrap`, `shutdown` and `code-health` ship |
+| D6, "(20 files)" and the bespoke list | Model B ships the generated stack × role set only, rendered per project (DN §D17, CR-MDB-025); it ships no bespoke agents; counts are not stated (criterion 4) |
+| D7, "bundle path `crucible:clients/`" | Model B consumes the released clients at `~/.crucible/clients/`, never a checkout (D10, ruling 2026-09-23) |
+| D8, the `mail-axi` contract | archived to `archive/contracts/mail-axi.md` by CR-MDB-031; not a Model B contract |
+| D10.5, "the run-context wrapper plumbing" | retired by CR-MDB-031; skills call the installed Crucible client directly |
 
 §1 Problem and the header's Sources line are history and stay as written.
 
@@ -105,10 +112,11 @@ A new module `tests/test_prd_criteria.py` asserts:
   unresolved citation fails;
 - the `AGENTS.md` scaffolded for all five stacks in `multi:3` mode, in a sandbox, is ≤100 lines
   (criterion 1);
-- PRD §3 and §4 name no `CLAUDE.md`, `chezmoi`, `Claude Code`, `Hermes` or `OpenCode` except
+- PRD §3 and §4 name no `CLAUDE.md`, `chezmoi`, `Claude Code`, `Hermes` or `OpenCode` (matched
+  case-insensitively, including `$HOME/.claude/` paths) except
   inside a dated amendment note or as a stated absence (a term directly preceded by "no", as in
-  §S2's "emits no `CLAUDE.md`"); every §4 criterion carries a **Check:** and every `tests/…py`
-  path it names exists.
+  §S2's "emits no `CLAUDE.md`"); every §4 criterion carries a **Check:**, every `tests/…py`
+  path it names exists, and every repo script a Check invokes (e.g. `generator/build.py`) exists.
 
 `tests/test_client_verb_sweep.py:96` and `:689` cite "PRD §11 criterion 2"; they become "PRD §4
 criterion 2". `tests/test_installer_assets.py:920-921` says CR-MDB-007 has a queue row; that row
