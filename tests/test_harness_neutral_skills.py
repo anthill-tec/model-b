@@ -29,7 +29,7 @@ Class map (one per C2 acceptance criterion):
 
 Scope boundaries (C3 is done — no scope boundary remains):
 
-- ``contracts/`` IS scanned by the ``~/.claude`` and wrapper gates (``CLAUDE_HOME_SURFACES``): C3
+- ``contracts/`` IS scanned by the ``~/.claude`` and wrapper gates (``HOME_GATE_SURFACES``): C3
   rewrote ``contracts/lean-ctx.md`` and archived ``contracts/mail-axi.md``.
 - Nothing under ``skills-src/`` is excluded: C3 deleted the ``chezmoi`` bundle, so every gate
   scans the whole tree.
@@ -70,11 +70,14 @@ BUILD_PY = REPO_ROOT / "generator" / "build.py"
 
 # ------------------------------------------------------------------ surfaces ----
 
-#: The shipped surfaces of the ``~/.claude`` gate (AC 9), plus ``contracts/`` (C3's rewrite).
+#: The shipped surfaces of the ``~/.claude`` gate (AC 9), as the AC lists them (other modules
+#: import this tuple and extend it themselves).
 CLAUDE_HOME_SURFACES = (
     "skills-src", "generator", "hooks-src", "scripts", "modelb_axi", ".pi/agents",
-    "AGENTS.md", "docs/install-guide.md", "contracts",
+    "AGENTS.md", "docs/install-guide.md",
 )
+#: What the ``~/.claude`` and wrapper gates scan: AC 9's surfaces plus ``contracts/`` (C3's rewrite).
+HOME_GATE_SURFACES = CLAUDE_HOME_SURFACES + ("contracts",)
 #: The tool-name gate's surfaces (AC 10), exactly as the spec lists them.
 TOOL_SURFACES = ("skills-src", "generator", "hooks-src", "scripts")
 #: The ``CLAUDE.md`` gate's surfaces (AC 11), exactly as the spec lists them.
@@ -199,8 +202,8 @@ class ClaudeHomePathGateTest(_SurfacesExist):
     ``docs/install-guide.md``; exempt only ``CLAUDE_HOME_EXEMPT_LINES``."""
 
     def test_zero_live_claude_home_paths_in_the_shipped_surfaces(self):
-        self.assert_surfaces_exist(CLAUDE_HOME_SURFACES)
-        hits = _gate_hits(REPO_ROOT, CLAUDE_HOME_SURFACES, CLAUDE_HOME_RE,
+        self.assert_surfaces_exist(HOME_GATE_SURFACES)
+        hits = _gate_hits(REPO_ROOT, HOME_GATE_SURFACES, CLAUDE_HOME_RE,
                           exempt=CLAUDE_HOME_EXEMPT_LINES)
         self.assertEqual(hits, [], _report("§S2 ~/.claude gate (cite ~/.agents/skills/<name>/…)", hits))
 
@@ -231,7 +234,7 @@ class ClaudeHomePathGateTest(_SurfacesExist):
             "generator/__pycache__/x.md": "~/.claude\n",
         })
         with tmp:
-            hits = _gate_hits(root, CLAUDE_HOME_SURFACES, CLAUDE_HOME_RE,
+            hits = _gate_hits(root, HOME_GATE_SURFACES, CLAUDE_HOME_RE,
                               exempt=CLAUDE_HOME_EXEMPT_LINES)
         self.assertEqual(sorted(h.split(": ", 1)[0] for h in hits), [
             ".pi/agents/python-red-agent.md:1",
@@ -379,12 +382,12 @@ class CrucibleWrapperRetiredTest(_SurfacesExist):
     ``~/.claude`` gate's surfaces (``contracts/`` included): skills name the installed client."""
 
     def test_zero_tmp_claude_1000_in_the_shipped_surfaces(self):
-        self.assert_surfaces_exist(CLAUDE_HOME_SURFACES)
-        hits = _gate_hits(REPO_ROOT, CLAUDE_HOME_SURFACES, TMP_CLAUDE_RE)
+        self.assert_surfaces_exist(HOME_GATE_SURFACES)
+        hits = _gate_hits(REPO_ROOT, HOME_GATE_SURFACES, TMP_CLAUDE_RE)
         self.assertEqual(hits, [], _report("§S2 /tmp/claude-1000 gate", hits))
 
     def test_zero_crucible_wrapper_instructions_in_the_shipped_surfaces(self):
-        hits = _gate_hits(REPO_ROOT, CLAUDE_HOME_SURFACES, CRUCIBLE_WRAPPER_RE)
+        hits = _gate_hits(REPO_ROOT, HOME_GATE_SURFACES, CRUCIBLE_WRAPPER_RE)
         self.assertEqual(hits, [], _report(
             "§S2 wrapper gate (name ~/.crucible/clients/<stack>-crucible.py directly)", hits))
 
@@ -401,8 +404,8 @@ class CrucibleWrapperRetiredTest(_SurfacesExist):
             "AGENTS.md": "# Per-project context wrapper (pins CRUCIBLE_PROJECT_KEY)\n",
         })
         with tmp:
-            wrapper = _gate_hits(root, CLAUDE_HOME_SURFACES, CRUCIBLE_WRAPPER_RE)
-            tmp_dir = _gate_hits(root, CLAUDE_HOME_SURFACES, TMP_CLAUDE_RE)
+            wrapper = _gate_hits(root, HOME_GATE_SURFACES, CRUCIBLE_WRAPPER_RE)
+            tmp_dir = _gate_hits(root, HOME_GATE_SURFACES, TMP_CLAUDE_RE)
         self.assertEqual(sorted(h.split(": ", 1)[0] for h in wrapper), [
             "AGENTS.md:1",
             "skills-src/crucible/references/python.md:1",
