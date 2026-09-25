@@ -917,3 +917,11 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   `/.worktrees/` toplevel, now never true) → **folded into CR-MDB-041** (this commit). Pre-existing
   pi-lens nits, not this CR's: `worktree-flow.py` f-strings without placeholders (`91ff12f`);
   `tests/test_worktree_layout_and_bundles.py` I001 import order (CR-MDB-031).
+- 2026-09-25 — **CR-MDB-040 gap analysis: SPEC_UPDATE_NEEDED** (develop `e508ab9`, suite 1288 OK). The
+  draft left §S0 open; measured: only the installer flow rewrites the manifest (no `install.toml`, or
+  `--reinstall`), so pruning lives in `_deploy_stage` between `deploy_assets` and
+  `write_install_toml`; this machine's July manifest records 33 files including the retired `chezmoi`
+  and `crucible-report-vscode` bundles but no `target_root` (pre-CR-033), so a manifest without one
+  prunes against this run's `--target-root`, and a differing recorded root prunes nothing and warns.
+  Hand-modified leftovers are kept even under `--force-managed`; empty bundle dirs are removed up to,
+  never including, the store roots; the `retired` hint becomes "re-run `--reinstall`".

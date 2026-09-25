@@ -7,45 +7,91 @@ unmet until this merges.
 **Depends on:** CR-MDB-035 (states the criterion this CR satisfies)
 **Labels:** installer, manifest, deploy
 **Design reference:** PRD §4 criterion 6; CR-MDB-033 (manifest always consulted, unmanaged never
-clobbered); CR-MDB-036 (stack-scoped installation); CR-MDB-037 §S2 (`deployed_freshness`)
+clobbered, `target_root` recorded); CR-MDB-036 §S7 (stack-scoped installation); CR-MDB-037 §S2
+(`deploy.deployed_freshness`, the `retired` class)
 
 ## Context
 
-The installer records every file it deploys in `install.toml` and consults that manifest on the
-next run, so a hand-modified file is skipped and an unmanaged one is never written (CR-MDB-033).
-It never removes anything. Measured 2026-09-25 in a sandbox (`--target-root`, `--modelb-home`,
-`HOME` all under `/tmp`): installing `--stacks python,rust` then `--reinstall --stacks python`
-leaves `.agents/skills/crucible-report-rust/` deployed, while the new `install.toml` no longer
-records it. The file is now unmanaged by accident: Model B wrote it, no manifest owns it, and no
-later run will touch it.
+The installer records every file it deploys in `install.toml` (`[[files]]` `{path, sha256}`, paths
+relative to the target root) and consults that manifest on the next run: a hand-modified managed
+file is skipped unless `--force-managed`, and a file absent from the manifest is unmanaged and never
+written (`deploy._deploy_file`, CR-MDB-033). It never removes anything.
 
-The same happens to a bundle Model B retires. CR-MDB-031 retired `chezmoi`; a machine installed
-before that keeps `~/.agents/skills/chezmoi/` forever, and Pi keeps loading it. `modelb-axi`'s
-freshness report (CR-MDB-037 §S2, `deploy.deployed_freshness`) already classifies such entries as
-`retired` and tells the user to "remove them by hand" (`cli.py:580-581`).
+Measured 2026-09-25 in a sandbox: installing `--stacks python,rust`, then `--reinstall --stacks
+python`, leaves `.agents/skills/crucible-report-rust/` deployed while the new `install.toml` stops
+recording it. Model B wrote it, and after that run no manifest owns it.
 
-## §S0 — Gap-analysis questions
+A retired bundle behaves the same way. This machine's `install.toml` (written 2026-07, before
+CR-MDB-033) records 33 files, including `.agents/skills/chezmoi/SKILL.md` (retired by CR-MDB-031) and
+`.agents/skills/crucible-report-vscode/SKILL.md` (retired by CR-MDB-024). It records no
+`target_root`. The `already_installed` report (CR-MDB-037 §S2) classifies such entries as `retired`
+and says "remove them by hand" (`cli.py:580-581`, `docs/install-guide.md` "The `already_installed`
+report").
 
-- Which runs prune: a `--reinstall` only, or every installer run that rewrites the manifest.
-- What "managed" means at removal time: a prior-manifest entry whose deployed hash still equals
-  its recorded hash. A hand-modified or unmanaged file is never removed — confirm against
-  CR-MDB-033's rules and the `--force-managed` semantics.
-- Empty bundle directories left after removal.
-- Whether the `retired` hint in the freshness report becomes an action or stays a report.
-- The real machine's pre-CR-031 manifest records `harnesses = ["claude-code"]`, which is refused
-  until a `--reinstall --harnesses pi`; that reinstall is where pruning first runs for real.
+Only the installer flow deploys and rewrites the manifest. It runs when no `install.toml` exists
+or when `--reinstall` is given. A bare `modelb-axi` over an existing install reports and changes
+nothing.
 
-## Acceptance criteria (draft)
+## Scope
 
-- [ ] A redeploy removes every file recorded in the prior manifest, absent from the new one, whose
-      deployed hash equals its recorded hash — proven for a narrowed `--stacks` and for a retired
-      bundle.
-- [ ] A hand-modified or unmanaged file is never removed; it is reported.
-- [ ] The envelope reports removed paths; the human report names them.
-- [ ] A failed run removes nothing (validation before the first write, as today).
-- [ ] Suite baselines re-measured and recorded in `AGENTS.md`.
+### §S1 — Prune after a successful deploy
+In the installer's deploy stage (`cli._deploy_stage`), after `deploy_assets` succeeds and before
+`write_install_toml`, a new `deploy.prune_assets(prior_root, prior_files, new_paths)` handles every
+path recorded in the prior manifest and absent from the new manifest:
+
+- **Removed:** the deployed file exists and its hash equals its recorded hash. It was Model B's and
+  is unchanged. After removal, each directory left empty is removed, walking up and stopping at
+  the store root (`.agents/skills`, `.agents/hooks/scripts`, `.agents/scripts`). A store root is
+  never removed.
+- **Kept and reported (hand-modified):** the file exists with a different hash. `--force-managed`
+  does not change this; a hand-edited file is never deleted.
+- **Already gone:** the file does not exist. Nothing to do; not reported.
+- A prior path outside the three store directories is never touched. The deploy writes only there,
+  so such an entry is corrupt.
+
+`prior_root` is the prior manifest's recorded `target_root`. When the prior manifest records none
+(written before CR-MDB-033), it is this run's target root, which the install guide already tells
+the user to pass (`--reinstall --target-root`). When the recorded `target_root` differs from this
+run's, nothing is pruned, and a warning names the prior root and says its files were left in place.
+
+An `OSError` while pruning raises `DeployError`, so no `install.toml` is written. A later run
+re-prunes, and the already-gone paths are skipped. A run that fails before the deploy completes
+(pre-flight, validation, deploy error) removes nothing.
+
+### §S2 — Reporting
+- The install envelope gains `removed: [...]` (target-root-relative paths) and `kept: [...]` (the
+  hand-modified leftovers). Both are always present on the installed outcome, and empty when there
+  is nothing to report.
+- The human channel prints one line per removed path, plus one warning per kept path naming it and
+  saying it is no longer deployed and was left because it was edited.
+- The `already_installed` report's `retired` hint changes from "remove them by hand" to re-running
+  the printed `--reinstall` command, which removes the unchanged ones. `docs/install-guide.md` says
+  the same, and `pi-package/README.md` is regenerated from it.
+
+## Acceptance criteria
+
+- [ ] Installing `--stacks python,rust`, then `--reinstall --stacks python` (sandboxed), removes
+      every `crucible-report-rust` file and the `code-health` bundle, and their directories. The
+      new manifest records neither. The envelope's `removed` lists them.
+- [ ] A retired bundle recorded in a prior manifest is removed on `--reinstall`. Prove it with a
+      fixture manifest recording `.agents/skills/chezmoi/SKILL.md` and its deployed file.
+- [ ] A prior manifest with **no** `target_root` prunes against this run's `--target-root`.
+- [ ] A prior manifest whose `target_root` differs from this run's prunes nothing and warns,
+      naming the prior root.
+- [ ] A hand-modified leftover is kept, with or without `--force-managed`. It is listed in `kept`
+      and warned about by path.
+- [ ] Unmanaged files (never in the manifest) and files outside the three store directories are
+      never removed, even when a corrupt prior entry names them.
+- [ ] Store roots are never removed; empty bundle directories are.
+- [ ] A run that fails in pre-flight, validation or deploy removes nothing. A pruning `OSError`
+      writes no `install.toml`, and the next run completes the prune.
+- [ ] The `retired` hint and the install guide say that `--reinstall` removes unchanged retired
+      files. `pi-package/README.md` is regenerated, and `generator/build.py --check` is clean.
+- [ ] `AGENTS.md`'s module count (if a module is added) and both suite baselines are re-measured.
 
 ## Non-goals
 
-- No removal of anything outside the manifest.
+- No removal of anything the prior manifest does not record. Files orphaned by an install made
+  before this CR are gone from the manifest already and stay unmanaged.
 - No change to project-scoped rendering (`init`/`agents`), which has its own marker ownership.
+- Running the reinstall on this machine is a release step, not part of this CR.
