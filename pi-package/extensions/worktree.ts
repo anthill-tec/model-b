@@ -3,15 +3,24 @@
  *
  * Routing: when the pi-subagents service is present (looked up lazily, at
  * session start, on a dispatch or on a tool call, so load order does not
- * matter) this registers ONE workspace provider. Its `prepare` sends a child
- * to the registered git worktree `.worktrees/<CR>` of the first CR id in the
- * dispatch description; otherwise to the entered root; otherwise nowhere
- * (the child keeps the parent's cwd). An entered root that no longer exists
- * is an error, never a silent fall-back to the main tree.
+ * matter) this registers ONE workspace provider, and keeps the service
+ * instance that accepted it: `prepare` reads records from that instance only.
+ * Every child session loads pi-subagents too and republishes, then deletes,
+ * the global service entry, so a `globalThis` lookup inside `prepare` would
+ * miss. `prepare` sends a child to the registered git worktree `.worktrees/<CR>`
+ * of the CR id that OPENS the dispatch description (`CR-MDB-039 C1 RED`; a CR
+ * id elsewhere does not route); otherwise to the entered root; otherwise
+ * nowhere (the child keeps the parent's cwd). An entered root that no longer
+ * exists is an error, never a silent fall-back to the main tree. While a root
+ * is entered, a dispatch whose CR has a DIFFERENT worktree is an error naming
+ * both: `WF_WORKTREE_ROOT` is process-wide and the hook prefers it, so that
+ * child would be confined to the wrong worktree.
  *
  * Tools: `modelb_worktree_enter` sets `WF_WORKTREE_ROOT` (the variable the
- * block-write-outside-worktree hook reads) and records the entered root;
- * `modelb_worktree_exit` clears both. The session cwd never changes.
+ * block-write-outside-worktree hook reads) and records the entered root (its
+ * real path); `modelb_worktree_exit` clears both. The session cwd never
+ * changes. The hook governs file-tool writes (write/edit), not writes a shell
+ * command makes.
  */
 
 import { execFileSync } from "node:child_process";
@@ -21,7 +30,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 
 const SERVICE_KEY = Symbol.for("@gotgenes/pi-subagents:service");
-const CR_ID_RE = /CR-[A-Z][A-Z0-9]*-[0-9]+/;
+const CR_ID_RE = /^CR-[A-Z][A-Z0-9]*-[0-9]+/;
 const WORKTREE_SEGMENT_RE = /\/\.worktrees\/[^/]+(\/|$)/;
 const ROOT_ENV = "WF_WORKTREE_ROOT";
 
@@ -49,6 +58,15 @@ function text(t: string) {
 
 function isDir(p: string): boolean {
 	return existsSync(p) && statSync(p).isDirectory();
+}
+
+/** The real path of `p`, or `p` itself when it cannot be resolved. */
+function realOrSelf(p: string): string {
+	try {
+		return realpathSync(p);
+	} catch {
+		return p;
+	}
 }
 
 /**
@@ -83,12 +101,21 @@ function crWorktree(baseCwd: string, cr: string): string | undefined {
 export default function worktreeIsolation(pi: ExtensionAPI) {
 	let enteredRoot: string | undefined;
 	let providerState: "none" | "registered" | string = "none";
+	/** The service instance that accepted the provider; records are read from it alone. */
+	let registeredService: SubagentsService | undefined;
 
 	const provider: WorkspaceProvider = {
 		async prepare({ agentId, baseCwd }) {
-			const description = service()?.getRecord(agentId)?.description ?? "";
+			const description = registeredService?.getRecord(agentId)?.description ?? "";
 			const cr = CR_ID_RE.exec(description)?.[0];
 			const own = cr ? crWorktree(baseCwd, cr) : undefined;
+			if (own !== undefined && enteredRoot !== undefined && realOrSelf(own) !== enteredRoot) {
+				throw new Error(
+					`${cr} has its own worktree ${own}, but ${enteredRoot} is entered: WF_WORKTREE_ROOT is process-wide ` +
+						`and the write hook prefers it, so this agent would be confined to ${enteredRoot}. ` +
+						`An entered session works one CR; run modelb_worktree_exit (or enter ${own}) before dispatching.`,
+				);
+			}
 			const cwd = own ?? enteredRoot;
 			if (cwd === undefined) return undefined;
 			if (!isDir(cwd)) {
@@ -111,6 +138,7 @@ export default function worktreeIsolation(pi: ExtensionAPI) {
 		if (!svc) return;
 		try {
 			svc.registerWorkspaceProvider(provider);
+			registeredService = svc;
 			providerState = "registered";
 		} catch (err) {
 			providerState = `pi-subagents refused the workspace provider: ${err instanceof Error ? err.message : String(err)}`;
@@ -130,8 +158,9 @@ export default function worktreeIsolation(pi: ExtensionAPI) {
 		name: "modelb_worktree_enter",
 		label: "Enter worktree",
 		description:
-			"Enter a Model B CR worktree (`.worktrees/<cr>`, a registered git worktree): writes outside it are blocked " +
-			"and dispatched agents run in it. The session cwd does not change. Exit with modelb_worktree_exit.",
+			"Enter a Model B CR worktree (`.worktrees/<cr>`, a registered git worktree): file-tool writes outside it are blocked " +
+			"(not writes a shell command makes) and dispatched agents run in it. The session cwd does not change. " +
+			"Exit with modelb_worktree_exit.",
 		parameters: EnterParams,
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const resolved = path.resolve(ctx.cwd, params.path);
@@ -154,7 +183,9 @@ export default function worktreeIsolation(pi: ExtensionAPI) {
 			}
 			enteredRoot = root;
 			process.env[ROOT_ENV] = root;
-			return text(`Entered worktree. Active root: ${root}. Writes outside it are blocked. ${relocationNote()}`);
+			return text(
+				`Entered worktree. Active root: ${root}. File-tool writes outside it are blocked (not writes a shell command makes). ${relocationNote()}`,
+			);
 		},
 	});
 
