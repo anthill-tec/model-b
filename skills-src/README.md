@@ -8,7 +8,7 @@ a shared skill names capabilities and harness-neutral CLIs, never a harness's ow
 
 Write the capability ("record it in your task list", "ask the user", "dispatch the sub-agent
 with the worktree as its working directory"); where the exact invocation is load-bearing, name the
-CLI with its flags (`sandesh send --project … --to …`,
+CLI with its flags (`sandesh send --project … --from … --to …`,
 `~/.crucible/clients/<stack>-crucible.py <verb> --agent …`, `worktree-flow.py start`).
 
 The rule is gated by CR-MDB-020 §S4's harness-tool ratchet in

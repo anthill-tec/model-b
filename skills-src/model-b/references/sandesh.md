@@ -37,7 +37,7 @@ Only exit `0` means mail arrived — never read a non-zero exit as mail. Keep **
 
 ## Addressing + verbs
 - Addresses: `Mainline - <Project>` / `Track N - <Project>`.
-- `sandesh send --project <Project> --from "<your address>" --to "<address>" --kind request --subject … --body …` — a track raises a question/blocker/approval to Mainline. `--kind directive` — Mainline assigns/unblocks a track. `sandesh reply --project <Project> --to-msg <id> --body …` — answers a request; **reply = the requested work is DONE** ("you're unblocked, proceed").
+- `sandesh send --project <Project> --from "<your address>" --to "<address>" --kind request --subject … --body …` — a track raises a question/blocker/approval to Mainline. `--kind directive` — Mainline assigns/unblocks a track. `sandesh reply --project <Project> --from "<your address>" --to-msg <id> --body …` — answers a request; **reply = the requested work is DONE** ("you're unblocked, proceed").
 - **`--to` WAKES** the recipient; **`--cc` is SILENT** (awareness only, no wake — saves turns); `--to all-tracks` broadcasts to every active address minus the sender.
 - Lifecycle has no status field: `fetch` = received/being-acted-on (the waiting sender can observe read-state); `reply` = done.
 
@@ -45,5 +45,5 @@ Only exit `0` means mail arrived — never read a non-zero exit as mail. Keep **
 `sandesh addressbook --project <Project>` lists every registered address with `active` + `listening`. **How many tracks exist + whether they're alive comes from the addressbook, never assumption** ("N tracks" is not a given). Dispatch a `--to` directive ONLY to a `listening:true` address; if a needed track isn't alive, surface it (the human must launch that session) — don't dispatch into the void.
 
 ## Roles
-- **Track**: raises a `--kind request` to Mainline for anything needing a decision; then **HOLDS** until Mainline replies/directs — idle on the watcher, **zero LLM turns, never self-poll**. Signals cycle completion with `sandesh reply --to-msg <id>` threaded under the assignment message.
+- **Track**: raises a `--kind request` to Mainline for anything needing a decision; then **HOLDS** until Mainline replies/directs — idle on the watcher, **zero LLM turns, never self-poll**. Signals cycle completion with `sandesh reply --project <Project> --from "<your address>" --to-msg <id>` threaded under the assignment message.
 - **Mainline**: runs its own inbox watcher (`sandesh notify --to "Mainline - <Project>" --project <Project>`); on a To-addressed request → re-invoked → fetch + decide/schedule + reply/directive → **relaunch the watcher** (fallback path only — the Model B watcher relaunches itself). **ALWAYS reply the moment a disposition is done** — the raising track HOLDS until it hears back. If consuming a request needs the human, surface it and hold (don't busy-relaunch).

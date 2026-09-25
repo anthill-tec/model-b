@@ -128,8 +128,8 @@ Host is going down (power failure, forced stop). After closing the active write:
    uncommitted changes** (never leave WIP on disk) and confirm the active CR is merged (no
    unmerged commits left stranded on the feature branch). `git status --porcelain` empty.
 4. **ACK that you are safe to shut down** — to **Mainline** (`sandesh reply --project <Project>
-   --to-msg <id> …` threaded under the shutdown directive, or `sandesh send --project <Project>
-   --to "Mainline - <Project>" …`),
+   --from "<your address>" --to-msg <id> …` threaded under the shutdown directive, or
+   `sandesh send --project <Project> --from "<your address>" --to "Mainline - <Project>" …`),
    or to the **user** if the command came on this session:
    *"Track N safe to shut down — CR-XXX merged @ <HEAD>, lane drained, worktree clean / no
    carried work."* The ack IS the shutdown indicator.
@@ -151,8 +151,8 @@ and goes **last**.
 
 1. **Dispatch the shutdown to ALL active Tracks — propagating the `emergency` flag.** A Mainline
    shutdown is NEVER just Mainline. From `sandesh addressbook --project <Project>` take every
-   active track and send a directive (`sandesh send --project <Project> --kind directive
-   --to all-tracks …`, or `--to` each) telling them to shut
+   active track and send a directive (`sandesh send --project <Project> --from "<your address>"
+   --kind directive --to all-tracks …`, or `--to` each) telling them to shut
    down so each runs its own Step 2A. **If the User's shutdown carried `emergency`, the directive
    to EVERY track MUST carry `emergency` too** — the host is going down and takes the tracks with
    it, so they fast-abort rather than drain. A graceful Mainline shutdown dispatches a graceful
@@ -198,7 +198,7 @@ ONLY here, at a confirmed shutdown's last step.
     `pkill -f "sandesh notify --to '<your exact address>'"`.
   - **Never** a machine-wide `pkill sandesh` / broad kill — that would take down OTHER
     orchestrators' watchers. Kill only the one you own.
-  - Then `sandesh unregister --project <Project> --address "<your address>"` for a clean
+  - Then `sandesh unregister --project <Project> --address "<your address>" --as "<your address>"` for a clean
     addressbook (`active:false`), so the roster reflects you are down.
 - Next run, `/bootstrap` brings you back (re-register + relaunch the watcher). Shutdown
   kills; bootstrap revives.

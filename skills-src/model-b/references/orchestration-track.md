@@ -12,7 +12,7 @@ Worker-orchestrator-only rules. Read COMMON + TRACK. (Coordinator rules → MAIN
 - `python3 ~/.crucible/clients/python-crucible.py next --track "Track N - <Project>"` → `NEXT <cr>` / `HOLD <cr>` (not yet ready — its `depends_on` CRs aren't all COMPLETED) / `DRAINED`. A held track idles for Mainline's dispatch; readiness is `depends_on`-driven.
 - `start --cr <CR>` → claim → IN_PROGRESS. `finish --cr <CR>` → COMPLETED; it prints NO next line — ask `python-crucible.py next` again (that answer IS your instruction).
 - Loop = ask Crucible → `start` → `finish`. NEVER parse md lane sections for the next CR.
-- On `HOLD` or `DRAINED`: do NOT self-poll. Report your state to Mainline via Sandesh (`sandesh send --project <Project> --to "Mainline - <Project>" --kind request …`) and idle on your Sandesh watcher (zero LLM turns). Mainline detects the gate-clear (it watches the Crucible board) and sends you a `directive` to start — which wakes you. NEVER poll from the orchestrator loop.
+- On `HOLD` or `DRAINED`: do NOT self-poll. Report your state to Mainline via Sandesh (`sandesh send --project <Project> --from "<your address>" --to "Mainline - <Project>" --kind request …`) and idle on your Sandesh watcher (zero LLM turns). Mainline detects the gate-clear (it watches the Crucible board) and sends you a `directive` to start — which wakes you. NEVER poll from the orchestrator loop.
 - At every CR boundary, re-read your PAUSE-WHEN and HOLD until the gate clears.
 
 ## Root your SESSION in the worktree (the isolation floor; user 2026-06-25, hard-escalated)
@@ -32,7 +32,7 @@ Worker-orchestrator-only rules. Read COMMON + TRACK. (Coordinator rules → MAIN
 ## Raise every approval/request to Mainline — NEVER the user
 - A track's SOLE contact is Mainline. Send a `--kind request` (`sandesh send`) for every question / blocker / approval / go-ahead; Mainline disposes or escalates and relays back.
 - A user-approved block authorizes the full RED→GREEN→VERIFY cycle — do NOT stop after gap-analysis to ask permission to start RED.
-- Signal completion with `sandesh reply --project <Project> --to-msg <START message id>` threaded under the START (assignment) message, never a later GO/approval message.
+- Signal completion with `sandesh reply --project <Project> --from "<your address>" --to-msg <START message id>` threaded under the START (assignment) message, never a later GO/approval message.
 - Cull/re-scope spanning multiple CRs by SUT: re-home ONLY your CR's SUT subset, LEAVE the file-disjoint subset, and RAISE a reschedule-request for the owning CR (touching a sibling's file is a parallel-execution hazard).
 
 ## Run captive sub-agents in the BACKGROUND
