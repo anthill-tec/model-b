@@ -45,7 +45,7 @@ Queue rows enumerate the whole delivery (structure only). **Live status lives on
 | [CR-MDB-028](CR-MDB-028-worktree-flow-scheduling-migration.md) | Retire `worktree-flow.py`'s DB half: scheduling moves to Crucible's API (P0 — above the routing strategy, user ruling) | 5 | 022 |
 | [CR-MDB-035](CR-MDB-035-prd-criteria-reconciliation.md) | Reconcile the PRD with the shipped tree: §4 success criteria, §3 invariants and the design sections merged CRs moved | 5 | 021, 025, 031 |
 | [CR-MDB-034](CR-MDB-034-archive-mapping.md) | `archive/mapping.md`: a living, gated map of where every relocated path went (supersedes CR-MDB-012 — a release is NOT a CR) | 5 | — |
-| [CR-MDB-039](CR-MDB-039-worktree-isolation-on-pi.md) | Worktree isolation on Pi: a write boundary that holds without a movable session directory | 5 | 031 |
+| [CR-MDB-039](CR-MDB-039-worktree-isolation-on-pi.md) | Worktree isolation on Pi: enter/exit a worktree from the Model B Pi package (pi-subagents workspace provider + `WF_WORKTREE_ROOT`) | 5 | 031 |
 | [CR-MDB-040](CR-MDB-040-installer-prune.md) | A redeploy removes what it no longer deploys (PRD §4 criterion 6) | 5 | 035 |
 | [CR-MDB-041](CR-MDB-041-bootstrap-reads-scaffolded-files.md) | Bootstrap and shutdown read the files `init` scaffolds (`AGENTS.md`, `.env`, `docs/memory/INDEX.md`), not `ORCHESTRATOR-<Project>`/`MEMORY.md` | 5 | — |
 
@@ -890,3 +890,10 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   are not checked for existence (VERIFY F4); the detector class's `setUpClass` still errors with no git
   at all. The orchestrator's RED brief named two Java originals wrongly (`java-maven-best-practices`,
   `java-quarkus-patterns`); corrected at C3 against `audits/2026-07-20-memory-corpus.md`.
+- 2026-09-25 — **CR-MDB-039 gap analysis: SPEC_UPDATE_NEEDED** (develop `ad5aa4f`, suite 1205 OK). Measured
+  on Pi 0.87.1 + `@gotgenes/pi-subagents` 21.7.6: the filed premise ("no per-dispatch cwd") is half
+  wrong — pi-subagents exposes a `WorkspaceProvider` seam through `getSubagentsService()` that
+  relocates every child (its shell, file tools, `.pi/agents` and hook extensions follow the child's
+  cwd), and hooks spawn with the Pi process environment, so `WF_WORKTREE_ROOT` set in-process reaches
+  every hook. **User ruling: Model B Pi package enter/exit tools** (`modelb_worktree_enter`/`_exit`)
+  over launching Tracks inside worktrees or an honest-floor rewording. Spec rewritten to that design.
