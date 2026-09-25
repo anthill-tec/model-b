@@ -212,18 +212,24 @@ class PiPackageManifestTest(unittest.TestCase):
             "pi.extensions must list exactly the files under pi-package/extensions/",
         )
 
-    def test_pi_manifest_extensions_are_exactly_the_sandesh_watcher(self):
+    def test_pi_manifest_extensions_are_exactly_the_sandesh_watcher_and_the_worktree_extension(self):
         # Ruling Q1 (cycle 111) moved this exact pin to the extension's own
         # cycle (C2, cycle 112); orchestrator ruling H adds it here without
-        # migrating the agreement test above.
+        # migrating the agreement test above. MIGRATED at CR-MDB-039 C1 RED
+        # (S1: pi-package/extensions/worktree.ts, listed in pi.extensions);
+        # was test_pi_manifest_extensions_are_exactly_the_sandesh_watcher.
         pi = _manifest().get("pi")
         self.assertIsInstance(pi, dict, f"package.json 'pi' must be an object, got {pi!r}")
         assert isinstance(pi, dict)
-        self.assertEqual(pi.get("extensions"), ["extensions/sandesh-watcher.ts"])
-        self.assertTrue(
-            (EXTENSIONS_DIR / "sandesh-watcher.ts").is_file(),
-            "pi-package/extensions/sandesh-watcher.ts must exist",
+        self.assertEqual(
+            sorted(pi.get("extensions") or []),
+            ["extensions/sandesh-watcher.ts", "extensions/worktree.ts"],
         )
+        for name in ("sandesh-watcher.ts", "worktree.ts"):
+            self.assertTrue(
+                (EXTENSIONS_DIR / name).is_file(),
+                f"pi-package/extensions/{name} must exist",
+            )
 
     def test_package_carries_no_skills_directory(self):
         self.assertTrue(PI_PACKAGE.is_dir(), f"{PI_PACKAGE} must exist")

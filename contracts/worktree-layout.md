@@ -33,13 +33,13 @@ directory outside it would inherit none of it:
   the project's hook extension there — including the write-boundary hook — without a
   separate trust decision per worktree.
 - **Permission scope.** The project's permission policy is scoped to the project
-  directory; a worktree inside it falls under the same policy, so a sub-agent dispatched
-  with the worktree as its working directory runs with the project's permissions, not a
-  foreign directory's.
+  directory; a worktree inside it falls under the same policy. After the orchestrator enters
+  the worktree with `modelb_worktree_enter`, the agents it dispatches for the CR run rooted in
+  it, with the project's permissions, not a foreign directory's.
 
 ## Consumers
 
-Six files carry the string; a change to it changes all six in ONE commit (a worktree
+Seven files carry the string; a change to it changes all seven in ONE commit (a worktree
 mid-flight under the old string is stranded otherwise):
 
 | Consumer | How it carries the string |
@@ -50,6 +50,7 @@ mid-flight under the old string is stranded otherwise):
 | `skills-src/shutdown/SKILL.md` | the same role-detection rule at teardown |
 | `skills-src/model-b/references/orchestration-track.md` | a Track asserts its toplevel ends in the declared worktree directory |
 | `skills-src/model-b/references/sub-agent-procedure.md` | a dispatched sub-agent asserts its toplevel is its worktree, its only writable root |
+| `pi-package/extensions/worktree.ts` | routes each dispatch naming a CR to its registered `.worktrees/<cr>`; `modelb_worktree_enter` accepts only such a registered worktree |
 
 The scaffolded `.gitignore` line (`modelb_axi/scaffold.py`) follows the string but does not
 spell the `<cr>` form, so it is not a parsed consumer.

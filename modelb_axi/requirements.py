@@ -90,16 +90,17 @@ REQUIREMENTS: tuple[dict, ...] = (
     },
     {
         # CR-MDB-029 §S3: Model B's own Pi package — the Sandesh watcher
-        # supervisor. Offered (and run under ``--yes``) by the installer.
+        # supervisor, and worktree isolation (CR-MDB-039 §S3). Offered (and
+        # run under ``--yes``) by the installer.
         "id": "watcher",
         "tier": 1,
         "provider": "@anthill-tec/modelb-pi",
         "policy": "recommended",
         "scope": "always",
         "probe": "pi-package",
-        "asset_families": ("orchestration skills",),
+        "asset_families": ("orchestration skills", "worktree isolation"),
         "remediation": "pi install npm:@anthill-tec/modelb-pi",
-        "tools": ("sandesh_watcher",),
+        "tools": ("sandesh_watcher", "modelb_worktree_enter", "modelb_worktree_exit"),
     },
     {
         "id": "uv",

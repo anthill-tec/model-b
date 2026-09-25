@@ -6,8 +6,8 @@ subdirectory with a `SKILL.md`). This README is not a bundle and is never deploy
 **One rule governs the text of every bundle here (DN §D18, `docs/research/DN-multi-harness-deploy-model.md`):
 a shared skill names capabilities and harness-neutral CLIs, never a harness's own tools.**
 
-Write the capability ("record it in your task list", "ask the user", "dispatch the sub-agent
-with the worktree as its working directory"); where the exact invocation is load-bearing, name the
+Write the capability ("record it in your task list", "ask the user", "read the file by its
+explicit path"); where the exact invocation is load-bearing, name the
 CLI with its flags (`sandesh send --project … --from … --to …`,
 `~/.crucible/clients/<stack>-crucible.py <verb> --agent …`, `worktree-flow.py start`).
 

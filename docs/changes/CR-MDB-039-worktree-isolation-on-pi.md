@@ -50,16 +50,22 @@ dispatch into its CR's worktree, and enter/exit confines the orchestrator's own 
 `pi-package/extensions/worktree.ts`, listed in `pi-package/package.json` `pi.extensions`.
 
 **Routing.** When the extension loads, and the pi-subagents service is present (looked up lazily,
-at first use, so load order does not matter), it registers **one** workspace provider. For each
-dispatch, `prepare({agentId, baseCwd})`:
-1. reads the dispatch description via `getRecord(agentId)`, and takes the first CR id matching
-   `CR-[A-Z][A-Z0-9]*-[0-9]+`;
+at first use, so load order does not matter), it registers **one** workspace provider. It keeps a
+reference to the service instance that accepted the provider and reads records only from that
+instance: every child session loads pi-subagents too, and a child republishes, then deletes, the
+global entry. For each dispatch, `prepare({agentId, baseCwd})`:
+1. reads the dispatch description via that service's `getRecord(agentId)`, and takes the CR id
+   that **opens** the description (`^CR-[A-Z][A-Z0-9]*-[0-9]+`, the agent-id convention
+   `CR-MDB-039 C1 RED`); a CR id elsewhere in the description does not route;
 2. if the repository containing `baseCwd` has a registered git worktree at `.worktrees/<that CR>`,
    returns it as the child's cwd;
 3. otherwise, if an orchestrator root is entered (below), returns that root;
 4. otherwise returns `undefined`, so the child keeps the parent's cwd.
 `prepare` throws a clear error if the entered root in step 3 no longer exists, for example after
 `worktree-flow finish`. So no child silently lands in the main tree when a worktree was intended.
+While a root is entered, `prepare` also throws when the description's CR resolves to a different
+worktree than the entered root. `WF_WORKTREE_ROOT` is shared by the whole process and the hook
+prefers it, so such a child would be confined to the wrong worktree. An entered Track works one CR.
 `dispose` returns nothing.
 
 **Tools.** It registers two LLM-callable tools:
@@ -123,11 +129,18 @@ the two new tools, so an absent package reports what is lost.
       registered git worktree. A refusal changes neither the environment nor the provider.
 - [ ] A second enter replaces the entered root, and a repeated exit is a no-op. With no service
       present, enter sets the variable and says children will not be relocated.
+- [ ] Records are read from the service instance that accepted the provider. Routing still works
+      after the global service entry is replaced by another instance and after it is deleted.
+- [ ] Only a CR id opening the description routes. While a root is entered, a dispatch whose CR
+      resolves to a different registered worktree fails with an error naming both worktrees.
+- [ ] Entering through a symlinked path records and exports the real path.
 - [ ] Integration: against a real `/tmp` git worktree, with the payload the compiled Pi hook
       extension sends, the real `block-write-outside-worktree` script
       - with the variable set by the tool, blocks a write outside the entered worktree and allows one
         inside it;
       - with the cwd `prepare` returned, blocks a write outside that worktree.
+      The "outside" targets lie outside `/tmp` and `$TMPDIR`, so the tests hold wherever the
+      checkout is.
 - [ ] The extension's service key equals the key in the installed pi-subagents
       (`src/service/service.ts`). The check skips, naming the path, when pi-subagents is not
       installed.
@@ -137,7 +150,8 @@ the two new tools, so an absent package reports what is lost.
 - [ ] No shipped skill, template or contract instructs making the worktree "the session's working
       directory", or says a sub-agent is dispatched "with the worktree as its working directory",
       except as the effect of entering it with the tool. `sub-agent-procedure.md` says what enforces
-      the boundary: the hook, active while the orchestrator has entered the worktree.
+      the boundary: the hook, active while the orchestrator has entered the worktree. It also says
+      the hook governs file-tool writes, not writes a shell command makes.
 - [ ] The `watcher` capability names worktree isolation and lists both tools.
 - [ ] The generated agents list neither tool (`python3 generator/build.py --check` stays clean).
 - [ ] The tests load the extension the way the existing pi-package tests do (jiti, with a fake Pi

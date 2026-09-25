@@ -457,7 +457,7 @@ def cmd_start(args):
             print(f"  env: copied .env → {env_dst}  (gitignored; Crucible ingest ready)")
     except Exception as _env_err:
         print(f"  NOTE: could not auto-copy .env into worktree: {_env_err} (continuing)")
-    print(f"  → enter it: cd {wt_dir}")
+    print(f"  → enter it with the Model B worktree tool: modelb_worktree_enter {wt_dir}")
     if label:
         _set_track(main_wt, args.cr, label)
         print(f"  track: {label}  ({'--track' if args.track else '$WF_TRACK'} → shown in `status`)")
@@ -663,7 +663,7 @@ def cmd_sync(args):
         sys.stderr.write(r.stdout + r.stderr)
         print(f"[worktree-flow] ERROR: rebase hit conflicts — ABORTED cleanly. "
               f"{branch} is unchanged. Resolve manually in {wt_dir}:\n"
-              f"  cd {wt_dir} && git rebase {develop}   # then fix conflicts")
+              f"  git -C {wt_dir} rebase {develop}   # then fix conflicts")
         return 1
     new_head = _git_out(["rev-parse", "--short", "HEAD"], wt_dir)
     print(f"sync: ok {branch} rebased onto {develop} (new head {new_head})")
@@ -829,6 +829,7 @@ def cmd_finish(args):
         merged_head = _git_out(["rev-parse", "--short", develop], main_wt)
         print(f"finish: ok merged {branch} → {develop} (now {merged_head}); branch deleted",
               file=sys.stderr)
+        print("  → exit the worktree: modelb_worktree_exit", file=sys.stderr)
         _unset_track(main_wt, args.cr)  # tidy the track label (best-effort; harmless if absent)
 
         if args.push:
@@ -902,6 +903,7 @@ def cmd_abort(args):
             return 1
         _git(["worktree", "prune"], main_wt)
         print(f"abort: removed worktree {wt_dir}")
+        print("  → exit the worktree: modelb_worktree_exit")
         if args.delete_branch:
             d = _git(["branch", "-D", branch], main_wt)
             if d.returncode != 0:
