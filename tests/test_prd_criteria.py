@@ -52,7 +52,8 @@ import unittest
 from pathlib import Path
 
 from tests._helpers import md_section, read_text
-from tests.test_scaffold import _run_module, _write_install_toml
+from tests._helpers import run_module as _run_module
+from tests._helpers import write_install_toml as _write_install_toml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SKILLS_SRC = REPO_ROOT / "skills-src"
@@ -374,21 +375,6 @@ def _missing_check_scripts(criteria: list, root: Path) -> list:
     return sorted({p for p in _check_scripts(criteria) if not (root / p).is_file()})
 
 
-def _subsection(text: str, heading_prefix: str) -> str:
-    """The ``### `` (or ``## ``) section whose heading starts with ``heading_prefix``, up to the
-    next heading of any level; ``""`` when absent."""
-    out = []
-    inside = False
-    for line in text.splitlines():
-        if line.startswith("#"):
-            if inside:
-                break
-            inside = line.startswith(heading_prefix)
-        if inside:
-            out.append(line)
-    return "\n".join(out)
-
-
 LIST_ITEM = re.compile(r"^(\s*)(?:[-*]|\d+\.)\s")
 
 
@@ -453,7 +439,7 @@ def _sites_without_amendment(text: str, sites=S3_SITES) -> list:
     CR-MDB-035 AMENDED line naming its token."""
     problems = []
     for site_name, heading, anchor, token in sites:
-        block = _site_block(_subsection(text, heading), anchor)
+        block = _site_block(md_section(text, heading, stop_prefix="#"), anchor)
         if not block:
             problems.append((site_name, "original sentence not found (§S3 keeps it)"))
             continue
