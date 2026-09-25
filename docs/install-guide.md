@@ -231,7 +231,7 @@ Every run ends with one summary on standard output, whose `outcome` is one of:
 | `already_installed` | `install.toml` already exists and `--reinstall` was not given. Nothing is deployed; the summary reports the state of what is deployed (below). | 0 |
 | `preflight_failed` | `uv` is missing, or a required Pi package is missing without `--allow-missing-capabilities`. Nothing was written. | 1 |
 | `stacks_rejected` | `--stacks` (or your answer to the stacks question) named an unsupported stack. Nothing was written. | 1 |
-| `harness_rejected` | `--harnesses` named something other than `claude-code`, `hermes`, `pi` or `opencode`. Nothing was written. | 1 |
+| `harness_rejected` | `--harnesses` named something other than `pi`, or `install.toml` records a harness this version no longer supports (one an older install targeted). Nothing was written. The error prints the re-run that replaces it, with your values: `modelb-axi --reinstall --target-root <dir> --stacks <stacks> --harnesses pi`. | 1 |
 | `aborted` | You answered no to "Proceed with installation?" or to the detected-harness question. Nothing was written. | 1 |
 | `deploy_failed` | Copying the assets failed (for example a directory could not be written). No `install.toml` is written, and an existing one is left as it was. | 1 |
 
