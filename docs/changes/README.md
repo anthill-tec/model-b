@@ -877,3 +877,16 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   and the project memory index. Also told Crucible the machine's deployed skills predate CR-MDB-031
   (they still cite `~/.claude/skills/…`, which resolves through a July symlink) until the release
   reinstall. **CR-MDB-034 spec APPROVED** (user).
+- 2026-09-25 — **CR-MDB-034 MERGED** (develop `73b00aa`; plan 112, cycles 146–148). `archive/mapping.md`
+  is a living, gated map (60 rows: moved/absorbed/deleted/external) from every relocated path to where
+  its content lives, who owns it and which CR/commit moved it; `tests/test_archive_mapping.py` gates the
+  table, the Kind vocabulary, resolution of every in-repo destination and every CR/commit citation, an
+  owner-first Authority on external rows, and a row for every archived file and every named retired
+  path — **any CR that moves a mapped path updates its row in the same change**. A `<name>` placeholder
+  never stands for the name identifying an archived file (VERIFY F3: a `<bundle>` row had silently
+  covered nine flattened files). Suite **1205 / 0 / 0 (real `HOME`), 1205 / 0 / 8 skips (empty `HOME`)**,
+  55 modules; a shallow clone skips the sha checks with a message. Red intermediates (bisect skips):
+  `0f33c3d` (module count), `1077dce` (FIX test-first). Recorded, not fixed: `{a,b}` brace alternatives
+  are not checked for existence (VERIFY F4); the detector class's `setUpClass` still errors with no git
+  at all. The orchestrator's RED brief named two Java originals wrongly (`java-maven-best-practices`,
+  `java-quarkus-patterns`); corrected at C3 against `audits/2026-07-20-memory-corpus.md`.
