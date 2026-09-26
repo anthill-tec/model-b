@@ -23,8 +23,10 @@ Worker-orchestrator-only rules. Read COMMON + TRACK. (Coordinator rules → MAIN
 - **`finish` and `abort`.** Both remove the worktree and run from the main tree, where your session already is. `finish` runs only AFTER the user's merge sign-off (relayed by Mainline). After `finish` or `abort`, exit with `modelb_worktree_exit`.
 - develop is the integration tree — MAINLINE-only otherwise. Any develop-level need → relay to Mainline; never edit develop yourself.
 
-## Write the code-level spec in YOUR OWN worktree
-- Mainline sends settled FEATURES; the TRACK writes the code-level spec IN ITS WORKTREE → revert unwanted changes → gap-analyse (prevent drift) → cycle plan → present to Mainline for approval.
+## Your CR's spec in the worktree — status and own-contract defects only
+- The CR's spec is written and committed on develop before the lane starts; your worktree carries it from the branch point.
+- In your worktree you edit your own CR's spec ONLY for its status and for defects against that CR's own contracts (an AC that contradicts its own §S, a wrong name).
+- **A scope change found mid-implementation goes into a patch CR** — raise it to Mainline as a request; never an inline spec edit. Holding your CR while the patch CR lands needs the user's approval, relayed by Mainline.
 - Do NOT auto-start the worktree and dispatch off your own bat.
 - Setup ordering: spec → gap-analysis → present + get approval → `plan-file` → THEN `worktree-flow start` + dispatch. The plan must be on the board before claiming the lane — its cycles are the resume spine; there is no separate todo list.
 - Design-first cycle ordering: implementation cycles before chores within the plan.
@@ -45,7 +47,7 @@ Worker-orchestrator-only rules. Read COMMON + TRACK. (Coordinator rules → MAIN
 - At sign-off present: the VERIFY verdict (APPROVE / FIX_REQUIRED / REWORK), the production-caller grep counts, and the NAMED integration test proving the call path.
 
 ## Re-pin on Mainline's dispositions
-- When Mainline relays a disposition (fix landed, scope call, re-scheduled lane, re-spec), re-read the stable directive, re-pin your worktree's spec, gap-analyse against it, regenerate the cycle plan if scope changed, present the update. Never carry a stale spec into the next cycle.
+- When Mainline relays a disposition (fix landed, a patch CR filed, scope call, re-scheduled lane), re-read the stable directive, gap-analyse your CR against it, regenerate the cycle plan if the plan changed, present the update. Never carry a stale plan into the next cycle.
 
 ## On a shutdown directive — invoke the `/shutdown` skill
 - A SHUTDOWN reaches a track as a Sandesh `directive` from Mainline (or `/shutdown` typed on your session). On fetching it, INVOKE the **`shutdown` skill** (`/shutdown`, plus `emergency` if the directive carries it — no role arg; you already know you're Track N) and follow it — do not improvise the teardown.

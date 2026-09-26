@@ -262,7 +262,8 @@ because by VERIFY the machinery exists and sunk cost argues for keeping it.**
     as three mid-cycle approval round-trips, though the first one made the remaining two certain.
 17. **Decide the direct refactor here, not a workaround later** — choose the direct refactor over a
     workaround or a compatibility shim during the analysis. A spec change forced mid-cycle is a
-    gap-analysis miss: log it as one.
+    gap-analysis miss: log it as one, and put the new scope into a patch CR, never an inline spec
+    edit.
 18. **Never conclude absence from a filtered grep** — a piped, filtered or truncated search that
     shows no hit proves nothing. Read the region unfiltered before claiming something is absent.
 19. **Surface design forks; never self-resolve them into the spec** — a choice between designs is

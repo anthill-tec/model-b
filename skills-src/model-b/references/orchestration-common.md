@@ -31,7 +31,8 @@ Universal rules for ANY orchestrator, ANY project/stack. Verbose detail + failur
 ## Cycle discipline
 - **The Crucible board IS the task list — there is no separate todo list.** The plan is filed complete in Crucible at feature start; its cycles are the resume spine, and a session resumes by reading the board (`plans`, `next`, the active cycle).
 - **A cycle = ONE RED→GREEN unit** (never split RED and GREEN into two cycles).
-- The plan holds IMPLEMENTATION cycles + VERIFY + FIX cycles (a FIX cycle is added with `cycle-add --kind fix` when VERIFY needs one) — NOT design/admin work.
+- The plan holds IMPLEMENTATION cycles + VERIFY + FIX cycles — NOT design/admin work.
+- **A VERIFY finding the user approves for fixing is fixed in its own FIX cycle** (`cycle-add --kind fix`), never inside the VERIFY cycle.
 - Setup ordering: gap-analysis → approval → `plan-file` → THEN the branch / worktree.
 - Intra-cycle: once approved, flow RED→GREEN→next without pausing between phases; pause only on drift or escalation.
 - **One active cycle at a time per orchestrator**, even for disjoint code — parallelism belongs to separate track orchestrators. An interjecting CR waits until the running cycle is closed on its merit; never activate a cycle while another is active.

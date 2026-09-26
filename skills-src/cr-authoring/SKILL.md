@@ -24,7 +24,7 @@ reference this skill; they do not restate it.
 ## Two-phase workflow (universal) + where work commits
 - **Design phase → the integration branch (`develop`/`main`).** Gap analysis, spec authoring, queue/PRD/DN updates. No feature branch.
 - **Execution phase → a feature branch.** RED+GREEN cycles, VERIFY, FIX, regression+merge.
-- **Where an edit commits:** free-standing spec/PRD/DN/queue/memory edits → integration branch. Edits **caused by** an in-flight CR's RED/GREEN/VERIFY (PRD revisions surfaced by RED, new DNs, AC tightening) → the **feature branch**, landing atomically with the implementation. Test: if the edit makes no sense without the implementation it's tied to, it's on the feature branch.
+- **Where an edit commits:** free-standing spec/PRD/DN/queue/memory edits → integration branch. Edits **caused by** an in-flight CR's RED/GREEN/VERIFY (PRD revisions surfaced by RED, new DNs, corrections of defects against the CR's own contracts) → the **feature branch**, landing atomically with the implementation. Test: if the edit makes no sense without the implementation it's tied to, it's on the feature branch.
 
 ## CR spec structure — DO NOT invent sections
 Standard order:
@@ -90,7 +90,7 @@ A **CR has a design surface** (new types/API/architecture, PRD coupling) → spe
 - **Where board-tracking is absent (legacy two-file close-out):** on ship, before the merge ceremony: (1) queue row → `COMPLETED` + shipped-date; (2) the spec's `**Status:**` flip. The regression-merge diff must touch BOTH files.
 
 ## Spec updates during execution — orchestrator authority vs VERIFY's
-The orchestrator MAY add (on the feature branch): a dated scope-reconciliation note, an `## Implementation Notes` section, inline annotations. The orchestrator MUST NOT touch the **AC checkboxes** (`- [ ]`) — those are **VERIFY's authority**; pre-marking short-circuits review. Deferred items needing a record → a follow-up CR/DN referenced from Implementation Notes.
+**A scope change found mid-implementation goes into a patch CR** (its own spec, ACs and queue row, sequenced after the parent), never an inline spec edit. On the feature branch the executing orchestrator edits its own CR's spec only for status and for defects against that CR's own contracts, plus an `## Implementation Notes` section (decisions, deferred items, follow-up pointers). Mainline never edits an IN_PROGRESS CR's spec on develop. The orchestrator MUST NOT touch the **AC checkboxes** (`- [ ]`) — those are **VERIFY's authority**; pre-marking short-circuits review. Deferred items needing a record → a follow-up CR/DN referenced from Implementation Notes.
 
 ## PRD conventions
 - **Every PRD opens with front matter** (Version / Date / Status / Authors, Builds on / Related) followed by a `## Change Control` table, one row per revision.
