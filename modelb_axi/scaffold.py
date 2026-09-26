@@ -643,6 +643,7 @@ def _renders_agents(harnesses: list[str]) -> bool:
 #: templates, so a ``java-*`` template is emitted for ``java`` OR
 #: ``quarkus``. A prefix absent here is stack-neutral.
 MEMORY_TEMPLATE_FAMILIES: dict[str, frozenset[str]] = {
+    "arduino": frozenset({"arduino"}),
     "java": frozenset({"java", "quarkus"}),
     "rust": frozenset({"rust"}),
 }
