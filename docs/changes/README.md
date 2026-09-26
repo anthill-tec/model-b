@@ -1034,3 +1034,23 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   `init` inputs (`mode`), not only keys; monorepo sub-project `.env`s need a `scope` field. (4) The
   schema is package data (`modelb_axi/project_schema.toml`), not a skill asset. (5) The byte-identity
   AC now enumerates the four intended output differences.
+- 2026-09-26 — **CR-MDB-043 MERGED** (develop `2aa4987`; plan 204, cycles 161–164). PRD D3.1 (amended): the
+  project registry is schema-driven. `modelb_axi/project_schema.toml` (package data, in the wheel)
+  declares eight keys — rules only, never values: `PROJECT_NAME`, `PROJECT_TOKEN`, `PROJECT_ACRONYM`,
+  `ORCHESTRATOR_LABEL` (derive: mode-aware), `REPO_OWNER`, `PROJECT_STACKS`, `CRUCIBLE_PROJECT_KEY`
+  (capture), `SANDESH_PROJECT` (derive: `PROJECT_NAME` without whitespace; `--sandesh-project`;
+  `[A-Za-z0-9_.-]`). `init`'s required-value check, validation (before any write), `--dry-run`
+  (`registry` + `setup_required` envelope fields) and rendered `.env`/`.env.local` come from it;
+  `load_schema` is strict. **Live defect fixed:** `init` wrote `CRUCIBLE_PROJECT_KEY` into
+  `.env.local`, which Crucible's client never reads — it is now in `.env` (proven with the released
+  client out of process); the multi-mode Sandesh README task names `SANDESH_PROJECT`. Gates: every
+  registry key a shipped skill/template/hook names is in the schema; no project value ships
+  (widened to prose, labels, addresses; shipped owner/account examples, `NAI`/`MDB` examples replaced
+  by placeholders). Suite **1535 / 0 / 0 (real `HOME`), 1535 / 0 / 10 skips (empty `HOME`)**, 61
+  modules; python3.11 2 skips (the two built-wheel checks). VERIFY C3 PASS with F1 (README Sandesh
+  task still from `PROJECT_NAME`) → C4 FIX. Red intermediates: `077b9bf`, `6895305`, `6a87d9e`.
+  **Crucible:** CR-CRU-154 (0.3.0) — project-metadata map + `project-meta` verb for the future
+  `init --register` mirror (#1399–#1401); an empty `CRUCIBLE_PROJECT_KEY` will fail like a missing
+  one in all five clients (#1402/#1403). **Brief correction:** `--allow-missing-capabilities` does NOT
+  stop `--yes` from running `pi install npm:@anthill-tec/modelb-pi` (tier-1 provider, by design) —
+  installer runs in briefs require a /tmp `PI_CODING_AGENT_DIR`. Next: CR-MDB-041.
