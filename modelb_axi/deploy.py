@@ -294,12 +294,11 @@ def deployed_freshness(
     (CR-MDB-037 \u00a7S2). Returns the sorted target-root-relative paths that
     are ``stale`` (deployed = manifest \u2260 source), ``hand_modified``
     (deployed \u2260 manifest) and ``retired`` (no packaged source); a
-    ``current`` entry is in none. Reads only; writes nothing."""
+    ``current`` entry is in none. ``files`` are ``config.manifest_entries``
+    (CR-MDB-040 §S1). Reads only; writes nothing."""
     found: dict[str, list[str]] = {"stale": [], "hand_modified": [], "retired": []}
     for entry in files:
-        if not isinstance(entry, dict) or "path" not in entry or "sha256" not in entry:
-            continue
-        rel, recorded = str(entry["path"]), str(entry["sha256"])
+        rel, recorded = entry["path"], entry["sha256"]
         source = packaged_source(asset_root, rel)
         if source is None or not source.is_file():
             found["retired"].append(rel)
@@ -345,23 +344,22 @@ def prune_assets(
     * an absent file is skipped silently, and an entry outside the three
       stores (:func:`store_root_of`) is never touched and in neither list.
 
-    An ``OSError`` raises :class:`DeployError` carrying it as the cause."""
+    ``prior_files`` are ``config.manifest_entries`` — well-formed and
+    de-duplicated by normalised path (the first wins); they are not
+    re-filtered here. An ``OSError`` raises :class:`DeployError` carrying
+    it as the cause."""
     removed: list[str] = []
     kept: list[str] = []
-    seen: set[str] = set()
     try:
         for entry in prior_files:
-            if not isinstance(entry, dict) or "path" not in entry or "sha256" not in entry:
-                continue
-            rel = str(entry["path"])
+            rel = entry["path"]
             store = store_root_of(rel)
-            if store is None or rel in new_paths or rel in seen:
+            if store is None or rel in new_paths:
                 continue
-            seen.add(rel)
             path = prior_root / os.path.normpath(rel)
             if not path.is_file():
                 continue  # already gone: nothing to do, not reported
-            if sha256_file(path) != str(entry["sha256"]):
+            if sha256_file(path) != entry["sha256"]:
                 kept.append(rel)
                 continue
             path.unlink()

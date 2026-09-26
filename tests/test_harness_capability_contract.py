@@ -1054,13 +1054,13 @@ class InstallTomlCapabilitiesRecordTest(_SandboxedInstallerCase):
 
     def test_pre036_install_toml_still_loads(self):
         self._write_pre036()
-        from modelb_axi.config import load_install_toml, load_manifest_hashes
+        from modelb_axi.config import load_install_toml, manifest_entries
         data = load_install_toml(self.modelb_home)
         self.assertEqual(data["install"]["harnesses"], ["pi"])
         self.assertNotIn("capabilities", data)
         self.assertEqual(
-            load_manifest_hashes(self.modelb_home),
-            {".agents/skills/crucible/SKILL.md": "0" * 64},
+            manifest_entries(data),
+            [{"path": ".agents/skills/crucible/SKILL.md", "sha256": "0" * 64}],
         )
 
     def test_reinstall_over_pre036_install_toml_gains_capabilities(self):

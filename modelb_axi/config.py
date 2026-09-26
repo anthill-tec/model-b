@@ -18,6 +18,7 @@ invoke :func:`write_install_toml` AFTER every deploy step has succeeded
 — a failed deploy leaves no ``install.toml`` at all.
 """
 
+import os
 import re
 import tomllib
 from pathlib import Path
@@ -121,16 +122,24 @@ def load_install_toml(home: Path) -> dict:
         return tomllib.load(fh)
 
 
-def load_manifest_hashes(home: Path) -> dict[str, str]:
-    """Prior-install manifest as ``{path: sha256}`` for the §S6/AC5
-    hash-check. Tolerates a missing/legacy ``files`` shape (e.g. the C1
-    hand-authored ``[files]`` table stub) by returning ``{}``."""
-    data = load_install_toml(home)
+def manifest_entries(data: dict) -> list[dict]:
+    """The prior manifest's ``[[files]]`` entries from a parsed
+    ``install.toml`` (:func:`load_install_toml`) — the ONE reader of them
+    (CR-MDB-040 §S1). Each entry is ``{path, sha256}`` as strings, the path
+    in its recorded spelling. An entry that is not a table carrying both
+    keys is dropped, and so is every entry whose ``os.path.normpath``-ed
+    path repeats an earlier one: the first wins. A missing or legacy
+    ``files`` shape (e.g. a hand-authored ``[files]`` table) yields ``[]``."""
     files = data.get("files")
-    if not isinstance(files, list):
-        return {}
-    return {
-        str(entry["path"]): str(entry["sha256"])
-        for entry in files
-        if isinstance(entry, dict) and "path" in entry and "sha256" in entry
-    }
+    entries: list[dict] = []
+    seen: set[str] = set()
+    for entry in files if isinstance(files, list) else []:
+        if not isinstance(entry, dict) or "path" not in entry or "sha256" not in entry:
+            continue
+        path = str(entry["path"])
+        normalised = os.path.normpath(path)
+        if normalised in seen:
+            continue
+        seen.add(normalised)
+        entries.append({"path": path, "sha256": str(entry["sha256"])})
+    return entries

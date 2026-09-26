@@ -23,6 +23,7 @@ from modelb_axi import __version__
 from modelb_axi.axi import envelope
 from modelb_axi.config import (
     load_install_toml,
+    manifest_entries,
     write_install_toml,
 )
 from modelb_axi.deploy import (
@@ -370,14 +371,11 @@ def _deploy_stage(
     asset_root = default_asset_root()
     # Manifest protection follows manifest PRESENCE, not a flag
     # (load_install_toml returns {} when install.toml is absent). Read
-    # ONCE: the hashes, the recorded root and the prune list come from it.
+    # ONCE: the entries (one config reader, de-duplicated, CR-MDB-040
+    # \u00a7S1), their hashes, the recorded root and the prune list come from it.
     prior = load_install_toml(home)
-    raw_files = prior.get("files")
-    prior_files = [
-        entry for entry in (raw_files if isinstance(raw_files, list) else [])
-        if isinstance(entry, dict) and "path" in entry and "sha256" in entry
-    ]
-    prior_hashes = {str(e["path"]): str(e["sha256"]) for e in prior_files}
+    prior_files = manifest_entries(prior)
+    prior_hashes = {e["path"]: e["sha256"] for e in prior_files}
     unmanaged: list[str] = []
     try:
         manifest, skipped = deploy_assets(
@@ -385,7 +383,9 @@ def _deploy_stage(
             prior_hashes=prior_hashes, force_managed=force_managed,
             unmanaged=unmanaged, stacks=stacks,
         )
-        removed, kept = _prune_stage(prior, prior_files, target_root, manifest, warnings)
+        removed, kept = _prune_stage(
+            prior, prior_files, prior_hashes, target_root, manifest, warnings,
+        )
     except DeployError as exc:
         _warn(str(exc), warnings, level="error")
         return 1
@@ -444,20 +444,21 @@ def _deploy_stage(
 
 
 def _prune_stage(
-    prior: dict, prior_files: list[dict], target_root: Path,
-    manifest: list[dict], warnings: list[str],
+    prior: dict, prior_files: list[dict], prior_hashes: dict[str, str],
+    target_root: Path, manifest: list[dict], warnings: list[str],
 ) -> tuple[list[str], list[str]]:
     """CR-MDB-040 \u00a7S1/\u00a7S2: prune the prior manifest's leftovers and
     report them; returns ``(removed, kept)``.
 
-    The prior root is the recorded ``target_root``, else this run's; a
-    recorded root differing from this run's prunes nothing and warns. A
-    corrupt entry (outside the stores) is dropped with one warning. Each
-    kept (hand-modified) entry is appended to ``manifest`` with its
-    RECORDED hash so later runs report it again. Raises
-    :class:`DeployError` from :func:`prune_assets`."""
+    ``prior_files`` are :func:`manifest_entries` (de-duplicated, the first
+    wins) and ``prior_hashes`` their hashes by path. The prior root is the
+    recorded ``target_root``, else this run's; a recorded root differing
+    from this run's prunes nothing and warns. A corrupt entry (outside the
+    stores) is dropped with one warning. Each kept (hand-modified) entry is
+    appended to ``manifest`` with its RECORDED hash so later runs report it
+    again. Raises :class:`DeployError` from :func:`prune_assets`."""
     for entry in prior_files:
-        if store_root_of(str(entry["path"])) is None:
+        if store_root_of(entry["path"]) is None:
             _warn(
                 f"dropping corrupt install.toml entry {entry['path']} \u2014 outside "
                 "the Model B stores; left untouched",
@@ -477,14 +478,13 @@ def _prune_stage(
     removed, kept = prune_assets(prior_root, prior_files, new_paths)
     for rel in removed:
         _say(f"  removed {rel} (no longer deployed)")
-    recorded_hashes = {str(e["path"]): str(e["sha256"]) for e in prior_files}
     for rel in kept:
         _warn(
             f"{rel} is no longer deployed; left in place because it was edited "
             "(restore or delete it and a later --reinstall prunes it)",
             warnings,
         )
-        manifest.append({"path": rel, "sha256": recorded_hashes[rel]})
+        manifest.append({"path": rel, "sha256": prior_hashes[rel]})
     return removed, kept
 
 
@@ -613,7 +613,6 @@ def _freshness_fields(home: Path, warnings: list[str]) -> dict:
         data = {}
     install = data.get("install")
     target_root = install.get("target_root") if isinstance(install, dict) else None
-    files = data.get("files")
     if not isinstance(target_root, str) or not target_root:
         _warn(
             f"freshness unknown \u2014 {INSTALL_TOML_NAME} records no target_root, "
@@ -622,10 +621,7 @@ def _freshness_fields(home: Path, warnings: list[str]) -> dict:
             warnings,
         )
         return {"freshness": "unknown"}
-    found = deployed_freshness(
-        default_asset_root(), Path(target_root),
-        files if isinstance(files, list) else [],
-    )
+    found = deployed_freshness(default_asset_root(), Path(target_root), manifest_entries(data))
     _say(
         f"  deployed assets under {target_root}: "
         + ", ".join(f"{state}={len(paths)}" for state, paths in found.items())
