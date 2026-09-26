@@ -426,15 +426,17 @@ def _render_gitignore() -> str:
 
 
 def _render_queue_readme(
-    name: str, acronym: str, label: str, mode: str,
+    name: str, acronym: str, label: str, mode: str, sandesh_project: str,
 ) -> str:
     """Queue template (§S3.2): four header slots, empty structure-only
     table, setup-tasks checklist (incl. the §S3.6 manual registration
     notes — registrations are manual in scaffold v1), dated Notes
-    footer."""
+    footer. The multi-mode Sandesh task names the project's Sandesh id
+    and Mainline address from ``SANDESH_PROJECT`` (CR-MDB-043 §S2)."""
     today = datetime.date.today().isoformat()
     sandesh_task = (
-        f"- [ ] Sandesh setup + register (`{name}`, `Mainline - {name}`) — "
+        f"- [ ] Sandesh setup + register (`{sandesh_project}`, "
+        f"`Mainline - {sandesh_project}`) — "
         "manual step (registrations are manual in scaffold v1)\n"
         if mode != "solo" else ""
     )
@@ -937,7 +939,8 @@ def _emit_plan(
     write(".gitignore", _render_gitignore())
 
     # §S3.2 docs model.
-    write("docs/changes/README.md", _render_queue_readme(name, acronym, label, mode))
+    write("docs/changes/README.md", _render_queue_readme(
+        name, acronym, label, mode, registry["SANDESH_PROJECT"]))
     write("docs/research/.gitkeep", "")
 
     # §S3.3 AGENTS.md (Pi reads it natively — no anchor file).
