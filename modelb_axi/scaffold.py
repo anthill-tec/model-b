@@ -260,13 +260,55 @@ _SCHEMA_FILES = (".env", ".env.local")
 _SCHEMA_SCOPES = ("root", "root+sub")
 _SCHEMA_SOURCES = ("ask", "derive", "capture")
 
+#: ``init`` inputs a derive rule may name besides the schema's own keys —
+#: the argparse dests of ``init``'s plan flags (CR-MDB-043 §S2).
+DERIVE_INIT_INPUTS = frozenset({"mode", "repo_shape"})
+
+
+def _is_text(value) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
+def _check_entry_fields(entry: dict, where: str) -> None:
+    """Refuse an entry lacking a field its source requires, or carrying one
+    of the wrong type (CR-MDB-043 §S2 "Loading and validating")."""
+    if not _is_text(entry.get("description")):
+        raise ScaffoldError(f"{where}: description must be a non-empty string")
+    readers = entry.get("readers")
+    if not isinstance(readers, list) or not readers or not all(map(_is_text, readers)):
+        raise ScaffoldError(f"{where}: readers must be a non-empty list of strings")
+    if not isinstance(entry.get("required"), bool):
+        raise ScaffoldError(f"{where}: required must be a boolean (true or false)")
+    if entry["file"] == ".env.local" and entry["scope"] == "root+sub":
+        raise ScaffoldError(
+            f"{where}: file = \".env.local\" with scope = \"root+sub\" is refused "
+            "— no sub-project .env.local is emitted")
+    source = entry["source"]
+    if source == "ask" and not str(entry.get("flag", "")).startswith("--"):
+        raise ScaffoldError(f"{where}: an ask key names its --flag")
+    if source == "derive":
+        if entry.get("rule") not in DERIVE_RULES:
+            raise ScaffoldError(
+                f"{where}: unknown derive rule {entry.get('rule')!r}; "
+                f"known: {', '.join(DERIVE_RULES)}")
+        inputs = entry.get("inputs")
+        if not isinstance(inputs, list) or not inputs or not all(map(_is_text, inputs)):
+            raise ScaffoldError(f"{where}: a derive key names its inputs")
+        if "override" in entry and not (
+                isinstance(entry["override"], str) and entry["override"].startswith("--")):
+            raise ScaffoldError(
+                f"{where}: override must be a --flag; got {entry['override']!r}")
+    if source == "capture" and not _is_text(entry.get("step")):
+        raise ScaffoldError(f"{where}: a capture key names its step")
+
 
 def load_schema(path: Path) -> list[dict]:
     """Load the project-settings schema at ``path`` (CR-MDB-043 §S1): its
     one top-level array of tables, one entry per key, in declaration
-    order. Raises :class:`ScaffoldError` for an unreadable schema, an
-    illegal field value, a duplicate key, or an unknown derive/validate
-    rule name — before ``init`` writes anything."""
+    order. Raises :class:`ScaffoldError` naming the key and the field for
+    an unreadable schema, an illegal or missing field, a duplicate key, an
+    unknown derive/validate rule name, or a derive input that is neither a
+    declared key nor an ``init`` input — before ``init`` writes anything."""
     try:
         data = tomllib.loads(Path(path).read_text(encoding="utf-8"))
     except (OSError, tomllib.TOMLDecodeError) as exc:
@@ -296,15 +338,14 @@ def load_schema(path: Path) -> list[dict]:
             raise ScaffoldError(
                 f"{where}: unknown validate rule {entry.get('validate')!r}; "
                 f"known: {', '.join(VALIDATE_RULES)}")
-        if source == "ask" and not str(entry.get("flag", "")).startswith("--"):
-            raise ScaffoldError(f"{where}: an ask key names its --flag")
-        if source == "derive":
-            if entry.get("rule") not in DERIVE_RULES:
+        _check_entry_fields(entry, where)
+    for entry in entries:
+        for item in entry.get("inputs", []) if entry["source"] == "derive" else []:
+            if item not in seen and item not in DERIVE_INIT_INPUTS:
                 raise ScaffoldError(
-                    f"{where}: unknown derive rule {entry.get('rule')!r}; "
-                    f"known: {', '.join(DERIVE_RULES)}")
-            if not isinstance(entry.get("inputs"), list) or not entry["inputs"]:
-                raise ScaffoldError(f"{where}: a derive key names its inputs")
+                    f"project schema {path}: {entry['name']}: derive input {item!r} "
+                    "(inputs) is neither a declared key nor an init input "
+                    f"({', '.join(sorted(DERIVE_INIT_INPUTS))})")
     return entries
 
 
