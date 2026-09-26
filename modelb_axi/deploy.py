@@ -288,6 +288,7 @@ def _file_hash(path: Path) -> str | None:
 
 def deployed_freshness(
     asset_root: Path, target_root: Path, files: list[dict],
+    stacks: list[str] | None = None,
 ) -> dict[str, list[str]]:
     """Judge each manifest entry against its deployed copy under
     ``target_root`` and its packaged source under ``asset_root``
@@ -295,18 +296,42 @@ def deployed_freshness(
     are ``stale`` (deployed = manifest \u2260 source), ``hand_modified``
     (deployed \u2260 manifest) and ``retired`` (no packaged source); a
     ``current`` entry is in none. ``files`` are ``config.manifest_entries``
-    (CR-MDB-040 §S1). Reads only; writes nothing."""
-    found: dict[str, list[str]] = {"stale": [], "hand_modified": [], "retired": []}
+    (CR-MDB-040 §S1). Reads only; writes nothing.
+
+    CR-MDB-040 §S2: ``stacks`` (the recorded ``[install].stacks``;
+    ``None`` = every stack) selects the skill bundles a ``--reinstall``
+    would deploy, by the rule :func:`deploy_assets` uses
+    (:func:`_skill_bundles`). A recorded path it would not deploy — no
+    packaged source, or a bundle the stacks do not select — is judged as
+    the prune judges it: ``retired`` when unchanged (or already gone),
+    ``kept`` when edited; never ``hand_modified``."""
+    found: dict[str, list[str]] = {
+        "stale": [], "hand_modified": [], "retired": [], "kept": [],
+    }
+    bundles = ({bundle.name for bundle in _skill_bundles(asset_root, stacks)}
+               if (asset_root / "skills-src").is_dir() else set())
     for entry in files:
         rel, recorded = entry["path"], entry["sha256"]
         source = packaged_source(asset_root, rel)
-        if source is None or not source.is_file():
-            found["retired"].append(rel)
-        elif _file_hash(target_root / rel) != recorded:
+        deployed = _file_hash(target_root / rel)
+        if source is None or not source.is_file() or not _redeployed(rel, bundles):
+            edited = deployed is not None and deployed != recorded
+            found["kept" if edited else "retired"].append(rel)
+        elif deployed != recorded:
             found["hand_modified"].append(rel)
         elif sha256_file(source) != recorded:
             found["stale"].append(rel)
     return {state: sorted(paths) for state, paths in found.items()}
+
+
+def _redeployed(rel: str, bundles: set[str]) -> bool:
+    """Whether a path with a packaged source is one a redeploy writes: a
+    skill-store path only inside one of ``bundles``; a hook or tool script
+    always (CR-MDB-040 §S2)."""
+    rel_path = Path(rel)
+    if not rel_path.is_relative_to(STORE_RELDIR):
+        return True
+    return rel_path.relative_to(STORE_RELDIR).parts[0] in bundles
 
 
 #: CR-MDB-040 §S1: the three store roots a deploy writes into — the only

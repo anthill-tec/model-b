@@ -602,9 +602,10 @@ def _run_scaffold_mode(home: Path) -> int:
 def _freshness_fields(home: Path, warnings: list[str]) -> dict:
     """CR-MDB-037 \u00a7S2: the ``already_installed`` envelope's report of
     deployed-asset state. With a recorded ``target_root``: sorted
-    ``stale``, ``hand_modified`` and ``retired`` lists. Without one (an
-    older, or unreadable, ``install.toml``): ``freshness: unknown`` and a
-    warning naming the re-run \u2014 no location is guessed and no deployed
+    ``stale``, ``hand_modified``, ``retired`` and (CR-MDB-040 §S2)
+    ``kept`` lists, judged against the recorded ``[install].stacks``.
+    Without one (an older, or unreadable, ``install.toml``): ``freshness:
+    unknown`` and a warning naming the re-run \u2014 no location is guessed and no deployed
     file is read. Findings never change ok or the exit code."""
     try:
         data = load_install_toml(home)
@@ -621,13 +622,18 @@ def _freshness_fields(home: Path, warnings: list[str]) -> dict:
             warnings,
         )
         return {"freshness": "unknown"}
-    found = deployed_freshness(default_asset_root(), Path(target_root), manifest_entries(data))
+    stacks = install.get("stacks") if isinstance(install, dict) else None
+    found = deployed_freshness(
+        default_asset_root(), Path(target_root), manifest_entries(data),
+        stacks if isinstance(stacks, list) and all(isinstance(s, str) for s in stacks)
+        else None,
+    )
     _say(
         f"  deployed assets under {target_root}: "
         + ", ".join(f"{state}={len(paths)}" for state, paths in found.items())
     )
     rerun = _reinstall_command(
-        home, target_root, install.get("stacks") if isinstance(install, dict) else None,
+        home, target_root, stacks,
         install.get("harnesses") if isinstance(install, dict) else None,
     )
     if found["stale"]:
@@ -635,7 +641,10 @@ def _freshness_fields(home: Path, warnings: list[str]) -> dict:
     if found["hand_modified"]:
         _say(f"    hand_modified: re-run `{rerun} --force-managed` to overwrite them")
     if found["retired"]:
-        _say(f"    retired: no longer shipped \u2014 re-run `{rerun}` to remove the unchanged ones")
+        _say(f"    retired: no longer deployed \u2014 re-run `{rerun}` to remove the unchanged ones")
+    if found["kept"]:
+        _say(f"    kept: no longer deployed, and left because it was edited \u2014 restore or "
+             f"delete it, then re-run `{rerun}`")
     freshness = "current" if not any(found.values()) else "outdated"
     return {"freshness": freshness, **found}
 
