@@ -5,12 +5,12 @@ Worker-orchestrator-only rules. Read COMMON + TRACK. (Coordinator rules → MAIN
 ## Execute the assigned cycle; NEVER self-schedule
 - A track EXECUTES its assigned lane; Mainline DECIDES what runs and when. Never reschedule across lanes.
 - A new gap / bug / dependency affecting scheduling → REQUEST it to Mainline (never self-reschedule).
-- Use your OWN `<orchestrator>-tN` id for ALL orchestrator-level ops (gate, regression, heartbeats) — never the bare main-orchestrator id.
+- Use your OWN Crucible id, `track<N>-<PROJECT_TOKEN>` (from the project's `.env`), for ALL orchestrator-level ops (gate, regression, heartbeats) — never the bare main-orchestrator id (`ORCHESTRATOR_LABEL`).
 
 ## Get your next CR from Crucible; `start` / `finish` the worktree
-- The git tool is **`~/.agents/scripts/worktree-flow.py`** — Model B's deployed script store (what the installer writes), never a machine-local copy. The queue tool is **`~/.crucible/clients/python-crucible.py`** (CR-MDB-028: worktree-flow holds no queue state).
-- `python3 ~/.crucible/clients/python-crucible.py next --track "Track N - <Project>"` → `NEXT <cr>` / `HOLD <cr>` (not yet ready — its `depends_on` CRs aren't all COMPLETED) / `DRAINED`. A held track idles for Mainline's dispatch; readiness is `depends_on`-driven.
-- `start --cr <CR>` → claim → IN_PROGRESS. `finish --cr <CR>` → COMPLETED; it prints NO next line — ask `python-crucible.py next` again (that answer IS your instruction).
+- The git tool is **`~/.agents/scripts/worktree-flow.py`** — Model B's deployed script store (what the installer writes), never a machine-local copy. The queue tool is **the project's stack client**, `<client>` below: resolved through Crucible's installed manifest `~/.crucible/crucible-clients.json` for a stack in `PROJECT_STACKS` (the entry key is the stack name; quarkus and java share `mvn-crucible.py`) (CR-MDB-028: worktree-flow holds no queue state).
+- `python3 <client> next --track "Track N - <Project>"` (the Crucible client) → `NEXT <cr>` / `HOLD <cr>` (not yet ready — its `depends_on` CRs aren't all COMPLETED) / `DRAINED`. A held track idles for Mainline's dispatch; readiness is `depends_on`-driven.
+- `start --cr <CR>` → claim → IN_PROGRESS. `finish --cr <CR>` → COMPLETED; it prints NO next line — ask the Crucible client's `next` again (that answer IS your instruction).
 - Loop = ask Crucible → `start` → `finish`. NEVER parse md lane sections for the next CR.
 - On `HOLD` or `DRAINED`: do NOT self-poll. Report your state to Mainline via Sandesh (`sandesh send --project <Project> --from "<your address>" --to "Mainline - <Project>" --kind request …`) and idle on your Sandesh watcher (zero LLM turns). Mainline detects the gate-clear (it watches the Crucible board) and sends you a `directive` to start — which wakes you. NEVER poll from the orchestrator loop.
 - At every CR boundary, re-read your PAUSE-WHEN and HOLD until the gate clears.

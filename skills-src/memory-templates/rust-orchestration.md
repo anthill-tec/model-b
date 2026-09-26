@@ -11,7 +11,7 @@ dispatch, verify-independently — not restated here) and
 - **`~/.agents/scripts/worktree-flow.py`** — parallel-CR isolation: `start`/`status`/`sync`/`finish`/`abort`. `finish` = `merge --no-ff` → `worktree remove` → `branch -d`; on a non-removable folder (root-owned docker bind-mount leftover) it reports the PARTIAL state + the `sudo rm -rf` recovery. Stack-agnostic but Rust CRs use it.
   - **Queue state lives in Crucible (CR-MDB-028, 2026-09-21):** `worktree-flow.py` no longer carries a DB half — its `cs` / `show` / `reconcile` / `next` / `progress` verbs are gone; the shared lib `schedule_db.py` still ships for projects that still hold local rows (they migrate at Model B's 1.0.0). **A track finds + advances its queue state ONLY through these commands — never by parsing a schedule md:**
     ```
-    python3 ~/.crucible/clients/python-crucible.py next --track "Track N - …"   # WHERE AM I / WHAT'S NEXT → NEXT <cr> | HOLD <cr> (deps not all COMPLETED) | DRAINED
+    python3 ~/.crucible/clients/rust-crucible.py next --track "Track N - …"   # WHERE AM I / WHAT'S NEXT → NEXT <cr> | HOLD <cr> (deps not all COMPLETED) | DRAINED
     worktree-flow.py start  --cr CR-XXX             # claim it → IN_PROGRESS  (worktree + feature branch)
     worktree-flow.py finish --cr CR-XXX             # done    → merged; prints NO next line — ask the Crucible client again
     worktree-flow.py status                         # git board: worktrees, ahead/behind, phase, merge lock
