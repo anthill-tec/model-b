@@ -974,8 +974,8 @@ def _emit_plan(
     agent_sources: tuple[Path, Path] | None = None,
     force_managed: bool = False,
     ownership: dict | None = None,
-    schema: list[dict] | None = None,
-    registry: dict | None = None,
+    schema: list[dict],
+    registry: dict,
 ) -> list[str]:
     """Perform the real §S3/§S4 emission under ``target``; returns the
     emitted file paths (relative to ``target``).
@@ -999,17 +999,9 @@ def _emit_plan(
     ``skipped`` (hand-edited) and ``unmanaged`` paths (CR-MDB-037 §S3).
 
     ``schema``/``registry`` are the project-settings schema and the values
-    :func:`run_init` resolved from it in validation (CR-MDB-043 §S2);
-    when omitted they are loaded/resolved here from the keyword inputs."""
+    :func:`run_init` resolved from it in validation (CR-MDB-043 §S2)."""
     if emitted is None:
         emitted = []
-    if schema is None:
-        schema = load_schema(PROJECT_SCHEMA_PATH)
-    if registry is None:
-        registry = resolve_registry(schema, {
-            "name": name, "token": token, "acronym": acronym, "mode": mode,
-            "owner": owner, "stacks": ",".join(stacks),
-        })
 
     def write(rel: str, text: str) -> None:
         path = target / rel
