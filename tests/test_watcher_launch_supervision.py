@@ -649,7 +649,9 @@ class ShutdownFinalStepS3Test(unittest.TestCase):
         self.assertLess(facility, kill, "harness facility before the targeted kill")
 
     def test_s3_targeted_kill_of_your_own_address_is_the_last_resort(self):
-        self.assertIn("sandesh notify --to '<your exact address>'", self.final, "the kill targets your own address")
+        # Migrated at CR-MDB-041 C3 FIX (F10): the pattern carries no literal inner quotes \u2014 the
+        # notifier's argv never contains them, so the quoted form could not match.
+        self.assertIn("sandesh notify --to <your exact address>", self.final, "the kill targets your own address")
         self.assertRegex(self.final, re.compile(r"last resort", re.IGNORECASE),
                          "the targeted kill is the LAST resort")
         self.assertRegex(self.final, re.compile(r"your own process only|own process only|only your own", re.IGNORECASE))

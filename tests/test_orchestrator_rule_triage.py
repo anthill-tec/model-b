@@ -807,10 +807,9 @@ def model_b_common_files(root: Path) -> list[Path]:
     return [root / MODEL_B_SKILL] + sorted((root / MODEL_B_REFERENCES).glob("*.md"))
 
 
-#: The bundles the widened name gate (CR-MDB-042 AC3, amended) leaves out: ``bootstrap/`` and
-#: ``shutdown/`` until CR-MDB-041 (their reading order is its scope), and Crucible's imported
-#: bundles (byte-faithful).
-EXEMPT_BUNDLES = ("bootstrap", "shutdown", "crucible-register")
+#: The bundles the widened name gate (CR-MDB-042 AC3, amended) leaves out: Crucible's imported
+#: bundles (byte-faithful). ``bootstrap/`` and ``shutdown/`` left it at CR-MDB-041 \u00a7S4.
+EXEMPT_BUNDLES = ("crucible-register",)
 EXEMPT_BUNDLE_PREFIXES = ("crucible-report-",)
 
 
@@ -894,8 +893,10 @@ class ModelBCommonTextNeutralTest(unittest.TestCase):
         for path in model_b_common_files(REPO_ROOT) + [REPO_ROOT / GAP_ANALYSIS_SKILL]:
             self.assertIn(path.relative_to(REPO_ROOT).as_posix(), rels)
         bundles = {rel.split("/")[1] for rel in rels if rel.count("/") > 1}
-        self.assertEqual(bundles, {"code-health", "cr-authoring", "crucible", "gap-analysis",
-                                   "git-workflow", "memory-templates", "model-b"})
+        # MIGRATED PIN (CR-MDB-041 \u00a7S4): bootstrap/ and shutdown/ are no longer exempt.
+        self.assertEqual(bundles, {"bootstrap", "code-health", "cr-authoring", "crucible",
+                                   "gap-analysis", "git-workflow", "memory-templates", "model-b",
+                                   "shutdown"})
         self.assertIn("skills-src/memory-templates/rust-orchestration.md", rels)
 
     def test_model_b_owned_text_names_no_project_or_orchestrator_note(self):
@@ -1084,7 +1085,8 @@ class AbsorbRulesOnSyntheticTreeTest(unittest.TestCase):
             "x.md:5: names ['NAI'] outside a dated provenance citation",
         ])
 
-    def test_owned_skill_files_skip_bootstrap_shutdown_and_crucible_imports(self):
+    def test_owned_skill_files_include_bootstrap_shutdown_and_skip_crucible_imports(self):
+        # MIGRATED PIN (CR-MDB-041 \u00a7S4): was ..._skip_bootstrap_shutdown_and_crucible_imports.
         for rel in ("skills-src/README.md", "skills-src/model-b/SKILL.md",
                     "skills-src/memory-templates/rust-orchestration.md",
                     "skills-src/bootstrap/SKILL.md", "skills-src/shutdown/SKILL.md",
@@ -1092,9 +1094,10 @@ class AbsorbRulesOnSyntheticTreeTest(unittest.TestCase):
                     "skills-src/crucible-report-bun/SKILL.md", "skills-src/crucible/SKILL.md"):
             self._write(rel, "# x\n")
         self.assertEqual([p.relative_to(self.root).as_posix() for p in model_b_owned_skill_files(self.root)],
-                         ["skills-src/README.md", "skills-src/crucible/SKILL.md",
+                         ["skills-src/README.md", "skills-src/bootstrap/SKILL.md",
+                          "skills-src/crucible/SKILL.md",
                           "skills-src/memory-templates/rust-orchestration.md",
-                          "skills-src/model-b/SKILL.md"])
+                          "skills-src/model-b/SKILL.md", "skills-src/shutdown/SKILL.md"])
 
     def test_fix_inside_verify_is_flagged_unless_the_line_says_never(self):
         text = ("Run the FIX agent inside the same VERIFY cycle.\n"

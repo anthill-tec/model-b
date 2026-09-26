@@ -39,7 +39,7 @@ scope = "root+sub"
 source = "ask"
 flag = "--token"
 validate = "non_empty"
-readers = ["model-b skill (naming registry)"]
+readers = ["model-b skill (naming registry)", "bootstrap/shutdown skills (a Track's Crucible id, track<N>-<PROJECT_TOKEN>)"]
 
 [[key]]
 name = "PROJECT_ACRONYM"
@@ -62,7 +62,7 @@ source = "derive"
 rule = "orchestrator_label"
 inputs = ["mode", "PROJECT_TOKEN"]
 validate = "non_empty"
-readers = ["model-b skill (orchestrator id)", "Crucible stack clients (orchestrator agent id)"]
+readers = ["model-b skill (orchestrator id)", "Crucible stack clients (orchestrator agent id)", "bootstrap/shutdown skills (the Mainline or Solo Crucible id)"]
 
 [[key]]
 name = "REPO_OWNER"
@@ -84,7 +84,7 @@ scope = "root"
 source = "ask"
 flag = "--stacks"
 validate = "stack_csv"
-readers = ["modelb-axi agents"]
+readers = ["modelb-axi agents", "bootstrap/shutdown skills (the stack whose Crucible client they resolve)"]
 
 [[key]]
 name = "CRUCIBLE_PROJECT_KEY"
@@ -108,4 +108,4 @@ rule = "remove_whitespace"
 inputs = ["PROJECT_NAME"]
 override = "--sandesh-project"
 validate = "sandesh_id"
-readers = ["modelb-axi init (AGENTS.md identity section, queue README Sandesh setup task)", "bootstrap/shutdown skills (pending CR-MDB-041: pass --project to the sandesh CLI)"]
+readers = ["modelb-axi init (AGENTS.md identity section, queue README Sandesh setup task)", "bootstrap/shutdown skills (pass --project to the sandesh CLI)"]

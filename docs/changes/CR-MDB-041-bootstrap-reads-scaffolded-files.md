@@ -68,8 +68,13 @@ No per-project orchestrator note and no `MEMORY.md` is named. Identity comes fro
   `Track <N> - <SANDESH_PROJECT>`, and every `sandesh` call passes `--project <SANDESH_PROJECT>`;
 - the Crucible own-run id from `ORCHESTRATOR_LABEL` (Mainline or Solo); a Track's is
   `track<N>-<PROJECT_TOKEN>` (PRD D3.1's mode-aware rule);
-- the Crucible client is the project's stack client, `~/.crucible/clients/<stack>-crucible.py` for a
-  stack in `PROJECT_STACKS` (any one: the plan verbs are universal).
+- the Crucible client is the project's stack client, resolved through Crucible's installed manifest
+  `~/.crucible/crucible-clients.json` for a stack in `PROJECT_STACKS` (any one: the plan verbs are
+  universal). Quarkus and java map to `mvn-crucible.py`, the same mapping as
+  `modelb_axi/requirements.py`.
+
+An empty `CRUCIBLE_PROJECT_KEY` means the project is not yet registered in Crucible. The skill says to
+do the queue README's setup task, and does not read an empty board as "idle".
 
 **Fallback** (a project without a `.env` registry, or a missing key): the same values are taken from
 the project's `AGENTS.md`; a value found in neither is asked of the user once. A missing
@@ -79,12 +84,40 @@ the project's `AGENTS.md`; a value found in neither is asked of the user once. A
 - Role comes from the invocation argument, then the carried context, then the session's Sandesh
   address (`Track <N> - …` ⟹ Track N); otherwise ask. No working-directory or `/.worktrees/`
   heuristic.
-- `bootstrap` Step 2 reloads the in-flight work from the board (`plans`, then the active cycle,
-  `next`), never from a todo list; `shutdown` drains the plan's open cycles, and its Track escalation
-  names the open cycles, not "active todos".
+- `bootstrap` Step 2 reloads the in-flight work from the board, never from a todo list. It uses what
+  the client actually returns: `plans` gives each plan's active cycle (id and label), and `next` gives
+  what is ready. `shutdown` finishes the active cycle, and its Track escalation names the active cycle,
+  not "active todos".
+- A Track resuming an in-flight CR re-enters its worktree (`modelb_worktree_enter` with
+  `.worktrees/<cr>`) before any write. The entered worktree is per-session state.
+- `shutdown`'s Track path works from the main tree:
+  - the develop merge runs as `git -C .worktrees/<cr> merge develop --no-edit`, and the status check
+    uses `git -C` too;
+  - the Track never finishes a CR on its own: the merge needs Mainline's user-approved sign-off
+    (`orchestration-track.md`). A graceful shutdown mid-CR commits the worktree, reports its state,
+    and leaves the CR open;
+  - where a finish is approved, it is `worktree-flow.py finish --cr <CR>`, followed by
+    `modelb_worktree_exit`.
 - The descriptions (frontmatter) say the same.
 
 ### §S4 — Leftovers
+The common rules agree with the two skills. `orchestration-track.md` gives the Track own-run id as
+`track<N>-<PROJECT_TOKEN>` and the queue tool as the project's stack client (not `python-crucible.py`
+for every project), and `memory-templates/rust-orchestration.md` names the stack client. Sandesh and
+watcher wording matches the tools:
+- `sandesh addressbook` prints a table: `LISTENING` shows `● live` (the `listening:true` shorthand
+  the skills use) and `STATUS` shows `active`;
+- a notifier is stopped by address: the Model B watcher's `/watcher stop <your address>` (never a bare
+  `/watcher stop`, which stops every watcher), or, on the fallback path and as a last resort, a
+  targeted kill whose pattern actually matches that process;
+- the skills name the watcher as a capability ("the Model B watcher") and its `/watcher` command, never
+  its tool name (DN-multi-harness §D18; the CR-MDB-026 gate forbids the token).
+
+The schema's `readers` entries for `PROJECT_STACKS`, `ORCHESTRATOR_LABEL` and `PROJECT_TOKEN` name the two
+skills. The phrase "the stack's orchestration template" reads "for a stack that has one". The two
+`python-crucible.py` examples kept only to meet `tests/test_client_path_anchoring.py`'s invocation
+floor are removed, and the floor is lowered with them, as its own comment requires.
+
 The two skills drop literal ids used as examples (`vidushi`/`vidushi-t<N>`; CR-MDB-043 already
 replaced the `NAI`/`Nai` casing example) and satisfy the name/retired-tool gate CR-MDB-042 exempted
 them from: the `bootstrap`/`shutdown` entries leave `EXEMPT_BUNDLES` in
@@ -108,6 +141,13 @@ them from: the `bootstrap`/`shutdown` entries leave `EXEMPT_BUNDLES` in
       board, shutdown drains the plan's open cycles.
 - [ ] The CR-MDB-042 name/retired-tool gate covers `bootstrap/` and `shutdown/` (exemption removed)
       and passes; the schema's `SANDESH_PROJECT` readers name the two skills without "pending".
+- [ ] The client is resolved through the manifest (quarkus/java → `mvn-crucible.py`); no skill builds
+      a client path that does not exist for a supported stack — checked by a test over every stack.
+- [ ] A resumed Track re-enters its worktree before any write; shutdown's Track path uses `git -C
+      .worktrees/<cr>`, never finishes without Mainline's sign-off, and passes `--cr` to `finish` then
+      exits the worktree.
+- [ ] `orchestration-track.md` and `rust-orchestration.md` agree with the two skills on the Track id and
+      the stack client.
 - [ ] Suite baselines re-measured and recorded in `AGENTS.md`.
 
 ## Non-goals

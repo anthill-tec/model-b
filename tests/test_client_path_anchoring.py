@@ -805,8 +805,10 @@ S3_TREES = ("skills-src", "generator/templates", "generator/stacks", "contracts"
 #: source whose count falls below its floor means the parser went blind there, not that the text
 #: got cleaner — lower a floor only with the change that removes those invocations.
 #: generator/templates and contracts carry no invocation today; their floor is recorded as 0.
-S3_MIN_PER_TREE = {"skills-src": 46, "generator/templates": 0, "generator/stacks": 28, "contracts": 0}
-S3_MIN_PER_SOURCE = {"fence": 34, "span": 25, "toml": 15}
+#: Lowered at CR-MDB-041 C3 FIX (70 invocations): skills-src 46\u219242 and span 25\u219221 with the four
+#: ``python-crucible.py`` span examples it removed (bootstrap's two, orchestration-track's two).
+S3_MIN_PER_TREE = {"skills-src": 42, "generator/templates": 0, "generator/stacks": 28, "contracts": 0}
+S3_MIN_PER_SOURCE = {"fence": 34, "span": 21, "toml": 15}
 
 
 class ClientContractS3Test(unittest.TestCase):

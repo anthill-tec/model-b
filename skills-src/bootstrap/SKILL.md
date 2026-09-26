@@ -1,12 +1,12 @@
 ---
 name: bootstrap
-description: Start-of-run bootstrap for a Model-B orchestrator session (Mainline or Track). Sets up and launches the Sandesh notify watcher, recovers any incomplete todo/task list left over from the previous run, and loads the last-held implementation-queue status. A Mainline session reads the implementation queue from Crucible and reports to the USER; a Track session just enables its notifier, reloads any in-flight cycle, informs MAINLINE of its status, and waits for instructions. The orchestrator ROLE is passed as the argument — `/bootstrap mainline` (the single per-project coordinator) or `/bootstrap track <N>` (a numbered worker, N = 1, 2, 3, …). Use when the user types "/bootstrap", or says "bootstrap", "new run starting", "start of day", or "boot the orchestrator".
+description: Start-of-run bootstrap for a Model-B orchestrator session (Mainline or Track). Sets up and launches the Sandesh notify watcher, reloads the in-flight work from the Crucible board (the plan, its active cycle, `next`), and loads the last-held implementation-queue status. A Mainline session reads the implementation queue from Crucible and reports to the USER; a Track session just enables its notifier, reloads any in-flight cycle, informs MAINLINE of its status, and waits for instructions. The orchestrator ROLE is passed as the argument — `/bootstrap mainline` (the single per-project coordinator) or `/bootstrap track <N>` (a numbered worker, N = 1, 2, 3, …). Use when the user types "/bootstrap", or says "bootstrap", "new run starting", "start of day", or "boot the orchestrator".
 ---
 
 # Bootstrap — start-of-run orchestrator setup
 
 A new run (or a new day) is starting. This skill brings ONE orchestrator session
-back online: its Sandesh notifier, its carried-over work, and — role-dependent —
+back online: its Sandesh notifier, its in-flight work on the board, and — role-dependent —
 either the implementation-queue board (Mainline) or a wait-for-instructions hold (Track).
 
 The **role is passed as the invocation verb** — `/bootstrap mainline` or
@@ -22,23 +22,19 @@ The **role is passed as the invocation verb** — `/bootstrap mainline` or
 Each role probes the other's liveness via the same `sandesh addressbook --project <Project>` (`listening:true`
 = up + wake-reachable) — Mainline scans the tracks, a track scans Mainline.
 
-**Read the memory that binds your role before acting.** Once Step 0 fixes your role,
-**Step 0.5 loads the rule set you must execute by** (`orchestration-common.md` + your
-role file + the project `ORCHESTRATOR-<Project>` note + the project memory index +
-`sandesh.md`). This is mandatory, not optional reading — every later step is performed
-the way YOUR role is supposed to perform it. The role rules are authoritative: if any
-later step conflicts with them, the role rule wins.
+**Read the rules that bind your role before acting.** Once Step 0 fixes your role,
+**Step 0.5 loads the rule set you must execute by** (the `model-b` references, then the
+project's conventions and identity, then its memory index). This is mandatory, not optional
+reading — every later step is performed the way YOUR role is supposed to perform it. The
+role rules are authoritative: if any later step conflicts with them, the role rule wins.
 
 ---
 
-## Step 0 — Resolve identity (role + project) BEFORE anything else
+## Step 0 — Resolve the role BEFORE anything else
 
-1. **Project** — derive `<Project>` from the repo's AGENTS.md / `ORCHESTRATOR-<Project>`
-   note. **Casing is load-bearing for Sandesh** (a project `Acme` is `Acme`, never `acme`). Every `sandesh` CLI
-   call (`addressbook`, `notify`, `fetch`, `send`, …) passes `--project <Project>`.
-2. **Role — read it from the invocation argument FIRST (the "verb").** The role is
+1. **Role — read it from the invocation argument FIRST (the "verb").** The role is
    passed as the `/bootstrap` argument (`$ARGUMENTS`); this is the AUTHORITATIVE source.
-   When present, use it directly — do NOT second-guess it with the heuristics below.
+   When present, use it directly — do NOT second-guess it with the fallbacks below.
 
    | Argument (`$ARGUMENTS`) | Resolved role | Notes |
    |---|---|---|
@@ -47,53 +43,67 @@ later step conflicts with them, the role rule wins.
    | bare integer `<N>` (e.g. `2`) | **Track N** | Shorthand for `track <N>`. |
 
    The number distinguishes tracks (`Track 1`, `Track 2`, …); Mainline is the singleton
-   and never numbered. The resolved role fixes your Sandesh address in step 3 below
-   (`Mainline - <Project>` or `Track <N> - <Project>`).
+   and never numbered. The resolved role fixes your Sandesh address (Step 0.5).
 
    Only if the argument is **omitted/empty**, fall back — in this order — to:
    1. Carried session context (a resumed/compacted session almost always states its
       role — e.g. "Mainline coordinator", "Track 2").
-   2. Working-tree heuristic: `git rev-parse --show-toplevel` ending in
-      `/.worktrees/<cr>` ⟹ a Track currently inside a worktree.
+   2. The session's Sandesh address, when the carried context names one: a
+      `Track <N> - <Project>` address ⟹ Track N; `Mainline - <Project>` ⟹ Mainline.
    3. If still genuinely ambiguous, **ask the user** (Mainline vs Track N) — one
       question — before proceeding. Never assume a role.
 
    A **malformed verb** (e.g. `track` with no number, or an unrecognised word) is NOT a
    guess point — ask the user to restate it as `mainline` or `track <N>`.
-3. **Addresses / ids** from the resolved role:
-   - Sandesh address: `Mainline - <Project>` or `Track <N> - <Project>`.
-   - Crucible own-run id (from `ORCHESTRATOR-<Project>` §Identity):
-     Mainline `vidushi`, Track `vidushi-t<N>`. (Never used for sub-agents — those are
-     CR-scoped.)
 
 ---
 
-## Step 0.5 — Read your role's rules from memory, understand your role (BOTH roles)
+## Step 0.5 — Read your role's rules, understand your role (BOTH roles)
 
-Resolving identity (Step 0) is not enough — **before you execute anything, load and read
-the memory that binds your resolved role**, and confirm you understand both what that role
+Resolving the role (Step 0) is not enough — **before you execute anything, load and read
+the rules that bind your resolved role**, and confirm you understand both what that role
 may and may not do **and how it fits into the project team**. Model-B is a TEAM: Mainline
 is the single coordinator and sole user-facing channel that schedules work and merges;
 Tracks are workers that execute assigned CRs and report only to Mainline; Sandesh is the
 team channel between them. Understand your place in that structure so that every later step
-(notifier, recovery, queue-load vs hold, reporting target, dispatch discipline) — and every
+(notifier, board reload, queue-load vs hold, reporting target, dispatch discipline) — and every
 task you take on afterward — is carried out according to your role in the team. This is
 mandatory reading, not a skim.
 
-Per the role mode-map, read — in this order:
-1. **`~/.agents/skills/model-b/references/orchestration-common.md`** — universal orchestrator rules (EVERY role).
-2. **Your role file:** Mainline → `~/.agents/skills/model-b/references/orchestration-mainline.md` ·
-   Track → `~/.agents/skills/model-b/references/orchestration-track.md`. (A Solo orchestrator follows Mainline.)
-3. **The project `ORCHESTRATOR-<Project>` note** — project-specific deltas that override the
-   generic tiers.
-4. **The project memory index `MEMORY.md`** — standing feedback + un-CR'd surfaces; open the
-   linked topic files relevant to what you are about to do.
-5. **`~/.agents/skills/model-b/references/sandesh.md`** — the cross-session channel mechanics you rely on in Step 1+.
+Read — in this order:
+1. **The `model-b` references:**
+   1. `~/.agents/skills/model-b/references/orchestration-common.md` — universal orchestrator rules (EVERY role).
+   2. **Your role file:** Mainline → `~/.agents/skills/model-b/references/orchestration-mainline.md` ·
+      Track → `~/.agents/skills/model-b/references/orchestration-track.md`. (A Solo orchestrator follows Mainline.)
+   3. `~/.agents/skills/model-b/references/sandesh.md` — the cross-session channel mechanics you rely on in Step 1+.
+2. **The project's `AGENTS.md`** (its conventions) **and `.env`** (its identity — the naming
+   registry). Take the identity from the registry keys, by name:
+   - **Sandesh project** — `SANDESH_PROJECT`. `<Project>` in this skill is the value of `SANDESH_PROJECT`, exactly as written (case- and space-sensitive).
+     Your address is `Mainline - <Project>` or `Track <N> - <Project>`, and every `sandesh`
+     CLI call (`addressbook`, `notify`, `fetch`, `send`, …) passes `--project <Project>`.
+   - **Crucible own-run id** — Mainline (or Solo): `ORCHESTRATOR_LABEL`; Track N:
+     `track<N>-<PROJECT_TOKEN>`. (Never used for sub-agents — those are CR-scoped.)
+   - **Crucible client** — the project's stack client, resolved through Crucible's installed
+     manifest `~/.crucible/crucible-clients.json`: its `clients` entry for a stack in
+     `PROJECT_STACKS` (any one: every stack client carries the plan verbs `plans`, `next`) names
+     the client file. The entry key is the stack name, except quarkus and java, which share the
+     `mvn` entry (`mvn-crucible.py`). `<client>` below is that path.
+   - **Crucible project key** — `CRUCIBLE_PROJECT_KEY`. An empty value means the project is not
+     yet registered in Crucible: do the queue README's setup task, and never read the empty
+     board `plans` then returns as idle.
+3. **`docs/memory/INDEX.md`** — the project memory index — and the slices it lists (among
+   them the orchestration template for a stack that has one,
+   `docs/memory/<stack>-orchestration.md`); open
+   the ones relevant to what you are about to do.
+
+**Fallback** — a project with no `.env` registry, or a missing key: take the same value from
+the project's `AGENTS.md`; a value found in neither, ask the user once. A missing
+`docs/memory/INDEX.md` is noted and skipped. Nothing here is an error.
 
 Do NOT proceed to Step 1 until you have read the common file **and** your role file **and**
-the project `ORCHESTRATOR-<Project>` note. If a later action would conflict with a role rule,
-the **role rule wins** — re-read rather than guess. (Sub-agents are out of scope here; their
-procedure lives in `~/.agents/skills/model-b/references/sub-agent-procedure.md`, loaded at dispatch, not at bootstrap.)
+the project's `AGENTS.md`. If a later action would conflict with a role rule, the **role
+rule wins** — re-read rather than guess. (Sub-agents are out of scope here; their procedure
+lives in `~/.agents/skills/model-b/references/sub-agent-procedure.md`, loaded at dispatch, not at bootstrap.)
 
 ---
 
@@ -103,7 +113,9 @@ Setup and registration are **persistent** — do NOT re-run them blindly each ru
 only thing that reliably dies between runs is the watcher. So **check state first** and
 do the minimum:
 
-1. **Check** `sandesh addressbook --project <Project>`:
+1. **Check** `sandesh addressbook --project <Project>`. It prints a table, one row per address:
+   `STATUS` shows `active` for a registered address (`active:true` below, else `active:false`);
+   `LISTENING` shows `● live` while a watcher holds it (`listening:true` below, else `listening:false`).
    - Project resolves AND your address is present with `active:true` → already set up and
      registered. **SKIP `sandesh setup` + `sandesh register`**; go straight to the watcher.
    - Project unknown / "not set up" error → `sandesh setup --project <Project>`, then
@@ -116,7 +128,7 @@ do the minimum:
 2. **Launch the watcher ONLY if not already `listening:true`.** If the addressbook already
    shows your address `listening:true`, a live watcher exists — do NOT spawn a duplicate.
    Otherwise start it with the **Model B watcher** — it supervises `sandesh notify`, stays
-   running and relaunches itself; when it wakes you, you only fetch:
+   running and relaunches itself (`/watcher status` lists the watchers it runs); when it wakes you, you only fetch:
    `sandesh fetch --project <Project> --to '<your address>'`. If the Model B watcher is not
    installed, run the notifier as a background process that notifies you when it exits —
    PLAIN, no `while`/retry wrapper, exactly ONE per address, never inline (it blocks), and
@@ -137,17 +149,18 @@ do the minimum:
 
 ---
 
-## Step 2 — Recover incomplete work from the last run (BOTH roles)
+## Step 2 — Reload the in-flight work from the board (BOTH roles)
 
-1. Read your task list — surface any tasks left `pending` / `in_progress` from the previous
-   run. These ARE your carried todo list (the resume spine), not a fresh board.
-2. If your task list reads blank after resume/compact, make one update to it to repaint
-   it (known resume-bug; see `reference-task-panel-resume-bug`).
-3. If there is no task list, that simply means no mid-cycle work was carried — note it
-   and continue. Do NOT invent tasks.
+The Crucible board is the resume spine. Reload the in-flight work from the board, in order: `<client> plans` — each plan's active cycle, its id and label (none on a closed or pending plan) — then `<client> next` for what is ready. Never reload it from a todo list, and never invent work the board does not show.
+
+A Track's active CR lives in its worktree, `.worktrees/<cr>`. A Track resuming an in-flight CR
+re-enters that worktree before any write: `modelb_worktree_enter` with `.worktrees/<cr>` (the
+entered worktree is per-session state, so a new session starts outside it). Check it with
+`~/.agents/scripts/worktree-flow.py status` (latest committed phase, ahead/behind). If the
+board shows no active cycle, no mid-cycle work was carried — note it and continue.
 
 The difference between roles is **who you report this status to** (Step 3), not whether
-you recover it — both roles recover.
+you reload it — both roles reload.
 
 ---
 
@@ -157,7 +170,7 @@ you recover it — both roles recover.
    (never raw `sqlite3`, never the README):
    - `~/.agents/scripts/worktree-flow.py status` — the git-derived board: per-CR
      worktrees (ahead/behind, latest committed phase) + the merge lock.
-   - `python3 ~/.crucible/clients/python-crucible.py next [--track "Track N - <Project>"]`
+   - the Crucible client, `python3 <client> next [--track "Track <N> - <Project>"]`
      — readiness: `NEXT <cr>` / `HOLD <cr>` (`depends_on` not all COMPLETED) / `DRAINED`.
      Queue membership, release, wave, seq and dependencies live in Crucible (CR-MDB-028).
    (worktree-flow now emits a TOON envelope on stdout; the human board is on stderr.)
@@ -177,7 +190,7 @@ you recover it — both roles recover.
 4. **Report to the USER** — a concise status, then WAIT for direction:
    - queue state: IN_PROGRESS CRs, what's READY (deps clear) vs BLOCKED/HELD;
    - the live Track roster (who's online);
-   - any incomplete Mainline tasks reloaded in Step 2;
+   - any in-flight Mainline cycle reloaded from the board in Step 2;
    - any pending Track requests in the inbox.
 5. **Do NOT auto-dispatch, auto-schedule, or merge.** Mainline surfaces the board and
    waits for the user's go. Relaunch the Mainline inbox watcher after any fetch (fallback
@@ -201,14 +214,14 @@ you recover it — both roles recover.
    offline; send + hold regardless.
 3. **Report status to MAINLINE** via
    `sandesh send --project <Project> --from "<your address>" --to "Mainline - <Project>" --kind request --subject "…" --body "…"`:
-   - If Step 2 found an **incomplete in-flight cycle** (a CR mid RED/GREEN/VERIFY):
-     reload it as the resume spine and tell Mainline — e.g.
-     *"Track N online; resuming CR-XXX at <phase/step>, status <pass/fail counts>,
+   - If Step 2 found an **in-flight cycle** on the board (a CR's active cycle):
+     re-enter its worktree (Step 2), resume it from the board and tell Mainline — e.g.
+     *"Track N online; resuming CR-XXX, active cycle <label>,
      awaiting confirmation to continue."*
    - If **no carried work** (idle): *"Track N online, idle, awaiting assignment."*
 4. **Then HOLD** — idle on the Sandesh watcher, **zero LLM turns, never self-poll**.
    Mainline disposes and sends a `directive` that wakes you. Do not poll any board
-   (`python-crucible.py next` included) in a loop; do not self-schedule.
+   (`<client> next` included) in a loop; do not self-schedule.
 5. A Track's SOLE contact is Mainline. Escalations, questions, status — all go to
    Mainline, never the user directly.
 
