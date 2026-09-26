@@ -468,7 +468,7 @@ def _render_gitignore() -> str:
     """``.gitignore`` incl. ``.env.local`` and the in-repo worktree
     segment ``.worktrees/`` (§S3.5; CR-MDB-031 §S0.1/§S3)."""
     return (
-        "# Local-only registry overlay — never committed.\n"
+        "# Machine-local overlay (values that stay on this machine) — never committed.\n"
         ".env.local\n"
         "\n"
         "# CR worktrees live inside the repo (inheriting Pi's project trust).\n"
