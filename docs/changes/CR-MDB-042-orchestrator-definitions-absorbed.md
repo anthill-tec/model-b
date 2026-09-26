@@ -47,9 +47,11 @@ in `~/.claude/memory/`; `archive/mapping.md` records them as `moved` without say
 ### §S1 — Inventory and triage
 `audits/2026-09-26-orchestrator-rule-triage.md` holds two tables.
 
-**Inventory**, one row per source file: path (home-relative), sha256 at triage time, and the list
-of rule-bearing headings (`##`/`###`) for the three notes and `~/.claude/AGENTS.md`; a topic file
-counts as one item named by its file name.
+**Inventory**, one row per source file (`| Source | sha256 |`): the home-relative path and its
+sha256 at triage time. The items are enumerated in the triage's Source cells: the three notes per
+rule-bearing heading (`##`/`###`, as `` `<path>` § <heading> ``), `~/.claude/AGENTS.md` per
+Non-negotiables bullet (`§ Non-negotiables (<n>)`), and a feedback topic file as one item (or per
+its own headings).
 
 **Triage**, one row per inventory item (heading or topic file):
 
@@ -99,10 +101,11 @@ it.
 
 ## Acceptance criteria
 
-- [ ] The triage file's inventory lists every source above with its sha256 and headings, and every
-      inventory item has exactly one triage row carrying one of the five classes — checked by a
-      test reading the file. The orchestrator and VERIFY re-derive the inventory from the real
-      sources (read-only) and it matches.
+- [ ] The triage file's inventory lists every source above with its sha256; every inventory source
+      has triage rows, no item has two, and every row carries one of the five classes — checked by
+      a test reading the file (`tests/test_orchestrator_rule_triage.py`). The orchestrator and
+      VERIFY re-derive the sources, their sha256 and the notes' headings from the real files
+      (read-only) and they match.
 - [ ] Every `common`, `stack` and `project:model-b` destination exists: the named file contains the
       named section — checked by a test reading the triage table.
 - [ ] No `skills-src/model-b/references/*.md` or `skills-src/gap-analysis/SKILL.md` line names
