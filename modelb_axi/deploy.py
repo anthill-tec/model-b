@@ -21,9 +21,15 @@ caller) unless ``force_managed`` overwrites it and refreshes its entry.
 
 Stdlib only. Never touches the real ``~/.agents`` in tests — callers pass
 sandboxed target roots (repo-local rule, DN-scaffold-packaging §7).
+
+Prune (CR-MDB-040 §S1): :func:`prune_assets` removes what a redeploy no
+longer deploys — an unchanged file the prior manifest records and the new
+one does not — and keeps a hand-modified one; it never touches a path
+outside the three stores (:func:`store_root_of`).
 """
 
 import hashlib
+import os
 import shutil
 import stat
 from pathlib import Path
@@ -302,3 +308,75 @@ def deployed_freshness(
         elif sha256_file(source) != recorded:
             found["stale"].append(rel)
     return {state: sorted(paths) for state, paths in found.items()}
+
+
+#: CR-MDB-040 §S1: the three store roots a deploy writes into — the only
+#: places a prune may remove from, and never removed themselves.
+_STORE_ROOTS: tuple[Path, ...] = (
+    STORE_RELDIR, HOOKS_SCRIPTS_STORE_RELDIR, TOOL_SCRIPTS_STORE_RELDIR,
+)
+
+
+def store_root_of(rel: str) -> Path | None:
+    """The store root a manifest path lies strictly inside, after
+    normalising ``..`` (CR-MDB-040 §S1); ``None`` for an absolute path or
+    one outside the three stores \u2014 a corrupt entry, since the deploy
+    writes only there."""
+    if os.path.isabs(rel):
+        return None
+    normalised = Path(os.path.normpath(rel))
+    for store in _STORE_ROOTS:
+        if normalised.is_relative_to(store) and normalised != store:
+            return store
+    return None
+
+
+def prune_assets(
+    prior_root: Path, prior_files: list[dict], new_paths: set[str],
+) -> tuple[list[str], list[str]]:
+    """Prune every path the prior manifest records and the new one does
+    not (CR-MDB-040 §S1). Returns ``(removed, kept)``, target-root-relative:
+
+    * removed \u2014 the file under ``prior_root`` exists with its recorded
+      hash; it is deleted, then each directory left empty, walking up and
+      stopping at (never removing) its store root;
+    * kept \u2014 the file exists with a different hash (hand-modified); never
+      deleted, whatever ``--force-managed`` says;
+    * an absent file is skipped silently, and an entry outside the three
+      stores (:func:`store_root_of`) is never touched and in neither list.
+
+    An ``OSError`` raises :class:`DeployError` carrying it as the cause."""
+    removed: list[str] = []
+    kept: list[str] = []
+    seen: set[str] = set()
+    try:
+        for entry in prior_files:
+            if not isinstance(entry, dict) or "path" not in entry or "sha256" not in entry:
+                continue
+            rel = str(entry["path"])
+            store = store_root_of(rel)
+            if store is None or rel in new_paths or rel in seen:
+                continue
+            seen.add(rel)
+            path = prior_root / os.path.normpath(rel)
+            if not path.is_file():
+                continue  # already gone: nothing to do, not reported
+            if sha256_file(path) != str(entry["sha256"]):
+                kept.append(rel)
+                continue
+            path.unlink()
+            removed.append(rel)
+            _remove_empty_parents(path.parent, prior_root / store)
+    except OSError as exc:
+        raise DeployError(f"prune step failed: {exc}") from exc
+    return removed, kept
+
+
+def _remove_empty_parents(directory: Path, store_root: Path) -> None:
+    """Remove ``directory`` and each emptied ancestor, stopping at
+    ``store_root``, which is never removed (CR-MDB-040 §S1)."""
+    while directory != store_root and directory.is_relative_to(store_root):
+        if not directory.is_dir() or any(directory.iterdir()):
+            return
+        directory.rmdir()
+        directory = directory.parent

@@ -23,7 +23,6 @@ from modelb_axi import __version__
 from modelb_axi.axi import envelope
 from modelb_axi.config import (
     load_install_toml,
-    load_manifest_hashes,
     write_install_toml,
 )
 from modelb_axi.deploy import (
@@ -34,6 +33,8 @@ from modelb_axi.deploy import (
     default_asset_root,
     deploy_assets,
     deployed_freshness,
+    prune_assets,
+    store_root_of,
 )
 from modelb_axi.harness import (
     UnknownHarnessError,
@@ -356,6 +357,11 @@ def _deploy_stage(
     ``[capabilities]``; ``stacks`` (default: every supported stack)
     becomes ``[install].stacks``; ``allow_missing_capabilities`` is
     recorded only when used.
+
+    CR-MDB-040 \u00a7S1/\u00a7S2: after the deploy succeeds and before the
+    config write, what the prior manifest records and the new one does not
+    is pruned (:func:`_prune_stage`); ``report`` gains ``removed`` and
+    ``kept``. A prune failure is a deploy failure (no install.toml).
     """
     if warnings is None:
         warnings = []
@@ -363,8 +369,15 @@ def _deploy_stage(
         stacks = list(KNOWN_STACKS)
     asset_root = default_asset_root()
     # Manifest protection follows manifest PRESENCE, not a flag
-    # (load_manifest_hashes returns {} when install.toml is absent).
-    prior_hashes = load_manifest_hashes(home)
+    # (load_install_toml returns {} when install.toml is absent). Read
+    # ONCE: the hashes, the recorded root and the prune list come from it.
+    prior = load_install_toml(home)
+    raw_files = prior.get("files")
+    prior_files = [
+        entry for entry in (raw_files if isinstance(raw_files, list) else [])
+        if isinstance(entry, dict) and "path" in entry and "sha256" in entry
+    ]
+    prior_hashes = {str(e["path"]): str(e["sha256"]) for e in prior_files}
     unmanaged: list[str] = []
     try:
         manifest, skipped = deploy_assets(
@@ -372,6 +385,7 @@ def _deploy_stage(
             prior_hashes=prior_hashes, force_managed=force_managed,
             unmanaged=unmanaged, stacks=stacks,
         )
+        removed, kept = _prune_stage(prior, prior_files, target_root, manifest, warnings)
     except DeployError as exc:
         _warn(str(exc), warnings, level="error")
         return 1
@@ -423,8 +437,55 @@ def _deploy_stage(
             managed_files=len(manifest),
             skipped=list(skipped),
             unmanaged=list(unmanaged),
+            removed=list(removed),
+            kept=list(kept),
         )
     return 0
+
+
+def _prune_stage(
+    prior: dict, prior_files: list[dict], target_root: Path,
+    manifest: list[dict], warnings: list[str],
+) -> tuple[list[str], list[str]]:
+    """CR-MDB-040 \u00a7S1/\u00a7S2: prune the prior manifest's leftovers and
+    report them; returns ``(removed, kept)``.
+
+    The prior root is the recorded ``target_root``, else this run's; a
+    recorded root differing from this run's prunes nothing and warns. A
+    corrupt entry (outside the stores) is dropped with one warning. Each
+    kept (hand-modified) entry is appended to ``manifest`` with its
+    RECORDED hash so later runs report it again. Raises
+    :class:`DeployError` from :func:`prune_assets`."""
+    for entry in prior_files:
+        if store_root_of(str(entry["path"])) is None:
+            _warn(
+                f"dropping corrupt install.toml entry {entry['path']} \u2014 outside "
+                "the Model B stores; left untouched",
+                warnings,
+            )
+    install = prior.get("install")
+    recorded = install.get("target_root") if isinstance(install, dict) else None
+    prior_root = Path(recorded) if isinstance(recorded, str) and recorded else target_root
+    if prior_root.resolve() != target_root.resolve():
+        _warn(
+            f"the prior install at {prior_root} was left in place \u2014 its "
+            f"target_root differs from this run's, so nothing was pruned",
+            warnings,
+        )
+        return [], []
+    new_paths = {entry["path"] for entry in manifest}
+    removed, kept = prune_assets(prior_root, prior_files, new_paths)
+    for rel in removed:
+        _say(f"  removed {rel} (no longer deployed)")
+    recorded_hashes = {str(e["path"]): str(e["sha256"]) for e in prior_files}
+    for rel in kept:
+        _warn(
+            f"{rel} is no longer deployed; left in place because it was edited "
+            "(restore or delete it and a later --reinstall prunes it)",
+            warnings,
+        )
+        manifest.append({"path": rel, "sha256": recorded_hashes[rel]})
+    return removed, kept
 
 
 def _run_installer_flow(
@@ -578,7 +639,7 @@ def _freshness_fields(home: Path, warnings: list[str]) -> dict:
     if found["hand_modified"]:
         _say(f"    hand_modified: re-run `{rerun} --force-managed` to overwrite them")
     if found["retired"]:
-        _say("    retired: no longer shipped \u2014 remove them by hand")
+        _say(f"    retired: no longer shipped \u2014 re-run `{rerun}` to remove the unchanged ones")
     freshness = "current" if not any(found.values()) else "outdated"
     return {"freshness": freshness, **found}
 
