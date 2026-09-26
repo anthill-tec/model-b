@@ -465,10 +465,16 @@ class InitEmissionSoloRunTest(unittest.TestCase):
             f"S3.1/S4: `.gitignore` must ignore `.env.local`; got {gitignore_text!r}",
         )
         env_local = _parse_env_file(env_local_path)
-        # POSITIVE -- seeded as an empty placeholder, not absent/None.
+        # Migrated (CR-MDB-043 \u00a7S1/\u00a7S2): CRUCIBLE_PROJECT_KEY moved to the
+        # committed root `.env` (where Crucible's client reads it), seeded as an
+        # empty placeholder; `.env.local` stays the overlay with no schema key.
         self.assertEqual(
-            env_local.get("CRUCIBLE_PROJECT_KEY"), "",
-            f"S3.1: `.env.local` must seed CRUCIBLE_PROJECT_KEY as an empty placeholder; got {env_local!r}",
+            env.get("CRUCIBLE_PROJECT_KEY"), "",
+            f"S3.1: `.env` must seed CRUCIBLE_PROJECT_KEY as an empty placeholder; got {env!r}",
+        )
+        self.assertNotIn(
+            "CRUCIBLE_PROJECT_KEY", env_local,
+            f"CR-MDB-043: `.env.local` must no longer carry CRUCIBLE_PROJECT_KEY; got {env_local!r}",
         )
 
     def test_docs_model_queue_readme_and_research_dir(self):
@@ -1473,6 +1479,7 @@ class ScaffoldCapabilityContractReadsRequirementsDataTest(unittest.TestCase):
             repo_shape="standalone", stacks="python", owner="tester",
             target=self._tmp_target, dry_run=False, no_commit=True,
             register=False, harnesses=None,
+            sandesh_project=None,  # CR-MDB-043: the parser's new override dest
         )
         with mock.patch.dict(
             _requirements.STACK_TOOLCHAINS, {"python": (dict(self._SENTINEL_PROBE),)},

@@ -882,6 +882,7 @@ def _init_args(target, dry_run: bool, no_commit: bool = True, harnesses=None) ->
         repo_shape="standalone", stacks="python", owner="tester",
         target=str(target), dry_run=dry_run, no_commit=no_commit,
         register=False, harnesses=harnesses,
+        sandesh_project=None,  # CR-MDB-043: the parser's new override dest
     )
 
 

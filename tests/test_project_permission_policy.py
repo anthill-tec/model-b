@@ -431,6 +431,7 @@ class PermissionPolicyReadsRequirementsDataTest(unittest.TestCase):
             repo_shape="standalone", stacks="python", owner="tester",
             target=str(self.target), dry_run=False, no_commit=True,
             register=False, harnesses=None, force_managed=False,
+            sandesh_project=None,  # CR-MDB-043: the parser's new override dest
         )
         with mock.patch.dict(
             _requirements.requirement("dispatch"), {"tools": self._DISPATCH_SENTINEL},
