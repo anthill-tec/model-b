@@ -105,10 +105,13 @@ The common rules agree with the two skills. `orchestration-track.md` gives the T
 `track<N>-<PROJECT_TOKEN>` and the queue tool as the project's stack client (not `python-crucible.py`
 for every project), and `memory-templates/rust-orchestration.md` names the stack client. Sandesh and
 watcher wording matches the tools:
-- `sandesh addressbook` prints a table (`STATUS`, `LISTENING`), not `active:true`;
-- a notifier is stopped with the Model B watcher's stop (the `sandesh_watcher` tool's `stop`, or
-  `/watcher stop`), or, on the fallback path, by killing that process by its id;
-- the watcher is named as the `sandesh_watcher` tool.
+- `sandesh addressbook` prints a table: `LISTENING` shows `● live` (the `listening:true` shorthand
+  the skills use) and `STATUS` shows `active`;
+- a notifier is stopped by address: the Model B watcher's `/watcher stop <your address>` (never a bare
+  `/watcher stop`, which stops every watcher), or, on the fallback path and as a last resort, a
+  targeted kill whose pattern actually matches that process;
+- the skills name the watcher as a capability ("the Model B watcher") and its `/watcher` command, never
+  its tool name (DN-multi-harness §D18; the CR-MDB-026 gate forbids the token).
 
 The schema's `readers` entries for `PROJECT_STACKS`, `ORCHESTRATOR_LABEL` and `PROJECT_TOKEN` name the two
 skills. The phrase "the stack's orchestration template" reads "for a stack that has one". The two
