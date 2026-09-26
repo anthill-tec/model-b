@@ -18,3 +18,6 @@ gating hardware drivers.
 ## Hardware drivers
 - **Verify the exact part before writing a register-level driver** — from the vendor datasheet and the
   driver library's source. Mocks cannot catch a wrong chip.
+- **Hardware identity is the first bring-up gate** — a bus scan and a part-ID read pin the real
+  address and part before any driver logic is trusted; host mocks validate logic, never the
+  hardware contract.

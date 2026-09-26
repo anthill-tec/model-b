@@ -12,7 +12,7 @@ Single home for git conventions (absorbed the former `memory` twins for git work
 - **NEVER commit directly to `develop`, `main`, or `master`** — always use a feature branch
 - Feature branches: `feature/cr-cf-XXX` (created before you start); `git flow feature start <name>` creates from develop, `git flow feature finish` merges back
 - Dispatched agents: the branch is already created for you — just work on it
-- Hotfixes: `git flow hotfix start X.Y.Z` (from master) → `git flow hotfix finish X.Y.Z` (merges to master AND develop, tags master). A hotfix starts from main's state; if the fix needs develop-only commits, cut a release branch off develop instead.
+- Hotfixes: `git flow hotfix start X.Y.Z` (from master) → `git flow hotfix finish X.Y.Z` (merges to master AND develop, tags master). A hotfix starts from main's state; if the fix needs develop-only commits, cut a release branch off develop instead — and abandon a mis-cut hotfix branch with `git branch -D`, never `git flow hotfix finish`.
 
 ### Branch protection
 

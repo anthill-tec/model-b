@@ -65,6 +65,10 @@ Electronics (anthill-forge / hw tooling / electronics agents+skills) is EXCLUDED
 
 - **The Crucible board is the task list.** The cycle plan is filed complete in Crucible at feature start; no separate todo list is kept — resume from the board.
 - **Confirm destructive operations** before executing them; delegate super-user operations to the user.
+- **Do exactly what is asked** — parse instructions literally; take the complete fix, never the path of least resistance, and leave no legacy shadow or duplicate helper behind.
+- **Never read another project's working tree without the user's permission** — cross-project input comes through Sandesh messages, published artefacts (packages, installed clients, deployed skills) and this repository.
+- **Report in plain words** — a failure is stated as one, never softened into a euphemism. Keep reports concise, and never restate board state (cycle tables, progress) the user can already see.
+- **Never pipe user feedback or poll output through head, tail or grep** — read it whole.
 - **Never kill a user-visible process** — describe what and why, and let the user kill it.
 - **Edit files with the harness's file-edit capability or ast-grep, never `sed`**; if a bulk text edit seems to need `sed`, surface it first.
 - **Prefer the lean-ctx tools inside the project** (cached reads, compressed shell, ranked search, tree) over the harness's native equivalents.

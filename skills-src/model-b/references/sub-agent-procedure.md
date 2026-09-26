@@ -39,6 +39,7 @@
 
 ## Code quality
 - Remove ALL unused imports; import instead of fully-qualified inline names; rename an unused lambda/closure parameter to `_`.
+- Key a guard's allowlist to an annotation marker at the site, never a line number — an unrelated edit shifts lines and re-breaks it.
 - Clean build before commit; GREEN before commit — never commit in RED.
 - Conventional commits (`type(scope): desc`); no AI attribution.
 - No empty catch blocks, no unjustified suppressed warnings, no dead/commented-out code.

@@ -51,12 +51,14 @@ Coordinator-only rules. Read COMMON + MAINLINE. (Worker rules → TRACK; sub-age
 - Run the inbox watcher through the Model B watcher (or, without it, as a background process that notifies you when it exits) from session start; on a request → fetch + reschedule (incl. filing a requested NEW CR into the owner track's lane) + reply/directive → relaunch the watcher (fallback path only; the Model B watcher relaunches itself).
 - Re-read a request at consume-time before acting (the watcher can fire before the write completes).
 - If consuming a request needs the user, surface it and hold.
+- After an exceptional direct-to-develop hotfix, tell every track with a live worktree to sync it — not only the one obviously affected.
 
 ## Deferred-items register + SCRUM filing
 - Keep a per-project deferred-items register (descopes, VERIFY nits routed forward, emergent requirements). At each CR's gap-analysis, sweep it — fold routed items into the spec.
 - **New CRs are filed at the SCRUM review BETWEEN runs — never mid-implementation.** Emergent requirements → propose as new CRs there; once filed, the CR's process-state lives in the queue README.
 - **Favour complete features.** Do not default to recommending deferral or scope cuts; propose a deferral only with a genuine reason, stated neutrally.
 - **Built-but-unwired functionality is fixed before new features:** a smoke that exposes it gets a production CR to wire it, sequenced ahead — never documented and deferred.
+- **At every wave start, pause and discuss pending decisions with the user** — deferred-register items, design contradictions, payload/API shape choices — before the wave's first dispatch.
 - On close-out, append new deferrals + remove resolved; GC aggressively (an item that became a CR or was abandoned → delete, ≤ one-line pointer).
 
 ## Memory stewardship

@@ -63,7 +63,7 @@ confirm per project. `[profile.e2e]` re-declares the `kafka-e2e-serial` group so
 the shared-stack binaries serialize there too.
 
 - **Gate sizing:** with deterministic proof (a RED test that forces the race, or fix-by-construction), 2-run smoke suffices. Without proof, sample N× to close a flake.
-- **A new docker-dependent test is added to BOTH nextest default-filters** (`ci` excludes it, `e2e` includes it) — otherwise it never runs.
+- **A new docker-dependent test is added to BOTH nextest default-filters** (`ci` excludes it, `e2e` includes it) — otherwise it never runs. Then confirm it actually runs (N > 0, not 0 or skipped) — an unrun gate is itself a false green.
 - **Clippy `-D warnings` clean BEFORE any full merge regression** — a slow regression a fast clippy would fail is wasted.
 - **Report skipped/ignored tests explicitly** — every regression. Under `-P ci` the docker-infra tier is *filtered* (won't appear at all, not "skipped"); remaining skips are real `#[ignore]` holes or runtime-skips — a bare count hides them.
 
@@ -73,6 +73,9 @@ the shared-stack binaries serialize there too.
 - **`#[ignore]` is temporary, never a resting state** — track each ignored test and resolve it in a dedicated follow-up CR.
 - **GREEN may promote a cargo dependency from dev-only to production** without escalating, when production code legitimately imports it.
 - **A variant added to a shared cross-crate enum** is verified per dependent crate with `--all-features` and clippy `--tests`, never a partial feature set.
+- **Every `rust-crucible.py` run in a worktree passes `--project-dir <absolute worktree>`** — cwd resets between shell calls, and the default resolves the main tree, so the run tests unmodified code (a false green).
+- **A new feature-gated test file gets its `[[test]]` + `required-features` entry in the same cycle** — nextest silently skips it otherwise; confirm the new target names actually run, not only that the total rose.
+- **A new crate's first RED pre-wires every dependency the crate will need** — no mid-cycle manifest churn.
 
 ## RED that won't compile
 Rust RED frequently fails to **compile** (the target type/field/fn doesn't exist yet) — that is a valid RED. Ingest it via the rustc-compile path (the `crucible` skill, `references/rust.md`), never as empty junit.
