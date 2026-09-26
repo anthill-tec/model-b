@@ -1,6 +1,6 @@
 ---
 name: shutdown
-description: End-of-run teardown for a Model-B orchestrator session (Mainline or Track). Brings ONE orchestrator down cleanly — finishes its active step, finishes its plan's active cycle on the Crucible board, leaves no dangling commits, acks, and KILLS ITS OWN NOTIFIER LAST. Graceful by default; an `emergency` flag (power-failure-class) switches to immediate fast-abort. A Track is normally shut down by a Sandesh `directive` from Mainline (or `/shutdown` typed by the user) and acks back to MAINLINE that it is safe to stop; Mainline is shut down by the USER directly and tears itself down ONLY after every active Track has acked / shows down. `/shutdown` takes NO role argument — a shutdown is contextual (the running session already knows its role from its bootstrap, its carried context and its Sandesh address, and a Sandesh shutdown directive is already addressed to one orchestrator); the only optional argument is `emergency`. Use when the user types "/shutdown", says "shut down", "stand down", "end of day, close out", "wind down the orchestrators", or when a Track receives a shutdown directive from Mainline.
+description: End-of-run teardown for a Model-B orchestrator session (Mainline or Track). Brings ONE orchestrator down cleanly — finishes its active step, finishes its plan's active cycle on the Crucible board, leaves no dangling commits (a Track merges its CR only on Mainline's user-approved sign-off, otherwise leaves it open), acks, and KILLS ITS OWN NOTIFIER LAST. Graceful by default; an `emergency` flag (power-failure-class) switches to immediate fast-abort. A Track is normally shut down by a Sandesh `directive` from Mainline (or `/shutdown` typed by the user) and acks back to MAINLINE that it is safe to stop; Mainline is shut down by the USER directly and tears itself down ONLY after every active Track has acked / shows down. `/shutdown` takes NO role argument — a shutdown is contextual (the running session already knows its role from its bootstrap, its carried context and its Sandesh address, and a Sandesh shutdown directive is already addressed to one orchestrator); the only optional argument is `emergency`. Use when the user types "/shutdown", says "shut down", "stand down", "end of day, close out", "wind down the orchestrators", or when a Track receives a shutdown directive from Mainline.
 ---
 
 # Shutdown — end-of-run orchestrator teardown
@@ -11,8 +11,9 @@ work), tells the rest of the team it is safe to stop, and — as the **final** a
 kills the Sandesh notifier it owns.
 
 **Two modes, chosen by the `emergency` flag:**
-- **Graceful (default)** — finish the active step, finish the plan's active cycle, merge the active
-  CR back, commit so nothing dangles, ack, then kill the notifier. Nothing is abandoned.
+- **Graceful (default)** — finish the active step, finish the plan's active cycle, commit so
+  nothing dangles (a Track merges its CR back only on Mainline's user-approved sign-off, otherwise
+  the CR stays open), ack, then kill the notifier. Nothing is abandoned.
 - **Emergency** (`emergency` in the command/directive — power failure, host going down) —
   close only the active write so nothing is left half-written, **fast-abort** the rest
   (skip finishing the active cycle, no merge), best-effort ack, then kill the notifier. Fast-abort is
@@ -24,7 +25,8 @@ kills the Sandesh notifier it owns.
   LAST orchestrator to go.
 - **Track** is normally shut down by **MAINLINE** (a Sandesh `directive`) and **acks back to
   MAINLINE** that it is safe to stop (or to the USER if the command came on its own session).
-  A Track never tears down before its active CR is settled, unless told to emergency-stop.
+  A Track never tears down before its active cycle is finished and its worktree committed, unless
+  told to emergency-stop.
 
 **The one overridden rule:** everywhere else, a stopped watcher is relaunched in the
 same turn — by the Model B watcher itself, or by you on the fallback path — except after an
@@ -118,7 +120,7 @@ notifier. Proceed to your role branch (2A Track / 2B Mainline).
 ### Step 1B — EMERGENCY (`emergency` flag set)
 Host is going down (power failure, forced stop). After closing the active write:
 - **Fast-abort** the rest — do NOT finish the active cycle, do NOT attempt a CR merge.
-- Preserve in-progress work where cheap: leave the worktree intact or `git stash` it (so the
+- Preserve in-progress work where cheap: leave the worktree intact or stash it (so the
   next run can resume); do NOT force a merge.
 - Best-effort ack (Step 2/3) naming what was left mid-flight.
 - Then the common final step (kill notifier). Speed over completeness — but never skip
@@ -128,34 +130,41 @@ Host is going down (power failure, forced stop). After closing the active write:
 
 ## Step 2A — TRACK shutdown
 
-**Graceful (1A):**
+**Graceful (1A):** your session is in the main tree; the CR's worktree is `.worktrees/<cr>`.
 1. **Finish the active step** (Step 1) — wait for any in-flight write/tool thread to close.
 2. **Mid-CR with an active cycle on the plan? ESCALATE first, do NOT abruptly stop.** Tell Mainline
    you are mid-cycle —
    `sandesh send --project <Project> --from "<your address>" --to "Mainline - <Project>" --kind request --subject "…" --body "…"`:
    *"Track N got a shutdown; mid CR-XXX, active cycle <label>. Non-emergency → I'll
-   finish the active cycle + merge, then ack. Say `emergency` if you need an immediate stop."*
-   - **Non-emergency (default):** keep working — finish the plan's active cycle and get
-     the active CR **merged back** (`git merge develop --no-edit` to behind=0, then
-     `~/.agents/scripts/worktree-flow.py finish` — merge-not-rebase). The active CR landing is part of a clean
-     graceful shutdown. (worktree-flow now emits a TOON envelope on stdout; the human
-     board is on stderr.)
+   finish the active cycle, commit the worktree and ack; the CR stays open unless you relay the
+   merge sign-off. Say `emergency` if you need an immediate stop."*
+   - **Non-emergency (default):** keep working — finish the plan's active cycle. You never
+     finish a CR on your own: its merge needs Mainline's user-approved sign-off
+     (`orchestration-track.md`). Without it, a graceful shutdown mid-CR commits the worktree,
+     reports its state, and leaves the CR open.
+   - **Where Mainline relays an approved finish:** bring the worktree up to develop
+     (`git -C .worktrees/<cr> merge develop --no-edit`, to behind=0), then, from the main tree,
+     `~/.agents/scripts/worktree-flow.py finish --cr <CR>` (merge-not-rebase), then
+     `modelb_worktree_exit`. (worktree-flow emits a TOON envelope on stdout; the human board
+     is on stderr.)
    - If Mainline/User replies with an emergency/immediate-stop → switch to the **Emergency**
      path below.
-3. **No dangling work.** Ensure your working folder (the CR's worktree, `.worktrees/<cr>`) is clean: **commit any
-   uncommitted changes** (never leave WIP on disk) and confirm the active CR is merged (no
-   unmerged commits left stranded on the feature branch). `git status --porcelain` empty.
+3. **No dangling work.** Ensure the CR's worktree is clean: **commit any uncommitted changes**
+   in it (never leave WIP on disk) — `git -C .worktrees/<cr> status --porcelain` empty. Where
+   the finish was approved, confirm the CR is merged (no unmerged commits left stranded on the
+   feature branch).
 4. **ACK that you are safe to shut down** — to **Mainline** (`sandesh reply --project <Project>
    --from "<your address>" --to-msg <id> …` threaded under the shutdown directive, or
    `sandesh send --project <Project> --from "<your address>" --to "Mainline - <Project>" …`),
    or to the **user** if the command came on this session:
-   *"Track N safe to shut down — CR-XXX merged @ <HEAD>, lane drained, worktree clean / no
-   carried work."* The ack IS the shutdown indicator.
+   *"Track N safe to shut down — CR-XXX open at <sha>, active cycle <label>, worktree committed
+   (or: CR-XXX merged @ <HEAD> on the relayed sign-off / no carried work)."* The ack IS the
+   shutdown indicator.
 5. **LAST — kill your own notifier** (see § The common final step). Do not relaunch.
 
 **Emergency (1B):**
 1. Close the active write only.
-2. Fast-abort — leave the worktree as-is or `git stash`; no finishing of the active cycle, no merge.
+2. Fast-abort — leave the worktree as-is or `git -C .worktrees/<cr> stash`; no finishing of the active cycle, no merge.
 3. Best-effort ack to Mainline: *"Track N EMERGENCY-stopped — CR-XXX left at <state>, worktree
    preserved/stashed for resume."*
 4. **LAST — kill your own notifier.**
@@ -227,8 +236,9 @@ ONLY here, at a confirmed shutdown's last step.
 
 - **Never tear down mid-write.** Close the active step first — graceful AND emergency.
 - **Fast-abort (skip finishing the active cycle + CR merge) is permitted ONLY under the `emergency` flag.**
-  A normal shutdown ALWAYS finishes the plan's active cycle, merges the active CR back, and commits a clean tree.
-- **No dangling work at shutdown** — `git status --porcelain` empty; the active CR merged;
+  A normal shutdown ALWAYS finishes the plan's active cycle and commits a clean tree; a Track merges
+  its CR back only on Mainline's user-approved sign-off, and otherwise leaves the CR open.
+- **No dangling work at shutdown** — a clean tree (a Track's is its worktree); an approved CR merged;
   WIP committed (or, emergency-only, stashed/preserved).
 - **Acks route by role** — a Track acks MAINLINE (or the user if the command came on its own
   session); Mainline reports the USER. Do not cross these.
