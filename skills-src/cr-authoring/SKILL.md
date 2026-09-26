@@ -5,7 +5,7 @@ description: Authoring and lifecycle conventions for CR (Change Request), PRD, a
 
 # CR / PRD / DN Authoring — the universal doc model
 
-The matured cross-stack doc model (evolved in the NAI project, backported as the standard).
+The matured cross-stack doc model, backported as the standard.
 Stack-agnostic — Rust, Java/Quarkus, Bun/TS, Python, GitOps. Stack orchestration files
 reference this skill; they do not restate it.
 
@@ -24,7 +24,7 @@ reference this skill; they do not restate it.
 ## Two-phase workflow (universal) + where work commits
 - **Design phase → the integration branch (`develop`/`main`).** Gap analysis, spec authoring, queue/PRD/DN updates. No feature branch.
 - **Execution phase → a feature branch.** RED+GREEN cycles, VERIFY, FIX, regression+merge.
-- **Where an edit commits:** free-standing spec/PRD/DN/queue/memory edits → integration branch. Edits **caused by** an in-flight CR's RED/GREEN/VERIFY (PRD revisions surfaced by RED, new DNs, AC tightening) → the **feature branch**, landing atomically with the implementation. Test: if the edit makes no sense without the implementation it's tied to, it's on the feature branch.
+- **Where an edit commits:** free-standing spec/PRD/DN/queue/memory edits → integration branch. Edits **caused by** an in-flight CR's RED/GREEN/VERIFY (PRD revisions surfaced by RED, new DNs, corrections of defects against the CR's own contracts) → the **feature branch**, landing atomically with the implementation. Test: if the edit makes no sense without the implementation it's tied to, it's on the feature branch.
 
 ## CR spec structure — DO NOT invent sections
 Standard order:
@@ -37,7 +37,7 @@ Standard order:
 7. `## Non-goals` / `## Out of scope`.
 
 Rules:
-- **No `## Cycle Plan`** — cycle breakdown lives in the orchestrator's task list / board, not the spec.
+- **No `## Cycle Plan`** — cycle breakdown lives in the Crucible plan on the board, not the spec.
 - **No `## Resolved design decisions` / `## Open questions`** unless the original spec had them — inline resolutions into the relevant scope section.
 - **No version-number bumps** ("v1.1") inside the spec — git history is the version control; use date-stamped inline notes.
 - No architectural-baseline / discovery narrative — that's PRD/DN material.
@@ -78,6 +78,7 @@ A **CR has a design surface** (new types/API/architecture, PRD coupling) → spe
 - **Row columns: CR / Title / Wave / Depends on.** Nothing else — no status column, no plan/open-plan/closed+merge bookkeeping in rows.
 - **A row's title and its spec's H1 must agree — and so must the TRACKING BOARD's registered title.** Measured 2026-09-21: a CR rewritten to drop one harness for another kept its old board title for three days because the repo side was corrected and the board side was not, and the board is the authority for queue status. Where a board read-verb cannot echo titles, the parity is re-posted rather than read; either way it is checked when a spec's subject changes, not only at release.
 - **Statuses are DERIVED on the Crucible board** (plans / cycles / milestones), never hand-maintained in the queue.
+- **Release membership is the user's call.** Never decide which release a CR belongs to — file it at the queue default; the user sets membership (a priority may be proposed).
 - **Header slots:** `Design contract` / `Evidence base` / `Ontology` / `Target release`.
 - **Dated footer `Notes`** — scheduling notes, scope moves, fold-ins, supersessions, user-approved breaking changes (dated lines).
 - **Release-boundary row** — a row marking the release boundary in the ordering.
@@ -89,9 +90,10 @@ A **CR has a design surface** (new types/API/architecture, PRD coupling) → spe
 - **Where board-tracking is absent (legacy two-file close-out):** on ship, before the merge ceremony: (1) queue row → `COMPLETED` + shipped-date; (2) the spec's `**Status:**` flip. The regression-merge diff must touch BOTH files.
 
 ## Spec updates during execution — orchestrator authority vs VERIFY's
-The orchestrator MAY add (on the feature branch): a dated scope-reconciliation note, an `## Implementation Notes` section, inline annotations. The orchestrator MUST NOT touch the **AC checkboxes** (`- [ ]`) — those are **VERIFY's authority**; pre-marking short-circuits review. Deferred items needing a record → a follow-up CR/DN referenced from Implementation Notes.
+**A scope change found mid-implementation goes into a patch CR** (its own spec, ACs and queue row, sequenced after the parent), never an inline spec edit. On the feature branch the executing orchestrator edits its own CR's spec only for status and for defects against that CR's own contracts, plus an `## Implementation Notes` section (decisions, deferred items, follow-up pointers). Mainline never edits an IN_PROGRESS CR's spec on develop. The orchestrator MUST NOT touch the **AC checkboxes** (`- [ ]`) — those are **VERIFY's authority**; pre-marking short-circuits review. Deferred items needing a record → a follow-up CR/DN referenced from Implementation Notes.
 
 ## PRD conventions
+- **Every PRD opens with front matter** (Version / Date / Status / Authors, Builds on / Related) followed by a `## Change Control` table, one row per revision.
 - `docs/research/PRD-*.md` is the authoritative design contract. Read the relevant PRD section COMPLETELY before implementing a CR derived from it.
 - A CR introducing a design concept not yet in the PRD: UPDATE the PRD section first, then cite it via `**Design reference:**`. Don't inline new design rationale in the CR.
 - PRD revisions surfaced mid-cycle commit on the feature branch.

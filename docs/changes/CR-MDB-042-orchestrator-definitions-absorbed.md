@@ -47,9 +47,11 @@ in `~/.claude/memory/`; `archive/mapping.md` records them as `moved` without say
 ### §S1 — Inventory and triage
 `audits/2026-09-26-orchestrator-rule-triage.md` holds two tables.
 
-**Inventory**, one row per source file: path (home-relative), sha256 at triage time, and the list
-of rule-bearing headings (`##`/`###`) for the three notes and `~/.claude/AGENTS.md`; a topic file
-counts as one item named by its file name.
+**Inventory**, one row per source file (`| Source | sha256 |`): the home-relative path and its
+sha256 at triage time. The items are enumerated in the triage's Source cells: the three notes per
+rule-bearing heading (`##`/`###`, as `` `<path>` § <heading> ``), `~/.claude/AGENTS.md` per
+Non-negotiables bullet (`§ Non-negotiables (<n>)`), and a feedback topic file as one item (or per
+its own headings).
 
 **Triage**, one row per inventory item (heading or topic file):
 
@@ -81,6 +83,17 @@ common text names no project (`NAI`, `Roundhouse`, `ModelB`, `Crucible project`)
 `ORCHESTRATOR-` note as a rule's subject; a CR id may remain as a dated provenance citation. It
 names no harness tool retired by CR-MDB-031.
 
+**Rulings that bind the absorbed text** (user, 2026-09-26):
+- A scope change found mid-implementation goes into a patch CR, never an inline spec edit. A track
+  edits its own CR's spec in its worktree only for status and for defects against that CR's own
+  contracts; Mainline never edits an IN_PROGRESS CR's spec on develop.
+- A VERIFY finding the user approves for fixing is fixed in its own FIX cycle (`cycle-add --kind fix`),
+  never inside the VERIFY cycle.
+- The Crucible board is the task list; there is no separate todo list.
+- Model B reaches Sandesh through the `sandesh` CLI; it never uses Sandesh's MCP server.
+- A rule inside a triaged item that its row does not carry is not dropped silently: the row's Note
+  names it with its class, or it is absorbed.
+
 ### §S3 — Project facts
 Model B's own `project:model-b` rows land in `model-b/AGENTS.md`. Rows for other projects stay in
 the triage for those projects' own sessions (non-goal).
@@ -99,15 +112,20 @@ it.
 
 ## Acceptance criteria
 
-- [ ] The triage file's inventory lists every source above with its sha256 and headings, and every
-      inventory item has exactly one triage row carrying one of the five classes — checked by a
-      test reading the file. The orchestrator and VERIFY re-derive the inventory from the real
-      sources (read-only) and it matches.
+- [ ] The triage file's inventory lists every source above with its sha256; every inventory source
+      has triage rows, no item has two, and every row carries one of the five classes — checked by
+      a test reading the file (`tests/test_orchestrator_rule_triage.py`). The orchestrator and
+      VERIFY re-derive the sources, their sha256 and the notes' headings from the real files
+      (read-only) and they match.
 - [ ] Every `common`, `stack` and `project:model-b` destination exists: the named file contains the
       named section — checked by a test reading the triage table.
-- [ ] No `skills-src/model-b/references/*.md` or `skills-src/gap-analysis/SKILL.md` line names
-      `NAI`, `Roundhouse` or `ORCHESTRATOR-` other than inside a dated provenance citation, and none
-      names a harness tool retired by CR-MDB-031 — checked by a test.
+- [ ] No line of a Model B-owned `skills-src/` file names `NAI`, `Roundhouse` or `ORCHESTRATOR-`
+      other than inside a dated provenance citation (a CR id and a date on the same line), and none
+      names a harness tool retired by CR-MDB-031 — checked by a test. `bootstrap/` and `shutdown/`
+      are exempt until CR-MDB-041 (their reading order is its scope); the Crucible-imported bundles
+      (`crucible-register`, `crucible-report-*`) are exempt (byte-faithful).
+- [ ] The shipped skills state the rulings above and nothing contradicts them — the mainline and
+      track references and `cr-authoring` agree on the patch-CR rule.
 - [ ] `skills-src/gap-analysis/SKILL.md` exists, names no `CLAUDE.md`, and a sandboxed install
       deploys it to `.agents/skills/gap-analysis/SKILL.md`; the `orchestration-common.md` reference
       to it resolves.

@@ -12,7 +12,7 @@ Single home for git conventions (absorbed the former `memory` twins for git work
 - **NEVER commit directly to `develop`, `main`, or `master`** — always use a feature branch
 - Feature branches: `feature/cr-cf-XXX` (created before you start); `git flow feature start <name>` creates from develop, `git flow feature finish` merges back
 - Dispatched agents: the branch is already created for you — just work on it
-- Hotfixes: `git flow hotfix start X.Y.Z` (from master) → `git flow hotfix finish X.Y.Z` (merges to master AND develop, tags master)
+- Hotfixes: `git flow hotfix start X.Y.Z` (from master) → `git flow hotfix finish X.Y.Z` (merges to master AND develop, tags master). A hotfix starts from main's state; if the fix needs develop-only commits, cut a release branch off develop instead — and abandon a mis-cut hotfix branch with `git branch -D`, never `git flow hotfix finish`.
 
 ### Branch protection
 
@@ -96,6 +96,8 @@ that empties is a signal, not a decision.
   target), approved by a human, executed, and only then recorded — a milestone is a record, not
   an event.
 
+**Read release readiness from the live CI config and `gh`** (workflows, environments, secrets), never from an old queue note.
+
 **ALL releases MUST use `git flow release` commands.** Never manually tag, never bump version directly on develop/main. **Ask before releasing** — version bumps and releases require human approval.
 
 **Two documentation steps belong to every release** (on the release branch, before finishing):
@@ -178,7 +180,9 @@ After building: switch back to develop for continued work. Bump develop to the n
 
 1. **Publish** — after the version is set, publish the Pi package with `npm publish` (a scoped
    package with `npm publish --access public`), using credentials the user supplies at publish
-   time; never store them in the repository or in agent-readable config.
+   time; never store them in the repository or in agent-readable config. The first publish of a
+   new package uses a one-time granular token; then add trusted publishing, require 2FA, and
+   delete the token.
 2. **Verify the published version** — install the published version with `pi install` into an
    isolated Pi agent directory (`PI_CODING_AGENT_DIR` pointed at a temp dir) and confirm the
    extension loads there.

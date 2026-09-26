@@ -9,7 +9,7 @@ Universal rules for ANY orchestrator, ANY project/stack. Verbose detail + failur
 - **Dispatched sub-agents** (RED/GREEN/VERIFY/FIX) → AGENTS.md.
 
 ## Session lifecycle — bootstrap ↔ shutdown
-- Every orchestrator session is BRACKETED by two skills: **`/bootstrap <role>`** at start (register + start the Sandesh notifier through the Model B watcher — or, without it, as a background process that notifies you when it exits — recover carried todos, load queue/hold per role) and **`/shutdown`** at end (finish the active step, drain todos + merge the active CR, leave no dangling/uncommitted work, ack, then kill the notifier LAST).
+- Every orchestrator session is BRACKETED by two skills: **`/bootstrap <role>`** at start (register + start the Sandesh notifier through the Model B watcher — or, without it, as a background process that notifies you when it exits — reload the in-flight cycle from the board, load queue/hold per role) and **`/shutdown`** at end (finish the active step, drain the plan's open cycles + merge the active CR, leave no dangling/uncommitted work, ack, then kill the notifier LAST).
 - **Asymmetry:** `/bootstrap` takes the role as its verb because it ESTABLISHES identity at start; **`/shutdown` takes no role arg** — a running session already knows its role, and a Sandesh shutdown directive is already addressed to one orchestrator. Only `/shutdown`'s optional `emergency` flag matters.
 - `/shutdown` is **graceful by default**; an **`emergency`** flag (power-failure-class) switches to immediate fast-abort (close the active write, stash/preserve, best-effort ack). Fast-abort is permitted ONLY under the flag.
 - **The notifier-kill at shutdown is the SINGLE override of the relaunch-on-exit prime directive** — everywhere else a stopped watcher is relaunched the same turn (never left dead), by the Model B watcher itself or by you on the fallback path — except after an error or a terminal exit on the Model B watcher, or a terminal exit (`3`/`4`/`5`: tombstoned, evicted, already live) on the fallback path, which is never relaunched; ONLY at a confirmed shutdown's final step is it killed and not relaunched. Keep it alive through the whole teardown (to receive acks / a late emergency-stop).
@@ -25,25 +25,45 @@ Universal rules for ANY orchestrator, ANY project/stack. Verbose detail + failur
 - **The orchestrator runs gap-analysis itself** (never delegate to a sub-agent), per-CR immediately before THAT CR's branch/RED.
 - **The dimensions are the single authority in the `gap-analysis` skill** — read it for the full check (spec↔PRD↔code + spec-vs-existing-mechanisms + design-lineage + public-symbol-removal). Do NOT re-list them here.
 - Verdict: READY / SPEC_UPDATE_NEEDED / PREREQUISITE_NEEDED / BLOCKED.
+- **Urgency never skips gap-analysis or any other step**, even for a P0 hotfix — priority changes queue order, never the steps.
 - **Gap-analysis output ≠ spec.** Findings/rationale go to the user + commit message; the spec just BECOMES the corrected contract. No DRIFT-N tags, no "gap-analysis resolutions", no file:line breadcrumbs in the spec.
 
 ## Cycle discipline
-- **Cycle = ONE todo = RED→GREEN together** (never split RED and GREEN into two todos).
-- Todo list holds IMPLEMENTATION cycles + VERIFY + conditional FIX only — NOT design/admin work. Generate each todo when you reach it, not upfront.
-- Setup ordering: cycle plan → create todos → THEN claim the lane / start the worktree.
+- **The Crucible board IS the task list — there is no separate todo list.** The plan is filed complete in Crucible at feature start; its cycles are the resume spine, and a session resumes by reading the board (`plans`, `next`, the active cycle).
+- **A cycle = ONE RED→GREEN unit** (never split RED and GREEN into two cycles).
+- The plan holds IMPLEMENTATION cycles + VERIFY + FIX cycles — NOT design/admin work.
+- **A VERIFY finding the user approves for fixing is fixed in its own FIX cycle** (`cycle-add --kind fix`), never inside the VERIFY cycle.
+- Setup ordering: gap-analysis → approval → `plan-file` → THEN the branch / worktree.
 - Intra-cycle: once approved, flow RED→GREEN→next without pausing between phases; pause only on drift or escalation.
+- **One active cycle at a time per orchestrator**, even for disjoint code — parallelism belongs to separate track orchestrators. An interjecting CR waits until the running cycle is closed on its merit; never activate a cycle while another is active.
+- **One cycle per coherent behaviour unit.** VERIFY + close-out is its own later cycle, never folded into a RED→GREEN cycle.
+- **A test written after its production code cannot go RED** — label that cycle BACKFILL and prove the test with a mutation kill, never under a `-RED` id.
+- **A RED test's semantic intent is fixed** across a CR's cycles; its API binding adapts when a later cycle changes the public API.
+- **A serialized-format version bump reconciles every legacy version-byte assertion in ONE RED pass**, before GREEN — change only the emitted/round-trip version assertions, keep every data-integrity one.
 
 ## Never author code — always dispatch + diff-verify
 - The orchestrator NEVER authors RED/GREEN/FIX edits — dispatch the stack's sub-agent regardless of how trivial. No size threshold.
-- **Agents confabulate — diff-verify EVERY cycle against ground truth** (`git diff`, grep, the artifact), not the agent's narrative or green-claim.
-- When diff-verify finds a defect, DISPATCH a fix-agent — do NOT self-edit.
+- **After approval the FIRST action is the RED dispatch** — no orchestrator pre-flight build or clean; agents own build and test.
+- **Briefs are short:** spec path, cycle scope, the measured baseline, agent id / role / cycle. Never dictate mechanisms; RED proves its own tests passable.
+- **Every brief opens with an Identity block pinning the agent id** (without it agents self-name and vanish from the board), and its step 1 is the exact register command — confirm the registration early in the agent's transcript. Register only the assigned id: no probe or scratch agents on the live board.
+- **Agents confabulate — diff-verify EVERY cycle against ground truth** (`git diff`, grep, the artifact), not the agent's narrative or green-claim — and the board too: after every sub-agent check the registered agent ids and the run/cycle attachment, not only files.
+- **Accept a clean phase from its ingest and commit shape** (a RED commit is test-only); no re-runs between cycles — only at gates or after a crash.
+- **At post-RED review, reject tests that spawn nested builds/compiles or hog resources** — they pass alone and break full-suite regressions.
+- When diff-verify finds a defect, DISPATCH a fix-agent — do NOT self-edit. A fix round's production diff goes to a FIX agent, never GREEN; RED joins only when a finding needs new test contracts.
 - Agents self-commit despite "do not commit" — verify the COMMIT RANGE (`git diff <prev>..HEAD`), reset+recommit cleanly to collapse into orchestrator-controlled boundaries.
 - A crashed agent that left a COMPLETE uncommitted diff is salvaged (assess gates + commit), not re-run.
+- **A committed chunk with the wrong pattern is refactored, not reverted** — keep its names and predicate coverage, change only the wiring layer; revert only a production regression or a fundamentally wrong contract.
+- **Treat any finding an agent reports beyond its mandate as unverified** — confirm it against live code before it enters a spec, a ledger or a report.
+- **After an interrupted or killed agent, inspect `git status` (untracked files too)** before reporting or re-dispatching; reconcile its partial work explicitly.
+- **Stop a stalled sub-agent before taking over** or dispatching the next phase (stop it through the harness's sub-agent control) — otherwise two agents share one tree. An agent reporting changes it did not make signals overlapping execution: check the tree. Brief agents to run tests in the foreground, so none stalls waiting on a background run.
 
 ## Integration / wire-the-call-path GATE (EVERY CR)
 - Every feature must be WIRED into the call path and proven by an INTEGRATION test exercising the real caller→new-code→result seam — not unit-only, not E2E-only.
 - Integration tests drive PRODUCTION wiring (real boot/entry point), never hand-wired struct-literal fixtures.
 - Merge sign-off NAMES the integration test that proves the call path; unwired/unit-in-disguise → FIX_REQUIRED.
+- RED writes the failing wiring test at RED time — the unwired state is a RED failure driven green through the real production path, never a gap found later.
+- **A seam that crosses a process, network or vendor boundary is proven against the real backend** — a mock or in-memory double of the seam can stay green while the production client is broken.
+- Fewer wiring-proving tests beat many unit tests: reject a test set that inflates the count without proving the call path. An end-to-end test injects at the real source, never downstream of it.
 
 ## Sessions
 - One Pi session per orchestrator — Mainline and each Track — launched however the user likes: separate terminals, or panes of a multiplexer such as tmux (optional, a convenience for watching them side by side).
@@ -53,6 +73,8 @@ Universal rules for ANY orchestrator, ANY project/stack. Verbose detail + failur
 - **`worktree-flow` owns what it derives from git** (worktrees, ahead/behind, phase, merge). **Crucible owns what used to live in the DB** (queue membership, release, wave, seq, dependencies, readiness) — CR-MDB-028.
 - Readiness is `~/.crucible/clients/python-crucible.py next`'s answer (`NEXT` / `HOLD` / `DRAINED`) — never a local board, never a schedule md.
 - Each parallel CR gets its own working folder via the worktree tool; the merge is a serialized critical section.
+- A feature branch starts from LOCAL `develop` HEAD. Read pre-merge state from `worktree-flow status` / `finish --dry-run`, not raw git.
+- **Never switch branches in a shared working tree while an agent runs in it**; file other CRs' docs before the dispatch or after the agent returns.
 - Once your worktree exists, the MAIN tree is HANDS-OFF — all CR-coupled edits land in the worktree.
 - **Enter the worktree right after `start`** with the Model B worktree tool `modelb_worktree_enter` and the path `start` prints. Every agent you dispatch for the CR then runs rooted in its worktree, and the `block-write-outside-worktree` hook blocks file-tool writes outside it — yours and the agents' (not writes a shell command makes). Your session cwd never changes: reads, `git -C` and test runs in the worktree are unaffected.
 - **Exit after `finish` or `abort`** with `modelb_worktree_exit`. Both remove the worktree and run from the main tree, where the session already is; `status`/`sync` resolve the main tree from git and run from anywhere.
@@ -60,12 +82,19 @@ Universal rules for ANY orchestrator, ANY project/stack. Verbose detail + failur
 - You own ONLY your CR — never run another CR's finish/merge or edit its tree.
 - Name the CR id in every dispatch description (that routes the agent into the CR's worktree). The dispatch prompt still makes the agent `cd` + assert `git rev-parse --show-toplevel` == worktree before its first write — the agent's own first check; use absolute worktree paths; re-check the main tree is clean after each agent returns.
 - Throwaway/scratch/probe files → `/tmp` via `mktemp` (absolute), NEVER the repo or any worktree.
-- No detached poll-loops (`until … sleep … done`) — the test/build wrapper returns synchronously; wait on that.
+- No detached poll-loops (`until … sleep … done`) — the test/build wrapper returns synchronously; wait on that. This binds Mainline too: gate-free is a push event (the track's completion message), never a sleep-loop monitor. One background watcher per purpose, never stacked — confirm the previous one has exited before starting another; run a status probe only when a pending decision needs its answer.
 - Keep `Depends on:` metadata CURRENT on every CR (parallel ordering derives from it; a stale dep is a hazard). Allocate the next-free CR id against CURRENT integration HEAD, never a stale tree/worktree. Resync a stale branch by merging `develop` INTO the feature branch (not a long re-conflicting rebase).
+- `worktree-flow sync` and `finish` rebase — so merge develop into the feature branch until behind=0 before `finish`, and never use `sync`.
+- A fresh worktree lacks the gitignored dependencies (virtualenvs, `node_modules`, `.env`): populate them before running tests there, and never report a count from an unprepared worktree as a regression signal.
 
 ## Workflow gates
-- Never skip RED — even for chores/lint (RED = a real failing test; a compile failure IS a RED).
+- Never skip RED — even for chores/lint (RED = a real failing test; a compile failure IS a RED). A refactor or an extraction still has a real RED — the test or harness change, and tests for the extracted code's consumption contract — captured and reported.
 - Never merge without explicit approval — present VERIFY findings and WAIT.
+- **Never close or merge until the FULL pre-merge gate is green**, workspace-wide obligations included — a red outside your module is still yours.
+- **Every regression report lists each ignored/skipped test with its reason**, then categorises them (env-gated / blocked on a future CR / structural); a bare skipped count is insufficient.
+- **A gate whose output you will read runs in the foreground** with a long timeout — never background it and spawn a waiter. When something needs cleanup, confirm the process is gone, not just that the stop reported success.
+- **Verify a gate from its ingested results on the board**, never from stdout counts.
+- Validate an agent's work at module level first (the touched package's targeted tests) before integration and end-to-end sweeps — it separates "did the agent do its job" from "is it wired end to end".
 - Answer-then-wait on questions — never implement in response to a question.
 - Always use the proper git-flow / worktree commands; never hand-roll the merge dance.
 - **Serialize heavy gates across parallel tracks** — never run heavy regression / pre-merge gates concurrently (compile + resource starvation env-KILLS them). SELF-SERVICE, split into two roles: (1) the track's PRE-FLIGHT is a WAIT-FOR-FREE + resource-headroom check (RAM/CPU/disk) via the gate-coordination tool — if a gate is already running it WAITS (poll ~5s) and ESCALATES to the coordinator after ~10min; it does NOT create the lock. (2) the GATE-RUNNER tool itself OWNS the lock FILE lifecycle — CREATE it on start with its own REAL run pid, DELETE on finish + on a catchable kill (signal handler), REFUSE to start if a lock is already present (no double-runs in the same CR/track), and reclaim a STALE lock whose holder pid is dead. The coordinator (Mainline) is the RARE stale-lock ARBITER — verify the holder's REAL run pid (🚨 NEVER conclude a run is dead from a proxy signal; ask the holder before telling it to abandon) + interrogate the holder, then force-release only a genuinely forgotten lock. Per-cycle RED/GREEN runs are exempt (light, concurrent). The tool is **`~/.agents/scripts/gate-lock.sh`** (cross-project contract: `contracts/gate-lock.md`) — verbs `wait-free` (the PRE-FLIGHT above) · `wait-acquire` · `acquire` · `release` · `force-release` (Mainline-only, a genuinely stale lock) · `status` · `check`; exit codes 0 = acquired / free → run the gate, 1 = held by another track, 2 = resources loaded, 5 = timed out → ESCALATE (never force-release yourself).
@@ -75,9 +104,21 @@ Universal rules for ANY orchestrator, ANY project/stack. Verbose detail + failur
 - ACs are precise testable gates: exact field names/types/numbers, enum variants, signatures.
 - Conventional commits (`type(scope): desc`); no AI attribution.
 - CR-coupled doc edits ride the feature branch; standalone docs commit to `develop`.
+- **Never rewrite commits the board or VERIFY has already recorded** — a rewritten merge orphans the sha the board carries; let untidy history merge and fix the habit instead.
+- A project's `AGENTS.md` describes what the code does; CR numbers and shipped-when status belong on the board, never in its prose.
 
 ## Close-out
-- Close-out = transition the CR's TRACKING STATE to COMPLETED via the stack's finish/close tool (the ChangeSet-DB / queue row) — that IS the close-out. Where tracking is DB-based, it is the ONLY step: do NOT hand-edit a deprecated spec `Status:` field (scripts read the DB, not the spec), and do NOT touch the README — README updates are RELEASE-branch only (version + CI badges) per the project's rules, NEVER a per-CR delivery entry in develop, and NEVER a track's job (parallel tracks editing the shared README collide). Never a `## Close-out` section in the CR spec. Run the stack's `check-cr-close` gate.
+- Close-out = transition the CR's tracking state to COMPLETED on the Crucible board — `cr-close --commit <sha> --agent <id>` IS the close-out. Do NOT hand-edit anything else for it: the README is RELEASE-branch only (version + CI badges) per the project's rules, NEVER a per-CR delivery entry in develop, and NEVER a track's job (parallel tracks editing the shared README collide). Never a `## Close-out` section in the CR spec. Run the stack's `check-cr-close` gate where the stack ships one.
+- **Read the Crucible plan before `cycle-done`, `cr-close`, `finish` or proposing a merge** — every cycle, VERIFY included, must be done.
+- **Close-out is the LAST commit on the feature branch** — after the merge, touch zero docs for the shipped CR. Run a post-merge develop gate only when develop moved since the branch point (or several CRs land together); never re-run a gate after a docs-only sync.
+
+## Investigation discipline
+- **Read the actual errors first.** For zero or wrong output, read the real errors (dead-letter queue, logs, per-record errors) and rule out trivial causes before instrumenting the machinery. Mainline challenges a track's complex root-cause hypothesis with "what error do the records actually throw?" before relaying it.
+- **Report only when complete.** A track drives an investigation to a complete, proven root cause before reporting; Mainline directs and decides on complete facts — it never debugs, and files no CR on a partial finding.
+- **A verification question one command can settle is settled in the turn it is noticed** — never carried forward as an open bullet.
+
+## Upstream providers
+- **Never start or stop a provider service** (Crucible, Sandesh) — they are not the orchestrator's to run. A down provider is reported and the dependent step held; the workflow degrades gracefully.
 
 ## Memory
 - **GC principle:** memory holds ONLY what the repo doesn't yet track. The moment a note becomes a repo artifact (CR / queue row / PRD / DN / README) or is abandoned, DELETE it (keep ≤ a one-line pointer). Duplicated notes rot + burn context every recall.
