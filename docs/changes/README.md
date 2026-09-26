@@ -1054,3 +1054,26 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   one in all five clients (#1402/#1403). **Brief correction:** `--allow-missing-capabilities` does NOT
   stop `--yes` from running `pi install npm:@anthill-tec/modelb-pi` (tier-1 provider, by design) —
   installer runs in briefs require a /tmp `PI_CODING_AGENT_DIR`. Next: CR-MDB-041.
+- 2026-09-27 — **CR-MDB-041 MERGED** (develop `5d02e65`; plan 207, cycles 165–167). `bootstrap` and
+  `shutdown` read, in order, the `model-b` references → the project's `AGENTS.md` + `.env` →
+  `docs/memory/INDEX.md` (no `ORCHESTRATOR-` note, no `MEMORY.md`); identity from the schema keys
+  (`SANDESH_PROJECT` → `<Project>`/addresses/`--project`; `ORCHESTRATOR_LABEL`, a Track
+  `track<N>-<PROJECT_TOKEN>`; the client resolved through `~/.crucible/crucible-clients.json` for a
+  stack in `PROJECT_STACKS`, quarkus/java → `mvn`); fallback `AGENTS.md` → ask once; an empty
+  `CRUCIBLE_PROJECT_KEY` = not registered (do the setup task), never "idle". Role: argument → context
+  → Sandesh address, no working-directory heuristic. The board is the task list (`plans` gives the
+  active cycle, `next` what is ready). A resumed Track re-enters `.worktrees/<cr>`; shutdown's Track
+  path runs from the main tree (`git -C`), never finishes without Mainline's sign-off, and
+  `finish --cr` + `modelb_worktree_exit` when approved; watchers stopped by `/watcher stop <address>`.
+  `orchestration-track.md` + the rust template agree (Track id, stack client). CR-042 gate exemption
+  for the two skills removed. Suite **1592 / 0 / 0 (real `HOME`), 1592 / 0 / 10 skips (empty `HOME`)**,
+  62 modules; python3.11 2 skips. VERIFY C2 FAIL (F1 client path absent for quarkus/java; F2 resumed
+  Track not re-entering its worktree; F3/F4 pre-existing main-tree/common-rule drift) → C3 FIX.
+  Invocation floors lowered (skills-src 42, span 21) with the removed padding examples. Red
+  intermediates: `469f25c`, `1a4a507`. **Follow-ups (not fixed):** PRD D3.1's example `track1-mdb`
+  uses the acronym while the schema derives labels from the token, and Model B's own hand-written
+  `.env` says `ORCHESTRATOR_LABEL=vidushi-mdb` and has no `SANDESH_PROJECT` (it relies on the
+  fallback) — reconcile at the next registry CR; `crucible/SKILL.md:67` and `skills-src/README.md:12`
+  still show `~/.crucible/clients/<stack>-crucible.py` (a CR-032 gate pins the crucible-skill string;
+  its table maps java → mvn); `CRUCIBLE_PROJECT_KEY`'s schema readers do not yet name the two skills.
+  **Wave 2 drained.** Crucible told on thread #1392.
