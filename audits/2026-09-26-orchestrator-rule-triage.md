@@ -1,0 +1,232 @@
+# Orchestrator rule triage — inventory and classification (CR-MDB-042 §S1)
+
+**Date:** 2026-09-26 · **CR:** CR-MDB-042 §S1 · **Design reference:** PRD D5 (AMENDED 2026-09-26),
+PRD D3/D4, DN-multi-harness §D18
+
+The rules learned while running the orchestrator were written, in the Claude Code era, to
+per-project memory under `~/.claude/projects/<slug>/memory/` and to `~/.claude/AGENTS.md`, outside
+any repository. This file inventories those sources (path + sha256 at triage time) and classifies
+every rule item, so the user can approve each row before anything is absorbed (C2). Nothing is
+absorbed by this file.
+
+**Class vocabulary.**
+
+- `common` — applies to every orchestrator, any project or stack; destination = the Model B skill
+  owning the topic, § an existing heading or a new one (the Note says "new section").
+- `stack:<stack>` — which skill or client performs a role step for one stack; destination =
+  `code-health` or `memory-templates/<stack>-orchestration.md`.
+- `project:<project>` — a fact about one project; `project:model-b` lands in `AGENTS.md`, other
+  projects' rows stay here for their own sessions.
+- `duplicate` — the rule is already stated at the named destination (or repeats an earlier row
+  pointing there).
+- `stale` — a retired mechanism, a Claude Code tool with no Pi equivalent, a superseded rule, the
+  excluded electronics stack, or a rule for Crucible's own server/bundles ("route to Crucible").
+
+Every `common`/`stack` Note states the rule in ≤ 25 words. A rule naming a Claude Code tool is
+rewritten for Pi (sub-agents = the pi-subagents `subagent` tool; worktree enter/exit =
+`modelb_worktree_enter`/`_exit`), never copied as written.
+
+**Scope.** The three orchestrator notes (per `##`/`###` heading; `####` text folds into its parent
+`###`); the seven `~/.claude/AGENTS.md` Non-negotiables; every memory whose frontmatter `type:` is
+`feedback` for NAI (47, incl. `ORCHESTRATOR-RULES.md`, triaged per heading), Crucible (38), Sandesh
+(7), Model B (10), Arduino-Valmik (17), Arduino-PumpControl (10). NAI's
+`feedback-prd-frontmatter-and-change-control.md` declares `type: feedback` in a `metadata:` block
+that follows a stray `---` inside its description, so a strict frontmatter parser misses it; it is
+counted. Excluded: `project`/`reference`/`user` memories, other `~/.claude/AGENTS.md` sections, the
+`ah-codeforge` and `sys-toolbox` projects. All ten PumpControl feedback files are byte-identical to
+Valmik's; each repeats Valmik's class.
+
+## Inventory
+
+| Source | sha256 |
+|---|---|
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` | `a7b81b4a8013039cd77601d2715fd5bb3ee4cd527186955677befc9dd32501c3` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-NAI.md` | `63801dfadf32b594cd0e400bb9a98f86b2cd58dfd729aea3c90a432e04fbe016` |
+| `~/.claude/projects/-home-antonyj-Documents-configurations-roundhouse/memory/ORCHESTRATOR-Roundhouse.md` | `3bcbc242f9ce313d72576faeab18a6bd2e68f266f9358a02e7a597732cbf4136` |
+| `~/.claude/AGENTS.md` | `1ba26d425bc44a0093d4388543facdf1f6cec024ab97f804bb62d11496b458f1` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/feedback-approve-ready-merges-before-escalations.md` | `271fc9bffa4b6ff6ad7266e8de331330cfaa5efcbd1c492db8bcb1a29db5ca3a` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/feedback-atomic-non-contradictory-options.md` | `d216877f1b2ddfd3043d88af5f5e195f8f66bf2f94113efbd59dd7c374d523a9` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/feedback-bootstrap-check-future-feature-notes-vs-db.md` | `7ea5b50bc231dd8a7de72c5a3bbd2b7d9af9b8737e98a98c539e22399164c427` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/feedback-check-prior-deferrals.md` | `2e5f30898c95678513525c6afe253630bf1659d8e016451200762678a1bd6fe4` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/feedback-clippy-before-full-regression.md` | `9cb64bb9c521b66ff2a4966d0e9c59babba3ac8406165c7918a6137f37822a6f` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/feedback-commit-design-docs-promptly.md` | `8c434c580dc2f1e2273c0cb84f3d0ae625c233dbe999d83c5f6021e2fe2b3b2a` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/feedback-cr-frontmatter-succinct.md` | `35e54829d832f6bdd7ecd2017bff9ffd8363733c97a7a24166b5bcd38b8e293e` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/feedback-cr-scope-regression-cross-crate-guards.md` | `21146e62643703accf76aa6b84fb7d70e827ae85829dc11fa837ed43c2f896dc` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/feedback-cr-status-canonical-states.md` | `ca5c3650c5377d73201fd67ad69e6ac42e74cd3e20d21553260b7ae4a0813bc3` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/feedback-cull-slice-file-disjointness-includes-test-files.md` | `fc2728c67be1c4cb1cd36321af89f3f5ffc1ab910f9f5bbe14f3c3abc4248bae` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/feedback-diagnostic-tracing-compile-gated-not-production.md` | `9d117c73387f2f9fbba47bba55391b9bbaa99603c2be2316a6588919da9779ec` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/feedback-ensure-full-gate-green-before-close.md` | `e8ad217170d4892025ad48418e6aed8bbadb63a7f69e2f274bf9425bb56b9a7d` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/feedback-favor-completeness-over-deferring.md` | `62b5647efd5c232c69b981b702682ea52a73d8a9e5ff3a69486c4d3a22134025` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/feedback-fix-unwired-functionality-before-new-features.md` | `6f054791ad278378cc377f4e910ac7e62bef3686693f293b51f37c390beb4fbe` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/feedback-full-pre-merge-regression-must-report-coverage.md` | `343d3b91bc9c77220b5aa817a62ef9fcf4c57a08699374e2936f2ba61c861c04` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/feedback-gate-reap-is-compile-parallelism-thrash-not-oomd.md` | `dc4e582431daf7bb7a5365b28c18b868fbdd0f448849cc1dfa83f0f05243e7e9` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/feedback-investigate-the-error-first-not-the-machinery.md` | `fd3d610ecfa917c9029a6e16a5a56623025f7f69c9740aa8114098f4d2ac69e3` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/feedback-mainline-autonomous-escalate-only.md` | `e9d49c967e59fa202d8c4304321113aaa203e122a7c233d1756b4228cb17395a` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/feedback-mainline-keeps-cr-db-in-sync.md` | `08d035a2e221f4f1c47ade87d43fb47ffb4efedf1eb8c5c18511eb71da1b24c9` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/feedback-mainline-serializes-merge-gates.md` | `f466b6f77e6b5dd091cecc45947a913202709117e8e76c9b5aec40a103aaca7d` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/feedback-no-allow-raw-cargo-bypass.md` | `40f3108dc0c5c10177f4fc097b40a0488f449d2251cbd479561c899c7adc7ff4` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/feedback-no-mainline-edits-to-inprogress-cr-specs.md` | `2a62bdf921805c46e1b8cd308a35e9290d8bb71eec82b967448f3fa54ba88ecf` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/feedback-no-mainline-poll-loops-gate-free-is-push.md` | `dd20d99feb6646135a09786d27e0cdf7690b355876a428d4ab587f82e1b9d3a2` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/feedback-plugins-return-typed-records-never-json.md` | `486c3356cd3daba2bbdc4bc9c0a556c92e53b2bef0efeee7da433ba3b1fb0394` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/feedback-prd-frontmatter-and-change-control.md` | `f89437f012a5e0c9b6a0843dcc82aa0bb06bae80b182e9015c4fd9ff48ffa158` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/feedback-prefer-system-managed-tmp.md` | `7e949ae8d5c82149f5d5cd46653327571962b03c376ea4b0f4d764d5f1522848` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/feedback-provider-mechanism-is-category-agnostic.md` | `e852a951ffe894e1dca9e9114994394c709b1f15aca2ccbf9742b2bd105ef55a` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/feedback-red-review-reject-nested-and-hogging-tests.md` | `105f075137af714c4b85236a81df9ae116245c51794d8d245e431d55eca71448` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/feedback-shared-enum-variant-needs-allfeatures-verify.md` | `0073fcc839cbf000fd10c0d6221faa8fec4beb22a4b65edba703b2899e26dedb` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/feedback-spec-gap-during-impl-fix-in-worktree.md` | `b9b5ee9ac352130f3c354c2b6d16c7018418047ae91a1b7f765f9e46ee83e5d1` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/feedback-thorough-investigation-report-only-when-complete.md` | `2f500a6e1d82d5197b968987106ee3cc3dfe38052039aadc28cedcd80b51465d` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/feedback-tracks-absorb-transient-infra-errors.md` | `ec330e9a1de0ae050b40d71b1924b1093c00af7c632bf44ab57396e8d6bb8f1e` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/feedback-tracks-no-unilateral-memory-writes.md` | `d045328f37685ac03ac3b45c46dae148ee1878fe1dfb9366857215a5ceb5ce9e` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/feedback-use-lean-ctx-for-code-search.md` | `8ce8f706eb39e372e676941e0eb23d4c91d226905dd1959d45766d6010cd537a` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/feedback-verify-cr-premise-against-code-before-dispatch.md` | `06866259bb15357a4e4356e9dd430e72d5f5db6f3791336ee23c46ab7744760d` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/feedback-verify-feature-wiring-and-integration.md` | `602d2ef1b718ff20b9aae9e37c57affdaa1c2821bb86313d431f2b993e7b4502` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/feedback-watcher-relaunch-is-turn-zero.md` | `5d3b77512eff2690324cd24b8d7383e5c03920c1d219d791892b4e85293415a2` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/feedback-wave12-e2e-smoke-is-the-gate.md` | `57e31fd48d635b26517d8df0e2d3b086e31519cfb3f0779bde4ac30cdad7b90d` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/feedback-worktree-flow-finish-merge-not-rebase.md` | `ab77f1c4648ab90af20150a629800ece2d2e06bc1feeb528047dc2470b2ee8f8` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/feedback-worktree-flow-is-the-interface-and-board.md` | `b0085c88ed13b0f7ac66cd34ce6771268d880227703a9b105db055f4d2e8f6ee` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/feedback-worktree-writes-hard-blocked.md` | `7f42c9700188cf7cd07556900b4e133d72e8815ecc846914f0aef775e2ccb83e` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/project-connectors-are-sidecar-not-in-engine-http.md` | `5076456862a17020655f666d9ae31262fd80f48fcae78c376b5170467fe61ad4` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/project-discuss-design-decisions-with-user.md` | `e453b751f69447a8e530a99b19f2304d0551dddb966b06ac0a1fc8147d20835e` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/project-midcourse-cr-respec-strategy.md` | `b64cb4cdbe8db6031bdf200ccefed39e218a76ea07467cc438310f94676d2511` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/project-subagent-worktree-isolation-rule.md` | `364b1b59f98830504efedae849c17059cd0b8a1b4475b444a45553b9ee310bf8` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/project-verify-docs-and-code-before-proposing.md` | `e4d6c97076c71117c82a9118e1ebd6b06d84256e28171370bb3b5a816fc4edd9` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-crucible/memory/agents-must-not-pollute-live-board.md` | `15e165898a2568107565fdf4ab1c0cab58dc8931197bc459c1036c51e5454f16` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-crucible/memory/agents-use-repo-clients-not-mirror.md` | `3800fbd6209d2d924dae7b5b250fb9384deeeba4a80f56e29bf90a5b875f5d0c` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-crucible/memory/approval-only-for-gates-and-escalations.md` | `ffcc90144b9bd1fcf4279489456b75ba2894de3fffe9b9e4df3111493fc25c31` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-crucible/memory/backfill-tests-are-never-red.md` | `38570ce8c8c761578f0236421e6302b3a2b01a62ad82d0887059fd6b86d0b2ae` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-crucible/memory/check-plan-before-closeout.md` | `60101646b8f20035518f1e07b92b57639f984d653914b2c106052bb14df245d9` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-crucible/memory/chrome-tab-discipline.md` | `20bb3da22d78887453feaa5a09c5b728eceaf71db1fe4436db952de621e01933` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-crucible/memory/close-out-order-docs-before-finish.md` | `8378d6a139620f31cfd43c066cf920d858e0ffe1b1b338a9e512bce97f4e31b3` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-crucible/memory/cr-spec-format-discipline.md` | `baea972921825c9dce0c982f0b3d255bb2734b96ae2f30dc15fbb6f7286cb2e0` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-crucible/memory/crucible-register-phase-mandatory.md` | `e0ac4cfe41500256747eb98989dc5886c666207a0299d8b32eff47842f5c2840` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-crucible/memory/crucible-server-is-mainline-owned.md` | `11ea7f5a5413fce6423464c4f1eb41db30a0a710a2cd8cc65b4078565388da21` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-crucible/memory/cycle-plan-todos-at-feature-start.md` | `7003ef10dc71d742904a81c23e74870e6340d3bc3bf3114377769dc69cca91f3` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-crucible/memory/design-features-get-a-dn.md` | `31c36868615ba53b1cce3731014360069627309ccad2ec84f8922477292252ad` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-crucible/memory/doc-edits-belong-on-develop.md` | `aab40def9443e1819ecd3fa20c78b9328ed198e8c0b78504ddb7f5fbacce8f84` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-crucible/memory/fix-rounds-use-fix-agents.md` | `f5361b7ba2ce0867f392d1248c71621083e06b79ec51ed1a229d6be89bd8f469` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-crucible/memory/gap-analysis-non-negotiable.md` | `ba519be43d4b0e7cd2de91451f1b0b8ee561bfe6f321f23dd0b84bff734f527f` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-crucible/memory/interject-requires-cycle-closure.md` | `c5af72f6f647ef6e8e9efdf79bcbff8702934554b7e5ff5d5f9093146d5e761f` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-crucible/memory/lavish-one-listener-invariant.md` | `46e32bbaf065a81f952face583933c6dd4d8fe481a3774e9de4588515c48fd59` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-crucible/memory/lavish-syncs-at-every-closeout.md` | `7bacdfc6620763e3710cce90d2e8d4f2eabc73df311395ba1412dc2a0b25a3ca` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-crucible/memory/micro-design-iterations-between-crs.md` | `7b9df7c0ea436ca96bac088b6a4d953b91217c9653e3b23f775fa191c4e172c9` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-crucible/memory/never-conclude-absence-from-filtered-grep.md` | `e29f1961bffd1f594fd371ddc9fdb0603bcc4339345eb02f22b9166ea4ca3c7c` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-crucible/memory/never-switch-branches-under-a-running-agent.md` | `54016a0d1330bbd30efa5ece6d9d75c1d58174414826e39e7e898fcbd597727a` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-crucible/memory/never-truncate-lavish-poll-output.md` | `d9ee44ae29ee304389f2aa38465541889a7364ecacb459fe84e0e4623044ac23` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-crucible/memory/no-worktree-bisect-for-tests.md` | `f3e280fb21939ee15e946795f3a16c9cb5552900ab5dba03b65cad4ea92b850e` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-crucible/memory/one-active-cycle-at-a-time.md` | `a8d0aa4248a68bb38a8176f42b173bcf15307c49f6823deceac3369991ae9625` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-crucible/memory/orchestrator-identity-is-vidushi.md` | `9b1cd88ed4da8b96250195ca9eff3de4f68ee4f69acd33f9171c110a6b36b3d9` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-crucible/memory/patch-cr-over-inline-scope-edits.md` | `827e3723218882f85eb8315dc9a0ce8b5d9399d5121eab06f9431ee233d70c08` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-crucible/memory/release-is-explicit-gate.md` | `a0c3311140d9d6e1b7b1e660c1d361315b02869adde92935b4e55d5322ff010e` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-crucible/memory/release-membership-is-users-call.md` | `abd5b55914df56d7e281ab528cd96f1971637b7036bc3fde0ed453d5b2f968e5` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-crucible/memory/release-readiness-from-ci-not-stale-notes.md` | `2cd638b0531b689226b93c866cf02632d6c18782eb8dbc980cf467c0a2ae3e50` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-crucible/memory/run-gates-in-the-foreground.md` | `a65fe4a6eba2fb1ba104f7cfc25ee1aee1d395bd7022e683d342b3d0afa300be` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-crucible/memory/status-badges-are-flags-only.md` | `10b219ec792f84f45d177887e3cb738dd455cf5b44c92e0915b2a85e8dc0d5eb` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-crucible/memory/stop-a-stalled-agent-before-taking-over.md` | `ddd691ff0c596641f34e78bb810e6e8385785f947ad5b751c0bc2fcf19ba05a5` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-crucible/memory/storyboard-100-percent-compliance.md` | `ce9ef233f1a3694103410e4940de16e6bcbac56aee8d62a8ecfcabf6ce2dc406` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-crucible/memory/storyboard-sync-ritual.md` | `9ff7752cb8efb676b95fb49e504b809da6b7dcf0bf4974d75374272ec3a69954` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-crucible/memory/ui-project-mode-skill-idea.md` | `538998ba7979e0ae8fddfd5190fede11c669904e328e77aa1a9b494546bbcb98` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-crucible/memory/verify-board-side-effects.md` | `f2b1353b64b5e717cfc599a3c821f7e73156e88af002e8d215fa2d9eacf18e26` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-crucible/memory/verify-cycle-absorbs-fix-rounds.md` | `b545f3c21781e1da26df4a5a4a4dc45151ff97dc018ef201f769d58e6f2501f1` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-crucible/memory/workflow-cycle-id-must-be-provided.md` | `9adb2d8e0aa980a076de3a1697a95253b534408685dcd4de7e3c8fa8cc7ae8c5` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-sandesh/memory/assistant-name-vidushi.md` | `34afcd755aa2ec63f0f4f897b699b77e21bbd37b2267cc74489d8925161512da` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-sandesh/memory/cycle-means-red-green-pair.md` | `485b6727bcc666f923e1c62a0ce3b50e6bf153e724965233f5ede74b3b0257fe` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-sandesh/memory/escalate-design-decisions.md` | `3554e48bf3dbb317b71182c2e0d90a43af97931fff534f15b778a9467599ba22` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-sandesh/memory/hotfix-branches-from-main.md` | `fd7d06bff81e0d76258b4a8c7e68302938447ed6c466b245b5cbee3d00761a94` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-sandesh/memory/interrupted-agents-leave-partial-work.md` | `70faaef5e0f256cf8d6894b94197bca41f314c22d2ed05285259d8f376eebc0c` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-sandesh/memory/load-gap-analysis-skill-and-lean-ctx.md` | `aa0b5f8fae0bd480866380e0ce7d597f86bffddd167d719961c21c53664cc0c3` |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-sandesh/memory/python-release-testpypi-mandatory.md` | `ec5d6ec89281bb6a143da7650468dd61455794fe537e00aa91151804e317120e` |
+| `~/.claude/projects/-home-antonyj-Documents-configurations-roundhouse-model-b/memory/agents-register-first.md` | `c651f213337ca84a21ac63fa7e0242eabbc45ec38dc3e607fc22c21e41cbf786` |
+| `~/.claude/projects/-home-antonyj-Documents-configurations-roundhouse-model-b/memory/crucible-prod-only.md` | `ee6b272825c1380e1ee3313f8c6b56836e891f08b96e52d9939005d9dd74510f` |
+| `~/.claude/projects/-home-antonyj-Documents-configurations-roundhouse-model-b/memory/fix-the-source-never-the-output.md` | `d0d05a9aa81e03b83d643800caa75ee42b0b934d0ac876b5c7bbfa02e392a059` |
+| `~/.claude/projects/-home-antonyj-Documents-configurations-roundhouse-model-b/memory/inter-agent-comms-discipline.md` | `ff5ce3504c577f67c180fad83ceea3b5b55161b7fec1381c600af14f027a5179` |
+| `~/.claude/projects/-home-antonyj-Documents-configurations-roundhouse-model-b/memory/never-run-provider-services.md` | `cfdeff765ad6392eb21d2710d2a01f3b56c7cc13be948e8d1ae9320b3f1a510c` |
+| `~/.claude/projects/-home-antonyj-Documents-configurations-roundhouse-model-b/memory/npm-bootstrap-token-pattern.md` | `d76653e52457cbdebd3421f8b96c0f477614beb3cb44f09384fb8be9efdbf392` |
+| `~/.claude/projects/-home-antonyj-Documents-configurations-roundhouse-model-b/memory/orchestrator-supervises-from-artifacts.md` | `94e590afae868f73e28a921b3409cbb386d2364e5858e1460915d0acd5621b52` |
+| `~/.claude/projects/-home-antonyj-Documents-configurations-roundhouse-model-b/memory/repo-local-authoring-rule.md` | `498f91a96a97bdf980692fa25806522ec0bf4ad7e5d559d364b18ab13de63b12` |
+| `~/.claude/projects/-home-antonyj-Documents-configurations-roundhouse-model-b/memory/sandbox-modelb-home-in-briefs.md` | `3dd4dc2e48caa94f1bb4052db8eb953713cbdc60c29642a3ba4a017047b617b1` |
+| `~/.claude/projects/-home-antonyj-Documents-configurations-roundhouse-model-b/memory/sandesh-mcp-only-boundary.md` | `84975706e0a4d5d7d05f60a16dcb1c80895c5f8241b045f693d18b6de74efede` |
+| `~/.claude/projects/-home-antonyj-Documents-device-projects-Arduino-Valmik/memory/anthill-forge-eda-toolset.md` | `09a3ff0c43db0c8b477563248cfaa2e3e67d8a2c3aba317b6e00f881e15b1dc0` |
+| `~/.claude/projects/-home-antonyj-Documents-device-projects-Arduino-Valmik/memory/device-frame-layout-discipline.md` | `d918829f3808dd6b176a6e9549d8c8e8b0cf0ff5e9f2a8420fa38b1c7a9342f9` |
+| `~/.claude/projects/-home-antonyj-Documents-device-projects-Arduino-Valmik/memory/gap-analysis-needs-user-approval.md` | `aa4d35ca266190df49edb4da80753a3497bd15186a7e4684e85ad04ebcfb2a14` |
+| `~/.claude/projects/-home-antonyj-Documents-device-projects-Arduino-Valmik/memory/hardware-cr-decomposition.md` | `c82562ffac829b672405efd28b8b3a1d37669e2929eb885e83eed37dd86b4cfa` |
+| `~/.claude/projects/-home-antonyj-Documents-device-projects-Arduino-Valmik/memory/keep-arduino-agents-current.md` | `2c6e9d69b2522a865720b9e127ce5f52104080b0ee967f366a34ea4fdd6b493b` |
+| `~/.claude/projects/-home-antonyj-Documents-device-projects-Arduino-Valmik/memory/opensrc-run-outside-repo.md` | `f801893fe2d9aa98009a464204f88df19caf50a018024a8b4429779919163239` |
+| `~/.claude/projects/-home-antonyj-Documents-device-projects-Arduino-Valmik/memory/orchestrator-self-initiates-cycle-todos.md` | `1973270564c59f24515faa88a1c4b87ff5cc3e273042c6aac5d2f8e0b3ff0e3e` |
+| `~/.claude/projects/-home-antonyj-Documents-device-projects-Arduino-Valmik/memory/pcb-design-principles.md` | `e06d5c983fba72066f70194449e91c31c1fba6e8e4e6dd685524b774f8479882` |
+| `~/.claude/projects/-home-antonyj-Documents-device-projects-Arduino-Valmik/memory/quality-gates-as-reusable-agentic-infra.md` | `e9c6c17e05f679391c72cf913f3ec0cd1cd79ce3a57e1802146a5a7b7d9fbc31` |
+| `~/.claude/projects/-home-antonyj-Documents-device-projects-Arduino-Valmik/memory/schematic-deterministic-renderer.md` | `80e544a3fe4daceb8bef32b489e76eb03d43af0f31c20eab0d8c1730789d8796` |
+| `~/.claude/projects/-home-antonyj-Documents-device-projects-Arduino-Valmik/memory/schematic-first-board-workflow.md` | `7928cbdf6d554a7e462dbe49d97acd1d570ca5b009694d18d42c301ce980994c` |
+| `~/.claude/projects/-home-antonyj-Documents-device-projects-Arduino-Valmik/memory/schematic-layout-conventions.md` | `5d26c528715433d37e21e8b472ec3eac3f5e222351081244af2371ae8c7fd6bb` |
+| `~/.claude/projects/-home-antonyj-Documents-device-projects-Arduino-Valmik/memory/schematic-rule-database-self-eval-loop.md` | `1c73deaff666904c0c3f9f85304f03351b6d521cea692a54f12e6b558813bb34` |
+| `~/.claude/projects/-home-antonyj-Documents-device-projects-Arduino-Valmik/memory/simulator-selection-criteria.md` | `3683428c0ebee5388470a4f94f301f83f2d319aa13ed158e047751d2df9d8ff7` |
+| `~/.claude/projects/-home-antonyj-Documents-device-projects-Arduino-Valmik/memory/use-git-flow-feature-finish.md` | `f0391f3304c8947fbf6a2f1cc86e0e4937608cb90b52c9e1393966d46e30cbf0` |
+| `~/.claude/projects/-home-antonyj-Documents-device-projects-Arduino-Valmik/memory/verify-hardware-part-before-driver.md` | `a9d5355924f7fdcccdc986d9267c842b6b8c827e3365abf37acd74fed3831b5b` |
+| `~/.claude/projects/-home-antonyj-Documents-device-projects-Arduino-Valmik/memory/workflow-non-negotiable-tdd-cycles.md` | `7933b7ffef036952785e48595d05d4fb2f4ccd669e08889e06ab5d1beda4a2bb` |
+| `~/.claude/projects/-home-antonyj-Documents-device-projects-Arduino-PumpControl/memory/device-frame-layout-discipline.md` | `d918829f3808dd6b176a6e9549d8c8e8b0cf0ff5e9f2a8420fa38b1c7a9342f9` |
+| `~/.claude/projects/-home-antonyj-Documents-device-projects-Arduino-PumpControl/memory/gap-analysis-needs-user-approval.md` | `aa4d35ca266190df49edb4da80753a3497bd15186a7e4684e85ad04ebcfb2a14` |
+| `~/.claude/projects/-home-antonyj-Documents-device-projects-Arduino-PumpControl/memory/keep-arduino-agents-current.md` | `2c6e9d69b2522a865720b9e127ce5f52104080b0ee967f366a34ea4fdd6b493b` |
+| `~/.claude/projects/-home-antonyj-Documents-device-projects-Arduino-PumpControl/memory/orchestrator-self-initiates-cycle-todos.md` | `1973270564c59f24515faa88a1c4b87ff5cc3e273042c6aac5d2f8e0b3ff0e3e` |
+| `~/.claude/projects/-home-antonyj-Documents-device-projects-Arduino-PumpControl/memory/pcb-design-principles.md` | `e06d5c983fba72066f70194449e91c31c1fba6e8e4e6dd685524b774f8479882` |
+| `~/.claude/projects/-home-antonyj-Documents-device-projects-Arduino-PumpControl/memory/schematic-first-board-workflow.md` | `7928cbdf6d554a7e462dbe49d97acd1d570ca5b009694d18d42c301ce980994c` |
+| `~/.claude/projects/-home-antonyj-Documents-device-projects-Arduino-PumpControl/memory/schematic-layout-conventions.md` | `5d26c528715433d37e21e8b472ec3eac3f5e222351081244af2371ae8c7fd6bb` |
+| `~/.claude/projects/-home-antonyj-Documents-device-projects-Arduino-PumpControl/memory/simulator-selection-criteria.md` | `3683428c0ebee5388470a4f94f301f83f2d319aa13ed158e047751d2df9d8ff7` |
+| `~/.claude/projects/-home-antonyj-Documents-device-projects-Arduino-PumpControl/memory/use-git-flow-feature-finish.md` | `f0391f3304c8947fbf6a2f1cc86e0e4937608cb90b52c9e1393966d46e30cbf0` |
+| `~/.claude/projects/-home-antonyj-Documents-device-projects-Arduino-PumpControl/memory/verify-hardware-part-before-driver.md` | `a9d5355924f7fdcccdc986d9267c842b6b8c827e3365abf37acd74fed3831b5b` |
+
+## Triage
+
+| Source | Class | Destination | Note |
+|---|---|---|---|
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § Tier map — where the rules live (read the generic tiers too) | stale | — | Retired mechanism: points at the `~/.claude/memory/` tier files (agent-baseline, orchestration-universal, rust-orchestration), now Model B skills. |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § 1. Two-phase workflow + the NAI fourth gap-analysis dimension | common | `skills-src/gap-analysis/SKILL.md` § Dimension 4: Spec vs existing mechanisms — Does the spec reinvent something already built? | Rule: the analysis lists each EXTENDED mechanism with a 1–2 line read-the-code behavioural summary. Two-phase, VERIFY wording, output≠spec, D5, D6 already shipped. |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § 1.1 Parallel CR execution — worktree isolation (NAI mechanics → script) | common | `skills-src/model-b/references/orchestration-common.md` § Worktree isolation (basics) | Rule: branch off LOCAL develop HEAD; read pre-merge state from `worktree-flow status`/`finish --dry-run`, not raw git. Rust items (`--project-dir`, `[[test]]` required-features) → rust template. |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § Long parallel sessions — NAI instantiation | common | `skills-src/model-b/references/orchestration-mainline.md` § Filing/assigning a CR — COMMIT docs FIRST, schedule write LAST | Rule: a newly filed CR that must run before an already-sequenced CR → re-send the wave order (`wave-sequence`); `cr-depends` alone does not reorder the board. Rest in common. |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § 2. Cycle discipline — NAI naming + stack-specific RED/GREEN/VERIFY additions | duplicate | `skills-src/model-b/references/orchestration-common.md` § Cycle discipline | Self-commit reset and todo discipline shipped (§ Never author code, § Cycle discipline); NAI task naming superseded by Crucible plan labels `C<n> <label>`. |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § RED (NAI-specific) | stack:rust | `skills-src/memory-templates/rust-orchestration.md` § RED/GREEN/VERIFY additions | New section. Rule: clippy with `--tests`; read `passed=/failed=`, not exit code; `#[ignore]` is temporary; salvage-not-rerun. OpCall/`testing=[]` → project:nai; wiring rules duplicate. |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § GREEN (NAI / Rust note) | stack:rust | `skills-src/memory-templates/rust-orchestration.md` § RED/GREEN/VERIFY additions | New section. Rule: GREEN may promote a cargo dependency from dev-only to production without escalation when production code legitimately imports it. |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § VERIFY (scope boundary) | duplicate | `skills-src/model-b/references/orchestration-mainline.md` § Escalation handling (Mainline's job, not VERIFY's) | VERIFY judges spec compliance; workflow arbitration is the orchestrator's — already the section's premise. |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § Workflow gates | duplicate | `skills-src/model-b/references/orchestration-common.md` § Cycle discipline | Intra-cycle flow and setup ordering shipped; the README-badge add-on is superseded by § Close-out (README is release-branch only). |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § 3. Agent dispatch (NAI) | duplicate | `skills-src/model-b/references/orchestration-common.md` § Never author code — always dispatch + diff-verify | "Always dispatch, no size threshold" is shipped verbatim; agent type names come from the generated stack agents. |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § Test-relayer / cull CRs — lessons (CR-314, 2026-06-06) | duplicate | `skills-src/model-b/references/orchestration-track.md` § Cull / re-layer execution checklist (COMMON rules a track most often runs) | Includes the `####` CR-307 lessons; path audit, diff-verify, fix-agent, cfg(test), grep-gate, commit range, SUT split all shipped. |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § Agent-id naming + the `## Identity` block (MANDATORY) | common | `skills-src/model-b/references/orchestration-common.md` § Never author code — always dispatch + diff-verify | Rule: every dispatch brief opens with an Identity block pinning the agent id; without it agents self-name and vanish from the board. |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § Orchestrator id `vd` / display "vidushi" — NEVER as a sub-agent id | common | `skills-src/crucible/SKILL.md` § Identity — ONE agent id for the whole session | Rule: the orchestrator's id never appears in a sub-agent brief; phase work keeps its CR-cycle-role id. `vd` itself is NAI-only. |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § Design→execution approval gate — cycle plan ONLY after design is FINAL + explicitly approved | duplicate | `skills-src/model-b/references/orchestration-mainline.md` § CR-spec authoring — discuss design FIRST | The "Design→execution gate" bullet states it, including "answering a design question is NOT approval". |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § After "proceed" — FIRST action is the RED dispatch | common | `skills-src/model-b/references/orchestration-common.md` § Never author code — always dispatch + diff-verify | Rule: after approval the first action is the RED dispatch; the orchestrator runs no pre-flight build/clean — agents own build and test. |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § Escalation handling — ORCHESTRATOR's responsibility (not VERIFY's) | duplicate | `skills-src/model-b/references/orchestration-mainline.md` § Escalation handling (Mainline's job, not VERIFY's) | Hedge phrases → stop and surface; shipped. |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § Design gaps — escalate to PRD, then user. NEVER invent. | duplicate | `skills-src/model-b/references/orchestration-mainline.md` § Escalation handling (Mainline's job, not VERIFY's) | "Design gap: read the parent PRD; if silent, escalate… never invent" is shipped. |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § E2E tests for streaming pipelines — use `nai_test::DevApp`, never reinvent | project:nai | NAI AGENTS.md | NAI's canonical E2E harness (`nai_test::DevApp`). |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § Before presenting design options — grep first | duplicate | `skills-src/model-b/references/orchestration-mainline.md` § Escalation handling (Mainline's job, not VERIFY's) | "Before presenting design options, grep first" is shipped. |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § Inter-cycle handoff — trust clean agent reports (Rust stack override) | common | `skills-src/model-b/references/orchestration-common.md` § Never author code — always dispatch + diff-verify | Rule: accept a clean phase from its ingest and commit shape (RED commit test-only); never re-run tests between cycles; re-run only at gates or after a crash. |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § NEVER background-dispatch on the live working tree | duplicate | `skills-src/model-b/references/orchestration-track.md` § Run captive sub-agents in the BACKGROUND | The FOREGROUND exception for shared live trees is shipped; Claude `run_in_background`/`isolation` wording drops. |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § 4. Cargo + Crucible (NAI-specific knobs) | duplicate | `skills-src/memory-templates/rust-orchestration.md` § Tooling (the workflow is embodied here — don't hand-roll) | Pointer paragraph only; generic cargo/Crucible discipline shipped. |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § EVERY cargo verb goes through `rust-crucible.py` — incl. check + clippy (2026-05-31, user-enforced) | stack:rust | `skills-src/memory-templates/rust-orchestration.md` § Tooling (the workflow is embodied here — don't hand-roll) | Rule: every brief forbids raw cargo incl. check/clippy and any sandbox bypass; `ALLOW_RAW_CARGO=1` only in extremely rare, visible cases. |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § `rust-crucible.py --filter` takes a nextest `-E` FILTERSET expression, NOT a bare test name | stack:rust | `skills-src/memory-templates/rust-orchestration.md` § Tooling (the workflow is embodied here — don't hand-roll) | Rule: `--filter` is a nextest `-E` filterset — wrap a test name as `'test(NAME)'`; a bare name fails to parse. |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § Feature-flag sets (NAI) | project:nai | NAI AGENTS.md | NAI per-crate feature sets (`test-support`, `testing`). |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § Two-tier regression — docker-free default + docker-e2e (NAI gate mechanics → script) | stack:rust | `skills-src/memory-templates/rust-orchestration.md` § Pre-merge gate — two tiers (docker-free default + opt-in docker-e2e) | Rule: a new docker-dependent test is added to BOTH nextest default-filters (ci excludes, e2e includes) or it never runs. Tiers shipped. |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § Report ignored/skipped tests — every regression (format) | common | `skills-src/model-b/references/orchestration-common.md` § Workflow gates | Rule: every regression report lists each ignored/skipped test with its reason, then categorises them; a bare skipped count is insufficient. Today only in the rust template. |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § Pre-merge close-out (NAI two-file rule + hook mechanics) | common | `skills-src/model-b/references/orchestration-common.md` § Close-out | Rule: close-out is the last feature-branch commit; post-merge develop gate only if develop moved; no gate re-run after a docs-only sync. Two-file/date-only shipped. |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § 5. CR spec discipline (NAI CR-queue conventions) | duplicate | `skills-src/cr-authoring/SKILL.md` § CR spec structure — DO NOT invent sections | Pointer paragraph to the conventions, which cr-authoring now carries. |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § Spec structure — DO NOT invent sections | duplicate | `skills-src/cr-authoring/SKILL.md` § CR spec structure — DO NOT invent sections | Section order and forbidden sections shipped; "no narration" in § CRs are TECHNICAL docs. |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § CR IDs + status | duplicate | `skills-src/cr-authoring/SKILL.md` § CR IDs + canonical status | Shipped verbatim. |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § Filing/assigning a CR — COMMIT the docs FIRST, then the schedule-DB (`cs`) write is LAST | duplicate | `skills-src/model-b/references/orchestration-mainline.md` § Filing/assigning a CR — COMMIT docs FIRST, schedule write LAST | Shipped; the `cs` ChangeSet verb it names is retired (CR-MDB-028). |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § Consuming a request — RE-READ at consume-time (the watcher fires before write-completion) | duplicate | `skills-src/model-b/references/orchestration-mainline.md` § Inbox / coordination | "Re-read a request at consume-time" is shipped. |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § Closing a CR — TWO files, always | duplicate | `skills-src/cr-authoring/SKILL.md` § Closing a CR | Legacy two-file close-out shipped. |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § CR spec content rules | duplicate | `skills-src/cr-authoring/SKILL.md` § Three document types — clear separation | CRs implement/DNs justify, PRD-first and precise ACs shipped (§ PRD conventions, § ACs are precise testing gates). |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § Integration ACs are MANDATORY for any API-additive CR (non-negotiable) | duplicate | `skills-src/cr-authoring/SKILL.md` § Integration ACs are MANDATORY for any API-additive CR (non-negotiable) | Shipped verbatim. |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § CR vs task — do NOT file cleanup as a CR | duplicate | `skills-src/cr-authoring/SKILL.md` § CR vs task — do NOT file cleanup as a CR | Shipped verbatim. |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § Where work commits | duplicate | `skills-src/cr-authoring/SKILL.md` § Two-phase workflow (universal) + where work commits | Shipped. |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § Spec updates during execution — orchestrator authority vs VERIFY's | duplicate | `skills-src/cr-authoring/SKILL.md` § Spec updates during execution — orchestrator authority vs VERIFY's | Shipped. |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § Pickup order & design gaps | duplicate | `skills-src/cr-authoring/SKILL.md` § Three document types — clear separation | Design gaps → DN shipped; pickup order is now Crucible `next`. |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § 6. Code quality (orchestrator-level) | common | `skills-src/gap-analysis/SKILL.md` § Rules | Rule: decide direct refactor over workarounds or compat shims in gap-analysis; a mid-cycle spec change is a gap-analysis miss — log it. |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § RED-test immutability: semantic intent vs API binding | common | `skills-src/model-b/references/orchestration-common.md` § Cycle discipline | Rule: a RED test's semantic intent is fixed across a CR's cycles; its API binding adapts when a later cycle changes the public API. |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § Investigation-phase discipline (S1 of non-typical CRs) | duplicate | `skills-src/cr-authoring/SKILL.md` § DN conventions | "Investigation sub-phase output is a findings document" is shipped. |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § 7. Tools + context (NAI environment) | duplicate | `skills-src/memory-templates/rust-orchestration.md` § Tooling (the workflow is embodied here — don't hand-roll) | Pointer paragraph to the rust tooling. |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § Avoid `sed` — use Edit / Read / grep / ast-grep | common | `skills-src/model-b/SKILL.md` § 7. Operating rules (every role) | New section. Rule: edit files with the harness's edit/write tools or ast-grep, not `sed`; surface first if bulk text edits need it. Claude tool names drop. |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § Context-mode tool hierarchy (output may exceed ~20 lines) | stale | — | Retired mechanism: context-mode `ctx_batch_execute`/`ctx_execute`/`ctx_index`; superseded by lean-ctx (see § Non-negotiables (6)). |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § Forbidden Bash patterns | common | `skills-src/model-b/SKILL.md` § 7. Operating rules (every role) | New section. Rule: never kill user-visible processes; describe what and why, let the user kill. Context-mode and `TaskStop` parts are retired. |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § 8. NAI e2e — production runtime vs test-bridge (stack-specific) | project:nai | NAI AGENTS.md | NAI test-bridge lacks the checkpoint barrier loop; transactional-sink e2e tests enqueue a barrier. |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § 9. Question economy — act decisively, don't over-gate (2026-06-03) | duplicate | `skills-src/model-b/references/orchestration-mainline.md` § CR-spec authoring — discuss design FIRST | The "Question economy" bullet is shipped. |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § 10. Worktree-boundary enforcement (coordinator + agents, 2026-06-03) | common | `skills-src/model-b/references/orchestration-mainline.md` § Worktree contamination watch | New section. Rule: on every status check watch for dirty integration/sibling trees; never clean another's stray — surface it to the owner; integration tree rests on develop. |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § 11. Design/reference-doc edits need approval — even when a "same-commit" rule seems to mandate them (CR-NAI-297 C5, 2026-06-04) | duplicate | `skills-src/model-b/references/orchestration-mainline.md` § Escalation handling (Mainline's job, not VERIFY's) | The "Design/reference-doc edits need approval" bullet is shipped. |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § 12. CR specs are clean implementation contracts — NO process meta (CR-NAI-288 / -297, 2026-06-05) | duplicate | `skills-src/cr-authoring/SKILL.md` § CRs are TECHNICAL docs — no process pollution (RECURRING mistake) | No gap-analysis/cycle/scheduling meta in a CR — shipped. |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § 13. Cycle = ONE TDD unit (RED→GREEN together); plan + get approval BEFORE executing; never skip RED — even for chores (CR-NAI-305, 2026-06-05) | duplicate | `skills-src/model-b/references/orchestration-common.md` § Cycle discipline | Cycle = RED→GREEN, approval before execution, never skip RED (§ Workflow gates) all shipped. |
