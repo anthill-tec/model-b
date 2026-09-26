@@ -376,9 +376,10 @@ def prune_assets(
 
 def _remove_empty_parents(directory: Path, store_root: Path) -> None:
     """Remove ``directory`` and each emptied ancestor, stopping at
-    ``store_root``, which is never removed (CR-MDB-040 §S1)."""
+    ``store_root``, which is never removed, and at a directory that is a
+    symbolic link, which is left in place (CR-MDB-040 §S1)."""
     while directory != store_root and directory.is_relative_to(store_root):
-        if not directory.is_dir() or any(directory.iterdir()):
+        if directory.is_symlink() or not directory.is_dir() or any(directory.iterdir()):
             return
         directory.rmdir()
         directory = directory.parent
