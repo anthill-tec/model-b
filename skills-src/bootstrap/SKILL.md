@@ -113,7 +113,9 @@ Setup and registration are **persistent** — do NOT re-run them blindly each ru
 only thing that reliably dies between runs is the watcher. So **check state first** and
 do the minimum:
 
-1. **Check** `sandesh addressbook --project <Project>`:
+1. **Check** `sandesh addressbook --project <Project>`. It prints a table, one row per address:
+   `STATUS` shows `active` for a registered address (`active:true` below, else `active:false`);
+   `LISTENING` shows `● live` while a watcher holds it (`listening:true` below, else `listening:false`).
    - Project resolves AND your address is present with `active:true` → already set up and
      registered. **SKIP `sandesh setup` + `sandesh register`**; go straight to the watcher.
    - Project unknown / "not set up" error → `sandesh setup --project <Project>`, then
@@ -126,7 +128,7 @@ do the minimum:
 2. **Launch the watcher ONLY if not already `listening:true`.** If the addressbook already
    shows your address `listening:true`, a live watcher exists — do NOT spawn a duplicate.
    Otherwise start it with the **Model B watcher** — it supervises `sandesh notify`, stays
-   running and relaunches itself; when it wakes you, you only fetch:
+   running and relaunches itself (`/watcher status` lists the watchers it runs); when it wakes you, you only fetch:
    `sandesh fetch --project <Project> --to '<your address>'`. If the Model B watcher is not
    installed, run the notifier as a background process that notifies you when it exits —
    PLAIN, no `while`/retry wrapper, exactly ONE per address, never inline (it blocks), and

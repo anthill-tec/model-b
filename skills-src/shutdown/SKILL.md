@@ -192,8 +192,8 @@ and goes **last**.
    Acks arrive as Sandesh mail; your watcher wakes on them (fetch — and, on the fallback path,
    relaunch — as normal; the notifier stays up until *your* final step). Two convergent signals, use both:
    - the explicit **ack** from each track, AND
-   - the Sandesh **active-state**: a track that has shut down shows `active:false` /
-     `listening:false` in the addressbook. Cross-check acks against the roster.
+   - the Sandesh **active-state**: in the addressbook table, a track that has shut down no longer
+     shows `STATUS` `active` / `LISTENING` `● live` (`active:false` / `listening:false`). Cross-check acks against the roster.
    **Do not proceed to your own teardown until every active track has acked AND/OR shows down.**
    A track that escalated "mid-cycle, draining" is not done — wait for its final ack (or, if
    the User declared emergency, dispatch the emergency flag and accept best-effort).
@@ -221,12 +221,14 @@ ONLY here, at a confirmed shutdown's last step.
 - **Why last:** you need the notifier alive throughout the teardown — a Track to receive a
   late emergency-stop, Mainline to receive every track's ack. Kill it only when everything
   else (drain, merge, commit, ack/report) is done.
-- **How:** stop your watcher, in this order:
-  - through the **Model B watcher**'s stop, when it runs your notifier; **or**
+- **How:** stop your watcher, by your own address, in this order:
+  - through the **Model B watcher**'s stop, `/watcher stop <your address>`, when it runs your
+    notifier — never a bare `/watcher stop`, which stops every watcher; **or**
   - on the fallback path, through the harness facility that runs your background process,
     stopping your own process only; **or**
-  - as the last resort, a targeted kill of *your own* address's notifier only:
-    `pkill -f "sandesh notify --to '<your exact address>'"`.
+  - as the last resort, a targeted kill of *your own* address's notifier only, with a pattern
+    that matches its command line (which carries no quotes):
+    `pkill -f "sandesh notify --to <your exact address>"`.
   - **Never** a machine-wide `pkill sandesh` / broad kill — that would take down OTHER
     orchestrators' watchers. Kill only the one you own.
   - Then `sandesh unregister --project <Project> --address "<your address>" --as "<your address>"` for a clean
