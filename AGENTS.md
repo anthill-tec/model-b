@@ -49,7 +49,7 @@ Key invariants:
 | `contracts/` | Interface contracts: `crucible-envelope.md`, `gate-lock.md`, `sandesh-cli.md`, `lean-ctx.md` (cross-project), `worktree-layout.md` (the `.worktrees/<cr>` string and its six consumers). Repo-only — not shipped in the wheel |
 | `docs/research/` | `PRD-model-b-rationalization.md` (D1–D10) + `DN-*.md` design notes |
 | `docs/changes/` | `README.md` = CR queue (structure only) + `CR-MDB-NNN-*.md` specs |
-| `tests/` | 59 `unittest` modules; mostly structural/contract gates |
+| `tests/` | 60 `unittest` modules; mostly structural/contract gates |
 | `archive/` | Read-only history: `BASELINE.md` (the wave-0 baseline), `wave1..3/` and `contracts/` (archived files), and `mapping.md` — the living map from every relocated path to where it lives now, gated by `tests/test_archive_mapping.py` (a CR that moves a mapped path updates its row) |
 | `audits/` | Dated evidence files backing PRD decisions |
 
@@ -114,7 +114,7 @@ A brief that may run `modelb-axi` pins `--modelb-home` / `--target-root` and exp
 
 ## Testing & QA
 
-Pure **`unittest`** — no pytest, no `conftest.py`, no fixtures/markers. 59 modules in `tests/` (`tests/test_*.py`), each file ending in `if __name__ == "__main__": unittest.main()`. Naming as practised: the wave-1/2 modules use `<Topic><Section>Test` classes (e.g. `ContractsS2Test`) with `test_s<n>_<assertion>` methods; later modules use `<Feature>Test` classes (e.g. `BlockDirectCargoTestScriptTest`) with descriptive method names. A helper more than one module needs lives once in `tests/_helpers.py` and is imported (CR-MDB-032 §S3 gates a module-level helper body defined in two modules).
+Pure **`unittest`** — no pytest, no `conftest.py`, no fixtures/markers. 60 modules in `tests/` (`tests/test_*.py`), each file ending in `if __name__ == "__main__": unittest.main()`. Naming as practised: the wave-1/2 modules use `<Topic><Section>Test` classes (e.g. `ContractsS2Test`) with `test_s<n>_<assertion>` methods; later modules use `<Feature>Test` classes (e.g. `BlockDirectCargoTestScriptTest`) with descriptive method names. A helper more than one module needs lives once in `tests/_helpers.py` and is imported (CR-MDB-032 §S3 gates a module-level helper body defined in two modules).
 
 ```bash
 python3 -m unittest tests.test_hooks                       # one module

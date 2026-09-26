@@ -53,24 +53,38 @@ Class map:
 
 CR-MDB-042 §S2–§S3 (absorb) — the approved triage is the work list:
 
-- ``AbsorbedDestinationTest`` — every ``common``, ``stack:*`` and ``project:model-b`` row whose
-  destination is not under ``skills-src/gap-analysis/`` (adopted, with its rows, in C3): the named
+- ``AbsorbedDestinationTest`` — every ``common``, ``stack:*`` and ``project:model-b`` row (the
+  five whose destination is under ``skills-src/gap-analysis/`` included since C3 adopted that
+  bundle, §S4): the named
   file exists (``project:model-b`` → the repo ``AGENTS.md``) and carries a Markdown heading, any
   level, whose text equals the row's `` § <section>`` exactly (after stripping); the new
   ``skills-src/memory-templates/arduino-orchestration.md`` exists.
 - ``AbsorbedNewSectionBodyTest`` — each ``common``/``stack`` row whose Note says "New section" (or
   "New file and section") has a non-empty body under that heading, up to the next heading of the
   same or a higher level: at least one non-blank line that is not a heading.
-- ``ModelBCommonTextNeutralTest`` — no line of ``skills-src/model-b/SKILL.md`` or
-  ``skills-src/model-b/references/*.md`` names ``NAI``, ``Roundhouse`` or ``ORCHESTRATOR-`` unless
+- ``ModelBCommonTextNeutralTest`` — no line of ``skills-src/model-b/SKILL.md``,
+  ``skills-src/model-b/references/*.md`` or ``skills-src/gap-analysis/SKILL.md`` names ``NAI``,
+  ``Roundhouse`` or ``ORCHESTRATOR-`` unless
   the same line is a dated provenance citation (a ``CR-<ACR>-<n>`` id and a ``20YY-MM-DD`` date),
   and none names a harness tool retired by CR-MDB-031 (the vocabulary of
   ``tests.test_client_path_anchoring``, the ``sandesh_*`` MCP tools included).
 - ``AbsorbRulesOnSyntheticTreeTest`` — the same pure functions over a temp tree.
 
+CR-MDB-042 §S5 (mapping) — ``archive/mapping.md`` (gated by ``tests.test_archive_mapping``, whose
+pattern matcher ``covers_required`` is reused: ``<name>`` is one path component, ``{a,b}`` one of
+the names, ``*`` is literal):
+
+- ``OrchestratorSourcesMappedTest`` — exactly ten rows of Kind ``absorbed`` whose Now is the triage
+  file: one per note (its literal path), one for ``~/.claude/AGENTS.md`` whose Authority names the
+  Non-negotiables, and one per feedback project whose Old path covers every inventoried feedback
+  memory of that project and none of another's; every inventory source is covered; each row's
+  Moved by cites ``CR-MDB-042``. One ``moved`` row ``~/.agents/skills/gap-analysis/`` →
+  ``skills-src/gap-analysis/`` citing ``CR-MDB-042``. Every row covering one of the five Java
+  originals states that the original remains in ``~/.claude/memory/`` until the user removes it.
+- ``MappingRulesOnSyntheticRowsTest`` — the same pure functions over in-memory rows.
+
 Every check is a pure function returning a list of problem strings (``[]`` = clean), so the real
-file and the fixtures run through the same code. Out of scope here (later cycles): the
-gap-analysis bundle and its rows (C3), the mapping rows.
+file and the fixtures run through the same code.
 
 Stdlib only.
 """
@@ -83,6 +97,13 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from tests._helpers import REPO_ROOT, md_section, read_text
+from tests.test_archive_mapping import (
+    MAP_PATH,
+    _unticked,
+    check_rows,
+    covers_required,
+    parse_map,
+)
 from tests.test_client_path_anchoring import _count_tools
 
 TRIAGE_FILE = REPO_ROOT / "audits" / "2026-09-26-orchestrator-rule-triage.md"
@@ -644,8 +665,9 @@ class TriageRulesOnSyntheticTextTest(unittest.TestCase):
 
 # ------------------------------------------------------------------ absorb (§S2–§S3) ----
 
-#: C3 adopts ``skills-src/gap-analysis/`` (§S4); its rows are checked there, not here.
-C3_BUNDLE_PREFIX = "skills-src/gap-analysis/"
+#: C3 adopts ``skills-src/gap-analysis/`` (§S4); its five rows are checked with the rest.
+GAP_ANALYSIS_PREFIX = "skills-src/gap-analysis/"
+GAP_ANALYSIS_SKILL = "skills-src/gap-analysis/SKILL.md"
 #: §S2 introduces this stack template (the triage's two ``stack:arduino`` rows).
 ARDUINO_TEMPLATE = "skills-src/memory-templates/arduino-orchestration.md"
 MODEL_B_SKILL = "skills-src/model-b/SKILL.md"
@@ -695,15 +717,14 @@ def has_rule_body(body: str) -> bool:
 
 def absorbed_destinations(triage: list[dict]) -> list[tuple[dict, str, str]]:
     """``(row, repo-relative file, section)`` for every ``common``, ``stack:*`` and
-    ``project:model-b`` row — except the gap-analysis bundle's rows (C3). A destination that does
-    not parse is returned with file ``""`` so the caller reports it rather than dropping it."""
+    ``project:model-b`` row — the gap-analysis bundle's rows included (C3, §S4). A destination
+    that does not parse is returned with file ``""`` so the caller reports it rather than
+    dropping it."""
     out = []
     for row in triage:
         cls, dest = row["Class"], row["Destination"]
         if cls == "common" or cls.startswith("stack:"):
             m = _SKILL_DEST.match(dest)
-            if m and m.group(1).startswith(C3_BUNDLE_PREFIX):
-                continue
             out.append((row, m.group(1), m.group(2).strip()) if m else (row, "", dest))
         elif cls == "project:model-b":
             m = _AGENTS_DEST.match(dest)
@@ -780,15 +801,26 @@ def model_b_common_files(root: Path) -> list[Path]:
 
 
 class AbsorbedDestinationTest(_RealFileMixin):
-    #: 63 common + 9 stack:rust + 2 stack:arduino + 4 project:model-b, less the 5 gap-analysis rows.
-    EXPECTED_TARGETS = 73
+    #: 63 common + 9 stack:rust + 2 stack:arduino + 4 project:model-b — the 5 gap-analysis rows
+    #: included since C3 adopted the bundle (§S4; was 73 while they were excluded).
+    EXPECTED_TARGETS = 78
+    #: The triage's five ``common`` rows destined for ``skills-src/gap-analysis/SKILL.md``.
+    EXPECTED_GAP_ANALYSIS_TARGETS = 5
 
-    def test_absorbed_rows_selected_are_every_common_stack_and_model_b_row_but_gap_analysis(self):
+    def test_absorbed_rows_selected_are_every_common_stack_and_model_b_row(self):
         _, triage = self.load()
         targets = absorbed_destinations(triage)
         self.assertEqual(len(targets), self.EXPECTED_TARGETS)
         self.assertEqual([rel for _, rel, _ in targets if not rel], [])
-        self.assertEqual([rel for _, rel, _ in targets if rel.startswith(C3_BUNDLE_PREFIX)], [])
+        self.assertEqual(len([rel for _, rel, _ in targets if rel.startswith(GAP_ANALYSIS_PREFIX)]),
+                         self.EXPECTED_GAP_ANALYSIS_TARGETS)
+
+    def test_gap_analysis_rows_land_in_the_adopted_bundle_under_their_section_headings(self):
+        _, triage = self.load()
+        targets = [t for t in absorbed_destinations(triage) if t[1].startswith(GAP_ANALYSIS_PREFIX)]
+        self.assertEqual({rel for _, rel, _ in targets}, {GAP_ANALYSIS_SKILL})
+        self.assertEqual(len(targets), self.EXPECTED_GAP_ANALYSIS_TARGETS)
+        self.assertEqual(destination_findings(targets, REPO_ROOT), [])
 
     def test_every_absorbed_row_destination_file_carries_its_section_heading(self):
         _, triage = self.load()
@@ -810,7 +842,9 @@ class AbsorbedDestinationTest(_RealFileMixin):
 
 
 class AbsorbedNewSectionBodyTest(_RealFileMixin):
-    #: The triage Summary's "New sections C2 would create" list: 3+4+1+2+1+2+2+1.
+    #: The triage Summary's "New sections C2 would create" list: 3+4+1+2+1+2+2+1. The five
+    #: gap-analysis rows (C3) extend sections the adopted skill already has — none is new, so the
+    #: count stays 16 with them selected.
     EXPECTED_NEW_SECTION_ROWS = 16
 
     def test_new_section_rows_are_the_sixteen_the_triage_summary_lists(self):
@@ -840,6 +874,17 @@ class ModelBCommonTextNeutralTest(unittest.TestCase):
         for path in model_b_common_files(REPO_ROOT):
             problems += retired_tool_findings(path.relative_to(REPO_ROOT).as_posix(), read_text(path))
         self.assertEqual(problems, [])
+
+    def _gap_analysis_text(self) -> str:
+        path = REPO_ROOT / GAP_ANALYSIS_SKILL
+        self.assertTrue(path.is_file(), f"CR-MDB-042 \u00a7S4: {GAP_ANALYSIS_SKILL} does not exist")
+        return read_text(path)
+
+    def test_gap_analysis_skill_names_no_project_or_orchestrator_note(self):
+        self.assertEqual(project_name_findings(GAP_ANALYSIS_SKILL, self._gap_analysis_text()), [])
+
+    def test_gap_analysis_skill_names_no_retired_harness_tool(self):
+        self.assertEqual(retired_tool_findings(GAP_ANALYSIS_SKILL, self._gap_analysis_text()), [])
 
 
 def _target(rel: str, section_name: str, cls: str = "common", note: str = "Rule: x.") -> tuple:
@@ -883,7 +928,7 @@ class AbsorbRulesOnSyntheticTreeTest(unittest.TestCase):
             f"{ARDUINO_TEMPLATE}: file does not exist {src}",
         ])
 
-    def test_selection_skips_gap_analysis_and_maps_model_b_to_agents_md(self):
+    def test_selection_includes_gap_analysis_and_maps_model_b_to_agents_md(self):
         rows = [_row(dest="`skills-src/gap-analysis/SKILL.md` \u00a7 Rules"),
                 _row(cls="stack:rust", dest="`skills-src/memory-templates/rust-orchestration.md` \u00a7 T"),
                 _row(cls="project:model-b", dest="`AGENTS.md` \u00a7 Testing & QA"),
@@ -892,11 +937,14 @@ class AbsorbRulesOnSyntheticTreeTest(unittest.TestCase):
                 _row(cls="stale", dest="\u2014", note="retired"),
                 _row(dest="skills-src/model-b/SKILL.md")]
         self.assertEqual([(rel, s) for _, rel, s in absorbed_destinations(rows)], [
+            (GAP_ANALYSIS_SKILL, "Rules"),
             ("skills-src/memory-templates/rust-orchestration.md", "T"),
             ("AGENTS.md", "Testing & QA"),
             ("", "skills-src/model-b/SKILL.md"),
         ])
-        found = destination_findings(absorbed_destinations(rows)[2:], self.root)
+        found = destination_findings(absorbed_destinations(rows)[3:], self.root)
+        self.assertEqual(len(found), 1, found)
+        self.assertIn("destination does not parse", found[0])
         self.assertEqual(len(found), 1, found)
         self.assertIn("destination does not parse", found[0])
 
@@ -945,6 +993,223 @@ class AbsorbRulesOnSyntheticTreeTest(unittest.TestCase):
             "x.md:2: names retired harness tool(s) ['sandesh_send']",
             "x.md:4: names retired harness tool(s) ['Bash']",
         ])
+
+
+# ------------------------------------------------------------------ mapping (\u00a7S5) ----
+
+TRIAGE_REL = TRIAGE_FILE.relative_to(REPO_ROOT).as_posix()
+MAPPING_CR = "CR-MDB-042"
+#: The three notes, ``~/.claude/AGENTS.md`` and the six projects' feedback memories.
+EXPECTED_SOURCE_GROUPS = len(REQUIRED_SOURCES) + len(FEEDBACK_SLUGS)
+GAP_ANALYSIS_STORE = "~/.agents/skills/gap-analysis/"
+GAP_ANALYSIS_NOW = "skills-src/gap-analysis/"
+#: The five Java references by their ORIGINAL names (``tests.test_archive_mapping``).
+JAVA_ORIGINALS = tuple(f"~/.claude/memory/{name}.md" for name in (
+    "java-coding-standards", "java-testing-practices", "java-modern-syntax",
+    "maven-best-practices", "quarkus-patterns"))
+_ORIGINAL_REMAINS = re.compile(
+    r"\boriginals? remains? in `~/\.claude/memory/` until the user removes (?:it|them)\b",
+    re.IGNORECASE)
+
+
+def _map_now(row: dict) -> str:
+    return _unticked(row["now"]).split("#", 1)[0].strip()
+
+
+def _cites_cr(row: dict) -> bool:
+    return MAPPING_CR in {_unticked(t) for t in row["moved_by"].split(",")}
+
+
+def _feedback_members(slug: str, inventory_paths: Sequence[str]) -> list[str]:
+    prefix = f"~/.claude/projects/{slug}/memory/"
+    return [p for p in inventory_paths if p.startswith(prefix) and "/" not in p[len(prefix):]
+            and not p[len(prefix):].startswith("ORCHESTRATOR-")]
+
+
+def source_group_mapping_findings(rows: list[dict], inventory_paths: Sequence[str]) -> list[str]:
+    """\u00a7S5: one ``absorbed`` row to the triage file per inventory source group \u2014 each note and
+    ``~/.claude/AGENTS.md`` by its literal path (the latter naming the Non-negotiables), each
+    feedback project by one row covering all of its inventoried memories and no other project's
+    \u2014 ten rows in all, every inventory source covered, each citing ``CR-MDB-042``."""
+    absorbed = [r for r in rows if _unticked(r["kind"]) == "absorbed" and _map_now(r) == TRIAGE_REL]
+    problems = []
+    for single in REQUIRED_SOURCES:
+        hits = [r for r in absorbed if _unticked(r["old"]) == single]
+        if len(hits) != 1:
+            problems.append(f"{single}: {len(hits)} absorbed rows map it to {TRIAGE_REL}, "
+                            "expected exactly 1")
+        elif single == GLOBAL_AGENTS and "Non-negotiables" not in hits[0]["authority"]:
+            problems.append(f"{GLOBAL_AGENTS}: the absorbed row's Authority does not name the "
+                            "Non-negotiables")
+    groups = [r for r in absorbed if _unticked(r["old"]) not in REQUIRED_SOURCES]
+    for slug in FEEDBACK_SLUGS:
+        members = _feedback_members(slug, inventory_paths)
+        if not members:
+            problems.append(f"{slug}: the inventory lists no feedback memory")
+            continue
+        covering = [r for r in groups if all(covers_required(r["old"], p) for p in members)]
+        if len(covering) != 1:
+            problems.append(f"{slug}: {len(covering)} absorbed rows cover its {len(members)} "
+                            "feedback memories, expected exactly 1")
+        prefix = f"~/.claude/projects/{slug}/"
+        for row in covering:
+            foreign = [p for p in inventory_paths
+                       if not p.startswith(prefix) and covers_required(row["old"], p)]
+            if foreign:
+                problems.append(f"{row['old']}: covers another project's source {foreign[0]}")
+    if len(absorbed) != EXPECTED_SOURCE_GROUPS:
+        problems.append(f"{len(absorbed)} absorbed rows map to {TRIAGE_REL}, expected "
+                        f"{EXPECTED_SOURCE_GROUPS}")
+    problems += [f"inventory source not covered by an absorbed row: {p}" for p in inventory_paths
+                 if not any(covers_required(r["old"], p) for r in absorbed)]
+    problems += [f"{r['old']}: Moved by does not cite {MAPPING_CR}" for r in absorbed
+                 if not _cites_cr(r)]
+    return problems
+
+
+def gap_analysis_mapping_findings(rows: list[dict]) -> list[str]:
+    """\u00a7S5: exactly one ``moved`` directory row ``~/.agents/skills/gap-analysis/`` whose Now is
+    ``skills-src/gap-analysis/``, citing ``CR-MDB-042``."""
+    hits = [r for r in rows if _unticked(r["old"]).rstrip("/") == GAP_ANALYSIS_STORE.rstrip("/")]
+    if len(hits) != 1:
+        return [f"{GAP_ANALYSIS_STORE}: {len(hits)} rows, expected exactly 1"]
+    row, problems = hits[0], []
+    if not _unticked(row["old"]).endswith("/"):
+        problems.append(f"{GAP_ANALYSIS_STORE}: the Old path is not the directory row")
+    if _unticked(row["kind"]) != "moved":
+        problems.append(f"{GAP_ANALYSIS_STORE}: Kind is {_unticked(row['kind'])!r}, expected 'moved'")
+    if _map_now(row).rstrip("/") != GAP_ANALYSIS_NOW.rstrip("/"):
+        problems.append(f"{GAP_ANALYSIS_STORE}: Now is {_map_now(row)!r}, expected "
+                        f"{GAP_ANALYSIS_NOW!r}")
+    if not _cites_cr(row):
+        problems.append(f"{GAP_ANALYSIS_STORE}: Moved by does not cite {MAPPING_CR}")
+    return problems
+
+
+def java_reference_mapping_findings(rows: list[dict]) -> list[str]:
+    """\u00a7S5: every row covering a Java original states that the original remains in
+    ``~/.claude/memory/`` until the user removes it."""
+    problems = []
+    for original in JAVA_ORIGINALS:
+        covering = [r for r in rows if covers_required(r["old"], original)]
+        if not covering:
+            problems.append(f"{original}: no row")
+        problems += [f"{original}: the row at line {r['line']} does not state that the original "
+                     "remains in `~/.claude/memory/` until the user removes it"
+                     for r in covering if not _ORIGINAL_REMAINS.search(r["authority"])]
+    return problems
+
+
+class OrchestratorSourcesMappedTest(_RealFileMixin):
+    def _map_rows(self) -> list[dict]:
+        _, rows, problems = parse_map(read_text(MAP_PATH))
+        self.assertEqual(problems, [], "archive/mapping.md does not parse")
+        return rows
+
+    def test_each_inventory_source_group_has_one_absorbed_row_to_the_triage_file(self):
+        inventory, _ = self.load()
+        paths = [p for p in (inventory_path(r["Source"]) for r in inventory) if p is not None]
+        self.assertEqual(source_group_mapping_findings(self._map_rows(), paths), [])
+
+    def test_gap_analysis_store_bundle_has_a_moved_row_to_skills_src(self):
+        self.assertEqual(gap_analysis_mapping_findings(self._map_rows()), [])
+
+    def test_java_reference_rows_state_the_originals_remain_until_the_user_removes_them(self):
+        self.assertEqual(java_reference_mapping_findings(self._map_rows()), [])
+
+
+def _map_row(old: str, kind: str = "absorbed", now: str = f"`{TRIAGE_REL}`",
+             authority: str = "Model B; triaged rule by rule", moved_by: str = MAPPING_CR,
+             line: int = 1) -> dict:
+    return {"line": line, "old": f"`{old}`", "kind": kind, "now": now, "authority": authority,
+            "moved_by": moved_by}
+
+
+def _fixture_map_rows() -> list[dict]:
+    rows = [_map_row(n) for n in NOTES]
+    rows.append(_map_row(GLOBAL_AGENTS, authority="Model B; the Non-negotiables (1)\u2013(7)"))
+    rows += [_map_row(f"{_H}/{s}/memory/<topic>.md") for s in FEEDBACK_SLUGS]
+    return rows
+
+
+def _fixture_inventory_paths() -> list[str]:
+    paths: list[str] = list(REQUIRED_SOURCES)
+    paths += [f"{_H}/{s}/memory/feedback_example.md" for s in FEEDBACK_SLUGS]
+    return paths + [f"{_H}/{NAI}/memory/reviewer-must-read-code.md"]
+
+
+class MappingRulesOnSyntheticRowsTest(unittest.TestCase):
+    def test_well_formed_source_group_rows_yield_nothing_and_pass_the_mapping_gate(self):
+        rows = _fixture_map_rows()
+        self.assertEqual(len(rows), EXPECTED_SOURCE_GROUPS)
+        self.assertEqual(source_group_mapping_findings(rows, _fixture_inventory_paths()), [])
+        self.assertEqual(check_rows(rows, REPO_ROOT, resolve_shas=False), [])
+
+    def test_a_literal_glob_covers_nothing_so_its_project_is_reported(self):
+        rows = _fixture_map_rows()
+        rows[-1] = _map_row(f"{_H}/{PUMPCONTROL}/memory/feedback_*.md")
+        found = source_group_mapping_findings(rows, _fixture_inventory_paths())
+        self.assertEqual(found, [
+            f"{PUMPCONTROL}: 0 absorbed rows cover its 1 feedback memories, expected exactly 1",
+            f"inventory source not covered by an absorbed row: "
+            f"{_H}/{PUMPCONTROL}/memory/feedback_example.md",
+        ])
+
+    def test_one_row_for_every_project_is_reported_as_crossing_projects(self):
+        rows = _fixture_map_rows()[:4]
+        rows.append(_map_row(f"{_H}/{{{','.join(FEEDBACK_SLUGS)}}}/memory/<topic>.md"))
+        found = source_group_mapping_findings(rows, _fixture_inventory_paths())
+        self.assertEqual(len([f for f in found if "covers another project's source" in f]), 6)
+        self.assertIn(f"5 absorbed rows map to {TRIAGE_REL}, expected 10", found)
+
+    def test_global_agents_row_without_non_negotiables_and_uncited_rows_are_reported(self):
+        rows = _fixture_map_rows()
+        rows[3] = _map_row(GLOBAL_AGENTS, authority="Model B; global rules")
+        rows[4] = _map_row(f"{_H}/{NAI}/memory/<topic>.md", moved_by="CR-MDB-041")
+        self.assertEqual(source_group_mapping_findings(rows, _fixture_inventory_paths()), [
+            f"{GLOBAL_AGENTS}: the absorbed row's Authority does not name the Non-negotiables",
+            f"`{_H}/{NAI}/memory/<topic>.md`: Moved by does not cite {MAPPING_CR}",
+        ])
+
+    def test_a_note_row_of_another_kind_or_destination_is_missing(self):
+        rows = _fixture_map_rows()
+        rows[0] = _map_row(NOTES[0], kind="moved")
+        rows[1] = _map_row(NOTES[1], now="`skills-src/model-b/references/orchestration-common.md`")
+        found = source_group_mapping_findings(rows, _fixture_inventory_paths())
+        self.assertIn(f"{NOTES[0]}: 0 absorbed rows map it to {TRIAGE_REL}, expected exactly 1", found)
+        self.assertIn(f"{NOTES[1]}: 0 absorbed rows map it to {TRIAGE_REL}, expected exactly 1", found)
+        self.assertIn(f"8 absorbed rows map to {TRIAGE_REL}, expected 10", found)
+
+    def test_gap_analysis_row_rules(self):
+        good = _map_row(GAP_ANALYSIS_STORE, kind="moved", now=f"`{GAP_ANALYSIS_NOW}`")
+        self.assertEqual(gap_analysis_mapping_findings([good]), [])
+        self.assertEqual(gap_analysis_mapping_findings([]),
+                         [f"{GAP_ANALYSIS_STORE}: 0 rows, expected exactly 1"])
+        placeholder = _map_row("~/.agents/skills/<bundle>/", kind="moved", now="`skills-src/`")
+        self.assertEqual(gap_analysis_mapping_findings([placeholder]),
+                         [f"{GAP_ANALYSIS_STORE}: 0 rows, expected exactly 1"])
+        bad = _map_row("~/.agents/skills/gap-analysis", kind="absorbed", now="`skills-src/`",
+                       moved_by="CR-MDB-041")
+        self.assertEqual(gap_analysis_mapping_findings([bad]), [
+            f"{GAP_ANALYSIS_STORE}: the Old path is not the directory row",
+            f"{GAP_ANALYSIS_STORE}: Kind is 'absorbed', expected 'moved'",
+            f"{GAP_ANALYSIS_STORE}: Now is 'skills-src/', expected {GAP_ANALYSIS_NOW!r}",
+            f"{GAP_ANALYSIS_STORE}: Moved by does not cite {MAPPING_CR}",
+        ])
+
+    def test_java_rows_must_state_the_originals_remain_until_the_user_removes_them(self):
+        family = ("~/.claude/memory/{java-coding-standards,java-testing-practices,"
+                  "java-modern-syntax,maven-best-practices,quarkus-patterns}.md")
+        silent = _map_row(family, kind="moved", now="`skills-src/memory-templates/`",
+                          authority="Model B; all `java-`-prefixed as templates", line=7)
+        found = java_reference_mapping_findings([silent])
+        self.assertEqual(len(found), 5, found)
+        self.assertTrue(all("the row at line 7 does not state" in f for f in found), found)
+        stated = dict(silent, authority="Model B; the originals remain in `~/.claude/memory/` "
+                                        "until the user removes them")
+        self.assertEqual(java_reference_mapping_findings([stated]), [])
+        self.assertEqual(java_reference_mapping_findings([]),
+                         [f"{p}: no row" for p in JAVA_ORIGINALS])
 
 
 if __name__ == "__main__":
