@@ -4,7 +4,8 @@
 **Type:** fix
 **Priority:** P1 — release 1.0.0, wave 2. Every Pi orchestrator runs these two skills at the start
 and end of every session, and today they send it looking for files that do not exist.
-**Depends on:** —
+**Depends on:** CR-MDB-042 (the rules the per-project note carried must be absorbed first; this
+spec's reading order is re-derived from PRD D5, AMENDED 2026-09-26, at gap analysis)
 **Labels:** skills, bootstrap, shutdown, scaffold
 **Design reference:** DN-multi-harness §D19 (session model); PRD D3.1 (the `.env` naming registry), D10 (what `init` scaffolds), D5 (the
 project memory tier); DN-multi-harness §D14 (Pi only)

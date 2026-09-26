@@ -47,7 +47,8 @@ Queue rows enumerate the whole delivery (structure only). **Live status lives on
 | [CR-MDB-034](CR-MDB-034-archive-mapping.md) | `archive/mapping.md`: a living, gated map of where every relocated path went (supersedes CR-MDB-012 — a release is NOT a CR) | 5 | — |
 | [CR-MDB-039](CR-MDB-039-worktree-isolation-on-pi.md) | Worktree isolation on Pi: enter/exit a worktree from the Model B Pi package (pi-subagents workspace provider + `WF_WORKTREE_ROOT`) | 5 | 031 |
 | [CR-MDB-040](CR-MDB-040-installer-prune.md) | A redeploy removes what it no longer deploys (PRD §4 criterion 6) | 5 | 035 |
-| [CR-MDB-041](CR-MDB-041-bootstrap-reads-scaffolded-files.md) | Bootstrap and shutdown read the files `init` scaffolds (`AGENTS.md`, `.env`, `docs/memory/INDEX.md`), not `ORCHESTRATOR-<Project>`/`MEMORY.md` | 5 | — |
+| [CR-MDB-042](CR-MDB-042-orchestrator-definitions-absorbed.md) | Orchestrator definitions absorbed into the common skill: triage the per-project `ORCHESTRATOR-*` notes and Model B's project memory into common / stack / project (PRD D5 amendment) | 5 | — |
+| [CR-MDB-041](CR-MDB-041-bootstrap-reads-scaffolded-files.md) | Bootstrap and shutdown read the files `init` scaffolds (`AGENTS.md`, `.env`, `docs/memory/INDEX.md`), not `ORCHESTRATOR-<Project>`/`MEMORY.md` | 5 | 042 |
 
 **— v1.0.0 ships here —** (the release is a BOUNDARY EVENT, not a queue row: the wave drains, the user approves, `git-workflow` §Releases executes it, a milestone records it afterwards. No release CR, no close-out wave.)
 
@@ -927,3 +928,11 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   never including, the store roots; the `retired` hint becomes "re-run `--reinstall`".
 - 2026-09-25 — **CR-MDB-040 spec + plan APPROVED** (user): C1 red-green (prune + reporting, §S1–§S2), C2 verify. Execution held by user direction — no plan filed, no branch cut.
 - 2026-09-25 — Pre-existing pi-lens findings, routed to the next CR that touches these files (not fixed here; orchestrator authors no code). Correction to the CR-MDB-039 merge note, which misdescribed the first set: `scripts/worktree-flow.py` (all lines from `91ff12f`, 2026-08) — `:98` unused `json` import; `:527` `os.listdir` → `Path.iterdir` (PTH208); `:272`, `:374` flagged by pi-lens's own rules (not reproduced by ruff); `:387` try/except/pass → `contextlib.suppress`; `:493` `startswith` with a tuple; `:708` nested `if`. `tests/test_worktree_layout_and_bundles.py:54` I001 import order (`056370a`, CR-MDB-031 C3 RED).
+- 2026-09-26 — **CR-MDB-042 FILED** (user ruling): the orchestrator is one role, defined once in the
+  `model-b` skill; stack differences live in stack skills; a project keeps only `.env` identity and
+  `AGENTS.md` conventions (PRD D5, AMENDED 2026-09-26, `cb245d5`). The Claude-era per-project notes
+  (`ORCHESTRATOR-RULES`/`-NAI`/`-Roundhouse`, Model B's `~/.claude` project memory) were never
+  migrated — CR-042 triages and absorbs them. **CR-MDB-041 now depends on 042**, and its reading
+  order (common skill → stack skills → project `AGENTS.md` + `.env`, no per-project orchestrator
+  note) is re-specced at its gap analysis. Release step added: the user deletes the absorbed notes
+  and the five Java-reference originals in `~/.claude/memory/` once CR-042 lands.
