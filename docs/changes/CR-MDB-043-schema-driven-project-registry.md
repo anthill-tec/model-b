@@ -73,13 +73,34 @@ The CLI stays argparse: every `ask` or `override` key has its flag, and a test p
 the parser agree.
 
 `run_agents` reads `PROJECT_STACKS` through the schema reader. The queue README's setup task
-names `.env` for the project key. `AGENTS.md`'s "Identity & naming" section names `SANDESH_PROJECT`.
+names `.env` for the project key, and its Sandesh setup task (multi mode) names the project and the
+Mainline address from `SANDESH_PROJECT`, not `PROJECT_NAME`. `AGENTS.md`'s "Identity & naming"
+section names `SANDESH_PROJECT`. `init`'s summary (stderr) and envelope say that
+`CRUCIBLE_PROJECT_KEY` is empty until the project is registered in Crucible and must be filled in
+`.env` before any Crucible client call.
+
+**Loading and validating the schema** (`load_schema`, before any write):
+- every entry carries every §S1 field its source requires, with the right type: `description`
+  and `readers` always; `flag` for `ask`; `rule` and `inputs` for `derive`; `step` for `capture`;
+  `override` starts with `--`; `required` is a boolean;
+- a `derive` input is a declared key or a known `init` input;
+- `file = ".env.local"` together with `scope = "root+sub"` is refused, because no sub-project
+  `.env.local` is emitted.
+
+**Values.** No rendered value may contain a control character, including a newline. `SANDESH_PROJECT`
+is restricted to letters, digits, `_`, `-` and `.`.
 
 ### §S3 — Gates
 - Every registry key named in `skills-src/` (Crucible's imported bundles exempt: their keys are
   Crucible's contract), `generator/templates/` and `hooks-src/` is declared in the schema.
 - No shipped skill, template or the schema carries a project value: no literal project name,
   token, acronym, Sandesh id or project key.
+
+The detectors must catch a key named as `$KEY`, `${KEY}` or `environ[...]`/`environ.get(...)`, and as
+inline code when the line concerns project settings. They must catch a real project's name, token
+or acronym in prose; an orchestrator label such as `vidushi-<token>`; a Sandesh address such as
+`Mainline - <Real>` or `Track <N> - <Real>`; and a YAML-style `KEY: value`. The real-project set is
+derived from the repository's own history, and a shipped example value is replaced by a placeholder.
 
 ## Acceptance criteria
 
@@ -91,7 +112,11 @@ names `.env` for the project key. `AGENTS.md`'s "Identity & naming" section name
       - `SANDESH_PROJECT` in each `.env`, per its scope;
       - `CRUCIBLE_PROJECT_KEY=` moved from `.env.local` to the root `.env`;
       - the queue README's setup task naming `.env`;
-      - `AGENTS.md` naming `SANDESH_PROJECT`.
+      - the queue README's Sandesh setup task (multi mode) naming `SANDESH_PROJECT`'s value and
+        address;
+      - `AGENTS.md` naming `SANDESH_PROJECT`;
+      - the `.env.local` comment, and `.gitignore`'s description of `.env.local`, no longer calling
+        it a registry file.
 - [ ] `SANDESH_PROJECT` behaves as specified:
       - it defaults to `PROJECT_NAME` without whitespace (`My Project` → `MyProject`);
       - `--sandesh-project` overrides it;
@@ -101,7 +126,10 @@ names `.env` for the project key. `AGENTS.md`'s "Identity & naming" section name
       released client, proven out of process with a stub server or a verb that reads only the key.
 - [ ] Adding an entry to a fixture schema alone makes `init` require or derive, validate and render
       it. Proven with the generator fed a fixture schema.
-- [ ] The §S3 gates exist, with detector fixtures, and pass.
+- [ ] The §S3 gates exist, with detector fixtures covering every form listed in §S3, and pass.
+- [ ] `load_schema` refuses each malformed entry described in §S2, and a value with a control
+      character or an illegal `SANDESH_PROJECT` character is refused before anything is written.
+- [ ] `init`'s output states that the Crucible key must be filled in `.env`.
 - [ ] Suite baselines are re-measured in `AGENTS.md`.
 
 ## Non-goals
