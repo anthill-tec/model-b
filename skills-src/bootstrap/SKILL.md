@@ -91,8 +91,9 @@ Read — in this order:
    - **Crucible project key** — `CRUCIBLE_PROJECT_KEY`. An empty value means the project is not
      yet registered in Crucible: do the queue README's setup task, and never read the empty
      board `plans` then returns as idle.
-3. **`docs/memory/INDEX.md`** — the project memory index — and the slices it lists (the
-   stack's orchestration template, `docs/memory/<stack>-orchestration.md`, among them); open
+3. **`docs/memory/INDEX.md`** — the project memory index — and the slices it lists (among
+   them the orchestration template for a stack that has one,
+   `docs/memory/<stack>-orchestration.md`); open
    the ones relevant to what you are about to do.
 
 **Fallback** — a project with no `.env` registry, or a missing key: take the same value from
