@@ -76,6 +76,8 @@ python3 -m unittest discover -s tests -t .
 
 There is **no** Makefile/justfile, **no** CI test workflow (the only workflow is `.github/workflows/release.yml`, which publishes a pushed release tag to PyPI and npm), and **no** linter/formatter/type-checker configured (no `[tool.ruff|black|mypy|pytest]`). Do not invent lint commands; match surrounding style by hand.
 
+A brief that may run `modelb-axi` pins `--modelb-home` / `--target-root` and exports `MODELB_HOME`, `XDG_DATA_HOME`, `HOME` and `PI_CODING_AGENT_DIR` to sandbox dirs, so no run touches the real installation.
+
 ## Code Conventions & Common Patterns
 
 - **Stdlib only.** `pyproject.toml` declares zero runtime dependencies. `argparse`, `pathlib`, `tomllib`, `hashlib`, `subprocess`, `shutil`, `string.Template`, `json`, `re`. Adding a third-party import is a design change — raise it first. There is no TOML *writer* in stdlib, hence the hand-rolled serializer in `config.py`.
@@ -85,6 +87,7 @@ There is **no** Makefile/justfile, **no** CI test workflow (the only workflow is
 - **No async, no DI, no globals-as-state.** State flows through function arguments and return values; subprocess calls are synchronous.
 - **Naming.** Private helpers `_leading_underscore`; env/flag precedence is always *flag > env > default* (`resolve_modelb_home`, `resolve_target_root`).
 - **Hook scripts** (`hooks-src/scripts/*`): python3, stdlib-only, harness-agnostic, read a JSON payload on stdin, `exit 0` = allow, `exit 2` + `{"decision":"block","reason":…}` = block. Any `block-*` script is *security-class* and MUST declare `fail_direction`. Informational hooks never block. Missing git/project root → silently allow.
+- **Fix the source, never the output.** Never hand-edit a rendered agent definition or a deployed skill — fix `generator/` or `skills-src/`, then re-render (`generator/build.py build`) or redeploy. An emergency live fix is recorded, and carried back to the source, in the same session.
 - **Docs.** Sections are `§S1, §S2, …` and are cited from code, tests, and commit messages. PRD decisions are `D1–D10`. CR ids are flat `CR-MDB-NNN`.
 - **Commits.** Conventional commits (`type(scope): desc`). **Never** add AI/Claude attribution of any kind. Work happens on `develop`; feature branches `feature/CR-MDB-NNN-<slug>`.
 
@@ -105,6 +108,7 @@ There is **no** Makefile/justfile, **no** CI test workflow (the only workflow is
 - Crucible's installed clients, `~/.crucible/clients/<stack>-crucible.py` (listed in `~/.crucible/crucible-clients.json`, installed by Crucible's own installer), are the only sanctioned client surface — never a checkout of the Crucible project. Model B ships, vendors and maintains none of them.
 - Prefer lean-ctx reads (`ctx_read`/`ctx_search`/`ctx_shell`/`ctx_tree`) over raw file/grep/shell calls.
 - Confirm destructive operations; delegate super-user ops to the user.
+- Crucible: the **production** board only (`127.0.0.1:3849`), reached through the released client's API — never its database, never a dev instance.
 - Model B never mutates `~/.claude` directly — the `modelb-axi` installer is the only deployment channel (PRD §D9/§D10), and the repo-local authoring rule means no CR writes there at all. The user's own dotfile-manager discipline is out of scope for this file.
 - **Electronics stack is EXCLUDED** (anthill-forge dead) — never migrate, document, or generate it.
 
