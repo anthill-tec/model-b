@@ -36,6 +36,7 @@ import importlib.util
 import io
 import json
 import os
+import re
 import shutil
 import site
 import subprocess
@@ -55,6 +56,9 @@ from modelb_axi import scaffold
 from modelb_axi.hooks import compile_wiring
 from tests._helpers import decode_axi, installed_crucible_file, parse_env_file
 from tests._helpers import run_module, write_install_toml
+# The sibling grep gate's provenance exemption (imported as a module so its
+# TestCase classes are not re-collected here).
+from tests import test_crucible_skill as _crucible_skill_gates
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCHEMA_PATH = REPO_ROOT / "modelb_axi" / "project_schema.toml"
@@ -1041,6 +1045,360 @@ class AgentsVerbReadsScaffoldedStacksTest(unittest.TestCase):
         self.assertEqual(_key_lines(after, "PROJECT_STACKS"), ["PROJECT_STACKS=bun\n"])
         self.assertEqual(_without_keys(after, "PROJECT_STACKS"),
                          _without_keys(before, "PROJECT_STACKS"))
+
+
+# ------------------------------------------------ §S3 gates: shipped text ----
+#
+# The gates read the SHIPPED trees only — `skills-src/`, `generator/templates/`,
+# `hooks-src/` (and, for the no-project-value gate, the schema itself). The
+# records (`docs/`, `archive/`, `audits/`) and tests are not shipped and are out
+# of scope. Crucible's imported bundles are exempt from both gates: their keys
+# and examples are Crucible's contract (skills-src/CRUCIBLE-HANDOVER.md).
+
+GATE_ROOTS = ("skills-src", "generator/templates", "hooks-src")
+HANDOVER_MD = REPO_ROOT / "skills-src" / "CRUCIBLE-HANDOVER.md"
+
+#: A registry key's shape.
+_KEY_SHAPE = r"[A-Z][A-Z0-9_]+"
+#: (a) ``KEY=`` — never ``KEY==`` (a comparison) and never inside a longer
+#: identifier or a ``$KEY`` reference.
+_ASSIGNED_NAME_RE = re.compile(r"(?<![A-Za-z0-9_$])(" + _KEY_SHAPE + r")=(?!=)")
+#: (b) an env-style name (it carries an underscore) on a line that also
+#: mentions a ``.env`` file or "registry". The underscore keeps ordinary
+#: upper-case prose words (NEVER, ONCE, CR, NNN) out.
+_ENV_STYLE_NAME_RE = re.compile(
+    r"(?<![A-Za-z0-9_])([A-Z][A-Z0-9]*_[A-Z0-9_]*[A-Z0-9])(?![A-Za-z0-9_])")
+#: ``.env`` / ``.env.local`` as a file — never ``os.environ``.
+_REGISTRY_LINE_RE = re.compile(r"\.env\b|registry", re.IGNORECASE)
+_INLINE_CODE_RE = re.compile(r"`([^`\n]+)`")
+_FENCE_RE = re.compile(r"^\s*(```|~~~)")
+#: Files whose prose is Markdown: only their fenced blocks and inline code
+#: spans are "code". Any other file (the extension-less hook scripts) is code.
+_MARKDOWN_SUFFIXES = (".md", ".tmpl")
+
+#: Names that match the registry-key shape in the shipped trees but are NOT
+#: project-registry keys — runtime environment, tool configuration or example
+#: text. Every entry is matched in today's tree (a stale entry would hide a
+#: future registry key of the same name).
+NOT_REGISTRY_KEYS = {
+    # hook escape hatches — per-command environment, read by the hook scripts
+    "ALLOW_RAW_CARGO": "block-direct-cargo-test escape hatch (per-command env)",
+    "ALLOW_RAW_MVN": "block-direct-mvn-test escape hatch (per-command env)",
+    "ALLOW_WRITE_OUTSIDE_WORKTREE": "block-write-outside-worktree escape hatch (env)",
+    # Crucible client configuration — optional `.env` keys Crucible's clients own
+    "CRUCIBLE_MAVEN_DIR": "Crucible mvn client config (non-root pom), Crucible's contract",
+    "CRUCIBLE_COMPOSE_FILE": "Crucible mvn client config (compose e2e), Crucible's contract",
+    "CRUCIBLE_DOCKER_SERVICES": "Crucible mvn client config (compose e2e), Crucible's contract",
+    "CRUCIBLE_BIND_MOUNT_PATHS": "Crucible mvn client config (bind mounts), Crucible's contract",
+    "CRUCIBLE_COVERAGE_PROFILE": "Crucible mvn client config (JaCoCo profile), Crucible's contract",
+    "MVN_CRUCIBLE_PROJECT_DIR": "Crucible mvn client --project-dir env override",
+    "RUST_CRUCIBLE_PROJECT_DIR": "Crucible rust client --project-dir env override",
+    # third-party tool environment
+    "CARGO_BUILD_JOBS": "cargo's parallelism env var (rust memory template)",
+    "DOCKER_HOST": "Docker/Podman socket env var (java testing template)",
+    "TESTCONTAINERS_RYUK_DISABLED": "Testcontainers env var (java testing template)",
+    "MAVEN_OPTS": "Maven JVM options env var (java maven template)",
+    "UID": "shell user id in a compose `user:` example (rust template)",
+    "GID": "shell group id in a compose `user:` example (rust template)",
+    # example / placeholder text
+    "COMMIT": "enum-variant example in cr-authoring's AC-precision guidance",
+    "ROLLBACK": "enum-variant example in cr-authoring's AC-precision guidance",
+    "DD": "RediSearch FT.DROPINDEX argument (java orchestration template)",
+    "SOME_ENV_VAR": "placeholder in a `docker run -e` example (operational commands)",
+    "VAR": "generic `VAR=value` wording in the block-direct-*-test hook docstrings",
+}
+
+#: Real projects' Sandesh ids, as found in this repo's own history and records
+#: (`Mainline - ModelB`, `Mainline - Crucible`, `Mainline - Nai`,
+#: `Mainline - Sandesh`, `Track N - Nai` in docs/ and audits/; `Mainline -
+#: Roundhouse` the umbrella's address; `Valmik` in docs/changes/ CR-MDB-041/042).
+REAL_SANDESH_PROJECTS = ("ModelB", "Roundhouse", "Crucible", "Nai", "Sandesh", "Valmik")
+_REAL = "|".join(REAL_SANDESH_PROJECTS)
+_SANDESH_ADDRESS_RE = re.compile(
+    r"\b(?:Mainline|Track\s+\S+)\s+-\s+(" + _REAL + r")(?![A-Za-z0-9_])")
+_SANDESH_PROJECT_FLAG_RE = re.compile(
+    r"--project(?:\s+|=)[\"']?(" + _REAL + r")(?![A-Za-z0-9_])")
+_UUID_RE = re.compile(
+    r"(?<![0-9A-Fa-f])[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}"
+    r"-[0-9A-Fa-f]{12}(?![0-9A-Fa-f])")
+#: A schema field whose NAME says it carries a value.
+VALUE_LIKE_FIELDS = frozenset({"value", "default", "example", "examples", "sample"})
+
+
+def _imported_crucible_bundles() -> frozenset:
+    """The imported roster, read from the provenance record's "Bundles imported"
+    list — the single place it is declared."""
+    text = HANDOVER_MD.read_text(encoding="utf-8")
+    section = text.split("## Bundles imported", 1)[1].split("\n## ", 1)[0]
+    return frozenset(re.findall(r"^- `(crucible-[a-z-]+)`\s*$", section, re.MULTILINE))
+
+
+#: The no-project-value gate's provenance exemption: the SAME file the sibling
+#: grep gate exempts (test_crucible_skill.CrucibleSkillS5Test.GREP_GATE_EXEMPT,
+#: also test_client_path_anchoring.PROVENANCE_EXEMPTION) — a record at the
+#: skills-src root, not a bundle, never deployed, naming real Sandesh
+#: addresses as history.
+PROVENANCE_RECORDS = frozenset(
+    f"skills-src/{name}"
+    for name in _crucible_skill_gates.CrucibleSkillS5Test.GREP_GATE_EXEMPT
+)
+
+
+def _shipped_files(exempt: frozenset = frozenset()) -> list[tuple[str, str]]:
+    """``(repo-relative path, text)`` of every shipped file under GATE_ROOTS,
+    minus Crucible's imported bundles, ``__pycache__`` and ``exempt``."""
+    bundles = _imported_crucible_bundles()
+    out = []
+    for root in GATE_ROOTS:
+        for path in sorted((REPO_ROOT / root).rglob("*")):
+            rel = path.relative_to(REPO_ROOT)
+            if not path.is_file() or "__pycache__" in rel.parts:
+                continue
+            if rel.parts[0] == "skills-src" and len(rel.parts) > 2 and rel.parts[1] in bundles:
+                continue
+            if rel.as_posix() in exempt:
+                continue
+            out.append((rel.as_posix(), path.read_text(encoding="utf-8")))
+    return out
+
+
+def _registry_names_named(path: str, text: str) -> list[tuple[int, str]]:
+    """``(line, name)`` for every registry key ``text`` NAMES: a name of the
+    key shape that appears (a) as ``KEY=`` in code — a fenced block or inline
+    code span in Markdown, anywhere in any other file — or (b) env-style on a
+    line that also mentions a ``.env`` file or "registry"."""
+    markdown = path.endswith(_MARKDOWN_SUFFIXES)
+    found, in_fence = [], False
+    for number, line in enumerate(text.splitlines(), 1):
+        if markdown and _FENCE_RE.match(line):
+            in_fence = not in_fence
+            continue
+        codes = [line] if (in_fence or not markdown) else _INLINE_CODE_RE.findall(line)
+        names = {m.group(1) for code in codes for m in _ASSIGNED_NAME_RE.finditer(code)}
+        if _REGISTRY_LINE_RE.search(line):
+            names |= {m.group(1) for m in _ENV_STYLE_NAME_RE.finditer(line)}
+        found.extend((number, name) for name in sorted(names))
+    return found
+
+
+def _undeclared_registry_names(files, declared, allowlist) -> list[str]:
+    """``path:line NAME`` for every named registry key neither declared in the
+    schema nor allowlisted as a non-registry name."""
+    return [
+        f"{path}:{line} {name}"
+        for path, text in files
+        for line, name in _registry_names_named(path, text)
+        if name not in declared and name not in allowlist
+    ]
+
+
+def _is_placeholder(value: str) -> bool:
+    """Empty, quoted-empty, an ``<angle>`` placeholder, or a ``$reference``
+    (a value read from elsewhere, not a literal)."""
+    bare = value.strip("\"'")
+    return (bare == "" or (bare.startswith("<") and bare.endswith(">"))
+            or bare.startswith("$"))
+
+
+def _project_value_findings(path: str, text: str, keys) -> list[str]:
+    """``path:line: reason`` for every literal project value in ``text``: a
+    schema key assigned a non-placeholder value, a UUID-shaped project key, or
+    a real project's Sandesh address or ``--project`` id."""
+    assign = re.compile(
+        r"(?<![A-Za-z0-9_$])(" + "|".join(map(re.escape, sorted(keys)))
+        + r")=(\"[^\"\n]*\"|'[^'\n]*'|[^\s`'\",;)]*)")
+    out = []
+    for number, line in enumerate(text.splitlines(), 1):
+        for m in assign.finditer(line):
+            if not _is_placeholder(m.group(2)):
+                out.append(f"{path}:{number}: {m.group(1)} assigned {m.group(2)!r}")
+        out.extend(f"{path}:{number}: UUID {m.group(0)}" for m in _UUID_RE.finditer(line))
+        for regex in (_SANDESH_ADDRESS_RE, _SANDESH_PROJECT_FLAG_RE):
+            out.extend(f"{path}:{number}: Sandesh id {m.group(0)!r}"
+                       for m in regex.finditer(line))
+    return out
+
+
+def _schema_value_fields(entries: list[dict]) -> list[str]:
+    """``KEY.field`` for every field outside §S1 or named like a value."""
+    return [
+        f"{entry.get('name')}.{field}"
+        for entry in entries for field in sorted(entry)
+        if field not in S1_FIELDS or field in VALUE_LIKE_FIELDS
+    ]
+
+
+class RegistryKeyDetectorTest(unittest.TestCase):
+    """§S3 gate 1's detector: what counts as a registry key NAMED — proved on
+    synthetic texts, so the gate can fail."""
+
+    def _names(self, path: str, text: str) -> list[tuple[int, str]]:
+        return _registry_names_named(path, text)
+
+    def test_an_assignment_in_a_fenced_block_is_named(self):
+        text = "Prose.\n```\nTEAM_LEAD=alice\n```\n"
+        self.assertEqual(self._names("fixture.md", text), [(3, "TEAM_LEAD")])
+
+    def test_an_assignment_in_inline_code_is_named(self):
+        self.assertEqual(self._names("fixture.md", "Write `TEAM_LEAD=` first.\n"),
+                         [(1, "TEAM_LEAD")])
+
+    def test_an_env_style_name_on_a_dotenv_or_registry_line_is_named(self):
+        text = ("Set TEAM_LEAD in `.env`.\n"
+                "The naming registry holds BUDGET_CODE too.\n"
+                "Local overlay `.env.local` carries SECRET_TOKEN.\n")
+        self.assertEqual(self._names("fixture.md", text),
+                         [(1, "TEAM_LEAD"), (2, "BUDGET_CODE"), (3, "SECRET_TOKEN")])
+
+    def test_an_extensionless_script_is_code_throughout(self):
+        text = '"""Docstring: set TEAM_LEAD=1 to skip."""\n'
+        self.assertEqual(self._names("hooks-src/scripts/x", text), [(1, "TEAM_LEAD")])
+
+    def test_runtime_names_in_prose_comparisons_and_os_environ_are_not_named(self):
+        clean = (
+            "The WORKFLOW_CYCLE variable is exported by the harness.\n"
+            "Outside code, FOO_BAR=1 in prose is not an assignment.\n"
+            "NEVER read the ONCE-declared value.\n"
+        )
+        self.assertEqual(self._names("fixture.md", clean), [])
+        script = ('x = os.environ.get("TMPDIR_ROOT", "")\n'
+                  "if MODE_FLAG==1: pass\n"
+                  "y = f'${HOME_DIR}'\n")
+        self.assertEqual(self._names("hooks-src/scripts/x", script), [])
+
+    def test_a_name_inside_a_longer_identifier_is_not_the_shorter_key(self):
+        self.assertEqual(self._names("fixture.md", "`MY_PROJECT_NAME=x`\n"),
+                         [(1, "MY_PROJECT_NAME")])
+
+    def test_the_gate_flags_an_undeclared_key_and_passes_declared_and_allowlisted(self):
+        files = [("fixture.md", "```\nTEAM_LEAD=alice\nPROJECT_NAME=\n"
+                                "ALLOW_RAW_CARGO=1\n```\n")]
+        self.assertEqual(
+            _undeclared_registry_names(files, SCHEMA_KEYS, NOT_REGISTRY_KEYS),
+            ["fixture.md:2 TEAM_LEAD"])
+        clean = [("fixture.md", "`PROJECT_NAME=` and `ALLOW_RAW_MVN=1`\n")]
+        self.assertEqual(
+            _undeclared_registry_names(clean, SCHEMA_KEYS, NOT_REGISTRY_KEYS), [])
+
+
+class RegistryKeysDeclaredGateTest(unittest.TestCase):
+    """§S3 gate 1: every registry key named in the shipped skills (Crucible's
+    imported bundles exempt), templates and hooks is declared in the schema."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.files = _shipped_files()
+        cls.declared = frozenset(_entries_by_name())
+        cls.named = {name for path, text in cls.files
+                     for _, name in _registry_names_named(path, text)}
+
+    def test_the_scan_reads_every_root_and_skips_the_imported_bundles(self):
+        bundles = _imported_crucible_bundles()
+        self.assertEqual(len(bundles), 6, f"imported roster parsed as {sorted(bundles)}")
+        paths = [p for p, _ in self.files]
+        for root in GATE_ROOTS:
+            self.assertTrue(any(p.startswith(root + "/") for p in paths), root)
+        self.assertEqual([p for p in paths if p.split("/")[1] in bundles], [])
+        self.assertIn("PROJECT_NAME", self.named,
+                      "the model-b skill's naming registry names PROJECT_NAME")
+
+    def test_every_named_registry_key_is_declared_in_the_schema(self):
+        self.assertEqual(
+            _undeclared_registry_names(self.files, self.declared, NOT_REGISTRY_KEYS), [],
+            "§S3: a registry key named in shipped text is not declared in "
+            "modelb_axi/project_schema.toml (declare it, or allowlist a runtime name "
+            "in NOT_REGISTRY_KEYS with its reason)",
+        )
+
+    def test_the_allowlist_holds_no_schema_key_and_no_stale_name(self):
+        self.assertEqual(sorted(set(NOT_REGISTRY_KEYS) & self.declared), [])
+        self.assertEqual(sorted(set(NOT_REGISTRY_KEYS) - self.named), [],
+                         "allowlisted names no shipped text matches any more")
+        for name, reason in NOT_REGISTRY_KEYS.items():
+            self.assertRegex(name, r"^" + _KEY_SHAPE + r"$")
+            self.assertTrue(reason.strip(), f"{name} carries no reason")
+
+
+class ProjectValueDetectorTest(unittest.TestCase):
+    """§S3 gate 2's detector — proved on synthetic texts, so the gate can fail."""
+
+    def _find(self, text: str) -> list[str]:
+        return _project_value_findings("fixture.md", text, SCHEMA_KEYS)
+
+    def test_a_schema_key_assigned_a_literal_value_is_found(self):
+        text = ('PROJECT_NAME=Acme\n'
+                '`SANDESH_PROJECT="Acme Corp"`\n'
+                "export PROJECT_ACRONYM='ACM'\n")
+        self.assertEqual(self._find(text), [
+            "fixture.md:1: PROJECT_NAME assigned 'Acme'",
+            "fixture.md:2: SANDESH_PROJECT assigned '\"Acme Corp\"'",
+            "fixture.md:3: PROJECT_ACRONYM assigned \"'ACM'\"",
+        ])
+
+    def test_placeholders_and_non_schema_keys_are_not_values(self):
+        clean = ("PROJECT_ACRONYM=<acronym>\n"
+                 "`PROJECT_NAME=<Project>`\n"
+                 'CRUCIBLE_PROJECT_KEY=\n'
+                 'REPO_OWNER=""\n'
+                 "SANDESH_PROJECT=$PROJECT_NAME\n"
+                 "CRUCIBLE_MAVEN_DIR=backend\n"
+                 "MY_PROJECT_NAME=Acme\n")
+        self.assertEqual(self._find(clean), [])
+
+    def test_a_uuid_shaped_project_key_is_found(self):
+        text = "key `019c9ff7-222f-7ae5-9121-2ae549e4d97A` here; not 019c9ff7-222f\n"
+        self.assertEqual(self._find(text),
+                         ["fixture.md:1: UUID 019c9ff7-222f-7ae5-9121-2ae549e4d97A"])
+
+    def test_a_real_projects_sandesh_address_or_project_flag_is_found(self):
+        text = ("Send to Mainline - ModelB.\n"
+                "sandesh send --project Roundhouse --to x\n"
+                "Track 2 - Nai reports.\n"
+                "--project=Crucible\n")
+        self.assertEqual(self._find(text), [
+            "fixture.md:1: Sandesh id 'Mainline - ModelB'",
+            "fixture.md:2: Sandesh id '--project Roundhouse'",
+            "fixture.md:3: Sandesh id 'Track 2 - Nai'",
+            "fixture.md:4: Sandesh id '--project=Crucible'",
+        ])
+
+    def test_placeholder_sandesh_addresses_are_not_values(self):
+        clean = ("Send to `Mainline - <Project>` or `Track N - <Project>`.\n"
+                 "sandesh inbox --project <Project>\n"
+                 "sandesh inbox --project \"$SANDESH_PROJECT\"\n"
+                 "Crucible's client and the Sandesh CLI are tools, not ids.\n")
+        self.assertEqual(self._find(clean), [])
+
+    def test_a_schema_entry_with_a_value_like_or_non_s1_field_is_found(self):
+        entries = [
+            {"name": "TEAM_LEAD", "description": "d", "default": "alice"},
+            {"name": "BUDGET", "value": "42", "colour": "red"},
+            {"name": "CLEAN", "description": "d", "validate": "non_empty"},
+        ]
+        self.assertEqual(_schema_value_fields(entries),
+                         ["TEAM_LEAD.default", "BUDGET.colour", "BUDGET.value"])
+
+
+class NoProjectValueShipsGateTest(unittest.TestCase):
+    """§S3 gate 2: no shipped skill (Crucible's imported bundles exempt),
+    template, hook or the schema carries a literal project value."""
+
+    def test_the_provenance_exemption_is_exactly_the_handover_record(self):
+        self.assertEqual(PROVENANCE_RECORDS, {"skills-src/CRUCIBLE-HANDOVER.md"})
+        self.assertTrue(HANDOVER_MD.is_file())
+        self.assertFalse((HANDOVER_MD.parent / "SKILL.md").exists(),
+                         "the exempt record must sit outside any bundle")
+
+    def test_no_shipped_text_carries_a_project_value(self):
+        files = _shipped_files(exempt=PROVENANCE_RECORDS)
+        files.append((SCHEMA_WHEEL_MEMBER, SCHEMA_PATH.read_text(encoding="utf-8")))
+        findings = [f for path, text in files
+                    for f in _project_value_findings(path, text, SCHEMA_KEYS)]
+        self.assertEqual(findings, [], "§S3: shipped text carries a project value")
+
+    def test_the_schema_has_no_value_like_field(self):
+        self.assertEqual(_schema_value_fields(_schema_table()[1]), [],
+                         "§S3: the schema carries rules only, never a value")
 
 
 if __name__ == "__main__":
