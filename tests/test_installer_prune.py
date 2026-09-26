@@ -8,13 +8,18 @@ does not (``deploy.prune_assets(prior_root, prior_files, new_paths)``):
   left empty is removed, walking up and stopping at the store root
   (``.agents/skills``, ``.agents/hooks/scripts``, ``.agents/scripts``); a
   store root is never removed;
-- hand-modified — kept and reported, ``--force-managed`` or not;
+- hand-modified — kept and reported, ``--force-managed`` or not; the new
+  manifest keeps its entry with the recorded hash, so later runs report it
+  again until it is restored (then removed) or deleted;
 - already gone — nothing to do, not reported;
-- outside the three store directories — a corrupt entry, never touched.
+- outside the three store directories (after normalising ``..``, or
+  absolute) — a corrupt entry, never touched, dropped from the new manifest,
+  in neither list, warned about once by path.
 
 ``prior_root`` is the prior manifest's ``target_root``, else this run's
 target root; a different recorded root prunes nothing and warns, naming it.
-A pruning ``OSError`` is a ``DeployError`` (no ``install.toml`` written); a
+A pruning ``OSError`` is a ``DeployError`` (outcome ``deploy_failed``, no
+``install.toml`` written); a
 run failing earlier removes nothing. The ``installed`` envelope always
 carries ``removed`` and ``kept`` lists; stderr prints one line per removed
 path and one warning per kept path. The ``already_installed`` report's
@@ -172,6 +177,11 @@ class _PruneSandboxCase(unittest.TestCase):
 
     def manifest_paths(self) -> set[str]:
         return {entry["path"] for entry in self.load_install().get("files", [])}
+
+    def manifest_hashes(self, rel: str) -> list[str]:
+        """Every hash the current manifest records for ``rel`` (one entry expected)."""
+        return [entry["sha256"] for entry in self.load_install().get("files", [])
+                if entry["path"] == rel]
 
     def sha(self, path: Path) -> str:
         return hashlib.sha256(Path(path).read_bytes()).hexdigest()
@@ -397,13 +407,19 @@ class PriorManifestAtAnotherTargetRootPruneTest(_PruneSandboxCase):
 
 class HandModifiedLeftoverKeptTest(_PruneSandboxCase):
     """A hand-edited leftover is kept, with or without ``--force-managed``;
-    it is listed in ``kept`` and warned about by path."""
+    it is listed in ``kept`` and warned about by path. The new manifest
+    keeps its entry with the RECORDED hash, so the next ``--reinstall``
+    reports it again, and restoring (or deleting) it lets it be pruned."""
 
     def setUp(self):
         super().setUp()
         self.install("--stacks", "python,rust")
         self.edited = self.target_root / RUST_REPORT_SKILL
-        self.edited.write_bytes(self.edited.read_bytes() + b"\n# my local notes\n")
+        self.original_bytes = self.edited.read_bytes()
+        self.recorded = self.manifest_hashes(RUST_REPORT_SKILL)
+        self.assertEqual(self.recorded, [hashlib.sha256(self.original_bytes).hexdigest()],
+                         "fixture: the first manifest records the deployed hash once")
+        self.edited.write_bytes(self.original_bytes + b"\n# my local notes\n")
         self.edited_bytes = self.edited.read_bytes()
 
     def _assert_kept(self, *flags):
@@ -413,6 +429,9 @@ class HandModifiedLeftoverKeptTest(_PruneSandboxCase):
                          "§S1: a hand-edited leftover is never deleted or rewritten")
         self.assert_envelope_lists(axi, removed=self.rust_only_files() - {RUST_REPORT_SKILL},
                                    kept=[RUST_REPORT_SKILL])
+        self.assertEqual(self.manifest_hashes(RUST_REPORT_SKILL), self.recorded,
+                         "§S1: the new manifest keeps the kept leftover's entry with its "
+                         "RECORDED hash (not the edited one)")
         hits = self.warnings_naming(axi, RUST_REPORT_SKILL)
         self.assertEqual(len(hits), 1, f"§S2: one warning names the kept path; "
                                        f"warnings={axi.get('warnings')!r}")
@@ -429,6 +448,35 @@ class HandModifiedLeftoverKeptTest(_PruneSandboxCase):
 
     def test_hand_modified_leftover_is_kept_even_with_force_managed(self):
         self._assert_kept("--force-managed")
+
+    def test_next_reinstall_reports_the_kept_leftover_again(self):
+        self._assert_kept()
+        result, axi = self.reinstall("--stacks", "python")
+        self.assert_installed(result, axi)
+        self.assert_envelope_lists(axi, removed=(), kept=[RUST_REPORT_SKILL])
+        self.assertEqual(self.edited.read_bytes(), self.edited_bytes)
+        self.assertEqual(self.manifest_hashes(RUST_REPORT_SKILL), self.recorded,
+                         "§S1: still recorded, still with the recorded hash")
+
+    def test_restored_leftover_is_removed_by_the_next_reinstall(self):
+        self._assert_kept()
+        self.edited.write_bytes(self.original_bytes)
+        result, axi = self.reinstall("--stacks", "python")
+        self.assert_installed(result, axi)
+        self.assert_envelope_lists(axi, removed=[RUST_REPORT_SKILL], kept=())
+        self.assertFalse(self.edited.exists(), "§S1: a restored leftover is pruned")
+        self.assertFalse(self.edited.parent.exists(), "its emptied bundle dir too")
+        self.assertEqual(self.manifest_hashes(RUST_REPORT_SKILL), [],
+                         "§S1: once pruned, the manifest stops recording it")
+
+    def test_deleted_leftover_drops_out_of_the_manifest_unreported(self):
+        self._assert_kept()
+        self.edited.unlink()
+        result, axi = self.reinstall("--stacks", "python")
+        self.assert_installed(result, axi)
+        self.assert_envelope_lists(axi, removed=(), kept=())
+        self.assertEqual(self.manifest_hashes(RUST_REPORT_SKILL), [],
+                         "§S1: a deleted leftover is no longer recorded")
 
 
 # ---------------------------------------------------------------------------
@@ -459,16 +507,28 @@ class UnmanagedAndCorruptEntriesNeverRemovedTest(_PruneSandboxCase):
         self.assertTrue(notes.parent.is_dir(), "a non-empty bundle dir is not removed")
         self.assert_envelope_lists(axi, removed=self.rust_only_files() | {RETIRED_SKILL})
 
-    def _assert_corrupt_entry_untouched(self, rel: str, where: Path):
+    def _assert_corrupt_entry_untouched(self, rel: str, where: Path, *, on_disk: bool = True):
         content = f"not model b's: {rel}\n".encode()
-        where.parent.mkdir(parents=True, exist_ok=True)
-        where.write_bytes(content)
+        if on_disk:
+            where.parent.mkdir(parents=True, exist_ok=True)
+            where.write_bytes(content)
         self.record_deployed(rel, content, write=False)
         result, axi = self.reinstall("--stacks", "python,rust")
         self.assert_installed(result, axi)
-        self.assertEqual(where.read_bytes() if where.is_file() else None, content,
+        self.assertEqual(where.read_bytes() if where.is_file() else None,
+                         content if on_disk else None,
                          f"§S1: a corrupt entry {rel!r} outside the stores is never touched")
-        self.assert_envelope_lists(axi, removed=[RETIRED_SKILL])
+        self.assert_envelope_lists(axi, removed=[RETIRED_SKILL], kept=())
+        self.assertEqual(self.manifest_hashes(rel), [],
+                         f"§S1: the corrupt entry {rel!r} is dropped from the new manifest")
+        hits = [w for w in axi.get("warnings", []) if rel in w or str(where) in w]
+        self.assertEqual(len(hits), 1,
+                         f"§S1: exactly one warning names the corrupt entry {rel!r}; "
+                         f"warnings={axi.get('warnings')!r}")
+
+    def test_corrupt_entry_whose_file_is_absent_is_still_dropped_and_warned(self):
+        self._assert_corrupt_entry_untouched(".bashrc", self.target_root / ".bashrc",
+                                             on_disk=False)
 
     def test_dotfile_at_the_target_root_is_never_removed(self):
         self._assert_corrupt_entry_untouched(".bashrc", self.target_root / ".bashrc")
@@ -610,6 +670,8 @@ class PruneOSErrorWritesNoInstallTomlTest(_PruneSandboxCase):
         self.assertNotEqual(result.returncode, 0,
                             f"§S1: a pruning OSError fails the run; axi={axi!r}")
         self.assertIs(axi.get("ok"), False, f"axi={axi!r}")
+        self.assertEqual(axi.get("outcome"), "deploy_failed",
+                         f"§S1: a pruning OSError ends like any deploy failure; axi={axi!r}")
         self.assertEqual(self.install_toml_path.read_bytes(), self.toml_before,
                          "§S1: no install.toml is written after a pruning OSError")
         self.assertTrue((self.target_root / RUST_REPORT_SKILL).is_file())
@@ -830,8 +892,9 @@ class PruneAssetsTest(unittest.TestCase):
             path.write_bytes(b"not model b's\n")
             entries.append({"path": rel, "sha256": hashlib.sha256(b"not model b's\n").hexdigest()})
         entries.append(self.put(RETIRED_SKILL))
-        removed, _kept = self.prune(entries)
-        self.assertEqual(removed, [RETIRED_SKILL])
+        removed, kept = self.prune(entries)
+        self.assertEqual((removed, kept), ([RETIRED_SKILL], []),
+                         "a corrupt entry is in neither list")
         for rel, path in outside.items():
             with self.subTest(rel=rel):
                 self.assertEqual(path.read_bytes(), b"not model b's\n")
