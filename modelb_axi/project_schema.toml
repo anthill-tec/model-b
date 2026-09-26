@@ -93,7 +93,7 @@ required = true
 file = ".env"
 scope = "root"
 source = "capture"
-step = "Crucible project registration (manual in scaffold v1; see the queue README setup task)"
+step = "the project is registered in Crucible (manual in scaffold v1; see the queue README setup task)"
 validate = "no_whitespace"
 readers = ["Crucible stack clients (~/.crucible/clients/<stack>-crucible.py)", "worktree-flow.py", "model-b skill"]
 

@@ -387,6 +387,23 @@ def read_registry_value(project_root: Path, schema: list[dict], key: str) -> str
     return _read_env_value(path, key) if path.is_file() else None
 
 
+def _setup_required(schema: list[dict], registry: dict) -> list[dict]:
+    """One row per required capture key still empty after ``init`` — the
+    values the user must fill in before the key's readers run (CR-MDB-043
+    §S2: CRUCIBLE_PROJECT_KEY is empty until the project is registered
+    in Crucible, and is filled in ``.env``)."""
+    return [
+        {
+            "key": e["name"],
+            "file": e["file"],
+            "note": (f"empty until {e['step']}; fill it in {e['file']} before "
+                     f"its readers run: {', '.join(e['readers'])}"),
+        }
+        for e in schema
+        if e["source"] == "capture" and e.get("required") and not registry.get(e["name"])
+    ]
+
+
 def _render_env(schema: list[dict], registry: dict, *, sub: bool = False) -> str:
     """The COMMITTED ``.env`` registry (§S3.1): the schema's ``.env`` keys
     in schema order, root or sub-project scope (CR-MDB-043 §S2)."""
@@ -1161,6 +1178,14 @@ def run_init(args: argparse.Namespace, home: Path) -> int:
             print(f"modelb-axi: warning: {warning}", file=sys.stderr)
             plan_warnings.append(warning)
 
+    # CR-MDB-043 §S2: a captured key init leaves empty (the Crucible
+    # project key) is reported, dry run or not — it is a setup step, not
+    # a warning.
+    setup_required = _setup_required(schema, registry)
+    for row in setup_required:
+        print(f"  setup required: {row['key']} in {row['file']} is {row['note']}",
+              file=sys.stderr)
+
     print(
         envelope(
             "init", True,
@@ -1181,6 +1206,7 @@ def run_init(args: argparse.Namespace, home: Path) -> int:
             register=bool(getattr(args, "register", False)),
             planned=plan,
             registry=registry,
+            setup_required=setup_required,
             skipped=ownership["skipped"],
             unmanaged=ownership["unmanaged"],
             **trust_fields,
