@@ -469,6 +469,15 @@ def _testing_section(text: str) -> str:
 MODULE_COUNT = re.compile(r"(?<![\d/.\-])\b(\d+)\s+(?:`?unittest`?\s+|test\s+)?modules\b")
 #: ``<N> tests, <F> failures, <S> skips`` (singular or plural; commas or slashes).
 BASELINE = re.compile(r"(\d+)\s+tests?\W+(\d+)\s+failures?\W+(?:(\d+)\s+errors?\W+)?(\d+)\s+skips?")
+#: Figures AGENTS.md stated before CR-MDB-032; each matches only as a whole
+#: number, so a current figure containing one (``1359 tests``) is not stale.
+STALE_FIGURES = ("19 modules", "19 `unittest` modules", "359 tests")
+
+
+def _stale_figures(text: str) -> list[str]:
+    """The :data:`STALE_FIGURES` ``text`` states, each matched as a whole
+    number (no digit before it)."""
+    return [s for s in STALE_FIGURES if re.search(rf"(?<!\d){re.escape(s)}", text)]
 
 
 class AgentsMdTestingSectionS6Test(unittest.TestCase):
@@ -535,8 +544,17 @@ class AgentsMdTestingSectionS6Test(unittest.TestCase):
         self.assertEqual(named, [], "§S6: AGENTS.md must not mention these")
 
     def test_s6_no_stale_counts_remain(self):
-        stale = [s for s in ("19 modules", "19 `unittest` modules", "359 tests") if s in self.text]
+        stale = _stale_figures(self.text)
         self.assertEqual(stale, [], "§S6: stale figures in AGENTS.md")
+
+    def test_s6_stale_figure_matches_only_as_a_whole_number(self):
+        """A figure containing a stale one (``1359 tests``) is not flagged;
+        the stale figure alone still is (CR-MDB-040 C3 FIX)."""
+        self.assertEqual(_stale_figures("**1359 tests**, 119 modules, 219 `unittest` modules"),
+                         [])
+        self.assertEqual(_stale_figures("**359 tests**, 19 modules, 19 `unittest` modules"),
+                         list(STALE_FIGURES))
+        self.assertEqual(_stale_figures("(359 tests)"), ["359 tests"])
 
     def test_s6_the_crucible_run_command_stays_as_cr_mdb_020_left_it(self):
         self.assertTrue("python-crucible.py regression --coverage" in self.section,
