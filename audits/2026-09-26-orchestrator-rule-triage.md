@@ -180,7 +180,7 @@ Valmik's; each repeats Valmik's class.
 | `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § Tier map — where the rules live (read the generic tiers too) | stale | — | Retired mechanism: points at the `~/.claude/memory/` tier files (agent-baseline, orchestration-universal, rust-orchestration), now Model B skills. |
 | `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § 1. Two-phase workflow + the NAI fourth gap-analysis dimension | common | `skills-src/gap-analysis/SKILL.md` § Dimension 4: Spec vs existing mechanisms — Does the spec reinvent something already built? | Rule: the analysis lists each EXTENDED mechanism with a 1–2 line read-the-code behavioural summary. Two-phase, VERIFY wording, output≠spec, D5, D6 already shipped. |
 | `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § 1.1 Parallel CR execution — worktree isolation (NAI mechanics → script) | common | `skills-src/model-b/references/orchestration-common.md` § Worktree isolation (basics) | Rule: branch off LOCAL develop HEAD; read pre-merge state from `worktree-flow status`/`finish --dry-run`, not raw git. Rust items (`--project-dir`, `[[test]]` required-features) → rust template. |
-| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § Long parallel sessions — NAI instantiation | common | `skills-src/model-b/references/orchestration-mainline.md` § Filing/assigning a CR — COMMIT docs FIRST, schedule write LAST | Rule: a newly filed CR that must run before an already-sequenced CR → re-send the wave order (`wave-sequence`); `cr-depends` alone does not reorder the board. Rest in common. |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § Long parallel sessions — NAI instantiation | common | `skills-src/model-b/references/orchestration-mainline.md` § Filing/assigning a CR — COMMIT docs FIRST, schedule write LAST | Rule: a new CR that must run before an already-sequenced CR → re-send the wave order (`wave-sequence`); `cr-depends` alone does not reorder. |
 | `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § 2. Cycle discipline — NAI naming + stack-specific RED/GREEN/VERIFY additions | duplicate | `skills-src/model-b/references/orchestration-common.md` § Cycle discipline | Self-commit reset and todo discipline shipped (§ Never author code, § Cycle discipline); NAI task naming superseded by Crucible plan labels `C<n> <label>`. |
 | `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § RED (NAI-specific) | stack:rust | `skills-src/memory-templates/rust-orchestration.md` § RED/GREEN/VERIFY additions | New section. Rule: clippy with `--tests`; read `passed=/failed=`, not exit code; `#[ignore]` is temporary; salvage-not-rerun. OpCall/`testing=[]` → project:nai; wiring rules duplicate. |
 | `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § GREEN (NAI / Rust note) | stack:rust | `skills-src/memory-templates/rust-orchestration.md` § RED/GREEN/VERIFY additions | New section. Rule: GREEN may promote a cargo dependency from dev-only to production without escalation when production code legitimately imports it. |
@@ -196,7 +196,7 @@ Valmik's; each repeats Valmik's class.
 | `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § Design gaps — escalate to PRD, then user. NEVER invent. | duplicate | `skills-src/model-b/references/orchestration-mainline.md` § Escalation handling (Mainline's job, not VERIFY's) | "Design gap: read the parent PRD; if silent, escalate… never invent" is shipped. |
 | `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § E2E tests for streaming pipelines — use `nai_test::DevApp`, never reinvent | project:nai | NAI AGENTS.md | NAI's canonical E2E harness (`nai_test::DevApp`). |
 | `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § Before presenting design options — grep first | duplicate | `skills-src/model-b/references/orchestration-mainline.md` § Escalation handling (Mainline's job, not VERIFY's) | "Before presenting design options, grep first" is shipped. |
-| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § Inter-cycle handoff — trust clean agent reports (Rust stack override) | common | `skills-src/model-b/references/orchestration-common.md` § Never author code — always dispatch + diff-verify | Rule: accept a clean phase from its ingest and commit shape (RED commit test-only); never re-run tests between cycles; re-run only at gates or after a crash. |
+| `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § Inter-cycle handoff — trust clean agent reports (Rust stack override) | common | `skills-src/model-b/references/orchestration-common.md` § Never author code — always dispatch + diff-verify | Rule: accept a clean phase from its ingest and commit shape (RED commit test-only); no re-runs between cycles — only at gates or after a crash. |
 | `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § NEVER background-dispatch on the live working tree | duplicate | `skills-src/model-b/references/orchestration-track.md` § Run captive sub-agents in the BACKGROUND | The FOREGROUND exception for shared live trees is shipped; Claude `run_in_background`/`isolation` wording drops. |
 | `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § 4. Cargo + Crucible (NAI-specific knobs) | duplicate | `skills-src/memory-templates/rust-orchestration.md` § Tooling (the workflow is embodied here — don't hand-roll) | Pointer paragraph only; generic cargo/Crucible discipline shipped. |
 | `~/.claude/projects/-home-antonyj-Documents-data-projects-nai/memory/ORCHESTRATOR-RULES.md` § EVERY cargo verb goes through `rust-crucible.py` — incl. check + clippy (2026-05-31, user-enforced) | stack:rust | `skills-src/memory-templates/rust-orchestration.md` § Tooling (the workflow is embodied here — don't hand-roll) | Rule: every brief forbids raw cargo incl. check/clippy and any sandbox bypass; `ALLOW_RAW_CARGO=1` only in extremely rare, visible cases. |
@@ -375,3 +375,31 @@ Valmik's; each repeats Valmik's class.
 | `~/.claude/projects/-home-antonyj-Documents-device-projects-Arduino-PumpControl/memory/simulator-selection-criteria.md` | stale | — | Identical to Valmik's; excluded electronics stack. |
 | `~/.claude/projects/-home-antonyj-Documents-device-projects-Arduino-PumpControl/memory/use-git-flow-feature-finish.md` | duplicate | `skills-src/git-workflow/SKILL.md` § Branch Rules | Identical to Valmik's. |
 | `~/.claude/projects/-home-antonyj-Documents-device-projects-Arduino-PumpControl/memory/verify-hardware-part-before-driver.md` | duplicate | `skills-src/memory-templates/arduino-orchestration.md` § Hardware drivers | Identical to Valmik's. |
+
+## Summary
+
+132 inventory sources, 198 triage items.
+
+| Source group | Items | `common` | `stack:rust` | `stack:arduino` | `project:nai` | `project:crucible` | `project:roundhouse` | `project:model-b` | `duplicate` | `stale` |
+|---|---|---|---|---|---|---|---|---|---|---|
+| NAI `ORCHESTRATOR-RULES.md` (per heading) | 53 | 14 | 5 | 0 | 3 | 0 | 0 | 0 | 29 | 2 |
+| NAI `ORCHESTRATOR-NAI.md` (per heading) | 5 | 0 | 1 | 0 | 2 | 0 | 0 | 0 | 2 | 0 |
+| Roundhouse `ORCHESTRATOR-Roundhouse.md` (per heading) | 5 | 0 | 0 | 0 | 0 | 0 | 5 | 0 | 0 | 0 |
+| `~/.claude/AGENTS.md` Non-negotiables | 7 | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 4 | 0 |
+| NAI feedback (46 + RULES above) | 46 | 20 | 3 | 0 | 6 | 0 | 0 | 0 | 15 | 2 |
+| Crucible feedback | 38 | 18 | 0 | 0 | 0 | 7 | 0 | 0 | 8 | 5 |
+| Sandesh feedback | 7 | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 3 | 0 |
+| Model B feedback | 10 | 7 | 0 | 0 | 0 | 0 | 0 | 3 | 0 | 0 |
+| Arduino-Valmik feedback | 17 | 1 | 0 | 2 | 0 | 0 | 0 | 0 | 4 | 10 |
+| Arduino-PumpControl feedback | 10 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 5 | 5 |
+| **Total** | 198 | 67 | 9 | 2 | 11 | 7 | 5 | 3 | 70 | 24 |
+
+New sections C2 would create (count = rows whose Note says "New section"/"New file"; later duplicates pointing there are not counted):
+
+- `skills-src/memory-templates/rust-orchestration.md`: § RED/GREEN/VERIFY additions (3)
+- `skills-src/model-b/SKILL.md`: § 7. Operating rules (every role) (4)
+- `skills-src/model-b/references/orchestration-mainline.md`: § Worktree contamination watch (1)
+- `skills-src/model-b/references/orchestration-common.md`: § Investigation discipline (2); § Upstream providers (1)
+- `skills-src/model-b/references/sandesh.md`: § Boundaries — store, ownership, disclosure (2)
+- `skills-src/memory-templates/arduino-orchestration.md` (new file): § Test tiers and agents (1); § Hardware drivers (1)
+- `skills-src/model-b/references/sub-agent-procedure.md`: § Third-party sources (1)
