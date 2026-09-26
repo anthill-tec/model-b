@@ -24,12 +24,23 @@ Class map — one class per acceptance criterion:
 - ``RoleResolutionTest`` — no ``show-toplevel`` / ``/.worktrees/`` role inference; the order
   is (argument →) carried context → Sandesh address (``Track <N> - …``) → ask.
 - ``BoardNotTodoListTest`` — no todo/task list (frontmatter included); bootstrap reloads from
-  the board (``plans``, ``next``); shutdown drains the plan's open cycles and a Track's
-  escalation names open cycles.
+  the board (``plans``, ``next``); shutdown finishes the active cycle and a Track's escalation
+  names the active cycle (what ``plans`` returns; never "open cycles" or a last run).
 - ``NameGateCoversBootstrapShutdownTest`` — ``EXEMPT_BUNDLES`` no longer lists the two, and
   the CR-MDB-042 name/retired-tool gate passes over both.
-- ``SchemaReadersTest`` — the ``SANDESH_PROJECT`` ``readers`` name the two skills, nothing
-  "pending".
+- ``SchemaReadersTest`` — the ``readers`` of ``SANDESH_PROJECT``, ``PROJECT_STACKS``,
+  ``ORCHESTRATOR_LABEL`` and ``PROJECT_TOKEN`` name the two skills, nothing "pending".
+- ``ClientResolutionTest`` — the client is resolved through Crucible's manifest
+  (quarkus/java → ``mvn-crucible.py``); over EVERY supported stack, no surface builds a client
+  path that does not exist for it (expected names from ``STACK_CLIENT_KEYS``, hermetic).
+- ``TrackWorktreeTest`` — a resumed Track re-enters its worktree before any write; shutdown's
+  Track path runs ``git -C .worktrees/<cr>``, never finishes without Mainline's sign-off, and
+  passes ``--cr`` to ``finish`` before ``modelb_worktree_exit``.
+- ``CommonRulesAgreeTest`` — ``orchestration-track.md`` and ``rust-orchestration.md`` agree on
+  the Track id and the stack client.
+- ``UnregisteredProjectTest`` — an empty ``CRUCIBLE_PROJECT_KEY`` is "not registered", never idle.
+- ``WatcherWordingTest`` — the addressbook table (``STATUS``, ``LISTENING``), stop by address
+  (``/watcher stop <your address>``), a targeted kill whose pattern can match the notifier.
 
 Phrase checks normalise the text (backticks and ``*`` dropped, whitespace collapsed,
 lower-cased) and test meaning through required and forbidden phrases, never whole sentences.
@@ -46,6 +57,7 @@ import unittest
 from pathlib import Path
 
 from modelb_axi import scaffold
+from modelb_axi.requirements import STACK_CLIENT_KEYS
 from tests._helpers import REPO_ROOT, read_text, split_frontmatter
 from tests.test_orchestrator_rule_triage import (
     EXEMPT_BUNDLES,
@@ -72,6 +84,13 @@ IDENTITY_KEYS = ("SANDESH_PROJECT", "ORCHESTRATOR_LABEL", "PROJECT_TOKEN", "PROJ
 #: The stacks the sandboxed ``init`` is run with: rust ships an orchestration template, so a
 #: ``<stack>`` placeholder in a named path resolves to a file ``init`` really writes.
 INIT_STACKS = ("python", "rust")
+#: Crucible's installed client manifest \u2014 the file the skills resolve a stack's client through.
+MANIFEST = "~/.crucible/crucible-clients.json"
+#: The other surfaces \u00a7S4 aligns with the two skills (F4).
+TRACK_REF = "skills-src/model-b/references/orchestration-track.md"
+RUST_TEMPLATE = "skills-src/memory-templates/rust-orchestration.md"
+#: Every surface whose client naming \u00a7S2/\u00a7S4 governs.
+CLIENT_SURFACES = {**SKILLS, "orchestration-track": TRACK_REF, "rust-orchestration": RUST_TEMPLATE}
 
 _NEGATION = re.compile(r"\b(?:never|not|no|nor|without|instead of|rather than|don't|do not)\b")
 _SENTENCE_SPLIT = re.compile(r"(?<=[.;!?])\s+|\n\s*\n|\n\s*(?:[-*]|\d+\.)\s+")
@@ -421,15 +440,18 @@ class IdentityFromRegistryTest(unittest.TestCase):
                 self.assertIn("track<n>-<project_token>", normalise(text))
 
     def test_crucible_client_is_the_stack_client_from_project_stacks(self):
+        # Migrated at CR-MDB-041 C3 (F1/F7): the client is resolved through Crucible's manifest,
+        # never built as ``~/.crucible/clients/<stack>-crucible.py`` (absent for quarkus/java),
+        # and no ``python-crucible.py`` example is kept beside it.
         for name in SKILLS:
             with self.subTest(skill=name):
                 text = _skill_text(name)
-                self.assertIn("PROJECT_STACKS", text)
-                self.assertIn("~/.crucible/clients/<stack>-crucible.py", text)
-                every_project = [line.strip() for line in text.splitlines()
-                                 if "python-crucible.py" in line and "<stack>-crucible.py" not in line]
-                self.assertEqual(every_project, [],
-                                 f"{name} names python-crucible.py as the client for every project")
+                self.assertTrue("PROJECT_STACKS" in text, f"{name} names no PROJECT_STACKS")
+                self.assertTrue(MANIFEST in text, f"{name} does not name {MANIFEST}")
+                python_lines = [line.strip() for line in text.splitlines()
+                                if "python-crucible.py" in line]
+                self.assertEqual(python_lines, [],
+                                 f"{name} names python-crucible.py (an example for every project)")
 
     def test_no_literal_vidushi_orchestrator_ids(self):
         for name in SKILLS:
@@ -557,15 +579,31 @@ class BoardNotTodoListTest(unittest.TestCase):
         self.assertLess(must_match(r"\bplans\b", hits[0]).start(),
                         must_match(r"\bnext\b", hits[0]).start(), "plans before next")
 
-    def test_shutdown_drains_the_plans_open_cycles(self):
+    def test_shutdown_finishes_the_active_cycle(self):
+        # Migrated at CR-MDB-041 C3 (F5): ``plans`` returns each plan's ACTIVE cycle, not a list
+        # of open cycles \u2014 shutdown finishes the active cycle.
         norm = normalise(_skill_text("shutdown"))
-        self.assertRegex(norm, r"drain\w*[^.]{0,80}open cycles?|open cycles?[^.]{0,80}drain")
-        self.assertRegex(norm, r"plan(?:'s)?[^.]{0,20}open cycles?|open cycles? of the[^.]{0,20}plan")
+        self.assertRegex(norm, r"finish\w*[^.]{0,60}active cycle")
 
-    def test_shutdowns_track_escalation_names_open_cycles(self):
+    def test_shutdowns_track_escalation_names_the_active_cycle(self):
         hits = [b for b in blocks(_skill_text("shutdown"))
-                if "escalat" in b and "mainline" in b and re.search(r"open cycles?", b)]
-        self.assertTrue(hits, "shutdown's Track escalation does not name the open cycles")
+                if "escalat" in b and "mainline" in b and "active cycle" in b]
+        self.assertTrue(hits, "shutdown's Track escalation does not name the active cycle")
+
+    def test_neither_skill_claims_what_plans_does_not_return(self):
+        # F5: ``plans`` gives activeCycleId/activeCycleLabel per plan and ``next`` what is
+        # ready \u2014 no open-cycle list, no phase, no last ingested run.
+        for name in SKILLS:
+            with self.subTest(skill=name):
+                norm = normalise(_skill_text(name))
+                for rx in (r"open cycles?", r"last ingested run", r"<n> open"):
+                    self.assertNotRegex(norm, rx)
+
+    def test_bootstrap_reads_the_active_cycle_id_and_label_from_plans(self):
+        hits = [b for b in blocks(_skill_text("bootstrap"))
+                if re.search(r"\bplans\b", b) and "active cycle" in b
+                and re.search(r"\bid\b[^.]{0,20}\blabel\b", b)]
+        self.assertTrue(hits, "bootstrap does not read the active cycle (id and label) from plans")
 
     def test_negated_mentions_are_not_findings(self):
         text = ("Reload from the board, never from a todo list. Drain the todo list.\n\n"
@@ -611,6 +649,241 @@ class SchemaReadersTest(unittest.TestCase):
     def test_no_sandesh_project_reader_is_marked_pending(self):
         readers = self._readers()
         self.assertEqual([r for r in readers if re.search(r"(?i)pending|CR-MDB-041", r)], [])
+
+    def test_identity_key_readers_name_bootstrap_and_shutdown_skills(self):
+        # F8 / \u00a7S4: the skills read PROJECT_STACKS, ORCHESTRATOR_LABEL and PROJECT_TOKEN too.
+        entries = {e["name"]: e for e in scaffold.load_schema(scaffold.PROJECT_SCHEMA_PATH)}
+        for key in ("PROJECT_STACKS", "ORCHESTRATOR_LABEL", "PROJECT_TOKEN"):
+            with self.subTest(key=key):
+                readers = list(entries[key]["readers"])
+                self.assertTrue(any("bootstrap" in r and "shutdown" in r for r in readers), readers)
+
+
+# ------------------------------------------------------------ C3 FIX (F1\u2013F10) ----
+
+def _surface_text(key: str) -> str:
+    return read_text(REPO_ROOT / CLIENT_SURFACES[key])
+
+#: A Crucible client file named in text: ``<name>-crucible.py`` where ``<name>`` is a stack
+#: token, a manifest key, or a ``<placeholder>`` (``<stack>``); bounded on the left by anything
+#: but a word character, ``<``, ``>`` or ``-``.
+_CLIENT_NAME_RE = re.compile(r"(?<![\w<>-])((?:<[\w-]+>|[\w])(?:<[\w-]+>|[\w-])*?)-crucible\.py\b")
+
+def expected_client(stack: str) -> str:
+    """The client file Crucible's manifest names for ``stack`` \u2014 from
+    ``requirements.STACK_CLIENT_KEYS`` (the repo's record of the manifest keys), never from
+    ``~/.crucible``, so the check stays hermetic."""
+    return f"{STACK_CLIENT_KEYS[stack]}-crucible.py"
+
+def missing_client_paths(text: str, stacks=scaffold.KNOWN_STACKS) -> list[str]:
+    """Each client file ``text`` names that does not exist for some supported stack: a
+    ``<stack>`` form checked against every stack's manifest client; any other placeholder is
+    unresolvable; a concrete name must be some stack's manifest client."""
+    released = {expected_client(s) for s in stacks}
+    out = []
+    for name in sorted(set(_CLIENT_NAME_RE.findall(text))):
+        fname = f"{name}-crucible.py"
+        if "<stack>" in name:
+            for s in stacks:
+                built = fname.replace("<stack>", s)
+                if built != expected_client(s):
+                    out.append(f"{fname} for {s}: builds {built}; the manifest maps {s} to "
+                               f"{expected_client(s)}")
+        elif "<" in name:
+            out.append(f"{fname}: an unresolvable placeholder")
+        elif fname not in released:
+            out.append(f"{fname}: no supported stack's client")
+    return sorted(out)
+
+def _h2_section(text: str, heading: str) -> str:
+    """The text under the ``## `` heading containing ``heading``, up to the next ``## ``;
+    ``""`` when there is none."""
+    lines = text.splitlines()
+    start = next((i for i, line in enumerate(lines) if line.startswith("## ") and heading in line),
+                 None)
+    if start is None:
+        return ""
+    end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith("## ")), len(lines))
+    return "\n".join(lines[start:end])
+
+
+class ClientResolutionTest(unittest.TestCase):
+    """F1 / \u00a7S2 AC: the client is resolved through the manifest (quarkus/java \u2192
+    ``mvn-crucible.py``); no surface builds a client path missing for a supported stack."""
+
+    def test_every_supported_stack_has_a_manifest_client_key(self):
+        self.assertEqual(sorted(set(scaffold.KNOWN_STACKS) - set(STACK_CLIENT_KEYS)), [])
+
+    def test_no_surface_builds_a_client_path_missing_for_a_supported_stack(self):
+        for key in CLIENT_SURFACES:
+            with self.subTest(surface=key):
+                self.assertEqual(missing_client_paths(_surface_text(key)), [])
+
+    def test_both_skills_resolve_the_client_through_the_manifest(self):
+        for name in SKILLS:
+            with self.subTest(skill=name):
+                hits = [b for b in blocks(_skill_text(name))
+                        if MANIFEST in b and "project_stacks" in b and "quarkus" in b
+                        and "java" in b and "mvn-crucible.py" in b]
+                self.assertTrue(hits, f"{name} does not resolve the client through {MANIFEST} "
+                                      f"(quarkus/java \u2192 mvn-crucible.py) for a PROJECT_STACKS stack")
+
+    def test_missing_client_path_detector_on_synthetic_text(self):
+        self.assertEqual(missing_client_paths("`~/.crucible/clients/<stack>-crucible.py`"), [
+            "<stack>-crucible.py for java: builds java-crucible.py; the manifest maps java to "
+            "mvn-crucible.py",
+            "<stack>-crucible.py for quarkus: builds quarkus-crucible.py; the manifest maps "
+            "quarkus to mvn-crucible.py",
+        ])
+        self.assertEqual(missing_client_paths("`rust-crucible.py next`, `mvn-crucible.py`, "
+                                              "`~/.crucible/clients/python-crucible.py`"), [])
+        self.assertEqual(missing_client_paths("`quarkus-crucible.py` or `<x>-crucible.py`"), [
+            "<x>-crucible.py: an unresolvable placeholder",
+            "quarkus-crucible.py: no supported stack's client",
+        ])
+
+
+class TrackWorktreeTest(unittest.TestCase):
+    """F2/F3 / \u00a7S3: a resumed Track re-enters its worktree; shutdown's Track path works from the
+    main tree, never finishes without Mainline's sign-off, ``finish --cr`` then exit."""
+
+    def _step_2a(self) -> str:
+        section = _h2_section(_skill_text("shutdown"), "Step 2A")
+        self.assertNotEqual(section, "", "shutdown lost its Step 2A section")
+        return section
+
+    def test_a_resumed_track_reenters_its_worktree_before_any_write(self):
+        hits = [b for b in blocks(_skill_text("bootstrap"))
+                if "modelb_worktree_enter" in b and ".worktrees/<cr>" in b
+                and re.search(r"\bresum", b) and "before any write" in b]
+        self.assertTrue(hits, "bootstrap does not re-enter a resumed Track's worktree "
+                              "(modelb_worktree_enter with .worktrees/<cr>) before any write")
+
+    def test_shutdowns_develop_merge_runs_in_the_worktree_with_git_c(self):
+        norm = normalise(_skill_text("shutdown"))
+        merges = len(re.findall(r"merge develop", norm))
+        in_worktree = len(re.findall(r"git -c \.worktrees/<cr> merge develop --no-edit", norm))
+        self.assertGreaterEqual(in_worktree, 1)
+        self.assertEqual(merges, in_worktree, "a develop merge that is not git -C .worktrees/<cr>")
+
+    def test_the_tracks_status_check_runs_in_the_worktree_with_git_c(self):
+        norm = normalise(self._step_2a())
+        checks = len(re.findall(r"status --porcelain", norm))
+        in_worktree = len(re.findall(r"git -c \.worktrees/<cr> status --porcelain", norm))
+        self.assertGreaterEqual(in_worktree, 1)
+        self.assertEqual(checks, in_worktree, "a Track status check that is not git -C")
+
+    def test_the_track_never_finishes_without_mainlines_sign_off(self):
+        section = blocks(self._step_2a())
+        self.assertTrue([b for b in section if "sign-off" in b and "mainline" in b
+                         and re.search(r"\bnever\b[^.]{0,60}\bfinish", b)],
+                        "Step 2A does not forbid finishing without Mainline's sign-off")
+        self.assertTrue([b for b in section if re.search(r"leaves? the cr open", b)],
+                        "a graceful mid-CR shutdown does not leave the CR open")
+
+    def test_an_approved_finish_passes_cr_then_exits_the_worktree(self):
+        norm = normalise(_skill_text("shutdown"))
+        finishes = len(re.findall(r"worktree-flow\.py finish", norm))
+        with_cr = len(re.findall(r"worktree-flow\.py finish --cr <cr>", norm))
+        self.assertGreaterEqual(with_cr, 1)
+        self.assertEqual(finishes, with_cr, "a finish without --cr")
+        step = normalise(self._step_2a())
+        self.assertLess(must_match(r"worktree-flow\.py finish --cr <cr>", step).start(),
+                        must_match(r"modelb_worktree_exit", step).start(),
+                        "modelb_worktree_exit follows finish")
+
+    def test_shutdowns_description_names_the_sign_off(self):
+        fm, _ = split_frontmatter(_skill_text("shutdown"))
+        self.assertIn("sign-off", normalise(fm))
+
+
+class CommonRulesAgreeTest(unittest.TestCase):
+    """F4 / \u00a7S4: ``orchestration-track.md`` and ``rust-orchestration.md`` agree with the two
+    skills on the Track id and the stack client."""
+
+    def test_track_ref_gives_the_track_id_as_track_n_project_token(self):
+        text = _surface_text("orchestration-track")
+        self.assertIn("track<n>-<project_token>", normalise(text))
+        self.assertNotRegex(text, r"-t(?:N|<N>)\b", "the retired <orchestrator>-tN id")
+
+    def test_track_ref_names_the_projects_stack_client_not_python_crucible(self):
+        text = _surface_text("orchestration-track")
+        self.assertFalse("python-crucible.py" in text, "names python-crucible.py")
+        self.assertTrue(MANIFEST in text, f"orchestration-track.md does not name {MANIFEST}")
+        self.assertRegex(normalise(text), r"stack client")
+
+    def test_track_refs_shutdown_rules_agree_with_the_shutdown_skill(self):
+        norm = normalise(_h2_section(_surface_text("orchestration-track"), "shutdown directive"))
+        self.assertNotEqual(norm, "")
+        self.assertNotRegex(norm, r"open cycles?")
+        self.assertIn("sign-off", norm)
+
+    def test_rust_template_names_the_rust_client_for_next(self):
+        text = _surface_text("rust-orchestration")
+        self.assertFalse("python-crucible.py" in text, "names python-crucible.py")
+        self.assertTrue("rust-crucible.py next" in text, "rust-orchestration.md: no rust-crucible.py next")
+
+
+class UnregisteredProjectTest(unittest.TestCase):
+    """F6 / \u00a7S2: an empty ``CRUCIBLE_PROJECT_KEY`` means not registered \u2014 do the queue README's
+    setup task; an empty board is never read as idle."""
+
+    def test_an_empty_project_key_is_not_registered_never_idle(self):
+        for name in SKILLS:
+            with self.subTest(skill=name):
+                hits = [b for b in blocks(_skill_text(name))
+                        if "crucible_project_key" in b and re.search(r"\bempty\b", b)
+                        and re.search(r"not (?:yet )?registered", b) and "setup task" in b
+                        and re.search(r"\bnever\b[^.]{0,60}\bidle\b", b)]
+                self.assertTrue(hits, f"{name}: an empty CRUCIBLE_PROJECT_KEY is not stated as "
+                                      f"'not registered \u2192 setup task, never idle'")
+
+
+class MemoryIndexWordingTest(unittest.TestCase):
+    """F9 / \u00a7S4: the orchestration template is read "for a stack that has one"."""
+
+    def test_orchestration_template_is_for_a_stack_that_has_one(self):
+        for name in SKILLS:
+            with self.subTest(skill=name):
+                norm = normalise(_skill_text(name))
+                self.assertRegex(norm, r"orchestration template[^.]{0,80}for a stack that has one")
+                self.assertNotRegex(norm, r"orchestration template[^.]{0,80}among them")
+
+
+class WatcherWordingTest(unittest.TestCase):
+    """F10 / \u00a7S4: the addressbook table, stop by address, a kill pattern that can match; the
+    watcher named as a capability and its ``/watcher`` command (the CR-MDB-026 gate forbids the
+    tool name)."""
+
+    def test_addressbook_is_described_as_its_table_columns(self):
+        for name in SKILLS:
+            with self.subTest(skill=name):
+                raw = _skill_text(name).replace("`", "")
+                self.assertRegex(raw, r"LISTENING[^.\n]{0,40}\u25cf live")
+                self.assertRegex(raw, r"STATUS[^.\n]{0,40}\bactive\b")
+
+    def test_both_skills_name_the_watcher_command(self):
+        for name in SKILLS:
+            with self.subTest(skill=name):
+                self.assertTrue("/watcher" in _skill_text(name), f"{name} names no /watcher command")
+
+    def test_the_watcher_is_stopped_by_address_never_bare(self):
+        self.assertTrue("/watcher stop <your address>" in _skill_text("shutdown"),
+                        "shutdown does not stop the watcher by address")
+        for name in SKILLS:
+            with self.subTest(skill=name):
+                bare = [line.strip() for line in _skill_text(name).splitlines()
+                        if re.search(r"/watcher stop(?! <)", line)
+                        and not _NEGATION.search(line.lower())]
+                self.assertEqual(bare, [], f"{name}: a bare /watcher stop stops every watcher")
+
+    def test_the_targeted_kill_pattern_can_match_the_notifier(self):
+        patterns = re.findall(r'pkill -f "([^"]*)"', _skill_text("shutdown"))
+        self.assertTrue(patterns, "shutdown's last-resort targeted kill is gone (CR-MDB-026 pin)")
+        for pattern in patterns:
+            with self.subTest(pattern=pattern):
+                self.assertNotRegex(pattern, r"['\"]", "literal quotes never occur in the argv")
+                self.assertTrue(pattern.startswith("sandesh notify --to "), pattern)
 
 
 if __name__ == "__main__":
