@@ -1024,3 +1024,13 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   follows once Crucible offers one (requested over Sandesh). PRD D3.1 amendment restated (supersedes
   the `SANDESH_PROJECT`-only wording of `51d73af`). CR-MDB-041 now depends on 043 and names keys by
   schema name; its registry scope moved to 043. Sequence: 043 → 041.
+- 2026-09-26 — **CR-MDB-043 gap analysis: SPEC_UPDATE_NEEDED → spec rewritten.** (1) LIVE DEFECT: `init`
+  writes `CRUCIBLE_PROJECT_KEY=` into `.env.local`, but Crucible's released client reads only
+  `<project-dir>/.env` (`python-crucible.py:125–140`) and exits without it — every freshly scaffolded
+  project's client calls fail; PRD D3.1 already puts the key in `.env`; the schema moves it there
+  (`source = capture`). (2) Sandesh reads NO file — `--project` or `$SANDESH_PROJECT` only
+  (`sandesh/cli.py:33`); the skills read `SANDESH_PROJECT` from `.env` and pass `--project`; exporting
+  it into the session environment belongs to the sandesh-pi adoption CR. (3) Derive inputs include
+  `init` inputs (`mode`), not only keys; monorepo sub-project `.env`s need a `scope` field. (4) The
+  schema is package data (`modelb_axi/project_schema.toml`), not a skill asset. (5) The byte-identity
+  AC now enumerates the four intended output differences.
