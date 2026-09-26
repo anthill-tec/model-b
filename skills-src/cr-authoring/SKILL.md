@@ -78,6 +78,7 @@ A **CR has a design surface** (new types/API/architecture, PRD coupling) → spe
 - **Row columns: CR / Title / Wave / Depends on.** Nothing else — no status column, no plan/open-plan/closed+merge bookkeeping in rows.
 - **A row's title and its spec's H1 must agree — and so must the TRACKING BOARD's registered title.** Measured 2026-09-21: a CR rewritten to drop one harness for another kept its old board title for three days because the repo side was corrected and the board side was not, and the board is the authority for queue status. Where a board read-verb cannot echo titles, the parity is re-posted rather than read; either way it is checked when a spec's subject changes, not only at release.
 - **Statuses are DERIVED on the Crucible board** (plans / cycles / milestones), never hand-maintained in the queue.
+- **Release membership is the user's call.** Never decide which release a CR belongs to — file it at the queue default; the user sets membership (a priority may be proposed).
 - **Header slots:** `Design contract` / `Evidence base` / `Ontology` / `Target release`.
 - **Dated footer `Notes`** — scheduling notes, scope moves, fold-ins, supersessions, user-approved breaking changes (dated lines).
 - **Release-boundary row** — a row marking the release boundary in the ordering.
@@ -92,6 +93,7 @@ A **CR has a design surface** (new types/API/architecture, PRD coupling) → spe
 The orchestrator MAY add (on the feature branch): a dated scope-reconciliation note, an `## Implementation Notes` section, inline annotations. The orchestrator MUST NOT touch the **AC checkboxes** (`- [ ]`) — those are **VERIFY's authority**; pre-marking short-circuits review. Deferred items needing a record → a follow-up CR/DN referenced from Implementation Notes.
 
 ## PRD conventions
+- **Every PRD opens with front matter** (Version / Date / Status / Authors, Builds on / Related) followed by a `## Change Control` table, one row per revision.
 - `docs/research/PRD-*.md` is the authoritative design contract. Read the relevant PRD section COMPLETELY before implementing a CR derived from it.
 - A CR introducing a design concept not yet in the PRD: UPDATE the PRD section first, then cite it via `**Design reference:**`. Don't inline new design rationale in the CR.
 - PRD revisions surfaced mid-cycle commit on the feature branch.
