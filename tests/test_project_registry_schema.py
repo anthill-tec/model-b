@@ -1306,14 +1306,18 @@ class SchemaReadersAndSkillKeyListTest(unittest.TestCase):
     (a reader still to come is marked pending), and the model-b skill's
     §4.1 key list names every schema key."""
 
-    def test_sandesh_project_readers_are_real_or_marked_pending(self):
+    def test_sandesh_project_readers_are_init_and_the_bootstrap_shutdown_skills(self):
+        # MIGRATED PIN (CR-MDB-041 \u00a7S4): was test_sandesh_project_readers_are_real_or_marked_pending;
+        # the two skills now read the key, so a reader is init or those skills, pending or not
+        # (SchemaReadersTest in tests.test_bootstrap_shutdown_registry forbids "pending").
         readers = _entries_by_name()["SANDESH_PROJECT"]["readers"]
         self.assertTrue(any(r.startswith("modelb-axi init") for r in readers), readers)
         for reader in readers:
             with self.subTest(reader=reader):
                 self.assertTrue(
-                    reader.startswith("modelb-axi init") or "pending" in reader,
-                    f"a reader that does not read the key today is marked pending: {reader!r}")
+                    reader.startswith("modelb-axi init")
+                    or ("bootstrap" in reader and "shutdown" in reader),
+                    f"a reader is init or the bootstrap/shutdown skills: {reader!r}")
 
     def test_the_model_b_skill_key_list_names_every_schema_key(self):
         text = (REPO_ROOT / "skills-src" / "model-b" / "SKILL.md").read_text(encoding="utf-8")
