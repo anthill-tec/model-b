@@ -5,8 +5,9 @@ analysis 2026-09-26)
 **Type:** fix
 **Priority:** P1 — release 1.0.0, wave 2. Every Pi orchestrator runs these two skills at the start
 and end of every session, and today they send it looking for files that do not exist.
-**Depends on:** CR-MDB-042 (merged: the orchestrator rules live in the common skills); CR-MDB-043
-(the schema-driven registry, which adds `SANDESH_PROJECT`)
+**Depends on:** CR-MDB-042 (merged `18a0045`: the orchestrator rules live in the common skills);
+CR-MDB-043 (merged `2aa4987`: the schema-driven registry, `modelb_axi/project_schema.toml`, which adds
+`SANDESH_PROJECT`)
 **Labels:** skills, bootstrap, shutdown, scaffold, registry
 **Design reference:** PRD D5 (AMENDED 2026-09-26: one orchestrator definition, no per-project
 orchestrator note); PRD D3.1 (the `.env` naming registry; AMENDED 2026-09-26: schema-driven, CR-MDB-043);
@@ -84,8 +85,11 @@ the project's `AGENTS.md`; a value found in neither is asked of the user once. A
 - The descriptions (frontmatter) say the same.
 
 ### §S4 — Leftovers
-The two skills drop project-specific examples (`NAI`/`Nai`, `vidushi`/`vidushi-t<N>` as literal ids)
-and satisfy the name/retired-tool gate CR-MDB-042 exempted them from: the exemption is removed.
+The two skills drop literal ids used as examples (`vidushi`/`vidushi-t<N>`; CR-MDB-043 already
+replaced the `NAI`/`Nai` casing example) and satisfy the name/retired-tool gate CR-MDB-042 exempted
+them from: the `bootstrap`/`shutdown` entries leave `EXEMPT_BUNDLES` in
+`tests/test_orchestrator_rule_triage.py`. The schema's `SANDESH_PROJECT` `readers` entry drops its
+"pending CR-MDB-041" qualifier: the two skills now read it.
 
 ## Acceptance criteria
 
@@ -103,7 +107,7 @@ and satisfy the name/retired-tool gate CR-MDB-042 exempted them from: the exempt
 - [ ] Neither recovers, repaints, drains or escalates a todo/task list; bootstrap reloads from the
       board, shutdown drains the plan's open cycles.
 - [ ] The CR-MDB-042 name/retired-tool gate covers `bootstrap/` and `shutdown/` (exemption removed)
-      and passes.
+      and passes; the schema's `SANDESH_PROJECT` readers name the two skills without "pending".
 - [ ] Suite baselines re-measured and recorded in `AGENTS.md`.
 
 ## Non-goals
