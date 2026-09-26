@@ -968,3 +968,15 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   needs a `wave-sequence` call (042 was re-sequenced ahead of 041). Nit routed forward:
   `tests/test_installer_prune.py:1114` accepts a dict return from `prune_assets` that the merged
   tuple shape makes dead (pi-lens type warning).
+- 2026-09-26 — **Sandesh on Pi** (threads #1394 → #1395 → #1396, `Mainline - Sandesh`). User ruling: Model
+  B targets Pi, so it never uses the Sandesh MCP server. Sandesh confirms `@anthill-tec/sandesh-pi`
+  (its `integrations/pi`) is its supported Pi surface; the MCP server is its Claude Code surface only.
+  Sandesh will ship, in order: (1) a TOON AXI mode on the CLI (envelope shape + per-verb fields sent in
+  #1396); (2) wake supervision in sandesh-pi adopting Model B's watcher contract as-is, with
+  `sandesh_notify_start/_status/_stop` tools and no auto-arm; (3) the npm publish, blocked on its npm
+  account, no date. Wake delivery already agrees (`deliverAs: "followUp"`); exit 5 = already running.
+  When each ships Sandesh replies on the thread; then Model B records the design (DN-multi-harness,
+  new §D20), files the CR that depends on sandesh-pi, retires `pi-package/extensions/sandesh-watcher.ts`
+  and moves skills to its tools + envelope. Not a 1.0.0 blocker (the Model B watcher stays until
+  parity). CR-MDB-041 also gains (from CR-042 C2) the removal of the todo-list steps in
+  `bootstrap`/`shutdown`: the board is the task list.

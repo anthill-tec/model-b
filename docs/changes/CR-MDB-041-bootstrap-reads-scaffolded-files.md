@@ -73,6 +73,11 @@ A test asserts, over `skills-src/`:
 - [ ] The pre-`init` fallback is stated and treats a missing file as non-fatal.
 - [ ] Neither skill infers the Track role from the working directory or a `/.worktrees/` toplevel;
       the fallback is the Sandesh address or the carried context.
+- [ ] Neither skill recovers, repaints, drains or escalates a todo/task list: the Crucible board is the
+      task list (CR-MDB-042, `orchestration-common.md` § Cycle discipline). `bootstrap` Step 2 reloads
+      the in-flight cycle from the board (`plans`, `next`); `shutdown` drains the plan's open cycles.
+      Today's hits: `bootstrap/SKILL.md:3, 142–146`; `shutdown/SKILL.md:14, 18, 102, 115, 118, 120, 140,
+      211, 212`.
 - [ ] The §S2 gate exists, with detector fixtures, and fails on today's `skills-src/`.
 - [ ] Suite baselines re-measured and recorded in `AGENTS.md`.
 - [ ] Crucible Mainline is told on thread #1392 when this merges (a release step for the deployed
