@@ -1,0 +1,111 @@
+# Model B project-settings schema (CR-MDB-043 §S1; PRD D3.1, amended 2026-09-26).
+#
+# One [[key]] table per project-registry key. `modelb-axi init` asks, derives,
+# validates and renders a project's settings from this file alone (§S2).
+# It carries RULES only — never a project's value.
+#
+# Fields (§S1):
+#   name, description   the key and what it holds
+#   required            `init` refuses to run without it (ask keys)
+#   file                `.env` (committed) or `.env.local` (gitignored)
+#   scope               `root`, or `root+sub` when a monorepo sub-project's
+#                       `.env` carries it too
+#   source              `ask` (with its `flag`), `derive` (a named `rule` over
+#                       `inputs` — schema keys or `init` inputs such as `mode` —
+#                       optionally overridden by an `override` flag), or
+#                       `capture` (a named manual or tool `step`)
+#   validate            a named rule (modelb_axi.scaffold.VALIDATE_RULES)
+#   readers             the skills or tools that read the key
+#
+# Rendering order in each file is the order of the tables below.
+
+[[key]]
+name = "PROJECT_NAME"
+description = "The project's display name."
+required = true
+file = ".env"
+scope = "root+sub"
+source = "ask"
+flag = "--name"
+validate = "non_empty"
+readers = ["model-b skill (naming registry)", "modelb-axi init (AGENTS.md, queue README)"]
+
+[[key]]
+name = "PROJECT_TOKEN"
+description = "The project's canonical token (lower-case short name)."
+required = true
+file = ".env"
+scope = "root+sub"
+source = "ask"
+flag = "--token"
+validate = "non_empty"
+readers = ["model-b skill (naming registry)"]
+
+[[key]]
+name = "PROJECT_ACRONYM"
+description = "The project's acronym; CR ids are CR-<ACRONYM>-NNN."
+required = true
+file = ".env"
+scope = "root+sub"
+source = "ask"
+flag = "--acronym"
+validate = "non_empty"
+readers = ["model-b skill (naming registry, CR ids)"]
+
+[[key]]
+name = "ORCHESTRATOR_LABEL"
+description = "Mode-aware orchestrator label: vidushi-<token> solo, Mainline-<token> multi."
+required = true
+file = ".env"
+scope = "root+sub"
+source = "derive"
+rule = "orchestrator_label"
+inputs = ["mode", "PROJECT_TOKEN"]
+validate = "non_empty"
+readers = ["model-b skill (orchestrator id)", "Crucible stack clients (orchestrator agent id)"]
+
+[[key]]
+name = "REPO_OWNER"
+description = "The remote's owning account or organization."
+required = true
+file = ".env"
+scope = "root+sub"
+source = "ask"
+flag = "--owner"
+validate = "non_empty"
+readers = ["model-b skill (wave-boundary gate)", "Crucible stack clients (gate-run)"]
+
+[[key]]
+name = "PROJECT_STACKS"
+description = "The project's stacks, comma-separated; the set `modelb-axi agents` renders."
+required = true
+file = ".env"
+scope = "root"
+source = "ask"
+flag = "--stacks"
+validate = "stack_csv"
+readers = ["modelb-axi agents"]
+
+[[key]]
+name = "CRUCIBLE_PROJECT_KEY"
+description = "The Crucible projectKey, captured when the project is registered in Crucible."
+required = true
+file = ".env"
+scope = "root"
+source = "capture"
+step = "the project is registered in Crucible (manual in scaffold v1; see the queue README setup task)"
+validate = "no_whitespace"
+readers = ["Crucible stack clients (~/.crucible/clients/<stack>-crucible.py)", "worktree-flow.py", "model-b skill"]
+
+[[key]]
+name = "SANDESH_PROJECT"
+description = "The Sandesh project id exactly as Sandesh knows it (case- and space-sensitive)."
+required = true
+file = ".env"
+scope = "root+sub"
+source = "derive"
+rule = "remove_whitespace"
+inputs = ["PROJECT_NAME"]
+override = "--sandesh-project"
+validate = "sandesh_id"
+readers = ["modelb-axi init (AGENTS.md identity section, queue README Sandesh setup task)", "bootstrap/shutdown skills (pending CR-MDB-041: pass --project to the sandesh CLI)"]

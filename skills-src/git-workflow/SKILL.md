@@ -192,15 +192,15 @@ After building: switch back to develop for continued work. Bump develop to the n
 
 ## Multi-Account Pushing (dual remote: origin + mirror)
 
-Some repos carry two remotes on two GitHub accounts: `origin` (work account, e.g. `Antojk71`, host alias `github.com-4property`) and `mirror` (personal account, e.g. `antojk`, host alias `github.com-antojk`). SSH host aliases in `~/.ssh/config` select the key; the **gh CLI account must be switched around each push**.
+Some repos carry two remotes on two GitHub accounts: `origin` (work account, e.g. `<work-account>`, host alias `github.com-<work-alias>`) and `mirror` (personal account, e.g. `<personal-account>`, host alias `github.com-<personal-alias>`). SSH host aliases in `~/.ssh/config` select the key; the **gh CLI account must be switched around each push**.
 
 **If a `mirror` remote is detected (`git remote | grep -q '^mirror$'`), ALWAYS push to BOTH remotes, switching accounts around each push:**
 
 ```bash
-gh auth switch --user antojk       # personal account
-git push mirror <branch>           # (and: git push mirror --tags)
-gh auth switch --user Antojk71     # work account
-git push origin <branch>           # (and: git push origin --tags)
+gh auth switch --user <personal-account>   # personal account
+git push mirror <branch>                   # (and: git push mirror --tags)
+gh auth switch --user <work-account>       # work account
+git push origin <branch>                   # (and: git push origin --tags)
 ```
 
 - Single-remote repos: ensure the correct account is active (`gh auth status`), then `git push origin <branch>`

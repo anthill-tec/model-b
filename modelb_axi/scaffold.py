@@ -28,9 +28,12 @@ Each file is itself written atomically (§S2). Stdlib only.
 
 import argparse
 import datetime
+import re
 import shlex
 import subprocess
 import sys
+import tomllib
+import unicodedata
 from pathlib import Path
 
 from modelb_axi import agents, permission_policy, project_trust, requirements
@@ -51,17 +54,18 @@ KNOWN_STACKS: tuple[str, ...] = (
     "arduino", "bun", "python", "quarkus", "rust", "java",
 )
 
-# Registry/plan inputs every init needs (flag dest -> flag name).
-_REQUIRED_FLAGS: tuple[tuple[str, str], ...] = (
-    ("name", "--name"),
-    ("token", "--token"),
-    ("acronym", "--acronym"),
+# Plan inputs every init needs that are NOT registry keys (flag dest ->
+# flag name); the registry's own required values come from the schema's
+# ask+required keys (CR-MDB-043 §S2), inserted at the matching positions.
+_PLAN_REQUIRED_FLAGS: tuple[tuple[str, str], ...] = (
     ("mode", "--mode"),
     ("repo_shape", "--repo-shape"),
-    ("stacks", "--stacks"),
-    ("owner", "--owner"),
     ("target", "--target"),
 )
+
+#: The packaged project-settings schema (CR-MDB-043 §S1), read by
+#: :func:`run_init` and :func:`run_agents` at call time.
+PROJECT_SCHEMA_PATH = Path(__file__).resolve().parent / "project_schema.toml"
 
 
 class ScaffoldError(ValueError):
@@ -210,32 +214,283 @@ def _orchestrator_label(mode: str, token: str) -> str:
     return f"vidushi-{token}" if mode == "solo" else f"Mainline-{token}"
 
 
-def _render_env(
-    name: str, token: str, acronym: str, mode: str, owner: str,
-    stacks: list[str] | None = None,
-) -> str:
-    """The COMMITTED ``.env`` registry: all five keys (§S3.1), plus
-    ``PROJECT_STACKS`` when ``stacks`` is given (CR-MDB-025 §S6 — the set
-    ``modelb-axi agents`` re-renders from)."""
-    text = (
-        "# Project naming registry (CR-MDB-013 scaffold; committed).\n"
-        f"PROJECT_NAME={name}\n"
-        f"PROJECT_TOKEN={token}\n"
-        f"PROJECT_ACRONYM={acronym}\n"
-        f"ORCHESTRATOR_LABEL={_orchestrator_label(mode, token)}\n"
-        f"REPO_OWNER={owner}\n"
+# --- CR-MDB-043 §S1/§S2: the project-settings schema -----------------------
+
+def _remove_whitespace(value: str) -> str:
+    """Derive rule: ``value`` with every whitespace character removed."""
+    return "".join(value.split())
+
+
+#: Named derive rules a schema entry's ``rule`` refers to; each takes the
+#: entry's ``inputs`` values positionally (CR-MDB-043 §S2).
+DERIVE_RULES: dict = {
+    "orchestrator_label": _orchestrator_label,
+    "remove_whitespace": _remove_whitespace,
+}
+
+
+def _check_non_empty(value: str) -> str:
+    """Validate rule: a non-empty value."""
+    if not value.strip():
+        raise ValueError("must be non-empty")
+    return value
+
+
+def _check_no_whitespace(value: str) -> str:
+    """Validate rule: a non-empty value containing no whitespace."""
+    if not value or any(ch.isspace() for ch in value):
+        raise ValueError("must be non-empty with no whitespace")
+    return value
+
+
+def _check_stack_csv(value: str) -> str:
+    """Validate rule: a ``--stacks`` CSV of known stacks, normalised the
+    way :func:`parse_stacks` records it."""
+    return ",".join(parse_stacks(value))
+
+
+_SANDESH_ID_RE = re.compile(r"[A-Za-z0-9_.-]+")
+
+
+def _check_sandesh_id(value: str) -> str:
+    """Validate rule: a Sandesh project id — letters, digits, ``_``, ``-``
+    and ``.`` only (CR-MDB-043 §S2 "Values")."""
+    if not _SANDESH_ID_RE.fullmatch(value):
+        raise ValueError("must use only letters, digits, `_`, `-` and `.`")
+    return value
+
+
+def _has_control_character(value: str) -> bool:
+    """Whether ``value`` carries a control character (Unicode ``Cc``,
+    newline and tab included)."""
+    return any(unicodedata.category(ch) == "Cc" for ch in value)
+
+
+#: Named validate rules a schema entry's ``validate`` refers to; each takes
+#: the value and returns its canonical form, raising ``ValueError`` (or
+#: :class:`ScaffoldError`) when it is invalid (CR-MDB-043 §S2).
+VALIDATE_RULES: dict = {
+    "non_empty": _check_non_empty,
+    "no_whitespace": _check_no_whitespace,
+    "stack_csv": _check_stack_csv,
+    "sandesh_id": _check_sandesh_id,
+}
+
+_SCHEMA_FILES = (".env", ".env.local")
+_SCHEMA_SCOPES = ("root", "root+sub")
+_SCHEMA_SOURCES = ("ask", "derive", "capture")
+
+#: ``init`` inputs a derive rule may name besides the schema's own keys —
+#: the argparse dests of ``init``'s plan flags (CR-MDB-043 §S2).
+DERIVE_INIT_INPUTS = frozenset({"mode", "repo_shape"})
+
+
+def _is_text(value) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
+def _check_entry_fields(entry: dict, where: str) -> None:
+    """Refuse an entry lacking a field its source requires, or carrying one
+    of the wrong type (CR-MDB-043 §S2 "Loading and validating")."""
+    if not _is_text(entry.get("description")):
+        raise ScaffoldError(f"{where}: description must be a non-empty string")
+    readers = entry.get("readers")
+    if not isinstance(readers, list) or not readers or not all(map(_is_text, readers)):
+        raise ScaffoldError(f"{where}: readers must be a non-empty list of strings")
+    if not isinstance(entry.get("required"), bool):
+        raise ScaffoldError(f"{where}: required must be a boolean (true or false)")
+    if entry["file"] == ".env.local" and entry["scope"] == "root+sub":
+        raise ScaffoldError(
+            f"{where}: file = \".env.local\" with scope = \"root+sub\" is refused "
+            "— no sub-project .env.local is emitted")
+    source = entry["source"]
+    if source == "ask" and not str(entry.get("flag", "")).startswith("--"):
+        raise ScaffoldError(f"{where}: an ask key names its --flag")
+    if source == "derive":
+        if entry.get("rule") not in DERIVE_RULES:
+            raise ScaffoldError(
+                f"{where}: unknown derive rule {entry.get('rule')!r}; "
+                f"known: {', '.join(DERIVE_RULES)}")
+        inputs = entry.get("inputs")
+        if not isinstance(inputs, list) or not inputs or not all(map(_is_text, inputs)):
+            raise ScaffoldError(f"{where}: a derive key names its inputs")
+        if "override" in entry and not (
+                isinstance(entry["override"], str) and entry["override"].startswith("--")):
+            raise ScaffoldError(
+                f"{where}: override must be a --flag; got {entry['override']!r}")
+    if source == "capture" and not _is_text(entry.get("step")):
+        raise ScaffoldError(f"{where}: a capture key names its step")
+
+
+def load_schema(path: Path) -> list[dict]:
+    """Load the project-settings schema at ``path`` (CR-MDB-043 §S1): its
+    one top-level array of tables, one entry per key, in declaration
+    order. Raises :class:`ScaffoldError` naming the key and the field for
+    an unreadable schema, an illegal or missing field, a duplicate key, an
+    unknown derive/validate rule name, or a derive input that is neither a
+    declared key nor an ``init`` input — before ``init`` writes anything."""
+    try:
+        data = tomllib.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError) as exc:
+        raise ScaffoldError(f"project schema {path}: {exc}") from exc
+    tables = [v for v in data.values() if isinstance(v, list)]
+    if len(tables) != 1 or not all(isinstance(e, dict) for e in tables[0]):
+        raise ScaffoldError(
+            f"project schema {path} must hold exactly one array of tables")
+    entries = tables[0]
+    seen: set[str] = set()
+    for entry in entries:
+        name = entry.get("name")
+        if not isinstance(name, str) or not name:
+            raise ScaffoldError(f"project schema {path}: an entry has no name")
+        if name in seen:
+            raise ScaffoldError(f"project schema {path}: {name} is declared twice")
+        seen.add(name)
+        where = f"project schema {path}: {name}"
+        if entry.get("file") not in _SCHEMA_FILES:
+            raise ScaffoldError(f"{where}: file must be one of {_SCHEMA_FILES}")
+        if entry.get("scope") not in _SCHEMA_SCOPES:
+            raise ScaffoldError(f"{where}: scope must be one of {_SCHEMA_SCOPES}")
+        source = entry.get("source")
+        if source not in _SCHEMA_SOURCES:
+            raise ScaffoldError(f"{where}: source must be one of {_SCHEMA_SOURCES}")
+        if entry.get("validate") not in VALIDATE_RULES:
+            raise ScaffoldError(
+                f"{where}: unknown validate rule {entry.get('validate')!r}; "
+                f"known: {', '.join(VALIDATE_RULES)}")
+        _check_entry_fields(entry, where)
+    for entry in entries:
+        for item in entry.get("inputs", []) if entry["source"] == "derive" else []:
+            if item not in seen and item not in DERIVE_INIT_INPUTS:
+                raise ScaffoldError(
+                    f"project schema {path}: {entry['name']}: derive input {item!r} "
+                    "(inputs) is neither a declared key nor an init input "
+                    f"({', '.join(sorted(DERIVE_INIT_INPUTS))})")
+    return entries
+
+
+def _flag_dest(flag: str) -> str:
+    """The argparse dest of ``flag`` (``--team-lead`` -> ``team_lead``)."""
+    return flag.lstrip("-").replace("-", "_")
+
+
+def _required_flags(schema: list[dict]) -> list[tuple[str, str]]:
+    """``(dest, flag)`` of every value ``init`` requires: the schema's
+    ask+required keys, then the non-registry plan inputs."""
+    asked = [
+        (_flag_dest(e["flag"]), e["flag"]) for e in schema
+        if e["source"] == "ask" and e.get("required")
+    ]
+    return asked + list(_PLAN_REQUIRED_FLAGS)
+
+
+def resolve_registry(schema: list[dict], inputs: dict) -> dict:
+    """Every schema key's value for one ``init`` (CR-MDB-043 §S2), in
+    schema order: an ask key from its flag's dest in ``inputs``, a derive
+    key from its rule over its inputs (its ``override`` flag winning when
+    given), a capture key empty (captured later). Each asked or derived
+    value passes its validate rule; a failure raises :class:`ScaffoldError`
+    naming the key and its flag."""
+    registry: dict = {}
+    derived: set = set()
+    for entry in schema:
+        if entry["source"] == "ask":
+            registry[entry["name"]] = inputs.get(_flag_dest(entry["flag"])) or ""
+        elif entry["source"] == "capture":
+            registry[entry["name"]] = ""
+    for entry in schema:
+        if entry["source"] != "derive":
+            continue
+        override = entry.get("override")
+        value = inputs.get(_flag_dest(override)) if override else None
+        if value is None:
+            args = []
+            for item in entry["inputs"]:
+                if item in registry:
+                    args.append(registry[item])
+                elif item in inputs:
+                    args.append(inputs[item])
+                else:
+                    raise ScaffoldError(
+                        f"{entry['name']}: derive input {item!r} is not resolved")
+            value = DERIVE_RULES[entry["rule"]](*args)
+            derived.add(entry["name"])
+        registry[entry["name"]] = value
+    for entry in schema:
+        name = entry["name"]
+        if entry["source"] == "capture" or (not registry[name] and not entry.get("required")):
+            continue
+        flag = entry.get("flag") or entry.get("override")
+        label = f"{name} ({flag})" if flag else name
+        # CR-MDB-043 §S2 "Values": no rendered value carries a control
+        # character (a newline would forge a second KEY=value line).
+        if _has_control_character(registry[name]):
+            raise ScaffoldError(
+                f"{label}: value {registry[name]!r} contains a control character")
+        hint = (f"; it is derived from {', '.join(entry['inputs'])} — set it "
+                f"with {entry['override']}"
+                if name in derived and entry.get("override") else "")
+        try:
+            registry[name] = VALIDATE_RULES[entry["validate"]](registry[name])
+        except ScaffoldError as exc:
+            raise ScaffoldError(f"{label}: {exc}{hint}") from exc
+        except ValueError as exc:
+            raise ScaffoldError(f"{label}: value {registry[name]!r} {exc}{hint}") from exc
+    return registry
+
+
+def _render_registry(schema: list[dict], registry: dict, file: str, *, sub: bool) -> str:
+    """``KEY=value`` lines of every schema key living in ``file`` — only
+    the ``root+sub`` keys for a sub-project (CR-MDB-043 §S2)."""
+    return "".join(
+        f"{e['name']}={registry.get(e['name'], '')}\n" for e in schema
+        if e["file"] == file and (not sub or e["scope"] == "root+sub")
     )
-    if stacks:
-        text += f"{PROJECT_STACKS_KEY}={','.join(stacks)}\n"
-    return text
 
 
-def _render_env_local() -> str:
-    """The GITIGNORED ``.env.local``: tool-config placeholders (§S3.1)."""
+def read_registry_value(project_root: Path, schema: list[dict], key: str) -> str | None:
+    """The value of schema ``key`` recorded in ``project_root``, read from
+    the file the schema places it in; None when absent (CR-MDB-043 §S2)."""
+    entry = next((e for e in schema if e["name"] == key), None)
+    if entry is None:
+        raise ScaffoldError(f"{key} is not declared in the project schema")
+    path = project_root / entry["file"]
+    return _read_env_value(path, key) if path.is_file() else None
+
+
+def _setup_required(schema: list[dict], registry: dict) -> list[dict]:
+    """One row per required capture key still empty after ``init`` — the
+    values the user must fill in before the key's readers run (CR-MDB-043
+    §S2: CRUCIBLE_PROJECT_KEY is empty until the project is registered
+    in Crucible, and is filled in ``.env``)."""
+    return [
+        {
+            "key": e["name"],
+            "file": e["file"],
+            "note": (f"empty until {e['step']}; fill it in {e['file']} before "
+                     f"its readers run: {', '.join(e['readers'])}"),
+        }
+        for e in schema
+        if e["source"] == "capture" and e.get("required") and not registry.get(e["name"])
+    ]
+
+
+def _render_env(schema: list[dict], registry: dict, *, sub: bool = False) -> str:
+    """The COMMITTED ``.env`` registry (§S3.1): the schema's ``.env`` keys
+    in schema order, root or sub-project scope (CR-MDB-043 §S2)."""
     return (
-        "# Local-only tool config (gitignored). Fill after registering the\n"
-        "# project in Crucible — see the queue README setup tasks.\n"
-        "CRUCIBLE_PROJECT_KEY=\n"
+        "# Project naming registry (CR-MDB-013 scaffold; committed).\n"
+        + _render_registry(schema, registry, ".env", sub=sub)
+    )
+
+
+def _render_env_local(schema: list[dict], registry: dict) -> str:
+    """The GITIGNORED ``.env.local`` overlay (§S3.1): the schema's
+    ``.env.local`` keys (none today; CR-MDB-043 §S2)."""
+    return (
+        "# Gitignored overlay for values that stay on this machine;\n"
+        "# not part of the project registry (that is .env).\n"
+        + _render_registry(schema, registry, ".env.local", sub=False)
     )
 
 
@@ -243,7 +498,7 @@ def _render_gitignore() -> str:
     """``.gitignore`` incl. ``.env.local`` and the in-repo worktree
     segment ``.worktrees/`` (§S3.5; CR-MDB-031 §S0.1/§S3)."""
     return (
-        "# Local-only registry overlay — never committed.\n"
+        "# Machine-local overlay (values that stay on this machine) — never committed.\n"
         ".env.local\n"
         "\n"
         "# CR worktrees live inside the repo (inheriting Pi's project trust).\n"
@@ -259,15 +514,17 @@ def _render_gitignore() -> str:
 
 
 def _render_queue_readme(
-    name: str, acronym: str, label: str, mode: str,
+    name: str, acronym: str, label: str, mode: str, sandesh_project: str,
 ) -> str:
     """Queue template (§S3.2): four header slots, empty structure-only
     table, setup-tasks checklist (incl. the §S3.6 manual registration
     notes — registrations are manual in scaffold v1), dated Notes
-    footer."""
+    footer. The multi-mode Sandesh task names the project's Sandesh id
+    and Mainline address from ``SANDESH_PROJECT`` (CR-MDB-043 §S2)."""
     today = datetime.date.today().isoformat()
     sandesh_task = (
-        f"- [ ] Sandesh setup + register (`{name}`, `Mainline - {name}`) — "
+        f"- [ ] Sandesh setup + register (`{sandesh_project}`, "
+        f"`Mainline - {sandesh_project}`) — "
         "manual step (registrations are manual in scaffold v1)\n"
         if mode != "solo" else ""
     )
@@ -293,7 +550,7 @@ def _render_queue_readme(
         "\n"
         f"- [x] Scaffold via `modelb-axi init` — {today}\n"
         "- [ ] Register the project in Crucible and paste the key into "
-        "`.env.local` (`CRUCIBLE_PROJECT_KEY=`) — manual step "
+        "`.env` (`CRUCIBLE_PROJECT_KEY=`) — manual step "
         "(registrations are manual in scaffold v1)\n"
         f"{sandesh_task}"
         "- [ ] Confirm the remote owner matches `REPO_OWNER` in `.env` "
@@ -349,7 +606,7 @@ def _render_capability_contract(stacks: list[str], harnesses: tuple[str, ...] = 
 
 def _render_agents_md(
     name: str, token: str, acronym: str, mode: str, owner: str,
-    stacks: list[str], harnesses: list[str],
+    stacks: list[str], harnesses: list[str], sandesh_project: str | None = None,
 ) -> str:
     """Project ``AGENTS.md`` override (§S3.3/§S3.8): identity from the
     registry, workflow rules (incl. the post-036 run-context note —
@@ -357,6 +614,11 @@ def _render_agents_md(
     name them), stack-derived skill freeze, per-installed-harness anchor
     notes, and the generator note."""
     label = _orchestrator_label(mode, token)
+    sandesh_line = (
+        f"- Sandesh project: `{sandesh_project}` (`SANDESH_PROJECT`; addresses "
+        f"`Mainline - {sandesh_project}` / `Track <N> - {sandesh_project}`).\n"
+        if sandesh_project else ""
+    )
     stack_lines = "\n".join(
         f"- {stack}: use the `{stack}` stack skills and generated "
         f"RED/GREEN/VERIFY/FIX agents as frozen at scaffold time."
@@ -376,6 +638,7 @@ def _render_agents_md(
         "solo `vidushi-<token>`, multi `Mainline-<token>`).\n"
         f"- CR ids: `CR-{acronym}-NNN`. Crucible agentIds follow the stack "
         "client's agent-naming header — never improvised.\n"
+        f"{sandesh_line}"
         "\n"
         "## Workflow rules\n"
         "- A **wave** is a grouping of CRs marking an execution boundary; "
@@ -711,6 +974,8 @@ def _emit_plan(
     agent_sources: tuple[Path, Path] | None = None,
     force_managed: bool = False,
     ownership: dict | None = None,
+    schema: list[dict],
+    registry: dict,
 ) -> list[str]:
     """Perform the real §S3/§S4 emission under ``target``; returns the
     emitted file paths (relative to ``target``).
@@ -731,7 +996,10 @@ def _emit_plan(
     renders no agent definitions.
 
     ``ownership``, when given, receives the permission policy's
-    ``skipped`` (hand-edited) and ``unmanaged`` paths (CR-MDB-037 §S3)."""
+    ``skipped`` (hand-edited) and ``unmanaged`` paths (CR-MDB-037 §S3).
+
+    ``schema``/``registry`` are the project-settings schema and the values
+    :func:`run_init` resolved from it in validation (CR-MDB-043 §S2)."""
     if emitted is None:
         emitted = []
 
@@ -746,18 +1014,20 @@ def _emit_plan(
     label = _orchestrator_label(mode, token)
 
     # §S3.1 registry + §S3.5 .gitignore.
-    write(".env", _render_env(name, token, acronym, mode, owner, stacks))
-    write(".env.local", _render_env_local())
+    write(".env", _render_env(schema, registry))
+    write(".env.local", _render_env_local(schema, registry))
     write(".gitignore", _render_gitignore())
 
     # §S3.2 docs model.
-    write("docs/changes/README.md", _render_queue_readme(name, acronym, label, mode))
+    write("docs/changes/README.md", _render_queue_readme(
+        name, acronym, label, mode, registry["SANDESH_PROJECT"]))
     write("docs/research/.gitkeep", "")
 
     # §S3.3 AGENTS.md (Pi reads it natively — no anchor file).
     write(
         "AGENTS.md",
-        _render_agents_md(name, token, acronym, mode, owner, stacks, harnesses),
+        _render_agents_md(name, token, acronym, mode, owner, stacks, harnesses,
+                          registry.get("SANDESH_PROJECT")),
     )
 
     # §S3.4 in-repo project memory.
@@ -813,7 +1083,7 @@ def _emit_plan(
 
     # §S3 monorepo: per-sub-project registry + override.
     for sub in sub_projects:
-        write(f"{sub}/.env", _render_env(name, token, acronym, mode, owner))
+        write(f"{sub}/.env", _render_env(schema, registry, sub=True))
         write(f"{sub}/AGENTS.md", _render_sub_agents_md(name, sub, token, acronym))
 
     # §S3.5 git + §S4 one-commit policy.
@@ -848,8 +1118,9 @@ def run_init(args: argparse.Namespace, home: Path) -> int:
         harnesses, harness_source = resolve_harnesses(
             home, getattr(args, "harnesses", None),
         )
+        schema = load_schema(PROJECT_SCHEMA_PATH)
         missing = [
-            flag for dest, flag in _REQUIRED_FLAGS
+            flag for dest, flag in _required_flags(schema)
             if not getattr(args, dest, None)
         ]
         if missing:
@@ -861,6 +1132,9 @@ def run_init(args: argparse.Namespace, home: Path) -> int:
         _validate_mode(args.mode)
         stacks = parse_stacks(args.stacks)
         sub_projects = _sub_projects(args.repo_shape)
+        # CR-MDB-043 §S2: derive + validate every registry value BEFORE
+        # any write (and before --dry-run reports them).
+        registry = resolve_registry(schema, vars(args))
     except (ScaffoldError, UnknownHarnessError) as exc:
         print(f"modelb-axi: error: {exc}", file=sys.stderr)
         print(envelope("init", False, warnings=[str(exc)], dry_run=dry_run))
@@ -924,6 +1198,8 @@ def run_init(args: argparse.Namespace, home: Path) -> int:
                 agent_sources=agent_sources,
                 force_managed=bool(getattr(args, "force_managed", False)),
                 ownership=ownership,
+                schema=schema,
+                registry=registry,
             )
         except (ScaffoldError, OSError) as exc:
             # CR-MDB-033 §S4: a mid-emission failure may leave a partial
@@ -965,6 +1241,14 @@ def run_init(args: argparse.Namespace, home: Path) -> int:
             print(f"modelb-axi: warning: {warning}", file=sys.stderr)
             plan_warnings.append(warning)
 
+    # CR-MDB-043 §S2: a captured key init leaves empty (the Crucible
+    # project key) is reported, dry run or not — it is a setup step, not
+    # a warning.
+    setup_required = _setup_required(schema, registry)
+    for row in setup_required:
+        print(f"  setup required: {row['key']} in {row['file']} is {row['note']}",
+              file=sys.stderr)
+
     print(
         envelope(
             "init", True,
@@ -984,6 +1268,8 @@ def run_init(args: argparse.Namespace, home: Path) -> int:
             no_commit=bool(getattr(args, "no_commit", False)),
             register=bool(getattr(args, "register", False)),
             planned=plan,
+            registry=registry,
+            setup_required=setup_required,
             skipped=ownership["skipped"],
             unmanaged=ownership["unmanaged"],
             **trust_fields,
@@ -1048,7 +1334,9 @@ def run_agents(args: argparse.Namespace, home: Path, project_root: Path | None =
         if requested:
             stacks = parse_stacks(requested)
         else:
-            recorded = _read_env_value(env_path, PROJECT_STACKS_KEY)
+            # CR-MDB-043 §S2: read through the schema reader.
+            recorded = read_registry_value(
+                root, load_schema(PROJECT_SCHEMA_PATH), PROJECT_STACKS_KEY)
             if not recorded:
                 raise ScaffoldError(
                     f"{env_path} records no {PROJECT_STACKS_KEY}; pass "

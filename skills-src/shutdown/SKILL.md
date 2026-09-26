@@ -53,7 +53,7 @@ takes **no role argument**. A shutdown is always contextual:
    selects your branch below (2A Track / 2B Mainline). A running orchestrator always knows this;
    only if one genuinely cannot, ask.
 2. **Project** — `<Project>` from AGENTS.md / `ORCHESTRATOR-<Project>`. **Casing is load-bearing
-   for Sandesh** (NAI = `Nai`, capital): every `sandesh` CLI call (`addressbook`, `notify`,
+   for Sandesh** (a project `Acme` is `Acme`, never `acme`): every `sandesh` CLI call (`addressbook`, `notify`,
    `send`, `reply`, `unregister`, …) passes `--project <Project>`.
 3. **Emergency flag — the only argument that matters.** Scan the command/directive for
    `emergency` (or `--emergency`). Present ⟹ **EMERGENCY** (Step 1B); absent ⟹ **GRACEFUL**

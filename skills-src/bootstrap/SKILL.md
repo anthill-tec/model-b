@@ -34,7 +34,7 @@ later step conflicts with them, the role rule wins.
 ## Step 0 — Resolve identity (role + project) BEFORE anything else
 
 1. **Project** — derive `<Project>` from the repo's AGENTS.md / `ORCHESTRATOR-<Project>`
-   note. **Casing is load-bearing for Sandesh** (NAI = `Nai`, capital). Every `sandesh` CLI
+   note. **Casing is load-bearing for Sandesh** (a project `Acme` is `Acme`, never `acme`). Every `sandesh` CLI
    call (`addressbook`, `notify`, `fetch`, `send`, …) passes `--project <Project>`.
 2. **Role — read it from the invocation argument FIRST (the "verb").** The role is
    passed as the `/bootstrap` argument (`$ARGUMENTS`); this is the AUTHORITATIVE source.
@@ -62,7 +62,7 @@ later step conflicts with them, the role rule wins.
    guess point — ask the user to restate it as `mainline` or `track <N>`.
 3. **Addresses / ids** from the resolved role:
    - Sandesh address: `Mainline - <Project>` or `Track <N> - <Project>`.
-   - Crucible own-run id (from `ORCHESTRATOR-<Project>` §Identity; NAI):
+   - Crucible own-run id (from `ORCHESTRATOR-<Project>` §Identity):
      Mainline `vidushi`, Track `vidushi-t<N>`. (Never used for sub-agents — those are
      CR-scoped.)
 
