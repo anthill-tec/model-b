@@ -1004,3 +1004,15 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   (NAI 11, Crucible 8, Roundhouse 5). **Sandesh:** `@anthill-tec/sandesh-pi@0.3.6` published to npm
   (#1397/#1398) and installed in the user's Pi; its wake loop stays off (no `$SANDESH_ADDRESS`) until
   Sandesh ships wake supervision, so Model B's watcher remains the one loop.
+- 2026-09-26 — **CR-MDB-041 gap analysis: SPEC_UPDATE_NEEDED → spec rewritten.** (1) The Sandesh project id
+  cannot come from `PROJECT_NAME` (spaces/case) or `PROJECT_TOKEN` (lower-case): user ruling — the
+  GENERIC `.env` registry template `init` renders gains `SANDESH_PROJECT` (PRD D3.1 amended; default
+  `PROJECT_NAME` without whitespace, `--sandesh-project` overrides); no project's `.env` is hand-edited.
+  (2) Most live projects predate `init` (no registry `.env`), so the fallback (`AGENTS.md`, then ask
+  once) is the common path. (3) `bootstrap` hard-codes `python-crucible.py`; the client follows
+  `PROJECT_STACKS`. (4) Reading order per PRD D5 (amended): `model-b` references → project `AGENTS.md`
+  + `.env` → `docs/memory/INDEX.md`; no per-project orchestrator note. Track own-run id follows D3.1's
+  mode-aware rule `track<N>-<token>` (D3.1 also says "tracks `<orchestrator>-tN`" — inconsistent;
+  the mode-aware sentence is the specific one). CR-042's `bootstrap`/`shutdown` gate exemption is
+  removed here. Pre-existing pi-lens nit routed forward: `tests/test_code_health_skill.py:34` I001
+  import order (fails identically before CR-042).
