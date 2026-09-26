@@ -23,7 +23,7 @@ from modelb_axi import __version__
 from modelb_axi.axi import envelope
 from modelb_axi.config import (
     load_install_toml,
-    load_manifest_hashes,
+    manifest_entries,
     write_install_toml,
 )
 from modelb_axi.deploy import (
@@ -34,6 +34,8 @@ from modelb_axi.deploy import (
     default_asset_root,
     deploy_assets,
     deployed_freshness,
+    prune_assets,
+    store_root_of,
 )
 from modelb_axi.harness import (
     UnknownHarnessError,
@@ -356,6 +358,11 @@ def _deploy_stage(
     ``[capabilities]``; ``stacks`` (default: every supported stack)
     becomes ``[install].stacks``; ``allow_missing_capabilities`` is
     recorded only when used.
+
+    CR-MDB-040 \u00a7S1/\u00a7S2: after the deploy succeeds and before the
+    config write, what the prior manifest records and the new one does not
+    is pruned (:func:`_prune_stage`); ``report`` gains ``removed`` and
+    ``kept``. A prune failure is a deploy failure (no install.toml).
     """
     if warnings is None:
         warnings = []
@@ -363,14 +370,21 @@ def _deploy_stage(
         stacks = list(KNOWN_STACKS)
     asset_root = default_asset_root()
     # Manifest protection follows manifest PRESENCE, not a flag
-    # (load_manifest_hashes returns {} when install.toml is absent).
-    prior_hashes = load_manifest_hashes(home)
+    # (load_install_toml returns {} when install.toml is absent). Read
+    # ONCE: the entries (one config reader, de-duplicated, CR-MDB-040
+    # \u00a7S1), their hashes, the recorded root and the prune list come from it.
+    prior = load_install_toml(home)
+    prior_files = manifest_entries(prior)
+    prior_hashes = {os.path.normpath(e["path"]): e["sha256"] for e in prior_files}
     unmanaged: list[str] = []
     try:
         manifest, skipped = deploy_assets(
             asset_root, target_root,
             prior_hashes=prior_hashes, force_managed=force_managed,
             unmanaged=unmanaged, stacks=stacks,
+        )
+        removed, kept = _prune_stage(
+            prior, prior_files, prior_hashes, target_root, manifest, warnings,
         )
     except DeployError as exc:
         _warn(str(exc), warnings, level="error")
@@ -423,8 +437,55 @@ def _deploy_stage(
             managed_files=len(manifest),
             skipped=list(skipped),
             unmanaged=list(unmanaged),
+            removed=list(removed),
+            kept=list(kept),
         )
     return 0
+
+
+def _prune_stage(
+    prior: dict, prior_files: list[dict], prior_hashes: dict[str, str],
+    target_root: Path, manifest: list[dict], warnings: list[str],
+) -> tuple[list[str], list[str]]:
+    """CR-MDB-040 \u00a7S1/\u00a7S2: prune the prior manifest's leftovers and
+    report them; returns ``(removed, kept)``.
+
+    ``prior_files`` are :func:`manifest_entries` (de-duplicated, the first
+    wins) and ``prior_hashes`` their hashes by normalised path. The prior root is the
+    recorded ``target_root``, else this run's; a recorded root differing
+    from this run's prunes nothing and warns. A corrupt entry (outside the
+    stores) is dropped with one warning. Each kept (hand-modified) entry is
+    appended to ``manifest`` with its RECORDED hash so later runs report it
+    again. Raises :class:`DeployError` from :func:`prune_assets`."""
+    for entry in prior_files:
+        if store_root_of(entry["path"]) is None:
+            _warn(
+                f"dropping corrupt install.toml entry {entry['path']} \u2014 outside "
+                "the Model B stores; left untouched",
+                warnings,
+            )
+    install = prior.get("install")
+    recorded = install.get("target_root") if isinstance(install, dict) else None
+    prior_root = Path(recorded) if isinstance(recorded, str) and recorded else target_root
+    if prior_root.resolve() != target_root.resolve():
+        _warn(
+            f"the prior install at {prior_root} was left in place \u2014 its "
+            f"target_root differs from this run's, so nothing was pruned",
+            warnings,
+        )
+        return [], []
+    new_paths = {entry["path"] for entry in manifest}
+    removed, kept = prune_assets(prior_root, prior_files, new_paths)
+    for rel in removed:
+        _say(f"  removed {rel} (no longer deployed)")
+    for rel in kept:
+        _warn(
+            f"{rel} is no longer deployed; left in place because it was edited "
+            "(restore or delete it and a later --reinstall prunes it)",
+            warnings,
+        )
+        manifest.append({"path": rel, "sha256": prior_hashes[rel]})
+    return removed, kept
 
 
 def _run_installer_flow(
@@ -541,9 +602,10 @@ def _run_scaffold_mode(home: Path) -> int:
 def _freshness_fields(home: Path, warnings: list[str]) -> dict:
     """CR-MDB-037 \u00a7S2: the ``already_installed`` envelope's report of
     deployed-asset state. With a recorded ``target_root``: sorted
-    ``stale``, ``hand_modified`` and ``retired`` lists. Without one (an
-    older, or unreadable, ``install.toml``): ``freshness: unknown`` and a
-    warning naming the re-run \u2014 no location is guessed and no deployed
+    ``stale``, ``hand_modified``, ``retired`` and (CR-MDB-040 §S2)
+    ``kept`` lists, judged against the recorded ``[install].stacks``.
+    Without one (an older, or unreadable, ``install.toml``): ``freshness:
+    unknown`` and a warning naming the re-run \u2014 no location is guessed and no deployed
     file is read. Findings never change ok or the exit code."""
     try:
         data = load_install_toml(home)
@@ -552,7 +614,6 @@ def _freshness_fields(home: Path, warnings: list[str]) -> dict:
         data = {}
     install = data.get("install")
     target_root = install.get("target_root") if isinstance(install, dict) else None
-    files = data.get("files")
     if not isinstance(target_root, str) or not target_root:
         _warn(
             f"freshness unknown \u2014 {INSTALL_TOML_NAME} records no target_root, "
@@ -561,16 +622,18 @@ def _freshness_fields(home: Path, warnings: list[str]) -> dict:
             warnings,
         )
         return {"freshness": "unknown"}
+    stacks = install.get("stacks") if isinstance(install, dict) else None
     found = deployed_freshness(
-        default_asset_root(), Path(target_root),
-        files if isinstance(files, list) else [],
+        default_asset_root(), Path(target_root), manifest_entries(data),
+        stacks if isinstance(stacks, list) and all(isinstance(s, str) for s in stacks)
+        else None,
     )
     _say(
         f"  deployed assets under {target_root}: "
         + ", ".join(f"{state}={len(paths)}" for state, paths in found.items())
     )
     rerun = _reinstall_command(
-        home, target_root, install.get("stacks") if isinstance(install, dict) else None,
+        home, target_root, stacks,
         install.get("harnesses") if isinstance(install, dict) else None,
     )
     if found["stale"]:
@@ -578,7 +641,10 @@ def _freshness_fields(home: Path, warnings: list[str]) -> dict:
     if found["hand_modified"]:
         _say(f"    hand_modified: re-run `{rerun} --force-managed` to overwrite them")
     if found["retired"]:
-        _say("    retired: no longer shipped \u2014 remove them by hand")
+        _say(f"    retired: no longer deployed \u2014 re-run `{rerun}` to remove the unchanged ones")
+    if found["kept"]:
+        _say(f"    kept: no longer deployed, and left because it was edited \u2014 restore or "
+             f"delete it, then re-run `{rerun}`")
     freshness = "current" if not any(found.values()) else "outdated"
     return {"freshness": freshness, **found}
 

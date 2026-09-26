@@ -18,9 +18,10 @@ and reads no deployed file.
 Orchestrator rulings (2026-09-24, CR-MDB-037 C2 RED) pin what the spec
 leaves open:
 
-1. With a known ``target_root`` the three lists are ALWAYS present (``[]``
+1. With a known ``target_root`` the lists are ALWAYS present (``[]``
    when clean), each the exact sorted list of manifest paths as recorded in
    ``install.toml``; ``freshness`` is asserted only to be not ``unknown``.
+   CR-MDB-040 §S2 adds a fourth list, ``kept``.
 2. Without ``target_root``: ``freshness: unknown``, the three lists ABSENT,
    one warning naming both ``--reinstall`` and ``--target-root``; outcome
    ``already_installed``, ok=true, exit 0 — findings never flip ok/exit.
@@ -71,6 +72,8 @@ TOOL_REL = ".agents/scripts/gate-lock.sh"
 #: example (a report bundle whose source was deleted, still listed by old
 #: installs); named neutrally so the retired-IDE grep gate stays clean.
 RETIRED_REL = ".agents/skills/crucible-report-retired/SKILL.md"
+#: The bun stack's report skill (CR-MDB-036 §S7) — deployed by the fixture.
+BUN_REPORT_REL = ".agents/skills/crucible-report-bun/SKILL.md"
 
 _FAKE_UV = (
     "#!/bin/sh\n"
@@ -267,9 +270,9 @@ class _InstalledMachineCase(unittest.TestCase):
         self.assertEqual(axi.get("outcome"), "already_installed", f"axi={axi!r}")
         self.assertIs(axi.get("ok"), True, f"findings never flip ok; axi={axi!r}")
 
-    def assert_lists(self, axi, *, stale=(), hand_modified=(), retired=()):
+    def assert_lists(self, axi, *, stale=(), hand_modified=(), retired=(), kept=()):
         for key, expected in (("stale", stale), ("hand_modified", hand_modified),
-                              ("retired", retired)):
+                              ("retired", retired), ("kept", kept)):
             with self.subTest(list=key):
                 self.assertEqual(
                     axi.get(key), sorted(expected),
@@ -282,7 +285,7 @@ class DeployedAssetFreshnessTest(_InstalledMachineCase):
     """§S2 with a recorded ``target_root``: each state lands in its own
     list, and only there."""
 
-    def test_nothing_changed_reports_three_empty_lists(self):
+    def test_nothing_changed_reports_every_list_empty(self):
         result, axi = self.run_bare()
         self.assert_already_installed(result, axi)
         self.assert_lists(axi)
@@ -363,6 +366,61 @@ class DeployedAssetFreshnessTest(_InstalledMachineCase):
         for rel, content in before.items():
             self.assertEqual((self.target_root / rel).read_bytes(), content,
                              f"a report never rewrites {rel}")
+
+
+class DeselectedStackFreshnessTest(_InstalledMachineCase):
+    """CR-MDB-040 §S2 (VERIFY F3): a recorded path the RECORDED
+    ``[install].stacks`` no longer deploy (a deselected stack's bundle) is
+    judged by what a ``--reinstall`` would do with it — unchanged:
+    ``retired``; edited: ``kept`` (never ``hand_modified``), with a hint that
+    offers no ``--force-managed``. Installed ``--stacks bun``, then the
+    recorded stacks are rewritten to ``python``."""
+
+    def setUp(self):
+        super().setUp()
+        data = self.load_install()
+        self.assertEqual(data["install"].get("stacks"), ["bun"], "fixture: installed for bun")
+        data["install"]["stacks"] = ["python"]
+        self.write_install(data)
+        self.bun_files = sorted(p for p in self.manifest_paths()
+                                if "/crucible-report-bun/" in p)
+        self.assertIn(BUN_REPORT_REL, self.bun_files, "fixture: the bun bundle is recorded")
+
+    def test_unchanged_files_of_a_deselected_stack_are_retired(self):
+        result, axi = self.run_bare()
+        self.assert_already_installed(result, axi)
+        self.assert_lists(axi, retired=self.bun_files)
+        self.assertEqual(axi.get("freshness"), "outdated", f"axi={axi!r}")
+
+    def test_edited_file_of_a_deselected_stack_is_kept_not_hand_modified(self):
+        self.make_hand_modified(BUN_REPORT_REL)
+        result, axi = self.run_bare()
+        self.assert_already_installed(result, axi)
+        self.assert_lists(axi, kept=[BUN_REPORT_REL],
+                          retired=[p for p in self.bun_files if p != BUN_REPORT_REL])
+        self.assertEqual(axi.get("freshness"), "outdated", f"axi={axi!r}")
+
+    def test_kept_hint_names_the_re_run_and_offers_no_force_managed(self):
+        self.make_hand_modified(BUN_REPORT_REL)
+        result, axi = self.run_bare()
+        self.assert_already_installed(result, axi)
+        hint = self._hint(result.stderr, "kept")
+        for flag in ("--reinstall", "--target-root", "--stacks"):
+            with self.subTest(flag=flag):
+                self.assertIn(flag, hint, f"hint={hint!r}")
+        self.assertNotIn("--force-managed", hint, f"§S2: hint={hint!r}")
+        self.assertRegex(hint, r"(?i)no longer deployed")
+        self.assertRegex(hint, r"(?i)\bedited\b")
+        self.assertRegex(hint, r"(?i)restore or delete")
+        self.assertFalse([ln for ln in result.stderr.splitlines()
+                          if ln.strip().startswith("hand_modified:")],
+                         f"no hand_modified hint; stderr={result.stderr!r}")
+
+    def test_edited_file_the_recorded_stacks_still_deploy_stays_hand_modified(self):
+        self.make_hand_modified(SKILL_REL)
+        result, axi = self.run_bare()
+        self.assert_already_installed(result, axi)
+        self.assert_lists(axi, hand_modified=[SKILL_REL], retired=self.bun_files)
 
 
 def _tree_snapshot(root: Path) -> dict:
@@ -515,7 +573,7 @@ class FreshnessUnknownWithoutTargetRootTest(_InstalledMachineCase):
         result, axi = self.run_bare()
         self.assert_already_installed(result, axi)
         self.assertEqual(axi.get("freshness"), "unknown", f"axi={axi!r}")
-        for key in ("stale", "hand_modified", "retired"):
+        for key in ("stale", "hand_modified", "retired", "kept"):
             self.assertNotIn(key, axi, f"ruling 2: `{key}` would claim a judgement; axi={axi!r}")
 
     def test_warning_names_the_re_run_that_records_a_target_root(self):

@@ -217,6 +217,17 @@ put there is reported as `unmanaged` and never overwritten. A file it deployed t
 since edited is reported as skipped and left as you edited it, unless you re-run with
 `--force-managed`.
 
+**Files the installer removes.** A `--reinstall` removes each file it deployed earlier and no
+longer deploys (a skill of a stack you dropped, or one no longer shipped) when the file is
+unchanged, and any directory that leaves empty. The `installed` summary lists those paths in
+`removed`, and in `kept` the ones it left in place because you edited them. A kept file is
+warned about, stays recorded in `install.toml`, and is reported again by every later run until
+you restore or delete it; `--force-managed` never removes an edited file.
+
+If `install.toml` records a different target root from this run's `--target-root`, nothing is
+removed: the files under the old target root are left in place and are no longer managed, so
+no later run updates or removes them. The run warns, naming the old root.
+
 **The `already_installed` report.** Running `modelb-axi` on a machine that already has an
 install compares what is deployed with what the installed package ships. `freshness` is
 `current` when everything matches, `outdated` when one of these lists is not empty:
@@ -226,7 +237,11 @@ install compares what is deployed with what the installed package ships. `freshn
   `--modelb-home` if you used one).
 - `hand_modified` — edited since it was deployed: keep it, or re-run with `--reinstall` and
   `--force-managed` to replace it.
-- `retired` — deployed earlier, but no longer shipped: remove it by hand.
+- `retired` — deployed earlier, but no longer deployed (no longer shipped, or its stack is no
+  longer selected): re-run with `--reinstall` (the command the report prints), which removes
+  them.
+- `kept` — no longer deployed, and left in place because you edited it: restore or delete it,
+  then re-run with `--reinstall` (the command the report prints).
 
 An `install.toml` written by an older version records no target root; the report is then
 `freshness: unknown` with a warning telling you to re-run with `--reinstall --target-root`.
@@ -275,6 +290,9 @@ modelb-axi --yes --harnesses pi --target-root ~ --reinstall --stacks python,rust
 This deploys the new stack's `crucible-report-<stack>` skill (for `rust`, the `code-health`
 skill too), runs the new `stack <name>:` checks, and records the new list in `install.toml`. A
 `--reinstall` under `--yes` without `--stacks` selects all six stacks.
+
+A `--reinstall` naming fewer stacks removes the dropped stacks' skills that are unchanged since
+they were deployed. One you have edited is left in place and reported as `kept`.
 
 A project keeps its own list of stacks. To change it, run from the project's root:
 

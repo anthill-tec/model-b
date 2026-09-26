@@ -21,9 +21,15 @@ caller) unless ``force_managed`` overwrites it and refreshes its entry.
 
 Stdlib only. Never touches the real ``~/.agents`` in tests — callers pass
 sandboxed target roots (repo-local rule, DN-scaffold-packaging §7).
+
+Prune (CR-MDB-040 §S1): :func:`prune_assets` removes what a redeploy no
+longer deploys — an unchanged file the prior manifest records and the new
+one does not — and keeps a hand-modified one; it never touches a path
+outside the three stores (:func:`store_root_of`).
 """
 
 import hashlib
+import os
 import shutil
 import stat
 from pathlib import Path
@@ -282,23 +288,123 @@ def _file_hash(path: Path) -> str | None:
 
 def deployed_freshness(
     asset_root: Path, target_root: Path, files: list[dict],
+    stacks: list[str] | None = None,
 ) -> dict[str, list[str]]:
     """Judge each manifest entry against its deployed copy under
     ``target_root`` and its packaged source under ``asset_root``
     (CR-MDB-037 \u00a7S2). Returns the sorted target-root-relative paths that
     are ``stale`` (deployed = manifest \u2260 source), ``hand_modified``
     (deployed \u2260 manifest) and ``retired`` (no packaged source); a
-    ``current`` entry is in none. Reads only; writes nothing."""
-    found: dict[str, list[str]] = {"stale": [], "hand_modified": [], "retired": []}
+    ``current`` entry is in none. ``files`` are ``config.manifest_entries``
+    (CR-MDB-040 §S1). Reads only; writes nothing.
+
+    CR-MDB-040 §S2: ``stacks`` (the recorded ``[install].stacks``;
+    ``None`` = every stack) selects the skill bundles a ``--reinstall``
+    would deploy, by the rule :func:`deploy_assets` uses
+    (:func:`_skill_bundles`). A recorded path it would not deploy — no
+    packaged source, or a bundle the stacks do not select — is judged as
+    the prune judges it: ``retired`` when unchanged (or already gone),
+    ``kept`` when edited; never ``hand_modified``."""
+    found: dict[str, list[str]] = {
+        "stale": [], "hand_modified": [], "retired": [], "kept": [],
+    }
+    bundles = ({bundle.name for bundle in _skill_bundles(asset_root, stacks)}
+               if (asset_root / "skills-src").is_dir() else set())
     for entry in files:
-        if not isinstance(entry, dict) or "path" not in entry or "sha256" not in entry:
-            continue
-        rel, recorded = str(entry["path"]), str(entry["sha256"])
+        rel, recorded = entry["path"], entry["sha256"]
         source = packaged_source(asset_root, rel)
-        if source is None or not source.is_file():
-            found["retired"].append(rel)
-        elif _file_hash(target_root / rel) != recorded:
+        deployed = _file_hash(target_root / rel)
+        if source is None or not source.is_file() or not _redeployed(rel, bundles):
+            edited = deployed is not None and deployed != recorded
+            found["kept" if edited else "retired"].append(rel)
+        elif deployed != recorded:
             found["hand_modified"].append(rel)
         elif sha256_file(source) != recorded:
             found["stale"].append(rel)
     return {state: sorted(paths) for state, paths in found.items()}
+
+
+def _redeployed(rel: str, bundles: set[str]) -> bool:
+    """Whether a path with a packaged source is one a redeploy writes: a
+    skill-store path only inside one of ``bundles``; a hook or tool script
+    always (CR-MDB-040 §S2)."""
+    rel_path = Path(rel)
+    if not rel_path.is_relative_to(STORE_RELDIR):
+        return True
+    return rel_path.relative_to(STORE_RELDIR).parts[0] in bundles
+
+
+#: CR-MDB-040 §S1: the three store roots a deploy writes into — the only
+#: places a prune may remove from, and never removed themselves.
+_STORE_ROOTS: tuple[Path, ...] = (
+    STORE_RELDIR, HOOKS_SCRIPTS_STORE_RELDIR, TOOL_SCRIPTS_STORE_RELDIR,
+)
+
+
+def store_root_of(rel: str) -> Path | None:
+    """The store root a manifest path lies strictly inside, after
+    normalising ``..`` (CR-MDB-040 §S1); ``None`` for an absolute path or
+    one outside the three stores \u2014 a corrupt entry, since the deploy
+    writes only there."""
+    if os.path.isabs(rel):
+        return None
+    normalised = Path(os.path.normpath(rel))
+    for store in _STORE_ROOTS:
+        if normalised.is_relative_to(store) and normalised != store:
+            return store
+    return None
+
+
+def prune_assets(
+    prior_root: Path, prior_files: list[dict], new_paths: set[str],
+) -> tuple[list[str], list[str]]:
+    """Prune every path the prior manifest records and the new one does
+    not (CR-MDB-040 §S1), both compared after ``os.path.normpath``.
+    Returns ``(removed, kept)``, normalised and target-root-relative:
+
+    * removed \u2014 the file under ``prior_root`` exists with its recorded
+      hash; it is deleted, then each directory left empty, walking up and
+      stopping at (never removing) its store root;
+    * kept \u2014 the file exists with a different hash (hand-modified); never
+      deleted, whatever ``--force-managed`` says;
+    * an absent file is skipped silently, and an entry outside the three
+      stores (:func:`store_root_of`) is never touched and in neither list.
+
+    ``prior_files`` are ``config.manifest_entries`` — well-formed and
+    de-duplicated by normalised path (the first wins); they are not
+    re-filtered here. An ``OSError`` raises :class:`DeployError` carrying
+    it as the cause."""
+    removed: list[str] = []
+    kept: list[str] = []
+    deployed = {os.path.normpath(p) for p in new_paths}
+    try:
+        for entry in prior_files:
+            # Compared, removed and reported by its normalised path: an entry
+            # spelled differently from a deployed path IS that path.
+            rel = os.path.normpath(entry["path"])
+            store = store_root_of(rel)
+            if store is None or rel in deployed:
+                continue
+            path = prior_root / rel
+            if not path.is_file():
+                continue  # already gone: nothing to do, not reported
+            if sha256_file(path) != entry["sha256"]:
+                kept.append(rel)
+                continue
+            path.unlink()
+            removed.append(rel)
+            _remove_empty_parents(path.parent, prior_root / store)
+    except OSError as exc:
+        raise DeployError(f"prune step failed: {exc}") from exc
+    return removed, kept
+
+
+def _remove_empty_parents(directory: Path, store_root: Path) -> None:
+    """Remove ``directory`` and each emptied ancestor, stopping at
+    ``store_root``, which is never removed, and at a directory that is a
+    symbolic link, which is left in place (CR-MDB-040 §S1)."""
+    while directory != store_root and directory.is_relative_to(store_root):
+        if directory.is_symlink() or not directory.is_dir() or any(directory.iterdir()):
+            return
+        directory.rmdir()
+        directory = directory.parent
