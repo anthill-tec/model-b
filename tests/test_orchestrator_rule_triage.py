@@ -51,18 +51,39 @@ Class map:
 - ``TriageRulesOnSyntheticTextTest`` — the same pure functions on in-memory text: a well-formed
   fixture yields nothing, and each bad row is reported.
 
+CR-MDB-042 §S2–§S3 (absorb) — the approved triage is the work list:
+
+- ``AbsorbedDestinationTest`` — every ``common``, ``stack:*`` and ``project:model-b`` row whose
+  destination is not under ``skills-src/gap-analysis/`` (adopted, with its rows, in C3): the named
+  file exists (``project:model-b`` → the repo ``AGENTS.md``) and carries a Markdown heading, any
+  level, whose text equals the row's `` § <section>`` exactly (after stripping); the new
+  ``skills-src/memory-templates/arduino-orchestration.md`` exists.
+- ``AbsorbedNewSectionBodyTest`` — each ``common``/``stack`` row whose Note says "New section" (or
+  "New file and section") has a non-empty body under that heading, up to the next heading of the
+  same or a higher level: at least one non-blank line that is not a heading.
+- ``ModelBCommonTextNeutralTest`` — no line of ``skills-src/model-b/SKILL.md`` or
+  ``skills-src/model-b/references/*.md`` names ``NAI``, ``Roundhouse`` or ``ORCHESTRATOR-`` unless
+  the same line is a dated provenance citation (a ``CR-<ACR>-<n>`` id and a ``20YY-MM-DD`` date),
+  and none names a harness tool retired by CR-MDB-031 (the vocabulary of
+  ``tests.test_client_path_anchoring``, the ``sandesh_*`` MCP tools included).
+- ``AbsorbRulesOnSyntheticTreeTest`` — the same pure functions over a temp tree.
+
 Every check is a pure function returning a list of problem strings (``[]`` = clean), so the real
-file and the fixtures run through the same code. Out of scope here (later cycles): destination
-existence (§S2), the project-name gate, the gap-analysis bundle, the mapping rows.
+file and the fixtures run through the same code. Out of scope here (later cycles): the
+gap-analysis bundle and its rows (C3), the mapping rows.
 
 Stdlib only.
 """
 
 import re
+import shutil
+import tempfile
 import unittest
 from collections.abc import Sequence
+from pathlib import Path
 
 from tests._helpers import REPO_ROOT, md_section, read_text
+from tests.test_client_path_anchoring import _count_tools
 
 TRIAGE_FILE = REPO_ROOT / "audits" / "2026-09-26-orchestrator-rule-triage.md"
 
@@ -619,6 +640,311 @@ class TriageRulesOnSyntheticTextTest(unittest.TestCase):
             _row(cls="duplicate", dest="`skills-src/crucible-report-bun/SKILL.md` § X"))), 1)
         self.assertEqual(triage_row_findings(
             _row(cls="duplicate", dest="`skills-src/git-workflow/SKILL.md` § Branches")), [])
+
+
+# ------------------------------------------------------------------ absorb (§S2–§S3) ----
+
+#: C3 adopts ``skills-src/gap-analysis/`` (§S4); its rows are checked there, not here.
+C3_BUNDLE_PREFIX = "skills-src/gap-analysis/"
+#: §S2 introduces this stack template (the triage's two ``stack:arduino`` rows).
+ARDUINO_TEMPLATE = "skills-src/memory-templates/arduino-orchestration.md"
+MODEL_B_SKILL = "skills-src/model-b/SKILL.md"
+MODEL_B_REFERENCES = "skills-src/model-b/references"
+
+_HEADING = re.compile(r"^(#{1,6})\s+(.*?)(?:\s+#+)?\s*$")
+_FENCE = re.compile(r"^\s*(```|~~~)")
+_NEW_SECTION_NOTE = re.compile(r"\bnew (?:file and )?section\b", re.IGNORECASE)
+_PROJECT_NAME = re.compile(r"(?<![A-Za-z0-9])(NAI(?![A-Za-z0-9])|Roundhouse(?![A-Za-z0-9])|ORCHESTRATOR-)")
+_CR_CITATION = re.compile(r"\bCR-[A-Z]+-\d+")
+_DATE_CITATION = re.compile(r"\b20\d\d-\d\d-\d\d\b")
+
+
+def markdown_headings(text: str) -> list[tuple[int, int, str]]:
+    """``(line_index, level, text)`` for every ATX heading outside a fenced code block (a ``# x``
+    comment inside a shell fence is not a heading). Heading text is stripped, closing ``#`` s
+    dropped."""
+    out, fenced = [], False
+    for i, line in enumerate(text.splitlines()):
+        if _FENCE.match(line):
+            fenced = not fenced
+            continue
+        if fenced:
+            continue
+        m = _HEADING.match(line)
+        if m:
+            out.append((i, len(m.group(1)), m.group(2).strip()))
+    return out
+
+
+def section_body(text: str, heading: str) -> str | None:
+    """The lines under the first heading whose text equals ``heading`` (stripped), up to the next
+    heading of the same or a higher level; ``None`` when no heading matches."""
+    headings = markdown_headings(text)
+    lines = text.splitlines()
+    for n, (idx, level, htext) in enumerate(headings):
+        if htext == heading.strip():
+            end = next((j for j, lvl, _ in headings[n + 1:] if lvl <= level), len(lines))
+            return "\n".join(lines[idx + 1:end])
+    return None
+
+
+def has_rule_body(body: str) -> bool:
+    """At least one non-blank line that is not a heading."""
+    return any(line.strip() and not _HEADING.match(line) for line in body.splitlines())
+
+
+def absorbed_destinations(triage: list[dict]) -> list[tuple[dict, str, str]]:
+    """``(row, repo-relative file, section)`` for every ``common``, ``stack:*`` and
+    ``project:model-b`` row — except the gap-analysis bundle's rows (C3). A destination that does
+    not parse is returned with file ``""`` so the caller reports it rather than dropping it."""
+    out = []
+    for row in triage:
+        cls, dest = row["Class"], row["Destination"]
+        if cls == "common" or cls.startswith("stack:"):
+            m = _SKILL_DEST.match(dest)
+            if m and m.group(1).startswith(C3_BUNDLE_PREFIX):
+                continue
+            out.append((row, m.group(1), m.group(2).strip()) if m else (row, "", dest))
+        elif cls == "project:model-b":
+            m = _AGENTS_DEST.match(dest)
+            out.append((row, "AGENTS.md", m.group(1).strip()) if m else (row, "", dest))
+    return out
+
+
+def is_new_section_row(row: dict) -> bool:
+    """A ``common``/``stack`` row whose Note announces a section C2 creates."""
+    return ((row["Class"] == "common" or row["Class"].startswith("stack:"))
+            and _NEW_SECTION_NOTE.search(row["Note"]) is not None)
+
+
+def destination_findings(targets: list[tuple[dict, str, str]], root: Path) -> list[str]:
+    """Each target whose file is missing or lacks a heading equal to its section."""
+    problems = []
+    for row, rel, section_name in targets:
+        where = f"({row['Source']})"
+        if not rel:
+            problems.append(f"destination does not parse: {section_name} {where}")
+            continue
+        path = root / rel
+        if not path.is_file():
+            problems.append(f"{rel}: file does not exist {where}")
+            continue
+        if section_body(read_text(path), section_name) is None:
+            problems.append(f"{rel}: no heading '{section_name}' {where}")
+    return problems
+
+
+def new_section_body_findings(targets: list[tuple[dict, str, str]], root: Path) -> list[str]:
+    """Each new-section target that is missing or carries no rule text under its heading."""
+    problems = []
+    for row, rel, section_name in targets:
+        if not is_new_section_row(row):
+            continue
+        where = f"({row['Source']})"
+        path = root / rel if rel else None
+        body = section_body(read_text(path), section_name) if path and path.is_file() else None
+        if body is None:
+            problems.append(f"{rel} \u00a7 {section_name}: new section is absent {where}")
+        elif not has_rule_body(body):
+            problems.append(f"{rel} \u00a7 {section_name}: new section has no body {where}")
+    return problems
+
+
+def is_provenance_citation(line: str) -> bool:
+    return _CR_CITATION.search(line) is not None and _DATE_CITATION.search(line) is not None
+
+
+def project_name_findings(rel: str, text: str) -> list[str]:
+    """``NAI`` / ``Roundhouse`` / ``ORCHESTRATOR-`` on a line that is not a dated citation."""
+    problems = []
+    for n, line in enumerate(text.splitlines(), 1):
+        names = _PROJECT_NAME.findall(line)
+        if names and not is_provenance_citation(line):
+            problems.append(f"{rel}:{n}: names {sorted(set(names))!r} outside a dated "
+                            f"provenance citation")
+    return problems
+
+
+def retired_tool_findings(rel: str, text: str) -> list[str]:
+    """Each line naming a harness tool retired by CR-MDB-031 (``_count_tools`` vocabulary)."""
+    problems = []
+    for n, line in enumerate(text.splitlines(), 1):
+        tools = _count_tools(line)
+        if tools:
+            problems.append(f"{rel}:{n}: names retired harness tool(s) {sorted(tools)!r}")
+    return problems
+
+
+def model_b_common_files(root: Path) -> list[Path]:
+    return [root / MODEL_B_SKILL] + sorted((root / MODEL_B_REFERENCES).glob("*.md"))
+
+
+class AbsorbedDestinationTest(_RealFileMixin):
+    #: 63 common + 9 stack:rust + 2 stack:arduino + 4 project:model-b, less the 5 gap-analysis rows.
+    EXPECTED_TARGETS = 73
+
+    def test_absorbed_rows_selected_are_every_common_stack_and_model_b_row_but_gap_analysis(self):
+        _, triage = self.load()
+        targets = absorbed_destinations(triage)
+        self.assertEqual(len(targets), self.EXPECTED_TARGETS)
+        self.assertEqual([rel for _, rel, _ in targets if not rel], [])
+        self.assertEqual([rel for _, rel, _ in targets if rel.startswith(C3_BUNDLE_PREFIX)], [])
+
+    def test_every_absorbed_row_destination_file_carries_its_section_heading(self):
+        _, triage = self.load()
+        self.assertEqual(destination_findings(absorbed_destinations(triage), REPO_ROOT), [])
+
+    def test_arduino_orchestration_template_exists_with_both_sections(self):
+        path = REPO_ROOT / ARDUINO_TEMPLATE
+        self.assertTrue(path.is_file(), f"CR-MDB-042 \u00a7S2: {ARDUINO_TEMPLATE} does not exist")
+        text = read_text(path)
+        for heading in ("Test tiers and agents", "Hardware drivers"):
+            self.assertIsNotNone(section_body(text, heading), f"{ARDUINO_TEMPLATE}: no '{heading}'")
+
+    def test_model_b_project_rows_land_in_the_repo_agents_md(self):
+        _, triage = self.load()
+        targets = [t for t in absorbed_destinations(triage) if t[0]["Class"] == "project:model-b"]
+        self.assertEqual(len(targets), 4)
+        self.assertEqual({rel for _, rel, _ in targets}, {"AGENTS.md"})
+        self.assertEqual(destination_findings(targets, REPO_ROOT), [])
+
+
+class AbsorbedNewSectionBodyTest(_RealFileMixin):
+    #: The triage Summary's "New sections C2 would create" list: 3+4+1+2+1+2+2+1.
+    EXPECTED_NEW_SECTION_ROWS = 16
+
+    def test_new_section_rows_are_the_sixteen_the_triage_summary_lists(self):
+        _, triage = self.load()
+        rows = [r for r, _, _ in absorbed_destinations(triage) if is_new_section_row(r)]
+        self.assertEqual(len(rows), self.EXPECTED_NEW_SECTION_ROWS)
+
+    def test_every_new_section_carries_rule_text_under_its_heading(self):
+        _, triage = self.load()
+        self.assertEqual(new_section_body_findings(absorbed_destinations(triage), REPO_ROOT), [])
+
+
+class ModelBCommonTextNeutralTest(unittest.TestCase):
+    def test_model_b_common_files_are_the_skill_and_its_five_references(self):
+        files = model_b_common_files(REPO_ROOT)
+        self.assertTrue(all(p.is_file() for p in files), files)
+        self.assertEqual(len(files), 6, files)
+
+    def test_model_b_common_text_names_no_project_or_orchestrator_note(self):
+        problems = []
+        for path in model_b_common_files(REPO_ROOT):
+            problems += project_name_findings(path.relative_to(REPO_ROOT).as_posix(), read_text(path))
+        self.assertEqual(problems, [])
+
+    def test_model_b_common_text_names_no_retired_harness_tool(self):
+        problems = []
+        for path in model_b_common_files(REPO_ROOT):
+            problems += retired_tool_findings(path.relative_to(REPO_ROOT).as_posix(), read_text(path))
+        self.assertEqual(problems, [])
+
+
+def _target(rel: str, section_name: str, cls: str = "common", note: str = "Rule: x.") -> tuple:
+    return (_row(cls=cls, dest=f"`{rel}` \u00a7 {section_name}", note=note), rel, section_name)
+
+
+class AbsorbRulesOnSyntheticTreeTest(unittest.TestCase):
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp(prefix="mdb-absorb-"))
+        self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
+
+    def _write(self, rel: str, text: str) -> None:
+        path = self.root / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+
+    def test_heading_match_is_exact_any_level_and_ignores_fenced_comments(self):
+        text = ("# Title\n\n## 7. Operating rules (every role)\n\nRule.\n\n"
+                "```bash\n# Hardware drivers\n```\n#### Deep \u2014 one ##\n")
+        self.assertEqual([h for _, _, h in markdown_headings(text)],
+                         ["Title", "7. Operating rules (every role)", "Deep \u2014 one"])
+        self.assertIsNotNone(section_body(text, "7. Operating rules (every role)"))
+        self.assertIsNotNone(section_body(text, " Deep \u2014 one "))
+        self.assertIsNone(section_body(text, "7. Operating rules"))  # prefix is not a match
+        self.assertIsNone(section_body(text, "Hardware drivers"))  # fenced comment
+
+    def test_section_body_stops_at_same_or_higher_level_heading(self):
+        text = "## A\n\n### A1\n\nsub rule\n\n## B\n\nb rule\n"
+        self.assertEqual(section_body(text, "A"), "\n### A1\n\nsub rule\n")
+        self.assertEqual(section_body(text, "A1"), "\nsub rule\n")
+        self.assertEqual(section_body(text, "B"), "\nb rule")
+
+    def test_missing_file_and_missing_heading_are_reported_present_ones_are_not(self):
+        self._write("skills-src/model-b/SKILL.md", "# M\n\n## Roles\n\nx\n")
+        targets = [_target("skills-src/model-b/SKILL.md", "Roles"),
+                   _target("skills-src/model-b/SKILL.md", "Operating rules"),
+                   _target(ARDUINO_TEMPLATE, "Hardware drivers", cls="stack:arduino")]
+        src = "(`~/.claude/AGENTS.md` \u00a7 Non-negotiables (1))"
+        self.assertEqual(destination_findings(targets, self.root), [
+            f"skills-src/model-b/SKILL.md: no heading 'Operating rules' {src}",
+            f"{ARDUINO_TEMPLATE}: file does not exist {src}",
+        ])
+
+    def test_selection_skips_gap_analysis_and_maps_model_b_to_agents_md(self):
+        rows = [_row(dest="`skills-src/gap-analysis/SKILL.md` \u00a7 Rules"),
+                _row(cls="stack:rust", dest="`skills-src/memory-templates/rust-orchestration.md` \u00a7 T"),
+                _row(cls="project:model-b", dest="`AGENTS.md` \u00a7 Testing & QA"),
+                _row(cls="project:nai", dest="NAI AGENTS.md"),
+                _row(cls="duplicate", dest="`skills-src/model-b/SKILL.md` \u00a7 Roles"),
+                _row(cls="stale", dest="\u2014", note="retired"),
+                _row(dest="skills-src/model-b/SKILL.md")]
+        self.assertEqual([(rel, s) for _, rel, s in absorbed_destinations(rows)], [
+            ("skills-src/memory-templates/rust-orchestration.md", "T"),
+            ("AGENTS.md", "Testing & QA"),
+            ("", "skills-src/model-b/SKILL.md"),
+        ])
+        found = destination_findings(absorbed_destinations(rows)[2:], self.root)
+        self.assertEqual(len(found), 1, found)
+        self.assertIn("destination does not parse", found[0])
+
+    def test_new_section_note_detection(self):
+        self.assertTrue(is_new_section_row(_row(note="New section. Rule: x.")))
+        self.assertTrue(is_new_section_row(_row(cls="stack:arduino", note="New file and section. Rule: x.")))
+        self.assertFalse(is_new_section_row(_row(note="Rule: extend the existing section.")))
+        self.assertFalse(is_new_section_row(_row(cls="duplicate", note="New section.")))
+
+    def test_new_section_with_only_a_heading_or_blank_lines_is_reported(self):
+        self._write("skills-src/model-b/references/a.md",
+                    "## Full\n\nRule: do x.\n\n## Empty\n\n\n## Nested\n\n### Sub\n\n## End\n")
+        new = "New section. Rule: x."
+        rel = "skills-src/model-b/references/a.md"
+        targets = [_target(rel, "Full", note=new), _target(rel, "Empty", note=new),
+                   _target(rel, "Nested", note=new), _target(rel, "Missing", note=new),
+                   _target(rel, "End", note="Rule: existing section, not checked for a body.")]
+        src = "(`~/.claude/AGENTS.md` \u00a7 Non-negotiables (1))"
+        self.assertEqual(new_section_body_findings(targets, self.root), [
+            f"{rel} \u00a7 Empty: new section has no body {src}",
+            f"{rel} \u00a7 Nested: new section has no body {src}",
+            f"{rel} \u00a7 Missing: new section is absent {src}",
+        ])
+
+    def test_project_names_flagged_unless_on_a_dated_cr_citation_line(self):
+        text = ("Never run two NAI orchestrators.\n"
+                "Read the ORCHESTRATOR-RULES note first.\n"
+                "The Roundhouse board.\n"
+                "Learned on NAI (CR-NAI-042, 2026-07-01).\n"
+                "Learned on NAI (CR-NAI-042).\n"
+                "A DOMAIN or NAIVE word is fine; so is roundhouse in a path.\n")
+        self.assertEqual(project_name_findings("x.md", text), [
+            "x.md:1: names ['NAI'] outside a dated provenance citation",
+            "x.md:2: names ['ORCHESTRATOR-'] outside a dated provenance citation",
+            "x.md:3: names ['Roundhouse'] outside a dated provenance citation",
+            "x.md:5: names ['NAI'] outside a dated provenance citation",
+        ])
+
+    def test_retired_harness_tools_flagged_per_line_sandesh_mcp_included(self):
+        text = ("Track the plan with TaskList.\n"
+                "Send via mcp__sandesh__sandesh_send.\n"
+                "Run the `sandesh` CLI; use the subagent tool.\n"
+                "Use `Bash` for it.\n")
+        self.assertEqual(retired_tool_findings("x.md", text), [
+            "x.md:1: names retired harness tool(s) ['TaskList']",
+            "x.md:2: names retired harness tool(s) ['sandesh_send']",
+            "x.md:4: names retired harness tool(s) ['Bash']",
+        ])
 
 
 if __name__ == "__main__":
