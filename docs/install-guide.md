@@ -251,7 +251,9 @@ install compares what is deployed with what the installed package ships. `freshn
   `--modelb-home` if you used one).
 - `hand_modified` — edited since it was deployed: keep it, or re-run with `--reinstall` and
   `--force-managed` to replace it.
-- `retired` — deployed earlier, but no longer shipped: remove it by hand.
+- `retired` — deployed earlier, but no longer shipped: re-run with `--reinstall` (the
+  command the report prints), which removes the unchanged ones; an edited one is kept and
+  warned about.
 
 An `install.toml` written by an older version records no target root; the report is then
 `freshness: unknown` with a warning telling you to re-run with `--reinstall --target-root`.
