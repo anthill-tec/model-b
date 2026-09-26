@@ -8,7 +8,11 @@
 - **Absolute paths are the usual leak — cwd discipline does NOT protect an absolute path.** Before EVERY write, confirm the target's absolute path resolves UNDER your worktree root; re-derive it from `git rev-parse --show-toplevel`, never from a remembered/guessed main-tree path. A typo (`.claire/`, wrong `<cr>`) or a stale absolute path is a cross-boundary write. `pwd` before any write; if a computed target falls outside your root, STOP.
 - **NEVER "recover" a leak by copying files between trees** (`cp` / disk-copy / cross-root `git checkout` gymnastics) — that is itself a forbidden cross-boundary operation. If you wrote, or were about to write, outside your root: STOP and report to the orchestrator. Do not self-repair across trees.
 - **This is HARD-ENFORCED while the orchestrator has entered the worktree** (`modelb_worktree_enter`): the `block-write-outside-worktree` hook blocks file-tool writes outside your worktree, for the orchestrator and for every agent it dispatches. It governs file-tool writes, not writes a shell command makes — the boundary still binds a shell command's writes, and only your discipline holds them. Also holding: your agent definition's `tools` allowlist, always; the hook runs when the project is trusted — a worktree inside the repo inherits the project's trust. If you hit that block, your path was wrong — fix it to stay inside the worktree; do NOT try to bypass it (no sandbox override, no shell workaround). The `ALLOW_WRITE_OUTSIDE_WORKTREE=1` escape hatch is for ORCHESTRATORS only — never a sub-agent.
+- **Verify each edit landed on disk** (`git diff`, grep) — a cached read is advisory. On any inconsistency, STOP and report.
 - Throwaway / scratch / probe code → `/tmp/…` (absolute), never the worktree or repo.
+
+## Third-party sources
+- Run `opensrc fetch` from a neutral cwd outside the repo, then verify the fetched source (no stray `.git` of our own origin).
 
 ## Crucible lifecycle — register FIRST, unregister LAST
 - Register immediately on startup (before reading/running anything) with the `agentId` + `projectKey` from your prompt.
@@ -34,7 +38,7 @@
 - Test only YOUR dispatched SUT — don't author beyond your scope. Full-suite + coverage is orchestrator-owned.
 
 ## Code quality
-- Remove ALL unused imports; import instead of fully-qualified inline names.
+- Remove ALL unused imports; import instead of fully-qualified inline names; rename an unused lambda/closure parameter to `_`.
 - Clean build before commit; GREEN before commit — never commit in RED.
 - Conventional commits (`type(scope): desc`); no AI attribution.
 - No empty catch blocks, no unjustified suppressed warnings, no dead/commented-out code.

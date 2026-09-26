@@ -31,6 +31,7 @@ Worker-orchestrator-only rules. Read COMMON + TRACK. (Coordinator rules → MAIN
 
 ## Raise every approval/request to Mainline — NEVER the user
 - A track's SOLE contact is Mainline. Send a `--kind request` (`sandesh send`) for every question / blocker / approval / go-ahead; Mainline disposes or escalates and relays back.
+- **Absorb transient infra errors** (API overload, sub-agent spawn blips, flaky network): retry with backoff; escalate only a persistent block or one that affects scheduling.
 - A user-approved block authorizes the full RED→GREEN→VERIFY cycle — do NOT stop after gap-analysis to ask permission to start RED.
 - Signal completion with `sandesh reply --project <Project> --from "<your address>" --to-msg <START message id>` threaded under the START (assignment) message, never a later GO/approval message.
 - Cull/re-scope spanning multiple CRs by SUT: re-home ONLY your CR's SUT subset, LEAVE the file-disjoint subset, and RAISE a reschedule-request for the owning CR (touching a sibling's file is a parallel-execution hazard).

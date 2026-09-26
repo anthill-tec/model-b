@@ -60,3 +60,10 @@ Load the reference for YOUR role (references/, this skill dir):
 ## 6. Electronics stack
 
 Electronics (anthill-forge / hw tooling / electronics agents+skills) is EXCLUDED from Model B — under revision; revisit when that revision lands.
+
+## 7. Operating rules (every role)
+
+- **Confirm destructive operations** before executing them; delegate super-user operations to the user.
+- **Never kill a user-visible process** — describe what and why, and let the user kill it.
+- **Edit files with the harness's file-edit capability or ast-grep, never `sed`**; if a bulk text edit seems to need `sed`, surface it first.
+- **Prefer the lean-ctx tools inside the project** (cached reads, compressed shell, ranked search, tree) over the harness's native equivalents.
