@@ -5,10 +5,11 @@ analysis 2026-09-26)
 **Type:** fix
 **Priority:** P1 — release 1.0.0, wave 2. Every Pi orchestrator runs these two skills at the start
 and end of every session, and today they send it looking for files that do not exist.
-**Depends on:** CR-MDB-042 (merged: the orchestrator rules live in the common skills)
+**Depends on:** CR-MDB-042 (merged: the orchestrator rules live in the common skills); CR-MDB-043
+(the schema-driven registry, which adds `SANDESH_PROJECT`)
 **Labels:** skills, bootstrap, shutdown, scaffold, registry
 **Design reference:** PRD D5 (AMENDED 2026-09-26: one orchestrator definition, no per-project
-orchestrator note); PRD D3.1 (the `.env` naming registry; AMENDED 2026-09-26: `SANDESH_PROJECT`);
+orchestrator note); PRD D3.1 (the `.env` naming registry; AMENDED 2026-09-26: schema-driven, CR-MDB-043);
 PRD D10 (what `init` scaffolds); DN-multi-harness §D19 (session model), §D14 (Pi only), §D18
 (capabilities and CLIs, not harness tools)
 
@@ -32,7 +33,8 @@ What `modelb-axi init` scaffolds (measured 2026-09-26, sandboxed, `--stacks pyth
 
 The registry does not carry the Sandesh project id, and none of its values yields it: Sandesh ids
 are case- and space-sensitive, while `PROJECT_NAME` may contain spaces and `PROJECT_TOKEN` is
-lower-case. PRD D3.1 (amended) adds `SANDESH_PROJECT` to the generic registry template.
+lower-case. CR-MDB-043 makes the registry schema-driven and adds `SANDESH_PROJECT` to the schema;
+`init` generates it into `.env`.
 
 Most live projects predate `init`: NAI, Crucible, Sandesh and Valmik have no registry values in a
 `.env`. For them the fallback is the common path, not an edge case.
@@ -49,12 +51,9 @@ Also stale in the two skills (2026-09-26):
 
 ## Scope
 
-### §S1 — Registry: `SANDESH_PROJECT`
-The generic `.env` template that `init` renders for every project (`modelb_axi/scaffold.py`,
-`_render_env`) gains `SANDESH_PROJECT=<id>`, after `ORCHESTRATOR_LABEL`. The
-default is `PROJECT_NAME` with all whitespace removed; a new `init` flag `--sandesh-project <id>`
-overrides it (validated: non-empty, no whitespace). `--dry-run` reports it like the other keys.
-`AGENTS.md`'s "Identity & naming" section names the key. Nothing else changes in `init`.
+### §S1 — Keys by schema name
+The two skills name registry keys by their schema name (CR-MDB-043) and never a project's value; a
+key they read is one the schema declares.
 
 ### §S2 — Reading order and identity
 In `skills-src/bootstrap/SKILL.md` and `skills-src/shutdown/SKILL.md`, "read your role's rules"
@@ -90,10 +89,8 @@ and satisfy the name/retired-tool gate CR-MDB-042 exempted them from: the exempt
 
 ## Acceptance criteria
 
-- [ ] `init` writes `SANDESH_PROJECT` into `.env`: `PROJECT_NAME` with whitespace removed by default
-      (`My Project` → `MyProject`), `--sandesh-project` overrides it, an id with whitespace is refused
-      before anything is written; `--dry-run` shows it; `AGENTS.md`'s Identity section names it —
-      proven by sandboxed `init` runs.
+- [ ] Every registry key the two skills name is declared in the CR-MDB-043 schema (its §S3 gate
+      covers `bootstrap/` and `shutdown/`).
 - [ ] `bootstrap` and `shutdown` read, in order, the `model-b` references, the project's `AGENTS.md`
       and `.env`, and `docs/memory/INDEX.md`; neither names an `ORCHESTRATOR-` note or `MEMORY.md`, and
       every project file they name is one a sandboxed `init` produces.
@@ -112,9 +109,8 @@ and satisfy the name/retired-tool gate CR-MDB-042 exempted them from: the exempt
 ## Non-goals
 
 - No new scaffolded file.
-- No hand-edit of any project's `.env`. Only the generic template changes; a project scaffolded
-  before this CR gets the key from `init`'s template when it is re-scaffolded, or relies on the
-  fallback (§S2).
+- No registry or scaffold change (CR-MDB-043). No hand-edit of any project's `.env`; a project
+  scaffolded earlier relies on the fallback (§S2) until it is re-scaffolded.
 - No ruling on where a harness keeps its own agent memory; the skills name project files only.
 - Telling Crucible Mainline on thread #1392 happens at merge (a notification, not an AC); the new
   text reaches `~/.agents/skills/` at the next reinstall (release step).

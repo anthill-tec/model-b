@@ -48,7 +48,8 @@ Queue rows enumerate the whole delivery (structure only). **Live status lives on
 | [CR-MDB-039](CR-MDB-039-worktree-isolation-on-pi.md) | Worktree isolation on Pi: enter/exit a worktree from the Model B Pi package (pi-subagents workspace provider + `WF_WORKTREE_ROOT`) | 5 | 031 |
 | [CR-MDB-040](CR-MDB-040-installer-prune.md) | A redeploy removes what it no longer deploys (PRD §4 criterion 6) | 5 | 035 |
 | [CR-MDB-042](CR-MDB-042-orchestrator-definitions-absorbed.md) | Orchestrator definitions absorbed into the common skills: triage the `ORCHESTRATOR-*` notes, the global non-negotiables and every Model B project's feedback memories into common / stack / project; adopt `gap-analysis` as a Model B bundle (PRD D5 amendment) | 5 | — |
-| [CR-MDB-041](CR-MDB-041-bootstrap-reads-scaffolded-files.md) | Bootstrap and shutdown read the files `init` scaffolds (`AGENTS.md`, `.env`, `docs/memory/INDEX.md`), not `ORCHESTRATOR-<Project>`/`MEMORY.md` | 5 | 042 |
+| [CR-MDB-043](CR-MDB-043-schema-driven-project-registry.md) | Schema-driven project registry: Model B ships a project-settings schema (keys, sources, derive rules, validation, readers — no values); `init` generates `.env`/`.env.local` from it; adds `SANDESH_PROJECT` | 5 | — |
+| [CR-MDB-041](CR-MDB-041-bootstrap-reads-scaffolded-files.md) | Bootstrap and shutdown read the files `init` scaffolds (`AGENTS.md`, `.env`, `docs/memory/INDEX.md`), not `ORCHESTRATOR-<Project>`/`MEMORY.md` | 5 | 042, 043 |
 
 **— v1.0.0 ships here —** (the release is a BOUNDARY EVENT, not a queue row: the wave drains, the user approves, `git-workflow` §Releases executes it, a milestone records it afterwards. No release CR, no close-out wave.)
 
@@ -1016,3 +1017,10 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   the mode-aware sentence is the specific one). CR-042's `bootstrap`/`shutdown` gate exemption is
   removed here. Pre-existing pi-lens nit routed forward: `tests/test_code_health_skill.py:34` I001
   import order (fails identically before CR-042).
+- 2026-09-26 — **CR-MDB-043 FILED** (user ruling, option C): project settings are SCHEMA-DRIVEN — Model B
+  ships the schema (rules only, no project values); `init` generates the project's `.env` /
+  `.env.local` from it (Crucible's clients and Sandesh both read `.env`, so it stays the generated
+  store); the values are the project's, local and authoritative; a Crucible project-metadata mirror
+  follows once Crucible offers one (requested over Sandesh). PRD D3.1 amendment restated (supersedes
+  the `SANDESH_PROJECT`-only wording of `51d73af`). CR-MDB-041 now depends on 043 and names keys by
+  schema name; its registry scope moved to 043. Sequence: 043 → 041.
