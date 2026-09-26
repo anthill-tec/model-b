@@ -1479,7 +1479,6 @@ class ScaffoldCapabilityContractReadsRequirementsDataTest(unittest.TestCase):
             repo_shape="standalone", stacks="python", owner="tester",
             target=self._tmp_target, dry_run=False, no_commit=True,
             register=False, harnesses=None,
-            sandesh_project=None,  # CR-MDB-043: the parser's new override dest
         )
         with mock.patch.dict(
             _requirements.STACK_TOOLCHAINS, {"python": (dict(self._SENTINEL_PROBE),)},

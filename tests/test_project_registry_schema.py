@@ -33,6 +33,7 @@ import contextlib
 import datetime
 import http.server
 import importlib.util
+import inspect
 import io
 import json
 import os
@@ -223,8 +224,13 @@ def _golden_env(label: str, *, with_stacks: bool) -> str:
     return text + (f"PROJECT_STACKS={STACKS}\n" if with_stacks else "")
 
 
+#: Today's `.gitignore` description of `.env.local` — the one `.gitignore` line
+#: the amended AC2 lets change (it must no longer call `.env.local` a registry
+#: file; C4 FIX F7).
+GOLDEN_GITIGNORE_ENV_LOCAL_COMMENT = "# Local-only registry overlay — never committed.\n"
+
 GOLDEN_GITIGNORE = (
-    "# Local-only registry overlay — never committed.\n"
+    GOLDEN_GITIGNORE_ENV_LOCAL_COMMENT +
     ".env.local\n"
     "\n"
     "# CR worktrees live inside the repo (inheriting Pi's project trust).\n"
@@ -244,8 +250,11 @@ GOLDEN_KEY_TASK = (
 
 
 def _golden_readme(label: str, mode: str, today: str) -> str:
+    # MIGRATED PIN (CR-MDB-043 C4 FIX F1, amended AC2): the multi-mode Sandesh
+    # setup task names SANDESH_PROJECT's value and address, not PROJECT_NAME.
     sandesh_task = (
-        f"- [ ] Sandesh setup + register (`{NAME}`, `Mainline - {NAME}`) — "
+        f"- [ ] Sandesh setup + register (`{DERIVED_SANDESH}`, "
+        f"`Mainline - {DERIVED_SANDESH}`) — "
         "manual step (registrations are manual in scaffold v1)\n"
         if mode != "solo" else ""
     )
@@ -377,6 +386,35 @@ def _emitted_files(target: Path) -> set:
         str(p.relative_to(target)) for p in target.rglob("*")
         if p.is_file() and ".git" not in p.relative_to(target).parts
     }
+
+
+def _run_init_in_process(env: dict, home: Path, target: Path, schema: Path = SCHEMA_PATH,
+                         **fields):
+    """``scaffold.run_init`` in process against ``schema`` (sandboxed by
+    ``env``); ``fields`` override the default ``init`` args. Returns
+    ``(rc, decoded axi, stderr)``."""
+    args = argparse.Namespace(
+        name=NAME, token=TOKEN, acronym=ACRONYM, mode="solo",
+        repo_shape="standalone", stacks=STACKS, owner=OWNER,
+        target=str(target), dry_run=False, no_commit=True, register=False,
+    )
+    for key, value in fields.items():
+        setattr(args, key, value)
+    out, err = io.StringIO(), io.StringIO()
+    with (
+        mock.patch.object(scaffold, "PROJECT_SCHEMA_PATH", schema),
+        mock.patch.dict(os.environ, {"PI_CODING_AGENT_DIR": env["PI_CODING_AGENT_DIR"]}),
+        contextlib.redirect_stdout(out), contextlib.redirect_stderr(err),
+    ):
+        rc = scaffold.run_init(args, home)
+    return rc, decode_axi(out.getvalue()), err.getvalue()
+
+
+def _schema_with(root: Path, extra: str, name: str = "fixture-schema.toml") -> Path:
+    """A fixture schema: the packaged schema plus the ``extra`` TOML tables."""
+    path = root / name
+    path.write_text(SCHEMA_PATH.read_text(encoding="utf-8") + extra, encoding="utf-8")
+    return path
 
 
 # ------------------------------------------------------------------ §S1 schema ----
@@ -518,7 +556,7 @@ class ProjectSchemaAssetTest(unittest.TestCase):
         by_name = _entries_by_name() if SCHEMA_PATH.is_file() else {}
         self.assertEqual(
             {k: e.get("file") for k, e in by_name.items()},
-            {k: ".env" for k in SCHEMA_KEYS},
+            dict.fromkeys(SCHEMA_KEYS, ".env"),
         )
 
     def test_scaffold_reads_the_packaged_schema_by_default(self):
@@ -726,7 +764,6 @@ class _Shared:
             differences' against a schema-driven rewrite leaking into files that
             carry no registry key."""
             literal = {
-                ".gitignore": GOLDEN_GITIGNORE.encode("utf-8"),
                 "docs/memory/INDEX.md": _golden_memory_index(self._template_names).encode("utf-8"),
             }
             for sub in self.SUBS:
@@ -736,6 +773,24 @@ class _Shared:
                     path = self._target / rel
                     self.assertTrue(path.is_file(), f"{rel} not emitted")
                     self.assertEqual(path.read_bytes(), expected, f"{rel} differs from today")
+
+        def test_gitignore_differs_only_in_its_description_of_env_local(self):
+            """MIGRATED PIN (C4 FIX F7, amended AC2): `.gitignore` was pinned
+            byte-identical; its `.env.local` comment may now change, and must no
+            longer call `.env.local` a registry file."""
+            actual = self._read(".gitignore").splitlines(keepends=True)
+            golden = GOLDEN_GITIGNORE.splitlines(keepends=True)
+            index = golden.index(GOLDEN_GITIGNORE_ENV_LOCAL_COMMENT)
+            self.assertEqual(len(actual), len(golden), f".gitignore={''.join(actual)!r}")
+            self.assertEqual(actual[:index] + actual[index + 1:],
+                             golden[:index] + golden[index + 1:],
+                             "AC2: every other .gitignore line is today's")
+            comment = actual[index]
+            self.assertTrue(comment.startswith("# "), comment)
+            self.assertNotRegex(
+                comment, re.compile("registry", re.IGNORECASE),
+                "AC2/§S2: `.env.local` is not a registry file; the .gitignore "
+                f"comment must not describe it as one; got {comment!r}")
 
         def test_the_emitted_file_set_is_todays(self):
             """Regression pin (passes before GREEN): no file added or dropped."""
@@ -797,8 +852,11 @@ class SandeshProjectInitTest(unittest.TestCase):
         return axi
 
     def test_dry_run_reports_the_derived_value_with_all_whitespace_removed(self):
+        # MIGRATED PIN (C4 FIX F8): the name was "My Big\tProject"; a tab is a
+        # control character, which no rendered value may now carry ("Values",
+        # §S2). A no-break space and a doubled space keep "all whitespace".
         self.target.mkdir()
-        result = _init(self.root, self.target, "--dry-run", name="My Big\tProject")
+        result = _init(self.root, self.target, "--dry-run", name="My  Big\u00a0Project")
         axi = self._axi(result)
         self.assertIs(axi.get("ok"), True, f"got {axi!r}")
         self.assertEqual(_registry_value_in(axi, "SANDESH_PROJECT"), "MyBigProject",
@@ -820,6 +878,17 @@ class SandeshProjectInitTest(unittest.TestCase):
         self.assertEqual(_key_lines(text, "SANDESH_PROJECT"), ["SANDESH_PROJECT=Foo_Bar\n"],
                          f"§S2/AC: --sandesh-project overrides; .env={text!r}")
 
+    def test_multi_readme_sandesh_task_names_the_override_and_its_address(self):
+        """§S2/AC2 (C4 FIX F1): the multi-mode Sandesh setup task names
+        SANDESH_PROJECT's value and address, not PROJECT_NAME."""
+        result = _init(self.root, self.target, "--sandesh-project", "Foo_Bar", mode="multi:2")
+        self.assertEqual(result.returncode, 0, f"stderr={result.stderr[-800:]!r}")
+        readme = (self.target / "docs" / "changes" / "README.md").read_text(encoding="utf-8")
+        tasks = [line for line in readme.splitlines() if "Sandesh setup" in line]
+        self.assertEqual(len(tasks), 1, readme)
+        self.assertIn("(`Foo_Bar`, `Mainline - Foo_Bar`)", tasks[0])
+        self.assertNotIn(NAME, tasks[0], "the task no longer names PROJECT_NAME")
+
     def test_whitespace_override_is_refused_before_anything_is_written(self):
         result = _init(self.root, self.target, "--sandesh-project", "a b")
         self.assertNotEqual(result.returncode, 0, f"stdout={result.stdout!r}")
@@ -838,6 +907,103 @@ class SandeshProjectInitTest(unittest.TestCase):
 
 
 # ------------------------------------------------------------------ Crucible client ----
+
+class CrucibleKeySetupNoticeTest(unittest.TestCase):
+    """§S2/AC (C4 FIX F2) — `init`'s stderr summary and its envelope say
+    that CRUCIBLE_PROJECT_KEY is empty until the project is registered in
+    Crucible and must be filled in `.env` before any Crucible client call."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.root = Path(tempfile.mkdtemp(prefix="r43-keynote-"))
+        cls.real = _init(cls.root, cls.root / "proj")
+        (cls.root / "dry").mkdir()
+        cls.dry = _init(cls.root, cls.root / "dry", "--dry-run")
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.root, ignore_errors=True)
+
+    def _check(self, result):
+        self.assertEqual(result.returncode, 0, f"stderr={result.stderr[-800:]!r}")
+        axi = decode_axi(result.stdout)
+        self.assertIs(axi.get("ok"), True, f"got {axi!r}")
+        required = axi.get("setup_required")
+        self.assertIsInstance(required, list, f"§S2: envelope field setup_required; got {axi!r}")
+        rows = [r for r in (required or []) if isinstance(r, dict) and r.get("key") == "CRUCIBLE_PROJECT_KEY"]
+        self.assertEqual(len(rows), 1, f"setup_required={required!r}")
+        self.assertEqual(rows[0].get("file"), ".env", f"the key is filled in .env; got {rows[0]!r}")
+        note = str(rows[0].get("note", ""))
+        for word in ("Crucible", "regist", ".env"):
+            self.assertIn(word, note, f"the envelope note says {word!r}; got {note!r}")
+        lines = [line for line in result.stderr.splitlines() if "CRUCIBLE_PROJECT_KEY" in line]
+        self.assertEqual(len(lines), 1, f"one stderr summary line names the key; stderr={result.stderr!r}")
+        for word in ("empty", "Crucible", "regist", ".env"):
+            self.assertIn(word, lines[0], f"the stderr summary says {word!r}; got {lines[0]!r}")
+        self.assertEqual(axi.get("warnings"), [], "a setup notice is not a warning")
+
+    def test_a_real_init_reports_the_key_to_fill(self):
+        self._check(self.real)
+
+    def test_a_dry_run_reports_the_key_to_fill(self):
+        self._check(self.dry)
+
+
+class RenderedValueHygieneTest(unittest.TestCase):
+    """§S2 "Values" (C4 FIX F8) — no rendered value carries a control
+    character, and SANDESH_PROJECT holds only letters, digits, `_`, `-`, `.`;
+    each refusal happens before anything is written."""
+
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp(prefix="r43-values-"))
+        self.env = _sandbox_env(self.root)
+        self.home = Path(self.env["MODELB_HOME"])
+        write_install_toml(str(self.home), harnesses=("pi",))
+
+    def tearDown(self):
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def _refused(self, key: str, **fields) -> str:
+        target = self.root / f"t{len(os.listdir(self.root))}"
+        rc, axi, err = _run_init_in_process(self.env, self.home, target, **fields)
+        self.assertEqual((rc, axi.get("ok")), (2, False), f"{fields!r}: stderr={err[-600:]!r}")
+        warnings = " ".join(str(w) for w in axi.get("warnings", []))
+        self.assertIn(key, warnings, f"the refusal names {key}; warnings={warnings!r}")
+        self.assertFalse(target.exists(), f"{fields!r}: refused before anything is written")
+        return warnings
+
+    def test_a_control_character_in_any_asked_value_is_refused(self):
+        for dest, key, value in (
+            ("name", "PROJECT_NAME", "My\nProject"),
+            ("owner", "REPO_OWNER", "tes\tter"),
+            ("acronym", "PROJECT_ACRONYM", "MY\x1bP"),
+            ("token", "PROJECT_TOKEN", "my\x7fproj"),
+            ("name", "PROJECT_NAME", "My\rProject"),
+        ):
+            with self.subTest(key=key, value=value):
+                self._refused(key, **{dest: value})
+
+    def test_an_illegal_sandesh_project_character_is_refused(self):
+        for value in ("a=b", "a#b", 'a"b', "a'b", "a\u200bb", "a/b", "a\nb"):
+            with self.subTest(value=value):
+                self._refused("SANDESH_PROJECT", sandesh_project=value)
+
+    def test_a_derived_sandesh_project_with_an_illegal_character_suggests_the_override(self):
+        warnings = self._refused("SANDESH_PROJECT", name="My#Project")
+        self.assertIn("--sandesh-project", warnings)
+        self.assertIn("My#Project", warnings)
+
+    def test_legal_values_still_render(self):
+        target = self.root / "ok"
+        rc, axi, err = _run_init_in_process(
+            self.env, self.home, target, sandesh_project="Foo.Bar-1_x")
+        self.assertEqual(rc, 0, f"stderr={err[-800:]!r}")
+        self.assertEqual(parse_env_file(target / ".env").get("SANDESH_PROJECT"), "Foo.Bar-1_x")
+        target = self.root / "derived"
+        rc, axi, err = _run_init_in_process(self.env, self.home, target)
+        self.assertEqual(rc, 0, f"stderr={err[-800:]!r}")
+        self.assertEqual(parse_env_file(target / ".env").get("SANDESH_PROJECT"), DERIVED_SANDESH)
+
 
 class _StubCrucible(http.server.BaseHTTPRequestHandler):
     """Answers every GET with an empty plan list; records the request paths."""
@@ -959,22 +1125,8 @@ class FixtureSchemaExtensibilityTest(unittest.TestCase):
         return path
 
     def _run(self, schema: Path, target: Path, **overrides):
-        args = argparse.Namespace(
-            name=NAME, token=TOKEN, acronym=ACRONYM, mode="solo",
-            repo_shape="monorepo:a", stacks=STACKS, owner=OWNER,
-            target=str(target), dry_run=False, no_commit=True, register=False,
-            sandesh_project=None, team_lead="Ada",
-        )
-        for key, value in overrides.items():
-            setattr(args, key, value)
-        out, err = io.StringIO(), io.StringIO()
-        with (
-            mock.patch.object(scaffold, "PROJECT_SCHEMA_PATH", schema),
-            mock.patch.dict(os.environ, {"PI_CODING_AGENT_DIR": self.env["PI_CODING_AGENT_DIR"]}),
-            contextlib.redirect_stdout(out), contextlib.redirect_stderr(err),
-        ):
-            rc = scaffold.run_init(args, self.home)
-        return rc, decode_axi(out.getvalue()), err.getvalue()
+        fields = {"repo_shape": "monorepo:a", "team_lead": "Ada", **overrides}
+        return _run_init_in_process(self.env, self.home, target, schema, **fields)
 
     def test_a_fixture_ask_key_is_required(self):
         target = self.root / "missing"
@@ -1028,6 +1180,147 @@ class FixtureSchemaExtensibilityTest(unittest.TestCase):
                 rc, axi, _err = self._run(self._fixture(**kwargs), target)
                 self.assertEqual((rc, axi.get("ok")), (2, False))
                 self.assertFalse(target.exists(), "refused before anything is written")
+
+
+# ------------------------------------------------------------------ strict schema load ----
+
+#: A well-formed fixture ask entry; each malformed case below edits one field.
+_GOOD_ASK = {
+    "name": '"TEAM_LEAD"', "description": '"fixture: an asked key"', "required": "true",
+    "file": '".env"', "scope": '"root"', "source": '"ask"', "flag": '"--team-lead"',
+    "validate": '"non_empty"', "readers": '["fixture"]',
+}
+
+
+def _table(table: str, fields: dict) -> str:
+    return f"\n[[{table}]]\n" + "".join(f"{k} = {v}\n" for k, v in fields.items())
+
+
+class StrictSchemaLoadTest(unittest.TestCase):
+    """§S2 "Loading and validating the schema" (C4 FIX F5/F6) —
+    ``load_schema`` itself refuses each malformed entry, naming the key and
+    the field, before ``init`` does anything."""
+
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp(prefix="r43-strict-"))
+        self.table, _ = _schema_table()
+
+    def tearDown(self):
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def _refused(self, fields: dict, key: str, *words: str) -> None:
+        path = _schema_with(self.root, _table(self.table, fields))
+        with self.assertRaises(scaffold.ScaffoldError) as ctx:
+            scaffold.load_schema(path)
+        message = str(ctx.exception)
+        for word in (key, *words):
+            self.assertIn(word, message, f"the refusal names {word!r}; got {message!r}")
+
+    def test_the_packaged_schema_loads(self):
+        self.assertEqual({e["name"] for e in scaffold.load_schema(SCHEMA_PATH)}, SCHEMA_KEYS)
+
+    def test_an_entry_without_a_description_is_refused(self):
+        fields = dict(_GOOD_ASK)
+        del fields["description"]
+        self._refused(fields, "TEAM_LEAD", "description")
+
+    def test_an_entry_without_readers_is_refused(self):
+        fields = dict(_GOOD_ASK)
+        del fields["readers"]
+        self._refused(fields, "TEAM_LEAD", "readers")
+
+    def test_readers_that_are_not_a_list_of_strings_are_refused(self):
+        self._refused({**_GOOD_ASK, "readers": '"fixture"'}, "TEAM_LEAD", "readers")
+
+    def test_a_capture_entry_without_a_step_is_refused(self):
+        fields = {k: v for k, v in _GOOD_ASK.items() if k != "flag"}
+        self._refused({**fields, "source": '"capture"'}, "TEAM_LEAD", "step")
+
+    def test_an_override_not_starting_with_dashes_is_refused(self):
+        fields = {k: v for k, v in _GOOD_ASK.items() if k != "flag"}
+        fields.update(source='"derive"', rule='"remove_whitespace"',
+                      inputs='["PROJECT_NAME"]', override='"team-lead"')
+        self._refused(fields, "TEAM_LEAD", "override")
+
+    def test_a_non_boolean_required_is_refused(self):
+        self._refused({**_GOOD_ASK, "required": '"yes"'}, "TEAM_LEAD", "required")
+
+    def test_a_derive_input_neither_a_key_nor_an_init_input_is_refused_at_load_time(self):
+        fields = {k: v for k, v in _GOOD_ASK.items() if k != "flag"}
+        fields.update(source='"derive"', rule='"remove_whitespace"',
+                      inputs='["no_such_input_r43"]')
+        self._refused(fields, "TEAM_LEAD", "inputs", "no_such_input_r43")
+
+    def test_an_env_local_key_scoped_to_sub_projects_is_refused(self):
+        self._refused({**_GOOD_ASK, "file": '".env.local"', "scope": '"root+sub"'},
+                      "TEAM_LEAD", ".env.local", "root+sub")
+
+
+class RootEnvLocalKeyTest(unittest.TestCase):
+    """§S2 (C4 FIX F6) — a root-scoped `.env.local` key renders into
+    `.env.local` (not `.env`) and is read back by ``read_registry_value``."""
+
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp(prefix="r43-local-"))
+        self.env = _sandbox_env(self.root)
+        self.home = Path(self.env["MODELB_HOME"])
+        write_install_toml(str(self.home), harnesses=("pi",))
+
+    def tearDown(self):
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def test_a_root_env_local_key_renders_there_and_reads_back(self):
+        table, _ = _schema_table()
+        schema = _schema_with(self.root, _table(table, {
+            **_GOOD_ASK, "name": '"LOCAL_NOTE"', "flag": '"--local-note"',
+            "file": '".env.local"'}))
+        target = self.root / "proj"
+        rc, _axi, err = _run_init_in_process(self.env, self.home, target, schema,
+                                             local_note="hello")
+        self.assertEqual(rc, 0, f"stderr={err[-800:]!r}")
+        self.assertEqual(parse_env_file(target / ".env.local").get("LOCAL_NOTE"), "hello")
+        self.assertNotIn("LOCAL_NOTE", parse_env_file(target / ".env"))
+        self.assertEqual(
+            scaffold.read_registry_value(target, scaffold.load_schema(schema), "LOCAL_NOTE"),
+            "hello")
+
+
+# ------------------------------------------------------------------ C4 FIX F10 ----
+
+class EmitPlanTakesTheResolvedRegistryTest(unittest.TestCase):
+    """C4 FIX F10 — ``_emit_plan`` has no schema fallback of its own: its
+    one production caller, ``run_init``, always passes the schema and the
+    registry it resolved in validation."""
+
+    def test_schema_and_registry_are_required_keywords(self):
+        params = inspect.signature(scaffold._emit_plan).parameters
+        for name in ("schema", "registry"):
+            with self.subTest(param=name):
+                self.assertIs(params[name].default, inspect.Parameter.empty,
+                              f"_emit_plan({name}=...) has a dead default")
+
+
+class SchemaReadersAndSkillKeyListTest(unittest.TestCase):
+    """C4 FIX F10 — SANDESH_PROJECT's readers name only real readers today
+    (a reader still to come is marked pending), and the model-b skill's
+    §4.1 key list names every schema key."""
+
+    def test_sandesh_project_readers_are_real_or_marked_pending(self):
+        readers = _entries_by_name()["SANDESH_PROJECT"]["readers"]
+        self.assertTrue(any(r.startswith("modelb-axi init") for r in readers), readers)
+        for reader in readers:
+            with self.subTest(reader=reader):
+                self.assertTrue(
+                    reader.startswith("modelb-axi init") or "pending" in reader,
+                    f"a reader that does not read the key today is marked pending: {reader!r}")
+
+    def test_the_model_b_skill_key_list_names_every_schema_key(self):
+        text = (REPO_ROOT / "skills-src" / "model-b" / "SKILL.md").read_text(encoding="utf-8")
+        section = text.split("## 4. ", 1)[1].split("\n## ", 1)[0]
+        item = next(line for line in section.splitlines()
+                    if line.startswith("1. **Naming registry"))
+        self.assertEqual(sorted(k for k in SCHEMA_KEYS if f"`{k}`" not in item), [],
+                         "§4.1 names every key the schema declares")
 
 
 # ------------------------------------------------------------------ run_agents ----
@@ -1089,8 +1382,17 @@ _ASSIGNED_NAME_RE = re.compile(r"(?<![A-Za-z0-9_$])(" + _KEY_SHAPE + r")=(?!=)")
 #: upper-case prose words (NEVER, ONCE, CR, NNN) out.
 _ENV_STYLE_NAME_RE = re.compile(
     r"(?<![A-Za-z0-9_])([A-Z][A-Z0-9]*_[A-Z0-9_]*[A-Z0-9])(?![A-Za-z0-9_])")
-#: ``.env`` / ``.env.local`` as a file — never ``os.environ``.
-_REGISTRY_LINE_RE = re.compile(r"\.env\b|registry", re.IGNORECASE)
+#: A line about project settings: a ``.env`` / ``.env.local`` file (never
+#: ``os.environ``), the registry, or "project settings" (C4 FIX F3).
+_REGISTRY_LINE_RE = re.compile(r"\.env\b|registry|project settings", re.IGNORECASE)
+#: (c) a ``$KEY`` / ``${KEY}`` reference — anywhere (C4 FIX F3).
+_DOLLAR_NAME_RE = re.compile(r"\$\{?(" + _KEY_SHAPE + r")(?![A-Za-z0-9_])")
+#: (d) a read through ``environ[...]`` / ``environ.get(...)`` / ``getenv(...)``.
+_ENVIRON_NAME_RE = re.compile(
+    r"(?:\benviron\s*\[|\benviron\.get\(|\bgetenv\()\s*[\"'](" + _KEY_SHAPE + r")[\"']")
+#: (e) an inline-code span that IS a key-shaped name (``OWNER`` included, no
+#: underscore needed), on a line about project settings.
+_CODE_NAME_RE = re.compile(r"^(" + _KEY_SHAPE + r")$")
 _INLINE_CODE_RE = re.compile(r"`([^`\n]+)`")
 _FENCE_RE = re.compile(r"^\s*(```|~~~)")
 #: Files whose prose is Markdown: only their fenced blocks and inline code
@@ -1127,18 +1429,65 @@ NOT_REGISTRY_KEYS = {
     "DD": "RediSearch FT.DROPINDEX argument (java orchestration template)",
     "SOME_ENV_VAR": "placeholder in a `docker run -e` example (operational commands)",
     "VAR": "generic `VAR=value` wording in the block-direct-*-test hook docstrings",
+    # runtime names the widened detector (C4 FIX F3: `$KEY`, `${KEY}`,
+    # environ reads) matches — none is a project-registry key
+    "ARGUMENTS": "the harness's skill-argument substitution (`$ARGUMENTS`, bootstrap skill)",
+    "USER": "the shell login name in `loginctl enable-linger $USER` (java testing template)",
+    "TMPDIR": "the POSIX temp-dir env var (block-write-outside-worktree scratch rule)",
+    "WF_TRACK": "worktree-flow.py's per-session track-label env var (rust orchestration template)",
+    "WF_WORKTREE_ROOT": "the dispatch worktree root exported to block-write-outside-worktree",
+    "MODELB_HOME": "the Model B installation home (installer env), read by ambient-board-status",
+    "MODELB_STATUS_CMD": "ambient-board-status's feed-command override (env)",
 }
 
-#: Real projects' Sandesh ids, as found in this repo's own history and records
-#: (`Mainline - ModelB`, `Mainline - Crucible`, `Mainline - Nai`,
-#: `Mainline - Sandesh`, `Track N - Nai` in docs/ and audits/; `Mainline -
-#: Roundhouse` the umbrella's address; `Valmik` in docs/changes/ CR-MDB-041/042).
-REAL_SANDESH_PROJECTS = ("ModelB", "Roundhouse", "Crucible", "Nai", "Sandesh", "Valmik")
-_REAL = "|".join(REAL_SANDESH_PROJECTS)
+#: Real projects, derived from this repo's own records (docs/, audits/,
+#: archive/, AGENTS.md; proved by RealProjectSetIsDerivedFromTheRecordsTest):
+#: Sandesh ids from `Mainline - ModelB`, `Mainline - Crucible`, `Mainline - Nai`,
+#: `Mainline - Sandesh`, `Track N - Nai`; `Roundhouse` the umbrella; `Valmik`
+#: (CR-MDB-041/042); `Switchyard` the Roundhouse routing layer (C4 FIX F4).
+REAL_SANDESH_PROJECTS = ("ModelB", "Roundhouse", "Crucible", "Nai", "Sandesh", "Valmik",
+                         "Switchyard")
+#: Their tokens — the lower-case short names (`PROJECT_TOKEN=modelb`).
+REAL_PROJECT_TOKENS = tuple(name.lower() for name in REAL_SANDESH_PROJECTS)
+#: Real acronyms, each recorded as a `CR-<ACRONYM>-NNN` id. `MB` (Model B's
+#: retired acronym) is left out: as a bare word it is a unit ("2 MB"). `CF` and
+#: `SH` occur only as example CR ids in shipped skills, never in the records.
+REAL_PROJECT_ACRONYMS = ("MDB", "MODELB", "RND", "CRU", "NAI", "SAN", "SHE", "SY", "OA")
+#: Real remote owners (`REPO_OWNER=antojk` in AGENTS.md; the work account the
+#: git-workflow skill named).
+REAL_REPO_OWNERS = ("antojk", "Antojk71")
+
+
+def _alt(words) -> str:
+    return "|".join(map(re.escape, sorted(set(words), key=len, reverse=True)))
+
+
+_REAL = _alt(REAL_SANDESH_PROJECTS)
 _SANDESH_ADDRESS_RE = re.compile(
     r"\b(?:Mainline|Track\s+\S+)\s+-\s+(" + _REAL + r")(?![A-Za-z0-9_])")
 _SANDESH_PROJECT_FLAG_RE = re.compile(
     r"--project(?:\s+|=)[\"']?(" + _REAL + r")(?![A-Za-z0-9_])")
+#: A real name, token or owner in prose as a project's identity: right after
+#: `token`, `acronym`, `project name`, `named`, `owner` or `account`, or after
+#: `project` when set off as code, bold or a quote (`project `ModelB``, never
+#: "the project Sandesh note" nor the `--project` flag, matched above).
+_REAL_IDENTITY = _alt(REAL_SANDESH_PROJECTS + REAL_PROJECT_TOKENS + REAL_REPO_OWNERS)
+_IDENTITY_PROSE_RE = re.compile(
+    r"(?<![-\w])(?:(?:token|acronym|project\s+name|named|owner|account)\b[\s:=*`\"']*"
+    r"|project\s*[:=]?\s*[`*\"']+)(" + _REAL_IDENTITY + r")(?![A-Za-z0-9_-])")
+#: An orchestrator label of a real project: `vidushi-mdb`, `Mainline-modelb`.
+_REAL_LABEL_RE = re.compile(
+    r"\b(?:vidushi|Mainline)-("
+    + _alt(REAL_PROJECT_TOKENS + REAL_SANDESH_PROJECTS
+           + tuple(a.lower() for a in REAL_PROJECT_ACRONYMS))
+    + r")(?![A-Za-z0-9_-])")
+#: A real acronym as a word — never inside a CR id (`CR-MDB-043`, `CR-RND`),
+#: which is a provenance citation, not a project value.
+_REAL_ACRONYM_RE = re.compile(
+    r"(?<![A-Za-z0-9_])(?<!CR-)(" + _alt(REAL_PROJECT_ACRONYMS) + r")(?![A-Za-z0-9_])")
+#: A real remote owner as a word (`github.com-antojk` included).
+_REAL_OWNER_RE = re.compile(
+    r"(?<![A-Za-z0-9_])(" + _alt(REAL_REPO_OWNERS) + r")(?![A-Za-z0-9_])")
 _UUID_RE = re.compile(
     r"(?<![0-9A-Fa-f])[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}"
     r"-[0-9A-Fa-f]{12}(?![0-9A-Fa-f])")
@@ -1186,18 +1535,25 @@ def _shipped_files(exempt: frozenset = frozenset()) -> list[tuple[str, str]]:
 def _registry_names_named(path: str, text: str) -> list[tuple[int, str]]:
     """``(line, name)`` for every registry key ``text`` NAMES: a name of the
     key shape that appears (a) as ``KEY=`` in code — a fenced block or inline
-    code span in Markdown, anywhere in any other file — or (b) env-style on a
-    line that also mentions a ``.env`` file or "registry"."""
+    code span in Markdown, anywhere in any other file; (b) env-style on a
+    line about project settings; (c) as ``$KEY`` / ``${KEY}``; (d) read
+    through ``environ[...]`` / ``environ.get(...)`` / ``getenv(...)``; or (e)
+    as a whole inline-code span on a line about project settings (§S3,
+    C4 FIX F3)."""
     markdown = path.endswith(_MARKDOWN_SUFFIXES)
     found, in_fence = [], False
     for number, line in enumerate(text.splitlines(), 1):
         if markdown and _FENCE_RE.match(line):
             in_fence = not in_fence
             continue
-        codes = [line] if (in_fence or not markdown) else _INLINE_CODE_RE.findall(line)
+        spans = _INLINE_CODE_RE.findall(line)
+        codes = [line] if (in_fence or not markdown) else spans
         names = {m.group(1) for code in codes for m in _ASSIGNED_NAME_RE.finditer(code)}
+        names |= {m.group(1) for m in _DOLLAR_NAME_RE.finditer(line)}
+        names |= {m.group(1) for m in _ENVIRON_NAME_RE.finditer(line)}
         if _REGISTRY_LINE_RE.search(line):
             names |= {m.group(1) for m in _ENV_STYLE_NAME_RE.finditer(line)}
+            names |= {s.strip() for s in spans if _CODE_NAME_RE.match(s.strip())}
         found.extend((number, name) for name in sorted(names))
     return found
 
@@ -1223,19 +1579,33 @@ def _is_placeholder(value: str) -> bool:
 
 def _project_value_findings(path: str, text: str, keys) -> list[str]:
     """``path:line: reason`` for every literal project value in ``text``: a
-    schema key assigned a non-placeholder value, a UUID-shaped project key, or
-    a real project's Sandesh address or ``--project`` id."""
+    schema key assigned a non-placeholder value (``KEY=value`` or YAML-style
+    ``KEY: value``), a UUID-shaped project key, a real project's Sandesh
+    address or ``--project`` id, a real name/token/owner given as a
+    project's identity, a real orchestrator label, a real acronym (CR ids
+    exempt) or a real remote owner (§S3, C4 FIX F4)."""
+    alternation = "|".join(map(re.escape, sorted(keys)))
     assign = re.compile(
-        r"(?<![A-Za-z0-9_$])(" + "|".join(map(re.escape, sorted(keys)))
+        r"(?<![A-Za-z0-9_$])(" + alternation
         + r")=(\"[^\"\n]*\"|'[^'\n]*'|[^\s`'\",;)]*)")
+    yaml = re.compile(
+        r"(?<![A-Za-z0-9_$`])(" + alternation
+        + r"):[ \t]+(\"[^\"\n]*\"|'[^'\n]*'|[^\s`'\",;)]+)[ \t`]*$")
     out = []
     for number, line in enumerate(text.splitlines(), 1):
-        for m in assign.finditer(line):
-            if not _is_placeholder(m.group(2)):
-                out.append(f"{path}:{number}: {m.group(1)} assigned {m.group(2)!r}")
+        for regex in (assign, yaml):
+            for m in regex.finditer(line):
+                if not _is_placeholder(m.group(2)):
+                    out.append(f"{path}:{number}: {m.group(1)} assigned {m.group(2)!r}")
         out.extend(f"{path}:{number}: UUID {m.group(0)}" for m in _UUID_RE.finditer(line))
         for regex in (_SANDESH_ADDRESS_RE, _SANDESH_PROJECT_FLAG_RE):
             out.extend(f"{path}:{number}: Sandesh id {m.group(0)!r}"
+                       for m in regex.finditer(line))
+        for kind, regex in (("project identity", _IDENTITY_PROSE_RE),
+                            ("orchestrator label", _REAL_LABEL_RE),
+                            ("acronym", _REAL_ACRONYM_RE),
+                            ("remote owner", _REAL_OWNER_RE)):
+            out.extend(f"{path}:{number}: {kind} {m.group(0)!r}"
                        for m in regex.finditer(line))
     return out
 
@@ -1275,17 +1645,42 @@ class RegistryKeyDetectorTest(unittest.TestCase):
         text = '"""Docstring: set TEAM_LEAD=1 to skip."""\n'
         self.assertEqual(self._names("hooks-src/scripts/x", text), [(1, "TEAM_LEAD")])
 
-    def test_runtime_names_in_prose_comparisons_and_os_environ_are_not_named(self):
+    def test_runtime_names_in_prose_and_comparisons_are_not_named(self):
+        # MIGRATED PIN (C4 FIX F3, amended §S3): this test also pinned
+        # `os.environ.get("TMPDIR_ROOT")` and `${HOME_DIR}` as NOT named; the
+        # amended §S3 makes both forms names (see the tests below).
         clean = (
             "The WORKFLOW_CYCLE variable is exported by the harness.\n"
             "Outside code, FOO_BAR=1 in prose is not an assignment.\n"
             "NEVER read the ONCE-declared value.\n"
+            "`WORKFLOW_CYCLE` is exported by the harness.\n"
         )
         self.assertEqual(self._names("fixture.md", clean), [])
-        script = ('x = os.environ.get("TMPDIR_ROOT", "")\n'
-                  "if MODE_FLAG==1: pass\n"
-                  "y = f'${HOME_DIR}'\n")
+        script = "if MODE_FLAG==1: pass\n"
         self.assertEqual(self._names("hooks-src/scripts/x", script), [])
+
+    def test_an_inline_code_name_on_a_project_settings_line_is_named(self):
+        self.assertEqual(
+            self._names("fixture.md", "Read `TEAM_LEAD` from the project settings.\n"),
+            [(1, "TEAM_LEAD")])
+        self.assertEqual(self._names("fixture.md", "Set the `OWNER` key in `.env`.\n"),
+                         [(1, "OWNER")], "a name without an underscore, as inline code")
+
+    def test_a_dollar_reference_is_named_in_code_and_prose(self):
+        text = ('```\nsandesh inbox --project "$TEAM_LEAD"\necho ${BUDGET_CODE}\n```\n'
+                "Pass `$SECRET_TOKEN` through.\n")
+        self.assertEqual(self._names("fixture.md", text),
+                         [(2, "TEAM_LEAD"), (3, "BUDGET_CODE"), (5, "SECRET_TOKEN")])
+
+    def test_an_environ_read_in_a_hook_script_is_named(self):
+        script = ("a = os.environ.get('TEAM_LEAD')\n"
+                  'b = os.environ["BUDGET_CODE"]\n'
+                  "c = os.getenv('SECRET_TOKEN', '')\n"
+                  'x = os.environ.get("TMPDIR_ROOT", "")\n'
+                  "y = f'${HOME_DIR}'\n")
+        self.assertEqual(self._names("hooks-src/scripts/x", script),
+                         [(1, "TEAM_LEAD"), (2, "BUDGET_CODE"), (3, "SECRET_TOKEN"),
+                          (4, "TMPDIR_ROOT"), (5, "HOME_DIR")])
 
     def test_a_name_inside_a_longer_identifier_is_not_the_shorter_key(self):
         self.assertEqual(self._names("fixture.md", "`MY_PROJECT_NAME=x`\n"),
@@ -1390,6 +1785,51 @@ class ProjectValueDetectorTest(unittest.TestCase):
                  "Crucible's client and the Sandesh CLI are tools, not ids.\n")
         self.assertEqual(self._find(clean), [])
 
+    def test_a_real_projects_name_token_or_acronym_in_prose_is_found(self):
+        findings = self._find("Crucible: token `crucible` · acronym `CRU`.\n"
+                              "Sandesh project `ModelB` routes it.\n"
+                              "The MDB-owned bundles ship.\n")
+        for expected in ("fixture.md:1: project identity 'token `crucible'",
+                         "fixture.md:1: acronym 'CRU'",
+                         "fixture.md:2: project identity 'project `ModelB'",
+                         "fixture.md:3: acronym 'MDB'"):
+            self.assertIn(expected, findings)
+
+    def test_a_real_orchestrator_label_is_found(self):
+        self.assertEqual(self._find("The orchestrator `vidushi-mdb` runs it.\n"),
+                         ["fixture.md:1: orchestrator label 'vidushi-mdb'"])
+        self.assertIn("fixture.md:1: orchestrator label 'Mainline-roundhouse'",
+                      self._find("Label Mainline-roundhouse.\n"))
+
+    def test_a_yaml_style_assignment_is_found(self):
+        self.assertIn("fixture.md:1: PROJECT_ACRONYM assigned 'MDB'",
+                      self._find("PROJECT_ACRONYM: MDB\n"))
+        self.assertIn("fixture.md:1: REPO_OWNER assigned 'acme'",
+                      self._find("  REPO_OWNER: acme\n"))
+
+    def test_a_new_real_projects_sandesh_address_is_found(self):
+        self.assertEqual(self._find("Track 3 - Switchyard reports.\n"),
+                         ["fixture.md:1: Sandesh id 'Track 3 - Switchyard'"])
+
+    def test_a_real_remote_owner_is_found(self):
+        findings = self._find("gh auth switch --user antojk\n"
+                              "host alias `github.com-antojk`\n")
+        self.assertEqual(findings, ["fixture.md:1: remote owner 'antojk'",
+                                    "fixture.md:2: remote owner 'antojk'"])
+
+    def test_cr_ids_placeholders_and_tool_names_are_not_values(self):
+        clean = ("Cited as CR-MDB-043 §S3 and `CR-RND-001`; a `CR-RND` item.\n"
+                 "Agent CR-MDB-043-C4-FIX, CR-SAN-013-C1-RED.\n"
+                 "Solo `vidushi-<token>`, multi `Mainline-<token>`.\n"
+                 "PROJECT_ACRONYM: <acronym>\n"
+                 "`PROJECT_NAME`: the project's display name\n"
+                 "Load the crucible skill; Crucible's client and the Sandesh CLI.\n"
+                 "Run `~/.crucible/clients/python-crucible.py`; skill name `crucible-register`.\n"
+                 "The project in Crucible; 2 MB of RAM.\n"
+                 "name: crucible\n"
+                 "Each project Sandesh note names its id.\n")
+        self.assertEqual(self._find(clean), [])
+
     def test_a_schema_entry_with_a_value_like_or_non_s1_field_is_found(self):
         entries = [
             {"name": "TEAM_LEAD", "description": "d", "default": "alice"},
@@ -1403,6 +1843,23 @@ class ProjectValueDetectorTest(unittest.TestCase):
 class NoProjectValueShipsGateTest(unittest.TestCase):
     """§S3 gate 2: no shipped skill (Crucible's imported bundles exempt),
     template, hook or the schema carries a literal project value."""
+
+    def test_the_real_project_set_is_derived_from_the_repos_own_records(self):
+        """Every real name, acronym and owner the detector knows is recorded in
+        this repo's own records (never read from `$HOME`); each token is the
+        lower-cased recorded name."""
+        records = [REPO_ROOT / "AGENTS.md"] + [
+            path for root in ("docs", "audits", "archive")
+            for path in sorted((REPO_ROOT / root).rglob("*.md"))]
+        text = "\n".join(p.read_text(encoding="utf-8") for p in records if p.is_file())
+        for name in REAL_SANDESH_PROJECTS + REAL_REPO_OWNERS:
+            with self.subTest(value=name):
+                self.assertRegex(text, r"(?<![A-Za-z0-9])" + re.escape(name) + r"(?![A-Za-z0-9])")
+        for acronym in REAL_PROJECT_ACRONYMS:
+            with self.subTest(acronym=acronym):
+                self.assertIn(f"CR-{acronym}-", text)
+        self.assertEqual(REAL_PROJECT_TOKENS,
+                         tuple(n.lower() for n in REAL_SANDESH_PROJECTS))
 
     def test_the_provenance_exemption_is_exactly_the_handover_record(self):
         self.assertEqual(PROVENANCE_RECORDS, {"skills-src/CRUCIBLE-HANDOVER.md"})

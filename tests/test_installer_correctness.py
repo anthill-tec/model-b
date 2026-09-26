@@ -882,7 +882,6 @@ def _init_args(target, dry_run: bool, no_commit: bool = True, harnesses=None) ->
         repo_shape="standalone", stacks="python", owner="tester",
         target=str(target), dry_run=dry_run, no_commit=no_commit,
         register=False, harnesses=harnesses,
-        sandesh_project=None,  # CR-MDB-043: the parser's new override dest
     )
 
 
@@ -1004,12 +1003,19 @@ class AtomicWriteSixSitesTest(unittest.TestCase):
                 mock.patch("os.replace", side_effect=OSError("AC1 injected os.replace failure")),
                 self.assertRaises(OSError),
             ):
+                # CR-MDB-043 C4 FIX F10: _emit_plan takes the schema and the
+                # registry run_init resolved (it has no fallback of its own).
+                schema = scaffold.load_schema(scaffold.PROJECT_SCHEMA_PATH)
+                registry = scaffold.resolve_registry(schema, {
+                    "name": "X", "token": "xproj", "acronym": "XP", "mode": "solo",
+                    "owner": "tester", "stacks": "python",
+                })
                 scaffold._emit_plan(
                     target,
                     name="X", token="xproj", acronym="XP", mode="solo",
                     owner="tester", stacks=["python"], harnesses=[],
                     sub_projects=[], no_commit=True, home=home,
-                    hook_scripts_root=None,
+                    hook_scripts_root=None, schema=schema, registry=registry,
                 )
             self.assertEqual(
                 env_path.read_text(encoding="utf-8"), prior_content,
