@@ -37,12 +37,17 @@ nothing.
 ### §S1 — Prune after a successful deploy
 In the installer's deploy stage (`cli._deploy_stage`), after `deploy_assets` succeeds and before
 `write_install_toml`, a new `deploy.prune_assets(prior_root, prior_files, new_paths)` handles every
-path recorded in the prior manifest and absent from the new manifest:
+path recorded in the prior manifest and absent from the new manifest. Paths are compared after
+normalisation (`os.path.normpath`): a prior entry spelled differently from a path this run deployed
+(`x/../model-b/SKILL.md`, `./…`, `//`) is that path, and is never pruned. The prior entries are
+read once, through one `config` helper, and de-duplicated by normalised path before any use (the
+first entry wins, for the hash and for the corrupt-entry warning).
 
 - **Removed:** the deployed file exists and its hash equals its recorded hash. It was Model B's and
   is unchanged. After removal, each directory left empty is removed, walking up and stopping at
   the store root (`.agents/skills`, `.agents/hooks/scripts`, `.agents/scripts`). A store root is
-  never removed.
+  never removed, and the walk stops at a directory that is a symbolic link (the link is left; the
+  run does not fail).
 - **Kept and reported (hand-modified):** the file exists with a different hash. `--force-managed`
   does not change this; a hand-edited file is never deleted. The new manifest keeps its entry with
   the recorded hash, so every later installer run reports it again, and it is pruned once the user
@@ -71,6 +76,15 @@ re-prunes, and the already-gone paths are skipped. A run that fails before the d
 - The `already_installed` report's `retired` hint changes from "remove them by hand" to re-running
   the printed `--reinstall` command, which removes the unchanged ones. `docs/install-guide.md` says
   the same, and `pi-package/README.md` is regenerated from it.
+- The `already_installed` report judges a recorded path that the recorded `[install].stacks` no
+  longer deploy (a deselected stack's bundle) by what a `--reinstall` would do with it: unchanged →
+  `retired`; edited → a new list `kept`, whose hint says it is no longer deployed and was left
+  because it was edited — restore or delete it, then re-run the printed `--reinstall`. Such a path
+  is never `hand_modified`, and no hint offers `--force-managed` for it.
+- `docs/install-guide.md` states that a `--reinstall` naming fewer stacks removes the dropped
+  stacks' unchanged skills (in "Adding stacks later"), describes the installed envelope's
+  `removed` and `kept` fields, and says that when the recorded target root differs from this run's,
+  the old root's files are left and no longer managed.
 
 ## Acceptance criteria
 
@@ -89,6 +103,17 @@ re-prunes, and the already-gone paths are skipped. A run that fails before the d
 - [ ] A corrupt prior entry (outside the stores) is dropped from the new manifest, is in neither
       list, and is warned about by path.
 - [ ] A pruning `OSError` ends with outcome `deploy_failed`.
+- [ ] A prior entry that normalises to a path this run deployed (`…/x/../model-b/SKILL.md`,
+      `./…`, `…//…`) never removes that file; the new manifest and the disk agree.
+- [ ] A bundle directory that is a symbolic link: its unchanged leftover files are removed and
+      listed in `removed`, the link is left, and the run ends `installed`.
+- [ ] Duplicate prior entries: the first wins for both the prune decision and the recorded hash of
+      a kept entry; a duplicated corrupt entry gets one warning.
+- [ ] `already_installed` over an install with an edited leftover of a deselected stack lists it in
+      `kept` (not `hand_modified`) with a hint that names no `--force-managed`; an unchanged one is
+      `retired`.
+- [ ] The install guide covers dropping stacks, the `removed`/`kept` fields and the differing-root
+      case; `pi-package/README.md` is regenerated.
 - [ ] Unmanaged files (never in the manifest) and files outside the three store directories are
       never removed, even when a corrupt prior entry names them.
 - [ ] Store roots are never removed; empty bundle directories are.
