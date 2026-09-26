@@ -100,6 +100,11 @@ NON_REGISTRY_INIT_FLAGS = frozenset({
 NAME, TOKEN, ACRONYM, OWNER, STACKS = "My Project", "myproj", "MYP", "tester", "python"
 DERIVED_SANDESH = "MyProject"
 
+#: What `.env.local`'s comment must no longer say: the overlay is not where the
+#: Crucible project key is filled (it moved to `.env`, CR-MDB-043 §S1/§S2).
+_ENV_LOCAL_KEY_HINT_RE = re.compile(
+    r"crucible|regist(?:er|ering|ration)|project[ _-]?key|projectkey", re.IGNORECASE)
+
 #: The user site of THIS interpreter, resolved before any HOME override, so a
 #: sandboxed subprocess still imports what the real user site provides.
 _USER_BASE = site.getuserbase()
@@ -669,6 +674,22 @@ class _Shared:
                 parse_env_file(self._target / ".env.local"), {},
                 f"§S2/AC: CRUCIBLE_PROJECT_KEY moved out of .env.local, which holds no "
                 f"schema key today; .env.local={text!r}",
+            )
+
+        def test_env_local_does_not_send_the_crucible_key_there(self):
+            """§S2 defect: the key lives in `.env`; the overlay's comment must
+            not tell the user to fill a Crucible project key into `.env.local`."""
+            text = self._read(".env.local")
+            lines = text.splitlines()
+            self.assertEqual(
+                [line for line in lines
+                 if any(key in line for key in SCHEMA_KEYS)], [],
+                f"§S2: .env.local names no schema key, commented or not; {text!r}",
+            )
+            self.assertEqual(
+                [line for line in lines if _ENV_LOCAL_KEY_HINT_RE.search(line)], [],
+                f"§S2: CRUCIBLE_PROJECT_KEY is filled in .env, so .env.local's comment "
+                f"must not mention Crucible registration or the project key; {text!r}",
             )
 
         def test_queue_readme_differs_only_in_the_project_key_setup_task(self):
@@ -1399,6 +1420,75 @@ class NoProjectValueShipsGateTest(unittest.TestCase):
     def test_the_schema_has_no_value_like_field(self):
         self.assertEqual(_schema_value_fields(_schema_table()[1]), [],
                          "§S3: the schema carries rules only, never a value")
+
+
+# ------------------------------------ the Crucible key is never in .env.local ----
+
+#: A reference to the Crucible project key: a schema key name, or the phrase.
+_KEY_REFERENCE_RE = re.compile(
+    r"\b(?:" + "|".join(sorted(SCHEMA_KEYS)) + r")\b|project[ _-]?key|projectkey",
+    re.IGNORECASE)
+_ENV_LOCAL_RE = re.compile(r"\.env\.local\b")
+#: A sentence that names `.env.local` only to say the key is NOT there.
+_NEGATION_RE = re.compile(
+    r"\b(?:never|not|no longer|moved out of|instead of|rather than)\b", re.IGNORECASE)
+_SENTENCE_END_RE = re.compile(r"(?<=[.;!?])\s+")
+
+
+def _key_in_env_local_findings(path: str, text: str) -> list[str]:
+    """``path:line`` for every sentence that places a registry key (or "the
+    project key") in ``.env.local``: one sentence naming both, with no
+    negation. Sentences are read per paragraph, so a wrapped line still
+    counts; the line reported is the sentence's first."""
+    out = []
+    bounds = [0, *(m.end() for m in re.finditer(r"\n[ \t]*\n", text)), len(text)]
+    for p_start, p_end in zip(bounds, bounds[1:], strict=False):
+        paragraph = text[p_start:p_end]
+        start = 0
+        for match in [*_SENTENCE_END_RE.finditer(paragraph), None]:
+            end = match.start() if match else len(paragraph)
+            sentence = paragraph[start:end]
+            if (_ENV_LOCAL_RE.search(sentence) and _KEY_REFERENCE_RE.search(sentence)
+                    and not _NEGATION_RE.search(sentence)):
+                line = text.count("\n", 0, p_start + start) + 1
+                out.append(f"{path}:{line}")
+            start = match.end() if match else end
+    return out
+
+
+class KeyInEnvLocalDetectorTest(unittest.TestCase):
+    """The detector for shipped text placing the Crucible key in `.env.local`,
+    proved on synthetic texts in both directions."""
+
+    def test_a_sentence_placing_the_key_in_env_local_is_found(self):
+        text = ("Intro line.\n\n"
+                "Tool config like `CRUCIBLE_PROJECT_KEY` (which lives in the gitignored\n"
+                "`.env.local` overlay). Next sentence.\n\n"
+                "Paste the project key into `.env.local` after registering.\n")
+        self.assertEqual(_key_in_env_local_findings("f.md", text), ["f.md:3", "f.md:6"])
+
+    def test_negated_or_unrelated_env_local_mentions_are_not_found(self):
+        clean = ("`CRUCIBLE_PROJECT_KEY` lives in `.env`, never `.env.local`.\n"
+                 "The key moved out of `.env.local` into `.env`.\n"
+                 "`.env.local` is the gitignored overlay for local-only values.\n"
+                 "Put `CRUCIBLE_PROJECT_KEY` in `.env`. `.env.local` is gitignored.\n")
+        self.assertEqual(_key_in_env_local_findings("f.md", clean), [])
+
+
+class NoShippedTextPutsTheKeyInEnvLocalTest(unittest.TestCase):
+    """§S1/§S2 defect: Model B-owned shipped text (Crucible's imported bundles
+    and the provenance record exempt) never says the Crucible project key
+    lives in, or is filled in, `.env.local` — it lives in `.env`."""
+
+    def test_no_shipped_text_places_the_key_in_env_local(self):
+        files = _shipped_files(exempt=PROVENANCE_RECORDS)
+        self.assertTrue(any(p == "skills-src/model-b/SKILL.md" for p, _ in files))
+        findings = [f for path, text in files for f in _key_in_env_local_findings(path, text)]
+        self.assertEqual(
+            findings, [],
+            "§S2: CRUCIBLE_PROJECT_KEY is in `.env` (Crucible's client reads only "
+            "`<project-dir>/.env`); shipped text still places it in `.env.local`",
+        )
 
 
 if __name__ == "__main__":
