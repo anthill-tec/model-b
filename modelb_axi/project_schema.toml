@@ -108,4 +108,4 @@ rule = "remove_whitespace"
 inputs = ["PROJECT_NAME"]
 override = "--sandesh-project"
 validate = "sandesh_id"
-readers = ["model-b skill (references/sandesh.md; passes --project to the sandesh CLI)"]
+readers = ["modelb-axi init (AGENTS.md identity section, queue README Sandesh setup task)", "bootstrap/shutdown skills (pending CR-MDB-041: pass --project to the sandesh CLI)"]
