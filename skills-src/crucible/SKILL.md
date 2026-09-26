@@ -49,6 +49,8 @@ ingests in one call under your agent id. Never hand-roll `curl`; the client
   role is never inferred from the id's shape — an id ending `-GREEN`
   registered with `--role RED` classifies as RED. Never mint a second agent
   id mid-session.
+- The orchestrator's own id never appears in a sub-agent brief; phase work
+  always runs under its CR-cycle-role id.
 
 ## Per-stack client surfaces (they are NOT uniform — read the reference)
 
