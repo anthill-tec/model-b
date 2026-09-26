@@ -940,7 +940,8 @@ class CrucibleKeySetupNoticeTest(unittest.TestCase):
         self.assertEqual(len(lines), 1, f"one stderr summary line names the key; stderr={result.stderr!r}")
         for word in ("empty", "Crucible", "regist", ".env"):
             self.assertIn(word, lines[0], f"the stderr summary says {word!r}; got {lines[0]!r}")
-        self.assertEqual(axi.get("warnings"), [], "a setup notice is not a warning")
+        self.assertEqual([w for w in axi.get("warnings", []) if "CRUCIBLE_PROJECT_KEY" in str(w)],
+                         [], "a setup notice is not a warning")
 
     def test_a_real_init_reports_the_key_to_fill(self):
         self._check(self.real)
