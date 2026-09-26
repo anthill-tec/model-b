@@ -17,6 +17,8 @@ generic; project specifics live in the repo's `docs/research/assets/` configs).
 - Defined points: exercise `baseline` · `pre`/`post` of EVERY cull run (paired
   by `--slice <CR-id>`) · wave boundaries · `adhoc` anytime the user needs a
   picture.
+- **Ledger mutation is Mainline-only**, through `~/.agents/scripts/rust-code-health.py ledger`
+  verbs; hand-edit only a row's verdict/rationale fields.
 - Snapshots pin a git commit. If the tool warns the tree is DIRTY, prefer
   committing first — a snapshot at a dirty tree is recorded as suspect.
 
