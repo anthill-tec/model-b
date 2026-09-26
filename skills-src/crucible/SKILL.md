@@ -40,7 +40,7 @@ ingests in one call under your agent id. Never hand-roll `curl`; the client
 
 ## Identity — ONE agent id for the whole session
 
-- Orchestrators: `<agent-type>-<project>` (e.g. `vidushi-NAI`, `mainline-MDB`).
+- Orchestrators: `<agent-type>-<project>` (e.g. `vidushi-<acronym>`, `mainline-MDB`).
 - TDD-role agents: `CR-<ACRONYM>-NNN-<cycle>-<ROLE>` (e.g.
   `CR-MDB-003-C1-GREEN`) — the CR id + cycle + role IS the identity.
 - Role and identity are SEPARATE axes. The role is DECLARED at registration,

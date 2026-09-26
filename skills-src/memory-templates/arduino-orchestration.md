@@ -11,9 +11,9 @@ gating hardware drivers.
 > Electronics design (boards, schematics, EDA) is EXCLUDED from Model B — never here.
 
 ## Test tiers and agents
-- **When an Arduino test tier or tool lands, update `generator/stacks/arduino.toml` and the test-stack
-  PRDs in the same change** — then regenerate the agents. An agent definition must never describe a
-  stale toolset.
+- **When an Arduino test tier or tool lands, raise it to Model B so its arduino stack definition is
+  updated; update this project's test-stack PRDs in the same change.** An agent definition must
+  never describe a stale toolset.
 
 ## Hardware drivers
 - **Verify the exact part before writing a register-level driver** — from the vendor datasheet and the

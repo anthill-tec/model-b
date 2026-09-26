@@ -5,7 +5,7 @@ description: Authoring and lifecycle conventions for CR (Change Request), PRD, a
 
 # CR / PRD / DN Authoring — the universal doc model
 
-The matured cross-stack doc model (evolved in the NAI project, backported as the standard).
+The matured cross-stack doc model, backported as the standard.
 Stack-agnostic — Rust, Java/Quarkus, Bun/TS, Python, GitOps. Stack orchestration files
 reference this skill; they do not restate it.
 

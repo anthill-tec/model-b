@@ -52,7 +52,7 @@ Universal rules for ANY orchestrator, ANY project/stack. Verbose detail + failur
 - Agents self-commit despite "do not commit" — verify the COMMIT RANGE (`git diff <prev>..HEAD`), reset+recommit cleanly to collapse into orchestrator-controlled boundaries.
 - A crashed agent that left a COMPLETE uncommitted diff is salvaged (assess gates + commit), not re-run.
 - **After an interrupted or killed agent, inspect `git status` (untracked files too)** before reporting or re-dispatching; reconcile its partial work explicitly.
-- **Stop a stalled sub-agent before taking over** or dispatching the next phase (abort it through the pi-subagents `subagent` tool) — otherwise two agents share one tree.
+- **Stop a stalled sub-agent before taking over** or dispatching the next phase (stop it through the harness's sub-agent control) — otherwise two agents share one tree. An agent reporting changes it did not make signals overlapping execution: check the tree. Brief agents to run tests in the foreground, so none stalls waiting on a background run.
 
 ## Integration / wire-the-call-path GATE (EVERY CR)
 - Every feature must be WIRED into the call path and proven by an INTEGRATION test exercising the real caller→new-code→result seam — not unit-only, not E2E-only.
@@ -97,7 +97,7 @@ Universal rules for ANY orchestrator, ANY project/stack. Verbose detail + failur
 - CR-coupled doc edits ride the feature branch; standalone docs commit to `develop`.
 
 ## Close-out
-- Close-out = transition the CR's TRACKING STATE to COMPLETED via the stack's finish/close tool (the ChangeSet-DB / queue row) — that IS the close-out. Where tracking is DB-based, it is the ONLY step: do NOT hand-edit a deprecated spec `Status:` field (scripts read the DB, not the spec), and do NOT touch the README — README updates are RELEASE-branch only (version + CI badges) per the project's rules, NEVER a per-CR delivery entry in develop, and NEVER a track's job (parallel tracks editing the shared README collide). Never a `## Close-out` section in the CR spec. Run the stack's `check-cr-close` gate.
+- Close-out = transition the CR's tracking state to COMPLETED on the Crucible board — `cr-close --commit <sha> --agent <id>` IS the close-out. Do NOT hand-edit anything else for it: the README is RELEASE-branch only (version + CI badges) per the project's rules, NEVER a per-CR delivery entry in develop, and NEVER a track's job (parallel tracks editing the shared README collide). Never a `## Close-out` section in the CR spec. Run the stack's `check-cr-close` gate where the stack ships one.
 - **Read the Crucible plan before `cycle-done`, `cr-close`, `finish` or proposing a merge** — every cycle, VERIFY included, must be done.
 - **Close-out is the LAST commit on the feature branch** — after the merge, touch zero docs for the shipped CR. Run a post-merge develop gate only when develop moved since the branch point (or several CRs land together); never re-run a gate after a docs-only sync.
 
