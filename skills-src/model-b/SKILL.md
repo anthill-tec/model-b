@@ -63,6 +63,7 @@ Electronics (anthill-forge / hw tooling / electronics agents+skills) is EXCLUDED
 
 ## 7. Operating rules (every role)
 
+- **The Crucible board is the task list.** The cycle plan is filed complete in Crucible at feature start; no separate todo list is kept — resume from the board.
 - **Confirm destructive operations** before executing them; delegate super-user operations to the user.
 - **Never kill a user-visible process** — describe what and why, and let the user kill it.
 - **Edit files with the harness's file-edit capability or ast-grep, never `sed`**; if a bulk text edit seems to need `sed`, surface it first.

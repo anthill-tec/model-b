@@ -37,7 +37,7 @@ Standard order:
 7. `## Non-goals` / `## Out of scope`.
 
 Rules:
-- **No `## Cycle Plan`** — cycle breakdown lives in the orchestrator's task list / board, not the spec.
+- **No `## Cycle Plan`** — cycle breakdown lives in the Crucible plan on the board, not the spec.
 - **No `## Resolved design decisions` / `## Open questions`** unless the original spec had them — inline resolutions into the relevant scope section.
 - **No version-number bumps** ("v1.1") inside the spec — git history is the version control; use date-stamped inline notes.
 - No architectural-baseline / discovery narrative — that's PRD/DN material.

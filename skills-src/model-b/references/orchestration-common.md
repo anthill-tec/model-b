@@ -9,7 +9,7 @@ Universal rules for ANY orchestrator, ANY project/stack. Verbose detail + failur
 - **Dispatched sub-agents** (RED/GREEN/VERIFY/FIX) → AGENTS.md.
 
 ## Session lifecycle — bootstrap ↔ shutdown
-- Every orchestrator session is BRACKETED by two skills: **`/bootstrap <role>`** at start (register + start the Sandesh notifier through the Model B watcher — or, without it, as a background process that notifies you when it exits — recover carried todos, load queue/hold per role) and **`/shutdown`** at end (finish the active step, drain todos + merge the active CR, leave no dangling/uncommitted work, ack, then kill the notifier LAST).
+- Every orchestrator session is BRACKETED by two skills: **`/bootstrap <role>`** at start (register + start the Sandesh notifier through the Model B watcher — or, without it, as a background process that notifies you when it exits — reload the in-flight cycle from the board, load queue/hold per role) and **`/shutdown`** at end (finish the active step, drain the plan's open cycles + merge the active CR, leave no dangling/uncommitted work, ack, then kill the notifier LAST).
 - **Asymmetry:** `/bootstrap` takes the role as its verb because it ESTABLISHES identity at start; **`/shutdown` takes no role arg** — a running session already knows its role, and a Sandesh shutdown directive is already addressed to one orchestrator. Only `/shutdown`'s optional `emergency` flag matters.
 - `/shutdown` is **graceful by default**; an **`emergency`** flag (power-failure-class) switches to immediate fast-abort (close the active write, stash/preserve, best-effort ack). Fast-abort is permitted ONLY under the flag.
 - **The notifier-kill at shutdown is the SINGLE override of the relaunch-on-exit prime directive** — everywhere else a stopped watcher is relaunched the same turn (never left dead), by the Model B watcher itself or by you on the fallback path — except after an error or a terminal exit on the Model B watcher, or a terminal exit (`3`/`4`/`5`: tombstoned, evicted, already live) on the fallback path, which is never relaunched; ONLY at a confirmed shutdown's final step is it killed and not relaunched. Keep it alive through the whole teardown (to receive acks / a late emergency-stop).
@@ -29,11 +29,11 @@ Universal rules for ANY orchestrator, ANY project/stack. Verbose detail + failur
 - **Gap-analysis output ≠ spec.** Findings/rationale go to the user + commit message; the spec just BECOMES the corrected contract. No DRIFT-N tags, no "gap-analysis resolutions", no file:line breadcrumbs in the spec.
 
 ## Cycle discipline
-- **Cycle = ONE todo = RED→GREEN together** (never split RED and GREEN into two todos).
-- Todo list holds IMPLEMENTATION cycles + VERIFY + conditional FIX only — NOT design/admin work. Generate each todo when you reach it, not upfront.
-- Setup ordering: cycle plan → create todos → THEN claim the lane / start the worktree.
+- **The Crucible board IS the task list — there is no separate todo list.** The plan is filed complete in Crucible at feature start; its cycles are the resume spine, and a session resumes by reading the board (`plans`, `next`, the active cycle).
+- **A cycle = ONE RED→GREEN unit** (never split RED and GREEN into two cycles).
+- The plan holds IMPLEMENTATION cycles + VERIFY + FIX cycles (a FIX cycle is added with `cycle-add --kind fix` when VERIFY needs one) — NOT design/admin work.
+- Setup ordering: gap-analysis → approval → `plan-file` → THEN the branch / worktree.
 - Intra-cycle: once approved, flow RED→GREEN→next without pausing between phases; pause only on drift or escalation.
-- **The cycle plan is filed complete in Crucible at feature start** — the board is the tracking surface; the todo list only mirrors the plan's cycles as the session's resume spine, never a second tracker.
 - **One active cycle at a time per orchestrator**, even for disjoint code — parallelism belongs to separate track orchestrators. An interjecting CR waits until the running cycle is closed on its merit; never activate a cycle while another is active.
 - **One cycle per coherent behaviour unit.** VERIFY + close-out is its own later cycle, never folded into a RED→GREEN cycle.
 - **A test written after its production code cannot go RED** — label that cycle BACKFILL and prove the test with a mutation kill, never under a `-RED` id.

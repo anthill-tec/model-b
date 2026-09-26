@@ -26,8 +26,8 @@ Worker-orchestrator-only rules. Read COMMON + TRACK. (Coordinator rules → MAIN
 ## Write the code-level spec in YOUR OWN worktree
 - Mainline sends settled FEATURES; the TRACK writes the code-level spec IN ITS WORKTREE → revert unwanted changes → gap-analyse (prevent drift) → cycle plan → present to Mainline for approval.
 - Do NOT auto-start the worktree and dispatch off your own bat.
-- Setup ordering: spec → cycle plan → create todos → present + get approval → THEN `worktree-flow start` + dispatch. Todos must exist before claiming the lane (they're the resume spine).
-- Design-first todo ordering: implementation cycles before chores within the plan.
+- Setup ordering: spec → gap-analysis → present + get approval → `plan-file` → THEN `worktree-flow start` + dispatch. The plan must be on the board before claiming the lane — its cycles are the resume spine; there is no separate todo list.
+- Design-first cycle ordering: implementation cycles before chores within the plan.
 
 ## Raise every approval/request to Mainline — NEVER the user
 - A track's SOLE contact is Mainline. Send a `--kind request` (`sandesh send`) for every question / blocker / approval / go-ahead; Mainline disposes or escalates and relays back.
@@ -49,7 +49,7 @@ Worker-orchestrator-only rules. Read COMMON + TRACK. (Coordinator rules → MAIN
 
 ## On a shutdown directive — invoke the `/shutdown` skill
 - A SHUTDOWN reaches a track as a Sandesh `directive` from Mainline (or `/shutdown` typed on your session). On fetching it, INVOKE the **`shutdown` skill** (`/shutdown`, plus `emergency` if the directive carries it — no role arg; you already know you're Track N) and follow it — do not improvise the teardown.
-- **Graceful (default):** finish the active step; if mid CR-cycle with active todos, **ESCALATE to Mainline** (mid-cycle, will drain + merge then ack) rather than stopping abruptly; drain the todo list + **merge the active CR back**; leave a clean worktree (commit WIP, no unmerged commits); **ack Mainline that you are safe to shut down** (the ack IS the indicator); then kill your notifier LAST.
+- **Graceful (default):** finish the active step; if mid CR-cycle with open cycles on the plan, **ESCALATE to Mainline** (mid-cycle, will drain + merge then ack) rather than stopping abruptly; drain the plan's open cycles + **merge the active CR back**; leave a clean worktree (commit WIP, no unmerged commits); **ack Mainline that you are safe to shut down** (the ack IS the indicator); then kill your notifier LAST.
 - **`emergency` flag:** close only the active write, fast-abort (no drain/merge; stash/preserve the worktree), best-effort ack, kill notifier.
 - The ack routes to MAINLINE (your sole contact) — to the user only if `/shutdown` was typed on your own session.
 
