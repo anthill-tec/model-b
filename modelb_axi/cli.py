@@ -375,7 +375,7 @@ def _deploy_stage(
     # \u00a7S1), their hashes, the recorded root and the prune list come from it.
     prior = load_install_toml(home)
     prior_files = manifest_entries(prior)
-    prior_hashes = {e["path"]: e["sha256"] for e in prior_files}
+    prior_hashes = {os.path.normpath(e["path"]): e["sha256"] for e in prior_files}
     unmanaged: list[str] = []
     try:
         manifest, skipped = deploy_assets(
@@ -451,7 +451,7 @@ def _prune_stage(
     report them; returns ``(removed, kept)``.
 
     ``prior_files`` are :func:`manifest_entries` (de-duplicated, the first
-    wins) and ``prior_hashes`` their hashes by path. The prior root is the
+    wins) and ``prior_hashes`` their hashes by normalised path. The prior root is the
     recorded ``target_root``, else this run's; a recorded root differing
     from this run's prunes nothing and warns. A corrupt entry (outside the
     stores) is dropped with one warning. Each kept (hand-modified) entry is

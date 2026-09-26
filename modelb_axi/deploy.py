@@ -334,7 +334,8 @@ def prune_assets(
     prior_root: Path, prior_files: list[dict], new_paths: set[str],
 ) -> tuple[list[str], list[str]]:
     """Prune every path the prior manifest records and the new one does
-    not (CR-MDB-040 §S1). Returns ``(removed, kept)``, target-root-relative:
+    not (CR-MDB-040 §S1), both compared after ``os.path.normpath``.
+    Returns ``(removed, kept)``, normalised and target-root-relative:
 
     * removed \u2014 the file under ``prior_root`` exists with its recorded
       hash; it is deleted, then each directory left empty, walking up and
@@ -350,13 +351,16 @@ def prune_assets(
     it as the cause."""
     removed: list[str] = []
     kept: list[str] = []
+    deployed = {os.path.normpath(p) for p in new_paths}
     try:
         for entry in prior_files:
-            rel = entry["path"]
+            # Compared, removed and reported by its normalised path: an entry
+            # spelled differently from a deployed path IS that path.
+            rel = os.path.normpath(entry["path"])
             store = store_root_of(rel)
-            if store is None or rel in new_paths:
+            if store is None or rel in deployed:
                 continue
-            path = prior_root / os.path.normpath(rel)
+            path = prior_root / rel
             if not path.is_file():
                 continue  # already gone: nothing to do, not reported
             if sha256_file(path) != entry["sha256"]:
