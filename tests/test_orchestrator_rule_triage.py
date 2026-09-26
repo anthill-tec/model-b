@@ -428,6 +428,13 @@ class TriageInventoryTest(_RealFileMixin):
         paths = [inventory_path(r["Source"]) for r in inventory]
         self.assertEqual(missing_required_sources(paths), [])
 
+    def test_inventory_lists_the_sandesh_no_cross_project_reads_memory(self):
+        """CR-MDB-042 VERIFY F7: a ``type: feedback`` memory created after the triage."""
+        inventory, triage = self.load()
+        path = f"~/.claude/projects/{SANDESH}/memory/no-cross-project-reads.md"
+        self.assertIn(path, [inventory_path(r["Source"]) for r in inventory])
+        self.assertIn(path, [triage_source(r["Source"])[0] for r in triage])
+
     def test_inventory_lists_nothing_from_ah_codeforge_or_sys_toolbox(self):
         inventory, _ = self.load()
         leaked = [r["Source"] for r in inventory
@@ -800,10 +807,30 @@ def model_b_common_files(root: Path) -> list[Path]:
     return [root / MODEL_B_SKILL] + sorted((root / MODEL_B_REFERENCES).glob("*.md"))
 
 
+#: The bundles the widened name gate (CR-MDB-042 AC3, amended) leaves out: ``bootstrap/`` and
+#: ``shutdown/`` until CR-MDB-041 (their reading order is its scope), and Crucible's imported
+#: bundles (byte-faithful).
+EXEMPT_BUNDLES = ("bootstrap", "shutdown", "crucible-register")
+EXEMPT_BUNDLE_PREFIXES = ("crucible-report-",)
+
+
+def model_b_owned_skill_files(root: Path) -> list[Path]:
+    """Every ``skills-src/**/*.md`` Model B owns: all of them but the exempt bundles'."""
+    out = []
+    for path in sorted((root / "skills-src").rglob("*.md")):
+        parts = path.relative_to(root / "skills-src").parts
+        if len(parts) > 1 and (parts[0] in EXEMPT_BUNDLES
+                               or parts[0].startswith(EXEMPT_BUNDLE_PREFIXES)):
+            continue
+        out.append(path)
+    return out
+
+
 class AbsorbedDestinationTest(_RealFileMixin):
-    #: 63 common + 9 stack:rust + 2 stack:arduino + 4 project:model-b — the 5 gap-analysis rows
-    #: included since C3 adopted the bundle (§S4; was 73 while they were excluded).
-    EXPECTED_TARGETS = 78
+    #: 63 common + 9 stack:rust + 2 stack:arduino + 4 project:model-b \u2014 the 5 gap-analysis rows
+    #: included since C3 adopted the bundle (\u00a7S4; was 73 while they were excluded) \u2014 plus the
+    #: Sandesh ``no-cross-project-reads`` memory inventoried at C5 FIX (``common``).
+    EXPECTED_TARGETS = 79
     #: The triage's five ``common`` rows destined for ``skills-src/gap-analysis/SKILL.md``.
     EXPECTED_GAP_ANALYSIS_TARGETS = 5
 
@@ -858,33 +885,107 @@ class AbsorbedNewSectionBodyTest(_RealFileMixin):
 
 
 class ModelBCommonTextNeutralTest(unittest.TestCase):
-    def test_model_b_common_files_are_the_skill_and_its_five_references(self):
-        files = model_b_common_files(REPO_ROOT)
-        self.assertTrue(all(p.is_file() for p in files), files)
-        self.assertEqual(len(files), 6, files)
+    """CR-MDB-042 AC3 (widened at 3b6555c): the name and tool gate covers every Model B-owned
+    ``skills-src/`` Markdown file, not only the ``model-b`` bundle and ``gap-analysis``."""
 
-    def test_model_b_common_text_names_no_project_or_orchestrator_note(self):
+    def test_model_b_owned_files_are_every_bundle_but_the_exempt_ones(self):
+        files = model_b_owned_skill_files(REPO_ROOT)
+        rels = {p.relative_to(REPO_ROOT).as_posix() for p in files}
+        for path in model_b_common_files(REPO_ROOT) + [REPO_ROOT / GAP_ANALYSIS_SKILL]:
+            self.assertIn(path.relative_to(REPO_ROOT).as_posix(), rels)
+        bundles = {rel.split("/")[1] for rel in rels if rel.count("/") > 1}
+        self.assertEqual(bundles, {"code-health", "cr-authoring", "crucible", "gap-analysis",
+                                   "git-workflow", "memory-templates", "model-b"})
+        self.assertIn("skills-src/memory-templates/rust-orchestration.md", rels)
+
+    def test_model_b_owned_text_names_no_project_or_orchestrator_note(self):
         problems = []
-        for path in model_b_common_files(REPO_ROOT):
+        for path in model_b_owned_skill_files(REPO_ROOT):
             problems += project_name_findings(path.relative_to(REPO_ROOT).as_posix(), read_text(path))
         self.assertEqual(problems, [])
 
-    def test_model_b_common_text_names_no_retired_harness_tool(self):
+    def test_model_b_owned_text_names_no_retired_harness_tool(self):
         problems = []
-        for path in model_b_common_files(REPO_ROOT):
+        for path in model_b_owned_skill_files(REPO_ROOT):
             problems += retired_tool_findings(path.relative_to(REPO_ROOT).as_posix(), read_text(path))
         self.assertEqual(problems, [])
 
-    def _gap_analysis_text(self) -> str:
-        path = REPO_ROOT / GAP_ANALYSIS_SKILL
-        self.assertTrue(path.is_file(), f"CR-MDB-042 \u00a7S4: {GAP_ANALYSIS_SKILL} does not exist")
+
+#: CR-MDB-042 \u00a7S2 rulings (user, 2026-09-26) the shipped skills must state.
+MODEL_B_COMMON = f"{MODEL_B_REFERENCES}/orchestration-common.md"
+MODEL_B_MAINLINE = f"{MODEL_B_REFERENCES}/orchestration-mainline.md"
+MODEL_B_TRACK = f"{MODEL_B_REFERENCES}/orchestration-track.md"
+CR_AUTHORING_SKILL = "skills-src/cr-authoring/SKILL.md"
+PATCH_CR_FILES = (MODEL_B_MAINLINE, MODEL_B_TRACK, CR_AUTHORING_SKILL)
+#: The superseded "fix the spec in the worktree" model, as the shipped text phrased it.
+SUPERSEDED_RESPEC_PHRASES = (
+    "sends the changes to the owning track, which edits in its worktree",
+    "writes the code-level spec in its worktree",
+    "a dated scope-reconciliation note",
+)
+_FIX_INSIDE_VERIFY = re.compile(
+    r"\bfix\b[^.\n]{0,80}\b(?:inside|within|under)\b[^.\n]{0,20}\bverify\b(?:[^.\n]{0,10}\bcycle)",
+    re.IGNORECASE)
+
+
+def fix_inside_verify_findings(rel: str, text: str) -> list[str]:
+    """Lines that run a FIX inside the VERIFY cycle \u2014 unless the same line says never."""
+    return [f"{rel}:{n}: {line.strip()}" for n, line in enumerate(text.splitlines(), 1)
+            if _FIX_INSIDE_VERIFY.search(line) and not re.search(r"\bnever\b", line, re.I)]
+
+
+class ShippedRulingsTest(unittest.TestCase):
+    """CR-MDB-042 AC (rulings): the shipped skills state the \u00a7S2 rulings and nothing contradicts
+    them \u2014 the mainline and track references and ``cr-authoring`` agree on the patch-CR rule."""
+
+    def _text(self, rel: str) -> str:
+        path = REPO_ROOT / rel
+        self.assertTrue(path.is_file(), rel)
         return read_text(path)
 
-    def test_gap_analysis_skill_names_no_project_or_orchestrator_note(self):
-        self.assertEqual(project_name_findings(GAP_ANALYSIS_SKILL, self._gap_analysis_text()), [])
+    def test_mainline_track_and_cr_authoring_each_state_the_patch_cr_rule(self):
+        missing = [rel for rel in PATCH_CR_FILES if "patch CR" not in self._text(rel)]
+        self.assertEqual(missing, [])
 
-    def test_gap_analysis_skill_names_no_retired_harness_tool(self):
-        self.assertEqual(retired_tool_findings(GAP_ANALYSIS_SKILL, self._gap_analysis_text()), [])
+    def test_each_limits_in_worktree_spec_edits_to_status_and_own_contract_defects(self):
+        missing = [rel for rel in PATCH_CR_FILES if "own contracts" not in self._text(rel)]
+        self.assertEqual(missing, [])
+
+    def test_none_says_a_track_re_specs_its_cr_in_the_worktree(self):
+        found = [f"{rel}: {phrase!r}" for rel in PATCH_CR_FILES for phrase in SUPERSEDED_RESPEC_PHRASES
+                 if phrase in self._text(rel).lower()]
+        self.assertEqual(found, [])
+
+    def test_mainline_never_edits_an_in_progress_spec_on_develop(self):
+        self.assertIn("never edits an IN_PROGRESS CR's spec on develop", self._text(MODEL_B_MAINLINE))
+
+    def test_common_gives_an_approved_verify_finding_its_own_fix_cycle(self):
+        body = section_body(self._text(MODEL_B_COMMON), "Cycle discipline") or ""
+        for phrase in ("own FIX cycle", "cycle-add --kind fix", "never inside the VERIFY cycle"):
+            self.assertIn(phrase, body)
+
+    def test_no_owned_skill_runs_a_fix_inside_the_verify_cycle(self):
+        found = []
+        for path in model_b_owned_skill_files(REPO_ROOT):
+            found += fix_inside_verify_findings(path.relative_to(REPO_ROOT).as_posix(), read_text(path))
+        self.assertEqual(found, [])
+
+
+class CapabilityWordingTest(unittest.TestCase):
+    """CR-MDB-042 VERIFY F5/F6: stack templates route generator changes to Model B, and the
+    ``model-b`` bundle names capabilities, never a harness tool (DN-multi-harness \u00a7D18)."""
+
+    def test_memory_templates_name_no_generator_stacks_path(self):
+        found = [f"{p.name}:{n}" for p in sorted((REPO_ROOT / "skills-src" / "memory-templates").glob("*.md"))
+                 for n, line in enumerate(read_text(p).splitlines(), 1) if "generator/stacks/" in line]
+        self.assertEqual(found, [])
+
+    def test_model_b_bundle_names_no_subagent_tool(self):
+        pattern = re.compile(r"`subagent`\s+tool|\bsubagent tool\b")
+        found = [f"{p.relative_to(REPO_ROOT).as_posix()}:{n}"
+                 for p in sorted((REPO_ROOT / "skills-src" / "model-b").rglob("*.md"))
+                 for n, line in enumerate(read_text(p).splitlines(), 1) if pattern.search(line)]
+        self.assertEqual(found, [])
 
 
 def _target(rel: str, section_name: str, cls: str = "common", note: str = "Rule: x.") -> tuple:
@@ -982,6 +1083,25 @@ class AbsorbRulesOnSyntheticTreeTest(unittest.TestCase):
             "x.md:3: names ['Roundhouse'] outside a dated provenance citation",
             "x.md:5: names ['NAI'] outside a dated provenance citation",
         ])
+
+    def test_owned_skill_files_skip_bootstrap_shutdown_and_crucible_imports(self):
+        for rel in ("skills-src/README.md", "skills-src/model-b/SKILL.md",
+                    "skills-src/memory-templates/rust-orchestration.md",
+                    "skills-src/bootstrap/SKILL.md", "skills-src/shutdown/SKILL.md",
+                    "skills-src/crucible-register/SKILL.md",
+                    "skills-src/crucible-report-bun/SKILL.md", "skills-src/crucible/SKILL.md"):
+            self._write(rel, "# x\n")
+        self.assertEqual([p.relative_to(self.root).as_posix() for p in model_b_owned_skill_files(self.root)],
+                         ["skills-src/README.md", "skills-src/crucible/SKILL.md",
+                          "skills-src/memory-templates/rust-orchestration.md",
+                          "skills-src/model-b/SKILL.md"])
+
+    def test_fix_inside_verify_is_flagged_unless_the_line_says_never(self):
+        text = ("Run the FIX agent inside the same VERIFY cycle.\n"
+                "A finding is fixed in its own FIX cycle, never inside the VERIFY cycle.\n"
+                "FIX agents run after VERIFY.\n")
+        self.assertEqual(fix_inside_verify_findings("x.md", text),
+                         ["x.md:1: Run the FIX agent inside the same VERIFY cycle."])
 
     def test_retired_harness_tools_flagged_per_line_sandesh_mcp_included(self):
         text = ("Track the plan with TaskList.\n"

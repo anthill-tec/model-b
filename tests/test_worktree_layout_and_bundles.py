@@ -125,8 +125,8 @@ CHEZMOI_AS_BUNDLE_RE = re.compile(
 AGENTS_MD = REPO_ROOT / "AGENTS.md"
 #: The ``skills-src/`` row of AGENTS.md's Key Directories table.
 BUNDLE_ROW_RE = re.compile(r"^\| `skills-src/` \| (\d+) skill bundles\. (.*)$", re.MULTILINE)
-#: The AC's figures: 13 bundles, 6 imported from Crucible, and the Model-B-owned remainder. The
-#: owned figure is DERIVED (13 - 6), never a literal: CR-MDB-023 keeps the owned set size-free
+#: The AC's figures: 14 bundles (8 Model B-owned, 6 imported from Crucible). The owned figure is
+#: DERIVED (14 - 6), never a literal: CR-MDB-023 keeps the owned set size-free
 #: (``test_code_health_skill.ModelBOwnedTestSetS4Test``), so the total and the imported set carry
 #: the pin.
 EXPECTED_BUNDLE_COUNT, EXPECTED_IMPORTED = 14, 6
