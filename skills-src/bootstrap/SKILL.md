@@ -161,6 +161,8 @@ you recover it — both roles recover.
      — readiness: `NEXT <cr>` / `HOLD <cr>` (`depends_on` not all COMPLETED) / `DRAINED`.
      Queue membership, release, wave, seq and dependencies live in Crucible (CR-MDB-028).
    (worktree-flow now emits a TOON envelope on stdout; the human board is on stderr.)
+   - **Reconcile deferred/future-feature notes against the board** — cross-check each
+     against the Crucible board (and the code when in doubt) and reconcile any drift.
 2. **Check which Tracks are up and running** — `sandesh addressbook --project <Project>`
    is Mainline's track-liveness probe. Read the flags per track:
    - `listening:true` → notifier live: the track is **up and wake-reachable** (a directive
