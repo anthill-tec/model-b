@@ -980,3 +980,27 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   and moves skills to its tools + envelope. Not a 1.0.0 blocker (the Model B watcher stays until
   parity). CR-MDB-041 also gains (from CR-042 C2) the removal of the todo-list steps in
   `bootstrap`/`shutdown`: the board is the task list.
+- 2026-09-26 — **CR-MDB-042 MERGED** (develop `18a0045`; plan 115, cycles 156–160). PRD D5 (AMENDED
+  2026-09-26): the orchestrator is one role defined once in Model B's skills. Triage
+  `audits/2026-09-26-orchestrator-rule-triage.md` (user-reviewed): 133 sources (3 `ORCHESTRATOR-*` notes,
+  `~/.claude/AGENTS.md` Non-negotiables, the feedback memories of NAI, Crucible, Sandesh, Model B,
+  Arduino-Valmik, Arduino-PumpControl), 199 items classed common / stack / project / duplicate / stale;
+  every common/stack/Model-B rule absorbed into `model-b` (references + a new "Operating rules"
+  section), `gap-analysis`, `cr-authoring`, `git-workflow`, `crucible`, `code-health` and the rust +
+  new arduino memory templates (the scaffold emits the latter for arduino only). `gap-analysis` adopted
+  as a Model B bundle (14 bundles). User rulings now shipped: the Crucible board is the task list (no
+  todo list); a scope change mid-implementation → a patch CR; an approved VERIFY finding → its own FIX
+  cycle; Sandesh via its CLI only, never MCP. Name/retired-tool gate over every Model B-owned skill
+  (`bootstrap`/`shutdown` exempt until CR-041). Suite **1433 / 0 / 0 (real `HOME`), 1433 / 0 / 9 skips
+  (empty `HOME`)**, 60 modules; python3.11 1 skip. VERIFY C4 FAIL (F1: shipped "fix the spec in the
+  worktree" contradicted the patch-CR ruling; F3: rules inside multi-rule items dropped silently) →
+  C5 FIX. Red intermediates (bisect skips): `99e01d4`, `b00d87f`..`c048fc8` (wip triage groups),
+  `6a0f505`, `510481a`, `3c36255`. Agents could not run python3.11; the orchestrator did.
+  **Release steps added (the user):** after the reinstall, delete the absorbed sources — the three
+  `ORCHESTRATOR-*` notes and the listed feedback memories under `~/.claude/projects/*/memory/`, the
+  five Java-reference originals in `~/.claude/memory/`, and the unmanaged `~/.agents/skills/gap-analysis/`
+  (delete it BEFORE the reinstall, or the installer reports it unmanaged and will not deploy over it).
+  **Other projects** move their `project:<name>` rows into their own `AGENTS.md` in their own sessions
+  (NAI 11, Crucible 8, Roundhouse 5). **Sandesh:** `@anthill-tec/sandesh-pi@0.3.6` published to npm
+  (#1397/#1398) and installed in the user's Pi; its wake loop stays off (no `$SANDESH_ADDRESS`) until
+  Sandesh ships wake supervision, so Model B's watcher remains the one loop.
