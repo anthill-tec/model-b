@@ -47,7 +47,7 @@ Queue rows enumerate the whole delivery (structure only). **Live status lives on
 | [CR-MDB-034](CR-MDB-034-archive-mapping.md) | `archive/mapping.md`: a living, gated map of where every relocated path went (supersedes CR-MDB-012 — a release is NOT a CR) | 5 | — |
 | [CR-MDB-039](CR-MDB-039-worktree-isolation-on-pi.md) | Worktree isolation on Pi: enter/exit a worktree from the Model B Pi package (pi-subagents workspace provider + `WF_WORKTREE_ROOT`) | 5 | 031 |
 | [CR-MDB-040](CR-MDB-040-installer-prune.md) | A redeploy removes what it no longer deploys (PRD §4 criterion 6) | 5 | 035 |
-| [CR-MDB-042](CR-MDB-042-orchestrator-definitions-absorbed.md) | Orchestrator definitions absorbed into the common skill: triage the per-project `ORCHESTRATOR-*` notes and Model B's project memory into common / stack / project (PRD D5 amendment) | 5 | — |
+| [CR-MDB-042](CR-MDB-042-orchestrator-definitions-absorbed.md) | Orchestrator definitions absorbed into the common skills: triage the `ORCHESTRATOR-*` notes, the global non-negotiables and every Model B project's feedback memories into common / stack / project; adopt `gap-analysis` as a Model B bundle (PRD D5 amendment) | 5 | — |
 | [CR-MDB-041](CR-MDB-041-bootstrap-reads-scaffolded-files.md) | Bootstrap and shutdown read the files `init` scaffolds (`AGENTS.md`, `.env`, `docs/memory/INDEX.md`), not `ORCHESTRATOR-<Project>`/`MEMORY.md` | 5 | 042 |
 
 **— v1.0.0 ships here —** (the release is a BOUNDARY EVENT, not a queue row: the wave drains, the user approves, `git-workflow` §Releases executes it, a milestone records it afterwards. No release CR, no close-out wave.)
@@ -955,3 +955,16 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   the orchestrator ran it. Release step now enabled: the real reinstall prunes the retired
   `chezmoi` and `crucible-report-vscode` bundles (July manifest, no `target_root` → pass
   `--target-root`).
+- 2026-09-26 — **CR-MDB-042 gap analysis: SPEC_UPDATE_NEEDED → spec rewritten, user-ruled.** (1) Sources
+  widened: besides the three `ORCHESTRATOR-*` notes, `~/.claude/AGENTS.md` "Non-negotiables" and the
+  `type: feedback` memories of NAI 47, Crucible 38, Sandesh 7, Model B 10, Arduino-Valmik 17,
+  Arduino-PumpControl 10 (`ah-codeforge`, `sys-toolbox` out: not Model B projects). (2) The shipped
+  `orchestration-common.md` names `gap-analysis` as the single authority but Model B never shipped it
+  (only `~/.agents/skills/gap-analysis/`) — adopted as a `skills-src/` bundle in this CR. (3) Tests
+  cannot read `~/.claude`, so the triage records each source's sha256 + headings and the suite checks
+  the triage against that record; the orchestrator and VERIFY re-derive it from the real sources.
+  (4) User gate: the triage table is approved before any rule is absorbed. Also recorded: the board's
+  `next` reads the head of the wave sequence, so filing a CR that an already-sequenced CR depends on
+  needs a `wave-sequence` call (042 was re-sequenced ahead of 041). Nit routed forward:
+  `tests/test_installer_prune.py:1114` accepts a dict return from `prune_assets` that the merged
+  tuple shape makes dead (pi-lens type warning).

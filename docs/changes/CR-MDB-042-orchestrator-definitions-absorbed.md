@@ -1,6 +1,6 @@
-# CR-MDB-042 — Orchestrator definitions absorbed into the common skill
+# CR-MDB-042 — Orchestrator definitions absorbed into the common skills
 
-**Status:** PENDING (filed 2026-09-26)
+**Status:** PENDING (filed 2026-09-26; gap analysis 2026-09-26)
 **Type:** refactor
 **Priority:** P1 — release 1.0.0, wave 2. CR-MDB-041 repoints `bootstrap`/`shutdown` away from the
 per-project orchestrator note, and the rules that note carries must have a home first.
@@ -12,76 +12,116 @@ into skills); DN-multi-harness §D18 (skills name capabilities and CLIs, never h
 
 ## Context
 
-The orchestrator rules exist in two places. The `model-b` skill ships them to every project
-(`skills-src/model-b/references/orchestration-{common,mainline,track}.md`, `sub-agent-procedure.md`,
-`sandesh.md`). Per-project notes from the Claude Code era hold more of them, in the user's home and
-outside any repository:
+Model B ships the orchestrator definition as skills: `model-b` (`references/orchestration-
+{common,mainline,track}.md`, `sub-agent-procedure.md`, `sandesh.md`), `cr-authoring`,
+`git-workflow`, `crucible`, `bootstrap`, `shutdown`, and the stack material (`code-health`,
+`memory-templates/<stack>-orchestration.md`). The rules learned while running it were written, in
+the Claude Code era, to per-project memory under `~/.claude/projects/<slug>/memory/`, outside any
+repository:
 
-| Source | Lines | Content |
+| Source | Items | Nature |
 |---|---|---|
-| `~/.claude/projects/<nai>/memory/ORCHESTRATOR-RULES.md` | 945 | Tier map; two-phase workflow; worktree isolation; cycle discipline; dispatch; approval gates; escalation; cargo/Crucible knobs; CR spec discipline; code quality; tools; e2e; question economy (§1–§13) |
-| `~/.claude/projects/<nai>/memory/ORCHESTRATOR-NAI.md` | 29 | Identity (Crucible agent-id tiers); gap-analysis; conventions pointers; stack pointer; Sandesh |
-| `~/.claude/projects/<roundhouse>/memory/ORCHESTRATOR-Roundhouse.md` | 78 | Identity; Sandesh; Crucible; queue-only board; Git |
-| `~/.claude/projects/<model-b>/memory/` | `MEMORY.md` + 14 topic files | Orchestrator supervision, briefs, Crucible prod-only, register-first, fix-the-source, provider services, comms discipline; plus Model B project facts |
+| `<nai>/memory/ORCHESTRATOR-RULES.md` | 945 lines, §1–§13 | orchestrator rules with NAI and rust overrides |
+| `<nai>/memory/ORCHESTRATOR-NAI.md` | 29 lines | NAI identity, Sandesh, pointers |
+| `<roundhouse>/memory/ORCHESTRATOR-Roundhouse.md` | 78 lines | Roundhouse identity, Sandesh, Crucible, board, git |
+| `~/.claude/AGENTS.md` "Non-negotiables" | 7 rules | global agent rules; Pi has no equivalent file |
+| `type: feedback` memories of NAI, Crucible, Sandesh, Model B, Arduino-Valmik, Arduino-PumpControl | 47, 38, 7, 10, 17, 10 files | rules learned per project; most are about the orchestrator's role |
 
-`orchestration-common.md` was distilled from `ORCHESTRATOR-RULES.md`, so much of that file is
-already common, sometimes verbatim. The rest mixes three kinds of content (PRD D5, amended):
-rules common to every orchestrator, stack-specific execution (which skill or client performs a
-role step), and project facts.
+(`<nai>` = `-home-antonyj-Documents-data-projects-nai`, and so on. Roundhouse's memory holds no
+feedback files; `ah-codeforge` and `sys-toolbox` are not Model B projects and are out of scope.)
+
+`orchestration-common.md` was distilled from `ORCHESTRATOR-RULES.md`, so part of that file is
+already common, sometimes verbatim. The same rule often appears in several projects (for example
+"gap analysis needs user approval" in both Arduino projects).
+
+`orchestration-common.md` makes the `gap-analysis` skill "the single authority" for gap-analysis
+dimensions, but Model B does not ship it: it exists only as `~/.agents/skills/gap-analysis/SKILL.md`
+(258 lines), outside `skills-src/`, so a fresh install leaves that reference dangling. It still
+tells the reader to locate the spec and sister projects through `CLAUDE.md` (lines 20, 21, 58, 71).
 
 The five Java references copied into `skills-src/memory-templates/` (CR-MDB-006) are still present
 in `~/.claude/memory/`; `archive/mapping.md` records them as `moved` without saying so.
 
 ## Scope
 
-### §S1 — Triage
-Every rule-bearing section of the four sources above is classified once, in
-`audits/<date>-orchestrator-note-triage.md`, one row per section (heading or topic file):
+### §S1 — Inventory and triage
+`audits/2026-09-26-orchestrator-rule-triage.md` holds two tables.
+
+**Inventory**, one row per source file: path (home-relative), sha256 at triage time, and the list
+of rule-bearing headings (`##`/`###`) for the three notes and `~/.claude/AGENTS.md`; a topic file
+counts as one item named by its file name.
+
+**Triage**, one row per inventory item (heading or topic file):
 
 | Column | Values |
 |---|---|
-| Source | file + heading |
+| Source | inventory file + heading (or topic file name) |
 | Class | `common` · `stack:<stack>` · `project:<project>` · `duplicate` · `stale` |
-| Destination | file + section it now lives in (`common`, `stack`, `duplicate`); the project's `AGENTS.md` (`project`); `—` (`stale`) |
-| Note | for `duplicate`, the existing section it matches; for `stale`, why (retired mechanism, Claude Code tool, superseded rule) |
+| Destination | skill file + section (`common`, `stack`); the project's `AGENTS.md` (`project`); the existing section it repeats (`duplicate`); `—` (`stale`) |
+| Note | for `stale`, why: a retired mechanism, a Claude Code tool with no Pi equivalent, a superseded rule, or the excluded electronics stack |
+
+`common` means the rule applies to every orchestrator whatever the project and stack; its
+destination is the Model B skill that owns the topic (`model-b` references, `gap-analysis`,
+`cr-authoring`, `git-workflow`, `crucible`, `bootstrap`, `shutdown`). `stack:<stack>` is a rule
+about which skill or client performs a role step for that stack (`code-health`,
+`memory-templates/<stack>-orchestration.md`); a stack without a template gets one only when a rule
+needs it. The imported bundles (`crucible-register`, `crucible-report-*`) are Crucible's and are no
+destination; a rule for them is `stale` with the note "route to Crucible" and is listed in the
+merge note.
 
 A rule naming a Claude Code tool or a retired mechanism is rewritten against today's mechanism or
 classified `stale`, never copied as written (DN §D18).
 
-### §S2 — Common rules absorbed
-Every `common` row lands in the `model-b` skill references, in the section its topic belongs to.
-The common text names no project (no `NAI`, `Roundhouse`, `ModelB` or project-specific CR id as a
-rule's subject; a CR id may remain as a dated provenance citation) and no harness tool.
+**User gate.** The triage is reviewed and approved by the user before anything is absorbed.
 
-### §S3 — Stack rules absorbed
-Every `stack:<stack>` row lands in that stack's skill or `<stack>-orchestration` memory template.
+### §S2 — Absorb
+Every `common` and `stack` row lands at its destination, as a rule plus, where needed, a one-line
+reason; no case histories. A rule already present is not repeated (its row is `duplicate`). The
+common text names no project (`NAI`, `Roundhouse`, `ModelB`, `Crucible project`) and no
+`ORCHESTRATOR-` note as a rule's subject; a CR id may remain as a dated provenance citation. It
+names no harness tool retired by CR-MDB-031.
 
-### §S4 — Project facts
-Model B's own `project:model-b` rows land in `model-b/AGENTS.md`. Rows for other projects stay
-listed in the triage for those projects' own sessions (non-goal).
+### §S3 — Project facts
+Model B's own `project:model-b` rows land in `model-b/AGENTS.md`. Rows for other projects stay in
+the triage for those projects' own sessions (non-goal).
+
+### §S4 — `gap-analysis` becomes a Model B bundle
+`~/.agents/skills/gap-analysis/SKILL.md` is adopted as `skills-src/gap-analysis/SKILL.md`, with its
+`CLAUDE.md` references replaced by the project's `AGENTS.md`. The installer deploys it like every
+other bundle (no stack scope). Its absorbed rules (§S2) land here.
 
 ### §S5 — Mapping
-`archive/mapping.md` gains one row per source (the three notes and the Model B project-memory
-directory), kind `absorbed`, destination the triage file. The five Java-reference rows state that
-the original remains in `~/.claude/memory/` until the user removes it.
+`archive/mapping.md` gains one row per inventory source group (the three notes, `~/.claude/AGENTS.md`,
+each project's feedback memories) of kind `absorbed` with the triage file as destination, and a row
+for `~/.agents/skills/gap-analysis/` of kind `moved` to `skills-src/gap-analysis/`. The five
+Java-reference rows state that the original remains in `~/.claude/memory/` until the user removes
+it.
 
 ## Acceptance criteria
 
-- [ ] The triage file exists, covers every `##`/`###` heading of the three notes and every Model B
-      topic file, and every row carries one of the five classes.
+- [ ] The triage file's inventory lists every source above with its sha256 and headings, and every
+      inventory item has exactly one triage row carrying one of the five classes — checked by a
+      test reading the file. The orchestrator and VERIFY re-derive the inventory from the real
+      sources (read-only) and it matches.
 - [ ] Every `common`, `stack` and `project:model-b` destination exists: the named file contains the
       named section — checked by a test reading the triage table.
-- [ ] No `skills-src/model-b/references/*.md` line names `NAI`, `Roundhouse` or `ORCHESTRATOR-` as a
-      rule's subject, and none names a harness tool retired by CR-MDB-031 — checked by a test.
-- [ ] `archive/mapping.md` carries the four new rows and the corrected Java-reference rows; the
-      mapping gate passes.
-- [ ] The suite is green on real `HOME`, empty `HOME` and Python 3.11; baselines re-measured in
-      `AGENTS.md` if the counts change.
+- [ ] No `skills-src/model-b/references/*.md` or `skills-src/gap-analysis/SKILL.md` line names
+      `NAI`, `Roundhouse` or `ORCHESTRATOR-` other than inside a dated provenance citation, and none
+      names a harness tool retired by CR-MDB-031 — checked by a test.
+- [ ] `skills-src/gap-analysis/SKILL.md` exists, names no `CLAUDE.md`, and a sandboxed install
+      deploys it to `.agents/skills/gap-analysis/SKILL.md`; the `orchestration-common.md` reference
+      to it resolves.
+- [ ] `archive/mapping.md` carries the new rows and the corrected Java-reference rows; the mapping
+      gate passes.
+- [ ] The suite is green on real `HOME`, empty `HOME` and Python 3.11; `AGENTS.md` module count and
+      baselines re-measured.
 
 ## Non-goals
 
-- No write to `~/.claude`. Deleting the absorbed notes and the Java-reference originals is a
-  release step the user performs.
-- No edit to another project's repository; NAI and Roundhouse move their `project:` rows into their
-  own `AGENTS.md` in their own sessions.
+- No write to `~/.claude` or `~/.agents`. Deleting the absorbed notes and memories, the Java-reference
+  originals and the unmanaged `~/.agents/skills/gap-analysis/` (the installer will not overwrite an
+  unmanaged file) is a release step the user performs, before the reinstall.
+- No edit to another project's repository; each project moves its `project:` rows into its own
+  `AGENTS.md` in its own session.
 - No change to `bootstrap`/`shutdown` reading order — CR-MDB-041.
+- `project`, `reference` and `user` memories are project facts, not rules, and are not triaged.
