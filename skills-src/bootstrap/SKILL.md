@@ -147,7 +147,9 @@ do the minimum:
 
 The Crucible board is the resume spine. Reload the in-flight work from the board, in order: `<client> plans` — each plan's active cycle, its id and label (none on a closed or pending plan) — then `<client> next` for what is ready. Never reload it from a todo list, and never invent work the board does not show.
 
-A Track's active CR lives in its worktree, `.worktrees/<cr>`; check it with
+A Track's active CR lives in its worktree, `.worktrees/<cr>`. A Track resuming an in-flight CR
+re-enters that worktree before any write: `modelb_worktree_enter` with `.worktrees/<cr>` (the
+entered worktree is per-session state, so a new session starts outside it). Check it with
 `~/.agents/scripts/worktree-flow.py status` (latest committed phase, ahead/behind). If the
 board shows no active cycle, no mid-cycle work was carried — note it and continue.
 
@@ -207,7 +209,7 @@ you reload it — both roles reload.
 3. **Report status to MAINLINE** via
    `sandesh send --project <Project> --from "<your address>" --to "Mainline - <Project>" --kind request --subject "…" --body "…"`:
    - If Step 2 found an **in-flight cycle** on the board (a CR's active cycle):
-     resume it from the board and tell Mainline — e.g.
+     re-enter its worktree (Step 2), resume it from the board and tell Mainline — e.g.
      *"Track N online; resuming CR-XXX, active cycle <label>,
      awaiting confirmation to continue."*
    - If **no carried work** (idle): *"Track N online, idle, awaiting assignment."*
