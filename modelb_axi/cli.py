@@ -221,6 +221,13 @@ def _add_init_parser(subparsers) -> None:
         ),
     )
     init.add_argument("--owner", metavar="OWNER", help="REPO_OWNER registry value")
+    init.add_argument(
+        "--sandesh-project", metavar="ID",
+        help=(
+            "SANDESH_PROJECT registry value, the Sandesh project id exactly "
+            "as Sandesh knows it (default: --name without whitespace)"
+        ),
+    )
     init.add_argument("--target", metavar="DIR", help="project directory to scaffold into")
     init.add_argument(
         "--dry-run", action="store_true",
