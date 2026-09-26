@@ -55,6 +55,7 @@ from pathlib import Path
 from modelb_axi.config import serialize_install_toml
 from modelb_axi.deploy import DeployError
 from tests._helpers import decode_axi as _decode
+from tests._helpers import md_section
 from tests._helpers import write_executable as _write_exe
 from tests.pi_capability_sandbox import (
     AGENT_DIR_ENV,
@@ -79,6 +80,14 @@ RETIRED_HOOK = ".agents/hooks/scripts/retired-hook"
 RETIRED_TOOL = ".agents/scripts/retired-tool.py"
 #: The three store roots (§S1).
 STORE_ROOTS = (".agents/skills", ".agents/hooks/scripts", ".agents/scripts")
+#: A skill every stack selection deploys, and spellings of it that
+#: normalise to it (§S1, VERIFY F1).
+LIVE_SKILL = ".agents/skills/model-b/SKILL.md"
+LIVE_SKILL_ALIASES = (
+    ".agents/skills/crucible/../model-b/SKILL.md",
+    "./.agents/skills/model-b/SKILL.md",
+    ".agents/skills//model-b/SKILL.md",
+)
 
 _FAKE_UV = (
     "#!/bin/sh\n"
@@ -158,6 +167,10 @@ class _PruneSandboxCase(unittest.TestCase):
     def reinstall(self, *extra, target_root: Path | None = None):
         return self.run_installer("--reinstall", *extra, target_root=target_root)
 
+    def run_bare(self):
+        """Bare ``modelb-axi --yes`` on the installed sandbox (``already_installed``)."""
+        return self.run_argv(["--yes", "--modelb-home", str(self.modelb_home)])
+
     # -- manifest ----------------------------------------------------------
 
     @property
@@ -199,6 +212,12 @@ class _PruneSandboxCase(unittest.TestCase):
             {"path": rel, "sha256": hashlib.sha256(content).hexdigest()})
         self.write_install(data)
         return path
+
+    def append_entry(self, rel: str, sha: str) -> None:
+        """Append a raw ``{path, sha256}`` entry to the manifest as written."""
+        data = self.load_install()
+        data.setdefault("files", []).append({"path": rel, "sha256": sha})
+        self.write_install(data)
 
     def drop_install_keys(self, *keys: str) -> None:
         data = self.load_install()
@@ -739,9 +758,6 @@ class RetiredHintReportTest(_PruneSandboxCase):
         self.install("--stacks", "python")
         self.retired = self.record_deployed(RETIRED_SKILL, b"retired\n")
 
-    def run_bare(self):
-        return self.run_argv(["--yes", "--modelb-home", str(self.modelb_home)])
-
     def _retired_hint(self, stderr: str) -> str:
         hits = [ln.strip() for ln in stderr.splitlines() if ln.strip().startswith("retired:")]
         self.assertEqual(len(hits), 1, f"exactly one `retired:` hint; stderr={stderr!r}")
@@ -774,20 +790,28 @@ class RetiredHintReportTest(_PruneSandboxCase):
         self.assertEqual(after_axi.get("retired"), [], f"axi={after_axi!r}")
 
 
+def _bullets(path: Path, name: str) -> list[str]:
+    """Every ``- `<name>``` bullet of ``path``, each joined onto one line."""
+    lines = path.read_text(encoding="utf-8").splitlines()
+    found = []
+    for start in (i for i, ln in enumerate(lines) if ln.startswith(f"- `{name}`")):
+        bullet = [lines[start]]
+        for ln in lines[start + 1:]:
+            if not ln.strip() or ln.startswith(("- ", "<!--", "#")):
+                break
+            bullet.append(ln)
+        found.append(" ".join(part.strip() for part in bullet))
+    return found
+
+
 class RetiredHintDocsTest(unittest.TestCase):
     """``docs/install-guide.md`` says ``--reinstall`` removes unchanged
     retired files; ``pi-package/README.md`` carries the same text."""
 
     def _retired_bullet(self, path: Path) -> str:
-        lines = path.read_text(encoding="utf-8").splitlines()
-        starts = [i for i, ln in enumerate(lines) if ln.startswith("- `retired`")]
-        self.assertEqual(len(starts), 1, f"{path.name}: exactly one `retired` bullet")
-        bullet = [lines[starts[0]]]
-        for ln in lines[starts[0] + 1:]:
-            if not ln.strip() or ln.startswith(("- ", "<!--", "#")):
-                break
-            bullet.append(ln)
-        return " ".join(part.strip() for part in bullet)
+        found = _bullets(path, "retired")
+        self.assertEqual(len(found), 1, f"{path.name}: exactly one `retired` bullet")
+        return found[0]
 
     def test_install_guide_says_reinstall_removes_unchanged_retired_files(self):
         bullet = self._retired_bullet(INSTALL_GUIDE)
@@ -800,6 +824,267 @@ class RetiredHintDocsTest(unittest.TestCase):
         self.assertNotIn("by hand", guide, "§S2: the guide is updated first")
         self.assertEqual(self._retired_bullet(PI_README), guide,
                          "§S2: pi-package/README.md is regenerated from the guide")
+
+
+# ---------------------------------------------------------------------------
+# VERIFY F1 — a prior entry spelled differently from a deployed path
+# ---------------------------------------------------------------------------
+
+class PriorEntrySpelledDifferentlyNeverPrunesTest(_PruneSandboxCase):
+    """VERIFY F1 (§S1): a prior entry that normalises to a path this run
+    deployed (``x/../``, ``./``, ``//``) IS that path — it never removes the
+    live file, and the new manifest and the disk agree."""
+
+    def setUp(self):
+        super().setUp()
+        self.install("--stacks", "python")
+        self.live = self.target_root / LIVE_SKILL
+        self.live_bytes = self.live.read_bytes()
+        self.live_sha = self.sha(self.live)
+
+    def _assert_live_file_survives(self, alias: str, *, replace: bool = False):
+        data = self.load_install()
+        if replace:
+            data["files"] = [e for e in data["files"] if e["path"] != LIVE_SKILL]
+        data["files"].append({"path": alias, "sha256": self.live_sha})
+        self.write_install(data)
+        result, axi = self.reinstall("--stacks", "python")
+        self.assert_installed(result, axi)
+        self.assertTrue(self.live.is_file(),
+                        f"§S1: the prior entry {alias!r} is {LIVE_SKILL}, deployed by this "
+                        f"run — it is never pruned; removed={axi.get('removed')!r}")
+        self.assertEqual(self.live.read_bytes(), self.live_bytes)
+        self.assert_envelope_lists(axi, removed=(), kept=())
+        self.assertEqual(self.manifest_hashes(LIVE_SKILL), [self.live_sha])
+        self.assertEqual(self.manifest_hashes(alias), [], "the alias spelling is not recorded")
+        missing = sorted(p for p in self.manifest_paths()
+                         if not (self.target_root / p).is_file())
+        self.assertEqual(missing, [], "§S1: the new manifest and the disk agree")
+
+    def test_parent_dir_alias_never_removes_the_live_file(self):
+        self._assert_live_file_survives(LIVE_SKILL_ALIASES[0])
+
+    def test_dot_prefixed_alias_never_removes_the_live_file(self):
+        self._assert_live_file_survives(LIVE_SKILL_ALIASES[1])
+
+    def test_double_slash_alias_never_removes_the_live_file(self):
+        self._assert_live_file_survives(LIVE_SKILL_ALIASES[2])
+
+    def test_alias_recorded_instead_of_the_live_path_never_removes_it(self):
+        self._assert_live_file_survives(LIVE_SKILL_ALIASES[0], replace=True)
+
+
+# ---------------------------------------------------------------------------
+# VERIFY F2 — a bundle directory that is a symbolic link
+# ---------------------------------------------------------------------------
+
+class SymlinkedBundleDirectoryPruneTest(_PruneSandboxCase):
+    """VERIFY F2 (§S1): a retired bundle directory that is a symbolic link —
+    its unchanged files are removed and listed in ``removed``, the link is
+    left, and the run ends ``installed``; a retry has nothing to report."""
+
+    def setUp(self):
+        super().setUp()
+        self.install("--stacks", "python")
+        self.real_bundle = self._root / "linked-bundle"
+        self.real_bundle.mkdir()
+        self.link = self.target_root / ".agents/skills/chezmoi"
+        self.link.symlink_to(self.real_bundle, target_is_directory=True)
+        for rel in (RETIRED_SKILL, RETIRED_REFERENCE):
+            self.record_deployed(rel, f"retired {rel}\n".encode())
+
+    def test_files_are_removed_through_the_link_and_the_link_is_left(self):
+        result, axi = self.reinstall("--stacks", "python")
+        self.assert_installed(result, axi)
+        self.assert_envelope_lists(axi, removed=[RETIRED_SKILL, RETIRED_REFERENCE], kept=())
+        self.assertTrue(self.link.is_symlink(), "§S1: the walk stops at a link and leaves it")
+        self.assertTrue(self.real_bundle.is_dir(), "the link's target is not removed")
+        self.assertEqual(sorted(p.name for p in self.real_bundle.rglob("*") if p.is_file()), [],
+                         "the unchanged leftovers are removed through the link")
+        for rel in (RETIRED_SKILL, RETIRED_REFERENCE):
+            self.assertNotIn(rel, self.manifest_paths())
+
+    def test_a_retry_after_the_prune_reports_nothing(self):
+        result, axi = self.reinstall("--stacks", "python")
+        self.assert_installed(result, axi)
+        again, again_axi = self.reinstall("--stacks", "python")
+        self.assert_installed(again, again_axi)
+        self.assert_envelope_lists(again_axi, removed=(), kept=())
+        self.assertTrue(self.link.is_symlink())
+
+
+# ---------------------------------------------------------------------------
+# VERIFY F3 — the already_installed report of a kept leftover
+# ---------------------------------------------------------------------------
+
+class DeselectedStackKeptReportTest(_PruneSandboxCase):
+    """VERIFY F3 (§S2): after a narrowed ``--reinstall`` keeps an edited
+    leftover, the ``already_installed`` report lists it in ``kept`` — not
+    ``hand_modified`` — with a hint that offers no ``--force-managed``."""
+
+    def setUp(self):
+        super().setUp()
+        self.install("--stacks", "python,rust")
+        edited = self.target_root / RUST_REPORT_SKILL
+        edited.write_bytes(edited.read_bytes() + b"\n# my local notes\n")
+        result, axi = self.reinstall("--stacks", "python")
+        self.assert_installed(result, axi)
+        self.assertEqual(axi.get("kept"), [RUST_REPORT_SKILL], f"fixture: axi={axi!r}")
+
+    def test_edited_leftover_of_a_deselected_stack_is_kept_not_hand_modified(self):
+        _result, axi = self.run_bare()
+        self.assertEqual(axi.get("outcome"), "already_installed", f"axi={axi!r}")
+        self.assertEqual(axi.get("kept"), [RUST_REPORT_SKILL], f"§S2: axi={axi!r}")
+        self.assertEqual(axi.get("hand_modified"), [], f"§S2: never hand_modified; axi={axi!r}")
+        self.assertEqual(axi.get("retired"), [], f"axi={axi!r}")
+        self.assertEqual(axi.get("freshness"), "outdated", f"axi={axi!r}")
+
+    def test_kept_hint_says_edited_and_offers_no_force_managed(self):
+        result, _axi = self.run_bare()
+        hints = [ln.strip() for ln in result.stderr.splitlines()
+                 if ln.strip().startswith("kept:")]
+        self.assertEqual(len(hints), 1, f"one `kept:` hint; stderr={result.stderr!r}")
+        self.assertIn("--reinstall", hints[0])
+        self.assertRegex(hints[0], r"(?i)no longer deployed")
+        self.assertRegex(hints[0], r"(?i)\bedited\b")
+        self.assertRegex(hints[0], r"(?i)restore or delete")
+        self.assertEqual([ln for ln in result.stderr.splitlines() if "--force-managed" in ln],
+                         [], "§S2: no hint offers --force-managed for a kept leftover")
+
+
+# ---------------------------------------------------------------------------
+# VERIFY F6 — duplicate prior entries: the first wins
+# ---------------------------------------------------------------------------
+
+class DuplicatePriorEntriesTest(_PruneSandboxCase):
+    """VERIFY F6 (§S1): prior entries are de-duplicated by normalised path
+    before any use — the first wins for the prune decision and for the
+    recorded hash of a kept entry; a duplicated corrupt entry gets ONE
+    warning."""
+
+    def setUp(self):
+        super().setUp()
+        self.install("--stacks", "python,rust")
+        self.edited = self.target_root / RUST_REPORT_SKILL
+        self.recorded = self.manifest_hashes(RUST_REPORT_SKILL)
+
+    def _assert_first_entry_wins(self, duplicate: str):
+        self.edited.write_bytes(self.edited.read_bytes() + b"\n# my local notes\n")
+        edited_bytes = self.edited.read_bytes()
+        # The duplicate carries the EDITED hash: were it to win, the file
+        # would be removed, or its edited hash recorded.
+        self.append_entry(duplicate, self.sha(self.edited))
+        result, axi = self.reinstall("--stacks", "python")
+        self.assert_installed(result, axi)
+        self.assertTrue(self.edited.is_file(), "the first entry wins: kept, never removed")
+        self.assertEqual(self.edited.read_bytes(), edited_bytes)
+        self.assert_envelope_lists(axi, removed=self.rust_only_files() - {RUST_REPORT_SKILL},
+                                   kept=[RUST_REPORT_SKILL])
+        self.assertEqual(self.manifest_hashes(RUST_REPORT_SKILL), self.recorded,
+                         "the first entry wins for the kept entry's recorded hash")
+        if duplicate != RUST_REPORT_SKILL:
+            self.assertEqual(self.manifest_hashes(duplicate), [])
+
+    def test_exact_duplicate_first_wins_for_the_recorded_hash(self):
+        self._assert_first_entry_wins(RUST_REPORT_SKILL)
+
+    def test_duplicate_spelled_differently_first_wins_for_the_prune_decision(self):
+        self._assert_first_entry_wins("./" + RUST_REPORT_SKILL)
+
+    def test_duplicated_corrupt_entry_is_warned_about_once(self):
+        content = b"not model b's\n"
+        where = self.target_root / ".bashrc"
+        where.write_bytes(content)
+        for rel in (".bashrc", ".bashrc", "./.bashrc"):
+            self.append_entry(rel, hashlib.sha256(content).hexdigest())
+        result, axi = self.reinstall("--stacks", "python,rust")
+        self.assert_installed(result, axi)
+        hits = self.warnings_naming(axi, ".bashrc")
+        self.assertEqual(len(hits), 1, f"§S1: one warning; warnings={axi.get('warnings')!r}")
+        self.assertEqual(where.read_bytes(), content)
+        self.assertEqual(self.manifest_hashes(".bashrc") + self.manifest_hashes("./.bashrc"), [])
+
+
+class ManifestEntriesTest(unittest.TestCase):
+    """VERIFY F5/F6 (§S1): ``config.manifest_entries(data)`` is the one
+    reader of a parsed ``install.toml``'s ``[[files]]``: malformed entries
+    are dropped, duplicates by normalised path are dropped (the first
+    wins), and each kept entry keeps its recorded spelling."""
+
+    def entries(self, data):
+        from modelb_axi.config import manifest_entries
+        return manifest_entries(data)
+
+    def test_missing_or_non_list_files_yield_no_entries(self):
+        for data in ({}, {"files": {"path": LIVE_SKILL}}, {"files": "x"}):
+            with self.subTest(data=data):
+                self.assertEqual(self.entries(data), [])
+
+    def test_malformed_entries_are_dropped(self):
+        data = {"files": ["text", {"path": "a"}, {"sha256": "b"},
+                          {"path": LIVE_SKILL, "sha256": "h"}]}
+        self.assertEqual(self.entries(data), [{"path": LIVE_SKILL, "sha256": "h"}])
+
+    def test_duplicates_by_normalised_path_keep_the_first(self):
+        first = {"path": LIVE_SKILL_ALIASES[1], "sha256": "1"}
+        other = {"path": RETIRED_SKILL, "sha256": "4"}
+        data = {"files": [first, {"path": LIVE_SKILL, "sha256": "2"},
+                          {"path": LIVE_SKILL_ALIASES[2], "sha256": "3"}, other,
+                          {"path": RETIRED_SKILL, "sha256": "5"}]}
+        self.assertEqual(self.entries(data), [first, other])
+
+
+# ---------------------------------------------------------------------------
+# VERIFY F4/F7 — the install guide
+# ---------------------------------------------------------------------------
+
+class PruneInstallGuideDocsTest(unittest.TestCase):
+    """VERIFY F4/F7 (§S2): the guide says a ``--reinstall`` naming fewer
+    stacks removes the dropped stacks' unchanged skills, describes the
+    installed envelope's ``removed`` and ``kept``, lists ``kept`` in the
+    ``already_installed`` report, and says a differing recorded target root
+    leaves the old root's files unmanaged; ``pi-package/README.md`` follows."""
+
+    def setUp(self):
+        self.guide = INSTALL_GUIDE.read_text(encoding="utf-8")
+
+    @staticmethod
+    def _paragraphs(text: str) -> list[str]:
+        return [" ".join(p.split()) for p in re.split(r"\n\s*\n", text)]
+
+    def test_adding_stacks_later_says_fewer_stacks_removes_the_dropped_unchanged_skills(self):
+        section = md_section(self.guide, "## Adding stacks later")
+        hits = [p for p in self._paragraphs(section)
+                if re.search(r"(?i)fewer stacks", p) and re.search(r"(?i)\bremov", p)
+                and re.search(r"(?i)\bunchanged\b", p)]
+        self.assertEqual(len(hits), 1, f"§S2 F4: section={section!r}")
+
+    def test_outcomes_describe_the_installed_envelopes_removed_and_kept(self):
+        section = md_section(self.guide, "## Install outcomes")
+        hits = [p for p in self._paragraphs(section)
+                if "`removed`" in p and "`kept`" in p and "`installed`" in p
+                and not p.startswith("|")]
+        self.assertEqual(len(hits), 1, f"§S2 F4: one paragraph describes the installed "
+                                       f"envelope's `removed` and `kept`; section={section!r}")
+
+    def test_already_installed_report_lists_kept_without_force_managed(self):
+        found = _bullets(INSTALL_GUIDE, "kept")
+        self.assertEqual(len(found), 1, "§S2 F4: exactly one `kept` bullet")
+        self.assertNotIn("--force-managed", found[0])
+        self.assertIn("--reinstall", found[0])
+        self.assertRegex(found[0], r"(?i)\bedited\b")
+        self.assertRegex(found[0], r"(?i)restore or delete")
+
+    def test_pi_readme_kept_bullet_matches_the_guide(self):
+        self.assertEqual(len(_bullets(INSTALL_GUIDE, "kept")), 1, "the guide is updated first")
+        self.assertEqual(_bullets(PI_README, "kept"), _bullets(INSTALL_GUIDE, "kept"),
+                         "§S2: pi-package/README.md is regenerated from the guide")
+
+    def test_guide_says_a_differing_target_root_leaves_the_old_files_unmanaged(self):
+        hits = [p for p in self._paragraphs(self.guide)
+                if re.search(r"(?i)target root", p) and re.search(r"(?i)no longer managed", p)
+                and re.search(r"(?i)\bleft\b", p)]
+        self.assertEqual(len(hits), 1, "§S1/§S2 F7: one paragraph says so")
 
 
 # ---------------------------------------------------------------------------
@@ -911,6 +1196,29 @@ class PruneAssetsTest(unittest.TestCase):
         self.assertIsInstance(ctx.exception.__cause__, OSError,
                               "§S1: the OSError is carried as the DeployError's cause")
         self.assertTrue((self.target / RETIRED_SKILL).is_file())
+
+    def test_prior_entry_normalising_to_a_new_path_is_never_removed(self):
+        """VERIFY F1: the comparison is on normalised paths."""
+        live = self.put(LIVE_SKILL)
+        for alias in LIVE_SKILL_ALIASES:
+            with self.subTest(alias=alias):
+                result = self.prune([{"path": alias, "sha256": live["sha256"]}],
+                                    new_paths=[LIVE_SKILL])
+                self.assertEqual(result, ([], []))
+                self.assertTrue((self.target / LIVE_SKILL).is_file())
+
+    def test_symlinked_bundle_directory_is_left_and_its_files_removed(self):
+        """VERIFY F2: the upward walk stops at a directory that is a link."""
+        real = self._root / "real-bundle"
+        real.mkdir()
+        (self.target / ".agents/skills").mkdir(parents=True)
+        link = self.target / ".agents/skills/chezmoi"
+        link.symlink_to(real, target_is_directory=True)
+        entries = [self.put(RETIRED_SKILL), self.put(RETIRED_REFERENCE)]
+        removed, kept = self.prune(entries)
+        self.assertEqual((sorted(removed), kept), (sorted([RETIRED_SKILL, RETIRED_REFERENCE]), []))
+        self.assertTrue(link.is_symlink(), "the link is left")
+        self.assertEqual(list(real.iterdir()), [], "the files (and emptied subdir) are removed")
 
 
 if __name__ == "__main__":
