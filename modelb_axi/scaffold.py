@@ -28,10 +28,12 @@ Each file is itself written atomically (§S2). Stdlib only.
 
 import argparse
 import datetime
+import re
 import shlex
 import subprocess
 import sys
 import tomllib
+import unicodedata
 from pathlib import Path
 
 from modelb_axi import agents, permission_policy, project_trust, requirements
@@ -247,6 +249,23 @@ def _check_stack_csv(value: str) -> str:
     return ",".join(parse_stacks(value))
 
 
+_SANDESH_ID_RE = re.compile(r"[A-Za-z0-9_.-]+")
+
+
+def _check_sandesh_id(value: str) -> str:
+    """Validate rule: a Sandesh project id — letters, digits, ``_``, ``-``
+    and ``.`` only (CR-MDB-043 §S2 "Values")."""
+    if not _SANDESH_ID_RE.fullmatch(value):
+        raise ValueError("must use only letters, digits, `_`, `-` and `.`")
+    return value
+
+
+def _has_control_character(value: str) -> bool:
+    """Whether ``value`` carries a control character (Unicode ``Cc``,
+    newline and tab included)."""
+    return any(unicodedata.category(ch) == "Cc" for ch in value)
+
+
 #: Named validate rules a schema entry's ``validate`` refers to; each takes
 #: the value and returns its canonical form, raising ``ValueError`` (or
 #: :class:`ScaffoldError`) when it is invalid (CR-MDB-043 §S2).
@@ -254,6 +273,7 @@ VALIDATE_RULES: dict = {
     "non_empty": _check_non_empty,
     "no_whitespace": _check_no_whitespace,
     "stack_csv": _check_stack_csv,
+    "sandesh_id": _check_sandesh_id,
 }
 
 _SCHEMA_FILES = (".env", ".env.local")
@@ -372,6 +392,7 @@ def resolve_registry(schema: list[dict], inputs: dict) -> dict:
     value passes its validate rule; a failure raises :class:`ScaffoldError`
     naming the key and its flag."""
     registry: dict = {}
+    derived: set = set()
     for entry in schema:
         if entry["source"] == "ask":
             registry[entry["name"]] = inputs.get(_flag_dest(entry["flag"])) or ""
@@ -393,6 +414,7 @@ def resolve_registry(schema: list[dict], inputs: dict) -> dict:
                     raise ScaffoldError(
                         f"{entry['name']}: derive input {item!r} is not resolved")
             value = DERIVE_RULES[entry["rule"]](*args)
+            derived.add(entry["name"])
         registry[entry["name"]] = value
     for entry in schema:
         name = entry["name"]
@@ -400,12 +422,20 @@ def resolve_registry(schema: list[dict], inputs: dict) -> dict:
             continue
         flag = entry.get("flag") or entry.get("override")
         label = f"{name} ({flag})" if flag else name
+        # CR-MDB-043 §S2 "Values": no rendered value carries a control
+        # character (a newline would forge a second KEY=value line).
+        if _has_control_character(registry[name]):
+            raise ScaffoldError(
+                f"{label}: value {registry[name]!r} contains a control character")
+        hint = (f"; it is derived from {', '.join(entry['inputs'])} — set it "
+                f"with {entry['override']}"
+                if name in derived and entry.get("override") else "")
         try:
             registry[name] = VALIDATE_RULES[entry["validate"]](registry[name])
         except ScaffoldError as exc:
-            raise ScaffoldError(f"{label}: {exc}") from exc
+            raise ScaffoldError(f"{label}: {exc}{hint}") from exc
         except ValueError as exc:
-            raise ScaffoldError(f"{label}: value {registry[name]!r} {exc}") from exc
+            raise ScaffoldError(f"{label}: value {registry[name]!r} {exc}{hint}") from exc
     return registry
 
 
