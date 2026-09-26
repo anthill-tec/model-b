@@ -145,11 +145,11 @@ do the minimum:
 
 ## Step 2 — Reload the in-flight work from the board (BOTH roles)
 
-The Crucible board is the resume spine. Reload the in-flight work from the board, in order: `<client> plans` (your CR's plan and its cycles), then the active cycle on that plan (its phase and last ingested run), then `<client> next` for what is ready. Never reload it from a todo list, and never invent work the board does not show.
+The Crucible board is the resume spine. Reload the in-flight work from the board, in order: `<client> plans` — each plan's active cycle, its id and label (none on a closed or pending plan) — then `<client> next` for what is ready. Never reload it from a todo list, and never invent work the board does not show.
 
 A Track's active CR lives in its worktree, `.worktrees/<cr>`; check it with
 `~/.agents/scripts/worktree-flow.py status` (latest committed phase, ahead/behind). If the
-board shows no open cycle, no mid-cycle work was carried — note it and continue.
+board shows no active cycle, no mid-cycle work was carried — note it and continue.
 
 The difference between roles is **who you report this status to** (Step 3), not whether
 you reload it — both roles reload.
@@ -206,9 +206,9 @@ you reload it — both roles reload.
    offline; send + hold regardless.
 3. **Report status to MAINLINE** via
    `sandesh send --project <Project> --from "<your address>" --to "Mainline - <Project>" --kind request --subject "…" --body "…"`:
-   - If Step 2 found an **in-flight cycle** on the board (a CR mid RED/GREEN/VERIFY):
+   - If Step 2 found an **in-flight cycle** on the board (a CR's active cycle):
      resume it from the board and tell Mainline — e.g.
-     *"Track N online; resuming CR-XXX at <phase/step>, status <pass/fail counts>,
+     *"Track N online; resuming CR-XXX, active cycle <label>,
      awaiting confirmation to continue."*
    - If **no carried work** (idle): *"Track N online, idle, awaiting assignment."*
 4. **Then HOLD** — idle on the Sandesh watcher, **zero LLM turns, never self-poll**.
