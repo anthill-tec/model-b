@@ -400,8 +400,8 @@ def _render_env_local(schema: list[dict], registry: dict) -> str:
     """The GITIGNORED ``.env.local`` overlay (§S3.1): the schema's
     ``.env.local`` keys (none today; CR-MDB-043 §S2)."""
     return (
-        "# Local-only tool config (gitignored). Fill after registering the\n"
-        "# project in Crucible — see the queue README setup tasks.\n"
+        "# Gitignored overlay for values that stay on this machine;\n"
+        "# not part of the project registry (that is .env).\n"
         + _render_registry(schema, registry, ".env.local", sub=False)
     )
 
