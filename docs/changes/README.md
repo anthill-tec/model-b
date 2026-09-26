@@ -936,3 +936,22 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   order (common skill → stack skills → project `AGENTS.md` + `.env`, no per-project orchestrator
   note) is re-specced at its gap analysis. Release step added: the user deletes the absorbed notes
   and the five Java-reference originals in `~/.claude/memory/` once CR-042 lands.
+- 2026-09-26 — **CR-MDB-040 MERGED** (develop `f611dfb`; plan 114, cycles 153–155). An installer run
+  (first install or `--reinstall`) now prunes, after a successful deploy and before `install.toml`
+  is written, every file the prior manifest records and the new one does not, when unchanged;
+  emptied bundle dirs go, store roots and symlinked dirs stay. Hand-edited leftovers are kept,
+  stay recorded with their recorded hash and are reported every run; corrupt entries (outside the
+  stores) are dropped with one warning; a differing recorded `target_root` prunes nothing and
+  warns; a prune `OSError` is `deploy_failed`. Envelope gains `removed`/`kept`; the
+  `already_installed` report judges entries against the recorded stacks (new `kept` list; `retired`
+  = no longer deployed, hint re-runs `--reinstall`). One manifest reader, `config.manifest_entries`
+  (normalised-path de-dup, first wins); `config.load_manifest_hashes` removed. PRD §4 criterion 6 is
+  now met. Suite **1360 / 0 / 0 (real `HOME`), 1360 / 0 / 9 skips (empty `HOME`)**, 58 modules;
+  python3.11 1 skip. VERIFY C2 FAIL on F1 (an aliased prior entry `x/../model-b/SKILL.md` deleted
+  the just-deployed live file) + F2–F7, all fixed in C3 (test-first `61cf598`). Red intermediates
+  (bisect skips): `b6fe0b8`, `8358ada` (RED), `61cf598` (C3 test commit), `009f173` (stale-count gate
+  tripped: CR-MDB-032's `test_s6_no_stale_counts_remain` matched `359 tests` as a substring of
+  `1359 tests`; fixed by whole-number matching, `c84a53f`). Agents' shells cannot run python3.11;
+  the orchestrator ran it. Release step now enabled: the real reinstall prunes the retired
+  `chezmoi` and `crucible-report-vscode` bundles (July manifest, no `target_root` → pass
+  `--target-root`).
