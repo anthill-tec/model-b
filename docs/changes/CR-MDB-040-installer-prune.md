@@ -44,17 +44,21 @@ path recorded in the prior manifest and absent from the new manifest:
   the store root (`.agents/skills`, `.agents/hooks/scripts`, `.agents/scripts`). A store root is
   never removed.
 - **Kept and reported (hand-modified):** the file exists with a different hash. `--force-managed`
-  does not change this; a hand-edited file is never deleted.
+  does not change this; a hand-edited file is never deleted. The new manifest keeps its entry with
+  the recorded hash, so every later installer run reports it again, and it is pruned once the user
+  restores or deletes it.
 - **Already gone:** the file does not exist. Nothing to do; not reported.
-- A prior path outside the three store directories is never touched. The deploy writes only there,
-  so such an entry is corrupt.
+- A prior path outside the three store directories (after normalising `..`; an absolute path is
+  outside) is never touched. The deploy writes only there, so such an entry is corrupt: it is
+  dropped from the new manifest, is in neither `removed` nor `kept`, and gets one warning naming it.
 
 `prior_root` is the prior manifest's recorded `target_root`. When the prior manifest records none
 (written before CR-MDB-033), it is this run's target root, which the install guide already tells
 the user to pass (`--reinstall --target-root`). When the recorded `target_root` differs from this
 run's, nothing is pruned, and a warning names the prior root and says its files were left in place.
 
-An `OSError` while pruning raises `DeployError`, so no `install.toml` is written. A later run
+An `OSError` while pruning raises `DeployError` (the `OSError` as its cause), so no `install.toml`
+is written and the run ends with the `deploy_failed` outcome, like any deploy failure. A later run
 re-prunes, and the already-gone paths are skipped. A run that fails before the deploy completes
 (pre-flight, validation, deploy error) removes nothing.
 
@@ -80,6 +84,11 @@ re-prunes, and the already-gone paths are skipped. A run that fails before the d
       naming the prior root.
 - [ ] A hand-modified leftover is kept, with or without `--force-managed`. It is listed in `kept`
       and warned about by path.
+- [ ] A kept leftover stays in the new manifest with its recorded hash; the next `--reinstall` lists
+      it in `kept` again, and once the file is restored to that hash it is removed.
+- [ ] A corrupt prior entry (outside the stores) is dropped from the new manifest, is in neither
+      list, and is warned about by path.
+- [ ] A pruning `OSError` ends with outcome `deploy_failed`.
 - [ ] Unmanaged files (never in the manifest) and files outside the three store directories are
       never removed, even when a corrupt prior entry names them.
 - [ ] Store roots are never removed; empty bundle directories are.
