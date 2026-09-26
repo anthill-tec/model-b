@@ -81,8 +81,11 @@ it. Mandatory, not a skim. In order:
      CLI call (`addressbook`, `notify`, `send`, `reply`, `unregister`, …) passes `--project <Project>`.
    - **Crucible own-run id** — Mainline (or Solo): `ORCHESTRATOR_LABEL`; Track N:
      `track<N>-<PROJECT_TOKEN>`.
-   - **Crucible client** — the project's stack client, `~/.crucible/clients/<stack>-crucible.py`
-     for a stack in `PROJECT_STACKS` (any one: every stack client carries the plan verbs).
+   - **Crucible client** — the project's stack client, resolved through Crucible's installed
+     manifest `~/.crucible/crucible-clients.json`: its `clients` entry for a stack in
+     `PROJECT_STACKS` (any one: every stack client carries the plan verbs) names the client
+     file. The entry key is the stack name, except quarkus and java, which share the `mvn`
+     entry (`mvn-crucible.py`). `<client>` below is that path.
      `<client> plans` shows your plan and its open cycles.
 3. `docs/memory/INDEX.md` — the project memory index — and the slices it lists (the stack's
    orchestration template, `docs/memory/<stack>-orchestration.md`, among them): standing

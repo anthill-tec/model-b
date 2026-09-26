@@ -83,9 +83,11 @@ Read — in this order:
      CLI call (`addressbook`, `notify`, `fetch`, `send`, …) passes `--project <Project>`.
    - **Crucible own-run id** — Mainline (or Solo): `ORCHESTRATOR_LABEL`; Track N:
      `track<N>-<PROJECT_TOKEN>`. (Never used for sub-agents — those are CR-scoped.)
-   - **Crucible client** — the project's stack client, `~/.crucible/clients/<stack>-crucible.py`
-     for a stack in `PROJECT_STACKS` (any one: every stack client carries the plan verbs
-     `plans`, `next`). `<client>` below is that path.
+   - **Crucible client** — the project's stack client, resolved through Crucible's installed
+     manifest `~/.crucible/crucible-clients.json`: its `clients` entry for a stack in
+     `PROJECT_STACKS` (any one: every stack client carries the plan verbs `plans`, `next`) names
+     the client file. The entry key is the stack name, except quarkus and java, which share the
+     `mvn` entry (`mvn-crucible.py`). `<client>` below is that path.
 3. **`docs/memory/INDEX.md`** — the project memory index — and the slices it lists (the
    stack's orchestration template, `docs/memory/<stack>-orchestration.md`, among them); open
    the ones relevant to what you are about to do.
@@ -160,7 +162,7 @@ you reload it — both roles reload.
    (never raw `sqlite3`, never the README):
    - `~/.agents/scripts/worktree-flow.py status` — the git-derived board: per-CR
      worktrees (ahead/behind, latest committed phase) + the merge lock.
-   - `python3 ~/.crucible/clients/<stack>-crucible.py next [--track "Track <N> - <Project>"]` (a python stack: `python3 ~/.crucible/clients/python-crucible.py next [--track "Track <N> - <Project>"]`)
+   - the Crucible client, `python3 <client> next [--track "Track <N> - <Project>"]`
      — readiness: `NEXT <cr>` / `HOLD <cr>` (`depends_on` not all COMPLETED) / `DRAINED`.
      Queue membership, release, wave, seq and dependencies live in Crucible (CR-MDB-028).
    (worktree-flow now emits a TOON envelope on stdout; the human board is on stderr.)
@@ -211,7 +213,7 @@ you reload it — both roles reload.
    - If **no carried work** (idle): *"Track N online, idle, awaiting assignment."*
 4. **Then HOLD** — idle on the Sandesh watcher, **zero LLM turns, never self-poll**.
    Mainline disposes and sends a `directive` that wakes you. Do not poll any board
-   (`<stack>-crucible.py next` — for a python stack, `python-crucible.py next` — included) in a loop; do not self-schedule.
+   (`<client> next` included) in a loop; do not self-schedule.
 5. A Track's SOLE contact is Mainline. Escalations, questions, status — all go to
    Mainline, never the user directly.
 
