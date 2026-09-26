@@ -52,7 +52,8 @@ the later CR that adopts that extension.
 It carries rules only, never a project's value.
 
 Keys:
-- today's seven;
+- today's six `.env` keys (`PROJECT_NAME`, `PROJECT_TOKEN`, `PROJECT_ACRONYM`, `ORCHESTRATOR_LABEL`,
+  `REPO_OWNER`, `PROJECT_STACKS`);
 - `CRUCIBLE_PROJECT_KEY`, moved to `file = ".env"` with `source = "capture"` (Crucible registration),
   rendered empty;
 - `SANDESH_PROJECT`, `derive` from `PROJECT_NAME` with whitespace removed, `override` flag
@@ -82,7 +83,9 @@ names `.env` for the project key. `AGENTS.md`'s "Identity & naming" section name
 
 ## Acceptance criteria
 
-- [ ] The schema ships in the wheel and declares the nine keys with every field in §S1.
+- [ ] The schema ships in the wheel and declares exactly eight keys (`PROJECT_NAME`, `PROJECT_TOKEN`,
+      `PROJECT_ACRONYM`, `ORCHESTRATOR_LABEL`, `REPO_OWNER`, `PROJECT_STACKS`, `CRUCIBLE_PROJECT_KEY`,
+      `SANDESH_PROJECT`), each with every field in §S1.
 - [ ] For the same inputs, `init` output (solo and multi, standalone and monorepo, sandboxed) matches
       today's except for exactly these differences:
       - `SANDESH_PROJECT` in each `.env`, per its scope;
