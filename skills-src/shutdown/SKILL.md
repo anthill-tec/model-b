@@ -90,6 +90,9 @@ it. Mandatory, not a skim. In order:
      entry (`mvn-crucible.py`). `<client>` below is that path.
      `<client> plans` shows your plan's active cycle (its id and label); `<client> next` shows
      what is ready.
+   - **Crucible project key** — `CRUCIBLE_PROJECT_KEY`. An empty value means the project is not
+     yet registered in Crucible: do the queue README's setup task, and never read the empty
+     board `plans` then returns as idle.
 3. `docs/memory/INDEX.md` — the project memory index — and the slices it lists (the stack's
    orchestration template, `docs/memory/<stack>-orchestration.md`, among them): standing
    feedback this teardown obeys.
