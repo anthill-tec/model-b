@@ -138,3 +138,8 @@ Universal rules for ANY orchestrator, ANY project/stack. Verbose detail + failur
 ## Memory
 - **GC principle:** memory holds ONLY what the repo doesn't yet track. The moment a note becomes a repo artifact (CR / queue row / PRD / DN / README) or is abandoned, DELETE it (keep ≤ a one-line pointer). Duplicated notes rot + burn context every recall.
 - **No unilateral writes:** do not write/update shared memory or rules files unilaterally — raise the learning to the coordinator (Mainline), who records it centrally. (Solo: record only with user awareness.)
+- **Where to keep execution knowledge:** where the project's `.env` carries `KNOWLEDGE_CATEGORY`, execution knowledge is kept in the project's knowledge store under that category — one short fact per item, each with a stable kebab-case key. Writing the same key again replaces the fact: the same key supersedes, so a fact is corrected, never duplicated.
+- **What goes there:** only execution knowledge — how this project's work actually runs. Never an orchestrator rule, an agent definition, a ruling that belongs in the PRD or a DN, or a project fact that belongs in `.env` or `AGENTS.md`; those have their own homes.
+- **Who writes:** only Mainline or Solo writes facts; a Track reads them, and raises new ones to Mainline, who decides what is recorded.
+- **The GC and no-unilateral-write rules still apply** to the knowledge store: a fact the repo comes to track is removed, and nothing is recorded behind the coordinator's back.
+- **Without the key,** nothing changes: a project whose `.env` has no `KNOWLEDGE_CATEGORY` keeps no knowledge store, and memory works as above.

@@ -1456,7 +1456,12 @@ def _write_install_toml_c3(home: Path, asset_root: Path, harnesses=("pi",)) -> P
     """A valid install.toml fixture pointed at a PRIVATE `asset_root`
     (never the real repo) -- mirrors tests/test_scaffold.py's own
     `_write_install_toml`, extended with a real, controllable asset root so
-    \u00a7S6 tests can mutate a template and observe the re-render pick it up."""
+    \u00a7S6 tests can mutate a template and observe the re-render pick it up.
+
+    MIGRATED (CR-MDB-045 C2 RED): records lean-ctx as ``detected`` in
+    ``[capabilities]`` -- init and `agents` render the lean-ctx form (today's
+    bytes, which these tests compare with ``agents.render()``) only when the
+    installation recorded lean-ctx present (CR-MDB-045 \u00a7S8)."""
     harnesses_toml = ", ".join(f'"{h}"' for h in harnesses)
     hooks_scripts_dir = home / ".agents" / "hooks" / "scripts"
     home.mkdir(parents=True, exist_ok=True)
@@ -1470,6 +1475,9 @@ def _write_install_toml_c3(home: Path, asset_root: Path, harnesses=("pi",)) -> P
         "\n"
         "[deps]\n"
         'uv = "present"\n'
+        "\n"
+        "[capabilities]\n"
+        '"lean-ctx" = "detected"\n'
         "\n"
         "[files]\n",
         encoding="utf-8",

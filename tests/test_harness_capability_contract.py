@@ -546,10 +546,11 @@ class HarnessProbeTest(_SandboxedInstallerCase):
             install_on_disk(self.agent_dir, pkg)
         result = self.run_installer()
         self.assertNotIn("Traceback", result.stderr)
+        # MIGRATED at CR-MDB-045 C1 RED (§S1: the fifth tier-1 row, sandesh-pi).
         self.assertEqual(
             self.harness_verdicts(result),
             {"dispatch": "unknown", "lean-ctx": "unknown", "permissions": "unknown",
-             "watcher": "unknown"},
+             "watcher": "unknown", "sandesh-pi": "unknown"},
         )
 
     def test_unrecognised_settings_shape_is_unknown(self):
@@ -558,10 +559,11 @@ class HarnessProbeTest(_SandboxedInstallerCase):
             install_on_disk(self.agent_dir, pkg)
         result = self.run_installer()
         self.assertNotIn("Traceback", result.stderr)
+        # MIGRATED at CR-MDB-045 C1 RED (§S1: sandesh-pi).
         self.assertEqual(
             self.harness_verdicts(result),
             {"dispatch": "unknown", "lean-ctx": "unknown", "permissions": "unknown",
-             "watcher": "unknown"},
+             "watcher": "unknown", "sandesh-pi": "unknown"},
         )
 
     def test_env_var_agent_dir_wins_over_home_default(self):
@@ -571,7 +573,7 @@ class HarnessProbeTest(_SandboxedInstallerCase):
         self.assertEqual(
             self.harness_verdicts(result),
             {"dispatch": "absent", "lean-ctx": "absent", "permissions": "absent",
-             "watcher": "absent"},
+             "watcher": "absent", "sandesh-pi": "absent"},
             f"§S2: $PI_CODING_AGENT_DIR must be read when set; stderr={result.stderr!r}",
         )
 
@@ -581,7 +583,7 @@ class HarnessProbeTest(_SandboxedInstallerCase):
         self.assertEqual(
             self.harness_verdicts(result),
             {"dispatch": "detected", "lean-ctx": "detected", "permissions": "detected",
-             "watcher": "detected"},
+             "watcher": "detected", "sandesh-pi": "detected"},
             f"§S2: ~/.pi/agent/settings.json is the default; stderr={result.stderr!r}",
         )
 
@@ -713,9 +715,11 @@ class NoThirdPartyInstallUnderYesTest(_SandboxedInstallerCase):
         return runs
 
     def _assert_no_third_party_install(self, result, before_bytes, before_tree):
+        # MIGRATED at CR-MDB-045 C1 RED (§S1: sandesh-pi is a third-party
+        # tier-1 row, absent here and never installed by --yes).
         self.assertEqual(self.harness_verdicts(result), {
             "dispatch": "absent", "lean-ctx": "absent", "permissions": "absent",
-            "watcher": "absent",
+            "watcher": "absent", "sandesh-pi": "absent",
         })
         self.assertEqual(self.settings.read_bytes(), before_bytes, "settings.json must be byte-identical")
         self.assertEqual(self._snapshot(), before_tree, "the agent dir must be untouched")
@@ -917,10 +921,14 @@ class PreflightReportLinesTest(_SandboxedInstallerCase):
         make_home(self.home, crucible_manifest=True, clients=("python",))
 
     def test_harness_line_is_exact_and_precedes_deps_line(self):
+        # MIGRATED at CR-MDB-045 C1 RED (§S1): the line carries the fifth
+        # tier-1 row, sandesh-pi; compared as a verdict map (the spec fixes
+        # no position for the new row), still exactly these five.
         result = self.run_installer()
-        self.assertIn(
-            "harness: dispatch=detected lean-ctx=detected permissions=detected "
-            "watcher=detected",
+        self.assertEqual(
+            parse_group_line(result.stderr, "harness:"),
+            {"dispatch": "detected", "lean-ctx": "detected", "permissions": "detected",
+             "watcher": "detected", "sandesh-pi": "detected"},
             result.stderr,
         )
         self.assertIn("deps: uv=detected sandesh=detected crucible=detected", result.stderr)
@@ -1024,7 +1032,7 @@ class InstallTomlCapabilitiesRecordTest(_SandboxedInstallerCase):
         self.assertEqual(
             {k: caps.get(k) for k in TIER1_PACKAGES},
             {"dispatch": "detected", "lean-ctx": "detected", "permissions": "absent",
-             "watcher": "detected"},
+             "watcher": "detected", "sandesh-pi": "detected"},
         )
         self.assertEqual(caps.get("uv"), "detected")
         self.assertEqual(caps.get("crucible"), "absent")

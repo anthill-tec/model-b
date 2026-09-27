@@ -16,6 +16,9 @@
 #                       `capture` (a named manual or tool `step`)
 #   validate            a named rule (modelb_axi.scaffold.VALIDATE_RULES)
 #   readers             the skills or tools that read the key
+#   when                optional: a requirement id (modelb_axi.requirements);
+#                       the key is rendered only when the installation
+#                       recorded that tool present (CR-MDB-045 §S3)
 #
 # Rendering order in each file is the order of the tables below.
 
@@ -109,3 +112,17 @@ inputs = ["PROJECT_NAME"]
 override = "--sandesh-project"
 validate = "sandesh_id"
 readers = ["modelb-axi init (AGENTS.md identity section, queue README Sandesh setup task)", "bootstrap/shutdown skills (pass --project to the sandesh CLI)"]
+
+[[key]]
+name = "KNOWLEDGE_CATEGORY"
+description = "The lean-ctx knowledge-store category holding the project's execution knowledge."
+required = true
+file = ".env"
+scope = "root+sub"
+when = "lean-ctx"
+source = "derive"
+rule = "knowledge_category"
+inputs = ["PROJECT_TOKEN"]
+override = "--knowledge-category"
+validate = "kebab_id"
+readers = ["modelb-axi init (the AGENTS.md lean-ctx section)", "orchestration-common § \"Memory\" (where execution knowledge is kept)", "bootstrap skill (loads the category)"]

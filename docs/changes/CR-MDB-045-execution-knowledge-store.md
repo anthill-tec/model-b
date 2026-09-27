@@ -56,7 +56,8 @@ brings them back), and `restore` ignores `dry_run`. Model B's own session showed
 - `sandesh-pi`: provider `@anthill-tec/sandesh-pi`, probe `pi-package`, policy `recommended`, with
   remediation `pi install npm:@anthill-tec/sandesh-pi`.
 
-It is a third-party package, so `--yes` never installs it. The installer records its verdict in
+It is a third-party package, so `--yes` never installs it. The install guide's prerequisites,
+derived from `REQUIREMENTS`, list its remediation. The installer records its verdict in
 `[capabilities]` like any other tier-1 row. Crucible's Pi installer is declared the same way once
 Crucible releases it (a non-goal here).
 
@@ -72,8 +73,16 @@ A missing verdict counts as unknown. This includes an `install.toml` without `[c
 row the installation never probed. Nothing is set up for an unknown tool, and stderr says to re-run
 the installer.
 
-The `init` envelope gains a `tools` field. It maps each row id to `present`, `absent` or `unknown`, in
-real and `--dry-run` runs alike.
+The `init` envelope gains a `tools` field. It maps each `REQUIREMENTS` row id to `present`, `absent`
+or `unknown`, in real and `--dry-run` runs alike.
+
+**How verdicts combine:**
+- **A stack-scoped row** (`crucible-client`, `toolchain`) is judged over the project's stacks and
+  each stack's probes. It takes the worst verdict: `absent` if any is absent, else `unknown` if any
+  is unknown, else `present`. The capability contract (§S5) keeps the per-stack detail.
+- **An `install.toml` without `[capabilities]`** still carries `[deps]`. `uv`, `sandesh` and
+  `crucible` take their `[deps]` verdicts; only rows with no recorded verdict anywhere are
+  `unknown`.
 
 ### §S3 — Keys conditional on a tool (`modelb_axi/project_schema.toml`)
 
@@ -85,7 +94,10 @@ rejected.
 
 **The key.** `KNOWLEDGE_CATEGORY`:
 - in `.env`, scope `root+sub`, `when = "lean-ctx"`;
-- `source = "derive"`: `<PROJECT_TOKEN>-workflow`, overridable by `--knowledge-category`;
+- `source = "derive"`: `<PROJECT_TOKEN>-workflow` normalised to kebab-case (lower-cased, `_` and
+  spaces turned into `-`), overridable by `--knowledge-category`. A token accepted before this CR
+  never makes `init` fail. `--knowledge-category` given while lean-ctx is not present is noted on
+  stderr as not applied;
 - validated as a kebab-case id;
 - readers: `modelb-axi init` (the AGENTS.md pointer), `orchestration-common` § "Memory", and the
   bootstrap skill.
@@ -96,7 +108,8 @@ orchestrator working in this project. It says to:
 - keep the project's execution knowledge in the knowledge store under `KNOWLEDGE_CATEGORY`, through
   the session's knowledge capability. Never the `lean-ctx knowledge` CLI, whose project does not
   follow the working directory;
-- load that category, and only that category, at bootstrap.
+- load that category, and only that category, at bootstrap: restore its archived facts, then list
+  it (bootstrap's knowledge step).
 
 A monorepo sub-project's `AGENTS.md` names its own category.
 
@@ -104,6 +117,8 @@ A monorepo sub-project's `AGENTS.md` names its own category.
 
 The `AGENTS.md` capability contract is rendered from the verdicts §S2 reads, for the project's own
 stacks:
+- each tool appears once: a tier-2 row and a stack toolchain probe for the same tool (e.g. `python3`)
+  are merged into one line;
 - a present tool is listed as present;
 - an absent or unknown tool is listed with its remediation.
 
@@ -124,7 +139,8 @@ names the tool's remediation.
 - **The GC and no-unilateral-write rules still apply.**
 - **Without the key,** nothing changes.
 
-The section names the store as a capability.
+The section names the store as a capability, and so does every other skill: `model-b` names the
+installation's knowledge-store tool, not lean-ctx.
 
 **Bootstrap,** where `KNOWLEDGE_CATEGORY` is set:
 - restores the category's archived facts;
@@ -144,6 +160,7 @@ The contract records:
   - `restore` ignores `dry_run`;
   - the CLI's project does not follow the working directory;
   - the store holds lean-ctx's automatic captures.
+- that a monorepo's sub-projects derive the same category as the root when they share its token.
 
 ### §S8 — The project's agents match its tools (`modelb_axi.agents`)
 
@@ -151,8 +168,23 @@ The generated agents assume lean-ctx today: each stack file's role `tools` allow
 `ctx_*` tools, and each role template has a "Tool Usage (lean-ctx …)" section. When `init` (and
 `modelb-axi agents`) renders a project's agents, it reads the lean-ctx verdict (§S2):
 - **present:** the agents are rendered as today;
-- **absent or unknown:** each role's allowlist omits the `ctx_*` tools, and the tool-usage section is
-  rendered for the harness's built-in read, search and shell.
+- **absent or unknown:** the agent names no lean-ctx tool anywhere in its definition: not in the
+  preamble, First Actions, the spec-reading steps, the tool-usage section, or the stack's own text.
+  - Each role's allowlist replaces the `ctx_*` tools with Pi's built-in equivalents, so the agent
+    keeps a shell: `bash` joins it, and the permission block allows it.
+  - The tool-usage section and every instruction name the built-in read, search and shell.
+
+The same holds for everything else `init` renders for the project:
+- **The permission policy:** the project-level Pi permission policy allows `bash` and names no
+  `ctx_*` tool when lean-ctx is absent or unknown.
+- **The memory slices:** the stack memory templates `init` scaffolds into `docs/memory/` name no
+  lean-ctx tool in that case.
+
+**Validated before the first write.** `init` and `modelb-axi agents` render every agent in memory
+during validation, in the form the verdict selects, and write only the pre-rendered text. Any render
+failure is a `ScaffoldError`: exit 2, an error envelope on stdout, nothing written, and `--dry-run`
+refuses it too. Render failures include a missing or unreadable built-in passages file, and a
+definition that still names lean-ctx.
 
 `generator/agents/`, the canonical committed set that `build.py --check` guards, keeps the lean-ctx
 form. The hook wiring needs no change: `compile_wiring` already points the hooks at the project's own
@@ -177,8 +209,19 @@ paths.
 - [ ] The capability contract in `AGENTS.md` lists each of the project's tools with its state, and
       the remediation where it is not present. A Sandesh or Crucible setup task names the tool's
       remediation first when that tool is absent.
-- [ ] With lean-ctx absent or unknown, every agent `init` renders for the project omits the `ctx_*`
-      tools from its allowlist and has a tool-usage section naming only the harness's built-in tools.
+- [ ] A render failure in `init` or `modelb-axi agents`, dry run included, exits 2 with an error
+      envelope and writes nothing. Render failures are a missing or unreadable built-in passages file,
+      and a definition still naming lean-ctx.
+- [ ] A token such as `MyProj` or `my_proj` derives a kebab-case category, and never fails `init`.
+      `--knowledge-category` without lean-ctx present is noted on stderr.
+- [ ] With lean-ctx absent or unknown, the project permission policy allows `bash` and names no
+      `ctx_*` tool, and no scaffolded `docs/memory/` slice names a lean-ctx tool.
+- [ ] Each tool appears once in the capability contract. The lean-ctx pointer says to restore, then
+      list. No skill names lean-ctx as a tool.
+- [ ] With lean-ctx absent or unknown, every agent `init` renders for the project names no `ctx_*`
+      tool or lean-ctx instruction anywhere. Its allowlist is today's non-`ctx_*` tools plus `bash`,
+      which the permission block allows. Its tool-usage section names the built-in read, search and
+      shell.
       With lean-ctx present, the rendered agents are byte-identical to today's. `generator/agents/`
       is unchanged.
 - [ ] `orchestration-common.md` § "Memory" and bootstrap state §S6's rules, read `KNOWLEDGE_CATEGORY`

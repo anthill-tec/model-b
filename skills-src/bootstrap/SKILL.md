@@ -98,12 +98,32 @@ Read — in this order:
 
 **Fallback** — a project with no `.env` registry, or a missing key: take the same value from
 the project's `AGENTS.md`; a value found in neither, ask the user once. A missing
-`docs/memory/INDEX.md` is noted and skipped. Nothing here is an error.
+`docs/memory/INDEX.md` is noted and skipped. Nothing here is an error. `KNOWLEDGE_CATEGORY`
+has no fallback: without it, Step 0.6 is skipped, never asked about.
 
 Do NOT proceed to Step 1 until you have read the common file **and** your role file **and**
 the project's `AGENTS.md`. If a later action would conflict with a role rule, the **role
 rule wins** — re-read rather than guess. (Sub-agents are out of scope here; their procedure
 lives in `~/.agents/skills/model-b/references/sub-agent-procedure.md`, loaded at dispatch, not at bootstrap.)
+
+---
+
+## Step 0.6 — Load the execution knowledge (BOTH roles, only where `KNOWLEDGE_CATEGORY` is set)
+
+The project's execution knowledge — the short facts `orchestration-common.md` § "Memory" keeps
+in the project's knowledge store — is loaded once, here, so every later step runs with it.
+
+Where the project's `.env` sets `KNOWLEDGE_CATEGORY`, load that category, in order:
+1. restore the category's archived facts, so none the store set aside is missed;
+2. then list that category — every fact under it;
+3. report that the knowledge store is in use and how many facts it loaded (Mainline in its
+   report to the user, a Track in its status to Mainline).
+
+Load that category and nothing else: never a query recall, which returns matches rather than
+the full listing, and never the store's automatic rooms, which hold captures rather than this
+project's facts.
+
+Without `KNOWLEDGE_CATEGORY`, this step is skipped and never asked about — nothing changes.
 
 ---
 

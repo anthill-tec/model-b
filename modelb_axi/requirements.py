@@ -103,6 +103,19 @@ REQUIREMENTS: tuple[dict, ...] = (
         "tools": ("sandesh_watcher", "modelb_worktree_enter", "modelb_worktree_exit"),
     },
     {
+        # CR-MDB-045 §S1: Sandesh's own Pi extension — a third-party
+        # package, so ``--yes`` never installs it; its remediation is named.
+        "id": "sandesh-pi",
+        "tier": 1,
+        "provider": "@anthill-tec/sandesh-pi",
+        "policy": "recommended",
+        "scope": "always",
+        "probe": "pi-package",
+        "asset_families": ("bootstrap and shutdown skills",),
+        "remediation": "pi install npm:@anthill-tec/sandesh-pi",
+        "tools": (),
+    },
+    {
         "id": "uv",
         "tier": 2,
         "provider": "uv",

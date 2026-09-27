@@ -67,6 +67,96 @@ _PLAN_REQUIRED_FLAGS: tuple[tuple[str, str], ...] = (
 #: :func:`run_init` and :func:`run_agents` at call time.
 PROJECT_SCHEMA_PATH = Path(__file__).resolve().parent / "project_schema.toml"
 
+#: Every declared requirement id — what a schema ``when`` may name, and
+#: the keys of ``init``'s ``tools`` field (CR-MDB-045 §S2/§S3).
+_REQUIREMENT_IDS: tuple[str, ...] = tuple(r["id"] for r in requirements.REQUIREMENTS)
+
+#: ``init``'s tool states (CR-MDB-045 §S2), best to worst.
+TOOL_PRESENT, TOOL_UNKNOWN, TOOL_ABSENT = "present", "unknown", "absent"
+_PRESENT_VERDICTS = frozenset({"detected", "installed"})
+_TOOL_RANK = {TOOL_PRESENT: 0, TOOL_UNKNOWN: 1, TOOL_ABSENT: 2}
+
+
+def _tool_state(verdict) -> str:
+    """One recorded verdict as a tool state: ``detected``/``installed`` are
+    present, ``absent`` is absent, anything else (none) is unknown."""
+    if verdict in _PRESENT_VERDICTS:
+        return TOOL_PRESENT
+    return TOOL_ABSENT if verdict == "absent" else TOOL_UNKNOWN
+
+
+def read_tool_verdicts(install: dict, stacks: list[str]) -> tuple[dict, list[str]]:
+    """The installation's recorded verdicts as ``init``'s ``tools`` map
+    (CR-MDB-045 \u00a7S2) \u2014 read from a parsed ``install.toml``, never probed.
+
+    An always-scoped row takes its ``[capabilities]`` verdict, else its
+    ``[deps]`` one (uv, sandesh, crucible). A stack-scoped row takes the
+    worst state over the project's stacks and each stack's probes:
+    ``<stack>.client`` for ``crucible-client``, ``<stack>.<probe>`` for
+    ``toolchain``. Returns ``(tools, unrecorded)``: ``unrecorded`` names
+    each row with a verdict missing from ``install.toml``."""
+    capabilities = install.get("capabilities")
+    capabilities = capabilities if isinstance(capabilities, dict) else {}
+    deps = install.get("deps")
+    deps = deps if isinstance(deps, dict) else {}
+    tools: dict = {}
+    unrecorded: list[str] = []
+    for row in requirements.REQUIREMENTS:
+        rid = row["id"]
+        if row["scope"] == "always":
+            keys = [rid]
+        else:
+            project = [s for s in stacks if s in row["scope"]]
+            if rid == "toolchain":
+                keys = [f"{s}.{p['name']}" for s in project
+                        for p in requirements.STACK_TOOLCHAINS.get(s, ())]
+            else:
+                keys = [f"{s}.client" for s in project]
+        verdicts = [capabilities.get(k, deps.get(k)) for k in keys]
+        if not keys or any(v is None for v in verdicts):
+            unrecorded.append(rid)
+        states = [_tool_state(v) for v in verdicts] or [TOOL_UNKNOWN]
+        tools[rid] = max(states, key=_TOOL_RANK.__getitem__)
+    return tools, unrecorded
+
+
+def _tool_key_states(install: dict, stacks: list[str]) -> dict:
+    """The state of every recorded key behind the project's tools map
+    (CR-MDB-045 §S5): each always-scoped row by id, and for each of the
+    project's stacks ``<stack>.client`` and ``<stack>.<probe>`` — the
+    per-stack detail the capability contract lists. Read the way
+    :func:`read_tool_verdicts` reads them; never probed."""
+    capabilities = install.get("capabilities")
+    capabilities = capabilities if isinstance(capabilities, dict) else {}
+    deps = install.get("deps")
+    deps = deps if isinstance(deps, dict) else {}
+    keys = [r["id"] for r in requirements.REQUIREMENTS if r["scope"] == "always"]
+    for stack in stacks:
+        keys.append(f"{stack}.client")
+        keys += [f"{stack}.{p['name']}" for p in requirements.STACK_TOOLCHAINS.get(stack, ())]
+    return {key: _tool_state(capabilities.get(key, deps.get(key))) for key in keys}
+
+
+def _active_schema(schema: list[dict], tools: dict) -> list[dict]:
+    """The schema keys this project renders: a ``when`` key only when its
+    tool is present (CR-MDB-045 \u00a7S3)."""
+    return [e for e in schema if "when" not in e or tools.get(e["when"]) == TOOL_PRESENT]
+
+def _overrides_not_applied(schema: list[dict], tools: dict, inputs: dict) -> list[str]:
+    """A note for each flag given for a ``when`` key its tool leaves out \u2014
+    e.g. ``--knowledge-category`` while lean-ctx is not present (CR-MDB-045
+    \u00a7S4)."""
+    notes = []
+    for entry in schema:
+        if "when" not in entry or tools.get(entry["when"]) == TOOL_PRESENT:
+            continue
+        flag = entry.get("override") or entry.get("flag")
+        if flag and inputs.get(_flag_dest(flag)) is not None:
+            state = tools.get(entry["when"], TOOL_UNKNOWN)
+            notes.append(f"{flag} given, but {entry['when']} is {state} \u2014 "
+                         f"{entry['name']} is not applied")
+    return notes
+
 
 class ScaffoldError(ValueError):
     """A validation failure that aborts ``init`` before any write."""
@@ -221,11 +311,24 @@ def _remove_whitespace(value: str) -> str:
     return "".join(value.split())
 
 
+_NON_KEBAB_RUN_RE = re.compile(r"[^a-z0-9]+")
+
+def _knowledge_category(token: str) -> str:
+    """Derive rule: the lean-ctx knowledge category of a project,
+    ``<PROJECT_TOKEN>-workflow`` normalised to kebab-case (CR-MDB-045 §S4):
+    lower-cased, every run of other characters (``_``, spaces, ``.``) one
+    ``-``, none leading or trailing — so any accepted token derives a valid
+    category and never makes ``init`` fail."""
+    word = _NON_KEBAB_RUN_RE.sub("-", token.lower()).strip("-")
+    return f"{word}-workflow" if word else "workflow"
+
+
 #: Named derive rules a schema entry's ``rule`` refers to; each takes the
 #: entry's ``inputs`` values positionally (CR-MDB-043 §S2).
 DERIVE_RULES: dict = {
     "orchestrator_label": _orchestrator_label,
     "remove_whitespace": _remove_whitespace,
+    "knowledge_category": _knowledge_category,
 }
 
 
@@ -260,6 +363,18 @@ def _check_sandesh_id(value: str) -> str:
     return value
 
 
+_KEBAB_ID_RE = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
+
+
+def _check_kebab_id(value: str) -> str:
+    """Validate rule: a kebab-case id — lower-case letters and digits in
+    ``-``-separated words (CR-MDB-045 §S4)."""
+    if not _KEBAB_ID_RE.fullmatch(value):
+        raise ValueError("must be a kebab-case id (lower-case letters and digits "
+                         "in `-`-separated words)")
+    return value
+
+
 def _has_control_character(value: str) -> bool:
     """Whether ``value`` carries a control character (Unicode ``Cc``,
     newline and tab included)."""
@@ -274,6 +389,7 @@ VALIDATE_RULES: dict = {
     "no_whitespace": _check_no_whitespace,
     "stack_csv": _check_stack_csv,
     "sandesh_id": _check_sandesh_id,
+    "kebab_id": _check_kebab_id,
 }
 
 _SCHEMA_FILES = (".env", ".env.local")
@@ -322,6 +438,20 @@ def _check_entry_fields(entry: dict, where: str) -> None:
         raise ScaffoldError(f"{where}: a capture key names its step")
 
 
+def _check_when(entry: dict, where: str) -> None:
+    """Refuse a ``when`` that is not the id of a declared requirement row
+    (CR-MDB-045 \u00a7S3)."""
+    if "when" not in entry:
+        return
+    when = entry["when"]
+    if not isinstance(when, str):
+        raise ScaffoldError(f"{where}: when must be a requirement id string; got {when!r}")
+    if when not in _REQUIREMENT_IDS:
+        raise ScaffoldError(
+            f"{where}: when {when!r} is not a declared requirement id; "
+            f"known: {', '.join(_REQUIREMENT_IDS)}")
+
+
 def load_schema(path: Path) -> list[dict]:
     """Load the project-settings schema at ``path`` (CR-MDB-043 §S1): its
     one top-level array of tables, one entry per key, in declaration
@@ -359,6 +489,7 @@ def load_schema(path: Path) -> list[dict]:
                 f"{where}: unknown validate rule {entry.get('validate')!r}; "
                 f"known: {', '.join(VALIDATE_RULES)}")
         _check_entry_fields(entry, where)
+        _check_when(entry, where)
     for entry in entries:
         for item in entry.get("inputs", []) if entry["source"] == "derive" else []:
             if item not in seen and item not in DERIVE_INIT_INPUTS:
@@ -513,17 +644,30 @@ def _render_gitignore() -> str:
     )
 
 
+def _remediation_first(tools: dict, rid: str, label: str) -> str:
+    """The lead of a setup task for tool ``rid``: its remediation when
+    ``tools`` records it absent, else nothing (CR-MDB-045 §S5)."""
+    if tools.get(rid) != TOOL_ABSENT:
+        return ""
+    return f"{label} is absent — first: {requirements.requirement(rid)['remediation']}. Then: "
+
+
 def _render_queue_readme(
     name: str, acronym: str, label: str, mode: str, sandesh_project: str,
+    tools: dict | None = None,
 ) -> str:
     """Queue template (§S3.2): four header slots, empty structure-only
     table, setup-tasks checklist (incl. the §S3.6 manual registration
     notes — registrations are manual in scaffold v1), dated Notes
     footer. The multi-mode Sandesh task names the project's Sandesh id
-    and Mainline address from ``SANDESH_PROJECT`` (CR-MDB-043 §S2)."""
+    and Mainline address from ``SANDESH_PROJECT`` (CR-MDB-043 §S2).
+    Where ``tools`` records Sandesh or Crucible absent, its setup task
+    names the tool's remediation first (CR-MDB-045 §S5)."""
     today = datetime.date.today().isoformat()
+    tools = tools or {}
     sandesh_task = (
-        f"- [ ] Sandesh setup + register (`{sandesh_project}`, "
+        f"- [ ] {_remediation_first(tools, 'sandesh', 'Sandesh')}"
+        f"Sandesh setup + register (`{sandesh_project}`, "
         f"`Mainline - {sandesh_project}`) — "
         "manual step (registrations are manual in scaffold v1)\n"
         if mode != "solo" else ""
@@ -549,7 +693,8 @@ def _render_queue_readme(
         "## Setup tasks (pre-wave — not a wave; a wave is a grouping of CRs)\n"
         "\n"
         f"- [x] Scaffold via `modelb-axi init` — {today}\n"
-        "- [ ] Register the project in Crucible and paste the key into "
+        f"- [ ] {_remediation_first(tools, 'crucible', 'Crucible')}"
+        "Register the project in Crucible and paste the key into "
         "`.env` (`CRUCIBLE_PROJECT_KEY=`) — manual step "
         "(registrations are manual in scaffold v1)\n"
         f"{sandesh_task}"
@@ -570,25 +715,52 @@ _PI_ANCHOR_NOTE = (
 )
 
 
-def _render_capability_contract(stacks: list[str], harnesses: tuple[str, ...] = ()) -> str:
-    """The §S6 capability contract, rendered from
-    :mod:`modelb_axi.requirements` at call time (never hand-copied): one
-    line per tier-1 capability and per selected stack's toolchain probe,
-    each pairing the name with its remediation. Unselected stacks are not
+def _render_capability_contract(
+    stacks: list[str], harnesses: tuple[str, ...] = (), states: dict | None = None,
+) -> str:
+    """The capability contract (CR-MDB-036 §S6; CR-MDB-045 §S5), rendered
+    from :mod:`modelb_axi.requirements` at call time (never hand-copied)
+    and from ``states`` — each recorded key's state, as
+    :func:`_tool_key_states` reads it (a key it lacks is unknown). One line
+    per tool, in requirement order: each always-scoped row, then for the
+    project's own stacks the Crucible client and each toolchain probe. A
+    line names the tool and its state, and the remediation where it is not
+    present. A toolchain probe of the same name as an always-scoped row
+    (``python3``) is merged into that row's line, which takes the worse of
+    their states: each tool appears once. Unselected stacks are not
     mentioned."""
-    lines = [
-        f"- `{row['id']}` ({row['policy']}): `{row['remediation']}`"
-        for row in requirements.REQUIREMENTS if row["tier"] == 1
-    ]
-    seen: set[str] = set()
+    states = states or {}
+    lines: list[str] = []
+
+    def line(name: str, label: str, state: str, remediation: str) -> None:
+        tail = "" if state == TOOL_PRESENT else f" — {remediation}"
+        lines.append(f"- `{name}` ({label}): {state}{tail}")
+
+    def worst(found: list[str]) -> str:
+        return max(found, key=_TOOL_RANK.__getitem__)
+
+    probes: dict[str, tuple[str, dict, list[str]]] = {}
     for stack in stacks:
         for probe in requirements.STACK_TOOLCHAINS.get(stack, ()):
-            if probe["name"] in seen:
-                continue
-            seen.add(probe["name"])
-            lines.append(
-                f"- `{probe['name']}` ({stack} toolchain): {probe['remediation']}"
-            )
+            first = probes.setdefault(probe["name"], (stack, probe, []))
+            first[2].append(states.get(f"{stack}.{probe['name']}", TOOL_UNKNOWN))
+    for row in requirements.REQUIREMENTS:
+        if row["scope"] == "always":
+            remediation = (f"`{row['remediation']}`" if row["tier"] == 1
+                           else row["remediation"])
+            label, found = row["policy"], [states.get(row["id"], TOOL_UNKNOWN)]
+            merged = probes.pop(row["id"], None)
+            if merged is not None:
+                label = f"{label}; {merged[0]} toolchain"
+                found += merged[2]
+            line(row["id"], label, worst(found), remediation)
+        elif row["id"] == "crucible-client":
+            for stack in (s for s in stacks if s in row["scope"]):
+                line(row["id"], f"{stack} client, {row['policy']}",
+                     states.get(f"{stack}.client", TOOL_UNKNOWN), row["remediation"])
+        elif row["id"] == "toolchain":
+            for name, (stack, probe, found) in probes.items():
+                line(name, f"{stack} toolchain", worst(found), probe["remediation"])
     if "pi" in harnesses:
         # CR-MDB-037 §S4: Pi loads .pi/extensions only in a trusted project.
         lines.append(
@@ -597,22 +769,45 @@ def _render_capability_contract(stacks: list[str], harnesses: tuple[str, ...] = 
             "trusted: run `/trust` in Pi from the project root"
         )
     return (
-        "## Harness capability contract (from the installation's requirements)\n"
-        "Each line names what this project's assets need and how to provide "
-        "it when missing.\n"
+        "## Harness capability contract (from the installation's recorded verdicts)\n"
+        "Each line names a tool this project's assets need, its state as the "
+        "installation recorded it, and how to provide it when it is not present; "
+        "a tool with no recorded verdict is unknown until the installer is re-run.\n"
         + "\n".join(lines) + "\n"
+    )
+
+
+def _render_lean_ctx_section(category: str) -> str:
+    """The lean-ctx section of a project's ``AGENTS.md``, for the
+    orchestrator working it (CR-MDB-045 §S4): cached reads and the
+    compressed shell, where execution knowledge is kept, and what
+    bootstrap loads."""
+    return (
+        "## lean-ctx (for the orchestrator working this project)\n"
+        "- Prefer lean-ctx's cached reads and compressed shell over the "
+        "harness's built-in read and shell tools.\n"
+        "- Keep this project's execution knowledge in lean-ctx's knowledge "
+        f"store under the category `{category}` (`KNOWLEDGE_CATEGORY` in `.env`), "
+        "through the session's knowledge capability. Never through the "
+        "`lean-ctx knowledge` CLI: its project does not follow the working "
+        "directory.\n"
+        "- At bootstrap, load that category, and only that category: restore its "
+        "archived facts, then list it.\n"
     )
 
 
 def _render_agents_md(
     name: str, token: str, acronym: str, mode: str, owner: str,
     stacks: list[str], harnesses: list[str], sandesh_project: str | None = None,
+    states: dict | None = None, knowledge_category: str | None = None,
 ) -> str:
     """Project ``AGENTS.md`` override (§S3.3/§S3.8): identity from the
     registry, workflow rules (incl. the post-036 run-context note —
     workflow cycle env vars are never hand-set, and this file must not
     name them), stack-derived skill freeze, per-installed-harness anchor
-    notes, and the generator note."""
+    notes, the capability contract from the recorded ``states``, the
+    lean-ctx section when ``knowledge_category`` is set (CR-MDB-045
+    §S4/§S5), and the generator note."""
     label = _orchestrator_label(mode, token)
     sandesh_line = (
         f"- Sandesh project: `{sandesh_project}` (`SANDESH_PROJECT`; addresses "
@@ -657,16 +852,22 @@ def _render_agents_md(
         f"## Harness anchors (installed set: {', '.join(harnesses)})\n"
         + "\n".join(anchor_lines) + "\n"
         "\n"
-        + _render_capability_contract(stacks, tuple(harnesses))
+        + _render_capability_contract(stacks, tuple(harnesses), states)
         + "\n"
-        "## Generator note\n"
+        + (_render_lean_ctx_section(knowledge_category) + "\n" if knowledge_category else "")
+        + "## Generator note\n"
         "- Agents regenerate from the INSTALLATION's generator assets — "
         "never from a per-project copy.\n"
     )
 
 
-def _render_sub_agents_md(name: str, sub: str, token: str, acronym: str) -> str:
-    """Per-sub-project ``AGENTS.md`` override (§S3 monorepo)."""
+def _render_sub_agents_md(
+    name: str, sub: str, token: str, acronym: str, knowledge_category: str | None = None,
+) -> str:
+    """Per-sub-project ``AGENTS.md`` override (§S3 monorepo); with
+    ``knowledge_category`` — the category in the sub-project's own
+    ``.env`` — it carries its own lean-ctx section (CR-MDB-045 §S4)."""
+    lean_ctx = "\n" + _render_lean_ctx_section(knowledge_category) if knowledge_category else ""
     return (
         f"# {name} / {sub} — sub-project AGENTS.md\n"
         "\n"
@@ -674,6 +875,7 @@ def _render_sub_agents_md(name: str, sub: str, token: str, acronym: str) -> str:
         f"`{acronym}`). Tools resolve THIS directory's `.env` registry — "
         "never the repo root's on this sub-project's behalf. Repo-wide "
         "conventions live in the root `AGENTS.md`.\n"
+        + lean_ctx
     )
 
 
@@ -901,6 +1103,21 @@ def _renders_agents(harnesses: list[str]) -> bool:
     return any(h in agents.PROJECT_AGENT_DIRS for h in harnesses)
 
 
+def _prerender_agents(
+    stacks: list[str], harnesses: list[str], agent_sources: tuple[Path, Path], tools: dict,
+) -> dict[str, str]:
+    """Every agent definition of the project, rendered in memory in the form
+    the lean-ctx verdict selects (CR-MDB-045 §S8). A render failure — a
+    missing or unreadable built-in passages file, a definition still naming
+    lean-ctx — is a :class:`ScaffoldError`, raised before any write."""
+    try:
+        return agents.render_definitions(
+            stacks, harnesses, *agent_sources,
+            lean_ctx=tools.get("lean-ctx") == TOOL_PRESENT)
+    except agents.AgentRenderError as exc:
+        raise ScaffoldError(f"agent definitions cannot be rendered: {exc}") from exc
+
+
 #: Memory-template family prefix -> the stacks whose selection emits it
 #: (CR-MDB-031 §S1): the quarkus agent definitions read the ``java-*``
 #: templates, so a ``java-*`` template is emitted for ``java`` OR
@@ -972,10 +1189,13 @@ def _emit_plan(
     hook_scripts_root: Path | None,
     emitted: list[str] | None = None,
     agent_sources: tuple[Path, Path] | None = None,
+    agent_texts: dict[str, str] | None = None,
     force_managed: bool = False,
     ownership: dict | None = None,
     schema: list[dict],
     registry: dict,
+    tools: dict | None = None,
+    tool_states: dict | None = None,
 ) -> list[str]:
     """Perform the real §S3/§S4 emission under ``target``; returns the
     emitted file paths (relative to ``target``).
@@ -993,15 +1213,24 @@ def _emit_plan(
 
     ``agent_sources`` is the ``(templates_dir, stacks_dir)`` pair resolved
     by :func:`run_init` during validation (CR-MDB-025 §S6); ``None``
-    renders no agent definitions.
+    renders no agent definitions. ``agent_texts`` is every definition
+    :func:`run_init` rendered in memory during validation (CR-MDB-045
+    §S8); emission writes only that text.
 
     ``ownership``, when given, receives the permission policy's
     ``skipped`` (hand-edited) and ``unmanaged`` paths (CR-MDB-037 §S3).
 
     ``schema``/``registry`` are the project-settings schema and the values
-    :func:`run_init` resolved from it in validation (CR-MDB-043 §S2)."""
+    :func:`run_init` resolved from it in validation (CR-MDB-043 §S2).
+
+    ``tools``/``tool_states`` are the installation's recorded verdicts
+    (:func:`read_tool_verdicts`, :func:`_tool_key_states`): they shape the
+    capability contract and the setup tasks, and the agents take the
+    lean-ctx form only when lean-ctx is present (CR-MDB-045 §S5/§S8)."""
     if emitted is None:
         emitted = []
+    tools = tools or {}
+    knowledge_category = registry.get("KNOWLEDGE_CATEGORY") or None
 
     def write(rel: str, text: str) -> None:
         path = target / rel
@@ -1020,14 +1249,15 @@ def _emit_plan(
 
     # §S3.2 docs model.
     write("docs/changes/README.md", _render_queue_readme(
-        name, acronym, label, mode, registry["SANDESH_PROJECT"]))
+        name, acronym, label, mode, registry["SANDESH_PROJECT"], tools))
     write("docs/research/.gitkeep", "")
 
     # §S3.3 AGENTS.md (Pi reads it natively — no anchor file).
     write(
         "AGENTS.md",
         _render_agents_md(name, token, acronym, mode, owner, stacks, harnesses,
-                          registry.get("SANDESH_PROJECT")),
+                          registry.get("SANDESH_PROJECT"), tool_states,
+                          knowledge_category),
     )
 
     # §S3.4 in-repo project memory.
@@ -1063,6 +1293,7 @@ def _emit_plan(
         try:
             agents.render_project(
                 target, stacks, harnesses, *agent_sources, report=agent_report,
+                lean_ctx=tools.get("lean-ctx") == TOOL_PRESENT, rendered=agent_texts,
             )
         finally:
             emitted.extend(agent_report.get("written", []))
@@ -1074,6 +1305,7 @@ def _emit_plan(
         try:
             permission_policy.place_project_policy(
                 target, force_managed=force_managed, report=policy_report,
+                lean_ctx=tools.get("lean-ctx") == TOOL_PRESENT,
             )
         finally:
             emitted.extend(policy_report.get("written", []))
@@ -1084,7 +1316,8 @@ def _emit_plan(
     # §S3 monorepo: per-sub-project registry + override.
     for sub in sub_projects:
         write(f"{sub}/.env", _render_env(schema, registry, sub=True))
-        write(f"{sub}/AGENTS.md", _render_sub_agents_md(name, sub, token, acronym))
+        write(f"{sub}/AGENTS.md",
+              _render_sub_agents_md(name, sub, token, acronym, knowledge_category))
 
     # §S3.5 git + §S4 one-commit policy.
     _git(target, "init", "-b", "master")
@@ -1132,6 +1365,13 @@ def run_init(args: argparse.Namespace, home: Path) -> int:
         _validate_mode(args.mode)
         stacks = parse_stacks(args.stacks)
         sub_projects = _sub_projects(args.repo_shape)
+        # CR-MDB-045 §S2: the installation's recorded verdicts, read from
+        # install.toml before any project value is rendered — never probed.
+        install = load_install_toml(home)
+        tools, unrecorded = read_tool_verdicts(install, stacks)
+        tool_states = _tool_key_states(install, stacks)
+        not_applied = _overrides_not_applied(schema, tools, vars(args))
+        schema = _active_schema(schema, tools)
         # CR-MDB-043 §S2: derive + validate every registry value BEFORE
         # any write (and before --dry-run reports them).
         registry = resolve_registry(schema, vars(args))
@@ -1144,6 +1384,15 @@ def run_init(args: argparse.Namespace, home: Path) -> int:
     plan = plan_files(sub_projects)
     print(f"  harnesses ({harness_source}): {', '.join(harnesses)}", file=sys.stderr)
     print(f"  plan: {len(plan)} files under {target}", file=sys.stderr)
+    if unrecorded:
+        print(
+            f"  note: {INSTALL_TOML_NAME} records no verdict for {', '.join(unrecorded)} "
+            "— treated as unknown and not set up; re-run the installer (modelb-axi) "
+            "to record them",
+            file=sys.stderr,
+        )
+    for note in not_applied:
+        print(f"  note: {note}", file=sys.stderr)
 
     # CR-MDB-033 §S1: the hook-scripts dir is resolved here, in
     # validation, BEFORE the first write — a failure init can know in
@@ -1177,6 +1426,18 @@ def run_init(args: argparse.Namespace, home: Path) -> int:
             print(f"modelb-axi: warning: {exc}", file=sys.stderr)
             plan_warnings.append(str(exc))
 
+    # CR-MDB-045 §S8: every agent is rendered in memory now, in the form
+    # the lean-ctx verdict selects — a render failure is refused before the
+    # first write, --dry-run included; emission writes only this text.
+    agent_texts: dict[str, str] | None = None
+    if agent_sources is not None:
+        try:
+            agent_texts = _prerender_agents(stacks, harnesses, agent_sources, tools)
+        except ScaffoldError as exc:
+            print(f"modelb-axi: error: {exc}", file=sys.stderr)
+            print(envelope("init", False, warnings=[str(exc)], dry_run=dry_run))
+            return 2
+
     emitted: list[str] = []
     ownership: dict = {"skipped": [], "unmanaged": []}
     if not dry_run:
@@ -1196,10 +1457,13 @@ def run_init(args: argparse.Namespace, home: Path) -> int:
                 hook_scripts_root=hook_scripts_root,
                 emitted=emitted,
                 agent_sources=agent_sources,
+                agent_texts=agent_texts,
                 force_managed=bool(getattr(args, "force_managed", False)),
                 ownership=ownership,
                 schema=schema,
                 registry=registry,
+                tools=tools,
+                tool_states=tool_states,
             )
         except (ScaffoldError, OSError) as exc:
             # CR-MDB-033 §S4: a mid-emission failure may leave a partial
@@ -1269,6 +1533,7 @@ def run_init(args: argparse.Namespace, home: Path) -> int:
             register=bool(getattr(args, "register", False)),
             planned=plan,
             registry=registry,
+            tools=tools,
             setup_required=setup_required,
             skipped=ownership["skipped"],
             unmanaged=ownership["unmanaged"],
@@ -1345,6 +1610,11 @@ def run_agents(args: argparse.Namespace, home: Path, project_root: Path | None =
             stacks = parse_stacks(recorded)
         harnesses, harness_source = resolve_harnesses(home, None)
         templates_dir, stacks_dir = _agent_sources(home)
+        # CR-MDB-045 §S8: the agents match the installation's recorded
+        # lean-ctx verdict, read on every run (never probed).
+        tools, _unrecorded = read_tool_verdicts(load_install_toml(home), stacks)
+        # CR-MDB-045 §S8: rendered in memory before the first write.
+        agent_texts = _prerender_agents(stacks, harnesses, (templates_dir, stacks_dir), tools)
     except (ScaffoldError, UnknownHarnessError) as exc:
         print(f"modelb-axi: error: {exc}", file=sys.stderr)
         print(envelope("agents", False, warnings=[str(exc)], project=str(root)))
@@ -1357,6 +1627,7 @@ def run_agents(args: argparse.Namespace, home: Path, project_root: Path | None =
         agents.render_project(
             root, stacks, harnesses, templates_dir, stacks_dir,
             force_managed=force_managed, report=report,
+            lean_ctx=tools.get("lean-ctx") == TOOL_PRESENT, rendered=agent_texts,
         )
         if requested:
             _set_env_value(env_path, PROJECT_STACKS_KEY, ",".join(stacks))

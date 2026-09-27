@@ -228,6 +228,14 @@ def _add_init_parser(subparsers) -> None:
             "as Sandesh knows it (default: --name without whitespace)"
         ),
     )
+    init.add_argument(
+        "--knowledge-category", metavar="ID",
+        help=(
+            "KNOWLEDGE_CATEGORY registry value, the lean-ctx knowledge category "
+            "of the project's execution knowledge; written only when the "
+            "installation records lean-ctx present (default: <token>-workflow)"
+        ),
+    )
     init.add_argument("--target", metavar="DIR", help="project directory to scaffold into")
     init.add_argument(
         "--dry-run", action="store_true",
