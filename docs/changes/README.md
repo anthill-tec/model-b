@@ -51,7 +51,7 @@ Queue rows enumerate the whole delivery (structure only). **Live status lives on
 | [CR-MDB-043](CR-MDB-043-schema-driven-project-registry.md) | Schema-driven project registry: Model B ships a project-settings schema (keys, sources, derive rules, validation, readers — no values); `init` generates `.env`/`.env.local` from it; adds `SANDESH_PROJECT` | 5 | — |
 | [CR-MDB-041](CR-MDB-041-bootstrap-reads-scaffolded-files.md) | Bootstrap and shutdown read the files `init` scaffolds (`AGENTS.md`, `.env`, `docs/memory/INDEX.md`), not `ORCHESTRATOR-<Project>`/`MEMORY.md` | 5 | 042, 043 |
 | [CR-MDB-044](CR-MDB-044-agent-definitions-and-briefs.md) | Agent definitions carry the how, the brief the what: the orchestrator's acceptance model, parallel agents in one tree, each role's reading of a CR, field rules from Crucible #1405, cite code by symbol (PRD D5/D6 amendments 2026-09-27) | 5 | — |
-| [CR-MDB-045](CR-MDB-045-execution-knowledge-store.md) | The scaffold detects lean-ctx and sets it up for the project: `init` probes Pi, a `when`-conditional schema key `KNOWLEDGE_CATEGORY`, the orchestrator's pointer in `AGENTS.md`, § Memory + bootstrap load the category, the contract's pitfalls (PRD D10/D5 2026-09-27) | 5 | 044 |
+| [CR-MDB-045](CR-MDB-045-execution-knowledge-store.md) | The scaffold sets each project up for the workflow's tools: the installer declares `sandesh-pi`; `init` reads the installation's verdicts (never probes), a `when`-conditional schema key, lean-ctx's `KNOWLEDGE_CATEGORY` + orchestrator pointer, the capability contract shows the project's state, § Memory + bootstrap, the contract's pitfalls (PRD D10/D5 2026-09-27) | 5 | 044 |
 
 **— v1.0.0 ships here —** (the release is a BOUNDARY EVENT, not a queue row: the wave drains, the user approves, `git-workflow` §Releases executes it, a milestone records it afterwards. No release CR, no close-out wave.)
 
@@ -1117,3 +1117,9 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   analysis folded: the in-session knowledge capability, never the CLI (its project does not follow the
   working directory); one category, never lean-ctx's automatic rooms; restore then list, no count to
   keep; only Mainline or Solo writes.
+- 2026-09-27 — **CR-MDB-045 re-scoped** (user ruling, PRD D10 amended again): the `modelb-axi`
+  installer detects the workflow's tools once per machine (the Pi harness, its extensions incl.
+  `sandesh-pi`, Crucible, Sandesh, each stack's toolchain and Crucible client) and records the
+  verdicts in `install.toml`; `init`, which is stack-specific, never probes — it reads those verdicts
+  and sets the project up for each tool present (registry keys rendered `when` the tool is present,
+  pointers in `AGENTS.md`). lean-ctx is the first new setup.
