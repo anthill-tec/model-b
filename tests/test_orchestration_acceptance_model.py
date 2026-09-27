@@ -20,6 +20,9 @@ What the file must carry (pinned here; GREEN writes to it):
   states the Crucible #1407 rules: VERIFY closes before its FIX cycle, the switch happens between
   agents (a closed cycle refuses runs), a new contract VERIFY finds runs RED in the FIX cycle
   (``VERIFY_FIX_RULES``).
+- §S1 — ``skills-src/model-b/references/orchestration-track.md`` agrees: no block of it carries a
+  rule to diff-verify the worktree or the commit range, or assumes agents are told not to commit
+  (``TRACK_CONTRADICTING_RULES``).
 
 A rule is carried when ONE block of the section — a list item with its wrapped lines, or a paragraph
 — matches every pattern of the rule (case-insensitive, after ``**`` and backticks are dropped and
@@ -31,6 +34,8 @@ Class map:
 - ``AcceptanceModelSectionTest`` — §S1 heading, body rules, the staying rules, the removed phrases.
 - ``ParallelAgentsSectionTest`` — §S2's section and its eight rules.
 - ``CycleDisciplineTest`` — § "Cycle discipline": the §S2 reference and the #1407 rules.
+- ``TrackChecklistAgreesTest`` — ``orchestration-track.md`` carries none of
+  ``TRACK_CONTRADICTING_RULES``.
 - ``RuleCheckersOnSyntheticTextTest`` — the same pure functions on in-memory text: a well-formed
   fixture yields nothing, and each missing or contradicting rule is reported by name.
 
@@ -45,6 +50,8 @@ from tests.test_orchestrator_rule_triage import markdown_headings, section_body
 
 COMMON_REL = "skills-src/model-b/references/orchestration-common.md"
 COMMON_FILE = REPO_ROOT / COMMON_REL
+TRACK_REL = "skills-src/model-b/references/orchestration-track.md"
+TRACK_FILE = REPO_ROOT / TRACK_REL
 
 NEW_HEADING = "Never author code \u2014 dispatch with an accurate brief"
 OLD_HEADING = "Never author code \u2014 always dispatch + diff-verify"
@@ -126,6 +133,14 @@ VERIFY_FIX_RULES = {
         r"new contract", r"\bRED\b", r"in the FIX cycle", r"alongside"),
 }
 
+#: §S1 — the rules the acceptance model replaced, as ``orchestration-track.md`` could restate them.
+#: A block matching every pattern of one of these contradicts PRD D5 and ``orchestration-common.md``.
+TRACK_CONTRADICTING_RULES = {
+    "diff-verify the worktree": (r"diff-verif", r"\bwork(?:ing )?tree\b"),
+    "verify the commit range": (r"\bverif", r"commit range"),
+    "agents are told not to commit": (r"do not commit|don't commit|self-commit",),
+}
+
 _ITEM_START = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+")
 _HEADING_LINE = re.compile(r"^#{1,6}\s")
 
@@ -186,6 +201,14 @@ def removed_phrase_findings(text: str) -> list[str]:
             for phrase in REMOVED_PHRASES if phrase.lower() in line.lower()]
 
 
+def contradicting_rules(text: str, rules: dict[str, tuple[str, ...]]) -> list[str]:
+    """The name of each rule some single block of ``text`` states — the inverse of
+    ``missing_rules``."""
+    blocks = rule_blocks(text)
+    return [name for name, patterns in rules.items()
+            if any(all(re.search(p, block, re.IGNORECASE) for p in patterns) for block in blocks)]
+
+
 class _CommonFileMixin(unittest.TestCase):
     def common(self) -> str:
         self.assertTrue(COMMON_FILE.is_file(), f"{COMMON_REL} does not exist")
@@ -229,6 +252,14 @@ class CycleDisciplineTest(_CommonFileMixin):
 
     def test_cycle_discipline_closes_verify_before_fix_and_runs_red_in_the_fix_cycle(self):
         self.assertEqual(section_rule_findings(self.common(), CYCLE_HEADING, VERIFY_FIX_RULES), [])
+
+
+class TrackChecklistAgreesTest(unittest.TestCase):
+    """§S1 — ``orchestration-track.md`` agrees with the acceptance model."""
+
+    def test_track_carries_no_rule_to_diff_verify_the_worktree_or_the_commit_range(self):
+        self.assertTrue(TRACK_FILE.is_file(), f"{TRACK_REL} does not exist")
+        self.assertEqual(contradicting_rules(read_text(TRACK_FILE), TRACK_CONTRADICTING_RULES), [])
 
 
 # ------------------------------------------------------------------ synthetic ----
@@ -363,6 +394,20 @@ class RuleCheckersOnSyntheticTextTest(unittest.TestCase):
             "2: reset+recommit",
             "3: Validate an agent's work at module level first",
         ])
+
+    def test_track_checklist_rules_the_acceptance_model_replaced_are_reported_by_name(self):
+        text = ("## Cull / re-layer execution checklist\n"
+                "- Diff-verify the WORKTREE, not the agent's narrative.\n"
+                "- A defect \u2192 dispatch a fix-agent, never self-edit.\n"
+                "- Verify the COMMIT RANGE, not just the working tree (agents self-commit despite\n"
+                "  \"do not commit\").\n")
+        self.assertEqual(contradicting_rules(text, TRACK_CONTRADICTING_RULES), [
+            "diff-verify the worktree", "verify the commit range", "agents are told not to commit"])
+        clean = ("## Cull / re-layer execution checklist\n"
+                 "- A phase is accepted from the agent's report, its ingested run and its commit range\n"
+                 "  (`<base>..<head>`); agents commit the code they write.\n"
+                 "- A defect \u2192 dispatch a FIX agent, never self-edit; VERIFY covers the result.\n")
+        self.assertEqual(contradicting_rules(clean, TRACK_CONTRADICTING_RULES), [])
 
     def test_each_missing_parallel_rule_is_named(self):
         text = _good_text().replace("default 4", "a small number").replace(

@@ -29,9 +29,11 @@ The no-duplication criterion
 ----------------------------
 §S5 was re-scoped at the 2026-09-21 gap-analysis: three families were REMOVED from
 its scope because `tests/test_skills_handover.py` already gates them —
-zero `WORKFLOW_CYCLE_ID` across the bundles (`:226`), the v2 touch contract
-(`:294`), the v2 heartbeat form (`:386`). An AC now FORBIDS duplicating them, and
-requires the guard to cite them in its docstring instead. `test_s5_defers_...`
+zero `WORKFLOW_CYCLE_ID` across the bundles, the v2 touch contract, the v2
+heartbeat form. An AC now FORBIDS duplicating them, and
+requires the guard to cite them in its docstring instead, by the owning test's
+name (`DEFERRED_OWNERS`) — never by a line number, which moves with every edit
+(CR-MDB-044 §S4). `test_s5_defers_...`
 below therefore matches on the guard's EFFECTIVE CODE only — docstrings and
 comments (whole-line and trailing) are stripped before the scan — so a comment or
 docstring explaining the deferral is explicitly safe, while the same marker
@@ -64,10 +66,19 @@ HANDOVER_MD = SKILLS_SRC / "CRUCIBLE-HANDOVER.md"
 GUARD_MODULE = TESTS_DIR / "test_skill_bundle_guards.py"
 META_MODULE = Path(__file__).resolve()
 
-# The module whose gates §S5 defers to, and the three line references the guard's
-# docstring must cite instead of re-asserting them.
+# The module whose gates §S5 defers to, and the three owning tests the guard's
+# docstring must cite by name instead of re-asserting them (CR-MDB-044 §S4: code
+# is cited by symbol, so the audit's line numbers are retired).
 HANDOVER_TEST_REL = "tests/test_skills_handover.py"
-DEFERRED_LINE_REFS = (":226", ":294", ":386")
+ZERO_CYCLE_ID_OWNER = "ZeroWorkflowCycleIdUnderSkillsSrcTest"
+TOUCH_CONTRACT_OWNER = ("CrucibleSkillRoutingAndProtocolSyncTest."
+                        "test_v2_touch_contract_documented_and_phantom_claim_replaced")
+HEARTBEAT_FORM_OWNER = ("RepoWideHeartbeatGrepGateTest."
+                        "test_every_agents_heartbeat_hit_under_skills_src_is_the_v2_form")
+DEFERRED_OWNERS = (ZERO_CYCLE_ID_OWNER, TOUCH_CONTRACT_OWNER, HEARTBEAT_FORM_OWNER)
+
+# A line-number reference (a colon, then digits) — what the docstring must not carry.
+LINE_REF_RE = re.compile(r":\d+\b")
 
 # Built by concatenation so this file never itself trips a grep gate for either
 # term (same idiom as tests/test_skills_handover.py and test_realhome_supersede.py).
@@ -77,12 +88,12 @@ AGENT_PROTOCOL_MARKER = "agent-" + "protocol"
 HEARTBEAT_SCRIPT_MARKER = "heartbeat" + ".sh"
 
 # Properties tests/test_skills_handover.py already gates; the guard must cite,
-# never re-assert. (marker, property, owning line reference)
+# never re-assert. (marker, property, owning test)
 DEFERRED_PROPERTIES = (
     (CYCLE_ID_ENV_MARKER, "zero WORKFLOW_"
-     "CYCLE_ID across the bundles", ":226"),
+     "CYCLE_ID across the bundles", ZERO_CYCLE_ID_OWNER),
     (HEARTBEAT_MARKER, "the v2 touch contract / the v2 heartbeat form",
-     ":294 and :386"),
+     f"{TOUCH_CONTRACT_OWNER} and {HEARTBEAT_FORM_OWNER}"),
 )
 
 # §S5: the guard spawns no subprocess and starts no server.
@@ -614,18 +625,19 @@ class SkillBundleGuardsMetaTest(unittest.TestCase):
     # anything for this meta-gate to demand.
     def test_s5_guard_module_defers_handover_gated_properties_and_cites_them(self):
         """DEMANDS: the guard does NOT re-assert the three families
-        `tests/test_skills_handover.py` already gates, and cites them with their
-        line references in its docstring instead. Only EFFECTIVE CODE is scanned
+        `tests/test_skills_handover.py` already gates, and cites them by their
+        owning tests' names in its docstring instead, never by line number. Only
+        EFFECTIVE CODE is scanned
         — a comment or docstring explaining the deferral is safe by design."""
         source, tree = self._require_guard()
 
         duplicates = []
         for lineno, text in _effective_code_lines(source, tree):
-            for marker, prop, owner_ref in DEFERRED_PROPERTIES:
+            for marker, prop, owner in DEFERRED_PROPERTIES:
                 if marker in text:
                     duplicates.append(
                         f"line {lineno}: {text.strip()[:88]!r} re-implements "
-                        f"{prop} (owned by {HANDOVER_TEST_REL}{owner_ref})"
+                        f"{prop} (owned by {owner} in {HANDOVER_TEST_REL})"
                     )
         self.assertEqual(
             duplicates,
@@ -643,15 +655,34 @@ class SkillBundleGuardsMetaTest(unittest.TestCase):
             f"{_rel(GUARD_MODULE)}'s module docstring must CITE "
             f"{HANDOVER_TEST_REL} as the owner of the three deferred families.",
         )
-        missing_refs = [ref for ref in DEFERRED_LINE_REFS if ref not in docstring]
+        missing_owners = [name for name in DEFERRED_OWNERS if name not in docstring]
         self.assertEqual(
-            missing_refs,
+            missing_owners,
             [],
-            f"{_rel(GUARD_MODULE)}'s docstring must cite all three line "
-            f"references {list(DEFERRED_LINE_REFS)} ({HANDOVER_TEST_REL}:226 zero "
-            f"env-var, :294 the v2 touch contract, :386 the v2 heartbeat form); "
-            f"missing: {missing_refs}",
+            f"{_rel(GUARD_MODULE)}'s docstring must cite each deferred family by "
+            f"its owning test in {HANDOVER_TEST_REL} ({list(DEFERRED_OWNERS)}); "
+            f"missing: {missing_owners}",
         )
+        line_refs = LINE_REF_RE.findall(docstring)
+        self.assertEqual(
+            line_refs,
+            [],
+            f"{_rel(GUARD_MODULE)}'s docstring cites by line number ({line_refs}); "
+            f"the owning test's name is the citation (CR-MDB-044 §S4).",
+        )
+
+    def test_s5_every_deferred_owner_names_a_test_in_the_handover_module(self):
+        """DEMANDS: each name in `DEFERRED_OWNERS` resolves to a class, or a
+        class's method, defined in `tests/test_skills_handover.py` — a citation
+        by name holds only while the name exists."""
+        tree = ast.parse(_read(REPO_ROOT / HANDOVER_TEST_REL))
+        defined = set()
+        for node in tree.body:
+            if isinstance(node, ast.ClassDef):
+                defined.add(node.name)
+                defined.update(f"{node.name}.{item.name}" for item in node.body
+                               if isinstance(item, ast.FunctionDef))
+        self.assertEqual([name for name in DEFERRED_OWNERS if name not in defined], [])
 
     def test_s5_guard_module_proves_each_register_defect_with_a_fixture_case(self):
         """DEMANDS: the guard's checker is a reusable module-level function, and

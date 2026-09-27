@@ -19,7 +19,9 @@ sentence is free):
   (``§S`` scope sections, acceptance criteria, non-goals, design reference — ``SPEC_PARTS``), states
   which of them bind the agent's role (``ROLE_BINDINGS``) and states that the spec outranks the brief,
   that a brief narrows the work to a cycle's scope and may add boundaries, and that a brief
-  contradicting the spec is escalated, never followed (``OUTRANK_RULES``).
+  contradicting the spec is escalated, never followed (``OUTRANK_RULES``). VERIFY's section reads the
+  whole spec and never tells it to read only the parts a cycle's scope touches
+  (``verify_reading_findings``).
 - **Prompt Precedence.** No template and no rendered agent says ``ABSOLUTE precedence``. The rule
   that replaces it — the brief's scope and boundaries bind; where it contradicts the spec, escalate
   (``PRECEDENCE_RULES``) — is stated in § "Prompt Precedence" when the agent keeps that heading, else
@@ -33,7 +35,8 @@ sentence is free):
 - **Field rules, written once** (``FIELD_RULES``): each is stated in the file §S3 names and in no
   other of the five agent surfaces (``sub-agent-procedure.md`` and the four raw templates). The
   checker rules sit in ``sub-agent-procedure.md`` § "Code quality", beside the content-anchor rule,
-  which stays.
+  which stays. The scoped revert sits in ``sub-agent-procedure.md`` § "Consequences"; no line of
+  that file reverts the whole tree unnegated (``whole_tree_revert_lines``).
 - **Stack surface kept.** Every rendered agent carries its stack's test, register and unregister
   commands and its Crucible client reference.
 
@@ -63,6 +66,7 @@ GIT_WORKFLOW_REL = "skills-src/git-workflow/SKILL.md"
 READING_HEADING = "Reading the CR"
 PRECEDENCE_HEADING = "Prompt Precedence"
 CODE_QUALITY_HEADING = "Code quality"
+CONSEQUENCES_HEADING = "Consequences"
 COMMIT_TIMING_HEADING = "Commit Timing"
 
 #: §S3 — the spec's parts every "Reading the CR" section names (section-level, any block).
@@ -155,6 +159,8 @@ FIELD_RULES = {
         ("procedure",), CODE_QUALITY_HEADING, (r"\bcheckers?\b", r"\bprov", r"synthetic fixtures?")),
     "a test never pins live repo violations": (
         ("procedure",), CODE_QUALITY_HEADING, (r"never pins?", r"\blive\b", r"violations?")),
+    "a revert is scoped to the agent's own files": (
+        ("procedure",), CONSEQUENCES_HEADING, (r"\brevert", r"\bown files\b")),
 }
 
 #: The content-anchor rule § "Code quality" keeps (the checker rules sit beside it).
@@ -169,6 +175,12 @@ _NEGATION = re.compile(
     r"\b(?:never|not|no|nor|don't|forbidden|instead of|rather than)\b", re.IGNORECASE)
 _CLAUSE_BREAK = re.compile(r"[.;]\s|\s\u2014\s")
 _ALWAYS_ADD_ALL = re.compile(r"always\W+git add -A", re.IGNORECASE)
+#: §S3 — a revert that takes the whole tree (and with it other agents' edits).
+_WHOLE_TREE_REVERT = re.compile(
+    r"git\s+(?:checkout\s+(?:--\s+)?\.(?=[\s).,&;]|$)|restore\s+\.(?=[\s).,&;]|$)|reset\s+--hard\b"
+    r"|clean\s+-\w*f|stash\b)")
+#: §S3 — VERIFY is bound by the whole spec: its reading is never narrowed to a cycle's scope.
+_SCOPED_READING = re.compile(r"\bparts\b[^.;]*\bscope\b[^.;]*\btouch", re.IGNORECASE)
 
 
 # ------------------------------------------------------------------ checkers ----
@@ -204,6 +216,35 @@ def reading_the_cr_findings(body: str, role: str) -> list[str]:
                  for name in missing_rules(section, ROLE_BINDINGS[role])]
     problems += [f"{READING_HEADING}: {name}" for name in missing_rules(section, OUTRANK_RULES)]
     return problems
+
+
+def verify_reading_findings(body: str, role: str) -> list[str]:
+    """VERIFY's "Reading the CR" says the whole spec binds it and never narrows its reading to the
+    parts a cycle's scope touches. Other roles are not checked."""
+    if role != "verify":
+        return []
+    sections = named_sections(body, READING_HEADING)
+    flat = " ".join(rule_blocks(sections[0])) if sections else ""
+    problems = []
+    if _SCOPED_READING.search(flat):
+        problems.append(f"{READING_HEADING}: VERIFY reads only the parts a cycle's scope touches")
+    if not re.search(r"\bwhole spec\b", flat, re.IGNORECASE):
+        problems.append(f"{READING_HEADING}: VERIFY is bound by the whole spec")
+    return problems
+
+
+def whole_tree_revert_lines(text: str) -> list[str]:
+    """``<line>: <line text>`` for each line reverting the whole tree (``git checkout -- .``,
+    ``git restore .``, ``git reset --hard``, ``git clean -f``, ``git stash``) without a negation
+    earlier in the same clause."""
+    found = []
+    for n, line in enumerate(text.splitlines(), 1):
+        plain = line.replace("`", "")
+        for match in _WHOLE_TREE_REVERT.finditer(plain):
+            if not _NEGATION.search(_CLAUSE_BREAK.split(plain[:match.start()])[-1]):
+                found.append(f"{n}: {line.strip()}")
+                break
+    return found
 
 
 def absolute_precedence_lines(text: str) -> list[str]:
@@ -358,6 +399,9 @@ class ReadingTheCrSectionTest(unittest.TestCase):
             x for x in reading_the_cr_findings(b, r)
             if any(x.endswith(name) for name in OUTRANK_RULES)]), [])
 
+    def test_verify_reads_the_whole_spec_not_the_parts_a_cycles_scope_touches(self):
+        self.assertEqual(_per_agent(lambda s, r, p, b: verify_reading_findings(b, r)), [])
+
 
 class PromptPrecedenceTest(unittest.TestCase):
     """§S3 — § "Prompt Precedence" is replaced: the brief's scope and boundaries bind; a brief that
@@ -422,6 +466,9 @@ class FieldRulesTest(unittest.TestCase):
     def test_code_quality_keeps_the_content_anchor_rule(self):
         self.assertEqual(code_quality_anchor_findings(read_text(REPO_ROOT / PROCEDURE_REL)), [])
 
+    def test_procedure_never_reverts_the_whole_tree(self):
+        self.assertEqual(whole_tree_revert_lines(read_text(REPO_ROOT / PROCEDURE_REL)), [])
+
 
 class StackSurfaceKeptTest(unittest.TestCase):
     """§S3 — every rendered agent carries its stack's test command and Crucible client."""
@@ -435,7 +482,7 @@ class StackSurfaceKeptTest(unittest.TestCase):
 _BINDING_LINES = {
     "red": "- What binds you (RED): the ACs in your scope sections, asserted exactly.",
     "green": "- What binds you (GREEN): those ACs, through the RED tests.",
-    "verify": "- What binds you (VERIFY): every AC, the non-goals and the design reference.",
+    "verify": "- What binds you (VERIFY): the whole spec \u2014 every AC, the non-goals and the design reference.",
     "fix": "- What binds you (FIX): the findings you were given, read against the ACs they cite.",
 }
 
@@ -486,6 +533,9 @@ _GOOD_SURFACES = {
 ## Code quality
 - Key a guard's allowlist to an annotation marker at the site, never a line number.
 - Checkers are proved on synthetic fixtures; a test never pins live repo violations.
+
+## Consequences
+Violations: the agent's own files are reverted, the agent terminated, the task re-spawned.
 """,
     "red": "# RED\n- Write the tests.\n",
     "green": """# GREEN
@@ -521,8 +571,10 @@ class AgentDefinitionCheckersOnSyntheticTextTest(unittest.TestCase):
                 self.assertEqual(precedence_findings(body), [])
                 self.assertEqual(cycle_findings(body, role), [])
                 self.assertEqual(commit_findings(body, role), [])
+                self.assertEqual(verify_reading_findings(body, role), [])
         self.assertEqual(field_rule_findings(_GOOD_SURFACES), [])
         self.assertEqual(code_quality_anchor_findings(_GOOD_SURFACES["procedure"]), [])
+        self.assertEqual(whole_tree_revert_lines(_GOOD_SURFACES["procedure"]), [])
         self.assertEqual(git_workflow_findings(_GOOD_GIT_WORKFLOW), [])
 
     def test_missing_or_duplicated_reading_the_cr_section_is_reported(self):
@@ -658,6 +710,40 @@ class AgentDefinitionCheckersOnSyntheticTextTest(unittest.TestCase):
                           "line number.\n", "")
         self.assertEqual(code_quality_anchor_findings(no_anchor), [
             "Code quality: a guard's allowlist is keyed to an annotation marker, never a line number"])
+
+    def test_verify_told_to_read_only_its_cycles_scope_is_reported(self):
+        scoped = _once(_good_body("verify"), "its\ndesign reference.\n",
+                       "its\ndesign reference. Read the parts your cycle's scope touches.\n")
+        scoped = _once(scoped, "the whole spec \u2014 ", "")
+        self.assertEqual(verify_reading_findings(scoped, "verify"), [
+            "Reading the CR: VERIFY reads only the parts a cycle's scope touches",
+            "Reading the CR: VERIFY is bound by the whole spec",
+        ])
+        self.assertEqual(verify_reading_findings(scoped, "red"), [])
+        elsewhere = _good_body("verify") + "\n## Scope\nRead the parts your cycle's scope touches.\n"
+        self.assertEqual(verify_reading_findings(elsewhere, "verify"), [])
+
+    def test_a_whole_tree_revert_or_an_unscoped_consequence_is_reported(self):
+        old = "Violations \u2192 work reverted (`git checkout -- .`), agent terminated, task re-spawned.\n"
+        surfaces = dict(_GOOD_SURFACES)
+        surfaces["procedure"] = _once(
+            surfaces["procedure"],
+            "Violations: the agent's own files are reverted, the agent terminated, the task re-spawned.\n",
+            old)
+        self.assertEqual(field_rule_findings(surfaces), [
+            "a revert is scoped to the agent's own files: missing from procedure \u00a7 Consequences"])
+        line = surfaces["procedure"].splitlines().index(old.rstrip("\n")) + 1
+        self.assertEqual(whole_tree_revert_lines(surfaces["procedure"]), [f"{line}: {old.strip()}"])
+        text = "\n".join([
+            "git restore .",
+            "git reset --hard HEAD",
+            "git clean -fd && git stash",
+            "- Revert only your own files (`git checkout -- <path>`), never `git checkout -- .`.",
+            "git checkout -- tests/test_x.py",
+            "git restore .gitignore",
+        ])
+        self.assertEqual([hit.split(":", 1)[0] for hit in whole_tree_revert_lines(text)],
+                         ["1", "2", "3"])
 
     def test_a_missing_stack_command_or_client_is_reported(self):
         params = {"test_command": "stack-client test", "register_command": "stack-client register",
