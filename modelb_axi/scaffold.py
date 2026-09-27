@@ -67,6 +67,64 @@ _PLAN_REQUIRED_FLAGS: tuple[tuple[str, str], ...] = (
 #: :func:`run_init` and :func:`run_agents` at call time.
 PROJECT_SCHEMA_PATH = Path(__file__).resolve().parent / "project_schema.toml"
 
+#: Every declared requirement id — what a schema ``when`` may name, and
+#: the keys of ``init``'s ``tools`` field (CR-MDB-045 §S2/§S3).
+_REQUIREMENT_IDS: tuple[str, ...] = tuple(r["id"] for r in requirements.REQUIREMENTS)
+
+#: ``init``'s tool states (CR-MDB-045 §S2), best to worst.
+TOOL_PRESENT, TOOL_UNKNOWN, TOOL_ABSENT = "present", "unknown", "absent"
+_PRESENT_VERDICTS = frozenset({"detected", "installed"})
+_TOOL_RANK = {TOOL_PRESENT: 0, TOOL_UNKNOWN: 1, TOOL_ABSENT: 2}
+
+
+def _tool_state(verdict) -> str:
+    """One recorded verdict as a tool state: ``detected``/``installed`` are
+    present, ``absent`` is absent, anything else (none) is unknown."""
+    if verdict in _PRESENT_VERDICTS:
+        return TOOL_PRESENT
+    return TOOL_ABSENT if verdict == "absent" else TOOL_UNKNOWN
+
+
+def read_tool_verdicts(install: dict, stacks: list[str]) -> tuple[dict, list[str]]:
+    """The installation's recorded verdicts as ``init``'s ``tools`` map
+    (CR-MDB-045 \u00a7S2) \u2014 read from a parsed ``install.toml``, never probed.
+
+    An always-scoped row takes its ``[capabilities]`` verdict, else its
+    ``[deps]`` one (uv, sandesh, crucible). A stack-scoped row takes the
+    worst state over the project's stacks and each stack's probes:
+    ``<stack>.client`` for ``crucible-client``, ``<stack>.<probe>`` for
+    ``toolchain``. Returns ``(tools, unrecorded)``: ``unrecorded`` names
+    each row with a verdict missing from ``install.toml``."""
+    capabilities = install.get("capabilities")
+    capabilities = capabilities if isinstance(capabilities, dict) else {}
+    deps = install.get("deps")
+    deps = deps if isinstance(deps, dict) else {}
+    tools: dict = {}
+    unrecorded: list[str] = []
+    for row in requirements.REQUIREMENTS:
+        rid = row["id"]
+        if row["scope"] == "always":
+            keys = [rid]
+        else:
+            project = [s for s in stacks if s in row["scope"]]
+            if rid == "toolchain":
+                keys = [f"{s}.{p['name']}" for s in project
+                        for p in requirements.STACK_TOOLCHAINS.get(s, ())]
+            else:
+                keys = [f"{s}.client" for s in project]
+        verdicts = [capabilities.get(k, deps.get(k)) for k in keys]
+        if not keys or any(v is None for v in verdicts):
+            unrecorded.append(rid)
+        states = [_tool_state(v) for v in verdicts] or [TOOL_UNKNOWN]
+        tools[rid] = max(states, key=_TOOL_RANK.__getitem__)
+    return tools, unrecorded
+
+
+def _active_schema(schema: list[dict], tools: dict) -> list[dict]:
+    """The schema keys this project renders: a ``when`` key only when its
+    tool is present (CR-MDB-045 \u00a7S3)."""
+    return [e for e in schema if "when" not in e or tools.get(e["when"]) == TOOL_PRESENT]
+
 
 class ScaffoldError(ValueError):
     """A validation failure that aborts ``init`` before any write."""
@@ -322,6 +380,20 @@ def _check_entry_fields(entry: dict, where: str) -> None:
         raise ScaffoldError(f"{where}: a capture key names its step")
 
 
+def _check_when(entry: dict, where: str) -> None:
+    """Refuse a ``when`` that is not the id of a declared requirement row
+    (CR-MDB-045 \u00a7S3)."""
+    if "when" not in entry:
+        return
+    when = entry["when"]
+    if not isinstance(when, str):
+        raise ScaffoldError(f"{where}: when must be a requirement id string; got {when!r}")
+    if when not in _REQUIREMENT_IDS:
+        raise ScaffoldError(
+            f"{where}: when {when!r} is not a declared requirement id; "
+            f"known: {', '.join(_REQUIREMENT_IDS)}")
+
+
 def load_schema(path: Path) -> list[dict]:
     """Load the project-settings schema at ``path`` (CR-MDB-043 §S1): its
     one top-level array of tables, one entry per key, in declaration
@@ -359,6 +431,7 @@ def load_schema(path: Path) -> list[dict]:
                 f"{where}: unknown validate rule {entry.get('validate')!r}; "
                 f"known: {', '.join(VALIDATE_RULES)}")
         _check_entry_fields(entry, where)
+        _check_when(entry, where)
     for entry in entries:
         for item in entry.get("inputs", []) if entry["source"] == "derive" else []:
             if item not in seen and item not in DERIVE_INIT_INPUTS:
@@ -1132,6 +1205,10 @@ def run_init(args: argparse.Namespace, home: Path) -> int:
         _validate_mode(args.mode)
         stacks = parse_stacks(args.stacks)
         sub_projects = _sub_projects(args.repo_shape)
+        # CR-MDB-045 §S2: the installation's recorded verdicts, read from
+        # install.toml before any project value is rendered — never probed.
+        tools, unrecorded = read_tool_verdicts(load_install_toml(home), stacks)
+        schema = _active_schema(schema, tools)
         # CR-MDB-043 §S2: derive + validate every registry value BEFORE
         # any write (and before --dry-run reports them).
         registry = resolve_registry(schema, vars(args))
@@ -1144,6 +1221,13 @@ def run_init(args: argparse.Namespace, home: Path) -> int:
     plan = plan_files(sub_projects)
     print(f"  harnesses ({harness_source}): {', '.join(harnesses)}", file=sys.stderr)
     print(f"  plan: {len(plan)} files under {target}", file=sys.stderr)
+    if unrecorded:
+        print(
+            f"  note: {INSTALL_TOML_NAME} records no verdict for {', '.join(unrecorded)} "
+            "— treated as unknown and not set up; re-run the installer (modelb-axi) "
+            "to record them",
+            file=sys.stderr,
+        )
 
     # CR-MDB-033 §S1: the hook-scripts dir is resolved here, in
     # validation, BEFORE the first write — a failure init can know in
@@ -1269,6 +1353,7 @@ def run_init(args: argparse.Namespace, home: Path) -> int:
             register=bool(getattr(args, "register", False)),
             planned=plan,
             registry=registry,
+            tools=tools,
             setup_required=setup_required,
             skipped=ownership["skipped"],
             unmanaged=ownership["unmanaged"],

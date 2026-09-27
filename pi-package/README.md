@@ -20,13 +20,14 @@ Install these in the order given; no step relies on one that comes after it.
 
 1. **Pi.** The `pi` command must be on your `PATH`. Install it by Pi's own instructions.
    Model B deploys into Pi's reach; it does not install Pi.
-2. **Pi's packages.** Model B's assets rely on four Pi packages. Install them with Pi's own
+2. **Pi's packages.** Model B's assets rely on five Pi packages. Install them with Pi's own
    command (the installer can also offer to run these for you, see
    [Install offers](#install-offers)):
    - `dispatch` — required: `pi install npm:@gotgenes/pi-subagents`
    - `lean-ctx` — required: `pi install npm:pi-lean-ctx`
    - `permissions` — recommended: `pi install npm:@gotgenes/pi-permission-system`
    - `watcher` — recommended, Model B's own package: `pi install npm:@anthill-tec/modelb-pi`
+   - `sandesh-pi` — recommended, Sandesh's own Pi extension: `pi install npm:@anthill-tec/sandesh-pi`
 3. **`uv`** — required. It installs the installer itself:
    `curl -LsSf https://astral.sh/uv/install.sh | sh`
 4. **`git`** — required to create a project: every project `modelb-axi init` creates is a
@@ -81,7 +82,7 @@ Before it writes anything, the installer checks the machine and prints one line 
 typical run with `--stacks python` prints:
 
 ```text
-harness: dispatch=detected lean-ctx=detected permissions=detected watcher=detected
+harness: dispatch=detected lean-ctx=detected permissions=detected watcher=detected sandesh-pi=detected
 deps: uv=detected sandesh=detected crucible=detected
 stack python: python3=detected xmlrunner=absent coverage=detected client=detected
 ```
@@ -124,6 +125,7 @@ provides it. By requirement:
 | `lean-ctx` | the agent definitions and the tool scripts are inert: they call its tools. Required — see [Missing capabilities](#missing-capabilities). |
 | `permissions` | the agent definitions' permission: frontmatter is ignored, so sub-agents run without their declared tool limits, and a project's permission policy has nothing to enforce it. |
 | `watcher` | the orchestration skills cannot keep a session listening for Sandesh messages: nothing wakes the session when a message arrives. |
+| `sandesh-pi` | the bootstrap and shutdown skills lose Sandesh's own Pi extension: its tools are not in the session. |
 | `uv` | the modelb-axi installer cannot be installed or updated and the Sandesh install cannot run; the pre-flight stops at once. |
 | `sandesh` | the bootstrap and shutdown skills cannot send or watch for messages. |
 | `crucible` | the crucible skills and the crucible-report-* skill bundles have no client to report test runs through. |
@@ -192,8 +194,8 @@ missing package stay inert until you install it, and `install.toml` records that
 was used.
 
 A required package reported `unknown` does not stop the install; it is a warning, because the
-installer cannot prove the package is missing. `permissions` and `watcher` are recommended
-rather than required: when either is absent you get a warning, never a failure.
+installer cannot prove the package is missing. `permissions`, `watcher` and `sandesh-pi` are
+recommended rather than required: when any of them is absent you get a warning, never a failure.
 
 ## Install outcomes
 
