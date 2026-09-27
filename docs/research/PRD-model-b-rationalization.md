@@ -84,7 +84,7 @@ The `~/.claude` user space grew organically into 24 memory files, ~50 skills, 29
   - **the scenario matrix:** walked against the current code;
   - **the project's standing invariants.**
 
-  A drafted spec is then reviewed before it goes to the user. The stack's VERIFY agent does this in a spec pre-review mode: it registers with Crucible's `report` role, because no cycle exists before `plan-file`; it runs no tests; and it reports what it would fail the spec on. Its findings are folded in before approval, so VERIFY after GREEN stops finding what the spec should have covered.
+  A drafted spec is then reviewed before it goes to the user. The stack's VERIFY agent does this in a spec pre-review mode: it registers with Crucible's `report` role, because no cycle exists before `plan-file`; it runs no tests; and it reports what it would fail the spec on. Its findings are folded in before approval, so VERIFY after GREEN stops finding what the spec should have covered. A spec that is restructured or re-scoped gets a fresh gap analysis and a fresh pre-review; neither carries over. The pre-review ingests nothing, so it proceeds when Crucible is down or absent: it runs unregistered, and its report says so.
 
 ### D7 — Crucible V2 client contract (AXI)
 - **Ownership (corrected 2026-07-20): ALL `*-crucible.py` client implementation is the CRUCIBLE project's responsibility.** Model B requests it (Sandesh thread #1322/#1325), tracks it as an external dependency, and documents/consumes what Crucible ships. Model B implements no client code.
