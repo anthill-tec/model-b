@@ -32,8 +32,9 @@ What this module deliberately does NOT do:
   Python tree walk over repo text.
 - It reads no Crucible client and mirrors no Crucible flag surface (CR-MDB-017 §S5 risk note).
 - It does not re-assert what ``tests/test_skills_handover.py`` already gates (zero
-  ``WORKFLOW_CYCLE_ID`` at ``:226``, the v2 touch contract at ``:294``, the v2 heartbeat form
-  at ``:386``), nor what ``tests/test_client_role_contract.py`` (C1) gates for
+  ``WORKFLOW_CYCLE_ID`` in ``ZeroWorkflowCycleIdUnderSkillsSrcTest``, the v2 touch contract in
+  ``CrucibleSkillRoutingAndProtocolSyncTest``, the v2 heartbeat form in
+  ``RepoWideHeartbeatGrepGateTest``), nor what ``tests/test_client_role_contract.py`` (C1) gates for
   ``register --role``/``--cycle``.
 - It excludes the files that DEFINE a ban from that ban's scan: ``archive/``, ``docs/``,
   ``audits/``, ``docs/research/crucible-clients-skills-guard.test.ts`` and ``tests/`` (this
