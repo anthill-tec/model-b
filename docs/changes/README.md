@@ -50,6 +50,7 @@ Queue rows enumerate the whole delivery (structure only). **Live status lives on
 | [CR-MDB-042](CR-MDB-042-orchestrator-definitions-absorbed.md) | Orchestrator definitions absorbed into the common skills: triage the `ORCHESTRATOR-*` notes, the global non-negotiables and every Model B project's feedback memories into common / stack / project; adopt `gap-analysis` as a Model B bundle (PRD D5 amendment) | 5 | — |
 | [CR-MDB-043](CR-MDB-043-schema-driven-project-registry.md) | Schema-driven project registry: Model B ships a project-settings schema (keys, sources, derive rules, validation, readers — no values); `init` generates `.env`/`.env.local` from it; adds `SANDESH_PROJECT` | 5 | — |
 | [CR-MDB-041](CR-MDB-041-bootstrap-reads-scaffolded-files.md) | Bootstrap and shutdown read the files `init` scaffolds (`AGENTS.md`, `.env`, `docs/memory/INDEX.md`), not `ORCHESTRATOR-<Project>`/`MEMORY.md` | 5 | 042, 043 |
+| [CR-MDB-044](CR-MDB-044-agent-definitions-and-briefs.md) | Agent definitions carry the how, the brief the what: the orchestrator's acceptance model, parallel agents in one tree, each role's reading of a CR, field rules from Crucible #1405, cite code by symbol (PRD D5/D6 amendments 2026-09-27) | 5 | — |
 
 **— v1.0.0 ships here —** (the release is a BOUNDARY EVENT, not a queue row: the wave drains, the user approves, `git-workflow` §Releases executes it, a milestone records it afterwards. No release CR, no close-out wave.)
 
@@ -1077,3 +1078,11 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   still show `~/.crucible/clients/<stack>-crucible.py` (a CR-032 gate pins the crucible-skill string;
   its table maps java → mvn); `CRUCIBLE_PROJECT_KEY`'s schema readers do not yet name the two skills.
   **Wave 2 drained.** Crucible told on thread #1392.
+- 2026-09-27 — **Wave 2 REOPENED** (user) for incoming requests; the 1.0.0 release waits. **CR-MDB-044
+  FILED** from Crucible's agent feedback (#1405, #1406) and the user's rulings recorded in PRD D5/D6
+  (`a67687f`, `3e969ba`): the brief is the orchestrator's accuracy lever and guides without
+  over-specifying; agents commit their own work; a phase is accepted from report, board and commit
+  range, with VERIFY/FIX as the gates; parallel agents in one tree only with the user's go; agent
+  definitions carry the stack how and each role's reading of a CR; cite code by symbol. Crucible's
+  #1406 rules 3 (agents change no git state) and 7 (the orchestrator verifies the combined tree) were
+  declined as written.
