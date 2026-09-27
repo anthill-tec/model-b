@@ -51,6 +51,7 @@ Queue rows enumerate the whole delivery (structure only). **Live status lives on
 | [CR-MDB-043](CR-MDB-043-schema-driven-project-registry.md) | Schema-driven project registry: Model B ships a project-settings schema (keys, sources, derive rules, validation, readers — no values); `init` generates `.env`/`.env.local` from it; adds `SANDESH_PROJECT` | 5 | — |
 | [CR-MDB-041](CR-MDB-041-bootstrap-reads-scaffolded-files.md) | Bootstrap and shutdown read the files `init` scaffolds (`AGENTS.md`, `.env`, `docs/memory/INDEX.md`), not `ORCHESTRATOR-<Project>`/`MEMORY.md` | 5 | 042, 043 |
 | [CR-MDB-044](CR-MDB-044-agent-definitions-and-briefs.md) | Agent definitions carry the how, the brief the what: the orchestrator's acceptance model, parallel agents in one tree, each role's reading of a CR, field rules from Crucible #1405, cite code by symbol (PRD D5/D6 amendments 2026-09-27) | 5 | — |
+| [CR-MDB-045](CR-MDB-045-execution-knowledge-store.md) | Execution knowledge in lean-ctx's knowledge store where installed: § Memory, bootstrap's full load + count + restore, the contract's pitfalls (PRD D5 tiers, Crucible #1409/#1410) | 5 | 044 |
 
 **— v1.0.0 ships here —** (the release is a BOUNDARY EVENT, not a queue row: the wave drains, the user approves, `git-workflow` §Releases executes it, a milestone records it afterwards. No release CR, no close-out wave.)
 
@@ -1086,3 +1087,8 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   definitions carry the stack how and each role's reading of a CR; cite code by symbol. Crucible's
   #1406 rules 3 (agents change no git state) and 7 (the orchestrator verifies the combined tree) were
   declined as written.
+- 2026-09-27 — **CR-MDB-045 FILED** (user) from Crucible's #1409/#1410, read narrowly: only the
+  knowledge an orchestrator picks up during execution goes to lean-ctx's knowledge store, where
+  installed. PRD D5 records the user's instruction tiers: the orchestrator rules and agent definitions
+  are the workflow's backbone, standing instructions at the level of `AGENTS.md`, never memory —
+  global (the skills) or per project (what `init` prunes to the stacks).
