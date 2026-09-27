@@ -16,8 +16,8 @@ sentence) is NOT a register example and is not required to carry flags; the
 retired-flag gate (§S3, family 1) covers such prose independently.
 
 **word-boundary `--cycle`** — ``--cycle`` followed by a word boundary, so the
-`plan-file` flag ``--cycles`` (live at `skills-src/crucible/SKILL.md:95` and
-`skills-src/model-b/SKILL.md:47`) can never satisfy the cycle-binding gate by
+`plan-file` flag ``--cycles`` (live in the `plan-file` examples of
+`skills-src/crucible/SKILL.md` and `skills-src/model-b/SKILL.md`) can never satisfy the cycle-binding gate by
 substring accident.  The matcher's word-boundary property is itself unit-tested
 against the literal string ``--cycles``.
 

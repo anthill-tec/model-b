@@ -49,15 +49,19 @@ Three families originally listed for §S5 are already gated by
 `tests/test_skills_handover.py` and are CITED here instead of repeated, because
 two sources for one property is exactly the drift the 2026-09-21 audit records:
 
-* `tests/test_skills_handover.py:226` — zero occurrences of the removed
+* `ZeroWorkflowCycleIdUnderSkillsSrcTest` (tests/test_skills_handover.py) — zero occurrences of the removed
   workflow-cycle-id environment variable across the imported bundles;
-* `tests/test_skills_handover.py:294` — the v2 touch contract;
-* `tests/test_skills_handover.py:386` — the v2 liveness/ping form.
+* `CrucibleSkillRoutingAndProtocolSyncTest.test_v2_touch_contract_documented_and_phantom_claim_replaced`
+  (tests/test_skills_handover.py) — the v2 touch contract;
+* `RepoWideHeartbeatGrepGateTest.test_every_agents_heartbeat_hit_under_skills_src_is_the_v2_form`
+  (tests/test_skills_handover.py) — the v2 liveness/ping form.
 
 The two agent-protocol families of the inherited suite are not ported either:
 the standalone protocol skill and its shell helper are ratified out of existence
 (CR-MDB-016 Option B; PRD §4.2 helper-script ban) and their ABSENCE is asserted
-by `tests/test_skills_handover.py:130-137` and `:360-384`.  Nothing here may
+by `ImportedBundleExistenceAndMetadataTest` and
+`RepoWideHeartbeatGrepGateTest.test_heartbeat_helper_script_zero_hits_under_skills_src`
+(tests/test_skills_handover.py).  Nothing here may
 assert they exist.
 
 CR-MDB-024 \u00a7S3 AMENDMENT (this cycle, C2 RED, 2026-09-22 VS Code ruling): the
@@ -196,7 +200,8 @@ FINDING_BODY_MISSING_CYCLE = "body-missing-cycle"
 # silently drop the agents/events/projects routes they document and still pass;
 # arduino's entry is its true two.  Measured from each SKILL.md 2026-09-21.
 # `crucible-register` additionally documents the agents touch route; it is
-# omitted here only because tests/test_skills_handover.py:294 owns that family
+# omitted here only because `CrucibleSkillRoutingAndProtocolSyncTest`
+# (tests/test_skills_handover.py) owns that family
 # and this module may not re-assert it.
 V2_ENDPOINTS_BY_BUNDLE = {
     "crucible-register": (
@@ -270,7 +275,8 @@ TIER_RE = re.compile(r"\btier\b", re.IGNORECASE)
 # ones).  It is a vocabulary of OUR OWN text's subcommands, not a mirror of
 # Crucible's FLAG surface -- the module still reads no client at run time.
 # The previous 17-entry list was hand-picked from this CR's prose and missed
-# `cr-plan`, which skills-src/memory-templates/rust-orchestration.md:21 uses.
+# `cr-plan`, which skills-src/memory-templates/rust-orchestration.md's CR-typing
+# bullet uses.
 # `gate-report` is listed because it EXISTS; naming it as the gate verb is a
 # separate prohibition, owned by tests/test_client_verb_sweep.py.
 CLIENT_VERBS = (

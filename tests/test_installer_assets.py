@@ -58,6 +58,7 @@ import tomllib
 import unittest
 from pathlib import Path
 
+from tests._helpers import at_line
 from tests._helpers import write_executable as _write_fake_executable
 from tests.pi_capability_sandbox import with_agent_dir
 
@@ -687,9 +688,9 @@ _CHEZMOI_PROSE_PARAGRAPH_START_RE = re.compile(r'^(#{1,6}\s|-\s|\*\s|\d+\.\s|\|)
 # one is an ACTUAL sentence shape that prescribes a dotfile-manager
 # mechanism for MODEL B's own mutation, not a description of one.
 # Deliberately does NOT include a bare "chezmoi diff"/"chezmoi apply"
-# mention: AGENTS.md:135's "chezmoi diff cleanliness" names what a
+# mention: AGENTS.md's "chezmoi diff cleanliness" (Testing & QA) names what a
 # now-removed test asserted (a prose-staleness fix bundled into the Suite
-# AC's close-out step, not a live instruction site), and AGENTS.md:138
+# AC's close-out step, not a live instruction site), and its baseline note
 # names retired gates for the historical baseline-count record -- both are
 # describing, not instructing (the same test_ac7 substring-sweep trap
 # CR-MDB-017 had to repair).
@@ -703,7 +704,7 @@ _CHEZMOI_PROSE_TRIGGERS = {
 # exempt even if it also matches a trigger above.
 _CHEZMOI_PROSE_EXEMPTIONS = (
     # a quoted CITATION of another line's trigger phrase (e.g. this CR's
-    # own §S4 Amendments section quoting contracts/lean-ctx.md:33
+    # own §S4 Amendments section quoting contracts/lean-ctx.md's chezmoi line
     # verbatim in parens-and-quotes) -- reporting that a line elsewhere
     # says this is not issuing the instruction here.
     re.compile(
@@ -761,7 +762,8 @@ def find_chezmoi_prose_instructions(text, filename="<string>"):
     phrasings in _CHEZMOI_PROSE_TRIGGERS -- "follows chezmoi discipline",
     "goes through chezmoi", "(chezmoi-managed" -- because those were the
     precise three sites measured live in Model B prose on 2026-09-21
-    (AGENTS.md:49, AGENTS.md:109, contracts/lean-ctx.md:33). It does NOT
+    (AGENTS.md's `~/.claude` mutation bullet and its chezmoi-skill pointer,
+    and contracts/lean-ctx.md's `~/.claude` mutation line). It does NOT
     detect a differently-phrased future instruction (e.g. "run chezmoi
     apply after each ~/.claude edit", "sync this via chezmoi", "chezmoi
     manages the memory directory") -- those phrasings simply do not match
@@ -807,8 +809,9 @@ def find_chezmoi_prose_instructions(text, filename="<string>"):
 class ChezmoiProseInstructionGateTest(unittest.TestCase):
     """CR-MDB-021 §S4 -- REGRESSION PIN on the three exact prescriptive
     phrasings measured live in Model B prose on 2026-09-21: "follows
-    chezmoi discipline" (AGENTS.md:49), "goes through chezmoi"
-    (contracts/lean-ctx.md:33), and "(chezmoi-managed" (AGENTS.md:109).
+    chezmoi discipline" (AGENTS.md's `~/.claude` mutation bullet), "goes
+    through chezmoi" (contracts/lean-ctx.md's `~/.claude` mutation line), and
+    "(chezmoi-managed" (AGENTS.md's chezmoi-skill pointer).
     This is NOT a general natural-language chezmoi-instruction detector --
     it asserts that those three sites, and only those three phrasings
     wherever they recur, no longer instruct a chezmoi step across AGENTS.md,
@@ -839,7 +842,8 @@ class ChezmoiProseInstructionGateTest(unittest.TestCase):
             "\n"
             "## Scenario (b) -- historical/descriptive citation-quote (MUST NOT fire)\n"
             "\n"
-            "- **Amendment:** `contracts/lean-ctx.md:33` (\"every `~/.claude` mutation\n"
+            "- **Amendment:** `" + at_line("contracts/lean-ctx.md", 33)
+            + "` (\"every `~/.claude` mutation\n"
             "  in this workflow goes through chezmoi\") is in scope as a historical\n"
             "  citation of an existing line, not a live instruction issued here.\n"
             "\n"
@@ -868,7 +872,7 @@ class ChezmoiProseInstructionGateTest(unittest.TestCase):
         )
         # NEGATIVE -- scenario (b)'s quoted citation of the SAME "goes
         # through chezmoi" phrase this gate's own real-world target
-        # (contracts/lean-ctx.md:33) uses does NOT trip the matcher: the
+        # (contracts/lean-ctx.md's mutation line) uses does NOT trip the matcher: the
         # gate must distinguish reporting a line from re-issuing it.
         self.assertNotIn(
             10, [h[0] for h in hits],
@@ -900,7 +904,8 @@ class ChezmoiProseInstructionGateTest(unittest.TestCase):
         # NEGATIVE/EXACT -- zero chezmoi-instruction sites across AGENTS.md,
         # contracts/lean-ctx.md, skills-src/memory-templates/*.md,
         # docs/changes/README.md, and the named OPEN CR specs. THIS IS THE
-        # RED: AGENTS.md:49 and :109, plus contracts/lean-ctx.md:33, still
+        # RED: AGENTS.md's mutation bullet and chezmoi-skill pointer, plus
+        # contracts/lean-ctx.md's mutation line, still
         # prescribe a dotfile-manager mechanism for Model B work today --
         # this must fail until they are reworded.
         self.assertEqual(

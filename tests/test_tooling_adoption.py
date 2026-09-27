@@ -235,7 +235,7 @@ def _tooling_enumerator_candidates() -> list[tuple]:
 
 class ToolingAdoptionS1Test(unittest.TestCase):
     """§S1 acceptance criteria -- the eight tools are ADOPTED into
-    `scripts/` (the already-force-included asset root, pyproject.toml:26),
+    `scripts/` (the already-force-included asset root, pyproject.toml's `force-include`),
     each carrying its ownership header, source executable bits preserved,
     `schedule_db.py` carrying its TRANSITIONAL banner, and nothing in the
     asset class presenting Crucible 0.2.0 as released."""

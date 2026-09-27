@@ -87,9 +87,9 @@ CLAUDE_MD_SURFACES = ("skills-src", "generator", "hooks-src", "scripts", "modelb
 #: ``~/.claude`` as the tree Model B never writes. Matched on (file, exact line text) so a rewrite
 #: above them cannot shift them; the line number is the measured position, for the reader. The
 #: ``CRUCIBLE-HANDOVER.md`` provenance line the AC also allows carries no ``~/.claude`` (measured),
-#: so it needs no entry. ``AGENTS.md:14`` ("nothing writes to ``~/.claude`` except through the
+#: so it needs no entry. AGENTS.md's line ("nothing writes to ``~/.claude`` except through the
 #: installer") is NOT exempt: it says the installer writes there, which §S1 made false.
-#: C3 NOTE: C3's chezmoi retirement rewrote ``AGENTS.md:109`` (its chezmoi-skill pointer dropped,
+#: C3 NOTE: C3's chezmoi retirement rewrote AGENTS.md's chezmoi-skill pointer line (the pointer dropped,
 #: CR-MDB-031 \u00a7S4); this text was updated to match.
 CLAUDE_HOME_EXEMPT_LINES = (
     ("AGENTS.md", 49,

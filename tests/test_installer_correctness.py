@@ -8,7 +8,7 @@ Written against the MEASURED defects in
 defects 1/3/4) -- every test below is expected to FAIL against the
 current tree:
 
-  - AC1 (§S1): ``cli.py:238-245`` never writes ``[install].target_root``,
+  - AC1 (§S1): ``_run_installer_flow`` (``cli.py``) never writes ``[install].target_root``,
     so ``scaffold.py:_hook_scripts_root`` falls back to ``Path.home()``
     and the compiled ``.pi/extensions/*.ts`` wiring points at the real
     home instead of the installed ``--target-root``.
@@ -469,8 +469,10 @@ class FirstInstallNeverClobbersForeignFileTest(unittest.TestCase):
 class ManifestAlwaysConsultedWithoutReinstallFlagTest(unittest.TestCase):
     """AC5 (§S3) -- the prior-install manifest must be consulted whenever
     it exists on disk, not only when `--reinstall` is passed
-    (`cli.py:221`: `prior_hashes = load_manifest_hashes(home) if
-    reinstall else {}`). `tests/test_installer.py:1012` already covers
+    (`_deploy_stage` (modelb_axi/cli.py): `prior_hashes = load_manifest_hashes(home) if
+    reinstall else {}`).
+    `DeployEngineTest.test_reinstall_run_is_noop_when_no_managed_files_changed`
+    (tests/test_installer.py) already covers
     the `--reinstall` idempotent-noop path; this drives
     `modelb_axi.cli._deploy_stage` directly (mirrors
     `tests/test_tooling_adoption.py`'s direct `deploy_assets` calls)
@@ -830,10 +832,10 @@ class DryRunSurfacesSameErrorTextAsWarningTest(unittest.TestCase):
 #   - AC3: `config.write_install_toml` writes via `tempfile.mkstemp`, whose
 #     default mode is 0600, not 0644.
 #   - AC4: the `init` failure envelope is `envelope("init", False,
-#     warnings=[str(exc)], dry_run=False)` (scaffold.py:752-755) -- no
+#     warnings=[str(exc)], dry_run=False)` (`run_init` (scaffold.py)) -- no
 #     `emitted` field at all, even though `_emit_plan` may already have
 #     written several files before the failure.
-#   - The module docstring (scaffold.py:20) still reads "`--dry-run` (and
+#   - The module docstring (scaffold.py) still reads "`--dry-run` (and
 #     any failure) writes NOTHING under `--target`."
 # ---------------------------------------------------------------------------
 
@@ -1549,7 +1551,7 @@ class MidEmissionFailureInsideWiringCompilationEmittedTest(unittest.TestCase):
 #     `DN §N` without naming the DN file, and deploy.py calls the shared
 #     asset store the "Vercel store" twice.
 #   - tests/test_tooling_adoption.py's module docstring cites
-#     `modelb_axi/cli.py:233-237` by line range.
+#     `modelb_axi/cli.py` by a line range, not a function.
 # ---------------------------------------------------------------------------
 
 
@@ -1811,7 +1813,7 @@ class ToolingAdoptionCitesCliPyByFunctionNotLineRangeTest(unittest.TestCase):
     """AC (§S6 tail) -- tests/test_tooling_adoption.py must cite
     modelb_axi/cli.py by FUNCTION name, never by line range (a moving
     target once §S6 adds envelope emission to cli.py). MEASURED current
-    defect: its module docstring cites `modelb_axi/cli.py:233-237`."""
+    defect: its module docstring cites `modelb_axi/cli.py` by a line range."""
 
     def test_cli_py_citation_names_a_function_never_a_line_range(self):
         target = REPO_ROOT / "tests" / "test_tooling_adoption.py"

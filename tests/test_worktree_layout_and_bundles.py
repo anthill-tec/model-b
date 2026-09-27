@@ -40,7 +40,7 @@ Class map (one per C3 acceptance criterion or part of one):
 
 Tool-gate scope. The dispatch asked for zero harness tool names across ``contracts/``; the AC
 ("``contracts/lean-ctx.md`` … passes the ``~/.claude``, ``CLAUDE.md`` and tool gates") scopes the
-tool gate to ``lean-ctx.md``, and ``contracts/sandesh-cli.md:10-12`` names Sandesh's own MCP verbs
+tool gate to ``lean-ctx.md``, and ``contracts/sandesh-cli.md`` names Sandesh's own MCP verbs
 (``sandesh_send`` …) as the surface its contract replaces. The AC is the source of truth here.
 
 Every vocabulary (patterns, surfaces, scanners) is IMPORTED from ``tests/test_harness_neutral_skills.py``,
