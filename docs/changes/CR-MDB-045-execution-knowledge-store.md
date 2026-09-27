@@ -56,7 +56,8 @@ brings them back), and `restore` ignores `dry_run`. Model B's own session showed
 - `sandesh-pi`: provider `@anthill-tec/sandesh-pi`, probe `pi-package`, policy `recommended`, with
   remediation `pi install npm:@anthill-tec/sandesh-pi`.
 
-It is a third-party package, so `--yes` never installs it. The installer records its verdict in
+It is a third-party package, so `--yes` never installs it. The install guide's prerequisites,
+derived from `REQUIREMENTS`, list its remediation. The installer records its verdict in
 `[capabilities]` like any other tier-1 row. Crucible's Pi installer is declared the same way once
 Crucible releases it (a non-goal here).
 
@@ -72,8 +73,16 @@ A missing verdict counts as unknown. This includes an `install.toml` without `[c
 row the installation never probed. Nothing is set up for an unknown tool, and stderr says to re-run
 the installer.
 
-The `init` envelope gains a `tools` field. It maps each row id to `present`, `absent` or `unknown`, in
-real and `--dry-run` runs alike.
+The `init` envelope gains a `tools` field. It maps each `REQUIREMENTS` row id to `present`, `absent`
+or `unknown`, in real and `--dry-run` runs alike.
+
+**How verdicts combine:**
+- **A stack-scoped row** (`crucible-client`, `toolchain`) is judged over the project's stacks and
+  each stack's probes. It takes the worst verdict: `absent` if any is absent, else `unknown` if any
+  is unknown, else `present`. The capability contract (§S5) keeps the per-stack detail.
+- **An `install.toml` without `[capabilities]`** still carries `[deps]`. `uv`, `sandesh` and
+  `crucible` take their `[deps]` verdicts; only rows with no recorded verdict anywhere are
+  `unknown`.
 
 ### §S3 — Keys conditional on a tool (`modelb_axi/project_schema.toml`)
 
