@@ -43,6 +43,10 @@ Rules:
 - No architectural-baseline / discovery narrative — that's PRD/DN material.
 - **Front matter stays succinct (~6–8 lines).** No `file:line` "surfaces" blocks in the header — those go into the relevant `### §S` section (a short `**Surfaces (verified <date>):**` line). The `Design reference` line doubles as the gap-analysis pointer — name the exact PRD/DN + sections to read.
 
+## Citing code — by symbol, never by line
+
+- **Code is cited by symbol and file** — `` `handleCrPlan` (src/v2.ts) `` — never by `path:line`: a line number moves with every edit, a symbol does not. The rule holds in specs, PRDs, DNs, comments, docstrings and reports alike.
+
 ## CRs are TECHNICAL docs — no process pollution (RECURRING mistake)
 Process, workflow, and rescheduling state never go in a CR file. FORBIDDEN in specs:
 - `## Gap-analysis findings` report sections (DRIFT-N tables, dimension narratives) — spec CHANGES fold silently into Scope/ACs; the findings REPORT lives in chat + (if needed) a project-memory note.

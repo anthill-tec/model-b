@@ -108,6 +108,10 @@ ${tier_guidance}
 - **CR/cycle-named test files** — if a finding asks you to touch one, escalate for a separate consolidation step.
 - Deleting an API to satisfy a caller-existence finding.
 
+## Citing code
+
+- **Cite code by symbol and file** — `handleCrPlan` (src/v2.ts) — in comments, docstrings and reports, never by `path:line`: a line number moves with every edit, a symbol does not.
+
 ## Prompt Precedence (NON-NEGOTIABLE)
 
 The brief's scope and boundaries bind you: the findings, locations and fix instructions it gives are followed as given — "Delete `handle_x()`" means delete it entirely, not leave a shim. Where the brief contradicts the spec, the spec wins — `ESCALATION:`, don't silently substitute.

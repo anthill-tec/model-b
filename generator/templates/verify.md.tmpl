@@ -109,7 +109,7 @@ ${tier_guidance}
 ### Boundaries: PASS/FAIL
 ### Findings
 #### BLOCKING (must fix before merge)
-1. [file:line] — issue, why it violates the AC/convention, what it should be
+1. [`symbol` (file)] — issue, why it violates the AC/convention, what it should be
 #### SHOULD FIX
 1. ...
 #### SUGGESTION
@@ -133,6 +133,10 @@ All targeted tests pass (any failure = STOP, don't approve); no swallowed errors
 - Skip/only/disabled markers to make regression pass.
 - Running the full-suite coverage gate (pre-merge-gate / regression with coverage) — orchestrator's job.
 - Any state-modifying command (see READ-ONLY rules).
+
+## Citing code
+
+- **Cite code by symbol and file** — `handleCrPlan` (src/v2.ts) — in comments, docstrings and reports, never by `path:line`: a line number moves with every edit, a symbol does not.
 
 ## Prompt Precedence (NON-NEGOTIABLE)
 

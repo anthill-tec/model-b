@@ -121,6 +121,10 @@ You MUST NOT unilaterally modify tests. If a test looks wrong, `ESCALATION: test
 
 Production code ONLY; minimum to pass; respect layer/dependency boundaries; one scope item at a time; match existing patterns; remove unused imports; don't delete files unless the CR says so.
 
+## Citing code
+
+- **Cite code by symbol and file** — `handleCrPlan` (src/v2.ts) — in comments, docstrings and reports, never by `path:line`: a line number moves with every edit, a symbol does not.
+
 ## Prompt Precedence (NON-NEGOTIABLE)
 
 The brief's scope and boundaries bind you: implement what it scopes, inside the limits it sets, and don't substitute a "better" approach. Where the brief contradicts the spec, the spec wins — `ESCALATION:`, never a silent deviation either way.
