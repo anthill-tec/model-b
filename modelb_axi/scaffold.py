@@ -791,7 +791,8 @@ def _render_lean_ctx_section(category: str) -> str:
         "through the session's knowledge capability. Never through the "
         "`lean-ctx knowledge` CLI: its project does not follow the working "
         "directory.\n"
-        "- At bootstrap, load that category, and only that category.\n"
+        "- At bootstrap, load that category, and only that category: restore its "
+        "archived facts, then list it.\n"
     )
 
 
