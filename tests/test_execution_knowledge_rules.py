@@ -45,6 +45,7 @@ from tests.test_bootstrap_shutdown_registry import (
 )
 from tests.test_orchestrator_rule_triage import section_body
 from tests.test_project_registry_schema import NOT_REGISTRY_KEYS
+from tests.test_skills_handover import IMPORTED_BUNDLE_NAMES
 
 KEY = "KNOWLEDGE_CATEGORY"
 COMMON_REL = "skills-src/model-b/references/orchestration-common.md"
@@ -392,6 +393,68 @@ class SkillsNameTheKnowledgeStoreCapabilityTest(unittest.TestCase):
                                 and re.search(LEAN_CTX_NAMED, rule_units(bad)[0]))
         good = "- `KNOWLEDGE_CATEGORY` (written when the knowledge-store tool is present)\n"
         self.assertIsNone(re.search(LEAN_CTX_NAMED, rule_units(good)[0]))
+
+
+#: Crucible's imported bundles \u2014 byte-faithful to Crucible, so not Model B's to word.
+IMPORTED_BUNDLES = frozenset(IMPORTED_BUNDLE_NAMES)
+#: lean-ctx named as a TOOL: a tool name or CLI form (:data:`LEAN_CTX_TOOL_RE`), lean-ctx's
+#: tools or its reads/shell/search, a compound (``lean-ctx-indexed``), or lean-ctx as the
+#: instrument of an action (``with``/``via``/``through``/``using``/``use`` lean-ctx). The
+#: product merely named ("where lean-ctx is installed") and a capability are not tools.
+LEAN_CTX_AS_TOOL_RE = re.compile(
+    LEAN_CTX_TOOL_RE.pattern
+    + r"|\blean-ctx(?:'s)?\s+(?:tools?|reads?|shell|search|cache|index)\b"
+    + r"|\blean-ctx-[a-z]"
+    + r"|\b(?:with|via|through|using|use)\s+(?:the\s+)?lean-ctx\b",
+    re.IGNORECASE,
+)
+
+
+def model_b_skill_files() -> list:
+    """Every Markdown file of every Model B-owned skill bundle: a ``skills-src/<name>/``
+    carrying a ``SKILL.md`` that is not one of Crucible's imported bundles."""
+    root = REPO_ROOT / "skills-src"
+    bundles = [d for d in sorted(root.iterdir())
+               if (d / "SKILL.md").is_file() and d.name not in IMPORTED_BUNDLES]
+    return [p for d in bundles for p in sorted(d.rglob("*.md"))]
+
+
+def lean_ctx_as_tool_findings(text: str) -> list[str]:
+    return [ln.strip() for ln in text.splitlines() if LEAN_CTX_AS_TOOL_RE.search(ln)]
+
+
+class ModelBSkillsNameNoLeanCtxToolTest(unittest.TestCase):
+    """\u00a7S6 AC "No skill names lean-ctx as a tool" (PRD D10, DN \u00a7D18): every Model
+    B-owned skill names the capability \u2014 the project's cached reads, compressed shell,
+    knowledge store \u2014 and the project's ``AGENTS.md`` (the lean-ctx pointer ``init``
+    scaffolds) is where the tool is named. Crucible's imported bundles are out of scope."""
+
+    def test_the_bundles_checked_are_model_bs_own(self):
+        names = {p.relative_to(REPO_ROOT / "skills-src").parts[0] for p in model_b_skill_files()}
+        for owned in ("model-b", "code-health", "bootstrap", "shutdown", "crucible"):
+            self.assertIn(owned, names)
+        self.assertEqual(sorted(names & IMPORTED_BUNDLES), [])
+
+    def test_no_model_b_skill_names_lean_ctx_as_a_tool(self):
+        found = [f"{p.relative_to(REPO_ROOT)}: {ln[:160]}"
+                 for p in model_b_skill_files() for ln in lean_ctx_as_tool_findings(read_text(p))]
+        self.assertEqual(found, [], "DN \u00a7D18: a skill names the capability, never lean-ctx "
+                                    "as a tool")
+
+    def test_the_detector_bites_on_tools_and_spares_the_product_and_capabilities(self):
+        for bad in ("- **Prefer the lean-ctx tools inside the project** (cached reads)",
+                    "Dataset (all git-committed, lean-ctx-indexed, RAG-able):",
+                    "   Mainline verifies by hand, e.g. with lean-ctx, then records).",
+                    "  cleared; macro-generated references are invisible \u2014 verify with lean-ctx",
+                    "use lean-ctx's compressed shell", "via lean-ctx", "lean-ctx's reads",
+                    "call `ctx_read`", "use the lean_ctx tool", "run `lean-ctx knowledge list`"):
+            with self.subTest(bad=bad):
+                self.assertEqual(len(lean_ctx_as_tool_findings(bad)), 1)
+        for good in ("where lean-ctx is installed", "the project's knowledge store",
+                     "the project's cached reads and compressed shell, where its AGENTS.md "
+                     "names them", "verify by reading the reference sites"):
+            with self.subTest(good=good):
+                self.assertEqual(lean_ctx_as_tool_findings(good), [])
 
 
 # ------------------------------------------------- detectors, synthetic text ----
