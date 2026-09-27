@@ -142,6 +142,21 @@ def _active_schema(schema: list[dict], tools: dict) -> list[dict]:
     tool is present (CR-MDB-045 \u00a7S3)."""
     return [e for e in schema if "when" not in e or tools.get(e["when"]) == TOOL_PRESENT]
 
+def _overrides_not_applied(schema: list[dict], tools: dict, inputs: dict) -> list[str]:
+    """A note for each flag given for a ``when`` key its tool leaves out \u2014
+    e.g. ``--knowledge-category`` while lean-ctx is not present (CR-MDB-045
+    \u00a7S4)."""
+    notes = []
+    for entry in schema:
+        if "when" not in entry or tools.get(entry["when"]) == TOOL_PRESENT:
+            continue
+        flag = entry.get("override") or entry.get("flag")
+        if flag and inputs.get(_flag_dest(flag)) is not None:
+            state = tools.get(entry["when"], TOOL_UNKNOWN)
+            notes.append(f"{flag} given, but {entry['when']} is {state} \u2014 "
+                         f"{entry['name']} is not applied")
+    return notes
+
 
 class ScaffoldError(ValueError):
     """A validation failure that aborts ``init`` before any write."""
@@ -1343,6 +1358,7 @@ def run_init(args: argparse.Namespace, home: Path) -> int:
         install = load_install_toml(home)
         tools, unrecorded = read_tool_verdicts(install, stacks)
         tool_states = _tool_key_states(install, stacks)
+        not_applied = _overrides_not_applied(schema, tools, vars(args))
         schema = _active_schema(schema, tools)
         # CR-MDB-043 §S2: derive + validate every registry value BEFORE
         # any write (and before --dry-run reports them).
@@ -1363,6 +1379,8 @@ def run_init(args: argparse.Namespace, home: Path) -> int:
             "to record them",
             file=sys.stderr,
         )
+    for note in not_applied:
+        print(f"  note: {note}", file=sys.stderr)
 
     # CR-MDB-033 §S1: the hook-scripts dir is resolved here, in
     # validation, BEFORE the first write — a failure init can know in
