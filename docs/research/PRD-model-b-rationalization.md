@@ -79,6 +79,12 @@ The `~/.claude` user space grew organically into 24 memory files, ~50 skills, 29
 - Every agent references `AGENTS.md` (+ the D1 procedure reference), never `memory/agent-baseline.md`.
 - `build.py --check` (regenerate + diff) is the drift gate; hand-edits to generated files fail it.
   **AMENDED 2026-09-27 (user ruling): the agents do the implementation and the code-heavy work, so their definitions carry the how.** Each generated agent is defined carefully around two things. The first is its stack's activity and tools: build, test, lint, the Crucible client and its gotchas, from the stack file. The second is how its role reads a CR: the spec's structure (scope sections `§S…`, acceptance criteria, non-goals, files touched), which parts bind that role, the rule that the spec outranks the brief, and escalation when they disagree. Cross-stack engineering rules learned in the field (long runs, attributing failures, dead code, fixtures, citations) are written once, in the templates. Because the definition carries the how, a brief carries only the what (D5, 2026-09-27).
+  **AMENDED 2026-09-27 (user ruling, on the quality of specs): a spec is reviewed before it is approved.** The orchestrator's gap analysis stays its own work. Its dimensions now also cover:
+  - **the reach of every rule or behaviour a CR changes:** each file that states or uses it;
+  - **the scenario matrix:** walked against the current code;
+  - **the project's standing invariants.**
+
+  A drafted spec is then reviewed before it goes to the user. The stack's VERIFY agent does this in a spec pre-review mode: it registers with Crucible's `report` role, because no cycle exists before `plan-file`; it runs no tests; and it reports what it would fail the spec on. Its findings are folded in before approval, so VERIFY after GREEN stops finding what the spec should have covered.
 
 ### D7 — Crucible V2 client contract (AXI)
 - **Ownership (corrected 2026-07-20): ALL `*-crucible.py` client implementation is the CRUCIBLE project's responsibility.** Model B requests it (Sandesh thread #1322/#1325), tracks it as an external dependency, and documents/consumes what Crucible ships. Model B implements no client code.
