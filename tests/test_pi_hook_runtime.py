@@ -51,7 +51,7 @@ the neutral name, per the mapping table in the CR spec):
 Runtime harness (§S8): `tests/fixtures/pi_hook_loader_harness.mjs` loads an
 emitted `.pi/extensions/*.ts` with the exact mechanism Pi 0.87.1's own
 loader uses (`jiti.import(path, { default: true })` —
-`dist/core/extensions/loader.js` in the installed
+`loadExtensionModule` (dist/core/extensions/loader.js) in the installed
 `@earendil-works/pi-coding-agent`), invokes the factory with a recording
 `pi`, and drives the registered handler with a synthetic event/ctx pair.
 This is real jiti loading real emitted TypeScript spawning real child

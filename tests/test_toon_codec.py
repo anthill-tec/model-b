@@ -29,8 +29,9 @@ MEASURED PRE-STATE (2026-08-27, HEAD 693c8d1; C1 GREEN is 91ff12f):
     The note is RETIRED (Crucible CR-CRU-046, 2026-08-01) and survives only
     as a pointer at the OFFICIAL spec (toonformat.dev /
     github.com/toon-format), so neither citation may stand as a live contract.
-  - `scripts/worktree-flow.py` and `tests/test_worktree_flow_axi.py`
-    both carry the provenance phrase §S2/AC8 forbids.
+  - the AXI-output comment above `_axi_set_project` (scripts/worktree-flow.py) and
+    `WorktreeFlowCodecDeploymentTest.test_deployed_toon_exists_with_anchors_and_is_importable`
+    (tests/test_worktree_flow_axi.py) both carry the provenance phrase §S2/AC8 forbids.
   - `python3 scripts/worktree-flow.py status --project-dir .` exits 0 and its
     stdout decodes cleanly against Crucible's port — including its
     `lanes[0]:`, `warnings[0]:` and `help[0]:` headers.

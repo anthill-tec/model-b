@@ -61,7 +61,7 @@ not one:
   of the other seven does. No test enumerates the set, and no test asserts
   the built wheel's copy. `gate-lock.sh` and `skill-release-gate.py` have no
   consuming-skill reference under `skills-src/` (grep -rl count 0);
-  `toon.py` has none DIRECTLY but is imported by `scripts/worktree-flow.py`,
+  `toon.py` has none DIRECTLY but is imported by `_emit_axi` (scripts/worktree-flow.py),
   which three skills name — so consumption is resolved TRANSITIVELY here
   rather than pretending the codec is orphaned.
 

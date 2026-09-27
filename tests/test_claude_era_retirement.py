@@ -14,8 +14,8 @@ Class map (one per C1 acceptance criterion):
   ``AllTargetsRefusedError`` is defined nowhere under ``modelb_axi/``.
 - ``RetiredHarnessNameGateTest`` — case-insensitive ``claude|hermes|opencode`` matches zero lines
   in ``modelb_axi/*.py``. This gate ALSO covers the AC "``cli.py`` help and
-  ``resolve_target_root``'s docstring name no Claude surface" (``resolve_target_root`` (cli.py) ``~/.claude``,
-  ``_build_parser`` (cli.py) ``claude-code,hermes``) — no second test duplicates it.
+  ``resolve_target_root``'s docstring name no Claude surface" (the retired ``~/.claude`` in ``resolve_target_root`` (cli.py) and
+  ``claude-code,hermes`` in ``_build_parser`` (cli.py)) — no second test duplicates it.
 - ``RetiredScanDetectorTest`` — the two source scans above bite on synthetic fixtures.
 - ``DeployHasNoHarnessLinkWriterTest`` — ``deploy.py`` defines no ``HARNESS_SKILL_DIRS`` (nor the
   ``_link_harness_skills`` writer §S1 deletes).

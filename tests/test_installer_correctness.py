@@ -468,9 +468,10 @@ class FirstInstallNeverClobbersForeignFileTest(unittest.TestCase):
 
 class ManifestAlwaysConsultedWithoutReinstallFlagTest(unittest.TestCase):
     """AC5 (§S3) -- the prior-install manifest must be consulted whenever
-    it exists on disk, not only when `--reinstall` is passed
-    (`_deploy_stage` (modelb_axi/cli.py): `prior_hashes = load_manifest_hashes(home) if
-    reinstall else {}`).
+    it exists on disk, not only when `--reinstall` is passed. Before
+    CR-MDB-033 §S3, `_deploy_stage` (modelb_axi/cli.py) read the manifest
+    only under the flag (`prior_hashes = load_manifest_hashes(home) if
+    reinstall else {}`); it now reads it whenever one exists.
     `DeployEngineTest.test_reinstall_run_is_noop_when_no_managed_files_changed`
     (tests/test_installer.py) already covers
     the `--reinstall` idempotent-noop path; this drives
