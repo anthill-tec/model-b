@@ -377,7 +377,10 @@ def _reference_other_files(home: Path, mode: str, scratch: Path) -> dict:
     files["hooks/README.md"] = scaffold._render_hooks_readme(
         report, instances, harnesses).encode("utf-8")
     _agents.render_project(scratch, stacks, harnesses, *scaffold._agent_sources(home))
-    _permission_policy.place_project_policy(scratch)
+    # MIGRATED PIN (CR-MDB-045 C5 FIX, finding a): this fixture records no
+    # lean-ctx verdict, so init renders the policy for Pi's built-in tools
+    # (CR-MDB-045 \u00a7S8); the reference is that form.
+    _permission_policy.place_project_policy(scratch, lean_ctx=False)
     for path in scratch.rglob("*"):
         if path.is_file():
             files[str(path.relative_to(scratch))] = path.read_bytes()

@@ -136,6 +136,10 @@ PITFALLS = {
         r"\bstore\b", r"\bautomatic (?:captures?|rooms?)\b"),
 }
 
+#: \u00a7S7 \u2014 a monorepo's sub-projects derive the root's category when they share its token.
+CONTRACT_SUB_PROJECT_CATEGORY = (
+    r"\bsub-projects?\b", r"\bsame category\b", r"\broot\b", r"\btoken\b")
+
 #: A lean-ctx TOOL name: a ``ctx_*`` tool, the ``lean_ctx`` tool, an MCP-qualified name, or a
 #: ``lean-ctx <verb>`` CLI form. The product name and "the project's knowledge store" are not tools.
 LEAN_CTX_TOOL_RE = re.compile(
@@ -352,6 +356,43 @@ class LeanCtxContractKnowledgeTest(_RuleAssertions):
             with self.subTest(pitfall=name):
                 self.assert_rule(text, rule, f"{CONTRACT_REL} ({name})")
 
+    def test_it_notes_that_sub_projects_sharing_the_token_derive_the_roots_category(self):
+        # Finding F6 (\u00a7S7, amended at 06a4ca4).
+        self.assert_rule(_read(CONTRACT_REL), CONTRACT_SUB_PROJECT_CATEGORY, CONTRACT_REL)
+
+
+# ---------------------------------------------------- \u00a7S6 \u2014 every skill ----
+
+#: The skill sources: every Markdown file under ``skills-src/`` but the memory templates.
+SKILL_FILES = sorted(p for p in (REPO_ROOT / "skills-src").rglob("*.md")
+                     if "memory-templates" not in p.parts)
+#: A unit about the knowledge store.
+KNOWLEDGE_STORE_UNIT = r"knowledge_category|\bknowledge[- ]store\b"
+#: lean-ctx named, the product or a tool.
+LEAN_CTX_NAMED = r"lean[-_]ctx|(?<![\w])ctx_[a-z_]+"
+
+
+class SkillsNameTheKnowledgeStoreCapabilityTest(unittest.TestCase):
+    """\u00a7S6 "so does every other skill: `model-b` names the installation's
+    knowledge-store tool, not lean-ctx" (finding F7): no skill unit that
+    speaks of the knowledge store or ``KNOWLEDGE_CATEGORY`` names lean-ctx."""
+
+    def test_no_skill_names_lean_ctx_where_it_speaks_of_the_knowledge_store(self):
+        self.assertTrue(SKILL_FILES)
+        found = [f"{p.relative_to(REPO_ROOT)}: {u[:160]}"
+                 for p in SKILL_FILES for u in rule_units(read_text(p))
+                 if re.search(KNOWLEDGE_STORE_UNIT, u) and re.search(LEAN_CTX_NAMED, u)]
+        self.assertEqual(found, [], "DN \u00a7D18: name the knowledge-store capability")
+
+    def test_the_detector_bites(self):
+        for bad in ("- `KNOWLEDGE_CATEGORY` (written when lean-ctx is present)\n",
+                    "- keep facts in the knowledge store via `ctx_knowledge`\n"):
+            with self.subTest(bad=bad):
+                self.assertTrue(re.search(KNOWLEDGE_STORE_UNIT, rule_units(bad)[0])
+                                and re.search(LEAN_CTX_NAMED, rule_units(bad)[0]))
+        good = "- `KNOWLEDGE_CATEGORY` (written when the knowledge-store tool is present)\n"
+        self.assertIsNone(re.search(LEAN_CTX_NAMED, rule_units(good)[0]))
+
 
 # ------------------------------------------------- detectors, synthetic text ----
 
@@ -402,6 +443,8 @@ AGENTS.md pointer.
 - `restore` ignores `dry_run`.
 - The CLI's project does not follow the working directory.
 - The store holds lean-ctx's automatic captures (the `auto:*` and `code_health` rooms).
+
+A monorepo's sub-projects derive the same category as the root when they share its token.
 """
 
 
@@ -516,6 +559,7 @@ class RuleDetectorTest(unittest.TestCase):
             with self.subTest(pitfall=name):
                 self.assertTrue(satisfying_units(GOOD_CONTRACT, rule),
                                 missing_report(GOOD_CONTRACT, rule))
+        self.assertTrue(satisfying_units(GOOD_CONTRACT, CONTRACT_SUB_PROJECT_CATEGORY))
 
     def test_each_contract_rule_bites_when_its_phrase_is_missing(self):
         mutations = {
@@ -531,6 +575,8 @@ class RuleDetectorTest(unittest.TestCase):
                     "does not follow", "follows"),
             "automatic": (PITFALLS["the store holds lean-ctx's automatic captures"], False,
                           "automatic captures", "facts"),
+            "sub-project category": (CONTRACT_SUB_PROJECT_CATEGORY, False,
+                                     "the same category as the root", "their own category"),
         }
         for name, (rule, lead_in, old, new) in mutations.items():
             with self.subTest(mutation=name):

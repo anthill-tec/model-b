@@ -35,15 +35,21 @@ there. No test reads the real ``~/.local/share/modelb``, ``~/.pi`` or
 Stdlib only.
 """
 
+import argparse
+import contextlib
+import io
+import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tomllib
 import unittest
 from pathlib import Path
+from unittest import mock
 
-from modelb_axi import agents
+from modelb_axi import agents, scaffold
 from modelb_axi.requirements import REQUIREMENTS, STACK_TOOLCHAINS
 from tests import test_init_tool_verdicts as _verdicts
 from tests._helpers import decode_axi, parse_env_file, run_module
@@ -334,13 +340,56 @@ class KnowledgeCategoryValidationTest(_ProjectCase):
                 self.init_ok(target, knowledge_category=good)
                 self.assertEqual(parse_env_file(target / ".env").get(KEY), good)
 
-    def test_a_token_deriving_a_non_kebab_category_is_refused_only_when_lean_ctx_is_present(self):
+    def test_a_token_that_is_not_kebab_case_still_derives_a_kebab_case_category(self):
+        # MIGRATED PIN (CR-MDB-045 C5 FIX, spec amended at 06a4ca4, finding F2):
+        # was ..._is_refused_only_when_lean_ctx_is_present. §S4 now normalises
+        # the derived category to kebab-case, and a token accepted before this
+        # CR never makes init fail.
         self.write_install(self.verdicts())
-        message = self._refused(self.root / "bad-token", token="My_Proj")
-        self.assertIn(KEY, message)
-        self.assertIn(OVERRIDE_FLAG, message, "the refusal says how to set it")
+        for token, category in (("MyProj", "myproj-workflow"),
+                                ("my_proj", "my-proj-workflow"),
+                                ("My_Proj", "my-proj-workflow")):
+            with self.subTest(token=token):
+                target = self.root / f"token-{token}"
+                self.init_ok(target, token=token)
+                self.assertEqual(parse_env_file(target / ".env").get(KEY), category)
+
+    def test_every_token_init_accepts_derives_a_valid_category(self):
+        derive = scaffold.DERIVE_RULES["knowledge_category"]
+        for token in ("MyProj", "my_proj", "My Proj", "a.b", "x--y", "_x_", "Ünï",
+                      "___", "proj2", "A-B-C"):
+            with self.subTest(token=token):
+                category = derive(token)
+                self.assertEqual(scaffold.VALIDATE_RULES["kebab_id"](category), category)
+                self.assertTrue(category.endswith("workflow"), category)
+
+
+class KnowledgeCategoryNotAppliedNoteTest(_ProjectCase):
+    """§S4: ``--knowledge-category`` given while lean-ctx is not present is
+    noted on stderr as not applied (finding F3)."""
+
+    @staticmethod
+    def _notes(err: str) -> list[str]:
+        return [ln for ln in err.splitlines()
+                if OVERRIDE_FLAG in ln and "not applied" in ln]
+
+    def test_the_override_without_lean_ctx_present_is_noted_as_not_applied(self):
+        for verdict in ("absent", "unknown", None):
+            with self.subTest(lean_ctx=verdict):
+                self.write_install(self.verdicts(lean_ctx=verdict))
+                for dry_run in (False, True):
+                    target = self.root / f"proj-{verdict}-{dry_run}"
+                    _axi, err = self.init_ok(target, knowledge_category="shared-kb",
+                                             dry_run=dry_run)
+                    self.assertEqual(len(self._notes(err)), 1, f"stderr={err!r}")
+
+    def test_no_note_without_the_flag_or_with_lean_ctx_present(self):
         self.write_install(self.verdicts(lean_ctx="absent"))
-        self.init_ok(self.root / "absent-ok", token="My_Proj")
+        _axi, err = self.init_ok(self.root / "no-flag")
+        self.assertEqual(self._notes(err), [], err)
+        self.write_install(self.verdicts())
+        _axi, err = self.init_ok(self.root / "present", knowledge_category="shared-kb")
+        self.assertEqual(self._notes(err), [], err)
 
 
 class KnowledgeCategoryCliFlagTest(_ProjectCase):
@@ -422,6 +471,18 @@ class LeanCtxPointerTest(_ProjectCase):
                 self.assertEqual(own, DERIVED_CATEGORY)
                 section = self._section(self.read(target / sub / "AGENTS.md"))
                 self.assertIn(own, section)
+
+    def test_the_bootstrap_instruction_says_restore_then_list(self):
+        # Finding F5 (§S4 "restore its archived facts, then list it").
+        self.write_install(self.verdicts())
+        target = self.root / "proj"
+        self.init_ok(target)
+        section = self._section(self.read(target / "AGENTS.md"))
+        lines = [ln.lower() for ln in section.splitlines() if "bootstrap" in ln.lower()]
+        self.assertTrue(
+            any(re.search(r"\brestor\w*\b.{0,60}\barchived\b.*\bthen\b.*\blists?\b", ln)
+                for ln in lines),
+            f"§S4: at bootstrap, restore the archived facts, then list; {lines!r}")
 
     def test_absent_or_unknown_lean_ctx_writes_no_section(self):
         for verdict in ("absent", "unknown", None):
@@ -512,6 +573,20 @@ class CapabilityContractStateTest(_ProjectCase):
                     continue
                 with self.subTest(stack=stack, probe=probe["name"]):
                     self.assertEqual(_subject_lines(section, probe["name"]), [])
+
+    def test_each_tool_appears_once(self):
+        # Finding F4 (\u00a7S5 "each tool appears once"): a tier-2 row and a
+        # stack toolchain probe for the same tool (`python3`) are one line.
+        section = self.contract_for(self.verdicts())
+        names = [m.group(1) for ln in section.splitlines() if ln.lstrip().startswith("- ")
+                 for m in [_FIRST_CODE_SPAN_RE.search(ln)] if m]
+        doubled = sorted({n for n in names if names.count(n) > 1})
+        self.assertEqual(doubled, [], f"\u00a7S5: each tool once; section={section!r}")
+
+    def test_the_merged_line_carries_the_worse_state(self):
+        section = self.contract_for(self.verdicts(python_python3="absent"))
+        self.assertEqual(len(_subject_lines(section, "python3")), 1, section)
+        self.assert_listed(section, "python3", ABSENT, _row("python3")["remediation"])
 
 
 class SetupTasksNameRemediationTest(_ProjectCase):
@@ -705,6 +780,142 @@ class CanonicalAgentsKeepTheLeanCtxFormTest(unittest.TestCase):
                                 if h.lower().startswith("tool usage")]
                     self.assertEqual(len(headings), 1, headings)
                     self.assertIn("lean-ctx", headings[0])
+
+
+# ---------------------------------------------------------------------------
+# VERIFY findings (CR-MDB-045 C5 FIX; spec amended at 06a4ca4)
+# ---------------------------------------------------------------------------
+
+#: A lean-ctx tool or instruction named in a scaffolded file.
+_LEAN_CTX_NAME_RE = re.compile(r"ctx_|(?i:lean[-_]ctx)")
+POLICY_REL = Path(".pi") / "extensions" / "pi-permission-system" / "config.json"
+
+
+class ProjectPolicyMatchesToolsTest(_ProjectCase):
+    """\u00a7S8 "The permission policy" (finding a): with lean-ctx absent or
+    unknown the project's Pi permission policy allows ``bash`` and names no
+    ``ctx_*`` tool; with lean-ctx present it allows the lean-ctx tools and
+    not ``bash``, as today."""
+
+    def _policy(self, verdict, name: str) -> tuple[str, dict]:
+        self.write_install(self.verdicts(lean_ctx=verdict) if verdict != "no-caps" else None)
+        target = self.root / name
+        self.init_ok(target)
+        text = self.read(target / POLICY_REL)
+        body = "\n".join(ln for ln in text.splitlines() if not ln.lstrip().startswith("//"))
+        return text, json.loads(body)["permission"]
+
+    def test_absent_or_unknown_lean_ctx_allows_bash_and_names_no_ctx_tool(self):
+        dispatch = set(_row("dispatch")["tools"])
+        for verdict in ("absent", "unknown", None, "no-caps"):
+            with self.subTest(lean_ctx=verdict):
+                text, permission = self._policy(verdict, f"proj-{verdict}")
+                self.assertEqual(permission.get(PI_BUILTIN_SHELL), "allow", permission)
+                self.assertIsNone(_LEAN_CTX_NAME_RE.search(text), text)
+                allowed = {k for k, v in permission.items() if v == "allow"}
+                self.assertTrue(dispatch <= allowed, "the dispatch tools stay allowed")
+                self.assertEqual(permission.get("*"), "ask")
+
+    def test_present_lean_ctx_keeps_todays_policy(self):
+        _text, permission = self._policy("detected", "proj")
+        for tool in _row("lean-ctx")["tools"]:
+            self.assertEqual(permission.get(tool), "allow", tool)
+        self.assertNotEqual(permission.get(PI_BUILTIN_SHELL), "allow")
+
+
+class MemorySlicesMatchToolsTest(_ProjectCase):
+    """\u00a7S8 "The memory slices" (finding b): with lean-ctx absent or unknown
+    no stack memory template ``init`` scaffolds into ``docs/memory/`` names a
+    lean-ctx tool \u2014 every stack family selected."""
+
+    def test_no_scaffolded_memory_slice_names_lean_ctx(self):
+        for verdict in ("absent", "unknown"):
+            with self.subTest(lean_ctx=verdict):
+                self.write_install(self.verdicts(lean_ctx=verdict))
+                target = self.root / f"proj-{verdict}"
+                self.init_ok(target, stacks=",".join(scaffold.KNOWN_STACKS))
+                slices = sorted((target / "docs" / "memory").glob("*.md"))
+                self.assertIn("rust-orchestration.md", [p.name for p in slices])
+                found = {p.name: [ln for ln in p.read_text(encoding="utf-8").splitlines()
+                                  if _LEAN_CTX_NAME_RE.search(ln)] for p in slices}
+                self.assertEqual({k: v for k, v in found.items() if v}, {})
+
+
+class AgentRenderFailureRefusedTest(_ProjectCase):
+    """\u00a7S8 "Validated before the first write" (finding F1): ``init`` and
+    ``modelb-axi agents`` render every agent in memory during validation; a
+    render failure \u2014 a missing or unreadable built-in passages file, or a
+    definition still naming lean-ctx \u2014 exits 2 with an error envelope and
+    writes nothing, ``--dry-run`` included. The assets are a private copy of
+    ``generator/`` at the fixture's configured asset root."""
+
+    def setUp(self):
+        super().setUp()
+        # _install_toml_text's asset_root is <modelb_home>/no-asset-root-here.
+        self.assets = self.modelb_home / "no-asset-root-here"
+        shutil.copytree(GENERATOR_DIR, self.assets / "generator",
+                        ignore=shutil.ignore_patterns("agents", "__pycache__"))
+        self.passages = self.assets / "generator" / "templates" / agents.BUILTIN_PASSAGES_NAME
+
+    def _break(self, how: str) -> None:
+        if how == "missing":
+            self.passages.unlink()
+        elif how == "unreadable":
+            self.passages.write_text("[[passage]\nlean = ", encoding="utf-8")
+        else:  # a definition still naming lean-ctx: no passages at all
+            self.passages.write_text("# no passages\n", encoding="utf-8")
+
+    def _restore(self) -> None:
+        shutil.copy2(GENERATOR_DIR / "templates" / agents.BUILTIN_PASSAGES_NAME, self.passages)
+
+    def assert_refused(self, rc: int, axi: dict, err: str) -> None:
+        self.assertEqual((rc, axi.get("ok")), (2, False), f"stderr={err!r}")
+        self.assertTrue(axi.get("warnings"), f"the error envelope names the failure; {axi!r}")
+
+    def test_init_refuses_a_render_failure_before_writing_dry_run_included(self):
+        for how in ("missing", "unreadable", "leftover"):
+            for dry_run in (False, True):
+                with self.subTest(failure=how, dry_run=dry_run):
+                    self._restore()
+                    self._break(how)
+                    self.write_install(self.verdicts(lean_ctx="absent"))
+                    target = self.root / f"proj-{how}-{dry_run}"
+                    self.assert_refused(*self.run_init(target, dry_run=dry_run))
+                    self.assertFalse(target.exists(), "nothing is written")
+
+    def test_present_lean_ctx_does_not_need_the_passages_file(self):
+        self._break("missing")
+        self.write_install(self.verdicts())
+        target = self.root / "proj"
+        self.init_ok(target)
+        self.assertTrue((target / PI_AGENTS_RELDIR / _agent_name(STACK, "red")).is_file())
+
+    def _run_agents(self, target: Path) -> tuple[int, dict, str]:
+        args = argparse.Namespace(stacks=None, force_managed=False)
+        out, err = io.StringIO(), io.StringIO()
+        with (
+            mock.patch.dict(os.environ, {"HOME": str(self.home),
+                                         AGENT_DIR_ENV: str(self.agent_dir)}),
+            contextlib.redirect_stdout(out), contextlib.redirect_stderr(err),
+        ):
+            rc = scaffold.run_agents(args, self.modelb_home, project_root=target)
+        return rc, decode_axi(out.getvalue()), err.getvalue()
+
+    def test_the_agents_verb_refuses_a_render_failure_and_writes_nothing(self):
+        self.write_install(self.verdicts())
+        target = self.root / "proj"
+        self.init_ok(target)
+        before = {p: p.read_bytes() for p in target.rglob("*")
+                  if p.is_file() and ".git" not in p.parts}
+        self.write_install(self.verdicts(lean_ctx="absent"))
+        for how in ("missing", "unreadable", "leftover"):
+            with self.subTest(failure=how):
+                self._restore()
+                self._break(how)
+                self.assert_refused(*self._run_agents(target))
+                after = {p: p.read_bytes() for p in target.rglob("*")
+                         if p.is_file() and ".git" not in p.parts}
+                self.assertEqual(after, before, "nothing is written")
 
 
 class ContractCheckersTest(unittest.TestCase):

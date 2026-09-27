@@ -113,7 +113,13 @@ def sha256_text(text: str) -> str:
 
 def write_install_toml(modelb_home: Path, harnesses=("pi",)) -> None:
     """install.toml fixture the scaffold reads (mirrors test_scaffold's
-    ``_write_install_toml``), its hooks_scripts_dir inside the sandbox."""
+    ``_write_install_toml``), its hooks_scripts_dir inside the sandbox.
+
+    MIGRATED (CR-MDB-045 C5 FIX, finding a): records lean-ctx as
+    ``detected`` in ``[capabilities]`` -- the policy these tests pin is the
+    lean-ctx form, which ``init`` renders only when the installation recorded
+    lean-ctx present (CR-MDB-045 \u00a7S8); the built-in form is pinned by
+    tests.test_project_tools_setup."""
     hooks_scripts_dir = modelb_home / ".agents" / "hooks" / "scripts"
     harnesses_toml = ", ".join(f'"{h}"' for h in harnesses)
     modelb_home.mkdir(parents=True, exist_ok=True)
@@ -123,7 +129,7 @@ def write_install_toml(modelb_home: Path, harnesses=("pi",)) -> None:
         f"harnesses = [{harnesses_toml}]\n"
         'asset_root = "/tmp/does-not-matter-for-this-test"\n'
         f'hooks_scripts_dir = "{hooks_scripts_dir}"\n'
-        "\n[deps]\nuv = \"present\"\n\n[files]\n",
+        "\n[deps]\nuv = \"present\"\n\n[capabilities]\n\"lean-ctx\" = \"detected\"\n\n[files]\n",
         encoding="utf-8",
     )
 
