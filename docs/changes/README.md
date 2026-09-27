@@ -51,7 +51,7 @@ Queue rows enumerate the whole delivery (structure only). **Live status lives on
 | [CR-MDB-043](CR-MDB-043-schema-driven-project-registry.md) | Schema-driven project registry: Model B ships a project-settings schema (keys, sources, derive rules, validation, readers — no values); `init` generates `.env`/`.env.local` from it; adds `SANDESH_PROJECT` | 5 | — |
 | [CR-MDB-041](CR-MDB-041-bootstrap-reads-scaffolded-files.md) | Bootstrap and shutdown read the files `init` scaffolds (`AGENTS.md`, `.env`, `docs/memory/INDEX.md`), not `ORCHESTRATOR-<Project>`/`MEMORY.md` | 5 | 042, 043 |
 | [CR-MDB-044](CR-MDB-044-agent-definitions-and-briefs.md) | Agent definitions carry the how, the brief the what: the orchestrator's acceptance model, parallel agents in one tree, each role's reading of a CR, field rules from Crucible #1405, cite code by symbol (PRD D5/D6 amendments 2026-09-27) | 5 | — |
-| [CR-MDB-045](CR-MDB-045-execution-knowledge-store.md) | Execution knowledge in lean-ctx's knowledge store where installed: § Memory, bootstrap's full load + count + restore, the contract's pitfalls (PRD D5 tiers, Crucible #1409/#1410) | 5 | 044 |
+| [CR-MDB-045](CR-MDB-045-execution-knowledge-store.md) | The scaffold detects lean-ctx and sets it up for the project: `init` probes Pi, a `when`-conditional schema key `KNOWLEDGE_CATEGORY`, the orchestrator's pointer in `AGENTS.md`, § Memory + bootstrap load the category, the contract's pitfalls (PRD D10/D5 2026-09-27) | 5 | 044 |
 
 **— v1.0.0 ships here —** (the release is a BOUNDARY EVENT, not a queue row: the wave drains, the user approves, `git-workflow` §Releases executes it, a milestone records it afterwards. No release CR, no close-out wave.)
 
@@ -1110,3 +1110,10 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   scripts remain in `test_tooling_adoption.py` and `test_tooling_detachment.py` (the guard's
   `<file>.<ext>:<digits>` pattern does not catch them); the pre-existing I001 in
   `test_project_registry_schema.py`.
+- 2026-09-27 — **CR-MDB-045 restructured** (user ruling, PRD D10 amended): tools that work alongside
+  the agent and skill definitions are detected by `init`, which asks Pi before rendering the project's
+  variables and paths and sets the tool up for the project — here lean-ctx: a `when`-conditional
+  schema key `KNOWLEDGE_CATEGORY` and an orchestrator pointer in the scaffolded `AGENTS.md`. Gap
+  analysis folded: the in-session knowledge capability, never the CLI (its project does not follow the
+  working directory); one category, never lean-ctx's automatic rooms; restore then list, no count to
+  keep; only Mainline or Solo writes.
