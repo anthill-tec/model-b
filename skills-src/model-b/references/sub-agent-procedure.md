@@ -28,6 +28,10 @@
 6. STOP — do NOT run the full suite (that's the orchestrator's regression gate).
 - **Refactor (inverted TDD):** refactor → tests go RED → ingest → update tests → GREEN → ingest. Multiple cycles is normal; same ingest discipline.
 
+## Long runs
+- A run longer than a minute or two gets a tool timeout longer than the run — a timeout that kills a run mid-flight loses its ingest.
+- A run that times out is never re-invoked blind: first check the board for your own open run (it may still be running, or already ingested), then decide.
+
 ## Report EVERY run
 - RED and GREEN, every single one — no exceptions. An unreported RED reads as "skipped TDD."
 - If stdout is truncated, read the report file (junit / lcov / surefire) — do NOT re-run.
@@ -40,6 +44,7 @@
 ## Code quality
 - Remove ALL unused imports; import instead of fully-qualified inline names; rename an unused lambda/closure parameter to `_`.
 - Key a guard's allowlist to an annotation marker at the site, never a line number — an unrelated edit shifts lines and re-breaks it.
+- Checkers are proved on synthetic fixtures — text the test builds, showing both a violation and a clean case. A test never pins live repo violations: a checker that passes only because today's tree has, or lacks, a given defect proves nothing.
 - Clean build before commit; GREEN before commit — never commit in RED.
 - Conventional commits (`type(scope): desc`); no AI attribution.
 - No empty catch blocks, no unjustified suppressed warnings, no dead/commented-out code.

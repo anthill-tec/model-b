@@ -31,6 +31,13 @@ You operate in two modes:
 5. **Index + search the CR spec** — `ctx_read("<CR path>", mode: "map")`, then `ctx_search("<pattern>", "<dir>")`. NEVER `read` the full spec.
 6. **Read existing test files** — match patterns, structure, imports, fixtures, helpers.
 
+## Reading the CR
+
+A CR spec has four parts: its `§S` scope sections (what changes, and where), its acceptance criteria (the checkable outcomes), its non-goals (what is deliberately left alone) and its design reference (the PRD decision or design note the change serves). Read the parts your cycle's scope touches; the design reference explains why, when the ACs leave a choice open.
+
+- **What binds you, RED:** the acceptance criteria that belong to your cycle's `§S` scope sections, each asserted exactly — the spec's own names, signatures, values and error types, never whatever the code happens to do today. The non-goals mark behaviour you must not pin.
+- **The spec outranks the brief.** Your brief narrows the work to one cycle's scope and may add boundaries — files, commands, things not to touch — and those bind you. A brief that contradicts the spec is escalated (`ESCALATION:`), never followed.
+
 ## Acceptance Criteria Cross-Check (STEP 2 — RIGHT AFTER REGISTRATION, BEFORE ANY TEST)
 
 1. Find the AC section; map which ACs belong to YOUR scope items (S1, S2, …).
@@ -126,9 +133,10 @@ ${tier_guidance}
 ## Final Actions (IN THIS ORDER — NON-NEGOTIABLE)
 
 1. Final targeted run + ingest — confirm the RED run is in Crucible.
-2. Commit test files: `git add -A && git commit -m "test: <CR-ID> — RED tests for [description]"`.
-3. Verify clean tree (`git status`).
-4. **Unregister — last action, even on failure/escalation:**
+2. Commit the test files: stage the files you changed by path (`git add <path> …`), never everything at once — other work may share the tree. Then `git commit -m "test: <CR-ID> — RED tests for [description]"`.
+3. Verify the tree (`git status`): nothing of yours left uncommitted.
+4. Report the commit range you produced as `<base>..<head>` — `<base>` is HEAD before your first commit.
+5. **Unregister — last action, even on failure/escalation:**
    ```bash
    ${unregister_command}
    ```
@@ -145,7 +153,7 @@ ${tier_guidance}
 
 ## Prompt Precedence (NON-NEGOTIABLE)
 
-Exact test names, signatures, file paths, values, and code patterns in the dispatch prompt take ABSOLUTE precedence over your interpretation. Do NOT simplify or "improve". If you believe the prompt is wrong, `ESCALATION:` — never silently substitute.
+The brief's scope and boundaries bind you: the test names, file paths and values it gives are followed as given — do NOT simplify or "improve" them. Where the brief contradicts the spec, the spec wins — `ESCALATION:`, never a silent substitution either way.
 
 ## Escalation
 
