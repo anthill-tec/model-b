@@ -50,6 +50,9 @@ The section now headed "Never author code — always dispatch + diff-verify" is 
 - **Work the orchestrator sees break the spec is reverted, or sent to a FIX agent,** never edited by
   the orchestrator.
 
+`orchestration-track.md` agrees: its checklist carries no rule to diff-verify the worktree or the
+commit range, and does not assume agents are told not to commit.
+
 Rules that the model replaces are removed:
 - "diff-verify EVERY cycle against ground truth";
 - "verify the COMMIT RANGE …, reset+recommit cleanly to collapse into orchestrator-controlled
@@ -108,6 +111,8 @@ contradicts the spec, escalate.
 closed. The VERIFY template says its report ends the VERIFY cycle's work; no fix round runs inside
 it.
 
+VERIFY's "Reading the CR" opens with what binds VERIFY (the whole spec), not with a cycle's scope.
+
 **Committing.** RED, GREEN and FIX stage the files they changed by path, never `git add -A`. Their
 report names the commit range they produced (`<base>..<head>`). `git-workflow`'s "Always
 `git add -A`" becomes "stage what you changed, by path".
@@ -122,6 +127,8 @@ report names the commit range they produced (`<base>..<head>`). `git-workflow`'s
 - **Dead code needs no reference anywhere** (the GREEN and FIX templates, where they delete). No
   reference counts from its own file, dynamic lookups (`getattr`, string names) or mock and patch
   targets.
+- **A revert is scoped to the agent's own files** (`sub-agent-procedure.md` § "Consequences"), never
+  the whole tree, which in a shared tree holds other agents' edits.
 - **Checkers are proved on synthetic fixtures** (`sub-agent-procedure.md` § "Code quality", beside the
   existing content-anchor rule). A test never pins live repo violations.
 
@@ -137,7 +144,11 @@ test command and Crucible client, and the "Reading the CR" section.
   `skills-src/`, `generator/templates/`, `generator/stacks/`, `modelb_axi/`, `pi-package/`
   (sources, not `node_modules`), `scripts/`, `AGENTS.md` and `tests/`. The guard's own fixtures are
   built at run time, so it never trips on itself.
-- **Migration.** The 129 citations in `tests/` are rewritten to symbol form.
+- **Migration.** The citations in `tests/` are rewritten to symbol form, naming a symbol wherever
+  the citation pointed at one, and never attributing to a symbol code it no longer holds. The meta
+  test `test_skill_bundle_guards_meta` requires the deferred properties' owning test names instead
+  of the audit's line numbers (`DEFERRED_LINE_REFS` is retired), so the guard module's docstring
+  carries no line numbers.
 - **Out of the guard.** Specs and research docs follow the rule from now on, unguarded. Closed specs,
   `archive/` and `audits/` stay untouched.
 
@@ -151,6 +162,7 @@ test command and Crucible client, and the "Reading the CR" section.
         phases;
       - that VERIFY, FIX and the pre-merge gate are the correctness gates;
       - revert or FIX agent for spec-breaking work.
+- [ ] `orchestration-track.md` carries no rule to diff-verify the worktree or the commit range.
 - [ ] No line of `orchestration-common.md` says "diff-verify EVERY cycle", "reset+recommit" or
       "Validate an agent's work at module level first". Every rule §S1 lists as staying is still
       present.
@@ -166,9 +178,11 @@ test command and Crucible client, and the "Reading the CR" section.
       precedence".
 - [ ] No template or skill instructs `git add -A`. RED, GREEN and FIX stage by path and report
       `<base>..<head>`.
-- [ ] The four field rules are present, each in the file §S3 names.
+- [ ] The four field rules and the scoped revert are present, each in the file §S3 names. VERIFY's
+      "Reading the CR" does not tell it to read only the parts a cycle's scope touches.
 - [ ] `cr-authoring` and the role templates carry the cite-by-symbol rule. The guard fails on a
-      synthetic `path:line` and passes on the tree. `tests/` carries no `path:line` citation.
+      synthetic `path:line` and passes on the tree. `tests/` carries no `path:line` citation, and no bare
+      line-number reference into an audit (`DEFERRED_LINE_REFS` retired).
 - [ ] `generator/build.py --check` is clean, and the suite baselines are re-measured in `AGENTS.md`.
 
 ## Non-goals
