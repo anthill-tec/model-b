@@ -33,29 +33,45 @@ Universal rules for ANY orchestrator, ANY project/stack. Verbose detail + failur
 - **A cycle = ONE RED→GREEN unit** (never split RED and GREEN into two cycles).
 - The plan holds IMPLEMENTATION cycles + VERIFY + FIX cycles — NOT design/admin work.
 - **A VERIFY finding the user approves for fixing is fixed in its own FIX cycle** (`cycle-add --kind fix`), never inside the VERIFY cycle.
+  - The VERIFY cycle closes with its findings before the FIX cycle is added and activated.
+  - The switch happens between agents, never under one: an agent bound to a closed cycle has its runs refused, so the VERIFY agent finishes and a fresh FIX agent registers against the FIX cycle.
+  - A new contract VERIFY finds still goes AC → RED → FIX: the RED agent runs in the FIX cycle, alongside the FIX agent — never in the closed VERIFY cycle.
 - Setup ordering: gap-analysis → approval → `plan-file` → THEN the branch / worktree.
 - Intra-cycle: once approved, flow RED→GREEN→next without pausing between phases; pause only on drift or escalation.
-- **One active cycle at a time per orchestrator**, even for disjoint code — parallelism belongs to separate track orchestrators. An interjecting CR waits until the running cycle is closed on its merit; never activate a cycle while another is active.
+- **One active cycle at a time per orchestrator**, even for disjoint code. A phase may be split across agents only under "Parallel agents in one tree"; parallel CRs still belong to separate Track orchestrators.
+- An interjecting CR waits until the running cycle is closed on its merit; never activate a cycle while another is active.
 - **One cycle per coherent behaviour unit.** VERIFY + close-out is its own later cycle, never folded into a RED→GREEN cycle.
 - **A test written after its production code cannot go RED** — label that cycle BACKFILL and prove the test with a mutation kill, never under a `-RED` id.
 - **A RED test's semantic intent is fixed** across a CR's cycles; its API binding adapts when a later cycle changes the public API.
 - **A serialized-format version bump reconciles every legacy version-byte assertion in ONE RED pass**, before GREEN — change only the emitted/round-trip version assertions, keep every data-integrity one.
 
-## Never author code — always dispatch + diff-verify
+## Never author code — dispatch with an accurate brief
 - The orchestrator NEVER authors RED/GREEN/FIX edits — dispatch the stack's sub-agent regardless of how trivial. No size threshold.
 - **After approval the FIRST action is the RED dispatch** — no orchestrator pre-flight build or clean; agents own build and test.
-- **Briefs are short:** spec path, cycle scope, the measured baseline, agent id / role / cycle. Never dictate mechanisms; RED proves its own tests passable.
+- **The brief is the orchestrator's paramount duty** — it is the accuracy lever, and it never compromises the workflow rules or the CR spec. It guides and does not over-specify: no dictated mechanisms, test names or code.
+- **The brief names the spec and the cycle's scope, points to the rules that bind the phase, and states the phase's boundaries** (plus the measured baseline and agent id / role / cycle); the agent definition carries the how.
 - **Every brief opens with an Identity block pinning the agent id** (without it agents self-name and vanish from the board), and its step 1 is the exact register command — confirm the registration early in the agent's transcript. Register only the assigned id: no probe or scratch agents on the live board.
-- **Agents confabulate — diff-verify EVERY cycle against ground truth** (`git diff`, grep, the artifact), not the agent's narrative or green-claim — and the board too: after every sub-agent check the registered agent ids and the run/cycle attachment, not only files.
-- **Accept a clean phase from its ingest and commit shape** (a RED commit is test-only); no re-runs between cycles — only at gates or after a crash.
+- **Agents commit the code they write.** The orchestrator never resets and recommits an agent's commits — the agent's commit range is the phase's record.
+- **A phase is accepted from the agent's report, its ingested run on the board, and the phase's commit range** (`<base>..<head>`; a RED commit is test-only). No suite is re-run and no work re-checked between phases — only at gates or after a crash.
+- **The correctness gates are the CR's VERIFY cycle, the FIX cycles it opens, and the pre-merge gate** — not per-phase checking by the orchestrator.
+- **Work the orchestrator sees break the spec is reverted, or sent to a FIX agent** — never edited by the orchestrator.
 - **At post-RED review, reject tests that spawn nested builds/compiles or hog resources** — they pass alone and break full-suite regressions.
-- When diff-verify finds a defect, DISPATCH a fix-agent — do NOT self-edit. A fix round's production diff goes to a FIX agent, never GREEN; RED joins only when a finding needs new test contracts.
-- Agents self-commit despite "do not commit" — verify the COMMIT RANGE (`git diff <prev>..HEAD`), reset+recommit cleanly to collapse into orchestrator-controlled boundaries.
+- A fix round's production diff goes to a FIX agent, never GREEN; RED joins only when a finding needs new test contracts.
 - A crashed agent that left a COMPLETE uncommitted diff is salvaged (assess gates + commit), not re-run.
 - **A committed chunk with the wrong pattern is refactored, not reverted** — keep its names and predicate coverage, change only the wiring layer; revert only a production regression or a fundamentally wrong contract.
 - **Treat any finding an agent reports beyond its mandate as unverified** — confirm it against live code before it enters a spec, a ledger or a report.
 - **After an interrupted or killed agent, inspect `git status` (untracked files too)** before reporting or re-dispatching; reconcile its partial work explicitly.
 - **Stop a stalled sub-agent before taking over** or dispatching the next phase (stop it through the harness's sub-agent control) — otherwise two agents share one tree. An agent reporting changes it did not make signals overlapping execution: check the tree. Brief agents to run tests in the foreground, so none stalls waiting on a background run.
+
+## Parallel agents in one tree
+- **Only with the user's explicit go**; otherwise one agent per phase.
+- **The work is split by file, never within a file**, and each brief lists that agent's files.
+- **Each agent commits only its own files**, staged by path — it never stages everything, stashes, resets or restores: each of those reaches into another agent's work.
+- **Each agent's test runs use a private reports directory** where its stack's client takes one (`--reports`); a stack whose client does not runs its agents' tests one at a time.
+- **Agent ids are suffixed `-1` … `-N`** on the phase's id (e.g. `CR-MDB-NNN-C1-GREEN-2`).
+- **The split is sized to the harness's concurrency cap** — Pi's pi-subagents `maxConcurrent`, default 4.
+- **No agent's output is verified on its own**; the CR's VERIFY cycle covers the combined result.
+- **A follow-up to an agent whose session expired goes to a fresh agent under the same id.**
 
 ## Integration / wire-the-call-path GATE (EVERY CR)
 - Every feature must be WIRED into the call path and proven by an INTEGRATION test exercising the real caller→new-code→result seam — not unit-only, not E2E-only.
@@ -94,7 +110,6 @@ Universal rules for ANY orchestrator, ANY project/stack. Verbose detail + failur
 - **Every regression report lists each ignored/skipped test with its reason**, then categorises them (env-gated / blocked on a future CR / structural); a bare skipped count is insufficient.
 - **A gate whose output you will read runs in the foreground** with a long timeout — never background it and spawn a waiter. When something needs cleanup, confirm the process is gone, not just that the stop reported success.
 - **Verify a gate from its ingested results on the board**, never from stdout counts.
-- Validate an agent's work at module level first (the touched package's targeted tests) before integration and end-to-end sweeps — it separates "did the agent do its job" from "is it wired end to end".
 - Answer-then-wait on questions — never implement in response to a question.
 - Always use the proper git-flow / worktree commands; never hand-roll the merge dance.
 - **Serialize heavy gates across parallel tracks** — never run heavy regression / pre-merge gates concurrently (compile + resource starvation env-KILLS them). SELF-SERVICE, split into two roles: (1) the track's PRE-FLIGHT is a WAIT-FOR-FREE + resource-headroom check (RAM/CPU/disk) via the gate-coordination tool — if a gate is already running it WAITS (poll ~5s) and ESCALATES to the coordinator after ~10min; it does NOT create the lock. (2) the GATE-RUNNER tool itself OWNS the lock FILE lifecycle — CREATE it on start with its own REAL run pid, DELETE on finish + on a catchable kill (signal handler), REFUSE to start if a lock is already present (no double-runs in the same CR/track), and reclaim a STALE lock whose holder pid is dead. The coordinator (Mainline) is the RARE stale-lock ARBITER — verify the holder's REAL run pid (🚨 NEVER conclude a run is dead from a proxy signal; ask the holder before telling it to abandon) + interrogate the holder, then force-release only a genuinely forgotten lock. Per-cycle RED/GREEN runs are exempt (light, concurrent). The tool is **`~/.agents/scripts/gate-lock.sh`** (cross-project contract: `contracts/gate-lock.md`) — verbs `wait-free` (the PRE-FLIGHT above) · `wait-acquire` · `acquire` · `release` · `force-release` (Mainline-only, a genuinely stale lock) · `status` · `check`; exit codes 0 = acquired / free → run the gate, 1 = held by another track, 2 = resources loaded, 5 = timed out → ESCALATE (never force-release yourself).
