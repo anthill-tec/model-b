@@ -51,4 +51,4 @@
 - Language-specific rules → your stack standards file.
 
 ## Consequences
-Violations → work reverted (`git checkout -- .`), agent terminated, task re-spawned. Do it right, small, tested.
+Violations → the agent's own files reverted (`git checkout -- <path>` for each file it changed; never the whole tree, which in a shared tree holds other agents' edits), agent terminated, task re-spawned. Do it right, small, tested.
