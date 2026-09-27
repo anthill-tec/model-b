@@ -68,6 +68,11 @@ CR-MDB-042 §S2–§S3 (absorb) — the approved triage is the work list:
   the same line is a dated provenance citation (a ``CR-<ACR>-<n>`` id and a ``20YY-MM-DD`` date),
   and none names a harness tool retired by CR-MDB-031 (the vocabulary of
   ``tests.test_client_path_anchoring``, the ``sandesh_*`` MCP tools included).
+- ``HeadingRenameMapTest`` — CR-MDB-044 §S1: the triage is frozen, so a destination heading
+  renamed since resolves through ``HEADING_RENAMES`` (file, old heading) → new heading, held here
+  and holding exactly one entry: ``orchestration-common.md`` § "Never author code — always
+  dispatch + diff-verify" → "Never author code — dispatch with an accurate brief". A mapped
+  heading is looked up under its new name only; every other destination resolves unaided.
 - ``AbsorbRulesOnSyntheticTreeTest`` — the same pure functions over a temp tree.
 
 CR-MDB-042 §S5 (mapping) — ``archive/mapping.md`` (gated by ``tests.test_archive_mapping``, whose
@@ -745,8 +750,30 @@ def is_new_section_row(row: dict) -> bool:
             and _NEW_SECTION_NOTE.search(row["Note"]) is not None)
 
 
-def destination_findings(targets: list[tuple[dict, str, str]], root: Path) -> list[str]:
-    """Each target whose file is missing or lacks a heading equal to its section."""
+#: CR-MDB-044 §S1: the CR-MDB-042 triage audit is frozen and names a destination heading renamed
+#: since. ``(file, heading as the audit names it)`` -> the heading the file now carries. Exactly this
+#: one entry; every other triage destination resolves unaided.
+HEADING_RENAMES = {
+    ("skills-src/model-b/references/orchestration-common.md",
+     "Never author code — always dispatch + diff-verify"):
+        "Never author code — dispatch with an accurate brief",
+}
+
+
+def resolve_heading(rel: str, section_name: str, renames: dict = HEADING_RENAMES) -> str:
+    """The heading a destination resolves to: its rename when ``(rel, section)`` is mapped, else
+    the section as written."""
+    return renames.get((rel, section_name), section_name)
+
+
+def _renamed_note(section_name: str, resolved: str) -> str:
+    return f" (renamed from '{section_name}')" if resolved != section_name else ""
+
+
+def destination_findings(targets: list[tuple[dict, str, str]], root: Path,
+                         renames: dict = HEADING_RENAMES) -> list[str]:
+    """Each target whose file is missing or lacks a heading equal to its section — a renamed
+    section (``renames``) is looked up under its new heading only."""
     problems = []
     for row, rel, section_name in targets:
         where = f"({row['Source']})"
@@ -757,20 +784,25 @@ def destination_findings(targets: list[tuple[dict, str, str]], root: Path) -> li
         if not path.is_file():
             problems.append(f"{rel}: file does not exist {where}")
             continue
-        if section_body(read_text(path), section_name) is None:
-            problems.append(f"{rel}: no heading '{section_name}' {where}")
+        resolved = resolve_heading(rel, section_name, renames)
+        if section_body(read_text(path), resolved) is None:
+            problems.append(f"{rel}: no heading '{resolved}'{_renamed_note(section_name, resolved)} "
+                            f"{where}")
     return problems
 
 
-def new_section_body_findings(targets: list[tuple[dict, str, str]], root: Path) -> list[str]:
-    """Each new-section target that is missing or carries no rule text under its heading."""
+def new_section_body_findings(targets: list[tuple[dict, str, str]], root: Path,
+                              renames: dict = HEADING_RENAMES) -> list[str]:
+    """Each new-section target that is missing or carries no rule text under its heading (a
+    renamed section is read under its new heading)."""
     problems = []
     for row, rel, section_name in targets:
         if not is_new_section_row(row):
             continue
         where = f"({row['Source']})"
         path = root / rel if rel else None
-        body = section_body(read_text(path), section_name) if path and path.is_file() else None
+        resolved = resolve_heading(rel, section_name, renames)
+        body = section_body(read_text(path), resolved) if path and path.is_file() else None
         if body is None:
             problems.append(f"{rel} \u00a7 {section_name}: new section is absent {where}")
         elif not has_rule_body(body):
@@ -881,6 +913,49 @@ class AbsorbedNewSectionBodyTest(_RealFileMixin):
     def test_every_new_section_carries_rule_text_under_its_heading(self):
         _, triage = self.load()
         self.assertEqual(new_section_body_findings(absorbed_destinations(triage), REPO_ROOT), [])
+
+
+class HeadingRenameMapTest(_RealFileMixin):
+    """CR-MDB-044 §S1: the frozen triage names ``orchestration-common.md`` § "Never author code —
+    always dispatch + diff-verify"; the section is retitled "Never author code — dispatch with an
+    accurate brief". The gate resolves the old name through ``HEADING_RENAMES`` — exactly one
+    entry — and every other destination resolves unaided."""
+
+    OLD = "Never author code — always dispatch + diff-verify"
+    NEW = "Never author code — dispatch with an accurate brief"
+    #: The triage's ``common`` rows destined for the renamed section (frozen audit).
+    EXPECTED_RENAMED_TARGETS = 11
+
+    def _split(self):
+        _, triage = self.load()
+        targets = absorbed_destinations(triage)
+        renamed = [t for t in targets if (t[1], t[2]) in HEADING_RENAMES]
+        others = [t for t in targets if (t[1], t[2]) not in HEADING_RENAMES]
+        return renamed, others
+
+    def test_rename_map_has_exactly_the_one_orchestration_common_entry(self):
+        self.assertEqual(HEADING_RENAMES, {(MODEL_B_COMMON, self.OLD): self.NEW})
+
+    def test_the_renamed_rows_are_the_eleven_that_name_the_old_heading(self):
+        renamed, _ = self._split()
+        self.assertEqual(len(renamed), self.EXPECTED_RENAMED_TARGETS)
+        self.assertEqual({(rel, s) for _, rel, s in renamed}, {(MODEL_B_COMMON, self.OLD)})
+
+    def test_renamed_rows_resolve_through_the_map_to_the_new_heading(self):
+        renamed, _ = self._split()
+        self.assertEqual(destination_findings(renamed, REPO_ROOT), [])
+
+    def test_renamed_rows_do_not_resolve_unaided_the_old_heading_is_gone(self):
+        renamed, _ = self._split()
+        found = destination_findings(renamed, REPO_ROOT, renames={})
+        self.assertEqual(len(found), self.EXPECTED_RENAMED_TARGETS, found)
+        self.assertTrue(all(f"no heading '{self.OLD}'" in f for f in found), found)
+
+    def test_every_other_destination_resolves_unaided(self):
+        _, others = self._split()
+        self.assertEqual(len(others), AbsorbedDestinationTest.EXPECTED_TARGETS
+                         - self.EXPECTED_RENAMED_TARGETS)
+        self.assertEqual(destination_findings(others, REPO_ROOT, renames={}), [])
 
 
 class ModelBCommonTextNeutralTest(unittest.TestCase):
@@ -1029,6 +1104,43 @@ class AbsorbRulesOnSyntheticTreeTest(unittest.TestCase):
             f"skills-src/model-b/SKILL.md: no heading 'Operating rules' {src}",
             f"{ARDUINO_TEMPLATE}: file does not exist {src}",
         ])
+
+    def test_a_mapped_heading_is_looked_up_under_its_new_name_only(self):
+        rel = "skills-src/model-b/references/c.md"
+        renames = {(rel, "Old name"): "New name"}
+        self._write(rel, "## New name\n\nRule.\n\n## Kept\n\nRule.\n")
+        targets = [_target(rel, "Old name"), _target(rel, "Kept")]
+        src = "(`~/.claude/AGENTS.md` \u00a7 Non-negotiables (1))"
+        self.assertEqual(destination_findings(targets, self.root, renames=renames), [])
+        # Unaided, the old name is not in the file.
+        self.assertEqual(destination_findings(targets, self.root, renames={}),
+                         [f"{rel}: no heading 'Old name' {src}"])
+
+    def test_a_mapped_heading_still_carrying_its_old_name_is_reported(self):
+        rel = "skills-src/model-b/references/c.md"
+        renames = {(rel, "Old name"): "New name"}
+        self._write(rel, "## Old name\n\nRule.\n")
+        src = "(`~/.claude/AGENTS.md` \u00a7 Non-negotiables (1))"
+        self.assertEqual(destination_findings([_target(rel, "Old name")], self.root, renames=renames),
+                         [f"{rel}: no heading 'New name' (renamed from 'Old name') {src}"])
+
+    def test_a_rename_applies_only_to_its_own_file(self):
+        rel, other = "skills-src/model-b/references/c.md", "skills-src/model-b/references/d.md"
+        renames = {(rel, "Old name"): "New name"}
+        self._write(other, "## Old name\n\nRule.\n")
+        self.assertEqual(resolve_heading(other, "Old name", renames), "Old name")
+        self.assertEqual(resolve_heading(rel, "Old name", renames), "New name")
+        self.assertEqual(destination_findings([_target(other, "Old name")], self.root, renames=renames), [])
+
+    def test_a_renamed_new_section_is_checked_for_a_body_under_its_new_name(self):
+        rel = "skills-src/model-b/references/c.md"
+        renames = {(rel, "Old name"): "New name"}
+        new = "New section. Rule: x."
+        src = "(`~/.claude/AGENTS.md` \u00a7 Non-negotiables (1))"
+        self._write(rel, "## Old name\n\nRule.\n\n## New name\n\n## End\n")
+        self.assertEqual(new_section_body_findings([_target(rel, "Old name", note=new)], self.root,
+                                                   renames=renames),
+                         [f"{rel} \u00a7 Old name: new section has no body {src}"])
 
     def test_selection_includes_gap_analysis_and_maps_model_b_to_agents_md(self):
         rows = [_row(dest="`skills-src/gap-analysis/SKILL.md` \u00a7 Rules"),
