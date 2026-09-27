@@ -33,10 +33,9 @@ import unittest
 from pathlib import Path
 
 from tests._helpers import REPO_ROOT, read_text
-from tests.test_agent_definition_rules import _rendered_agents
+from tests.test_agent_definition_rules import _rendered_agents, _template
 from tests.test_orchestration_acceptance_model import missing_rules
 
-TEMPLATES_DIR = REPO_ROOT / "generator" / "templates"
 CR_AUTHORING_REL = "skills-src/cr-authoring/SKILL.md"
 TEMPLATE_ROLES = ("red", "green", "verify", "fix")
 
@@ -145,10 +144,6 @@ def rule_findings(text: str, rules: dict[str, tuple[str, ...]]) -> list[str]:
 def _cite(path: str, line: int) -> str:
     """A path-and-line citation, assembled at run time so this module's source never carries one."""
     return f"{path}{chr(58)}{line}"
-
-
-def _template(role: str) -> str:
-    return read_text(TEMPLATES_DIR / f"{role}.md.tmpl")
 
 
 _GOOD_CR_AUTHORING = """# CR / PRD / DN Authoring
