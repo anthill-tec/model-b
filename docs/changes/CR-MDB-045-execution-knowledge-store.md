@@ -145,6 +145,19 @@ The contract records:
   - the CLI's project does not follow the working directory;
   - the store holds lean-ctx's automatic captures.
 
+### §S8 — The project's agents match its tools (`modelb_axi.agents`)
+
+The generated agents assume lean-ctx today: each stack file's role `tools` allowlist carries the
+`ctx_*` tools, and each role template has a "Tool Usage (lean-ctx …)" section. When `init` (and
+`modelb-axi agents`) renders a project's agents, it reads the lean-ctx verdict (§S2):
+- **present:** the agents are rendered as today;
+- **absent or unknown:** each role's allowlist omits the `ctx_*` tools, and the tool-usage section is
+  rendered for the harness's built-in read, search and shell.
+
+`generator/agents/`, the canonical committed set that `build.py --check` guards, keeps the lean-ctx
+form. The hook wiring needs no change: `compile_wiring` already points the hooks at the project's own
+paths.
+
 ## Acceptance criteria
 
 - [ ] `REQUIREMENTS` declares `sandesh-pi` as a tier-1, recommended `pi-package` row. A `--yes`
@@ -164,6 +177,10 @@ The contract records:
 - [ ] The capability contract in `AGENTS.md` lists each of the project's tools with its state, and
       the remediation where it is not present. A Sandesh or Crucible setup task names the tool's
       remediation first when that tool is absent.
+- [ ] With lean-ctx absent or unknown, every agent `init` renders for the project omits the `ctx_*`
+      tools from its allowlist and has a tool-usage section naming only the harness's built-in tools.
+      With lean-ctx present, the rendered agents are byte-identical to today's. `generator/agents/`
+      is unchanged.
 - [ ] `orchestration-common.md` § "Memory" and bootstrap state §S6's rules, read `KNOWLEDGE_CATEGORY`
       as a schema-declared key, and name no lean-ctx tool. The harness-neutral, retired-tool and
       registry gates stay green.
