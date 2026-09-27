@@ -20,6 +20,7 @@ writes missing files, rewrites intact-marker files, skips hand-modified ones
 """
 
 import hashlib
+import re
 import tomllib
 from pathlib import Path
 from string import Template
@@ -48,7 +49,20 @@ PI_TOOL_NAMES = {
     "ctx_edit": "ctx_edit",
     "ctx_search": "ctx_search",
     "ctx_tree": "ctx_tree",
+    # CR-MDB-045 §S8: Pi's built-in shell, which takes ``ctx_shell``'s
+    # place in the built-in form.
+    "bash": "bash",
 }
+
+# CR-MDB-045 §S8 — the built-in form, for a project whose installation
+# does not record lean-ctx present: ``ctx_shell`` becomes ``BUILTIN_SHELL``,
+# every other ``ctx_*`` tool leaves the allowlist, and the passages of
+# ``BUILTIN_PASSAGES_NAME`` (beside the role templates) replace the
+# lean-ctx text of the rendered body.
+BUILTIN_SHELL = "bash"
+BUILTIN_PASSAGES_NAME = "builtin-tools.toml"
+_LEAN_CTX_TOOL_PREFIX = "ctx_"
+_LEAN_CTX_MENTION_RE = re.compile(r"ctx_|(?i:lean[-_]ctx)")
 
 SKILLS_LINE_PREFIX = "Load these skills first:"
 
@@ -104,6 +118,39 @@ def neutral_definition(stack: str, role: str, params: dict, templates_dir: Path)
     if role_table.get("model"):
         defn["model"] = role_table["model"]
     return defn
+
+
+def load_builtin_passages(templates_dir: Path) -> list[tuple[str, str]]:
+    """The ``(lean, builtin)`` passages of the built-in form, read from
+    ``<templates_dir>/builtin-tools.toml`` (CR-MDB-045 §S8)."""
+    with (templates_dir / BUILTIN_PASSAGES_NAME).open("rb") as fh:
+        data = tomllib.load(fh)
+    return [(p["lean"], p["builtin"]) for p in data.get("passage", [])]
+
+def builtin_form(defn: dict, passages: list[tuple[str, str]]) -> dict:
+    """``defn`` for Pi's built-in tools (CR-MDB-045 §S8): ``ctx_shell``
+    becomes :data:`BUILTIN_SHELL` in place, every other ``ctx_*`` tool is
+    dropped, and each passage's lean-ctx text is replaced in the body.
+    Raises ``ValueError`` naming the lines when the result still names
+    lean-ctx — a passage missing from ``builtin-tools.toml``."""
+    tools: list[str] = []
+    for tool in defn["tools"]:
+        if tool == "ctx_shell":
+            tool = BUILTIN_SHELL
+        elif tool.startswith(_LEAN_CTX_TOOL_PREFIX):
+            continue
+        if tool not in tools:
+            tools.append(tool)
+    body = defn["body"]
+    for lean, builtin in passages:
+        body = body.replace(lean, builtin)
+    leftover = [line for line in (defn["description"] + "\n" + body).splitlines()
+                if _LEAN_CTX_MENTION_RE.search(line)]
+    if leftover:
+        raise ValueError(
+            f"{defn['name']}: the built-in form still names lean-ctx; add a passage to "
+            f"{BUILTIN_PASSAGES_NAME} for: {leftover!r}")
+    return {**defn, "tools": tools, "body": body}
 
 
 def translate_tools(intents: list[str], table: dict[str, str]) -> tuple[list[str], list[dict]]:
@@ -167,10 +214,16 @@ def render(
     templates_dir: Path,
     harness: str = "pi",
     drops: list[dict] | None = None,
+    *,
+    lean_ctx: bool = True,
 ) -> str:
     """Render one stack x role for ``harness``: neutral definition, emit, then
-    stamp the §S6 ownership marker."""
-    emitted = EMITTERS[harness](neutral_definition(stack, role, params, templates_dir), drops)
+    stamp the §S6 ownership marker. With ``lean_ctx`` false the definition
+    is rendered in its built-in form (CR-MDB-045 §S8)."""
+    defn = neutral_definition(stack, role, params, templates_dir)
+    if not lean_ctx:
+        defn = builtin_form(defn, load_builtin_passages(templates_dir))
+    emitted = EMITTERS[harness](defn, drops)
     return _with_marker(emitted)
 
 def _sha256_text(text: str) -> str:
@@ -212,9 +265,11 @@ def render_project(
     *,
     force_managed: bool = False,
     report: dict | None = None,
+    lean_ctx: bool = True,
 ) -> dict:
     """Render the project's definitions into each harness's project agent
-    directory under the §S6 ownership rules.
+    directory under the §S6 ownership rules — in the lean-ctx form, or,
+    with ``lean_ctx`` false, in the built-in form (CR-MDB-045 §S8).
 
     Harnesses without an emitter and stacks without a stack TOML under
     ``stacks_dir`` render nothing (the latter are listed under
@@ -245,7 +300,8 @@ def render_project(
             params = load_stack_params(stacks_dir, stack)
             for role in ROLES:
                 rel = reldir / f"{stack}-{role}-agent.md"
-                content = render(stack, role, params, templates_dir, harness=harness)
+                content = render(stack, role, params, templates_dir, harness=harness,
+                                 lean_ctx=lean_ctx)
                 place_owned(project_root / rel, str(rel), content, force_managed, report)
     return report
 

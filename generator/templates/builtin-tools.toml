@@ -1,0 +1,139 @@
+# The built-in form of the role templates (CR-MDB-045 §S8; PRD D10, amended 2026-09-27).
+#
+# The role templates beside this file are written for an agent that has lean-ctx.
+# When the installation does not record lean-ctx present, `modelb-axi init` and
+# `modelb-axi agents` render each agent for Pi's built-in tools instead
+# (`modelb_axi.agents`): every `ctx_*` tool leaves the allowlist, `bash` takes
+# `ctx_shell`'s place, and each passage below replaces its lean-ctx text in the
+# rendered definition — the role templates and the stack files alike. A rendered
+# definition that still names lean-ctx is refused, so a template edit that adds a
+# lean-ctx passage adds its built-in form here too.
+#
+# Each [[passage]] is an exact text `lean` and its built-in form `builtin`.
+# `generator/agents/` and `build.py` keep the lean-ctx form; this file is read only
+# for the built-in form.
+
+# --- The preamble every role template opens with. -----------------------------
+
+[[passage]]
+lean = '''
+**Reading outside the repository (NON-NEGOTIABLE).** For any path outside the project — installed
+skills (`~/.agents/`), Crucible clients (`~/.crucible/`), the installed harness — use the built-in
+`read`, `grep`, `find` or `ls`, never a `ctx_*` tool. The permission system proves the built-ins
+read-only; an extension tool's direction is unproven, so it is also checked against the write
+policy and prompts the user. Inside the project, `ctx_*` stays the default.
+'''
+builtin = '''
+**Reading outside the repository (NON-NEGOTIABLE).** For any path outside the project — installed
+skills (`~/.agents/`), Crucible clients (`~/.crucible/`), the installed harness — use `read`,
+`grep`, `find` or `ls`, never `cat`, `head` or `ls` through `bash`. The permission system proves
+those four tools read-only; a shell command's direction is unproven, so it is also checked against
+the write policy and prompts the user. Inside the project, read and search with the same four tools
+too, and keep `bash` for running commands.
+'''
+
+# --- First Actions: the registration command runs in the shell. ---------------
+
+[[passage]]
+lean = '''   Run via `ctx_shell` (single short command — exempt from the "no long-output" rule).'''
+builtin = '''   Run via `bash` (single short command — exempt from the "no long-output" rule).'''
+
+[[passage]]
+lean = '''   Via `ctx_shell` (short command). If it fails, STOP and report.'''
+builtin = '''   Via `bash` (short command). If it fails, STOP and report.'''
+
+[[passage]]
+lean = '''   Via `ctx_shell` (short). If it fails, STOP and report.'''
+builtin = '''   Via `bash` (short). If it fails, STOP and report.'''
+
+# --- Reading the CR spec: map it, then read only the ranges you need. ---------
+
+[[passage]]
+lean = '''5. **Index + search the CR spec** — `ctx_read("<CR path>", mode: "map")`, then `ctx_search("<pattern>", "<dir>")`. NEVER `read` the full spec.'''
+builtin = '''5. **Index + search the CR spec** — `grep` the spec for its headings (`^#`) to map it, then `grep` for the patterns you need and `read` only those line ranges (`offset`/`limit`). NEVER `read` the full spec.'''
+
+[[passage]]
+lean = '''1. `ctx_read` + `ctx_search` the spec (queries: "acceptance criteria", "scope", "files touched"). NEVER `read` the full spec.'''
+builtin = '''1. `grep` the spec for its headings and the sections you need (patterns: "acceptance criteria", "scope", "files touched"), then `read` only those line ranges (`offset`/`limit`). NEVER `read` the full spec.'''
+
+[[passage]]
+lean = '''3. **Index + search the CR spec** — `ctx_read` + `ctx_search("<pattern>", "<dir>")`. The spec is your acceptance criteria. NEVER `read` the full spec.'''
+builtin = '''3. **Index + search the CR spec** — `grep` it for its headings and the patterns you need, then `read` those line ranges (`offset`/`limit`). The spec is your acceptance criteria. NEVER `read` the full spec.'''
+
+[[passage]]
+lean = '''If the prompt references a CR spec, `ctx_read` + `ctx_search("<pattern>", "<dir>")` — never `read` the full spec.'''
+builtin = '''If the prompt references a CR spec, `grep` it for the sections you need and `read` only those line ranges (`offset`/`limit`) — never `read` the full spec.'''
+
+# --- VERIFY's read-only rule. --------------------------------------------------
+
+[[passage]]
+lean = '''(VERIFY is granted none: no `write`, `edit`, `ctx_patch` or `ctx_edit`).'''
+builtin = '''(VERIFY is granted none: no `write` or `edit`, and its `bash` runs only the read-only commands below).'''
+
+# --- Tool Usage: RED. ----------------------------------------------------------
+
+[[passage]]
+lean = '''## Tool Usage (lean-ctx — protects your context window)'''
+builtin = '''## Tool Usage (built-in tools — protects your context window)'''
+
+[[passage]]
+lean = '''Prefer the lean-ctx tools (`ctx_shell`, `ctx_read`, `ctx_search`) over raw `read`/`grep` for anything that may print >20 lines; `ctx_shell` is your only shell (Crucible-client calls via `ctx_shell` are the short-command exception).'''
+builtin = '''Your tools are Pi's built-ins, and nothing compresses their output: read a range with `read`, search with a precise `grep`, and keep anything that may print >20 lines out of your context; `bash` is your only shell (Crucible-client calls via `bash` are the short-command exception).'''
+
+[[passage]]
+lean = '''- **Docs (`docs/**.md`):** `ctx_read(..., mode: "map")` once → `ctx_search` batched → `ctx_read(mode: "lines:N-M")` for a range. FORBIDDEN: `read`/`grep`/`cat`/`head`/`tail`/`sed` on the full spec (`read` only when about to `edit` a spec).'''
+builtin = '''- **Docs (`docs/**.md`):** `grep` the headings (`^#`) once to map the file → `grep` batched for your patterns → `read` with `offset`/`limit` for a range. FORBIDDEN: a whole-file `read`, or `cat`/`head`/`tail`/`sed` through `bash`, on the full spec (`read` it whole only when about to `edit` a spec).'''
+
+[[passage]]
+lean = '''Context-only reads: `ctx_read(mode: "signatures"|"map")`. Search: `ctx_search`, not repeated `grep`.'''
+builtin = '''Context-only reads: `grep` for the signatures you need, then `read` that range. Search: one precise `grep`, not repeated broad ones.'''
+
+[[passage]]
+lean = '''- The only standard tools to reach for directly: **read** (a file you're about to `edit`), **find** (find paths), **ctx_shell** (the crucible client + git writes, short commands).'''
+builtin = '''- The tools you reach for: **read** (a line range, or a file you're about to `edit`), **grep** (search), **find** (find paths), **bash** (the crucible client + git writes, short commands).'''
+
+# --- Tool Usage: GREEN. --------------------------------------------------------
+
+[[passage]]
+lean = '''## Tool Usage (lean-ctx — protects context)'''
+builtin = '''## Tool Usage (built-in tools — protects context)'''
+
+[[passage]]
+lean = '''Prefer lean-ctx for anything printing >20 lines (crucible client via `ctx_shell` is the short-command exception).'''
+builtin = '''Nothing compresses the built-in tools' output: keep anything printing >20 lines out of your context (crucible client via `bash` is the short-command exception).'''
+
+[[passage]]
+lean = '''- Docs: `ctx_read` once → `ctx_search("<pattern>", "<dir>")`. NEVER `read` the full spec; no `grep`/`cat` on `docs/**.md`.'''
+builtin = '''- Docs: `grep` the headings once → `grep` for your pattern → `read` that range (`offset`/`limit`). NEVER `read` the full spec; no `cat` of `docs/**.md` through `bash`.'''
+
+[[passage]]
+lean = '''- Shell: `ctx_shell("<command>")`. New files: `write`. Targeted edits: `edit`. Analyze a file: `ctx_read` (not `read`). Search: `ctx_search` (not repeated `grep`).'''
+builtin = '''- Shell: `bash`. New files: `write`. Targeted edits: `edit`. Analyze a file: `grep` it for what you need, then `read` that range. Search: one precise `grep` (not repeated broad ones).'''
+
+[[passage]]
+lean = '''- The only standard tools to reach for directly: **read** (a file you'll `edit`), **find**, **ctx_shell** (crucible client + git).'''
+builtin = '''- The tools you reach for: **read** (a line range, or a file you'll `edit`), **grep**, **find**, **bash** (crucible client + git).'''
+
+# --- Tool Usage: VERIFY and FIX (one paragraph each). ---------------------------
+
+[[passage]]
+lean = '''Prefer lean-ctx for >20-line output (crucible client via `ctx_shell` is the short-command exception). Docs via `ctx_read`+`ctx_search` (never `read` the full spec).'''
+builtin = '''Nothing compresses the built-in tools' output: keep >20-line output out of your context (crucible client via `bash` is the short-command exception). Docs via `grep` + a ranged `read` (never `read` the full spec).'''
+
+[[passage]]
+lean = '''Standard tools allowed: **read** (review), **find**, **ctx_shell** (read-only + crucible client).'''
+builtin = '''Tools allowed: **read** (review), **grep** and **find** (search), **bash** (read-only + crucible client).'''
+
+[[passage]]
+lean = '''Prefer lean-ctx for >20-line output (crucible client via `ctx_shell` is the short-command exception). Docs via `ctx_read`+`ctx_search`. New files: `write`; targeted edits with known old/new strings: `edit`; analyze: `ctx_read` (not `read`); search: `ctx_search`.'''
+builtin = '''Nothing compresses the built-in tools' output: keep >20-line output out of your context (crucible client via `bash` is the short-command exception). Docs via `grep` + a ranged `read`. New files: `write`; targeted edits with known old/new strings: `edit`; analyze: `grep`, then `read` that range; search: one precise `grep`.'''
+
+[[passage]]
+lean = '''Standard tools: **read** (a file you'll `edit`), **find**, **ctx_shell** (crucible client + git).'''
+builtin = '''Tools: **read** (a line range, or a file you'll `edit`), **grep**, **find**, **bash** (crucible client + git).'''
+
+# --- Stack text (generator/stacks/*.toml). -------------------------------------
+
+[[passage]]
+lean = '''read the module under test + its header (`ctx_read mode:"signatures"`).'''
+builtin = '''read the module under test + its header (`grep` its declarations, then `read` that range).'''
