@@ -14,8 +14,8 @@ Class map (one per C1 acceptance criterion):
   ``AllTargetsRefusedError`` is defined nowhere under ``modelb_axi/``.
 - ``RetiredHarnessNameGateTest`` — case-insensitive ``claude|hermes|opencode`` matches zero lines
   in ``modelb_axi/*.py``. This gate ALSO covers the AC "``cli.py`` help and
-  ``resolve_target_root``'s docstring name no Claude surface" (``cli.py:78`` ``~/.claude``,
-  ``cli.py:112`` ``claude-code,hermes``) — no second test duplicates it.
+  ``resolve_target_root``'s docstring name no Claude surface" (the retired ``~/.claude`` in ``resolve_target_root`` (cli.py) and
+  ``claude-code,hermes`` in ``_build_parser`` (cli.py)) — no second test duplicates it.
 - ``RetiredScanDetectorTest`` — the two source scans above bite on synthetic fixtures.
 - ``DeployHasNoHarnessLinkWriterTest`` — ``deploy.py`` defines no ``HARNESS_SKILL_DIRS`` (nor the
   ``_link_harness_skills`` writer §S1 deletes).
@@ -61,7 +61,7 @@ from unittest import mock
 from modelb_axi import deploy, harness, hooks, scaffold
 from modelb_axi.harness import UnknownHarnessError
 from tests import test_deployed_asset_freshness as freshness
-from tests._helpers import decode_axi
+from tests._helpers import at_line, decode_axi
 from tests.pi_capability_sandbox import AGENT_DIR_ENV, shared_provisioned_agent_dir
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -400,8 +400,9 @@ class RetiredScanDetectorTest(unittest.TestCase):
         (self.root / "sub" / "deep.py").write_text("hermes = 1\n", encoding="utf-8")
         self.assertEqual(
             retired_harness_lines(self.root),
-            ['mod.py:1: """Deploys to ~/.claude."""', 'mod.py:2: ROSTER = ("HERMES", "pi")',
-             "mod.py:4: PLUGIN = '.OpenCode/plugin'"],
+            [at_line('mod.py', 1) + ': """Deploys to ~/.claude."""',
+             at_line('mod.py', 2) + ': ROSTER = ("HERMES", "pi")',
+             at_line("mod.py", 4) + ": PLUGIN = '.OpenCode/plugin'"],
         )
 
     def test_definition_scan_finds_a_class_function_or_constant_but_not_a_mention(self):

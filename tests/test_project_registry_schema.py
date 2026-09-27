@@ -55,7 +55,7 @@ from modelb_axi import cli as _cli
 from modelb_axi import permission_policy as _permission_policy
 from modelb_axi import scaffold
 from modelb_axi.hooks import compile_wiring
-from tests._helpers import decode_axi, installed_crucible_file, parse_env_file
+from tests._helpers import at_line, decode_axi, installed_crucible_file, parse_env_file
 from tests._helpers import run_module, write_install_toml
 # The sibling grep gate's provenance exemption (imported as a module so its
 # TestCase classes are not re-collected here).
@@ -1696,7 +1696,7 @@ class RegistryKeyDetectorTest(unittest.TestCase):
                                 "ALLOW_RAW_CARGO=1\n```\n")]
         self.assertEqual(
             _undeclared_registry_names(files, SCHEMA_KEYS, NOT_REGISTRY_KEYS),
-            ["fixture.md:2 TEAM_LEAD"])
+            [at_line("fixture.md", 2) + " TEAM_LEAD"])
         clean = [("fixture.md", "`PROJECT_NAME=` and `ALLOW_RAW_MVN=1`\n")]
         self.assertEqual(
             _undeclared_registry_names(clean, SCHEMA_KEYS, NOT_REGISTRY_KEYS), [])
@@ -1751,9 +1751,9 @@ class ProjectValueDetectorTest(unittest.TestCase):
                 '`SANDESH_PROJECT="Acme Corp"`\n'
                 "export PROJECT_ACRONYM='ACM'\n")
         self.assertEqual(self._find(text), [
-            "fixture.md:1: PROJECT_NAME assigned 'Acme'",
-            "fixture.md:2: SANDESH_PROJECT assigned '\"Acme Corp\"'",
-            "fixture.md:3: PROJECT_ACRONYM assigned \"'ACM'\"",
+            at_line("fixture.md", 1) + ": PROJECT_NAME assigned 'Acme'",
+            at_line("fixture.md", 2) + ": SANDESH_PROJECT assigned '\"Acme Corp\"'",
+            at_line("fixture.md", 3) + ": PROJECT_ACRONYM assigned \"'ACM'\"",
         ])
 
     def test_placeholders_and_non_schema_keys_are_not_values(self):
@@ -1769,7 +1769,7 @@ class ProjectValueDetectorTest(unittest.TestCase):
     def test_a_uuid_shaped_project_key_is_found(self):
         text = "key `019c9ff7-222f-7ae5-9121-2ae549e4d97A` here; not 019c9ff7-222f\n"
         self.assertEqual(self._find(text),
-                         ["fixture.md:1: UUID 019c9ff7-222f-7ae5-9121-2ae549e4d97A"])
+                         [at_line("fixture.md", 1) + ": UUID 019c9ff7-222f-7ae5-9121-2ae549e4d97A"])
 
     def test_a_real_projects_sandesh_address_or_project_flag_is_found(self):
         text = ("Send to Mainline - ModelB.\n"
@@ -1777,10 +1777,10 @@ class ProjectValueDetectorTest(unittest.TestCase):
                 "Track 2 - Nai reports.\n"
                 "--project=Crucible\n")
         self.assertEqual(self._find(text), [
-            "fixture.md:1: Sandesh id 'Mainline - ModelB'",
-            "fixture.md:2: Sandesh id '--project Roundhouse'",
-            "fixture.md:3: Sandesh id 'Track 2 - Nai'",
-            "fixture.md:4: Sandesh id '--project=Crucible'",
+            at_line("fixture.md", 1) + ": Sandesh id 'Mainline - ModelB'",
+            at_line("fixture.md", 2) + ": Sandesh id '--project Roundhouse'",
+            at_line("fixture.md", 3) + ": Sandesh id 'Track 2 - Nai'",
+            at_line("fixture.md", 4) + ": Sandesh id '--project=Crucible'",
         ])
 
     def test_placeholder_sandesh_addresses_are_not_values(self):
@@ -1794,33 +1794,33 @@ class ProjectValueDetectorTest(unittest.TestCase):
         findings = self._find("Crucible: token `crucible` · acronym `CRU`.\n"
                               "Sandesh project `ModelB` routes it.\n"
                               "The MDB-owned bundles ship.\n")
-        for expected in ("fixture.md:1: project identity 'token `crucible'",
-                         "fixture.md:1: acronym 'CRU'",
-                         "fixture.md:2: project identity 'project `ModelB'",
-                         "fixture.md:3: acronym 'MDB'"):
+        for expected in (at_line("fixture.md", 1) + ": project identity 'token `crucible'",
+                         at_line("fixture.md", 1) + ": acronym 'CRU'",
+                         at_line("fixture.md", 2) + ": project identity 'project `ModelB'",
+                         at_line("fixture.md", 3) + ": acronym 'MDB'"):
             self.assertIn(expected, findings)
 
     def test_a_real_orchestrator_label_is_found(self):
         self.assertEqual(self._find("The orchestrator `vidushi-mdb` runs it.\n"),
-                         ["fixture.md:1: orchestrator label 'vidushi-mdb'"])
-        self.assertIn("fixture.md:1: orchestrator label 'Mainline-roundhouse'",
+                         [at_line("fixture.md", 1) + ": orchestrator label 'vidushi-mdb'"])
+        self.assertIn(at_line("fixture.md", 1) + ": orchestrator label 'Mainline-roundhouse'",
                       self._find("Label Mainline-roundhouse.\n"))
 
     def test_a_yaml_style_assignment_is_found(self):
-        self.assertIn("fixture.md:1: PROJECT_ACRONYM assigned 'MDB'",
+        self.assertIn(at_line("fixture.md", 1) + ": PROJECT_ACRONYM assigned 'MDB'",
                       self._find("PROJECT_ACRONYM: MDB\n"))
-        self.assertIn("fixture.md:1: REPO_OWNER assigned 'acme'",
+        self.assertIn(at_line("fixture.md", 1) + ": REPO_OWNER assigned 'acme'",
                       self._find("  REPO_OWNER: acme\n"))
 
     def test_a_new_real_projects_sandesh_address_is_found(self):
         self.assertEqual(self._find("Track 3 - Switchyard reports.\n"),
-                         ["fixture.md:1: Sandesh id 'Track 3 - Switchyard'"])
+                         [at_line("fixture.md", 1) + ": Sandesh id 'Track 3 - Switchyard'"])
 
     def test_a_real_remote_owner_is_found(self):
         findings = self._find("gh auth switch --user antojk\n"
                               "host alias `github.com-antojk`\n")
-        self.assertEqual(findings, ["fixture.md:1: remote owner 'antojk'",
-                                    "fixture.md:2: remote owner 'antojk'"])
+        self.assertEqual(findings, [at_line("fixture.md", 1) + ": remote owner 'antojk'",
+                                    at_line("fixture.md", 2) + ": remote owner 'antojk'"])
 
     def test_cr_ids_placeholders_and_tool_names_are_not_values(self):
         clean = ("Cited as CR-MDB-043 §S3 and `CR-RND-001`; a `CR-RND` item.\n"
@@ -1927,7 +1927,8 @@ class KeyInEnvLocalDetectorTest(unittest.TestCase):
                 "Tool config like `CRUCIBLE_PROJECT_KEY` (which lives in the gitignored\n"
                 "`.env.local` overlay). Next sentence.\n\n"
                 "Paste the project key into `.env.local` after registering.\n")
-        self.assertEqual(_key_in_env_local_findings("f.md", text), ["f.md:3", "f.md:6"])
+        self.assertEqual(_key_in_env_local_findings("f.md", text),
+                         [at_line("f.md", 3), at_line("f.md", 6)])
 
     def test_negated_or_unrelated_env_local_mentions_are_not_found(self):
         clean = ("`CRUCIBLE_PROJECT_KEY` lives in `.env`, never `.env.local`.\n"

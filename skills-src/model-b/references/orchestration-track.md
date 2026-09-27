@@ -57,8 +57,7 @@ Worker-orchestrator-only rules. Read COMMON + TRACK. (Coordinator rules → MAIN
 
 ## Cull / re-layer execution checklist (COMMON rules a track most often runs)
 - Meta-test path-string audit before any test-file delete/move (`[[test]]` entries, allowlists, structure-gates, `include_str!` gates); DELETE the file — never leave a 0-test tombstone.
-- Diff-verify the WORKTREE, not the agent's narrative.
+- A phase is accepted from the agent's report, its ingested run and its commit range (`<base>..<head>`) — agents commit the code they write; nothing is re-run between phases.
 - A defect → dispatch a fix-agent, never self-edit.
 - Gate re-homed test modules plain `#[cfg(test)]` (avoid the over-gate → clippy-gate trap); budget a clippy gate-fix cycle.
 - A grep-gate firing → fix the GATE/gating, never rewrite test bodies to dodge it.
-- Verify the COMMIT RANGE, not just the working tree (agents self-commit despite "do not commit").

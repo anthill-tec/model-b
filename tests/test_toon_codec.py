@@ -23,14 +23,15 @@ MEASURED PRE-STATE (2026-08-27, HEAD 693c8d1; C1 GREEN is 91ff12f):
     `scripts/toon.py` is not under any drift gate. `--check` prints
     "clean: live tree matches regeneration" and exits 0 — over the agents
     only, which is why membership in `--list` is this gate's discriminator.
-  - `modelb_axi/axi.py:10-12` still claims wire-compatibility with a "pinned"
+  - `modelb_axi/axi.py`'s module docstring still claims wire-compatibility with a "pinned"
     four-construct subset, citing DN-crucible-toon-subset.md as its authority;
-    `scripts/toon.py:11` still cites that note as "the normative wire spec".
+    `scripts/toon.py`'s module docstring still cites that note as "the normative wire spec".
     The note is RETIRED (Crucible CR-CRU-046, 2026-08-01) and survives only
     as a pointer at the OFFICIAL spec (toonformat.dev /
     github.com/toon-format), so neither citation may stand as a live contract.
-  - `scripts/worktree-flow.py:122` and `tests/test_worktree_flow_axi.py:82`
-    both carry the provenance phrase §S2/AC8 forbids.
+  - the AXI-output comment above `_axi_set_project` (scripts/worktree-flow.py) and
+    `WorktreeFlowCodecDeploymentTest.test_deployed_toon_exists_with_anchors_and_is_importable`
+    (tests/test_worktree_flow_axi.py) both carry the provenance phrase §S2/AC8 forbids.
   - `python3 scripts/worktree-flow.py status --project-dir .` exits 0 and its
     stdout decodes cleanly against Crucible's port — including its
     `lanes[0]:`, `warnings[0]:` and `help[0]:` headers.
@@ -49,7 +50,7 @@ driven OUT OF PROCESS only:
     warnings[1]: + "  <text>" (BARE item)   REJECTED — "Expected 1 list-form
                                             items, but got 0"
 
-`crucible:clients/toon.py:1243` counts a line as an item only when it starts
+`_decode_list_array` (crucible:clients/toon.py) counts a line as an item only when it starts
 with `- ` or equals `-`. The bare-item form is what `worktree-flow.py` emits on
 its degrade path, measured at `next` line 8 and `progress` line 7 — always the
 `[1]` header, never a `[0]` header.
@@ -127,7 +128,7 @@ FORBIDDEN_PROVENANCE = "copy of " + "crucible:"
 DN_FILENAME = "DN-crucible-" + "toon-subset.md"
 RETIREMENT_MARKER = "RETIRED"
 
-#: §S3/AC10 — the specific stale claim the CR names at `modelb_axi/axi.py:10-12`.
+#: §S3/AC10 — the specific stale claim the CR names in `modelb_axi/axi.py`'s module docstring.
 STALE_SUBSET_CLAIM = "4-construct" + " TOON subset"
 
 #: §S2/AC6. Module names that must never resolve to Crucible's checkout.
@@ -956,7 +957,7 @@ class ToonEnvelopeS3Test(unittest.TestCase):
 
         Model B does not implement the TOON spec; it emits a documented valid
         SUBSET and PROVES that by round-tripping through Crucible's
-        spec-conformant port as a SUBPROCESS. `crucible:clients/toon.py:1243`
+        spec-conformant port as a SUBPROCESS. `_decode_list_array` (crucible:clients/toon.py)
         counts a list item only when the line starts with `- ` or equals `-`,
         so a non-empty header plus BARE indented items is refused. Accepted:
         the canonical INLINE `key[N]: <items>` (what their own encoder emits)
