@@ -65,10 +65,12 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 SCHEMA_PATH = REPO_ROOT / "modelb_axi" / "project_schema.toml"
 SCHEMA_WHEEL_MEMBER = "modelb_axi/project_schema.toml"
 
-#: The eight keys §S1 declares — exactly these.
+#: The keys the schema declares — exactly these: §S1's eight, plus CR-MDB-045
+#: §S4's lean-ctx ``KNOWLEDGE_CATEGORY`` (MIGRATED at CR-MDB-045 C2 RED).
 SCHEMA_KEYS = frozenset({
     "PROJECT_NAME", "PROJECT_TOKEN", "PROJECT_ACRONYM", "ORCHESTRATOR_LABEL",
     "REPO_OWNER", "PROJECT_STACKS", "CRUCIBLE_PROJECT_KEY", "SANDESH_PROJECT",
+    "KNOWLEDGE_CATEGORY",
 })
 
 #: Every §S1 field; nothing else may appear in an entry (no value, no default:
@@ -293,8 +295,12 @@ def _golden_readme(label: str, mode: str, today: str) -> str:
 
 
 def _golden_agents_md(label: str, mode: str) -> str:
-    """Today's project AGENTS.md. The capability-contract section is rendered
-    from the requirements data (CR-MDB-036 §S6), which this CR does not touch."""
+    """Today's project AGENTS.md WITHOUT its capability-contract section.
+
+    MIGRATED PIN (CR-MDB-045 C2 RED): the contract section is now rendered
+    from the installation's recorded verdicts (CR-MDB-045 §S5), pinned by
+    tests.test_project_tools_setup; the comparison below strips it from the
+    emitted file (:func:`_without_capability_contract`)."""
     return (
         f"# {NAME} — project AGENTS.md\n"
         "\n"
@@ -326,8 +332,6 @@ def _golden_agents_md(label: str, mode: str) -> str:
         "## Harness anchors (installed set: pi)\n"
         "- pi (pi.dev): reads `AGENTS.md` natively — no separate anchor file emitted.\n"
         "\n"
-        + scaffold._render_capability_contract([STACKS], ("pi",))
-        + "\n"
         "## Generator note\n"
         "- Agents regenerate from the INSTALLATION's generator assets — never "
         "from a per-project copy.\n"
@@ -383,6 +387,16 @@ def _reference_other_files(home: Path, mode: str, scratch: Path) -> dict:
     return files
 
 
+def _without_capability_contract(text: str) -> str:
+    """``text`` with its ``## Harness capability contract`` section (heading
+    to the next ``## `` heading) removed."""
+    start = text.find("## Harness capability contract")
+    if start == -1:
+        return text
+    end = text.find("\n## ", start)
+    return text[:start] + (text[end + 1:] if end != -1 else "")
+
+
 def _emitted_files(target: Path) -> set:
     return {
         str(p.relative_to(target)) for p in target.rglob("*")
@@ -422,8 +436,9 @@ def _schema_with(root: Path, extra: str, name: str = "fixture-schema.toml") -> P
 # ------------------------------------------------------------------ §S1 schema ----
 
 class ProjectSchemaAssetTest(unittest.TestCase):
-    """§S1 — ``modelb_axi/project_schema.toml`` declares the eight registry
-    keys, each with every §S1 field and legal values, and no project value."""
+    """§S1 — ``modelb_axi/project_schema.toml`` declares the registry keys
+    (CR-MDB-045 §S4 adds the ninth), each with every §S1 field and legal
+    values, and no project value."""
 
     def _entries(self) -> list[dict]:
         self.assertTrue(
@@ -432,13 +447,14 @@ class ProjectSchemaAssetTest(unittest.TestCase):
         )
         return _schema_table()[1]
 
-    def test_schema_declares_exactly_the_eight_registry_keys(self):
+    def test_schema_declares_exactly_the_registry_keys(self):
+        # MIGRATED PIN (CR-MDB-045 C2 RED): was ..._exactly_the_eight_registry_keys.
         names = [str(e.get("name")) for e in self._entries()]
         self.assertEqual(
             len(names), len(set(names)), f"§S1: a key is declared twice: {names}")
         self.assertEqual(
             set(names), SCHEMA_KEYS,
-            f"§S1/AC: exactly the eight keys; extra {sorted(set(names) - SCHEMA_KEYS)}, "
+            f"§S1/AC + CR-MDB-045 §S4: exactly these keys; extra {sorted(set(names) - SCHEMA_KEYS)}, "
             f"missing {sorted(SCHEMA_KEYS - set(names))}",
         )
 
@@ -574,7 +590,8 @@ class ProjectSchemaWheelTest(unittest.TestCase):
     """§S1/AC — the schema ships in the wheel (asserted against a genuinely
     built wheel, like test_tooling_detachment's built-wheel check)."""
 
-    def test_built_wheel_ships_the_schema_with_the_eight_keys(self):
+    def test_built_wheel_ships_the_schema_with_the_registry_keys(self):
+        # MIGRATED PIN (CR-MDB-045 C2 RED): was ..._with_the_eight_keys.
         if importlib.util.find_spec("build") is None:
             self.skipTest(
                 "the `build` frontend is unavailable, so no genuine wheel can be "
@@ -745,7 +762,7 @@ class _Shared:
             self.assertNotIn(".env.local", task, "§S2: the key no longer goes to .env.local")
 
         def test_agents_md_differs_only_in_its_identity_section_naming_sandesh_project(self):
-            actual = self._read("AGENTS.md")
+            actual = _without_capability_contract(self._read("AGENTS.md"))
             golden = _golden_agents_md(self.LABEL, self.MODE)
             head, rules = "## Identity & naming", "## Workflow rules"
             a_pre, a_rest = actual.split(head, 1)
@@ -764,13 +781,21 @@ class _Shared:
         def test_every_other_emitted_file_is_byte_identical_to_today(self):
             """Regression pin (passes before GREEN): guards the AC's 'exactly these
             differences' against a schema-driven rewrite leaking into files that
-            carry no registry key."""
+            carry no registry key.
+
+            MIGRATED PIN (CR-MDB-045 C2 RED): this fixture's ``install.toml``
+            records no lean-ctx verdict, so the agents under ``.pi/agents/`` are
+            rendered for Pi's built-in tools (CR-MDB-045 §S8) and are pinned by
+            tests.test_project_tools_setup; they are no longer today's bytes."""
             literal = {
                 "docs/memory/INDEX.md": _golden_memory_index(self._template_names).encode("utf-8"),
             }
             for sub in self.SUBS:
                 literal[f"{sub}/AGENTS.md"] = _golden_sub_agents_md(sub).encode("utf-8")
-            for rel, expected in {**self._reference, **literal}.items():
+            agents_prefix = f"{Path('.pi') / 'agents'}/"
+            reference = {rel: data for rel, data in self._reference.items()
+                         if not rel.startswith(agents_prefix)}
+            for rel, expected in {**reference, **literal}.items():
                 with self.subTest(file=rel):
                     path = self._target / rel
                     self.assertTrue(path.is_file(), f"{rel} not emitted")
