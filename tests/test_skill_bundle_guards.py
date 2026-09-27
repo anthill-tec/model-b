@@ -47,14 +47,15 @@ What this module deliberately does NOT assert (§S5, re-scoped 2026-09-21)
 ------------------------------------------------------------------------
 Three families originally listed for §S5 are already gated by
 `tests/test_skills_handover.py` and are CITED here instead of repeated, because
-two sources for one property is exactly the drift the 2026-09-21 audit records:
+two sources for one property is exactly the drift the 2026-09-21 audit records
+(the symbol is the live citation; `audit :N` is the line the audit measured):
 
-* `ZeroWorkflowCycleIdUnderSkillsSrcTest` (tests/test_skills_handover.py) — zero occurrences of the removed
-  workflow-cycle-id environment variable across the imported bundles;
+* `ZeroWorkflowCycleIdUnderSkillsSrcTest` (tests/test_skills_handover.py; audit `:226`) —
+  zero occurrences of the removed workflow-cycle-id environment variable across the imported bundles;
 * `CrucibleSkillRoutingAndProtocolSyncTest.test_v2_touch_contract_documented_and_phantom_claim_replaced`
-  (tests/test_skills_handover.py) — the v2 touch contract;
+  (tests/test_skills_handover.py; audit `:294`) — the v2 touch contract;
 * `RepoWideHeartbeatGrepGateTest.test_every_agents_heartbeat_hit_under_skills_src_is_the_v2_form`
-  (tests/test_skills_handover.py) — the v2 liveness/ping form.
+  (tests/test_skills_handover.py; audit `:386`) — the v2 liveness/ping form.
 
 The two agent-protocol families of the inherited suite are not ported either:
 the standalone protocol skill and its shell helper are ratified out of existence
