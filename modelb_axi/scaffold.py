@@ -1071,6 +1071,21 @@ def _renders_agents(harnesses: list[str]) -> bool:
     return any(h in agents.PROJECT_AGENT_DIRS for h in harnesses)
 
 
+def _prerender_agents(
+    stacks: list[str], harnesses: list[str], agent_sources: tuple[Path, Path], tools: dict,
+) -> dict[str, str]:
+    """Every agent definition of the project, rendered in memory in the form
+    the lean-ctx verdict selects (CR-MDB-045 §S8). A render failure — a
+    missing or unreadable built-in passages file, a definition still naming
+    lean-ctx — is a :class:`ScaffoldError`, raised before any write."""
+    try:
+        return agents.render_definitions(
+            stacks, harnesses, *agent_sources,
+            lean_ctx=tools.get("lean-ctx") == TOOL_PRESENT)
+    except agents.AgentRenderError as exc:
+        raise ScaffoldError(f"agent definitions cannot be rendered: {exc}") from exc
+
+
 #: Memory-template family prefix -> the stacks whose selection emits it
 #: (CR-MDB-031 §S1): the quarkus agent definitions read the ``java-*``
 #: templates, so a ``java-*`` template is emitted for ``java`` OR
@@ -1142,6 +1157,7 @@ def _emit_plan(
     hook_scripts_root: Path | None,
     emitted: list[str] | None = None,
     agent_sources: tuple[Path, Path] | None = None,
+    agent_texts: dict[str, str] | None = None,
     force_managed: bool = False,
     ownership: dict | None = None,
     schema: list[dict],
@@ -1165,7 +1181,9 @@ def _emit_plan(
 
     ``agent_sources`` is the ``(templates_dir, stacks_dir)`` pair resolved
     by :func:`run_init` during validation (CR-MDB-025 §S6); ``None``
-    renders no agent definitions.
+    renders no agent definitions. ``agent_texts`` is every definition
+    :func:`run_init` rendered in memory during validation (CR-MDB-045
+    §S8); emission writes only that text.
 
     ``ownership``, when given, receives the permission policy's
     ``skipped`` (hand-edited) and ``unmanaged`` paths (CR-MDB-037 §S3).
@@ -1243,7 +1261,7 @@ def _emit_plan(
         try:
             agents.render_project(
                 target, stacks, harnesses, *agent_sources, report=agent_report,
-                lean_ctx=tools.get("lean-ctx") == TOOL_PRESENT,
+                lean_ctx=tools.get("lean-ctx") == TOOL_PRESENT, rendered=agent_texts,
             )
         finally:
             emitted.extend(agent_report.get("written", []))
@@ -1372,6 +1390,18 @@ def run_init(args: argparse.Namespace, home: Path) -> int:
             print(f"modelb-axi: warning: {exc}", file=sys.stderr)
             plan_warnings.append(str(exc))
 
+    # CR-MDB-045 §S8: every agent is rendered in memory now, in the form
+    # the lean-ctx verdict selects — a render failure is refused before the
+    # first write, --dry-run included; emission writes only this text.
+    agent_texts: dict[str, str] | None = None
+    if agent_sources is not None:
+        try:
+            agent_texts = _prerender_agents(stacks, harnesses, agent_sources, tools)
+        except ScaffoldError as exc:
+            print(f"modelb-axi: error: {exc}", file=sys.stderr)
+            print(envelope("init", False, warnings=[str(exc)], dry_run=dry_run))
+            return 2
+
     emitted: list[str] = []
     ownership: dict = {"skipped": [], "unmanaged": []}
     if not dry_run:
@@ -1391,6 +1421,7 @@ def run_init(args: argparse.Namespace, home: Path) -> int:
                 hook_scripts_root=hook_scripts_root,
                 emitted=emitted,
                 agent_sources=agent_sources,
+                agent_texts=agent_texts,
                 force_managed=bool(getattr(args, "force_managed", False)),
                 ownership=ownership,
                 schema=schema,
@@ -1546,6 +1577,8 @@ def run_agents(args: argparse.Namespace, home: Path, project_root: Path | None =
         # CR-MDB-045 §S8: the agents match the installation's recorded
         # lean-ctx verdict, read on every run (never probed).
         tools, _unrecorded = read_tool_verdicts(load_install_toml(home), stacks)
+        # CR-MDB-045 §S8: rendered in memory before the first write.
+        agent_texts = _prerender_agents(stacks, harnesses, (templates_dir, stacks_dir), tools)
     except (ScaffoldError, UnknownHarnessError) as exc:
         print(f"modelb-axi: error: {exc}", file=sys.stderr)
         print(envelope("agents", False, warnings=[str(exc)], project=str(root)))
@@ -1558,7 +1591,7 @@ def run_agents(args: argparse.Namespace, home: Path, project_root: Path | None =
         agents.render_project(
             root, stacks, harnesses, templates_dir, stacks_dir,
             force_managed=force_managed, report=report,
-            lean_ctx=tools.get("lean-ctx") == TOOL_PRESENT,
+            lean_ctx=tools.get("lean-ctx") == TOOL_PRESENT, rendered=agent_texts,
         )
         if requested:
             _set_env_value(env_path, PROJECT_STACKS_KEY, ",".join(stacks))

@@ -84,6 +84,11 @@ OWNED_INTACT = "intact"
 OWNED_HAND_MODIFIED = "hand_modified"
 NOT_OWNED = "unmanaged"
 
+class AgentRenderError(ValueError):
+    """A project's agent definition cannot be rendered (CR-MDB-045 §S8): an
+    unreadable template, stack TOML or built-in passages file, or a
+    built-in form that still names lean-ctx."""
+
 
 def load_stack_params(stacks_dir: Path, stack: str) -> dict:
     """Parse one stack TOML (``<stacks_dir>/<stack>.toml``) via tomllib."""
@@ -122,17 +127,25 @@ def neutral_definition(stack: str, role: str, params: dict, templates_dir: Path)
 
 def load_builtin_passages(templates_dir: Path) -> list[tuple[str, str]]:
     """The ``(lean, builtin)`` passages of the built-in form, read from
-    ``<templates_dir>/builtin-tools.toml`` (CR-MDB-045 §S8)."""
-    with (templates_dir / BUILTIN_PASSAGES_NAME).open("rb") as fh:
-        data = tomllib.load(fh)
-    return [(p["lean"], p["builtin"]) for p in data.get("passage", [])]
+    ``<templates_dir>/builtin-tools.toml`` (CR-MDB-045 §S8). Raises
+    :class:`AgentRenderError` when the file is missing, unreadable or
+    malformed."""
+    path = templates_dir / BUILTIN_PASSAGES_NAME
+    try:
+        with path.open("rb") as fh:
+            data = tomllib.load(fh)
+        return [(p["lean"], p["builtin"]) for p in data.get("passage", [])]
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        raise AgentRenderError(
+            f"the built-in passages file {path} cannot be read: "
+            f"{type(exc).__name__}: {exc}") from exc
 
 def builtin_form(defn: dict, passages: list[tuple[str, str]]) -> dict:
     """``defn`` for Pi's built-in tools (CR-MDB-045 §S8): ``ctx_shell``
     becomes :data:`BUILTIN_SHELL` in place, every other ``ctx_*`` tool is
     dropped, and each passage's lean-ctx text is replaced in the body.
-    Raises ``ValueError`` naming the lines when the result still names
-    lean-ctx — a passage missing from ``builtin-tools.toml``."""
+    Raises :class:`AgentRenderError` naming the lines when the result still
+    names lean-ctx — a passage missing from ``builtin-tools.toml``."""
     tools: list[str] = []
     for tool in defn["tools"]:
         if tool == "ctx_shell":
@@ -147,7 +160,7 @@ def builtin_form(defn: dict, passages: list[tuple[str, str]]) -> dict:
     leftover = [line for line in (defn["description"] + "\n" + body).splitlines()
                 if _LEAN_CTX_MENTION_RE.search(line)]
     if leftover:
-        raise ValueError(
+        raise AgentRenderError(
             f"{defn['name']}: the built-in form still names lean-ctx; add a passage to "
             f"{BUILTIN_PASSAGES_NAME} for: {leftover!r}")
     return {**defn, "tools": tools, "body": body}
@@ -216,13 +229,17 @@ def render(
     drops: list[dict] | None = None,
     *,
     lean_ctx: bool = True,
+    passages: list[tuple[str, str]] | None = None,
 ) -> str:
     """Render one stack x role for ``harness``: neutral definition, emit, then
     stamp the §S6 ownership marker. With ``lean_ctx`` false the definition
-    is rendered in its built-in form (CR-MDB-045 §S8)."""
+    is rendered in its built-in form (CR-MDB-045 §S8), with ``passages``
+    when given, else those of :func:`load_builtin_passages`."""
     defn = neutral_definition(stack, role, params, templates_dir)
     if not lean_ctx:
-        defn = builtin_form(defn, load_builtin_passages(templates_dir))
+        if passages is None:
+            passages = load_builtin_passages(templates_dir)
+        defn = builtin_form(defn, passages)
     emitted = EMITTERS[harness](defn, drops)
     return _with_marker(emitted)
 
@@ -256,6 +273,43 @@ def ownership_state(text: str) -> str:
             return OWNED_INTACT if _sha256_text(rest) == recorded else OWNED_HAND_MODIFIED
     return NOT_OWNED
 
+def render_definitions(
+    stacks: list[str],
+    harnesses: list[str],
+    templates_dir: Path,
+    stacks_dir: Path,
+    *,
+    lean_ctx: bool = True,
+) -> dict[str, str]:
+    """Every definition :func:`render_project` writes for the project,
+    rendered in memory — keyed by project-relative path — in the lean-ctx
+    form or, with ``lean_ctx`` false, the built-in form (CR-MDB-045 §S8).
+    Writes nothing. Any render failure raises :class:`AgentRenderError`, so
+    a caller that renders first never leaves a partial set behind."""
+    passages = None if lean_ctx else load_builtin_passages(templates_dir)
+    rendered: dict[str, str] = {}
+    for harness in harnesses:
+        reldir = PROJECT_AGENT_DIRS.get(harness)
+        if reldir is None or harness not in EMITTERS:
+            continue
+        for stack in stacks:
+            if not (stacks_dir / f"{stack}.toml").is_file():
+                continue
+            try:
+                params = load_stack_params(stacks_dir, stack)
+                for role in ROLES:
+                    rel = reldir / f"{stack}-{role}-agent.md"
+                    rendered[str(rel)] = render(
+                        stack, role, params, templates_dir, harness=harness,
+                        lean_ctx=lean_ctx, passages=passages)
+            except AgentRenderError:
+                raise
+            except (OSError, ValueError, KeyError, TypeError) as exc:
+                raise AgentRenderError(
+                    f"the {stack} agent definitions cannot be rendered: "
+                    f"{type(exc).__name__}: {exc}") from exc
+    return rendered
+
 def render_project(
     project_root: Path,
     stacks: list[str],
@@ -266,10 +320,15 @@ def render_project(
     force_managed: bool = False,
     report: dict | None = None,
     lean_ctx: bool = True,
+    rendered: dict[str, str] | None = None,
 ) -> dict:
     """Render the project's definitions into each harness's project agent
     directory under the §S6 ownership rules — in the lean-ctx form, or,
     with ``lean_ctx`` false, in the built-in form (CR-MDB-045 §S8).
+
+    Every definition is rendered before the first write
+    (:func:`render_definitions`); ``rendered``, when given, is that
+    pre-rendered set, and only its text is written.
 
     Harnesses without an emitter and stacks without a stack TOML under
     ``stacks_dir`` render nothing (the latter are listed under
@@ -286,6 +345,9 @@ def render_project(
         report = {}
     for key in ("written", "unchanged", "skipped", "unmanaged", "no_definitions"):
         report.setdefault(key, [])
+    if rendered is None:
+        rendered = render_definitions(stacks, harnesses, templates_dir, stacks_dir,
+                                      lean_ctx=lean_ctx)
     renderable = []
     for stack in stacks:
         if (stacks_dir / f"{stack}.toml").is_file():
@@ -297,12 +359,10 @@ def render_project(
         if reldir is None or harness not in EMITTERS:
             continue
         for stack in renderable:
-            params = load_stack_params(stacks_dir, stack)
             for role in ROLES:
                 rel = reldir / f"{stack}-{role}-agent.md"
-                content = render(stack, role, params, templates_dir, harness=harness,
-                                 lean_ctx=lean_ctx)
-                place_owned(project_root / rel, str(rel), content, force_managed, report)
+                place_owned(project_root / rel, str(rel), rendered[str(rel)],
+                            force_managed, report)
     return report
 
 def place_owned(
