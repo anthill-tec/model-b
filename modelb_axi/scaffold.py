@@ -296,10 +296,16 @@ def _remove_whitespace(value: str) -> str:
     return "".join(value.split())
 
 
+_NON_KEBAB_RUN_RE = re.compile(r"[^a-z0-9]+")
+
 def _knowledge_category(token: str) -> str:
     """Derive rule: the lean-ctx knowledge category of a project,
-    ``<PROJECT_TOKEN>-workflow`` (CR-MDB-045 §S4)."""
-    return f"{token}-workflow"
+    ``<PROJECT_TOKEN>-workflow`` normalised to kebab-case (CR-MDB-045 §S4):
+    lower-cased, every run of other characters (``_``, spaces, ``.``) one
+    ``-``, none leading or trailing — so any accepted token derives a valid
+    category and never makes ``init`` fail."""
+    word = _NON_KEBAB_RUN_RE.sub("-", token.lower()).strip("-")
+    return f"{word}-workflow" if word else "workflow"
 
 
 #: Named derive rules a schema entry's ``rule`` refers to; each takes the
