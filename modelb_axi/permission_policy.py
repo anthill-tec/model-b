@@ -47,11 +47,17 @@ _EXTERNAL_READS: tuple[str, ...] = ("~/.agents/*", "~/.crucible/*", "~/.pi/agent
 _TMP = "/tmp/*"  # noqa: S108 -- the spec's pattern, not a temp file
 
 
-def workflow_tools() -> list[str]:
-    """The §S3 allow-set, sorted, derived from ``REQUIREMENTS`` now."""
+def workflow_tools(*, lean_ctx: bool = True) -> list[str]:
+    """The §S3 allow-set, sorted, derived from ``REQUIREMENTS`` now. With
+    ``lean_ctx`` false — lean-ctx not present — its tools leave the set and
+    Pi's built-in shell, ``bash``, joins it (CR-MDB-045 §S8)."""
     tools: set[str] = set(BUILTIN_FILE_TOOLS) | set(FIXED_WORKFLOW_TOOLS)
     for requirement_id in _TOOL_REQUIREMENTS:
+        if requirement_id == "lean-ctx" and not lean_ctx:
+            continue
         tools |= set(requirements.requirement(requirement_id)["tools"])
+    if not lean_ctx:
+        tools.add(agents.BUILTIN_SHELL)
     return sorted(tools)
 
 
@@ -71,11 +77,12 @@ def _sha256_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def render_policy() -> str:
+def render_policy(*, lean_ctx: bool = True) -> str:
     """The project policy text: marker line, then the JSON body. Maps put
-    ``"*"`` first — the package's last matching pattern wins."""
+    ``"*"`` first — the package's last matching pattern wins. ``lean_ctx``
+    selects the allow-set (:func:`workflow_tools`)."""
     permission: dict = {"*": "ask"}
-    permission.update(dict.fromkeys(workflow_tools(), "allow"))
+    permission.update(dict.fromkeys(workflow_tools(lean_ctx=lean_ctx), "allow"))
     permission["skill"] = "allow"
     reads = {"*": "ask"}
     reads.update(dict.fromkeys((*_EXTERNAL_READS, *_harness_code_reads(), _TMP), "allow"))
@@ -101,17 +108,20 @@ def ownership_state(text: str) -> str:
 
 def place_project_policy(
     project_root: Path, *, force_managed: bool = False, report: dict | None = None,
+    lean_ctx: bool = True,
 ) -> dict:
-    """Write the project policy under the §S6 ownership rules; returns (and
-    fills, when given) ``report`` with ``written`` / ``unchanged`` /
-    ``skipped`` / ``unmanaged`` project-relative paths."""
+    """Write the project policy under the §S6 ownership rules — for the
+    lean-ctx tools, or, with ``lean_ctx`` false, for Pi's built-in shell
+    (CR-MDB-045 §S8); returns (and fills, when given) ``report`` with
+    ``written`` / ``unchanged`` / ``skipped`` / ``unmanaged`` project-relative
+    paths."""
     if report is None:
         report = {}
     for key in ("written", "unchanged", "skipped", "unmanaged"):
         report.setdefault(key, [])
     rel = str(PROJECT_POLICY_RELPATH)
     agents.place_owned(
-        project_root / rel, rel, render_policy(), force_managed, report,
+        project_root / rel, rel, render_policy(lean_ctx=lean_ctx), force_managed, report,
         classify=ownership_state,
     )
     return report

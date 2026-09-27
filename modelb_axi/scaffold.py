@@ -1305,6 +1305,7 @@ def _emit_plan(
         try:
             permission_policy.place_project_policy(
                 target, force_managed=force_managed, report=policy_report,
+                lean_ctx=tools.get("lean-ctx") == TOOL_PRESENT,
             )
         finally:
             emitted.extend(policy_report.get("written", []))
