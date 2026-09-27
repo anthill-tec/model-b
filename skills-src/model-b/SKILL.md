@@ -71,4 +71,4 @@ Electronics (anthill-forge / hw tooling / electronics agents+skills) is EXCLUDED
 - **Never pipe user feedback or poll output through head, tail or grep** — read it whole.
 - **Never kill a user-visible process** — describe what and why, and let the user kill it.
 - **Edit files with the harness's file-edit capability or ast-grep, never `sed`**; if a bulk text edit seems to need `sed`, surface it first.
-- **Prefer the lean-ctx tools inside the project** (cached reads, compressed shell, ranked search, tree) over the harness's native equivalents.
+- **Prefer the project's cached reads and compressed shell** (and its ranked search and tree), where its `AGENTS.md` names them, over the harness's native equivalents.

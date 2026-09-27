@@ -65,7 +65,7 @@ python3 ~/.agents/scripts/rust-code-health.py ledger sync --slice <CR-id> --db-s
   file, so a CR synced under another domain (e.g. `temporal`) is not
   ratified by a post snapshot.
 
-Dataset (all git-committed, lean-ctx-indexed, RAG-able):
+Dataset (all git-committed, indexable by the project's search, RAG-able):
 `docs/research/assets/` — living `crate_map_baseline.{json,md}`, rendered map
 SVG, `dead_scan_report.{json,md}`, the cull domain's machine ledger
 `audit-cull-ledger.jsonl` (schema v2 — joins crate→module→site, snapshot dirs,
@@ -113,7 +113,7 @@ It runs after the CR's `cr-close` and the COMPLETED ledger sync that follows it
 2. Read `health_delta.md`: every finding gets ✅ RATIFIED (stable id gone from
    the scan / crate gone from the map) · 🛑 NOT-RATIFIED (still present —
    the slice claimed completion falsely) · ❓ MANUAL (seed/manual finding —
-   Mainline verifies by hand, e.g. with lean-ctx, then records).
+   Mainline verifies by hand, e.g. by reading the reference sites, then records).
 3. **Any NOT-RATIFIED ⇒ block sign-off** — the CR is not done regardless of
    its board state; dispatch the gap back to the owning track.
 4. Resolve every ❓ MANUAL before declaring the slice ratified; then report
@@ -123,8 +123,8 @@ It runs after the CR's `cr-close` and the COMPLETED ledger sync that follows it
 ## Caveats to always carry into the report
 
 - pub-scan is regex-based v1: collisions + common names are SKIPPED not
-  cleared; macro-generated references are invisible — verify with lean-ctx
-  before any CULL verdict.
+  cleared; macro-generated references are invisible — verify by reading the
+  reference sites before any CULL verdict.
 - Coverage masks deadness (self-tested dead code shows covered) — never cite
   coverage as liveness evidence.
 - `testing = []` marker features are enabled externally by the test harness —
