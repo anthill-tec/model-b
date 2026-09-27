@@ -1123,3 +1123,21 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   verdicts in `install.toml`; `init`, which is stack-specific, never probes — it reads those verdicts
   and sets the project up for each tool present (registry keys rendered `when` the tool is present,
   pointers in `AGENTS.md`). lean-ctx is the first new setup.
+- 2026-09-27 — **CR-MDB-045 MERGED** (develop `162a8df`; plan 210, cycles 173–177). PRD D10: the
+  installer detects the workflow's tools once per machine and records them in `install.toml`
+  (`sandesh-pi` declared as a tier-1 recommended extension); `init`, stack-specific, never probes —
+  `read_tool_verdicts` reads the verdicts (worst-of over the project's stacks; `[deps]` still counts
+  for an old `install.toml`), the envelope's `tools` field reports them, and schema keys marked `when`
+  render only when their tool is present. lean-ctx: `KNOWLEDGE_CATEGORY` (normalised
+  `<PROJECT_TOKEN>-workflow`, `--knowledge-category`) and the orchestrator's pointer in `AGENTS.md`;
+  without lean-ctx, the project's agents, permission policy and memory slices name no `ctx_*` tool
+  and keep `bash`; every render is validated before the first write (`AgentRenderError` →
+  `ScaffoldError`). The capability contract shows the project's state, one line per tool.
+  § Memory + bootstrap Step 0.6 (restore, then list; no fallback for the key) + `contracts/lean-ctx.md`
+  (verbs, setup path, five pitfalls). No Model B-owned skill names lean-ctx as a tool (new gate).
+  Suite **1795 / 0 / 0 (real `HOME`), 1795 / 0 / 10 skips (empty `HOME`)**, 68 modules; python3.11 2
+  skips. VERIFY C4 FAIL (F1 partial tree on a render failure) → C5 FIX F1–F7 + the permission policy
+  and memory slices. Red intermediates: `cd8da6b`, `5b7c0ab`, `e03f7f7`, `4fc22f8`, `d1fd82b`.
+  **Quality note (user):** every CR this run went to a FIX cycle on gaps the gap analysis should have
+  found — CR-MDB-046 adds the consumer sweep, scenario matrix, standing invariants and spec
+  pre-review to the `gap-analysis` skill.
