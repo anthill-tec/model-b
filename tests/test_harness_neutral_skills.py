@@ -49,7 +49,7 @@ import unittest
 from pathlib import Path
 
 from tests import test_deployed_asset_freshness as freshness
-from tests._helpers import REPO_ROOT, parse_env_file
+from tests._helpers import REPO_ROOT, at_line, parse_env_file
 from tests.test_client_path_anchoring import (
     TOOL_BASELINE,
     _ratchet_violations,
@@ -237,12 +237,12 @@ class ClaudeHomePathGateTest(_SurfacesExist):
             hits = _gate_hits(root, HOME_GATE_SURFACES, CLAUDE_HOME_RE,
                               exempt=CLAUDE_HOME_EXEMPT_LINES)
         self.assertEqual(sorted(h.split(": ", 1)[0] for h in hits), [
-            ".pi/agents/python-red-agent.md:1",
+            at_line(".pi/agents/python-red-agent.md", 1),
             f"{exempt_rel}:2",
-            "contracts/lean-ctx.md:1",
-            "skills-src/b/SKILL.md:1",
-            "skills-src/b/SKILL.md:4",
-            "skills-src/chezmoi/SKILL.md:1",
+            at_line("contracts/lean-ctx.md", 1),
+            at_line("skills-src/b/SKILL.md", 1),
+            at_line("skills-src/b/SKILL.md", 4),
+            at_line("skills-src/chezmoi/SKILL.md", 1),
         ])
 
 
@@ -276,7 +276,7 @@ class HarnessToolNameGateTest(_SurfacesExist):
         with tmp:
             hits = _gate_hits(root, TOOL_SURFACES, HARNESS_TOOL_RE)
         self.assertEqual(sorted(h.split(": ", 1)[0] for h in hits),
-                         sorted(["scripts/w.py:1", "skills-src/chezmoi/SKILL.md:1"]
+                         sorted([at_line("scripts/w.py", 1), at_line("skills-src/chezmoi/SKILL.md", 1)]
                                 + [f"skills-src/b/SKILL.md:{n}" for n in range(1, len(names) + 1)]))
 
 
@@ -321,7 +321,8 @@ class ClaudeMdGateTest(_SurfacesExist):
         with tmp:
             hits = _gate_hits(root, CLAUDE_MD_SURFACES, CLAUDE_MD_RE)
         self.assertEqual(sorted(h.split(": ", 1)[0] for h in hits),
-                         [".pi/agents/a.md:1", "modelb_axi/s.py:1", "skills-src/chezmoi/SKILL.md:1"])
+                         [at_line(".pi/agents/a.md", 1), at_line("modelb_axi/s.py", 1),
+                          at_line("skills-src/chezmoi/SKILL.md", 1)])
 
 
 # ------------------------------------------------------------------ AC 12: ratchet ----
@@ -370,8 +371,8 @@ class SandeshCliFormTest(unittest.TestCase):
             "skills-src/chezmoi/SKILL.md": "sandesh send --to X\n",
         })
         with tmp:
-            self.assertEqual(_sandesh_cli_forms(root), {"fetch": "skills-src/b/SKILL.md:2",
-                                                        "send": "skills-src/chezmoi/SKILL.md:1"})
+            self.assertEqual(_sandesh_cli_forms(root), {"fetch": at_line("skills-src/b/SKILL.md", 2),
+                                                        "send": at_line("skills-src/chezmoi/SKILL.md", 1)})
 
 
 # ------------------------------------------------------------------ AC 15: wrapper ----
@@ -407,14 +408,14 @@ class CrucibleWrapperRetiredTest(_SurfacesExist):
             wrapper = _gate_hits(root, HOME_GATE_SURFACES, CRUCIBLE_WRAPPER_RE)
             tmp_dir = _gate_hits(root, HOME_GATE_SURFACES, TMP_CLAUDE_RE)
         self.assertEqual(sorted(h.split(": ", 1)[0] for h in wrapper), [
-            "AGENTS.md:1",
-            "skills-src/crucible/references/python.md:1",
-            "skills-src/crucible/references/python.md:2",
-            "skills-src/crucible/references/python.md:3",
-            "skills-src/crucible/references/python.md:4",
+            at_line("AGENTS.md", 1),
+            at_line("skills-src/crucible/references/python.md", 1),
+            at_line("skills-src/crucible/references/python.md", 2),
+            at_line("skills-src/crucible/references/python.md", 3),
+            at_line("skills-src/crucible/references/python.md", 4),
         ])
         self.assertEqual([h.split(": ", 1)[0] for h in tmp_dir],
-                         ["skills-src/crucible/references/python.md:2"])
+                         [at_line("skills-src/crucible/references/python.md", 2)])
 
 
 # ------------------------------------------------------------------ AC 14: README ----

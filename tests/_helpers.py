@@ -311,3 +311,11 @@ def carries_retired_register_flag(line):
     (CR-MDB-023) -- the guard's intent is otherwise unchanged."""
     return RETIRED_REGISTER_FLAG in RUST_SNAPSHOT_PHASE_RE.sub("", line)
 
+
+
+def at_line(path: str, line: int) -> str:
+    """``path``, a colon, then ``line`` — the location form a checker reports a finding under.
+
+    Assembled at run time, so a test expecting a checker's located finding never carries a
+    path-and-line citation in its own source (CR-MDB-044 §S4: code is cited by symbol)."""
+    return ":".join((path, str(line)))

@@ -61,7 +61,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tests._helpers import REPO_ROOT
+from tests._helpers import REPO_ROOT, at_line
 from tests.test_harness_neutral_skills import (
     CLAUDE_HOME_RE,
     CLAUDE_HOME_SURFACES,
@@ -311,8 +311,8 @@ class LegacyWorktreeSegmentGateTest(unittest.TestCase):
         with tmp:
             hits = _gate_hits(root, SHIPPED_SURFACES, LEGACY_WORKTREE_RE)
         self.assertEqual(sorted(h.split(": ", 1)[0] for h in hits), [
-            ".pi/agents/python-red-agent.md:1", "contracts/worktree-layout.md:1",
-            "hooks-src/scripts/h:1", "scripts/w.py:1", "skills-src/b/SKILL.md:1",
+            at_line(".pi/agents/python-red-agent.md", 1), at_line("contracts/worktree-layout.md", 1),
+            at_line("hooks-src/scripts/h", 1), at_line("scripts/w.py", 1), at_line("skills-src/b/SKILL.md", 1),
         ])
 
 class WorktreeLayoutBehaviourTest(unittest.TestCase):
@@ -429,8 +429,9 @@ class ChezmoiBundleRetiredTest(unittest.TestCase):
         with tmp:
             hits = _gate_hits(root, CHEZMOI_SURFACES, CHEZMOI_RE)
         self.assertEqual(sorted(h.split(": ", 1)[0] for h in hits), [
-            "contracts/lean-ctx.md:1", "generator/stacks/x.toml:1", "modelb_axi/x.py:1",
-            "skills-src/chezmoi/SKILL.md:1", "skills-src/git-workflow/SKILL.md:1",
+            at_line("contracts/lean-ctx.md", 1), at_line("generator/stacks/x.toml", 1),
+            at_line("modelb_axi/x.py", 1),
+            at_line("skills-src/chezmoi/SKILL.md", 1), at_line("skills-src/git-workflow/SKILL.md", 1),
         ])
 
 class AgentsMdBundleListTest(unittest.TestCase):
@@ -552,10 +553,10 @@ class ContractsHarnessNeutralTest(unittest.TestCase):
             got = {label: sorted(h.split(": ", 1)[0] for h in _gate_hits(root, ("contracts",), pattern))
                    for label, pattern in self.GATES}
         self.assertEqual(got, {
-            "~/.claude": ["contracts/lean-ctx.md:1", "contracts/other.md:1"],
-            "CLAUDE.md": ["contracts/lean-ctx.md:2"],
-            "/tmp/claude-1000": ["contracts/lean-ctx.md:3"],  # noqa: S108 -- a gate label, not a temp path
-            "Crucible wrapper": ["contracts/lean-ctx.md:4"],
+            "~/.claude": [at_line("contracts/lean-ctx.md", 1), at_line("contracts/other.md", 1)],
+            "CLAUDE.md": [at_line("contracts/lean-ctx.md", 2)],
+            "/tmp/claude-1000": [at_line("contracts/lean-ctx.md", 3)],  # noqa: S108 -- a gate label, not a temp path
+            "Crucible wrapper": [at_line("contracts/lean-ctx.md", 4)],
         })
 
 class ContractsNotPackagedTest(unittest.TestCase):

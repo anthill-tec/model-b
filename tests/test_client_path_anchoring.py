@@ -53,6 +53,7 @@ import unittest
 from pathlib import Path
 
 from modelb_axi.agents import PI_TOOL_NAMES, ROLE_DENIED_TOOLS
+from tests._helpers import at_line
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -894,7 +895,8 @@ class ClientContractS3Test(unittest.TestCase):
         )
         self.assertEqual(
             _contract_failures(inv, RELEASED_CLIENTS_DIR),
-            ["skills-src/x/SKILL.md:3: python-crucible.py test has no flag '--no-such-flag'"],
+            [at_line("skills-src/x/SKILL.md", 3)
+             + ": python-crucible.py test has no flag '--no-such-flag'"],
         )
 
     def test_s3_unknown_verb_fails_naming_file_line_and_verb(self):
@@ -902,7 +904,7 @@ class ClientContractS3Test(unittest.TestCase):
         inv = _parse_invocations("contracts/x.md", "`python-crucible.py frobnicate --agent X`\n")
         self.assertEqual(
             _contract_failures(inv, RELEASED_CLIENTS_DIR),
-            ["contracts/x.md:1: python-crucible.py has no verb 'frobnicate'"],
+            [at_line("contracts/x.md", 1) + ": python-crucible.py has no verb 'frobnicate'"],
         )
 
     def test_s3_known_verb_and_flags_pass(self):

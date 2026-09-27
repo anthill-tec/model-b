@@ -101,7 +101,7 @@ import unittest
 from collections.abc import Sequence
 from pathlib import Path
 
-from tests._helpers import REPO_ROOT, md_section, read_text
+from tests._helpers import REPO_ROOT, at_line, md_section, read_text
 from tests.test_archive_mapping import (
     MAP_PATH,
     _unticked,
@@ -1191,10 +1191,10 @@ class AbsorbRulesOnSyntheticTreeTest(unittest.TestCase):
                 "Learned on NAI (CR-NAI-042).\n"
                 "A DOMAIN or NAIVE word is fine; so is roundhouse in a path.\n")
         self.assertEqual(project_name_findings("x.md", text), [
-            "x.md:1: names ['NAI'] outside a dated provenance citation",
-            "x.md:2: names ['ORCHESTRATOR-'] outside a dated provenance citation",
-            "x.md:3: names ['Roundhouse'] outside a dated provenance citation",
-            "x.md:5: names ['NAI'] outside a dated provenance citation",
+            at_line("x.md", 1) + ": names ['NAI'] outside a dated provenance citation",
+            at_line("x.md", 2) + ": names ['ORCHESTRATOR-'] outside a dated provenance citation",
+            at_line("x.md", 3) + ": names ['Roundhouse'] outside a dated provenance citation",
+            at_line("x.md", 5) + ": names ['NAI'] outside a dated provenance citation",
         ])
 
     def test_owned_skill_files_include_bootstrap_shutdown_and_skip_crucible_imports(self):
@@ -1216,7 +1216,7 @@ class AbsorbRulesOnSyntheticTreeTest(unittest.TestCase):
                 "A finding is fixed in its own FIX cycle, never inside the VERIFY cycle.\n"
                 "FIX agents run after VERIFY.\n")
         self.assertEqual(fix_inside_verify_findings("x.md", text),
-                         ["x.md:1: Run the FIX agent inside the same VERIFY cycle."])
+                         [at_line("x.md", 1) + ": Run the FIX agent inside the same VERIFY cycle."])
 
     def test_retired_harness_tools_flagged_per_line_sandesh_mcp_included(self):
         text = ("Track the plan with TaskList.\n"
@@ -1224,9 +1224,9 @@ class AbsorbRulesOnSyntheticTreeTest(unittest.TestCase):
                 "Run the `sandesh` CLI; use the subagent tool.\n"
                 "Use `Bash` for it.\n")
         self.assertEqual(retired_tool_findings("x.md", text), [
-            "x.md:1: names retired harness tool(s) ['TaskList']",
-            "x.md:2: names retired harness tool(s) ['sandesh_send']",
-            "x.md:4: names retired harness tool(s) ['Bash']",
+            at_line("x.md", 1) + ": names retired harness tool(s) ['TaskList']",
+            at_line("x.md", 2) + ": names retired harness tool(s) ['sandesh_send']",
+            at_line("x.md", 4) + ": names retired harness tool(s) ['Bash']",
         ])
 
 

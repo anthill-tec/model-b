@@ -23,7 +23,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tests._helpers import REPO_ROOT
+from tests._helpers import REPO_ROOT, at_line
 
 SKILLS_SRC = REPO_ROOT / "skills-src"
 
@@ -139,9 +139,9 @@ class SandeshFormFlagsTest(unittest.TestCase):
                          [(1, "reply"), (2, "send"), (5, "unregister"), (7, "send"),
                           (9, "unregister"), (10, "reply")])
         self.assertEqual([p.split(": ", 2)[:2] for p in problems], [
-            ["skills-src/b/SKILL.md:1", "sandesh reply lacks --from"],
-            ["skills-src/b/SKILL.md:5", "sandesh unregister lacks --as"],
-            ["skills-src/b/SKILL.md:7", "sandesh send lacks --project"],
+            [at_line("skills-src/b/SKILL.md", 1), "sandesh reply lacks --from"],
+            [at_line("skills-src/b/SKILL.md", 5), "sandesh unregister lacks --as"],
+            [at_line("skills-src/b/SKILL.md", 7), "sandesh send lacks --project"],
         ])
 
 
@@ -176,7 +176,7 @@ class SandeshFormHelpConformanceTest(unittest.TestCase):
     def test_detector_bites_on_an_unknown_flag(self):
         forms = [("x.md", 3, "send", "sandesh send --project P --from A --sender B")]
         self.assertEqual(unknown_flags(forms, {"send": {"--project", "--from"}}),
-                         ["x.md:3: sandesh send --sender not in `sandesh send --help`"])
+                         [at_line("x.md", 3) + ": sandesh send --sender not in `sandesh send --help`"])
 
 
 if __name__ == "__main__":
