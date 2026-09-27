@@ -1092,3 +1092,21 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   installed. PRD D5 records the user's instruction tiers: the orchestrator rules and agent definitions
   are the workflow's backbone, standing instructions at the level of `AGENTS.md`, never memory —
   global (the skills) or per project (what `init` prunes to the stacks).
+- 2026-09-27 — **CR-MDB-044 MERGED** (develop `0b8cb12`; plan 209, cycles 168–172). The orchestrator's
+  acceptance model (PRD D5): the brief is its accuracy lever and guides without over-specifying;
+  agents commit their own work; a phase is accepted from report, ingested run and commit range, with
+  no re-runs between phases; VERIFY, FIX and the pre-merge gate are the correctness gates; VERIFY
+  closes before its FIX cycle opens (Crucible #1407). New `orchestration-common` section "Parallel
+  agents in one tree" (only with the user's go); `orchestration-track.md` agrees. Agent definitions
+  (PRD D6): every role template reads the CR for its role, the spec outranks the brief (no "ABSOLUTE
+  precedence"), agents stage by path and report `<base>..<head>`, field rules from Crucible #1405
+  (long runs, unrelated-failure evidence, dead-code evidence, synthetic fixtures, scoped reverts).
+  Cite code by symbol: `cr-authoring` + templates, guard `test_cite_by_symbol`, 130 test citations
+  migrated (`at_line` builds checker-output strings), `DEFERRED_LINE_REFS` retired. The CR-042 triage
+  gate resolves the renamed section through a one-entry rename map. Suite **1685 / 0 / 0 (real
+  `HOME`), 1685 / 0 / 10 skips (empty `HOME`)**, 65 modules; python3.11 2 skips. VERIFY C4 FAIL (F1
+  `orchestration-track.md` still diff-verified) → C5 FIX F1–F5. Red intermediates: `c8e753d`,
+  `57da49d`, `0483235`, `acca39b`. **Follow-ups (not fixed):** bare line references into specs and
+  scripts remain in `test_tooling_adoption.py` and `test_tooling_detachment.py` (the guard's
+  `<file>.<ext>:<digits>` pattern does not catch them); the pre-existing I001 in
+  `test_project_registry_schema.py`.
