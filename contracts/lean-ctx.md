@@ -52,6 +52,44 @@ findings raised.
 Model B's skills name capabilities, not these tools (DN §D18); this order is the local
 practice for a Pi session that has `pi-lean-ctx` loaded, never a dependency a skill assumes.
 
+## Knowledge store (CR-MDB-045 §S7)
+
+Model B keeps a project's execution knowledge in lean-ctx's knowledge store, under the
+category the project's `.env` names in `KNOWLEDGE_CATEGORY`. The skills name this only as a
+capability — "the project's knowledge store" (DN §D18); what follows is what that capability
+resolves to on lean-ctx, and what a session must know when using it.
+
+### Knowledge verbs Model B relies on
+
+Model B relies on four knowledge verbs, and no others:
+- remember — record one short fact under the category with a stable kebab-case key; the same
+  key supersedes the earlier fact;
+- list a category — every fact in the category (bootstrap's load);
+- restore — bring the category's archived facts back (bootstrap runs it before listing);
+- remove — delete a fact once the repo tracks it (the GC rule).
+
+### Setup path
+
+How a project gets lean-ctx set up, in order:
+- the installer probes lean-ctx and records its verdict in `install.toml` `[capabilities]`;
+- then `modelb-axi init` reads that verdict, and runs no probe of its own. With lean-ctx
+  present it writes `KNOWLEDGE_CATEGORY` to `.env` (`<PROJECT_TOKEN>-workflow`, or the
+  `--knowledge-category` override; each monorepo sub-project carries its own) and the lean-ctx
+  pointer section to the scaffolded `AGENTS.md`. Absent or unknown, neither is written.
+
+### Pitfalls
+
+- A query recall is not a full listing: it returns what matches the query, so loading a
+  category is always a listing.
+- Facts get archived silently: the store moves facts out of the category's listing on its own,
+  without notice. Restore the category before listing it.
+- `restore` ignores `dry_run`: a dry run restores for real.
+- The CLI's project does not follow the working directory: `lean-ctx knowledge` run from a
+  sub-project may read or write another project's store. A session uses its knowledge
+  capability, never that CLI.
+- The store holds lean-ctx's automatic captures in their own rooms beside the project's
+  category; they are not the project's facts and are never loaded.
+
 ## Filed requests / gaps (operational findings)
 
 ### (a) Shell-allowlist friction for project tooling
