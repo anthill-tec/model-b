@@ -725,7 +725,10 @@ def _render_capability_contract(
     per tool, in requirement order: each always-scoped row, then for the
     project's own stacks the Crucible client and each toolchain probe. A
     line names the tool and its state, and the remediation where it is not
-    present. Unselected stacks are not mentioned."""
+    present. A toolchain probe of the same name as an always-scoped row
+    (``python3``) is merged into that row's line, which takes the worse of
+    their states: each tool appears once. Unselected stacks are not
+    mentioned."""
     states = states or {}
     lines: list[str] = []
 
@@ -733,24 +736,31 @@ def _render_capability_contract(
         tail = "" if state == TOOL_PRESENT else f" — {remediation}"
         lines.append(f"- `{name}` ({label}): {state}{tail}")
 
+    def worst(found: list[str]) -> str:
+        return max(found, key=_TOOL_RANK.__getitem__)
+
+    probes: dict[str, tuple[str, dict, list[str]]] = {}
+    for stack in stacks:
+        for probe in requirements.STACK_TOOLCHAINS.get(stack, ()):
+            first = probes.setdefault(probe["name"], (stack, probe, []))
+            first[2].append(states.get(f"{stack}.{probe['name']}", TOOL_UNKNOWN))
     for row in requirements.REQUIREMENTS:
         if row["scope"] == "always":
             remediation = (f"`{row['remediation']}`" if row["tier"] == 1
                            else row["remediation"])
-            line(row["id"], row["policy"], states.get(row["id"], TOOL_UNKNOWN), remediation)
+            label, found = row["policy"], [states.get(row["id"], TOOL_UNKNOWN)]
+            merged = probes.pop(row["id"], None)
+            if merged is not None:
+                label = f"{label}; {merged[0]} toolchain"
+                found += merged[2]
+            line(row["id"], label, worst(found), remediation)
         elif row["id"] == "crucible-client":
             for stack in (s for s in stacks if s in row["scope"]):
                 line(row["id"], f"{stack} client, {row['policy']}",
                      states.get(f"{stack}.client", TOOL_UNKNOWN), row["remediation"])
         elif row["id"] == "toolchain":
-            probes: dict[str, tuple[str, dict, list[str]]] = {}
-            for stack in stacks:
-                for probe in requirements.STACK_TOOLCHAINS.get(stack, ()):
-                    first = probes.setdefault(probe["name"], (stack, probe, []))
-                    first[2].append(states.get(f"{stack}.{probe['name']}", TOOL_UNKNOWN))
             for name, (stack, probe, found) in probes.items():
-                line(name, f"{stack} toolchain", max(found, key=_TOOL_RANK.__getitem__),
-                     probe["remediation"])
+                line(name, f"{stack} toolchain", worst(found), probe["remediation"])
     if "pi" in harnesses:
         # CR-MDB-037 §S4: Pi loads .pi/extensions only in a trusted project.
         lines.append(
