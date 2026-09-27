@@ -639,8 +639,10 @@ class ProjectSchemaCliAgreementTest(unittest.TestCase):
     def test_every_ask_and_override_flag_exists_on_the_init_parser(self):
         declared = self._declared_flags()
         self.assertEqual(
-            declared, set(ASK_FLAGS.values()) | {"--sandesh-project"},
-            "§S1: today's five ask flags plus the SANDESH_PROJECT override",
+            declared, set(ASK_FLAGS.values()) | {"--sandesh-project", "--knowledge-category"},
+            "§S1: today's five ask flags plus the SANDESH_PROJECT override, and the "
+            "KNOWLEDGE_CATEGORY override of CR-MDB-045 §S4 (MIGRATED PIN at CR-MDB-045 "
+            "C2 GREEN, orchestrator ruling)",
         )
         self.assertEqual(
             sorted(declared - self.flags), [],

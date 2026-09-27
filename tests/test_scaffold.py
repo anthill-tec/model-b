@@ -1469,7 +1469,14 @@ class ScaffoldCapabilityContractReadsRequirementsDataTest(unittest.TestCase):
         self._tmp_target = tempfile.mkdtemp(prefix="modelb-axi-contract-data-target-")
         self.addCleanup(shutil.rmtree, self._tmp_home, ignore_errors=True)
         self.addCleanup(shutil.rmtree, self._tmp_target, ignore_errors=True)
-        _write_install_toml(self._tmp_home, harnesses=("pi",))
+        install_toml = _write_install_toml(self._tmp_home, harnesses=("pi",))
+        # MIGRATED PIN (CR-MDB-045 C2 GREEN, orchestrator ruling): the contract
+        # now lists the tier-2 `python3` row too (CR-MDB-045 \u00a7S5), whose
+        # remediation is byte-identical to the python toolchain probe's; the
+        # fixture records that row detected, so a present row names no
+        # remediation and the negative check below keeps its full strength.
+        with open(install_toml, "a", encoding="utf-8") as fh:
+            fh.write('\n[capabilities]\npython3 = "detected"\n')
 
     def test_agents_md_follows_the_requirements_data_not_a_copy(self):
         from modelb_axi import scaffold
