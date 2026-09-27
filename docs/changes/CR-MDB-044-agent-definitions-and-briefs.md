@@ -61,6 +61,13 @@ block and the register command; the post-RED rejection of nested builds; a fix r
 agent; salvaging a crashed agent's complete diff; refactor-not-revert for a wrong pattern; unverified
 beyond-mandate findings; checking `git status` after an interrupted agent; stopping a stalled agent.
 
+§ "Cycle discipline" keeps "a VERIFY finding the user approves for fixing is fixed in its own FIX
+cycle", and adds what applying it has taught (Crucible #1407):
+- the VERIFY cycle closes with its findings before the FIX cycle is added and activated. The switch
+  happens between agents, never under one: an agent bound to a closed cycle has its runs refused;
+- a new contract VERIFY finds still goes AC → RED → FIX. The RED agent runs in the FIX cycle,
+  alongside the FIX agent.
+
 The CR-MDB-042 triage audit is frozen and names the old heading. The triage gate therefore resolves
 a renamed destination heading through a rename map held in the test module. The map has exactly
 this one entry.
@@ -96,6 +103,10 @@ parts and which of them bind that role:
 
 § "Prompt Precedence" is replaced to match: the brief's scope and boundaries bind; where it
 contradicts the spec, escalate.
+
+**Cycles.** The FIX template says its agent binds to a `fix`-kind cycle opened after VERIFY
+closed. The VERIFY template says its report ends the VERIFY cycle's work; no fix round runs inside
+it.
 
 **Committing.** RED, GREEN and FIX stage the files they changed by path, never `git add -A`. Their
 report names the commit range they produced (`<base>..<head>`). `git-workflow`'s "Always
@@ -147,6 +158,9 @@ test command and Crucible client, and the "Reading the CR" section.
       triage destination still resolves unaided.
 - [ ] `orchestration-common.md` has a section "Parallel agents in one tree" carrying each of §S2's
       eight rules. § "Cycle discipline" refers to it and keeps "one active cycle at a time".
+- [ ] § "Cycle discipline" states that VERIFY closes before its FIX cycle opens, that the switch
+      happens between agents, and that a new contract VERIFY finds runs RED in the FIX cycle. The FIX
+      template binds to a `fix`-kind cycle, and the VERIFY template ends the VERIFY cycle's work.
 - [ ] Every rendered agent (each stack × role) has a "Reading the CR" section naming its role's
       binding parts and stating that the spec outranks the brief. No template says "ABSOLUTE
       precedence".
