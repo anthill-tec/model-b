@@ -73,9 +73,12 @@ Model B relies on four knowledge verbs, and no others:
 How a project gets lean-ctx set up, in order:
 - the installer probes lean-ctx and records its verdict in `install.toml` `[capabilities]`;
 - then `modelb-axi init` reads that verdict, and runs no probe of its own. With lean-ctx
-  present it writes `KNOWLEDGE_CATEGORY` to `.env` (`<PROJECT_TOKEN>-workflow`, or the
-  `--knowledge-category` override; each monorepo sub-project carries its own) and the lean-ctx
+  present it writes `KNOWLEDGE_CATEGORY` to `.env` (`<PROJECT_TOKEN>-workflow` in kebab-case, or
+  the `--knowledge-category` override; each monorepo sub-project carries its own) and the lean-ctx
   pointer section to the scaffolded `AGENTS.md`. Absent or unknown, neither is written.
+
+A monorepo's sub-projects derive the same category as the root when they share its token, so
+the root and its sub-projects keep their execution knowledge together.
 
 ### Pitfalls
 
