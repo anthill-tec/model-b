@@ -72,10 +72,12 @@ SCHEMA_KEYS = frozenset({
 })
 
 #: Every §S1 field; nothing else may appear in an entry (no value, no default:
-#: "it carries rules only, never a project's value").
+#: "it carries rules only, never a project's value"). ``when`` is CR-MDB-045
+#: §S3's field: the requirement id a key's rendering is conditional on
+#: (MIGRATED at CR-MDB-045 C1 RED).
 S1_FIELDS = frozenset({
     "name", "description", "required", "file", "scope", "source",
-    "flag", "rule", "inputs", "step", "override", "validate", "readers",
+    "flag", "rule", "inputs", "step", "override", "validate", "readers", "when",
 })
 LEGAL_FILES = frozenset({".env", ".env.local"})
 LEGAL_SCOPES = frozenset({"root", "root+sub"})

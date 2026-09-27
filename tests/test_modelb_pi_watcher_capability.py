@@ -108,11 +108,14 @@ class WatcherRequirementRowTest(unittest.TestCase):
         """"reports it like the other tier-1 capabilities" — the same probe
         kind as dispatch/lean-ctx/permissions."""
         from modelb_axi.requirements import REQUIREMENTS
+        # MIGRATED at CR-MDB-045 C1 RED (§S1: the fifth tier-1 row, sandesh-pi,
+        # is probed as a pi-package too).
         kinds = {r["id"]: r.get("probe") for r in REQUIREMENTS if r["tier"] == 1}
         self.assertEqual(
             kinds,
             {"dispatch": "pi-package", "lean-ctx": "pi-package",
-             "permissions": "pi-package", "watcher": "pi-package"},
+             "permissions": "pi-package", "watcher": "pi-package",
+             "sandesh-pi": "pi-package"},
         )
 
 # ---------------------------------------------------------------------------

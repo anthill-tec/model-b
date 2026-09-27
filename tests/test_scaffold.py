@@ -1320,10 +1320,12 @@ class ScaffoldCapabilityContractTest(unittest.TestCase):
     def test_every_tier1_capability_is_named_with_its_remediation(self):
         self._precondition()
         rows = _tier1_rows()
-        # Bound on the data itself: \u00a7S1 declares three tier-1 rows and
-        # CR-MDB-029 \u00a7S3 adds the fourth, ``watcher``.
+        # Bound on the data itself: \u00a7S1 declares three tier-1 rows,
+        # CR-MDB-029 \u00a7S3 adds the fourth, ``watcher``, and CR-MDB-045 \u00a7S1
+        # the fifth, ``sandesh-pi`` (MIGRATED at CR-MDB-045 C1 RED).
         self.assertEqual(
-            sorted(r["id"] for r in rows), ["dispatch", "lean-ctx", "permissions", "watcher"],
+            sorted(r["id"] for r in rows),
+            ["dispatch", "lean-ctx", "permissions", "sandesh-pi", "watcher"],
             f"requirements data drifted from \u00a7S1's tier-1 table: {rows!r}",
         )
         for row in rows:
