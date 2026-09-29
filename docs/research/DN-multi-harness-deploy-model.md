@@ -748,6 +748,46 @@ directory is fixed at launch, and the dispatch tool has no working-directory par
      pi-subagents creates its settings with project trust on. So the hook runs in a worktree whose
      `.pi/extensions` is tracked, as scaffolded projects' are.
 
+### D20 — Sandesh's own Pi extension is every project's wake loop; the project environment is loaded by direnv
+
+**User ruling 2026-09-27**, with a proposal from the Sandesh project that the user approved.
+
+**The wake loop.** `@anthill-tec/sandesh-pi` (0.3.6 measured) arms a background `sandesh notify` for
+`$SANDESH_ADDRESS` in `$SANDESH_PROJECT` at Pi session start. When mail arrives, it injects a turn,
+and it re-arms itself after every wake. It stops at session shutdown, or when the address is
+unregistered: Sandesh tombstones a live watcher, and the loop treats that as terminal, as it does an
+eviction or a duplicate. It is every Model B project's wake loop:
+- Model B's own watcher (the `sandesh-watcher` extension and `/watcher` in `@anthill-tec/modelb-pi`)
+  is retired;
+- the orchestrator no longer relaunches a watcher after a wake;
+- shutdown ends by unregistering its address;
+- the installer requires `sandesh-pi` (tier 1).
+
+**The process environment is the contract.** Every tool reads the process environment and never
+parses `.env`: sandesh-pi, modelb-pi, `modelb-axi`, Crucible's clients, `gh`. Loading happens once, at
+the shell boundary, and Model B owns it through direnv:
+- **`init`** writes an `.envrc` containing `dotenv` next to the `.env` it already writes. The
+  `.envrc` is committed, since it holds no secrets; the `.env` stays gitignored.
+- **The registry** carries `SANDESH_ADDRESS`, the Mainline address by default.
+- **Loading.** `cd` into the project exports the registry, and Pi, every extension, every sub-agent
+  shell and every CLI inherit it. `cd` out unloads it.
+- **A Track** launches with its own address in the real environment, which wins:
+  `env SANDESH_ADDRESS="Track <N> - <Project>" pi`.
+- **The user's steps.** Installing direnv, its shell hook, and `direnv allow` are the user's steps,
+  named by the installer and the queue README's setup task. `direnv allow` is a trust decision, like
+  Pi's `/trust`.
+- **Sandesh's side.** Sandesh ships a diagnostic, not a loader: at session start, if the identity is
+  in `./.env` but not exported, sandesh-pi says so.
+
+**Measured by Sandesh 2026-09-27** (fish 4.9.3, `/usr/bin/direnv`, hook in
+`~/.config/fish/conf.d/direnv.fish`):
+- all registry keys are exported on `cd`, a space-containing `SANDESH_ADDRESS` intact;
+- child processes see them, and `cd /tmp` unloads them;
+- the fish hook is prompt-driven, so `fish -c '…'` one-liners do not load it, while interactive shells
+  and a Pi launched from one do.
+
+Implemented by CR-MDB-047.
+
 ## Consequences per CR
 
 | CR | What this DN changes |

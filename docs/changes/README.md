@@ -53,6 +53,7 @@ Queue rows enumerate the whole delivery (structure only). **Live status lives on
 | [CR-MDB-044](CR-MDB-044-agent-definitions-and-briefs.md) | Agent definitions carry the how, the brief the what: the orchestrator's acceptance model, parallel agents in one tree, each role's reading of a CR, field rules from Crucible #1405, cite code by symbol (PRD D5/D6 amendments 2026-09-27) | 5 | — |
 | [CR-MDB-045](CR-MDB-045-execution-knowledge-store.md) | The scaffold sets each project up for the workflow's tools: the installer declares `sandesh-pi`; `init` reads the installation's verdicts (never probes), a `when`-conditional schema key, lean-ctx's `KNOWLEDGE_CATEGORY` + orchestrator pointer, the capability contract shows the project's state, § Memory + bootstrap, the contract's pitfalls (PRD D10/D5 2026-09-27) | 5 | 044 |
 | [CR-MDB-046](CR-MDB-046-gap-analysis-reach-and-spec-review.md) | Gap analysis reaches every consumer (Dimensions 8–10: rule reach, scenario matrix, standing invariants; re-scoping reruns it) and a drafted spec is pre-reviewed by the stack's VERIFY agent in a `report`-role mode before approval (PRD D6 2026-09-27) | 5 | — |
+| [CR-MDB-047](CR-MDB-047-sandesh-pi-wake-and-direnv.md) | sandesh-pi's wake loop for every project (Model B's watcher retired, sandesh-pi required); `init` writes `.envrc` (`dotenv`) and `SANDESH_ADDRESS`; bootstrap/shutdown follow (DN §D20) | 5 | 046 |
 
 **— v1.0.0 ships here —** (the release is a BOUNDARY EVENT, not a queue row: the wave drains, the user approves, `git-workflow` §Releases executes it, a milestone records it afterwards. No release CR, no close-out wave.)
 
@@ -1142,3 +1143,8 @@ ALL `*-crucible.py` client implementation is CRUCIBLE's (requested #1325; answer
   **Quality note (user):** every CR this run went to a FIX cycle on gaps the gap analysis should have
   found — CR-MDB-046 adds the consumer sweep, scenario matrix, standing invariants and spec
   pre-review to the `gap-analysis` skill.
+- 2026-09-27 — **CR-MDB-047 FILED** (user ruling, with Sandesh's user-approved proposal): sandesh-pi's
+  own wake loop is every project's wake path; the process environment is the contract and direnv
+  loads the project's `.env` at the shell boundary (`init` emits `.envrc`). DN §D20. Model B's own
+  repo is set up by hand meanwhile: `.envrc` (`dotenv`) committed, `SANDESH_PROJECT`/`SANDESH_ADDRESS`
+  in the local `.env`.
