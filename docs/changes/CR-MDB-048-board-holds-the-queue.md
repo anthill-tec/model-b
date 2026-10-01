@@ -37,8 +37,8 @@ Model B's own README has grown to 1,150 lines.
 - **§S2 — The scaffold.**
   - `init` writes no `docs/changes/README.md`.
   - Its setup tasks become a Setup section of the scaffolded `AGENTS.md`, alongside the envelope's
-    `setup_required`. That section is where CR-MDB-045's absent-tool remediations and CR-MDB-047's
-    direnv step go.
+    `setup_required`. That section takes the README's setup tasks as they stand, including
+    CR-MDB-045's absent-tool remediations and CR-MDB-047's direnv step.
   - `docs/changes/` is still created, for specs.
 - **§S3 — Model B's own README** is frozen as read-only history, with a header pointing to the
   board. `AGENTS.md` and the tests that pin its rows or notes are migrated.

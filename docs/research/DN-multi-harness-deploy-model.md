@@ -786,6 +786,30 @@ the shell boundary, and Model B owns it through direnv:
 - the fish hook is prompt-driven, so `fish -c '…'` one-liners do not load it, while interactive shells
   and a Pi launched from one do.
 
+**AMENDED 2026-09-27 (user ruling, after Sandesh 0.4.0 shipped; measured read-only on the CLI and
+`@anthill-tec/sandesh-pi` 0.4.0):**
+- **Started by a tool, not at session start.** sandesh-pi 0.4.0 starts its wake watcher by a tool
+  call, with start, status and stop verbs that default to `$SANDESH_ADDRESS` and `$SANDESH_PROJECT`.
+  It arms at session start only under `SANDESH_AUTOSTART=1`. Model B leaves that unset.
+- **Bootstrap starts it.** Bootstrap registers the role's address, then starts the watcher for it,
+  then confirms with `status` (listening, unread, watcher running).
+- **sandesh-pi supervises the watcher:**
+  - after mail, it injects a turn naming the ids and relaunches;
+  - it retries once when the watcher is already running elsewhere;
+  - it stops with a notice on exit 1, 3 (tombstoned) or 4 (evicted).
+
+  The orchestrator only fetches. On a stop notice it checks `status`, and either starts the watcher
+  again or reports why it can't.
+- **Shutdown** stops the watcher by its address, then unregisters it.
+- **Liveness is read from machine output:**
+  - an orchestrator reads its own liveness from `sandesh status`;
+  - it reads others' from `sandesh addressbook --format toon --fields address,status,listening`;
+  - never from the human table.
+- **Version floor.** sandesh-pi refuses a `sandesh` CLI older than 0.4.0, so the installer's
+  `sandesh` probe carries that floor, with `uv tool upgrade sandesh-relay` as the remediation.
+- **No `sandesh init` on a fresh machine.** `sandesh setup --project` then `register` work on a fresh
+  store without it.
+
 Implemented by CR-MDB-047.
 
 ## Consequences per CR
