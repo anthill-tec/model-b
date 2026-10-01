@@ -207,7 +207,7 @@ REQUIREMENTS: tuple[dict, ...] = (
         "policy": "recommended",
         "scope": "always",
         "probe": "path",
-        "asset_families": ("the project .envrc (SANDESH_ADDRESS, SANDESH_PROJECT)",),
+        "asset_families": ("the project .envrc, which loads .env into the environment",),
         "remediation": (
             "install direnv with the OS package manager and hook it into the shell: "
             'direnv hook fish | source (fish), or eval "$(direnv hook bash)" (bash)'
