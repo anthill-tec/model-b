@@ -89,10 +89,11 @@ REQUIREMENTS: tuple[dict, ...] = (
         "tools": (),
     },
     {
-        # CR-MDB-029 §S3: Model B's own Pi package — the Sandesh watcher
-        # supervisor, and worktree isolation (CR-MDB-039 §S3). Offered (and
-        # run under ``--yes``) by the installer.
-        "id": "watcher",
+        # CR-MDB-029 §S3: Model B's own Pi package — worktree isolation
+        # (CR-MDB-039 §S3). Offered (and run under ``--yes``) by the
+        # installer. The ``watcher`` row until CR-MDB-047 §S1, when Sandesh's
+        # own Pi extension became the wake path.
+        "id": "worktree",
         "tier": 1,
         "provider": "@anthill-tec/modelb-pi",
         "policy": "recommended",
@@ -100,15 +101,16 @@ REQUIREMENTS: tuple[dict, ...] = (
         "probe": "pi-package",
         "asset_families": ("orchestration skills", "worktree isolation"),
         "remediation": "pi install npm:@anthill-tec/modelb-pi",
-        "tools": ("sandesh_watcher", "modelb_worktree_enter", "modelb_worktree_exit"),
+        "tools": ("modelb_worktree_enter", "modelb_worktree_exit"),
     },
     {
         # CR-MDB-045 §S1: Sandesh's own Pi extension — a third-party
         # package, so ``--yes`` never installs it; its remediation is named.
+        # The wake path, so required since CR-MDB-047 §S1.
         "id": "sandesh-pi",
         "tier": 1,
         "provider": "@anthill-tec/sandesh-pi",
-        "policy": "recommended",
+        "policy": "required",
         "scope": "always",
         "probe": "pi-package",
         "asset_families": ("bootstrap and shutdown skills",),
@@ -194,6 +196,22 @@ REQUIREMENTS: tuple[dict, ...] = (
         "probe": "path",
         "asset_families": ("tool scripts",),
         "remediation": "install jq with the OS package manager",
+    },
+    {
+        # CR-MDB-047 §S1: direnv loads a project's ``.env`` into the
+        # environment through the ``.envrc`` ``init`` writes. Only the binary
+        # is probed, never the shell hook.
+        "id": "direnv",
+        "tier": 2,
+        "provider": "the direnv project",
+        "policy": "recommended",
+        "scope": "always",
+        "probe": "path",
+        "asset_families": ("the project .envrc (SANDESH_ADDRESS, SANDESH_PROJECT)",),
+        "remediation": (
+            "install direnv with the OS package manager and hook it into the shell: "
+            'direnv hook fish | source (fish), or eval "$(direnv hook bash)" (bash)'
+        ),
     },
     {
         "id": "toolchain",
