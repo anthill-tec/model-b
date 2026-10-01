@@ -1,6 +1,6 @@
 ---
 name: bootstrap
-description: Start-of-run bootstrap for a Model-B orchestrator session (Mainline or Track). Sets up and launches the Sandesh notify watcher, reloads the in-flight work from the Crucible board (the plan, its active cycle, `next`), and loads the last-held implementation-queue status. A Mainline session reads the implementation queue from Crucible and reports to the USER; a Track session just enables its notifier, reloads any in-flight cycle, informs MAINLINE of its status, and waits for instructions. The orchestrator ROLE is passed as the argument — `/bootstrap mainline` (the single per-project coordinator) or `/bootstrap track <N>` (a numbered worker, N = 1, 2, 3, …). Use when the user types "/bootstrap", or says "bootstrap", "new run starting", "start of day", or "boot the orchestrator".
+description: Start-of-run bootstrap for a Model-B orchestrator session (Mainline or Track). Registers the session's Sandesh address and starts Sandesh's wake watcher through the harness's Sandesh extension, reloads the in-flight work from the Crucible board (the plan, its active cycle, `next`), and loads the last-held implementation-queue status. A Mainline session reads the implementation queue from Crucible and reports to the USER; a Track session just enables its notifier, reloads any in-flight cycle, informs MAINLINE of its status, and waits for instructions. The orchestrator ROLE is passed as the argument — `/bootstrap mainline` (the single per-project coordinator) or `/bootstrap track <N>` (a numbered worker, N = 1, 2, 3, …). Use when the user types "/bootstrap", or says "bootstrap", "new run starting", "start of day", or "boot the orchestrator".
 ---
 
 # Bootstrap — start-of-run orchestrator setup
@@ -19,8 +19,9 @@ The **role is passed as the invocation verb** — `/bootstrap mainline` or
 - **Track** enables its notifier, **checks that Mainline is up**, reports status to
   **MAINLINE**, never the user.
 
-Each role probes the other's liveness via the same `sandesh addressbook --project <Project>` (`listening:true`
-= up + wake-reachable) — Mainline scans the tracks, a track scans Mainline.
+Each role probes the other's liveness the same way, from the machine-readable addressbook —
+`sandesh addressbook --project <Project> --format toon --fields address,status,listening`
+(`listening` true = up and wake-reachable) — Mainline scans the tracks, a track scans Mainline.
 
 **Read the rules that bind your role before acting.** Once Step 0 fixes your role,
 **Step 0.5 loads the rule set you must execute by** (the `model-b` references, then the
@@ -127,42 +128,53 @@ Without `KNOWLEDGE_CATEGORY`, this step is skipped and never asked about — not
 
 ---
 
-## Step 1 — Bring up the notifier (BOTH roles) — CHECK before setup/register
+## Step 1 — Bring up the wake (BOTH roles) — CHECK before setup/register
 
 Setup and registration are **persistent** — do NOT re-run them blindly each run. The
-only thing that reliably dies between runs is the watcher. So **check state first** and
-do the minimum:
+wake is Sandesh's wake watcher, started through the harness's Sandesh extension; Model B
+reaches Sandesh itself only through the `sandesh` CLI. **Check state first** and do the
+minimum:
 
-1. **Check** `sandesh addressbook --project <Project>`. It prints a table, one row per address:
-   `STATUS` shows `active` for a registered address (`active:true` below, else `active:false`);
-   `LISTENING` shows `● live` while a watcher holds it (`listening:true` below, else `listening:false`).
-   - Project resolves AND your address is present with `active:true` → already set up and
+1. **Your identity.** Your address is the role's: `Mainline - <Project>` or
+   `Track <N> - <Project>`, where `<Project>` is `SANDESH_PROJECT`, from `.env` or the
+   environment. Every call below passes that address and project explicitly.
+   - **When the environment disagrees** — `$SANDESH_ADDRESS` is unset, or names another
+     address than your role's — say so in your status.
+   - For a Track this usually means the session was launched without its
+     `env SANDESH_ADDRESS="Track <N> - <Project>" pi` override: direnv exports the Mainline
+     address in every session started from the project directory.
+   - The remediation: load direnv (`direnv allow` where the `.envrc` is), or relaunch the
+     session with the override. A project scaffolded without `SANDESH_ADDRESS` or `.envrc`
+     gets them by re-running `modelb-axi init`, or by adding them.
+   - Do not stop on it: carry on with your role's address passed explicitly.
+2. **Check** `sandesh addressbook --project <Project> --format toon --fields address,status,listening`.
+   It lists one record per address: `status` is `active` for a registered address, and
+   `listening` is true while a watcher holds it. Read these fields, never the human table.
+   - Project resolves AND your address is present and `active` → already set up and
      registered. **SKIP `sandesh setup` + `sandesh register`**; go straight to the watcher.
    - Project unknown / "not set up" error → `sandesh setup --project <Project>`, then
      re-check.
-   - Your address absent / `active:false` →
+   - Your address absent or inactive →
      `sandesh register --project <Project> --address "<your address>"`.
 
    (Both calls are idempotent, but the point is to avoid needless churn — only call them
    when the check shows they're missing.)
-2. **Launch the watcher ONLY if not already `listening:true`.** If the addressbook already
-   shows your address `listening:true`, a live watcher exists — do NOT spawn a duplicate.
-   Otherwise start it with the **Model B watcher** — it supervises `sandesh notify`, stays
-   running and relaunches itself (`/watcher status` lists the watchers it runs); when it wakes you, you only fetch:
-   `sandesh fetch --project <Project> --to '<your address>'`. If the Model B watcher is not
-   installed, run the notifier as a background process that notifies you when it exits —
-   PLAIN, no `while`/retry wrapper, exactly ONE per address, never inline (it blocks), and
-   never as a job with a deadline shorter than the watcher's own timeout:
-   ```
-   sandesh notify --to "<your address>" --project <Project>
-   ```
-   It blocks until To-addressed mail arrives, then exits. Read the reason from its last log
-   line and respond per the PRIME DIRECTIVE table in `sandesh.md`: exit `0` (mail) → fetch,
-   then relaunch in the same turn; exit `3`/`4`/`5` (tombstoned / evicted / already live) →
-   do not relaunch, report it. Never leave the watcher dead otherwise.
-3. **Re-confirm** `sandesh addressbook --project <Project>` shows your address `listening:true`. A bare
-   `sandesh notify` without `--project` silently never listens — if `listening:false`,
-   fix the command and relaunch.
+3. **Start Sandesh's wake watcher** through the harness's Sandesh extension, for your
+   address and `<Project>`, both passed explicitly — unless the addressbook already shows
+   your address listening, in which case a watcher holds it and you start no second one.
+   The extension supervises it: after every wake it starts again by itself and hands you a
+   turn naming the unread ids. `/sandesh-watcher status` shows it.
+4. **The extension is missing?** If the harness's Sandesh extension is not installed, the
+   wake is unavailable: say so, name the remediation (install `sandesh-pi`, which needs the
+   `sandesh` CLI 0.4.0 or later), and carry on without a wake.
+5. **Confirm** with
+   `sandesh addressbook --project <Project> --format toon --fields address,status,listening`:
+   your address `active` and listening. If it is not listening, check the address and project
+   you passed to the extension, then start the watcher again.
+6. **After a wake** you only fetch the named ids —
+   `sandesh fetch --project <Project> --to '<your address>'` — and never relaunch anything.
+   On a stop notice, follow `sandesh.md`: re-check your liveness, start the watcher again
+   once for exit 1 or a signal, and report a tombstone (3) or an eviction (4).
 
 > Crucible "online" heartbeat is optional here and covered by the `crucible`
 > skill; orchestrators register per-gate, not necessarily at bootstrap.
@@ -196,12 +208,13 @@ you reload it — both roles reload.
    (worktree-flow now emits a TOON envelope on stdout; the human board is on stderr.)
    - **Reconcile deferred/future-feature notes against the board** — cross-check each
      against the Crucible board (and the code when in doubt) and reconcile any drift.
-2. **Check which Tracks are up and running** — `sandesh addressbook --project <Project>`
-   is Mainline's track-liveness probe. Read the flags per track:
-   - `listening:true` → notifier live: the track is **up and wake-reachable** (a directive
+2. **Check which Tracks are up and running** —
+   `sandesh addressbook --project <Project> --format toon --fields address,status,listening`
+   is Mainline's track-liveness probe. Read the fields per track:
+   - `listening` true → watcher live: the track is **up and wake-reachable** (a directive
      will fire). This is "running".
-   - `active:true, listening:false` → registered but its **watcher is down** — NOT reachable
-     for a wake until it relaunches; treat as "up but not listening".
+   - `status` `active`, `listening` false → registered but its **watcher is down** — NOT
+     reachable for a wake until its watcher is started again; treat as "up but not listening".
    - absent → never joined this project.
    How many tracks exist and which are online comes from the addressbook, never assumption.
    Carry this up/running-vs-down roster into the user report (step 4).
@@ -213,8 +226,8 @@ you reload it — both roles reload.
    - any in-flight Mainline cycle reloaded from the board in Step 2;
    - any pending Track requests in the inbox.
 5. **Do NOT auto-dispatch, auto-schedule, or merge.** Mainline surfaces the board and
-   waits for the user's go. Relaunch the Mainline inbox watcher after any fetch (fallback
-   path only — the Model B watcher relaunches itself).
+   waits for the user's go. Sandesh's wake watcher keeps itself running: after a fetch,
+   nothing is restarted.
 
 ---
 
@@ -222,10 +235,11 @@ you reload it — both roles reload.
 
 1. The notifier is already up (Step 1). A Track does **not** read the queue board for
    scheduling and does **not** contact the user.
-2. **Check that Mainline is up** — `sandesh addressbook --project <Project>` and read
-   the `Mainline - <Project>` row (the reciprocal of Mainline's track-liveness probe):
-   - `listening:true` → Mainline is online and will **wake** on your report. Normal path.
-   - `active:true, listening:false` → Mainline is registered but its watcher is down: your
+2. **Check that Mainline is up** —
+   `sandesh addressbook --project <Project> --format toon --fields address,status,listening`,
+   reading the `Mainline - <Project>` record (the reciprocal of Mainline's track-liveness probe):
+   - `listening` true → Mainline is online and will **wake** on your report. Normal path.
+   - `status` `active`, `listening` false → Mainline is registered but its watcher is down: your
      report still **sends** (sending needs no listener) but won't wake it — it will pick the
      message up on its next fetch/bootstrap. Note "Mainline appears offline" in the body.
    - absent → Mainline hasn't joined this project yet; still send your status (it queues)
@@ -251,11 +265,12 @@ you reload it — both roles reload.
 
 - **Never** start CR work, dispatch sub-agents, or merge as part of bootstrap — this is
   setup + status only. Mainline waits for the user; a Track waits for Mainline.
-- The watcher runs through the Model B watcher or, when it is not installed, as a PLAIN
-  background process that notifies you when it exits; exactly one per address; never
-  inline, never a `while … sleep` retry wrapper.
-- Never machine-wide process kills to "clean up" a stale watcher — `sandesh addressbook --project <Project>`
-  confirms liveness; a duplicate watcher exits `5` (already live), which is benign.
+- Sandesh's wake watcher runs through the harness's Sandesh extension — exactly one per
+  address, started at bootstrap; you never launch `sandesh notify` yourself, and never wrap
+  anything in a `while … sleep` retry loop.
+- Never machine-wide process kills to "clean up" a stale watcher — the toon addressbook
+  confirms liveness, and the extension itself retries once when the address is already live
+  elsewhere, then stops with a notice.
 - Mainline reports to the USER; a Track reports to MAINLINE. Do not cross these.
 - If you are a Solo orchestrator (no tracks, no worktrees), follow the MAINLINE branch
   for queue + user reporting; the Sandesh/Track machinery is inert.
