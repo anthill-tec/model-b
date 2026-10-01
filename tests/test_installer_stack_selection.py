@@ -80,6 +80,13 @@ _FAKE_UV = (
 # present Sandesh answers `--version` like the real CLI, at the 0.4.0 floor.
 _FAKE_SANDESH = "#!/bin/sh\necho 'sandesh 0.4.0'\nexit 0\n"
 
+def _is_sandesh_version(argv) -> bool:
+    """Whether a logged Popen argv is the sandesh probe's ``sandesh --version``
+    (CR-MDB-047 §S1) — a list or a command string, the binary by basename."""
+    parts = argv if isinstance(argv, list) else str(argv).split()
+    return len(parts) == 2 and Path(parts[0]).name == "sandesh" and parts[1] == "--version"
+
+
 def _recording_shim(marker: Path, exit_code: int = 0) -> str:
     """A fake binary that appends ``<name> <args>`` to ``marker`` on every
     EXECUTION, then exits ``exit_code``."""
@@ -476,7 +483,13 @@ class ToolchainProbeScopeTest(_StackSandboxCase):
         self.shim("python3")
         result, log = self.run_counting("--stacks", "rust")
         self.assert_installed(result)
-        self.assertEqual(log["popen"], [], "§S8: no probe subprocess without python selected")
+        # MIGRATED at CR-MDB-047 C1 RED (§S1: the sandesh probe runs
+        # `sandesh --version`): that run is the one probe subprocess left
+        # without python selected; no toolchain probe runs one.
+        version_runs = [a for a in log["popen"] if _is_sandesh_version(a)]
+        self.assertEqual(len(version_runs), 1, f"one `sandesh --version`; popen={log['popen']!r}")
+        self.assertEqual([a for a in log["popen"] if not _is_sandesh_version(a)], [],
+                         "§S8: no toolchain probe subprocess without python selected")
         self.assertEqual(self.executions(), [], "§S8: toolchains resolved, never executed")
         self.assertEqual(self.stack_group(result.stderr, "rust").get("cargo"), "detected")
 
@@ -507,9 +520,15 @@ class ToolchainProbeScopeTest(_StackSandboxCase):
         joined = "\n".join(runs)
         self.assertIn("xmlrunner", joined)
         self.assertIn("coverage", joined)
-        popen_bins = [Path(a[0] if isinstance(a, list) else a.split()[0]).name for a in log["popen"]]
+        # MIGRATED at CR-MDB-047 C1 RED (§S1): `sandesh --version` is the
+        # sandesh probe's own run, not a toolchain probe's.
+        version_runs = [a for a in log["popen"] if _is_sandesh_version(a)]
+        self.assertEqual(len(version_runs), 1, f"one `sandesh --version`; popen={log['popen']!r}")
+        toolchain_popen = [a for a in log["popen"] if not _is_sandesh_version(a)]
+        popen_bins = [Path(a[0] if isinstance(a, list) else a.split()[0]).name
+                      for a in toolchain_popen]
         self.assertEqual(set(popen_bins), {"python3"}, f"popen={log['popen']!r}")
-        self.assertLessEqual(len(log["popen"]), 2, "§S8: at most one check per module")
+        self.assertLessEqual(len(toolchain_popen), 2, "§S8: at most one check per module")
         self.assertEqual(self.stack_lines(result.stderr), [
             "stack python: python3=detected xmlrunner=detected coverage=detected client=absent",
         ])
