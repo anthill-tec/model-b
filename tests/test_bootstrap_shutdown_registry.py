@@ -39,8 +39,9 @@ Class map — one class per acceptance criterion:
 - ``CommonRulesAgreeTest`` — ``orchestration-track.md`` and ``rust-orchestration.md`` agree on
   the Track id and the stack client.
 - ``UnregisteredProjectTest`` — an empty ``CRUCIBLE_PROJECT_KEY`` is "not registered", never idle.
-- ``WatcherWordingTest`` — the addressbook table (``STATUS``, ``LISTENING``), stop by address
-  (``/watcher stop <your address>``), a targeted kill whose pattern can match the notifier.
+- ``WatcherWordingTest`` — the addressbook read as its toon fields, never the human table; the
+  watcher stopped by address (``/sandesh-watcher stop <your address>``); no ``/watcher`` and no
+  ``pkill`` (MIGRATED at CR-MDB-047 C2 RED, §S3).
 
 Phrase checks normalise the text (backticks and ``*`` dropped, whitespace collapsed,
 lower-cased) and test meaning through required and forbidden phrases, never whole sentences.
@@ -851,39 +852,52 @@ class MemoryIndexWordingTest(unittest.TestCase):
 
 
 class WatcherWordingTest(unittest.TestCase):
-    """F10 / \u00a7S4: the addressbook table, stop by address, a kill pattern that can match; the
-    watcher named as a capability and its ``/watcher`` command (the CR-MDB-026 gate forbids the
-    tool name)."""
+    """F10 / \u00a7S4, MIGRATED at CR-MDB-047 C2 RED (\u00a7S3: Sandesh's wake watcher replaces the
+    Model B watcher; liveness is read from the toon addressbook; shutdown stops by address, then
+    unregisters; no ``pkill``). Was: the addressbook table columns, the Model B ``/watcher``
+    command, ``/watcher stop <your address>``, and the targeted-kill pattern.
 
-    def test_addressbook_is_described_as_its_table_columns(self):
+    - ``test_addressbook_is_described_as_its_table_columns`` \u2192
+      ``test_addressbook_is_read_as_its_toon_fields_never_the_table``;
+    - ``test_both_skills_name_the_watcher_command`` \u2192
+      ``test_neither_skill_names_the_model_b_watcher_command``;
+    - ``test_the_watcher_is_stopped_by_address_never_bare`` keeps its name, now over
+      ``/sandesh-watcher stop``;
+    - ``test_the_targeted_kill_pattern_can_match_the_notifier`` \u2192 RETIRED, replaced by
+      ``test_neither_skill_kills_with_pkill``.
+    """
+
+    TOON_FIELDS = "--format toon --fields address,status,listening"
+
+    def test_addressbook_is_read_as_its_toon_fields_never_the_table(self):
         for name in SKILLS:
             with self.subTest(skill=name):
-                raw = _skill_text(name).replace("`", "")
-                self.assertRegex(raw, r"LISTENING[^.\n]{0,40}\u25cf live")
-                self.assertRegex(raw, r"STATUS[^.\n]{0,40}\bactive\b")
+                raw = re.sub(r"\s+", " ", _skill_text(name).replace("`", ""))
+                self.assertIn(f"sandesh addressbook --project <Project> {self.TOON_FIELDS}", raw,
+                              f"{name} reads no liveness from the toon addressbook")
+                self.assertNotIn("\u25cf live", raw, f"{name} reads liveness from the human table")
 
-    def test_both_skills_name_the_watcher_command(self):
+    def test_neither_skill_names_the_model_b_watcher_command(self):
         for name in SKILLS:
             with self.subTest(skill=name):
-                self.assertTrue("/watcher" in _skill_text(name), f"{name} names no /watcher command")
+                hits = [line.strip() for line in _skill_text(name).splitlines() if re.search(r"/watcher\b", line)]
+                self.assertEqual(hits, [], f"{name} names Model B's retired /watcher command")
 
     def test_the_watcher_is_stopped_by_address_never_bare(self):
-        self.assertTrue("/watcher stop <your address>" in _skill_text("shutdown"),
+        self.assertTrue("/sandesh-watcher stop <your address>" in _skill_text("shutdown"),
                         "shutdown does not stop the watcher by address")
         for name in SKILLS:
             with self.subTest(skill=name):
                 bare = [line.strip() for line in _skill_text(name).splitlines()
-                        if re.search(r"/watcher stop(?! <)", line)
+                        if re.search(r"/sandesh-watcher stop(?! <)", line)
                         and not _NEGATION.search(line.lower())]
-                self.assertEqual(bare, [], f"{name}: a bare /watcher stop stops every watcher")
+                self.assertEqual(bare, [], f"{name}: a bare /sandesh-watcher stop names no address")
 
-    def test_the_targeted_kill_pattern_can_match_the_notifier(self):
-        patterns = re.findall(r'pkill -f "([^"]*)"', _skill_text("shutdown"))
-        self.assertTrue(patterns, "shutdown's last-resort targeted kill is gone (CR-MDB-026 pin)")
-        for pattern in patterns:
-            with self.subTest(pattern=pattern):
-                self.assertNotRegex(pattern, r"['\"]", "literal quotes never occur in the argv")
-                self.assertTrue(pattern.startswith("sandesh notify --to "), pattern)
+    def test_neither_skill_kills_with_pkill(self):
+        for name in SKILLS:
+            with self.subTest(skill=name):
+                hits = [line.strip() for line in _skill_text(name).splitlines() if "pkill" in line]
+                self.assertEqual(hits, [], f"{name}: the watcher is stopped by address, never killed")
 
 
 if __name__ == "__main__":
