@@ -96,9 +96,11 @@ _FAKE_UV_SCRIPT = (
     "exit 0\n"
 )
 
+# MIGRATED at CR-MDB-047 C1 RED (§S1 version floor): a fake standing for a
+# present Sandesh answers `--version` like the real CLI, at the 0.4.0 floor.
 _FAKE_SANDESH_SCRIPT = (
     "#!/bin/sh\n"
-    'echo "sandesh-relay 0.0.0-fake"\n'
+    'echo "sandesh 0.4.0"\n'
     "exit 0\n"
 )
 
@@ -134,7 +136,7 @@ def _fake_uv_script_placing_sandesh(bin_dir: str) -> str:
     return _FAKE_UV_SCRIPT_WITH_INSTALL_MARKER.replace(
         "    fi\n    exit 0\n",
         "    fi\n"
-        f"    printf '#!/bin/sh\\nexit 0\\n' > \"{sandesh}\"\n"
+        f"    printf '#!/bin/sh\\necho sandesh 0.4.0\\nexit 0\\n' > \"{sandesh}\"\n"
         f"    \"{chmod}\" 755 \"{sandesh}\"\n"
         "    exit 0\n",
         1,
@@ -2147,9 +2149,10 @@ class StdoutCarriesOnlyEnvelopeAllHumanLinesOnStderrTest(unittest.TestCase):
         # fully provisioned agent dir) lands on stderr, before deps:.
         # CR-MDB-029 \u00a7S3 migration: the fourth tier-1 capability,
         # ``watcher``, is on the line too (the shared agent dir provisions it).
+        # MIGRATED at CR-MDB-047 C1 RED (\u00a7S1): that row is now ``worktree``.
         self.assertIn(
             "harness: dispatch=detected lean-ctx=detected permissions=detected "
-            "watcher=detected",
+            "worktree=detected",
             result.stderr,
             f"CR-MDB-036 §S3: the harness: line must be on stderr; got "
             f"stderr={result.stderr!r}",

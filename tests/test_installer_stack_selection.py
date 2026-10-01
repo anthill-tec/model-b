@@ -76,7 +76,9 @@ _FAKE_UV = (
     'echo "uv 0.0.0-fake"\n'
     "exit 0\n"
 )
-_FAKE_SANDESH = "#!/bin/sh\necho sandesh-fake\nexit 0\n"
+# MIGRATED at CR-MDB-047 C1 RED (§S1 version floor): a fake standing for a
+# present Sandesh answers `--version` like the real CLI, at the 0.4.0 floor.
+_FAKE_SANDESH = "#!/bin/sh\necho 'sandesh 0.4.0'\nexit 0\n"
 
 def _recording_shim(marker: Path, exit_code: int = 0) -> str:
     """A fake binary that appends ``<name> <args>`` to ``marker`` on every

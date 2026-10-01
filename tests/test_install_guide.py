@@ -344,7 +344,9 @@ def preflight_prefixes() -> tuple[str, ...]:
         bin_dir, home, agent = root / "bin", root / "home", root / "agent"
         for d in (bin_dir, home, agent):
             d.mkdir()
-        for name, body in (("uv", "#!/bin/sh\nexit 0\n"), ("sandesh", "#!/bin/sh\nexit 0\n")):
+        # MIGRATED at CR-MDB-047 C1 RED (§S1 version floor): a current sandesh.
+        for name, body in (("uv", "#!/bin/sh\nexit 0\n"),
+                           ("sandesh", "#!/bin/sh\necho 'sandesh 0.4.0'\nexit 0\n")):
             exe = bin_dir / name
             exe.write_text(body, encoding="utf-8")
             exe.chmod(0o755)

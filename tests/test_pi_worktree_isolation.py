@@ -691,24 +691,27 @@ class WorktreeServiceKeyContractTest(unittest.TestCase):
 
 # ============================================================ §S3 ==========
 
-class WatcherCapabilityWorktreeTest(unittest.TestCase):
-    """§S3: the watcher capability names worktree isolation and its tools."""
+class WorktreeCapabilityTest(unittest.TestCase):
+    """§S3: the worktree capability names worktree isolation and its tools.
+
+    MIGRATED at CR-MDB-047 C1 RED (\u00a7S1 renames the ``watcher`` row
+    ``worktree``); was WatcherCapabilityWorktreeTest."""
 
     def _row(self) -> dict:
         from modelb_axi.requirements import REQUIREMENTS
-        rows = [r for r in REQUIREMENTS if r.get("id") == "watcher"]
-        self.assertEqual(len(rows), 1, "exactly one watcher row")
+        rows = [r for r in REQUIREMENTS if r.get("id") == "worktree"]
+        self.assertEqual(len(rows), 1, "exactly one worktree row")
         return rows[0]
 
-    def test_watcher_asset_families_name_worktree_isolation(self):
+    def test_worktree_asset_families_name_worktree_isolation(self):
         families = list(self._row()["asset_families"])
         hits = [f for f in families if re.search(r"(?i)worktree isolation", f)]
         self.assertEqual(len(hits), 1, f"one asset family names worktree isolation: {families}")
 
-    def test_watcher_tools_include_both_worktree_tools(self):
+    def test_worktree_tools_include_both_worktree_tools(self):
         tools = list(self._row()["tools"])
         for name in (ENTER, EXIT):
-            self.assertIn(name, tools, f"§S3: the watcher tools must list {name}")
+            self.assertIn(name, tools, f"§S3: the worktree tools must list {name}")
         self.assertEqual(len(tools), len(set(tools)), tools)
 
 

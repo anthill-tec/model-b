@@ -121,9 +121,11 @@ _FAKE_UV_SCRIPT = (
 # Fake `sandesh` fixture: presence on PATH is all that's needed for
 # detection-truthfulness tests -- it is never actually invoked for
 # anything besides being *found*.
+# MIGRATED at CR-MDB-047 C1 RED (§S1 version floor): a fake standing for a
+# present Sandesh answers `--version` like the real CLI, at the 0.4.0 floor.
 _FAKE_SANDESH_SCRIPT = (
     "#!/bin/sh\n"
-    'echo "sandesh-relay 0.0.0-fake"\n'
+    'echo "sandesh 0.4.0"\n'
     "exit 0\n"
 )
 
@@ -145,7 +147,7 @@ def _fake_uv_script_placing_sandesh(bin_dir: str) -> str:
         '    if [ -n "$FAKE_UV_INSTALL_MARKER" ]; then\n'
         '        printf \'%s\\n\' "$*" > "$FAKE_UV_INSTALL_MARKER"\n'
         "    fi\n"
-        f"    printf '#!/bin/sh\\nexit 0\\n' > \"{sandesh}\"\n"
+        f"    printf '#!/bin/sh\\necho sandesh 0.4.0\\nexit 0\\n' > \"{sandesh}\"\n"
         f"    \"{chmod}\" 755 \"{sandesh}\"\n"
         "    exit 0\n"
         "fi\n"

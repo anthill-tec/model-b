@@ -65,7 +65,7 @@ def _uv_shim(marker: Path, bin_dir: Path, *, places_sandesh: bool) -> str:
     — when ``places_sandesh`` — puts an executable ``sandesh`` on the
     sandbox PATH, then exits 0. Anything else exits 0 quietly."""
     place = (
-        f"    printf '#!/bin/sh\\necho sandesh-fake\\nexit 0\\n' > \"{bin_dir}/sandesh\"\n"
+        f"    printf '#!/bin/sh\\necho sandesh 0.4.0\\nexit 0\\n' > \"{bin_dir}/sandesh\"\n"
         f"    \"{_chmod_path()}\" 755 \"{bin_dir}/sandesh\"\n"
     ) if places_sandesh else ""
     return (

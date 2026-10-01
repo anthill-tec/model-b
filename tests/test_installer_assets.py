@@ -154,9 +154,11 @@ _FAKE_UV_SCRIPT = (
     'echo "uv 0.0.0-fake"\n'
     "exit 0\n"
 )
+# MIGRATED at CR-MDB-047 C1 RED (§S1 version floor): a fake standing for a
+# present Sandesh answers `--version` like the real CLI, at the 0.4.0 floor.
 _FAKE_SANDESH_SCRIPT = (
     "#!/bin/sh\n"
-    'echo "sandesh-relay 0.0.0-fake"\n'
+    'echo "sandesh 0.4.0"\n'
     "exit 0\n"
 )
 

@@ -96,6 +96,9 @@ _FAKE_UV = (
     "exit 0\n"
 )
 _FAKE_TOOL = "#!/bin/sh\necho fake\nexit 0\n"
+# MIGRATED at CR-MDB-047 C1 RED (§S1 version floor): a fake standing for a
+# present Sandesh answers `--version` like the real CLI, at the 0.4.0 floor.
+_FAKE_SANDESH = "#!/bin/sh\necho 'sandesh 0.4.0'\nexit 0\n"
 
 
 class _PruneSandboxCase(unittest.TestCase):
@@ -117,8 +120,8 @@ class _PruneSandboxCase(unittest.TestCase):
         make_home(self.home, crucible_manifest=False)
         make_provisioned_agent_dir(self.agent_dir)
         _write_exe(self.bin_dir, "uv", _FAKE_UV)
-        for name in ("sandesh", "pi"):
-            _write_exe(self.bin_dir, name, _FAKE_TOOL)
+        _write_exe(self.bin_dir, "sandesh", _FAKE_SANDESH)
+        _write_exe(self.bin_dir, "pi", _FAKE_TOOL)
         self.addCleanup(shutil.rmtree, self._root, True)
 
     # -- runners ----------------------------------------------------------

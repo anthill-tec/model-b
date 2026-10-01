@@ -1322,10 +1322,11 @@ class ScaffoldCapabilityContractTest(unittest.TestCase):
         rows = _tier1_rows()
         # Bound on the data itself: \u00a7S1 declares three tier-1 rows,
         # CR-MDB-029 \u00a7S3 adds the fourth, ``watcher``, and CR-MDB-045 \u00a7S1
-        # the fifth, ``sandesh-pi`` (MIGRATED at CR-MDB-045 C1 RED).
+        # the fifth, ``sandesh-pi`` (MIGRATED at CR-MDB-045 C1 RED); CR-MDB-047
+        # \u00a7S1 renames ``watcher`` to ``worktree`` (MIGRATED at CR-MDB-047 C1 RED).
         self.assertEqual(
             sorted(r["id"] for r in rows),
-            ["dispatch", "lean-ctx", "permissions", "sandesh-pi", "watcher"],
+            ["dispatch", "lean-ctx", "permissions", "sandesh-pi", "worktree"],
             f"requirements data drifted from \u00a7S1's tier-1 table: {rows!r}",
         )
         for row in rows:

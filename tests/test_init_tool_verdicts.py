@@ -3,10 +3,10 @@
 
 - §S1 — ``REQUIREMENTS`` declares Sandesh's own Pi extension as the tier-1
   ``sandesh-pi`` row: provider ``@anthill-tec/sandesh-pi``, probe
-  ``pi-package``, policy ``recommended``, remediation
-  ``pi install npm:@anthill-tec/sandesh-pi``. A ``--yes`` installer run never
-  installs it (a third-party package) and records its verdict in
-  ``[capabilities]`` like any other tier-1 row.
+  ``pi-package``, policy ``required`` since CR-MDB-047 §S1 (was
+  ``recommended``), remediation ``pi install npm:@anthill-tec/sandesh-pi``. A
+  ``--yes`` installer run never installs it (a third-party package) and
+  records its verdict in ``[capabilities]`` like any other tier-1 row.
 - §S2 — ``run_init`` reads the verdicts ``install.toml`` records and never
   probes. ``detected``/``installed`` count as present; a missing verdict —
   including an ``install.toml`` without ``[capabilities]`` — counts as
@@ -53,6 +53,7 @@ from modelb_axi.requirements import REQUIREMENTS, STACK_TOOLCHAINS
 from tests._helpers import decode_axi, parse_env_file, run_module, write_executable
 from tests.pi_capability_sandbox import (
     AGENT_DIR_ENV,
+    fake_sandesh,
     make_agent_dir,
     make_home,
     make_provisioned_agent_dir,
@@ -71,9 +72,10 @@ PRESENT, ABSENT, UNKNOWN = "present", "absent", "unknown"
 
 #: The rows every project's ``tools`` map carries (scope ``always``), tier 1
 #: then tier 2, as §S1 leaves them: the five Pi extensions, then uv, Sandesh,
-#: Crucible and the PATH tools.
-TIER1_IDS = ("dispatch", "lean-ctx", "permissions", "watcher", SANDESH_PI_ID)
-ALWAYS_TIER2_IDS = ("uv", "sandesh", "crucible", "python3", "bash", "gh", "jq")
+#: Crucible and the PATH tools. MIGRATED at CR-MDB-047 C1 RED (§S1): the
+#: ``watcher`` row is ``worktree``, and ``direnv`` is a tier-2 PATH tool.
+TIER1_IDS = ("dispatch", "lean-ctx", "permissions", "worktree", SANDESH_PI_ID)
+ALWAYS_TIER2_IDS = ("uv", "sandesh", "crucible", "python3", "bash", "gh", "jq", "direnv")
 #: The stack-scoped rows, judged for the project's own stacks.
 STACK_ROW_IDS = ("crucible-client", "toolchain")
 #: Every key the ``tools`` field carries for a one-stack project — exactly these.
@@ -130,7 +132,7 @@ def _install_toml_text(home: Path, capabilities: dict | None, deps: dict) -> str
 
 class SandeshPiRequirementRowTest(unittest.TestCase):
     """§S1 AC (first half): ``REQUIREMENTS`` declares ``sandesh-pi`` as a
-    tier-1, recommended ``pi-package`` row, exactly once."""
+    tier-1 ``pi-package`` row, exactly once — required since CR-MDB-047 §S1."""
 
     def _row(self) -> dict:
         rows = [r for r in REQUIREMENTS if r.get("id") == SANDESH_PI_ID]
@@ -139,11 +141,13 @@ class SandeshPiRequirementRowTest(unittest.TestCase):
                          f"{[r.get('id') for r in REQUIREMENTS]!r}")
         return rows[0]
 
-    def test_sandesh_pi_is_a_tier1_recommended_pi_package_row_provided_by_its_npm_package(self):
+    def test_sandesh_pi_is_a_tier1_required_pi_package_row_provided_by_its_npm_package(self):
+        # MIGRATED at CR-MDB-047 C1 RED (§S1: policy `required`, was
+        # `recommended`); was test_sandesh_pi_is_a_tier1_recommended_pi_package_row_...
         row = self._row()
         self.assertEqual(
             (row["tier"], row["provider"], row["probe"], row["policy"]),
-            (1, SANDESH_PI_PACKAGE, "pi-package", "recommended"),
+            (1, SANDESH_PI_PACKAGE, "pi-package", "required"),
             row,
         )
 
@@ -174,7 +178,8 @@ class SandeshPiInstallerVerdictTest(unittest.TestCase):
             path.mkdir(parents=True)
         self.home = make_home(self.root / "home", crucible_manifest=False)
         write_executable(self.bin_dir, "uv", _FAKE_UV)
-        write_executable(self.bin_dir, "sandesh", _FAKE_OK)
+        # MIGRATED at CR-MDB-047 C1 RED (§S1 version floor): a current sandesh.
+        write_executable(self.bin_dir, "sandesh", fake_sandesh())
         write_executable(self.bin_dir, "python3", _FAKE_OK)
         write_executable(self.bin_dir, "pi", (
             "#!/bin/sh\n"
@@ -182,7 +187,7 @@ class SandeshPiInstallerVerdictTest(unittest.TestCase):
             "exit 0\n"
         ))
 
-    def _run_yes(self) -> subprocess.CompletedProcess:
+    def _run_yes(self, *extra: str) -> subprocess.CompletedProcess:
         env = dict(os.environ)
         env.pop("MODELB_TARGET_ROOT", None)
         existing = env.get("PYTHONPATH", "")
@@ -200,7 +205,7 @@ class SandeshPiInstallerVerdictTest(unittest.TestCase):
         return subprocess.run(
             [sys.executable, "-m", "modelb_axi", "--yes",
              "--harnesses", "pi", "--modelb-home", str(self.modelb_home),
-             "--target-root", str(self.target_root), "--stacks", STACK],
+             "--target-root", str(self.target_root), "--stacks", STACK, *extra],
             capture_output=True, text=True, timeout=90,
             stdin=subprocess.DEVNULL, env=env,
         )
@@ -215,12 +220,15 @@ class SandeshPiInstallerVerdictTest(unittest.TestCase):
             return tomllib.load(fh).get("capabilities", {})
 
     def test_yes_never_installs_an_absent_sandesh_pi_and_records_it_absent(self):
+        # MIGRATED at CR-MDB-047 C1 RED (§S1: sandesh-pi is required, so only
+        # --allow-missing-capabilities lets the run proceed and record it; the
+        # failing pre-flight is pinned by tests.test_installer_sandesh_requirements).
         make_provisioned_agent_dir(self.agent_dir, omit=(SANDESH_PI_ID,))
         settings_before = (self.agent_dir / "settings.json").read_bytes()
-        result = self._run_yes()
+        result = self._run_yes("--allow-missing-capabilities")
         axi = decode_axi(result.stdout)
         self.assertEqual((result.returncode, axi.get("outcome")), (0, "installed"),
-                         f"recommended: an absent sandesh-pi never fails the run; "
+                         f"the override lets an absent sandesh-pi proceed; "
                          f"stderr={result.stderr!r}")
         self.assertEqual(self._pi_runs(), [],
                          "--yes never runs a third-party `pi install`; nothing else is "
@@ -324,11 +332,12 @@ class InitToolsEnvelopeTest(_InitSandboxCase):
 
     def test_installed_counts_as_present(self):
         verdicts = _complete_verdicts("detected")
-        for key in ("watcher", "sandesh", f"{STACK}.xmlrunner", f"{STACK}.client"):
+        # MIGRATED at CR-MDB-047 C1 RED (§S1: watcher -> worktree).
+        for key in ("worktree", "sandesh", f"{STACK}.xmlrunner", f"{STACK}.client"):
             verdicts[key] = "installed"
         self.write_install(verdicts)
         tools, _err = self.tools_of(self.root / "proj")
-        for tool in ("watcher", "sandesh", "toolchain", "crucible-client"):
+        for tool in ("worktree", "sandesh", "toolchain", "crucible-client"):
             with self.subTest(tool=tool):
                 self.assertEqual(tools.get(tool), PRESENT, tools)
 
@@ -437,7 +446,7 @@ class InitUnknownVerdictsTest(_InitSandboxCase):
     def test_an_install_toml_without_capabilities_gives_unknown_for_the_extensions(self):
         self.write_install(None)
         tools, err = self.tools_of(self.root / "proj")
-        never_recorded = TIER1_IDS + ("python3", "bash", "gh", "jq") + STACK_ROW_IDS
+        never_recorded = TIER1_IDS + ("python3", "bash", "gh", "jq", "direnv") + STACK_ROW_IDS
         self.assertEqual({k: tools.get(k) for k in never_recorded},
                          dict.fromkeys(never_recorded, UNKNOWN),
                          f"§S2: no [capabilities] means no verdict; tools={tools!r}")

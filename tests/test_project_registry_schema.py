@@ -55,7 +55,7 @@ from modelb_axi import cli as _cli
 from modelb_axi import permission_policy as _permission_policy
 from modelb_axi import scaffold
 from modelb_axi.hooks import compile_wiring
-from tests._helpers import at_line, decode_axi, installed_crucible_file, parse_env_file
+from tests._helpers import at_line, decode_axi, installed_crucible_file, md_section, parse_env_file
 from tests._helpers import run_module, write_install_toml
 # The sibling grep gate's provenance exemption (imported as a module so its
 # TestCase classes are not re-collected here).
@@ -66,11 +66,12 @@ SCHEMA_PATH = REPO_ROOT / "modelb_axi" / "project_schema.toml"
 SCHEMA_WHEEL_MEMBER = "modelb_axi/project_schema.toml"
 
 #: The keys the schema declares — exactly these: §S1's eight, plus CR-MDB-045
-#: §S4's lean-ctx ``KNOWLEDGE_CATEGORY`` (MIGRATED at CR-MDB-045 C2 RED).
+#: §S4's lean-ctx ``KNOWLEDGE_CATEGORY`` (MIGRATED at CR-MDB-045 C2 RED), plus
+#: CR-MDB-047 §S2's ``SANDESH_ADDRESS`` (MIGRATED at CR-MDB-047 C1 RED).
 SCHEMA_KEYS = frozenset({
     "PROJECT_NAME", "PROJECT_TOKEN", "PROJECT_ACRONYM", "ORCHESTRATOR_LABEL",
     "REPO_OWNER", "PROJECT_STACKS", "CRUCIBLE_PROJECT_KEY", "SANDESH_PROJECT",
-    "KNOWLEDGE_CATEGORY",
+    "KNOWLEDGE_CATEGORY", "SANDESH_ADDRESS",
 })
 
 #: Every §S1 field; nothing else may appear in an entry (no value, no default:
@@ -104,7 +105,8 @@ NON_REGISTRY_INIT_FLAGS = frozenset({
 # The scaffold inputs every byte-identity golden below is derived from.
 NAME, TOKEN, ACRONYM, OWNER, STACKS = "My Project", "myproj", "MYP", "tester", "python"
 DERIVED_SANDESH = "MyProject"
-
+#: The line CR-MDB-047 \u00a7S2 adds to every `.env` init writes (its AC's literal form).
+ADDRESS_LINE = f'SANDESH_ADDRESS="Mainline - {DERIVED_SANDESH}"\n'
 #: What `.env.local`'s comment must no longer say: the overlay is not where the
 #: Crucible project key is filled (it moved to `.env`, CR-MDB-043 §S1/§S2).
 _ENV_LOCAL_KEY_HINT_RE = re.compile(
@@ -211,6 +213,22 @@ def _without_keys(text: str, *keys: str) -> str:
         line for line in text.splitlines(keepends=True)
         if not line.startswith(tuple(k + "=" for k in keys))
     )
+
+
+def _outside_section(text: str, heading_prefix: str) -> str:
+    """``text`` without the ``## `` section whose heading starts with
+    ``heading_prefix`` (the heading line and its body, up to the next ``## ``)."""
+    out: list[str] = []
+    inside = False
+    for line in text.splitlines(keepends=True):
+        if line.startswith(heading_prefix):
+            inside = True
+            continue
+        if inside and line.startswith("## "):
+            inside = False
+        if not inside:
+            out.append(line)
+    return "".join(out)
 
 
 # ------------------------------------------------------------------ goldens ----
@@ -715,7 +733,11 @@ class _Shared:
             return path.read_text(encoding="utf-8")
 
         def test_root_env_is_todays_plus_sandesh_project_and_the_project_key(self):
+            # MIGRATED at CR-MDB-047 C1 RED (§S2): the root .env also carries
+            # SANDESH_ADDRESS, derived from SANDESH_PROJECT.
             text = self._read(".env")
+            self.assertEqual(_key_lines(text, "SANDESH_ADDRESS"), [ADDRESS_LINE],
+                             f"CR-MDB-047 §S2: the Mainline address; .env={text!r}")
             self.assertEqual(
                 _key_lines(text, "SANDESH_PROJECT"), [f"SANDESH_PROJECT={DERIVED_SANDESH}\n"],
                 f"§S2/AC: SANDESH_PROJECT defaults to PROJECT_NAME without whitespace; .env={text!r}",
@@ -725,7 +747,7 @@ class _Shared:
                 f"§S2/AC: CRUCIBLE_PROJECT_KEY= is rendered empty in the root .env; .env={text!r}",
             )
             self.assertEqual(
-                _without_keys(text, "SANDESH_PROJECT", "CRUCIBLE_PROJECT_KEY"),
+                _without_keys(text, "SANDESH_PROJECT", "CRUCIBLE_PROJECT_KEY", "SANDESH_ADDRESS"),
                 _golden_env(self.LABEL, with_stacks=True),
                 "§S2/AC: every other root .env line is today's, in today's order",
             )
@@ -755,13 +777,26 @@ class _Shared:
             )
 
         def test_queue_readme_differs_only_in_the_project_key_setup_task(self):
-            actual = self._read("docs/changes/README.md").splitlines(keepends=True)
-            golden = _golden_readme(self.LABEL, self.MODE, self._today).splitlines(keepends=True)
-            index = golden.index(GOLDEN_KEY_TASK + "\n")
-            self.assertEqual(len(actual), len(golden), f"README={''.join(actual)!r}")
-            self.assertEqual(actual[:index] + actual[index + 1:], golden[:index] + golden[index + 1:])
-            task = actual[index]
-            self.assertTrue(task.startswith("- [ ] Register the project in Crucible"), task)
+            # MIGRATED at CR-MDB-047 C1 RED (§S2): the Sandesh setup task now
+            # also names direnv, `direnv allow` and the Track launch line (pinned
+            # by tests.test_init_sandesh_address_and_envrc), in a form the spec
+            # leaves open — so the README is compared outside its setup tasks,
+            # and inside them today's other tasks are kept in order.
+            actual_text = self._read("docs/changes/README.md")
+            golden_text = _golden_readme(self.LABEL, self.MODE, self._today)
+            head = "## Setup tasks"
+            self.assertEqual(_outside_section(actual_text, head),
+                             _outside_section(golden_text, head),
+                             "the README outside its setup tasks is today's")
+            actual = md_section(actual_text, head).splitlines(keepends=False)
+            golden = md_section(golden_text, head).splitlines(keepends=False)
+            kept = [ln for ln in golden if ln != GOLDEN_KEY_TASK and "Sandesh setup" not in ln]
+            remaining = iter(actual)
+            self.assertEqual([ln for ln in kept if not any(ln == seen for seen in remaining)], [],
+                             f"today's other setup tasks are kept, in order; README={actual_text!r}")
+            tasks = [ln for ln in actual if ln.startswith("- [ ] Register the project in Crucible")]
+            self.assertEqual(len(tasks), 1, actual_text)
+            task = tasks[0]
             self.assertIn("`.env`", task, "§S2: the setup task names `.env` for the key")
             self.assertIn("CRUCIBLE_PROJECT_KEY", task)
             self.assertNotIn(".env.local", task, "§S2: the key no longer goes to .env.local")
@@ -826,12 +861,13 @@ class _Shared:
 
         def test_the_emitted_file_set_is_todays(self):
             """Regression pin (passes before GREEN): no file added or dropped."""
+            # MIGRATED at CR-MDB-047 C1 RED (§S2): an `.envrc` beside every `.env`.
             expected = set(self._reference) | {
                 ".env", ".env.local", ".gitignore", "AGENTS.md",
-                "docs/changes/README.md", "docs/memory/INDEX.md",
+                "docs/changes/README.md", "docs/memory/INDEX.md", ".envrc",
             }
             for sub in self.SUBS:
-                expected |= {f"{sub}/.env", f"{sub}/AGENTS.md"}
+                expected |= {f"{sub}/.env", f"{sub}/AGENTS.md", f"{sub}/.envrc"}
             self.assertEqual(_emitted_files(self._target), expected)
 
 
@@ -859,7 +895,9 @@ class SoloMonorepoInitAgainstTodayTest(_Shared.InitAgainstToday):
                                  f"§S2: SANDESH_PROJECT per its scope ({scope}); {sub}/.env={text!r}")
                 self.assertEqual(_key_lines(text, "CRUCIBLE_PROJECT_KEY"), [],
                                  "§S1: the project key is root-scoped")
-                self.assertEqual(_without_keys(text, "SANDESH_PROJECT"),
+                self.assertEqual(_key_lines(text, "SANDESH_ADDRESS"), [ADDRESS_LINE],
+                                 f"CR-MDB-047 §S2: the sub-project's address; {sub}/.env={text!r}")
+                self.assertEqual(_without_keys(text, "SANDESH_PROJECT", "SANDESH_ADDRESS"),
                                  _golden_env(self.LABEL, with_stacks=False))
 
 
