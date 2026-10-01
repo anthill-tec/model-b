@@ -792,7 +792,7 @@ the shell boundary, and Model B owns it through direnv:
   call, with start, status and stop verbs that default to `$SANDESH_ADDRESS` and `$SANDESH_PROJECT`.
   It arms at session start only under `SANDESH_AUTOSTART=1`. Model B leaves that unset.
 - **Bootstrap starts it.** Bootstrap registers the role's address, then starts the watcher for it,
-  then confirms with `status` (listening, unread, watcher running).
+  passing the address explicitly, then confirms it is listening from the toon addressbook.
 - **sandesh-pi supervises the watcher:**
   - after mail, it injects a turn naming the ids and relaunches;
   - it retries once when the watcher is already running elsewhere;
@@ -802,8 +802,10 @@ the shell boundary, and Model B owns it through direnv:
   again or reports why it can't.
 - **Shutdown** stops the watcher by its address, then unregisters it.
 - **Liveness is read from machine output:**
-  - an orchestrator reads its own liveness from `sandesh status`;
-  - it reads others' from `sandesh addressbook --format toon --fields address,status,listening`;
+  - an orchestrator reads its own liveness, and others', from `sandesh addressbook --format toon
+    --fields address,status,listening`, for the role's address passed explicitly. `sandesh status`
+    follows `$SANDESH_ADDRESS`, which direnv sets to the Mainline address in every session started from
+    the directory, so a Track can't use it for its own liveness;
   - never from the human table.
 - **Version floor.** sandesh-pi refuses a `sandesh` CLI older than 0.4.0, so the installer's
   `sandesh` probe carries that floor, with `uv tool upgrade sandesh-relay` as the remediation.
