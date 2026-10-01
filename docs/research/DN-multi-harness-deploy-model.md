@@ -767,7 +767,8 @@ eviction or a duplicate. It is every Model B project's wake loop:
 parses `.env`: sandesh-pi, modelb-pi, `modelb-axi`, Crucible's clients, `gh`. Loading happens once, at
 the shell boundary, and Model B owns it through direnv:
 - **`init`** writes an `.envrc` containing `dotenv` next to the `.env` it already writes. The
-  `.envrc` is committed, since it holds no secrets; the `.env` stays gitignored.
+  `.envrc` is committed, since it holds no secrets. The `.env` is handled as `init` already handles
+  it, and every value in it that contains whitespace is quoted, so direnv's dotenv parser accepts it.
 - **The registry** carries `SANDESH_ADDRESS`, the Mainline address by default.
 - **Loading.** `cd` into the project exports the registry, and Pi, every extension, every sub-agent
   shell and every CLI inherit it. `cd` out unloads it.
@@ -798,8 +799,8 @@ the shell boundary, and Model B owns it through direnv:
   - it retries once when the watcher is already running elsewhere;
   - it stops with a notice on exit 1, 3 (tombstoned) or 4 (evicted).
 
-  The orchestrator only fetches. On a stop notice it checks `status`, and either starts the watcher
-  again or reports why it can't.
+  The orchestrator only fetches. On a stop notice it re-checks its liveness from the toon
+  addressbook, and either starts the watcher again or reports why it can't.
 - **Shutdown** stops the watcher by its address, then unregisters it.
 - **Liveness is read from machine output:**
   - an orchestrator reads its own liveness, and others', from `sandesh addressbook --format toon

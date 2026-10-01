@@ -48,7 +48,8 @@ and fails on fish.
 ### §S1 — The installer (`modelb_axi/requirements.py`, `preflight.py`)
 
 - **`sandesh-pi` row:** tier 1, policy `required` (was `recommended`). `--yes` still never installs a
-  third-party package.
+  third-party package. The `sandesh` CLI row is `required` too, since sandesh-pi refuses a missing
+  or outdated CLI.
 - **The `watcher` row** becomes the `worktree` row:
   - same provider (`@anthill-tec/modelb-pi`), same `--yes` install, same policy;
   - its `tools` drop `sandesh_watcher`, keeping `modelb_worktree_enter` and `_exit`;
@@ -56,12 +57,15 @@ and fails on fish.
     `install.toml` written before this CR still reports it.
 - **`sandesh` version floor.** The `sandesh` probe runs `sandesh --version`. A version below 0.4.0
   gets the verdict `outdated`:
-  - it is reported like `absent`, with the remediation `uv tool upgrade sandesh-relay`;
+  - it is reported like `absent`, with the remediation `uv tool upgrade sandesh-relay`. An
+    unreadable version gets the same verdict, and its warning says the floor can't be confirmed and
+    names upgrading or reinstalling;
   - it is recorded in `[deps]`;
   - `init` reads it as not present.
 - **direnv** is declared a tier-2 `path` probe, policy `recommended`. Its remediation names
   installing direnv and its shell hook (`direnv hook fish | source`, or `eval "$(direnv hook bash)"`).
-  The hook is not probed.
+  The hook is not probed. Its absent-warning says what stops working: the project's `.env`, including
+  its wake identity, is not loaded into the environment.
 
 ### §S2 — `modelb-axi init` (`modelb_axi/scaffold.py`, `project_schema.toml`)
 
@@ -70,6 +74,8 @@ and fails on fish.
   - derived as `Mainline - <SANDESH_PROJECT>`, so a monorepo sub-project derives from its own
     `SANDESH_PROJECT`;
   - validated as non-empty;
+- **Quoting.** Every value `init` writes to a `.env` that contains whitespace is double-quoted,
+  whatever its source, so direnv's dotenv parser accepts the file.
   - readers: bootstrap, shutdown, and Sandesh's Pi extension (the environment).
 - **`.envrc`:** `init` writes `dotenv` next to every `.env` it writes, root and each sub-project,
   atomically. The file is committed and is not gitignored. A dry run lists it. A run that finds an
@@ -98,7 +104,10 @@ Sandesh extension". They may name its `/sandesh-watcher` command, but name no ha
   - It gives the remediation: load direnv, or relaunch with the override.
   - It does not stop: it carries on with the role's address passed explicitly.
 - **Register and start.** It registers the address with the CLI when the addressbook shows it absent
-  or inactive. It then starts Sandesh's wake watcher for that address and project, passed explicitly.
+  or inactive. It then always starts Sandesh's wake watcher for that address and project, passed
+  explicitly. The start is idempotent. An address the addressbook already shows listening may be held
+  by a stale watcher or another session, so bootstrap starts the watcher anyway. It checks the
+  in-session watcher with `/sandesh-watcher status`.
 - **Confirm.** It confirms with `sandesh addressbook --project <Project> --format toon --fields
   address,status,listening`: the address `active` and listening. It reads the Tracks' or Mainline's
   liveness the same way. It never reads the human table.
@@ -110,7 +119,19 @@ Sandesh extension". They may name its `/sandesh-watcher` command, but name no ha
   never relaunches anything;
 - on a stop notice it re-checks its liveness;
 - it starts the watcher again once for exit 1 or a signal;
-- it reports a tombstone (3) or an eviction (4): Mainline to the user, a Track to Mainline.
+- it reports a tombstone (3) or an eviction (4): Mainline to the user, a Track to Mainline;
+- a second exit 5 in a row stops the loop quietly, with no notice, so the in-session check is
+  bootstrap's confirmation, not a notice.
+
+**A project scaffolded before this CR:** bootstrap's remediation for a missing `SANDESH_ADDRESS` or
+`.envrc` is to add them by hand. It never says to re-run `modelb-axi init`, which overwrites a
+project's existing files.
+
+**Solo** follows Mainline, wake included: it registers, starts and stops its own watcher. Only the
+Track machinery (dispatching to Tracks, collecting their acks) is inert for Solo.
+
+**The `git-workflow` skill's Pi-package release step** checks that the worktree extension loads,
+not a watcher.
 
 **Removed:** the relaunch-on-exit rule, the plain background `sandesh notify` fallback, and every
 mention of the Model B watcher and `/watcher`.
@@ -138,7 +159,11 @@ The contract records Sandesh 0.4.0 as Model B relies on it:
 - the version floor;
 - `status` and `--format toon`;
 - the notify exit table, as sandesh-pi's supervision treats it;
-- that only the extension starts the supervised watcher.
+- that only the extension starts the supervised watcher;
+- every exit, including 2 (timeout, relaunched silently) and a signal.
+
+**The retired tests are listed:** every test class and module this CR retires or migrates is named
+in a test module's docstring.
 
 ## Acceptance criteria
 
@@ -159,6 +184,10 @@ The contract records Sandesh 0.4.0 as Model B relies on it:
       - It writes `.envrc` containing exactly `dotenv\n` beside each one, not gitignored, listed by
         `--dry-run`.
       - A pre-existing `.envrc` with other content is left alone and reported.
+- [ ] **Quoting.** Every whitespace-containing value in a scaffolded `.env` is double-quoted. A test
+      parses the scaffolded `.env` (standalone and monorepo, with a name containing a space) with a
+      dotenv grammar compatible with direnv's and gets every key. The `sandesh` CLI row is `required`.
+      The unreadable-version warning and direnv's absent-warning state what §S1 gives them.
 - [ ] **The setup task** names direnv, its hook, `direnv allow`, and the Track launch line. The
       identity section names `SANDESH_ADDRESS`.
 - [ ] **Bootstrap:**
@@ -173,15 +202,22 @@ The contract records Sandesh 0.4.0 as Model B relies on it:
       background `sandesh notify` launch, or a harness tool name. The CR-026 and CR-020 gates hold,
       or are migrated with each migration listed.
 - [ ] **Shutdown** stops the watcher by address, then unregisters, as its final step.
+- [ ] **Bootstrap always starts the watcher**, with no skip on an address already listening, and checks
+      it with `/sandesh-watcher status`. The exit-5 row says a second exit 5 stops quietly. The
+      older-project remediation says to add the keys by hand and never says to re-run `init`. Solo
+      follows Mainline for its own watcher in both skills. `git-workflow`'s Pi-package release step
+      names the worktree extension, not a watcher.
 - [ ] **After a wake,** the skills say: fetch only; on a stop notice, one restart for exit 1 or a
       signal; report exits 3 and 4.
 - [ ] **`sandesh.md` and the orchestration files** agree with bootstrap and shutdown. Each line that
       changed is checked by a test.
 - [ ] **The Pi package.** `pi-package/` has no `sandesh-watcher.ts`, and `package.json` lists only
-      `worktree.ts`. The tests of the removed extension are retired, and each is listed. The worktree
+      `worktree.ts`. The tests of the removed extension are retired, and each is listed by id in a
+      test module's docstring. The worktree
       extension's tests still pass.
 - [ ] **Docs and contract.** The install guide and the generated package README match §S4, and
-      `build.py --check` is clean. `contracts/sandesh-cli.md` records §S5.
+      `build.py --check` is clean. `contracts/sandesh-cli.md` records §S5, exits 2 and a signal included. No source comment carries a
+      literal `\u` escape.
 - [ ] **No test reads the real `~/.pi`, `install.toml` or `sandesh` binary for the new behaviour.**
       The suite baselines are re-measured in `AGENTS.md`.
 
@@ -191,5 +227,6 @@ The contract records Sandesh 0.4.0 as Model B relies on it:
 - `SANDESH_AUTOSTART`: Model B leaves it unset, and bootstrap starts the watcher.
 - Writing the user's shell configuration, or running `direnv allow` for the user.
 - Projects scaffolded before this CR: bootstrap works without their `SANDESH_ADDRESS` or `.envrc`,
-  and names the remediation (re-run `init`, or add them).
+  and names adding them by hand as the remediation.
+- An ownership guard for `init` over a project's existing `.env` and `AGENTS.md`.
 - The queue README's retirement (CR-MDB-048).
