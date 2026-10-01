@@ -141,7 +141,7 @@ minimum:
    - **When the environment disagrees** — `$SANDESH_ADDRESS` is unset, or names another
      address than your role's — say so in your status.
    - For a Track this usually means the session was launched without its
-     `env SANDESH_ADDRESS="Track <N> - <Project>" pi` override: direnv exports the Mainline
+     `env SANDESH_ADDRESS="<your Track address>" pi` override: direnv exports the Mainline
      address in every session started from the project directory.
    - The remediation: load direnv (`direnv allow` where the `.envrc` is), or relaunch the
      session with the override. A project scaffolded without `SANDESH_ADDRESS` or `.envrc`

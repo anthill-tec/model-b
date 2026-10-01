@@ -18,7 +18,7 @@ The `sandesh` CLI carries the VERBS (`send`/`reply`/`fetch`/`inbox`/`register`/`
 
 Every `sandesh` call passes `--project <Project>` explicitly. Read liveness from those toon fields, never from the human table.
 
-## After a wake — fetch only; answer a stop notice
+## PRIME DIRECTIVE — after a wake, fetch only; answer a stop notice
 After a wake you only fetch the named ids (`sandesh fetch --project <Project> --to '<your address>'`) and never relaunch anything: the extension keeps the watcher running.
 
 On a stop notice, re-check your liveness with the toon addressbook, then answer the exit it names. Sandesh's wake watcher, as the extension supervises it (`sandesh notify --help` is Sandesh's authority for the exit reasons):
