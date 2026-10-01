@@ -31,8 +31,9 @@ Orchestrator rulings (2026-09-24, on the cycle-111 RED design):
   :data:`HARNESS_HOME_PATH`.
 - Q1 \u2014 this cycle pins only the agreement between ``pi.extensions`` and
   the files under ``pi-package/extensions/`` (a missing or empty directory
-  counts as an empty list); the exact ``["extensions/sandesh-watcher.ts"]``
-  pin belongs to the extension's own cycle.
+  counts as an empty list); the exact ``["extensions/worktree.ts"]``
+  pin (CR-MDB-047 \u00a7S4: ``sandesh-watcher.ts`` removed) belongs to the
+  extension's own cycle.
 - Q2 \u2014 ``version`` is the npm-semver form of ``modelb_axi.__version__``
   (a PEP 440 ``0.1.0.dev0`` is not valid npm semver): ``X.Y.Z`` unchanged;
   ``X.Y.Z.devN`` \u2192 ``X.Y.Z-dev.N``; ``X.Y.ZaN``/``bN``/``rcN`` \u2192
@@ -68,6 +69,14 @@ PEER_DEPENDENCIES = {"@earendil-works/pi-coding-agent": "*"}
 #: A ``.claude`` or ``.omp`` path segment (``~/.claude``, ``$HOME/.omp/x``,
 #: ``.claude/settings.json``); ``claude-code`` does not match (ruling D5).
 HARNESS_HOME_PATH = re.compile(r"(?<![\w-])\.(claude|omp)(?![\w-])")
+
+#: CR-MDB-047 \u00a7S4 \u2014 the retired Model B watcher: its tool, its command
+#: registration, and its ``/watcher`` command (never Sandesh's ``/sandesh-watcher``).
+WATCHER_MARKERS = (
+    re.compile(r"sandesh_watcher"),
+    re.compile(r"registerCommand\(\s*['\"]watcher['\"]"),
+    re.compile(r"/watcher\b"),
+)
 
 #: The semver 2.0.0 grammar (semver.org, the suggested regular expression).
 SEMVER_RE = re.compile(
@@ -212,24 +221,47 @@ class PiPackageManifestTest(unittest.TestCase):
             "pi.extensions must list exactly the files under pi-package/extensions/",
         )
 
-    def test_pi_manifest_extensions_are_exactly_the_sandesh_watcher_and_the_worktree_extension(self):
+    def test_pi_manifest_extensions_are_exactly_the_worktree_extension(self):
         # Ruling Q1 (cycle 111) moved this exact pin to the extension's own
         # cycle (C2, cycle 112); orchestrator ruling H adds it here without
         # migrating the agreement test above. MIGRATED at CR-MDB-039 C1 RED
-        # (S1: pi-package/extensions/worktree.ts, listed in pi.extensions);
-        # was test_pi_manifest_extensions_are_exactly_the_sandesh_watcher.
+        # (S1: pi-package/extensions/worktree.ts, listed in pi.extensions),
+        # then at CR-MDB-047 C2 RED (\u00a7S4: sandesh-watcher.ts is removed;
+        # package.json lists only worktree.ts); was
+        # test_pi_manifest_extensions_are_exactly_the_sandesh_watcher_and_the_worktree_extension.
         pi = _manifest().get("pi")
         self.assertIsInstance(pi, dict, f"package.json 'pi' must be an object, got {pi!r}")
         assert isinstance(pi, dict)
-        self.assertEqual(
-            sorted(pi.get("extensions") or []),
-            ["extensions/sandesh-watcher.ts", "extensions/worktree.ts"],
+        self.assertEqual(sorted(pi.get("extensions") or []), ["extensions/worktree.ts"])
+        self.assertTrue((EXTENSIONS_DIR / "worktree.ts").is_file(), "pi-package/extensions/worktree.ts must exist")
+        self.assertFalse(
+            (EXTENSIONS_DIR / "sandesh-watcher.ts").exists(),
+            "\u00a7S4: pi-package/extensions/sandesh-watcher.ts is removed",
         )
-        for name in ("sandesh-watcher.ts", "worktree.ts"):
-            self.assertTrue(
-                (EXTENSIONS_DIR / name).is_file(),
-                f"pi-package/extensions/{name} must exist",
-            )
+
+    def test_no_package_file_carries_the_model_b_watcher(self):
+        # CR-MDB-047 \u00a7S4: the Model B watcher (its `sandesh_watcher` tool and its
+        # `/watcher` command) is gone from the package; Sandesh's own extension
+        # provides the wake (`/sandesh-watcher` is Sandesh's, not this package's).
+        offending = []
+        for path in _package_files():
+            text = path.read_text(encoding="utf-8", errors="replace")
+            rel = path.relative_to(PI_PACKAGE).as_posix()
+            for pattern in WATCHER_MARKERS:
+                if pattern.search(text):
+                    offending.append(f"{rel}: {pattern.pattern}")
+        self.assertEqual(offending, [], f"the Model B watcher remains in pi-package/: {offending}")
+
+    def test_watcher_marker_detector_bites_and_spares_sandeshs_command(self):
+        violating = (
+            'pi.registerTool({ name: "sandesh_watcher" });',
+            'pi.registerCommand("watcher", { handler });',
+            "Run `/watcher status` to list them.",
+        )
+        for text in violating:
+            self.assertTrue(any(p.search(text) for p in WATCHER_MARKERS), text)
+        for text in ('pi.registerCommand("worktree", {});', "Use `/sandesh-watcher stop <your address>`."):
+            self.assertFalse(any(p.search(text) for p in WATCHER_MARKERS), text)
 
     def test_package_carries_no_skills_directory(self):
         self.assertTrue(PI_PACKAGE.is_dir(), f"{PI_PACKAGE} must exist")
