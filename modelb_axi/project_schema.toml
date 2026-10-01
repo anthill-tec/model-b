@@ -126,3 +126,15 @@ inputs = ["PROJECT_TOKEN"]
 override = "--knowledge-category"
 validate = "kebab_id"
 readers = ["modelb-axi init (the AGENTS.md lean-ctx section)", "orchestration-common § \"Memory\" (where execution knowledge is kept)", "bootstrap skill (loads the category)"]
+
+[[key]]
+name = "SANDESH_ADDRESS"
+description = "The project's Mainline Sandesh address, Mainline - <SANDESH_PROJECT>; a Track overrides it at launch."
+required = true
+file = ".env"
+scope = "root+sub"
+source = "derive"
+rule = "sandesh_address"
+inputs = ["SANDESH_PROJECT"]
+validate = "non_empty"
+readers = ["bootstrap skill (the role's address)", "shutdown skill (stops and unregisters the address)", "Sandesh's Pi extension, sandesh-pi (the wake watcher's default address, from the environment)"]
