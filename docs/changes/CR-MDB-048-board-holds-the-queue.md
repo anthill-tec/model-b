@@ -1,6 +1,6 @@
 # CR-MDB-048 — The Crucible board holds the queue and execution state; the queue README is retired
 
-**Status:** PENDING (filed 2026-09-27; gap analysis 2026-10-02; pre-review pending)
+**Status:** PENDING (filed 2026-09-27; gap analysis and pre-review 2026-10-02)
 **Type:** refactor (skills, scaffold, conventions)
 **Priority:** P1 — release 1.0.0, wave 2.
 **Depends on:** CR-MDB-046 (its gap-analysis dimensions and pre-review apply to this CR)
@@ -17,7 +17,7 @@ the orchestrator to maintain it.
 
 The Crucible board already carries everything the table does:
 - `cr-plan` records a CR's title, release and wave;
-- `cr-depends` records its dependencies, and `wave-sequence` its order;
+- `cr-depends` records its dependencies, and `wave-sequence` its order and lane;
 - `plan-file` and the `cycle-*` verbs record its plan and cycles;
 - `milestone` records its milestones, and `cr-close` its merge;
 - `cr-supersede` and `cr-void` record what replaces or ends a CR, and `release-propose` a release.
@@ -30,102 +30,154 @@ reaches the board. Model B's own README has grown to over 1,150 lines.
 ### §S1 — The skills
 
 Every skill directs the queue and the execution state to the board, and none names `queue-file`,
-a queue row or the queue README as a workflow step.
+a queue row, the Notes log or the queue README as a workflow step. **Every CR-042 triage heading in
+a file this CR edits is kept verbatim; only bodies change** — among them `cr-authoring`'s "The CR
+queue — structure only (queue idiom, 2026-07-20)", `orchestration-mainline`'s "Ownership — queue,
+CR-gen, scheduling" and "Filing/assigning a CR — COMMIT docs FIRST, schedule write LAST", and
+`bootstrap`'s "Step 3A — MAINLINE: load the queue, report to the USER".
 
-- **`crucible` skill — a queue-verbs section.** It documents `queue` (read the registered CRs),
-  `next`, `cr-plan`, `cr-depends`, `wave-sequence`, `cr-supersede`, `cr-void` and `release-propose`:
-  what each records, that each is an orchestrator verb taking `--agent`, and that `cr-plan` with no
-  `--release` lists the live proposals instead of guessing (release membership is the user's call).
+- **`crucible` skill — a queue-verbs section.** As the installed client's `--help` states them:
+  - **Read verbs, no `--agent`:** `queue` (the registered CRs) and `next` (what is actionable:
+    NEXT, HOLD or DRAINED; `--track` is required once more than one track is declared).
+  - **Write verbs, orchestrator only, each with `--agent` on the same line:**
+    - `cr-plan --cr --title --release --wave` records title, release and wave. Without `--release` or
+      `--wave` it lists the live proposals or planned waves and exits 2; it never guesses.
+    - `cr-depends --cr --on` and `wave-sequence --release --wave --crs [--track]` each **replace the
+      whole set**: adding a CR to a wave re-sends the wave's full order. `--track` assigns the wave's
+      CRs to a lane.
+    - `cr-supersede --cr --by`, `cr-void --cr --reason`, and `release-propose --label --target`.
+  - **`plan-file --release`** is the same registration as `cr-plan`, made at filing; the two are
+    not rival filing paths.
+  - **`queue-file`** is retired from the workflow. It replaces the whole board queue from a README,
+    so it is never run.
 - **`cr-authoring`:**
   - The CR row in "Document types" names the spec file and the board, not a queue README.
-  - **Filing a CR** (replacing "The CR queue — structure only"): write the spec, then `cr-plan`
-    (title, release, wave), `cr-depends` and `wave-sequence`. Allocate the next id from the board's
-    `queue` and the spec files in `docs/changes/`. Supersession and voiding use `cr-supersede` and
-    `cr-void`. When a spec's H1 changes, re-post its title with `cr-plan`, so the spec and the board
-    agree. Release membership, waves, the release boundary and "a release is not a CR" keep their
-    rules, stated against the board.
-  - **Where the rest goes:** a ruling goes to the PRD or a DN, a merge to `cr-close` and a milestone
-    label, a follow-up to a CR filed on the board. This replaces "the queue (structure + dated
-    footer Notes)" wherever the skill names it.
+  - **Under its kept heading, the queue idiom becomes filing a CR on the board:**
+    - write the spec, then `cr-plan` (title, release, wave), `cr-depends`, and `wave-sequence` with
+      the wave's full order;
+    - allocate the next id from the board's `queue` and the spec files in `docs/changes/`;
+    - supersede and void with `cr-supersede` and `cr-void`;
+    - when a spec's H1 changes, re-post its title with `cr-plan`, so the spec and the board agree;
+    - release membership stays the user's call. The first filing in a project with no release asks
+      the user for a label and a target date and records it with `release-propose`;
+    - the header slots now live in the project's `AGENTS.md`, the target release on the board;
+    - waves, the release boundary and "a release is not a CR" keep their rules, stated against the
+      board;
+    - **Crucible absent:** filing is the spec file alone, ids from the spec files. **Unregistered**
+      (empty `CRUCIBLE_PROJECT_KEY`): do the Setup section first;
+    - **a project scaffolded before this CR:** the first time, each open row of its README is filed
+      on the board with `cr-plan`; the README then stays as history.
+  - **Where the rest goes:** a ruling to the PRD or a DN, a merge to `cr-close` and a milestone label,
+    a follow-up to a CR filed on the board. This replaces "the queue (structure + dated footer
+    Notes)", "queue/PRD/DN/memory edits", "the TRACKING docs (queue + board)" and "the queue
+    default" wherever the skill names them.
   - **Closing a CR:** where board-tracking is absent, close-out is the spec's `**Status:**` flip
     alone.
   - **"CR vs task"** and **patch CRs** name filing on the board instead of a queue row.
   - **`docs/` layout:** `docs/changes/` holds the specs only.
-- **`model-b` skill:** § 1's queue idiom (item 2) states that the board holds the queue and the
-  execution state, with the specs in `docs/changes/`; the description and role table say "the
-  board's CR queue" or equivalent, never the README.
+- **`model-b` skill:** § 4 item 2 (the queue idiom) states that the board holds the queue and the
+  execution state, with the specs in `docs/changes/`; item 5 drops the release-boundary row and says
+  a release is a boundary event, not a CR; the description names the board. The role table's "CR
+  queue" is the locked ontology's term and stays.
 - **`orchestration-mainline`:** Mainline owns the board's queue (filing, `cr-depends`,
-  `wave-sequence`), not a queue README; "write spec + queue row" becomes "write the spec, file it
-  on the board".
-- **`orchestration-common`:** the design phase's edits and the GC principle name the board, not a
-  queue row.
-- **`bootstrap` and `shutdown`:** an empty `CRUCIBLE_PROJECT_KEY` sends the orchestrator to the
-  Setup section of the project's `AGENTS.md` — or, in a project scaffolded before this CR, to its
-  queue README's setup tasks.
-- **Memory templates:** `java-orchestration` stops calling `docs/changes/` the CR queue.
+  `wave-sequence` with `--track` in multi mode), not a queue README. "Write spec + queue row"
+  becomes "write the spec, file it on the board". A filed CR's process-state is on the board. The
+  merge gate's "two-file close-out diff" becomes the board close-out (`cr-close`, milestone, the
+  spec's `**Status:**`).
+- **`orchestration-common`:** the design phase's edits, "PRD → CRs → queue up front" and the GC
+  principle name the board, not a queue row.
+- **`bootstrap` and `shutdown`:** an empty `CRUCIBLE_PROJECT_KEY` sends the orchestrator to the Setup
+  section of the **root** project's `AGENTS.md` when it has one, and otherwise (a project scaffolded
+  before this CR) to its README's setup tasks.
+- **Memory templates:** `java-orchestration` stops calling `docs/changes/` the CR queue, and its
+  pre-merge close-out step names `cr-close` and the spec's `**Status:**` instead of updating a
+  README.
 
 ### §S2 — The scaffold
 
-- **No queue README.** `init` writes no `docs/changes/README.md`. It writes `docs/changes/.gitkeep`
-  so the specs' directory exists. `plan_files`, `--dry-run` and the envelope's `emitted` list match.
-- **The root `AGENTS.md` gains a Setup section** carrying the README's setup tasks as they stand:
-  the scaffold line, the Crucible registration (its absent-tool remediation first, CR-MDB-045), in
-  multi mode the Sandesh and direnv task (CR-MDB-047), and the `REPO_OWNER` check. It sits alongside
-  the envelope's `setup_required`, which is unchanged. A sub-project's `AGENTS.md` has none.
+- **No queue README.** `init` writes no `docs/changes/README.md` and writes `docs/changes/.gitkeep`
+  so the specs' directory exists. `plan_files` (and so the envelope's `planned`) lists `.gitkeep`
+  and not the README; on a real run `emitted` includes `.gitkeep` and not the README. A
+  mid-emission failure keeps CR-MDB-033's rule that `emitted` is exactly what is on disk.
+- **The root `AGENTS.md` gains a `## Setup` section** carrying the README's setup tasks as they
+  stand: the dated scaffold line, the Crucible registration (its absent-tool remediation first,
+  CR-MDB-045), in multi mode the Sandesh and direnv task (CR-MDB-047), and the `REPO_OWNER` check.
+  A sub-project's `AGENTS.md` has none. The envelope's `setup_required` keeps its shape and keys;
+  its note names the Setup section.
 - **The header slots** become lines of the root `AGENTS.md`: Design contract and Evidence base as
-  fill-in lines, and Ontology citing `~/.agents/skills/model-b/SKILL.md`. The target release is not
+  fill-in lines, and Ontology citing `~/.agents/skills/model-b/SKILL.md`. No target release is
   scaffolded.
 - **The Workflow rules** state that the Crucible board holds the queue and the execution state and
   `docs/changes/` holds the specs, and point the manual registrations to the Setup section.
 - **Readers:** `init`'s stderr note after a write names `AGENTS.md`'s Setup section. The
-  `project_schema.toml` `readers` and `step` entries that name the queue README name `AGENTS.md`'s
-  Setup section instead.
+  `project_schema.toml` `readers` and `step` entries that name the queue README name it instead.
 
 ### §S3 — Model B's own records
 
-- **Model B's README** keeps its content and gains a header: it is read-only history, frozen at
-  CR-MDB-048's merge, and the queue and execution state are on the Crucible board.
-- **Model B's `AGENTS.md`:** the `docs/changes/` row and the Important-files line say the README is
-  frozen history and the board holds the queue.
+- **Model B's README** keeps its content and gains a header: read-only history frozen at
+  CR-MDB-048's merge; the queue and execution state are on the Crucible board; `queue-file` is never
+  run against it, since it would replace the board's queue with these rows.
+- **Model B's `AGENTS.md`:** the `docs/changes/` row, the Important-files line and the architecture
+  flow say the README is frozen history and the board holds the queue. It carries the Design
+  contract, Evidence base and Ontology lines from the README's header.
 - **DN §D20** names `AGENTS.md`'s Setup section instead of the queue README's setup task.
-- **Tests** that pin the scaffolded README move to the Setup section and the new `AGENTS.md` lines;
-  each migration is listed by id. Tests that read Model B's own README as history keep passing.
+- **Tests,** each migration listed by id:
+  - the scaffold pins: `test_scaffold`'s `test_docs_model_queue_readme_and_research_dir`;
+    `test_claude_era_retirement`'s `test_queue_readme_ontology_line_has_no_crucible_prefix`;
+    `test_init_sandesh_address_and_envrc`'s Setup-tasks test; `test_project_tools_setup`'s three
+    remediation tests; `test_project_registry_schema`'s golden README and `AGENTS.md` renders (the
+    scaffold date moves into `AGENTS.md`); the `test_installer_correctness` docstring;
+  - the skill-text pins: `CrAuthoringSkillS2Test`'s queue-idiom anchors (`test_cr_authoring_skill`);
+    `test_bootstrap_shutdown_registry`'s not-registered regex.
+  - Tests that read Model B's README as history keep passing.
 
 ## Acceptance criteria
 
-- [ ] **`crucible` skill** has a queue-verbs section naming `queue`, `next`, `cr-plan`, `cr-depends`,
-      `wave-sequence`, `cr-supersede`, `cr-void` and `release-propose`, each with what it records;
-      `cr-plan` without `--release` lists proposals and never guesses.
-- [ ] **`cr-authoring`** files a CR as spec → `cr-plan` → `cr-depends` → `wave-sequence`; allocates
-      ids from `queue` and the spec files; supersedes and voids with the verbs; re-posts a changed
-      title with `cr-plan`; sends rulings to the PRD or a DN, merges to `cr-close` plus a milestone,
-      follow-ups to a filed CR; closes a board-absent CR by the `**Status:**` flip alone; lists
-      `docs/changes/` as specs only.
-- [ ] **No shipped skill, template, stack file or memory template** names `queue-file`,
-      `docs/changes/README.md`, a queue row or the queue README as a step — except bootstrap's and
-      shutdown's older-project case.
-- [ ] **`model-b`, `orchestration-mainline`, `orchestration-common`** state the board as the queue's
-      home, and Mainline files CRs on it.
-- [ ] **`bootstrap` and `shutdown`** send an unregistered project to `AGENTS.md`'s Setup section,
-      and an older project to its README's setup tasks.
-- [ ] **`init`** (standalone and monorepo, solo and multi, `--dry-run` included) writes no
-      `docs/changes/README.md`, writes `docs/changes/.gitkeep`, and lists exactly what it writes.
-- [ ] **The root `AGENTS.md`** has one Setup section carrying every setup task the README carried,
-      with the same absent-tool remediations and the multi-mode Sandesh/direnv task; no sub-project
-      `AGENTS.md` has one. It carries Design contract, Evidence base and Ontology lines, the
-      Ontology citing `~/.agents/skills/model-b/SKILL.md`. Its Workflow rules name the board and
+- [ ] **`crucible` skill** has a queue-verbs section: `queue` and `next` as read verbs without
+      `--agent`; `cr-plan`, `cr-depends`, `wave-sequence`, `cr-supersede`, `cr-void` and
+      `release-propose` with their required flags and `--agent`; `cr-plan` exits 2 and never
+      guesses; `cr-depends` and `wave-sequence` replace the whole set; `--track` for multi mode;
+      `plan-file --release` as the same registration; `queue-file` never run.
+- [ ] **`cr-authoring`** files a CR as spec → `cr-plan` → `cr-depends` → `wave-sequence` (full
+      order); allocates ids from `queue` and the spec files; supersedes and voids with the verbs;
+      re-posts a changed title; records a first release with `release-propose` after asking the
+      user; covers Crucible absent (spec alone), unregistered (Setup first) and an older project
+      (file its open rows once); sends rulings to the PRD or a DN, merges to `cr-close` plus a
+      milestone, follow-ups to a filed CR; closes a board-absent CR by the `**Status:**` flip
+      alone; lists `docs/changes/` as specs only.
+- [ ] **No shipped skill, reference, template, stack file or memory template** names `queue-file`
+      (except as never run), `docs/changes/README.md`, a queue row, the Notes log or the queue
+      README as a step — except bootstrap's and shutdown's older-project case and cr-authoring's
+      older-project filing.
+- [ ] **`model-b`** (§ 4 items 2 and 5, description), **`orchestration-mainline`** (ownership,
+      filing with `--track`, process-state, merge-gate close-out) and **`orchestration-common`**
+      state the board as the queue's home; the role table's ontology term is unchanged.
+- [ ] **`bootstrap` and `shutdown`** send an unregistered project to the root `AGENTS.md`'s Setup
+      section when it has one, and otherwise to its README's setup tasks.
+- [ ] **`init`** (standalone and monorepo, solo and multi) writes no `docs/changes/README.md` and
+      writes `docs/changes/.gitkeep`; `planned` lists `.gitkeep` and not the README; `emitted`
+      matches the files on disk.
+- [ ] **The root `AGENTS.md`** has one `## Setup` section carrying every setup task the README
+      carried, with the same absent-tool remediations and the multi-mode Sandesh/direnv task; no
+      sub-project `AGENTS.md` has one. It carries Design contract, Evidence base and Ontology lines,
+      the Ontology citing `~/.agents/skills/model-b/SKILL.md`. Its Workflow rules name the board and
       the Setup section, not the README.
-- [ ] **`init`'s stderr note** and **`project_schema.toml`** name the Setup section, not the README.
-- [ ] **Model B's README** keeps all its content under a frozen-history header pointing to the
-      board; `AGENTS.md` and DN §D20 say the same.
+- [ ] **`init`'s stderr note**, **`setup_required`'s note** and **`project_schema.toml`** name the
+      Setup section, not the README; `setup_required` keeps its shape and keys.
+- [ ] **Model B's README** keeps all its content under a frozen-history header pointing to the board
+      and warning off `queue-file`; Model B's `AGENTS.md` (incl. the header-slot lines) and DN §D20
+      say the same.
 - [ ] **Gates that hold:** every migrated test listed by id; the suites that read Model B's README as
-      history pass; the CR-042 triage headings and `HEADING_RENAMES` unchanged; §D18 tool-name
-      gates; `generator/build.py --check`; baselines re-measured in `AGENTS.md`.
+      history pass; the CR-042 triage headings resolve with `HEADING_RENAMES` unchanged; the
+      verb-sweep `--agent` gate (`test_client_verb_sweep`); §D18 tool-name gates;
+      `generator/build.py --check`; baselines re-measured in `AGENTS.md`.
 
 ## Non-goals
 
 - Changing Crucible's verbs, or its `queue` registry.
 - Requiring Crucible: a project without it keeps the board-absent close-out.
-- Migrating a project scaffolded before this CR: its README stays as its own history.
+- Migrating an older project's README: its open rows are filed on the board once, by the
+  orchestrator, and the README stays as history.
+- Changing the locked ontology's terms.
 - The roundhouse root's own `docs/changes/README.md` (a root session's).
 - Rewriting closed specs, `archive/` or `audits/`.
