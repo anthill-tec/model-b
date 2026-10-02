@@ -26,6 +26,21 @@ Class map — one class per acceptance criterion of §S1:
   ``shutdown`` and ``cr-authoring``.
 - ``ReachDetectorOnSyntheticTextTest`` — the reach detector proven on synthetic text.
 
+§S3 — Model B's own records (one class per record):
+
+- ``ModelBReadmeFrozenHistoryTest`` — Model B's ``docs/changes/README.md`` keeps all its content
+  (every line of it as it stood at C1's head, ``README_BASE``, in order) under a header — before
+  its ``## Queue`` — that calls it read-only history frozen at CR-MDB-048's merge, says the queue
+  and the execution state are on the Crucible board, and warns that ``queue-file`` is never run
+  against it, since it would replace the board's queue with these rows.
+- ``ModelBAgentsMdBoardTest`` — Model B's ``AGENTS.md``: the ``docs/changes/`` row, the
+  Important-files line and the architecture flow say the README is frozen history and the board
+  holds the queue (the flow no longer renders a queue README); it carries the Design contract,
+  Evidence base and Ontology lines from the README's header.
+- ``DnD20SetupSectionTest`` — DN-multi-harness §D20 names ``AGENTS.md``'s Setup section, not the
+  queue README's setup task, for the user's direnv steps.
+- ``ModelBRecordsDetectorsOnSyntheticTextTest`` — the §S3 detectors proven on synthetic text.
+
 ``bootstrap`` / ``shutdown``'s not-registered pointer is pinned where it always was, in
 ``tests.test_bootstrap_shutdown_registry.UnregisteredProjectTest`` (migrated there).
 
@@ -41,10 +56,12 @@ The write verbs' required flags were read from the installed client's own ``--he
 ``queue`` and ``next [--track]`` take no ``--agent``; ``plan-file --release`` registers the CR
 in the queue by the same call.
 
-Hermetic: reads repo files only. Stdlib only.
+Hermetic: reads repo files only (and, for the README's kept content, the repo's own history
+through ``git show``). Stdlib only.
 """
 
 import re
+import subprocess
 import unittest
 
 from tests._helpers import REPO_ROOT, read_text, split_frontmatter
@@ -636,6 +653,219 @@ class ReachDetectorOnSyntheticTextTest(unittest.TestCase):
         self.assertEqual(section(text, "A"), "body\n### A.1\nsub")
         self.assertEqual(section(text, "A.1"), "sub")
         self.assertEqual(section(text, "missing"), "")
+
+
+# ------------------------------------------------------------ §S3: Model B's records ----
+
+MODEL_B_README = "docs/changes/README.md"
+MODEL_B_AGENTS = "AGENTS.md"
+DN_MULTI_HARNESS = "docs/research/DN-multi-harness-deploy-model.md"
+#: C1's head (``docs: CR-MDB-048 — AGENTS.md module count``): the README as it stood before §S3.
+README_BASE = "2037608"
+#: Measured on the README at ``README_BASE`` (2026-10-02), for a tree without that history.
+README_BASE_ROWS, README_BASE_NOTES = 45, 122
+#: The README's header slots, as its header carried them at ``README_BASE``.
+MODEL_B_HEADER_SLOTS = (
+    ("design contract", ("docs/research/prd-model-b-rationalization.md",)),
+    ("evidence base", ("audits/2026-07-20-", "docs/research/dn-rationalization-plan-review.md")),
+    ("ontology", ("docs/research/dn-model-b-language.md",)),
+)
+#: "the README is frozen history" — frozen / read-only / history(ical), on normalised text.
+FROZEN = r"\bfrozen\b|\bread-only\b|\bhistor(?:y|ical)\b"
+#: The README's old role: "README.md = CR queue" / "README.md — the CR queue".
+README_AS_QUEUE = re.compile(r"readme(?:\.md)?\s*(?:=|—|-|:)\s*(?:the\s+)?cr queue\b")
+
+
+def readme_header_findings(text: str) -> list[str]:
+    """What Model B's README header (its text before ``## Queue``) lacks (CR-MDB-048 §S3)."""
+    head = text.split("\n## Queue", 1)[0]
+    out = []
+    if not units_with(head, FROZEN, r"\bcr-mdb-048\b"):
+        out.append("no header unit calls it read-only history frozen at CR-MDB-048's merge")
+    if not units_with(head, r"\bcrucible board\b|\bboard\b", r"\bqueue\b", r"\bexecution state\b"):
+        out.append("no header unit puts the queue and the execution state on the Crucible board")
+    if not units_with(head, QUEUE_FILE.pattern, NEVER_RUN.pattern, r"\breplac"):
+        out.append("no header unit warns that queue-file is never run (it would replace the queue)")
+    return out
+
+
+def frozen_board_findings(where: str, units_found: list[str]) -> list[str]:
+    """``units_found`` (normalised) must say the README is frozen history and the board holds the
+    queue, and never call the README the CR queue."""
+    if not units_found:
+        return [f"{where}: not found"]
+    joined = " ".join(units_found)
+    out = []
+    if not re.search(FROZEN, joined):
+        out.append(f"{where}: does not say the README is frozen history")
+    if not (re.search(r"\bboard\b", joined) and re.search(r"\bqueue\b", joined)):
+        out.append(f"{where}: does not say the board holds the queue")
+    if README_AS_QUEUE.search(joined):
+        out.append(f"{where}: still calls the README the CR queue")
+    return out
+
+
+def model_b_agents_findings(text: str) -> list[str]:
+    """What Model B's ``AGENTS.md`` lacks (CR-MDB-048 §S3): its ``docs/changes/`` row, its
+    Important-files ``docs/changes/README.md`` line and its architecture flow say the README is
+    frozen history and the board holds the queue; the flow renders no queue README; and it carries
+    the README header's Design contract, Evidence base and Ontology lines."""
+    out = []
+    row = [u for u in norm_units(text) if u.startswith("| docs/changes/ |")]
+    out += frozen_board_findings("the docs/changes/ row", row)
+    important = [u for u in norm_units(section(text, "Important Files"))
+                 if "docs/changes/readme.md" in u]
+    out += frozen_board_findings("the Important-files line", important)
+    flow = section(text, "Architecture & Data Flow")
+    if "_render_queue_readme" in flow:
+        out.append("the architecture flow still renders a queue README")
+    flow_units = norm_units(flow)
+    if not [u for u in flow_units if re.search(r"\bboard\b", u) and re.search(r"\bqueue\b", u)]:
+        out.append("the architecture flow does not say the board holds the queue")
+    if not [u for u in flow_units if re.search(r"\breadme\b", u) and re.search(FROZEN, u)]:
+        out.append("the architecture flow does not say the README is frozen history")
+    for slot, paths in MODEL_B_HEADER_SLOTS:
+        if not units_with(text, r"\b" + slot + r"\b", *(re.escape(p) for p in paths)):
+            out.append(f"no {slot} line citing {', '.join(paths)}")
+    return out
+
+
+def d20_findings(text: str) -> list[str]:
+    """What DN §D20 lacks (CR-MDB-048 §S3): the user's direnv steps are named by ``AGENTS.md``'s
+    Setup section, and §D20 names no queue README setup task."""
+    d20 = section_matching(text, r"^d20\b")
+    if not d20.strip():
+        return ["no §D20 section"]
+    out = []
+    steps = units_with(d20, r"direnv allow")
+    if not [u for u in steps if "agents.md" in u and re.search(r"\bsetup\b.{0,15}\bsection\b", u)]:
+        out.append("the user's direnv steps do not name AGENTS.md's Setup section")
+    named = units_with(d20, r"\bqueue readme\b|\breadme'?s setup tasks?\b")
+    if named:
+        out.append(f"§D20 still names the queue README's setup task: {named[0][:120]!r}")
+    return out
+
+
+def _readme_at_base() -> str | None:
+    """Model B's README at ``README_BASE``, or ``None`` where that history is absent."""
+    try:
+        done = subprocess.run(["git", "-C", str(REPO_ROOT), "show",
+                               f"{README_BASE}:{MODEL_B_README}"],
+                              capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return done.stdout if done.returncode == 0 else None
+
+
+class ModelBReadmeFrozenHistoryTest(unittest.TestCase):
+    """AC — Model B's README keeps all its content under a frozen-history header pointing to the
+    board and warning off ``queue-file``."""
+
+    def setUp(self):
+        self.text = read_text(REPO_ROOT / MODEL_B_README)
+
+    def test_the_header_freezes_it_points_to_the_board_and_warns_off_queue_file(self):
+        self.assertEqual(readme_header_findings(self.text), [])
+
+    def test_the_header_sits_above_the_queue_table(self):
+        head = self.text.split("\n## Queue", 1)
+        self.assertEqual(len(head), 2, "the ## Queue section is kept")
+        self.assertTrue(units_with(head[0], FROZEN, r"\bcr-mdb-048\b"),
+                        "the frozen-history header comes before ## Queue")
+
+    def test_all_its_content_is_kept_in_order(self):
+        base = _readme_at_base()
+        lines = self.text.splitlines()
+        if base is not None:
+            remaining = iter(lines)
+            lost = [ln for ln in base.splitlines() if not any(ln == seen for seen in remaining)]
+            self.assertEqual(lost, [], f"{len(lost)} line(s) of the README were dropped or moved")
+            return
+        rows = [ln for ln in lines if ln.startswith("| [CR-")]
+        notes = [ln for ln in section(self.text, "Footer notes").splitlines()
+                 if re.match(r"- 20\d\d-", ln)]
+        self.assertGreaterEqual((len(rows), len(notes)), (README_BASE_ROWS, README_BASE_NOTES))
+
+
+class ModelBAgentsMdBoardTest(unittest.TestCase):
+    """AC — Model B's ``AGENTS.md`` (incl. the header-slot lines) says the README is frozen
+    history and the board holds the queue."""
+
+    def test_the_row_the_important_file_line_the_flow_and_the_header_slots(self):
+        findings = model_b_agents_findings(read_text(REPO_ROOT / MODEL_B_AGENTS))
+        self.assertEqual(findings, [], "\n".join(findings))
+
+
+class DnD20SetupSectionTest(unittest.TestCase):
+    """AC — DN §D20 names ``AGENTS.md``'s Setup section instead of the queue README's setup task."""
+
+    def test_d20_names_the_setup_section(self):
+        findings = d20_findings(read_text(REPO_ROOT / DN_MULTI_HARNESS))
+        self.assertEqual(findings, [], "\n".join(findings))
+
+
+class ModelBRecordsDetectorsOnSyntheticTextTest(unittest.TestCase):
+    """The §S3 detectors, proven on synthetic text both ways."""
+
+    HEADER = ("# Model B — CR queue\n\n"
+              "> **Read-only history, frozen at CR-MDB-048's merge.** The queue and the execution "
+              "state are on the Crucible board. Never run `queue-file` against this file: it "
+              "would replace the board's queue with these rows.\n\n"
+              "## Queue\n\n| CR | Title |\n")
+
+    def test_readme_header_both_ways(self):
+        self.assertEqual(readme_header_findings(self.HEADER), [])
+        for cut in ("Read-only history, frozen at CR-MDB-048's merge.",
+                    "The queue and the execution state are on the Crucible board.",
+                    "Never run `queue-file` against this file: it would replace the board's "
+                    "queue with these rows."):
+            with self.subTest(cut=cut[:30]):
+                self.assertEqual(len(readme_header_findings(self.HEADER.replace(cut, ""))), 1)
+        below = "# Model B — CR queue\n\n## Queue\n\n" + self.HEADER.split("\n\n", 1)[1]
+        self.assertEqual(len(readme_header_findings(below)), 3, "a header below ## Queue")
+        run = self.HEADER.replace("Never run `queue-file` against this file",
+                                  "Run `queue-file` against this file")
+        self.assertEqual(len(readme_header_findings(run)), 1)
+
+    AGENTS = ("## Architecture & Data Flow\n\n```\n"
+              "SCAFFOLD\n  -> render (_render_env, _render_agents_md incl. its Setup section)\n"
+              "  -> docs/changes/.gitkeep  # the Crucible board holds the queue; Model B's README is"
+              " frozen history\n```\n\n"
+              "## Key Directories\n\n| Path | Purpose |\n|---|---|\n"
+              "| `docs/changes/` | `CR-MDB-NNN-*.md` specs; `README.md` is frozen history — the "
+              "Crucible board holds the queue |\n\n"
+              "## Important Files\n\n"
+              "- `docs/changes/README.md` — read-only history frozen at CR-MDB-048; the queue is "
+              "on the Crucible board.\n\n"
+              "Design contract: `docs/research/PRD-model-b-rationalization.md`. Evidence base: "
+              "`audits/2026-07-20-*.md` + `docs/research/DN-rationalization-plan-review.md`.\n\n"
+              "- Ontology `docs/research/DN-model-b-language.md` is LOCKED.\n")
+
+    def test_model_b_agents_both_ways(self):
+        self.assertEqual(model_b_agents_findings(self.AGENTS), [])
+        for old, new in (
+                ("`README.md` is frozen history — the Crucible board holds the queue",
+                 "`README.md` = CR queue (structure only)"),
+                ("read-only history frozen at CR-MDB-048; the queue is on the Crucible board",
+                 "the CR queue: structure only"),
+                ("_render_agents_md incl. its Setup section", "_render_queue_readme"),
+                ("# the Crucible board holds the queue; Model B's README is frozen history", ""),
+                (" Evidence base: `audits/2026-07-20-*.md` + "
+                 "`docs/research/DN-rationalization-plan-review.md`.", ""),
+                ("Ontology `docs/research/DN-model-b-language.md`", "Ontology is LOCKED")):
+            with self.subTest(old=old[:30]):
+                bad = self.AGENTS.replace(old, new)
+                self.assertNotEqual(bad, self.AGENTS)
+                self.assertTrue(model_b_agents_findings(bad), bad)
+
+    def test_d20_both_ways(self):
+        good = ("### D20 — direnv\n\n- **The user's steps.** Installing direnv, its shell hook, "
+                "and `direnv allow` are the user's steps, named by the installer and `AGENTS.md`'s "
+                "Setup section.\n\n### D21 — next\n\n- the queue README's setup task\n")
+        self.assertEqual(d20_findings(good), [])
+        self.assertEqual(len(d20_findings(good.replace(
+            "`AGENTS.md`'s Setup section", "the queue README's setup task"))), 2)
+        self.assertEqual(d20_findings("### D19 — other\n"), ["no §D20 section"])
 
 
 if __name__ == "__main__":
