@@ -16,6 +16,22 @@ harness §D20 with its Sandesh 0.4.0 amendment, PRD D10).
 - ``direnv`` is a tier-2 ``path`` probe, policy ``recommended``, whose
   remediation names installing direnv and its shell hook. The hook is never
   probed.
+- Amended at 5dd8a36 for VERIFY F6/F7/F9 (F9 ruled by the user: ``required``
+  means what it means for ``sandesh-pi``): the ``sandesh`` CLI row is
+  ``required``. A missing ``sandesh`` is still offered (``uv tool install
+  sandesh-relay``); still absent, declined or ``outdated`` afterwards, the
+  pre-flight fails (``preflight_failed``, no ``install.toml``) unless
+  ``--allow-missing-capabilities``, which records and warns. An unreadable
+  version's warning says the floor cannot be confirmed and names upgrading or
+  reinstalling. direnv's absent-warning says the project's ``.env``, wake
+  identity included, is not loaded into the environment.
+
+MIGRATED at CR-MDB-047 C4 FIX (F9: an outdated ``sandesh`` now fails the
+pre-flight; each keeps its intent under ``--allow-missing-capabilities``):
+``SandeshVersionFloorTest.test_a_sandesh_below_the_floor_is_outdated_and_names_the_upgrade``,
+``SandeshVersionFloorTest.test_a_patch_release_below_the_floor_is_outdated``,
+``SandeshVersionFloorTest.test_deps_still_carries_exactly_uv_sandesh_and_crucible``,
+``InstallerRecordsTheNewVerdictsTest.test_an_outdated_sandesh_is_recorded_in_deps_and_reported_with_the_upgrade``.
 
 Isolation (NON-NEGOTIABLE): every ``install.toml``, Pi agent dir, home and
 ``sandesh`` binary is a fixture under a per-test temp dir; ``PATH`` is a
@@ -58,6 +74,10 @@ SANDESH_PI_PACKAGE = "@anthill-tec/sandesh-pi"
 SANDESH_PI_REMEDIATION = f"pi install npm:{SANDESH_PI_PACKAGE}"
 WORKTREE_TOOLS = ["modelb_worktree_enter", "modelb_worktree_exit"]
 UPGRADE_SANDESH = "uv tool upgrade sandesh-relay"
+INSTALL_SANDESH = "uv tool install sandesh-relay"
+ALLOW_MISSING = "--allow-missing-capabilities"
+#: The pre-flight's failure line for a missing required capability.
+PREFLIGHT_FAILED = "pre-flight failed"
 DIRENV_FISH_HOOK = "direnv hook fish | source"
 DIRENV_BASH_HOOK = 'eval "$(direnv hook bash)"'
 
@@ -108,6 +128,17 @@ class SandeshPiRequiredRowTest(unittest.TestCase):
 
     def test_sandesh_pi_remediation_stays_its_pi_install_command(self):
         self.assertEqual(_row("sandesh-pi")["remediation"], SANDESH_PI_REMEDIATION)
+
+
+class SandeshCliRequiredRowTest(unittest.TestCase):
+    """§S1 (amended at 5dd8a36, VERIFY F9): the ``sandesh`` CLI row is
+    ``required`` — sandesh-pi refuses a missing or outdated CLI."""
+
+    def test_the_sandesh_cli_is_a_tier2_required_deps_row(self):
+        row = _row("sandesh")
+        self.assertEqual((row["tier"], row["policy"], row["probe"], row["scope"]),
+                         (2, "required", "deps", "always"), row)
+        self.assertEqual(row["remediation"], INSTALL_SANDESH)
 
 
 class WorktreeRequirementRowTest(unittest.TestCase):
@@ -188,7 +219,8 @@ class _PreflightSandboxCase(unittest.TestCase):
     def sandesh_at(self, version: str) -> None:
         write_executable(self.bin_dir, "sandesh", fake_sandesh(version, self.sandesh_log))
 
-    def preflight(self) -> tuple[int, dict, dict, list[str], str]:
+    def preflight(self, *, allow_missing: bool = False,
+                  confirm=lambda _prompt: False) -> tuple[int, dict, dict, list[str], str]:
         from modelb_axi import preflight
         warnings: list[str] = []
         err = io.StringIO()
@@ -196,7 +228,8 @@ class _PreflightSandboxCase(unittest.TestCase):
                AGENT_DIR_ENV: str(self.agent_dir)}
         with mock.patch.dict(os.environ, env), contextlib.redirect_stderr(err):
             rc, deps, caps = preflight.run_preflight(
-                lambda _prompt: False, warnings, stacks=(), harnesses=("pi",))
+                confirm, warnings, stacks=(), harnesses=("pi",),
+                allow_missing_capabilities=allow_missing)
         return rc, deps, caps, warnings, err.getvalue()
 
 
@@ -206,9 +239,11 @@ class SandeshVersionFloorTest(_PreflightSandboxCase):
     sandesh-relay``; 0.4.0 or later is ``detected``."""
 
     def test_a_sandesh_below_the_floor_is_outdated_and_names_the_upgrade(self):
+        # MIGRATED at CR-MDB-047 C4 FIX (F9): outdated fails without the
+        # override, so this records-and-warns case runs under it.
         self.sandesh_at("0.3.9")
-        rc, deps, caps, warnings, err = self.preflight()
-        self.assertEqual(rc, 0, f"recommended: an outdated sandesh never fails; err={err!r}")
+        rc, deps, caps, warnings, err = self.preflight(allow_missing=True)
+        self.assertEqual(rc, 0, f"under {ALLOW_MISSING} an outdated sandesh is recorded; err={err!r}")
         self.assertEqual(deps.get("sandesh"), "outdated", f"[deps]; err={err!r}")
         self.assertEqual(caps.get("sandesh"), "outdated", caps)
         self.assertEqual((parse_group_line(err, "deps:") or {}).get("sandesh"), "outdated",
@@ -235,14 +270,80 @@ class SandeshVersionFloorTest(_PreflightSandboxCase):
         self.assertEqual([w for w in warnings if UPGRADE_SANDESH in w], [], warnings)
 
     def test_a_patch_release_below_the_floor_is_outdated(self):
+        # MIGRATED at CR-MDB-047 C4 FIX (F9): run under the override.
         self.sandesh_at("0.3.12")
-        _rc, deps, _caps, _warnings, err = self.preflight()
+        _rc, deps, _caps, _warnings, err = self.preflight(allow_missing=True)
         self.assertEqual(deps.get("sandesh"), "outdated", f"err={err!r}")
 
     def test_deps_still_carries_exactly_uv_sandesh_and_crucible(self):
+        # MIGRATED at CR-MDB-047 C4 FIX (F9): run under the override.
         self.sandesh_at("0.3.9")
-        _rc, deps, _caps, _warnings, _err = self.preflight()
+        _rc, deps, _caps, _warnings, _err = self.preflight(allow_missing=True)
         self.assertEqual(sorted(deps), ["crucible", "sandesh", "uv"])
+
+    def test_an_unreadable_version_is_outdated_and_says_the_floor_cannot_be_confirmed(self):
+        self.sandesh_at("unknown")
+        _rc, deps, _caps, warnings, err = self.preflight(allow_missing=True)
+        self.assertEqual(deps.get("sandesh"), "outdated", f"err={err!r}")
+        hits = [w for w in warnings if w.startswith("sandesh=outdated")]
+        self.assertEqual(len(hits), 1, warnings)
+        warning = hits[0]
+        self.assertRegex(warning, r"(?i)floor\b[^;]*\bcan(?:not|'t) be confirmed",
+                         "§S1: the floor cannot be confirmed")
+        self.assertRegex(warning, r"(?i)\bupgrad", "it names upgrading")
+        self.assertRegex(warning, r"(?i)\breinstall", "it names reinstalling")
+        self.assertNotIn("below the", warning, "an unreadable version is not known to be below the floor")
+
+
+class SandeshCliRequiredPreflightTest(_PreflightSandboxCase):
+    """§S1 / F9 (user ruling): a ``sandesh`` still absent after the offer,
+    declined, or ``outdated`` fails the pre-flight unless
+    ``--allow-missing-capabilities``, which records and warns instead."""
+
+    def assert_failed(self, rc, deps, warnings, err):
+        self.assertEqual(rc, 1, f"err={err!r}")
+        self.assertEqual(deps, {}, "a failed pre-flight returns no [deps]")
+        failed = [w for w in warnings if w.startswith(PREFLIGHT_FAILED)]
+        self.assertEqual(len(failed), 1, warnings)
+        self.assertIn("sandesh", failed[0])
+        self.assertIn(ALLOW_MISSING, failed[0])
+
+    def test_an_outdated_sandesh_fails_the_preflight(self):
+        self.sandesh_at("0.3.9")
+        rc, deps, _caps, warnings, err = self.preflight()
+        self.assert_failed(rc, deps, warnings, err)
+        self.assertTrue([w for w in warnings if UPGRADE_SANDESH in w], "the upgrade is still named")
+
+    def test_an_unreadable_sandesh_version_fails_the_preflight(self):
+        self.sandesh_at("unknown")
+        rc, deps, _caps, warnings, err = self.preflight()
+        self.assert_failed(rc, deps, warnings, err)
+
+    def test_a_declined_install_of_an_absent_sandesh_fails_the_preflight(self):
+        prompts: list[str] = []
+        rc, deps, _caps, warnings, err = self.preflight(
+            confirm=lambda prompt: prompts.append(prompt) or False)
+        self.assertTrue([p for p in prompts if INSTALL_SANDESH in p], "the install is still offered")
+        self.assert_failed(rc, deps, warnings, err)
+        self.assertEqual(_lines(self.uv_log), [], "a declined install runs nothing")
+
+    def test_an_install_that_leaves_sandesh_absent_fails_the_preflight(self):
+        rc, deps, _caps, warnings, err = self.preflight(confirm=lambda _prompt: True)
+        self.assertIn("tool install sandesh-relay", _lines(self.uv_log), "the install ran")
+        self.assert_failed(rc, deps, warnings, err)
+
+    def test_the_override_records_an_absent_sandesh_and_warns(self):
+        rc, deps, caps, warnings, err = self.preflight(allow_missing=True)
+        self.assertEqual(rc, 0, err)
+        self.assertEqual((deps.get("sandesh"), caps.get("sandesh")), ("absent", "absent"))
+        self.assertEqual([w for w in warnings if w.startswith(PREFLIGHT_FAILED)], [], warnings)
+        self.assertTrue([w for w in warnings if INSTALL_SANDESH in w], warnings)
+
+    def test_a_current_sandesh_passes(self):
+        self.sandesh_at("0.4.0")
+        rc, deps, _caps, warnings, err = self.preflight()
+        self.assertEqual((rc, deps.get("sandesh")), (0, "detected"), err)
+        self.assertEqual([w for w in warnings if w.startswith(PREFLIGHT_FAILED)], [], warnings)
 
 
 class DirenvProbeTest(_PreflightSandboxCase):
@@ -270,6 +371,17 @@ class DirenvProbeTest(_PreflightSandboxCase):
         self.assertEqual(caps.get("direnv"), "detected", f"err={err!r}")
         self.assertEqual([w for w in warnings if w.startswith("direnv")], [], warnings)
         self.assertEqual(_lines(direnv_log), [], "§S1: the hook is not probed — direnv never runs")
+
+    def test_the_absent_warning_says_the_projects_env_and_wake_identity_are_not_loaded(self):
+        _rc, _deps, _caps, warnings, err = self.preflight()
+        hits = [w for w in warnings if w.startswith("direnv")]
+        self.assertEqual(len(hits), 1, f"err={err!r}")
+        warning = hits[0]
+        self.assertIn(".env", warning)
+        self.assertRegex(warning, r"(?i)wake identity", "§S1: the wake identity is named")
+        self.assertRegex(warning, r"(?i)not loaded into the environment")
+        self.assertNotIn("sandesh", warning.lower(),
+                         "a direnv warning is no Sandesh warning (SandeshInstallReprobeFindsSandeshTest)")
 
 
 # ---------------------------------------------------------------------------
@@ -358,6 +470,22 @@ class SandeshPiRequiredInstallerTest(_InstallerSandboxCase):
         self.assertEqual(_lines(self.pi_log), [], "--yes never runs a third-party `pi install`")
 
 
+class SandeshCliRequiredInstallerTest(_InstallerSandboxCase):
+    """F9 through the real installer entry: an outdated ``sandesh`` ends in
+    ``preflight_failed`` with nothing written; the override installs."""
+
+    def test_an_outdated_sandesh_fails_the_install_and_writes_nothing(self):
+        make_provisioned_agent_dir(self.agent_dir)
+        write_executable(self.bin_dir, "sandesh", fake_sandesh("0.3.9"))
+        result = self.run_yes()
+        axi = decode_axi(result.stdout)
+        self.assertNotEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(axi.get("outcome"), "preflight_failed", f"axi={axi!r}")
+        self.assertFalse((self.modelb_home / "install.toml").exists(),
+                         "a failed pre-flight writes no install.toml")
+        self.assertEqual(list(self.target_root.iterdir()), [], "no asset is deployed")
+
+
 class InstallerRecordsTheNewVerdictsTest(_InstallerSandboxCase):
     """§S1 through the real installer entry: ``outdated`` lands in
     ``[deps]`` (and the envelope), ``direnv`` in ``[capabilities]``, and the
@@ -365,9 +493,10 @@ class InstallerRecordsTheNewVerdictsTest(_InstallerSandboxCase):
     ``[capabilities]``."""
 
     def test_an_outdated_sandesh_is_recorded_in_deps_and_reported_with_the_upgrade(self):
+        # MIGRATED at CR-MDB-047 C4 FIX (F9): run under the override.
         make_provisioned_agent_dir(self.agent_dir)
         write_executable(self.bin_dir, "sandesh", fake_sandesh("0.3.9"))
-        result = self.run_yes()
+        result = self.run_yes(ALLOW_MISSING)
         axi = decode_axi(result.stdout)
         self.assertEqual((result.returncode, axi.get("outcome")), (0, "installed"), result.stderr)
         data = self.install_toml()

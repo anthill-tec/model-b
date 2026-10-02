@@ -235,9 +235,13 @@ def _outside_section(text: str, heading_prefix: str) -> str:
 # Today's (pre-CR-MDB-043) renderings for the inputs above, pinned literally.
 
 def _golden_env(label: str, *, with_stacks: bool) -> str:
+    # MIGRATED at CR-MDB-047 C4 FIX (VERIFY F1, spec "Quoting" amended at
+    # 5dd8a36): a value containing whitespace is double-quoted whatever its
+    # source, so the asked name renders as PROJECT_NAME="My Project" (was
+    # PROJECT_NAME=My Project, which direnv rejects).
     text = (
         "# Project naming registry (CR-MDB-013 scaffold; committed).\n"
-        f"PROJECT_NAME={NAME}\n"
+        f'PROJECT_NAME="{NAME}"\n'
         f"PROJECT_TOKEN={TOKEN}\n"
         f"PROJECT_ACRONYM={ACRONYM}\n"
         f"ORCHESTRATOR_LABEL={label}\n"

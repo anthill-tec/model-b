@@ -240,6 +240,21 @@ class SandeshCliRelease040Test(unittest.TestCase):
                 and re.search(r"\bretr(?:y|ies)\b[^|]{0,20}\bonce\b", r, re.IGNORECASE)]
         self.assertTrue(rows, "the exit table's 5 row: already live -> sandesh-pi retries once")
 
+    def test_exit_table_relaunches_silently_on_exit_2(self):
+        # CR-MDB-047 §S5 amended at 5dd8a36 (VERIFY F10): every exit, 2 included.
+        rows = [r for r in self._exit_rows("2") if re.search(r"timeout|timed out", r, re.IGNORECASE)
+                and re.search(r"relaunch", r, re.IGNORECASE)
+                and re.search(r"silent", r, re.IGNORECASE)]
+        self.assertEqual(len(rows), 1, "exactly one exit-2 row: timeout -> relaunched silently")
+
+    def test_exit_table_stops_with_a_notice_on_a_signal(self):
+        # CR-MDB-047 §S5 amended at 5dd8a36 (VERIFY F10): a signal included.
+        rows = [r for r in self.blocks if r.startswith("|") and re.search(r"\bsignal\b", r, re.IGNORECASE)
+                and re.search(r"128\s*\+\s*n", r)
+                and re.search(r"\bstops?\b", r, re.IGNORECASE)
+                and re.search(r"\bnotice\b", r, re.IGNORECASE)]
+        self.assertEqual(len(rows), 1, "exactly one signal row: 128+n -> stops with a notice")
+
     def test_exit_table_is_attributed_to_sandesh_pi_supervision(self):
         self.assertTrue(
             self._blocks_with(r"sandesh-pi", r"supervis", r"exit"),

@@ -31,6 +31,13 @@ Six skill surfaces state the wake rules and must agree:
   ``orchestration-common`` (the bracket and the notifier-kill override),
   ``orchestration-mainline`` (the inbox watcher) and ``orchestration-track``
   (shutdown) agree.
+- Amended at 5dd8a36 (VERIFY F3/F4, Solo): bootstrap always starts the watcher
+  (idempotent; an address already listening may be a stale watcher or another
+  session's) and checks it with ``/sandesh-watcher status``; ``sandesh.md``'s
+  exit-5 row stops quietly on a second exit 5; an older project adds
+  ``SANDESH_ADDRESS`` and ``.envrc`` by hand, never by re-running ``modelb-axi
+  init``; Solo follows Mainline for its own watcher in both skills, only the
+  Track machinery inert.
 
 Rules are checked phrase-level inside ONE bullet, paragraph or table row (see
 :func:`_blocks`), never as whole sentences and never by line number; every gate
@@ -650,6 +657,120 @@ class SandeshReferenceWakeTest(unittest.TestCase):
             re.compile(r"\bfetch", re.IGNORECASE), re.compile(r"\brepl", re.IGNORECASE),
         )
         self.assertTrue(hits, "sandesh.md: Mainline's own watcher is Sandesh's wake watcher; it fetches and replies")
+
+    def test_a_second_exit_5_in_a_row_stops_quietly_and_the_in_session_check_confirms(self):
+        hits = [b for _, b in _blocks(self.text)
+                if b.startswith("|") and _names_exit(b, "5")
+                and re.search(r"\bsecond\b", b, re.IGNORECASE)
+                and re.search(r"quiet|no notice|without a notice", b, re.IGNORECASE)
+                and "/sandesh-watcher status" in b]
+        self.assertTrue(hits, "sandesh.md's exit-5 row: a second exit 5 in a row stops quietly, with no "
+                              "notice, so `/sandesh-watcher status` is the check")
+
+
+# ---------------------------------------------------------------------------
+# The VERIFY amendments (5dd8a36): always start, add by hand, Solo's wake
+# ---------------------------------------------------------------------------
+
+#: A start skipped because the address already shows listening (VERIFY F4).
+SKIPPED_START_RE = re.compile(
+    r"\bunless\b[^.]{0,80}\blistening\b|start no second|no second watcher|without starting",
+    re.IGNORECASE)
+#: Telling the user to re-run ``modelb-axi init`` (VERIFY F3), unless negated.
+RERUN_INIT_RE = re.compile(r"re-?run\w*\W+(?:\w+\W+){0,3}?modelb-axi init", re.IGNORECASE)
+NEGATED_RERUN_RE = re.compile(r"\b(?:never|not)\b[^.]{0,40}re-?run", re.IGNORECASE)
+SOLO_RE = re.compile(r"\bsolo\b", re.IGNORECASE)
+
+
+def _rerun_init_claims(text: str) -> list:
+    return [b for _, b in _blocks(text)
+            if RERUN_INIT_RE.search(b) and not NEGATED_RERUN_RE.search(b)]
+
+
+class BootstrapAlwaysStartsTheWatcherTest(unittest.TestCase):
+    """§S3 Register and start (VERIFY F4): bootstrap always starts the watcher — the
+    start is idempotent, and an address the addressbook already shows listening may be
+    held by a stale watcher or another session — and checks it with
+    ``/sandesh-watcher status``."""
+
+    def setUp(self):
+        self.step1 = _section(self, BOOTSTRAP_SKILL, BOOTSTRAP_STEP1_HEADING)
+
+    def test_the_start_is_always_made_and_idempotent(self):
+        hits = _matching_blocks(self.step1, CAPABILITY_RE, re.compile(r"\bstart", re.IGNORECASE),
+                                re.compile(r"\balways\b", re.IGNORECASE),
+                                re.compile(r"idempotent", re.IGNORECASE))
+        self.assertTrue(hits, "Step 1 ALWAYS starts Sandesh's wake watcher; the start is idempotent")
+
+    def test_an_address_already_listening_is_started_anyway(self):
+        hits = _matching_blocks(self.step1, re.compile(r"\blistening\b", re.IGNORECASE),
+                                re.compile(r"stale", re.IGNORECASE),
+                                re.compile(r"another session", re.IGNORECASE),
+                                re.compile(r"\banyway\b|\bstill\b", re.IGNORECASE))
+        self.assertTrue(hits, "an address already listening may be a stale watcher or another "
+                              "session's, so bootstrap starts the watcher anyway")
+
+    def test_no_start_is_skipped_on_an_address_already_listening(self):
+        skipped = [b for _, b in _blocks(_read(BOOTSTRAP_SKILL)) if SKIPPED_START_RE.search(b)]
+        self.assertEqual(skipped, [], "bootstrap never skips the start because the address listens")
+
+    def test_the_in_session_watcher_is_checked_with_its_status_command(self):
+        hits = _matching_blocks(self.step1, "/sandesh-watcher status",
+                                re.compile(r"\bcheck", re.IGNORECASE))
+        self.assertTrue(hits, "Step 1 checks the in-session watcher with `/sandesh-watcher status`")
+
+    def test_skipped_start_detector_bites(self):
+        self.assertTrue(SKIPPED_START_RE.search(
+            "Start it, unless the addressbook already shows your address listening."))
+        self.assertTrue(SKIPPED_START_RE.search("A watcher holds it and you start no second one."))
+        self.assertIsNone(SKIPPED_START_RE.search(
+            "An address already listening may be stale, so start the watcher anyway."))
+
+
+class OlderProjectRemediationTest(unittest.TestCase):
+    """§S3 A project scaffolded before this CR (VERIFY F3, ruled: add by hand): the
+    remediation for a missing ``SANDESH_ADDRESS`` or ``.envrc`` is to add them by hand;
+    bootstrap never says to re-run ``modelb-axi init``, which overwrites existing files."""
+
+    def test_the_remediation_adds_the_address_and_the_envrc_by_hand(self):
+        step1 = _section(self, BOOTSTRAP_SKILL, BOOTSTRAP_STEP1_HEADING)
+        hits = _matching_blocks(step1, "SANDESH_ADDRESS", ".envrc",
+                                re.compile(r"\bby hand\b", re.IGNORECASE))
+        self.assertTrue(hits, "Step 1: add a missing SANDESH_ADDRESS or .envrc by hand")
+
+    def test_bootstrap_never_says_to_rerun_init(self):
+        self.assertEqual(_rerun_init_claims(_read(BOOTSTRAP_SKILL)), [],
+                         "re-running `modelb-axi init` overwrites a project's existing files")
+
+    def test_rerun_init_detector_bites_and_spares_a_negation(self):
+        self.assertTrue(_rerun_init_claims("Get them by re-running `modelb-axi init`."))
+        self.assertEqual(_rerun_init_claims(
+            "Add them by hand — never by re-running `modelb-axi init`, which overwrites files."), [])
+
+
+class SoloFollowsMainlineForItsWatcherTest(unittest.TestCase):
+    """§S3 Solo (amended at 5dd8a36): Solo follows Mainline, wake included — it
+    registers, starts and stops its own watcher; only the Track machinery is inert."""
+
+    def test_bootstrap_has_solo_start_its_own_watcher(self):
+        hits = _matching_blocks(_read(BOOTSTRAP_SKILL), SOLO_RE, re.compile(r"\bmainline\b", re.IGNORECASE),
+                                re.compile(r"\bwatcher\b", re.IGNORECASE),
+                                re.compile(r"\bstart", re.IGNORECASE),
+                                re.compile(r"\btrack\b[^.]{0,60}\binert\b", re.IGNORECASE))
+        self.assertTrue(hits, "bootstrap: Solo follows Mainline and starts its own watcher; only "
+                              "the Track machinery is inert")
+
+    def test_bootstrap_never_calls_solos_sandesh_machinery_inert(self):
+        inert = [b for b in _matching_blocks(_read(BOOTSTRAP_SKILL), SOLO_RE)
+                 if re.search(r"\bsandesh\b[^.]{0,30}\binert\b", b, re.IGNORECASE)]
+        self.assertEqual(inert, [], "Solo's own wake is not inert")
+
+    def test_shutdown_has_solo_stop_its_own_watcher(self):
+        hits = _matching_blocks(_read(SHUTDOWN_SKILL), SOLO_RE, re.compile(r"\bmainline\b", re.IGNORECASE),
+                                re.compile(r"\bstop\w*[^.]{0,30}\bwatcher\b", re.IGNORECASE),
+                                re.compile(r"\btrack\b[^.]{0,60}\binert\b", re.IGNORECASE))
+        self.assertTrue(hits, "shutdown: Solo follows Mainline and stops its own watcher; only the "
+                              "Track machinery is inert")
 
 
 # ---------------------------------------------------------------------------

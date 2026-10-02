@@ -178,7 +178,9 @@ class RequirementsDeclarationTest(unittest.TestCase):
         # CR-MDB-047 \u00a7S1: Sandesh's own Pi extension is required.
         ("sandesh-pi", 1, "required", True),
         ("uv", 2, "required", True),
-        ("sandesh", 2, "recommended", True),
+        # MIGRATED at CR-MDB-047 C4 FIX (VERIFY F9, "Quoting" AC amended at
+        # 5dd8a36): the `sandesh` CLI is required (was recommended).
+        ("sandesh", 2, "required", True),
         ("crucible", 2, "recommended", True),
         ("crucible-client", 2, "recommended", False),
         ("python3", 2, "recommended", True),
@@ -225,11 +227,13 @@ class RequirementsDeclarationTest(unittest.TestCase):
                 self.assertEqual(row["policy"], "recommended")
                 self.assertNotEqual(row["scope"], "always")
 
-    def test_only_dispatch_lean_ctx_sandesh_pi_and_uv_are_required(self):
+    def test_only_dispatch_lean_ctx_sandesh_pi_uv_and_sandesh_are_required(self):
         # MIGRATED at CR-MDB-047 C1 RED (\u00a7S1: sandesh-pi becomes required);
-        # was test_only_dispatch_lean_ctx_and_uv_are_required.
+        # was test_only_dispatch_lean_ctx_and_uv_are_required. MIGRATED again
+        # at CR-MDB-047 C4 FIX (VERIFY F9: the `sandesh` CLI is required too);
+        # was test_only_dispatch_lean_ctx_sandesh_pi_and_uv_are_required.
         required = sorted(r["id"] for r in _requirements() if r.get("policy") == "required")
-        self.assertEqual(required, ["dispatch", "lean-ctx", "sandesh-pi", "uv"])
+        self.assertEqual(required, ["dispatch", "lean-ctx", "sandesh", "sandesh-pi", "uv"])
 
     def test_tier1_providers_are_the_exact_npm_packages(self):
         for cap, pkg in TIER1_PACKAGES.items():

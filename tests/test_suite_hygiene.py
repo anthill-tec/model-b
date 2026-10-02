@@ -20,6 +20,9 @@ Class map:
   ``test_installer_correctness``, and no un-chained ``raise`` inside an ``except`` handler in
   ``test_toon_codec`` (B904; added by the orchestrator's dispatch for this cycle).
 - ``AgentsMdTestingSectionS6Test`` — §S6: ``AGENTS.md`` Testing & QA tells the truth.
+- ``NoUnicodeEscapeInCommentsTest`` — CR-MDB-047 (VERIFY F11): no comment the CR wrote carries a
+  literal unicode escape — every comment of :data:`CR047_FILES`, and elsewhere each comment block
+  naming CR-MDB-047; its detector bites on synthetic text first.
 
 §S3 rule (``_duplicate_module_functions``). For every ``tests/*.py`` file, every MODULE-LEVEL
 ``def``/``async def`` (a direct child of the module body) is keyed by ``ast.dump`` of its body with
@@ -52,10 +55,12 @@ Stdlib only.
 """
 
 import ast
+import io
 import itertools
 import re
 import sys
 import tempfile
+import tokenize
 import unittest
 from pathlib import Path
 
@@ -456,6 +461,69 @@ class StyleBacklogS5Test(unittest.TestCase):
             "    raise RuntimeError('outside any handler')\n"
         )
         self.assertEqual(_unchained_raises_in_handlers(ast.parse(text)), [5])
+
+
+# ------------------------------------------------------- CR-MDB-047 comment escapes ----
+
+#: A literal ``\uXXXX`` escape: inside a comment it is never decoded, so the
+#: reader sees six characters instead of ``§`` or ``—``.
+UNICODE_ESCAPE = re.compile(r"\\u[0-9a-fA-F]{4}")
+#: The files CR-MDB-047's comments live in whole (VERIFY F11 names the
+#: first and the fourth); in every other module a comment block is gated when
+#: one of its lines names CR-MDB-047.
+CR047_FILES = (
+    "modelb_axi/scaffold.py", "modelb_axi/requirements.py", "modelb_axi/preflight.py",
+    "tests/test_pi_package.py", "tests/test_init_sandesh_address_and_envrc.py",
+    "tests/test_installer_sandesh_requirements.py",
+)
+
+
+def _comment_blocks(text: str) -> list:
+    """``[[(line, comment), ...], ...]``: each run of comment tokens on
+    consecutive lines is one block."""
+    blocks: list = []
+    for tok in tokenize.generate_tokens(io.StringIO(text).readline):
+        if tok.type != tokenize.COMMENT:
+            continue
+        line = tok.start[0]
+        if blocks and blocks[-1][-1][0] == line - 1:
+            blocks[-1].append((line, tok.string))
+        else:
+            blocks.append([(line, tok.string)])
+    return blocks
+
+
+def _escaped_comments(text: str, *, whole: bool) -> list:
+    """Lines of the comments in ``text`` that carry a literal unicode
+    escape: every comment when ``whole``, else only blocks naming CR-MDB-047."""
+    return [line for block in _comment_blocks(text)
+            if whole or any("CR-MDB-047" in c for _, c in block)
+            for line, comment in block if UNICODE_ESCAPE.search(comment)]
+
+
+class NoUnicodeEscapeInCommentsTest(unittest.TestCase):
+    """CR-MDB-047 AC "Docs and contract" (VERIFY F11): no source comment the
+    CR wrote carries a literal unicode escape."""
+
+    def test_no_cr047_comment_carries_a_literal_unicode_escape(self):
+        hits = []
+        for path in sorted([*(REPO_ROOT / "modelb_axi").glob("*.py"), *TESTS_DIR.glob("*.py")]):
+            rel = path.relative_to(REPO_ROOT).as_posix()
+            lines = _escaped_comments(path.read_text(encoding="utf-8"), whole=rel in CR047_FILES)
+            hits += [f"{rel}:{n}" for n in lines]
+        self.assertEqual(hits, [], "write the character itself (§, —) in a comment")
+
+    def test_escape_detector_bites_on_comments_and_spares_strings(self):
+        esc = "\\" + "u00a7"
+        text = (
+            f"x = '{esc}S1'  # plain\n"
+            f"# CR-MDB-045 {esc}S1: the start of a block\n"
+            "# ... that CR-MDB-047 continues\n"
+            "\n"
+            f"# CR-MDB-045 {esc}S2: a block of its own\n"
+        )
+        self.assertEqual(_escaped_comments(text, whole=False), [2])
+        self.assertEqual(_escaped_comments(text, whole=True), [2, 5])
 
 
 # ------------------------------------------------------------------ §S6 AGENTS.md ----

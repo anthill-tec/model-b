@@ -17,6 +17,13 @@ amendment, PRD D10, PRD D3.1).
   line ``env SANDESH_ADDRESS="Track <N> - <Project>" pi``.
 - The scaffolded ``AGENTS.md`` identity section names ``SANDESH_ADDRESS``
   beside ``SANDESH_PROJECT``.
+- Quoting (amended at 5dd8a36 for VERIFY F1): every whitespace-containing
+  value ``init`` writes to a ``.env`` is double-quoted, whatever its source,
+  so a scaffolded ``.env`` (standalone and monorepo, with a project name
+  containing a space) parses under :func:`_direnv_dotenv` — a pure-Python
+  reading of direnv's dotenv grammar (never the real ``direnv`` binary) —
+  with every key; the scaffold's own registry reader returns the value
+  unquoted.
 
 Isolation (NON-NEGOTIABLE): the sandbox of ``tests.test_init_tool_verdicts``
 — every ``install.toml``, Pi agent dir and home a fixture under a per-test
@@ -53,6 +60,50 @@ TRACK_LAUNCH_RE = re.compile(
 
 def _address_lines(env_text: str) -> list[str]:
     return [ln for ln in env_text.splitlines() if ln.startswith("SANDESH_ADDRESS=")]
+
+
+#: One line of direnv's dotenv grammar (direnv ``pkg/dotenv``, measured
+#: against direnv 2.37): an optional ``export``, a key, ``=`` (or ``: ``), and
+#: an optional value that is single-quoted, double-quoted (a backslash escapes a
+#: quote) or unquoted with NO whitespace, then an optional comment. A blank
+#: line or a comment line is skipped; any other line is invalid, and direnv
+#: then exports nothing from the file.
+_DOTENV_LINE_RE = re.compile(
+    r"""\A\s*(?:export\s+)?([\w.]+)(?:\s*=\s*|:\s+?)"""
+    r"""('(?:\\'|[^'])*'|"(?:\\"|[^"])*"|[^\s#]+)?\s*(?:\#.*)?\Z"""
+)
+_DOTENV_VAR_RE = re.compile(r"(\\)?\$(\{?([A-Za-z0-9_]+)\}?)")
+
+
+def _direnv_dotenv(text: str) -> dict:
+    """``text`` read the way direnv's ``dotenv`` reads it: ``{KEY: value}``,
+    or ``ValueError`` naming the first invalid line. Double-quoted values
+    unescape ``\\n`` and ``\\<char>`` and expand ``$VAR``/``${VAR}``;
+    single-quoted ones are literal; unquoted ones expand."""
+    values: dict = {}
+
+    def expand(value: str) -> str:
+        def one(match: re.Match) -> str:
+            if match.group(1):
+                return match.group(0)[1:]
+            return values.get(match.group(3) or "", "")
+        return _DOTENV_VAR_RE.sub(one, value)
+
+    for line in text.splitlines():
+        if not line.strip() or line.strip().startswith("#"):
+            continue
+        match = _DOTENV_LINE_RE.match(line)
+        if match is None:
+            raise ValueError(f"invalid line: {line}")
+        key, raw = match.group(1), match.group(2) or ""
+        if len(raw) >= 2 and raw[0] == raw[-1] == "'":
+            values[key] = raw[1:-1]
+            continue
+        if len(raw) >= 2 and raw[0] == raw[-1] == '"':
+            raw = raw[1:-1].replace("\\n", "\n").replace("\\r", "\r")
+            raw = re.sub(r"\\([^$])", r"\1", raw)
+        values[key] = expand(raw)
+    return values
 
 
 def _git(target: Path, *args: str) -> subprocess.CompletedProcess:
@@ -284,6 +335,86 @@ class QueueReadmeSandeshSetupTaskTest(_Case):
     def test_the_task_keeps_the_mainline_registration(self):
         section = self.setup_tasks()
         self.assertIn(f"`Mainline - {DERIVED}`", section)
+
+
+# ---------------------------------------------------------------------------
+# Quoting: a scaffolded .env reads under direnv's dotenv grammar
+# ---------------------------------------------------------------------------
+
+class DirenvDotenvGrammarTest(unittest.TestCase):
+    """The grammar :func:`_direnv_dotenv` reads is direnv's: it bites on the
+    line direnv 2.37 rejects (an unquoted value with a space) and reads the
+    quoted forms."""
+
+    def test_an_unquoted_value_with_whitespace_is_an_invalid_line(self):
+        with self.assertRaises(ValueError) as ctx:
+            _direnv_dotenv("A=x\nPROJECT_NAME=Mono Proj\n")
+        self.assertIn("PROJECT_NAME=Mono Proj", str(ctx.exception))
+
+    def test_quoted_values_comments_and_expansion_read_as_direnv_reads_them(self):
+        text = ('# comment\n\nB="Mono Proj"\nC=x\nD="a $C \\" b"\n'
+                "E='lit $C'\nexport F=bare # trailing\nG=\n")
+        self.assertEqual(_direnv_dotenv(text), {
+            "B": "Mono Proj", "C": "x", "D": 'a x " b', "E": "lit $C", "F": "bare", "G": "",
+        })
+
+
+class ScaffoldedEnvReadsUnderDirenvTest(_Case):
+    """AC "Quoting": every whitespace-containing value in a scaffolded
+    ``.env`` is double-quoted, whatever its source, so the file parses under
+    direnv's dotenv grammar with every key — standalone and monorepo, the
+    sandbox's project name (``Verdict Project``) containing a space."""
+
+    def expected_keys(self, *, sub: bool) -> list:
+        return [e["name"] for e in scaffold.load_schema(SCHEMA_PATH)
+                if e["file"] == ".env" and (not sub or e["scope"] == "root+sub")]
+
+    def assert_reads_under_direnv(self, rel: str, *, sub: bool) -> dict:
+        text = self.read(rel)
+        try:
+            parsed = _direnv_dotenv(text)
+        except ValueError as exc:
+            self.fail(f"direnv rejects {rel}: {exc}; {rel}={text!r}")
+        self.assertEqual(sorted(parsed), sorted(self.expected_keys(sub=sub)),
+                         f"every key of {rel} is read; {rel}={text!r}")
+        self.assertEqual(parsed, parse_env_file(self.target / rel),
+                         f"direnv reads each value as written; {rel}={text!r}")
+        return parsed
+
+    def test_a_standalone_env_reads_under_direnv_with_every_key(self):
+        self.init_ok()
+        parsed = self.assert_reads_under_direnv(".env", sub=False)
+        self.assertEqual(parsed["PROJECT_NAME"], _verdicts.NAME)
+        self.assertEqual(parsed["SANDESH_ADDRESS"], f"Mainline - {DERIVED}")
+
+    def test_every_monorepo_env_reads_under_direnv_with_every_key(self):
+        self.init_ok(repo_shape=MONOREPO)
+        self.assert_reads_under_direnv(".env", sub=False)
+        for sub in SUBS:
+            with self.subTest(sub=sub):
+                parsed = self.assert_reads_under_direnv(f"{sub}/.env", sub=True)
+                self.assertIn(_verdicts.NAME, parsed["PROJECT_NAME"])
+
+    def test_every_whitespace_value_is_double_quoted(self):
+        self.init_ok(repo_shape=MONOREPO)
+        for rel in (".env", *(f"{sub}/.env" for sub in SUBS)):
+            for line in self.read(rel).splitlines():
+                if not line or line.startswith("#"):
+                    continue
+                _key, _, value = line.partition("=")
+                if any(ch.isspace() for ch in value):
+                    with self.subTest(env=rel, line=line):
+                        self.assertTrue(len(value) >= 2 and value[0] == value[-1] == '"',
+                                        f"{rel}: {line!r} is not double-quoted")
+        self.assertIn(f'PROJECT_NAME="{_verdicts.NAME}"', self.read(".env").splitlines())
+
+    def test_the_scaffolds_registry_reader_returns_a_quoted_value_unquoted(self):
+        self.init_ok()
+        schema = scaffold.load_schema(SCHEMA_PATH)
+        self.assertEqual(scaffold.read_registry_value(self.target, schema, "PROJECT_NAME"),
+                         _verdicts.NAME)
+        self.assertEqual(scaffold.read_registry_value(self.target, schema, "SANDESH_ADDRESS"),
+                         f"Mainline - {DERIVED}")
 
 
 # ---------------------------------------------------------------------------

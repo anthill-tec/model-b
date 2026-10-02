@@ -425,5 +425,66 @@ class PiPackageOracleProofTest(unittest.TestCase):
         self.assertIn("never ended", str(ctx.exception))
 
 
+#: The module, its fixture and every test CR-MDB-047 retired with the Model B
+#: watcher ("Removed", amended at 5dd8a36 for VERIFY F2) — read from
+#: ``git show ddd69f7^:tests/test_pi_sandesh_watcher.py``, the commit that
+#: deleted them: 25 test methods under three classes, on the base case
+#: ``SandeshWatcherTestCase``, driven through the fixture harness.
+RETIRED_WATCHER_MODULE = "tests/test_pi_sandesh_watcher.py"
+RETIRED_WATCHER_FIXTURE = "tests/fixtures/pi_watcher_harness.mjs"
+RETIRED_WATCHER_TESTS = (
+    "SandeshWatcherRegistrationTest.test_factory_registers_the_sandesh_watcher_tool_and_the_watcher_command",
+    "SandeshWatcherRegistrationTest.test_tool_schema_declares_start_status_stop_and_address_project",
+    "SandeshWatcherStartTest.test_start_spawns_sandesh_notify_with_exactly_to_and_project",
+    "SandeshWatcherStartTest.test_start_spawns_the_child_with_pythonunbuffered_so_the_banner_is_not_held",
+    "SandeshWatcherStartTest.test_start_reports_ready_naming_the_address_only_after_the_banner",
+    "SandeshWatcherStartTest.test_start_does_not_hang_when_the_child_exits_without_a_banner",
+    "SandeshWatcherStartTest.test_start_while_one_runs_reports_it_and_spawns_nothing",
+    "SandeshWatcherStartTest.test_stop_tool_terminates_the_child",
+    "SandeshWatcherStartTest.test_watcher_stop_command_terminates_the_child",
+    "SandeshWatcherStartTest.test_status_tool_names_the_running_address",
+    "SandeshWatcherStartTest.test_watcher_status_command_names_the_running_address",
+    "SandeshWatcherExitTest.test_exit_0_wakes_once_naming_the_ids_and_quoted_fetch_and_relaunches_at_once",
+    "SandeshWatcherExitTest.test_exit_0_again_with_the_same_ids_does_not_wake_and_retries_every_30s",
+    "SandeshWatcherExitTest.test_status_during_a_retry_does_not_name_the_dead_childs_pid",
+    "SandeshWatcherExitTest.test_exit_0_without_ids_wakes_again_after_a_relaunch_reports_no_mail",
+    "SandeshWatcherExitTest.test_exit_0_with_the_same_ids_wakes_again_after_a_relaunch_reports_no_mail",
+    "SandeshWatcherExitTest.test_exit_0_with_new_ids_wakes_again",
+    "SandeshWatcherExitTest.test_exit_2_relaunches_once_silently",
+    "SandeshWatcherExitTest.test_three_exit_2_within_a_minute_surface_and_stop_relaunching",
+    "SandeshWatcherExitTest.test_exit_2_spread_over_more_than_a_minute_keeps_relaunching_silently",
+    "SandeshWatcherExitTest.test_exit_1_surfaces_usage_or_configuration_error_without_relaunch",
+    "SandeshWatcherExitTest.test_exit_3_surfaces_tombstoned_project_without_relaunch",
+    "SandeshWatcherExitTest.test_exit_4_surfaces_eviction_without_relaunch",
+    "SandeshWatcherExitTest.test_exit_5_surfaces_already_live_dedup_without_relaunch",
+    "SandeshWatcherExitTest.test_signal_exit_surfaces_the_signal_without_relaunch",
+)
+
+
+class RetiredWatcherTestsAreListedTest(unittest.TestCase):
+    """AC "The Pi package": the tests of the removed extension are retired,
+    and each is listed by id in this module's docstring."""
+
+    def setUp(self):
+        self.doc = sys.modules[__name__].__doc__ or ""
+
+    def test_the_retired_module_and_fixture_are_gone(self):
+        for rel in (RETIRED_WATCHER_MODULE, RETIRED_WATCHER_FIXTURE):
+            with self.subTest(path=rel):
+                self.assertFalse((REPO_ROOT / rel).exists(), f"{rel} is retired")
+
+    def test_the_docstring_names_the_retired_module_and_its_fixture(self):
+        for rel in (RETIRED_WATCHER_MODULE, RETIRED_WATCHER_FIXTURE, "SandeshWatcherTestCase"):
+            with self.subTest(name=rel):
+                self.assertIn(rel, self.doc, f"the module docstring lists {rel}")
+
+    def test_the_docstring_lists_every_retired_test_by_id(self):
+        self.assertEqual(len(RETIRED_WATCHER_TESTS), 25)
+        missing = [t for t in RETIRED_WATCHER_TESTS
+                   if f"tests.test_pi_sandesh_watcher.{t}" not in self.doc]
+        self.assertEqual(missing, [], "each retired test is listed by its full id "
+                                      "(tests.test_pi_sandesh_watcher.<Class>.<method>)")
+
+
 if __name__ == "__main__":
     unittest.main()
