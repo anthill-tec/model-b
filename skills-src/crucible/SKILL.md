@@ -165,6 +165,40 @@ Display/classification context survives as env vars:
   the release a gate gates (a gate naming one is exempt from pruning until that
   release records) — omit it unless the gate really gates a release.
 
+## Queue verbs — the board holds the queue
+
+The Crucible board holds the project's CR queue and its execution state; the spec files in
+`docs/changes/` hold the CRs' content. These verbs are how a CR reaches the queue and how its
+place in it changes.
+
+- **Read verbs — `queue` and `next`, run without `--agent`:** they post nothing, so they need
+  no registered caller. `queue` lists the CRs registered on the board.
+- **`next` answers one decision — `NEXT`, `HOLD` or `DRAINED`:** the CR that is actionable
+  now, a hold on what blocks it, or a drained queue. `--track <n>` is required once the
+  project declares more than one track, and optional before that; `--release` and `--wave`
+  narrow the answer.
+- **Write verbs are the orchestrator's only** (Mainline in multi mode), and each posts under a
+  registered `--agent` id like every other workflow verb:
+  - `cr-plan --cr <id> --title <t> --release <label> --wave <w> --agent <id>` records the
+    CR's title, release and wave.
+  - `cr-depends --cr <id> --on <cr,cr> --agent <id>` declares what the CR depends on
+    (`--on ""` declares that it depends on nothing).
+  - `wave-sequence --release <label> --wave <w> --crs <cr,cr> --agent <id>` orders a wave;
+    `--track <n>` on the same call assigns the wave's CRs to that lane.
+  - `cr-supersede --cr <id> --by <successor> --agent <id>` moves a CR's work to its successor.
+  - `cr-void --cr <id> --reason <why> --agent <id>` ends a CR whose work is not happening.
+  - `release-propose --label <version> --target <date> --agent <id>` proposes a release with
+    its target date; a revision retires its predecessor.
+- **`cr-plan` never guesses:** without `--release` it lists the live release proposals, and
+  without `--wave` the waves already planned, then exits 2 — declare both and run it again.
+- **`cr-depends` and `wave-sequence` each replace the whole set**, never a delta: adding a CR
+  to a wave re-sends the wave's full order, and changing one dependency re-sends every one.
+- **`plan-file` with `--release` is the same registration as `cr-plan`**, made by the filing
+  call itself (it then requires `--wave` and `--title`); the two are not rival filing paths.
+  Without `--release` the plan is filed and nothing is claimed on the queue.
+- **`queue-file` is retired from the workflow and is never run:** it replaces the whole board
+  queue from a Markdown file, wiping every CR the verbs above recorded.
+
 ## Envelope — TOON-AXI on stdout (shipped fleet-wide)
 
 The client contract shipped via Crucible **CR-CRU-030**: every client verb
