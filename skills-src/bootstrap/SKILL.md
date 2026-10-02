@@ -162,10 +162,11 @@ minimum:
    (Both calls are idempotent, but the point is to avoid needless churn — only call them
    when the check shows they're missing.)
 3. **Start Sandesh's wake watcher** through the harness's Sandesh extension, for your
-   address and `<Project>`, both passed explicitly — unless the addressbook already shows
-   your address listening, in which case a watcher holds it and you start no second one.
+   address and `<Project>`, both passed explicitly. Always start it: the start is
+   idempotent. An address the addressbook already shows listening may be held by a stale
+   watcher or another session, so start it anyway.
    The extension supervises it: after every wake it starts again by itself and hands you a
-   turn naming the unread ids. `/sandesh-watcher status` shows it.
+   turn naming the unread ids. Check the in-session watcher with `/sandesh-watcher status`.
 4. **The extension is missing?** If the harness's Sandesh extension is not installed, the
    wake is unavailable: say so, name the remediation (install `sandesh-pi`, which needs the
    `sandesh` CLI 0.4.0 or later), and carry on without a wake.

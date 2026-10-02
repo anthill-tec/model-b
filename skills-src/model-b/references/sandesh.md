@@ -13,7 +13,7 @@ The `sandesh` CLI carries the VERBS (`send`/`reply`/`fetch`/`inbox`/`register`/`
 ## Bootstrap — at SESSION START, every session (do NOT defer to first dispatch)
 1. `sandesh setup --project <Project>` (idempotent), when the project is not set up.
 2. `sandesh register --project <Project> --address "<your address>"`, when your address is absent or inactive.
-3. Start Sandesh's wake watcher through the harness's Sandesh extension, for your address and `<Project>`, both passed explicitly — never left to the `$SANDESH_ADDRESS` / `$SANDESH_PROJECT` defaults, which may name another session's identity. `/sandesh-watcher status` shows it.
+3. Start Sandesh's wake watcher through the harness's Sandesh extension, for your address and `<Project>`, both passed explicitly — never left to the `$SANDESH_ADDRESS` / `$SANDESH_PROJECT` defaults, which may name another session's identity. Always start it: the start is idempotent, and an address already listening may be held by a stale watcher or another session. Check the in-session watcher with `/sandesh-watcher status`.
 4. Confirm with `sandesh addressbook --project <Project> --format toon --fields address,status,listening`: your address `active` and listening.
 
 Every `sandesh` call passes `--project <Project>` explicitly. Read liveness from those toon fields, never from the human table.
@@ -26,7 +26,7 @@ On a stop notice, re-check your liveness with the toon addressbook, then answer 
 | Reason | Exit | The watcher | You |
 |---|---|---|---|
 | mail arrived | `0` | wakes you with a turn naming the unread ids, and keeps watching | fetch the named ids only |
-| already live elsewhere (dedup) | `5` | retries once | re-check your liveness on a stop notice |
+| already live elsewhere (dedup) | `5` | retries once; a second exit 5 in a row stops it quietly, with no notice | check it in session with `/sandesh-watcher status`, then your liveness with the toon addressbook |
 | error (usage or configuration) | `1` | stops with a notice | fix the cause, then start the watcher again, once |
 | killed by a signal | `128+n` | stops with a notice | start the watcher again, once |
 | tombstoned (project retired) | `3` | stops with a notice | report it; do not start it again |
