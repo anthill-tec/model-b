@@ -779,7 +779,8 @@ the shell boundary, and Model B owns it through direnv:
 - **A Track** launches with its own address in the real environment, which wins:
   `env SANDESH_ADDRESS="Track <N> - <Project>" pi`.
 - **The user's steps.** Installing direnv, its shell hook, and `direnv allow` are the user's steps,
-  named by the installer and the queue README's setup task. `direnv allow` is a trust decision, like
+  named by the installer and the Sandesh setup task in the root `AGENTS.md`'s Setup section
+  (CR-MDB-048). `direnv allow` is a trust decision, like
   Pi's `/trust`.
 - **Sandesh's side.** Sandesh ships a diagnostic, not a loader: at session start, if the identity is
   in `./.env` but not exported, sandesh-pi says so.

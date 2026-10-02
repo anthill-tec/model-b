@@ -11,7 +11,7 @@ Project-level contract for every agent/session in this repo. `CLAUDE.md` is a sy
 - **Portable lifecycle hooks** (`hooks-src/`) — one neutral schema compiled into per-harness wiring.
 - **`modelb_axi`** — the `modelb-axi` CLI: universal installer (deploys the above into a user's harness dirs) + project scaffolder (`init`).
 
-Design contract: `docs/research/PRD-model-b-rationalization.md` (decisions **D1–D10**). Everything is authored repo-locally and reaches a user's machine only through the installer (D9/D10), which writes under `~/.agents`.
+Design contract: `docs/research/PRD-model-b-rationalization.md` (decisions **D1–D10**). Evidence base: `audits/2026-07-20-*.md` + `docs/research/DN-rationalization-plan-review.md`. Ontology: `docs/research/DN-model-b-language.md` (LOCKED, see Workflow Rules). Everything is authored repo-locally and reaches a user's machine only through the installer (D9/D10), which writes under `~/.agents`.
 
 ## Architecture & Data Flow
 
@@ -26,9 +26,11 @@ INSTALLER (no install.toml)
   -> config.write_install_toml() # LAST, atomic (tmp + os.replace); sha256 manifest
 
 SCAFFOLD (`modelb-axi init`, scaffold.run_init)
-  validate flags -> plan_files() -> render templates (_render_env, _render_agents_md,
-  _render_queue_readme, ...) -> _hook_instances(stacks, mode) -> hooks.compile_wiring()
+  validate flags -> plan_files() -> render templates (_render_env, _render_agents_md incl. its
+  Setup section, ...) -> docs/changes/.gitkeep  # the Crucible board holds the queue; no queue README
+  -> _hook_instances(stacks, mode) -> hooks.compile_wiring()
   -> git init (+ optional commit) -> axi.envelope("init", ok, ...) on stdout
+  # Model B's own docs/changes/README.md is read-only history, frozen at CR-MDB-048's merge
 ```
 
 Key invariants:
@@ -48,8 +50,8 @@ Key invariants:
 | `scripts/` | The tool-script asset class (7 adopted + 1 generated): `worktree-flow.py`, `schedule_db.py` (TRANSITIONAL), `skill-release-gate.py`, `rust-code-health.py`, `rust-crate-map.py`, `rust-dead-scan.py`, `gate-lock.sh`, and `toon.py` generated from `modelb_axi/toon.py`. Deployed to `~/.agents/scripts/` (`deploy.TOOL_SCRIPTS_STORE_RELDIR`) — the ONLY path a Model B surface names; never a `~/.claude` path (not Model B-owned) |
 | `contracts/` | Interface contracts: `crucible-envelope.md`, `gate-lock.md`, `sandesh-cli.md`, `lean-ctx.md` (cross-project), `worktree-layout.md` (the `.worktrees/<cr>` string and its six consumers). Repo-only — not shipped in the wheel |
 | `docs/research/` | `PRD-model-b-rationalization.md` (D1–D10) + `DN-*.md` design notes |
-| `docs/changes/` | `README.md` = CR queue (structure only) + `CR-MDB-NNN-*.md` specs |
-| `tests/` | 72 `unittest` modules; mostly structural/contract gates |
+| `docs/changes/` | `CR-MDB-NNN-*.md` specs; `README.md` is read-only history frozen at CR-MDB-048's merge — the Crucible board holds the queue and the execution state |
+| `tests/` | 73 `unittest` modules; mostly structural/contract gates |
 | `archive/` | Read-only history: `BASELINE.md` (the wave-0 baseline), `wave1..3/` and `contracts/` (archived files), and `mapping.md` — the living map from every relocated path to where it lives now, gated by `tests/test_archive_mapping.py` (a CR that moves a mapped path updates its row) |
 | `audits/` | Dated evidence files backing PRD decisions |
 
@@ -98,7 +100,7 @@ A brief that may run `modelb-axi` pins `--modelb-home` / `--target-root` and exp
 - `.env` — static naming registry (gitignored; must exist locally): `PROJECT_NAME`, `PROJECT_TOKEN=modelb`, `PROJECT_ACRONYM=MDB`, `ORCHESTRATOR_LABEL=vidushi-mdb`, `REPO_OWNER=antojk`, `CRUCIBLE_PROJECT_KEY`.
 - `hooks-src/schema.md` — the neutral hook schema v1; the compiler in `hooks.py` is its only consumer.
 - `skills-src/CRUCIBLE-HANDOVER.md` — provenance + maintenance contract for the 6 imported bundles. Model B owns their content/bundling/deploy; the Crucible repo owns the client code. Keep imported bundles byte-faithful unless a doc-sync is explicitly in scope.
-- `docs/changes/README.md` — the CR queue: `| CR | Title | Wave | Depends-on |` + dated Notes. **Structure only** — live status is derived on the Crucible board, never hand-maintained here.
+- `docs/changes/README.md` — read-only history, frozen at CR-MDB-048's merge: the queue and the execution state are on the Crucible board (filed with `cr-plan`/`cr-depends`/`wave-sequence`). Never run `queue-file` against it — it would replace the board's queue with its rows.
 - `contracts/*.md` — the interface you must honour when touching Crucible/Sandesh/lean-ctx integration.
 - `.claude/settings.local.json` — local tool permission allowlist only.
 
@@ -114,7 +116,7 @@ A brief that may run `modelb-axi` pins `--modelb-home` / `--target-root` and exp
 
 ## Testing & QA
 
-Pure **`unittest`** — no pytest, no `conftest.py`, no fixtures/markers. 72 modules in `tests/` (`tests/test_*.py`), each file ending in `if __name__ == "__main__": unittest.main()`. Naming as practised: the wave-1/2 modules use `<Topic><Section>Test` classes (e.g. `ContractsS2Test`) with `test_s<n>_<assertion>` methods; later modules use `<Feature>Test` classes (e.g. `BlockDirectCargoTestScriptTest`) with descriptive method names. A helper more than one module needs lives once in `tests/_helpers.py` and is imported (CR-MDB-032 §S3 gates a module-level helper body defined in two modules).
+Pure **`unittest`** — no pytest, no `conftest.py`, no fixtures/markers. 73 modules in `tests/` (`tests/test_*.py`), each file ending in `if __name__ == "__main__": unittest.main()`. Naming as practised: the wave-1/2 modules use `<Topic><Section>Test` classes (e.g. `ContractsS2Test`) with `test_s<n>_<assertion>` methods; later modules use `<Feature>Test` classes (e.g. `BlockDirectCargoTestScriptTest`) with descriptive method names. A helper more than one module needs lives once in `tests/_helpers.py` and is imported (CR-MDB-032 §S3 gates a module-level helper body defined in two modules).
 
 ```bash
 python3 -m unittest tests.test_hooks                       # one module
@@ -135,9 +137,9 @@ python3 ~/.crucible/clients/python-crucible.py regression --coverage \
 - JUnit XML lands in `test-reports/` as `TEST-<module>.<Class>-<YYYYMMDDHHMMSS>.xml` (gitignored; the client wipes it before each run). Plain `unittest` produces console output only.
 - **Most tests are structural gates, so ordinary edits break them.** They assert repo layout, the state a sandboxed install deploys, SKILL.md frontmatter, byte-identity of imported bundles, reference-router parity, and grep-gates for retired terms (e.g. zero `WORKFLOW_CYCLE_ID`). Renaming a skill, doc, or reference file requires updating its gate.
 - Tests import `modelb_axi` directly — install the package (`pip install -e .`) or run from the repo root.
-- **The suite is expected to be GREEN, and hermetic** — no test writes to or depends on the real home, except to read Crucible's installed clients (CR-MDB-032 §S1/§S2) and one installed Pi package's released source — the pi-subagents service key, under `$PI_CODING_AGENT_DIR`, else `~/.pi/agent` (CR-MDB-039). Baselines for `python3 -m unittest discover -s tests -t .`, measured 2026-10-02 at CR-MDB-048 C1 GREEN with `MODELB_HOME`/`XDG_DATA_HOME` pointed at temp dirs:
-  - real `HOME` (Crucible clients installed): **2029 tests, 0 failures, 0 errors, 0 skips**.
-  - empty `HOME` (a fresh temp dir; `PYTHONUSERBASE` keeps user site-packages): **2029 tests, 0 failures, 0 errors, 10 skips**; the temp dir is still empty afterwards.
+- **The suite is expected to be GREEN, and hermetic** — no test writes to or depends on the real home, except to read Crucible's installed clients (CR-MDB-032 §S1/§S2) and one installed Pi package's released source — the pi-subagents service key, under `$PI_CODING_AGENT_DIR`, else `~/.pi/agent` (CR-MDB-039). Baselines for `python3 -m unittest discover -s tests -t .`, measured 2026-10-02 at CR-MDB-048 C2 GREEN with `MODELB_HOME`/`XDG_DATA_HOME` pointed at temp dirs:
+  - real `HOME` (Crucible clients installed): **2063 tests, 0 failures, 0 errors, 0 skips**.
+  - empty `HOME` (a fresh temp dir; `PYTHONUSERBASE` keeps user site-packages): **2063 tests, 0 failures, 0 errors, 10 skips**; the temp dir is still empty afterwards.
 - **Every skip is an absent installed Crucible client, an absent `pi` CLI, an absent `sandesh` CLI, an absent installed pi-subagents, an interpreter without the `build` frontend, or a shallow clone.** A test that reads Crucible's released surface resolves it through `~/.crucible/crucible-clients.json` and skips, naming that manifest, when the manifest, its entry or the file is missing — the toon conformance oracle (2), the gate-lock read (1), the present-manifest half of `ManifestResolvedOracleS1Test` (1), the scaffolded-key resolution in `test_project_registry_schema` (1) — and `ClientContractS3Test` skips its four checks when the released client files under `~/.crucible/clients/` are absent. The `pi` CLI (with `node` and the jiti it ships) must be on `PATH`: without it the loader-driven classes skip in `setUpClass`, seven in `test_pi_hook_runtime` and four in `test_pi_worktree_isolation`. Without an installed pi-subagents, `test_pi_worktree_isolation`'s service-key contract check (1) skips, naming the path it looked for (`npm/node_modules/@gotgenes/pi-subagents/src/service/service.ts` under `$PI_CODING_AGENT_DIR`, else `~/.pi/agent`). Without `sandesh` on `PATH`, `test_sandesh_cli_forms`'s `--help` conformance class skips its three checks in `setUpClass`. An interpreter without the `build` frontend (e.g. `python3.11` with only the stdlib) skips `test_tooling_detachment`'s and `test_project_registry_schema`'s built-wheel checks (1 each), because a wheel must really be built. A shallow clone or an absent `git` skips `test_archive_mapping`'s real-map row check (1) after every other row rule has run, because its Moved-by shas cannot be resolved. Nothing else skips. **A failure is a regression, not a known-bad** — investigate it; `audits/2026-09-21-codebase-review-tests.md` diagnoses the pre-CR-MDB-021 state.
 - TDD is mandatory: RED before GREEN, never commit failing tests, clean build before every commit.
 
