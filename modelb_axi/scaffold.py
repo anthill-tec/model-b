@@ -1291,7 +1291,6 @@ def _emit_plan(
     templates = _select_memory_templates(_memory_templates_dir(home), stacks)
     target.mkdir(parents=True, exist_ok=True)
 
-
     # §S3.1 registry + §S3.5 .gitignore.
     write(".env", _render_env(schema, registry))
     write_envrc(".envrc")
