@@ -35,7 +35,7 @@ Coordinator-only rules. Read COMMON + MAINLINE. (Worker rules → TRACK; sub-age
 
 ## Merge gate enforcement
 - Enforce the WIRE-THE-CALL-PATH gate: the sign-off must NAME the integration test proving the real caller→new-code→result seam; unwired/not-integration-tested → CHANGES-NEEDED before the user relay.
-- **Verify track reports INDEPENDENTLY** — don't trust agent-claimed pass counts; read the `passed=/failed=` summary, confirm the board close-out (`cr-close` posted, the merge's milestone, the spec's `**Status:**` flipped), confirm the integration-test evidence.
+- **Verify track reports INDEPENDENTLY** — don't trust agent-claimed pass counts; read the `passed=/failed=` summary, confirm the board close-out (before the merge, the spec's `**Status:**` flipped; after it, `cr-close --commit <merge sha> --agent <id>` posted, which posts the `cr-merged` milestone — `cr-close` takes the merge's sha, so it waits for the merge commit), confirm the integration-test evidence.
 
 ## Filing/assigning a CR — COMMIT docs FIRST, schedule write LAST
 - Order: write the spec → `git commit` to `develop` → THEN file it on the board (`cr-plan`, `cr-depends`, `wave-sequence`) and assign the lane → inbox housekeeping.

@@ -45,7 +45,7 @@ the Quarkus-specific gotchas. Sub-agent test/impl conventions live in `java-test
 2. **Coverage published ONLY on a zero-failure full run** — JaCoCo from a partial/failed/targeted run is incomplete; the script refuses to attach it when `failed > 0`.
 3. For CRs touching docker-compose e2e: `pre-merge-gate` wraps docker-up → regression → docker-down. (Quarkus DevServices/TestContainers self-provision containers and need no compose.)
 4. **Report ignored/skipped tests explicitly** — every regression. Enumerate `@Disabled`/`@DisabledIf`/skipped tests with reasons; distinguish env-gated (docker/native unavailable) from real coverage holes. A bare pass/skip count hides them.
-5. Close the CR — `cr-close` on the board and the spec's `**Status:**` flip — **before** `git flow feature finish` — never after (use the project's `check-cr-close` equivalent).
+5. Close the CR: before `git flow feature finish`, the spec's `**Status:**` flip (use the project's `check-cr-close` equivalent); after it, `cr-close --commit <merge sha> --agent <orchestrator-id>`, which takes the merge's sha and posts `cr-merged`.
 
 ## JaCoCo — read the RIGHT report
 Quarkus emits two JaCoCo outputs; only one is correct for Quarkus-managed classes.

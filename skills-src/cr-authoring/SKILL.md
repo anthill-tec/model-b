@@ -110,7 +110,7 @@ skill's queue-verbs section) — never in a table in a file.
   and `wave-sequence`, once; the README then stays as history.
 
 ## Closing a CR
-- **Board-tracked projects:** close via `cr-close` (board carries the status) and the merge's `milestone` label; the CR spec file's top `**Status:**` flip stays: `COMPLETED (shipped YYYY-MM-DD on <branch>)`. Date-only ship refs, never a merge-commit hash.
+- **Board-tracked projects:** before the merge, the CR spec file's top `**Status:**` flip: `COMPLETED (shipped YYYY-MM-DD on <branch>)`. Date-only ship refs, never a merge-commit hash. After it, `cr-close --commit <merge sha> --agent <id>` closes the CR on the board (the board carries the status) and posts the `cr-merged` milestone; it takes the merge's sha, so it waits for the merge commit.
 - **Where board-tracking is absent:** close-out is the spec's `**Status:**` flip alone, made on ship before the merge ceremony; the regression-merge diff touches the spec.
 
 ## Spec updates during execution — orchestrator authority vs VERIFY's
