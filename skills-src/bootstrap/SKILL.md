@@ -145,8 +145,8 @@ minimum:
      address in every session started from the project directory.
    - The remediation: load direnv (`direnv allow` where the `.envrc` is), or relaunch the
      session with the override. A project scaffolded without `SANDESH_ADDRESS` or `.envrc`
-     adds them by hand: `SANDESH_ADDRESS="Mainline - <Project>"` in `.env`, and an `.envrc`
-     holding `dotenv` beside it — never by re-running `modelb-axi init`, which overwrites the
+     adds them by hand: a `SANDESH_ADDRESS` line in `.env` holding `Mainline - <Project>` in
+     double quotes, and an `.envrc` holding `dotenv` beside it — never by re-running `modelb-axi init`, which overwrites the
      project's existing files.
    - Do not stop on it: carry on with your role's address passed explicitly.
 2. **Check** `sandesh addressbook --project <Project> --format toon --fields address,status,listening`.
