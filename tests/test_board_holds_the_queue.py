@@ -20,11 +20,18 @@ Class map — one class per acceptance criterion of §S1:
   queue's home in the two orchestration references.
 - ``JavaOrchestrationTemplateBoardTest`` — the memory template's ``docs/changes/`` and its
   pre-merge close-out step.
+- ``RustOrchestrationTemplateCloseOutTest`` — the rust memory template's Tier-1 close-out step.
+  Every close-out names the ``**Status:**`` flip before the merge and ``cr-close --commit <merge
+  sha>`` after it (``cr-close`` takes the merge's sha, so it cannot run before).
 - ``QueueReadmeReachTest`` — no shipped skill, reference, template, stack file or memory template
   names ``queue-file`` (except as never run), ``docs/changes/README.md``, a queue row, the Notes
   log or the queue README as a step — except the older-project cases of ``bootstrap``,
   ``shutdown`` and ``cr-authoring``.
+- ``MergeRecordReachTest`` — no shipped surface runs ``cr-close`` before the merge or asks for a
+  merge milestone besides the ``cr-merged`` one ``cr-close`` posts.
 - ``ReachDetectorOnSyntheticTextTest`` — the reach detector proven on synthetic text.
+- ``CloseOutDetectorsOnSyntheticTextTest`` — the close-out order, merge-record and older-project
+  filing detectors proven on synthetic text, both ways.
 
 §S3 — Model B's own records (one class per record):
 
@@ -36,7 +43,8 @@ Class map — one class per acceptance criterion of §S1:
 - ``ModelBAgentsMdBoardTest`` — Model B's ``AGENTS.md``: the ``docs/changes/`` row, the
   Important-files line and the architecture flow say the README is frozen history and the board
   holds the queue (the flow no longer renders a queue README); it carries the Design contract,
-  Evidence base and Ontology lines from the README's header.
+  Evidence base and Ontology lines from the README's header; its Workflow Rules say a release is
+  a boundary event, not a CR.
 - ``DnD20SetupSectionTest`` — DN-multi-harness §D20 names ``AGENTS.md``'s Setup section, not the
   queue README's setup task, for the user's direnv steps.
 - ``ModelBRecordsDetectorsOnSyntheticTextTest`` — the §S3 detectors proven on synthetic text.
@@ -73,6 +81,7 @@ MODEL_B_SKILL = "skills-src/model-b/SKILL.md"
 MAINLINE_REF = "skills-src/model-b/references/orchestration-mainline.md"
 COMMON_REF = "skills-src/model-b/references/orchestration-common.md"
 JAVA_TEMPLATE = "skills-src/memory-templates/java-orchestration.md"
+RUST_TEMPLATE = "skills-src/memory-templates/rust-orchestration.md"
 BOOTSTRAP = "skills-src/bootstrap/SKILL.md"
 SHUTDOWN = "skills-src/shutdown/SKILL.md"
 
@@ -93,6 +102,18 @@ WRITE_VERB_FLAGS = {
 READ_VERBS = ("queue", "next")
 #: The close-out verb itself — never the ``check-cr-close`` gate's name.
 CR_CLOSE = r"(?<![\w-])cr-close(?![\w-])"
+#: "before the merge" — the merge named as such or as the feature branch's finish.
+BEFORE_MERGE = re.compile(
+    r"\bbefore\b[^;]{0,40}?\b(?:the merge|merging|git flow feature finish|finish)\b")
+#: ``cr-close`` run with the merge's sha (the client's ``--commit``: "Merge commit sha").
+CR_CLOSE_WITH_MERGE_SHA = re.compile(r"(?<![\w-])cr-close --commit <merge sha>")
+#: A unit that runs ``cr-close`` before the merge (F1) — it takes the merge's sha, so it cannot.
+CR_CLOSE_BEFORE_MERGE = re.compile(
+    CR_CLOSE + r"[^.]{0,160}?(?:\bbefore\b[^.;]{0,40}?\b(?:the merge|merging|feature finish|"
+    r"finish)\b|\bnever after\b)")
+#: A merge milestone asked for in addition to ``cr-close``, which posts ``cr-merged`` itself (F4).
+SECOND_MERGE_RECORD = re.compile(
+    r"\b(?:and|plus) (?:a|the merge's) milestone\b|\bmerge's milestone\b")
 
 #: The shipped surfaces the reach AC covers: every skill bundle, reference and memory template
 #: under ``skills-src/``, and the generator's templates and stack files.
@@ -241,6 +262,66 @@ def reach_findings(rel: str, text: str) -> list[str]:
                     out.append(f"{rel}: names {what} as a step: {clause.strip()[:160]!r}")
                     break
     return out
+
+
+def close_out_order_findings(unit: str) -> list[str]:
+    """What a close-out ``unit`` (normalised) lacks (CR-MDB-048 §S1, F1): before the merge, the
+    spec's ``**Status:**`` flip; after it, ``cr-close --commit <merge sha>`` — and ``cr-close``
+    never before the merge, since it takes the merge's sha."""
+    before = BEFORE_MERGE.search(unit)
+    if not before:
+        return ["names no step before the merge"]
+    after = re.search(r"\bafter\b", unit[before.end():])
+    if not after:
+        return ["names no step after the merge"]
+    cut = before.end() + after.start()
+    head, tail = unit[:cut], unit[cut:]
+    out = []
+    if "status:" not in head:
+        out.append("the **Status:** flip is not the step before the merge")
+    if re.search(CR_CLOSE, head):
+        out.append("cr-close runs before the merge")
+    if not CR_CLOSE_WITH_MERGE_SHA.search(tail):
+        out.append("cr-close --commit <merge sha> is not the step after the merge")
+    return out
+
+
+def merge_record_findings(rel: str, text: str) -> list[str]:
+    """Where ``text`` (the file ``rel``) runs ``cr-close`` before the merge (F1) or asks for a
+    merge milestone besides ``cr-close``, which posts ``cr-merged`` itself (F4) — one finding
+    per unit."""
+    out = []
+    for unit in norm_units(text):
+        if CR_CLOSE_BEFORE_MERGE.search(unit):
+            out.append(f"{rel}: cr-close before the merge: {unit[:160]!r}")
+        if SECOND_MERGE_RECORD.search(unit):
+            out.append(f"{rel}: a merge milestone besides cr-close: {unit[:160]!r}")
+    return out
+
+
+#: An older project's filing (CR-MDB-048 §S1, F2): what each rule needs, every regex in it.
+OLDER_PROJECT_FILING = (
+    ("is about an older project", (OLDER_PROJECT_MARKER.pattern,)),
+    ("triggers on the board's queue missing a CR",
+     (r"(?<![\w-])queue(?![\w-])[^.]{0,40}\b(?:missing|lacks|does not list)\b",)),
+    ("whose spec exists", (r"\bspec\b[^.]{0,30}\bexists?\b",)),
+    ("with no merge recorded (no cr-close, **Status:** not COMPLETED)",
+     (r"\bno merge (?:is )?recorded\b", r"\bno cr-close\b", r"status:[^.]{0,40}\bnot completed\b")),
+    ("files only those CRs, with cr-plan", (r"\bonly (?:those|these)\b[^.]{0,40}cr-plan",)),
+    ("never re-files a CR queue lists", (r"\bnever re-?filed?\b",)),
+    ("re-sends a wave's order in full",
+     (r"\border\b[^.]{0,20}re-?sent in full|re-?sen[dt][^.]{0,40}\b(?:full|whole) order",)),
+    ("asks the user for the release", (r"\brelease\b[^.]{0,20}\buser'?s? call\b",)),
+    ("proposes the README's Target release slot",
+     (r"readme'?s target release\b[^.]{0,40}\bpropos",)),
+    ("keeps the README as history", (r"\breadme\b[^.]{0,40}\bhistory\b",)),
+)
+
+
+def older_project_filing_findings(unit: str) -> list[str]:
+    """The rules of :data:`OLDER_PROJECT_FILING` the normalised ``unit`` does not state."""
+    return [what for what, patterns in OLDER_PROJECT_FILING
+            if not all(re.search(p, unit) for p in patterns)]
 
 
 def shipped_surfaces() -> list[str]:
@@ -398,17 +479,49 @@ class CrAuthoringBoardFilingTest(unittest.TestCase):
                           r"setup section", r"\bfirst\b")
         self.assertTrue(hits, "no unit sends an unregistered project to the Setup section first")
 
-    def test_an_older_project_files_its_open_rows_once_and_keeps_the_readme_as_history(self):
-        hits = units_with(self.queue, OLDER_PROJECT_MARKER.pattern, r"\bopen rows?\b",
-                          r"cr-plan", r"\bhistory\b")
-        self.assertTrue(hits, "no unit files an older project's open rows with cr-plan once, "
-                              "the README kept as history")
+    def test_an_unregistered_older_project_falls_back_to_its_readmes_setup_tasks(self):
+        """F3: as ``bootstrap`` and ``shutdown`` do, the Unregistered rule names the older
+        project's fallback — its README's setup tasks — in the same unit."""
+        hits = units_with(self.queue, r"\bunregistered\b", r"crucible_project_key",
+                          r"setup section", OLDER_PROJECT_MARKER.pattern,
+                          r"\breadme'?s setup tasks\b")
+        self.assertTrue(hits, "the Unregistered rule names no older-project fallback to its "
+                              "README's setup tasks")
+
+    def test_an_older_project_files_only_its_unmerged_unqueued_specs_once(self):
+        """MIGRATED at CR-MDB-048 C4 FIX (F2; §S1 amended at ``c38b3f7``). Was: one unit files
+        an older project's "open rows" with ``cr-plan`` once and keeps the README as history.
+        Now: the trigger is the board's ``queue`` missing a CR whose spec exists with no merge
+        recorded; only those are filed; a CR ``queue`` lists is never re-filed; a wave's order is
+        re-sent in full; the release is asked of the user with the README's Target release slot
+        proposed; the README stays as history."""
+        units_found = units_with(self.queue, OLDER_PROJECT_MARKER.pattern, r"cr-plan")
+        self.assertTrue(units_found, "no unit files an older project's CRs with cr-plan")
+        best = min((older_project_filing_findings(u) for u in units_found), key=len)
+        self.assertEqual(best, [], "the older-project filing does not state: " + "; ".join(best))
 
     def test_where_the_rest_goes_rulings_merges_and_follow_ups(self):
         hits = units_with(self.text, r"\bruling", r"\bprd\b", r"\bdn\b", CR_CLOSE,
                           r"\bmilestone", r"follow-?ups?", r"\bboard\b")
         self.assertTrue(hits, "no unit sends rulings to the PRD or a DN, merges to cr-close and "
                               "a milestone, follow-ups to a CR filed on the board")
+
+    def test_a_merge_is_recorded_once_by_cr_close_a_descriptive_milestone_optional(self):
+        """F4: ``cr-close`` posts ``cr-merged`` itself; a descriptive milestone is optional, never
+        a second merge record."""
+        hits = units_with(self.text, r"\bruling", CR_CLOSE, r"\bcr-merged\b",
+                          r"\bdescriptive milestone\b[^.]{0,30}\boptional\b")
+        self.assertTrue(hits, "no unit says cr-close posts cr-merged and a descriptive milestone "
+                              "is optional")
+        self.assertEqual(merge_record_findings(CR_AUTHORING, self.text), [])
+
+    def test_a_board_tracked_cr_flips_status_before_the_merge_and_cr_closes_after(self):
+        """F1: before the merge, the spec's ``**Status:**`` flip; after it,
+        ``cr-close --commit <merge sha>``."""
+        sec = section(self.text, "Closing a CR")
+        tracked = units_with(sec, r"board-tracked")
+        self.assertEqual(len(tracked), 1, tracked)
+        self.assertEqual(close_out_order_findings(tracked[0]), [])
 
     def test_the_retired_queue_destinations_are_gone(self):
         norm = normalise(self.text)
@@ -530,12 +643,19 @@ class OrchestrationMainlineBoardTest(unittest.TestCase):
                           if "readme" in u], [])
 
     def test_the_merge_gate_close_out_is_the_board_close_out(self):
+        """MIGRATED at CR-MDB-048 C4 FIX (F1, F4; §S1 amended at ``c38b3f7``). Was: one unit
+        confirms ``cr-close``, a milestone and the spec's ``**Status:**``. Now also: the
+        ``**Status:**`` flip before the merge, ``cr-close --commit <merge sha>`` after it, and no
+        merge milestone besides the ``cr-merged`` one ``cr-close`` posts."""
         sec = section(self.text, "Merge gate enforcement")
         norm = normalise(sec)
         self.assertNotIn("two-file close-out", norm)
-        self.assertTrue(units_with(sec, CR_CLOSE, r"\bmilestone", r"status:"),
-                        "the merge gate does not confirm the board close-out "
-                        "(cr-close, milestone, the spec's **Status:**)")
+        hits = units_with(sec, CR_CLOSE, r"\bmilestone", r"status:")
+        self.assertTrue(hits, "the merge gate does not confirm the board close-out "
+                              "(cr-close, milestone, the spec's **Status:**)")
+        self.assertEqual(close_out_order_findings(hits[0]), [])
+        self.assertRegex(hits[0], r"\bcr-merged\b")
+        self.assertEqual(merge_record_findings(MAINLINE_REF, sec), [])
 
 
 class OrchestrationCommonBoardTest(unittest.TestCase):
@@ -564,6 +684,32 @@ class OrchestrationCommonBoardTest(unittest.TestCase):
         self.assertRegex(hits[0], r"\bboard\b")
         self.assertNotIn("queue row", hits[0])
 
+    def test_the_close_out_flips_status_before_the_merge_and_cr_closes_after(self):
+        """F1: the close-out is the ``**Status:**`` flip before the merge — the feature
+        branch's last commit — and ``cr-close --commit <merge sha>`` after it."""
+        sec = section(self.text, "Close-out")
+        self.assertNotEqual(sec.strip(), "", "no 'Close-out' section")
+        ordered = [u for u in units_with(sec, CR_CLOSE, r"status:")
+                   if not close_out_order_findings(u)]
+        self.assertTrue(ordered, "no close-out unit flips **Status:** before the merge and runs "
+                                 "cr-close --commit <merge sha> after it")
+        self.assertEqual(units_with(sec, CR_CLOSE + r"[^.]{0,60}\bis the close-out\b"), [],
+                         "cr-close alone is still called the close-out")
+        last = units_with(sec, r"\blast commit on the feature branch\b")
+        self.assertEqual(len(last), 1, last)
+        self.assertIn("status:", last[0], "the feature branch's last commit is not the "
+                                          "**Status:** flip")
+        self.assertEqual(merge_record_findings(COMMON_REF, sec), [])
+
+    def test_the_plan_is_read_before_finish_and_then_cr_close(self):
+        """F1: the plan-read rule lists ``cr-close`` after ``finish``, never before it."""
+        hits = units_with(self.text, r"read the crucible plan before", CR_CLOSE, r"\bfinish\b")
+        self.assertEqual(len(hits), 1, hits)
+        close = re.search(CR_CLOSE, hits[0])
+        self.assertIsNotNone(close)
+        self.assertLess(hits[0].index("finish"), close.start() if close else -1,
+                        "the plan-read rule lists cr-close before finish")
+
 
 class JavaOrchestrationTemplateBoardTest(unittest.TestCase):
     """§S1 — the ``java-orchestration`` memory template."""
@@ -582,6 +728,19 @@ class JavaOrchestrationTemplateBoardTest(unittest.TestCase):
         self.assertRegex(hits[0], CR_CLOSE)
         self.assertIn("status:", hits[0])
         self.assertNotRegex(hits[0], r"\bupdate readme\b|\breadme \(")
+        self.assertEqual(close_out_order_findings(hits[0]), [],
+                         "MIGRATED at CR-MDB-048 C4 FIX (F1): the **Status:** flip before "
+                         "git flow feature finish, cr-close --commit <merge sha> after it")
+
+
+class RustOrchestrationTemplateCloseOutTest(unittest.TestCase):
+    """§S1, F1 — the ``rust-orchestration`` memory template's Tier-1 close-out step."""
+
+    def test_the_tier_1_close_out_flips_status_before_the_merge_and_cr_closes_after(self):
+        text = read_text(REPO_ROOT / RUST_TEMPLATE)
+        hits = units_with(text, r"^5\. ingest each run\b")
+        self.assertEqual(len(hits), 1, hits)
+        self.assertEqual(close_out_order_findings(hits[0]), [])
 
 
 # ----------------------------------------------------------------------- reach ----
@@ -599,6 +758,83 @@ class QueueReadmeReachTest(unittest.TestCase):
         findings = [f for rel in shipped_surfaces()
                     for f in reach_findings(rel, read_text(REPO_ROOT / rel))]
         self.assertEqual(findings, [], "\n".join(findings))
+
+
+class MergeRecordReachTest(unittest.TestCase):
+    """AC 4 — no shipped surface runs ``cr-close`` before the merge (F1) or posts a second merge
+    milestone besides the ``cr-merged`` one ``cr-close`` posts (F4)."""
+
+    def test_no_shipped_surface_runs_cr_close_before_the_merge_or_records_it_twice(self):
+        findings = [f for rel in shipped_surfaces()
+                    for f in merge_record_findings(rel, read_text(REPO_ROOT / rel))]
+        self.assertEqual(findings, [], "\n".join(findings))
+
+
+class CloseOutDetectorsOnSyntheticTextTest(unittest.TestCase):
+    """The F1/F2/F4 detectors, proven on synthetic text both ways."""
+
+    GOOD = ("- Close the CR: before the merge, the spec's `**Status:**` flip; after it, "
+            "`cr-close --commit <merge sha> --agent <id>`, which posts `cr-merged`.\n")
+
+    def _unit(self, text: str) -> str:
+        return norm_units(text)[0]
+
+    def test_close_out_order_both_ways(self):
+        self.assertEqual(close_out_order_findings(self._unit(self.GOOD)), [])
+        java = ("5. Close the CR: before `git flow feature finish`, the spec's `**Status:**` flip; "
+                "after it, `cr-close --commit <merge sha> --agent <id>` (use the project's "
+                "`check-cr-close` equivalent).\n")
+        self.assertEqual(close_out_order_findings(self._unit(java)), [])
+        bad = {
+            "- Close the CR — `cr-close` on the board and the spec's `**Status:**` flip — "
+            "**before** `git flow feature finish` — never after.\n": 2,
+            "- Before the merge, `cr-close --commit <sha>` and the `**Status:**` flip; after it, "
+            "nothing.\n": 2,
+            "- Before the merge, the `**Status:**` flip; after it, a milestone.\n": 1,
+            "- Ingest each run; close-out (universal) before merge.\n": 1,
+            "- `cr-close --commit <merge sha>` IS the close-out.\n": 1,
+        }
+        for text, n in bad.items():
+            with self.subTest(text=text[:40]):
+                self.assertEqual(len(close_out_order_findings(self._unit(text))), n,
+                                 close_out_order_findings(self._unit(text)))
+
+    def test_merge_record_detector_both_ways(self):
+        self.assertEqual(merge_record_findings("x", self.GOOD), [])
+        self.assertEqual(merge_record_findings(
+            "x", "- A merge to `cr-close`, which posts `cr-merged`; a descriptive milestone is "
+                 "optional, never a second merge record.\n"), [])
+        self.assertEqual(merge_record_findings(
+            "x", "- Read the Crucible plan before `cycle-done`, `finish` or `cr-close`.\n"), [])
+        for text in ("- Close the CR — `cr-close` and the flip — before `git flow feature "
+                     "finish` — never after.\n",
+                     "- `cr-close` runs before the merge.\n",
+                     "- A merge to `cr-close` and a milestone label on the board.\n",
+                     "- Confirm `cr-close` posted and the merge's milestone.\n"):
+            with self.subTest(text=text[:40]):
+                self.assertEqual(len(merge_record_findings("x", text)), 1)
+
+    def test_older_project_filing_both_ways(self):
+        good = ("- **A project scaffolded before the board held the queue:** the trigger is the "
+                "board's `queue` missing a CR whose spec exists in `docs/changes/` with no merge "
+                "recorded (no `cr-close`, the spec's `**Status:**` not `COMPLETED`). Only those "
+                "CRs are filed, with `cr-plan`; a CR `queue` already lists is never re-filed, and "
+                "a wave's order is re-sent in full. The release is the user's call, with the "
+                "README's Target release slot proposed as the default. The README then stays as "
+                "history.\n")
+        self.assertEqual(older_project_filing_findings(self._unit(good)), [])
+        old = ("- **A project scaffolded before the board held the queue:** the first time, file "
+               "each open row on the board with `cr-plan`, `cr-depends` and `wave-sequence`, "
+               "once; the README then stays as history.\n")
+        self.assertEqual(len(older_project_filing_findings(self._unit(old))),
+                         len(OLDER_PROJECT_FILING) - 2)
+        for what, cut in (("never re-files", "; a CR `queue` already lists is never re-filed"),
+                          ("proposes the README's Target release slot",
+                           ", with the README's Target release slot proposed as the default")):
+            with self.subTest(what=what):
+                found = older_project_filing_findings(self._unit(good.replace(cut, "")))
+                self.assertEqual(len(found), 1, found)
+                self.assertIn(what, found[0])
 
 
 class ReachDetectorOnSyntheticTextTest(unittest.TestCase):
@@ -730,6 +966,24 @@ def model_b_agents_findings(text: str) -> list[str]:
     return out
 
 
+def model_b_workflow_rules_findings(text: str) -> list[str]:
+    """What Model B's ``AGENTS.md`` Workflow Rules lack (CR-MDB-048 §S3, F5): the Wave rule says
+    a release is a boundary event, not a CR, and never that a release CR bundles the final gates."""
+    sec = section_matching(text, r"^workflow rules\b")
+    if not sec.strip():
+        return ["no Workflow Rules section"]
+    wave = units_with(sec, r"^- wave\b", r"\brelease")
+    if not wave:
+        return ["no Wave rule naming the release"]
+    out = []
+    if not [u for u in wave if re.search(r"\brelease\b[^.;]{0,20}\bboundary event\b", u)
+            and re.search(r"\bnot a cr\b", u)]:
+        out.append("the Wave rule does not say a release is a boundary event, not a CR")
+    if [u for u in wave if re.search(r"\brelease cr\b", u)]:
+        out.append("the Wave rule still names a release CR")
+    return out
+
+
 def d20_findings(text: str) -> list[str]:
     """What DN §D20 lacks (CR-MDB-048 §S3): the user's direnv steps are named by ``AGENTS.md``'s
     Setup section, and §D20 names no queue README setup task."""
@@ -793,6 +1047,11 @@ class ModelBAgentsMdBoardTest(unittest.TestCase):
 
     def test_the_row_the_important_file_line_the_flow_and_the_header_slots(self):
         findings = model_b_agents_findings(read_text(REPO_ROOT / MODEL_B_AGENTS))
+        self.assertEqual(findings, [], "\n".join(findings))
+
+    def test_workflow_rules_say_a_release_is_a_boundary_event_not_a_cr(self):
+        """F5: §S3 — its Workflow Rules say a release is a boundary event, not a CR."""
+        findings = model_b_workflow_rules_findings(read_text(REPO_ROOT / MODEL_B_AGENTS))
         self.assertEqual(findings, [], "\n".join(findings))
 
 
@@ -866,6 +1125,18 @@ class ModelBRecordsDetectorsOnSyntheticTextTest(unittest.TestCase):
         self.assertEqual(len(d20_findings(good.replace(
             "`AGENTS.md`'s Setup section", "the queue README's setup task"))), 2)
         self.assertEqual(d20_findings("### D19 — other\n"), ["no §D20 section"])
+
+    def test_workflow_rules_both_ways(self):
+        good = ("## Workflow Rules (Model B, solo)\n\n"
+                "- **Wave** = a grouping of CRs marking an execution boundary (solo: a redesign "
+                "point). Setup tasks and releases are NOT waves; a release is a boundary event, "
+                "not a CR.\n\n## Next\n\n- a release CR bundles the final gates\n")
+        self.assertEqual(model_b_workflow_rules_findings(good), [])
+        old = good.replace("a release is a boundary event, not a CR",
+                           "a release CR bundles the final gates")
+        self.assertEqual(len(model_b_workflow_rules_findings(old)), 2, model_b_workflow_rules_findings(old))
+        self.assertEqual(model_b_workflow_rules_findings("## Other\n\n- x\n"),
+                         ["no Workflow Rules section"])
 
 
 if __name__ == "__main__":

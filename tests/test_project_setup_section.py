@@ -25,6 +25,8 @@ Class map:
   Setup section; ``setup_required`` keeps its shape and keys.
 - ``SetupDetectorsOnSyntheticTextTest`` — each phrase-level detector below proven on synthetic
   text, both ways.
+- ``EmitPlanLayoutTest`` — ``_emit_plan`` keeps no double blank line where its ``label`` was
+  removed; the blank-line detector proven on synthetic text.
 
 Rules are checked phrase-level within ONE bullet, table row or paragraph (a "unit", as
 ``tests.test_board_holds_the_queue.units`` splits them), on normalised text; never line numbers.
@@ -38,6 +40,7 @@ Stdlib only.
 """
 
 import datetime
+import inspect
 import re
 import subprocess
 import unittest
@@ -536,6 +539,28 @@ class SetupDetectorsOnSyntheticTextTest(unittest.TestCase):
                  "- `docs/changes/` holds the specs.\n- Registrations: the Setup section.\n")
         self.assertEqual(len(units(split)), 4)
         self.assertTrue(workflow_rules_findings(split), "a rule split over two bullets")
+
+
+def consecutive_blank_lines(source: str) -> list[int]:
+    """The 1-based line numbers in ``source`` that are a second blank line in a row."""
+    lines = source.splitlines()
+    return [i + 1 for i in range(1, len(lines))
+            if not lines[i].strip() and not lines[i - 1].strip()]
+
+
+class EmitPlanLayoutTest(unittest.TestCase):
+    """F6 — ``_emit_plan`` (modelb_axi/scaffold.py) keeps no double blank line where its
+    orchestrator ``label`` was removed (§S2)."""
+
+    def test_emit_plan_has_no_double_blank_line(self):
+        source = inspect.getsource(scaffold._emit_plan)
+        self.assertEqual(consecutive_blank_lines(source), [],
+                         "_emit_plan has a double blank line (lines relative to its def)")
+
+    def test_consecutive_blank_lines_both_ways(self):
+        self.assertEqual(consecutive_blank_lines("def f():\n    a = 1\n\n    b = 2\n"), [])
+        self.assertEqual(consecutive_blank_lines("def f():\n    a = 1\n\n\n    b = 2\n"), [4])
+        self.assertEqual(consecutive_blank_lines("def f():\n    a = 1\n\n    \n    b = 2\n"), [4])
 
 
 if __name__ == "__main__":
