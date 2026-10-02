@@ -22,7 +22,7 @@ reference this skill; they do not restate it.
 - Legacy `Architecture.md`/`Implementation.md` remain fine for system overview + phase tracking, but design rationale belongs in PRDs/DNs and implementation specs in CRs — don't duplicate.
 
 ## Two-phase workflow (universal) + where work commits
-- **Design phase → the integration branch (`develop`/`main`).** Gap analysis, spec authoring, queue/PRD/DN updates. No feature branch.
+- **Design phase → the integration branch (`develop`/`main`).** Gap analysis, then the spec pre-review; spec authoring, queue/PRD/DN updates. No feature branch.
 - **Execution phase → a feature branch.** RED+GREEN cycles, VERIFY, FIX, regression+merge.
 - **Where an edit commits:** free-standing spec/PRD/DN/queue/memory edits → integration branch. Edits **caused by** an in-flight CR's RED/GREEN/VERIFY (PRD revisions surfaced by RED, new DNs, corrections of defects against the CR's own contracts) → the **feature branch**, landing atomically with the implementation. Test: if the edit makes no sense without the implementation it's tied to, it's on the feature branch.
 

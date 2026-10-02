@@ -150,6 +150,58 @@ def _fmt(entries):
     return "\n".join(f"  {rel}:{lineno}: {text.strip()}" for rel, lineno, text in entries)
 
 
+#: CR-MDB-046 §S3 — the role flags a template may emit beside its own case-exact role: VERIFY's
+#: spec pre-review mode registers ``--role report``, and only on a register command that binds no
+#: ``--cycle``.
+EXTRA_ROLE_FLAGS = {"verify": ("report",)}
+
+
+def _role_flag_problems(role, numbered):
+    """``[(lineno, message)]`` for a template's ``(lineno, line)`` pairs: ``--role <ROLE>`` is
+    emitted, and every other ``--role`` value is either the role's own (exact) or one of its
+    :data:`EXTRA_ROLE_FLAGS` on a line that is not a register command carrying ``--cycle``."""
+    expected = role.upper()
+    wanted = re.compile(r"--role\s+" + expected + r"(?![\w-])")
+    problems = []
+    if not any(wanted.search(line) for _, line in numbered):
+        anchor = next((n for n, line in numbered if "${register_command}" in line), 1)
+        problems.append((anchor, f"expected `--role {expected}` — not present"))
+    for lineno, line in numbered:
+        if not ROLE_RE.search(line):
+            continue
+        emitted = re.search(r"--role\s+(\S+)", line)
+        if not emitted or emitted.group(1) == expected:
+            continue
+        extra = emitted.group(1).strip("`") in EXTRA_ROLE_FLAGS.get(role, ())
+        if extra and not ("${register_command}" in line and CYCLE_RE.search(line)):
+            continue
+        problems.append((lineno, f"emits `--role {emitted.group(1)}`, expected `{expected}`"))
+    return problems
+
+
+def _cycle_binding_problems(role, numbered):
+    """``[(lineno, message)]``: strictly above the BRANCH-MODE register command — the first
+    ``${register_command}`` line carrying ``--role <ROLE>`` (CR-MDB-046 §S3: VERIFY's ``report``
+    command comes after it and is not the anchor) — one line binds "cycle" to a required marker
+    and one states the refusal of an unbound TDD registration."""
+    wanted = re.compile(r"--role\s+" + role.upper() + r"(?![\w-])")
+    command_lineno = next(
+        (n for n, line in numbered if "${register_command}" in line and wanted.search(line)), None)
+    if command_lineno is None:
+        return [(1, f"no ${{register_command}} line carrying `--role {role.upper()}` in template")]
+    above = [line for n, line in numbered if n < command_lineno]
+    problems = []
+    if not any(CYCLE_WORD_RE.search(line) and REQUIRED_WORD_RE.search(line) for line in above):
+        problems.append(
+            (command_lineno, "no line above the register command states that --cycle is REQUIRED"))
+    if not any(REFUSAL_WORD_RE.search(line) for line in above):
+        problems.append(
+            (command_lineno,
+             "no line above the register command states the 409 refusal of an "
+             "unbound TDD registration"))
+    return problems
+
+
 HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")
 
 
@@ -207,27 +259,18 @@ class GeneratorRoleContractS6aTest(unittest.TestCase):
         )
 
     def test_s6a_each_role_template_emits_case_exact_role_flag(self):
-        """Each role template emits `--role <ROLE>` in its own case-exact role."""
+        """Each role template emits `--role <ROLE>` in its own case-exact role.
+
+        Migrated by CR-MDB-046 §S3: VERIFY's spec pre-review line `--role report` (no
+        `--cycle`) is accepted beside its `--role VERIFY` line (``_role_flag_problems``).
+        """
         roles = _role_names()
         self.assertTrue(roles, "no role templates found under generator/templates/")
         problems = []
         for role in roles:
             path = _template_path(role)
-            expected = role.upper()
-            wanted = re.compile(r"--role\s+" + expected + r"(?![\w-])")
-            if not wanted.search(_text(path)):
-                anchor = _hits(path, re.compile(r"\$\{register_command\}"))
-                lineno = anchor[0][0] if anchor else 1
-                problems.append(
-                    (_rel(path), lineno, f"expected `--role {expected}` — not present")
-                )
-            for lineno, line in _hits(path, ROLE_RE):
-                emitted = re.search(r"--role\s+(\S+)", line)
-                if emitted and emitted.group(1) != expected:
-                    problems.append(
-                        (_rel(path), lineno,
-                         f"emits `--role {emitted.group(1)}`, expected `{expected}`")
-                    )
+            problems.extend((_rel(path), lineno, message)
+                            for lineno, message in _role_flag_problems(role, _lines(path)))
         self.assertEqual(
             problems,
             [],
@@ -263,39 +306,65 @@ class GeneratorRoleContractS6aTest(unittest.TestCase):
         `${register_command}` line: one line binding "cycle" to a
         required/mandatory/must marker, plus a statement of the refusal
         (409 / refused / rejected / unbound).
+
+        Migrated by CR-MDB-046 §S3: the anchor is the BRANCH-MODE register command
+        (`--role <ROLE>`), never VERIFY's later `--role report` pre-review command
+        (``_cycle_binding_problems``).
         """
         problems = []
         for role in _role_names():
             path = _template_path(role)
-            numbered = _lines(path)
-            anchors = [n for n, line in numbered if "${register_command}" in line]
-            if not anchors:
-                problems.append((_rel(path), 1, "no ${register_command} line in template"))
-                continue
-            command_lineno = anchors[0]
-            above = [line for n, line in numbered if n < command_lineno]
-            binding = any(
-                CYCLE_WORD_RE.search(line) and REQUIRED_WORD_RE.search(line)
-                for line in above
-            )
-            refusal = any(REFUSAL_WORD_RE.search(line) for line in above)
-            if not binding:
-                problems.append(
-                    (_rel(path), command_lineno,
-                     "no line above the register command states that --cycle is REQUIRED")
-                )
-            if not refusal:
-                problems.append(
-                    (_rel(path), command_lineno,
-                     "no line above the register command states the 409 refusal of an "
-                     "unbound TDD registration")
-                )
+            problems.extend((_rel(path), lineno, message)
+                            for lineno, message in _cycle_binding_problems(role, _lines(path)))
         self.assertEqual(
             problems,
             [],
             "the cycle-binding rule must be stated above the command the agent runs "
             f"(CR-MDB-017 §S6a):\n{_fmt(problems)}",
         )
+
+    def test_s6a_role_flag_check_accepts_verifys_report_line_and_bites_elsewhere(self):
+        """Detector proof for the CR-MDB-046 §S3 migration, on synthetic template lines."""
+        branch = (1, "   ${register_command} --role VERIFY --cycle <cycleId>")
+        prose = (2, "- It registers `--role report` with no `--cycle`, under the brief's id:")
+        report = (3, "  ${register_command} --role report")
+        # POSITIVE — VERIFY's branch line, its pre-review prose and its report command pass.
+        self.assertEqual(_role_flag_problems("verify", [branch, prose, report]), [])
+        # A report command that binds a cycle is refused.
+        cycled = (3, "  ${register_command} --role report --cycle <cycleId>")
+        self.assertEqual(_role_flag_problems("verify", [branch, cycled]),
+                         [(3, "emits `--role report`, expected `VERIFY`")])
+        # `report` is VERIFY's alone: RED emitting it is still a finding.
+        self.assertEqual(
+            _role_flag_problems("red", [(1, "${register_command} --role RED --cycle <id>"),
+                                        (2, "${register_command} --role report")]),
+            [(2, "emits `--role report`, expected `RED`")])
+        # Another role's flag, and a missing own flag, still bite for VERIFY.
+        self.assertEqual(_role_flag_problems("verify", [branch, (2, "--role GREEN")]),
+                         [(2, "emits `--role GREEN`, expected `VERIFY`")])
+        self.assertEqual(_role_flag_problems("verify", [report]),
+                         [(3, "expected `--role VERIFY` — not present")])
+
+    def test_s6a_cycle_binding_anchor_is_the_branch_mode_command(self):
+        """Detector proof: the anchor is the `--role <ROLE>` register command, not the first one."""
+        report_first = [
+            (1, "${register_command} --role report"),
+            (2, "`--cycle` is REQUIRED for this role; an unbound registration is refused 409."),
+            (3, "${register_command} --role VERIFY --cycle <cycleId>"),
+        ]
+        self.assertEqual(_cycle_binding_problems("verify", report_first), [])
+        rule_below = [
+            (1, "${register_command} --role VERIFY --cycle <cycleId>"),
+            (2, "`--cycle` is REQUIRED for this role; an unbound registration is refused 409."),
+        ]
+        self.assertEqual(
+            _cycle_binding_problems("verify", rule_below),
+            [(1, "no line above the register command states that --cycle is REQUIRED"),
+             (1, "no line above the register command states the 409 refusal of an "
+                 "unbound TDD registration")])
+        self.assertEqual(
+            _cycle_binding_problems("verify", [(1, "${register_command} --role report")]),
+            [(1, "no ${register_command} line carrying `--role VERIFY` in template")])
 
     def test_s6a_all_generated_agents_carry_role_and_cycle(self):
         """Every generated definition carries `--role <ROLE>` and `--cycle`."""

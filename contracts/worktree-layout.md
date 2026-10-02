@@ -21,6 +21,9 @@ worktree's branch is `feature/<cr>[-<slug>]`.
 - The repository's `.gitignore` lists `.worktrees/` (this repository's own, and the one
   `modelb-axi init` scaffolds), so a worktree never shows up as untracked content of the
   main checkout.
+- A spec pre-review (`CR-<ACRONYM>-NNN-SPEC-REVIEW`) is the exception to "a dispatch naming a
+  CR runs in that CR's worktree": it runs read-only in the main tree, a rerun after re-scoping
+  included, even when the CR's worktree already exists.
 
 ## Why inside the repository
 
@@ -35,7 +38,8 @@ directory outside it would inherit none of it:
 - **Permission scope.** The project's permission policy is scoped to the project
   directory; a worktree inside it falls under the same policy. After the orchestrator enters
   the worktree with `modelb_worktree_enter`, the agents it dispatches for the CR run rooted in
-  it, with the project's permissions, not a foreign directory's.
+  it, with the project's permissions, not a foreign directory's — all but a spec pre-review,
+  which runs in the main tree.
 
 ## Consumers
 
@@ -49,8 +53,8 @@ mid-flight under the old string is stranded otherwise):
 | `skills-src/bootstrap/SKILL.md` | a cwd under `/.worktrees/` means a Track inside a worktree |
 | `skills-src/shutdown/SKILL.md` | the same role-detection rule at teardown |
 | `skills-src/model-b/references/orchestration-track.md` | a Track asserts its toplevel ends in the declared worktree directory |
-| `skills-src/model-b/references/sub-agent-procedure.md` | a dispatched sub-agent asserts its toplevel is its worktree, its only writable root |
-| `pi-package/extensions/worktree.ts` | routes each dispatch naming a CR to its registered `.worktrees/<cr>`; `modelb_worktree_enter` accepts only such a registered worktree |
+| `skills-src/model-b/references/sub-agent-procedure.md` | a dispatched sub-agent asserts its toplevel is its worktree, its only writable root; a spec pre-review asserts the main tree instead |
+| `pi-package/extensions/worktree.ts` | routes each dispatch naming a CR to its registered `.worktrees/<cr>`, except a spec pre-review (`CR-<ACRONYM>-NNN-SPEC-REVIEW`), which it roots in the main tree, by its CR id or with a root entered; `modelb_worktree_enter` accepts only such a registered worktree |
 
 The scaffolded `.gitignore` line (`modelb_axi/scaffold.py`) follows the string but does not
 spell the `<cr>` form, so it is not a parsed consumer.

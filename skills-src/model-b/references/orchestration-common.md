@@ -16,15 +16,17 @@ Universal rules for ANY orchestrator, ANY project/stack. Verbose detail + failur
 - Roles differ at shutdown: a **Track** acks **Mainline** that it is safe to stop; **Mainline** (shut down by the USER) dispatches to the tracks and tears down LAST — only after every active track has acked / shows down. Full procedure → the `shutdown` skill.
 
 ## Two-phase workflow
-- **Design phase → `develop`.** Gap-analysis, spec/PRD/DN/queue edits. No feature branch.
+- **Design phase → `develop`.** Gap-analysis, then the spec pre-review; spec/PRD/DN/queue edits. No feature branch.
 - **Execution phase → feature branch.** RED+GREEN cycles, VERIFY, FIX, regression, merge.
-- `VERIFY` is an EXECUTION-phase word ONLY — design-phase validation is **gap-analysis**; never call it "verify".
+- `VERIFY` names the EXECUTION phase only — design-phase validation is **gap-analysis**. The VERIFY *agent* may run in the design phase in its spec pre-review mode, and that step is called the pre-review, never "verify".
 - **Design is BATCHED per wave** (PRD → CRs → queue up front); **gap-analysis is NOT batched** — re-run per-CR immediately before THAT CR (the tree evolved; design→implementation is a closed loop).
 
 ## Gap-analysis discipline (gap-analysis FIRST, before any branch/RED)
 - **The orchestrator runs gap-analysis itself** (never delegate to a sub-agent), per-CR immediately before THAT CR's branch/RED.
-- **The dimensions are the single authority in the `gap-analysis` skill** — read it for the full check (spec↔PRD↔code + spec-vs-existing-mechanisms + design-lineage + public-symbol-removal). Do NOT re-list them here.
-- Verdict: READY / SPEC_UPDATE_NEEDED / PREREQUISITE_NEEDED / BLOCKED.
+- **The spec pre-review is separate:** a dispatched review of the drafted spec, run after the orchestrator's own analysis and before the spec is locked and presented. It does not replace the analysis.
+- **The dimensions and the verdicts live in the `gap-analysis` skill** — read it for the full check; they are not re-listed here.
+- **A pre-review is a workflow moment:** the orchestrator posts a `design-review` milestone once it has folded the pre-review's findings into the spec, as a completed gap analysis posts a `gap-analysis` one — never the `report` agent that ran the pre-review.
+- **Older projects:** a project scaffolded before the spec pre-review existed first upgrades Model B to a release carrying it — `modelb-axi agents` renders from the installed templates — then re-renders its agents with `modelb-axi agents` before its first pre-review. A definition left alone as hand-modified is reported to the user.
 - **Urgency never skips gap-analysis or any other step**, even for a P0 hotfix — priority changes queue order, never the steps.
 - **Gap-analysis output ≠ spec.** Findings/rationale go to the user + commit message; the spec just BECOMES the corrected contract. No DRIFT-N tags, no "gap-analysis resolutions", no file:line breadcrumbs in the spec.
 
@@ -36,7 +38,7 @@ Universal rules for ANY orchestrator, ANY project/stack. Verbose detail + failur
   - The VERIFY cycle closes with its findings before the FIX cycle is added and activated.
   - The switch happens between agents, never under one: an agent bound to a closed cycle has its runs refused, so the VERIFY agent finishes and a fresh FIX agent registers against the FIX cycle.
   - A new contract VERIFY finds still goes AC → RED → FIX: the RED agent runs in the FIX cycle, alongside the FIX agent — never in the closed VERIFY cycle.
-- Setup ordering: gap-analysis → approval → `plan-file` → THEN the branch / worktree.
+- Setup ordering: gap-analysis → pre-review → approval → `plan-file` → THEN the branch / worktree.
 - Intra-cycle: once approved, flow RED→GREEN→next without pausing between phases; pause only on drift or escalation.
 - **One active cycle at a time per orchestrator**, even for disjoint code. A phase may be split across agents only under "Parallel agents in one tree"; parallel CRs still belong to separate Track orchestrators.
 - An interjecting CR waits until the running cycle is closed on its merit; never activate a cycle while another is active.
@@ -96,7 +98,7 @@ Universal rules for ANY orchestrator, ANY project/stack. Verbose detail + failur
 - **Exit after `finish` or `abort`** with `modelb_worktree_exit`. Both remove the worktree and run from the main tree, where the session already is; `status`/`sync` resolve the main tree from git and run from anywhere.
 - The worktree's files stay readable from your session by path: `.worktrees/` is gitignored, so a gitignore-aware listing does not show it — read `.worktrees/<cr>/…` by explicit path.
 - You own ONLY your CR — never run another CR's finish/merge or edit its tree.
-- Name the CR id in every dispatch description (that routes the agent into the CR's worktree). The dispatch prompt still makes the agent `cd` + assert `git rev-parse --show-toplevel` == worktree before its first write — the agent's own first check; use absolute worktree paths; re-check the main tree is clean after each agent returns.
+- Name the CR id in every dispatch description (that routes the agent into the CR's worktree) — except a spec pre-review (`CR-<ACRONYM>-NNN-SPEC-REVIEW`), which runs in the main tree, read-only, even with the worktree entered. The dispatch prompt still makes the agent `cd` + assert `git rev-parse --show-toplevel` == worktree before its first write — the agent's own first check; use absolute worktree paths; re-check the main tree is clean after each agent returns.
 - Throwaway/scratch/probe files → `/tmp` via `mktemp` (absolute), NEVER the repo or any worktree.
 - No detached poll-loops (`until … sleep … done`) — the test/build wrapper returns synchronously; wait on that. This binds Mainline too: gate-free is a push event (the track's completion message), never a sleep-loop monitor. One background watcher per purpose, never stacked — confirm the previous one has exited before starting another; run a status probe only when a pending decision needs its answer.
 - Keep `Depends on:` metadata CURRENT on every CR (parallel ordering derives from it; a stale dep is a hazard). Allocate the next-free CR id against CURRENT integration HEAD, never a stale tree/worktree. Resync a stale branch by merging `develop` INTO the feature branch (not a long re-conflicting rebase).

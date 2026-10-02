@@ -10,7 +10,11 @@
  * miss. `prepare` sends a child to the registered git worktree `.worktrees/<CR>`
  * of the CR id that OPENS the dispatch description (`CR-MDB-039 C1 RED`; a CR
  * id elsewhere does not route); otherwise to the entered root; otherwise
- * nowhere (the child keeps the parent's cwd). An entered root that no longer
+ * nowhere (the child keeps the parent's cwd). A spec pre-review is the
+ * exception (CR-MDB-046 §S4): a dispatch whose description opens with its id
+ * (`CR-MDB-046-SPEC-REVIEW`) is never routed into a CR worktree, neither by
+ * its CR id nor because a root is entered — it runs rooted in the main tree
+ * (the repository's main worktree). An entered root that no longer
  * exists is an error, never a silent fall-back to the main tree. While a root
  * is entered, a dispatch whose CR has a DIFFERENT worktree is an error naming
  * both: `WF_WORKTREE_ROOT` is process-wide and the hook prefers it, so that
@@ -31,6 +35,7 @@ import { Type } from "typebox";
 
 const SERVICE_KEY = Symbol.for("@gotgenes/pi-subagents:service");
 const CR_ID_RE = /^CR-[A-Z][A-Z0-9]*-[0-9]+/;
+const SPEC_REVIEW_ID_RE = /^CR-[A-Z][A-Z0-9]*-[0-9]+-SPEC-REVIEW(?![A-Za-z0-9_-])/;
 const WORKTREE_SEGMENT_RE = /\/\.worktrees\/[^/]+(\/|$)/;
 const ROOT_ENV = "WF_WORKTREE_ROOT";
 
@@ -98,6 +103,15 @@ function crWorktree(baseCwd: string, cr: string): string | undefined {
 	return worktrees.includes(candidate) && isDir(candidate) ? candidate : undefined;
 }
 
+/** The main worktree of the repository containing `baseCwd`, if it is in one. */
+function mainTree(baseCwd: string): string | undefined {
+	try {
+		return worktreesOf(baseCwd)[0];
+	} catch {
+		return undefined; // baseCwd is not in a git repository: there is no main tree.
+	}
+}
+
 export default function worktreeIsolation(pi: ExtensionAPI) {
 	let enteredRoot: string | undefined;
 	let providerState: "none" | "registered" | string = "none";
@@ -107,6 +121,10 @@ export default function worktreeIsolation(pi: ExtensionAPI) {
 	const provider: WorkspaceProvider = {
 		async prepare({ agentId, baseCwd }) {
 			const description = registeredService?.getRecord(agentId)?.description ?? "";
+			if (SPEC_REVIEW_ID_RE.test(description)) {
+				const main = mainTree(baseCwd);
+				return main === undefined ? undefined : { cwd: main, dispose: () => undefined };
+			}
 			const cr = CR_ID_RE.exec(description)?.[0];
 			const own = cr ? crWorktree(baseCwd, cr) : undefined;
 			if (own !== undefined && enteredRoot !== undefined && realOrSelf(own) !== enteredRoot) {

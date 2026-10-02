@@ -18,7 +18,7 @@ Worker-orchestrator-only rules. Read COMMON + TRACK. (Coordinator rules → MAIN
 ## Enter your CR's worktree (the isolation floor; user 2026-06-25, hard-escalated)
 - The MOMENT `worktree-flow start` creates the worktree, **enter it with `modelb_worktree_enter`** and the path `start` prints. The `block-write-outside-worktree` hook then blocks your file-tool writes outside it (not writes a shell command makes), and every agent you dispatch naming the CR runs rooted in it under the same hook. Your session cwd stays the main tree (it is fixed at launch) — never rely on per-command `cd` or an empty-var `git -C ""`, which fall back to develop.
 - ASSERT once, before any other action: `git -C .worktrees/<cr> rev-parse --show-toplevel` ends in `/.worktrees/<cr>` AND `git -C .worktrees/<cr> branch --show-current` == `feature/<cr>-…`.
-- **100% of CR work is in-worktree** — investigation / §S1 / gap-analysis / spec-writing / RED / GREEN / VERIFY / builds. There is NO "pre-worktree" or "investigate-first on develop" phase: investigate-first = investigate-first INSIDE the worktree (its checkout == develop's content, so nothing is lost). Read its files by explicit path (`.worktrees/` is gitignored, so a gitignore-aware listing does not show it).
+- **Design-phase steps — the gap analysis and the spec pre-review — happen before the worktree exists**, against the spec Mainline holds on develop; the pre-review runs in the main tree, read-only. Everything from `worktree-flow start` on happens in the worktree — investigation / §S1 / RED / GREEN / VERIFY / builds. There is NO "investigate-first on develop" phase for implementation work: investigate-first = investigate-first INSIDE the worktree (its checkout == develop's content, so nothing is lost). Read its files by explicit path (`.worktrees/` is gitignored, so a gitignore-aware listing omits it).
 - `worktree-flow` (status / sync) resolves the main tree from git. Resync = merge develop INTO your branch, in the worktree (`git -C .worktrees/<cr>`).
 - **`finish` and `abort`.** Both remove the worktree and run from the main tree, where your session already is. `finish` runs only AFTER the user's merge sign-off (relayed by Mainline). After `finish` or `abort`, exit with `modelb_worktree_exit`.
 - develop is the integration tree — MAINLINE-only otherwise. Any develop-level need → relay to Mainline; never edit develop yourself.
@@ -28,7 +28,8 @@ Worker-orchestrator-only rules. Read COMMON + TRACK. (Coordinator rules → MAIN
 - In your worktree you edit your own CR's spec ONLY for its status and for defects against that CR's own contracts (an AC that contradicts its own §S, a wrong name).
 - **A scope change found mid-implementation goes into a patch CR** — raise it to Mainline as a request; never an inline spec edit. Holding your CR while the patch CR lands needs the user's approval, relayed by Mainline.
 - Do NOT auto-start the worktree and dispatch off your own bat.
-- Setup ordering: spec → gap-analysis → present + get approval → `plan-file` → THEN `worktree-flow start` + dispatch. The plan must be on the board before claiming the lane — its cycles are the resume spine; there is no separate todo list.
+- **Raise your pre-review findings to Mainline** — a Track sends its spec pre-review findings to Mainline, which folds them into the spec on develop; you never edit develop yourself.
+- Setup ordering: spec → gap-analysis → pre-review → present + get approval → `plan-file` → THEN `worktree-flow start` + dispatch. The plan must be on the board before claiming the lane — its cycles are the resume spine; there is no separate todo list.
 - Design-first cycle ordering: implementation cycles before chores within the plan.
 
 ## Raise every approval/request to Mainline — NEVER the user

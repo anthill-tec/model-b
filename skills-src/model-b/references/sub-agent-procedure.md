@@ -5,6 +5,7 @@
 ## Worktree boundary (NON-NEGOTIABLE)
 - **If spawned in a worktree, that worktree is your ONLY writable root.** A dispatch naming a CR runs rooted in that CR's worktree. Establish it FIRST: `git rev-parse --show-toplevel` from cwd — it MUST equal `…/.worktrees/<cr>/`, not the main tree. (Not spawned in a worktree — e.g. a non-Model-B project? This section does not apply; write normally.)
 - **The main repo tree is READ-ONLY to you. You have NO permission to write anywhere outside your worktree** — not the repo root, not a parent, not a sibling worktree (a cross-worktree write corrupts another track's tree; a main-tree write leaks your CR onto develop).
+- **The spec pre-review is the exception.** A spec pre-review (`CR-<ACRONYM>-NNN-SPEC-REVIEW`) runs read-only in the main tree, not in the CR's worktree — a rerun after re-scoping included, even when the CR's worktree already exists. Its first check asserts `git rev-parse --show-toplevel` is the main tree, not a `.worktrees/<cr>/`; if it is not, STOP and report. It writes nothing in either tree.
 - **Absolute paths are the usual leak — cwd discipline does NOT protect an absolute path.** Before EVERY write, confirm the target's absolute path resolves UNDER your worktree root; re-derive it from `git rev-parse --show-toplevel`, never from a remembered/guessed main-tree path. A typo (`.claire/`, wrong `<cr>`) or a stale absolute path is a cross-boundary write. `pwd` before any write; if a computed target falls outside your root, STOP.
 - **NEVER "recover" a leak by copying files between trees** (`cp` / disk-copy / cross-root `git checkout` gymnastics) — that is itself a forbidden cross-boundary operation. If you wrote, or were about to write, outside your root: STOP and report to the orchestrator. Do not self-repair across trees.
 - **This is HARD-ENFORCED while the orchestrator has entered the worktree** (`modelb_worktree_enter`): the `block-write-outside-worktree` hook blocks file-tool writes outside your worktree, for the orchestrator and for every agent it dispatches. It governs file-tool writes, not writes a shell command makes — the boundary still binds a shell command's writes, and only your discipline holds them. Also holding: your agent definition's `tools` allowlist, always; the hook runs when the project is trusted — a worktree inside the repo inherits the project's trust. If you hit that block, your path was wrong — fix it to stay inside the worktree; do NOT try to bypass it (no sandbox override, no shell workaround). The `ALLOW_WRITE_OUTSIDE_WORKTREE=1` escape hatch is for ORCHESTRATORS only — never a sub-agent.
@@ -16,7 +17,7 @@
 
 ## Crucible lifecycle — register FIRST, unregister LAST
 - Register immediately on startup (before reading/running anything) with the `agentId` + `projectKey` from your prompt.
-- Heartbeat ~every 2 min. Unregister as your LAST action. Skipping any leaves a ghost agent.
+- Heartbeat ~every 2 min. Unregister as your LAST action. Skipping any leaves a ghost agent. A run-less `report` registration (the spec pre-review) needs no heartbeat, and has no run to report; it still unregisters last.
 - Run tests + ingest through your stack's crucible script / `crucible-*` skill — never hand-roll raw `cargo`/`mvn`/`curl`.
 
 ## TDD — exact procedure, no shortcuts
