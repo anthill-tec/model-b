@@ -106,8 +106,12 @@ skill's queue-verbs section) — never in a table in a file.
 - **Unregistered** (an empty `CRUCIBLE_PROJECT_KEY` in `.env`): do the Setup section of the root
   project's `AGENTS.md` first, then file.
 - **A project scaffolded before the board held the queue** (its `docs/changes/` still carries a
-  README table): the first time, file each open row on the board with `cr-plan`, `cr-depends`
-  and `wave-sequence`, once; the README then stays as history.
+  README table): the trigger is the board's `queue` missing a CR whose spec exists in
+  `docs/changes/` with no merge recorded (no `cr-close`, the spec's `**Status:**` not
+  `COMPLETED`). Only those CRs are filed, with `cr-plan`, `cr-depends` and `wave-sequence`; a CR
+  `queue` already lists is never re-filed, and a wave's order is re-sent in full. The release is
+  the user's call, with the README's Target release slot proposed as the default. The README then
+  stays as history.
 
 ## Closing a CR
 - **Board-tracked projects:** before the merge, the CR spec file's top `**Status:**` flip: `COMPLETED (shipped YYYY-MM-DD on <branch>)`. Date-only ship refs, never a merge-commit hash. After it, `cr-close --commit <merge sha> --agent <id>` closes the CR on the board (the board carries the status) and posts the `cr-merged` milestone; it takes the merge's sha, so it waits for the merge commit.
