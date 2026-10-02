@@ -568,6 +568,55 @@ class WorktreeRoutingTest(WorktreeExtensionTestCase):
         self.assertIsNone(step.get("cwd"), step)
 
 
+class WorktreeSpecPreReviewRoutingTest(WorktreeExtensionTestCase):
+    """CR-MDB-046 §S4: a dispatch whose description opens with a spec pre-review id
+    (``CR-<ACR>-NNN-SPEC-REVIEW``) is never routed into a CR worktree — neither by its CR id nor
+    because a root is entered; it runs rooted in the repository's main worktree. Every other
+    routing behaviour is unchanged."""
+
+    def test_a_pre_review_whose_cr_has_a_registered_worktree_runs_in_the_main_tree(self):
+        out = self.drive([
+            self.prepare("CR-FOO-001-SPEC-REVIEW: pre-review the drafted spec", "a1"),
+            self.prepare("CR-FOO-001-SPEC-REVIEW", "a2"),
+            self.prepare("CR-FOO-001-SPEC-REVIEW rerun after re-scoping", "a3",
+                         base_cwd=self.wt_foo),
+        ])
+        s = out["steps"]
+        self.assert_prepared_to(s[0], self.repo, "the CR's worktree exists: still the main tree")
+        self.assert_prepared_to(s[1], self.repo, "the bare id")
+        self.assert_prepared_to(s[2], self.repo, "dispatched from inside the worktree")
+
+    def test_a_pre_review_while_a_root_is_entered_runs_in_the_main_tree(self):
+        out = self.drive([
+            self.enter(self.wt_foo),
+            self.prepare("CR-FOO-001-SPEC-REVIEW: rerun after re-scoping", "a1"),
+            self.prepare("CR-BAR-002-SPEC-REVIEW: another CR's pre-review", "a2"),
+            self.prepare("CR-BAZ-009-SPEC-REVIEW: a CR with no worktree", "a3"),
+            self.prepare("tidy the README", "a4"),
+        ])
+        s = out["steps"]
+        self.assert_prepared_to(s[1], self.repo, "the entered CR's own pre-review")
+        self.assert_prepared_to(s[2], self.repo,
+                                "another CR's pre-review: neither routed nor refused")
+        self.assert_prepared_to(s[3], self.repo, "a CR without a worktree: not the entered root")
+        self.assert_prepared_to(s[4], self.wt_foo, "regression pin: no CR -> the entered root")
+
+    def test_a_plain_cr_dispatch_still_goes_to_its_worktree(self):
+        out = self.drive([
+            self.prepare("CR-FOO-001-SPEC-REVIEW: pre-review", "a1"),
+            self.prepare("CR-FOO-001-C1-RED: write the failing tests", "a2"),
+            self.prepare("CR-FOO-001 C1 RED", "a3"),
+            self.prepare("CR-FOO-001-SPEC-REVIEWER: not the pre-review id", "a4"),
+            self.prepare("Review CR-FOO-001-SPEC-REVIEW findings", "a5"),
+        ])
+        s = out["steps"]
+        self.assert_prepared_to(s[0], self.repo, "the pre-review")
+        self.assert_prepared_to(s[1], self.wt_foo, "regression pin: a TDD dispatch")
+        self.assert_prepared_to(s[2], self.wt_foo, "regression pin: the spaced agent-id form")
+        self.assert_prepared_to(s[3], self.wt_foo, "the pre-review id is matched exactly")
+        self.assert_prepared_undefined(s[4], "regression pin: an id not opening the description")
+
+
 # ============================================================ integration ==
 
 class WorktreeHookIntegrationTest(WorktreeExtensionTestCase):

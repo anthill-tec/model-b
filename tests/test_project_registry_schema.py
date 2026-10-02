@@ -321,6 +321,28 @@ GOLDEN_NAMING_LINE_PREFIX = f"- CR ids: `CR-{ACRONYM}-NNN`."
 #: CR-MDB-046 §S2: a pointer to the ``crucible`` skill's Identity section, in either order.
 CRUCIBLE_IDENTITY_POINTER_RE = re.compile(
     r"`crucible` skill\b.{0,40}\bIdentity\b|\bIdentity\b.{0,40}`crucible` skill\b")
+#: CR-MDB-046 §S4: the Skill-freeze stack line's kept prefix; the rest of the line is pinned
+#: phrase-level by :func:`stack_line_findings`.
+GOLDEN_STACK_LINE_PREFIX = (f"- {STACKS}: use the `{STACKS}` stack skills and generated "
+                            "RED/GREEN/VERIFY/FIX agents")
+
+
+def stack_line_findings(line: str) -> list[str]:
+    """CR-MDB-046 §S4: a scaffolded Skill-freeze stack line says its agents are rendered at
+    scaffold time and re-rendered with ``modelb-axi agents``, and no longer calls them frozen."""
+    problems = []
+    if re.search(r"\bfrozen\b", line, re.IGNORECASE):
+        problems.append("still calls the agents frozen")
+    if not re.search(r"\brendered at scaffold time\b", line):
+        problems.append("does not say the agents are rendered at scaffold time")
+    if not re.search(r"\bre-render\w*\b.{0,40}`modelb-axi agents`", line):
+        problems.append("does not name re-rendering with `modelb-axi agents`")
+    return problems
+
+
+def _without_stack_lines(text: str) -> str:
+    return "\n".join(ln for ln in text.splitlines()
+                     if not ln.startswith(GOLDEN_STACK_LINE_PREFIX))
 
 
 def _golden_agents_md(label: str, mode: str) -> str:
@@ -820,8 +842,16 @@ class _Shared:
             g_pre, g_rest = golden.split(head, 1)
             a_identity, a_post = a_rest.split(rules, 1)
             g_identity, g_post = g_rest.split(rules, 1)
-            self.assertEqual((a_pre, a_post), (g_pre, g_post),
+            self.assertEqual((a_pre, _without_stack_lines(a_post)),
+                             (g_pre, _without_stack_lines(g_post)),
                              "§S2/AC: AGENTS.md outside the identity section is today's")
+            # MIGRATED at CR-MDB-046 C4 FIX (§S4): the Skill-freeze stack line no longer calls
+            # the agents frozen; it keeps GOLDEN_STACK_LINE_PREFIX, is pinned phrase-level by
+            # test_agents_md_stack_lines_say_rendered_at_scaffold_time_and_re_rendered, and is
+            # left out of this comparison on both sides.
+            self.assertEqual(
+                len([ln for ln in a_post.splitlines() if ln.startswith(GOLDEN_STACK_LINE_PREFIX)]),
+                1, "§S4: exactly one Skill-freeze line for the stack, keeping its prefix")
             self.assertIn("SANDESH_PROJECT", a_identity,
                           f"§S2: the Identity & naming section names SANDESH_PROJECT; got {a_identity!r}")
             # MIGRATED at CR-MDB-046 C1 RED (§S2): the agent-naming line also points to the
@@ -849,6 +879,15 @@ class _Shared:
                 line, CRUCIBLE_IDENTITY_POINTER_RE,
                 f"§S2: the naming line points to the `crucible` skill's Identity section; "
                 f"got {line!r}")
+
+        def test_agents_md_stack_lines_say_rendered_at_scaffold_time_and_re_rendered(self):
+            """CR-MDB-046 §S4: ``_render_agents_md``'s Skill-freeze stack line says the agents are
+            rendered at scaffold time and re-rendered with ``modelb-axi agents``, never
+            "frozen"."""
+            freeze = md_section(self._read("AGENTS.md"), "## Skill freeze")
+            lines = [ln for ln in freeze.splitlines() if ln.startswith(GOLDEN_STACK_LINE_PREFIX)]
+            self.assertEqual(len(lines), 1, f"one stack line; section={freeze!r}")
+            self.assertEqual(stack_line_findings(lines[0]), [], lines[0])
 
         def test_every_other_emitted_file_is_byte_identical_to_today(self):
             """Regression pin (passes before GREEN): guards the AC's 'exactly these
@@ -2076,6 +2115,29 @@ class CrucibleIdentityPointerDetectorTest(unittest.TestCase):
                      self.TODAY[:-1] + "; see the `model-b` skill's Identity section."):
             with self.subTest(line=line):
                 self.assertNotRegex(line, CRUCIBLE_IDENTITY_POINTER_RE)
+
+
+class StackLineDetectorTest(unittest.TestCase):
+    """CR-MDB-046 §S4: :func:`stack_line_findings`, proven both ways on synthetic stack lines."""
+
+    TODAY = (f"{GOLDEN_STACK_LINE_PREFIX} as frozen at scaffold time.")
+    GOOD = (f"{GOLDEN_STACK_LINE_PREFIX}, rendered at scaffold time; re-render them with "
+            "`modelb-axi agents`.")
+
+    def test_the_new_line_passes_and_todays_fails_on_all_three(self):
+        self.assertEqual(stack_line_findings(self.GOOD), [])
+        self.assertEqual(len(stack_line_findings(self.TODAY)), 3, stack_line_findings(self.TODAY))
+
+    def test_each_phrase_bites(self):
+        for old, new in (("rendered at scaffold time", "frozen at scaffold time"),
+                         ("rendered at scaffold time", "made at scaffold time"),
+                         ("`modelb-axi agents`", "hand")):
+            with self.subTest(old=old, new=new):
+                self.assertNotEqual(stack_line_findings(self.GOOD.replace(old, new)), [])
+
+    def test_the_comparison_filter_drops_only_the_stack_line(self):
+        text = f"## Skill freeze\n{self.TODAY}\n- other line\n"
+        self.assertEqual(_without_stack_lines(text), "## Skill freeze\n- other line")
 
 
 if __name__ == "__main__":

@@ -21,6 +21,20 @@
   skill (§ "Identity", "who runs what"), the ``model-b`` skill § 2, ``sub-agent-procedure.md`` and
   Model B's ``AGENTS.md`` agent-id note. (The scaffolded naming line ``_render_agents_md`` renders
   is pinned in ``tests.test_project_registry_schema``, where its golden is migrated.)
+- §S4 — every other file that states the changed rules says the same: ``sub-agent-procedure.md``
+  § "Worktree boundary" and ``contracts/worktree-layout.md`` carve the spec pre-review out of "a
+  dispatch naming a CR runs in that CR's worktree" (main tree, read-only, a rerun after re-scoping
+  included, even when the worktree exists; the pre-review asserts its toplevel is the main tree; the
+  contract's ``worktree.ts`` row says the extension roots it there, by CR id or with a root
+  entered), as does ``orchestration-common``'s dispatch-routing bullet; Model B's ``AGENTS.md``
+  § "Workflow Rules" lists ``design-review``; the ``gap-analysis`` skill's Dimension 7 counts the
+  other nine, ``READY`` leads to the pre-review and "When to Use" gives the new ordering;
+  ``cr-authoring``'s design phase names the pre-review; ``orchestration-common`` says the
+  orchestrator posts ``design-review`` after folding, never the ``report`` agent, and that the
+  re-render rule upgrades Model B first; and no shipped file states the old ordering. (The VERIFY
+  agent's First Actions are pinned in ``tests.test_verify_spec_pre_review_mode``, the scaffolded
+  stack lines in ``tests.test_project_registry_schema``, the routing in
+  ``tests.test_pi_worktree_isolation``.)
 
 How a rule is read: phrase-level inside ONE unit — a list item with its nested items, or a
 paragraph (``rule_units`` from ``tests.test_execution_knowledge_rules``); a Markdown table row is a
@@ -35,7 +49,7 @@ Hermetic: reads only repo files. Stdlib only.
 import re
 import unittest
 
-from tests._helpers import md_section, split_frontmatter
+from tests._helpers import REPO_ROOT, md_section, split_frontmatter
 from tests.test_bootstrap_shutdown_registry import normalise
 from tests.test_execution_knowledge_rules import _read, rule_units
 from tests.test_orchestrator_rule_triage import section_body
@@ -255,6 +269,92 @@ PROCEDURE_RUN_LESS = (
 )
 #: Model B AGENTS.md — the agent-id note names the spec-review form.
 AGENTS_ID_NOTE = (r"\bagent ids\b", r"cr-mdb-nnn-spec-review")
+
+# ------------------------------------------------------------- §S4 rules ----
+
+CONTRACT_REL = "contracts/worktree-layout.md"
+CR_AUTHORING_REL = "skills-src/cr-authoring/SKILL.md"
+
+SPEC_REVIEW_ID = r"cr-<acronym>-nnn-spec-review"
+EVEN_WHEN_EXISTS = r"\beven when\b.{0,60}\bworktree\b.{0,30}\bexists\b"
+
+#: Worktree boundary — the spec pre-review is the exception: main tree, read-only, a rerun after
+#: re-scoping included, even when the worktree exists (one unit).
+PROCEDURE_CARVE_OUT = (
+    SPEC_REVIEW_ID,
+    r"\bexception\b|\bexcept\b",
+    r"\bmain tree\b",
+    r"\bread-only\b",
+    r"\bre-?scop\w*\b",
+    EVEN_WHEN_EXISTS,
+)
+#: Worktree boundary — the pre-review asserts its toplevel is the main tree, and STOPs otherwise.
+PROCEDURE_PRE_REVIEW_TOPLEVEL = (
+    r"\bpre-review\b",
+    r"\btoplevel\b",
+    r"\bmain tree\b",
+    r"\bstop\b",
+)
+#: The contract — the same carve-out, stated once (one unit).
+CONTRACT_CARVE_OUT = (SPEC_REVIEW_ID, r"\bmain tree\b", r"\bread-only\b", EVEN_WHEN_EXISTS)
+#: The contract's worktree.ts row — the extension roots a pre-review in the main tree, by its CR
+#: id or with a root entered (the row is one unit).
+CONTRACT_EXTENSION_ROW = (
+    r"^\|\s*pi-package/extensions/worktree\.ts\s*\|",
+    r"\bspec pre-review\b|spec-review",
+    r"\bmain tree\b",
+    r"\bentered\b",
+)
+#: orchestration-common — the dispatch-routing bullet names the pre-review's main-tree exception.
+COMMON_DISPATCH_ROUTING = (
+    r"\bdispatch description\b",
+    r"\bspec pre-review\b|spec-review",
+    r"\bmain tree\b",
+)
+#: Model B AGENTS.md § Workflow Rules — design-review listed with the other milestones (one unit).
+AGENTS_WORKFLOW_MILESTONES = (
+    r"\bmilestone\b",
+    r"--type gap-analysis\b",
+    r"--type design-review\b",
+    r"\bstage-flip\b",
+)
+#: gap-analysis Dimension 7 — counts the other nine dimensions …
+DIM7_NINE = (r"\bthe other nine dimensions\b",)
+#: … and no longer the other six.
+DIM7_OLD_COUNT = r"\bother (?:six|seven|eight)\b"
+#: gap-analysis — the READY verdict leads to the pre-review, not to the feature branch.
+READY_VERDICT = r"^- ready:"
+#: gap-analysis "When to Use" — the new ordering (one unit).
+WHEN_TO_USE_ORDER = (
+    r"\bafter the spec is drafted\b",
+    r"\bbefore\b.{0,20}\bpre-review\b",
+    r"(?:gap[- ]analysis|this analysis).{0,30}\bpre-review\b.{0,40}\bapproval\b.{0,30}"
+    r"\bplan-file\b.{0,60}\b(?:branch|worktree)\b",
+)
+#: gap-analysis "When to Use" — the old items that skipped the pre-review.
+WHEN_TO_USE_OLD = r"\bbefore creating a feature branch\b|\bafter the spec is written but before red\b"
+#: orchestration-common — the orchestrator posts design-review after folding, never the report
+#: agent (one unit).
+COMMON_WHO_POSTS = (
+    r"\bdesign-review\b",
+    r"\borchestrator\b.{0,30}\bposts?\b",
+    r"\bfold\w*\b",
+    r"\bnever\b.{0,40}\breport\b",
+)
+#: orchestration-common — the re-render rule upgrades Model B first, since `modelb-axi agents`
+#: renders from the installed templates (one unit).
+COMMON_UPGRADE_FIRST = (
+    r"\bupgrades?\b.{0,20}\bmodel b\b",
+    r"\brelease\b",
+    r"\bmodelb-axi agents\b.{0,40}\brenders? from the installed templates\b",
+    r"\bbefore (?:its|the) first pre-review\b",
+)
+#: No shipped file states the old ordering: an approval, lock or branch straight after the analysis.
+OLD_ORDERING = re.compile(
+    r"gap[- ]analysis\s*→\s*(?:lock|approval|present|`?plan-file)|proceed to feature branch",
+    re.IGNORECASE)
+#: The shipped surfaces the old-ordering gate reads.
+ORDERING_SURFACES = ("skills-src", "generator/templates", "generator/stacks")
 
 
 # ------------------------------------------------------------------ reading ----
@@ -542,6 +642,89 @@ class RoleDescriptionsPreReviewTest(_RuleAssertions):
 
     def test_model_b_agents_md_agent_id_note_names_the_spec_review_form(self):
         self.assert_rule(_read(AGENTS_REL), AGENTS_ID_NOTE, AGENTS_REL)
+
+
+# ----------------------------------- §S4 — every other file states the same ----
+
+class WorktreeBoundaryPreReviewCarveOutTest(_RuleAssertions):
+    """§S4: the worktree boundary, the layout contract and the dispatch-routing bullet carve the
+    spec pre-review out — main tree, read-only, a rerun after re-scoping included, even when the
+    CR's worktree exists."""
+
+    def test_the_worktree_boundary_carves_out_the_pre_review_in_the_main_tree_even_with_a_worktree(self):
+        self.assert_rule(_section(PROCEDURE_REL, "## Worktree boundary"), PROCEDURE_CARVE_OUT,
+                         f"{PROCEDURE_REL} § Worktree boundary")
+
+    def test_the_pre_review_asserts_its_toplevel_is_the_main_tree_and_stops_otherwise(self):
+        self.assert_rule(_section(PROCEDURE_REL, "## Worktree boundary"),
+                         PROCEDURE_PRE_REVIEW_TOPLEVEL, f"{PROCEDURE_REL} § Worktree boundary")
+
+    def test_the_layout_contract_states_the_carve_out(self):
+        self.assert_rule(_read(CONTRACT_REL), CONTRACT_CARVE_OUT, CONTRACT_REL)
+
+    def test_the_contracts_extension_row_says_it_roots_the_pre_review_in_the_main_tree(self):
+        self.assert_rule(_section(CONTRACT_REL, "## Consumers"), CONTRACT_EXTENSION_ROW,
+                         f"{CONTRACT_REL} § Consumers")
+
+    def test_the_dispatch_routing_bullet_names_the_pre_reviews_main_tree_exception(self):
+        self.assert_rule(_section(COMMON_REL, "## Worktree isolation"), COMMON_DISPATCH_ROUTING,
+                         f"{COMMON_REL} § Worktree isolation")
+
+
+class ReachOfTheChangedRulesTest(_RuleAssertions):
+    """§S4: Model B's ``AGENTS.md`` milestones, the ``gap-analysis`` skill's own text,
+    ``cr-authoring``'s design phase, and ``orchestration-common``'s milestone and re-render rules."""
+
+    def test_model_b_agents_md_workflow_rules_list_the_design_review_milestone(self):
+        self.assert_rule(_section(AGENTS_REL, "## Workflow Rules"), AGENTS_WORKFLOW_MILESTONES,
+                         f"{AGENTS_REL} § Workflow Rules")
+
+    def test_dimension_seven_counts_the_other_nine_dimensions(self):
+        body = dimension_body(_read(GAP_REL), 7)
+        self.assertTrue(body.strip(), f"{GAP_REL}: no Dimension 7")
+        self.assert_rule(body, DIM7_NINE, f"{GAP_REL} Dimension 7")
+        self.assertNotRegex(normalise(body), DIM7_OLD_COUNT, f"{GAP_REL} Dimension 7: a stale count")
+
+    def test_the_ready_verdict_leads_to_the_pre_review_not_to_the_feature_branch(self):
+        ready = [u for u in units(section_body(_read(GAP_REL), "Verdicts:") or "")
+                 if re.match(READY_VERDICT, u)]
+        self.assertEqual(len(ready), 1, f"{GAP_REL}: exactly one READY verdict; got {ready!r}")
+        self.assertRegex(ready[0], r"\bpre-review\b", "READY leads to the pre-review")
+        self.assertNotRegex(ready[0], r"\bfeature branch\b", "READY no longer leads to the branch")
+
+    def test_when_to_use_gives_the_new_ordering_and_drops_the_old_items(self):
+        body = section_body(_read(GAP_REL), "When to Use") or ""
+        self.assertTrue(body.strip(), f"{GAP_REL}: no '## When to Use'")
+        self.assert_rule(body, WHEN_TO_USE_ORDER, f"{GAP_REL} § When to Use")
+        self.assertEqual([u for u in units(body) if re.search(WHEN_TO_USE_OLD, u)], [],
+                         f"{GAP_REL} § When to Use still gives the old ordering")
+
+    def test_cr_authoring_design_phase_lists_the_pre_review(self):
+        self.assert_rule(_section(CR_AUTHORING_REL, "## Two-phase workflow"), TWO_PHASE_DESIGN,
+                         f"{CR_AUTHORING_REL} § Two-phase workflow")
+
+    def test_the_orchestrator_posts_design_review_after_folding_never_the_report_agent(self):
+        self.assert_rule(_read(COMMON_REL), COMMON_WHO_POSTS, COMMON_REL)
+
+    def test_the_re_render_rule_upgrades_model_b_first(self):
+        self.assert_rule(_read(COMMON_REL), COMMON_UPGRADE_FIRST, COMMON_REL)
+
+    def test_no_shipped_file_states_the_old_ordering(self):
+        hits = [f"{rel}: {m.group(0)!r}" for rel, text in _ordering_surfaces()
+                for m in OLD_ORDERING.finditer(text)]
+        self.assertEqual(hits, [], "a shipped file states the ordering without the pre-review")
+
+
+def _ordering_surfaces() -> list[tuple[str, str]]:
+    """``(repo-relative path, text)`` of every Markdown, template and TOML file under
+    :data:`ORDERING_SURFACES`, plus Model B's ``AGENTS.md``."""
+    out = [(AGENTS_REL, _read(AGENTS_REL))]
+    for surface in ORDERING_SURFACES:
+        for path in sorted((REPO_ROOT / surface).rglob("*")):
+            if path.is_file() and path.suffix in (".md", ".tmpl", ".toml"):
+                out.append((path.relative_to(REPO_ROOT).as_posix(),
+                            path.read_text(encoding="utf-8")))
+    return out
 
 
 # ------------------------------------------------- detectors, synthetic text ----
@@ -903,6 +1086,179 @@ class PreReviewRuleDetectorTest(unittest.TestCase):
                 self.assertTrue(satisfying(text, rule), missing(text, rule))
                 self.assertIn(old, text)
                 self.assertEqual(satisfying(text.replace(old, new), rule), [])
+
+
+GOOD_PROCEDURE_BOUNDARY = """\
+## Worktree boundary (NON-NEGOTIABLE)
+- **If spawned in a worktree, that worktree is your ONLY writable root.** A dispatch naming a CR runs
+  rooted in that CR's worktree.
+- **The spec pre-review is the exception.** A spec pre-review (`CR-<ACRONYM>-NNN-SPEC-REVIEW`) runs
+  read-only in the main tree \u2014 a rerun after re-scoping included, even when the CR's worktree
+  already exists. Its first check asserts `git rev-parse --show-toplevel` is the main tree, not a
+  `.worktrees/<cr>`; if it is not, STOP and report.
+"""
+OLD_PROCEDURE_BOUNDARY = """\
+## Worktree boundary (NON-NEGOTIABLE)
+- **If spawned in a worktree, that worktree is your ONLY writable root.** A dispatch naming a CR runs
+  rooted in that CR's worktree. Establish it FIRST: `git rev-parse --show-toplevel` from cwd.
+"""
+GOOD_CONTRACT = """\
+A spec pre-review (`CR-<ACRONYM>-NNN-SPEC-REVIEW`) is the exception: it runs read-only in the main
+tree, even when the CR's worktree already exists.
+
+## Consumers
+
+| Consumer | How it carries the string |
+|---|---|
+| `pi-package/extensions/worktree.ts` | routes each dispatch naming a CR to its registered `.worktrees/<cr>`, except a spec pre-review (`CR-<ACRONYM>-NNN-SPEC-REVIEW`), which it roots in the main tree, by its CR id or with a root entered |
+"""
+OLD_CONTRACT = """\
+## Consumers
+
+| Consumer | How it carries the string |
+|---|---|
+| `pi-package/extensions/worktree.ts` | routes each dispatch naming a CR to its registered `.worktrees/<cr>`; `modelb_worktree_enter` accepts only such a registered worktree |
+"""
+GOOD_ROUTING = """\
+- Name the CR id in every dispatch description (that routes the agent into the CR's worktree) \u2014
+  except a spec pre-review (`CR-<ACRONYM>-NNN-SPEC-REVIEW`), which runs in the main tree.
+"""
+OLD_ROUTING = """\
+- Name the CR id in every dispatch description (that routes the agent into the CR's worktree).
+"""
+GOOD_AGENTS_MILESTONES = """\
+- Post a `milestone` at every workflow moment: `--type gap-analysis` when gap analysis completes,
+  `--type design-review` when the orchestrator has folded a spec pre-review's findings,
+  `--type stage-flip --label "<CR> <cycle> done"` at each cycle-done.
+"""
+OLD_AGENTS_MILESTONES = """\
+- Post a `milestone` at every workflow moment: `--type gap-analysis` when gap analysis completes, `--type stage-flip --label "<CR> <cycle> done"` at each cycle-done.
+"""
+GOOD_GAP_REACH = """\
+## When to Use
+
+- After the spec is drafted, before its pre-review: the ordering is this analysis \u2192 the spec
+  pre-review \u2192 approval \u2192 `plan-file` \u2192 the feature branch or worktree \u2192 RED.
+- When a CR predates recent codebase changes
+
+### Dimension 7: Cost \u2014 Is each criterion worth it?
+
+**The other nine dimensions ask whether a criterion is TRUE. This one asks whether it is WORTH IT.**
+
+### Verdicts:
+
+- **READY**: Spec is accurate, code matches PRD; proceed to the spec pre-review
+- **BLOCKED**: Fundamental design issue
+"""
+OLD_GAP_REACH = """\
+## When to Use
+
+- Before starting ANY CR implementation
+- Before creating a feature branch
+- After the spec is written but before RED phase
+
+### Dimension 7: Cost \u2014 Is each criterion worth it?
+
+**The other six dimensions ask whether a criterion is TRUE. This one asks whether it is WORTH IT.**
+
+### Verdicts:
+
+- **READY**: Spec is accurate, code matches PRD, proceed to feature branch
+"""
+GOOD_CR_AUTHORING = """\
+## Two-phase workflow (universal) + where work commits
+- **Design phase \u2192 the integration branch (`develop`/`main`).** Gap analysis, then the spec
+  pre-review; spec authoring, queue/PRD/DN updates. No feature branch.
+"""
+OLD_CR_AUTHORING = """\
+## Two-phase workflow (universal) + where work commits
+- **Design phase \u2192 the integration branch (`develop`/`main`).** Gap analysis, spec authoring, queue/PRD/DN updates. No feature branch.
+"""
+GOOD_COMMON_REACH = """\
+- **A pre-review is a workflow moment:** the orchestrator posts a `design-review` milestone once it
+  has folded the pre-review's findings into the spec \u2014 never the `report` agent.
+- **Older projects:** a project scaffolded before the spec pre-review existed first upgrades Model B
+  to a release carrying it \u2014 `modelb-axi agents` renders from the installed templates \u2014 then
+  re-renders its agents with `modelb-axi agents` before its first pre-review. A definition left
+  alone as hand-modified is reported to the user.
+"""
+OLD_COMMON_REACH = """\
+- **A pre-review is a workflow moment:** it posts a `design-review` milestone, as a completed gap analysis posts a `gap-analysis` one.
+- **Older projects:** a project scaffolded before the spec pre-review existed re-renders its agents with `modelb-axi agents` before its first pre-review. A definition left alone as hand-modified is reported to the user.
+"""
+
+
+class ReachDetectorTest(unittest.TestCase):
+    """Every \u00a7S4 detector proven both ways on synthetic text: the spec-worded text satisfies it,
+    today's wording does not, and a one-phrase mutation bites."""
+
+    CASES = (
+        ("boundary", GOOD_PROCEDURE_BOUNDARY, OLD_PROCEDURE_BOUNDARY, PROCEDURE_CARVE_OUT,
+         ", even when the CR's worktree\n  already exists", ""),
+        ("toplevel", GOOD_PROCEDURE_BOUNDARY, OLD_PROCEDURE_BOUNDARY, PROCEDURE_PRE_REVIEW_TOPLEVEL,
+         "STOP and report", "carry on"),
+        ("contract", GOOD_CONTRACT, OLD_CONTRACT, CONTRACT_CARVE_OUT, "read-only ", ""),
+        ("row", GOOD_CONTRACT, OLD_CONTRACT, CONTRACT_EXTENSION_ROW,
+         ", by its CR id or with a root entered", ""),
+        ("routing", GOOD_ROUTING, OLD_ROUTING, COMMON_DISPATCH_ROUTING,
+         "which runs in the main tree", "which is routed too"),
+        ("milestones", GOOD_AGENTS_MILESTONES, OLD_AGENTS_MILESTONES, AGENTS_WORKFLOW_MILESTONES,
+         "`--type design-review`", "a review"),
+        ("cr-authoring", GOOD_CR_AUTHORING, OLD_CR_AUTHORING, TWO_PHASE_DESIGN,
+         ", then the spec\n  pre-review", ""),
+        ("who posts", GOOD_COMMON_REACH, OLD_COMMON_REACH, COMMON_WHO_POSTS,
+         " \u2014 never the `report` agent", ""),
+        ("upgrade", GOOD_COMMON_REACH, OLD_COMMON_REACH, COMMON_UPGRADE_FIRST,
+         "first upgrades Model B\n  to a release carrying it \u2014 ", ""),
+    )
+
+    def test_each_reach_detector_both_ways_and_bites_on_its_phrase(self):
+        for name, good, old, rule, phrase, swap in self.CASES:
+            with self.subTest(detector=name):
+                section = good if name != "row" else md_section(good, "## Consumers")
+                self.assertTrue(satisfying(section, rule), missing(section, rule))
+                self.assertEqual(satisfying(old, rule), [])
+                self.assertIn(phrase, good)
+                mutated = good.replace(phrase, swap)
+                if name == "row":
+                    mutated = md_section(mutated, "## Consumers")
+                self.assertEqual(satisfying(mutated, rule), [])
+
+    def test_the_contract_row_rule_reads_only_the_extensions_row(self):
+        other = ("| `skills-src/model-b/references/sub-agent-procedure.md` | a spec pre-review "
+                 "asserts the main tree, worktree entered or not |\n")
+        self.assertEqual(satisfying(other, CONTRACT_EXTENSION_ROW), [])
+
+    def test_the_gap_analysis_reach_detectors_both_ways(self):
+        for text, good in ((GOOD_GAP_REACH, True), (OLD_GAP_REACH, False)):
+            with self.subTest(good=good):
+                dim7 = dimension_body(text, 7)
+                self.assertEqual(bool(satisfying(dim7, DIM7_NINE)), good)
+                self.assertEqual(bool(re.search(DIM7_OLD_COUNT, normalise(dim7))), not good)
+                ready = [u for u in units(section_body(text, "Verdicts:") or "")
+                         if re.match(READY_VERDICT, u)]
+                self.assertEqual(len(ready), 1)
+                self.assertEqual(bool(re.search(r"\bpre-review\b", ready[0])), good)
+                self.assertEqual(bool(re.search(r"\bfeature branch\b", ready[0])), not good)
+                when = section_body(text, "When to Use") or ""
+                self.assertEqual(bool(satisfying(when, WHEN_TO_USE_ORDER)), good)
+                self.assertEqual(any(re.search(WHEN_TO_USE_OLD, u) for u in units(when)), not good)
+        reordered = GOOD_GAP_REACH.replace("the spec\n  pre-review \u2192 approval",
+                                           "approval \u2192 the spec\n  pre-review")
+        self.assertEqual(satisfying(section_body(reordered, "When to Use") or "",
+                                    WHEN_TO_USE_ORDER), [])
+
+    def test_the_old_ordering_gate_bites_on_each_old_form_and_spares_the_new(self):
+        for old in ("gap-analysis \u2192 approval \u2192 `plan-file`", "gap-analysis \u2192 lock the spec",
+                    "spec \u2192 gap-analysis \u2192 present + get approval",
+                    "Spec is accurate, proceed to feature branch"):
+            with self.subTest(old=old):
+                self.assertIsNotNone(OLD_ORDERING.search(old))
+        for new in ("gap-analysis \u2192 pre-review \u2192 approval \u2192 `plan-file`",
+                    "gap-analysis \u2192 pre-review \u2192 fold its findings \u2192 lock the spec",
+                    "proceed to the spec pre-review"):
+            with self.subTest(new=new):
+                self.assertIsNone(OLD_ORDERING.search(new))
 
 
 if __name__ == "__main__":

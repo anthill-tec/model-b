@@ -414,6 +414,54 @@ class OtherRolesCarryNoPreReviewTest(unittest.TestCase):
                         self.assertEqual(hits, [], f"{stack}-{role}-agent ({form})")
 
 
+# ------------------------------------------- §S4 — First Actions' reach ----
+
+#: §S4 — step 3's spec-reading rule governs how the spec is read, never how much of it (one unit).
+STEP3_HOW_NOT_HOW_MUCH = (
+    r"\bhow\b.{0,40}\b(?:never|not) how much\b",
+    r"\b(?:read\w*|reads?) (?:all of it|the whole spec)\b",
+)
+#: §S4 — step 4's targeted regression is a branch-verification step where it is introduced.
+STEP4_BRANCH_ONLY = (
+    r"\btargeted regression\b.{0,30}\bbranch[- ]verification step\b"
+    r"|\bbranch[- ]verification only\b.{0,160}\btargeted regression\b",
+)
+
+
+def first_actions_step(body: str, number: int) -> list[str]:
+    """The units of First Actions that are its item ``number``."""
+    for sec in sections(body):
+        if sec["chain"] and FIRST_ACTIONS_HEADING.match(sec["chain"][-1]):
+            return [u for u in units(sec["text"]) if u.startswith(f"{number}. ")]
+    return []
+
+
+def first_actions_reach_findings(body: str) -> list[str]:
+    """Step 3 says its rule governs how the spec is read, not how much; step 4 states its
+    targeted regression as a branch-verification step."""
+    problems = []
+    for number, rule, name in ((3, STEP3_HOW_NOT_HOW_MUCH, "step 3: how, never how much"),
+                               (4, STEP4_BRANCH_ONLY, "step 4: a branch-verification step")):
+        step = first_actions_step(body, number)
+        if len(step) != 1:
+            problems.append(f"{name} \u2014 expected one First Actions item {number}, found {len(step)}")
+        elif not all(re.search(p, step[0]) for p in rule):
+            problems.append(f"{name} \u2014 {missing(step[0], rule)}")
+    return problems
+
+
+class VerifyFirstActionsReachTest(_RenderedVerify):
+    """\u00a7S4 / AC "Reach": in every rendered VERIFY agent, both forms, First Actions' targeted
+    regression is a branch-verification step where it is introduced, and its spec-reading rule
+    governs how the spec is read, never how much \u2014 so it agrees with "Read the whole spec"."""
+
+    def test_first_actions_steps_three_and_four_agree_with_the_pre_review(self):
+        for stack, form, body, _ in self.each_verify():
+            with self.subTest(stack=stack, form=form):
+                self.assertEqual(first_actions_reach_findings(body), [],
+                                 f"{stack}-verify-agent ({form}) \u00a7 First Actions")
+
+
 # ------------------------------------------------- detectors, synthetic text ----
 
 REGISTER = "stack-client register --agent YOUR_AGENT_ID"
@@ -736,6 +784,66 @@ class PreReviewModeDetectorTest(unittest.TestCase):
         self.assertTrue(PRE_REVIEW_LEAK.search("register `--role report` with no cycle"))
         self.assertIsNone(PRE_REVIEW_LEAK.search(f"{REGISTER} --role RED --cycle <cycleId>"))
         self.assertIsNone(PRE_REVIEW_LEAK.search("Report every run; the review is yours."))
+
+
+class FirstActionsReachDetectorTest(unittest.TestCase):
+    """\u00a7S4: :func:`first_actions_reach_findings` proven both ways on synthetic First Actions."""
+
+    GOOD = """\
+## First Actions (IN THIS ORDER — NON-NEGOTIABLE)
+
+1. **Register with Crucible.**
+2. **Read project context** \u2014 AGENTS.md.
+3. **Index + search the CR spec** \u2014 `grep` it, then `read` ranges. The spec is your acceptance
+   criteria. This rule governs how you read the spec, never how much of it: you read all of it,
+   range by range. NEVER `read` the full spec in one call.
+4. **Detect the stack layout.** In branch verification only, find the affected targets (from
+   `git diff <base>..HEAD --stat`) and run the targeted regression \u2014 a branch-verification step:
+   ```bash
+   stack-client test
+   ```
+
+## Spec pre-review mode
+
+- **What you read.** Read the whole spec.
+"""
+    TODAY = """\
+## First Actions (IN THIS ORDER — NON-NEGOTIABLE)
+
+1. **Register with Crucible.**
+2. **Read project context** \u2014 AGENTS.md.
+3. **Index + search the CR spec** \u2014 `grep` it, then `read` ranges. The spec is your acceptance
+   criteria. NEVER `read` the full spec.
+4. **Detect the stack layout** and, in branch verification, the affected targets (from the prompt
+   or `git diff <base>..HEAD --stat`), then run the targeted regression:
+   ```bash
+   stack-client test
+   ```
+"""
+
+    def test_the_spec_worded_steps_pass_and_todays_fail_both(self):
+        self.assertEqual(first_actions_reach_findings(self.GOOD), [])
+        problems = first_actions_reach_findings(self.TODAY)
+        self.assertEqual(len(problems), 2, problems)
+
+    def test_each_step_bites_when_its_phrase_is_changed(self):
+        for name, old, new in (
+                ("step 3", ", never how much of it", ""),
+                ("step 3", "you read all of it,\n   range by range", "you read what you need"),
+                ("step 4", " \u2014 a branch-verification step", ""),
+        ):
+            with self.subTest(phrase=old):
+                self.assertIn(old, self.GOOD)
+                mutated = self.GOOD.replace(old, new)
+                if name == "step 4":
+                    mutated = mutated.replace("In branch verification only", "In branch verification")
+                problems = first_actions_reach_findings(mutated)
+                self.assertTrue(any(p.startswith(name) for p in problems), problems)
+
+    def test_a_step_outside_first_actions_is_not_read(self):
+        moved = self.GOOD.replace("## First Actions (IN THIS ORDER \u2014 NON-NEGOTIABLE)",
+                                  "## Elsewhere")
+        self.assertEqual(len(first_actions_reach_findings(moved)), 2)
 
 
 if __name__ == "__main__":
