@@ -862,7 +862,8 @@ def _render_agents_md(
     )
     stack_lines = "\n".join(
         f"- {stack}: use the `{stack}` stack skills and generated "
-        f"RED/GREEN/VERIFY/FIX agents as frozen at scaffold time."
+        f"RED/GREEN/VERIFY/FIX agents, rendered at scaffold time; re-render "
+        f"them with `modelb-axi agents`."
         for stack in stacks
     )
     anchor_lines = [_PI_ANCHOR_NOTE] if "pi" in harnesses else []
