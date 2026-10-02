@@ -602,13 +602,13 @@ def resolve_registry(schema: list[dict], inputs: dict) -> dict:
 
 def _render_registry(schema: list[dict], registry: dict, file: str, *, sub: bool) -> str:
     """``KEY=value`` lines of every schema key living in ``file`` — only
-    the ``root+sub`` keys for a sub-project (CR-MDB-043 §S2). A DERIVED
-    value containing whitespace is double-quoted (``SANDESH_ADDRESS="Mainline
-    - <P>"``, CR-MDB-047 §S2), so the line still reads as a shell
-    assignment; an asked value is rendered as given."""
+    the ``root+sub`` keys for a sub-project (CR-MDB-043 §S2). Every value
+    containing whitespace is double-quoted, whatever its source (asked,
+    derived or captured), so direnv's dotenv parser accepts the line
+    (CR-MDB-047 §S2); :func:`_read_env_value` reads it back unquoted."""
     def value(entry: dict) -> str:
         text = registry.get(entry["name"], "")
-        if entry["source"] == "derive" and any(ch.isspace() for ch in text):
+        if any(ch.isspace() for ch in text):
             return f'"{text}"'
         return text
 
@@ -1606,14 +1606,19 @@ def run_init(args: argparse.Namespace, home: Path) -> int:
 
 
 def _read_env_value(env_path: Path, key: str) -> str | None:
-    """The value of ``key`` in a ``KEY=VALUE`` registry file, or None."""
+    """The value of ``key`` in a ``KEY=VALUE`` registry file, or None. A
+    double-quoted value (how :func:`_render_registry` writes one containing
+    whitespace, CR-MDB-047 §S2) is returned without its quotes."""
     for line in env_path.read_text(encoding="utf-8").splitlines():
         stripped = line.strip()
         if not stripped or stripped.startswith("#") or "=" not in stripped:
             continue
         name, _, value = stripped.partition("=")
         if name.strip() == key:
-            return value.strip()
+            value = value.strip()
+            if len(value) >= 2 and value[0] == value[-1] == '"':
+                value = value[1:-1]
+            return value
     return None
 
 
