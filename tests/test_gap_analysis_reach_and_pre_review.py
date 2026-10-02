@@ -35,9 +35,9 @@ Hermetic: reads only repo files. Stdlib only.
 import re
 import unittest
 
-from tests._helpers import REPO_ROOT, md_section, read_text, split_frontmatter
+from tests._helpers import md_section, split_frontmatter
 from tests.test_bootstrap_shutdown_registry import normalise
-from tests.test_execution_knowledge_rules import rule_units
+from tests.test_execution_knowledge_rules import _read, rule_units
 from tests.test_orchestrator_rule_triage import section_body
 
 GAP_REL = "skills-src/gap-analysis/SKILL.md"
@@ -331,10 +331,6 @@ def in_worktree_design_claims(text: str) -> list[str]:
     return [u for u in units(text)
             if re.search(IN_WORKTREE_CLAIM, u) and re.search(IN_WORKTREE_DESIGN_WORK, u)
             and not re.search(r"\bbefore the worktree exists\b", u)]
-
-
-def _read(rel: str) -> str:
-    return read_text(REPO_ROOT / rel)
 
 
 def _section(rel: str, prefix: str) -> str:
