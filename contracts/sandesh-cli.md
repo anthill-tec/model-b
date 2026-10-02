@@ -61,10 +61,12 @@ The `notify` exit table as sandesh-pi's supervision treats each exit (`sandesh n
 | Exit | Reason | sandesh-pi's supervision |
 |---|---|---|
 | `0` | mail arrived | injects a turn naming the unread ids, then relaunches the watcher |
-| `5` | already live elsewhere (dedup) | retries once |
+| `2` | timeout (no mail before the deadline) | relaunches the watcher silently, with no notice |
+| `5` | already live elsewhere (dedup) | retries once; a second exit 5 in a row stops it quietly, with no notice |
 | `1` | usage or configuration error | stops with a notice |
 | `3` | tombstoned | stops with a notice |
 | `4` | evicted | stops with a notice |
+| `128+n` | killed by a signal | stops with a notice |
 
 ## Filed requests / gaps (dogfooding register)
 
