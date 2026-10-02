@@ -9,10 +9,11 @@ You are performing a **pre-implementation analysis**. You do NOT write code. You
 
 ## When to Use
 
+- After the spec is drafted, before its pre-review: the ordering is this analysis → the spec
+  pre-review → approval → `plan-file` → the feature branch or worktree → RED
 - Before starting ANY CR implementation
-- Before creating a feature branch
-- After the spec is written but before RED phase
 - When a CR predates recent codebase changes
+- Again whenever the spec is restructured or re-scoped (Rule 20)
 
 ## Prerequisites
 
@@ -139,7 +140,7 @@ from two specs months earlier, and was instead found by a RED agent mid-implemen
 
 ### Dimension 7: Cost — Is each criterion worth what satisfying it requires?
 
-**The other six dimensions ask whether a criterion is TRUE. This one asks whether it is WORTH IT.**
+**The other nine dimensions ask whether a criterion is TRUE. This one asks whether it is WORTH IT.**
 A criterion can be accurate, performable, requirement-shaped, citation-clean, and free of
 shipped-artifact edits — and still be the most expensive mistake in the CR.
 
@@ -234,7 +235,7 @@ Any path that could break one gets an AC.
 
 ### Verdicts:
 
-- **READY**: Spec is accurate, code matches PRD, proceed to feature branch
+- **READY**: Spec is accurate, code matches PRD; proceed to the spec pre-review (Rules 21–22)
 - **SPEC_UPDATE_NEEDED**: Spec has drift, update before implementation
 - **PREREQUISITE_NEEDED**: Code violates PRD in ways that must be fixed before this CR can work
 - **SPEC_TOO_EXPENSIVE**: Every criterion is accurate, but one or more demand machinery out of
