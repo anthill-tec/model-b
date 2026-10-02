@@ -48,7 +48,7 @@ Coordinator-only rules. Read COMMON + MAINLINE. (Worker rules → TRACK; sub-age
 - The integration tree rests on `develop`, clean.
 
 ## Inbox / coordination
-- Run the inbox watcher through the Model B watcher (or, without it, as a background process that notifies you when it exits) from session start; on a request → fetch + reschedule (incl. filing a requested NEW CR into the owner track's lane) + reply/directive → relaunch the watcher (fallback path only; the Model B watcher relaunches itself).
+- Your inbox watcher is Sandesh's wake watcher, started through the harness's Sandesh extension at session start; on a request it wakes you → fetch + reschedule (incl. filing a requested NEW CR into the owner track's lane) + reply/directive. Nothing is restarted after a fetch — the extension keeps the watcher running.
 - Re-read a request at consume-time before acting (the watcher can fire before the write completes).
 - If consuming a request needs the user, surface it and hold.
 - After an exceptional direct-to-develop hotfix, tell every track with a live worktree to sync it — not only the one obviously affected.

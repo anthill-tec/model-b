@@ -33,8 +33,10 @@ from tests._helpers import write_executable as _write_exe
 from tests.pi_capability_sandbox import (
     AGENT_DIR_ENV,
     MODELB_PI_PACKAGE,
+    SANDESH_VERSION_FLOOR,
     THIRD_PARTY_TIER1,
     TIER1_PACKAGES,
+    fake_sandesh,
     install_on_disk,
     make_agent_dir,
     make_home,
@@ -58,7 +60,9 @@ _FAKE_UV = (
     'echo "uv 0.0.0-fake"\n'
     "exit 0\n"
 )
-_FAKE_SANDESH = "#!/bin/sh\necho sandesh-fake\nexit 0\n"
+# MIGRATED at CR-MDB-047 C1 RED (§S1 version floor): a fake standing for a
+# present Sandesh answers `--version` with the floor version.
+_FAKE_SANDESH = fake_sandesh()
 
 
 def _fake_uv_placing_sandesh(bin_dir: Path) -> str:
@@ -73,7 +77,7 @@ def _fake_uv_placing_sandesh(bin_dir: Path) -> str:
     return (
         "#!/bin/sh\n"
         'if [ "$1" = "tool" ] && [ "$2" = "install" ]; then\n'
-        f"    printf '#!/bin/sh\\nexit 0\\n' > \"{sandesh}\"\n"
+        f"    printf '#!/bin/sh\\necho sandesh {SANDESH_VERSION_FLOOR}\\nexit 0\\n' > \"{sandesh}\"\n"
         f"    \"{chmod}\" 755 \"{sandesh}\"\n"
         "    exit 0\n"
         "fi\n"
@@ -168,16 +172,23 @@ class RequirementsDeclarationTest(unittest.TestCase):
         ("dispatch", 1, "required", True),
         ("lean-ctx", 1, "required", True),
         ("permissions", 1, "recommended", True),
-        # CR-MDB-029 \u00a7S3: Model B's own Pi package.
-        ("watcher", 1, "recommended", True),
+        # CR-MDB-029 §S3: Model B's own Pi package — the ``worktree``
+        # row since CR-MDB-047 §S1 (MIGRATED at CR-MDB-047 C1 RED).
+        ("worktree", 1, "recommended", True),
+        # CR-MDB-047 §S1: Sandesh's own Pi extension is required.
+        ("sandesh-pi", 1, "required", True),
         ("uv", 2, "required", True),
-        ("sandesh", 2, "recommended", True),
+        # MIGRATED at CR-MDB-047 C4 FIX (VERIFY F9, "Quoting" AC amended at
+        # 5dd8a36): the `sandesh` CLI is required (was recommended).
+        ("sandesh", 2, "required", True),
         ("crucible", 2, "recommended", True),
         ("crucible-client", 2, "recommended", False),
         ("python3", 2, "recommended", True),
         ("bash", 2, "recommended", True),
         ("gh", 2, "recommended", True),
         ("jq", 2, "recommended", True),
+        # CR-MDB-047 §S1: the tier-2 direnv path probe.
+        ("direnv", 2, "recommended", True),
     ]
 
     def test_every_row_carries_every_field(self):
@@ -216,9 +227,13 @@ class RequirementsDeclarationTest(unittest.TestCase):
                 self.assertEqual(row["policy"], "recommended")
                 self.assertNotEqual(row["scope"], "always")
 
-    def test_only_dispatch_lean_ctx_and_uv_are_required(self):
+    def test_only_dispatch_lean_ctx_sandesh_pi_uv_and_sandesh_are_required(self):
+        # MIGRATED at CR-MDB-047 C1 RED (§S1: sandesh-pi becomes required);
+        # was test_only_dispatch_lean_ctx_and_uv_are_required. MIGRATED again
+        # at CR-MDB-047 C4 FIX (VERIFY F9: the `sandesh` CLI is required too);
+        # was test_only_dispatch_lean_ctx_sandesh_pi_and_uv_are_required.
         required = sorted(r["id"] for r in _requirements() if r.get("policy") == "required")
-        self.assertEqual(required, ["dispatch", "lean-ctx", "uv"])
+        self.assertEqual(required, ["dispatch", "lean-ctx", "sandesh", "sandesh-pi", "uv"])
 
     def test_tier1_providers_are_the_exact_npm_packages(self):
         for cap, pkg in TIER1_PACKAGES.items():
@@ -259,9 +274,10 @@ class RequirementsDeclarationTest(unittest.TestCase):
 
     def test_path_probed_rows_are_declared_by_their_probe_kind(self):
         """Finding 3: the tier-2 PATH tools are DATA \u2014 each row carries a
-        probe kind, and the ``path`` rows are exactly python3/bash/gh/jq."""
+        probe kind, and the ``path`` rows are exactly python3/bash/gh/jq, and
+        direnv (MIGRATED at CR-MDB-047 C1 RED, \u00a7S1)."""
         path_rows = sorted(r["id"] for r in _requirements() if r.get("probe") == "path")
-        self.assertEqual(path_rows, ["bash", "gh", "jq", "python3"])
+        self.assertEqual(path_rows, ["bash", "direnv", "gh", "jq", "python3"])
         for row in _requirements():
             if row.get("probe") == "path":
                 self.assertEqual(row["tier"], 2, row)
@@ -550,7 +566,7 @@ class HarnessProbeTest(_SandboxedInstallerCase):
         self.assertEqual(
             self.harness_verdicts(result),
             {"dispatch": "unknown", "lean-ctx": "unknown", "permissions": "unknown",
-             "watcher": "unknown", "sandesh-pi": "unknown"},
+             "worktree": "unknown", "sandesh-pi": "unknown"},
         )
 
     def test_unrecognised_settings_shape_is_unknown(self):
@@ -563,7 +579,7 @@ class HarnessProbeTest(_SandboxedInstallerCase):
         self.assertEqual(
             self.harness_verdicts(result),
             {"dispatch": "unknown", "lean-ctx": "unknown", "permissions": "unknown",
-             "watcher": "unknown", "sandesh-pi": "unknown"},
+             "worktree": "unknown", "sandesh-pi": "unknown"},
         )
 
     def test_env_var_agent_dir_wins_over_home_default(self):
@@ -573,7 +589,7 @@ class HarnessProbeTest(_SandboxedInstallerCase):
         self.assertEqual(
             self.harness_verdicts(result),
             {"dispatch": "absent", "lean-ctx": "absent", "permissions": "absent",
-             "watcher": "absent", "sandesh-pi": "absent"},
+             "worktree": "absent", "sandesh-pi": "absent"},
             f"§S2: $PI_CODING_AGENT_DIR must be read when set; stderr={result.stderr!r}",
         )
 
@@ -583,7 +599,7 @@ class HarnessProbeTest(_SandboxedInstallerCase):
         self.assertEqual(
             self.harness_verdicts(result),
             {"dispatch": "detected", "lean-ctx": "detected", "permissions": "detected",
-             "watcher": "detected", "sandesh-pi": "detected"},
+             "worktree": "detected", "sandesh-pi": "detected"},
             f"§S2: ~/.pi/agent/settings.json is the default; stderr={result.stderr!r}",
         )
 
@@ -660,9 +676,12 @@ class RecommendedAndUnknownPolicyTest(_SandboxedInstallerCase):
     def test_unknown_dispatch_verdict_warns_and_continues(self):
         make_agent_dir(
             self.agent_dir,
+            # MIGRATED at CR-MDB-047 C1 RED (§S1): sandesh-pi is required,
+            # so it is provided here, leaving dispatch the only judged gap.
             packages=[npm_spec(LEAN_CTX_PKG), npm_spec(PERMISSIONS_PKG),
+                      npm_spec(TIER1_PACKAGES["sandesh-pi"]),
                       "git:github.com/gotgenes/pi-subagents"],
-            on_disk=[LEAN_CTX_PKG, PERMISSIONS_PKG],
+            on_disk=[LEAN_CTX_PKG, PERMISSIONS_PKG, TIER1_PACKAGES["sandesh-pi"]],
         )
         result = self.run_installer()
         axi = _decode(result.stdout)
@@ -679,8 +698,8 @@ class NoThirdPartyInstallUnderYesTest(_SandboxedInstallerCase):
     byte-identical.
 
     CR-MDB-029 §S3 migration: ``--yes`` now runs ``pi install`` for Model
-    B's OWN package (``npm:@anthill-tec/modelb-pi``, the ``watcher``
-    capability) — so the invariant is separated by package: no ``pi`` run
+    B's OWN package (``npm:@anthill-tec/modelb-pi``, the ``worktree``
+    capability since CR-MDB-047 \u00a7S1) — so the invariant is separated by package: no ``pi`` run
     ever names a third-party package (``THIRD_PARTY_TIER1``), no
     ``npm``/``npx``/``pnpm`` ever runs, and the only permitted run is
     ``pi install npm:@anthill-tec/modelb-pi``. The marker ``pi`` shim
@@ -719,7 +738,7 @@ class NoThirdPartyInstallUnderYesTest(_SandboxedInstallerCase):
         # tier-1 row, absent here and never installed by --yes).
         self.assertEqual(self.harness_verdicts(result), {
             "dispatch": "absent", "lean-ctx": "absent", "permissions": "absent",
-            "watcher": "absent", "sandesh-pi": "absent",
+            "worktree": "absent", "sandesh-pi": "absent",
         })
         self.assertEqual(self.settings.read_bytes(), before_bytes, "settings.json must be byte-identical")
         self.assertEqual(self._snapshot(), before_tree, "the agent dir must be untouched")
@@ -928,7 +947,7 @@ class PreflightReportLinesTest(_SandboxedInstallerCase):
         self.assertEqual(
             parse_group_line(result.stderr, "harness:"),
             {"dispatch": "detected", "lean-ctx": "detected", "permissions": "detected",
-             "watcher": "detected", "sandesh-pi": "detected"},
+             "worktree": "detected", "sandesh-pi": "detected"},
             result.stderr,
         )
         self.assertIn("deps: uv=detected sandesh=detected crucible=detected", result.stderr)
@@ -1032,7 +1051,7 @@ class InstallTomlCapabilitiesRecordTest(_SandboxedInstallerCase):
         self.assertEqual(
             {k: caps.get(k) for k in TIER1_PACKAGES},
             {"dispatch": "detected", "lean-ctx": "detected", "permissions": "absent",
-             "watcher": "detected", "sandesh-pi": "detected"},
+             "worktree": "detected", "sandesh-pi": "detected"},
         )
         self.assertEqual(caps.get("uv"), "detected")
         self.assertEqual(caps.get("crucible"), "absent")

@@ -19,8 +19,9 @@ import shutil
 import tempfile
 from pathlib import Path
 
-#: Model B's own Pi package — the Sandesh watcher supervisor — providing
-#: the tier-1 ``watcher`` capability (CR-MDB-029 §S3).
+#: Model B's own Pi package — worktree isolation — providing the tier-1
+#: ``worktree`` capability (CR-MDB-029 §S3; renamed from ``watcher`` by
+#: CR-MDB-047 §S1, when Sandesh's own Pi extension became the wake path).
 MODELB_PI_PACKAGE = "@anthill-tec/modelb-pi"
 
 #: The THIRD-PARTY tier-1 capabilities (CR-MDB-036 §S1, and Sandesh's own Pi
@@ -29,17 +30,37 @@ MODELB_PI_PACKAGE = "@anthill-tec/modelb-pi"
 THIRD_PARTY_TIER1 = ("dispatch", "lean-ctx", "permissions", "sandesh-pi")
 
 #: Tier-1 harness capability id -> the npm package that provides it
-#: (CR-MDB-036 §S1 table + CR-MDB-029 §S3's ``watcher`` row + CR-MDB-045
-#: §S1's ``sandesh-pi`` row). A
+#: (CR-MDB-036 §S1 table + CR-MDB-029 §S3's row, ``worktree`` since
+#: CR-MDB-047 §S1 + CR-MDB-045 §S1's ``sandesh-pi`` row). A
 #: "provisioned" agent dir lists and holds every one of them, so a
-#: default run never triggers the ``--yes`` watcher install.
+#: default run never triggers the ``--yes`` modelb-pi install.
 TIER1_PACKAGES = {
     "dispatch": "@gotgenes/pi-subagents",
     "lean-ctx": "pi-lean-ctx",
     "permissions": "@gotgenes/pi-permission-system",
-    "watcher": MODELB_PI_PACKAGE,
+    "worktree": MODELB_PI_PACKAGE,
     "sandesh-pi": "@anthill-tec/sandesh-pi",
 }
+
+#: The oldest ``sandesh`` CLI Model B accepts (CR-MDB-047 §S1): the pre-flight
+#: runs ``sandesh --version`` and records an older one as ``outdated``.
+SANDESH_VERSION_FLOOR = "0.4.0"
+
+
+def fake_sandesh(version: str = SANDESH_VERSION_FLOOR, log: Path | None = None) -> str:
+    """The body of a fake ``sandesh`` that answers ``--version`` the way the
+    real CLI does (``sandesh <version>``) and exits 0 for anything else. With
+    ``log`` it appends ``$*`` per run, so a test can see what was executed.
+    A sandbox standing for a current Sandesh uses the floor version."""
+    record = f'printf \'%s\\n\' "$*" >> "{log}"\n' if log is not None else ""
+    return (
+        "#!/bin/sh\n"
+        f"{record}"
+        'if [ "$1" = "--version" ]; then\n'
+        f"    echo 'sandesh {version}'\n"
+        "fi\n"
+        "exit 0\n"
+    )
 
 #: The environment variable the probe honours before ``~/.pi/agent``.
 AGENT_DIR_ENV = "PI_CODING_AGENT_DIR"

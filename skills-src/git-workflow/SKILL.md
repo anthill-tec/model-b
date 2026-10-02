@@ -187,8 +187,8 @@ After building: switch back to develop for continued work. Bump develop to the n
    isolated Pi agent directory (`PI_CODING_AGENT_DIR` pointed at a temp dir) and confirm the
    extension loads there.
 3. **Post-release live check** — as part of the post-release maintenance, once the published
-   package is installed into the maintainer's real Pi configuration, start the watcher there and
-   confirm a Sandesh message wakes the session.
+   package is installed into the maintainer's real Pi configuration, confirm Pi loads the
+   worktree extension there.
 
 ## Multi-Account Pushing (dual remote: origin + mirror)
 

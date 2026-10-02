@@ -51,8 +51,8 @@ Worker-orchestrator-only rules. Read COMMON + TRACK. (Coordinator rules → MAIN
 
 ## On a shutdown directive — invoke the `/shutdown` skill
 - A SHUTDOWN reaches a track as a Sandesh `directive` from Mainline (or `/shutdown` typed on your session). On fetching it, INVOKE the **`shutdown` skill** (`/shutdown`, plus `emergency` if the directive carries it — no role arg; you already know you're Track N) and follow it — do not improvise the teardown.
-- **Graceful (default):** finish the active step; if mid-CR with an active cycle on the plan, **ESCALATE to Mainline** (mid-cycle, will finish the active cycle then ack) rather than stopping abruptly; finish the plan's active cycle; leave a clean worktree (commit WIP); **merge the active CR back ONLY on Mainline's relayed user sign-off** (then `finish` and `modelb_worktree_exit`, as above) — otherwise the CR stays open; **ack Mainline that you are safe to shut down** (the ack IS the indicator); then kill your notifier LAST.
-- **`emergency` flag:** close only the active write, fast-abort (no drain/merge; stash/preserve the worktree), best-effort ack, kill notifier.
+- **Graceful (default):** finish the active step; if mid-CR with an active cycle on the plan, **ESCALATE to Mainline** (mid-cycle, will finish the active cycle then ack) rather than stopping abruptly; finish the plan's active cycle; leave a clean worktree (commit WIP); **merge the active CR back ONLY on Mainline's relayed user sign-off** (then `finish` and `modelb_worktree_exit`, as above) — otherwise the CR stays open; **ack Mainline that you are safe to shut down** (the ack IS the indicator); then, LAST, stop your watcher by your own address (`/sandesh-watcher stop <your address>`) and unregister your address.
+- **`emergency` flag:** close only the active write, fast-abort (no drain/merge; stash/preserve the worktree), best-effort ack, then stop your watcher by your address and unregister.
 - The ack routes to MAINLINE (your sole contact) — to the user only if `/shutdown` was typed on your own session.
 
 ## Cull / re-layer execution checklist (COMMON rules a track most often runs)

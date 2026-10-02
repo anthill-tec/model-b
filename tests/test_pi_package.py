@@ -31,14 +31,48 @@ Orchestrator rulings (2026-09-24, on the cycle-111 RED design):
   :data:`HARNESS_HOME_PATH`.
 - Q1 \u2014 this cycle pins only the agreement between ``pi.extensions`` and
   the files under ``pi-package/extensions/`` (a missing or empty directory
-  counts as an empty list); the exact ``["extensions/sandesh-watcher.ts"]``
-  pin belongs to the extension's own cycle.
+  counts as an empty list); the exact ``["extensions/worktree.ts"]``
+  pin (CR-MDB-047 \u00a7S4: ``sandesh-watcher.ts`` removed) belongs to the
+  extension's own cycle.
 - Q2 \u2014 ``version`` is the npm-semver form of ``modelb_axi.__version__``
   (a PEP 440 ``0.1.0.dev0`` is not valid npm semver): ``X.Y.Z`` unchanged;
   ``X.Y.Z.devN`` \u2192 ``X.Y.Z-dev.N``; ``X.Y.ZaN``/``bN``/``rcN`` \u2192
   ``X.Y.Z-alpha.N``/``-beta.N``/``-rc.N``. :func:`npm_semver` is this test's
   oracle, table-tested below; where the product keeps the mapping is not
   pinned.
+
+Retired by CR-MDB-047 (§S4: ``sandesh-watcher.ts`` is removed; listed here per
+"Removed", amended at 5dd8a36 for VERIFY F2): the module
+``tests/test_pi_sandesh_watcher.py`` — its base case ``SandeshWatcherTestCase``
+and every test it ran — and its loader, ``tests/fixtures/pi_watcher_harness.mjs``.
+Sandesh's own extension, sandesh-pi, now supervises the wake, so none has a
+successor here. The 25 retired tests, by id:
+
+  - ``tests.test_pi_sandesh_watcher.SandeshWatcherRegistrationTest.test_factory_registers_the_sandesh_watcher_tool_and_the_watcher_command``
+  - ``tests.test_pi_sandesh_watcher.SandeshWatcherRegistrationTest.test_tool_schema_declares_start_status_stop_and_address_project``
+  - ``tests.test_pi_sandesh_watcher.SandeshWatcherStartTest.test_start_spawns_sandesh_notify_with_exactly_to_and_project``
+  - ``tests.test_pi_sandesh_watcher.SandeshWatcherStartTest.test_start_spawns_the_child_with_pythonunbuffered_so_the_banner_is_not_held``
+  - ``tests.test_pi_sandesh_watcher.SandeshWatcherStartTest.test_start_reports_ready_naming_the_address_only_after_the_banner``
+  - ``tests.test_pi_sandesh_watcher.SandeshWatcherStartTest.test_start_does_not_hang_when_the_child_exits_without_a_banner``
+  - ``tests.test_pi_sandesh_watcher.SandeshWatcherStartTest.test_start_while_one_runs_reports_it_and_spawns_nothing``
+  - ``tests.test_pi_sandesh_watcher.SandeshWatcherStartTest.test_stop_tool_terminates_the_child``
+  - ``tests.test_pi_sandesh_watcher.SandeshWatcherStartTest.test_watcher_stop_command_terminates_the_child``
+  - ``tests.test_pi_sandesh_watcher.SandeshWatcherStartTest.test_status_tool_names_the_running_address``
+  - ``tests.test_pi_sandesh_watcher.SandeshWatcherStartTest.test_watcher_status_command_names_the_running_address``
+  - ``tests.test_pi_sandesh_watcher.SandeshWatcherExitTest.test_exit_0_wakes_once_naming_the_ids_and_quoted_fetch_and_relaunches_at_once``
+  - ``tests.test_pi_sandesh_watcher.SandeshWatcherExitTest.test_exit_0_again_with_the_same_ids_does_not_wake_and_retries_every_30s``
+  - ``tests.test_pi_sandesh_watcher.SandeshWatcherExitTest.test_status_during_a_retry_does_not_name_the_dead_childs_pid``
+  - ``tests.test_pi_sandesh_watcher.SandeshWatcherExitTest.test_exit_0_without_ids_wakes_again_after_a_relaunch_reports_no_mail``
+  - ``tests.test_pi_sandesh_watcher.SandeshWatcherExitTest.test_exit_0_with_the_same_ids_wakes_again_after_a_relaunch_reports_no_mail``
+  - ``tests.test_pi_sandesh_watcher.SandeshWatcherExitTest.test_exit_0_with_new_ids_wakes_again``
+  - ``tests.test_pi_sandesh_watcher.SandeshWatcherExitTest.test_exit_2_relaunches_once_silently``
+  - ``tests.test_pi_sandesh_watcher.SandeshWatcherExitTest.test_three_exit_2_within_a_minute_surface_and_stop_relaunching``
+  - ``tests.test_pi_sandesh_watcher.SandeshWatcherExitTest.test_exit_2_spread_over_more_than_a_minute_keeps_relaunching_silently``
+  - ``tests.test_pi_sandesh_watcher.SandeshWatcherExitTest.test_exit_1_surfaces_usage_or_configuration_error_without_relaunch``
+  - ``tests.test_pi_sandesh_watcher.SandeshWatcherExitTest.test_exit_3_surfaces_tombstoned_project_without_relaunch``
+  - ``tests.test_pi_sandesh_watcher.SandeshWatcherExitTest.test_exit_4_surfaces_eviction_without_relaunch``
+  - ``tests.test_pi_sandesh_watcher.SandeshWatcherExitTest.test_exit_5_surfaces_already_live_dedup_without_relaunch``
+  - ``tests.test_pi_sandesh_watcher.SandeshWatcherExitTest.test_signal_exit_surfaces_the_signal_without_relaunch``
 
 Stdlib only.
 """
@@ -68,6 +102,14 @@ PEER_DEPENDENCIES = {"@earendil-works/pi-coding-agent": "*"}
 #: A ``.claude`` or ``.omp`` path segment (``~/.claude``, ``$HOME/.omp/x``,
 #: ``.claude/settings.json``); ``claude-code`` does not match (ruling D5).
 HARNESS_HOME_PATH = re.compile(r"(?<![\w-])\.(claude|omp)(?![\w-])")
+
+#: CR-MDB-047 §S4 — the retired Model B watcher: its tool, its command
+#: registration, and its ``/watcher`` command (never Sandesh's ``/sandesh-watcher``).
+WATCHER_MARKERS = (
+    re.compile(r"sandesh_watcher"),
+    re.compile(r"registerCommand\(\s*['\"]watcher['\"]"),
+    re.compile(r"/watcher\b"),
+)
 
 #: The semver 2.0.0 grammar (semver.org, the suggested regular expression).
 SEMVER_RE = re.compile(
@@ -212,24 +254,47 @@ class PiPackageManifestTest(unittest.TestCase):
             "pi.extensions must list exactly the files under pi-package/extensions/",
         )
 
-    def test_pi_manifest_extensions_are_exactly_the_sandesh_watcher_and_the_worktree_extension(self):
+    def test_pi_manifest_extensions_are_exactly_the_worktree_extension(self):
         # Ruling Q1 (cycle 111) moved this exact pin to the extension's own
         # cycle (C2, cycle 112); orchestrator ruling H adds it here without
         # migrating the agreement test above. MIGRATED at CR-MDB-039 C1 RED
-        # (S1: pi-package/extensions/worktree.ts, listed in pi.extensions);
-        # was test_pi_manifest_extensions_are_exactly_the_sandesh_watcher.
+        # (S1: pi-package/extensions/worktree.ts, listed in pi.extensions),
+        # then at CR-MDB-047 C2 RED (§S4: sandesh-watcher.ts is removed;
+        # package.json lists only worktree.ts); was
+        # test_pi_manifest_extensions_are_exactly_the_sandesh_watcher_and_the_worktree_extension.
         pi = _manifest().get("pi")
         self.assertIsInstance(pi, dict, f"package.json 'pi' must be an object, got {pi!r}")
         assert isinstance(pi, dict)
-        self.assertEqual(
-            sorted(pi.get("extensions") or []),
-            ["extensions/sandesh-watcher.ts", "extensions/worktree.ts"],
+        self.assertEqual(sorted(pi.get("extensions") or []), ["extensions/worktree.ts"])
+        self.assertTrue((EXTENSIONS_DIR / "worktree.ts").is_file(), "pi-package/extensions/worktree.ts must exist")
+        self.assertFalse(
+            (EXTENSIONS_DIR / "sandesh-watcher.ts").exists(),
+            "\u00a7S4: pi-package/extensions/sandesh-watcher.ts is removed",
         )
-        for name in ("sandesh-watcher.ts", "worktree.ts"):
-            self.assertTrue(
-                (EXTENSIONS_DIR / name).is_file(),
-                f"pi-package/extensions/{name} must exist",
-            )
+
+    def test_no_package_file_carries_the_model_b_watcher(self):
+        # CR-MDB-047 §S4: the Model B watcher (its `sandesh_watcher` tool and its
+        # `/watcher` command) is gone from the package; Sandesh's own extension
+        # provides the wake (`/sandesh-watcher` is Sandesh's, not this package's).
+        offending = []
+        for path in _package_files():
+            text = path.read_text(encoding="utf-8", errors="replace")
+            rel = path.relative_to(PI_PACKAGE).as_posix()
+            for pattern in WATCHER_MARKERS:
+                if pattern.search(text):
+                    offending.append(f"{rel}: {pattern.pattern}")
+        self.assertEqual(offending, [], f"the Model B watcher remains in pi-package/: {offending}")
+
+    def test_watcher_marker_detector_bites_and_spares_sandeshs_command(self):
+        violating = (
+            'pi.registerTool({ name: "sandesh_watcher" });',
+            'pi.registerCommand("watcher", { handler });',
+            "Run `/watcher status` to list them.",
+        )
+        for text in violating:
+            self.assertTrue(any(p.search(text) for p in WATCHER_MARKERS), text)
+        for text in ('pi.registerCommand("worktree", {});', "Use `/sandesh-watcher stop <your address>`."):
+            self.assertFalse(any(p.search(text) for p in WATCHER_MARKERS), text)
 
     def test_package_carries_no_skills_directory(self):
         self.assertTrue(PI_PACKAGE.is_dir(), f"{PI_PACKAGE} must exist")
@@ -243,7 +308,7 @@ class PiPackageHarnessPathTest(unittest.TestCase):
     def test_no_claude_or_omp_path_in_any_package_file(self):
         files = _package_files() if PI_PACKAGE.is_dir() else []
         names = {p.relative_to(PI_PACKAGE).as_posix() for p in files}
-        # Not vacuous: the files the \u00a7S1 package must carry are scanned.
+        # Not vacuous: the files the §S1 package must carry are scanned.
         self.assertTrue(
             {"package.json", "README.md"} <= names,
             f"pi-package/ must carry package.json and README.md to be scanned, got {sorted(names)}",
@@ -391,6 +456,67 @@ class PiPackageOracleProofTest(unittest.TestCase):
         with self.assertRaises(AssertionError) as ctx:
             render_readme("<!-- install-guide:begin one -->\nx\n")
         self.assertIn("never ended", str(ctx.exception))
+
+
+#: The module, its fixture and every test CR-MDB-047 retired with the Model B
+#: watcher ("Removed", amended at 5dd8a36 for VERIFY F2) — read from
+#: ``git show ddd69f7^:tests/test_pi_sandesh_watcher.py``, the commit that
+#: deleted them: 25 test methods under three classes, on the base case
+#: ``SandeshWatcherTestCase``, driven through the fixture harness.
+RETIRED_WATCHER_MODULE = "tests/test_pi_sandesh_watcher.py"
+RETIRED_WATCHER_FIXTURE = "tests/fixtures/pi_watcher_harness.mjs"
+RETIRED_WATCHER_TESTS = (
+    "SandeshWatcherRegistrationTest.test_factory_registers_the_sandesh_watcher_tool_and_the_watcher_command",
+    "SandeshWatcherRegistrationTest.test_tool_schema_declares_start_status_stop_and_address_project",
+    "SandeshWatcherStartTest.test_start_spawns_sandesh_notify_with_exactly_to_and_project",
+    "SandeshWatcherStartTest.test_start_spawns_the_child_with_pythonunbuffered_so_the_banner_is_not_held",
+    "SandeshWatcherStartTest.test_start_reports_ready_naming_the_address_only_after_the_banner",
+    "SandeshWatcherStartTest.test_start_does_not_hang_when_the_child_exits_without_a_banner",
+    "SandeshWatcherStartTest.test_start_while_one_runs_reports_it_and_spawns_nothing",
+    "SandeshWatcherStartTest.test_stop_tool_terminates_the_child",
+    "SandeshWatcherStartTest.test_watcher_stop_command_terminates_the_child",
+    "SandeshWatcherStartTest.test_status_tool_names_the_running_address",
+    "SandeshWatcherStartTest.test_watcher_status_command_names_the_running_address",
+    "SandeshWatcherExitTest.test_exit_0_wakes_once_naming_the_ids_and_quoted_fetch_and_relaunches_at_once",
+    "SandeshWatcherExitTest.test_exit_0_again_with_the_same_ids_does_not_wake_and_retries_every_30s",
+    "SandeshWatcherExitTest.test_status_during_a_retry_does_not_name_the_dead_childs_pid",
+    "SandeshWatcherExitTest.test_exit_0_without_ids_wakes_again_after_a_relaunch_reports_no_mail",
+    "SandeshWatcherExitTest.test_exit_0_with_the_same_ids_wakes_again_after_a_relaunch_reports_no_mail",
+    "SandeshWatcherExitTest.test_exit_0_with_new_ids_wakes_again",
+    "SandeshWatcherExitTest.test_exit_2_relaunches_once_silently",
+    "SandeshWatcherExitTest.test_three_exit_2_within_a_minute_surface_and_stop_relaunching",
+    "SandeshWatcherExitTest.test_exit_2_spread_over_more_than_a_minute_keeps_relaunching_silently",
+    "SandeshWatcherExitTest.test_exit_1_surfaces_usage_or_configuration_error_without_relaunch",
+    "SandeshWatcherExitTest.test_exit_3_surfaces_tombstoned_project_without_relaunch",
+    "SandeshWatcherExitTest.test_exit_4_surfaces_eviction_without_relaunch",
+    "SandeshWatcherExitTest.test_exit_5_surfaces_already_live_dedup_without_relaunch",
+    "SandeshWatcherExitTest.test_signal_exit_surfaces_the_signal_without_relaunch",
+)
+
+
+class RetiredWatcherTestsAreListedTest(unittest.TestCase):
+    """AC "The Pi package": the tests of the removed extension are retired,
+    and each is listed by id in this module's docstring."""
+
+    def setUp(self):
+        self.doc = sys.modules[__name__].__doc__ or ""
+
+    def test_the_retired_module_and_fixture_are_gone(self):
+        for rel in (RETIRED_WATCHER_MODULE, RETIRED_WATCHER_FIXTURE):
+            with self.subTest(path=rel):
+                self.assertFalse((REPO_ROOT / rel).exists(), f"{rel} is retired")
+
+    def test_the_docstring_names_the_retired_module_and_its_fixture(self):
+        for rel in (RETIRED_WATCHER_MODULE, RETIRED_WATCHER_FIXTURE, "SandeshWatcherTestCase"):
+            with self.subTest(name=rel):
+                self.assertIn(rel, self.doc, f"the module docstring lists {rel}")
+
+    def test_the_docstring_lists_every_retired_test_by_id(self):
+        self.assertEqual(len(RETIRED_WATCHER_TESTS), 25)
+        missing = [t for t in RETIRED_WATCHER_TESTS
+                   if f"tests.test_pi_sandesh_watcher.{t}" not in self.doc]
+        self.assertEqual(missing, [], "each retired test is listed by its full id "
+                                      "(tests.test_pi_sandesh_watcher.<Class>.<method>)")
 
 
 if __name__ == "__main__":

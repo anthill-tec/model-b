@@ -6,7 +6,7 @@ Probes, in order, against the CURRENT environment (``shutil.which`` and
 
 1. **Harness capabilities** (tier 1, :mod:`modelb_axi.capabilities`) —
    reported as ``harness: dispatch=<v> lean-ctx=<v> permissions=<v>
-   watcher=<v>``.
+   worktree=<v> sandesh-pi=<v>``.
 2. ``uv`` — the bootstrap dependency everything else rides on. Absent is
    the pre-flight FAILURE mode: non-zero exit with bootstrap
    instructions.
@@ -28,14 +28,23 @@ WARN and continue. Model B never installs a third-party extension and
 never edits Pi's ``settings.json`` — it names ``pi install npm:<pkg>``.
 Sandesh (Model B's own ecosystem) keeps its install-on-confirm, and so
 does Model B's own Pi package, ``pi install npm:@anthill-tec/modelb-pi``
-(the ``watcher`` capability, CR-MDB-029 §S3), when ``pi`` is targeted.
+(the ``worktree`` capability, CR-MDB-029 §S3), when ``pi`` is targeted.
+
+The ``sandesh`` probe runs ``sandesh --version`` (CR-MDB-047 §S1): a CLI
+below :data:`SANDESH_VERSION_FLOOR` is ``outdated`` — reported like
+``absent``, naming ``uv tool upgrade sandesh-relay``, and never
+re-installed. The ``sandesh`` CLI is REQUIRED: still absent after its
+install offer, declined, or ``outdated``, it fails the pre-flight unless
+the caller allows missing capabilities.
 
 Every warning printed is also appended, unprefixed, to the caller's
 ``warnings`` list so the envelope can carry it. This module writes
 nothing to disk. Stdlib only.
 """
 
+import re
 import shutil
+import subprocess
 import sys
 from collections.abc import Callable, Iterable
 from pathlib import Path
@@ -60,9 +69,20 @@ from modelb_axi.toolchains import (
 
 SANDESH_PACKAGE = "sandesh-relay"
 
-#: Model B's own Pi package (the ``watcher`` capability, CR-MDB-029 §S3):
+#: Model B's own Pi package (the ``worktree`` capability, CR-MDB-029 §S3):
 #: the one tier-1 provider ``--yes`` installs — never a third-party one.
-MODELB_PI_PACKAGE = requirement("watcher")["provider"]
+MODELB_PI_PACKAGE = requirement("worktree")["provider"]
+
+#: The oldest ``sandesh`` CLI Model B accepts (CR-MDB-047 §S1): Sandesh's
+#: Pi extension 0.4.0 refuses an older one.
+SANDESH_VERSION_FLOOR: tuple[int, int, int] = (0, 4, 0)
+
+#: The verdict of a ``sandesh`` below the floor, or one whose version
+#: cannot be read (CR-MDB-047 §S1).
+OUTDATED = "outdated"
+
+_VERSION_RE = re.compile(r"(\d+)\.(\d+)\.(\d+)")
+_VERSION_TIMEOUT_SECONDS = 10
 
 #: The requirement ``probe`` kind of a tier-2 tool judged by
 #: ``shutil.which`` and recorded only in ``[capabilities]`` — ``[deps]``
@@ -123,6 +143,31 @@ def _install_sandesh(uv_path: str, warnings: list[str]) -> str:
         )
         return ABSENT
     return INSTALLED
+
+
+def _probe_sandesh() -> tuple[str, str | None]:
+    """The ``sandesh`` deps verdict and the version read (CR-MDB-047 §S1).
+
+    ``absent`` when not on PATH; otherwise ``sandesh --version`` is run and
+    its ``X.Y.Z`` compared numerically with :data:`SANDESH_VERSION_FLOOR`:
+    ``detected`` at or above it, ``outdated`` below it or when no version
+    can be read (the floor cannot be confirmed)."""
+    path = shutil.which("sandesh")
+    if path is None:
+        return ABSENT, None
+    try:
+        result = subprocess.run(
+            [path, "--version"], capture_output=True, text=True,
+            timeout=_VERSION_TIMEOUT_SECONDS, stdin=subprocess.DEVNULL,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return OUTDATED, None
+    match = _VERSION_RE.search(result.stdout or "")
+    if result.returncode != 0 or match is None:
+        return OUTDATED, None
+    version = tuple(int(part) for part in match.groups())
+    verdict = DETECTED if version >= SANDESH_VERSION_FLOOR else OUTDATED
+    return verdict, match.group(0)
 
 
 def _client_gap(stack: str, clients: dict) -> str:
@@ -264,7 +309,8 @@ def run_preflight(
     Returns ``(exit_code, deps, capabilities)``: ``deps`` is exactly
     uv/sandesh/crucible for ``[deps]``; ``capabilities`` maps every probed
     requirement id to its verdict for ``[capabilities]`` (§S4). Non-zero
-    when ``uv`` is absent, or a required capability is absent without
+    when ``uv`` is absent, or a required capability (a tier-1 one, or the
+    ``sandesh`` CLI absent or ``outdated``) is missing without
     ``allow_missing_capabilities``.
     """
     if warnings is None:
@@ -284,7 +330,7 @@ def run_preflight(
         warnings.append(_UV_BOOTSTRAP_MESSAGE)
         return 1, {}, dict(harness)
 
-    sandesh_verdict = DETECTED if shutil.which("sandesh") is not None else ABSENT
+    sandesh_verdict, sandesh_version = _probe_sandesh()
     resolved: dict[str, str | None] = {"uv": uv_path}
     crucible_verdict, clients = load_crucible_clients()
     stack_clients = {
@@ -320,8 +366,9 @@ def run_preflight(
         _warn(_CRUCIBLE_UNKNOWN_WARNING, warnings)
     for row in path_rows:
         if path_tools[row["id"]] == ABSENT:
+            effect = f": {row['absent_effect']}" if row.get("absent_effect") else ""
             _warn(
-                f"{row['id']} not found on PATH — {_families(row)} will not run; "
+                f"{row['id']} not found on PATH — {_families(row)} will not run{effect}; "
                 f"{row['remediation']}",
                 warnings,
             )
@@ -349,7 +396,37 @@ def run_preflight(
                 )
         else:
             _warn(f"declined `{command}` — sandesh stays absent", warnings)
+    elif sandesh_verdict == OUTDATED:
+        floor = ".".join(str(part) for part in SANDESH_VERSION_FLOOR)
+        families = _families(requirement("sandesh"))
+        if sandesh_version is None:
+            # CR-MDB-047 §S1: an unreadable version is never known to be
+            # below the floor — the floor just cannot be confirmed.
+            message = (
+                f"sandesh=outdated — its version could not be read, so the {floor} "
+                f"floor cannot be confirmed; {families} need it; upgrade it with "
+                f"`uv tool upgrade {SANDESH_PACKAGE}`, or reinstall it with "
+                f"`uv tool install --reinstall {SANDESH_PACKAGE}`"
+            )
+        else:
+            message = (
+                f"sandesh=outdated — found {sandesh_version}, below the {floor} floor; "
+                f"{families} need it; upgrade with `uv tool upgrade {SANDESH_PACKAGE}`"
+            )
+        _warn(message, warnings)
     capabilities["sandesh"] = sandesh_verdict
+    if sandesh_verdict in (ABSENT, OUTDATED) and not allow_missing_capabilities:
+        # CR-MDB-047 §S1: the `sandesh` CLI is required — sandesh-pi refuses
+        # a missing or outdated one — so, still absent after the offer,
+        # declined or outdated, it fails the pre-flight like a required
+        # tier-1 capability, before anything is written.
+        message = (
+            "pre-flight failed — required capabilities missing: sandesh; "
+            "install them, or re-run with --allow-missing-capabilities"
+        )
+        print(f"modelb-axi: {message}", file=sys.stderr)
+        warnings.append(message)
+        return 1, {}, capabilities
 
     remediate_toolchains(
         toolchains, resolved, lambda message: _warn(message, warnings), offer,

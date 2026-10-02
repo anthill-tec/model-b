@@ -39,8 +39,8 @@ Install these in the order given; no step relies on one that comes after it.
    - `dispatch` — required: `pi install npm:@gotgenes/pi-subagents`
    - `lean-ctx` — required: `pi install npm:pi-lean-ctx`
    - `permissions` — recommended: `pi install npm:@gotgenes/pi-permission-system`
-   - `watcher` — recommended, Model B's own package: `pi install npm:@anthill-tec/modelb-pi`
-   - `sandesh-pi` — recommended, Sandesh's own Pi extension: `pi install npm:@anthill-tec/sandesh-pi`
+   - `worktree` — recommended, Model B's own package: `pi install npm:@anthill-tec/modelb-pi`
+   - `sandesh-pi` — required, Sandesh's own Pi extension, the wake path: `pi install npm:@anthill-tec/sandesh-pi`
 3. **`uv`** — required. It installs the installer itself:
    `curl -LsSf https://astral.sh/uv/install.sh | sh`
 4. **`git`** — required to create a project: every project `modelb-axi init` creates is a
@@ -57,13 +57,20 @@ Install these in the order given; no step relies on one that comes after it.
 
    From a source copy of Model B, run `uv tool install .` from the root of that copy instead;
    to update, run `uv tool install --reinstall .` from a newer copy.
-6. **Recommended tools.** The install goes ahead without them, but some assets will not work
+6. **`sandesh`** — required, version 0.4.0 or later: Sandesh's Pi extension refuses a missing
+   or older CLI. Install it with `uv tool install sandesh-relay` (the installer offers to run
+   this for you); an older one is reported `outdated`: run `uv tool upgrade sandesh-relay`.
+7. **Recommended tools.** The install goes ahead without them, but some assets will not work
    (see [Warnings: what stops working](#warnings-what-stops-working)):
-   - `sandesh` — `uv tool install sandesh-relay` (the installer offers to run this for you);
    - `crucible` — Crucible's released clients, installed with Crucible's own installer; the
      installer looks for their manifest at `~/.crucible/crucible-clients.json`;
    - `python3`, `bash` and `jq` — from your operating system's package manager;
-   - `gh` — the GitHub CLI, from https://cli.github.com.
+   - `gh` — the GitHub CLI, from https://cli.github.com;
+   - `direnv` — from your operating system's package manager, with its shell hook:
+     `direnv hook fish | source` in fish, or `eval "$(direnv hook bash)"` in bash. It loads a
+     project's `.env` through the `.envrc` that `modelb-axi init` writes; run `direnv allow` in
+     each directory with an `.envrc`. The installer checks only that `direnv` is on your `PATH`,
+     never the hook.
 <!-- install-guide:end prerequisites -->
 
 <!-- install-guide:begin choosing-stacks -->
@@ -99,16 +106,17 @@ Before it writes anything, the installer checks the machine and prints one line 
 typical run with `--stacks python` prints:
 
 ```text
-harness: dispatch=detected lean-ctx=detected permissions=detected watcher=detected sandesh-pi=detected
+harness: dispatch=detected lean-ctx=detected permissions=detected worktree=detected sandesh-pi=detected
 deps: uv=detected sandesh=detected crucible=detected
 stack python: python3=detected xmlrunner=absent coverage=detected client=detected
 ```
 
-- `harness:` — the four Pi packages. A package counts as `detected` only when Pi would load
+- `harness:` — the five Pi packages. A package counts as `detected` only when Pi would load
   it: it is listed in `packages` in `~/.pi/agent/settings.json` (not switched off with
   `"extensions": []`) and it is present under `~/.pi/agent/npm/node_modules/`. If you keep
   Pi's settings elsewhere, set `PI_CODING_AGENT_DIR` and the installer looks there instead.
-- `deps:` — `uv`, `sandesh` and `crucible`. Crucible is judged by its clients' manifest,
+- `deps:` — `uv`, `sandesh` and `crucible`. `sandesh` is judged by `sandesh --version`: below
+  0.4.0 it is `outdated`, reported like `absent` with `uv tool upgrade sandesh-relay`. Crucible is judged by its clients' manifest,
   `~/.crucible/crucible-clients.json`, never by a running server.
 - `stack <name>:` — one line per chosen stack: each toolchain tool, then `client=` for that
   stack's Crucible client, looked up in the same manifest. The tools checked are:
@@ -116,7 +124,7 @@ stack python: python3=detected xmlrunner=absent coverage=detected client=detecte
   your `PATH`); `rust` — `cargo`, `cargo-nextest`, `cargo-llvm-cov`; `bun` — `bun`, `node`;
   `arduino` — `arduino-cli`, `g++`; `quarkus` and `java` — `mvn`, `java`.
 
-Each check ends in one of four verdicts:
+Each check ends in one of these verdicts:
 
 - `detected` — present and usable.
 - `absent` — not found. What that costs is in
@@ -124,6 +132,10 @@ Each check ends in one of four verdicts:
 - `unknown` — the installer could not tell: Pi's settings file cannot be read or lists a
   package from a source other than npm; the Crucible manifest does not parse; or an import
   check could not run. The installer warns and carries on.
+- `outdated` — `sandesh` only: older than 0.4.0. It counts as `absent`; upgrade it with
+  `uv tool upgrade sandesh-relay`. A version that cannot be read is `outdated` too: the floor
+  cannot be confirmed, so upgrade it, or reinstall it with
+  `uv tool install --reinstall sandesh-relay`.
 - `installed` — was absent, you accepted an offer to install it, and a second check found it.
   After a Sandesh install you see a second line, `deps: uv=detected sandesh=installed ...`;
   other `installed` verdicts are recorded in `install.toml`.
@@ -143,19 +155,20 @@ provides it. By requirement:
 | `dispatch` | the agent definitions and the orchestration skills are inert: nothing can start a sub-agent. Required — see [Missing capabilities](#missing-capabilities). |
 | `lean-ctx` | the agent definitions and the tool scripts are inert: they call its tools. Required — see [Missing capabilities](#missing-capabilities). |
 | `permissions` | the agent definitions' permission: frontmatter is ignored, so sub-agents run without their declared tool limits, and a project's permission policy has nothing to enforce it. |
-| `watcher` | the orchestration skills cannot keep a session listening for Sandesh messages: nothing wakes the session when a message arrives. |
-| `sandesh-pi` | the bootstrap and shutdown skills lose Sandesh's own Pi extension: its tools are not in the session. |
+| `worktree` | the orchestration skills lose worktree isolation: a sub-agent cannot be started in its CR's worktree. |
+| `sandesh-pi` | the bootstrap and shutdown skills lose Sandesh's own Pi extension, the wake path: nothing wakes the session when a message arrives. Required — see [Missing capabilities](#missing-capabilities). |
 | `uv` | the modelb-axi installer cannot be installed or updated and the Sandesh install cannot run; the pre-flight stops at once. |
-| `sandesh` | the bootstrap and shutdown skills cannot send or watch for messages. |
+| `sandesh` | the bootstrap and shutdown skills cannot send or watch for messages. Required — see [Missing capabilities](#missing-capabilities). |
 | `crucible` | the crucible skills and the crucible-report-* skill bundles have no client to report test runs through. |
 | `crucible-client` | that stack's `crucible-report-<stack> skill bundle` has no client (a `stack <name>:` line shows `client=absent`). |
 | `python3` | the tool scripts and hook scripts, which are Python, will not run. |
 | `bash` | the tool scripts (gate-lock.sh) will not run. |
 | `gh` | the git-workflow skill cannot reach GitHub (pull requests, releases). |
 | `jq` | the tool scripts that call it will not run. |
+| `direnv` | the project .envrc, which loads .env into the environment, never runs: a session started in the project does not get its Sandesh identity (`SANDESH_ADDRESS`, `SANDESH_PROJECT`) from the environment. |
 | `toolchain` | that stack's tests cannot run on this machine, so its agent definitions cannot carry out test-first work there; shown as `<tool>=absent` on the `stack <name>:` line. |
 
-Only `uv`, `dispatch` and `lean-ctx` stop an install. Every other warning is recorded and the
+Only `uv`, `dispatch`, `lean-ctx`, `sandesh-pi` and `sandesh` stop an install. Every other warning is recorded and the
 install continues, so you can fix it later and re-run.
 <!-- install-guide:end warnings -->
 
@@ -191,7 +204,7 @@ run whose input is not a terminal behaves the same way.
 The installs `--yes` does accept are Model B's own. When `sandesh` is absent the installer
 asks ``Sandesh not found — install via `uv tool install sandesh-relay`? [Y/n]``. When `pi` is
 among the harnesses you install for and Model B's own Pi package is absent, it asks
-``watcher=absent — install Model B's own Pi package via `pi install npm:@anthill-tec/modelb-pi`? [Y/n]``.
+``worktree=absent — install Model B's own Pi package via `pi install npm:@anthill-tec/modelb-pi`? [Y/n]``.
 In both, Enter means yes and a decline is recorded as a warning. Under `--yes`, and in a run
 whose input is not a terminal, they run without asking. The command runs in your terminal and
 the package is checked again afterwards, exactly as for the offers above.
@@ -200,10 +213,15 @@ the package is checked again afterwards, exactly as for the offers above.
 <!-- install-guide:begin missing-capabilities -->
 ## Missing capabilities
 
-`dispatch` and `lean-ctx` are required. If either is `absent`, the installer prints an error
+`dispatch`, `lean-ctx` and `sandesh-pi` are required. If any of them is `absent`, the installer prints an error
 naming what would be inert and the `pi install` command that provides it, then stops with the
 outcome `preflight_failed`. Nothing is deployed and no `install.toml` is written. Install the
 package and run the installer again.
+
+The `sandesh` CLI is required too, because Sandesh's Pi extension refuses a missing or older
+one. If it is still `absent` after the installer's offer to install it, or `outdated` (older
+than 0.4.0, or a version that cannot be read), the pre-flight stops the same way, with
+`preflight_failed`.
 
 To install anyway — for example on a machine where you will add the packages later — add
 `--allow-missing-capabilities`:
@@ -217,8 +235,8 @@ missing package stay inert until you install it, and `install.toml` records that
 was used.
 
 A required package reported `unknown` does not stop the install; it is a warning, because the
-installer cannot prove the package is missing. `permissions`, `watcher` and `sandesh-pi` are
-recommended rather than required: when any of them is absent you get a warning, never a failure.
+installer cannot prove the package is missing. `permissions` and `worktree` are recommended
+rather than required: when either is absent you get a warning, never a failure.
 <!-- install-guide:end missing-capabilities -->
 
 <!-- install-guide:begin install-outcomes -->
@@ -231,7 +249,7 @@ Every run ends with one summary on standard output, whose `outcome` is one of:
 | `installed` | The assets were deployed and `install.toml` written. The summary lists the target root, the number of managed files, and any files it left alone. | 0 |
 | `deploy_skipped` | The checks ran, but no `--target-root` (or `MODELB_TARGET_ROOT`) was given, so no assets and no `install.toml` were written (a `sandesh` install the checks made still happened). See [Installing into your home directory](#installing-into-your-home-directory). | 0 |
 | `already_installed` | `install.toml` already exists and `--reinstall` was not given. Nothing is deployed; the summary reports the state of what is deployed (below). | 0 |
-| `preflight_failed` | `uv` is missing, or a required Pi package is missing without `--allow-missing-capabilities`. Nothing was written. | 1 |
+| `preflight_failed` | `uv` is missing, or a required Pi package or the `sandesh` CLI is missing (or `sandesh` is `outdated`) without `--allow-missing-capabilities`. Nothing was written. | 1 |
 | `stacks_rejected` | `--stacks` (or your answer to the stacks question) named an unsupported stack. Nothing was written. | 1 |
 | `harness_rejected` | `--harnesses` named something other than `pi`, or `install.toml` records a harness this version no longer supports (one an older install targeted). Nothing was written. The error prints the re-run that replaces it, with your values: `modelb-axi --reinstall --target-root <dir> --stacks <stacks> --harnesses pi`. | 1 |
 | `aborted` | You answered no to "Proceed with installation?" or to the detected-harness question. Nothing was written. | 1 |

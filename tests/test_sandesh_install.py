@@ -65,7 +65,7 @@ def _uv_shim(marker: Path, bin_dir: Path, *, places_sandesh: bool) -> str:
     — when ``places_sandesh`` — puts an executable ``sandesh`` on the
     sandbox PATH, then exits 0. Anything else exits 0 quietly."""
     place = (
-        f"    printf '#!/bin/sh\\necho sandesh-fake\\nexit 0\\n' > \"{bin_dir}/sandesh\"\n"
+        f"    printf '#!/bin/sh\\necho sandesh 0.4.0\\nexit 0\\n' > \"{bin_dir}/sandesh\"\n"
         f"    \"{_chmod_path()}\" 755 \"{bin_dir}/sandesh\"\n"
     ) if places_sandesh else ""
     return (
@@ -142,9 +142,9 @@ class _SandeshSandboxCase(unittest.TestCase):
         with open(path, "rb") as fh:
             return tomllib.load(fh)
 
-    def run_yes(self):
+    def run_yes(self, *extra):
         result = subprocess.run(
-            [sys.executable, "-m", "modelb_axi", "--yes", *self._args()],
+            [sys.executable, "-m", "modelb_axi", "--yes", *self._args(), *extra],
             capture_output=True, text=True, timeout=60,
             stdin=subprocess.DEVNULL, env=self._env(),
         )
@@ -236,7 +236,10 @@ class SandeshInstallReprobeMissesSandeshTest(_SandeshSandboxCase):
     places_sandesh = False
 
     def test_install_exiting_zero_without_sandesh_records_absent_with_warning(self):
-        result, axi = self.run_yes()
+        # MIGRATED at CR-MDB-047 C4 FIX (F9, user ruling: the `sandesh` CLI is
+        # required): a sandesh still absent after the install fails the
+        # pre-flight, so this records-absent case runs under the override.
+        result, axi = self.run_yes("--allow-missing-capabilities")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(axi.get("outcome"), "installed", f"axi={axi!r}")
         data = self.install_toml()
@@ -251,6 +254,15 @@ class SandeshInstallReprobeMissesSandeshTest(_SandeshSandboxCase):
                          f"exactly one warning naming the install; warnings={axi.get('warnings')!r}")
         self.assertNotIn("sandesh=installed", result.stderr,
                          "no `installed` deps line for a Sandesh the re-probe did not find")
+
+    def test_install_exiting_zero_without_sandesh_fails_the_preflight(self):
+        """CR-MDB-047 §S1 (F9): without the override, a Sandesh the re-probe
+        does not find fails the pre-flight and writes no ``install.toml``."""
+        result, axi = self.run_yes()
+        self.assertNotEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(axi.get("outcome"), "preflight_failed", f"axi={axi!r}")
+        self.assertFalse((self.modelb_home / "install.toml").exists(),
+                         "a failed pre-flight writes no install.toml")
 
 
 class SandeshDeclineRecordsWarningTest(_SandeshSandboxCase):
@@ -277,7 +289,10 @@ class SandeshDeclineRecordsWarningTest(_SandeshSandboxCase):
                AGENT_DIR_ENV: str(self.agent_dir)}
         with mock.patch.dict(os.environ, env), \
                 contextlib.redirect_stderr(io.StringIO()) as err:
-            code, deps, _caps = run_preflight(decline, warnings, stacks=())
+            code, deps, _caps = run_preflight(decline, warnings, stacks=(),
+                                              allow_missing_capabilities=True)
+        # MIGRATED at CR-MDB-047 C4 FIX (F9): a declined install fails the
+        # pre-flight without the override, so the warning is read under it.
         self.assertEqual(code, 0, err.getvalue())
         self.assertTrue(any("Sandesh not found" in p for p in prompts),
                         f"precondition: the Sandesh install was offered; prompts={prompts!r}")

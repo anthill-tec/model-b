@@ -555,8 +555,9 @@ class CapabilityContractStateTest(_ProjectCase):
 
     def test_a_pre_capabilities_install_lists_the_unrecorded_tools_as_unknown(self):
         section = self.contract_for(None)
-        for rid in ("dispatch", "lean-ctx", "permissions", "watcher", "sandesh-pi",
-                    "python3", "bash", "gh", "jq", "crucible-client"):
+        # MIGRATED at CR-MDB-047 C1 RED (§S1): watcher -> worktree, + direnv.
+        for rid in ("dispatch", "lean-ctx", "permissions", "worktree", "sandesh-pi",
+                    "python3", "bash", "gh", "jq", "direnv", "crucible-client"):
             with self.subTest(tool=rid):
                 self.assert_listed(section, rid, UNKNOWN, _row(rid)["remediation"])
         for rid in ("uv", "sandesh", "crucible"):

@@ -82,6 +82,9 @@ _FAKE_UV = (
     "exit 0\n"
 )
 _FAKE_TOOL = "#!/bin/sh\necho fake\nexit 0\n"
+# MIGRATED at CR-MDB-047 C1 RED (§S1 version floor): a fake standing for a
+# present Sandesh answers `--version` like the real CLI, at the 0.4.0 floor.
+_FAKE_SANDESH = "#!/bin/sh\necho 'sandesh 0.4.0'\nexit 0\n"
 
 #: Runs ``modelb_axi.cli.main`` with an audit hook logging every path
 #: OPENED (builtins/io/os.open all raise the ``open`` audit event).
@@ -135,7 +138,8 @@ class _InstalledMachineCase(unittest.TestCase):
         make_home(self.home, crucible_manifest=False)
         make_provisioned_agent_dir(self.agent_dir)
         _write_exe(self.bin_dir, "uv", _FAKE_UV)
-        for name in ("sandesh", "bun", "node"):
+        _write_exe(self.bin_dir, "sandesh", _FAKE_SANDESH)
+        for name in ("bun", "node"):
             _write_exe(self.bin_dir, name, _FAKE_TOOL)
         self._install()
 

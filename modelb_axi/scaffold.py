@@ -74,15 +74,33 @@ _REQUIREMENT_IDS: tuple[str, ...] = tuple(r["id"] for r in requirements.REQUIREM
 #: ``init``'s tool states (CR-MDB-045 §S2), best to worst.
 TOOL_PRESENT, TOOL_UNKNOWN, TOOL_ABSENT = "present", "unknown", "absent"
 _PRESENT_VERDICTS = frozenset({"detected", "installed"})
+#: Verdicts read as absent: ``outdated`` is a ``sandesh`` below its version
+#: floor, reported like ``absent`` (CR-MDB-047 §S1).
+_ABSENT_VERDICTS = frozenset({"absent", "outdated"})
 _TOOL_RANK = {TOOL_PRESENT: 0, TOOL_UNKNOWN: 1, TOOL_ABSENT: 2}
+
+#: A requirement id -> the key an older ``install.toml`` recorded its
+#: verdict under: ``worktree`` was the ``watcher`` row before CR-MDB-047
+#: §S1.
+_LEGACY_KEYS: dict[str, str] = {"worktree": "watcher"}
 
 
 def _tool_state(verdict) -> str:
     """One recorded verdict as a tool state: ``detected``/``installed`` are
-    present, ``absent`` is absent, anything else (none) is unknown."""
+    present, ``absent``/``outdated`` are absent, anything else (none) is
+    unknown."""
     if verdict in _PRESENT_VERDICTS:
         return TOOL_PRESENT
-    return TOOL_ABSENT if verdict == "absent" else TOOL_UNKNOWN
+    return TOOL_ABSENT if verdict in _ABSENT_VERDICTS else TOOL_UNKNOWN
+
+
+def _recorded(capabilities: dict, deps: dict, key: str):
+    """The verdict recorded for ``key``: ``[capabilities]``, else ``[deps]``,
+    else its pre-rename key in ``[capabilities]`` (:data:`_LEGACY_KEYS`)."""
+    verdict = capabilities.get(key, deps.get(key))
+    if verdict is None and key in _LEGACY_KEYS:
+        verdict = capabilities.get(_LEGACY_KEYS[key])
+    return verdict
 
 
 def read_tool_verdicts(install: dict, stacks: list[str]) -> tuple[dict, list[str]]:
@@ -112,7 +130,7 @@ def read_tool_verdicts(install: dict, stacks: list[str]) -> tuple[dict, list[str
                         for p in requirements.STACK_TOOLCHAINS.get(s, ())]
             else:
                 keys = [f"{s}.client" for s in project]
-        verdicts = [capabilities.get(k, deps.get(k)) for k in keys]
+        verdicts = [_recorded(capabilities, deps, k) for k in keys]
         if not keys or any(v is None for v in verdicts):
             unrecorded.append(rid)
         states = [_tool_state(v) for v in verdicts] or [TOOL_UNKNOWN]
@@ -134,7 +152,7 @@ def _tool_key_states(install: dict, stacks: list[str]) -> dict:
     for stack in stacks:
         keys.append(f"{stack}.client")
         keys += [f"{stack}.{p['name']}" for p in requirements.STACK_TOOLCHAINS.get(stack, ())]
-    return {key: _tool_state(capabilities.get(key, deps.get(key))) for key in keys}
+    return {key: _tool_state(_recorded(capabilities, deps, key)) for key in keys}
 
 
 def _active_schema(schema: list[dict], tools: dict) -> list[dict]:
@@ -164,6 +182,10 @@ class ScaffoldError(ValueError):
 
 # CR-MDB-025 §S6 — the committed `.env` key recording the project's stacks.
 PROJECT_STACKS_KEY = "PROJECT_STACKS"
+
+#: CR-MDB-047 §S2: the ``.envrc`` ``init`` writes beside every ``.env`` —
+#: direnv's ``dotenv`` loads that ``.env`` into the environment.
+ENVRC_TEXT = "dotenv\n"
 
 
 def resolve_harnesses(home: Path, dev_override: str | None) -> tuple[list[str], str]:
@@ -285,6 +307,7 @@ def plan_files(sub_projects: list[str]) -> list[str]:
     committed set + ``.env.local``); the C2 emission walks this plan."""
     base = [
         ".env",
+        ".envrc",
         ".env.local",
         ".gitignore",
         "AGENTS.md",
@@ -294,7 +317,7 @@ def plan_files(sub_projects: list[str]) -> list[str]:
         "hooks/README.md",
     ]
     for sub in sub_projects:
-        base += [f"{sub}/.env", f"{sub}/AGENTS.md"]
+        base += [f"{sub}/.env", f"{sub}/.envrc", f"{sub}/AGENTS.md"]
     return base
 
 
@@ -323,12 +346,19 @@ def _knowledge_category(token: str) -> str:
     return f"{word}-workflow" if word else "workflow"
 
 
+def _sandesh_address(sandesh_project: str) -> str:
+    """Derive rule: the project's Mainline Sandesh address,
+    ``Mainline - <SANDESH_PROJECT>`` (CR-MDB-047 §S2)."""
+    return f"Mainline - {sandesh_project}"
+
+
 #: Named derive rules a schema entry's ``rule`` refers to; each takes the
 #: entry's ``inputs`` values positionally (CR-MDB-043 §S2).
 DERIVE_RULES: dict = {
     "orchestrator_label": _orchestrator_label,
     "remove_whitespace": _remove_whitespace,
     "knowledge_category": _knowledge_category,
+    "sandesh_address": _sandesh_address,
 }
 
 
@@ -572,9 +602,18 @@ def resolve_registry(schema: list[dict], inputs: dict) -> dict:
 
 def _render_registry(schema: list[dict], registry: dict, file: str, *, sub: bool) -> str:
     """``KEY=value`` lines of every schema key living in ``file`` — only
-    the ``root+sub`` keys for a sub-project (CR-MDB-043 §S2)."""
+    the ``root+sub`` keys for a sub-project (CR-MDB-043 §S2). Every value
+    containing whitespace is double-quoted, whatever its source (asked,
+    derived or captured), so direnv's dotenv parser accepts the line
+    (CR-MDB-047 §S2); :func:`_read_env_value` reads it back unquoted."""
+    def value(entry: dict) -> str:
+        text = registry.get(entry["name"], "")
+        if any(ch.isspace() for ch in text):
+            return f'"{text}"'
+        return text
+
     return "".join(
-        f"{e['name']}={registry.get(e['name'], '')}\n" for e in schema
+        f"{e['name']}={value(e)}\n" for e in schema
         if e["file"] == file and (not sub or e["scope"] == "root+sub")
     )
 
@@ -669,7 +708,11 @@ def _render_queue_readme(
         f"- [ ] {_remediation_first(tools, 'sandesh', 'Sandesh')}"
         f"Sandesh setup + register (`{sandesh_project}`, "
         f"`Mainline - {sandesh_project}`) — "
-        "manual step (registrations are manual in scaffold v1)\n"
+        "manual step (registrations are manual in scaffold v1). Install direnv "
+        "and its shell hook (`direnv hook fish | source`, or "
+        '`eval "$(direnv hook bash)"`), then run `direnv allow` in each '
+        "directory with an `.envrc` (it exports `SANDESH_ADDRESS` from `.env`); "
+        f'launch a Track with `env SANDESH_ADDRESS="Track <N> - {sandesh_project}" pi`\n'
         if mode != "solo" else ""
     )
     return (
@@ -812,6 +855,9 @@ def _render_agents_md(
     sandesh_line = (
         f"- Sandesh project: `{sandesh_project}` (`SANDESH_PROJECT`; addresses "
         f"`Mainline - {sandesh_project}` / `Track <N> - {sandesh_project}`).\n"
+        f"- Sandesh address: `SANDESH_ADDRESS` in `.env` is `Mainline - {sandesh_project}`, "
+        "loaded by direnv through `.envrc`; a Track launches with "
+        f'`env SANDESH_ADDRESS="Track <N> - {sandesh_project}" pi`.\n'
         if sandesh_project else ""
     )
     stack_lines = "\n".join(
@@ -1238,12 +1284,27 @@ def _emit_plan(
         atomic_write(path, text.encode("utf-8"))
         emitted.append(rel)
 
+    def write_envrc(rel: str) -> None:
+        """CR-MDB-047 \u00a7S2: ``.envrc`` (exactly :data:`ENVRC_TEXT`) beside a
+        ``.env``, so direnv loads it. One already reading so is left as it
+        is; one with other content is the user's \u2014 left alone and reported
+        as unmanaged, under the ownership rules."""
+        path = target / rel
+        if path.is_file() or path.is_symlink():
+            if path.is_file() and path.read_text(encoding="utf-8") == ENVRC_TEXT:
+                return
+            if ownership is not None:
+                ownership.setdefault("unmanaged", []).append(rel)
+            return
+        write(rel, ENVRC_TEXT)
+
     templates = _select_memory_templates(_memory_templates_dir(home), stacks)
     target.mkdir(parents=True, exist_ok=True)
     label = _orchestrator_label(mode, token)
 
     # §S3.1 registry + §S3.5 .gitignore.
     write(".env", _render_env(schema, registry))
+    write_envrc(".envrc")
     write(".env.local", _render_env_local(schema, registry))
     write(".gitignore", _render_gitignore())
 
@@ -1316,6 +1377,7 @@ def _emit_plan(
     # §S3 monorepo: per-sub-project registry + override.
     for sub in sub_projects:
         write(f"{sub}/.env", _render_env(schema, registry, sub=True))
+        write_envrc(f"{sub}/.envrc")
         write(f"{sub}/AGENTS.md",
               _render_sub_agents_md(name, sub, token, acronym, knowledge_category))
 
@@ -1544,14 +1606,19 @@ def run_init(args: argparse.Namespace, home: Path) -> int:
 
 
 def _read_env_value(env_path: Path, key: str) -> str | None:
-    """The value of ``key`` in a ``KEY=VALUE`` registry file, or None."""
+    """The value of ``key`` in a ``KEY=VALUE`` registry file, or None. A
+    double-quoted value (how :func:`_render_registry` writes one containing
+    whitespace, CR-MDB-047 §S2) is returned without its quotes."""
     for line in env_path.read_text(encoding="utf-8").splitlines():
         stripped = line.strip()
         if not stripped or stripped.startswith("#") or "=" not in stripped:
             continue
         name, _, value = stripped.partition("=")
         if name.strip() == key:
-            return value.strip()
+            value = value.strip()
+            if len(value) >= 2 and value[0] == value[-1] == '"':
+                value = value[1:-1]
+            return value
     return None
 
 

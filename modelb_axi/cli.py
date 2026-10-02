@@ -136,8 +136,9 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--allow-missing-capabilities", action="store_true",
         help=(
-            "install even when a required harness capability (dispatch, "
-            "lean-ctx) is missing; the assets depending on it stay inert, "
+            "install even when a required capability (dispatch, lean-ctx, "
+            "sandesh-pi, or the sandesh CLI) is missing; the assets depending "
+            "on it stay inert, "
             "and the override is recorded in install.toml"
         ),
     )

@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Test-only fixture (CR-MDB-039 §S1) — NOT production code. It loads
 // `pi-package/extensions/worktree.ts` with the jiti mechanism Pi's own
-// loader uses (`jiti.import(path, { default: true })`, the same module
-// aliases as tests/fixtures/pi_watcher_harness.mjs), calls the factory with a
+// loader uses (`jiti.import(path, { default: true })`, with Pi's module
+// aliases), calls the factory with a
 // recording fake `pi`, and runs a JSON step script from stdin.
 //
 // The fake pi-subagents service mirrors the installed

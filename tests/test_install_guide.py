@@ -143,7 +143,7 @@ PYTHON_RELEASE_STEPS = (
 )
 #: The skill is used across projects: its release steps name no one project.
 PROJECT_SPECIFIC_NAMES = ("modelb", "model b", "model-b")
-#: CR-MDB-029 \u00a7S4 — the Pi package release step, same shape as
+#: CR-MDB-029 §S4 — the Pi package release step, same shape as
 #: PYTHON_RELEASE_STEPS: after the version is set, npm publish with credentials
 #: the user supplies at publish time; then install the published version into
 #: an isolated Pi agent directory (``PI_CODING_AGENT_DIR``) and confirm the
@@ -152,6 +152,10 @@ PROJECT_SPECIFIC_NAMES = ("modelb", "model b", "model-b")
 #: ``--access public``, and the post-release maintenance gains the live check
 #: (the watcher started in the real Pi configuration; a Sandesh message wakes
 #: the session), anchored on "live check" after the isolated install.
+#: MIGRATED at CR-MDB-047 C4 FIX (VERIFY F5, spec §S3 amended at 5dd8a36):
+#: the package carries only the worktree extension, so the live check confirms
+#: Pi loads the worktree extension, and the section names no watcher (was:
+#: "watcher", "sandesh message", "wakes the session").
 PI_PACKAGE_RELEASE_STEPS = (
     ("npm publish", ("npm publish",),
      (("pi package",), ("version is set",),
@@ -160,9 +164,10 @@ PI_PACKAGE_RELEASE_STEPS = (
     ("isolated pi install", ("pi_coding_agent_dir",),
      (("pi install",), ("published version",), ("extension loads",))),
     ("live check", ("live check",),
-     (("real pi configuration",), ("watcher",), ("sandesh message",),
-      ("wakes the session",))),
+     (("real pi configuration",), ("loads the worktree extension",))),
 )
+#: The retired Model B watcher, named nowhere in the Pi package's steps.
+PI_PACKAGE_RETIRED_TERM = "watcher"
 #: The Pi step names no project, and not the npm scope of any one project.
 PI_PROJECT_SPECIFIC_NAMES = PROJECT_SPECIFIC_NAMES + ("anthill-tec",)
 
@@ -344,7 +349,9 @@ def preflight_prefixes() -> tuple[str, ...]:
         bin_dir, home, agent = root / "bin", root / "home", root / "agent"
         for d in (bin_dir, home, agent):
             d.mkdir()
-        for name, body in (("uv", "#!/bin/sh\nexit 0\n"), ("sandesh", "#!/bin/sh\nexit 0\n")):
+        # MIGRATED at CR-MDB-047 C1 RED (§S1 version floor): a current sandesh.
+        for name, body in (("uv", "#!/bin/sh\nexit 0\n"),
+                           ("sandesh", "#!/bin/sh\necho 'sandesh 0.4.0'\nexit 0\n")):
             exe = bin_dir / name
             exe.write_text(body, encoding="utf-8")
             exe.chmod(0o755)
@@ -700,6 +707,8 @@ def check_pi_package_release_steps(text: str) -> list[str]:
         for alts in terms:
             if not any(a in flat for a in alts):
                 out.append(f"## Releases: {label}: missing {alts[0]!r}")
+    if PI_PACKAGE_RETIRED_TERM in flat:
+        out.append(f"## Releases: live check: names a {PI_PACKAGE_RETIRED_TERM}")
     if [lbl for _, lbl in sorted(anchors)] != [lbl for _, lbl in anchors]:
         out.append("## Releases: pi package steps out of order")
     out += [f"## Releases: names project {n!r}" for n in PI_PROJECT_SPECIFIC_NAMES if n in flat]
@@ -948,6 +957,51 @@ class InstallGuideTopicsTest(unittest.TestCase):
 
     def test_project_trust_section_names_what_it_gates_and_slash_trust(self):
         self.assertEqual(check_trust(self.text), [])
+
+
+def check_required_rows_stop_an_install(text: str) -> list[str]:
+    """CR-MDB-047 §S1 (VERIFY F9, user ruling): every ``required`` row stops
+    an install — the Warnings section's "stop an install" sentence names
+    each; Missing capabilities names the ``sandesh`` CLI and ``outdated``;
+    the prerequisites never list ``sandesh`` among the recommended tools."""
+    out = []
+    required = [r["id"] for r in _requirements() if r["policy"] == "required"]
+    flat = " ".join(_section(text, WARNINGS).split())
+    sentence = next((s for s in re.split(r"(?<=\.)\s", flat) if "stop an install" in s), "")
+    out += [f"{WARNINGS}: the stop-an-install sentence omits `{i}`"
+            for i in required if not has_code_token(sentence, i)]
+    missing = _section(text, MISSING)
+    out += [f"{MISSING}: missing `{t}`" for t in ("sandesh", "outdated")
+            if not has_code_token(missing, t)]
+    prereq = _section(text, PREREQUISITES)
+    recommended = re.search(r"\*\*Recommended tools\.\*\*.*?(?=\n\d+\. |\Z)", prereq, re.S)
+    if recommended and has_code_token(recommended.group(0), "sandesh"):
+        out.append(f"{PREREQUISITES}: `sandesh` is listed among the recommended tools")
+    return out
+
+
+class InstallGuideSandeshCliRequiredTest(unittest.TestCase):
+    """CR-MDB-047 §S1 (VERIFY F9): the guide treats the ``sandesh`` CLI as
+    required, as the pre-flight does."""
+
+    def test_every_required_row_stops_an_install_in_the_guide(self):
+        self.assertEqual(check_required_rows_stop_an_install(_read(GUIDE)), [])
+
+    def test_checker_bites(self):
+        ids = [r["id"] for r in _requirements() if r["policy"] == "required"]
+        good = (f"## {PREREQUISITES}\n\n6. **Recommended tools.** x:\n   - `gh`\n\n"
+                f"## {WARNINGS}\n\nOnly " + ", ".join(f"`{i}`" for i in ids)
+                + f" stop an install.\n\n## {MISSING}\n\n`sandesh` below 0.4.0 is `outdated`.\n")
+        self.assertEqual(check_required_rows_stop_an_install(good), [])
+        self.assertIn(f"{PREREQUISITES}: `sandesh` is listed among the recommended tools",
+                      check_required_rows_stop_an_install(
+                          good.replace("- `gh`", "- `gh`\n   - `sandesh`")))
+        self.assertIn(f"{MISSING}: missing `outdated`",
+                      check_required_rows_stop_an_install(good.replace("`outdated`", "old")))
+        omitted = good.replace("Only " + ", ".join(f"`{i}`" for i in ids),
+                               "Only " + ", ".join(f"`{i}`" for i in ids if i != "sandesh"))
+        self.assertIn(f"{WARNINGS}: the stop-an-install sentence omits `sandesh`",
+                      check_required_rows_stop_an_install(omitted))
 
 
 class InstallGuideInstallerSourceTest(unittest.TestCase):
@@ -1451,7 +1505,7 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
                    "2. Point `PI_CODING_AGENT_DIR` at a scratch path, `pi install` the\n"
                    "   published version there, and confirm the extension loads.\n"
                    "3. Live check, post-release: installed into the real Pi configuration,\n"
-                   "   start the watcher and confirm a Sandesh message wakes the session.\n")
+                   "   confirm Pi loads the worktree extension there.\n")
         good = ("## Releases (NON-NEGOTIABLE)\n\n" + pi_step + "\n## Next\n\n"
                 "npm publish PI_CODING_AGENT_DIR anthill-tec\n")
         self.assertEqual(check_pi_package_release_steps(good), [])
@@ -1467,12 +1521,11 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
             "live check not in the real configuration": (
                 good.replace("the real Pi configuration", "a scratch directory"),
                 "## Releases: live check: missing 'real pi configuration'"),
-            "watcher not started": (good.replace("start the watcher and ", ""),
-                                    "## Releases: live check: missing 'watcher'"),
-            "no sandesh message": (good.replace("a Sandesh message", "it"),
-                                   "## Releases: live check: missing 'sandesh message'"),
-            "wake unconfirmed": (good.replace("wakes the session", "is delivered"),
-                                 "## Releases: live check: missing 'wakes the session'"),
+            "watcher named": (good.replace("confirm Pi loads", "start the watcher and confirm Pi loads"),
+                              "## Releases: live check: names a watcher"),
+            "worktree extension unconfirmed": (
+                good.replace("Pi loads the worktree extension there", "the session wakes"),
+                "## Releases: live check: missing 'loads the worktree extension'"),
             "not a pi package": (good.replace("a Pi package", "an npm module"),
                                  "## Releases: npm publish: missing 'pi package'"),
             "version not set first": (good.replace("Once the version is set, run", "Run"),
@@ -1507,11 +1560,11 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
                      "path, pi install the published version, confirm the extension loads. "
                      "Once the version is set, npm publish --access public with credentials "
                      "the user supplies at publish time. Live check: in the real Pi "
-                     "configuration, start the watcher; a Sandesh message wakes the session.\n")
+                     "configuration, Pi loads the worktree extension.\n")
         self.assertEqual(check_pi_package_release_steps(reordered),
                          ["## Releases: pi package steps out of order"])
-        live_first = ("## Releases\n\nLive check: in the real Pi configuration, start the "
-                      "watcher; a Sandesh message wakes the session. For a Pi package, once "
+        live_first = ("## Releases\n\nLive check: in the real Pi configuration, Pi loads the "
+                      "worktree extension. For a Pi package, once "
                       "the version is set, npm publish --access public with credentials the "
                       "user supplies at publish time; then point PI_CODING_AGENT_DIR at a "
                       "scratch path, pi install the published version, confirm the extension "
@@ -1536,8 +1589,8 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
         pi = ("For a Pi package, once the version is set, npm publish --access public with "
               "credentials the user supplies at publish time; then with PI_CODING_AGENT_DIR on "
               "a scratch path, pi install the published version and confirm the extension "
-              "loads. Live check, post-release: in the real Pi configuration start the "
-              "watcher and confirm a Sandesh message wakes the session.\n")
+              "loads. Live check, post-release: in the real Pi configuration confirm Pi "
+              "loads the worktree extension.\n")
         combined = "## Releases\n\n" + docs + python + pi
         self.assertEqual(check_release_steps(combined), [])
         self.assertEqual(check_python_release_steps(combined), [])
@@ -1556,9 +1609,7 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
             "## Releases: isolated pi install: missing 'extension loads'",
             "## Releases: live check: missing 'live check'",
             "## Releases: live check: missing 'real pi configuration'",
-            "## Releases: live check: missing 'watcher'",
-            "## Releases: live check: missing 'sandesh message'",
-            "## Releases: live check: missing 'wakes the session'",
+            "## Releases: live check: missing 'loads the worktree extension'",
         ])
 
 

@@ -767,7 +767,8 @@ eviction or a duplicate. It is every Model B project's wake loop:
 parses `.env`: sandesh-pi, modelb-pi, `modelb-axi`, Crucible's clients, `gh`. Loading happens once, at
 the shell boundary, and Model B owns it through direnv:
 - **`init`** writes an `.envrc` containing `dotenv` next to the `.env` it already writes. The
-  `.envrc` is committed, since it holds no secrets; the `.env` stays gitignored.
+  `.envrc` is committed, since it holds no secrets. The `.env` is handled as `init` already handles
+  it, and every value in it that contains whitespace is quoted, so direnv's dotenv parser accepts it.
 - **The registry** carries `SANDESH_ADDRESS`, the Mainline address by default.
 - **Loading.** `cd` into the project exports the registry, and Pi, every extension, every sub-agent
   shell and every CLI inherit it. `cd` out unloads it.
@@ -792,18 +793,20 @@ the shell boundary, and Model B owns it through direnv:
   call, with start, status and stop verbs that default to `$SANDESH_ADDRESS` and `$SANDESH_PROJECT`.
   It arms at session start only under `SANDESH_AUTOSTART=1`. Model B leaves that unset.
 - **Bootstrap starts it.** Bootstrap registers the role's address, then starts the watcher for it,
-  then confirms with `status` (listening, unread, watcher running).
+  passing the address explicitly, then confirms it is listening from the toon addressbook.
 - **sandesh-pi supervises the watcher:**
   - after mail, it injects a turn naming the ids and relaunches;
   - it retries once when the watcher is already running elsewhere;
   - it stops with a notice on exit 1, 3 (tombstoned) or 4 (evicted).
 
-  The orchestrator only fetches. On a stop notice it checks `status`, and either starts the watcher
-  again or reports why it can't.
+  The orchestrator only fetches. On a stop notice it re-checks its liveness from the toon
+  addressbook, and either starts the watcher again or reports why it can't.
 - **Shutdown** stops the watcher by its address, then unregisters it.
 - **Liveness is read from machine output:**
-  - an orchestrator reads its own liveness from `sandesh status`;
-  - it reads others' from `sandesh addressbook --format toon --fields address,status,listening`;
+  - an orchestrator reads its own liveness, and others', from `sandesh addressbook --format toon
+    --fields address,status,listening`, for the role's address passed explicitly. `sandesh status`
+    follows `$SANDESH_ADDRESS`, which direnv sets to the Mainline address in every session started from
+    the directory, so a Track can't use it for its own liveness;
   - never from the human table.
 - **Version floor.** sandesh-pi refuses a `sandesh` CLI older than 0.4.0, so the installer's
   `sandesh` probe carries that floor, with `uv tool upgrade sandesh-relay` as the remediation.
