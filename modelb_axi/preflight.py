@@ -363,8 +363,9 @@ def run_preflight(
         _warn(_CRUCIBLE_UNKNOWN_WARNING, warnings)
     for row in path_rows:
         if path_tools[row["id"]] == ABSENT:
+            effect = f": {row['absent_effect']}" if row.get("absent_effect") else ""
             _warn(
-                f"{row['id']} not found on PATH — {_families(row)} will not run; "
+                f"{row['id']} not found on PATH — {_families(row)} will not run{effect}; "
                 f"{row['remediation']}",
                 warnings,
             )

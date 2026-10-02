@@ -23,6 +23,9 @@ dict with the §S1 fields:
 ``remediation``     what the user runs to provide it
 ``tools``           tier 1 only: the tool names the provider supplies
                     (CR-MDB-020 §S5 checks skills against these)
+``absent_effect``   optional, ``path`` rows: what stops working when the
+                    tool is absent, appended to its absent-warning
+                    (CR-MDB-047 §S1)
 
 Stdlib only; no imports, no I/O.
 """
@@ -207,7 +210,11 @@ REQUIREMENTS: tuple[dict, ...] = (
         "policy": "recommended",
         "scope": "always",
         "probe": "path",
-        "asset_families": ("the project .envrc, which loads .env into the environment",),
+        "asset_families": ("the project .envrc",),
+        "absent_effect": (
+            "the project's .env, including its wake identity, is not loaded into "
+            "the environment"
+        ),
         "remediation": (
             "install direnv with the OS package manager and hook it into the shell: "
             'direnv hook fish | source (fish), or eval "$(direnv hook bash)" (bash)'
