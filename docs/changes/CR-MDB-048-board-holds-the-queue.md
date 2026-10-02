@@ -150,8 +150,8 @@ CR-gen, scheduling" and "Filing/assigning a CR — COMMIT docs FIRST, schedule w
       re-posts a changed title; records a first release with `release-propose` after asking the
       user; covers Crucible absent (spec alone), unregistered (Setup section first, or an older
       project's README setup tasks) and an older project (file only the CRs with a spec, no merge
-      and no `queue` entry; never re-file; release asked, README's Target release proposed); sends rulings to the PRD or a DN, merges to `cr-close` plus a
-      milestone, follow-ups to a filed CR; closes a board-absent CR by the `**Status:**` flip
+      and no `queue` entry; never re-file; release asked, README's Target release proposed); sends rulings to the PRD or a DN, a merge to `cr-close` alone
+      (it posts `cr-merged`), follow-ups to a filed CR; closes a board-absent CR by the `**Status:**` flip
       alone; lists `docs/changes/` as specs only.
 - [ ] **No shipped skill, reference, template, stack file or memory template** names `queue-file`
       (except as never run), `docs/changes/README.md`, a queue row, the Notes log or the queue
