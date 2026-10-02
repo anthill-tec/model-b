@@ -75,13 +75,13 @@ _REQUIREMENT_IDS: tuple[str, ...] = tuple(r["id"] for r in requirements.REQUIREM
 TOOL_PRESENT, TOOL_UNKNOWN, TOOL_ABSENT = "present", "unknown", "absent"
 _PRESENT_VERDICTS = frozenset({"detected", "installed"})
 #: Verdicts read as absent: ``outdated`` is a ``sandesh`` below its version
-#: floor, reported like ``absent`` (CR-MDB-047 \u00a7S1).
+#: floor, reported like ``absent`` (CR-MDB-047 §S1).
 _ABSENT_VERDICTS = frozenset({"absent", "outdated"})
 _TOOL_RANK = {TOOL_PRESENT: 0, TOOL_UNKNOWN: 1, TOOL_ABSENT: 2}
 
 #: A requirement id -> the key an older ``install.toml`` recorded its
 #: verdict under: ``worktree`` was the ``watcher`` row before CR-MDB-047
-#: \u00a7S1.
+#: §S1.
 _LEGACY_KEYS: dict[str, str] = {"worktree": "watcher"}
 
 

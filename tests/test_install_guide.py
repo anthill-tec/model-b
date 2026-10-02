@@ -143,7 +143,7 @@ PYTHON_RELEASE_STEPS = (
 )
 #: The skill is used across projects: its release steps name no one project.
 PROJECT_SPECIFIC_NAMES = ("modelb", "model b", "model-b")
-#: CR-MDB-029 \u00a7S4 — the Pi package release step, same shape as
+#: CR-MDB-029 §S4 — the Pi package release step, same shape as
 #: PYTHON_RELEASE_STEPS: after the version is set, npm publish with credentials
 #: the user supplies at publish time; then install the published version into
 #: an isolated Pi agent directory (``PI_CODING_AGENT_DIR``) and confirm the

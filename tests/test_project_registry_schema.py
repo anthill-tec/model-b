@@ -105,7 +105,7 @@ NON_REGISTRY_INIT_FLAGS = frozenset({
 # The scaffold inputs every byte-identity golden below is derived from.
 NAME, TOKEN, ACRONYM, OWNER, STACKS = "My Project", "myproj", "MYP", "tester", "python"
 DERIVED_SANDESH = "MyProject"
-#: The line CR-MDB-047 \u00a7S2 adds to every `.env` init writes (its AC's literal form).
+#: The line CR-MDB-047 §S2 adds to every `.env` init writes (its AC's literal form).
 ADDRESS_LINE = f'SANDESH_ADDRESS="Mainline - {DERIVED_SANDESH}"\n'
 #: What `.env.local`'s comment must no longer say: the overlay is not where the
 #: Crucible project key is filled (it moved to `.env`, CR-MDB-043 §S1/§S2).

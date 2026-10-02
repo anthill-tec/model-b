@@ -2147,9 +2147,9 @@ class StdoutCarriesOnlyEnvelopeAllHumanLinesOnStderrTest(unittest.TestCase):
         )
         # POSITIVE -- CR-MDB-036 §S3: the harness group line (sandboxed,
         # fully provisioned agent dir) lands on stderr, before deps:.
-        # CR-MDB-029 \u00a7S3 migration: the fourth tier-1 capability,
+        # CR-MDB-029 §S3 migration: the fourth tier-1 capability,
         # ``watcher``, is on the line too (the shared agent dir provisions it).
-        # MIGRATED at CR-MDB-047 C1 RED (\u00a7S1): that row is now ``worktree``.
+        # MIGRATED at CR-MDB-047 C1 RED (§S1): that row is now ``worktree``.
         self.assertIn(
             "harness: dispatch=detected lean-ctx=detected permissions=detected "
             "worktree=detected",

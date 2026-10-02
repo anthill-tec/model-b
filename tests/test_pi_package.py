@@ -103,7 +103,7 @@ PEER_DEPENDENCIES = {"@earendil-works/pi-coding-agent": "*"}
 #: ``.claude/settings.json``); ``claude-code`` does not match (ruling D5).
 HARNESS_HOME_PATH = re.compile(r"(?<![\w-])\.(claude|omp)(?![\w-])")
 
-#: CR-MDB-047 \u00a7S4 \u2014 the retired Model B watcher: its tool, its command
+#: CR-MDB-047 §S4 — the retired Model B watcher: its tool, its command
 #: registration, and its ``/watcher`` command (never Sandesh's ``/sandesh-watcher``).
 WATCHER_MARKERS = (
     re.compile(r"sandesh_watcher"),
@@ -259,7 +259,7 @@ class PiPackageManifestTest(unittest.TestCase):
         # cycle (C2, cycle 112); orchestrator ruling H adds it here without
         # migrating the agreement test above. MIGRATED at CR-MDB-039 C1 RED
         # (S1: pi-package/extensions/worktree.ts, listed in pi.extensions),
-        # then at CR-MDB-047 C2 RED (\u00a7S4: sandesh-watcher.ts is removed;
+        # then at CR-MDB-047 C2 RED (§S4: sandesh-watcher.ts is removed;
         # package.json lists only worktree.ts); was
         # test_pi_manifest_extensions_are_exactly_the_sandesh_watcher_and_the_worktree_extension.
         pi = _manifest().get("pi")
@@ -273,7 +273,7 @@ class PiPackageManifestTest(unittest.TestCase):
         )
 
     def test_no_package_file_carries_the_model_b_watcher(self):
-        # CR-MDB-047 \u00a7S4: the Model B watcher (its `sandesh_watcher` tool and its
+        # CR-MDB-047 §S4: the Model B watcher (its `sandesh_watcher` tool and its
         # `/watcher` command) is gone from the package; Sandesh's own extension
         # provides the wake (`/sandesh-watcher` is Sandesh's, not this package's).
         offending = []
@@ -308,7 +308,7 @@ class PiPackageHarnessPathTest(unittest.TestCase):
     def test_no_claude_or_omp_path_in_any_package_file(self):
         files = _package_files() if PI_PACKAGE.is_dir() else []
         names = {p.relative_to(PI_PACKAGE).as_posix() for p in files}
-        # Not vacuous: the files the \u00a7S1 package must carry are scanned.
+        # Not vacuous: the files the §S1 package must carry are scanned.
         self.assertTrue(
             {"package.json", "README.md"} <= names,
             f"pi-package/ must carry package.json and README.md to be scanned, got {sorted(names)}",

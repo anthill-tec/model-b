@@ -60,7 +60,7 @@ _FAKE_UV = (
     'echo "uv 0.0.0-fake"\n'
     "exit 0\n"
 )
-# MIGRATED at CR-MDB-047 C1 RED (\u00a7S1 version floor): a fake standing for a
+# MIGRATED at CR-MDB-047 C1 RED (§S1 version floor): a fake standing for a
 # present Sandesh answers `--version` with the floor version.
 _FAKE_SANDESH = fake_sandesh()
 
@@ -172,10 +172,10 @@ class RequirementsDeclarationTest(unittest.TestCase):
         ("dispatch", 1, "required", True),
         ("lean-ctx", 1, "required", True),
         ("permissions", 1, "recommended", True),
-        # CR-MDB-029 \u00a7S3: Model B's own Pi package \u2014 the ``worktree``
-        # row since CR-MDB-047 \u00a7S1 (MIGRATED at CR-MDB-047 C1 RED).
+        # CR-MDB-029 §S3: Model B's own Pi package — the ``worktree``
+        # row since CR-MDB-047 §S1 (MIGRATED at CR-MDB-047 C1 RED).
         ("worktree", 1, "recommended", True),
-        # CR-MDB-047 \u00a7S1: Sandesh's own Pi extension is required.
+        # CR-MDB-047 §S1: Sandesh's own Pi extension is required.
         ("sandesh-pi", 1, "required", True),
         ("uv", 2, "required", True),
         # MIGRATED at CR-MDB-047 C4 FIX (VERIFY F9, "Quoting" AC amended at
@@ -187,7 +187,7 @@ class RequirementsDeclarationTest(unittest.TestCase):
         ("bash", 2, "recommended", True),
         ("gh", 2, "recommended", True),
         ("jq", 2, "recommended", True),
-        # CR-MDB-047 \u00a7S1: the tier-2 direnv path probe.
+        # CR-MDB-047 §S1: the tier-2 direnv path probe.
         ("direnv", 2, "recommended", True),
     ]
 
@@ -228,7 +228,7 @@ class RequirementsDeclarationTest(unittest.TestCase):
                 self.assertNotEqual(row["scope"], "always")
 
     def test_only_dispatch_lean_ctx_sandesh_pi_uv_and_sandesh_are_required(self):
-        # MIGRATED at CR-MDB-047 C1 RED (\u00a7S1: sandesh-pi becomes required);
+        # MIGRATED at CR-MDB-047 C1 RED (§S1: sandesh-pi becomes required);
         # was test_only_dispatch_lean_ctx_and_uv_are_required. MIGRATED again
         # at CR-MDB-047 C4 FIX (VERIFY F9: the `sandesh` CLI is required too);
         # was test_only_dispatch_lean_ctx_sandesh_pi_and_uv_are_required.
@@ -676,7 +676,7 @@ class RecommendedAndUnknownPolicyTest(_SandboxedInstallerCase):
     def test_unknown_dispatch_verdict_warns_and_continues(self):
         make_agent_dir(
             self.agent_dir,
-            # MIGRATED at CR-MDB-047 C1 RED (\u00a7S1): sandesh-pi is required,
+            # MIGRATED at CR-MDB-047 C1 RED (§S1): sandesh-pi is required,
             # so it is provided here, leaving dispatch the only judged gap.
             packages=[npm_spec(LEAN_CTX_PKG), npm_spec(PERMISSIONS_PKG),
                       npm_spec(TIER1_PACKAGES["sandesh-pi"]),
