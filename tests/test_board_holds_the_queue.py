@@ -48,6 +48,7 @@ import re
 import unittest
 
 from tests._helpers import REPO_ROOT, read_text, split_frontmatter
+from tests.test_bootstrap_shutdown_registry import normalise
 
 CRUCIBLE_SKILL = "skills-src/crucible/SKILL.md"
 CR_AUTHORING = "skills-src/cr-authoring/SKILL.md"
@@ -112,13 +113,6 @@ _CODE_SPAN = re.compile(r"`([^`]+)`")
 
 
 # ------------------------------------------------------------------ helpers ----
-
-def normalise(text: str) -> str:
-    """Backticks and ``*`` dropped, curly quotes straightened, whitespace collapsed,
-    lower-cased."""
-    text = text.replace("`", "").replace("*", "").replace("\u2019", "'").replace("\u2018", "'")
-    return re.sub(r"\s+", " ", text).strip().lower()
-
 
 def units(text: str) -> list[str]:
     """``text`` split into raw units — one per bullet / numbered item (with its continuation
@@ -211,10 +205,6 @@ def invocation_lines(text: str, verb: str) -> list[tuple[str, str]]:
             if _verb(verb).search(span)]
 
 
-def _read(rel: str) -> str:
-    return read_text(REPO_ROOT / rel)
-
-
 def reach_findings(rel: str, text: str) -> list[str]:
     """Where ``text`` (the file ``rel``) names ``queue-file`` other than as never run, or names
     the queue README, a queue row, the Notes log or the README's setup task as a step — one
@@ -252,7 +242,7 @@ class QueueVerbsSectionTest(unittest.TestCase):
     ``--help`` states the verbs."""
 
     def setUp(self):
-        self.text = _read(CRUCIBLE_SKILL)
+        self.text = read_text(REPO_ROOT / CRUCIBLE_SKILL)
         self.sec = section_matching(self.text, r"\bqueue[- ]verbs?\b")
 
     def _require_section(self):
@@ -332,7 +322,7 @@ class CrAuthoringBoardFilingTest(unittest.TestCase):
     """AC 2 — ``cr-authoring`` files a CR on the board under its kept heading."""
 
     def setUp(self):
-        self.text = _read(CR_AUTHORING)
+        self.text = read_text(REPO_ROOT / CR_AUTHORING)
         self.queue = section(self.text, CR_AUTHORING_QUEUE_HEADING)
 
     def test_the_kept_heading_stays_verbatim(self):
@@ -458,7 +448,7 @@ class ModelBSkillBoardTest(unittest.TestCase):
     """AC 4 — ``model-b`` § 4 items 2 and 5 and its description name the board."""
 
     def setUp(self):
-        self.text = _read(MODEL_B_SKILL)
+        self.text = read_text(REPO_ROOT / MODEL_B_SKILL)
         self.conventions = section_matching(self.text, r"^4\. universal conventions")
 
     def test_item_2_says_the_board_holds_the_queue_and_the_execution_state(self):
@@ -497,7 +487,7 @@ class OrchestrationMainlineBoardTest(unittest.TestCase):
     merge-gate close-out."""
 
     def setUp(self):
-        self.text = _read(MAINLINE_REF)
+        self.text = read_text(REPO_ROOT / MAINLINE_REF)
 
     def test_mainline_owns_the_boards_queue_with_cr_depends_and_wave_sequence_track(self):
         sec = section(self.text, MAINLINE_OWNERSHIP_HEADING)
@@ -536,7 +526,7 @@ class OrchestrationCommonBoardTest(unittest.TestCase):
     principle name the board."""
 
     def setUp(self):
-        self.text = _read(COMMON_REF)
+        self.text = read_text(REPO_ROOT / COMMON_REF)
         self.two_phase = section(self.text, "Two-phase workflow")
 
     def test_the_design_phase_names_the_board_not_queue_edits(self):
@@ -562,7 +552,7 @@ class JavaOrchestrationTemplateBoardTest(unittest.TestCase):
     """§S1 — the ``java-orchestration`` memory template."""
 
     def setUp(self):
-        self.text = _read(JAVA_TEMPLATE)
+        self.text = read_text(REPO_ROOT / JAVA_TEMPLATE)
 
     def test_docs_changes_is_not_called_the_cr_queue(self):
         called = re.findall(r"docs/changes/[^.;]{0,20}\bcr queue\b", normalise(self.text))
@@ -589,7 +579,8 @@ class QueueReadmeReachTest(unittest.TestCase):
             self.assertIn(rel, surfaces)
 
     def test_no_shipped_surface_names_the_queue_readme_as_a_step(self):
-        findings = [f for rel in shipped_surfaces() for f in reach_findings(rel, _read(rel))]
+        findings = [f for rel in shipped_surfaces()
+                    for f in reach_findings(rel, read_text(REPO_ROOT / rel))]
         self.assertEqual(findings, [], "\n".join(findings))
 
 
