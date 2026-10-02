@@ -1,6 +1,6 @@
 ---
 name: gap-analysis
-description: Pre-implementation gap and drift analysis for CR specs. Multi-dimensional check — spec vs PRD, spec vs code, code vs PRD, spec vs existing mechanisms, design-lineage, public-symbol removal, and cost (is each criterion worth what satisfying it requires building). Mandatory before any feature branch or RED phase.
+description: Pre-implementation gap and drift analysis for CR specs. A check along ten dimensions — spec vs PRD, spec vs code, code vs PRD, spec vs existing mechanisms, design-lineage, public-symbol removal, cost (is each criterion worth what satisfying it requires building), rule and behaviour reach, scenario matrix, and standing invariants. Mandatory before any feature branch or RED phase.
 ---
 
 # Gap Analysis — CR Spec Validation
@@ -50,7 +50,7 @@ down with it. The RED agent had to correct the orchestrator's own baseline.
 
 ## The Dimensions
 
-Every gap analysis checks these dimensions. Missing any one causes design drift. The first three are the core triangle (spec ↔ PRD ↔ code); the last three guard against reinvention, mistaken retire/delete calls, and orphaned consumers.
+Every gap analysis checks these dimensions. Missing any one causes design drift. The first three are the core triangle (spec ↔ PRD ↔ code); Dimensions 4–7 guard against reinvention, mistaken retire/delete calls, orphaned consumers, and cost; Dimensions 8–10 check the change's reach, its scenario matrix and the project's standing invariants. All ten are checked, every time.
 
 ### Dimension 1: Spec vs PRD — Is the spec complete?
 
@@ -177,13 +177,45 @@ violation; the CR shipped as a DELETION, net 2 files. The measurement that kille
 for hours, filed as a P3 "worth a comment sentence". **Ask the cost question BEFORE the branch cut,
 because by VERIFY the machinery exists and sunk cost argues for keeping it.**
 
+### Dimension 8: Rule and behaviour reach — Is every file that carries the rule covered?
+
+Dimension 6 enumerates the consumers of a removed symbol. This one does the same for a rule or a
+behaviour: the file named in the request is rarely the only one that states it.
+
+For every rule or behaviour the CR changes, find every file that states or uses it:
+- the skills and role references;
+- the agent templates, `builtin-tools.toml` and the stack files;
+- the memory templates, and everything the scaffold renders;
+- the tests that pin any of it.
+
+List each hit and where the spec covers it. A hit the spec does not cover is a gap, not a follow-up.
+
+### Dimension 9: Scenario matrix — Is every case the change varies over covered?
+
+Walk the matrix before the spec is approved, not after RED. Enumerate every case the change varies
+over, as applicable:
+- the stack and the agent role;
+- the orchestrator role (Mainline, Track, Solo);
+- a tool that is present, absent or unknown;
+- the repo shape;
+- a project scaffolded before the change;
+- an upstream provider that is down.
+
+Walk each case once against the current code, by reading; run it in a `/tmp` sandbox only where
+reading cannot settle it. Each case is covered by an AC, or named as a non-goal.
+
+### Dimension 10: Standing invariants — Does a new path break a rule the project already keeps?
+
+Set every new code path or step against the project's `AGENTS.md` rules and its existing gates.
+Any path that could break one gets an AC.
+
 ## Output Format
 
 ### For each finding:
 
 ```
 ### DRIFT-N: [title]
-- **Dimension**: 1 (Spec vs PRD) / 2 (Spec vs Code) / 3 (Code vs PRD) / 4 (Reinvention) / 5 (Design-lineage) / 6 (Public-symbol removal) / 7 (Cost)
+- **Dimension**: 1 (Spec vs PRD) / 2 (Spec vs Code) / 3 (Code vs PRD) / 4 (Reinvention) / 5 (Design-lineage) / 6 (Public-symbol removal) / 7 (Cost) / 8 (Reach) / 9 (Scenario matrix) / 10 (Standing invariants)
 - **Source**: [PRD section / file:line / code path]
 - **Expected** (per PRD/spec): [what should be]
 - **Actual** (in code): [what is]
@@ -211,7 +243,9 @@ because by VERIFY the machinery exists and sunk cost argues for keeping it.**
 
 ## Rules
 
-1. **Never delegate this analysis to a sub-agent** — this is the orchestrator's responsibility
+1. **Never delegate this analysis to a sub-agent** — this is the orchestrator's responsibility.
+   The spec pre-review (Rules 21–22) does not change that: it is a separate review of the drafted
+   spec, not this analysis handed off.
 2. **Never trust memory or summaries** — read the actual source code and PRDs
 3. **Never assume enum values exist** — check the enum file
 4. **Never assume method signatures match** — check the source
@@ -269,3 +303,12 @@ because by VERIFY the machinery exists and sunk cost argues for keeping it.**
 19. **Surface design forks; never self-resolve them into the spec** — a choice between designs is
     the user's. Record it as PROPOSED until the user rules; only mechanical facts are recorded as
     settled.
+20. **Re-scoping reruns both steps** — a spec that is restructured or re-scoped gets a fresh gap
+    analysis and a fresh pre-review. Findings against the old shape say nothing about the new one.
+21. **The pre-review comes after the analysis, before approval** — the orchestrator dispatches the
+    spec pre-review after its own analysis and before it locks and presents the spec. Its findings
+    are folded into the spec before locking.
+22. **Who and where:**
+    - **Id:** `CR-<ACRONYM>-NNN-SPEC-REVIEW`, the acronym taken from the nearest registry.
+    - **Reviewer:** the VERIFY agent of a stack in that registry's `PROJECT_STACKS`.
+    - **Where it runs:** read-only in the main tree.
