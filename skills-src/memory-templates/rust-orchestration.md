@@ -50,7 +50,7 @@ deliberate addition there.
 2. **Raw workspace smoke ×2** (`smoke-test --all-features --clean`), clean between, BOTH pass. No llvm-cov — instrumentation masks contention races; the raw path surfaces them.
 3. `cargo clean`
 4. **Coverage:** `pre-merge-gate` / `workspace-regression --all-features` (llvm-cov, `-P ci`). Coverage published ONLY from a full-green `--all-features` run.
-5. Ingest each run; close-out (universal) before merge.
+5. Ingest each run; close-out (universal): before the merge, the spec's `**Status:**` flip; after it, `cr-close --commit <merge sha> --agent <orchestrator-id>`.
 
 **Tier 2 — `docker-e2e-gate` (docker up, `-P e2e`, raw nextest, junit only):**
 Runs ONLY `E2E_SET`. **Mandatory** when gap-analysis flags the CR touches NaiApp

@@ -18,6 +18,7 @@ import unittest
 from pathlib import Path
 
 from tests._helpers import archive_has_content_move as _archive_has_content_move
+from tests._helpers import md_section
 from tests._helpers import read_text_lenient as _read
 from tests._helpers import split_frontmatter as _split_frontmatter
 
@@ -41,6 +42,9 @@ CONSUMER_SURFACES = (
 )
 
 STALE_REF_PATTERN = r"cr-prd-dn-conventions\|project-management.md"
+
+#: The CR-042 triage heading CR-MDB-048 §S1 keeps verbatim while its body changes.
+QUEUE_IDIOM_HEADING = "The CR queue — structure only (queue idiom, 2026-07-20)"
 
 
 class CrAuthoringSkillS2Test(unittest.TestCase):
@@ -82,6 +86,11 @@ class CrAuthoringSkillS2Test(unittest.TestCase):
         self.assertIn("PRD", description, "frontmatter description must contain 'PRD'")
 
     def test_s2_skill_md_contains_required_doc_model_and_queue_idiom_anchors(self):
+        """MIGRATED at CR-MDB-048 C1 RED (§S1: the board holds the queue). Was: the
+        queue-idiom anchors ``DERIVED`` (statuses derived on the board, a README rule),
+        ``release CR`` and ``structure only`` / ``structure-only`` anywhere in the file. Now:
+        the CR-042 triage heading stays verbatim, its body files a CR on the board (``cr-plan``,
+        ``cr-depends``, ``wave-sequence``), and "a release is not a CR" keeps its rule."""
         self.assertTrue(SKILL_MD.is_file(), f"{SKILL_MD} must exist")
         content = _read(SKILL_MD)
 
@@ -89,24 +98,35 @@ class CrAuthoringSkillS2Test(unittest.TestCase):
             "Design reference",
             "§S",
             "Depends on",
-            "DERIVED",
-            "release CR",
             "grouping of CRs",
         ]
         missing = [term for term in required_terms if term not in content]
-        # POSITIVE -- every required doc-model/queue-idiom term must appear.
+        # POSITIVE -- every required doc-model term must appear.
         self.assertEqual(
             missing, [],
-            f"SKILL.md missing required doc-model/queue-idiom terms: {missing}",
+            f"SKILL.md missing required doc-model terms: {missing}",
         )
 
-        # POSITIVE -- structure-only queue rule, tolerant of hyphen variant.
-        structure_only_variants = ("structure only", "structure-only")
-        has_structure_only = any(v in content for v in structure_only_variants)
-        self.assertTrue(
-            has_structure_only,
-            f"SKILL.md must contain 'structure only' or 'structure-only', tried {structure_only_variants}",
+        # POSITIVE -- the release rule, as the spec states it (case-insensitive).
+        self.assertIn(
+            "a release is not a cr", content.replace("*", "").lower(),
+            "SKILL.md must keep the rule 'a release is not a CR'",
         )
+
+        # POSITIVE -- the kept CR-042 heading's body files the CR on the board.
+        queue_section = md_section(content, f"## {QUEUE_IDIOM_HEADING}")
+        self.assertNotEqual(
+            queue_section, "",
+            f"SKILL.md must keep the heading '## {QUEUE_IDIOM_HEADING}' verbatim",
+        )
+        verbs_missing = [verb for verb in ("cr-plan", "cr-depends", "wave-sequence")
+                         if f"`{verb}" not in queue_section]
+        self.assertEqual(
+            verbs_missing, [],
+            f"the queue-idiom section must file a CR on the board; missing verbs: {verbs_missing}",
+        )
+        # NEGATIVE -- the section no longer makes the README the queue.
+        self.assertNotIn("`docs/changes/README.md` is the queue", queue_section)
 
         # POSITIVE -- the AC-precision test line, verbatim-equivalent tolerant.
         ac_test_variants = (

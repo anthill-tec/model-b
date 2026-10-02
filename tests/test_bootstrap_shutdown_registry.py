@@ -825,19 +825,64 @@ class CommonRulesAgreeTest(unittest.TestCase):
         self.assertTrue("rust-crucible.py next" in text, "rust-orchestration.md: no rust-crucible.py next")
 
 
+def unregistered_pointer_findings(block: str) -> list[str]:
+    """What a normalised ``block`` lacks to state CR-MDB-048 \u00a7S1's not-registered rule: an
+    empty ``CRUCIBLE_PROJECT_KEY`` is not registered, never idle, and sends the orchestrator to
+    the Setup section of the root project's ``AGENTS.md`` when it has one, otherwise (an older
+    project) to its README's setup tasks \u2014 the Setup section named first."""
+    required = {
+        "names CRUCIBLE_PROJECT_KEY": r"crucible_project_key",
+        "an empty value": r"\bempty\b",
+        "not registered": r"not (?:yet )?registered",
+        "never idle": r"\bnever\b[^.]{0,60}\bidle\b",
+        "the Setup section": r"\bsetup section\b",
+        "of the root project's AGENTS.md": r"\broot\b[^.]{0,40}agents\.md|agents\.md[^.]{0,40}\broot\b",
+        "when it has one": r"when it has one",
+        "otherwise the README's setup tasks": r"\botherwise\b[^.]{0,120}readme'?s setup tasks?",
+    }
+    missing = [what for what, rx in required.items() if not re.search(rx, block)]
+    setup = block.find("setup section")
+    readme = block.find("setup task")
+    if setup >= 0 and readme >= 0 and readme < setup:
+        missing.append("the Setup section before the README's setup tasks")
+    return missing
+
+
 class UnregisteredProjectTest(unittest.TestCase):
-    """F6 / \u00a7S2: an empty ``CRUCIBLE_PROJECT_KEY`` means not registered \u2014 do the queue README's
-    setup task; an empty board is never read as idle."""
+    """F6 / \u00a7S2: an empty ``CRUCIBLE_PROJECT_KEY`` means not registered; an empty board is never
+    read as idle. MIGRATED at CR-MDB-048 C1 RED (\u00a7S1: the queue README is retired). Was: "do
+    the queue README's setup task" (the regex asked only for ``setup task``). Now: the Setup
+    section of the root project's ``AGENTS.md`` when it has one, otherwise (a project scaffolded
+    before CR-MDB-048) its README's setup tasks."""
 
     def test_an_empty_project_key_is_not_registered_never_idle(self):
         for name in SKILLS:
             with self.subTest(skill=name):
-                hits = [b for b in blocks(_skill_text(name))
-                        if "crucible_project_key" in b and re.search(r"\bempty\b", b)
-                        and re.search(r"not (?:yet )?registered", b) and "setup task" in b
-                        and re.search(r"\bnever\b[^.]{0,60}\bidle\b", b)]
-                self.assertTrue(hits, f"{name}: an empty CRUCIBLE_PROJECT_KEY is not stated as "
-                                      f"'not registered \u2192 setup task, never idle'")
+                keyed = [b for b in blocks(_skill_text(name)) if "crucible_project_key" in b
+                         and re.search(r"not (?:yet )?registered", b)]
+                self.assertTrue(keyed, f"{name}: no block states an empty CRUCIBLE_PROJECT_KEY")
+                gaps = [unregistered_pointer_findings(b) for b in keyed]
+                self.assertIn([], gaps, f"{name}: the not-registered rule lacks {gaps}")
+
+    def test_the_pointer_rule_on_synthetic_text(self):
+        old = normalise(
+            "- **Crucible project key** \u2014 `CRUCIBLE_PROJECT_KEY`. An empty value means the "
+            "project is not yet registered in Crucible: do the queue README's setup task, and "
+            "never read the empty board `plans` then returns as idle.")
+        new = normalise(
+            "- **Crucible project key** \u2014 `CRUCIBLE_PROJECT_KEY`. An empty value means the "
+            "project is not yet registered in Crucible: do the Setup section of the root "
+            "project's `AGENTS.md` when it has one, and otherwise (a project scaffolded before "
+            "the board held the queue) its README's setup tasks; never read the empty board "
+            "`plans` then returns as idle.")
+        reversed_order = normalise(
+            "An empty `CRUCIBLE_PROJECT_KEY` is not registered: do its README's setup tasks; "
+            "otherwise the Setup section of the root project's `AGENTS.md` when it has one. "
+            "Never read the empty board as idle.")
+        self.assertEqual(unregistered_pointer_findings(new), [])
+        self.assertIn("the Setup section", unregistered_pointer_findings(old))
+        self.assertIn("the Setup section before the README's setup tasks",
+                      unregistered_pointer_findings(reversed_order))
 
 
 class MemoryIndexWordingTest(unittest.TestCase):

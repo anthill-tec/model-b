@@ -1133,10 +1133,12 @@ class MidEmissionFailureHonestPartialEmissionTest(unittest.TestCase):
     ``ManifestAlwaysConsultedWithoutReinstallFlagTest`` already uses for
     ``cli._deploy_stage``. The injection point is ``scaffold._render_agents_md``
     (patched to raise), reached from ``_emit_plan`` only AFTER `.env`,
-    `.env.local`, `.gitignore`, `docs/changes/README.md` and
+    `.envrc`, `.env.local`, `.gitignore`, `docs/changes/.gitkeep` and
     `docs/research/.gitkeep` are already written -- a genuinely non-empty
     partial tree, not the §S1 write-before-check case (which leaves zero
-    files)."""
+    files). (MIGRATED at CR-MDB-048 C2 RED, §S2: init writes
+    `docs/changes/.gitkeep` and no queue README; the rule that `emitted` is
+    exactly what is on disk is unchanged.)"""
 
     def setUp(self):
         self._tmp_home = tempfile.mkdtemp(prefix="modelb-axi-c2-partial-home-")

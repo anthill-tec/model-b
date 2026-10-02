@@ -64,10 +64,15 @@ CR-gen, scheduling" and "Filing/assigning a CR — COMMIT docs FIRST, schedule w
     - waves, the release boundary and "a release is not a CR" keep their rules, stated against the
       board;
     - **Crucible absent:** filing is the spec file alone, ids from the spec files. **Unregistered**
-      (empty `CRUCIBLE_PROJECT_KEY`): do the Setup section first;
-    - **a project scaffolded before this CR:** the first time, each open row of its README is filed
-      on the board with `cr-plan`; the README then stays as history.
-  - **Where the rest goes:** a ruling to the PRD or a DN, a merge to `cr-close` and a milestone label,
+      (empty `CRUCIBLE_PROJECT_KEY`): do the root `AGENTS.md`'s Setup section first, or in a project
+      scaffolded before this CR its README's setup tasks;
+    - **a project scaffolded before this CR:** the trigger is the board's `queue` missing a CR whose
+      spec exists in `docs/changes/` with no merge recorded (no `cr-close`, spec `**Status:**` not
+      `COMPLETED`). Only those CRs are filed, with `cr-plan`; a CR `queue` already lists is never
+      re-filed, and a wave's order is re-sent in full. The release is the user's call, with the
+      README's Target release slot as the proposed default. The README then stays as history.
+  - **Where the rest goes:** a ruling to the PRD or a DN, a merge to `cr-close` (which posts the
+    `cr-merged` milestone itself; a descriptive milestone is optional, never a second merge record),
     a follow-up to a CR filed on the board. This replaces "the queue (structure + dated footer
     Notes)", "queue/PRD/DN/memory edits", "the TRACKING docs (queue + board)" and "the queue
     default" wherever the skill names them.
@@ -82,16 +87,17 @@ CR-gen, scheduling" and "Filing/assigning a CR — COMMIT docs FIRST, schedule w
 - **`orchestration-mainline`:** Mainline owns the board's queue (filing, `cr-depends`,
   `wave-sequence` with `--track` in multi mode), not a queue README. "Write spec + queue row"
   becomes "write the spec, file it on the board". A filed CR's process-state is on the board. The
-  merge gate's "two-file close-out diff" becomes the board close-out (`cr-close`, milestone, the
-  spec's `**Status:**`).
+  merge gate's "two-file close-out diff" becomes: before the merge, the spec's `**Status:**` flip;
+  after the merge, `cr-close --commit <merge sha>`, which posts `cr-merged`. `cr-close` is never run
+  before the merge commit exists.
 - **`orchestration-common`:** the design phase's edits, "PRD → CRs → queue up front" and the GC
   principle name the board, not a queue row.
 - **`bootstrap` and `shutdown`:** an empty `CRUCIBLE_PROJECT_KEY` sends the orchestrator to the Setup
   section of the **root** project's `AGENTS.md` when it has one, and otherwise (a project scaffolded
   before this CR) to its README's setup tasks.
 - **Memory templates:** `java-orchestration` stops calling `docs/changes/` the CR queue, and its
-  pre-merge close-out step names `cr-close` and the spec's `**Status:**` instead of updating a
-  README.
+  close-out names the spec's `**Status:**` flip before the merge and `cr-close` with the merge's sha
+  after it, instead of updating a README.
 
 ### §S2 — The scaffold
 
@@ -119,7 +125,8 @@ CR-gen, scheduling" and "Filing/assigning a CR — COMMIT docs FIRST, schedule w
   run against it, since it would replace the board's queue with these rows.
 - **Model B's `AGENTS.md`:** the `docs/changes/` row, the Important-files line and the architecture
   flow say the README is frozen history and the board holds the queue. It carries the Design
-  contract, Evidence base and Ontology lines from the README's header.
+  contract, Evidence base and Ontology lines from the README's header. Its Workflow Rules say a
+  release is a boundary event, not a CR.
 - **DN §D20** names `AGENTS.md`'s Setup section instead of the queue README's setup task.
 - **Tests,** each migration listed by id:
   - the scaffold pins: `test_scaffold`'s `test_docs_model_queue_readme_and_research_dir`;
@@ -141,9 +148,10 @@ CR-gen, scheduling" and "Filing/assigning a CR — COMMIT docs FIRST, schedule w
 - [ ] **`cr-authoring`** files a CR as spec → `cr-plan` → `cr-depends` → `wave-sequence` (full
       order); allocates ids from `queue` and the spec files; supersedes and voids with the verbs;
       re-posts a changed title; records a first release with `release-propose` after asking the
-      user; covers Crucible absent (spec alone), unregistered (Setup first) and an older project
-      (file its open rows once); sends rulings to the PRD or a DN, merges to `cr-close` plus a
-      milestone, follow-ups to a filed CR; closes a board-absent CR by the `**Status:**` flip
+      user; covers Crucible absent (spec alone), unregistered (Setup section first, or an older
+      project's README setup tasks) and an older project (file only the CRs with a spec, no merge
+      and no `queue` entry; never re-file; release asked, README's Target release proposed); sends rulings to the PRD or a DN, a merge to `cr-close` alone
+      (it posts `cr-merged`), follow-ups to a filed CR; closes a board-absent CR by the `**Status:**` flip
       alone; lists `docs/changes/` as specs only.
 - [ ] **No shipped skill, reference, template, stack file or memory template** names `queue-file`
       (except as never run), `docs/changes/README.md`, a queue row, the Notes log or the queue
@@ -151,7 +159,9 @@ CR-gen, scheduling" and "Filing/assigning a CR — COMMIT docs FIRST, schedule w
       older-project filing.
 - [ ] **`model-b`** (§ 4 items 2 and 5, description), **`orchestration-mainline`** (ownership,
       filing with `--track`, process-state, merge-gate close-out) and **`orchestration-common`**
-      state the board as the queue's home; the role table's ontology term is unchanged.
+      state the board as the queue's home; the role table's ontology term is unchanged. Every
+      close-out names the `**Status:**` flip before the merge and `cr-close` with the merge's sha
+      after it; none runs `cr-close` before the merge or posts a second merge milestone.
 - [ ] **`bootstrap` and `shutdown`** send an unregistered project to the root `AGENTS.md`'s Setup
       section when it has one, and otherwise to its README's setup tasks.
 - [ ] **`init`** (standalone and monorepo, solo and multi) writes no `docs/changes/README.md` and
@@ -165,8 +175,8 @@ CR-gen, scheduling" and "Filing/assigning a CR — COMMIT docs FIRST, schedule w
 - [ ] **`init`'s stderr note**, **`setup_required`'s note** and **`project_schema.toml`** name the
       Setup section, not the README; `setup_required` keeps its shape and keys.
 - [ ] **Model B's README** keeps all its content under a frozen-history header pointing to the board
-      and warning off `queue-file`; Model B's `AGENTS.md` (incl. the header-slot lines) and DN §D20
-      say the same.
+      and warning off `queue-file`; Model B's `AGENTS.md` (incl. the header-slot lines, and a release
+      as a boundary event, not a CR) and DN §D20 say the same.
 - [ ] **Gates that hold:** every migrated test listed by id; the suites that read Model B's README as
       history pass; the CR-042 triage headings resolve with `HEADING_RENAMES` unchanged; the
       verb-sweep `--agent` gate (`test_client_verb_sweep`); §D18 tool-name gates;

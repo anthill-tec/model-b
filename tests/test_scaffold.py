@@ -477,21 +477,30 @@ class InitEmissionSoloRunTest(unittest.TestCase):
             f"CR-MDB-043: `.env.local` must no longer carry CRUCIBLE_PROJECT_KEY; got {env_local!r}",
         )
 
-    def test_docs_model_queue_readme_and_research_dir(self):
-        readme_path = self._target / "docs" / "changes" / "README.md"
-        self.assertTrue(
-            readme_path.is_file(),
-            f"S3.2: `docs/changes/README.md` must be emitted; init stderr={self._result.stderr!r}",
+    def test_docs_model_specs_dir_header_lines_and_research_dir(self):
+        # MIGRATED at CR-MDB-048 C2 RED (§S2; was test_docs_model_queue_readme_and_research_dir):
+        # init writes no queue README; docs/changes/ (the specs' home) exists through its
+        # .gitkeep, and the README's header slots are lines of the root AGENTS.md — Design
+        # contract, Evidence base and Ontology, and no target release or queue table.
+        changes = self._target / "docs" / "changes"
+        self.assertFalse(
+            (changes / "README.md").exists(),
+            f"CR-MDB-048 §S2: no `docs/changes/README.md` is emitted; init stderr={self._result.stderr!r}",
         )
-        readme = readme_path.read_text(encoding="utf-8")
-        for slot in ("Design contract", "Evidence base", "Ontology", "Target release"):
+        self.assertTrue(
+            (changes / ".gitkeep").is_file(),
+            f"CR-MDB-048 §S2: `docs/changes/.gitkeep` must be emitted; init stderr={self._result.stderr!r}",
+        )
+        agents_md = (self._target / "AGENTS.md").read_text(encoding="utf-8")
+        for slot in ("Design contract", "Evidence base", "Ontology"):
             self.assertIn(
-                slot, readme,
-                f"S3.2: queue README must carry the four header slots incl. {slot!r}; got readme={readme!r}",
+                slot, agents_md,
+                f"CR-MDB-048 §S2: AGENTS.md must carry the header slot {slot!r}; got {agents_md!r}",
             )
-        self.assertIn(
-            "| CR | Title | Wave | Depends on |", readme,
-            f"S3.2: queue README must carry the structure-only table header; got readme={readme!r}",
+        self.assertNotIn("Target release", agents_md, "CR-MDB-048 §S2: no target release")
+        self.assertNotIn(
+            "| CR | Title | Wave | Depends on |", agents_md,
+            "CR-MDB-048 §S2: the queue table is on the Crucible board, not in a file",
         )
         self.assertTrue(
             (self._target / "docs" / "research").is_dir(),

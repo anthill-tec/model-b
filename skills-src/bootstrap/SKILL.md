@@ -90,8 +90,9 @@ Read — in this order:
      the client file. The entry key is the stack name, except quarkus and java, which share the
      `mvn` entry (`mvn-crucible.py`). `<client>` below is that path.
    - **Crucible project key** — `CRUCIBLE_PROJECT_KEY`. An empty value means the project is not
-     yet registered in Crucible: do the queue README's setup task, and never read the empty
-     board `plans` then returns as idle.
+     yet registered in Crucible: do the Setup section of the root project's `AGENTS.md` when
+     it has one, and otherwise (a project scaffolded before the board held the queue) its
+     README's setup tasks; never read the empty board `plans` then returns as idle.
 3. **`docs/memory/INDEX.md`** — the project memory index — and the slices it lists (among
    them the orchestration template for a stack that has one,
    `docs/memory/<stack>-orchestration.md`); open

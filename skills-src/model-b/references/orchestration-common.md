@@ -16,10 +16,10 @@ Universal rules for ANY orchestrator, ANY project/stack. Verbose detail + failur
 - Roles differ at shutdown: a **Track** acks **Mainline** that it is safe to stop; **Mainline** (shut down by the USER) dispatches to the tracks and tears down LAST — only after every active track has acked / shows down. Full procedure → the `shutdown` skill.
 
 ## Two-phase workflow
-- **Design phase → `develop`.** Gap-analysis, then the spec pre-review; spec/PRD/DN/queue edits. No feature branch.
+- **Design phase → `develop`.** Gap-analysis, then the spec pre-review; spec/PRD/DN edits and filing the CR on the board. No feature branch.
 - **Execution phase → feature branch.** RED+GREEN cycles, VERIFY, FIX, regression, merge.
 - `VERIFY` names the EXECUTION phase only — design-phase validation is **gap-analysis**. The VERIFY *agent* may run in the design phase in its spec pre-review mode, and that step is called the pre-review, never "verify".
-- **Design is BATCHED per wave** (PRD → CRs → queue up front); **gap-analysis is NOT batched** — re-run per-CR immediately before THAT CR (the tree evolved; design→implementation is a closed loop).
+- **Design is BATCHED per wave** (PRD → CRs → filed on the board up front); **gap-analysis is NOT batched** — re-run per-CR immediately before THAT CR (the tree evolved; design→implementation is a closed loop).
 
 ## Gap-analysis discipline (gap-analysis FIRST, before any branch/RED)
 - **The orchestrator runs gap-analysis itself** (never delegate to a sub-agent), per-CR immediately before THAT CR's branch/RED.
@@ -125,9 +125,9 @@ Universal rules for ANY orchestrator, ANY project/stack. Verbose detail + failur
 - A project's `AGENTS.md` describes what the code does; CR numbers and shipped-when status belong on the board, never in its prose.
 
 ## Close-out
-- Close-out = transition the CR's tracking state to COMPLETED on the Crucible board — `cr-close --commit <sha> --agent <id>` IS the close-out. Do NOT hand-edit anything else for it: the README is RELEASE-branch only (version + CI badges) per the project's rules, NEVER a per-CR delivery entry in develop, and NEVER a track's job (parallel tracks editing the shared README collide). Never a `## Close-out` section in the CR spec. Run the stack's `check-cr-close` gate where the stack ships one.
-- **Read the Crucible plan before `cycle-done`, `cr-close`, `finish` or proposing a merge** — every cycle, VERIFY included, must be done.
-- **Close-out is the LAST commit on the feature branch** — after the merge, touch zero docs for the shipped CR. Run a post-merge develop gate only when develop moved since the branch point (or several CRs land together); never re-run a gate after a docs-only sync.
+- Close-out is two steps: before the merge, the spec's `**Status:**` flip; after it, `cr-close --commit <merge sha> --agent <id>`, which transitions the CR's tracking state to COMPLETED on the Crucible board and posts `cr-merged` (it takes the merge's sha, so it waits for the merge commit). Do NOT hand-edit anything else for it: the README is RELEASE-branch only (version + CI badges) per the project's rules, NEVER a per-CR delivery entry in develop, and NEVER a track's job (parallel tracks editing the shared README collide). Never a `## Close-out` section in the CR spec. Run the stack's `check-cr-close` gate where the stack ships one.
+- **Read the Crucible plan before `cycle-done`, proposing a merge, `finish` or `cr-close`** — every cycle, VERIFY included, must be done.
+- **The close-out's `**Status:**` flip is the LAST commit on the feature branch** — after the merge, touch zero docs for the shipped CR (`cr-close` is a board write, not a doc edit). Run a post-merge develop gate only when develop moved since the branch point (or several CRs land together); never re-run a gate after a docs-only sync.
 
 ## Investigation discipline
 - **Read the actual errors first.** For zero or wrong output, read the real errors (dead-letter queue, logs, per-record errors) and rule out trivial causes before instrumenting the machinery. Mainline challenges a track's complex root-cause hypothesis with "what error do the records actually throw?" before relaying it.
@@ -138,7 +138,7 @@ Universal rules for ANY orchestrator, ANY project/stack. Verbose detail + failur
 - **Never start or stop a provider service** (Crucible, Sandesh) — they are not the orchestrator's to run. A down provider is reported and the dependent step held; the workflow degrades gracefully.
 
 ## Memory
-- **GC principle:** memory holds ONLY what the repo doesn't yet track. The moment a note becomes a repo artifact (CR / queue row / PRD / DN / README) or is abandoned, DELETE it (keep ≤ a one-line pointer). Duplicated notes rot + burn context every recall.
+- **GC principle:** memory holds ONLY what the repo doesn't yet track. The moment a note becomes a repo artifact (CR spec / a CR filed on the board / PRD / DN / README) or is abandoned, DELETE it (keep ≤ a one-line pointer). Duplicated notes rot + burn context every recall.
 - **No unilateral writes:** do not write/update shared memory or rules files unilaterally — raise the learning to the coordinator (Mainline), who records it centrally. (Solo: record only with user awareness.)
 - **Where to keep execution knowledge:** where the project's `.env` carries `KNOWLEDGE_CATEGORY`, execution knowledge is kept in the project's knowledge store under that category — one short fact per item, each with a stable kebab-case key. Writing the same key again replaces the fact: the same key supersedes, so a fact is corrected, never duplicated.
 - **What goes there:** only execution knowledge — how this project's work actually runs. Never an orchestrator rule, an agent definition, a ruling that belongs in the PRD or a DN, or a project fact that belongs in `.env` or `AGENTS.md`; those have their own homes.

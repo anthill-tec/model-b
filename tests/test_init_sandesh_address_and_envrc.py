@@ -12,7 +12,8 @@ amendment, PRD D10, PRD D3.1).
   writes — root and each sub-project — committed, not gitignored, listed by
   ``--dry-run``. A pre-existing ``.envrc`` with other content is left alone
   and reported under ``init``'s ownership rules.
-- The queue README's Sandesh setup task names installing direnv and its hook,
+- The Sandesh setup task — in the root ``AGENTS.md``'s ``## Setup`` section since
+  CR-MDB-048 §S2 (the queue README's until then) — names installing direnv and its hook,
   ``direnv allow`` in each directory with an ``.envrc``, and the Track launch
   line ``env SANDESH_ADDRESS="Track <N> - <Project>" pi``.
 - The scaffolded ``AGENTS.md`` identity section names ``SANDESH_ADDRESS``
@@ -304,17 +305,23 @@ class PreExistingEnvrcTest(_Case):
 
 
 # ---------------------------------------------------------------------------
-# The queue README's Sandesh setup task
+# The Sandesh setup task, in the root AGENTS.md's Setup section
 # ---------------------------------------------------------------------------
 
-class QueueReadmeSandeshSetupTaskTest(_Case):
+class AgentsMdSandeshSetupTaskTest(_Case):
     """AC: the setup task names direnv, its hook, ``direnv allow`` and the
-    Track launch line."""
+    Track launch line.
+
+    MIGRATED at CR-MDB-048 C2 RED (§S2; was ``QueueReadmeSandeshSetupTaskTest``):
+    the task moved from the queue README's Setup tasks into the root
+    ``AGENTS.md``'s ``## Setup`` section; ``init`` writes no queue README."""
 
     def setup_tasks(self) -> str:
         self.init_ok(mode="multi:2")
-        section = md_section(self.read("docs/changes/README.md"), "## Setup tasks")
-        self.assertTrue(section, "the README keeps its Setup tasks section")
+        self.assertFalse((self.target / "docs/changes/README.md").exists(),
+                         "CR-MDB-048 §S2: init writes no queue README")
+        section = md_section(self.read("AGENTS.md"), "## Setup")
+        self.assertTrue(section, "the root AGENTS.md carries a ## Setup section")
         return section
 
     def test_the_task_names_installing_direnv_and_its_shell_hook(self):

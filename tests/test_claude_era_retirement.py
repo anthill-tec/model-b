@@ -23,7 +23,8 @@ Class map (one per C1 acceptance criterion):
   under ``<target-root>`` and nothing under ``<target-root>/.claude/`` (regression pin: passes
   today for a Pi-only selection; its scan is proven by ``RetiredScanDetectorTest``).
 - ``ScaffoldPiProjectTest`` — a sandboxed ``init``: no ``CLAUDE.md``, no ``.opencode/`` line, a
-  ``.worktrees/`` line in ``.gitignore``; the queue README's ontology line cites the deployed
+  ``.worktrees/`` line in ``.gitignore``; the root ``AGENTS.md``'s ontology line (the queue
+  README's header slot until CR-MDB-048 §S2) cites the deployed
   ``model-b`` skill (``~/.agents/skills/model-b/SKILL.md``) with no ``crucible:`` prefix (§S1 as
   amended at a8540df — a scaffolded project has no ``docs/research/DN-model-b-language.md``);
   ``AGENTS.md`` carries no ``crucible:``-prefixed ontology citation (it need not cite the
@@ -79,7 +80,8 @@ RETIRED_DOC_RE = re.compile(r"claude-code|hermes|opencode|AllTargetsRefusedError
                             re.IGNORECASE)
 AGENTS_MD = REPO_ROOT / "AGENTS.md"
 
-#: The ontology citation §S1 (amended a8540df) requires in the scaffolded queue README — the
+#: The ontology citation §S1 (amended a8540df) requires in the scaffolded root ``AGENTS.md`` (the
+#: queue README's until CR-MDB-048 §S2) — the
 #: deployed ``model-b`` skill, which carries the ontology summary and names its source — and the
 #: undefined checkout-prefixed citation it retires.
 ONTOLOGY_PATH = "~/.agents/skills/model-b/SKILL.md"
@@ -515,11 +517,16 @@ class ScaffoldPiProjectTest(_SandboxedInitCase):
         self.assertNotIn(CHECKOUT_PREFIXED_ONTOLOGY, agents_md,
                          "§S1: AGENTS.md must not use the undefined crucible: ontology prefix")
 
-    def test_queue_readme_ontology_line_has_no_crucible_prefix(self):
+    def test_agents_md_ontology_line_has_no_crucible_prefix(self):
+        # MIGRATED at CR-MDB-048 C2 RED (§S2; was test_queue_readme_ontology_line_has_no_crucible_prefix):
+        # the queue README's Ontology header slot is a line of the root AGENTS.md now, and init
+        # writes no queue README.
         self._require_scaffold()
-        readme = (self.target / "docs" / "changes" / "README.md").read_text(encoding="utf-8")
-        ontology = [line for line in readme.splitlines() if "Ontology" in line]
-        self.assertEqual(len(ontology), 1, f"one ontology slot in the queue README: {readme!r}")
+        self.assertFalse((self.target / "docs" / "changes" / "README.md").exists(),
+                         "CR-MDB-048 §S2: init writes no queue README")
+        agents_md = (self.target / "AGENTS.md").read_text(encoding="utf-8")
+        ontology = [line for line in agents_md.splitlines() if "Ontology" in line]
+        self.assertEqual(len(ontology), 1, f"one ontology line in the root AGENTS.md: {agents_md!r}")
         self.assertIn(ONTOLOGY_PATH, ontology[0])
         self.assertNotIn(
             "crucible:", ontology[0],

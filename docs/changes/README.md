@@ -1,5 +1,7 @@
 # Model B — CR queue
 
+> **Read-only history, frozen at CR-MDB-048's merge.** The queue and the execution state are on the Crucible board. Never run `queue-file` against this file: it would replace the board's queue with these rows.
+
 **Project:** Model B (acronym: MDB · solo orchestrator: `vidushi-mdb`) · **Crucible projectKey:** `019f7eb8-8cad-7000-9838-854eca8e7c20` · **Design contract:** `docs/research/PRD-model-b-rationalization.md` · **Evidence base:** `audits/2026-07-20-*.md` + `docs/research/DN-rationalization-plan-review.md` · **Ontology:** `docs/research/DN-model-b-language.md` (frozen import of Crucible's, 2026-09-21) · **Target release:** 1.0.0
 Conventions (naming, agentIds, workflow rules) live in the project `AGENTS.md` — not here.
 

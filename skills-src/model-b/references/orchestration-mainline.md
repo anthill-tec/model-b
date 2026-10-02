@@ -4,8 +4,8 @@ Coordinator-only rules. Read COMMON + MAINLINE. (Worker rules → TRACK; sub-age
 
 ## Ownership — queue, CR-gen, scheduling
 - **Mainline owns the CR queue + CR generation + scheduling.** Tracks EXECUTE; Mainline DECIDES what each track runs and when.
-- Mainline owns the queue README — wave structure, CR rows, status — and is the primary CR-spec author (DN-first for any CR-spawning surface).
-- New CRs land in the queue under the correct wave; loaded into a live track lane ONLY when scheduled.
+- Mainline owns the board's queue — filing each CR (`cr-plan`), its dependencies (`cr-depends`) and each wave's order (`wave-sequence`, with `--track` assigning the wave's CRs to a lane in multi mode) — and is the primary CR-spec author (DN-first for any CR-spawning surface).
+- New CRs land on the board's queue under the correct wave; loaded into a live track lane ONLY when scheduled.
 - Rescheduling is driven by the live status board + the tracks' requests; status + requests in → a scheduling decision out.
 - **Never let tracks self-schedule.** A track raises (request); Mainline disposes — schedules (queue/CR + lane) and replies/directs to assign or unblock.
 - **Before scheduling slices in parallel, check file-disjointness at FILE level** across all slices, test files included.
@@ -35,10 +35,10 @@ Coordinator-only rules. Read COMMON + MAINLINE. (Worker rules → TRACK; sub-age
 
 ## Merge gate enforcement
 - Enforce the WIRE-THE-CALL-PATH gate: the sign-off must NAME the integration test proving the real caller→new-code→result seam; unwired/not-integration-tested → CHANGES-NEEDED before the user relay.
-- **Verify track reports INDEPENDENTLY** — don't trust agent-claimed pass counts; read the `passed=/failed=` summary, confirm the two-file close-out diff, confirm the integration-test evidence.
+- **Verify track reports INDEPENDENTLY** — don't trust agent-claimed pass counts; read the `passed=/failed=` summary, confirm the board close-out (before the merge, the spec's `**Status:**` flipped; after it, `cr-close --commit <merge sha> --agent <id>` posted, which posts the `cr-merged` milestone — `cr-close` takes the merge's sha, so it waits for the merge commit), confirm the integration-test evidence.
 
 ## Filing/assigning a CR — COMMIT docs FIRST, schedule write LAST
-- Order: write spec + queue row → `git commit` to `develop` → THEN the schedule-DB / lane assignment → inbox housekeeping.
+- Order: write the spec → `git commit` to `develop` → THEN file it on the board (`cr-plan`, `cr-depends`, `wave-sequence`) and assign the lane → inbox housekeeping.
 - A worktree branches off COMMITTED `develop` HEAD — an uncommitted spec never reaches it. Committing after the schedule write is the bug.
 - A CR introducing a new PRD design concept: update the PRD section first (commit promptly), then the CR cites it.
 - A new CR that must run before an already-sequenced CR → re-send the wave order (`wave-sequence`); `cr-depends` alone does not reorder.
@@ -55,7 +55,7 @@ Coordinator-only rules. Read COMMON + MAINLINE. (Worker rules → TRACK; sub-age
 
 ## Deferred-items register + SCRUM filing
 - Keep a per-project deferred-items register (descopes, VERIFY nits routed forward, emergent requirements). At each CR's gap-analysis, sweep it — fold routed items into the spec.
-- **New CRs are filed at the SCRUM review BETWEEN runs — never mid-implementation.** Emergent requirements → propose as new CRs there; once filed, the CR's process-state lives in the queue README.
+- **New CRs are filed at the SCRUM review BETWEEN runs — never mid-implementation.** Emergent requirements → propose as new CRs there; once filed, the CR's process-state lives on the board.
 - **Favour complete features.** Do not default to recommending deferral or scope cuts; propose a deferral only with a genuine reason, stated neutrally.
 - **Built-but-unwired functionality is fixed before new features:** a smoke that exposes it gets a production CR to wire it, sequenced ahead — never documented and deferred.
 - **At every wave start, pause and discuss pending decisions with the user** — deferred-register items, design contradictions, payload/API shape choices — before the wave's first dispatch.
