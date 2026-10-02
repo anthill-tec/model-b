@@ -49,7 +49,7 @@ Key invariants:
 | `contracts/` | Interface contracts: `crucible-envelope.md`, `gate-lock.md`, `sandesh-cli.md`, `lean-ctx.md` (cross-project), `worktree-layout.md` (the `.worktrees/<cr>` string and its six consumers). Repo-only — not shipped in the wheel |
 | `docs/research/` | `PRD-model-b-rationalization.md` (D1–D10) + `DN-*.md` design notes |
 | `docs/changes/` | `README.md` = CR queue (structure only) + `CR-MDB-NNN-*.md` specs |
-| `tests/` | 69 `unittest` modules; mostly structural/contract gates |
+| `tests/` | 70 `unittest` modules; mostly structural/contract gates |
 | `archive/` | Read-only history: `BASELINE.md` (the wave-0 baseline), `wave1..3/` and `contracts/` (archived files), and `mapping.md` — the living map from every relocated path to where it lives now, gated by `tests/test_archive_mapping.py` (a CR that moves a mapped path updates its row) |
 | `audits/` | Dated evidence files backing PRD decisions |
 
@@ -114,7 +114,7 @@ A brief that may run `modelb-axi` pins `--modelb-home` / `--target-root` and exp
 
 ## Testing & QA
 
-Pure **`unittest`** — no pytest, no `conftest.py`, no fixtures/markers. 69 modules in `tests/` (`tests/test_*.py`), each file ending in `if __name__ == "__main__": unittest.main()`. Naming as practised: the wave-1/2 modules use `<Topic><Section>Test` classes (e.g. `ContractsS2Test`) with `test_s<n>_<assertion>` methods; later modules use `<Feature>Test` classes (e.g. `BlockDirectCargoTestScriptTest`) with descriptive method names. A helper more than one module needs lives once in `tests/_helpers.py` and is imported (CR-MDB-032 §S3 gates a module-level helper body defined in two modules).
+Pure **`unittest`** — no pytest, no `conftest.py`, no fixtures/markers. 70 modules in `tests/` (`tests/test_*.py`), each file ending in `if __name__ == "__main__": unittest.main()`. Naming as practised: the wave-1/2 modules use `<Topic><Section>Test` classes (e.g. `ContractsS2Test`) with `test_s<n>_<assertion>` methods; later modules use `<Feature>Test` classes (e.g. `BlockDirectCargoTestScriptTest`) with descriptive method names. A helper more than one module needs lives once in `tests/_helpers.py` and is imported (CR-MDB-032 §S3 gates a module-level helper body defined in two modules).
 
 ```bash
 python3 -m unittest tests.test_hooks                       # one module
@@ -131,7 +131,7 @@ python3 ~/.crucible/clients/python-crucible.py regression --coverage \
   --agent vidushi-mdb --project-dir "$PWD"
 ```
 
-- **Agent ids:** free-form, and a READABILITY habit rather than a parsed key — TDD-role agents by convention `CR-MDB-NNN-<cycle>-<ROLE>` (e.g. `CR-MDB-017-F1-FIX`), orchestrator ops `vidushi-mdb`. The id is assigned by the dispatcher and never minted by the agent; the ROLE is declared at registration via `--role` from the case-exact set `{RED, GREEN, FIX, VERIFY, ORCHESTRATOR, report}` and is never inferred from the id's shape, and the four TDD roles must additionally bind their cycle with `--cycle <id>` (the server refuses an unbound TDD registration 409). Read the client's agent-naming header rather than improvising.
+- **Agent ids:** free-form, and a READABILITY habit rather than a parsed key — TDD-role agents by convention `CR-MDB-NNN-<cycle>-<ROLE>` (e.g. `CR-MDB-017-F1-FIX`), the spec pre-review `CR-MDB-NNN-SPEC-REVIEW` (a VERIFY agent registered as `report` with no cycle, before `plan-file`), orchestrator ops `vidushi-mdb`. The id is assigned by the dispatcher and never minted by the agent; the ROLE is declared at registration via `--role` from the case-exact set `{RED, GREEN, FIX, VERIFY, ORCHESTRATOR, report}` and is never inferred from the id's shape, and the four TDD roles must additionally bind their cycle with `--cycle <id>` (the server refuses an unbound TDD registration 409). Read the client's agent-naming header rather than improvising.
 - JUnit XML lands in `test-reports/` as `TEST-<module>.<Class>-<YYYYMMDDHHMMSS>.xml` (gitignored; the client wipes it before each run). Plain `unittest` produces console output only.
 - **Most tests are structural gates, so ordinary edits break them.** They assert repo layout, the state a sandboxed install deploys, SKILL.md frontmatter, byte-identity of imported bundles, reference-router parity, and grep-gates for retired terms (e.g. zero `WORKFLOW_CYCLE_ID`). Renaming a skill, doc, or reference file requires updating its gate.
 - Tests import `modelb_axi` directly — install the package (`pip install -e .`) or run from the repo root.

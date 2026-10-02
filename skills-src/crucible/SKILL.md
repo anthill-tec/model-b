@@ -43,6 +43,9 @@ ingests in one call under your agent id. Never hand-roll `curl`; the client
 - Orchestrators: `<agent-type>-<project>` (e.g. `vidushi-<acronym>`, `mainline-<ACRONYM>`).
 - TDD-role agents: `CR-<ACRONYM>-NNN-<cycle>-<ROLE>` (e.g.
   `CR-MDB-003-C1-GREEN`) — the CR id + cycle + role IS the identity.
+- Spec pre-review: `CR-<ACRONYM>-NNN-SPEC-REVIEW`, the acronym from the nearest
+  registry. A VERIFY agent reviewing a drafted spec before approval registers
+  as `--role report` with no cycle — none exists before `plan-file`.
 - Role and identity are SEPARATE axes. The role is DECLARED at registration,
   via `--role`, from the case-exact enumeration above; the agentId is
   FREE-FORM, assigned by the dispatcher and never minted by the agent. The
@@ -181,6 +184,9 @@ name the next step.
   failure IS a RED); GREEN ingests the passing run.
 - **VERIFY agent** — registers + REVIEWS (ACs, wiring, coverage adequacy,
   quality). Does NOT run the regression.
+  - Its spec pre-review (design phase, before `plan-file`) is also a VERIFY-agent
+    duty, with no runs and no ingest: it registers `report`, reads, reports
+    findings, unregisters.
 - **ORCHESTRATOR** — runs the close-out gate itself: `regression` (with
   coverage) PLUS the e2e suite, under its OWN identity, with the verify cycle
   activated (`cycle-activate`) so the gate attaches as that cycle's LAST

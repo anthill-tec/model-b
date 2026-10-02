@@ -23,6 +23,7 @@ Ontology (LOCKED): Model B's `docs/research/DN-model-b-language.md` (a frozen im
 | **MAINLINE ORCHESTRATOR** (solo alias: **vidushi**) | whole project workflow | spawns track orchestrators; allocates CRs to lanes from the depends-on graph; launches waves; files plans (solo); wave-boundary gates |
 | **ORCHESTRATOR** (track) | one lane's CR queue | files/drives the cycle plan; activates + confirms cycles; closes the CR on merge; verifies agents deliver accurately |
 | **RED / GREEN / VERIFY / FIX** (phase agents) | one phase of one cycle | execute and report: test runs, compile failures, heartbeats, register/unregister |
+| **Spec pre-review** (a VERIFY agent, design phase) | one drafted spec, before approval | reviews and reports findings — a `report` actor on the board, outside any cycle; no runs, no ingest |
 
 **Orchestrator labels are mode-aware** (naming registry, no other renderings may be minted):
 - Solo (single-orchestrator, the default): `vidushi-<projectshortname>`.

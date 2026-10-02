@@ -16,7 +16,7 @@
 
 ## Crucible lifecycle — register FIRST, unregister LAST
 - Register immediately on startup (before reading/running anything) with the `agentId` + `projectKey` from your prompt.
-- Heartbeat ~every 2 min. Unregister as your LAST action. Skipping any leaves a ghost agent.
+- Heartbeat ~every 2 min. Unregister as your LAST action. Skipping any leaves a ghost agent. A run-less `report` registration (the spec pre-review) needs no heartbeat, and has no run to report; it still unregisters last.
 - Run tests + ingest through your stack's crucible script / `crucible-*` skill — never hand-roll raw `cargo`/`mvn`/`curl`.
 
 ## TDD — exact procedure, no shortcuts

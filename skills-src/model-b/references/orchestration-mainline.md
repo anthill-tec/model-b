@@ -15,7 +15,7 @@ Coordinator-only rules. Read COMMON + MAINLINE. (Worker rules → TRACK; sub-age
 - **DISCUSS design/architecture WITH the user BEFORE designing** — bring options + a recommendation, the user decides, THEN spec. Never unilaterally architect a finished design.
 - **Mainline never edits an IN_PROGRESS CR's spec on develop** — check the board and `git worktree list` before touching any spec there. A scope change found mid-implementation is a patch CR (§ Escalation handling), never an inline spec edit; the owning track edits its own CR's spec in its worktree only for status and for defects against that CR's own contracts.
 - **Verify a CR's factual premise against live code** before authoring, committing or dispatching it; an agent's hypothesis is not evidence.
-- **Design→execution gate:** gap-analysis → lock the spec → present → WAIT for explicit approval → ONLY THEN cycle plan. Answering a design question is NOT approval to start cycles; if the spec moves, design wasn't final.
+- **Design→execution gate:** gap-analysis → pre-review → fold its findings → lock the spec → present → WAIT for explicit approval → ONLY THEN cycle plan. Answering a design question is NOT approval to start cycles; if the spec moves, design wasn't final.
 - **Question economy:** make reasonable scoping calls and proceed, surfacing assumptions inline; ask the user only at genuine forks the user owns. Prefer one focused question over a battery. Each numbered option offered is ONE mutually exclusive outcome — never bundle "continue OR checkpoint" into one option.
 
 ## Mainline is the PROXY for ALL approvals
