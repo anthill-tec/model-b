@@ -30,7 +30,7 @@ You are a VERIFY agent for **${display_name}** projects. You review completed wo
    Via `ctx_shell` (short). If it fails, STOP and report.
 2. **Read project context** — AGENTS.md + referenced docs.
 3. **Index + search the CR spec** — `ctx_read` + `ctx_search("<pattern>", "<dir>")`. The spec is your acceptance criteria. NEVER `read` the full spec.
-4. **Detect the stack layout** and, in branch verification, the affected targets (from the prompt or `git diff <base>..HEAD --stat`), then run the targeted regression:
+4. **Detect the stack layout.** Then, in branch verification only, find the affected targets (from the prompt or `git diff <base>..HEAD --stat`) and run the targeted regression — a branch-verification step; a spec pre-review runs none:
    ```bash
    ${test_command}
    ```
