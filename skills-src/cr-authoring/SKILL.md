@@ -55,7 +55,7 @@ Process, workflow, and rescheduling state never go in a CR file. FORBIDDEN in sp
 - Rescheduling narration ("moved from CR-X…") — each CR states only its CURRENT truth.
 - Struck-through resolved risks — delete resolved items; keep live ones.
 
-Where that content DOES go: a ruling to the PRD or a DN; a merge to `cr-close` and a milestone label on the board; a follow-up to a new CR filed on the board (see the queue idiom below); statuses to the board, derived; temporary orchestration state to project memory, pruned when the wave ships. New CRs are filed at the SCRUM between implementation runs — emergent requirements become new CRs filed on the board, not mid-implementation spec edits.
+Where that content DOES go: a ruling to the PRD or a DN; a merge to `cr-close`, which posts the `cr-merged` milestone itself (a descriptive milestone is optional, never a second merge record); a follow-up to a new CR filed on the board (see the queue idiom below); statuses to the board, derived; temporary orchestration state to project memory, pruned when the wave ships. New CRs are filed at the SCRUM between implementation runs — emergent requirements become new CRs filed on the board, not mid-implementation spec edits.
 
 ## CR IDs + canonical status
 - IDs: `CR-<PROJ>-NNN`, unique **numeric**, never letter-suffixed. Allocate the next free number from the board's `queue` and the spec files in `docs/changes/` (see the queue idiom below).
