@@ -146,7 +146,7 @@ python3 ~/.crucible/clients/python-crucible.py regression --coverage \
 ## Workflow Rules (Model B, solo)
 
 - Solo project; orchestrator label **`vidushi-mdb`**. Sandesh project `ModelB`, address `Mainline - ModelB`.
-- **Wave** = a grouping of CRs marking an execution boundary (solo: a redesign point). Setup tasks and releases are NOT waves; a release CR bundles the final gates.
+- **Wave** = a grouping of CRs marking an execution boundary (solo: a redesign point). Setup tasks and releases are NOT waves; a release is a boundary event, not a CR.
 - Plans are filed at CR start via the Crucible client: `plan-file --cr <id> --title <t> --cycle "C1 <label>" --cycle-kind red-green --cycle "C2 <label>" --cycle-kind verify --wave <n> --agent vidushi-mdb`; the registered `--agent` id is the plan's orchestrator (the free-text label flag is retired) and every filed cycle declares its own kind. **Cycle ids are server-assigned — never guessed.** Cycle labels: `C<n> <label> (§S…)`.
 - Post a `milestone` at every workflow moment: `--type gap-analysis` when gap analysis completes, `--type design-review` when the orchestrator has folded a spec pre-review's findings into the spec, `--type stage-flip --label "<CR> <cycle> done"` at each cycle-done; `cr-merged` fires automatically from `cr-close --commit <sha> --agent <id>`.
 - Wave-boundary gate: no-mistakes via `gate-run --intent <goal> --agent vidushi-mdb --skip ci`, ingested as gate evidence. `--skip` is needed because no-mistakes' `ci` step is PR-based and a git-flow project merging directly has no PR to watch, so the gate would block until `ci_timeout`. The gate reads `REPO_OWNER` from `.env`.
