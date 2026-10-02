@@ -10,7 +10,7 @@ the Quarkus-specific gotchas. Sub-agent test/impl conventions live in `java-test
 > feature branch; RED+GREEN cycles; VERIFY; FIX; regression+merge; CR/PRD/DN docs). Only the
 > mechanics differ. Where this file is silent, the universal tier governs.
 >
-> **CR / PRD / DN doc conventions → the `cr-authoring` skill** (universal; CReq/CRes pattern in its `references/creq-cres.md`). Java/Quarkus projects use the same `docs/changes/` (CR queue) + `docs/research/` (PRD/DN) layout, the same `Context/Scope §S/ACs/Risk/Non-goals` CR structure, text status states, and integration-AC discipline. Legacy `Architecture.md`/`Implementation.md` remain for system overview + phase tracking.
+> **CR / PRD / DN doc conventions → the `cr-authoring` skill** (universal; CReq/CRes pattern in its `references/creq-cres.md`). Java/Quarkus projects use the same `docs/changes/` (CR specs; the queue is on the Crucible board) + `docs/research/` (PRD/DN) layout, the same `Context/Scope §S/ACs/Risk/Non-goals` CR structure, text status states, and integration-AC discipline. Legacy `Architecture.md`/`Implementation.md` remain for system overview + phase tracking.
 
 ## Tooling (the workflow is embodied here — don't hand-roll)
 - **`~/.crucible/clients/mvn-crucible.py`** (Crucible's installed client, listed in `~/.crucible/crucible-clients.json`) — single entry for Maven test runs + Crucible ingest. Four test tiers + lifecycle + docker. **Use the CLI, NEVER inline curl/python** — a stable signature gets one-time permission approval; per-call inline re-prompts every run. Subcommands:
@@ -45,7 +45,7 @@ the Quarkus-specific gotchas. Sub-agent test/impl conventions live in `java-test
 2. **Coverage published ONLY on a zero-failure full run** — JaCoCo from a partial/failed/targeted run is incomplete; the script refuses to attach it when `failed > 0`.
 3. For CRs touching docker-compose e2e: `pre-merge-gate` wraps docker-up → regression → docker-down. (Quarkus DevServices/TestContainers self-provision containers and need no compose.)
 4. **Report ignored/skipped tests explicitly** — every regression. Enumerate `@Disabled`/`@DisabledIf`/skipped tests with reasons; distinguish env-gated (docker/native unavailable) from real coverage holes. A bare pass/skip count hides them.
-5. Close the CR + update README (status, queue, badges) **before** `git flow feature finish` — never after (use the project's `check-cr-close` equivalent).
+5. Close the CR — `cr-close` on the board and the spec's `**Status:**` flip — **before** `git flow feature finish` — never after (use the project's `check-cr-close` equivalent).
 
 ## JaCoCo — read the RIGHT report
 Quarkus emits two JaCoCo outputs; only one is correct for Quarkus-managed classes.
