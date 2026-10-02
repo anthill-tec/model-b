@@ -146,6 +146,28 @@ Under "Rules":
 
 The rendered agents are regenerated.
 
+### §S4 — Every other file that states the changed rules
+
+Every other file that states or applies the ordering, the dimensions or the pre-review says the same
+as §S1–§S3:
+
+- **`sub-agent-procedure.md` § "Worktree boundary"** and `contracts/worktree-layout.md`: a spec
+  pre-review (`CR-<ACRONYM>-NNN-SPEC-REVIEW`) is the exception to "a dispatch naming a CR runs in
+  that CR's worktree". It runs read-only in the main tree, a rerun after re-scoping included, even
+  when the CR's worktree already exists.
+- **Model B's `AGENTS.md` § "Workflow Rules"** lists the `design-review` milestone with the others.
+- **The `gap-analysis` skill's own text:** Dimension 7 counts the other nine dimensions; the `READY`
+  verdict leads to the pre-review, not to the feature branch; "When to Use" gives the new ordering.
+- **`cr-authoring`'s design phase** lists the pre-review.
+- **Who posts `design-review`:** the orchestrator, after folding the pre-review's findings, never the
+  `report` agent.
+- **The rendered VERIFY agent:** First Actions' targeted regression says, where it is introduced, that
+  it is a branch-verification step. Its spec-reading rule agrees with "Read the whole spec": the rule
+  governs how the spec is read, never how much of it.
+- **Older projects:** the re-render rule says to upgrade Model B to a release carrying this CR first,
+  since `modelb-axi agents` renders from the installed templates. The scaffolded `AGENTS.md` says the
+  agents are rendered at scaffold time and re-rendered with `modelb-axi agents`, not "frozen".
+
 ## Acceptance criteria
 
 - [ ] **`gap-analysis` carries:**
@@ -190,6 +212,14 @@ The rendered agents are regenerated.
 - [ ] **Branch-mode scoping.** Every branch-mode non-negotiable (cycle requirement, regression,
       ingest, Gate Criteria, regression line, "ends the VERIFY cycle's work") and every stack's
       `[gotchas].verify` are stated as branch-verification only.
+- [ ] **Reach (§S4).** The worktree boundary and `contracts/worktree-layout.md` carve out the
+      pre-review, in the main tree even when the worktree exists. Model B's `AGENTS.md` lists
+      `design-review`. `gap-analysis` counts nine other dimensions, `READY` leads to the pre-review,
+      and "When to Use" gives the new ordering. `cr-authoring`'s design phase names the pre-review.
+      The orchestration rules say the orchestrator posts `design-review`. VERIFY's targeted
+      regression is branch-only where introduced, and its spec-reading rule doesn't contradict "Read
+      the whole spec". The re-render rule says to upgrade first, and the scaffolded `AGENTS.md` no
+      longer calls the agents frozen. No file states the old ordering.
 - [ ] **Other agents unchanged.** The rendered RED, GREEN and FIX agents are byte-identical to HEAD,
       in both forms.
 - [ ] **Migrated gates.** The CR-017 role-flag gate (`GeneratorRoleContractS6aTest`) accepts
