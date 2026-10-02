@@ -48,7 +48,7 @@ from modelb_axi import scaffold
 from modelb_axi.requirements import REQUIREMENTS
 from tests import test_init_tool_verdicts as _verdicts
 from tests._helpers import md_section
-from tests.test_board_holds_the_queue import norm_units, units
+from tests.test_board_holds_the_queue import norm_units, units, units_with
 from tests.test_bootstrap_shutdown_registry import normalise
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -97,10 +97,6 @@ def setup_body(text: str) -> str:
     return ""
 
 
-def _units_matching(text: str, *patterns: str) -> list[str]:
-    return [u for u in norm_units(text) if all(re.search(p, u) for p in patterns)]
-
-
 def _remediation_first(unit: str, remediation: str, anchor: str, label: str) -> list[str]:
     rem = normalise(remediation)
     if rem not in unit:
@@ -119,9 +115,9 @@ def setup_task_findings(body: str, *, today: str, multi: bool, project: str,
     its hook, ``direnv allow`` per ``.envrc`` and the Track launch line (its remediation first
     when Sandesh is absent); in solo mode no Sandesh/direnv task."""
     out: list[str] = []
-    if not _units_matching(body, r"modelb-axi init", re.escape(today)):
+    if not units_with(body, r"modelb-axi init", re.escape(today)):
         out.append(f"no dated scaffold line ({today}, modelb-axi init)")
-    crucible = _units_matching(body, r"crucible_project_key", r"\bregist")
+    crucible = units_with(body, r"crucible_project_key", r"\bregist")
     if len(crucible) != 1:
         out.append(f"want one Crucible registration task, found {len(crucible)}")
     else:
@@ -133,10 +129,10 @@ def setup_task_findings(body: str, *, today: str, multi: bool, project: str,
                                       "Crucible")
     if not crucible_absent and normalise(_remediation("crucible")) in normalise(body):
         out.append("a present Crucible's remediation is named")
-    if len(_units_matching(body, r"\brepo_owner\b", r"\bowner\b")) != 1:
+    if len(units_with(body, r"\brepo_owner\b", r"\bowner\b")) != 1:
         out.append("want one REPO_OWNER check")
     mainline = f"mainline - {project.lower()}"
-    sandesh = _units_matching(body, re.escape(mainline))
+    sandesh = units_with(body, re.escape(mainline))
     if multi:
         if len(sandesh) != 1:
             out.append(f"want one Sandesh task naming {mainline!r}, found {len(sandesh)}")
@@ -155,7 +151,7 @@ def setup_task_findings(body: str, *, today: str, multi: bool, project: str,
             if sandesh_absent:
                 out += _remediation_first(task, _remediation("sandesh"), mainline, "Sandesh")
     else:
-        if sandesh or _units_matching(body, r"\bdirenv\b"):
+        if sandesh or units_with(body, r"\bdirenv\b"):
             out.append("a solo project's Setup section carries a Sandesh/direnv task")
     if not sandesh_absent and normalise(_remediation("sandesh")) in normalise(body):
         out.append("a present Sandesh's remediation is named")
@@ -168,17 +164,17 @@ def header_line_findings(text: str) -> list[str]:
     ``~/.agents/skills/model-b/SKILL.md`` without a ``crucible:`` prefix; no target release."""
     out: list[str] = []
     for slot in ("design contract", "evidence base"):
-        found = _units_matching(text, r"\b" + slot + r"\b")
+        found = units_with(text, r"\b" + slot + r"\b")
         if len(found) != 1:
             out.append(f"want one {slot} line, found {len(found)}")
         elif not re.search(r"\b" + slot + r"\b.{0,12}fill in", found[0]):
             out.append(f"the {slot} line is not a fill-in line: {found[0]!r}")
-    ontology = _units_matching(text, r"\bontology\b")
+    ontology = units_with(text, r"\bontology\b")
     if len(ontology) != 1:
         out.append(f"want one ontology line, found {len(ontology)}")
     elif (normalise(ONTOLOGY_PATH) not in ontology[0]) or "crucible:" in ontology[0]:
         out.append(f"the ontology line does not cite {ONTOLOGY_PATH} unprefixed: {ontology[0]!r}")
-    if _units_matching(text, r"\btarget release\b"):
+    if units_with(text, r"\btarget release\b"):
         out.append("a target release is scaffolded")
     return out
 
@@ -188,14 +184,14 @@ def workflow_rules_findings(rules: str) -> list[str]:
     the queue and the execution state; ``docs/changes/`` holds the specs; the manual
     registrations point to the Setup section; and no README is named."""
     out: list[str] = []
-    if not _units_matching(rules, r"\bcrucible\b", r"\bboard\b", r"\bqueue\b",
+    if not units_with(rules, r"\bcrucible\b", r"\bboard\b", r"\bqueue\b",
                            r"\bexecution state\b"):
         out.append("no rule says the Crucible board holds the queue and the execution state")
-    if not _units_matching(rules, r"docs/changes/?", r"\bspecs?\b"):
+    if not units_with(rules, r"docs/changes/?", r"\bspecs?\b"):
         out.append("no rule says docs/changes/ holds the specs")
-    if not _units_matching(rules, r"\bregistrations?\b", SETUP_SECTION_RE.pattern):
+    if not units_with(rules, r"\bregistrations?\b", SETUP_SECTION_RE.pattern):
         out.append("no rule points the manual registrations to the Setup section")
-    named = _units_matching(rules, r"\breadme\b")
+    named = units_with(rules, r"\breadme\b")
     if named:
         out.append(f"a rule names a README: {named[0]!r}")
     return out
