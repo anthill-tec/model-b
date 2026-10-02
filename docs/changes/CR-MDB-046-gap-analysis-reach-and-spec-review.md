@@ -155,6 +155,11 @@ as §S1–§S3:
   pre-review (`CR-<ACRONYM>-NNN-SPEC-REVIEW`) is the exception to "a dispatch naming a CR runs in
   that CR's worktree". It runs read-only in the main tree, a rerun after re-scoping included, even
   when the CR's worktree already exists.
+  `orchestration-common`'s dispatch-routing bullet names the same exception. Ruled during C4
+  (2026-10-02), as a defect against this carve-out: the Model B Pi package's worktree extension
+  (`pi-package/extensions/worktree.ts`) never routes a dispatch whose description opens with a
+  pre-review id into a worktree, by CR id or because a root is entered. It roots it in the main
+  worktree; every other routing behaviour is unchanged (DN §D19).
 - **Model B's `AGENTS.md` § "Workflow Rules"** lists the `design-review` milestone with the others.
 - **The `gap-analysis` skill's own text:** Dimension 7 counts the other nine dimensions; the `READY`
   verdict leads to the pre-review, not to the feature branch; "When to Use" gives the new ordering.
@@ -219,7 +224,9 @@ as §S1–§S3:
       The orchestration rules say the orchestrator posts `design-review`. VERIFY's targeted
       regression is branch-only where introduced, and its spec-reading rule doesn't contradict "Read
       the whole spec". The re-render rule says to upgrade first, and the scaffolded `AGENTS.md` no
-      longer calls the agents frozen. No file states the old ordering.
+      longer calls the agents frozen. No file states the old ordering. The worktree extension roots
+      a pre-review dispatch in the main worktree, whether its worktree is registered or a root is
+      entered, and still routes a plain CR dispatch to its worktree.
 - [ ] **Other agents unchanged.** The rendered RED, GREEN and FIX agents are byte-identical to HEAD,
       in both forms.
 - [ ] **Migrated gates.** The CR-017 role-flag gate (`GeneratorRoleContractS6aTest`) accepts

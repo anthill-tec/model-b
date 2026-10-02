@@ -717,6 +717,10 @@ directory is fixed at launch, and the dispatch tool has no working-directory par
   worktree. The provider reads records from the service instance it registered with. Each child
   session loads pi-subagents too, and a child republishes, then deletes, the global service entry,
   so a lookup through `globalThis` finds nothing after the first child ends.
+- **A spec pre-review stays in the main tree** (amended 2026-10-02, CR-MDB-046). A dispatch whose
+  description opens with a spec pre-review id (`CR-<ACRONYM>-<NNN>-SPEC-REVIEW`) is never routed into
+  a worktree, neither by its CR id nor because a root is entered. It runs read-only in the
+  repository's main worktree, a rerun after re-scoping included.
 - **Entering confines the orchestrator.** `modelb_worktree_enter` sets `WF_WORKTREE_ROOT` in the
   orchestrator's process, so the hook blocks the orchestrator's own writes outside its CR's worktree
   (its session cwd stays the main tree; reads, `git -C` and test runs in the worktree are
