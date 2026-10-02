@@ -57,8 +57,8 @@ lean = '''1. `ctx_read` + `ctx_search` the spec (queries: "acceptance criteria",
 builtin = '''1. `grep` the spec for its headings and the sections you need (patterns: "acceptance criteria", "scope", "files touched"), then `read` only those line ranges (`offset`/`limit`). NEVER `read` the full spec.'''
 
 [[passage]]
-lean = '''3. **Index + search the CR spec** — `ctx_read` + `ctx_search("<pattern>", "<dir>")`. The spec is your acceptance criteria. NEVER `read` the full spec.'''
-builtin = '''3. **Index + search the CR spec** — `grep` it for its headings and the patterns you need, then `read` those line ranges (`offset`/`limit`). The spec is your acceptance criteria. NEVER `read` the full spec.'''
+lean = '''3. **Index + search the CR spec** — `ctx_read` + `ctx_search("<pattern>", "<dir>")`. The spec is your acceptance criteria. This rule governs how you read the spec, never how much of it: you read all of it (see "Reading the CR"), section by section through these tools. NEVER `read` the full spec in one call.'''
+builtin = '''3. **Index + search the CR spec** — `grep` it for its headings and the patterns you need, then `read` those line ranges (`offset`/`limit`). The spec is your acceptance criteria. This rule governs how you read the spec, never how much of it: you read all of it (see "Reading the CR"), range by range. NEVER `read` the full spec in one call.'''
 
 [[passage]]
 lean = '''If the prompt references a CR spec, `ctx_read` + `ctx_search("<pattern>", "<dir>")` — never `read` the full spec.'''
