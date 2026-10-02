@@ -104,7 +104,8 @@ skill's queue-verbs section) — never in a table in a file.
 - **Crucible absent:** filing is the spec file alone, with the id allocated from the spec files;
   the board steps are skipped, never imitated in a file.
 - **Unregistered** (an empty `CRUCIBLE_PROJECT_KEY` in `.env`): do the Setup section of the root
-  project's `AGENTS.md` first, then file.
+  project's `AGENTS.md` first when it has one, and otherwise (a project scaffolded before the
+  board held the queue) its README's setup tasks; then file.
 - **A project scaffolded before the board held the queue** (its `docs/changes/` still carries a
   README table): the trigger is the board's `queue` missing a CR whose spec exists in
   `docs/changes/` with no merge recorded (no `cr-close`, the spec's `**Status:**` not
