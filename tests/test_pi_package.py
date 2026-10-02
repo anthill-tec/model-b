@@ -41,6 +41,39 @@ Orchestrator rulings (2026-09-24, on the cycle-111 RED design):
   oracle, table-tested below; where the product keeps the mapping is not
   pinned.
 
+Retired by CR-MDB-047 (§S4: ``sandesh-watcher.ts`` is removed; listed here per
+"Removed", amended at 5dd8a36 for VERIFY F2): the module
+``tests/test_pi_sandesh_watcher.py`` — its base case ``SandeshWatcherTestCase``
+and every test it ran — and its loader, ``tests/fixtures/pi_watcher_harness.mjs``.
+Sandesh's own extension, sandesh-pi, now supervises the wake, so none has a
+successor here. The 25 retired tests, by id:
+
+  - ``tests.test_pi_sandesh_watcher.SandeshWatcherRegistrationTest.test_factory_registers_the_sandesh_watcher_tool_and_the_watcher_command``
+  - ``tests.test_pi_sandesh_watcher.SandeshWatcherRegistrationTest.test_tool_schema_declares_start_status_stop_and_address_project``
+  - ``tests.test_pi_sandesh_watcher.SandeshWatcherStartTest.test_start_spawns_sandesh_notify_with_exactly_to_and_project``
+  - ``tests.test_pi_sandesh_watcher.SandeshWatcherStartTest.test_start_spawns_the_child_with_pythonunbuffered_so_the_banner_is_not_held``
+  - ``tests.test_pi_sandesh_watcher.SandeshWatcherStartTest.test_start_reports_ready_naming_the_address_only_after_the_banner``
+  - ``tests.test_pi_sandesh_watcher.SandeshWatcherStartTest.test_start_does_not_hang_when_the_child_exits_without_a_banner``
+  - ``tests.test_pi_sandesh_watcher.SandeshWatcherStartTest.test_start_while_one_runs_reports_it_and_spawns_nothing``
+  - ``tests.test_pi_sandesh_watcher.SandeshWatcherStartTest.test_stop_tool_terminates_the_child``
+  - ``tests.test_pi_sandesh_watcher.SandeshWatcherStartTest.test_watcher_stop_command_terminates_the_child``
+  - ``tests.test_pi_sandesh_watcher.SandeshWatcherStartTest.test_status_tool_names_the_running_address``
+  - ``tests.test_pi_sandesh_watcher.SandeshWatcherStartTest.test_watcher_status_command_names_the_running_address``
+  - ``tests.test_pi_sandesh_watcher.SandeshWatcherExitTest.test_exit_0_wakes_once_naming_the_ids_and_quoted_fetch_and_relaunches_at_once``
+  - ``tests.test_pi_sandesh_watcher.SandeshWatcherExitTest.test_exit_0_again_with_the_same_ids_does_not_wake_and_retries_every_30s``
+  - ``tests.test_pi_sandesh_watcher.SandeshWatcherExitTest.test_status_during_a_retry_does_not_name_the_dead_childs_pid``
+  - ``tests.test_pi_sandesh_watcher.SandeshWatcherExitTest.test_exit_0_without_ids_wakes_again_after_a_relaunch_reports_no_mail``
+  - ``tests.test_pi_sandesh_watcher.SandeshWatcherExitTest.test_exit_0_with_the_same_ids_wakes_again_after_a_relaunch_reports_no_mail``
+  - ``tests.test_pi_sandesh_watcher.SandeshWatcherExitTest.test_exit_0_with_new_ids_wakes_again``
+  - ``tests.test_pi_sandesh_watcher.SandeshWatcherExitTest.test_exit_2_relaunches_once_silently``
+  - ``tests.test_pi_sandesh_watcher.SandeshWatcherExitTest.test_three_exit_2_within_a_minute_surface_and_stop_relaunching``
+  - ``tests.test_pi_sandesh_watcher.SandeshWatcherExitTest.test_exit_2_spread_over_more_than_a_minute_keeps_relaunching_silently``
+  - ``tests.test_pi_sandesh_watcher.SandeshWatcherExitTest.test_exit_1_surfaces_usage_or_configuration_error_without_relaunch``
+  - ``tests.test_pi_sandesh_watcher.SandeshWatcherExitTest.test_exit_3_surfaces_tombstoned_project_without_relaunch``
+  - ``tests.test_pi_sandesh_watcher.SandeshWatcherExitTest.test_exit_4_surfaces_eviction_without_relaunch``
+  - ``tests.test_pi_sandesh_watcher.SandeshWatcherExitTest.test_exit_5_surfaces_already_live_dedup_without_relaunch``
+  - ``tests.test_pi_sandesh_watcher.SandeshWatcherExitTest.test_signal_exit_surfaces_the_signal_without_relaunch``
+
 Stdlib only.
 """
 
