@@ -316,6 +316,13 @@ def _golden_readme(label: str, mode: str, today: str) -> str:
     )
 
 
+#: The scaffolded agent-naming line's opening, as ``_render_agents_md`` renders it today.
+GOLDEN_NAMING_LINE_PREFIX = f"- CR ids: `CR-{ACRONYM}-NNN`."
+#: CR-MDB-046 §S2: a pointer to the ``crucible`` skill's Identity section, in either order.
+CRUCIBLE_IDENTITY_POINTER_RE = re.compile(
+    r"`crucible` skill\b.{0,40}\bIdentity\b|\bIdentity\b.{0,40}`crucible` skill\b")
+
+
 def _golden_agents_md(label: str, mode: str) -> str:
     """Today's project AGENTS.md WITHOUT its capability-contract section.
 
@@ -817,10 +824,31 @@ class _Shared:
                              "§S2/AC: AGENTS.md outside the identity section is today's")
             self.assertIn("SANDESH_PROJECT", a_identity,
                           f"§S2: the Identity & naming section names SANDESH_PROJECT; got {a_identity!r}")
+            # MIGRATED at CR-MDB-046 C1 RED (§S2): the agent-naming line also points to the
+            # `crucible` skill's Identity section, in a form the spec leaves open; it is pinned
+            # by test_agents_md_naming_line_points_to_the_crucible_skill_identity_section, and
+            # every other identity line is still today's, in order.
             remaining = iter(a_identity.splitlines())
             missing = [line for line in g_identity.splitlines()
-                       if not any(line == seen for seen in remaining)]
+                       if not line.startswith(GOLDEN_NAMING_LINE_PREFIX)
+                       and not any(line == seen for seen in remaining)]
             self.assertEqual(missing, [], "§S2/AC: today's identity lines are all kept, in order")
+
+        def test_agents_md_naming_line_points_to_the_crucible_skill_identity_section(self):
+            """CR-MDB-046 §S2: ``_render_agents_md``'s agent-naming line keeps the CR-id form
+            and the agent-naming header, and also points to the ``crucible`` skill's Identity
+            section."""
+            identity = md_section(self._read("AGENTS.md"), "## Identity & naming")
+            lines = [ln for ln in identity.splitlines()
+                     if ln.startswith(GOLDEN_NAMING_LINE_PREFIX)]
+            self.assertEqual(len(lines), 1, f"exactly one naming line; identity={identity!r}")
+            line = lines[0]
+            self.assertIn("Crucible agentIds follow the stack client's agent-naming header", line)
+            self.assertIn("never improvised", line)
+            self.assertRegex(
+                line, CRUCIBLE_IDENTITY_POINTER_RE,
+                f"§S2: the naming line points to the `crucible` skill's Identity section; "
+                f"got {line!r}")
 
         def test_every_other_emitted_file_is_byte_identical_to_today(self):
             """Regression pin (passes before GREEN): guards the AC's 'exactly these
@@ -2026,6 +2054,28 @@ class NoShippedTextPutsTheKeyInEnvLocalTest(unittest.TestCase):
             "§S2: CRUCIBLE_PROJECT_KEY is in `.env` (Crucible's client reads only "
             "`<project-dir>/.env`); shipped text still places it in `.env.local`",
         )
+
+
+class CrucibleIdentityPointerDetectorTest(unittest.TestCase):
+    """CR-MDB-046 \u00a7S2: :data:`CRUCIBLE_IDENTITY_POINTER_RE`, proven both ways on synthetic
+    naming lines."""
+
+    TODAY = (f"{GOLDEN_NAMING_LINE_PREFIX} Crucible agentIds follow the stack client's "
+             "agent-naming header \u2014 never improvised.")
+
+    def test_a_pointer_to_the_crucible_skills_identity_section_matches_in_either_order(self):
+        for line in (self.TODAY[:-1] + "; see the `crucible` skill's \u00a7 \"Identity\".",
+                     self.TODAY[:-1] + " (the Identity section of the `crucible` skill)."):
+            with self.subTest(line=line):
+                self.assertRegex(line, CRUCIBLE_IDENTITY_POINTER_RE)
+                self.assertTrue(line.startswith(GOLDEN_NAMING_LINE_PREFIX))
+
+    def test_todays_line_and_a_pointer_elsewhere_do_not_match(self):
+        for line in (self.TODAY,
+                     self.TODAY[:-1] + "; see the `crucible` skill.",
+                     self.TODAY[:-1] + "; see the `model-b` skill's Identity section."):
+            with self.subTest(line=line):
+                self.assertNotRegex(line, CRUCIBLE_IDENTITY_POINTER_RE)
 
 
 if __name__ == "__main__":
