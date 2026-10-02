@@ -10,8 +10,9 @@
   neither the key nor the section is written.
 - §S5 — the ``AGENTS.md`` capability contract lists each of the project's
   tools with its state (``present`` / ``absent`` / ``unknown``) and the
-  remediation where it is not present; the queue README's Sandesh and
-  Crucible setup tasks name the tool's remediation first when it is absent.
+  remediation where it is not present; the Sandesh and Crucible setup tasks
+  (in the root ``AGENTS.md``'s ``## Setup`` section since CR-MDB-048 §S2) name
+  the tool's remediation first when it is absent.
 - §S8 — the project's agents match its tools. With lean-ctx present the
   agents ``init`` and ``modelb-axi agents`` render are byte-identical to
   today's (the committed ``generator/agents/`` set, which stays unchanged).
@@ -52,7 +53,7 @@ from unittest import mock
 from modelb_axi import agents, scaffold
 from modelb_axi.requirements import REQUIREMENTS, STACK_TOOLCHAINS
 from tests import test_init_tool_verdicts as _verdicts
-from tests._helpers import decode_axi, parse_env_file, run_module
+from tests._helpers import decode_axi, md_section, parse_env_file, run_module
 from tests.pi_capability_sandbox import AGENT_DIR_ENV
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -591,14 +592,26 @@ class CapabilityContractStateTest(_ProjectCase):
 
 
 class SetupTasksNameRemediationTest(_ProjectCase):
-    """§S5: the identity section's Sandesh project and the queue README's
-    setup tasks stay; where Sandesh or Crucible is absent, its setup task
-    first names the tool's remediation."""
+    """§S5: the identity section's Sandesh project and the setup tasks stay;
+    where Sandesh or Crucible is absent, its setup task first names the tool's
+    remediation.
 
-    def _readme_line(self, target: Path, anchor: str) -> str:
-        text = self.read(target / "docs" / "changes" / "README.md")
-        lines = [ln for ln in text.splitlines() if anchor in ln and ln.startswith("- [ ]")]
-        self.assertEqual(len(lines), 1, f"one setup task names {anchor!r}; README={text!r}")
+    MIGRATED at CR-MDB-048 C2 RED (§S2): the setup tasks moved from the queue
+    README into the root ``AGENTS.md``'s ``## Setup`` section, with the same
+    absent-tool remediations; ``init`` writes no queue README. Each test keeps
+    its id and its intent against the new location."""
+
+    def _setup_section(self, target: Path) -> str:
+        self.assertFalse((target / "docs" / "changes" / "README.md").exists(),
+                         "CR-MDB-048 §S2: init writes no queue README")
+        section = md_section(self.read(target / "AGENTS.md"), "## Setup")
+        self.assertTrue(section, "CR-MDB-048 §S2: the root AGENTS.md carries a ## Setup section")
+        return section
+
+    def _setup_task(self, target: Path, anchor: str) -> str:
+        section = self._setup_section(target)
+        lines = [ln for ln in section.splitlines() if anchor in ln and ln.startswith("- ")]
+        self.assertEqual(len(lines), 1, f"one setup task names {anchor!r}; Setup={section!r}")
         return lines[0]
 
     def test_an_absent_crucible_puts_its_remediation_first_in_the_registration_task(self):
@@ -606,7 +619,7 @@ class SetupTasksNameRemediationTest(_ProjectCase):
         self.write_install(self.verdicts(crucible="absent"))
         target = self.root / "proj"
         self.init_ok(target)
-        task = self._readme_line(target, "CRUCIBLE_PROJECT_KEY")
+        task = self._setup_task(target, "CRUCIBLE_PROJECT_KEY")
         self.assertIn(remediation, task)
         self.assertLess(task.index(remediation), task.index("CRUCIBLE_PROJECT_KEY"),
                         f"§S5: the remediation comes first; {task!r}")
@@ -615,8 +628,8 @@ class SetupTasksNameRemediationTest(_ProjectCase):
         self.write_install(self.verdicts())
         target = self.root / "proj"
         self.init_ok(target)
-        self._readme_line(target, "CRUCIBLE_PROJECT_KEY")
-        text = self.read(target / "docs" / "changes" / "README.md")
+        self._setup_task(target, "CRUCIBLE_PROJECT_KEY")
+        text = self._setup_section(target)
         self.assertNotIn(_row("crucible")["remediation"], text)
         self.assertNotIn(_row("sandesh")["remediation"], text)
 
@@ -626,10 +639,10 @@ class SetupTasksNameRemediationTest(_ProjectCase):
         target = self.root / "proj"
         self.init_ok(target, mode="multi:2")
         anchor = f"`Mainline - {SANDESH_ID}`"
-        task = self._readme_line(target, anchor)
+        task = self._setup_task(target, anchor)
         self.assertIn(remediation, task)
         self.assertLess(task.index(remediation), task.index(anchor), task)
-        text = self.read(target / "docs" / "changes" / "README.md")
+        text = self._setup_section(target)
         self.assertNotIn(_row("crucible")["remediation"], text,
                          "a present Crucible's task is unchanged")
         agents_md = self.read(target / "AGENTS.md")
@@ -640,7 +653,7 @@ class SetupTasksNameRemediationTest(_ProjectCase):
         self.write_install(self.verdicts())
         target = self.root / "proj"
         self.init_ok(target, mode="multi:2")
-        task = self._readme_line(target, f"`Mainline - {SANDESH_ID}`")
+        task = self._setup_task(target, f"`Mainline - {SANDESH_ID}`")
         self.assertNotIn(_row("sandesh")["remediation"], task)
 
 

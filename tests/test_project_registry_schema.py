@@ -267,7 +267,8 @@ GOLDEN_GITIGNORE = (
     "test-reports/\n"
 )
 
-#: Today's project-key setup task — the one README line §S2 changes.
+#: The project-key setup task as the queue README carried it before CR-MDB-043 §S2 moved the key
+#: to ``.env`` (kept: it names the form §S2 retired).
 GOLDEN_KEY_TASK = (
     "- [ ] Register the project in Crucible and paste the key into `.env.local` "
     "(`CRUCIBLE_PROJECT_KEY=`) — manual step (registrations are manual in "
@@ -275,45 +276,28 @@ GOLDEN_KEY_TASK = (
 )
 
 
-def _golden_readme(label: str, mode: str, today: str) -> str:
-    # MIGRATED PIN (CR-MDB-043 C4 FIX F1, amended AC2): the multi-mode Sandesh
-    # setup task names SANDESH_PROJECT's value and address, not PROJECT_NAME.
-    sandesh_task = (
-        f"- [ ] Sandesh setup + register (`{DERIVED_SANDESH}`, "
-        f"`Mainline - {DERIVED_SANDESH}`) — "
-        "manual step (registrations are manual in scaffold v1)\n"
-        if mode != "solo" else ""
-    )
-    return (
-        f"# {NAME} — CR queue\n"
-        "\n"
-        f"**Project:** {NAME} (acronym: {ACRONYM} · orchestrator: `{label}`) · "
-        "**Design contract:** _fill in (`docs/research/PRD-….md`)_ · "
-        "**Evidence base:** _fill in_ · "
-        "**Ontology:** `~/.agents/skills/model-b/SKILL.md` · "
-        "**Target release:** 0.1.0\n"
-        "\n"
-        "Queue rows enumerate the whole delivery (STRUCTURE only). Live status "
-        "is DERIVED on the Crucible board (plans/cycles/milestones) — never "
-        "hand-maintained here.\n"
-        "\n"
-        "## Queue\n"
-        "\n"
-        "| CR | Title | Wave | Depends on |\n"
-        "|---|---|---|---|\n"
-        "\n"
-        "## Setup tasks (pre-wave — not a wave; a wave is a grouping of CRs)\n"
-        "\n"
-        f"- [x] Scaffold via `modelb-axi init` — {today}\n"
-        f"{GOLDEN_KEY_TASK}\n"
-        f"{sandesh_task}"
+def _golden_setup_tasks(today: str) -> list[str]:
+    """The setup tasks the queue README carried as they stood at CR-MDB-048 (the key in ``.env``,
+    CR-MDB-043 §S2), less the multi-mode Sandesh task, whose CR-MDB-047 form is pinned by
+    ``tests.test_init_sandesh_address_and_envrc``.
+
+    MIGRATED PIN (CR-MDB-048 C2 RED, §S2; was ``_golden_readme``): ``init`` writes no queue
+    README; its setup tasks — the dated scaffold line among them, so the scaffold date moves into
+    ``AGENTS.md`` — are carried, as they stand, by the root ``AGENTS.md``'s ``## Setup``
+    section. The README's title, header slots, table and Notes log are not scaffolded (the
+    header slots are pinned by ``tests.test_project_setup_section``)."""
+    return [
+        f"- [x] Scaffold via `modelb-axi init` — {today}",
+        GOLDEN_KEY_TASK.replace("`.env.local`", "`.env`"),
         "- [ ] Confirm the remote owner matches `REPO_OWNER` in `.env` before "
-        "the first wave-boundary gate\n"
-        "\n"
-        "## Notes\n"
-        "\n"
-        f"- {today}: repository scaffolded by `modelb-axi init`.\n"
-    )
+        "the first wave-boundary gate",
+    ]
+
+
+#: A line carrying one of the README's header slots (CR-MDB-048 §S2), wherever ``AGENTS.md`` puts it.
+HEADER_SLOT_LINE_RE = re.compile(r"Design contract|Evidence base|Ontology")
+#: The two Workflow-rules bullets CR-MDB-048 §S2 rewrites (they named the queue README).
+RETIRED_RULE_PREFIXES = ("- Queue (`docs/changes/README.md`)", "- Registrations are manual")
 
 
 #: The scaffolded agent-naming line's opening, as ``_render_agents_md`` renders it today.
@@ -351,7 +335,13 @@ def _golden_agents_md(label: str, mode: str) -> str:
     MIGRATED PIN (CR-MDB-045 C2 RED): the contract section is now rendered
     from the installation's recorded verdicts (CR-MDB-045 §S5), pinned by
     tests.test_project_tools_setup; the comparison below strips it from the
-    emitted file (:func:`_without_capability_contract`)."""
+    emitted file (:func:`_without_capability_contract`).
+
+    MIGRATED PIN (CR-MDB-048 C2 RED, §S2): the two Workflow-rules bullets that
+    named the queue README (``RETIRED_RULE_PREFIXES``) are rewritten in a form
+    the spec leaves open (pinned by ``tests.test_project_setup_section``); the
+    ``## Setup`` section and the header-slot lines are new. The comparison below
+    leaves those out (:func:`_agents_md_without_cr048_additions`)."""
     return (
         f"# {NAME} — project AGENTS.md\n"
         "\n"
@@ -449,6 +439,26 @@ def _without_capability_contract(text: str) -> str:
         return text
     end = text.find("\n## ", start)
     return text[:start] + (text[end + 1:] if end != -1 else "")
+
+
+def _agents_md_without_cr048_additions(text: str) -> str:
+    """``text`` without what CR-MDB-048 §S2 adds to the root ``AGENTS.md``: its ``## Setup``
+    section, every header-slot line, and a ``## `` heading left with an empty body by their
+    removal."""
+    lines = [ln for ln in _outside_section(text, "## Setup").splitlines()
+             if not HEADER_SLOT_LINE_RE.search(ln)]
+    kept: list[str] = []
+    for i, line in enumerate(lines):
+        if line.startswith("## "):
+            body = []
+            for nxt in lines[i + 1:]:
+                if nxt.startswith("## "):
+                    break
+                body.append(nxt)
+            if not any(b.strip() for b in body):
+                continue
+        kept.append(line)
+    return "\n".join(kept) + "\n"
 
 
 def _emitted_files(target: Path) -> set:
@@ -809,42 +819,59 @@ class _Shared:
                 f"must not mention Crucible registration or the project key; {text!r}",
             )
 
-        def test_queue_readme_differs_only_in_the_project_key_setup_task(self):
-            # MIGRATED at CR-MDB-047 C1 RED (§S2): the Sandesh setup task now
-            # also names direnv, `direnv allow` and the Track launch line (pinned
-            # by tests.test_init_sandesh_address_and_envrc), in a form the spec
-            # leaves open — so the README is compared outside its setup tasks,
-            # and inside them today's other tasks are kept in order.
-            actual_text = self._read("docs/changes/README.md")
-            golden_text = _golden_readme(self.LABEL, self.MODE, self._today)
-            head = "## Setup tasks"
-            self.assertEqual(_outside_section(actual_text, head),
-                             _outside_section(golden_text, head),
-                             "the README outside its setup tasks is today's")
-            actual = md_section(actual_text, head).splitlines(keepends=False)
-            golden = md_section(golden_text, head).splitlines(keepends=False)
-            kept = [ln for ln in golden if ln != GOLDEN_KEY_TASK and "Sandesh setup" not in ln]
+        def test_agents_md_setup_section_carries_the_readme_setup_tasks_as_they_stand(self):
+            # MIGRATED at CR-MDB-048 C2 RED (§S2; was
+            # test_queue_readme_differs_only_in_the_project_key_setup_task): init writes no
+            # queue README; the root AGENTS.md's ## Setup section carries its setup tasks as
+            # they stand, the dated scaffold line among them, in order; the key task names
+            # `.env`, never `.env.local`.
+            self.assertFalse((self._target / "docs" / "changes" / "README.md").exists(),
+                             "CR-MDB-048 §S2: init writes no queue README")
+            agents_md = self._read("AGENTS.md")
+            setup = md_section(agents_md, "## Setup")
+            self.assertTrue(setup, f"CR-MDB-048 §S2: a ## Setup section; AGENTS.md={agents_md!r}")
+            actual = setup.splitlines()
             remaining = iter(actual)
-            self.assertEqual([ln for ln in kept if not any(ln == seen for seen in remaining)], [],
-                             f"today's other setup tasks are kept, in order; README={actual_text!r}")
-            tasks = [ln for ln in actual if ln.startswith("- [ ] Register the project in Crucible")]
-            self.assertEqual(len(tasks), 1, actual_text)
-            task = tasks[0]
-            self.assertIn("`.env`", task, "§S2: the setup task names `.env` for the key")
-            self.assertIn("CRUCIBLE_PROJECT_KEY", task)
-            self.assertNotIn(".env.local", task, "§S2: the key no longer goes to .env.local")
+            golden = _golden_setup_tasks(self._today)
+            self.assertEqual([ln for ln in golden if not any(ln == seen for seen in remaining)], [],
+                             f"the README's setup tasks are kept, as they stand, in order; Setup={setup!r}")
+            tasks = [ln for ln in actual if "CRUCIBLE_PROJECT_KEY" in ln]
+            self.assertEqual(len(tasks), 1, setup)
+            self.assertIn("`.env`", tasks[0], "§S2: the setup task names `.env` for the key")
+            self.assertNotIn(".env.local", tasks[0], "§S2: the key no longer goes to .env.local")
+            sandesh = [ln for ln in actual if f"Mainline - {DERIVED_SANDESH}" in ln]
+            self.assertEqual(len(sandesh), 0 if self.MODE == "solo" else 1,
+                             f"the Sandesh task in multi mode only; Setup={setup!r}")
 
-        def test_agents_md_differs_only_in_its_identity_section_naming_sandesh_project(self):
-            actual = _without_capability_contract(self._read("AGENTS.md"))
+        def test_agents_md_differs_only_in_identity_setup_header_lines_and_workflow_rules(self):
+            # MIGRATED at CR-MDB-048 C2 RED (§S2; was
+            # test_agents_md_differs_only_in_its_identity_section_naming_sandesh_project): the
+            # ## Setup section and the header-slot lines are left out of the comparison
+            # (pinned by tests.test_project_setup_section); the Workflow rules keep today's
+            # bullets, in order, except the two that named the queue README.
+            actual = _agents_md_without_cr048_additions(
+                _without_capability_contract(self._read("AGENTS.md")))
             golden = _golden_agents_md(self.LABEL, self.MODE)
             head, rules = "## Identity & naming", "## Workflow rules"
             a_pre, a_rest = actual.split(head, 1)
             g_pre, g_rest = golden.split(head, 1)
             a_identity, a_post = a_rest.split(rules, 1)
             g_identity, g_post = g_rest.split(rules, 1)
-            self.assertEqual((a_pre, _without_stack_lines(a_post)),
-                             (g_pre, _without_stack_lines(g_post)),
-                             "§S2/AC: AGENTS.md outside the identity section is today's")
+            a_rules, a_post = a_post.split("\n## ", 1)
+            g_rules, g_post = g_post.split("\n## ", 1)
+
+            def lines(text: str) -> list[str]:
+                return [ln for ln in _without_stack_lines(text).splitlines() if ln.strip()]
+
+            self.assertEqual((lines(a_pre), lines(a_post)), (lines(g_pre), lines(g_post)),
+                             "§S2/AC: AGENTS.md outside the identity section, the Setup section, "
+                             "the header-slot lines and the Workflow rules is today's")
+            remaining_rules = iter(a_rules.splitlines())
+            kept_rules = [ln for ln in g_rules.splitlines()
+                          if ln.strip() and not ln.startswith(RETIRED_RULE_PREFIXES)]
+            self.assertEqual(
+                [ln for ln in kept_rules if not any(ln == seen for seen in remaining_rules)], [],
+                f"CR-MDB-048 §S2: today's other Workflow rules are kept, in order; got {a_rules!r}")
             # MIGRATED at CR-MDB-046 C4 FIX (§S4): the Skill-freeze stack line no longer calls
             # the agents frozen; it keeps GOLDEN_STACK_LINE_PREFIX, is pinned phrase-level by
             # test_agents_md_stack_lines_say_rendered_at_scaffold_time_and_re_rendered, and is
@@ -900,6 +927,8 @@ class _Shared:
             tests.test_project_tools_setup; they are no longer today's bytes."""
             literal = {
                 "docs/memory/INDEX.md": _golden_memory_index(self._template_names).encode("utf-8"),
+                # CR-MDB-048 §S2: the specs' directory exists through an empty .gitkeep.
+                "docs/changes/.gitkeep": b"",
             }
             for sub in self.SUBS:
                 literal[f"{sub}/AGENTS.md"] = _golden_sub_agents_md(sub).encode("utf-8")
@@ -933,9 +962,10 @@ class _Shared:
         def test_the_emitted_file_set_is_todays(self):
             """Regression pin (passes before GREEN): no file added or dropped."""
             # MIGRATED at CR-MDB-047 C1 RED (§S2): an `.envrc` beside every `.env`.
+            # MIGRATED at CR-MDB-048 C2 RED (§S2): `docs/changes/.gitkeep`, not the queue README.
             expected = set(self._reference) | {
                 ".env", ".env.local", ".gitignore", "AGENTS.md",
-                "docs/changes/README.md", "docs/memory/INDEX.md", ".envrc",
+                "docs/changes/.gitkeep", "docs/memory/INDEX.md", ".envrc",
             }
             for sub in self.SUBS:
                 expected |= {f"{sub}/.env", f"{sub}/AGENTS.md", f"{sub}/.envrc"}
@@ -1019,14 +1049,21 @@ class SandeshProjectInitTest(unittest.TestCase):
         self.assertEqual(_key_lines(text, "SANDESH_PROJECT"), ["SANDESH_PROJECT=Foo_Bar\n"],
                          f"§S2/AC: --sandesh-project overrides; .env={text!r}")
 
-    def test_multi_readme_sandesh_task_names_the_override_and_its_address(self):
+    def test_multi_setup_sandesh_task_names_the_override_and_its_address(self):
         """§S2/AC2 (C4 FIX F1): the multi-mode Sandesh setup task names
-        SANDESH_PROJECT's value and address, not PROJECT_NAME."""
+        SANDESH_PROJECT's value and address, not PROJECT_NAME.
+
+        MIGRATED at CR-MDB-048 C2 RED (§S2; was
+        ``test_multi_readme_sandesh_task_names_the_override_and_its_address``):
+        the task is in the root ``AGENTS.md``'s ``## Setup`` section."""
         result = _init(self.root, self.target, "--sandesh-project", "Foo_Bar", mode="multi:2")
         self.assertEqual(result.returncode, 0, f"stderr={result.stderr[-800:]!r}")
-        readme = (self.target / "docs" / "changes" / "README.md").read_text(encoding="utf-8")
-        tasks = [line for line in readme.splitlines() if "Sandesh setup" in line]
-        self.assertEqual(len(tasks), 1, readme)
+        self.assertFalse((self.target / "docs" / "changes" / "README.md").exists(),
+                         "CR-MDB-048 §S2: init writes no queue README")
+        agents_md = (self.target / "AGENTS.md").read_text(encoding="utf-8")
+        setup = md_section(agents_md, "## Setup")
+        tasks = [line for line in setup.splitlines() if "Sandesh setup" in line]
+        self.assertEqual(len(tasks), 1, agents_md)
         self.assertIn("(`Foo_Bar`, `Mainline - Foo_Bar`)", tasks[0])
         self.assertNotIn(NAME, tasks[0], "the task no longer names PROJECT_NAME")
 
