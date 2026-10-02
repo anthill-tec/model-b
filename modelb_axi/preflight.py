@@ -33,7 +33,9 @@ does Model B's own Pi package, ``pi install npm:@anthill-tec/modelb-pi``
 The ``sandesh`` probe runs ``sandesh --version`` (CR-MDB-047 §S1): a CLI
 below :data:`SANDESH_VERSION_FLOOR` is ``outdated`` — reported like
 ``absent``, naming ``uv tool upgrade sandesh-relay``, and never
-re-installed.
+re-installed. The ``sandesh`` CLI is REQUIRED: still absent after its
+install offer, declined, or ``outdated``, it fails the pre-flight unless
+the caller allows missing capabilities.
 
 Every warning printed is also appended, unprefixed, to the caller's
 ``warnings`` list so the envelope can carry it. This module writes
@@ -307,7 +309,8 @@ def run_preflight(
     Returns ``(exit_code, deps, capabilities)``: ``deps`` is exactly
     uv/sandesh/crucible for ``[deps]``; ``capabilities`` maps every probed
     requirement id to its verdict for ``[capabilities]`` (§S4). Non-zero
-    when ``uv`` is absent, or a required capability is absent without
+    when ``uv`` is absent, or a required capability (a tier-1 one, or the
+    ``sandesh`` CLI absent or ``outdated``) is missing without
     ``allow_missing_capabilities``.
     """
     if warnings is None:
@@ -412,6 +415,18 @@ def run_preflight(
             )
         _warn(message, warnings)
     capabilities["sandesh"] = sandesh_verdict
+    if sandesh_verdict in (ABSENT, OUTDATED) and not allow_missing_capabilities:
+        # CR-MDB-047 §S1: the `sandesh` CLI is required — sandesh-pi refuses
+        # a missing or outdated one — so, still absent after the offer,
+        # declined or outdated, it fails the pre-flight like a required
+        # tier-1 capability, before anything is written.
+        message = (
+            "pre-flight failed — required capabilities missing: sandesh; "
+            "install them, or re-run with --allow-missing-capabilities"
+        )
+        print(f"modelb-axi: {message}", file=sys.stderr)
+        warnings.append(message)
+        return 1, {}, capabilities
 
     remediate_toolchains(
         toolchains, resolved, lambda message: _warn(message, warnings), offer,

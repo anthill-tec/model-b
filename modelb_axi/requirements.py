@@ -134,7 +134,9 @@ REQUIREMENTS: tuple[dict, ...] = (
         "id": "sandesh",
         "tier": 2,
         "provider": "sandesh-relay (via uv tool install)",
-        "policy": "recommended",
+        # CR-MDB-047 §S1: required — sandesh-pi refuses a missing or
+        # outdated CLI; the pre-flight fails without it.
+        "policy": "required",
         "scope": "always",
         "probe": "deps",
         "asset_families": ("bootstrap and shutdown skills",),

@@ -44,10 +44,11 @@ Install these in the order given; no step relies on one that comes after it.
 
    From a source copy of Model B, run `uv tool install .` from the root of that copy instead;
    to update, run `uv tool install --reinstall .` from a newer copy.
-6. **Recommended tools.** The install goes ahead without them, but some assets will not work
+6. **`sandesh`** — required, version 0.4.0 or later: Sandesh's Pi extension refuses a missing
+   or older CLI. Install it with `uv tool install sandesh-relay` (the installer offers to run
+   this for you); an older one is reported `outdated`: run `uv tool upgrade sandesh-relay`.
+7. **Recommended tools.** The install goes ahead without them, but some assets will not work
    (see [Warnings: what stops working](#warnings-what-stops-working)):
-   - `sandesh` — `uv tool install sandesh-relay` (the installer offers to run this for you);
-     version 0.4.0 or later — an older one is reported `outdated`: run `uv tool upgrade sandesh-relay`;
    - `crucible` — Crucible's released clients, installed with Crucible's own installer; the
      installer looks for their manifest at `~/.crucible/crucible-clients.json`;
    - `python3`, `bash` and `jq` — from your operating system's package manager;
@@ -138,7 +139,7 @@ provides it. By requirement:
 | `worktree` | the orchestration skills lose worktree isolation: a sub-agent cannot be started in its CR's worktree. |
 | `sandesh-pi` | the bootstrap and shutdown skills lose Sandesh's own Pi extension, the wake path: nothing wakes the session when a message arrives. Required — see [Missing capabilities](#missing-capabilities). |
 | `uv` | the modelb-axi installer cannot be installed or updated and the Sandesh install cannot run; the pre-flight stops at once. |
-| `sandesh` | the bootstrap and shutdown skills cannot send or watch for messages. |
+| `sandesh` | the bootstrap and shutdown skills cannot send or watch for messages. Required — see [Missing capabilities](#missing-capabilities). |
 | `crucible` | the crucible skills and the crucible-report-* skill bundles have no client to report test runs through. |
 | `crucible-client` | that stack's `crucible-report-<stack> skill bundle` has no client (a `stack <name>:` line shows `client=absent`). |
 | `python3` | the tool scripts and hook scripts, which are Python, will not run. |
@@ -148,7 +149,7 @@ provides it. By requirement:
 | `direnv` | the project .envrc, which loads .env into the environment, never runs: a session started in the project does not get its Sandesh identity (`SANDESH_ADDRESS`, `SANDESH_PROJECT`) from the environment. |
 | `toolchain` | that stack's tests cannot run on this machine, so its agent definitions cannot carry out test-first work there; shown as `<tool>=absent` on the `stack <name>:` line. |
 
-Only `uv`, `dispatch`, `lean-ctx` and `sandesh-pi` stop an install. Every other warning is recorded and the
+Only `uv`, `dispatch`, `lean-ctx`, `sandesh-pi` and `sandesh` stop an install. Every other warning is recorded and the
 install continues, so you can fix it later and re-run.
 
 ## Install offers
@@ -194,6 +195,11 @@ naming what would be inert and the `pi install` command that provides it, then s
 outcome `preflight_failed`. Nothing is deployed and no `install.toml` is written. Install the
 package and run the installer again.
 
+The `sandesh` CLI is required too, because Sandesh's Pi extension refuses a missing or older
+one. If it is still `absent` after the installer's offer to install it, or `outdated` (older
+than 0.4.0, or a version that cannot be read), the pre-flight stops the same way, with
+`preflight_failed`.
+
 To install anyway — for example on a machine where you will add the packages later — add
 `--allow-missing-capabilities`:
 
@@ -218,7 +224,7 @@ Every run ends with one summary on standard output, whose `outcome` is one of:
 | `installed` | The assets were deployed and `install.toml` written. The summary lists the target root, the number of managed files, and any files it left alone. | 0 |
 | `deploy_skipped` | The checks ran, but no `--target-root` (or `MODELB_TARGET_ROOT`) was given, so no assets and no `install.toml` were written (a `sandesh` install the checks made still happened). See [Installing into your home directory](#installing-into-your-home-directory). | 0 |
 | `already_installed` | `install.toml` already exists and `--reinstall` was not given. Nothing is deployed; the summary reports the state of what is deployed (below). | 0 |
-| `preflight_failed` | `uv` is missing, or a required Pi package is missing without `--allow-missing-capabilities`. Nothing was written. | 1 |
+| `preflight_failed` | `uv` is missing, or a required Pi package or the `sandesh` CLI is missing (or `sandesh` is `outdated`) without `--allow-missing-capabilities`. Nothing was written. | 1 |
 | `stacks_rejected` | `--stacks` (or your answer to the stacks question) named an unsupported stack. Nothing was written. | 1 |
 | `harness_rejected` | `--harnesses` named something other than `pi`, or `install.toml` records a harness this version no longer supports (one an older install targeted). Nothing was written. The error prints the re-run that replaces it, with your values: `modelb-axi --reinstall --target-root <dir> --stacks <stacks> --harnesses pi`. | 1 |
 | `aborted` | You answered no to "Proceed with installation?" or to the detected-harness question. Nothing was written. | 1 |
