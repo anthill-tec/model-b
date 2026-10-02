@@ -25,7 +25,7 @@ Universal rules for ANY orchestrator, ANY project/stack. Verbose detail + failur
 - **The orchestrator runs gap-analysis itself** (never delegate to a sub-agent), per-CR immediately before THAT CR's branch/RED.
 - **The spec pre-review is separate:** a dispatched review of the drafted spec, run after the orchestrator's own analysis and before the spec is locked and presented. It does not replace the analysis.
 - **The dimensions and the verdicts live in the `gap-analysis` skill** — read it for the full check; they are not re-listed here.
-- **A pre-review is a workflow moment:** it posts a `design-review` milestone, as a completed gap analysis posts a `gap-analysis` one.
+- **A pre-review is a workflow moment:** the orchestrator posts a `design-review` milestone once it has folded the pre-review's findings into the spec, as a completed gap analysis posts a `gap-analysis` one — never the `report` agent that ran the pre-review.
 - **Older projects:** a project scaffolded before the spec pre-review existed re-renders its agents with `modelb-axi agents` before its first pre-review. A definition left alone as hand-modified is reported to the user.
 - **Urgency never skips gap-analysis or any other step**, even for a P0 hotfix — priority changes queue order, never the steps.
 - **Gap-analysis output ≠ spec.** Findings/rationale go to the user + commit message; the spec just BECOMES the corrected contract. No DRIFT-N tags, no "gap-analysis resolutions", no file:line breadcrumbs in the spec.
