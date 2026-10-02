@@ -311,7 +311,7 @@ def plan_files(sub_projects: list[str]) -> list[str]:
         ".env.local",
         ".gitignore",
         "AGENTS.md",
-        "docs/changes/README.md",
+        "docs/changes/.gitkeep",
         "docs/research/.gitkeep",
         "docs/memory/INDEX.md",
         "hooks/README.md",
@@ -691,17 +691,15 @@ def _remediation_first(tools: dict, rid: str, label: str) -> str:
     return f"{label} is absent — first: {requirements.requirement(rid)['remediation']}. Then: "
 
 
-def _render_queue_readme(
-    name: str, acronym: str, label: str, mode: str, sandesh_project: str,
-    tools: dict | None = None,
-) -> str:
-    """Queue template (§S3.2): four header slots, empty structure-only
-    table, setup-tasks checklist (incl. the §S3.6 manual registration
-    notes — registrations are manual in scaffold v1), dated Notes
-    footer. The multi-mode Sandesh task names the project's Sandesh id
-    and Mainline address from ``SANDESH_PROJECT`` (CR-MDB-043 §S2).
-    Where ``tools`` records Sandesh or Crucible absent, its setup task
-    names the tool's remediation first (CR-MDB-045 §S5)."""
+def _render_setup_section(mode: str, sandesh_project: str, tools: dict | None = None) -> str:
+    """The root ``AGENTS.md``'s ``## Setup`` section (CR-MDB-048 §S2): the
+    setup tasks the retired queue README carried, as they stood — the dated
+    scaffold line, the manual Crucible registration (registrations are
+    manual in scaffold v1), in multi mode the Sandesh and direnv task naming
+    the project's Sandesh id and Mainline address from ``SANDESH_PROJECT``
+    (CR-MDB-043 §S2, CR-MDB-047), and the ``REPO_OWNER`` check. Where
+    ``tools`` records Sandesh or Crucible absent, its setup task names the
+    tool's remediation first (CR-MDB-045 §S5)."""
     today = datetime.date.today().isoformat()
     tools = tools or {}
     sandesh_task = (
@@ -716,24 +714,8 @@ def _render_queue_readme(
         if mode != "solo" else ""
     )
     return (
-        f"# {name} — CR queue\n"
-        "\n"
-        f"**Project:** {name} (acronym: {acronym} · orchestrator: `{label}`) · "
-        "**Design contract:** _fill in (`docs/research/PRD-….md`)_ · "
-        "**Evidence base:** _fill in_ · "
-        "**Ontology:** `~/.agents/skills/model-b/SKILL.md` · "
-        "**Target release:** 0.1.0\n"
-        "\n"
-        "Queue rows enumerate the whole delivery (STRUCTURE only). Live "
-        "status is DERIVED on the Crucible board (plans/cycles/milestones) — "
-        "never hand-maintained here.\n"
-        "\n"
-        "## Queue\n"
-        "\n"
-        "| CR | Title | Wave | Depends on |\n"
-        "|---|---|---|---|\n"
-        "\n"
-        "## Setup tasks (pre-wave — not a wave; a wave is a grouping of CRs)\n"
+        "## Setup\n"
+        "Pre-wave tasks — not a wave; a wave is a grouping of CRs.\n"
         "\n"
         f"- [x] Scaffold via `modelb-axi init` — {today}\n"
         f"- [ ] {_remediation_first(tools, 'crucible', 'Crucible')}"
@@ -743,10 +725,6 @@ def _render_queue_readme(
         f"{sandesh_task}"
         "- [ ] Confirm the remote owner matches `REPO_OWNER` in `.env` "
         "before the first wave-boundary gate\n"
-        "\n"
-        "## Notes\n"
-        "\n"
-        f"- {today}: repository scaffolded by `modelb-axi init`.\n"
     )
 
 
@@ -843,14 +821,17 @@ def _render_agents_md(
     name: str, token: str, acronym: str, mode: str, owner: str,
     stacks: list[str], harnesses: list[str], sandesh_project: str | None = None,
     states: dict | None = None, knowledge_category: str | None = None,
+    tools: dict | None = None,
 ) -> str:
     """Project ``AGENTS.md`` override (§S3.3/§S3.8): identity from the
-    registry, workflow rules (incl. the post-036 run-context note —
-    workflow cycle env vars are never hand-set, and this file must not
-    name them), stack-derived skill freeze, per-installed-harness anchor
-    notes, the capability contract from the recorded ``states``, the
-    lean-ctx section when ``knowledge_category`` is set (CR-MDB-045
-    §S4/§S5), and the generator note."""
+    registry, the design-reference lines (the retired queue README's
+    header slots, CR-MDB-048 §S2), workflow rules (incl. the post-036
+    run-context note — workflow cycle env vars are never hand-set, and this
+    file must not name them), the ``## Setup`` section from ``tools``
+    (:func:`_render_setup_section`), stack-derived skill freeze,
+    per-installed-harness anchor notes, the capability contract from the
+    recorded ``states``, the lean-ctx section when ``knowledge_category``
+    is set (CR-MDB-045 §S4/§S5), and the generator note."""
     label = _orchestrator_label(mode, token)
     sandesh_line = (
         f"- Sandesh project: `{sandesh_project}` (`SANDESH_PROJECT`; addresses "
@@ -873,6 +854,11 @@ def _render_agents_md(
         "Project-level conventions for every session/agent working this "
         "repo. Scaffolded by `modelb-axi init`.\n"
         "\n"
+        "## Design references\n"
+        "- Design contract: _fill in (`docs/research/PRD-….md`)_\n"
+        "- Evidence base: _fill in_\n"
+        "- Ontology: `~/.agents/skills/model-b/SKILL.md`\n"
+        "\n"
         "## Identity & naming (registry: `.env` at the project root)\n"
         f"- Project **{name}** · token `{token}` · acronym `{acronym}` · "
         f"owner `{owner}`.\n"
@@ -886,14 +872,16 @@ def _render_agents_md(
         "## Workflow rules\n"
         "- A **wave** is a grouping of CRs marking an execution boundary; "
         "setup tasks and releases are NOT waves.\n"
-        "- Queue (`docs/changes/README.md`) holds STRUCTURE only; live "
-        "status is DERIVED on the Crucible board.\n"
+        "- The Crucible board holds the queue and the execution state "
+        "(plans, cycles, milestones); `docs/changes/` holds the specs.\n"
         "- Run context (post-036): workflow cycle context is attached by "
         "the tooling at ingest time — never hand-export cycle identifiers "
         "into the environment or into this file.\n"
-        "- Registrations are manual in scaffold v1 — complete the "
-        "manual setup tasks in the queue README.\n"
+        "- Registrations are manual in scaffold v1 — complete them from "
+        "the Setup section below.\n"
         "\n"
+        + _render_setup_section(mode, sandesh_project or "", tools)
+        + "\n"
         f"## Skill freeze (derived from --stacks: {', '.join(stacks)})\n"
         f"{stack_lines}\n"
         "\n"
@@ -1302,7 +1290,7 @@ def _emit_plan(
 
     templates = _select_memory_templates(_memory_templates_dir(home), stacks)
     target.mkdir(parents=True, exist_ok=True)
-    label = _orchestrator_label(mode, token)
+
 
     # §S3.1 registry + §S3.5 .gitignore.
     write(".env", _render_env(schema, registry))
@@ -1310,9 +1298,9 @@ def _emit_plan(
     write(".env.local", _render_env_local(schema, registry))
     write(".gitignore", _render_gitignore())
 
-    # §S3.2 docs model.
-    write("docs/changes/README.md", _render_queue_readme(
-        name, acronym, label, mode, registry["SANDESH_PROJECT"], tools))
+    # §S3.2 docs model; CR-MDB-048 §S2: no queue README — the Crucible
+    # board holds the queue, docs/changes/ the specs.
+    write("docs/changes/.gitkeep", "")
     write("docs/research/.gitkeep", "")
 
     # §S3.3 AGENTS.md (Pi reads it natively — no anchor file).
@@ -1320,7 +1308,7 @@ def _emit_plan(
         "AGENTS.md",
         _render_agents_md(name, token, acronym, mode, owner, stacks, harnesses,
                           registry.get("SANDESH_PROJECT"), tool_states,
-                          knowledge_category),
+                          knowledge_category, tools),
     )
 
     # §S3.4 in-repo project memory.
@@ -1540,7 +1528,7 @@ def run_init(args: argparse.Namespace, home: Path) -> int:
             return 3
         print(
             "  note: registrations are manual in scaffold v1 — steps "
-            "recorded in docs/changes/README.md setup tasks",
+            "recorded in AGENTS.md's Setup section",
             file=sys.stderr,
         )
 

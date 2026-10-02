@@ -31,7 +31,7 @@ scope = "root+sub"
 source = "ask"
 flag = "--name"
 validate = "non_empty"
-readers = ["model-b skill (naming registry)", "modelb-axi init (AGENTS.md, queue README)"]
+readers = ["model-b skill (naming registry)", "modelb-axi init (AGENTS.md, its Setup section)"]
 
 [[key]]
 name = "PROJECT_TOKEN"
@@ -96,7 +96,7 @@ required = true
 file = ".env"
 scope = "root"
 source = "capture"
-step = "the project is registered in Crucible (manual in scaffold v1; see the queue README setup task)"
+step = "the project is registered in Crucible (manual in scaffold v1; see the Setup section of AGENTS.md)"
 validate = "no_whitespace"
 readers = ["Crucible stack clients (~/.crucible/clients/<stack>-crucible.py)", "worktree-flow.py", "model-b skill"]
 
@@ -111,7 +111,7 @@ rule = "remove_whitespace"
 inputs = ["PROJECT_NAME"]
 override = "--sandesh-project"
 validate = "sandesh_id"
-readers = ["modelb-axi init (AGENTS.md identity section, queue README Sandesh setup task)", "bootstrap/shutdown skills (pass --project to the sandesh CLI)"]
+readers = ["modelb-axi init (AGENTS.md identity section, the Sandesh setup task in AGENTS.md's Setup section)", "bootstrap/shutdown skills (pass --project to the sandesh CLI)"]
 
 [[key]]
 name = "KNOWLEDGE_CATEGORY"
