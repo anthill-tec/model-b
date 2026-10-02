@@ -394,13 +394,22 @@ def run_preflight(
             _warn(f"declined `{command}` — sandesh stays absent", warnings)
     elif sandesh_verdict == OUTDATED:
         floor = ".".join(str(part) for part in SANDESH_VERSION_FLOOR)
-        found = sandesh_version or "an unreadable version"
-        _warn(
-            f"sandesh=outdated — found {found}, below the {floor} floor; "
-            f"{_families(requirement('sandesh'))} need it; upgrade with "
-            f"`uv tool upgrade {SANDESH_PACKAGE}`",
-            warnings,
-        )
+        families = _families(requirement("sandesh"))
+        if sandesh_version is None:
+            # CR-MDB-047 §S1: an unreadable version is never known to be
+            # below the floor — the floor just cannot be confirmed.
+            message = (
+                f"sandesh=outdated — its version could not be read, so the {floor} "
+                f"floor cannot be confirmed; {families} need it; upgrade it with "
+                f"`uv tool upgrade {SANDESH_PACKAGE}`, or reinstall it with "
+                f"`uv tool install --reinstall {SANDESH_PACKAGE}`"
+            )
+        else:
+            message = (
+                f"sandesh=outdated — found {sandesh_version}, below the {floor} floor; "
+                f"{families} need it; upgrade with `uv tool upgrade {SANDESH_PACKAGE}`"
+            )
+        _warn(message, warnings)
     capabilities["sandesh"] = sandesh_verdict
 
     remediate_toolchains(

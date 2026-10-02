@@ -115,7 +115,9 @@ Each check ends in one of these verdicts:
   package from a source other than npm; the Crucible manifest does not parse; or an import
   check could not run. The installer warns and carries on.
 - `outdated` — `sandesh` only: older than 0.4.0. It counts as `absent`; upgrade it with
-  `uv tool upgrade sandesh-relay`.
+  `uv tool upgrade sandesh-relay`. A version that cannot be read is `outdated` too: the floor
+  cannot be confirmed, so upgrade it, or reinstall it with
+  `uv tool install --reinstall sandesh-relay`.
 - `installed` — was absent, you accepted an offer to install it, and a second check found it.
   After a Sandesh install you see a second line, `deps: uv=detected sandesh=installed ...`;
   other `installed` verdicts are recorded in `install.toml`.
