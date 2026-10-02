@@ -276,4 +276,6 @@ you reload it — both roles reload.
   elsewhere, then stops with a notice.
 - Mainline reports to the USER; a Track reports to MAINLINE. Do not cross these.
 - If you are a Solo orchestrator (no tracks, no worktrees), follow the MAINLINE branch
-  for queue + user reporting; the Sandesh/Track machinery is inert.
+  for queue + user reporting, wake included: register your address and start your own
+  watcher in Step 1 as Mainline does, and stop it at shutdown. Only the Track machinery is
+  inert: dispatching to Tracks and collecting their acks.
