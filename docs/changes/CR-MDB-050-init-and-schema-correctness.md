@@ -21,3 +21,13 @@ schema-driven registry, `modelb_axi/project_schema.toml`)
    against what actually reads the key today.
 4. **The token-vs-acronym label rule.** Which identifiers derive from `PROJECT_TOKEN` and which from
    `PROJECT_ACRONYM` is stated inconsistently; settle the rule and make the schema and renderers follow it.
+5. **`init` silently overwrites an existing project** (measured 2026-10-03 in a `/tmp` sandbox). Run on
+   a repository with a hand-written `AGENTS.md` and a `.env` carrying an extra key, `init` exited 0,
+   replaced both (the extra key and the hand-written rules were lost), and committed, with no warning.
+   The ownership rules (managed markers) cover only the rendered agents, hooks and permission policy.
+   `init` must refuse a target that already holds project files, before any write, and name
+   `modelb-axi migrate` (CR-MDB-055) as the way to bring an existing project in.
+6. **The stack-neutral memory template does not fit every stack.** `operational-commands.md`, which
+   `init` seeds into every project's `docs/memory/`, is a Docker/MongoDB/Redis/Quarkus command sheet;
+   Model B's own `docs/memory/` (seeded 2026-10-03 for the python stack) shows it is noise outside the
+   Java stack. Decide whether it is a Java-family template or gets stack-neutral content.
