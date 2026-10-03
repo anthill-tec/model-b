@@ -7,8 +7,8 @@ The design is discussed with the user at this CR's gap analysis; the spec is wri
 **Depends on:** CR-MDB-050 (both change `init`'s handling of an existing target; board-authoritative:
 read `queue`, not this line)
 **Labels:** cli, scaffold, migration, schema
-**Design reference:** PRD D9/D10 (the installer is the only deployment channel; `init` reads its
-verdicts); CR-MDB-043 (schema-driven registry); CR-MDB-041, CR-MDB-045, CR-MDB-047, CR-MDB-048
+**Design reference:** PRD D9/D10 (D10 amended 2026-10-03); `DN-scaffold-packaging.md` §10;
+CR-MDB-043 (schema-driven registry); CR-MDB-041, CR-MDB-045, CR-MDB-047, CR-MDB-048
 (the files `init` scaffolds and their readers)
 
 ## Context
@@ -35,6 +35,15 @@ A `migrate` verb that brings an existing project up to what `init` would have pr
    `docs/memory/` or the knowledge store, README queue rows to file on the board (never `queue-file`),
    Claude-era hook wiring to retire. Model B never writes `~/.claude`.
 5. **Dogfood:** Model B is the first project migrated; its hand-made additions are the acceptance check.
+6. **The skills' older-project paths point at `migrate`.** The by-hand steps the skills describe for a
+   project scaffolded before a feature existed (bootstrap Step 1's `SANDESH_ADDRESS`/`.envrc`, which today
+   warns that re-running `init` overwrites the project; orchestration-common's older-project notes) name
+   `migrate` instead.
 
-Open design questions for the gap analysis: the boundary between `migrate` and a re-run of `init`; how a
-hand-written `AGENTS.md` takes rendered sections (markers or a managed region); the monorepo shape.
+Ruled 2026-10-03 (`DN-scaffold-packaging.md` §10, PRD D10 amended): `migrate` takes `init`'s identity
+and shape flags, only for values the project does not record, and `init`'s `--dry-run`, `--no-commit`,
+`--yes`, `--force-managed` and `--modelb-home`; the project is the current directory, `--target DIR`
+overrides it, for `init`, `migrate` and `agents` alike (aligning all three is in this CR's scope).
+
+Open design questions for the gap analysis: how a hand-written `AGENTS.md` takes rendered sections
+(markers or a managed region); the monorepo shape.

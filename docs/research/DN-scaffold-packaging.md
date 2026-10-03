@@ -119,3 +119,37 @@ true is the expensive one. Extraction is mechanical and gated.
 same boundary-event reasoning that keeps the release itself out of the queue. The CR makes the
 guide exist and keeps the copies mechanically identical; the release decides whether the doc set
 still tells the truth.
+
+## 10. `init` takes new projects; `migrate` brings existing ones in (2026-10-03 — implements PRD D10, amended)
+
+**The measurement.** Run on a repository that already held a hand-written `AGENTS.md` and a `.env`
+with an extra key (a `/tmp` sandbox, 2026-10-03), `init` exited 0, replaced both files — the
+hand-written rules and the extra key were lost — and committed, with no warning. The ownership rules
+(managed markers) protect only the files `init` renders with a marker: the agent definitions, the
+hook wiring and the permission policy. Model B itself had to be brought up to the scaffold by hand
+(its `docs/memory/INDEX.md` and `KNOWLEDGE_CATEGORY`, 2026-10-03), and every project that predates
+the generated setup is in the same position.
+
+**The rulings (user, 2026-10-03):**
+1. **`init` is for new projects and refuses on collision.** Before any write, `init` refuses a target
+   where any file it would write already exists, and names `migrate` in the refusal. A target holding
+   only files `init` does not write — a fresh repository with `.git`, a README or a LICENSE — is
+   still accepted. (CR-MDB-050.)
+2. **`migrate` brings an existing project in, adding and never replacing.** It inventories the project
+   against the schema and the scaffolded files; appends only the missing registry keys; adds the
+   sections `init` renders to the existing `AGENTS.md` without touching hand-written text; seeds
+   `docs/memory/` where absent; renders the agents, hooks and permission policy under the ownership
+   rules; and lists what it cannot move — `~/.claude` notes and `ORCHESTRATOR-` notes, README queue
+   rows to file on the board (never `queue-file`), Claude-era hook wiring. Model B never writes
+   `~/.claude`. (CR-MDB-055.)
+3. **`migrate` takes `init`'s flags and its write mode.** The identity and shape flags (`--name`,
+   `--token`, `--acronym`, `--owner`, `--sandesh-project`, `--knowledge-category`, `--mode`,
+   `--repo-shape`, `--stacks`) supply only values the project does not already record — a value the
+   project records wins. `--dry-run` prints the plan and writes nothing, as for `init`; `--no-commit`,
+   `--yes`, `--force-managed` and `--modelb-home` behave as they do for `init`.
+4. **The project is the current directory, `--target DIR` overrides it** — for `init`, `migrate` and
+   `agents` alike. A verb run from inside the project folder needs no location flag; one run from
+   anywhere else passes `--target`. (Today `init` requires `--target` and `agents` takes none; the
+   CR that ships `migrate` aligns all three.)
+
+Model B is `migrate`'s first project: the additions it received by hand are the acceptance check.

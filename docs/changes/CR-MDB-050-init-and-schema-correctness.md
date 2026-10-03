@@ -25,8 +25,9 @@ schema-driven registry, `modelb_axi/project_schema.toml`)
    a repository with a hand-written `AGENTS.md` and a `.env` carrying an extra key, `init` exited 0,
    replaced both (the extra key and the hand-written rules were lost), and committed, with no warning.
    The ownership rules (managed markers) cover only the rendered agents, hooks and permission policy.
-   `init` must refuse a target that already holds project files, before any write, and name
-   `modelb-axi migrate` (CR-MDB-055) as the way to bring an existing project in.
+   `init` must refuse, before any write, a target where any file it would write already exists, and
+   name `modelb-axi migrate` (CR-MDB-055) in the refusal; a target holding only files `init` does not
+   write (`.git`, a README, a LICENSE) is still accepted (user ruling 2026-10-03, DN-scaffold-packaging §10).
 6. **The stack-neutral memory template does not fit every stack.** `operational-commands.md`, which
    `init` seeds into every project's `docs/memory/`, is a Docker/MongoDB/Redis/Quarkus command sheet;
    Model B's own `docs/memory/` (seeded 2026-10-03 for the python stack) shows it is noise outside the

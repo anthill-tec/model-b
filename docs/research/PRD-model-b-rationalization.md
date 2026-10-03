@@ -157,6 +157,10 @@ The `model-b` repo is the permanent authoring workspace: `audits/`, `contracts/`
     - it writes a pointer for the orchestrator working in that project into the project's `AGENTS.md`.
   - **An absent tool** gets neither, and the `init` envelope says so.
   - **The skills stay capability-worded** (DN §D18): they read a project variable when present and skip its step when not. This keeps tool-specific pointers in the per-project tier (D5, 2026-09-27).
+- **AMENDED 2026-10-03 (user rulings; CR-MDB-050, CR-MDB-055; `DN-scaffold-packaging.md` §10): `init` initializes NEW projects only; `migrate` brings EXISTING ones in.** "Every Model B project is initialized through this tool" now has two verbs:
+  - **`init`** refuses, before any write, a target where a file it would write already exists, and names `migrate` (a fresh repository holding only `.git`, a README or a LICENSE is still accepted). Measured: `init` silently replaced an existing `AGENTS.md` and `.env` and committed.
+  - **`migrate`** brings a project that predates the generated setup (the Claude-era manual setup, or an older `init`) up to what `init` would produce, adding and never replacing: missing registry keys appended, `init`'s `AGENTS.md` sections added beside the hand-written text, `docs/memory/` seeded, agents/hooks/permission policy rendered under the ownership rules; what it cannot move (the Claude-era user-scope memory notes, README queue rows, Claude-era hook wiring) is listed for the user. It takes `init`'s identity and shape flags, only for values the project does not record, and `init`'s `--dry-run`.
+  - **The project is the current directory; `--target DIR` overrides it** — for `init`, `migrate` and `agents` alike.
 
 ### D11 — Capability contract and stack-scoped installation (2026-09-22, extends D10(c))
 
