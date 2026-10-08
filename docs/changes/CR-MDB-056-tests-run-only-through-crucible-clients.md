@@ -38,12 +38,19 @@ refuse a brief that contradicts it. Only cargo and mvn have blocking hooks
 
 ## To measure at gap analysis
 
-- **`--cycle` on `test`/`e2e`.** The installed client's `test` has no `--cycle` (measured
-  2026-10-08). Model B cites only flags the installed client carries; Crucible was asked (#1429)
-  whether the 0.3.0 clients (CR-CRU-147) add it. The rule cites the agent id either way.
-- **The `crucible-report-*` skills are Crucible's.** They are byte-faithful imports
-  (`skills-src/CRUCIBLE-HANDOVER.md`); their wording changes on Crucible's side and is re-imported.
-  Model B's own `crucible` skill and the sub-agent procedure change here.
+- **`--cycle` on `test`/`e2e`.** The installed 0.2.x client's `test` has no `--cycle` (measured
+  2026-10-08). Crucible #1430: Crucible 0.3.0 (CR-CRU-171) adds `--cycle` to `test` in all five
+  clients, to `bun-crucible.py e2e`, to mvn's unit/module/integration/e2e/bdd and to rust's
+  smoke-test/workspace-regression/pre-merge-gate; an agent that registered with `--cycle` may omit
+  it on `test`. Model B cites only flags the installed client carries, so the wording is taken from
+  the 0.3.0 `--help` once 0.3.0 is installed (it releases before Model B 1.0.0).
+- **The `crucible-report-*` skills are Model B's.** `skills-src/CRUCIBLE-HANDOVER.md` records full
+  ownership (#1336/#1337, ratified 2026-07-28); Crucible's `clients/skills/` is frozen, and Crucible
+  confirmed it in #1430. Their wording changes here, as a Model B doc-sync, alongside the `crucible`
+  skill and the sub-agent procedure. (The Roundhouse umbrella `AGENTS.md` line calling them
+  "byte-faithful imports from Crucible" is stale — a root-session fix, not this CR.)
+- **Pre-release ask.** Per the handover's maintenance contract, Crucible confirms the client changes
+  shipped since the last doc-sync before 1.0.0 is released; CR-CRU-171 is already one.
 - **Rendered outputs.** `generator/agents/*` are regenerated and `.pi/agents/python-*` re-rendered;
   the RED/GREEN/FIX byte-identity baseline (`git diff 52f5b72 -- generator/agents/*-{red,green,fix}-agent.md`)
   moves with this CR by design, and the spec says so.
