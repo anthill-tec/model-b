@@ -33,10 +33,10 @@ before the spec derives from them.
 4. **While a plan is open, every dispatch carries a cycle id, or the CR is closed first.** Candidate
    homes: the sub-agent procedure, `orchestration-mainline`. *Reconcile:* the spec pre-review registers
    as `report` with no cycle (CR-MDB-046) — it runs before `plan-file`, so no plan is open.
-5. **Crucible verbs: check `ok=`; re-register on a 409; skipping a dead cycle.** A truncated output can
-   hide a failed transition. The client has no skip verb; the route is
-   `PATCH /api/v2/projects/<key>/plans/<plan>/cycles/<id> {"status":"skipped","agentId":…}` (Crucible
-   cc'd for a `cycle-skip` verb). Candidate home: the `crucible` skill.
+5. **Crucible verbs: check `ok=`; re-register on a 409.** A truncated output can hide a failed
+   transition. Candidate home: the `crucible` skill. *(Skipping a dead cycle moved to CR-MDB-059 §B4,
+   2026-10-10: Crucible 0.3.0 ships a `cycle-skip` verb, and the orchestrator never uses the HTTP
+   API — the raw `PATCH …/cycles/<id>` route this item cited is retired.)*
 6. **Record the release in the same turn as `git flow release finish`.** `milestone --type release`
    follows finish immediately, not deferred until publishes are confirmed; `shutdown` treats a finished
    release with no release milestone as dangling work; `--packages` takes `registry:name:version`
