@@ -42,7 +42,11 @@ tabs by hand. The user rules the relay a Model B capability.
 6. **The skills call it:** bootstrap opens the project's declared tabs, shutdown closes them; the tab
    list is a per-project declaration (where — `.env`, `AGENTS.md` or a project file — is a
    gap-analysis decision).
-
+7. **Only where Chrome or Chromium is available** (user ruling 2026-10-10). The installer detects the
+   browser and records a verdict like any other tool (PRD D10: the installer detects, `init` only
+   reads the verdicts). Where no Chrome or Chromium is found, the capability is simply not enabled:
+   the tool and the extension are not set up, `init` declares no tabs, and bootstrap and shutdown
+   skip their tab steps silently. An absent browser is not a preflight failure.
 ## To measure at gap analysis
 
 - **The transport:** whether the tool drives Chrome through `chrome-devtools-axi` (already installed;
