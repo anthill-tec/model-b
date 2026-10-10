@@ -35,6 +35,10 @@ client-surface change since the last doc-sync is synced into Model B's skill tex
    release, and the decision stays the caller's.
 5. **Read verbs:** `queue --fields release,seq,points,dependsOn` (a `warning` column; `--full`), a new
    `history` verb in all five clients (`--fields`, `--release`), and `status` showing work in flight.
+   `history` lists only the past — a release appears once it has shipped or has at least one
+   completed CR; planned releases are read from `queue --fields release,seq,points,dependsOn`
+   (Crucible #1436, 2026-10-10). Its "unknown release" for a held-but-unlisted release is a known
+   client defect Crucible fixes in its next release and announces on the #1433 thread.
 6. **Output handling:** a closed pipe no longer leaves a run open, but skills send client output to a
    file rather than through `| head`.
 7. **Plans grow only by fix cycles;** a skipped cycle is a failure; `cycle-add --before <verify id>`
