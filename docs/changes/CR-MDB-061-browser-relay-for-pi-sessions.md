@@ -31,8 +31,12 @@ tabs by hand. The user rules the relay a Model B capability.
 1. **Open only its own tabs** in the user's running Chrome — open always *creates* a tab, never
    navigates an existing one; checked by delta (+N tabs, zero user URLs lost).
 2. **Never touch the user's tabs** — no adoption of the active tab, no navigation, no close.
-3. **Its tabs live in a named tab group, "Pi".** CDP has no tab-group API, so a Chrome-extension half
-   (`chrome.tabGroups`) does the grouping; the group title is configuration, not hard-coded.
+3. **Its tabs live in one tab group per project, titled `Model B - {project}`** (user ruling
+   2026-10-10, Crucible #1439/#1440 — e.g. "Model B - Crucible", "Model B - Sandesh"). The title is
+   a template, not a fixed string; `{project}` is filled from the name Model B already keeps in the
+   project registry, never typed per project (which key — `PROJECT_NAME`, or another that avoids
+   "Model B - Model B" for Model B itself — is a gap-analysis decision). CDP has no tab-group API,
+   so a Chrome-extension half (`chrome.tabGroups`) does the grouping.
 4. **Close exactly its own tabs at shutdown,** by URL, with the same delta check.
 5. **Survive a session restart:** re-attach to, or re-open, the project's tabs without duplicates.
 6. **The skills call it:** bootstrap opens the project's declared tabs, shutdown closes them; the tab
