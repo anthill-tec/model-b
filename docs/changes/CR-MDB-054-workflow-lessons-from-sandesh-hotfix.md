@@ -19,13 +19,19 @@ before the spec derives from them.
 
 ## Scope (seed — the seven lessons)
 
-1. **CI and release meta is a chore, never a CR.** Workflows, release scripts, release mechanics and
-   version pins are release-checklist items committed as `chore(ci|release): …` — no CR, cycle or
-   RED/GREEN agent. Candidate homes: `cr-authoring` (CR vs task), `orchestration-common` (workflow gates).
-2. **Release and CI configuration is not a test subject.** Tests that pin branch names, version strings
-   or workflow shapes change every release and detect nothing about the product. Candidate homes: the
-   RED template, gap-analysis Dimension 7 (cost) as a named smell. *Measure:* Model B's own pins
-   (e.g. `test_pi_package`'s package version, any `release.yml` shape tests).
+1. **CI and release work is not entirely a chore** (user ruling 2026-10-10, superseding Sandesh's
+   "chore, never a CR"). The no-mistakes gate is comprehensive, and fixes and changes may be made
+   within it. Beyond the gate, changes that are largely metadata and release scripts can be chores
+   (`chore(ci|release): …`, no CR, cycle or RED/GREEN agent); larger release-process changes are CRs
+   (e.g. CR-MDB-058). Candidate homes: `cr-authoring` (CR vs task), `orchestration-common` (workflow
+   gates), `git-workflow` § Releases.
+2. **Tests on release and CI configuration are added per recommendation and discussion with the
+   user** (user ruling 2026-10-10) — neither forbidden nor a default. Pins that change every release
+   and detect nothing about the product are the smell to raise. **The default is the Crucible
+   client's AXI API, which guides the release and gate flow** (envelope `help[]`, `history`,
+   `--release`, `gate-run`, `milestone`). Candidate homes: the RED template, gap-analysis Dimension 7
+   (cost). *Measure:* Model B's own pins (e.g. `test_pi_package`'s package version, any `release.yml`
+   shape tests).
 3. **Caller-existence is VERIFY's grep, never a source-text test.** Behavioural tests prove the seam.
    Candidate homes: `cr-authoring`'s caller-existence AC, the RED and VERIFY templates. *Measure:*
    which of Model B's structural gates are product contracts (skill text is Model B's product) and
