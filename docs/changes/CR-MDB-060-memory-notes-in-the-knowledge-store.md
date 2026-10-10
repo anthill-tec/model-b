@@ -26,8 +26,10 @@ searchable; the user rules it the one home for a Model B project's memory notes.
    `docs/memory/` is retired. A machine without lean-ctx is a preflight failure with remediation,
    not a silent fallback to Markdown.
 3. **The language references are split into facts** — short, keyed, searchable facts, not documents.
-4. **Model B dog-foods it inside this CR:** its own `docs/memory/operational-commands.md` moves into
-   the `modelb-workflow` category as part of the CR's change, proving the import path.
+4. **Model B's own notes are migrated as a chore, outside this CR** (user ruling 2026-10-10: the CR
+   covers only the definitions Model B manages). Done 2026-10-10: the Claude-era user-scope notes'
+   untracked execution knowledge went into `modelb-workflow` by hand, and `docs/memory/` (only the
+   generic `operational-commands.md` template) was removed in a `chore(memory)` commit.
 
 ## Scope (seed)
 
@@ -45,8 +47,6 @@ searchable; the user rules it the one home for a Model B project's memory notes.
 5. **The skills.** Bootstrap and shutdown stop reading `docs/memory/INDEX.md`;
    `orchestration-common` § "Memory" names the knowledge store as the one home, and drops "Without the
    key, nothing changes"; every skill naming `docs/memory/` is updated.
-6. **Model B's own notes** (ruling 4) move into `modelb-workflow`, and `docs/memory/` is removed from
-   this repo.
 
 ## To measure at gap analysis
 
