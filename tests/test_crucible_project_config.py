@@ -21,6 +21,13 @@ Class map:
 - ``CrucibleSkillProjectMetaTest`` — §S3: the ``crucible`` skill documents ``project-meta``: a read
   without ``--agent``; a write with ``--set``/``--unset`` and ``--agent``, as a registered
   ``ORCHESTRATOR``, an unregistered id refused 409.
+- ``CrucibleSkillConnectionTest`` — §S1/AC: the ``crucible`` skill states ``[client] url``, read from
+  the first ``crucible.toml`` that exists and parses — the project's, the install's, the shipped one
+  (``http://localhost:3849``) — and from that file only, so a project file without ``[client]`` sends
+  the client to the shipped default; its intro names no host or port, and every host or port it
+  names is the shipped default's. The checkout sentence stays the single one
+  ``test_s1_crucible_skill_states_the_checkout_rule_and_reason_in_one_sentence``
+  (``tests/test_client_path_anchoring.py``) finds; that gate is cited, not repeated.
 
 Isolation: every ``init`` runs in process in the sandbox of ``tests.test_init_tool_verdicts`` (via
 ``tests.test_project_setup_section``'s case). No test reads ``~/.crucible`` or runs a client.
@@ -238,6 +245,102 @@ class CrucibleSkillProjectMetaTest(unittest.TestCase):
             with self.subTest(cut=cut):
                 self.assertEqual(len(project_meta_findings(good.replace(cut, ""))), 1,
                                  good.replace(cut, ""))
+
+
+# ------------------------------------------------------------------ §S1 skill ----
+
+#: §S1: what the ``crucible`` skill states of the connection. Each entry is ``(what, regexes)``;
+#: one normalised unit (a paragraph, a bullet with its continuation lines, a table row) must match
+#: every regex of an entry.
+CONNECTION_STATEMENTS = (
+    ("[client] url from the first crucible.toml that exists and parses",
+     (r"\[client\] url", r"\bfirst\b.{0,80}crucible\.toml",
+      r"\bexists?\b.{0,40}\bpars(?:es|ed|ing)\b")),
+    ("the order: the project's, the install's, the shipped one",
+     (r"crucible\.toml",
+      r"\bproject'?s?\b.{0,240}?\binstall(?:'s|ation'?s?)?(?![\w-]).{0,240}?\bshipped\b")),
+    ("the shipped one is http://localhost:3849",
+     (r"\bshipped\b.{0,160}http://localhost:3849|http://localhost:3849.{0,160}\bshipped\b",)),
+    ("[client] is taken from that file only",
+     (r"\[client\]",
+      r"\bthat (?:one )?file only\b|\bonly (?:from |in )?that (?:one )?file\b"
+      r"|\bthat file alone\b")),
+    ("a project file without [client] sends the client to the shipped default",
+     (r"\bwithout (?:a |any )?\[client\].{0,200}\bshipped\b",)),
+)
+
+#: A fixed board address: a host with a port, or the production board's port on its own.
+HOST_PORT_RE = re.compile(r"\blocalhost:\d+|\b127\.0\.0\.1:\d+|:3849\b")
+
+
+def connection_findings(text: str) -> list[str]:
+    """What ``text`` (the ``crucible`` skill) lacks of §S1's connection statements."""
+    found = norm_units(text)
+    return [f"the skill does not state {what}" for what, rxs in CONNECTION_STATEMENTS
+            if not any(all(re.search(rx, u) for rx in rxs) for u in found)]
+
+
+def _intro(text: str) -> str:
+    """The text after the frontmatter and before the first ``## `` heading."""
+    body = text.split("\n---\n", 1)[1] if text.startswith("---\n") else text
+    return body.split("\n## ", 1)[0]
+
+
+def fixed_address_findings(text: str) -> list[str]:
+    """Every place ``text`` names a host or port as the board: anywhere in its intro, and any unit
+    naming one that is not about the shipped default."""
+    out = [f"the intro names {m.group(0)!r}" for m in HOST_PORT_RE.finditer(_intro(text))]
+    out += [f"names a fixed board address outside the shipped default: {u[:160]!r}"
+            for u in norm_units(text) if HOST_PORT_RE.search(u) and not re.search(r"\bshipped\b", u)]
+    return out
+
+
+class CrucibleSkillConnectionTest(unittest.TestCase):
+    """§S1/AC — the ``crucible`` skill states where a client finds its board, and names no fixed
+    host or port as "the" board."""
+
+    GOOD = ("---\nname: crucible\n---\n\n# Crucible\n\nCrucible is the test-outcome board.\n\n"
+            "## Connection\n\n"
+            "- A client reads its board from `[client] url` in the first `crucible.toml` that exists "
+            "and parses, in this order: the project's, the install's (beside `clients/`), the shipped "
+            "one (`http://localhost:3849`, the production board).\n"
+            "- `[client]` is taken from that file only, so a project file without `[client]` sends "
+            "the client to the shipped default.\n")
+
+    def test_the_crucible_skill_states_the_client_url_resolution(self):
+        self.assertEqual(connection_findings(CRUCIBLE_SKILL.read_text(encoding="utf-8")), [])
+
+    def test_the_crucible_skill_names_no_fixed_board_address(self):
+        self.assertEqual(fixed_address_findings(CRUCIBLE_SKILL.read_text(encoding="utf-8")), [])
+
+    def test_the_connection_detector_both_ways(self):
+        self.assertEqual(connection_findings(self.GOOD), [])
+        for cut, missing in (
+                ("`[client] url` in the first `crucible.toml` that exists and parses",
+                 "[client] url from the first crucible.toml"),
+                ("the install's (beside `clients/`), ", "the order"),
+                (" (`http://localhost:3849`, the production board)", "http://localhost:3849"),
+                ("from that file only, so ", "that file only"),
+                ("without `[client]` sends the client to the shipped default", "without [client]")):
+            with self.subTest(cut=cut):
+                found = connection_findings(self.GOOD.replace(cut, "x"))
+                self.assertTrue(any(missing in f for f in found), found)
+        self.assertEqual(len(connection_findings(self.GOOD.replace(
+            "the project's, the install's (beside `clients/`), the shipped one",
+            "the shipped one, the install's (beside `clients/`), the project's"))), 1,
+            "the order is part of the statement")
+
+    def test_the_fixed_address_detector_both_ways(self):
+        self.assertEqual(fixed_address_findings(self.GOOD), [])
+        intro = self.GOOD.replace("Crucible is the test-outcome board.",
+                                  "Crucible (`localhost:3849`) is the test-outcome board.")
+        self.assertEqual(len(fixed_address_findings(intro)), 2,
+                         "an intro naming the port bites twice: intro and unit")
+        for line in ("- The board is `http://127.0.0.1:3849`.\n",
+                     "- Check the board at port :3849 first.\n",
+                     "- `curl -s http://localhost:4000/api/v2/runs`\n"):
+            with self.subTest(line=line):
+                self.assertEqual(len(fixed_address_findings(self.GOOD + line)), 1)
 
 
 if __name__ == "__main__":

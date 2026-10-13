@@ -73,11 +73,33 @@ named and truthful) is deleted rather than migrated: there is no bundle left
 for either to be about. The owned-bundle-set pin
 (`SkillBundleScanCoverageTest`) narrows from seven to six accordingly.
 
-Stdlib only: unittest + re + tempfile + pathlib.  No subprocess, no server, no
-socket, and no path outside this repository.
+Stdlib only: unittest + re + tempfile + pathlib.  No server, no socket, and no path outside this
+repository -- with ONE exception, below.
+
+CR-MDB-057 §S6/§S7 AMENDMENT (C3 RED, Crucible 0.3.0)
+--------------------------------------------------------
+* `crucible-register`'s register and unregister examples are the client's `register` and
+  `unregister` verbs, no longer `curl` bodies, so the bundle moves out of `HTTP_BODY_BUNDLES` into
+  the CLI register-flag family (`CLI_REGISTER_BUNDLES`, asserted by `RegisterFlagSurfaceTest`).
+  `HTTP_BODY_BUNDLES` keeps the python and rust bundles, whose payloads live in the inline urllib
+  run-and-ingest modules CR-MDB-056 retires; this CR does not pin their removal.
+* `RawHttpExampleRetirementTest`: no owned bundle `curl`s the v2 API (the register, unregister
+  and event examples are gone), and no owned bundle hard-codes a board host or port outside
+  CR-MDB-056's urllib modules.
+* `V2_ENDPOINTS_BY_BUNDLE` drops the routes whose examples §S6 removes: the register and
+  unregister routes from `crucible-register`, the events route from bun and java.
+* The ONE read outside this repository: the extended
+  `test_client_examples_use_verbs_the_released_clients_expose` checks every flag the `crucible`
+  skill and `contracts/crucible-envelope.md` name against the installed client's own `--help`
+  for that verb (§S7 extends that test rather than adding a parallel gate). It reaches the
+  clients only through `~/.crucible/crucible-clients.json` and runs only `<verb> --help`; it
+  skips, naming that manifest, when a client is absent.  `CLIENT_VERBS` grows by the five verbs
+  0.3.0 added and is checked against the installed clients' own verb lists there too.
 """
 
 import re
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -85,7 +107,9 @@ from pathlib import Path
 from tests._helpers import (
     carries_retired_register_flag as _carries_retired_register_flag,
 )
+from tests._helpers import installed_crucible_file
 from tests._helpers import read_text_lenient as _read
+from tests.test_board_holds_the_queue import units as _units
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SKILLS_SRC = REPO_ROOT / "skills-src"
@@ -113,11 +137,19 @@ CLIENT_BUNDLES = (
 # Bundles whose register surface is an HTTP BODY posted to the agents API --
 # the wire-key equivalent of the CLI flag families.  Named so the body family
 # below can assert they CONTRIBUTE one, never pass by matching nothing.
+# CR-MDB-057 §S6: `crucible-register` left this set -- its register and
+# unregister examples are client verbs now (see CLI_REGISTER_BUNDLES).  The two
+# left carry their payloads in the inline urllib modules CR-MDB-056 retires.
 HTTP_BODY_BUNDLES = (
-    REGISTER_BUNDLE,
     "crucible-report-python",
     "crucible-report-rust",
 )
+
+# CR-MDB-057 §S6: the bundles whose register examples are CLI invocations and
+# are checked as CLI flags by RegisterFlagSurfaceTest -- the five CLI-owning
+# bundles plus the lifecycle bundle, whose examples are the client's `register`
+# and `unregister` verbs.  Each MUST contribute a register example.
+CLI_REGISTER_BUNDLES = (REGISTER_BUNDLE,) + CLIENT_BUNDLES
 
 # Bundles that talk to Crucible over the v2 HTTP API and own NO CLI client.
 # EMPTY as of CR-MDB-024 \u00a7S3 (this cycle, C2 RED, 2026-09-22 VS Code ruling):
@@ -204,14 +236,17 @@ FINDING_BODY_MISSING_CYCLE = "body-missing-cycle"
 # omitted here only because `CrucibleSkillRoutingAndProtocolSyncTest`
 # (tests/test_skills_handover.py) owns that family
 # and this module may not re-assert it.
+# CR-MDB-057 §S6/§S7: the routes whose only examples §S6 removes are dropped --
+# `crucible-register`'s register and unregister routes (its examples are client
+# verbs now) and the events route of bun and java (their event `curl` examples
+# are gone; no client verb lists or deletes events).  A bundle may still
+# document them in its endpoint table; the floor no longer demands it.
 V2_ENDPOINTS_BY_BUNDLE = {
     "crucible-register": (
         "/api/v2/runs",
         "/api/v2/runs/parsed",
         "/api/v2/runs/compile",
         "/api/v2/agents",
-        "/api/v2/agents/register",
-        "/api/v2/agents/unregister",
         "/api/v2/events",
         "/api/v2/projects",
     ),
@@ -226,7 +261,6 @@ V2_ENDPOINTS_BY_BUNDLE = {
         "/api/v2/agents",
         "/api/v2/agents/register",
         "/api/v2/agents/unregister",
-        "/api/v2/events",
         "/api/v2/projects",
     ),
     "crucible-report-java": (
@@ -236,7 +270,6 @@ V2_ENDPOINTS_BY_BUNDLE = {
         "/api/v2/agents",
         "/api/v2/agents/register",
         "/api/v2/agents/unregister",
-        "/api/v2/events",
         "/api/v2/projects",
     ),
     "crucible-report-python": (
@@ -273,8 +306,12 @@ TIER_RE = re.compile(r"\btier\b", re.IGNORECASE)
 # Verbs the released client fleet exposes, completed 2026-09-21 as the UNION of
 # the five installed clients' own subparser lists (44 verbs: the shared
 # lifecycle/tier/plan set plus rust's clippy/workspace verbs and java's docker
-# ones).  It is a vocabulary of OUR OWN text's subcommands, not a mirror of
-# Crucible's FLAG surface -- the module still reads no client at run time.
+# ones), grown to 49 at CR-MDB-057 §S5 by the five verbs Crucible 0.3.0
+# added on all five clients (`cycle-skip`, `gate-respond`, `history`,
+# `landings`, `project-meta`).  The extended verbs test checks it against the
+# installed clients' own verb lists when they are present.  It is a vocabulary
+# of OUR OWN text's subcommands, not a mirror of Crucible's FLAG surface; the
+# one installed-client read is that test's `--help` check (CR-MDB-057 §S7).
 # The previous 17-entry list was hand-picked from this CR's prose and missed
 # `cr-plan`, which skills-src/memory-templates/rust-orchestration.md's CR-typing
 # bullet uses.
@@ -296,13 +333,17 @@ CLIENT_VERBS = (
     "cycle-activate",
     "cycle-add",
     "cycle-done",
+    "cycle-skip",
     "docker-down",
     "docker-e2e-gate",
     "docker-up",
     "e2e",
     "gate-report",
+    "gate-respond",
     "gate-run",
+    "history",
     "integration",
+    "landings",
     "milestone",
     "module",
     "next",
@@ -310,6 +351,7 @@ CLIENT_VERBS = (
     "plan-file",
     "plans",
     "pre-merge-gate",
+    "project-meta",
     "queue",
     "queue-file",
     "register",
@@ -613,6 +655,154 @@ def _owned_bundle_paths():
     return [SKILLS_SRC / name for name in _owned_bundle_names(SKILLS_SRC)]
 
 
+# ------------------------------------- CR-MDB-057 §S6: raw HTTP examples ---
+
+# A `curl` to the v2 API -- the register, unregister and event examples §S6
+# replaces with client verbs or removes.
+CURL_V2_RE = re.compile(r"\bcurl\b.*?/api/v2/")
+# A fixed board address: a host with a port, or the production board's port.
+HOST_PORT_RE = re.compile(r"\blocalhost:\d+|\b127\.0\.0\.1:\d+|:3849\b")
+# A fenced block carrying this is one of the inline urllib run-and-ingest
+# modules CR-MDB-056 retires; this CR does not pin its address away.
+URLLIB_MODULE_MARKER = "urllib.request"
+
+
+def _curl_v2_hits(text):
+    """(lineno, line) for every line of `text` that `curl`s the v2 API."""
+    return [
+        (n, line.strip())
+        for n, line in enumerate(text.splitlines(), 1)
+        if CURL_V2_RE.search(line)
+    ]
+
+
+def _fixed_address_hits(text):
+    """(lineno, line) for every line of `text` naming a board host or port,
+    outside a fenced block that is a CR-MDB-056 urllib module."""
+    lines = text.splitlines()
+    exempt = set()
+    for start, end in _fenced_block_spans(lines):
+        if any(URLLIB_MODULE_MARKER in line for line in lines[start:end]):
+            exempt.update(range(start, end))
+    return [
+        (i + 1, line.strip())
+        for i, line in enumerate(lines)
+        if i not in exempt and HOST_PORT_RE.search(line)
+    ]
+
+
+# ---------------------------- CR-MDB-057 §S7: flags the released clients take ---
+
+# The surfaces whose flags must exist in the installed client's `--help` for
+# the verb they are given to (CR-MDB-057 AC: "every flag the skill and the
+# contract name").
+FLAG_SURFACES = ("skills-src/crucible/SKILL.md", "contracts/crucible-envelope.md")
+# The manifest's client keys; a client file is `<key>-crucible.py`.
+CLIENT_KEYS = ("arduino", "bun", "mvn", "python", "rust")
+FLAG_RE = re.compile(r"(?<![\w-])--[a-z][a-z0-9-]*")
+CODE_SPAN_RE = re.compile(r"`([^`]+)`")
+HELP_TIMEOUT_S = 60
+
+
+def _installed_clients():
+    """({key: path}, "") for the five installed clients, or (None, reason)
+    naming the client manifest when any is absent."""
+    found = {}
+    for key in CLIENT_KEYS:
+        path, reason = installed_crucible_file(key)
+        if path is None:
+            return None, reason
+        found[key] = path
+    return found, ""
+
+
+class _ReleasedHelp:
+    """The installed clients' own `--help`, read once per (client, verb).
+
+    Only the USAGE block is read -- a flag named in another flag's prose is
+    not a flag the verb takes.
+    """
+
+    def __init__(self, clients):
+        self.clients = clients
+        self._flags = {}
+        self._verbs = {}
+
+    def _help(self, key, *args):
+        with tempfile.TemporaryDirectory() as cwd:
+            done = subprocess.run(
+                [sys.executable, str(self.clients[key]), *args, "--help"],
+                capture_output=True, text=True, timeout=HELP_TIMEOUT_S, cwd=cwd,
+            )
+        return done.returncode, done.stdout
+
+    def verbs(self, key):
+        """The verbs client `key` lists in its top-level usage."""
+        if key not in self._verbs:
+            _, out = self._help(key)
+            match = re.search(r"\{([a-z0-9,-]+)\}", out)
+            self._verbs[key] = frozenset(match.group(1).split(",")) if match else frozenset()
+        return self._verbs[key]
+
+    def flags(self, key, verb):
+        """The flags `verb --help` of client `key` declares in its usage block,
+        or None when the client has no such verb."""
+        if (key, verb) not in self._flags:
+            if verb not in self.verbs(key):
+                self._flags[(key, verb)] = None
+            else:
+                code, out = self._help(key, verb)
+                usage = out.split("\n\n", 1)[0] if code == 0 else ""
+                self._flags[(key, verb)] = frozenset(FLAG_RE.findall(usage)) if usage else None
+        return self._flags[(key, verb)]
+
+
+def _flag_spans(text):
+    """(span, client keys) for every candidate verb invocation in `text`.
+
+    A candidate is a code span, or a whole unit carrying no code span (a fenced
+    line; an indented fenced line opening with a flag continues the line
+    before it).  It is checked against the clients its own leading client file
+    names, else the clients its unit names (a per-stack table row), else all
+    five -- a stack-neutral example must hold on every client.
+    """
+    out = []
+    for unit in _units(text):
+        named = tuple(k for k in CLIENT_KEYS if re.search(r"(?<![\w-])" + k + r"-crucible\.py", unit))
+        spans = CODE_SPAN_RE.findall(unit)
+        if not spans and out and unit[:1].isspace() and unit.lstrip().startswith(("--", "[--")):
+            span, keys = out[-1]
+            out[-1] = (f"{span} {unit.strip()}", keys)
+            continue
+        for span in spans or [unit]:
+            out.append((span, named or CLIENT_KEYS))
+    return out
+
+
+def _released_flag_findings(text, rel, help_):
+    """Every flag `text` gives a client verb that the installed client's
+    `--help` for that verb does not declare, as 'rel: client verb --flag: span'."""
+    known = set().union(*(help_.verbs(k) for k in CLIENT_KEYS))
+    findings = []
+    for span, keys in _flag_spans(text):
+        tokens = " ".join(span.split()).split(" ")
+        if tokens and tokens[0] == "python3":
+            tokens = tokens[1:]
+        if tokens and tokens[0].endswith("-crucible.py"):
+            stem = tokens[0].rsplit("/", 1)[-1][: -len("-crucible.py")]
+            keys = (stem,) if stem in CLIENT_KEYS else CLIENT_KEYS
+            tokens = tokens[1:]
+        if not tokens or tokens[0] not in known:
+            continue
+        verb, flags = tokens[0], FLAG_RE.findall(" ".join(tokens[1:]))
+        for key in keys:
+            declared = help_.flags(key, verb)
+            for flag in flags:
+                if declared is None or flag not in declared:
+                    findings.append(f"{rel}: {key} {verb} {flag}: {span.strip()[:120]}")
+    return findings
+
+
 # ------------------------------------------------------------------ tests ----
 
 class SkillBundleScanCoverageTest(unittest.TestCase):
@@ -676,12 +866,34 @@ class RegisterFlagSurfaceTest(unittest.TestCase):
             "would pass vacuously; check REGISTER_EXAMPLE_RE against the bundles.",
         )
         contributors = {rel.split("/", 1)[0] for rel, _, _ in self.examples}
-        missing = sorted(b for b in CLIENT_BUNDLES if b not in contributors)
+        missing = sorted(b for b in CLI_REGISTER_BUNDLES if b not in contributors)
         self.assertEqual(
             missing,
             [],
-            "every CLI-owning bundle must contribute at least one register example; "
+            "every CLI-register bundle must contribute at least one register example; "
             f"these contribute none, so a deletion could turn the gate green: {missing}",
+        )
+
+    def test_crucible_register_shows_register_and_unregister_as_client_verbs(self):
+        """CR-MDB-057 §S6: the lifecycle bundle's register and unregister
+        examples are the client's verbs, so it is checked as CLI flags."""
+        self.assertIn(REGISTER_BUNDLE, CLI_REGISTER_BUNDLES)
+        text = _read(SKILLS_SRC / REGISTER_BUNDLE / "SKILL.md")
+        verbs = sorted({verb for _, verb in _client_verbs(text)} & {"register", "unregister"})
+        self.assertEqual(
+            verbs,
+            ["register", "unregister"],
+            f"{REGISTER_BUNDLE} must show `<stack>-crucible.py register` and "
+            "`<stack>-crucible.py unregister` invocations, not `curl` bodies "
+            f"(CR-MDB-057 §S6); it shows client verbs {verbs}",
+        )
+        unregister = [
+            line for line in text.splitlines()
+            if re.search(r"-crucible\.py[`'\"]?\s+unregister\b", line)
+        ]
+        self.assertTrue(
+            all(re.search(r"--agent(?![\w-])", line) for line in unregister),
+            f"every unregister example names its --agent: {unregister}",
         )
 
     def test_retired_register_flag_appears_nowhere_under_skills_src(self):
@@ -841,9 +1053,15 @@ class RegisterBodySurfaceTest(unittest.TestCase):
                 f"HTTP_BODY_BUNDLES names {bundle!r}, which does not exist under "
                 "skills-src/; a stale category gates nothing.",
             )
-        self.assertIn(
+        self.assertNotIn(
             REGISTER_BUNDLE,
             HTTP_BODY_BUNDLES,
+            f"{REGISTER_BUNDLE!r} left the body family at CR-MDB-057 §S6: its "
+            "register examples are client verbs, gated by RegisterFlagSurfaceTest.",
+        )
+        self.assertIn(
+            REGISTER_BUNDLE,
+            CLI_REGISTER_BUNDLES,
             f"{REGISTER_BUNDLE!r} must sit in a category this module asserts "
             "about. Before CR-MDB-017 V1 it was in none, so it passed every "
             "family by matching nothing.",
@@ -1059,6 +1277,65 @@ class BundleEndpointTierAndVerbTest(unittest.TestCase):
             f"clients expose {list(CLIENT_VERBS)}; these teach a subcommand that "
             "does not exist:\n  " + "\n  ".join(unknown),
         )
+        # CR-MDB-057 §S7 extension: against the INSTALLED clients' own --help.
+        clients, reason = _installed_clients()
+        if clients is None:
+            self.skipTest(reason)
+        help_ = _ReleasedHelp(clients)
+        installed = sorted(set().union(*(help_.verbs(k) for k in CLIENT_KEYS)))
+        self.assertEqual(
+            sorted(CLIENT_VERBS),
+            installed,
+            "CLIENT_VERBS must be the union of the installed clients' own verb "
+            "lists, or the verb gate above checks against a stale vocabulary",
+        )
+        findings = []
+        for rel in FLAG_SURFACES:
+            findings += _released_flag_findings(_read(REPO_ROOT / rel), rel, help_)
+        self.assertEqual(
+            findings,
+            [],
+            "every flag the crucible skill and the envelope contract give a verb "
+            "must exist in the usage that client prints for that verb (a stack-neutral "
+            "example must hold on all five clients):\n  " + "\n  ".join(findings),
+        )
+
+    def test_the_released_flag_checker_bites_on_a_flag_the_verb_lacks(self):
+        """CR-MDB-057 §S7: the --help flag check is PROVEN to bite, per client."""
+        clients, reason = _installed_clients()
+        if clients is None:
+            self.skipTest(reason)
+        help_ = _ReleasedHelp(clients)
+        cases = (
+            # (fixture, expected findings as (client, verb, flag))
+            ("- Run `cr-plan --cr <id> --points 3 --agent <id>`.\n", []),
+            ("- Run `cr-plan --cr <id> --pointz 3 --agent <id>`.\n",
+             [(k, "cr-plan", "--pointz") for k in CLIENT_KEYS]),
+            # rust `regression` takes no --cycle; a stack-neutral example bites for rust only.
+            ("- File it with `regression --cycle <id>`.\n", [("rust", "regression", "--cycle")]),
+            # --log is absent on pre-merge-gate for arduino, mvn and rust.
+            ("- Run `pre-merge-gate --log out.txt`.\n",
+             [(k, "pre-merge-gate", "--log") for k in ("arduino", "mvn", "rust")]),
+            ("- `gate-respond --action approve --release 1.0.0`\n",
+             [(k, "gate-respond", "--release") for k in CLIENT_KEYS]),
+            # A per-stack table row is checked against its own client only.
+            ("| rust | `rust-crucible.py` | `test --crate` |\n", []),
+            ("- `test --crate <c>`\n",
+             [(k, "test", "--crate") for k in CLIENT_KEYS if k != "rust"]),
+            # A client named by the span itself wins.
+            ("```bash\npython3 rust-crucible.py regression --cycle 9 --agent X\n```\n",
+             [("rust", "regression", "--cycle")]),
+            # Prose and non-verb spans are not invocations.
+            ("- Pass `--release <label>` to `no-mistakes axi run --skip`.\n", []),
+            # An indented fenced line opening with a flag continues the invocation.
+            ("```\nregister --agent <id> --role <ROLE>\n         [--message <m>]\n```\n",
+             [("arduino", "register", "--message")]),
+        )
+        for fixture, expected in cases:
+            with self.subTest(fixture=fixture):
+                found = _released_flag_findings(fixture, "fixture.md", help_)
+                got = sorted(tuple(f.split(": ", 1)[1].split(":", 1)[0].split(" ")) for f in found)
+                self.assertEqual(got, sorted(expected), found)
 
     def test_each_cli_bundle_shows_at_least_one_real_client_invocation(self):
         silent = []
@@ -1073,6 +1350,60 @@ class BundleEndpointTierAndVerbTest(unittest.TestCase):
             "every CLI-owning bundle must show at least one real client invocation, "
             f"or the verb gate passes it vacuously: {silent}",
         )
+
+
+class RawHttpExampleRetirementTest(unittest.TestCase):
+    """CR-MDB-057 §S6 -- the owned bundles' register, unregister and event
+    examples use no raw HTTP and no fixed board address.
+
+    The inline urllib run-and-ingest modules of the python and rust bundles
+    (and the "direct v2 fallback" prose) are CR-MDB-056's; a fenced block
+    carrying `urllib.request` is left to that CR.
+    """
+
+    def test_no_owned_bundle_curls_the_v2_api(self):
+        hits = []
+        for path in _owned_bundle_paths():
+            for path_ in _iter_files(path):
+                hits += [f"{_rel(path_)}:{n}: {line}" for n, line in _curl_v2_hits(_read(path_))]
+        self.assertEqual(
+            hits,
+            [],
+            "register/unregister are client verbs and the event examples are "
+            "gone (no client verb lists or deletes events; read the board with "
+            "status, history and queue):\n  " + "\n  ".join(hits),
+        )
+
+    def test_no_owned_bundle_hard_codes_a_board_address(self):
+        hits = []
+        for path in _owned_bundle_paths():
+            for path_ in _iter_files(path):
+                hits += [f"{_rel(path_)}:{n}: {line}" for n, line in _fixed_address_hits(_read(path_))]
+        self.assertEqual(
+            hits,
+            [],
+            "a client finds its board from `[client] url` in crucible.toml; no "
+            "example may name a host or port:\n  " + "\n  ".join(hits),
+        )
+
+    def test_the_raw_http_detectors_both_ways(self):
+        bun_event = 'curl -s "http://localhost:3849/api/v2/events?limit=20&fmt=toon"'
+        self.assertEqual(_curl_v2_hits(f"x\n{bun_event}\n"), [(2, bun_event)])
+        self.assertEqual(_curl_v2_hits(FIXTURE_BODY_CLEAN), [(1, FIXTURE_BODY_CLEAN.splitlines()[0])])
+        for clean in (FIXTURE_BODY_TABLE_ROW,
+                      "Direct `curl`/`fetch` against the v2 endpoints is the fallback.",
+                      "python3 python-crucible.py unregister --agent X"):
+            with self.subTest(clean=clean):
+                self.assertEqual(_curl_v2_hits(clean), [])
+                self.assertEqual(_fixed_address_hits(clean), [])
+        self.assertEqual(len(_fixed_address_hits(f"```bash\n{bun_event}\n```\n")), 1)
+        self.assertEqual(len(_fixed_address_hits("Board at `127.0.0.1:3849`.\n")), 1)
+        urllib_module = ('```python\nimport json, urllib.request\n'
+                         'req = urllib.request.Request(f"http://localhost:3849{path}")\n```\n')
+        self.assertEqual(_fixed_address_hits(urllib_module), [],
+                         "CR-MDB-056's urllib modules are out of this gate")
+        self.assertEqual(len(_fixed_address_hits(urllib_module + bun_event + "\n")), 1,
+                         "the exemption reaches only the urllib block itself")
 
 
 if __name__ == "__main__":
