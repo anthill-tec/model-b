@@ -7,7 +7,9 @@ The file set is every ``skills-src/*/SKILL.md``, ``generator/agents/*.md`` and
   ``description`` only: one top-level line each, holding a one-line plain scalar YAML can read
   only as one string, a ``description`` of at most 1024 UTF-16 code units (the unit Pi counts),
   and a skill ``name`` that follows Pi's name rules and equals its directory. Past any comment
-  lines, each value is followed by a top-level key or the closing ``---``. The rule is proved
+  lines, each value is followed by a top-level key or the closing ``---``; the frontmatter ends
+  where Pi ends it, at the first line starting with ``---``, which must be exactly ``---``. The
+  rule is proved
   on sample text in both directions (``FrontmatterRuleCatchesTest`` /
   ``FrontmatterRulePassesTest``) and then run over the tree (``FrontmatterTreeTest``).
 - **§S3.2, Pi's own loader, when it is installed** (``PiSkillLoaderOracleTest``). ``node`` runs
@@ -141,12 +143,16 @@ def frontmatter_violations(text: str, skill_dir: str | None = None) -> list:
     lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
     if lines[0] != "---":
         return ["frontmatter: the file does not open with a `---` line"]
-    try:
-        close = lines.index("---", 1)
-    except ValueError:
+    # Pi ends the frontmatter at the first `\n---`, a prefix match: the first later line that
+    # starts with `---` closes it, whatever follows the dashes on that line.
+    close = next((i for i, line in enumerate(lines[1:], 1) if line.startswith("---")), None)
+    if close is None:
         return ["frontmatter: no closing `---` line"]
-    block = lines[1:close]
     problems, values = [], {}
+    if lines[close] != "---":
+        problems.append(f"frontmatter: line {close + 1} {lines[close]!r} starts with `---`, so Pi "
+                        "ends the frontmatter there — the closing line must be exactly `---`")
+    block = lines[1:close]
     for key in ("name", "description"):
         hits = [i for i, line in enumerate(block) if line.startswith(f"{key}:")]
         if len(hits) != 1:
@@ -183,6 +189,16 @@ COMMENT_THEN_INDENTED = (
      "---\nname: sample-skill\n# c\n  bar\ndescription: A description.\n---\n\nBody.\n"),
     ("after two comments",
      "---\nname: sample-skill\ndescription: A description.\n# c\n# d\n  bar\n---\n\nBody.\n"),
+)
+
+#: ``(label, text)``: a line that only STARTS with ``---``. Pi ends the frontmatter at the first
+#: ``\n---`` (a prefix match), so it never sees the ``description`` below that line
+#: (``PiSkillLoaderOracleTest`` proves it when Pi is installed).
+DASHES_PREFIX_CLOSE = (
+    ("---junk",
+     "---\nname: sample-skill\ntools: x\n---junk\ndescription: A description.\n---\n\nBody.\n"),
+    ("----",
+     "---\nname: sample-skill\ntools: x\n----\ndescription: A description.\n---\n\nBody.\n"),
 )
 
 #: ``(label, text)``: comment lines followed by a top-level key or the close, and a clean
@@ -277,6 +293,14 @@ class FrontmatterRuleCatchesTest(unittest.TestCase):
         for label, text in COMMENT_THEN_INDENTED:
             with self.subTest(label=label):
                 self._assert_caught(text, "followed by a comment line and then '  bar'")
+
+    def test_a_closing_line_that_only_starts_with_three_dashes_is_caught(self):
+        for label, text in DASHES_PREFIX_CLOSE:
+            with self.subTest(label=label):
+                problems = self._assert_caught(text, f"line 4 {label!r} starts with `---`")
+                self.assertTrue(any("must be exactly `---`" in p for p in problems), problems)
+                self.assertIn("frontmatter: 0 top-level `description:` lines (want exactly 1)",
+                              problems, "§S3.1: the rule must read only what Pi reads")
 
     def test_an_empty_value_is_caught(self):
         self._assert_caught(_doc(description=""), "description is empty")
@@ -657,6 +681,14 @@ class PiSkillLoaderOracleTest(unittest.TestCase):
             with self.subTest(label=label):
                 self.assertIsNotNone(parsed["threw"], f"§S3.1: Pi parsed {label} as {parsed}")
                 self.assertIn("All mapping items must start at the same column", parsed["threw"])
+
+    def test_pi_ends_the_frontmatter_at_a_line_only_starting_with_three_dashes(self):
+        out = _run_pi_oracle(self, self.api,
+                             {"documents": [text for _, text in DASHES_PREFIX_CLOSE]})
+        for (label, _), parsed in zip(DASHES_PREFIX_CLOSE, out["documents"], strict=True):
+            with self.subTest(label=label):
+                self.assertIsNone(parsed["threw"])
+                self.assertEqual((parsed["name"], parsed["description"]), ("sample-skill", None))
 
     def test_pi_reads_each_clean_layout_as_exactly_its_text(self):
         out = _run_pi_oracle(self, self.api, {"documents": [text for _, text in CLEAN_LAYOUTS]})
