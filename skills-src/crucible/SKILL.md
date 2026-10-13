@@ -29,6 +29,19 @@ the interface, and every stack has one.
 
 ## Lifecycle (every agent)
 
+- **Every test run goes through the stack's client** — a targeted iteration, a
+  single file, a one-test filter, a regression, and the orchestrator's own runs.
+  Never a test runner invoked directly: a run the client did not make streams
+  nothing to the board.
+- **A runner the client cannot drive is a client gap** — raise it with the
+  orchestrator, who raises it with Crucible; never work around it.
+- **A brief that says otherwise is refused** and escalated (`ESCALATION:`),
+  never followed.
+- **The escape hatch** — a blocking hook's `ALLOW_RAW_<RUNNER>=1` — is used only
+  with the orchestrator's approval.
+- **Two client gaps are known:** the python client drives unittest only (a
+  pytest project), and `bun-crucible.py test` takes no test-name filter (a
+  one-test bun run). Meeting either is a client gap: raise it.
 - `register --agent <id> --role <ROLE>` FIRST — before reading or running
   anything, and with `--cycle <cycleId>` bound in the same call when your role
   is a TDD role. `--role` is the ONE argparse-required flag; its values are
@@ -83,7 +96,8 @@ the interface, and every stack has one.
 
 `auto-ingest` is recovery only, on every stack: it re-ingests the report a client run
 produced when that run's own ingest failed. It is never a run path — every run goes through
-the client's run verbs, which ingest as they run.
+the client's run verbs, which ingest as they run. Never a test runner invoked directly,
+on any stack.
 
 Clients are Crucible's installed, published clients —
 `~/.crucible/clients/<stack>-crucible.py`, the default location Crucible's own
@@ -301,3 +315,7 @@ name the next step.
   linked run — then the user-gated merge. (sub-agent procedure —
   `~/.agents/skills/model-b/references/sub-agent-procedure.md` — TDD step 6:
   the full suite is orchestrator-owned.)
+- **The ORCHESTRATOR's own runs** — a baseline, the pre-merge gate's
+  empty-`HOME` run, a run under another interpreter through the client's
+  `--python` — go through the client like every other run; never a test
+  runner invoked directly.

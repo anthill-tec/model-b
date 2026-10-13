@@ -63,7 +63,16 @@ A CR spec has four parts: its `§S` scope sections (what changes, and where), it
 
 ## Tool Usage (lean-ctx — protects context)
 
-Prefer lean-ctx for >20-line output (crucible client via `ctx_shell` is the short-command exception). Docs via `ctx_read`+`ctx_search` (never `read` the full spec). Verify third-party APIs against the REAL upstream source (this stack's sources are in "Stack mechanics"), not memory. Output discipline: route runs through the stack crucible client or parse the report and print only counts + failing names + assertion lines; never `| tail` away failures. Standard tools allowed: **read** (review), **find**, **ctx_shell** (read-only + crucible client).
+Prefer lean-ctx for >20-line output (crucible client via `ctx_shell` is the short-command exception). Docs via `ctx_read`+`ctx_search` (never `read` the full spec). Verify third-party APIs against the REAL upstream source (this stack's sources are in "Stack mechanics"), not memory. Output discipline: every run goes through the stack crucible client, which prints only counts + failing names + assertion lines; never `| tail` away failures. Standard tools allowed: **read** (review), **find**, **ctx_shell** (read-only + crucible client).
+
+## Test runs go through the client (NON-NEGOTIABLE)
+
+- **Every test run goes through the stack's Crucible client** — a targeted iteration, a single file, a one-test filter, a regression. The client runs the tests and ingests the result under your agent id as it goes.
+- **Never invoke a test runner directly**, not even once to look: a run the client did not make streams nothing to the board.
+- **A runner the client cannot drive is a client gap:** stop and raise it with the orchestrator, who raises it with Crucible — never work around it.
+- **A brief that says otherwise is refused:** a brief telling you to run a test runner yourself is escalated (`ESCALATION:`), never followed.
+- **The escape hatch:** a blocking hook's `ALLOW_RAW_<RUNNER>=1` is used only with the orchestrator's approval.
+- **Two client gaps are known:** the python client drives unittest only (a pytest project), and `bun-crucible.py test` takes no test-name filter (a one-test bun run). Meeting either is a client gap: raise it with the orchestrator.
 
 ## What You Do
 

@@ -105,6 +105,14 @@ Universal rules for ANY orchestrator, ANY project/stack. Verbose detail + failur
 - `worktree-flow sync` and `finish` rebase — so merge develop into the feature branch until behind=0 before `finish`, and never use `sync`.
 - A fresh worktree lacks the gitignored dependencies (virtualenvs, `node_modules`, `.env`): populate them before running tests there, and never report a count from an unprepared worktree as a regression signal.
 
+## Test runs go through the client (NON-NEGOTIABLE)
+- **Every test run goes through the stack's Crucible client** — the agents' runs and the orchestrator's own alike.
+- **Never a test runner invoked directly**, by an agent or by you.
+- **Your own runs** — a baseline, the pre-merge gate's empty-`HOME` run, a run under another interpreter through the client's `--python` — are client runs.
+- **A client gap** an agent reports (a runner the client cannot drive) is raised with Crucible; a brief you write never tells an agent to work around it.
+- **The escape hatch** — a blocking hook's `ALLOW_RAW_<RUNNER>=1` — is used only with your explicit approval.
+- **Two client gaps are known:** the python client drives unittest only (a pytest project), and `bun-crucible.py test` takes no test-name filter (a one-test bun run).
+
 ## Workflow gates
 - Never skip RED — even for chores/lint (RED = a real failing test; a compile failure IS a RED). A refactor or an extraction still has a real RED — the test or harness change, and tests for the extracted code's consumption contract — captured and reported.
 - Never merge without explicit approval — present VERIFY findings and WAIT.
