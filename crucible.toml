@@ -1,0 +1,11 @@
+# Crucible client configuration for Model B (read from the repository root).
+#
+# [gate] skip: the no-mistakes steps `gate-run` never runs here. no-mistakes'
+# `ci` step is PR-based, and a git-flow project that merges directly has no PR
+# for it to watch, so the gate would otherwise block until `ci_timeout`. An
+# explicit `gate-run --skip` replaces this list; `--skip ""` skips nothing.
+#
+# No [client] table: a client takes [client] from the first crucible.toml it
+# finds, so this file keeps Model B on the shipped default board.
+[gate]
+skip = ["ci"]

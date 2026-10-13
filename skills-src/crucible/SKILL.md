@@ -158,12 +158,21 @@ Display/classification context survives as env vars:
 - **Gate verb — `gate-run`, which replaces the legacy `gate-report`.**
   `gate-run --intent <goal> --agent <id>` STREAMS the no-mistakes pipeline; the
   retired one-shot `gate-report` still answers but emits a `prefer-gate-run`
-  discouragement warning (Crucible #1369). `--skip <steps>` is forwarded VERBATIM
-  to `no-mistakes axi run --skip`; it exists because that pipeline's `ci` step is PR-based,
-  and a git-flow project that merges directly has none for it to watch, so
-  without `--skip` the gate blocks until `ci_timeout`. `--release <label>` names
+  discouragement warning (Crucible #1369). The steps a project never runs are
+  declared in its `crucible.toml` as `[gate] skip` (a Model B project declares
+  `skip = ["ci"]`), and the gate applies that declaration when no `--skip` is given.
+  The declaration exists because no-mistakes' `ci` step is PR-based, and a git-flow project that
+  merges directly has no PR for it to watch, so a gate that ran it would block until
+  `ci_timeout`. An explicit `--skip <steps>` replaces the declaration (forwarded
+  VERBATIM to `no-mistakes axi run --skip`), and `--skip ""` skips nothing. `--release <label>` names
   the release a gate gates (a gate naming one is exempt from pruning until that
   release records) — omit it unless the gate really gates a release.
+- **`project-meta` — the project's metadata map.** A read, `project-meta` alone,
+  takes no `--agent`: it posts nothing. A write, `project-meta --set KEY=VALUE …
+  --agent <id>` or `project-meta --unset KEY --agent <id>`, posts as a registered
+  ORCHESTRATOR; an unregistered id is refused 409. A Model B project mirrors its
+  root registry's keys there, all but `CRUCIBLE_PROJECT_KEY`, and re-runs the write
+  whenever that registry changes (the project's Setup section carries the task).
 
 ## Queue verbs — the board holds the queue
 

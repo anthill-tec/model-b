@@ -187,6 +187,26 @@ PROJECT_STACKS_KEY = "PROJECT_STACKS"
 #: direnv's ``dotenv`` loads that ``.env`` into the environment.
 ENVRC_TEXT = "dotenv\n"
 
+#: CR-MDB-057 §S2: the one ``crucible.toml`` ``init`` writes, at the root
+#: beside the root ``.env``. It declares the gate steps the project never runs
+#: and no ``[client]`` table: a client reads ``[client]`` from the first
+#: ``crucible.toml`` it finds, so this file keeps the project on the shipped
+#: default board (the production board).
+CRUCIBLE_TOML_NAME = "crucible.toml"
+CRUCIBLE_TOML_TEXT = (
+    "# Crucible client configuration for this project (read from the project root).\n"
+    "#\n"
+    "# [gate] skip: the no-mistakes steps `gate-run` never runs here. no-mistakes'\n"
+    "# `ci` step is PR-based, and a git-flow project that merges directly has no PR\n"
+    "# for it to watch, so the gate would otherwise block until `ci_timeout`. An\n"
+    "# explicit `gate-run --skip` replaces this list; `--skip \"\"` skips nothing.\n"
+    "#\n"
+    "# No [client] table: a client takes [client] from the first crucible.toml it\n"
+    "# finds, so this file keeps the project on the shipped default board.\n"
+    "[gate]\n"
+    "skip = [\"ci\"]\n"
+)
+
 
 def resolve_harnesses(home: Path, dev_override: str | None) -> tuple[list[str], str]:
     """Resolve the installed harness set per the §S2 seam.
@@ -310,6 +330,7 @@ def plan_files(sub_projects: list[str]) -> list[str]:
         ".envrc",
         ".env.local",
         ".gitignore",
+        CRUCIBLE_TOML_NAME,
         "AGENTS.md",
         "docs/changes/.gitkeep",
         "docs/research/.gitkeep",
@@ -691,7 +712,8 @@ def _remediation_first(tools: dict, rid: str, label: str) -> str:
     return f"{label} is absent — first: {requirements.requirement(rid)['remediation']}. Then: "
 
 
-def _render_setup_section(mode: str, sandesh_project: str, tools: dict | None = None) -> str:
+def _render_setup_section(mode: str, sandesh_project: str, tools: dict | None = None,
+                          label: str = "") -> str:
     """The root ``AGENTS.md``'s ``## Setup`` section (CR-MDB-048 §S2): the
     setup tasks the retired queue README carried, as they stood — the dated
     scaffold line, the manual Crucible registration (registrations are
@@ -699,9 +721,24 @@ def _render_setup_section(mode: str, sandesh_project: str, tools: dict | None = 
     the project's Sandesh id and Mainline address from ``SANDESH_PROJECT``
     (CR-MDB-043 §S2, CR-MDB-047), and the ``REPO_OWNER`` check. Where
     ``tools`` records Sandesh or Crucible absent, its setup task names the
-    tool's remediation first (CR-MDB-045 §S5)."""
+    tool's remediation first (CR-MDB-045 §S5).
+
+    CR-MDB-057 §S3: directly after the Crucible registration task (and
+    before the Sandesh task in multi mode), the ``project-meta`` task —
+    register the orchestrator ``label`` (:func:`_orchestrator_label`) as
+    ``ORCHESTRATOR``, then mirror the root ``.env``'s keys but
+    ``CRUCIBLE_PROJECT_KEY`` with ``project-meta --set``, re-run whenever
+    ``.env`` changes; Crucible's remediation first when it is absent."""
     today = datetime.date.today().isoformat()
     tools = tools or {}
+    project_meta_task = (
+        f"- [ ] {_remediation_first(tools, 'crucible', 'Crucible')}"
+        "Once the key is filled, register the orchestrator "
+        f"(`register --agent {label} --role ORCHESTRATOR`), then mirror the root "
+        "`.env`'s keys, except `CRUCIBLE_PROJECT_KEY`, with "
+        f"`project-meta --set KEY=VALUE … --agent {label}`; re-run it whenever "
+        "`.env` changes\n"
+    )
     sandesh_task = (
         f"- [ ] {_remediation_first(tools, 'sandesh', 'Sandesh')}"
         f"Sandesh setup + register (`{sandesh_project}`, "
@@ -722,6 +759,7 @@ def _render_setup_section(mode: str, sandesh_project: str, tools: dict | None = 
         "Register the project in Crucible and paste the key into "
         "`.env` (`CRUCIBLE_PROJECT_KEY=`) — manual step "
         "(registrations are manual in scaffold v1)\n"
+        f"{project_meta_task}"
         f"{sandesh_task}"
         "- [ ] Confirm the remote owner matches `REPO_OWNER` in `.env` "
         "before the first wave-boundary gate\n"
@@ -880,7 +918,7 @@ def _render_agents_md(
         "- Registrations are manual in scaffold v1 — complete them from "
         "the Setup section below.\n"
         "\n"
-        + _render_setup_section(mode, sandesh_project or "", tools)
+        + _render_setup_section(mode, sandesh_project or "", tools, label)
         + "\n"
         f"## Skill freeze (derived from --stacks: {', '.join(stacks)})\n"
         f"{stack_lines}\n"
@@ -1296,6 +1334,9 @@ def _emit_plan(
     write_envrc(".envrc")
     write(".env.local", _render_env_local(schema, registry))
     write(".gitignore", _render_gitignore())
+    # CR-MDB-057 §S2: one crucible.toml, at the root only — a monorepo
+    # sub-project gets none (the client resolves to the repository root).
+    write(CRUCIBLE_TOML_NAME, CRUCIBLE_TOML_TEXT)
 
     # §S3.2 docs model; CR-MDB-048 §S2: no queue README — the Crucible
     # board holds the queue, docs/changes/ the specs.

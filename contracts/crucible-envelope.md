@@ -238,10 +238,13 @@ Filed by the orchestrator, on ALL stack clients:
 - `gate-run --intent <goal> --agent <id>` — wave-boundary no-mistakes gate evidence
   (`kind:"gate"`), STREAMED. It replaces `gate-report`, which survives only as the retired
   one-shot and emits a `prefer-gate-run` discouragement warning (Crucible #1369).
-- `--skip <steps>` on the gate verb is forwarded VERBATIM to `no-mistakes axi run --skip`.
-  It exists because no-mistakes' `ci` step is PR-based: a git-flow project that merges
-  directly has no PR for it to watch, so without `--skip` the gate blocks until
-  `ci_timeout`. `--release <label>` names the release a gate gates (exempt from pruning
+- The steps a project never runs are declared in its `crucible.toml` as `[gate] skip`
+  (a Model B project declares `skip = ["ci"]`); the gate applies the declaration when
+  no `--skip` is given. It exists because no-mistakes' `ci` step is PR-based: a git-flow
+  project that merges directly has no PR for it to watch, so a gate that ran it would
+  block until `ci_timeout`. An explicit `--skip <steps>` replaces the declaration
+  (forwarded VERBATIM to `no-mistakes axi run --skip`), and `--skip ""` skips nothing.
+  `--release <label>` names the release a gate gates (exempt from pruning
   until that release records) — omit it unless the gate really gates a release.
 
 ### Agent-naming header (bundled agent-naming skill)
