@@ -820,6 +820,41 @@ the shell boundary, and Model B owns it through direnv:
 
 Implemented by CR-MDB-047.
 
+### D21 — Crucible 0.3.0: the connection is project configuration, and every test run goes through the client
+
+**User rulings 2026-10-13**, at the gap analyses of CR-MDB-057 and CR-MDB-056, after Crucible 0.3.0
+(released 2026-10-10, Crucible #1432) was installed and measured through its clients' own `--help`
+and envelopes.
+
+**The connection and the gate are configuration.** Crucible 0.3.0's clients no longer read
+`$CRUCIBLE_URL` (or arduino's `$CRUCIBLE_BASE`); a client takes its board from the project's
+`crucible.toml` `[client]` table, else the shipped default (the production board, `127.0.0.1:3849`).
+`gate-run` reads the steps a project never runs from `crucible.toml` `[gate] skip`; an explicit `--skip`
+replaces the declaration.
+- **`init` writes a `crucible.toml`** beside every `.env` it writes (the root, and each monorepo
+  sub-project), declaring `[gate] skip = ["ci"]`: no-mistakes' `ci` step is PR-based, and a git-flow
+  project that merges directly has no PR for it to watch. It writes no `[client]` table — a Model B
+  project uses the production board. Model B's own repository tracks one too.
+- **Model B never steers a client through the environment,** in a skill, a scaffolded file or a test.
+  A test that needs a stub board writes the stub's address into the project's `crucible.toml`.
+- **The project metadata map** (`project-meta`, a copy of the project's `.env` facts on the board) is
+  kept current by a setup task in the root `AGENTS.md`'s Setup section: once the key is filled, the
+  orchestrator mirrors the registry keys with `project-meta --set`, and re-runs it when `.env` changes.
+
+**Every test run goes through the stack's client, the orchestrator's included.** A targeted iteration,
+a single file, a one-test filter, a regression and the pre-merge gate's own runs (empty `HOME`, a second
+interpreter through `--python`) are client runs. Never a runner invoked directly; a runner the client
+cannot drive is a client gap raised with the orchestrator; a brief that says otherwise is refused and
+escalated. The blocking hooks keep an escape hatch, `ALLOW_RAW_<RUNNER>=1`, as the cargo and mvn hooks
+already do; an agent uses it only with the orchestrator's approval. The hooks are a deterrent, not a
+boundary: the permission policy is the boundary (CR-MDB-049).
+
+**The raw-HTTP text in the Crucible skill bundles** is retired in two parts: the register, unregister
+and board-inspection `curl` examples become client verbs (CR-MDB-057); the hand-run-and-ingest path —
+run a runner, then post its report through inline `urllib` — is removed with the test-run rule
+(CR-MDB-056).
+
+Implemented by CR-MDB-057 and CR-MDB-056.
 ## Consequences per CR
 
 | CR | What this DN changes |
@@ -833,6 +868,8 @@ Implemented by CR-MDB-047.
 | **012** (release) | The release gate must prove Pi resolves an emitted definition by name (`list_agents` via archimedes). §D15.2 adds a publication step for the Pi package (extensions + skills): tag, `pi install …@<version>` (CR-029 §S5). No byte-identity gate (§D14). |
 | **NEW CR — CR-MDB-029** | Authoring the Pi package itself per §D15.2: `package.json` `pi` manifest, `extensions/` (the CR-026 watcher per §D15.3; hooks currently emitted per-project by 015), `skills/`. **Agent definitions cannot ride it** — Pi packages carry only extensions/skills/prompts/themes — so the split is: package = extensions + skills; installer = tool scripts; `init` = agents, per project (§D17). (The number 027 this row once reserved was consumed by the dispatch decision CR.) |
 | **039** (worktree isolation) | §D19: the Model B Pi package routes each dispatch into its CR's worktree through pi-subagents' workspace seam, and `modelb_worktree_enter`/`_exit` confine the orchestrator's own writes via `WF_WORKTREE_ROOT`. |
+| **057** (Crucible 0.3.0 doc-sync) | §D21: `init` writes `crucible.toml` with `[gate] skip`; no client is steered through the environment; the `project-meta` setup task; the register and board-inspection `curl` text becomes client verbs. |
+| **056** (test runs through the client) | §D21: the rule binds agents and the orchestrator; blocking hooks keep the `ALLOW_RAW_<RUNNER>=1` escape hatch; the hand-run-and-ingest path is removed. |
 
 ## Open, deliberately not decided here
 
