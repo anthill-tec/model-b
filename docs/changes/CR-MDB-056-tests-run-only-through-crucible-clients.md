@@ -4,7 +4,7 @@
 Gap analysis, the design record, the spec and its pre-review happen in order when this CR starts.
 **Type:** feature (agent definitions, skills, hooks, guard test)
 **Priority:** P1 — release 1.0.0, wave 2 (user ruling 2026-10-08: folded into 1.0.0, not 1.1.0).
-**Depends on:** none (board-authoritative: read `queue`, not this line)
+**Depends on:** CR-MDB-057 (green base on the 0.3.0 clients; board-authoritative: read `queue`)
 **Labels:** agents, skills, hooks, crucible, enforcement
 **Design reference:** Crucible #1428 (Mainline - Crucible, 2026-10-08), Model B reply #1429; pairs
 with #1426 / #1427 (register first — already in the source). PRD D5; DN-multi-harness-deploy-model §D18.
@@ -36,6 +36,38 @@ refuse a brief that contradicts it. Only cargo and mvn have blocking hooks
    `fail_direction`, how the client's own runner subprocess is told apart from a direct call, and
    which stacks' instances `init` compiles.
 
+## User rulings (2026-10-13, at gap analysis)
+
+1. **CR-MDB-057 runs first.** On the 0.3.0 clients `develop` is red (one test steers the client
+   through the retired `$CRUCIBLE_URL`; CR-057 owns its fix), so CR-056 branches from CR-057's green
+   base. Board: re-sequenced (057 at 2032, 056 at 2033) and `cr-depends --on CR-MDB-057`.
+2. **The rule binds agents AND the orchestrator.** The orchestrator's own runs — the pre-merge
+   gate's empty-HOME and `python3.11` passes, and the commands `AGENTS.md` documents — go through the
+   client too (`--python` for 3.11; the user installs `xmlrunner` for 3.11).
+3. **The escape hatch stays,** as on the cargo/mvn hooks (`ALLOW_RAW_<RUNNER>=1`); the definitions
+   say an agent uses it only with the orchestrator's approval.
+
+## Gap analysis — paused at Step 0 + first reach pass (2026-10-13), resumes after CR-057 merges
+
+- **Step 0 (develop `665187e`, clients 0.3.0, through the client, unfiled):** real HOME 2077 tests,
+  1 failure (`CrucibleClientResolvesScaffoldedKeyTest.test_filled_env_key_resolves_through_the_installed_client`
+  — the client ignored `$CRUCIBLE_URL` and reached the production board with a stub key, read-only);
+  empty HOME 2077 OK, 10 skips, temp home left empty. **Re-measure on CR-057's merge.**
+- **The hooks already see `ctx_shell`:** the Pi runtime maps `bash`, `ctx_shell` (raw or not) and
+  shell-language `ctx_execute` to the neutral `bash` class (`hooks-src/schema.md` v1). Not seen:
+  `lean_ctx` (arbitrary CLI), `ctx_call`, `ctx_execute` in a non-shell language — the hooks are a
+  deterrent, not a boundary (the permission side is CR-MDB-049).
+- **Model B's own repo compiles no hooks:** `.pi/extensions/` holds only the permission config, so
+  no guard runs in Model B itself today.
+- **`init` emits block hooks per stack** (`scaffold._hook_instances`: rust → cargo, java/quarkus →
+  mvn, `fail_direction = "closed"`); python and bun get none.
+- **Reach (raw-runner text):** `crucible-report-python` §B instructs `.venv/bin/pytest … --junitxml`
+  then hand-ingest (a direct contradiction); the other report skills describe what the client runs
+  internally ("Runs `bun test` …") — the guard must tell description from instruction; the Java
+  memory templates teach `./mvnw test` (CR-MDB-060 rewrites them); `AGENTS.md` Testing lists raw
+  `python3 -m unittest` commands; the generator templates and stack files carry none.
+- **`python3.11` has no `xmlrunner`** (measured), so the 3.11 gate pass cannot go through the client
+  until it is installed.
 ## To measure at gap analysis
 
 - **`--cycle` on `test`/`e2e`.** The installed 0.2.x client's `test` has no `--cycle` (measured
