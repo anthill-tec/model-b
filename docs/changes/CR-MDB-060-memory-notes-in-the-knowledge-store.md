@@ -49,6 +49,17 @@ searchable; the user rules it the one home for a Model B project's memory notes.
 6. **The skills.** Bootstrap and shutdown stop reading `docs/memory/INDEX.md`;
    `orchestration-common` § "Memory" names the knowledge store as the one home, and drops "Without the
    key, nothing changes"; every skill naming `docs/memory/` is updated.
+7. **Facts are reconciled automatically, never on request.** The GC principle (a fact the repo or
+   the board comes to track is removed; a fact the run has overtaken is rewritten under its key) runs
+   at fixed workflow moments, without asking the user:
+   - **bootstrap**, right after it loads the category: each fact is checked against the board
+     (`queue`, `next`, `plans`) and the repo, then rewritten or removed, and the report names what
+     changed;
+   - **close-out**, after `cr-close`: every fact naming the closed CR is rewritten or removed;
+   - **shutdown**, before the watcher stops: facts this run overtook are brought current.
+
+   A fact is never only flagged for the user to approve; the rule and these three moments land in
+   the bootstrap, shutdown and `model-b` skills and in `orchestration-common` § "Memory".
 
 ## To measure at gap analysis
 
