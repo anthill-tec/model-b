@@ -48,7 +48,7 @@ from pathlib import Path
 from unittest import mock
 
 from modelb_axi import requirements as _requirements
-from tests._helpers import decode_axi
+from tests._helpers import decode_axi, write_interpreter_fixture
 from tests.pi_capability_sandbox import (
     AGENT_DIR_ENV,
     make_home,
@@ -722,10 +722,13 @@ class InstallerGlobalPolicyRetiredTest(unittest.TestCase):
         self.xdg = self.root / "xdg"
         for d in (self.bin_dir, self.xdg):
             d.mkdir(parents=True)
-        for name, body in (("uv", _FAKE_UV), ("sandesh", _FAKE_SANDESH)):
-            exe = self.bin_dir / name
-            exe.write_text(body, encoding="utf-8")
-            exe.chmod(0o755)
+        # MIGRATED at CR-MDB-064 C2 RED (§S7): the shared installer fixture — a `python3`
+        # at the 3.14 floor (the interpreter is required, CR-MDB-064 §S2) and a `uv`
+        # answering `uv python find --system '>=3.14'`, otherwise this module's fake.
+        write_interpreter_fixture(self.bin_dir, uv_body=_FAKE_UV)
+        exe = self.bin_dir / "sandesh"
+        exe.write_text(_FAKE_SANDESH, encoding="utf-8")
+        exe.chmod(0o755)
         self.global_policy = self.agent_dir / GLOBAL_POLICY_RELPATH
 
     def _seed_global(self, text: str | None) -> bytes | None:

@@ -55,7 +55,7 @@ from pathlib import Path
 from modelb_axi.config import serialize_install_toml
 from modelb_axi.deploy import DeployError
 from tests._helpers import decode_axi as _decode
-from tests._helpers import md_section
+from tests._helpers import md_section, write_interpreter_fixture
 from tests._helpers import write_executable as _write_exe
 from tests.pi_capability_sandbox import (
     AGENT_DIR_ENV,
@@ -119,7 +119,10 @@ class _PruneSandboxCase(unittest.TestCase):
             d.mkdir(parents=True)
         make_home(self.home, crucible_manifest=False)
         make_provisioned_agent_dir(self.agent_dir)
-        _write_exe(self.bin_dir, "uv", _FAKE_UV)
+        # MIGRATED at CR-MDB-064 C2 RED (§S7): the shared installer fixture — a `python3`
+        # at the 3.14 floor (the interpreter is required, CR-MDB-064 §S2) and a `uv`
+        # answering `uv python find --system '>=3.14'`, otherwise this module's fake.
+        write_interpreter_fixture(self.bin_dir, uv_body=_FAKE_UV)
         _write_exe(self.bin_dir, "sandesh", _FAKE_SANDESH)
         _write_exe(self.bin_dir, "pi", _FAKE_TOOL)
         self.addCleanup(shutil.rmtree, self._root, True)

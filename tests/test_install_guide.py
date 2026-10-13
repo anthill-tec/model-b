@@ -70,6 +70,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from tests._helpers import requirements_rows as _requirements
+from tests._helpers import write_interpreter_fixture
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 GUIDE = REPO_ROOT / "docs" / "install-guide.md"
@@ -350,11 +351,13 @@ def preflight_prefixes() -> tuple[str, ...]:
         for d in (bin_dir, home, agent):
             d.mkdir()
         # MIGRATED at CR-MDB-047 C1 RED (§S1 version floor): a current sandesh.
-        for name, body in (("uv", "#!/bin/sh\nexit 0\n"),
-                           ("sandesh", "#!/bin/sh\necho 'sandesh 0.4.0'\nexit 0\n")):
-            exe = bin_dir / name
-            exe.write_text(body, encoding="utf-8")
-            exe.chmod(0o755)
+        # MIGRATED at CR-MDB-064 C2 RED (§S7): `python3` and `uv` are the shared installer
+        # fixture's — an interpreter at the 3.14 floor, which the pre-flight requires
+        # (CR-MDB-064 §S2), and a `uv` answering `uv python find --system '>=3.14'`.
+        write_interpreter_fixture(bin_dir, uv_body="#!/bin/sh\nexit 0\n")
+        exe = bin_dir / "sandesh"
+        exe.write_text("#!/bin/sh\necho 'sandesh 0.4.0'\nexit 0\n", encoding="utf-8")
+        exe.chmod(0o755)
         env = dict(os.environ)
         env["PYTHONPATH"] = str(REPO_ROOT) + (
             os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
@@ -987,6 +990,14 @@ class InstallGuideSandeshCliRequiredTest(unittest.TestCase):
     def test_every_required_row_stops_an_install_in_the_guide(self):
         self.assertEqual(check_required_rows_stop_an_install(_read(GUIDE)), [])
 
+    def test_the_python3_interpreter_is_a_required_row_the_guide_says_stops_an_install(self):
+        """CR-MDB-064 §S2/§S5: ``python3`` becomes ``required``, so the Warnings
+        section's stop-an-install sentence names it with the other required rows."""
+        required = [r["id"] for r in _requirements() if r["policy"] == "required"]
+        self.assertIn("python3", required, "CR-MDB-064 §S2: the interpreter is required")
+        self.assertNotIn(f"{WARNINGS}: the stop-an-install sentence omits `python3`",
+                         check_required_rows_stop_an_install(_read(GUIDE)))
+
     def test_checker_bites(self):
         ids = [r["id"] for r in _requirements() if r["policy"] == "required"]
         good = (f"## {PREREQUISITES}\n\n6. **Recommended tools.** x:\n   - `gh`\n\n"
@@ -1611,6 +1622,185 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
             "## Releases: live check: missing 'real pi configuration'",
             "## Releases: live check: missing 'loads the worktree extension'",
         ])
+
+
+# ---------------------------------------------------------------------------
+# CR-MDB-064 §S5 — the guide's Python 3.14 interpreter
+# ---------------------------------------------------------------------------
+
+#: §S5/§S2 — the remediation the guide names for the interpreter.
+PYTHON_REMEDIATION = "uv python install 3.14"
+PYTHON_FLOOR = (3, 14)
+#: "a Python 3.14 interpreter" ("Python ≥ 3.14" and "Python 3.14 or later" read the same).
+_PYTHON_FLOOR_WORDING = re.compile(r"(?<![\w-])Python (?:≥ ?|>= ?)?3\.14(?!\d|\.\d)")
+_PATH_WORD = re.compile(r"(?<![\w-])PATH(?![\w-])")
+#: §S2's stderr line when a candidate is accepted: ``python3: <path> (<version>)``.
+PYTHON_ACCEPTED_LINE = re.compile(r"^python3: (/\S+) \((\d+)\.(\d+)[^()\s]*\)$")
+#: §S2's stderr line when none is: ``python3=outdated|absent — <reason>; install it with: …``.
+PYTHON_REFUSAL_LINE = re.compile(
+    r"^python3=(?:outdated|absent) — \S.*; install it with: uv python install 3\.14$")
+#: The parenthesised list of tools whose installer needs elevated privileges.
+_ELEVATED_LIST = re.compile(r"(?<![\w-])needs? elevated privileges\s*\(([^)]*)\)")
+_LIST_ITEM_START = re.compile(r"^\s*(?:\d+\.|[-*])\s")
+
+
+def _list_items(section: str) -> list[str]:
+    """Each markdown list item of ``section`` (a nested item is its own item), with its
+    indented continuation lines; a blank line does not end an item, an unindented
+    non-item line does."""
+    items: list[str] = []
+    current: list[str] | None = None
+    for line in section.splitlines():
+        if _LIST_ITEM_START.match(line):
+            if current is not None:
+                items.append("\n".join(current))
+            current = [line]
+        elif current is not None and (not line.strip() or line[:1] in (" ", "\t")):
+            current.append(line)
+        elif current is not None:
+            items.append("\n".join(current))
+            current = None
+    if current is not None:
+        items.append("\n".join(current))
+    return items
+
+
+def _fenced_lines(text: str) -> list[str]:
+    """Every line inside a fenced block (the fence lines themselves excluded), stripped."""
+    lines = text.splitlines()
+    return [line.strip() for line, fenced in zip(lines, _fence_mask(lines), strict=True)
+            if fenced and not _FENCE_RE.match(line)]
+
+
+def check_python_interpreter(text: str) -> list[str]:
+    """CR-MDB-064 §S5: the ``python3`` requirement reads as a Python 3.14 interpreter —
+    ``python3`` on ``PATH``, else one uv provides — with ``uv python install 3.14`` as the
+    remediation; ``python3`` is not among the tools needing elevated privileges; the sample
+    pre-flight lines match §S2's stderr line."""
+    out = []
+    items = [i for i in _list_items(_section(text, PREREQUISITES)) if has_code_token(i, "python3")]
+    if not items:
+        out.append(f"{PREREQUISITES}: no item names `python3`")
+    for item in items:
+        head = " ".join(item.split())[:60]
+        if not _PYTHON_FLOOR_WORDING.search(item):
+            out.append(f"{PREREQUISITES}: the `python3` item does not read as a Python 3.14 "
+                       f"interpreter: {head!r}")
+        if not _PATH_WORD.search(item):
+            out.append(f"{PREREQUISITES}: the `python3` item does not say `python3` on `PATH`: "
+                       f"{head!r}")
+        if not has_code_token(item, PYTHON_REMEDIATION):
+            out.append(f"{PREREQUISITES}: the `python3` item does not name `{PYTHON_REMEDIATION}`: "
+                       f"{head!r}")
+    lists = [m.group(1) for m in _ELEVATED_LIST.finditer(" ".join(_section(text, OFFERS).split()))]
+    if not lists:
+        out.append(f"{OFFERS}: no list of the tools that need elevated privileges")
+    if any(has_code_token(names, "python3") for names in lists):
+        out.append(f"{OFFERS}: `python3` is listed among the tools that need elevated privileges")
+    accepted = [m for m in (PYTHON_ACCEPTED_LINE.match(line)
+                            for line in _fenced_lines(_section(text, PREFLIGHT))) if m]
+    if not any((int(m.group(2)), int(m.group(3))) >= PYTHON_FLOOR for m in accepted):
+        out.append(f"{PREFLIGHT}: the sample pre-flight shows no `python3: <path> (<version>)` "
+                   "line at 3.14 or later")
+    for line in _fenced_lines(text):
+        if line.startswith("python3:") and not PYTHON_ACCEPTED_LINE.match(line):
+            out.append(f"sample line {line!r} does not match `python3: <path> (<version>)`")
+        if line.startswith("python3=") and not PYTHON_REFUSAL_LINE.match(line):
+            out.append(f"sample line {line!r} does not match `python3=outdated|absent — <reason>; "
+                       f"install it with: {PYTHON_REMEDIATION}`")
+    return out
+
+
+_CONFORMING_PYTHON_GUIDE = (
+    f"## {PREREQUISITES}\n\n"
+    "6. **`python3`** — required: a Python 3.14 interpreter, the `python3` on your `PATH`, else\n"
+    f"   one uv provides. Install one with `{PYTHON_REMEDIATION}`.\n"
+    "7. **Recommended tools.** The install goes ahead without them:\n"
+    "   - `bash` and `jq` — from your operating system's package manager;\n\n"
+    f"## {PREFLIGHT}\n\n"
+    "```text\n"
+    "deps: uv=detected sandesh=detected crucible=detected\n"
+    "python3: /usr/bin/python3 (3.14.0)\n"
+    "```\n\n"
+    "Refused, it reads:\n\n"
+    "```text\n"
+    f"python3=outdated — /usr/bin/python3 is 3.12.3; install it with: {PYTHON_REMEDIATION}\n"
+    "```\n\n"
+    f"## {OFFERS}\n\n"
+    "Tools that need elevated privileges (`mvn`, `java`, `node`, `g++`) are only named.\n"
+)
+
+
+class InstallGuidePythonInterpreterTest(unittest.TestCase):
+    """CR-MDB-064 §S5: the guide states the 3.14 interpreter, its remediation, and §S2's
+    pre-flight line."""
+
+    maxDiff = None
+
+    def test_guide_states_the_python_3_14_interpreter_its_remediation_and_sample_line(self):
+        self.assertTrue(GUIDE.is_file(), f"{GUIDE.relative_to(REPO_ROOT)} must exist")
+        self.assertEqual(check_python_interpreter(_read(GUIDE)), [])
+
+    def test_checker_passes_a_conforming_guide(self):
+        self.assertEqual(check_python_interpreter(_CONFORMING_PYTHON_GUIDE), [])
+        above = _CONFORMING_PYTHON_GUIDE.replace("(3.14.0)", "(3.15.1)")
+        self.assertEqual(check_python_interpreter(above), [], "a 3.15 sample is above the floor")
+        final = _CONFORMING_PYTHON_GUIDE.replace("a Python 3.14 interpreter,", "an interpreter of Python 3.14.")
+        self.assertEqual(check_python_interpreter(final), [], "a sentence may end on the floor")
+
+    def test_checker_bites_on_python3_from_the_package_manager(self):
+        old = _CONFORMING_PYTHON_GUIDE.replace(
+            "6. **`python3`** — required: a Python 3.14 interpreter, the `python3` on your `PATH`, "
+            f"else\n   one uv provides. Install one with `{PYTHON_REMEDIATION}`.\n", "").replace(
+            "   - `bash` and `jq`", "   - `python3`, `bash` and `jq`")
+        head = repr("- `python3`, `bash` and `jq` — from your operating system's package manager;"[:60])
+        self.assertEqual(check_python_interpreter(old), [
+            f"{PREREQUISITES}: the `python3` item does not read as a Python 3.14 interpreter: {head}",
+            f"{PREREQUISITES}: the `python3` item does not say `python3` on `PATH`: {head}",
+            f"{PREREQUISITES}: the `python3` item does not name `{PYTHON_REMEDIATION}`: {head}",
+        ])
+
+    def test_checker_bites_on_a_missing_python3_item(self):
+        gone = _CONFORMING_PYTHON_GUIDE.replace("6. **`python3`**", "6. **the interpreter**").replace(
+            "the `python3` on your", "the one on your")
+        self.assertEqual(check_python_interpreter(gone), [f"{PREREQUISITES}: no item names `python3`"])
+
+    def test_checker_bites_on_an_older_floor_or_another_remediation(self):
+        older = _CONFORMING_PYTHON_GUIDE.replace("a Python 3.14 interpreter", "a Python 3.11 interpreter")
+        self.assertEqual(len(check_python_interpreter(older)), 1)
+        self.assertIn("does not read as a Python 3.14 interpreter", check_python_interpreter(older)[0])
+        other = _CONFORMING_PYTHON_GUIDE.replace(f"`{PYTHON_REMEDIATION}`", "`apt install python3`", 1)
+        self.assertEqual(len(check_python_interpreter(other)), 1)
+        self.assertIn(f"does not name `{PYTHON_REMEDIATION}`", check_python_interpreter(other)[0])
+
+    def test_checker_bites_on_python3_needing_elevated_privileges(self):
+        listed = _CONFORMING_PYTHON_GUIDE.replace("`g++`)", "`g++`, `python3`)")
+        self.assertEqual(check_python_interpreter(listed), [
+            f"{OFFERS}: `python3` is listed among the tools that need elevated privileges"])
+        dropped = _CONFORMING_PYTHON_GUIDE.replace(
+            "Tools that need elevated privileges (`mvn`, `java`, `node`, `g++`) are only named.", "")
+        self.assertEqual(check_python_interpreter(dropped), [
+            f"{OFFERS}: no list of the tools that need elevated privileges"])
+
+    def test_checker_bites_on_sample_lines_that_miss_the_stderr_line(self):
+        no_line = _CONFORMING_PYTHON_GUIDE.replace("python3: /usr/bin/python3 (3.14.0)\n", "")
+        self.assertEqual(check_python_interpreter(no_line), [
+            f"{PREFLIGHT}: the sample pre-flight shows no `python3: <path> (<version>)` line at "
+            "3.14 or later"])
+        below = _CONFORMING_PYTHON_GUIDE.replace("(3.14.0)", "(3.13.2)")
+        self.assertEqual(check_python_interpreter(below), [
+            f"{PREFLIGHT}: the sample pre-flight shows no `python3: <path> (<version>)` line at "
+            "3.14 or later"])
+        bare = _CONFORMING_PYTHON_GUIDE.replace("python3: /usr/bin/python3 (3.14.0)",
+                                                "python3: detected")
+        self.assertIn("sample line 'python3: detected' does not match "
+                      "`python3: <path> (<version>)`", check_python_interpreter(bare))
+        refusal = _CONFORMING_PYTHON_GUIDE.replace(f"install it with: {PYTHON_REMEDIATION}",
+                                                   "install it with: apt install python3")
+        self.assertEqual(len(check_python_interpreter(refusal)), 1)
+        self.assertTrue(check_python_interpreter(refusal)[0].startswith(
+            "sample line 'python3=outdated — /usr/bin/python3 is 3.12.3; install it with: "
+            "apt install python3' does not match"))
 
 
 if __name__ == "__main__":

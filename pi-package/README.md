@@ -47,11 +47,15 @@ Install these in the order given; no step relies on one that comes after it.
 6. **`sandesh`** — required, version 0.4.0 or later: Sandesh's Pi extension refuses a missing
    or older CLI. Install it with `uv tool install sandesh-relay` (the installer offers to run
    this for you); an older one is reported `outdated`: run `uv tool upgrade sandesh-relay`.
-7. **Recommended tools.** The install goes ahead without them, but some assets will not work
+7. **`python3`** — required: a Python 3.14 interpreter, the `python3` on your `PATH`, else one
+   uv provides (`uv python find --system '>=3.14'`). A virtual environment does not count.
+   Install one with `uv python install 3.14`. The installer records the interpreter it found,
+   and the deployed tool and hook scripts run on it.
+8. **Recommended tools.** The install goes ahead without them, but some assets will not work
    (see [Warnings: what stops working](#warnings-what-stops-working)):
    - `crucible` — Crucible's released clients, installed with Crucible's own installer; the
      installer looks for their manifest at `~/.crucible/crucible-clients.json`;
-   - `python3`, `bash` and `jq` — from your operating system's package manager;
+   - `bash` and `jq` — from your operating system's package manager;
    - `gh` — the GitHub CLI, from https://cli.github.com;
    - `direnv` — from your operating system's package manager, with its shell hook:
      `direnv hook fish | source` in fish, or `eval "$(direnv hook bash)"` in bash. It loads a
@@ -91,6 +95,7 @@ typical run with `--stacks python` prints:
 ```text
 harness: dispatch=detected lean-ctx=detected permissions=detected worktree=detected sandesh-pi=detected
 deps: uv=detected sandesh=detected crucible=detected
+python3: /usr/bin/python3 (3.14.0)
 stack python: python3=detected xmlrunner=absent coverage=detected client=detected
 ```
 
@@ -101,6 +106,12 @@ stack python: python3=detected xmlrunner=absent coverage=detected client=detecte
 - `deps:` — `uv`, `sandesh` and `crucible`. `sandesh` is judged by `sandesh --version`: below
   0.4.0 it is `outdated`, reported like `absent` with `uv tool upgrade sandesh-relay`. Crucible is judged by its clients' manifest,
   `~/.crucible/crucible-clients.json`, never by a running server.
+- `python3:` — the Python 3.14 interpreter the installer records: its path and version. When
+  none is found, the line names the verdict, the reason and the remedy instead, for example:
+
+  ```text
+  modelb-axi: error: python3=outdated — python3 on PATH (/usr/bin/python3) is 3.12.3, below the 3.14 floor, and `uv python find --system '>=3.14'` found none; install it with: uv python install 3.14
+  ```
 - `stack <name>:` — one line per chosen stack: each toolchain tool, then `client=` for that
   stack's Crucible client, looked up in the same manifest. The tools checked are:
   `python` — `python3`, `xmlrunner`, `coverage` (the last two must import in the `python3` on
@@ -115,10 +126,12 @@ Each check ends in one of these verdicts:
 - `unknown` — the installer could not tell: Pi's settings file cannot be read or lists a
   package from a source other than npm; the Crucible manifest does not parse; or an import
   check could not run. The installer warns and carries on.
-- `outdated` — `sandesh` only: older than 0.4.0. It counts as `absent`; upgrade it with
+- `outdated` — for `sandesh`: older than 0.4.0. It counts as `absent`; upgrade it with
   `uv tool upgrade sandesh-relay`. A version that cannot be read is `outdated` too: the floor
   cannot be confirmed, so upgrade it, or reinstall it with
   `uv tool install --reinstall sandesh-relay`.
+  For `python3`, `outdated` means a `python3` below 3.14 and no other interpreter found; it
+  stops the install (see the `python3:` line above).
 - `installed` — was absent, you accepted an offer to install it, and a second check found it.
   After a Sandesh install you see a second line, `deps: uv=detected sandesh=installed ...`;
   other `installed` verdicts are recorded in `install.toml`.
@@ -149,7 +162,7 @@ provides it. By requirement:
 | `direnv` | the project .envrc, which loads .env into the environment, never runs: a session started in the project does not get its Sandesh identity (`SANDESH_ADDRESS`, `SANDESH_PROJECT`) from the environment. |
 | `toolchain` | that stack's tests cannot run on this machine, so its agent definitions cannot carry out test-first work there; shown as `<tool>=absent` on the `stack <name>:` line. |
 
-Only `uv`, `dispatch`, `lean-ctx`, `sandesh-pi` and `sandesh` stop an install. Every other warning is recorded and the
+Only `uv`, `dispatch`, `lean-ctx`, `sandesh-pi`, `sandesh` and `python3` stop an install. Every other warning is recorded and the
 install continues, so you can fix it later and re-run.
 
 ## Install offers
@@ -166,7 +179,7 @@ offer to run that command for you:
   privileges, and when the command that installer starts with is on your `PATH`, for example ``Run `curl -fsSL https://bun.sh/install | bash` to install bun for
   stack bun? [y/N]``. The same installer is offered once even when it provides several tools
   (`python3 -m pip install unittest-xml-reporting coverage` covers both Python modules). Tools
-  that need elevated privileges (`mvn`, `java`, `node`, `g++`, `python3`) are only named,
+  that need elevated privileges (`mvn`, `java`, `node`, `g++`) are only named,
   never run.
 
 These offers need an explicit `y` or `yes`; pressing Enter declines, and a decline is recorded

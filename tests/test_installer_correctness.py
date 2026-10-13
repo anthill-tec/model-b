@@ -59,6 +59,7 @@ from unittest import mock
 from modelb_axi.harness import HARNESS_ROSTER_IDS
 from tests._helpers import decode_envelope as _decode_envelope
 from tests._helpers import write_executable as _write_fake_executable
+from tests._helpers import write_interpreter_fixture
 from tests.pi_capability_sandbox import shared_home_without_crucible, with_agent_dir
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -87,6 +88,10 @@ def _run_module(*args, env_overrides=None, timeout=20, stdin=subprocess.DEVNULL)
 # Fake `uv`/`sandesh` fixtures (mirror tests/test_installer.py exactly):
 # presence on PATH is enough for the pre-flight to report `detected`
 # without touching the network.
+# MIGRATED at CR-MDB-064 C2 RED (§S7): every installer run here writes its fake `uv`
+# through the shared installer fixture (`write_interpreter_fixture`), which puts a
+# `python3` at the 3.14 floor beside it (the interpreter is required, CR-MDB-064 §S2)
+# and answers `uv python find --system '>=3.14'`.
 _FAKE_UV_SCRIPT = (
     "#!/bin/sh\n"
     'if [ "$1" = "tool" ] && [ "$2" = "install" ]; then\n'
@@ -205,7 +210,7 @@ class PiExtensionTargetRootRoundTripTest(unittest.TestCase):
         self._tmp_bin = tempfile.mkdtemp(prefix="modelb-axi-c1-fakebin-")
         self._tmp_target_root = tempfile.mkdtemp(prefix="modelb-axi-c1-target-")
         self._tmp_project = tempfile.mkdtemp(prefix="modelb-axi-c1-project-")
-        _write_fake_executable(self._tmp_bin, "uv", _FAKE_UV_SCRIPT)
+        write_interpreter_fixture(self._tmp_bin, uv_body=_FAKE_UV_SCRIPT)
         _write_fake_executable(self._tmp_bin, "sandesh", _FAKE_SANDESH_SCRIPT)
 
     def tearDown(self):
@@ -283,7 +288,7 @@ class InstallTomlSchemaKeysTest(unittest.TestCase):
         self._tmp_bin = tempfile.mkdtemp(prefix="modelb-axi-c1-schema-bin-")
         self._tmp_target_root = tempfile.mkdtemp(prefix="modelb-axi-c1-schema-target-")
         self._tmp_project = tempfile.mkdtemp(prefix="modelb-axi-c1-schema-project-")
-        _write_fake_executable(self._tmp_bin, "uv", _FAKE_UV_SCRIPT)
+        write_interpreter_fixture(self._tmp_bin, uv_body=_FAKE_UV_SCRIPT)
         _write_fake_executable(self._tmp_bin, "sandesh", _FAKE_SANDESH_SCRIPT)
 
     def tearDown(self):
@@ -404,7 +409,7 @@ class FirstInstallNeverClobbersForeignFileTest(unittest.TestCase):
         self._tmp_home = tempfile.mkdtemp(prefix="modelb-axi-c1-foreign-home-")
         self._tmp_bin = tempfile.mkdtemp(prefix="modelb-axi-c1-foreign-bin-")
         self._tmp_target_root = tempfile.mkdtemp(prefix="modelb-axi-c1-foreign-target-")
-        _write_fake_executable(self._tmp_bin, "uv", _FAKE_UV_SCRIPT)
+        write_interpreter_fixture(self._tmp_bin, uv_body=_FAKE_UV_SCRIPT)
         _write_fake_executable(self._tmp_bin, "sandesh", _FAKE_SANDESH_SCRIPT)
         self._foreign_content = (
             b"#!/bin/sh\n# NOT Model B's file -- pre-existing, hand-placed.\n"
@@ -1083,7 +1088,7 @@ class InstallTomlWrittenWithMode0644Test(unittest.TestCase):
         self._tmp_home = tempfile.mkdtemp(prefix="modelb-axi-c2-mode-home-")
         self._tmp_bin = tempfile.mkdtemp(prefix="modelb-axi-c2-mode-bin-")
         self._tmp_target_root = tempfile.mkdtemp(prefix="modelb-axi-c2-mode-target-")
-        _write_fake_executable(self._tmp_bin, "uv", _FAKE_UV_SCRIPT)
+        write_interpreter_fixture(self._tmp_bin, uv_body=_FAKE_UV_SCRIPT)
         _write_fake_executable(self._tmp_bin, "sandesh", _FAKE_SANDESH_SCRIPT)
 
     def tearDown(self):
@@ -1271,7 +1276,7 @@ class RegressionPinFilePermissionsUnaffectedByAtomicWritesTest(unittest.TestCase
         self._tmp_bin = tempfile.mkdtemp(prefix="modelb-axi-c2-perm-bin-")
         self._tmp_target_root = tempfile.mkdtemp(prefix="modelb-axi-c2-perm-target-")
         self._tmp_project = tempfile.mkdtemp(prefix="modelb-axi-c2-perm-project-")
-        _write_fake_executable(self._tmp_bin, "uv", _FAKE_UV_SCRIPT)
+        write_interpreter_fixture(self._tmp_bin, uv_body=_FAKE_UV_SCRIPT)
         _write_fake_executable(self._tmp_bin, "sandesh", _FAKE_SANDESH_SCRIPT)
 
     def tearDown(self):
@@ -1855,7 +1860,7 @@ class InstallerEightExitPathsEnvelopeTest(unittest.TestCase):
 
     def setUp(self):
         self._tmp_bin = tempfile.mkdtemp(prefix="modelb-axi-c3-envelope-bin-")
-        _write_fake_executable(self._tmp_bin, "uv", _FAKE_UV_SCRIPT)
+        write_interpreter_fixture(self._tmp_bin, uv_body=_FAKE_UV_SCRIPT)
         _write_fake_executable(self._tmp_bin, "sandesh", _FAKE_SANDESH_SCRIPT)
 
     def tearDown(self):
@@ -2077,8 +2082,8 @@ class StdoutCarriesOnlyEnvelopeAllHumanLinesOnStderrTest(unittest.TestCase):
         marker_fd, self._marker_path = tempfile.mkstemp(prefix="c3-s6-uv-install-marker-")
         os.close(marker_fd)
         os.remove(self._marker_path)  # must NOT exist yet -- proves invocation
-        _write_fake_executable(
-            self._tmp_bin, "uv", _fake_uv_script_placing_sandesh(self._tmp_bin),
+        write_interpreter_fixture(
+            self._tmp_bin, uv_body=_fake_uv_script_placing_sandesh(self._tmp_bin),
         )
         # Deliberately NO fake `sandesh` binary -- triggers the proactive
         # install path, so BOTH `deps:` lines print (pre-remediation +
@@ -2183,7 +2188,7 @@ class InstalledEnvelopeFieldsMatchInstallTomlAndForeignFileTest(unittest.TestCas
         self._tmp_home = tempfile.mkdtemp(prefix="modelb-axi-c3-s6-fields-home-")
         self._tmp_bin = tempfile.mkdtemp(prefix="modelb-axi-c3-s6-fields-bin-")
         self._tmp_target_root = tempfile.mkdtemp(prefix="modelb-axi-c3-s6-fields-target-")
-        _write_fake_executable(self._tmp_bin, "uv", _FAKE_UV_SCRIPT)
+        write_interpreter_fixture(self._tmp_bin, uv_body=_FAKE_UV_SCRIPT)
         _write_fake_executable(self._tmp_bin, "sandesh", _FAKE_SANDESH_SCRIPT)
         # A foreign, non-Model-B file at a path the tool scripts deploy
         # to -- present BEFORE the run, absent from any manifest.

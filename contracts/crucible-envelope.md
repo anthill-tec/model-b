@@ -57,8 +57,8 @@ subset to be pinned against.
 **Model B does not implement the spec** — an official multi-language ecosystem already
 does. `modelb_axi/toon.py` is the one HAND-MAINTAINED codec in this repo; `scripts/toon.py`
 is GENERATED from it by `generator/build.py` (a real self-contained module, never a
-re-export, so a deployed `worktree-flow.py` running under a bare `python3` resolves it
-from beside itself) and held byte-identical by `generator/build.py --check`. The codec
+re-export, so a deployed `worktree-flow.py`, running on the recorded interpreter that cannot
+reach `modelb_axi`, resolves it from beside itself) and held byte-identical by `generator/build.py --check`. The codec
 ENCODES a documented valid SUBSET and DECODES what Model B's own tools emit.
 
 Conformance is PROVEN, not asserted: `tests/test_toon_codec.py` round-trips the encoder's

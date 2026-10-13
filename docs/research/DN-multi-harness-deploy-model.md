@@ -907,6 +907,11 @@ long-term-support distribution often 3.11 or 3.12. So:
 - the interpreter is required: with none that meets the floor the installer refuses, and
   `--allow-missing-capabilities` does not override it (scripts deployed unrendered would bring the
   problem back); a virtual environment is never recorded (user ruling at CR-MDB-064's pre-review).
+- the verdict when no candidate is accepted stays in the four-value vocabulary: `outdated` only when
+  `python3` on `PATH` runs and reports a version below the floor; `absent` otherwise — no `python3`,
+  a `python3` that cannot report its version, or one at or above the floor that is rejected (a
+  virtual environment, whitespace or an over-long path) — with the reason naming the rejection
+  (orchestrator rulings during CR-MDB-064, confirmed at its VERIFY).
 
 Implemented by CR-MDB-064.
 

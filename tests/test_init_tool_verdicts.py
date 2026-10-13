@@ -50,7 +50,13 @@ from unittest import mock
 
 from modelb_axi import scaffold
 from modelb_axi.requirements import REQUIREMENTS, STACK_TOOLCHAINS
-from tests._helpers import decode_axi, parse_env_file, run_module, write_executable
+from tests._helpers import (
+    decode_axi,
+    parse_env_file,
+    run_module,
+    write_executable,
+    write_interpreter_fixture,
+)
 from tests.pi_capability_sandbox import (
     AGENT_DIR_ENV,
     fake_sandesh,
@@ -89,7 +95,6 @@ DERIVED_CHANNEL = "VerdictProject"
 RERUN_INSTALLER_RE = re.compile(r"(?i)re-?run[^\n]*\b(installer|modelb-axi)\b")
 
 _FAKE_UV = "#!/bin/sh\necho uv-fake\nexit 0\n"
-_FAKE_OK = "#!/bin/sh\nexit 0\n"
 
 
 def _complete_verdicts(verdict: str = "detected") -> dict:
@@ -177,10 +182,12 @@ class SandeshPiInstallerVerdictTest(unittest.TestCase):
         for path in (self.modelb_home, self.target_root, self.xdg_data, self.bin_dir):
             path.mkdir(parents=True)
         self.home = make_home(self.root / "home", crucible_manifest=False)
-        write_executable(self.bin_dir, "uv", _FAKE_UV)
+        # MIGRATED at CR-MDB-064 C2 RED (§S7): the shared installer fixture — a `python3`
+        # at the 3.14 floor (the interpreter is required, CR-MDB-064 §S2) and a `uv`
+        # answering `uv python find --system '>=3.14'`.
+        write_interpreter_fixture(self.bin_dir, uv_body=_FAKE_UV)
         # MIGRATED at CR-MDB-047 C1 RED (§S1 version floor): a current sandesh.
         write_executable(self.bin_dir, "sandesh", fake_sandesh())
-        write_executable(self.bin_dir, "python3", _FAKE_OK)
         write_executable(self.bin_dir, "pi", (
             "#!/bin/sh\n"
             f'printf \'%s\\n\' "$*" >> "{self.pi_log}"\n'

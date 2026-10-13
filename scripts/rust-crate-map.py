@@ -43,13 +43,9 @@ import re
 import shutil
 import subprocess
 import sys
+import tomllib
 from datetime import date
 from pathlib import Path
-
-try:
-    import tomllib
-except ImportError:  # < 3.11
-    tomllib = None
 
 SIGNALS = {
     "tests": re.compile(r"#\[(tokio::)?test[\]\(]|#\[rstest"),
@@ -268,7 +264,7 @@ def write_json_md(meta, rows, out: Path):
 
 def load_config(out: Path):
     cfg_path = out / "crate_map.toml"
-    if not cfg_path.exists() or tomllib is None:
+    if not cfg_path.exists():
         return {}
     return tomllib.loads(cfg_path.read_text())
 

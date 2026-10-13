@@ -126,8 +126,8 @@ def _find_stack() -> tuple[str, str] | None:
                 if not candidate.name:
                     continue  # the filesystem root names no sketch
                 marker = marker.replace("{dir}", candidate.name)
-            # os.path.isfile swallows every OSError on every Python version
-            # (Path.is_file raises e.g. PermissionError on 3.11/3.12).
+            # os.path.isfile swallows every OSError; so does Path.is_file on the
+            # 3.14 floor — kept as os.path.isfile, the defensive form.
             if os.path.isfile(candidate / marker):
                 return stack, key
     return None

@@ -16,6 +16,7 @@ dict with the §S1 fields:
 ``probe``           how the pre-flight judges it: ``pi-package`` (Pi's
                     settings + node_modules), ``bootstrap`` (``uv``),
                     ``deps`` (Sandesh), ``crucible-manifest``,
+                    ``interpreter`` (the Python floor, CR-MDB-064 §S2),
                     ``toolchain`` (§S8), or ``path`` — a tier-2 tool
                     resolved by ``shutil.which`` and recorded in
                     ``[capabilities]``; a new ``path`` row needs no code
@@ -163,14 +164,17 @@ REQUIREMENTS: tuple[dict, ...] = (
         "remediation": "install Crucible's released clients with Crucible's own installer",
     },
     {
+        # CR-MDB-064 §S2: the interpreter the deployed scripts run on —
+        # required, found by its own ``interpreter`` probe (``python3`` on
+        # PATH, else the one uv reports) and recorded as ``[install] python``.
         "id": "python3",
         "tier": 2,
         "provider": "the OS",
-        "policy": "recommended",
+        "policy": "required",
         "scope": "always",
-        "probe": "path",
+        "probe": "interpreter",
         "asset_families": ("tool scripts", "hook scripts"),
-        "remediation": "install python3 with the OS package manager",
+        "remediation": "uv python install 3.14",
     },
     {
         "id": "bash",

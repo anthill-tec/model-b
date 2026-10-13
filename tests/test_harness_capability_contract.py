@@ -27,6 +27,7 @@ import tomllib
 import unittest
 from pathlib import Path
 
+from tests._helpers import PYTHON_REMEDIATION, write_interpreter_fixture
 from tests._helpers import decode_axi as _decode
 from tests._helpers import requirements_rows as _requirements
 from tests._helpers import write_executable as _write_exe
@@ -114,7 +115,10 @@ class _SandboxedInstallerCase(unittest.TestCase):
         self.agent_dir = self._root / "agent"
         for d in (self.modelb_home, self.target_root, self.bin_dir, self.home):
             d.mkdir(parents=True)
-        _write_exe(self.bin_dir, "uv", _FAKE_UV)
+        # MIGRATED at CR-MDB-064 C2 RED (§S7): the shared installer fixture — a
+        # `python3` at the 3.14 floor (the interpreter is required, §S2) and a `uv`
+        # answering `uv python find --system '>=3.14'`, otherwise this module's fake.
+        write_interpreter_fixture(self.bin_dir, uv_body=_FAKE_UV)
         _write_exe(self.bin_dir, "sandesh", _FAKE_SANDESH)
 
     def tearDown(self):
@@ -183,7 +187,8 @@ class RequirementsDeclarationTest(unittest.TestCase):
         ("sandesh", 2, "required", True),
         ("crucible", 2, "recommended", True),
         ("crucible-client", 2, "recommended", False),
-        ("python3", 2, "recommended", True),
+        # MIGRATED at CR-MDB-064 C2 RED (§S2): the interpreter is required.
+        ("python3", 2, "required", True),
         ("bash", 2, "recommended", True),
         ("gh", 2, "recommended", True),
         ("jq", 2, "recommended", True),
@@ -231,9 +236,12 @@ class RequirementsDeclarationTest(unittest.TestCase):
         # MIGRATED at CR-MDB-047 C1 RED (§S1: sandesh-pi becomes required);
         # was test_only_dispatch_lean_ctx_and_uv_are_required. MIGRATED again
         # at CR-MDB-047 C4 FIX (VERIFY F9: the `sandesh` CLI is required too);
-        # was test_only_dispatch_lean_ctx_sandesh_pi_and_uv_are_required.
+        # was test_only_dispatch_lean_ctx_sandesh_pi_and_uv_are_required. MIGRATED at
+        # CR-MDB-064 C2 RED (§S2: the `python3` interpreter is required too); the name is
+        # kept as §S7 cites it.
         required = sorted(r["id"] for r in _requirements() if r.get("policy") == "required")
-        self.assertEqual(required, ["dispatch", "lean-ctx", "sandesh", "sandesh-pi", "uv"])
+        self.assertEqual(required,
+                         ["dispatch", "lean-ctx", "python3", "sandesh", "sandesh-pi", "uv"])
 
     def test_tier1_providers_are_the_exact_npm_packages(self):
         for cap, pkg in TIER1_PACKAGES.items():
@@ -272,12 +280,24 @@ class RequirementsDeclarationTest(unittest.TestCase):
         strays = [t for t in tools if t != "lean_ctx" and not t.startswith("ctx_")]
         self.assertEqual(strays, [], f"§S1: lean-ctx tools must be ctx_* or lean_ctx; got {tools}")
 
+    def test_python3_is_a_required_interpreter_probe_remediated_by_uv(self):
+        """CR-MDB-064 §S2: the ``python3`` row is ``required``, probed as an
+        ``interpreter``, remediated by ``uv python install 3.14``; the only row of
+        that probe kind."""
+        row = _row("python3")
+        self.assertEqual((row["tier"], row["policy"], row.get("probe"), row["remediation"]),
+                         (2, "required", "interpreter", PYTHON_REMEDIATION))
+        self.assertEqual(
+            [r["id"] for r in _requirements() if r.get("probe") == "interpreter"], ["python3"])
+
     def test_path_probed_rows_are_declared_by_their_probe_kind(self):
         """Finding 3: the tier-2 PATH tools are DATA \u2014 each row carries a
-        probe kind, and the ``path`` rows are exactly python3/bash/gh/jq, and
-        direnv (MIGRATED at CR-MDB-047 C1 RED, \u00a7S1)."""
+        probe kind, and the ``path`` rows are exactly bash/gh/jq, and direnv
+        (MIGRATED at CR-MDB-047 C1 RED, §S1). MIGRATED at CR-MDB-064 C2 RED
+        (§S2): ``python3`` leaves them for its own probe kind, ``interpreter``."""
         path_rows = sorted(r["id"] for r in _requirements() if r.get("probe") == "path")
-        self.assertEqual(path_rows, ["bash", "direnv", "gh", "jq", "python3"])
+        self.assertEqual(path_rows, ["bash", "direnv", "gh", "jq"])
+        self.assertEqual(_row("python3").get("probe"), "interpreter")
         for row in _requirements():
             if row.get("probe") == "path":
                 self.assertEqual(row["tier"], 2, row)
@@ -289,7 +309,12 @@ class RequirementsDeclarationTest(unittest.TestCase):
 
 class PathToolsRecordAndWarnTest(_SandboxedInstallerCase):
     """Finding 4: the tier-2 PATH tools are recorded in ``[capabilities]``
-    and each absent one WARNs naming itself; a present one does not."""
+    and each absent one WARNs naming itself; a present one does not.
+
+    MIGRATED at CR-MDB-064 C2 RED (§S2/§S7): ``python3`` is required — an
+    absent one refuses the install (``tests.test_installer_interpreter_probe``) — so
+    the fixture's interpreter is recorded ``detected`` and draws no PATH-tool
+    warning; ``bash``/``jq`` stay the absent recommended tools."""
 
     def test_path_tools_are_recorded_and_absent_ones_warn(self):
         make_provisioned_agent_dir(self.agent_dir)
@@ -300,10 +325,15 @@ class PathToolsRecordAndWarnTest(_SandboxedInstallerCase):
         caps = self.install_toml()["capabilities"]
         self.assertEqual(
             {t: caps.get(t) for t in ("python3", "bash", "gh", "jq")},
-            {"python3": "absent", "bash": "absent", "gh": "detected", "jq": "absent"},
+            {"python3": "detected", "bash": "absent", "gh": "detected", "jq": "absent"},
         )
+        self.assertEqual(self.install_toml()["install"].get("python"),
+                         str(self.bin_dir / "python3"),
+                         "§S2: the required interpreter is recorded, not warned about")
         warnings = axi.get("warnings", [])
-        for tool in ("python3", "bash", "jq"):
+        self.assertFalse(any(w.startswith("python3") for w in warnings),
+                         f"an accepted interpreter draws no warning; {warnings!r}")
+        for tool in ("bash", "jq"):
             with self.subTest(tool=tool):
                 self.assertTrue(
                     any(w.startswith(f"{tool} not found on PATH") for w in warnings),
@@ -349,7 +379,9 @@ class PathToolsAreDataDrivenTest(_SandboxedInstallerCase):
                 stack.enter_context(patch)
             stack.enter_context(mock.patch.dict(os.environ, env, clear=True))
             stack.enter_context(contextlib.redirect_stderr(io.StringIO()))
-            code, _, caps = preflight.run_preflight(lambda _p: False, warnings)
+            # MIGRATED at CR-MDB-064 C2 RED (§S2): the accepted interpreter is the
+            # fourth result.
+            code, _, caps, _python = preflight.run_preflight(lambda _p: False, warnings)
         self.assertEqual(code, 0, warnings)
         self.assertEqual(caps.get("sentinel-tool-c92"), "absent", caps)
         self.assertTrue(
@@ -790,8 +822,8 @@ class InteractivePiInstallOfferTest(_SandboxedInstallerCase):
     Driven in-process on a scripted TTY (``tests.scripted_terminal``) with
     ``HOME``, ``PATH`` and ``PI_CODING_AGENT_DIR`` pinned to the sandbox; a
     recording ``pi`` shim on PATH proves what was (not) executed, and
-    ``--stacks python`` with a succeeding ``python3`` shim keeps the
-    toolchain pre-flight free of other offers."""
+    ``--stacks python`` with the shared fixture's ``python3`` (its module checks
+    succeed) keeps the toolchain pre-flight free of other offers."""
 
     def setUp(self):
         super().setUp()
@@ -800,7 +832,8 @@ class InteractivePiInstallOfferTest(_SandboxedInstallerCase):
             self.bin_dir, "pi",
             f'#!/bin/sh\nprintf \'%s\\n\' "$*" >> "{self.pi_marker}"\nexit 0\n',
         )
-        _write_exe(self.bin_dir, "python3", "#!/bin/sh\nexit 0\n")
+        # MIGRATED at CR-MDB-064 C2 RED (§S7): the fixture's python3 replaces a bare
+        # `exit 0` shim, which reports no version and would be refused (§S2).
 
     def _pi_runs(self) -> list[str]:
         if not self.pi_marker.exists():
@@ -873,7 +906,7 @@ class PiInstallReprobeTest(_SandboxedInstallerCase):
             self.bin_dir, "pi",
             f'#!/bin/sh\nprintf \'%s\\n\' "$*" >> "{self.pi_marker}"\nexit 0\n',
         )
-        _write_exe(self.bin_dir, "python3", "#!/bin/sh\nexit 0\n")
+        # MIGRATED at CR-MDB-064 C2 RED (§S7): the fixture's python3, as above.
 
     def _pi_runs(self) -> list[str]:
         if not self.pi_marker.exists():
@@ -962,7 +995,8 @@ class PreflightReportLinesTest(_SandboxedInstallerCase):
     def test_report_lines_precede_the_sandesh_remediation(self):
         (self.bin_dir / "sandesh").unlink()
         # CR-MDB-037 \u00a7S5 migration: `installed` needs the re-probe to find it.
-        _write_exe(self.bin_dir, "uv", _fake_uv_placing_sandesh(self.bin_dir))
+        # MIGRATED at CR-MDB-064 C2 RED (§S7): on the shared fixture.
+        write_interpreter_fixture(self.bin_dir, uv_body=_fake_uv_placing_sandesh(self.bin_dir))
         result = self.run_installer()
         stderr = result.stderr
         pre = stderr.find("deps: uv=detected sandesh=absent")

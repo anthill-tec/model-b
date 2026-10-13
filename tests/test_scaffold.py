@@ -1268,6 +1268,18 @@ def _tier1_rows() -> list[dict]:
     return [row for row in _requirements.REQUIREMENTS if row["tier"] == 1]
 
 
+def _contract_remediation(probe: dict) -> str:
+    """The remediation the capability contract writes beside a toolchain probe.
+
+    MIGRATED at CR-MDB-064 C2 RED (§S2): a probe named like an always-scoped
+    requirement row (``python3``) is merged into that row's line, which names the
+    ROW's remediation (``_render_capability_contract``) — the two were the same
+    string until the ``python3`` row's became ``uv python install 3.14``."""
+    rows = {r["id"]: r for r in _requirements.REQUIREMENTS if r["scope"] == "always"}
+    row = rows.get(probe["name"])
+    return row["remediation"] if row is not None else probe["remediation"]
+
+
 def _line_pairing(content: str, name: str, remediation: str) -> list[str]:
     """Lines of ``content`` naming ``name`` AND carrying ``remediation``
     verbatim -- the \u00a7S6 "each with its remediation" pairing."""
@@ -1351,12 +1363,13 @@ class ScaffoldCapabilityContractTest(unittest.TestCase):
         self._precondition()
         python_probes = _requirements.STACK_TOOLCHAINS["python"]
         for probe in python_probes:
+            remediation = _contract_remediation(probe)
             with self.subTest(probe=probe["name"]):
                 self.assertTrue(
-                    _line_pairing(self._content, probe["name"], probe["remediation"]),
+                    _line_pairing(self._content, probe["name"], remediation),
                     f"\u00a7S6: a python project's AGENTS.md must name toolchain probe "
                     f"{probe['name']!r} with its remediation "
-                    f"{probe['remediation']!r} on one line; got content={self._content!r}",
+                    f"{remediation!r} on one line; got content={self._content!r}",
                 )
         # NEGATIVE -- no other stack's toolchain: neither a probe name nor
         # a remediation from any unselected stack's STACK_TOOLCHAINS row.
@@ -1402,12 +1415,13 @@ class ScaffoldCapabilityContractMultiStackTest(unittest.TestCase):
         selected = ("python", "rust")
         for stack in selected:
             for probe in _requirements.STACK_TOOLCHAINS[stack]:
+                remediation = _contract_remediation(probe)
                 with self.subTest(stack=stack, probe=probe["name"]):
                     self.assertTrue(
-                        _line_pairing(self._content, probe["name"], probe["remediation"]),
+                        _line_pairing(self._content, probe["name"], remediation),
                         f"\u00a7S6: AGENTS.md for --stacks python,rust must name {stack}'s "
                         f"toolchain probe {probe['name']!r} with its remediation "
-                        f"{probe['remediation']!r}; got content={self._content!r}",
+                        f"{remediation!r}; got content={self._content!r}",
                     )
         selected_names = {
             p["name"] for s in selected for p in _requirements.STACK_TOOLCHAINS[s]

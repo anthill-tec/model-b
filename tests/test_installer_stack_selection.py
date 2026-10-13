@@ -25,6 +25,7 @@ Stdlib only.
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -35,6 +36,7 @@ from pathlib import Path
 
 from tests._helpers import decode_axi as _decode
 from tests._helpers import write_executable as _write_exe
+from tests._helpers import write_interpreter_fixture
 from tests.pi_capability_sandbox import (
     AGENT_DIR_ENV,
     make_home,
@@ -85,6 +87,35 @@ def _is_sandesh_version(argv) -> bool:
     (CR-MDB-047 §S1) — a list or a command string, the binary by basename."""
     parts = argv if isinstance(argv, list) else str(argv).split()
     return len(parts) == 2 and Path(parts[0]).name == "sandesh" and parts[1] == "--version"
+
+
+def _runs_python3(argv) -> bool:
+    """Whether a logged Popen argv runs a ``python3`` (by basename)."""
+    parts = argv if isinstance(argv, list) else str(argv).split()
+    return bool(parts) and Path(parts[0]).name == "python3"
+
+
+#: The stack python probe's module check: ``import <module>`` and nothing else (§S8).
+_IMPORT_CHECK_RE = re.compile(r"import [\w.]+")
+#: The same check as the fixture's ``python3`` logs it.
+_LOGGED_IMPORT_CHECK_RE = re.compile(r"python3 -c import [\w.]+")
+
+
+def _is_import_check(argv) -> bool:
+    """Whether a logged Popen argv is the stack python probe's module check,
+    ``python3 -c "import <module>"`` (§S8)."""
+    return (isinstance(argv, list) and len(argv) == 3 and _runs_python3(argv)
+            and argv[1] == "-c" and _IMPORT_CHECK_RE.fullmatch(argv[2]) is not None)
+
+
+def _is_interpreter_probe(argv) -> bool:
+    """Whether a logged Popen argv belongs to the installer's interpreter probe
+    (CR-MDB-064 §S2): a run of ``python3`` that is not a module check, or the
+    second candidate's ``uv python find``."""
+    if _runs_python3(argv):
+        return not _is_import_check(argv)
+    parts = argv if isinstance(argv, list) else str(argv).split()
+    return len(parts) >= 3 and Path(parts[0]).name == "uv" and parts[1:3] == ["python", "find"]
 
 
 def _recording_shim(marker: Path, exit_code: int = 0) -> str:
@@ -161,7 +192,10 @@ class _StackSandboxCase(unittest.TestCase):
             d.mkdir(parents=True)
         make_home(self.home, crucible_manifest=False)
         make_provisioned_agent_dir(self.agent_dir)
-        _write_exe(self.bin_dir, "uv", _FAKE_UV)
+        # MIGRATED at CR-MDB-064 C2 RED (§S7): the shared installer fixture — a
+        # `python3` at the 3.14 floor (the interpreter is required, §S2) and a `uv`
+        # answering `uv python find --system '>=3.14'`, otherwise this module's fake.
+        write_interpreter_fixture(self.bin_dir, uv_body=_FAKE_UV)
         _write_exe(self.bin_dir, "sandesh", _FAKE_SANDESH)
 
     def tearDown(self):
@@ -467,7 +501,8 @@ class ToolchainProbeScopeTest(_StackSandboxCase):
         self.shim(*TOOLCHAIN_BINARIES)
 
     def test_rust_selection_probes_only_the_rust_row_once_each(self):
-        self.shim("python3")
+        # MIGRATED at CR-MDB-064 C2 RED (§S7): the fixture's python3, not a recording
+        # shim that reports no version (it would be refused, §S2).
         result, log = self.run_counting("--stacks", "rust")
         self.assert_installed(result)
         which = log["which"]
@@ -480,7 +515,6 @@ class ToolchainProbeScopeTest(_StackSandboxCase):
         ])
 
     def test_rust_selection_runs_no_subprocess_and_executes_no_toolchain(self):
-        self.shim("python3")
         result, log = self.run_counting("--stacks", "rust")
         self.assert_installed(result)
         # MIGRATED at CR-MDB-047 C1 RED (§S1: the sandesh probe runs
@@ -488,8 +522,17 @@ class ToolchainProbeScopeTest(_StackSandboxCase):
         # without python selected; no toolchain probe runs one.
         version_runs = [a for a in log["popen"] if _is_sandesh_version(a)]
         self.assertEqual(len(version_runs), 1, f"one `sandesh --version`; popen={log['popen']!r}")
-        self.assertEqual([a for a in log["popen"] if not _is_sandesh_version(a)], [],
-                         "§S8: no toolchain probe subprocess without python selected")
+        # MIGRATED at CR-MDB-064 C2 RED (§S2/§S7): the interpreter probe reads the
+        # fixture's PATH python3 by running it, whatever the stacks; it is no toolchain
+        # probe.
+        interpreter_runs = [a for a in log["popen"] if _is_interpreter_probe(a)]
+        self.assertGreaterEqual(len(interpreter_runs), 1,
+                                f"§S2: the interpreter is read by running it; "
+                                f"popen={log['popen']!r}")
+        self.assertEqual(
+            [a for a in log["popen"]
+             if not _is_sandesh_version(a) and not _is_interpreter_probe(a)], [],
+            "§S8: no toolchain probe subprocess without python selected")
         self.assertEqual(self.executions(), [], "§S8: toolchains resolved, never executed")
         self.assertEqual(self.stack_group(result.stderr, "rust").get("cargo"), "detected")
 
@@ -505,7 +548,10 @@ class ToolchainProbeScopeTest(_StackSandboxCase):
             )
 
     def test_python_selection_runs_only_the_path_python3_import_check(self):
-        self.shim("python3")
+        # MIGRATED at CR-MDB-064 C2 RED (§S7): the fixture's python3, recording its runs;
+        # besides the module checks the interpreter probe runs it (§S2), and that is no
+        # toolchain probe.
+        write_interpreter_fixture(self.bin_dir, uv_body=_FAKE_UV, python3_log=self.marker)
         result, log = self.run_counting("--stacks", "python")
         self.assert_installed(result)
         runs = self.executions()
@@ -514,21 +560,23 @@ class ToolchainProbeScopeTest(_StackSandboxCase):
             [r for r in runs if not r.startswith("python3 ")], [],
             f"§S8: python3 is the only executable a probe runs; ran={runs!r}",
         )
-        for run in runs:
-            self.assertIn(" -c ", f" {run.split(' ', 1)[1]} ", f"§S8: python3 -c only; ran={run!r}")
-            self.assertIn("import", run)
-        joined = "\n".join(runs)
-        self.assertIn("xmlrunner", joined)
-        self.assertIn("coverage", joined)
+        checks = [r for r in runs if _LOGGED_IMPORT_CHECK_RE.fullmatch(r)]
+        self.assertEqual(sorted(r.split()[-1] for r in checks), ["coverage", "xmlrunner"],
+                         f"§S8: one `python3 -c import <module>` per module; ran={runs!r}")
         # MIGRATED at CR-MDB-047 C1 RED (§S1): `sandesh --version` is the
         # sandesh probe's own run, not a toolchain probe's.
         version_runs = [a for a in log["popen"] if _is_sandesh_version(a)]
         self.assertEqual(len(version_runs), 1, f"one `sandesh --version`; popen={log['popen']!r}")
-        toolchain_popen = [a for a in log["popen"] if not _is_sandesh_version(a)]
+        toolchain_popen = [a for a in log["popen"]
+                           if not _is_sandesh_version(a) and not _is_interpreter_probe(a)]
         popen_bins = [Path(a[0] if isinstance(a, list) else a.split()[0]).name
                       for a in toolchain_popen]
         self.assertEqual(set(popen_bins), {"python3"}, f"popen={log['popen']!r}")
+        self.assertTrue(all(_is_import_check(a) for a in toolchain_popen), toolchain_popen)
         self.assertLessEqual(len(toolchain_popen), 2, "§S8: at most one check per module")
+        self.assertGreaterEqual(len([a for a in log["popen"] if _is_interpreter_probe(a)]), 1,
+                                f"§S2: the interpreter is read by running it; "
+                                f"popen={log['popen']!r}")
         self.assertEqual(self.stack_lines(result.stderr), [
             "stack python: python3=detected xmlrunner=detected coverage=detected client=absent",
         ])
@@ -557,7 +605,9 @@ class ToolchainAbsentWarningTest(_StackSandboxCase):
         self.assertEqual(caps.get("rust.cargo-nextest"), "absent")
 
     def test_absent_python_modules_name_the_install_command(self):
-        self.shim("python3", exit_code=1)  # python3 present, every import fails
+        # MIGRATED at CR-MDB-064 C2 RED (§S7): the fixture's python3 at the floor,
+        # every import check failing.
+        write_interpreter_fixture(self.bin_dir, uv_body=_FAKE_UV, imports_ok=False)
         result = self.run_installer("--stacks", "python")
         axi = self.assert_installed(result)
         group = self.stack_group(result.stderr, "python")
@@ -647,7 +697,8 @@ class StackVerdictKeysTest(_StackSandboxCase):
 
     def test_selected_stacks_record_flat_quoted_probe_keys(self):
         make_home(self.home, crucible_manifest=True, clients=("python",))
-        self.shim("python3", "cargo", "cargo-nextest")
+        # MIGRATED at CR-MDB-064 C2 RED (§S7): python3 is the fixture's.
+        self.shim("cargo", "cargo-nextest")
         self.assert_installed(self.run_installer("--stacks", "python,rust"))
         caps = self.install_toml().get("capabilities", {})
         stack_keys = {k: v for k, v in caps.items() if k.split(".", 1)[0] in ALL_STACKS}
@@ -961,16 +1012,16 @@ class SharedInstallCommandWarningTest(_StackSandboxCase):
     Under interactive offers the command is offered once, yet coverage
     keeps its OWN warning naming it — whether the offer was taken or
     declined. Fixture: the PATH ``python3`` fails every import check but
-    runs ``-m pip`` (recorded)."""
+    runs ``-m pip`` (recorded).
+
+    MIGRATED at CR-MDB-064 C2 RED (§S7): the shared fixture's python3 — at the
+    floor, so the interpreter probe (§S2) accepts it — with failing import
+    checks, recording every run."""
 
     def setUp(self):
         super().setUp()
-        _write_exe(self.bin_dir, "python3", (
-            "#!/bin/sh\n"
-            'if [ "$1" = "-c" ]; then exit 1; fi\n'
-            f'printf \'python3 %s\\n\' "$*" >> "{self.marker}"\n'
-            "exit 0\n"
-        ))
+        write_interpreter_fixture(self.bin_dir, uv_body=_FAKE_UV, imports_ok=False,
+                                  python3_log=self.marker)
 
     def _run(self, answer: str):
         result = self.run_interactive(

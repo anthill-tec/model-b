@@ -1,6 +1,6 @@
 # CR-MDB-064 — The published Python floor is 3.14
 
-**Status:** PENDING (filed 2026-10-13; gap analysis and pre-review 2026-10-13)
+**Status:** COMPLETED (filed 2026-10-13; gap analysis and pre-review 2026-10-13)
 **Type:** feature (packaging metadata, installer preflight, deploy, docs, tests)
 **Priority:** P1 — release 1.0.0, wave 2.
 **Depends on:** none (board-authoritative: read `queue`)

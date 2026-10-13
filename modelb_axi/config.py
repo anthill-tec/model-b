@@ -6,7 +6,8 @@ lists of strings, and the ``[[files]]`` array-of-tables — because the
 stdlib ships no TOML writer and the runtime is stdlib-only:
 
     [install]           version / harnesses / asset_root / ... / stacks,
-                        and allow_missing_capabilities only when used
+                        and allow_missing_capabilities only when used;
+                        python, the accepted interpreter (CR-MDB-064 §S2)
     [deps]              persisted pre-flight verdicts (uv/sandesh/crucible)
     [capabilities]      every probed requirement id -> verdict
                         (CR-MDB-036 §S4; absent from a pre-036 file)

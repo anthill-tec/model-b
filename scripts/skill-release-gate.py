@@ -27,7 +27,7 @@ Config lives in the project's `pyproject.toml` under `[tool.skill-release]`
 check argv/cmd, and teardown: `$TMP` (a scratch dir) and `$THROWAWAY_DB`
 (a unique per-run name). Nothing touches a live store.
 
-  python3 ~/.agents/scripts/skill-release-gate.py [--project-dir .]
+  ~/.agents/scripts/skill-release-gate.py [--project-dir .]
 
 Exit 0 = all gates passed (safe to finish); non-zero = a gate failed.
 Self-test: point a check's data outside its window (or break a value) — the gate must FAIL.
@@ -41,13 +41,9 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import tomllib
 import venv
 import zipfile
-
-try:
-    import tomllib
-except ModuleNotFoundError:  # py<3.11
-    import tomli as tomllib  # type: ignore
 
 G, R, B, X = "\033[32m", "\033[31m", "\033[1m", "\033[0m"
 
