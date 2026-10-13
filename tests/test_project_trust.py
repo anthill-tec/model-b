@@ -28,7 +28,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tests._helpers import decode_axi, md_section
+from tests._helpers import decode_axi, deploy_hook_scripts, md_section
 from tests.pi_capability_sandbox import (
     AGENT_DIR_ENV,
     make_home,
@@ -69,7 +69,10 @@ class _TrustSandbox(unittest.TestCase):
         self.write_install_toml(("pi",))
 
     def write_install_toml(self, harnesses) -> None:
-        hooks_scripts_dir = self.modelb_home / ".agents" / "hooks" / "scripts"
+        """``install.toml`` naming a sandbox store that holds every hook script
+        (``deploy_hook_scripts``, CR-MDB-062 §S8)."""
+        hooks_scripts_dir = deploy_hook_scripts(
+            self.modelb_home / ".agents" / "hooks" / "scripts")
         harnesses_toml = ", ".join(f'"{h}"' for h in harnesses)
         self.modelb_home.mkdir(parents=True, exist_ok=True)
         (self.modelb_home / "install.toml").write_text(

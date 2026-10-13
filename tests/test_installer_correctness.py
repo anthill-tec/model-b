@@ -58,8 +58,8 @@ from unittest import mock
 
 from modelb_axi.harness import HARNESS_ROSTER_IDS
 from tests._helpers import decode_envelope as _decode_envelope
+from tests._helpers import deploy_hook_scripts, write_interpreter_fixture
 from tests._helpers import write_executable as _write_fake_executable
-from tests._helpers import write_interpreter_fixture
 from tests.pi_capability_sandbox import shared_home_without_crucible, with_agent_dir
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -854,11 +854,14 @@ def _write_full_install_toml(home: str, harnesses=("pi",)) -> Path:
     GREEN) -- the C2 (§S2/§S4) fixtures need a manifest that PASSES §S1's
     own strict rule so a §S2/§S4 test never fails on an unrelated §S1
     defect. Mirrors ``tests/test_scaffold.py::_write_install_toml`` plus the
-    ``target_root``/``skills_dir``/``tool_scripts_dir`` keys §S1 added."""
+    ``target_root``/``skills_dir``/``tool_scripts_dir`` keys §S1 added.
+
+    MIGRATED (CR-MDB-062 C4 RED, §S8): the store holds every hook script
+    (``deploy_hook_scripts``), so init's script check finds each one it wires."""
     harnesses_toml = ", ".join(f'"{h}"' for h in harnesses)
     target_root = Path(home) / "target-root-placeholder"
     skills_dir = target_root / ".agents" / "skills"
-    hooks_scripts_dir = target_root / ".agents" / "hooks" / "scripts"
+    hooks_scripts_dir = deploy_hook_scripts(target_root / ".agents" / "hooks" / "scripts")
     tool_scripts_dir = target_root / ".agents" / "scripts"
     install_toml = Path(home) / "install.toml"
     install_toml.write_text(
@@ -1417,8 +1420,11 @@ class MidEmissionFailureInsideWiringCompilationEmittedTest(unittest.TestCase):
     Re-derived for the Pi-only roster (CR-MDB-031 §S1 -- the cross-harness
     premise, a failure on the first write of the NEXT roster harness, is
     retired with the non-Pi emitters): for the default ``python``/``solo``
-    args this test uses, ``pi`` has exactly two instances
-    (``ambient-board-status``, then ``post-regression-disk-reminder``).
+    args this test uses, ``pi`` has exactly three instances
+    (``ambient-board-status``, then ``post-regression-disk-reminder``, plus
+    ``block-direct-python-test``, which a python stack emits since
+    CR-MDB-062 §S7 -- MIGRATED at CR-MDB-062 C4 RED, the count pinned by
+    ``test_python_solo_args_give_pi_exactly_three_instances``).
     ``FAIL_AFTER = 1`` lets the first extension land and raises on the
     second, INSIDE ``compile_wiring``'s per-instance loop -- so
     ``compile_wiring`` never returns, and the first file must still be
@@ -1436,6 +1442,27 @@ class MidEmissionFailureInsideWiringCompilationEmittedTest(unittest.TestCase):
     def tearDown(self):
         for root in (self._tmp_home, self._tmp_target):
             shutil.rmtree(root, ignore_errors=True)
+
+    def test_python_solo_args_give_pi_exactly_three_instances(self):
+        from modelb_axi import scaffold
+
+        commands = [i["command"] for i in scaffold._hook_instances(["python"], "solo")]
+        # POSITIVE/EXACT -- the two always-on hooks lead, in the order the
+        # wiring-partial test below relies on (its 2nd write is the one that
+        # raises) ...
+        self.assertEqual(
+            commands[:2], ["ambient-board-status", "post-regression-disk-reminder"],
+            f"the always-on hooks lead the python/solo instances; got {commands!r}",
+        )
+        # ... and the python stack adds exactly its runner hook (§S7): three
+        # instances, no more.
+        self.assertEqual(
+            sorted(commands),
+            sorted(["ambient-board-status", "post-regression-disk-reminder",
+                    "block-direct-python-test"]),
+            f"CR-MDB-062 §S7: python/solo gives pi exactly three instances; got {commands!r}",
+        )
+        self.assertEqual(len(commands), 3, f"exactly three instances; got {commands!r}")
 
     def test_failure_inside_compile_wiring_still_lists_exact_partial_tree_in_emitted(self):
         from modelb_axi import scaffold

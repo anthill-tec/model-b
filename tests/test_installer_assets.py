@@ -122,13 +122,17 @@ ROLES = ("red", "green", "verify", "fix")
 # MIGRATED (CR-MDB-030 §S7, this cycle): the cycle-todo-naming guard
 # retired -- six scripts now, not seven; its own nonexistence is
 # tests/test_hook_retirement.py's job, not this deploy-shape pin's.
+# MIGRATED (CR-MDB-062 §S2/§S8): the python and bun runner hooks join --
+# eight scripts.
 HOOKS_SRC_DIR = REPO_ROOT / "hooks-src"
 HOOKS_SRC_SCRIPTS_DIR = HOOKS_SRC_DIR / "scripts"
 HOOK_SCRIPT_NAMES = (
     "ambient-board-status",
     "block-cr-completed-without-spec-update",
+    "block-direct-bun-test",
     "block-direct-cargo-test",
     "block-direct-mvn-test",
+    "block-direct-python-test",
     "block-write-outside-worktree",
     "post-regression-disk-reminder",
 )
@@ -1341,7 +1345,7 @@ class HookScriptsDeployEndToEndTest(unittest.TestCase):
         shutil.rmtree(self._tmp_bin, ignore_errors=True)
         shutil.rmtree(self._tmp_target_root, ignore_errors=True)
 
-    def test_end_to_end_install_deploys_six_hook_scripts_with_manifest_entries(self):
+    def test_end_to_end_install_deploys_eight_hook_scripts_with_manifest_entries(self):
         result = _run_module(
             "--yes", "--harnesses", "pi",
             "--modelb-home", self._tmp_home,
@@ -1359,14 +1363,14 @@ class HookScriptsDeployEndToEndTest(unittest.TestCase):
             name for name in HOOK_SCRIPT_NAMES
             if not (deployed_dir / name).is_file()
         ]
-        # POSITIVE/EXACT -- every one of the six protocol scripts lands
+        # POSITIVE/EXACT -- every one of the eight protocol scripts lands
         # under the store, none missing.
         self.assertEqual(
             missing_scripts, [],
             f"deployed hook-scripts store {deployed_dir} must contain all "
-            f"six protocol scripts; missing={missing_scripts}",
+            f"eight protocol scripts; missing={missing_scripts}",
         )
-        # NEGATIVE/EXACT bound (\u00a7S7) -- exactly six scripts land, nothing
+        # NEGATIVE/EXACT bound (\u00a7S7) -- exactly eight scripts land, nothing
         # extra -- catches the retired cycle-todo-naming guard still being
         # deployed if hooks-src/scripts/ was not actually cleaned up.
         deployed_names = sorted(
@@ -1375,7 +1379,7 @@ class HookScriptsDeployEndToEndTest(unittest.TestCase):
         self.assertEqual(
             deployed_names, sorted(HOOK_SCRIPT_NAMES),
             f"deployed hook-scripts store {deployed_dir} must contain "
-            f"EXACTLY the six surviving protocol scripts, no more (a "
+            f"EXACTLY the eight protocol scripts, no more (a "
             f"retired script left on disk would leak through here); got "
             f"{deployed_names!r}",
         )

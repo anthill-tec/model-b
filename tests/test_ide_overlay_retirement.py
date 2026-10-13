@@ -43,6 +43,7 @@ import unittest
 from pathlib import Path
 
 from tests._helpers import read_text_lenient as _read
+from tests._helpers import write_install_toml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SKILLS_SRC_DIR = REPO_ROOT / "skills-src"
@@ -267,20 +268,9 @@ class ScaffoldRejectsRetiredStackS3Test(unittest.TestCase):
         shutil.rmtree(self._target, ignore_errors=True)
 
     def _run_init(self, stacks_value: str):
-        hooks_scripts_dir = Path(self._home) / ".agents" / "hooks" / "scripts"
-        (Path(self._home) / "install.toml").write_text(
-            '[install]\n'
-            'version = "0.1.0"\n'
-            'harnesses = ["pi"]\n'
-            'asset_root = "/tmp/does-not-matter-for-this-test"\n'
-            f'hooks_scripts_dir = "{hooks_scripts_dir}"\n'
-            "\n"
-            "[deps]\n"
-            'uv = "present"\n'
-            "\n"
-            "[files]\n",
-            encoding="utf-8",
-        )
+        # MIGRATED (CR-MDB-062 C4 RED, §S8): the shared fixture, whose store holds every
+        # hook script (``deploy_hook_scripts``) -- the same install.toml this test wrote inline.
+        write_install_toml(self._home, harnesses=("pi",))
         env = dict(os.environ)
         existing_pp = env.get("PYTHONPATH", "")
         env["PYTHONPATH"] = str(REPO_ROOT) + (os.pathsep + existing_pp if existing_pp else "")

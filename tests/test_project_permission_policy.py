@@ -48,7 +48,7 @@ from pathlib import Path
 from unittest import mock
 
 from modelb_axi import requirements as _requirements
-from tests._helpers import decode_axi, write_interpreter_fixture
+from tests._helpers import decode_axi, deploy_hook_scripts, write_interpreter_fixture
 from tests.pi_capability_sandbox import (
     AGENT_DIR_ENV,
     make_home,
@@ -119,8 +119,11 @@ def write_install_toml(modelb_home: Path, harnesses=("pi",)) -> None:
     ``detected`` in ``[capabilities]`` -- the policy these tests pin is the
     lean-ctx form, which ``init`` renders only when the installation recorded
     lean-ctx present (CR-MDB-045 \u00a7S8); the built-in form is pinned by
-    tests.test_project_tools_setup."""
-    hooks_scripts_dir = modelb_home / ".agents" / "hooks" / "scripts"
+    tests.test_project_tools_setup.
+
+    MIGRATED (CR-MDB-062 C4 RED, §S8): deploys every hook script into the store
+    (``deploy_hook_scripts``), so init's script check finds each one it wires."""
+    hooks_scripts_dir = deploy_hook_scripts(modelb_home / ".agents" / "hooks" / "scripts")
     harnesses_toml = ", ".join(f'"{h}"' for h in harnesses)
     modelb_home.mkdir(parents=True, exist_ok=True)
     (modelb_home / "install.toml").write_text(

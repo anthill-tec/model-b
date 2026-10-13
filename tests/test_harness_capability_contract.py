@@ -27,7 +27,11 @@ import tomllib
 import unittest
 from pathlib import Path
 
-from tests._helpers import PYTHON_REMEDIATION, write_interpreter_fixture
+from tests._helpers import (
+    PYTHON_REMEDIATION,
+    deploy_hook_scripts,
+    write_interpreter_fixture,
+)
 from tests._helpers import decode_axi as _decode
 from tests._helpers import requirements_rows as _requirements
 from tests._helpers import write_executable as _write_exe
@@ -1096,6 +1100,9 @@ class InstallTomlCapabilitiesRecordTest(_SandboxedInstallerCase):
         self.assertNotIn("allow_missing_capabilities", data["install"])
 
     def _write_pre036(self):
+        """A pre-CR-MDB-036 ``install.toml``; its hook-script store holds every hook script, as a
+        pre-036 install's did (``deploy_hook_scripts``, CR-MDB-062 C5 F4)."""
+        deploy_hook_scripts(self.target_root / ".agents" / "hooks" / "scripts")
         (self.modelb_home / "install.toml").write_text(
             "[install]\n"
             'version = "0.1.0"\n'

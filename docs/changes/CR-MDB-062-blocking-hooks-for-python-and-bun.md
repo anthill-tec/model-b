@@ -1,6 +1,6 @@
 # CR-MDB-062 — Blocking hooks for python and bun, and one convention for all four runner hooks
 
-**Status:** PENDING (filed 2026-10-08; gap analysis and pre-review 2026-10-13) — **locked**
+**Status:** COMPLETED (filed 2026-10-08; gap analysis and pre-review 2026-10-13)
 **Type:** feature (hook scripts, guard, scaffold, docs)
 **Priority:** P1 — release 1.0.0, wave 2.
 **Depends on:** CR-MDB-056 (merged; board-authoritative: read `queue`)

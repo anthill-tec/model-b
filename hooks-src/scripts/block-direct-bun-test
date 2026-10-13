@@ -1,0 +1,307 @@
+#!/usr/bin/env python3
+"""pre-tool-use protocol script — HARD-BLOCKS a direct bun test run (`bun test`,
+`bun run test` / `bun run test:<name>`, `npm test`, `npm run test` /
+`npm run test:<name>`, `playwright test` alone or after `bunx`, `bun x` or `npx`)
+inside a bun project and redirects it to the bun-crucible.py client
+(CR-MDB-062 §S2). `bun run <file>` and any other script (`npm run testdata`) are
+allowed.
+
+Contract: the neutral payload (CR-MDB-030 §S3: `tool_name` `bash` /
+`tool_input.command` / `cwd`); exit 0 allows, exit 2 blocks with
+`{"decision":"block","reason":...}` on stdout. Self-contained and stdlib only
+(CR-MDB-015): the detector is inlined, no sibling module is imported.
+
+Command positions (CR-MDB-062 §S2): every line start outside quotes and
+outside a heredoc body (`<<WORD`, `<<'WORD'`, `<<"WORD"`, `<<-WORD`; a here-string
+`<<<` opens none), and the text after `&&`, `||`, `;`, `|`, `&` or `(` outside
+quotes. Leading wrappers are stepped over: `VAR=value`, `env` with its options
+and assignments, `timeout` with its options and a duration, `nice [-n N]` and
+`time`. A runner is read in the words the shell passes it: quotes removed, a
+redirection no part of them. A runner word inside a quoted argument or a heredoc
+body is never a position. It reads shell as the raw-runner guard does
+(`tests/test_raw_runner_guard.py`).
+
+Where it applies (CR-MDB-062 §S3): a `package.json`, `bun.lock`, `bun.lockb` or
+`bunfig.toml` in the payload's `cwd`, in a parent up to and including the git
+root (the nearest ancestor holding any `.git` entry), or in a directory at most 3
+levels below that git root. The walk below follows no symlink, skips hidden
+directories, `node_modules`, `.venv`, `venv`, `target`, `dist` and `build`, skips
+a directory it cannot read, and stops at the first marker. Without a git root
+only the `cwd` and its parents count. An empty or missing `cwd`, an unreadable
+payload, a non-`bash` tool, a command that does not tokenise and any filesystem
+error allow: this is a deterrent, and an exception from a `closed` hook would
+block every shell call.
+
+The block reason (CR-MDB-062 §S4) names the client listed in Crucible's
+manifest `~/.crucible/crucible-clients.json` —
+`~/.crucible/clients/bun-crucible.py`, installed by Crucible's own installer —
+with its `test` and `check` verbs, the tier verbs `unit`, `module`,
+`integration`, `e2e` and `bdd`, and `regression`; its client gap (a single test
+selected by name); and the `ALLOW_RAW_BUN=1` escape hatch, used only with the
+orchestrator's approval.
+"""
+
+import json
+import os
+import re
+import shlex
+import sys
+from pathlib import Path
+
+#: The project markers of this hook's stack (CR-MDB-062 §S3).
+MARKERS = ("package.json", "bun.lock", "bun.lockb", "bunfig.toml")
+#: How far below the git root the marker walk looks, and the directories it never enters.
+WALK_DEPTH = 3
+SKIPPED_DIRS = frozenset({"node_modules", ".venv", "venv", "target", "dist", "build"})
+
+#: Where a runner command word ends.
+_END = r"(?=$|[\s)\"'`,])"
+#: The bun runner forms (CR-MDB-062 §S1/§S2); a script row is `test` alone or `test:<name>`.
+BUN_RUNNERS = (
+    re.compile(r"bun\s+test" + _END),
+    re.compile(r"(?:bun|npm)\s+run\s+test(?::\S+)?" + _END),
+    re.compile(r"npm\s+test" + _END),
+    re.compile(r"(?:(?:bunx|bun\s+x|npx)\s+)?playwright\s+test" + _END),
+)
+#: A command separator outside quotes; a `&` in a redirection (`2>&1`, `&>file`) and the `|`
+#: of `>|` separate nothing.
+_SEPARATOR = re.compile(r"&&|\|\||\|&|;|(?<![<>])\|(?!\|)|(?<![<>])&(?![&>])|\(")
+#: A heredoc operator; its body, from the next line to the line `WORD`, is never a position.
+_HEREDOC = re.compile(r"<<(-?)[ \t]*(?:'([^'\n]*)'|\"([^\"\n]*)\"|\\?([A-Za-z0-9_][\w.-]*))")
+#: `env`'s options: `-u NAME` / `-C DIR` and their long forms take an argument.
+_ENV_OPTION = (r"(?:-[uC]\s*\S+|--(?:unset|chdir)(?:=\S+|\s+\S+)"
+               r"|-{1,2}[A-Za-z0-9][\w-]*(?:=\S+)?|--?(?=\s|$))")
+#: `timeout`'s options: `-k` / `-s` and their long forms take an argument.
+_TIMEOUT_OPTION = (r"(?:-[ks]\s*\S+|--(?:kill-after|signal)(?:=\S+|\s+\S+)"
+                   r"|-{1,2}[A-Za-z][\w-]*(?:=\S+)?)")
+#: A wrapper before a command: `VAR=value`, `env [options]`, `timeout [options] <n>`,
+#: `nice [-n N]`, `time`.
+_WRAPPER = re.compile(
+    r"(?:[A-Za-z_][A-Za-z0-9_]*=(?:\"[^\"]*\"|'[^']*'|\S*)|env(?:\s+" + _ENV_OPTION + r")*"
+    r"|timeout(?:\s+" + _TIMEOUT_OPTION + r")*\s+\S+"
+    r"|nice(?:\s+(?:-n\s*\S+|--adjustment(?:=\S+|\s+\S+)|-\d+))?|time)(?:\s+|$)")
+
+REASON = """⛔ BLOCKED: a direct bun test run (`bun test` / `bun run test[:<name>]` / `npm test` / `npm run test[:<name>]` / `playwright test`) is not allowed in a bun project.
+
+Run it through Crucible's client instead — it runs the same `bun test` AND ingests
+the results (JUnit XML + lcov) under your agent id. The client is listed in Crucible's
+manifest `~/.crucible/crucible-clients.json`; register first if you have not:
+  • Test files (omit --tests to run the whole suite):
+      python3 ~/.crucible/clients/bun-crucible.py test [--tests <file> ...] --agent <id>
+  • Type check / RED compile-fail (tsc):
+      python3 ~/.crucible/clients/bun-crucible.py check --agent <id>
+  • A tier — runs the `test:<tier>` script the project declares in package.json:
+      python3 ~/.crucible/clients/bun-crucible.py unit --agent <id>
+      python3 ~/.crucible/clients/bun-crucible.py module --agent <id>
+      python3 ~/.crucible/clients/bun-crucible.py integration --agent <id>
+      python3 ~/.crucible/clients/bun-crucible.py e2e --agent <id>
+      python3 ~/.crucible/clients/bun-crucible.py bdd --agent <id>
+  • Full regression with coverage (pre-merge gate):
+      python3 ~/.crucible/clients/bun-crucible.py regression --coverage --agent <id>
+
+Client gap: `test` takes no test-name filter, so a single test selected by name is not
+served by it — raise that with the orchestrator rather than working around it.
+
+Escape hatch, used only with the orchestrator's approval: prefix the command with
+ALLOW_RAW_BUN=1, e.g. ALLOW_RAW_BUN=1 bun test -t parser"""
+
+
+def _skip_heredoc_bodies(text: str, index: int, pending: list) -> int:
+    """The offset just past the heredoc bodies `pending` opens, read in order from the line
+    at `index`; each ends at the line holding its word (leading tabs stripped for `<<-`)."""
+    for word, strip_tabs in pending:
+        while index < len(text):
+            newline = text.find("\n", index)
+            end = len(text) if newline < 0 else newline
+            line = text[index:end]
+            index = end + 1
+            if (line.lstrip("\t") if strip_tabs else line) == word:
+                break
+    return min(index, len(text))
+
+
+def _segments(text: str):
+    """Each command segment of `text` as `(start, end)`, or `None` when a quote is never
+    closed (the command does not tokenise). A segment starts at a command position — the
+    text's start, a line start, or after a separator — and runs to the next one. Quotes, a
+    `#` comment and a backslash escape hide what they hold; a heredoc body is skipped whole,
+    and a here-string (`<<<`) opens none."""
+    segments, start, quote, pending = [], 0, None, []
+    index = 0
+    while index < len(text):
+        char = text[index]
+        if quote:
+            if char == "\\" and quote == '"':
+                index += 2
+                continue
+            quote = None if char == quote else quote
+            index += 1
+            continue
+        if char == "\\":
+            index += 2
+            continue
+        if char in "'\"":
+            quote = char
+            index += 1
+            continue
+        if char == "#" and (index == 0 or text[index - 1] in " \t\n;&|("):
+            newline = text.find("\n", index)
+            index = len(text) if newline < 0 else newline
+            continue
+        if char == "\n":
+            segments.append((start, index))
+            index = _skip_heredoc_bodies(text, index + 1, pending)
+            start, pending = index, []
+            continue
+        if text.startswith("<<<", index):
+            index += 3  # a here-string, not a heredoc: it opens no body
+            continue
+        heredoc = _HEREDOC.match(text, index)
+        if heredoc:
+            word = next(g for g in heredoc.groups()[1:] if g is not None)
+            pending.append((word, bool(heredoc.group(1))))
+            index = heredoc.end()
+            continue
+        separator = _SEPARATOR.match(text, index)
+        if separator:
+            segments.append((start, index))
+            index = start = separator.end()
+            continue
+        index += 1
+    if quote:
+        return None
+    segments.append((start, len(text)))
+    return segments
+
+
+def _commands(text: str):
+    """The text of each command at a command position in `text`, wrappers stepped over."""
+    for begin, end in _segments(text) or ():
+        segment = text[begin:end].lstrip()
+        while True:
+            wrapper = _WRAPPER.match(segment)
+            if not wrapper or not wrapper.group(0):
+                break
+            segment = segment[wrapper.end():]
+        yield segment
+
+
+def _shell_words(segment: str) -> list:
+    """`segment`'s words as the shell passes them to the command: quotes removed, a `#`
+    comment dropped, a redirection (`>file`, `2>&1`, `>|`, `&>`) and its target no part of
+    them, and a `)` closing a subshell ending them. An unclosed quote reads plain words."""
+    lex = shlex.shlex(segment, posix=True, punctuation_chars=True)
+    lex.whitespace_split = True
+    words, skip_target = [], False
+    try:
+        for word in lex:
+            if word.startswith(")"):
+                break
+            if skip_target:
+                skip_target = False
+                continue
+            if word and set(word) <= set("<>&|"):
+                skip_target = True
+                if words and words[-1].isdigit():
+                    words.pop()  # the file descriptor of `2>` is the redirection's
+                continue
+            words.append(word)
+    except ValueError:
+        return segment.split()
+    return words
+
+
+def _normal(segment: str) -> str:
+    """`segment` as the words the shell passes (`_shell_words`), joined by one space."""
+    return " ".join(_shell_words(segment))
+
+
+def _is_bun_test_invocation(command: str) -> bool:
+    """True when a bun runner form is the command at a command position in `command`; each
+    segment is read into its shell words once, then tried against every form."""
+    for segment in _commands(command):
+        normal = _normal(segment)
+        if any(runner.match(normal) for runner in BUN_RUNNERS):
+            return True
+    return False
+
+
+def _has_marker(directory: Path) -> bool:
+    return any((directory / marker).is_file() for marker in MARKERS)
+
+
+def _marker_below(root: Path, depth: int) -> bool:
+    """A marker in a directory at most `depth` levels below `root`: no symlink followed, hidden
+    and `SKIPPED_DIRS` directories never entered, an unreadable directory skipped."""
+    if depth <= 0:
+        return False
+    try:
+        with os.scandir(root) as entries:
+            children = [Path(e.path) for e in entries
+                        if e.is_dir(follow_symlinks=False)
+                        and not e.name.startswith(".") and e.name not in SKIPPED_DIRS]
+    except OSError:
+        return False  # unreadable directory -> skipped
+    for child in sorted(children):
+        try:
+            if _has_marker(child):
+                return True
+        except OSError:
+            continue
+        if _marker_below(child, depth - 1):
+            return True
+    return False
+
+
+def _in_project(cwd: str) -> bool:
+    """CR-MDB-062 §S3: a marker in `cwd`, in a parent up to and including the git root, or
+    at most `WALK_DEPTH` levels below that git root. No git root: `cwd` and its parents."""
+    if not cwd:
+        return False
+    try:
+        directory = Path(cwd)
+        for candidate in (directory, *directory.parents):
+            if _has_marker(candidate):
+                return True
+            if os.path.lexists(candidate / ".git"):
+                return _marker_below(candidate, WALK_DEPTH)
+    except (OSError, ValueError):
+        return False  # any filesystem error -> allow (a closed hook must never raise)
+    return False
+
+
+def _block(reason: str) -> int:
+    print(json.dumps({"decision": "block", "reason": reason}))
+    return 2
+
+
+def main() -> int:
+    try:
+        payload = json.load(sys.stdin)
+    except (ValueError, OSError, RecursionError):
+        # unreadable payload (bad JSON or UTF-8, a number past the digit limit, nesting past
+        # the recursion limit) -> fail open (deterrent, not security boundary)
+        return 0
+    if not isinstance(payload, dict) or payload.get("tool_name") != "bash":  # neutral shell class (schema.md)
+        return 0
+    tool_input = payload.get("tool_input") or {}
+    if not isinstance(tool_input, dict):
+        return 0
+    command = tool_input.get("command") or ""
+    cwd = payload.get("cwd") or ""
+    if not isinstance(command, str) or not isinstance(cwd, str) or not command:
+        return 0
+
+    # Escape hatch — explicit opt-out wins before any matching.
+    if re.search(r"ALLOW_RAW_BUN=(1|true)", command):
+        return 0
+
+    if not _is_bun_test_invocation(command):
+        return 0
+    if not _in_project(cwd):
+        return 0
+    return _block(REASON)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

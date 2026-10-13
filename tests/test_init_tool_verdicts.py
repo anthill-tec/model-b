@@ -52,6 +52,7 @@ from modelb_axi import scaffold
 from modelb_axi.requirements import REQUIREMENTS, STACK_TOOLCHAINS
 from tests._helpers import (
     decode_axi,
+    deploy_hook_scripts,
     parse_env_file,
     run_module,
     write_executable,
@@ -129,6 +130,16 @@ def _install_toml_text(home: Path, capabilities: dict | None, deps: dict) -> str
         lines += ["", "[capabilities]"]
         lines += [f'"{key}" = "{value}"' for key, value in capabilities.items()]
     return "\n".join(lines) + "\n"
+
+
+def _write_install_toml(home: Path, capabilities: dict | None, deps: dict) -> Path:
+    """``home/install.toml`` holding :func:`_install_toml_text`, its store holding every
+    hook script (``deploy_hook_scripts``, CR-MDB-062 §S8) so init's script check finds
+    each one it wires — the fixture every ``_InitSandboxCase`` subclass writes through."""
+    deploy_hook_scripts(home / ".agents" / "hooks" / "scripts")
+    install_toml = home / "install.toml"
+    install_toml.write_text(_install_toml_text(home, capabilities, deps), encoding="utf-8")
+    return install_toml
 
 
 # ---------------------------------------------------------------------------
@@ -288,8 +299,7 @@ class _InitSandboxCase(unittest.TestCase):
     def write_install(self, capabilities: dict | None, deps: dict | None = None) -> None:
         if deps is None:
             deps = {"uv": "detected", "sandesh": "detected", "crucible": "detected"}
-        (self.modelb_home / "install.toml").write_text(
-            _install_toml_text(self.modelb_home, capabilities, deps), encoding="utf-8")
+        _write_install_toml(self.modelb_home, capabilities, deps)
 
     def run_init(self, target: Path, *, schema: Path = SCHEMA_PATH, **fields):
         """``scaffold.run_init`` in process; returns ``(rc, axi, stderr)``."""

@@ -28,6 +28,7 @@ portable v1 field set above.
 A hook is **security-class** when its `command` targets one of the `block-*`
 BLOCKING guard scripts in `hooks-src/scripts/` (the roster:
 `block-direct-cargo-test`, `block-direct-mvn-test`,
+`block-direct-python-test`, `block-direct-bun-test`,
 `block-cr-completed-without-spec-update`, `block-write-outside-worktree`).
 These are enforcement hooks — a harness failure while running one changes
 what the guard can guarantee, so the instance MUST declare `fail_direction`

@@ -19,6 +19,7 @@ import json
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -215,9 +216,10 @@ def write_install_toml(home: str, harnesses=("pi",)) -> Path:
     """Valid install.toml fixture -- the seam §S2 reads the installed
     harness set from (DN-scaffold-packaging.md §3). Records
     ``hooks_scripts_dir`` as every install after CR-MDB-033 §S1 does,
-    pointed at the sandbox (never the real home)."""
+    pointed at the sandbox (never the real home), and deploys every hook script there
+    (:func:`deploy_hook_scripts`), as the installer does (CR-MDB-062 §S8)."""
     harnesses_toml = ", ".join(f'"{h}"' for h in harnesses)
-    hooks_scripts_dir = Path(home) / ".agents" / "hooks" / "scripts"
+    hooks_scripts_dir = deploy_hook_scripts(Path(home) / ".agents" / "hooks" / "scripts")
     install_toml = Path(home) / "install.toml"
     install_toml.write_text(
         "[install]\n"
@@ -253,6 +255,61 @@ def client_source(key: str, log_path: Path, envelope: str) -> str:
         f"    fh.write(json.dumps({{'key': {key!r}, 'argv': sys.argv[1:]}}) + '\\n')\n"
         f"print({envelope!r})\n"
     )
+
+# ------------------------------------------------------------------ hook scripts ----
+
+#: The repo's hook protocol scripts — the real scripts a hook test runs.
+HOOK_SCRIPTS_DIR = REPO_ROOT / "hooks-src" / "scripts"
+
+def deploy_hook_scripts(store) -> Path:
+    """Copy every ``hooks-src/scripts/*`` into the sandbox store ``store`` (created if absent)
+    with mode 0755 and return ``store`` — the deployed hook-script store an install fixture's
+    ``hooks_scripts_dir`` names, so an ``init`` driven against it finds every script it would
+    wire as an executable file (CR-MDB-062 §S7/§S8). Test infrastructure: the real store is
+    the installer's."""
+    store = Path(store)
+    store.mkdir(parents=True, exist_ok=True)
+    for source in sorted(HOOK_SCRIPTS_DIR.iterdir()):
+        if source.is_file():
+            dest = store / source.name
+            shutil.copyfile(source, dest)
+            dest.chmod(0o755)
+    return store
+
+
+def run_hook(name: str, payload, *, cwd=None, timeout: int = 10) -> subprocess.CompletedProcess:
+    """Run the REAL hook script ``hooks-src/scripts/<name>`` on the test's own interpreter with
+    ``payload`` on stdin: a mapping or a list is sent as JSON, a ``str`` as written (so a test can
+    send an unreadable payload). ``cwd`` is the script PROCESS's working directory, distinct from
+    the payload's ``cwd`` field — a test pins it to prove a hook never falls back to its own."""
+    data = payload if isinstance(payload, str) else json.dumps(payload)
+    return subprocess.run(
+        [sys.executable, str(HOOK_SCRIPTS_DIR / name)], input=data, capture_output=True,
+        text=True, timeout=timeout, cwd=cwd,
+    )
+
+
+def build_tree(root, files=(), *, git=None) -> Path:
+    """Build a project tree at ``root`` and return it. Each relative path in ``files`` becomes a
+    small file, its parents created; a path ending in ``/`` becomes an empty directory. ``git`` is
+    the git entry at ``root``: ``"dir"`` a ``.git`` directory (a clone), ``"file"`` a ``.git``
+    file ``gitdir: …`` (a worktree's or a submodule's), ``None`` none."""
+    root = Path(root)
+    root.mkdir(parents=True, exist_ok=True)
+    for rel in files:
+        path = root / rel
+        if rel.endswith("/"):
+            path.mkdir(parents=True, exist_ok=True)
+            continue
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("fixture\n", encoding="utf-8")
+    if git == "dir":
+        (root / ".git").mkdir(exist_ok=True)
+    elif git == "file":
+        (root / ".git").write_text("gitdir: ../.git/modules/fixture\n", encoding="utf-8")
+    elif git is not None:
+        raise ValueError(f"git must be 'dir', 'file' or None, not {git!r}")
+    return root
 
 # ------------------------------------------------------------------ interpreter fixture ----
 
