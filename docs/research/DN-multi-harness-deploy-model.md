@@ -904,6 +904,9 @@ long-term-support distribution often 3.11 or 3.12. So:
 - the deploy step writes that interpreter into the shebang of every deployed script whose first line
   is the python shebang, and the manifest records the rendered bytes' hash;
 - every documented invocation runs a deployed script directly, never through `python3`.
+- the interpreter is required: with none that meets the floor the installer refuses, and
+  `--allow-missing-capabilities` does not override it (scripts deployed unrendered would bring the
+  problem back); a virtual environment is never recorded (user ruling at CR-MDB-064's pre-review).
 
 Implemented by CR-MDB-064.
 
