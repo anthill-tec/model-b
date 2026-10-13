@@ -1,6 +1,6 @@
 # CR-MDB-057 — Crucible 0.3.0 doc-sync
 
-**Status:** PENDING — spec locked 2026-10-13 (gap analysis and pre-review folded); awaiting approval
+**Status:** COMPLETED (filed 2026-10-10; gap analysis and pre-review 2026-10-13)
 **Type:** refactor (skills, contract, scaffold, hook, tests)
 **Priority:** P1 — release 1.0.0, wave 2.
 **Depends on:** none (board-authoritative: read `queue`)
