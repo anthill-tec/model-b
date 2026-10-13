@@ -58,7 +58,7 @@ import tomllib
 import unittest
 from pathlib import Path
 
-from tests._helpers import at_line, write_interpreter_fixture
+from tests._helpers import at_line, render_script, write_interpreter_fixture
 from tests._helpers import write_executable as _write_fake_executable
 from tests.pi_capability_sandbox import with_agent_dir
 
@@ -1380,21 +1380,19 @@ class HookScriptsDeployEndToEndTest(unittest.TestCase):
             f"{deployed_names!r}",
         )
         # Round-trip fidelity across the deploy boundary -- a deployed
-        # script's bytes must match its hooks-src/scripts/ source exactly
-        # (catches a mangled/partial/truncated copy).
-        source_text = (HOOKS_SRC_SCRIPTS_DIR / "ambient-board-status").read_text(
-            encoding="utf-8",
-        )
-        deployed_text = (deployed_dir / "ambient-board-status").read_text(
-            encoding="utf-8",
-        )
-        self.assertEqual(
-            deployed_text, source_text,
-            "S6/AC7: the deployed ambient-board-status script must be "
-            "byte-for-byte identical to hooks-src/scripts/ambient-board-status",
-        )
+        # script's bytes must match its hooks-src/scripts/ source rendered
+        # with the recorded interpreter (catches a mangled/partial/truncated
+        # copy). MIGRATED at CR-MDB-064 C3 GREEN (§S7): was byte-identical to
+        # the source; §S3 renders the python shebang to #!<[install] python>.
         with open(Path(self._tmp_home) / "install.toml", "rb") as fh:
             data = tomllib.load(fh)
+        source_bytes = (HOOKS_SRC_SCRIPTS_DIR / "ambient-board-status").read_bytes()
+        deployed_bytes = (deployed_dir / "ambient-board-status").read_bytes()
+        self.assertEqual(
+            deployed_bytes, render_script(source_bytes, data["install"]["python"]),
+            "S6/AC7: the deployed ambient-board-status script must be "
+            "hooks-src/scripts/ambient-board-status with only its shebang rendered",
+        )
         files_section = data.get("files", [])
         manifest_paths = {
             str(entry.get("path", "")) for entry in files_section
