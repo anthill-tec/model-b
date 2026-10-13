@@ -827,15 +827,16 @@ Implemented by CR-MDB-047.
 and envelopes.
 
 **The connection and the gate are configuration.** Crucible 0.3.0's clients no longer read
-`$CRUCIBLE_URL` (or arduino's `$CRUCIBLE_BASE`); a client takes its board from the project's
-`crucible.toml` `[client]` table, else the shipped default (the production board, `127.0.0.1:3849`).
+`$CRUCIBLE_URL` (or arduino's `$CRUCIBLE_BASE`); a client takes its board from `[client] url` in the
+first `crucible.toml` that exists and parses — the project's, the install's, then the shipped one
+(`http://localhost:3849`, the production board) — and from that file only (Crucible #1445).
 `gate-run` reads the steps a project never runs from `crucible.toml` `[gate] skip`; an explicit `--skip`
 replaces the declaration.
 - **`init` writes one `crucible.toml`**, at the root beside the root `.env`, declaring
   `[gate] skip = ["ci"]` (a monorepo sub-project gets none: the client resolves the project directory
   to the repository root, which holds the project's only `CRUCIBLE_PROJECT_KEY`, measured 2026-10-13): no-mistakes' `ci` step is PR-based, and a git-flow
-  project that merges directly has no PR for it to watch. It writes no `[client]` table — a Model B
-  project uses the production board. Model B's own repository tracks one too.
+  project that merges directly has no PR for it to watch. It writes no `[client]` table, so the project's
+  board is the shipped default — the production board — whatever the install's file declares. Model B's own repository tracks one too.
 - **Model B never steers a client through the environment,** in a skill, a scaffolded file or a test.
   A test that needs a stub board writes the stub's address into the project's `crucible.toml`.
 - **The project metadata map** (`project-meta`, a copy of the project's `.env` facts on the board) is

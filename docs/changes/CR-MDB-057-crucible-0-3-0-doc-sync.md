@@ -1,21 +1,23 @@
 # CR-MDB-057 — Crucible 0.3.0 doc-sync
 
-**Status:** PENDING (filed 2026-10-10; gap analysis and pre-review 2026-10-13)
+**Status:** PENDING — spec locked 2026-10-13 (gap analysis and pre-review folded); awaiting approval
 **Type:** refactor (skills, contract, scaffold, hook, tests)
 **Priority:** P1 — release 1.0.0, wave 2.
 **Depends on:** none (board-authoritative: read `queue`)
 **Labels:** crucible, doc-sync, scaffold, hooks, release
 **Design reference:** DN-multi-harness-deploy-model §D21; `skills-src/CRUCIBLE-HANDOVER.md` § Maintenance
 contract; Crucible #1432 (0.3.0 client changes), #1436 (`history`), #1443 (status contract 3.0.0),
-#1444 (`crucible.toml` `[client]`); the installed 0.3.0 clients' `--help`.
+#1445 (`crucible.toml` `[client]` resolution); the installed 0.3.0 clients' `--help`.
 
 ## Context
 
 Crucible 0.3.0 changed the client surface Model B documents and depends on. Measured on the installed
 clients (all five carry the same surface):
-- the clients no longer read `$CRUCIBLE_URL` (arduino `$CRUCIBLE_BASE`); the board comes from the
-  project's `crucible.toml` `[client]`, else the production default `127.0.0.1:3849`. The project
-  directory is the git repository containing the working directory, unless `--project-dir` names one;
+- the clients no longer read `$CRUCIBLE_URL` (arduino `$CRUCIBLE_BASE`); the board is `[client] url`
+  (a full base URL) read from the FIRST `crucible.toml` that exists and parses, in this order: the
+  project's (at the project root — `--project-dir`, else the client's project-dir variable, else the
+  git top level of the working directory), the install's (beside `clients/`), the shipped one
+  (`http://localhost:3849`, the production board). `[client]` comes from that one file only;
 - `gate-run` reads the steps a project never runs from `crucible.toml` `[gate] skip`; an explicit
   `--skip` replaces it, and `--skip ""` skips nothing;
 - `status` follows status contract 3.0.0 (below);
@@ -43,23 +45,23 @@ Model B carries four defects against it:
 
 - No skill, contract, scaffolded file, rendered definition, hook or test steers a Crucible client
   through `$CRUCIBLE_URL`, `$CRUCIBLE_BASE`, `$CRUCIBLE_PORT` or `$CRUCIBLE_HOST`.
-- **The `crucible` skill** says the client takes its board from the project's `crucible.toml`
-  `[client]` (the `<CLIENT-KEY>` key), then the resolution order Crucible documents, else the
-  production default. It names no fixed host or port as "the" board; its intro stops naming
-  `localhost:3849`. Its existing checkout sentence stays the one sentence that states the
-  checkout rule and its reason.
+- **The `crucible` skill** states the resolution: `[client] url` from the first `crucible.toml` that
+  exists and parses — the project's, the install's, the shipped one (`http://localhost:3849`) — taken
+  from that file only, so a project file without `[client]` sends the client to the shipped default.
+  It names no fixed host or port as "the" board; its intro stops naming `localhost:3849`. Its existing
+  checkout sentence stays the one sentence that states the checkout rule and its reason.
 - **The stub-board test.** `CrucibleClientResolvesScaffoldedKeyTest` points the client at its stub by
-  writing the stub's address into the scaffolded project's `crucible.toml` `[client]`. No request
-  leaves for any other board.
-
-`<CLIENT-KEY>` and the resolution order are filled from Crucible's answer to #1444 before this spec is
-locked.
+  writing `[client] url = "http://127.0.0.1:<port>"` into the scaffolded project's own `crucible.toml`,
+  and runs the client with `--project-dir` naming that project. No request leaves for any other board.
 
 ### §S2 — The gate's skipped steps are declared in `crucible.toml`
 
 - **`init`** writes one `crucible.toml`, at the root, beside the root `.env`. It declares `[gate]`
   `skip = ["ci"]` and has no `[client]` table; a comment says why: no-mistakes' `ci` step is PR-based,
-  and a git-flow project that merges directly has no PR for it to watch. A monorepo sub-project gets
+  and a git-flow project that merges directly has no PR for it to watch. Because the client reads
+  `[client]` from the first file it finds, this file also fixes the project's board to the shipped
+  default (the production board), whatever the install's `crucible.toml` declares — the board every
+  Model B project uses. A monorepo sub-project gets
   none: the client resolves the project directory to the repository root, which holds the project's
   only `CRUCIBLE_PROJECT_KEY`. `plan_files` lists the file.
 - **Model B's own repository** tracks a `crucible.toml` with the same `[gate]` declaration.
@@ -170,11 +172,13 @@ Each is updated in the cycle that changes the text it pins:
 - [ ] **No `$CRUCIBLE_URL`, `$CRUCIBLE_BASE`, `$CRUCIBLE_PORT` or `$CRUCIBLE_HOST`** appears as a way
       to point a client in `skills-src/`, `contracts/`, `AGENTS.md`, `generator/`, `hooks-src/`,
       `modelb_axi/` or `tests/`; a grep gate asserts it, excluding its own pattern literals.
-- [ ] **The `crucible` skill** names no fixed host or port as "the" board, states `[client]`
-      `<CLIENT-KEY>` and the resolution order, and its checkout sentence is still the single one
+- [ ] **The `crucible` skill** names no fixed host or port as "the" board, states `[client] url`, the
+      resolution order (project, install, shipped) and the first-file-only rule, and its checkout
+      sentence is still the single one
       `test_s1_crucible_skill_states_the_checkout_rule_and_reason_in_one_sentence` finds.
-- [ ] **`CrucibleClientResolvesScaffoldedKeyTest`** passes against the installed 0.3.0 client with the
-      stub's address in the scaffolded `crucible.toml` `[client]`; its stub records every request, and
+- [ ] **`CrucibleClientResolvesScaffoldedKeyTest`** passes against the installed 0.3.0 client with
+      `[client] url` naming the stub in the scaffolded project's `crucible.toml` and `--project-dir`
+      naming that project; its stub records every request, and
       the test asserts the client reached the stub with the filled key.
 - [ ] **`init`** (standalone and monorepo, solo and multi) writes exactly one `crucible.toml`, at the
       root, with `[gate]` `skip = ["ci"]`, the rationale comment and no `[client]`; no sub-project gets
