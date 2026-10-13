@@ -16,9 +16,9 @@ That path is the default location of Crucible's installed clients: the client
 is listed in `~/.crucible/crucible-clients.json` and installed by Crucible's own
 installer, and it is not shipped, vendored or maintained by Model B.
 
-> **MANDATORY for RED/GREEN/regression cycle runs:** run the tests **through
-> the client** (`test`/`unit` for a targeted cycle, `regression` for the gate).
-> Do NOT invoke `make junit` directly for a cycle run and then hand-ingest.
+> **MANDATORY for every test run:** run the tests **through the client**
+> (`test`/`unit` for a targeted run, `regression` for the gate). Never invoke
+> `make junit` directly.
 
 ## Workflow context (env convention)
 

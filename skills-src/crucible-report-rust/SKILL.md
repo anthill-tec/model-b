@@ -17,10 +17,9 @@ That path is the default location of Crucible's installed clients: the client
 is listed in `~/.crucible/crucible-clients.json` and installed by Crucible's own
 installer, and it is not shipped, vendored or maintained by Model B.
 
-> **MANDATORY for RED/GREEN/regression cycle runs:** run the tests **through
-> `rust-crucible.py`** (`test` for a targeted cycle, `regression-ingest` for the
-> coverage gate). Do NOT invoke `cargo nextest` directly for a cycle run and
-> then hand-ingest.
+> **MANDATORY for every test run:** run the tests **through `rust-crucible.py`**
+> (`test` for a targeted run, `regression-ingest` for the coverage gate). Never
+> invoke `cargo nextest` directly.
 
 ## Workflow context (env convention)
 

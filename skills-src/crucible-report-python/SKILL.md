@@ -17,10 +17,9 @@ That path is the default location of Crucible's installed clients: the client
 is listed in `~/.crucible/crucible-clients.json` and installed by Crucible's own
 installer, and it is not shipped, vendored or maintained by Model B.
 
-> **MANDATORY for RED/GREEN/regression cycle runs:** run the tests **through
-> `python-crucible.py`** (`test` for a targeted cycle, `regression` for the gate) — it runs the
-> tests AND ingests in ONE call under your agent id. Do NOT invoke `pytest`/`unittest` directly
-> for a cycle run and then hand-ingest.
+> **MANDATORY for every test run:** run the tests **through `python-crucible.py`**
+> (`test` for a targeted run, `regression` for the gate) — it runs the tests AND ingests
+> in ONE call under your agent id. Never invoke `pytest`/`unittest` directly.
 
 ## Workflow context (env convention)
 
