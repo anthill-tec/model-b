@@ -890,11 +890,16 @@ Implemented by CR-MDB-057 and CR-MDB-056.
 
 **AMENDED again 2026-10-13 (user rulings at CR-MDB-062's gap analysis):**
 - **Where a blocking hook applies.** A test-runner hook blocks only inside a project of its stack. That
-  is when the git root of the shell call's working directory, or a directory under it, holds one of the
-  stack's markers. Without a git root, the working directory and its ancestors are checked. Measured
-  case: Sandesh's bun package sits in `integrations/pi/`, and a Pi shell call's working directory is the
-  session root, so a check of the working directory and its ancestors alone would never fire. The rule
-  is the same for all four runner hooks: python, bun, cargo and mvn.
+  is when one of the stack's markers sits in one of three places:
+  - the shell call's working directory;
+  - a parent of it, up to and including its git root;
+  - a directory a few levels below that git root.
+
+  Without a git root, the working directory and its parents are checked. Measured case: Sandesh's bun
+  package sits in `integrations/pi/`, and a Pi shell call's working directory is the session root, so
+  a check of the working directory and its parents alone would never fire. The rule is the same for
+  all four runner hooks: python, bun, cargo and mvn. It never loosens what the cargo and mvn hooks
+  blocked before (wording corrected at CR-MDB-062's spec pre-review, F3).
 - **The runner set grows by three python forms**, in the guard and the hooks alike, which stay in
   parity:
   - an attached `-m` (`python3 -munittest`);
