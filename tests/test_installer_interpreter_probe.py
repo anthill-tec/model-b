@@ -181,8 +181,9 @@ class _InterpreterSandboxCase(unittest.TestCase):
                          f"§S2: one `python3: {interpreter} ({version})` line on stderr; "
                          f"stderr={result.stderr!r}")
 
-    def assert_refused(self, result, verdict: str) -> None:
-        """The pre-flight fails before any write, with §S2's refusal line for ``verdict``."""
+    def assert_refused(self, result, verdict: str, reason: str | None = None) -> None:
+        """The pre-flight fails before any write, with §S2's refusal line for ``verdict`` —
+        its reason naming ``reason``, when given (DN §D22: the reason names the rejection)."""
         axi = decode_axi(result.stdout)
         self.assertNotEqual(result.returncode, 0,
                             f"§S2: no accepted interpreter refuses; stderr={result.stderr!r}")
@@ -197,6 +198,9 @@ class _InterpreterSandboxCase(unittest.TestCase):
         self.assertEqual(len(lines), 1,
                          f"§S2: one `python3={verdict} — <reason>; install it with: "
                          f"{PYTHON_REMEDIATION}` line; stderr={result.stderr!r}")
+        if reason is not None:
+            self.assertIn(reason, lines[0],
+                          f"DN §D22: the refusal's reason names the rejection; line={lines[0]!r}")
 
 
 # ---------------------------------------------------------------------------
@@ -339,6 +343,21 @@ class InterpreterRefusalTest(_InterpreterSandboxCase):
     def test_no_python3_and_none_found_is_absent_and_refused(self):
         write_interpreter_fixture(self.bin_dir, python3=False, uv_found=None)
         self.assert_refused(self.run_installer(), "absent")
+
+    def test_a_python3_that_cannot_report_its_version_and_none_found_is_absent_and_refused(self):
+        """DN §D22: ``outdated`` only for a ``python3`` that runs and reports a version below
+        the floor — one that fails, or answers with something that is not a version, is
+        ``absent``."""
+        bodies = {
+            "exits non-zero": "#!/bin/sh\nexit 1\n",
+            "prints junk": "#!/bin/sh\necho 'not a version'\nexit 0\n",
+        }
+        for case, body in bodies.items():
+            with self.subTest(case=case):
+                write_interpreter_fixture(self.bin_dir, python3=False, uv_found=None)
+                write_executable(self.bin_dir, "python3", body)
+                self.assert_refused(self.run_installer(), "absent",
+                                    reason="did not report its version")
 
     def test_allow_missing_capabilities_does_not_override_the_refusal(self):
         write_interpreter_fixture(self.bin_dir, version="3.12.3", uv_found=None)

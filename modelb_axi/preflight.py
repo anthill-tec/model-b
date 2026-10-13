@@ -282,6 +282,11 @@ def _probe_interpreter(
         version, reason, below = _judge_interpreter(candidate)
         if reason is None:
             return DETECTED, candidate, version, None
+        # DN-multi-harness-deploy-model §D22 ruling: `outdated` only when
+        # this python3 ran and reported a version below the floor. One that
+        # cannot report its version, or one at or above the floor rejected as
+        # a virtual environment or for an unrecordable path, leaves the
+        # verdict `absent`; the reason names the rejection.
         outdated = below
         rejections.append(f"python3 on PATH ({candidate}) {reason}")
     query = " ".join(_UV_PYTHON_FIND[:-1]) + f" '{_UV_PYTHON_FIND[-1]}'"
