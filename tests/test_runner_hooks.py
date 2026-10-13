@@ -762,6 +762,17 @@ class _FailOpen(_MixinBase):
             with self.subTest(payload=raw):
                 self.assertEqual(self.verdict(raw, proc_cwd=project), "allow")
 
+    def test_allows_a_hostile_payload_without_a_traceback(self):
+        """Nesting past the recursion limit, open or closed, and a number past the digit limit:
+        ``json.load`` raises on each, and the hook allows."""
+        project = self.project()
+        depth = 100_000
+        for name, raw in (("open array", "[" * depth), ("closed array", "[" * depth + "]" * depth),
+                          ("nested object", '{"a":' * depth + "1" + "}" * depth),
+                          ("long number", "1" * 5000)):
+            with self.subTest(payload=name):
+                self.assertEqual(self.verdict(raw, proc_cwd=project), "allow")
+
     def test_allows_an_untokenisable_command(self):
         project = self.project()
         for command in (f"{self.run_cmd} 'unterminated", f'{self.run_cmd} "unterminated'):

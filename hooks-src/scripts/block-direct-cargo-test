@@ -256,8 +256,10 @@ def _block(reason: str) -> int:
 def main() -> int:
     try:
         payload = json.load(sys.stdin)
-    except (json.JSONDecodeError, OSError, UnicodeDecodeError):
-        return 0  # unreadable payload -> fail open (deterrent, not security boundary)
+    except (ValueError, OSError, RecursionError):
+        # unreadable payload (bad JSON or UTF-8, a number past the digit limit, nesting past
+        # the recursion limit) -> fail open (deterrent, not security boundary)
+        return 0
     if not isinstance(payload, dict) or payload.get("tool_name") != "bash":  # neutral shell class (schema.md)
         return 0
     tool_input = payload.get("tool_input") or {}
