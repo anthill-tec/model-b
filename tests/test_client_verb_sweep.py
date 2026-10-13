@@ -699,8 +699,7 @@ class ClientVerbSweepS4cTest(unittest.TestCase):
         self.assertTrue(
             hits,
             f"{ENVELOPE_CONTRACT}:{status_anchor}: the contract does not cite "
-            "STATUS-CONTRACT.md by its DOCUMENT version (3.0.0, verified at "
-            "~/.crucible/clients/STATUS-CONTRACT.md).",
+            "STATUS-CONTRACT.md by its DOCUMENT version (3.0.0, Crucible #1443).",
         )
         stale = [
             (ENVELOPE_CONTRACT, lineno, line)

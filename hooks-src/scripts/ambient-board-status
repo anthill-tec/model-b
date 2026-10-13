@@ -4,8 +4,8 @@ active cycle, last closed CR) into session context as ambient status
 (CR-MDB-015 §S3, per the #1334 division; AXI principle 7).
 
 NEW in hooks-src (not an import): authored against Crucible's `status`
-envelope contract document, `~/.crucible/clients/STATUS-CONTRACT.md`,
-document version 3.0.0 (CR-MDB-019 §S1, re-pinned by CR-MDB-057 §S4). That
+envelope contract document, `STATUS-CONTRACT.md`, document version 3.0.0
+(Crucible #1443; CR-MDB-019 §S1, re-pinned by CR-MDB-057 §S4). That
 number is the version of the contract document itself, not a Crucible
 product release (Crucible's own releases are 0.x); `STATUS_CONTRACT_VERSION`
 pins it so a degrade note names the contract in force. The status feed is

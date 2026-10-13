@@ -17,7 +17,7 @@ Measured against the production Crucible installed on this machine:
 - The default target is `~/.crucible`, so the clients live at `~/.crucible/clients/`.
 - The run verb is `crucible-axi serve` — the provisioned server, in the foreground.
 - `crucible-axi uninstall` reverses the install (the exact inverse of `install`).
-- This document tracks `STATUS-CONTRACT.md` at its **document version 3.0.0** (verified at `~/.crucible/clients/STATUS-CONTRACT.md`).
+- This document tracks `STATUS-CONTRACT.md` at its **document version 3.0.0** (Crucible #1443).
 - Under that status contract, `status` shows the work in flight: `plans` holds the open
   plans only and `count` counts them; `filed` is the number of plans ever filed (open,
   closed or aborted), `null` when the board is unreachable — unknown, never 0; and
