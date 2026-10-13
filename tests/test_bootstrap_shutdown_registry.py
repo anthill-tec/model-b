@@ -997,8 +997,35 @@ def _code_texts(text: str) -> list[str]:
     return spans + out
 
 
+#: §S6 AC "Steps 3A and 3B each fold the result into their report" (orchestrator ruling,
+#: 2026-10-14: the sections themselves): ``(section heading key, the item that reports, label)``.
+REPORT_ITEMS = (
+    ("Step 3A", "report to the user", "Step 3A's report to the user"),
+    ("Step 3B", "report status to mainline", "Step 3B's status to Mainline"),
+)
+
+
+def report_fold_findings(text: str) -> list[str]:
+    """Each of Step 3A's report-to-the-USER item and Step 3B's status-to-MAINLINE item that
+    names no Step 0.7 test-interpreter result: within the section's top-level numbered item that
+    reports, one sentence or sub-item naming both "Step 0.7" and "test interpreter"."""
+    out = []
+    for key, reporting, label in REPORT_ITEMS:
+        section = _h2_section(text, f"## {key} ")
+        items = [i for i in re.split(r"\n(?=\d+\.\s)", section) if reporting in normalise(i)]
+        if not any("step 0.7" in u and "test interpreter" in u
+                   for item in items for u in sentences(item)):
+            out.append(f"{label} does not carry the Step 0.7 test-interpreter result")
+    return out
+
+
 def interpreter_step_findings(text: str) -> list[str]:
-    """Each way the bootstrap skill ``text`` misses §S6's Step 0.7 (empty = conforming)."""
+    """Each way the bootstrap skill ``text`` misses §S6's Step 0.7 (empty = conforming), then
+    each report of Steps 3A and 3B that does not carry its result."""
+    return _step_0_7_findings(text) + report_fold_findings(text)
+
+
+def _step_0_7_findings(text: str) -> list[str]:
     heads = [line.rstrip() for line in text.splitlines() if line.startswith("## ")]
     count = heads.count(INTERPRETER_STEP_HEADING)
     if count != 1:
@@ -1097,6 +1124,24 @@ The client's `--help` is the authority for the resolution order.
 ## Step 1 — Bring up the wake
 
 Start the watcher.
+
+## Step 3A — MAINLINE: load the queue, report to the USER
+
+1. **Load** the queue.
+2. **Report to the USER** — a concise status, then WAIT for direction:
+   - queue state;
+   - the python test interpreter result from Step 0.7, where `PROJECT_STACKS` includes
+     `python`.
+3. **Do NOT auto-dispatch.**
+
+## Step 3B — TRACK: check for Mainline, enable notifier, inform MAINLINE, wait
+
+1. The notifier is up.
+2. **Report status to MAINLINE** with `sandesh send`:
+   - the in-flight cycle, or idle;
+   - the python test interpreter result from Step 0.7, where `PROJECT_STACKS` includes
+     `python`.
+3. **Then HOLD.**
 """
 
 
@@ -1119,6 +1164,55 @@ class PythonTestInterpreterStepCheckerTest(unittest.TestCase):
                     f"the heading {INTERPRETER_STEP_HEADING!r} appears 0 times (want 1)"])
                 if label == "missing":
                     self.assertIsNone(import_check_of(text))
+
+    def test_a_step_3a_report_without_the_step_0_7_result_is_reported(self):
+        bullet = ("   - the python test interpreter result from Step 0.7, where `PROJECT_STACKS` "
+                  "includes\n     `python`.\n")
+        head, step3a, step3b = re.split(r"(?=## Step 3[AB] )", GOOD_INTERPRETER_SKILL)
+        self.assertIn(bullet, step3a, "precondition: the sample's Step 3A bullet")
+        cases = {
+            "no bullet": step3a.replace(bullet, ""),
+            "only Step 0.7 named": step3a.replace(bullet, "   - the result of Step 0.7.\n"),
+            "only the test interpreter named": step3a.replace(
+                bullet, "   - the python test interpreter result.\n"),
+            "outside the report item": step3a.replace(bullet, "").replace(
+                "3. **Do NOT auto-dispatch.**",
+                "3. **Do NOT auto-dispatch.** The test interpreter result is Step 0.7's."),
+        }
+        for label, changed in cases.items():
+            with self.subTest(case=label):
+                self.assertEqual(interpreter_step_findings(head + changed + step3b), [
+                    "Step 3A's report to the user does not carry the Step 0.7 test-interpreter "
+                    "result"])
+        self.assertEqual(interpreter_step_findings(head + step3b), [
+            "Step 3A's report to the user does not carry the Step 0.7 test-interpreter result"],
+            "a missing Step 3A section is reported")
+
+    def test_a_step_3b_status_without_the_step_0_7_result_is_reported(self):
+        bullet = ("   - the python test interpreter result from Step 0.7, where `PROJECT_STACKS` "
+                  "includes\n     `python`.\n")
+        head, step3a, step3b = re.split(r"(?=## Step 3[AB] )", GOOD_INTERPRETER_SKILL)
+        self.assertIn(bullet, step3b, "precondition: the sample's Step 3B bullet")
+        cases = {
+            "no bullet": step3b.replace(bullet, ""),
+            "outside the status item": step3b.replace(bullet, "").replace(
+                "1. The notifier is up.",
+                "1. The notifier is up; the test interpreter was checked in Step 0.7."),
+        }
+        for label, changed in cases.items():
+            with self.subTest(case=label):
+                self.assertEqual(interpreter_step_findings(head + step3a + changed), [
+                    "Step 3B's status to Mainline does not carry the Step 0.7 test-interpreter "
+                    "result"])
+
+    def test_steps_3a_and_3b_are_judged_even_without_step_0_7(self):
+        head, step3a, step3b = re.split(r"(?=## Step 3[AB] )", GOOD_INTERPRETER_SKILL)
+        bare = (head.replace(INTERPRETER_STEP_HEADING + "\n", "")
+                + re.sub(r"   - the python test interpreter[^\n]*\n[^\n]*\n", "", step3a + step3b))
+        self.assertEqual(interpreter_step_findings(bare), [
+            f"the heading {INTERPRETER_STEP_HEADING!r} appears 0 times (want 1)",
+            "Step 3A's report to the user does not carry the Step 0.7 test-interpreter result",
+            "Step 3B's status to Mainline does not carry the Step 0.7 test-interpreter result"])
 
     def test_a_step_placed_after_step_1_is_reported(self):
         head, rest = GOOD_INTERPRETER_SKILL.split(INTERPRETER_STEP_HEADING)
@@ -1263,6 +1357,9 @@ class PythonTestInterpreterStepTest(unittest.TestCase):
 
     def test_bootstrap_holds_step_0_7_naming_each_element_in_order(self):
         self.assertEqual(interpreter_step_findings(self.text), [])
+
+    def test_steps_3a_and_3b_each_carry_the_step_0_7_result_in_their_report(self):
+        self.assertEqual(report_fold_findings(self.text), [])
 
     def test_the_raw_runner_guard_allows_the_steps_import_check(self):
         assert_guard_allows(self, self._import_check())
