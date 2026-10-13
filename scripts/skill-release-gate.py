@@ -41,13 +41,9 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import tomllib
 import venv
 import zipfile
-
-try:
-    import tomllib
-except ModuleNotFoundError:  # py<3.11
-    import tomli as tomllib  # type: ignore
 
 G, R, B, X = "\033[32m", "\033[31m", "\033[1m", "\033[0m"
 

@@ -50,13 +50,9 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import tomllib
 from datetime import date
 from pathlib import Path
-
-try:
-    import tomllib
-except ImportError:
-    tomllib = None
 
 CFG_TEST_RE = re.compile(r"^\s*#\[cfg\((test\)|any\(test)")
 SUPPRESS_RE = re.compile(r"#\[(allow|expect)\(dead_code(?:\s*,\s*reason\s*=\s*\"((?:[^\"\\]|\\.)*)\")?\)?\]?")
@@ -398,7 +394,7 @@ def mode_hot_path(root, rules_path):
     'no-JSON-in-hot-paths' invariant. `[[forbid]]` rules fail if any `patterns`
     (regex) appear on a production line of any file in `paths`; `[[require_present]]`
     rules fail if `pattern` is absent from `paths` (guards a mis-configured scan)."""
-    if not rules_path.exists() or tomllib is None:
+    if not rules_path.exists():
         return {"rules_file": str(rules_path), "exists": False,
                 "violations": [], "sanity_failures": []}
     cfg = tomllib.loads(rules_path.read_text())
@@ -431,7 +427,7 @@ def mode_hot_path(root, rules_path):
 
 
 def mode_boundaries(root, members, rules_path):
-    if not rules_path.exists() or tomllib is None:
+    if not rules_path.exists():
         return {"rules_file": str(rules_path), "exists": False, "violations": [],
                 "hoist_candidates": [], "lockstep_failures": []}
     cfg = tomllib.loads(rules_path.read_text())
@@ -480,7 +476,7 @@ def mode_boundaries(root, members, rules_path):
 
 def mode_reconcile(inventory, register_path):
     reg = {"entries": [], "path": str(register_path), "exists": register_path.exists()}
-    if register_path.exists() and tomllib:
+    if register_path.exists():
         data = tomllib.loads(register_path.read_text())
         reg["entries"] = data.get("keep_future", [])
     expects = [f for f in inventory if f["attr"] == "expect"]
