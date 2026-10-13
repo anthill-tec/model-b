@@ -43,7 +43,8 @@ from modelb_axi.harness import (
     parse_harnesses,
     select_harnesses,
 )
-from modelb_axi.preflight import run_preflight
+from modelb_axi.preflight import interpreter_rejection, run_preflight
+from modelb_axi.requirements import requirement
 from modelb_axi.scaffold import (
     KNOWN_STACKS,
     ScaffoldError,
@@ -54,6 +55,10 @@ from modelb_axi.scaffold import (
 )
 
 INSTALL_TOML_NAME = "install.toml"
+
+#: CR-MDB-064 §S2/§S3: how the user provides the interpreter the
+#: deployed scripts run on — the ``python3`` requirement's remediation.
+PYTHON_REMEDIATION = requirement("python3")["remediation"]
 
 
 def _default_modelb_home() -> Path:
@@ -401,7 +406,7 @@ def _deploy_stage(
         manifest, skipped = deploy_assets(
             asset_root, target_root,
             prior_hashes=prior_hashes, force_managed=force_managed,
-            unmanaged=unmanaged, stacks=stacks,
+            unmanaged=unmanaged, stacks=stacks, python=python,
         )
         removed, kept = _prune_stage(
             prior, prior_files, prior_hashes, target_root, manifest, warnings,
@@ -646,10 +651,14 @@ def _freshness_fields(home: Path, warnings: list[str]) -> dict:
         )
         return {"freshness": "unknown"}
     stacks = install.get("stacks") if isinstance(install, dict) else None
+    python = install.get("python") if isinstance(install, dict) else None
+    if not isinstance(python, str) or not python:
+        python = None
     found = deployed_freshness(
         default_asset_root(), Path(target_root), manifest_entries(data),
         stacks if isinstance(stacks, list) and all(isinstance(s, str) for s in stacks)
         else None,
+        python=python,
     )
     _say(
         f"  deployed assets under {target_root}: "
@@ -668,6 +677,17 @@ def _freshness_fields(home: Path, warnings: list[str]) -> dict:
     if found["kept"]:
         _say(f"    kept: no longer deployed, and left because it was edited \u2014 restore or "
              f"delete it, then re-run `{rerun}`")
+    if python is not None:
+        rejection = interpreter_rejection(python)
+        if rejection is not None:
+            # CR-MDB-064 §S3: the deployed scripts' shebangs name it, so a
+            # missing or below-floor interpreter breaks them until re-installed.
+            _warn(
+                f"the recorded interpreter {python} {rejection} — the deployed "
+                f"scripts run on it; install one with `{PYTHON_REMEDIATION}`, then "
+                f"re-run `{rerun}` to record it",
+                warnings,
+            )
     freshness = "current" if not any(found.values()) else "outdated"
     return {"freshness": freshness, **found}
 

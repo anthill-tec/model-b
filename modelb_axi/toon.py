@@ -2,7 +2,7 @@
 
 ``scripts/toon.py`` is GENERATED from this module by ``generator/build.py``
 and is the self-contained copy that ships beside the deployed tooling (a
-deployed ``worktree-flow.py`` runs under a bare ``python3`` that cannot reach
+deployed ``worktree-flow.py`` runs on the recorded interpreter, which cannot reach
 ``modelb_axi``, so it cannot be a re-export). This file is the only place the
 codec is edited.
 

@@ -26,16 +26,16 @@ generic; project specifics live in the repo's `docs/research/assets/` configs).
 
 ```bash
 # take a snapshot (immutable dir under docs/research/assets/health/)
-python3 ~/.agents/scripts/rust-code-health.py snapshot --phase {baseline|pre|post|adhoc} [--slice CR-XXX]
+~/.agents/scripts/rust-code-health.py snapshot --phase {baseline|pre|post|adhoc} [--slice CR-XXX]
 
 # query the dataset
-python3 ~/.agents/scripts/rust-code-health.py query trend            # totals across all snapshots
-python3 ~/.agents/scripts/rust-code-health.py query crate <pkg>      # one crate's history + open findings
-python3 ~/.agents/scripts/rust-code-health.py query delta <a> <b>    # any two snapshots
-python3 ~/.agents/scripts/rust-code-health.py query ledger [FILTER]  # machine ledger (status/verdict/crate filter)
+~/.agents/scripts/rust-code-health.py query trend            # totals across all snapshots
+~/.agents/scripts/rust-code-health.py query crate <pkg>      # one crate's history + open findings
+~/.agents/scripts/rust-code-health.py query delta <a> <b>    # any two snapshots
+~/.agents/scripts/rust-code-health.py query ledger [FILTER]  # machine ledger (status/verdict/crate filter)
 
 # heavier, on demand (lift-lint BUILDS the workspace; minutes):
-python3 ~/.agents/scripts/rust-dead-scan.py inventory pub-scan deps reconcile boundaries hot-path lift-lint
+~/.agents/scripts/rust-dead-scan.py inventory pub-scan deps reconcile boundaries hot-path lift-lint
 ```
 
 ### Ledger lifecycle (maintenance CRs) — mirrored by hand at each board event
@@ -47,13 +47,13 @@ manifest (`~/.crucible/clients/` by default).
 ```bash
 # filing, two steps: file the CR on the board, then stamp its findings
 python3 ~/.crucible/clients/rust-crucible.py cr-plan --cr <CR-id> --title "<brief>" --release <rel> --wave <n> --agent <orchestrator-id>
-python3 ~/.agents/scripts/rust-code-health.py ledger assign --slice <CR-id> --ids F-1,DS-...
+~/.agents/scripts/rust-code-health.py ledger assign --slice <CR-id> --ids F-1,DS-...
 
 # transition: when the CR's first cycle activates on the board
-python3 ~/.agents/scripts/rust-code-health.py ledger sync --slice <CR-id> --db-state IN_PROGRESS
+~/.agents/scripts/rust-code-health.py ledger sync --slice <CR-id> --db-state IN_PROGRESS
 
 # transition: after the merge is closed with ~/.crucible/clients/rust-crucible.py cr-close --cr <CR-id> --commit <merge sha> --agent <orchestrator-id>
-python3 ~/.agents/scripts/rust-code-health.py ledger sync --slice <CR-id> --db-state COMPLETED --commit <merge sha>
+~/.agents/scripts/rust-code-health.py ledger sync --slice <CR-id> --db-state COMPLETED --commit <merge sha>
 # an aborted or superseded CR: --db-state ABORTED / --db-state SUPERSEDED, likewise
 ```
 
@@ -107,7 +107,7 @@ Ratification/validation of maintenance work is Mainline's function exclusively.
 It runs after the CR's `cr-close` and the COMPLETED ledger sync that follows it
 (`ledger sync --slice <CR-id> --db-state COMPLETED --commit <merge sha>`):
 
-1. `python3 ~/.agents/scripts/rust-code-health.py snapshot --phase post --slice <CR-id>`
+1. `~/.agents/scripts/rust-code-health.py snapshot --phase post --slice <CR-id>`
    on the integration tree — the fresh scan is compared against the CR's
    COMPLETED ledger rows.
 2. Read `health_delta.md`: every finding gets ✅ RATIFIED (stable id gone from

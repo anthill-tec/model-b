@@ -26,6 +26,13 @@ Prune (CR-MDB-040 §S1): :func:`prune_assets` removes what a redeploy no
 longer deploys — an unchanged file the prior manifest records and the new
 one does not — and keeps a hand-modified one; it never touches a path
 outside the three stores (:func:`store_root_of`).
+
+Rendering (CR-MDB-064 §S3): a hook or tool script whose first line is
+:data:`PYTHON_SHEBANG` deploys with that line replaced by
+``#!<recorded interpreter>``; every other byte, and every other file, is
+the source's. :func:`render_script` is the one function producing those
+bytes, used by :func:`deploy_assets` and :func:`deployed_freshness`; the
+manifest records the rendered bytes' hash.
 """
 
 import hashlib
@@ -57,6 +64,10 @@ HOOKS_SCRIPTS_STORE_RELDIR = Path(".agents") / "hooks" / "scripts"
 #: names, so a harness-specific tool path would defeat the detachment).
 TOOL_SCRIPTS_STORE_RELDIR = Path(".agents") / "scripts"
 
+#: CR-MDB-064 §S3: the first line a deployed hook or tool script carries
+#: in its source and has rendered into ``#!<recorded interpreter>``.
+PYTHON_SHEBANG = b"#!/usr/bin/env python3"
+
 
 class DeployError(Exception):
     """A deploy step failed; install.toml must NOT be written (§S6)."""
@@ -80,6 +91,23 @@ def default_asset_root() -> Path:
 
 def sha256_file(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def needs_rendering(source: bytes) -> bool:
+    """Whether a script's source starts with :data:`PYTHON_SHEBANG`, so its
+    deployed copy names the recorded interpreter (CR-MDB-064 §S3)."""
+    return source.partition(b"\n")[0] == PYTHON_SHEBANG
+
+
+def render_script(source: bytes, python: str | None) -> bytes:
+    """A hook or tool script's deployed bytes (CR-MDB-064 §S3): a first line
+    :data:`PYTHON_SHEBANG` becomes ``#!<python>``; every other byte, and any
+    other script, is the source's. With no interpreter (``None``) the source
+    bytes are returned unchanged."""
+    if python is None or not needs_rendering(source):
+        return source
+    _first, newline, rest = source.partition(b"\n")
+    return b"#!" + python.encode() + newline + rest
 
 
 def report_bundle(stack: str) -> str:
@@ -145,14 +173,19 @@ def _deploy_file(
     force_managed: bool,
     skipped: list[str],
     unmanaged: list[str],
+    data: bytes | None = None,
 ) -> dict | None:
     """Deploy one file into the store; return its manifest entry, or
     ``None`` when the destination is UNMANAGED (CR-MDB-033 §S3).
 
+    ``data`` is the file's deployed bytes (CR-MDB-064 §S3: a script
+    rendered by :func:`render_script`); ``None`` deploys the source bytes.
+    Every comparison below is against those bytes' hash.
+
     Three destination states are distinguished, and only the last is a
     write:
 
-    * identical to the source — untouched, recorded unchanged;
+    * identical to the deployed bytes — untouched, recorded unchanged;
     * present but ABSENT from the prior manifest — unmanaged: not Model
       B's to overwrite (DN-multi-harness-deploy-model §D3), so it is left byte-identical, reported
       through ``unmanaged``, and recorded in NO manifest entry (recording
@@ -160,7 +193,9 @@ def _deploy_file(
     * present, recorded in the prior manifest, hash-mismatched — a
       hand-modified MANAGED file: skipped unless ``force_managed``.
     """
-    src_hash = sha256_file(src)
+    if data is None:
+        data = src.read_bytes()
+    src_hash = hashlib.sha256(data).hexdigest()
     if dest.is_file():
         dest_hash = sha256_file(dest)
         if dest_hash == src_hash:
@@ -177,7 +212,7 @@ def _deploy_file(
             return {"path": rel, "sha256": recorded}
     dest.parent.mkdir(parents=True, exist_ok=True)
     # CR-MDB-033 §S2: atomic, carrying the source mode (exec bit included).
-    atomic_write(dest, src.read_bytes(), mode=stat.S_IMODE(src.stat().st_mode))
+    atomic_write(dest, data, mode=stat.S_IMODE(src.stat().st_mode))
     return {"path": rel, "sha256": src_hash}
 
 
@@ -188,6 +223,7 @@ def deploy_assets(
     force_managed: bool = False,
     unmanaged: list[str] | None = None,
     stacks: list[str] | None = None,
+    python: str | None = None,
 ) -> tuple[list[dict], list[str]]:
     """Run the §S6 deploy: store copies only (no per-harness links).
 
@@ -209,7 +245,11 @@ def deploy_assets(
     ``stacks`` (CR-MDB-036 §S7) scopes the ``crucible-report-*`` bundles
     and (CR-MDB-023 §S4) the ``code-health`` bundle to the selection
     (``None`` = every stack); every other bundle, the
-    hook scripts and the tool scripts always deploy."""
+    hook scripts and the tool scripts always deploy.
+
+    ``python`` (CR-MDB-064 §S3) is the recorded interpreter each hook and
+    tool script is rendered with (:func:`render_script`); ``None`` deploys
+    them as their source bytes."""
     prior = prior_hashes or {}
     manifest: list[dict] = []
     skipped: list[str] = []
@@ -237,6 +277,7 @@ def deploy_assets(
             dest = target_root / rel_path
             entry = _deploy_file(
                 src, dest, rel, prior, force_managed, skipped, unmanaged_paths,
+                render_script(src.read_bytes(), python),
             )
             if entry is not None:
                 manifest.append(entry)
@@ -253,6 +294,7 @@ def deploy_assets(
             dest = target_root / rel_path
             entry = _deploy_file(
                 src, dest, rel, prior, force_managed, skipped, unmanaged_paths,
+                render_script(src.read_bytes(), python),
             )
             if entry is not None:
                 manifest.append(entry)
@@ -289,6 +331,7 @@ def _file_hash(path: Path) -> str | None:
 def deployed_freshness(
     asset_root: Path, target_root: Path, files: list[dict],
     stacks: list[str] | None = None,
+    python: str | None = None,
 ) -> dict[str, list[str]]:
     """Judge each manifest entry against its deployed copy under
     ``target_root`` and its packaged source under ``asset_root``
@@ -304,7 +347,12 @@ def deployed_freshness(
     (:func:`_skill_bundles`). A recorded path it would not deploy — no
     packaged source, or a bundle the stacks do not select — is judged as
     the prune judges it: ``retired`` when unchanged (or already gone),
-    ``kept`` when edited; never ``hand_modified``."""
+    ``kept`` when edited; never ``hand_modified``.
+
+    CR-MDB-064 §S3: a hook or tool script is judged against its source
+    rendered with ``python``, the recorded interpreter
+    (:func:`render_script`). With none recorded (an install made before
+    CR-MDB-064), a script whose source needs rendering is ``stale``."""
     found: dict[str, list[str]] = {
         "stale": [], "hand_modified": [], "retired": [], "kept": [],
     }
@@ -319,9 +367,22 @@ def deployed_freshness(
             found["kept" if edited else "retired"].append(rel)
         elif deployed != recorded:
             found["hand_modified"].append(rel)
-        elif sha256_file(source) != recorded:
+        elif _expected_hash(source, rel, python) != recorded:
             found["stale"].append(rel)
     return {state: sorted(paths) for state, paths in found.items()}
+
+
+def _expected_hash(source: Path, rel: str, python: str | None) -> str | None:
+    """The hash a redeploy would record for ``rel`` (CR-MDB-064 §S3): a skill
+    file's source hash; a hook or tool script's source rendered with
+    ``python`` — ``None`` (never current) when it needs rendering and no
+    interpreter is recorded."""
+    data = source.read_bytes()
+    if Path(rel).is_relative_to(STORE_RELDIR):
+        return hashlib.sha256(data).hexdigest()
+    if python is None and needs_rendering(data):
+        return None
+    return hashlib.sha256(render_script(data, python)).hexdigest()
 
 
 def _redeployed(rel: str, bundles: set[str]) -> bool:

@@ -235,6 +235,14 @@ def _judge_interpreter(path: str) -> tuple[str | None, str | None, bool]:
     return version, None, False
 
 
+def interpreter_rejection(path: str) -> str | None:
+    """Why a recorded interpreter no longer serves the deployed scripts
+    (CR-MDB-064 §S3) — it is missing, cannot run, reports a version below
+    :data:`PYTHON_FLOOR`, or is otherwise unacceptable — or ``None`` when it
+    still meets every rule a candidate meets (:func:`_judge_interpreter`)."""
+    return _judge_interpreter(path)[1]
+
+
 def _uv_python_find(uv_path: str) -> str | None:
     """The interpreter ``uv python find --system '>=3.14'`` reports, as its
     absolute path, or ``None`` when uv reports none (CR-MDB-064 §S2)."""
