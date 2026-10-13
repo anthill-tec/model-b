@@ -1718,11 +1718,25 @@ class ScaffoldCapabilityContractReadsRequirementsDataTest(unittest.TestCase):
         with open(install_toml, "a", encoding="utf-8") as fh:
             fh.write('\n[capabilities]\npython3 = "detected"\n')
 
+    #: CR-MDB-063 §S2/§S4: a stand-in for the python ``.venv`` route data.
+    _SENTINEL_ROUTE = ("sentinel-venv-063 --python 9.99", "sentinel-pip-063 install sentinel-mods")
+
     def test_agents_md_follows_the_requirements_data_not_a_copy(self):
+        # MIGRATED at CR-MDB-063 C2 RED (§S4): the Setup section's python task is built from
+        # §S2's route data, so the route data is the requirements data, never a copy:
+        # replacing ``requirements.PYTHON_VENV_ROUTE`` (a tuple, so it is rebound rather than
+        # mutated — along with any name the scaffold binds to the same object, so the
+        # patch lands whatever import style it uses) changes the task, and the replaced
+        # commands disappear from AGENTS.md.
         from modelb_axi import scaffold
 
         original_dispatch = _requirements.requirement("dispatch")["remediation"]
         original_python = [p["remediation"] for p in _requirements.STACK_TOOLCHAINS["python"]]
+        original_route = _requirements.PYTHON_VENV_ROUTE
+        route_patches = [mock.patch.object(_requirements, "PYTHON_VENV_ROUTE",
+                                           self._SENTINEL_ROUTE)]
+        route_patches += [mock.patch.object(scaffold, name, self._SENTINEL_ROUTE)
+                          for name, value in vars(scaffold).items() if value is original_route]
         args = argparse.Namespace(
             name="X", token="xproj", acronym="XP", mode="solo",
             repo_shape="standalone", stacks="python", owner="tester",
@@ -1737,11 +1751,25 @@ class ScaffoldCapabilityContractReadsRequirementsDataTest(unittest.TestCase):
         ), mock.patch.dict(
             # CR-MDB-037 migration: init reads Pi's agent dir (§S4 trust).
             os.environ, {AGENT_DIR_ENV: shared_provisioned_agent_dir()},
-        ), contextlib.redirect_stdout(io.StringIO()), \
+        ), contextlib.ExitStack() as patches, contextlib.redirect_stdout(io.StringIO()), \
                 contextlib.redirect_stderr(io.StringIO()) as err:
+            for patch in route_patches:
+                patches.enter_context(patch)
             exit_code = scaffold.run_init(args, Path(self._tmp_home))
         self.assertEqual(exit_code, 0, f"precondition: init must succeed; stderr={err.getvalue()!r}")
         content = (Path(self._tmp_target) / "AGENTS.md").read_text(encoding="utf-8")
+        # POSITIVE (CR-MDB-063 §S4) -- the Setup task names the patched route, in order.
+        sentinel_run = ", then ".join(f"`{command}`" for command in self._SENTINEL_ROUTE)
+        tasks = [ln for ln in content.splitlines()
+                 if ln.startswith("- [ ] Create the python test interpreter")]
+        self.assertEqual(len(tasks), 1,
+                         f"§S4: one python Setup task; got content={content!r}")
+        self.assertIn(f"from the project root, run {sentinel_run} — ", tasks[0],
+                      f"§S4: the task's commands are the route data; task={tasks[0]!r}")
+        # NEGATIVE (CR-MDB-063 §S4) -- the replaced route commands are gone.
+        for command in original_route:
+            self.assertNotIn(command, content,
+                             f"§S4: a copied route command {command!r} is written")
         # POSITIVE -- the patched data is what is written, paired per line.
         self.assertTrue(
             _line_pairing(content, "dispatch", self._SENTINEL_TIER1_REMEDIATION),

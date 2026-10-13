@@ -614,6 +614,17 @@ class FreshnessUnknownWithoutTargetRootTest(_InstalledMachineCase):
         touched = sorted({p for p in opened for rel in self.manifest if p.endswith(rel)})
         self.assertEqual(touched, [], "no deployed file may be read without a target_root")
 
+    def test_no_target_root_leaves_a_dead_recorded_interpreter_unjudged(self):
+        """CR-MDB-063 §S5: without a recorded ``target_root`` ``freshness`` stays
+        ``unknown`` and the interpreter is not judged — even one that is gone."""
+        python = self.load_install()["install"].get("python")
+        self.assertIsInstance(python, str, "fixture: the install records an interpreter")
+        Path(python).unlink()
+        result, axi = self.run_bare()
+        self.assert_already_installed(result, axi)
+        self.assertEqual(axi.get("freshness"), "unknown", f"§S5: axi={axi!r}")
+        self.assertNotIn("interpreter", axi, f"§S5: the interpreter is not judged; axi={axi!r}")
+
     # -- VERIFY (cycle 102) finding 2: the warning names the full re-run --
 
     def unknown_rerun_argv(self):
@@ -747,6 +758,8 @@ class RecordedInterpreterFreshnessTest(_InstalledMachineCase):
         self.assert_already_installed(result, axi)
         self.assert_lists(axi, stale=sorted(python_shebang_scripts()))
         self.assertEqual(axi.get("freshness"), "outdated", f"axi={axi!r}")
+        # CR-MDB-063 §S5: none recorded, so none is judged — no `interpreter` field.
+        self.assertNotIn("interpreter", axi, f"§S5: no interpreter recorded; axi={axi!r}")
 
     def test_recorded_interpreter_that_no_longer_exists_is_reported_with_the_re_install_command(self):
         python = self.recorded_python()
@@ -770,6 +783,58 @@ class RecordedInterpreterFreshnessTest(_InstalledMachineCase):
                 if python in ln and "--reinstall" in ln]
         self.assertEqual(hits, [],
                          "a recorded interpreter that meets the floor needs no re-install")
+
+
+class DeadRecordedInterpreterFreshnessTest(RecordedInterpreterFreshnessTest):
+    """CR-MDB-063 §S5/AC, through the real CLI (a bare ``modelb-axi`` on the sandboxed
+    install, the ``already_installed`` envelope on stdout): with a recorded ``target_root`` and
+    a recorded interpreter that ``interpreter_rejection`` now rejects, ``freshness`` is
+    ``outdated`` whatever the file lists hold, the envelope carries ``interpreter`` =
+    ``{"path": <recorded>, "reason": <the rejection>}``, and CR-MDB-064 §S3's warning stays.
+    An accepted interpreter adds no ``interpreter`` field and leaves ``freshness`` ``current``.
+    ``ok`` stays true and the exit 0 throughout. (Subclassing re-runs the CR-MDB-064 §S3
+    cases unchanged, so they are proved to hold beside §S5.)"""
+
+    def assert_dead_interpreter_reported(self, python: str) -> None:
+        from modelb_axi.preflight import interpreter_rejection
+        reason = interpreter_rejection(python)
+        self.assertIsInstance(reason, str, f"fixture: {python} is rejected now")
+        self.assertTrue(reason, f"fixture: the rejection is a reason; got {reason!r}")
+        result, axi = self.run_bare()
+        self.assert_already_installed(result, axi)
+        self.assert_lists(axi)  # every file list empty: the interpreter alone decides
+        self.assertEqual(axi.get("freshness"), "outdated",
+                         f"§S5: a dead recorded interpreter makes the install outdated, whatever "
+                         f"the file lists hold; axi={axi!r}")
+        self.assertEqual(axi.get("interpreter"), {"path": python, "reason": reason},
+                         f"§S5: the envelope names the recorded path and its rejection; "
+                         f"axi={axi!r}")
+        # The existing warning stays (CR-MDB-064 §S3), and names the same rejection.
+        report = self.interpreter_report(result, axi, python)
+        self.assertIn(f"{python} {reason}", report,
+                      f"§S5: the warning stays, naming the same rejection; report={report!r}")
+        self.assert_names_the_reinstall_command(report)
+
+    def test_missing_recorded_interpreter_with_empty_file_lists_is_outdated_with_its_interpreter(self):
+        python = self.recorded_python()
+        Path(python).unlink()
+        self.assert_dead_interpreter_reported(python)
+
+    def test_recorded_interpreter_below_the_floor_is_outdated_with_its_interpreter(self):
+        python = self.recorded_python()
+        _write_exe(self.bin_dir, "python3", python3_stub("3.13.5"))
+        self.assert_dead_interpreter_reported(python)
+
+    def test_accepted_recorded_interpreter_carries_no_interpreter_field_and_is_current(self):
+        python = self.recorded_python()
+        from modelb_axi.preflight import interpreter_rejection
+        self.assertIsNone(interpreter_rejection(python), "fixture: the interpreter is accepted")
+        result, axi = self.run_bare()
+        self.assert_already_installed(result, axi)
+        self.assert_lists(axi)
+        self.assertNotIn("interpreter", axi, f"§S5: an accepted interpreter adds no field; "
+                                             f"axi={axi!r}")
+        self.assertEqual(axi.get("freshness"), "current", f"§S5: axi={axi!r}")
 
 
 if __name__ == "__main__":
