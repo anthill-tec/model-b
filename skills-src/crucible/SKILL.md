@@ -166,7 +166,7 @@ Display/classification context survives as env vars:
   is declared or the verb fails, and an unregistered id is refused 409 by the
   server — it is never silently downgraded. The free-text `--orchestrator` label
   is retired; the registered `--agent` id IS the plan's orchestrator.
-- **`--release <label>`**, when given at filing, also REGISTERS the CR in the queue
+- **`plan-file … --release <label> --agent <id>`** also REGISTERS the CR in the queue
   in the same call (which makes `--wave` and `--title` required); omitted, the plan
   is filed and nothing is claimed on the roadmap.
 - **Gate verb — `gate-run`, which replaces the legacy `gate-report`.**
@@ -178,9 +178,9 @@ Display/classification context survives as env vars:
   The declaration exists because no-mistakes' `ci` step is PR-based, and a git-flow project that
   merges directly has no PR for it to watch, so a gate that ran it would block until
   `ci_timeout`. An explicit `--skip <steps>` replaces the declaration (forwarded
-  VERBATIM to `no-mistakes axi run --skip`), and `--skip ""` skips nothing. `--release <label>` names
-  the release a gate gates (a gate naming one is exempt from pruning until that
-  release records) — omit it unless the gate really gates a release.
+  VERBATIM to `no-mistakes axi run --skip`), and `--skip ""` skips nothing.
+  `gate-run --intent <goal> --release <label> --agent <id>` names the release a gate gates
+  (a gate naming one is exempt from pruning until that release records) — omit it unless the gate really gates a release.
 - **`project-meta` — the project's metadata map.** A read, `project-meta` alone,
   takes no `--agent`: it posts nothing. A write, `project-meta --set KEY=VALUE …
   --agent <id>` or `project-meta --unset KEY --agent <id>`, posts as a registered
@@ -225,16 +225,18 @@ place in it changes.
 ## The 0.3.0 verb surface — on all five clients
 
 Crucible 0.3.0 put these verbs and flags on all five clients: `history`, `landings`,
-`project-meta`, `cycle-skip` and `gate-respond`, `--points` on `cr-plan`, `queue --fields`/`--full`,
-and `--cycle`/`--release` on the run verbs. Where a client's `--help` differs, the exception is
-named below; read `<verb> --help` before using a flag this skill does not show.
+`project-meta`, `cycle-skip` and `gate-respond`, story points on `cr-plan`, the `queue` field
+selection and full view, and a cycle and a release flag on the run verbs. Where a client's
+`--help` differs, the exception is named below; read `<verb> --help` before using a flag this
+skill does not show.
 
 - **The run verbs** — `test`, the tier verbs (`unit`, `module`, `integration`, `e2e`, `bdd`),
   `regression` and `pre-merge-gate` — take `--cycle` and `--release <label>`; not
-  `auto-ingest`. `--cycle <id>` binds the run's agent to an active cycle when it did not
-  register bound.
-- **`--release <label>`** files the run as release verification under a release the roadmap
-  declares, instead of a cycle; it is never given beside `--cycle`.
+  `auto-ingest`. `test --cycle <id> --agent <id>` binds the run's agent to an active cycle
+  when it did not register bound.
+- **`regression --release <label> --agent <id>`** files the run as release verification under
+  a release the roadmap declares, instead of a cycle; `--release` is never given beside
+  `--cycle`.
 - **The exception:** the rust client's `regression` takes no `--cycle` — bind the rust
   regression run at registration instead.
 - **`history`** lists past releases: a release appears once it has shipped or has a completed
@@ -243,21 +245,26 @@ named below; read `<verb> --help` before using a flag this skill does not show.
 - **`status`** shows the work in flight (status contract 3.0.0: the open plans, `count`,
   `filed` and `lastClosedCr`).
 - **`landings`** lists each closed CR's merge commit.
-- **`cr-plan`'s `--points <n>`** takes a story-point score on the scale 1, 2, 3, 5, 8, 13.
+- **Story points:** `cr-plan --cr <id> --title <t> --release <label> --wave <w> --points <n> --agent <id>`
+  takes a story-point score on the scale 1, 2, 3, 5, 8, 13.
 - **Re-sending a CR's current title, release and wave** with `--points` changes only its points.
-- **`cycle-add`:** a `fix` append needs nothing more. A `--before <cycle id>` insert, or any
-  other kind, is a recorded plan change, and needs `--reason`, `--cause` (`spec-design` or
-  `gap-analysis`) and `--spec-ref`.
-- **`cycle-skip <cycle id>`** takes the same three flags; a skipped cycle is recorded as a
-  failure.
+- **`cycle-add`:** a `fix` append, `cycle-add <label> --cr <id> --kind fix --agent <id>`, needs
+  nothing more. An insert,
+  `cycle-add <label> --cr <id> --before <cycle id> --reason <why> --cause spec-design --spec-ref <ref> --agent <id>`,
+  or any other kind, is a recorded plan change, and needs `--reason`, `--cause` (`spec-design`
+  or `gap-analysis`) and `--spec-ref`.
+- **Skipping a cycle:**
+  `cycle-skip <cycle id> --reason <why> --cause gap-analysis --spec-ref <ref> --agent <id>`
+  takes the same three flags; a skipped cycle is recorded as a failure.
 - **`gate-run`** gives each run its own board identity, `<caller>·gate·<run>`, removed when the
   run ends; the decision stays the caller's (Crucible #1432).
-- **`gate-respond`** answers a held step with `--action approve|fix|skip`; a decision the tool
-  accepted is recorded even when the wait elapses. It has no `--release`.
+- **`gate-respond`** answers a held step with
+  `gate-respond --action approve|fix|skip --agent <id>`; a decision the tool accepted is
+  recorded even when the wait elapses. It has no `--release`.
 - **After a wait that elapsed while a step was still running,** check `status` and reattach
   with `gate-run --intent <goal> --agent <id>` (Crucible #1432).
-- **Client output goes to a file** — `--log <path>` where the verb takes it, a redirect
-  otherwise — and never through `| head`.
+- **Client output goes to a file** — `test --log <path> --agent <id>` where the verb takes
+  `--log`, a redirect otherwise — and never through `| head`.
 - **Where `--log` is absent:** the rust client's `regression`, and `pre-merge-gate` on the
   arduino, mvn and rust clients — redirect their output to a file instead.
 

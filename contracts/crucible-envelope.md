@@ -123,8 +123,11 @@ register --agent <id> --role <ROLE> [--cycle <cycleId>] [--source <src>] [--proj
 ```
 
 That block is the surface all five clients take. Two flags are per-client, as each client's
-`--help` shows: `--message <m>` is on every client but arduino's, and `--display-name <n>`
-only on the bun and python clients.
+`--help` shows:
+
+- `register --message <m>` is on every client but arduino's: `bun-crucible.py`,
+  `mvn-crucible.py`, `python-crucible.py` and `rust-crucible.py`.
+- `register --display-name <n>` is only on `bun-crucible.py` and `python-crucible.py`.
 
 - **`--role` is required and CASE-EXACT**, from `{RED, GREEN, FIX, VERIFY, ORCHESTRATOR,
   report}` — five uppercase, `report` lowercase. It is the ONLY role channel. A missing
@@ -240,8 +243,9 @@ Filed by the orchestrator, on ALL stack clients:
   or the verb fails, and an unregistered id is refused by the server with 409 — there is no
   silent downgrade. The free-text `--orchestrator` label is retired; the registered
   `--agent` id IS the plan's orchestrator.
-- `--release <label>` at filing also REGISTERS the CR in the queue in the same call (which
-  makes `--wave` and `--title` required); omitted, nothing is claimed on the roadmap.
+- `plan-file … --release <label> --agent <id>` at filing also REGISTERS the CR in the queue
+  in the same call (which makes `--wave` and `--title` required); omitted, nothing is
+  claimed on the roadmap.
 - `cycle-activate <cycle-id> --agent <id>` / `cycle-done <cycle-id> --agent <id>` — legal
   transitions planned → active → done.
 - `cr-close --commit <sha> --agent <id>` — closes the CR on feature merge.
@@ -256,8 +260,8 @@ Filed by the orchestrator, on ALL stack clients:
   project that merges directly has no PR for it to watch, so a gate that ran it would
   block until `ci_timeout`. An explicit `--skip <steps>` replaces the declaration
   (forwarded VERBATIM to `no-mistakes axi run --skip`), and `--skip ""` skips nothing.
-  `--release <label>` names the release a gate gates (exempt from pruning
-  until that release records) — omit it unless the gate really gates a release.
+  `gate-run --intent <goal> --release <label> --agent <id>` names the release a gate gates
+  (exempt from pruning until that release records) — omit it unless the gate really gates a release.
 
 ### Agent-naming header (bundled agent-naming skill)
 - TDD-ROLE agents: `CR-<PROJ>-NNN-<cycle>-<ROLE>` (e.g. `CR-MDB-009-C1-GREEN`) — a
