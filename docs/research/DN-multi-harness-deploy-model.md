@@ -887,6 +887,33 @@ run a runner, then post its report through inline `urllib` — is removed with t
   whose script is not deployed), CR-MDB-063 (the test-interpreter probe).
 
 Implemented by CR-MDB-057 and CR-MDB-056.
+
+**AMENDED again 2026-10-13 (user rulings at CR-MDB-062's gap analysis):**
+- **Where a blocking hook applies.** A test-runner hook blocks only inside a project of its stack. That
+  is when the git root of the shell call's working directory, or a directory under it, holds one of the
+  stack's markers. Without a git root, the working directory and its ancestors are checked. Measured
+  case: Sandesh's bun package sits in `integrations/pi/`, and a Pi shell call's working directory is the
+  session root, so a check of the working directory and its ancestors alone would never fire. The rule
+  is the same for all four runner hooks: python, bun, cargo and mvn.
+- **The runner set grows by three python forms**, in the guard and the hooks alike, which stay in
+  parity:
+  - an attached `-m` (`python3 -munittest`);
+  - `uv run python …`;
+  - a test file run directly (`python3 tests/test_x.py`, the incident form).
+
+  `make test`, `mvn install`, `vitest` and `jest`, and indented code blocks, stay outside it.
+- **All four runner hooks share one convention:**
+  - a command position past `VAR=value`, `env` and its options, `timeout`, `nice` and `time`;
+  - the marker rule above;
+  - a block reason naming Crucible's manifest, the stack's client and its run verbs, the escape hatch
+    (used only with the orchestrator's approval) and the client's known gaps, with no stale reference.
+
+  Each hook stays a self-contained script, as CR-MDB-015 made them; a parity test keeps their
+  verdicts in step with the guard's.
+- **`init` refuses** to emit any hook whose script is not in the deployed store, before the first
+  write, naming `modelb-axi --reinstall`.
+
+Implemented by CR-MDB-062.
 ### D22 — The published Python floor is 3.14
 
 **User ruling 2026-10-13.** `modelb-axi` declares `requires-python = ">=3.14"` from release 1.0.0
