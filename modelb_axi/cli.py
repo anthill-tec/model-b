@@ -356,6 +356,7 @@ def _deploy_stage(
     capabilities: dict[str, str] | None = None,
     stacks: list[str] | None = None,
     allow_missing_capabilities: bool = False,
+    python: str | None = None,
 ) -> int:
     """Stage 3 (§S6): manifest-driven deploy, then the config write LAST
     — any deploy failure exits non-zero with NO install.toml written.
@@ -374,6 +375,9 @@ def _deploy_stage(
     ``[capabilities]``; ``stacks`` (default: every supported stack)
     becomes ``[install].stacks``; ``allow_missing_capabilities`` is
     recorded only when used.
+
+    CR-MDB-064 §S2: ``python`` (the pre-flight's accepted interpreter)
+    becomes ``[install] python``.
 
     CR-MDB-040 \u00a7S1/\u00a7S2: after the deploy succeeds and before the
     config write, what the prior manifest records and the new one does not
@@ -436,6 +440,8 @@ def _deploy_stage(
         "tool_scripts_dir": str(target_root / TOOL_SCRIPTS_STORE_RELDIR),
         "stacks": list(stacks),
     }
+    if python is not None:
+        install["python"] = python
     if allow_missing_capabilities:
         install["allow_missing_capabilities"] = True
     install_toml = write_install_toml(
@@ -551,7 +557,7 @@ def _run_installer_flow(
     # Stage 1 — dependency pre-flight (§S4). Runs (and reports its
     # `deps:` line) BEFORE any later stage announcement.
     _say("  [stage 1/3] pre-flight: harness capabilities + dependency checks (uv / Sandesh / Crucible)")
-    preflight_exit, deps_verdicts, capabilities = run_preflight(
+    preflight_exit, deps_verdicts, capabilities, python = run_preflight(
         lambda prompt: _confirm(prompt, interactive), warnings,
         stacks=stacks, allow_missing_capabilities=allow_missing_capabilities,
         offer=_offer if interactive else None,
@@ -589,6 +595,7 @@ def _run_installer_flow(
         home, target_root, selected, deps_verdicts, reinstall, force_managed,
         warnings=warnings, report=report, capabilities=capabilities,
         stacks=stacks, allow_missing_capabilities=allow_missing_capabilities,
+        python=python,
     )
     if deploy_exit != 0:
         _emit_install_envelope("deploy_failed", False, warnings, fields)

@@ -162,7 +162,7 @@ provides it. By requirement:
 | `direnv` | the project .envrc, which loads .env into the environment, never runs: a session started in the project does not get its Sandesh identity (`SANDESH_ADDRESS`, `SANDESH_PROJECT`) from the environment. |
 | `toolchain` | that stack's tests cannot run on this machine, so its agent definitions cannot carry out test-first work there; shown as `<tool>=absent` on the `stack <name>:` line. |
 
-Only `uv`, `dispatch`, `lean-ctx`, `sandesh-pi` and `sandesh` stop an install. Every other warning is recorded and the
+Only `uv`, `dispatch`, `lean-ctx`, `sandesh-pi`, `sandesh` and `python3` stop an install. Every other warning is recorded and the
 install continues, so you can fix it later and re-run.
 
 ## Install offers
