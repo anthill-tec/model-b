@@ -33,5 +33,8 @@ virtual environment.
 4. **`freshness` and a dead interpreter:** when the recorded `[install] python` is missing or below the
    floor, `_freshness_fields` warns, but the envelope's `freshness` still reads `current`; decide
    whether it reads `outdated` or carries an `interpreter` field.
-5. **Measure:** whether `init` can probe the project's `.venv` at scaffold time (it usually does not
+5. **The install guide's interpreter sample is unchecked:** `check_python_interpreter`
+   (`tests/test_install_guide.py`) inspects only fenced lines starting `python3=`, and the guide's
+   refusal sample is the installer's real line, which starts `modelb-axi: error: `.
+6. **Measure:** whether `init` can probe the project's `.venv` at scaffold time (it usually does not
    exist yet), and the cost of re-probing at bootstrap instead.
