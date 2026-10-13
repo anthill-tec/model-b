@@ -90,6 +90,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from tests._helpers import _find_pi_package_root
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 FIXTURES_DIR = REPO_ROOT / "tests" / "fixtures"
 HARNESS_MJS = FIXTURES_DIR / "pi_hook_loader_harness.mjs"
@@ -110,16 +112,6 @@ _DEFAULT_DRIVE_BUDGET_S = 10.0
 # --------------------------------------------------------------------------
 # §S8 loader-environment detection -- SKIPS, naming what is missing.
 # --------------------------------------------------------------------------
-
-def _find_pi_package_root(pi_binary_resolved: Path) -> Path | None:
-    """Walk up from the resolved `pi` binary looking for the un-bundled
-    package root (needs `dist/core/extensions/loader.js` -- the compiled
-    single-file `dist/bundle/cli.js` alone does not expose jiti loading)."""
-    for parent in pi_binary_resolved.parents:
-        if (parent / "dist" / "core" / "extensions" / "loader.js").is_file():
-            return parent
-    return None
-
 
 def _find_jiti_near(pi_pkg_root: Path) -> Path | None:
     """Walk up from the pi package root looking for the `jiti` package its
@@ -196,9 +188,13 @@ class LoaderEnvironmentDetectionTest(unittest.TestCase):
 
         with mock.patch("shutil.which", side_effect=fake_which), mock.patch(
             f"{__name__}._find_pi_package_root", return_value=None
-        ), self.assertRaises(unittest.SkipTest) as ctx:
+        ) as finder, self.assertRaises(unittest.SkipTest) as ctx:
             _require_loader_env()
         self.assertIn("loader.js", str(ctx.exception))
+        # CR-MDB-065 §S4: the finder now lives in tests/_helpers.py; the patch
+        # must land where `_require_loader_env` looks it up, or the real finder
+        # runs and this skip is proved by accident.
+        finder.assert_called_once_with(Path("/usr/bin/pi").resolve())
 
     def test_missing_jiti_skips_naming_jiti(self):
         fake_root = Path("/fake/pi-coding-agent")
@@ -208,11 +204,12 @@ class LoaderEnvironmentDetectionTest(unittest.TestCase):
 
         with mock.patch("shutil.which", side_effect=fake_which), mock.patch(
             f"{__name__}._find_pi_package_root", return_value=fake_root
-        ), mock.patch(f"{__name__}._find_jiti_near", return_value=None), self.assertRaises(
+        ) as finder, mock.patch(f"{__name__}._find_jiti_near", return_value=None), self.assertRaises(
             unittest.SkipTest
         ) as ctx:
             _require_loader_env()
         self.assertIn("jiti", str(ctx.exception).lower())
+        finder.assert_called_once_with(Path("/usr/bin/pi").resolve())
 
 
 # --------------------------------------------------------------------------
