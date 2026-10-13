@@ -16,9 +16,11 @@ text after `&&`, `||`, `;`, `|`, `&` or `(` outside quotes. Leading wrappers are
 stepped over: `VAR=value`, `env` with its options and assignments, `timeout`
 with its options and a duration, `nice [-n N]` and `time`. A launcher's goals
 are its own arguments up to the end of its command: a line break or a
-separator ends them, so a `test` on the next line is no goal. A runner word
-inside a quoted argument or a heredoc body is never a position. It reads shell
-as the raw-runner guard does (`tests/test_raw_runner_guard.py`).
+separator ends them, so a `test` on the next line is no goal. A launcher's
+words are read as the shell passes them: quotes removed, a redirection no part
+of them; a here-string `<<<` opens no heredoc. A runner word inside a quoted
+argument or a heredoc body is never a position. It reads shell as the
+raw-runner guard does (`tests/test_raw_runner_guard.py`).
 
 Where it applies (CR-MDB-062 §S3): a `pom.xml`, `build.gradle` or
 `build.gradle.kts` in the payload's `cwd`, in a parent up to and including the
@@ -115,7 +117,8 @@ def _segments(text: str):
     """Each command segment of `text` as `(start, end)`, or `None` when a quote is never
     closed (the command does not tokenise). A segment starts at a command position — the
     text's start, a line start, or after a separator — and runs to the next one. Quotes, a
-    `#` comment and a backslash escape hide what they hold; a heredoc body is skipped whole."""
+    `#` comment and a backslash escape hide what they hold; a heredoc body is skipped whole,
+    and a here-string (`<<<`) opens none."""
     segments, start, quote, pending = [], 0, None, []
     index = 0
     while index < len(text):
@@ -143,7 +146,10 @@ def _segments(text: str):
             index = _skip_heredoc_bodies(text, index + 1, pending)
             start, pending = index, []
             continue
-        heredoc = None if text.startswith("<<<", index) else _HEREDOC.match(text, index)
+        if text.startswith("<<<", index):
+            index += 3  # a here-string, not a heredoc: it opens no body
+            continue
+        heredoc = _HEREDOC.match(text, index)
         if heredoc:
             word = next(g for g in heredoc.groups()[1:] if g is not None)
             pending.append((word, bool(heredoc.group(1))))
@@ -182,16 +188,25 @@ def _is_test_goal(token: str) -> bool:
     return token in TEST_GOALS or token.startswith(TEST_GOAL_PREFIXES)
 
 
-def _words(segment: str) -> list:
-    """`segment`'s words, quotes removed and a `#` comment dropped; a `)` closing a subshell
-    ends the command."""
+def _shell_words(segment: str) -> list:
+    """`segment`'s words as the shell passes them to the command: quotes removed, a `#`
+    comment dropped, a redirection (`>file`, `2>&1`, `>|`, `&>`) and its target no part of
+    them, and a `)` closing a subshell ending them. An unclosed quote reads plain words."""
     lex = shlex.shlex(segment, posix=True, punctuation_chars=True)
     lex.whitespace_split = True
-    words = []
+    words, skip_target = [], False
     try:
         for word in lex:
             if word.startswith(")"):
                 break
+            if skip_target:
+                skip_target = False
+                continue
+            if word and set(word) <= set("<>&|"):
+                skip_target = True
+                if words and words[-1].isdigit():
+                    words.pop()  # the file descriptor of `2>` is the redirection's
+                continue
             words.append(word)
     except ValueError:
         return segment.split()
@@ -202,7 +217,7 @@ def _is_mvn_test_invocation(command: str) -> bool:
     """True when a launcher is the command word at a command position and one of its own
     arguments, up to the end of its command, is a test goal."""
     for segment in _commands(command):
-        words = _words(segment)
+        words = _shell_words(segment)
         if words and _is_launcher(words[0]) and any(_is_test_goal(w) for w in words[1:]):
             return True
     return False

@@ -13,10 +13,11 @@ Command positions (CR-MDB-062 §S2): every line start outside quotes and
 outside a heredoc body (`<<WORD`, `<<'WORD'`, `<<"WORD"`, `<<-WORD`), and the
 text after `&&`, `||`, `;`, `|`, `&` or `(` outside quotes. Leading wrappers are
 stepped over: `VAR=value`, `env` with its options and assignments, `timeout`
-with its options and a duration, `nice [-n N]` and `time`. A runner word inside
-a quoted argument or a heredoc body is never a position, and a line break ends
-a command. It reads shell as the raw-runner guard does
-(`tests/test_raw_runner_guard.py`).
+with its options and a duration, `nice [-n N]` and `time`. A runner is read in
+the words the shell passes it: quotes removed, a redirection no part of them; a
+here-string `<<<` opens no heredoc. A runner word inside a quoted argument or
+a heredoc body is never a position, and a line break ends a command. It reads
+shell as the raw-runner guard does (`tests/test_raw_runner_guard.py`).
 
 Where it applies (CR-MDB-062 §S3): a `Cargo.toml` in the payload's `cwd`, in a
 parent up to and including the git root (the nearest ancestor holding any
@@ -38,6 +39,7 @@ with its `test`, `check` and `workspace-regression` verbs, and the
 import json
 import os
 import re
+import shlex
 import sys
 from pathlib import Path
 
@@ -104,7 +106,8 @@ def _segments(text: str):
     """Each command segment of `text` as `(start, end)`, or `None` when a quote is never
     closed (the command does not tokenise). A segment starts at a command position — the
     text's start, a line start, or after a separator — and runs to the next one. Quotes, a
-    `#` comment and a backslash escape hide what they hold; a heredoc body is skipped whole."""
+    `#` comment and a backslash escape hide what they hold; a heredoc body is skipped whole,
+    and a here-string (`<<<`) opens none."""
     segments, start, quote, pending = [], 0, None, []
     index = 0
     while index < len(text):
@@ -132,7 +135,10 @@ def _segments(text: str):
             index = _skip_heredoc_bodies(text, index + 1, pending)
             start, pending = index, []
             continue
-        heredoc = None if text.startswith("<<<", index) else _HEREDOC.match(text, index)
+        if text.startswith("<<<", index):
+            index += 3  # a here-string, not a heredoc: it opens no body
+            continue
+        heredoc = _HEREDOC.match(text, index)
         if heredoc:
             word = next(g for g in heredoc.groups()[1:] if g is not None)
             pending.append((word, bool(heredoc.group(1))))
@@ -162,9 +168,40 @@ def _commands(text: str):
         yield segment
 
 
+def _shell_words(segment: str) -> list:
+    """`segment`'s words as the shell passes them to the command: quotes removed, a `#`
+    comment dropped, a redirection (`>file`, `2>&1`, `>|`, `&>`) and its target no part of
+    them, and a `)` closing a subshell ending them. An unclosed quote reads plain words."""
+    lex = shlex.shlex(segment, posix=True, punctuation_chars=True)
+    lex.whitespace_split = True
+    words, skip_target = [], False
+    try:
+        for word in lex:
+            if word.startswith(")"):
+                break
+            if skip_target:
+                skip_target = False
+                continue
+            if word and set(word) <= set("<>&|"):
+                skip_target = True
+                if words and words[-1].isdigit():
+                    words.pop()  # the file descriptor of `2>` is the redirection's
+                continue
+            words.append(word)
+    except ValueError:
+        return segment.split()
+    return words
+
+
+def _normal(segment: str) -> str:
+    """`segment` as the words the shell passes (`_shell_words`), joined by one space."""
+    return " ".join(_shell_words(segment))
+
+
 def _is_cargo_invocation(command: str) -> bool:
-    """True when `cargo` with a test-running verb is the command word at a command position."""
-    return any(CARGO_RUN.match(segment) for segment in _commands(command))
+    """True when `cargo` with a test-running verb is the command word at a command position,
+    read in the words the shell passes it."""
+    return any(CARGO_RUN.match(_normal(segment)) for segment in _commands(command))
 
 
 def _has_marker(directory: Path) -> bool:

@@ -56,6 +56,7 @@ tree. Stdlib only.
 
 import os
 import re
+import shlex
 import sys
 import unittest
 from pathlib import Path
@@ -152,6 +153,36 @@ _BLOCK_START = re.compile(r"^\s*(?:#{1,6}\s|[-*+]\s|\d+[.)]\s|\|)")
 _QUOTE = re.compile(r"^\s*(?:>\s?)+")
 
 
+def _shell_words(segment: str) -> list[str]:
+    """``segment``'s words as the shell passes them to the command: quotes removed, a ``#``
+    comment dropped, a redirection (``>file``, ``2>&1``, ``>|``, ``&>``) and its target no part
+    of them, and a ``)`` closing a subshell ending them. An unclosed quote reads plain words."""
+    lex = shlex.shlex(segment, posix=True, punctuation_chars=True)
+    lex.whitespace_split = True
+    words, skip_target = [], False
+    try:
+        for word in lex:
+            if word.startswith(")"):
+                break
+            if skip_target:
+                skip_target = False
+                continue
+            if word and set(word) <= set("<>&|"):
+                skip_target = True
+                if words and words[-1].isdigit():
+                    words.pop()  # the file descriptor of ``2>`` is the redirection's
+                continue
+            words.append(word)
+    except ValueError:
+        return segment.split()
+    return words
+
+
+def _normal(segment: str) -> str:
+    """``segment`` as the words the shell passes (``_shell_words``), joined by one space."""
+    return " ".join(_shell_words(segment))
+
+
 def _is_maven_test_run(segment: str) -> bool:
     """True when ``segment`` starts with a Maven launcher and names a test goal (exact goals)."""
     if not _MAVEN.match(segment):
@@ -206,7 +237,10 @@ def _segments(text: str) -> list[tuple[int, int]]:
             index = _skip_heredoc_bodies(text, index + 1, pending)
             start, pending = index, []
             continue
-        heredoc = None if text.startswith("<<<", index) else _HEREDOC.match(text, index)
+        if text.startswith("<<<", index):
+            index += 3  # a here-string, not a heredoc: it opens no body
+            continue
+        heredoc = _HEREDOC.match(text, index)
         if heredoc:
             word = next(g for g in heredoc.groups()[1:] if g is not None)
             pending.append((word, bool(heredoc.group(1))))
@@ -225,7 +259,8 @@ def _segments(text: str) -> list[tuple[int, int]]:
 def _runner(fragment: str):
     """``(offset, stack)`` of the first runner at a command position in ``fragment``, or
     ``None``. Wrappers before a command are stepped over; ``uv run`` and its options are a
-    position before a python runner form only."""
+    position before a python runner form only. A runner is read in the words the shell passes
+    (``_normal``): quotes removed, a redirection no part of them."""
     for begin, end in _segments(fragment):
         piece = fragment[begin:end]
         start = begin + len(piece) - len(piece.lstrip())
@@ -238,14 +273,15 @@ def _runner(fragment: str):
             segment = segment[wrapper.end():]
         uv_run = _UV_RUN.match(segment)
         if uv_run:
-            after = segment[uv_run.end():]
+            after = _normal(segment[uv_run.end():])
             if any(r.match(after) for r in PYTHON_RUNNERS):
                 return start + uv_run.end(), "python"
             continue
+        normal = _normal(segment)
         for stack, group in _GROUPS:
-            if any(r.match(segment) for r in group):
+            if any(r.match(normal) for r in group):
                 return start, stack
-        if _is_maven_test_run(segment):
+        if _is_maven_test_run(normal):
             return start, "mvn"
     return None
 
