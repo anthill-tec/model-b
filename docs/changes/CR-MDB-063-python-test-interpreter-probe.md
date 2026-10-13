@@ -27,5 +27,11 @@ virtual environment.
 2. **`init`'s capability contract and Setup section** say the project's test interpreter (its
    `.venv/bin/python` when present, else `python3`) needs `xmlrunner` and `coverage`, and give the
    install command and the `uv venv` route for a uv-managed interpreter.
-3. **Measure:** whether `init` can probe the project's `.venv` at scaffold time (it usually does not
+3. **The `stack python: python3` probe's remediation** still reads "install python3 with the OS
+   package manager" and is reported as needing elevated privileges, though the install guide now
+   names `uv python install 3.14` and no longer lists `python3` among the privileged tools.
+4. **`freshness` and a dead interpreter:** when the recorded `[install] python` is missing or below the
+   floor, `_freshness_fields` warns, but the envelope's `freshness` still reads `current`; decide
+   whether it reads `outdated` or carries an `interpreter` field.
+5. **Measure:** whether `init` can probe the project's `.venv` at scaffold time (it usually does not
    exist yet), and the cost of re-probing at bootstrap instead.
