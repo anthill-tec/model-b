@@ -3,8 +3,8 @@
 **Status:** PENDING — **SEED, not the finished spec.** Gap analysis, the design record, the spec and
 its pre-review happen in order when this CR starts.
 **Type:** fix (hook scripts, guard)
-**Priority:** P3 — unsequenced (the user places it).
-**Depends on:** CR-MDB-062 (merged `282eaa7`)
+**Priority:** P3 — release 1.0.0, wave 2 (user ruling 2026-10-14: current wave and release; sequenced after the wave's P1 CRs).
+**Depends on:** CR-MDB-062 (merged `282eaa7`; board-authoritative: read `queue`)
 **Labels:** hooks, guard, enforcement
 **Design reference:** DN-multi-harness-deploy-model §D21 (third amendment); CR-MDB-062 §S1–§S6.
 
