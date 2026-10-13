@@ -1,6 +1,7 @@
 """The ambient hook renders the current Crucible status contract (CR-MDB-019
-§S1–§S5): the 2.0.0 document pin, ``lastClosedCr``, open plans only,
-unquoted cells, and arduino sketch projects.
+§S1–§S5, re-pinned by CR-MDB-057 §S4): the 3.0.0 document pin, the four
+3.0.0 states told apart by ``count`` and ``filed``, ``lastClosedCr``, open
+plans only, unquoted cells, and arduino sketch projects.
 
 Target: ``hooks-src/scripts/ambient-board-status``.
 
@@ -19,10 +20,11 @@ built with Model B's own ``modelb_axi.toon``. Each fixture client appends
 
 Rendering contract pinned here
 ------------------------------
-* §S1 — ``STATUS_CONTRACT_VERSION == "2.0.0"``; the hook source carries no
-  ``1.0.0``; the module docstring names the axis (the ``status`` envelope
-  contract DOCUMENT) and says the number is not a Crucible product release;
-  the "output did not match" degrade note names ``2.0.0``.
+* §S1 (re-pinned by CR-MDB-057 §S4/§S7) — ``STATUS_CONTRACT_VERSION ==
+  "3.0.0"``; the hook source carries no ``1.0.0``; the module docstring cites
+  ``3.0.0``, names the axis (the ``status`` envelope contract DOCUMENT) and
+  says the number is not a Crucible product release; the "output did not
+  match" degrade note names ``3.0.0``.
 * §S2 — a CR id in ``lastClosedCr`` renders as the line
   ``last closed: <id>`` (the spec's own example spelling), exactly once;
   ``null`` renders no ``last closed`` line; the hook's code (string literals
@@ -36,6 +38,25 @@ Rendering contract pinned here
   ``no plan filed`` and the ``status-unavailable`` degrade render as before.
 * §S4 — a table cell wrapped in double quotes renders without them
   (``wave=1`` / ``activeCycleId=125``, never ``wave="1"``).
+
+Status contract 3.0.0 — CR-MDB-057 §S4
+--------------------------------------
+A 3.0.0 envelope carries ``filed`` (plans ever filed: open, closed or
+aborted; ``null`` when the board is unreachable) beside ``count`` (open
+plans) and ``lastClosedCr`` (``null`` when nothing has closed). The hook
+tells the states apart by ``count`` and ``filed`` alone:
+
+* ``count > 0`` — the open rows;
+* ``count == 0`` and ``filed > 0`` — ``no open plan``;
+* ``count == 0`` and ``filed == 0`` — ``no plan filed``;
+* ``filed`` null with a ``status-unavailable`` warning — the board-unavailable
+  degrade note; null is unknown, never 0.
+
+In every reachable state ``last closed: <id>`` is added exactly when
+``lastClosedCr`` is not null, and never decides the state: an aborted-only
+board (``filed > 0``, ``lastClosedCr`` null) is ``no open plan`` with no
+last-closed line. An envelope without ``filed`` (a 2.0.0 client) keeps the
+``count``-based reading the §S3 cases pin.
 
 §S5 — the arduino sketch marker contract
 ----------------------------------------
@@ -123,6 +144,27 @@ def _envelope(plans: list[dict], *, last_closed=None, count=None,
     axi.update(extra or {})
     return toon.encode({"axi": axi})
 
+
+def _envelope_3(plans: list[dict], *, filed, last_closed=None,
+                warnings: list[dict] | None = None) -> str:
+    """A STATUS-CONTRACT 3.0.0 ``status`` envelope, laid out in the live
+    python client's key order (``tier``, ``plans``, ``lastClosedCr``,
+    ``count``, ``filed``, ``help``, ``context``, ``warnings``): ``plans``
+    holds the open plans only and ``count`` counts them; ``filed`` is every
+    plan ever filed, or ``None`` (``filed: null``) when unreachable."""
+    axi = {
+        "verb": "status",
+        "ok": True,
+        "tier": "none",
+        "plans": plans,
+        "lastClosedCr": last_closed,
+        "count": len(plans),
+        "filed": filed,
+        "help": ["cycle-activate <id>"],
+        "context": {"projectKey": "fixture-project-key"},
+        "warnings": warnings or [],
+    }
+    return toon.encode({"axi": axi})
 
 #: A board with one open plan, used where only "the board rendered" matters.
 FIXTURE_CR = "CR-MDB-019"
@@ -279,8 +321,8 @@ def _normalise(text: str) -> str:
 #: A line reading 2.0.0 as a Crucible PRODUCT/release version (the same
 #: detector CR-MDB-024's envelope-contract gate uses).
 _PRODUCT_CLAIM = re.compile(
-    r"(?i)(crucible\s+v?2\.0\.0|product\s+version[^\n]{0,40}2\.0\.0|"
-    r"release\s+2\.0\.0|2\.0\.0\s+release)"
+    r"(?i)(crucible\s+v?[23]\.0\.0|product\s+version[^\n]{0,40}[23]\.0\.0|"
+    r"release\s+[23]\.0\.0|[23]\.0\.0\s+release)"
 )
 
 
@@ -289,29 +331,31 @@ _PRODUCT_CLAIM = re.compile(
 # ---------------------------------------------------------------------------
 
 class StatusContractPinS1Test(unittest.TestCase):
-    """§S1: the 2.0.0 pin and the axis it names."""
+    """§S1 (re-pinned by CR-MDB-057 §S4/§S7): the 3.0.0 pin and the axis it
+    names."""
 
     def test_s1_hook_source_contains_no_1_0_0(self):
         hits = [f"{n}: {line.strip()}" for n, line in
                 enumerate(_hook_source().splitlines(), 1) if "1.0.0" in line]
         self.assertEqual(hits, [], "the superseded 1.0.0 pin/citations must be gone")
 
-    def test_s1_status_contract_version_is_2_0_0(self):
+    def test_s1_status_contract_version_is_3_0_0(self):
         self.assertEqual(getattr(_load_hook_module(), "STATUS_CONTRACT_VERSION", None),
-                         "2.0.0")
+                         "3.0.0")
 
     def test_s1_module_docstring_names_the_status_envelope_contract_document_axis(self):
         doc = ast.get_docstring(ast.parse(_hook_source())) or ""
         norm = _normalise(doc)
-        self.assertIn("2.0.0", doc, "the docstring cites the contract version in force")
+        self.assertIn("3.0.0", doc, "the docstring cites the contract version in force")
         self.assertRegex(norm, r"status envelope contract document",
                          "the docstring names the axis: Crucible's `status` envelope "
                          "contract document")
         self.assertRegex(norm, r"\bnot\b[^.;]{0,60}\bproduct (release|version)",
                          "the docstring says the number is not a Crucible product release")
 
-    def test_s1_hook_never_reads_2_0_0_as_a_crucible_product_version(self):
-        """Passes by design at RED (no 2.0.0 yet); guards the GREEN wording."""
+    def test_s1_hook_never_reads_a_contract_version_as_a_crucible_product_version(self):
+        """Passes by design at RED; guards the GREEN wording of 2.0.0 and
+        3.0.0 alike."""
         offenders = [line.strip() for line in _hook_source().splitlines()
                      if _PRODUCT_CLAIM.search(line)]
         self.assertEqual(offenders, [])
@@ -321,17 +365,21 @@ class StatusContractPinS1Test(unittest.TestCase):
         self.assertTrue(_PRODUCT_CLAIM.search("the 2.0.0 release of the server"))
         self.assertFalse(_PRODUCT_CLAIM.search(
             "status envelope contract document 2.0.0, not a product release"))
+        self.assertTrue(_PRODUCT_CLAIM.search("authored against Crucible 3.0.0"))
+        self.assertTrue(_PRODUCT_CLAIM.search("the 3.0.0 release of the server"))
+        self.assertFalse(_PRODUCT_CLAIM.search(
+            "status envelope contract document 3.0.0, not a product release"))
 
 
 class StatusContractDegradeS1Test(_SandboxCase):
     """§S1: the pin exists so a degrade note names the contract in force."""
 
-    def test_s1_unmatched_feed_output_degrade_note_names_2_0_0(self):
+    def test_s1_unmatched_feed_output_degrade_note_names_3_0_0(self):
         result = self.render("this is not a status envelope")
         self.assertIn("degrad", result.stdout.lower(),
                       f"unmatched output degrades; got {result.stdout!r}")
-        self.assertIn("2.0.0", result.stdout,
-                      f"the degrade note names contract 2.0.0; got {result.stdout!r}")
+        self.assertIn("3.0.0", result.stdout,
+                      f"the degrade note names contract 3.0.0; got {result.stdout!r}")
         self.assertNotIn("1.0.0", result.stdout)
 
 
@@ -478,6 +526,168 @@ class OpenPlansOnlyS3Test(_SandboxCase):
         self.assertEqual(_heading_counts(result.stdout), ["1"])
         self.assertIn("last closed: CR-L-003", result.stdout)
         self.assertNotIn('"', result.stdout, f"no quoted cell leaks; got {result.stdout!r}")
+
+
+# ---------------------------------------------------------------------------
+# CR-MDB-057 §S4 — status contract 3.0.0: the state is decided by count/filed
+# ---------------------------------------------------------------------------
+
+#: The envelope measured live from the python client (Crucible #1443): no
+#: open plan, 48 plans ever filed, CR-MDB-048 the last closed.
+LIVE_FILED = 48
+LIVE_LAST_CLOSED = "CR-MDB-048"
+
+
+class StatusContract3StatesTest(_SandboxCase):
+    """CR-MDB-057 §S4: a 3.0.0 envelope's four states, told apart by ``count``
+    and ``filed`` alone; ``last closed: <id>`` exactly when ``lastClosedCr`` is
+    not null, never deciding the state."""
+
+    def assert_definitive(self, result, *, note: str, other: str):
+        """Exactly one ``note``, never ``other``, no degrade, no rows."""
+        lowered = result.stdout.lower()
+        self.assertEqual(lowered.count(note), 1,
+                         f"exactly one {note!r} note; got {result.stdout!r}")
+        self.assertNotIn(other, lowered, f"never {other!r}; got {result.stdout!r}")
+        self.assertNotIn("degrad", lowered, f"not a degrade; got {result.stdout!r}")
+        self.assertNotIn("unavailable", lowered, f"not unavailable; got {result.stdout!r}")
+        self.assertEqual(_listed_crs(result.stdout), [], "no plan row is listed")
+        self.assertEqual(_heading_counts(result.stdout), [],
+                         "no '<N> open plan(s)' heading for a board with none open")
+
+    def test_live_envelope_with_no_open_plan_and_filed_plans_prints_no_open_plan(self):
+        envelope = _envelope_3([], filed=LIVE_FILED, last_closed=LIVE_LAST_CLOSED)
+        self.assertIn("count: 0", envelope, "precondition: no open plan")
+        self.assertIn(f"filed: {LIVE_FILED}", envelope, "precondition: plans were filed")
+        result = self.render(envelope)
+        self.assert_definitive(result, note=NO_OPEN_PLAN, other=NO_PLAN_FILED)
+
+    def test_live_envelope_with_no_open_plan_adds_the_last_closed_line(self):
+        result = self.render(_envelope_3([], filed=LIVE_FILED,
+                                         last_closed=LIVE_LAST_CLOSED))
+        self.assertIn(f"last closed: {LIVE_LAST_CLOSED}", result.stdout.splitlines(),
+                      f"the last-closed line is exact; got {result.stdout!r}")
+        self.assertEqual(result.stdout.lower().count("last closed"), 1,
+                         f"exactly one last-closed line; got {result.stdout!r}")
+
+    def test_aborted_only_board_prints_no_open_plan_and_no_last_closed_line(self):
+        """Plans were filed and all aborted: ``filed > 0``, ``lastClosedCr``
+        null — ``lastClosedCr`` does not decide the state."""
+        envelope = _envelope_3([], filed=3, last_closed=None)
+        self.assertIn("lastClosedCr: null", envelope, "precondition: nothing closed")
+        result = self.render(envelope)
+        self.assert_definitive(result, note=NO_OPEN_PLAN, other=NO_PLAN_FILED)
+        self.assertNotIn("last closed", result.stdout.lower())
+        self.assertNotIn("null", result.stdout)
+
+    def test_empty_board_with_zero_filed_prints_no_plan_filed(self):
+        """Passes by design at RED (``count == 0`` reads as today); pins that
+        GREEN keeps ``filed == 0`` as "no plan filed"."""
+        result = self.render(_envelope_3([], filed=0, last_closed=None))
+        self.assert_definitive(result, note=NO_PLAN_FILED, other=NO_OPEN_PLAN)
+        self.assertNotIn("last closed", result.stdout.lower())
+
+    def test_open_plans_list_the_open_rows_and_the_last_closed_line(self):
+        """Passes by design at RED; pins ``count > 0`` against a GREEN that
+        reads ``filed`` before ``count``."""
+        result = self.render(_envelope_3(
+            [_plan("CR-MDB-057", "open", wave="2", cycle="191"),
+             _plan("CR-MDB-060", "open", wave=3, cycle=None)],
+            filed=LIVE_FILED + 2, last_closed=LIVE_LAST_CLOSED))
+        self.assertEqual(_listed_crs(result.stdout), ["CR-MDB-057", "CR-MDB-060"])
+        self.assertEqual(_heading_counts(result.stdout), ["2"])
+        self.assertIn("cr=CR-MDB-057 wave=2 status=open activeCycleId=191", result.stdout)
+        self.assertIn(f"last closed: {LIVE_LAST_CLOSED}", result.stdout.splitlines())
+        self.assertEqual(result.stdout.lower().count("last closed"), 1)
+        lowered = result.stdout.lower()
+        self.assertNotIn(NO_OPEN_PLAN, lowered)
+        self.assertNotIn(NO_PLAN_FILED, lowered)
+        self.assertNotIn("degrad", lowered)
+
+    def test_open_plans_with_null_last_closed_print_no_last_closed_line(self):
+        """Passes by design at RED; pins that GREEN never renders a null."""
+        result = self.render(_envelope_3([_plan("CR-T-001", "open")], filed=1,
+                                         last_closed=None))
+        self.assertEqual(_listed_crs(result.stdout), ["CR-T-001"])
+        self.assertNotIn("last closed", result.stdout.lower())
+        self.assertNotIn("null", result.stdout)
+
+    def test_unreachable_board_with_null_filed_renders_the_board_unavailable_degrade(self):
+        """Passes by design at RED (the warning wins today); pins it against a
+        GREEN that reads ``filed`` before the warning."""
+        envelope = _envelope_3([], filed=None, last_closed=None, warnings=[
+            {"code": "status-unavailable",
+             "detail": "could not reach the Crucible server"}])
+        self.assertIn("filed: null", envelope, "precondition: filed is null")
+        result = self.render(envelope)
+        lowered = result.stdout.lower()
+        self.assertIn("status-unavailable", result.stdout)
+        self.assertIn("could not reach the crucible server", lowered)
+        self.assertNotIn(NO_PLAN_FILED, lowered, "null is unknown, never 0")
+        self.assertNotIn(NO_OPEN_PLAN, lowered)
+        self.assertNotIn("last closed", lowered)
+        self.assertEqual(_listed_crs(result.stdout), [])
+
+    def test_null_filed_is_never_read_as_zero(self):
+        """``filed: null`` is unknown, never 0: even without the warning a
+        null ``filed`` is never the definitive "no plan filed" (nor "no
+        open plan") — the hook must not fall back to the 2.0.0 reading of a
+        field that is present."""
+        envelope = _envelope_3([], filed=None, last_closed=None)
+        self.assertIn("filed: null", envelope, "precondition: filed is present and null")
+        result = self.render(envelope)
+        lowered = result.stdout.lower()
+        self.assertNotIn(NO_PLAN_FILED, lowered, f"null read as 0; got {result.stdout!r}")
+        self.assertNotIn(NO_OPEN_PLAN, lowered, f"null read as > 0; got {result.stdout!r}")
+        self.assertEqual(_listed_crs(result.stdout), [])
+
+    def test_live_envelope_through_the_manifest_resolved_client(self):
+        """End to end through the production seam: manifest + python marker,
+        ``MODELB_STATUS_CMD`` unset, the live-measured 3.0.0 envelope."""
+        envelope = _envelope_3([], filed=LIVE_FILED, last_closed=LIVE_LAST_CLOSED)
+        released = self.sb.root / "released"
+        self.sb.write_manifest({"python": self.sb.write_client("python", released, envelope)})
+        self.sb.touch(self.sb.project / "pyproject.toml")
+        result = self.sb.run_hook()
+        self.assertEqual(result.returncode, 0, f"stderr={result.stderr!r}")
+        self.assertEqual(self.sb.invocations(), [{"key": "python", "argv": ["status"]}])
+        self.assert_definitive(result, note=NO_OPEN_PLAN, other=NO_PLAN_FILED)
+        self.assertIn(f"last closed: {LIVE_LAST_CLOSED}", result.stdout.splitlines())
+
+
+class StatusContract2EnvelopeTest(_SandboxCase):
+    """CR-MDB-057 §S4: an envelope without ``filed`` (a 2.0.0 client) keeps
+    today's ``count``-based reading. Passes by design at RED; pins that GREEN
+    reads ``filed`` only when the field is present."""
+
+    def test_envelope_without_filed_and_zero_count_prints_no_plan_filed(self):
+        envelope = _envelope([], last_closed=None, count=0)
+        self.assertNotIn("filed:", envelope, "precondition: a 2.0.0 envelope")
+        result = self.render(envelope)
+        lowered = result.stdout.lower()
+        self.assertEqual(lowered.count(NO_PLAN_FILED), 1, f"got {result.stdout!r}")
+        self.assertNotIn(NO_OPEN_PLAN, lowered)
+        self.assertNotIn("degrad", lowered)
+        self.assertNotIn("unavailable", lowered)
+
+    def test_envelope_without_filed_and_all_closed_rows_prints_no_open_plan(self):
+        envelope = _envelope([_plan("CR-T-020", "closed", cycle=None),
+                              _plan("CR-T-021", "closed", cycle=None)],
+                             last_closed="CR-T-021")
+        self.assertNotIn("filed:", envelope, "precondition: a 2.0.0 envelope")
+        result = self.render(envelope)
+        lowered = result.stdout.lower()
+        self.assertEqual(lowered.count(NO_OPEN_PLAN), 1, f"got {result.stdout!r}")
+        self.assertNotIn(NO_PLAN_FILED, lowered)
+        self.assertEqual(_listed_crs(result.stdout), [])
+        self.assertIn("last closed: CR-T-021", result.stdout.splitlines())
+
+    def test_envelope_without_filed_lists_its_open_rows(self):
+        envelope = _envelope([_plan("CR-T-030", "open", cycle="C1")], last_closed=None)
+        self.assertNotIn("filed:", envelope, "precondition: a 2.0.0 envelope")
+        result = self.render(envelope)
+        self.assertEqual(_listed_crs(result.stdout), ["CR-T-030"])
+        self.assertEqual(_heading_counts(result.stdout), ["1"])
 
 
 # ---------------------------------------------------------------------------
