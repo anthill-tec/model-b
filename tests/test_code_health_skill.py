@@ -183,6 +183,21 @@ SECTION_SUBSTANCE = {
 # helpers
 # ---------------------------------------------------------------------------
 
+#: An interpreter word ending the text before a tool invocation on its line: the invocation
+#: runs the deployed script through python instead of directly (CR-MDB-064 §S4).
+_THROUGH_PYTHON_TAIL_RE = re.compile(r"\bpython(?:3(?:\.\d+)?)?\s+[\"']?$")
+
+
+def _through_python_invocations(text: str) -> list[str]:
+    """``"<tool> <verb>"`` for every rust-* invocation preceded on its line by ``python3``."""
+    hits = []
+    for match in RUST_INVOCATION_RE.finditer(text):
+        line_start = text.rfind("\n", 0, match.start("prefix")) + 1
+        if _THROUGH_PYTHON_TAIL_RE.search(text[line_start:match.start("prefix")]):
+            hits.append(f"{match.group('tool')} {match.group('verb')}")
+    return hits
+
+
 def _bundle_text(test: unittest.TestCase) -> str:
     """The adopted SKILL.md, or a clean assertion FAILURE naming the gap."""
     if not SKILL_MD.is_file():
@@ -431,6 +446,14 @@ class CodeHealthDetachmentS2Test(unittest.TestCase):
             f"(from deploy.TOOL_SCRIPTS_STORE_RELDIR); offenders: {wrong}",
         )
 
+    def test_s2_every_rust_tool_invocation_runs_the_deployed_script_directly(self):
+        """CR-MDB-064 §S4: the deployed script's shebang names the recorded interpreter, so
+        the skill runs it directly, never through ``python3``."""
+        text = _bundle_text(self)
+        self.assertTrue(list(RUST_INVOCATION_RE.finditer(text)), "the bundle invokes the tools")
+        self.assertEqual(_through_python_invocations(text), [],
+                         f"CR-MDB-064 §S4: run {STORE_PREFIX}<tool> directly")
+
     def test_s2_no_crucible_source_checkout_path(self):
         text = _bundle_text(self)
         self.assertNotIn("data_projects", text,
@@ -637,6 +660,14 @@ class CodeHealthDetectorProofS3Test(unittest.TestCase):
                 f"python3 {STORE_PREFIX}rust-dead-scan.py inventory\n")
         prefixes = [m.group("prefix") for m in RUST_INVOCATION_RE.finditer(text)]
         self.assertEqual(prefixes, ["~/.claude/scripts/", "", STORE_PREFIX])
+
+    def test_through_python_detector_flags_python3_before_the_store_and_spares_direct(self):
+        text = (f"python3 {STORE_PREFIX}rust-dead-scan.py inventory\n"
+                f"1. `python3 {STORE_PREFIX}rust-code-health.py snapshot --phase post`\n"
+                f"{STORE_PREFIX}rust-code-health.py query trend\n"
+                f"1. `{STORE_PREFIX}rust-code-health.py snapshot --phase post --slice CR-1`\n")
+        self.assertEqual(_through_python_invocations(text),
+                         ["rust-dead-scan.py inventory", "rust-code-health.py snapshot"])
 
 
 # ---------------------------------------------------------------------------

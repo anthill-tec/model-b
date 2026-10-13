@@ -325,8 +325,13 @@ sys.base_prefix = sys.base_exec_prefix = "/usr"
 sys.prefix = sys.exec_prefix = "/opt/fixture-venv" if _VENV else "/usr"
 sys.executable = os.path.abspath(sys.argv[0])
 sys.argv = _argv
-exec(compile(_code, "<string>" if _argv[0] in ("-c", "-") else _argv[0], "exec"),
-     {"__name__": "__main__", "__builtins__": __builtins__})
+_globals = {"__name__": "__main__", "__builtins__": __builtins__}
+if _argv[0] not in ("-c", "-"):
+    # A script runs as a real interpreter runs it: `__file__` is its path and its own
+    # directory is `sys.path[0]` (a deployed tool imports a sibling from beside itself).
+    _globals["__file__"] = _argv[0]
+    sys.path[0] = os.path.dirname(os.path.abspath(_argv[0]))
+exec(compile(_code, "<string>" if _argv[0] in ("-c", "-") else _argv[0], "exec"), _globals)
 '''
 
 
@@ -409,6 +414,41 @@ def write_interpreter_fixture(bin_dir, *, version: str = FIXTURE_PYTHON_VERSION,
         uv_found = python3_path
     write_executable(bin_dir, "uv", uv_stub(uv_found, uv_body, log=uv_log))
     return python3_path
+
+
+# ------------------------------------------------------------------ rendered scripts ----
+
+#: The first line CR-MDB-064 §S3 renders into ``#!<recorded interpreter>``.
+PYTHON_SHEBANG = b"#!/usr/bin/env python3"
+#: Where the installer deploys the hook and the tool scripts, target-root-relative.
+HOOKS_STORE = ".agents/hooks/scripts"
+TOOLS_STORE = ".agents/scripts"
+
+
+def render_script(source: bytes, interpreter: str) -> bytes:
+    """The bytes CR-MDB-064 §S3 deploys for a script whose source is ``source``: a first line
+    ``#!/usr/bin/env python3`` becomes ``#!<interpreter>``; every other byte, and any other
+    script, is the source's. Computed independently of the package's own rendering."""
+    first, newline, rest = source.partition(b"\n")
+    if first != PYTHON_SHEBANG:
+        return source
+    return b"#!" + interpreter.encode() + newline + rest
+
+
+def deployed_scripts() -> dict[str, Path]:
+    """Every hook and tool script the installer deploys: target-root-relative path -> its
+    packaged source in this checkout (``hooks-src/scripts/*``, ``scripts/*``)."""
+    scripts = {f"{HOOKS_STORE}/{p.name}": p
+               for p in sorted((REPO_ROOT / "hooks-src" / "scripts").iterdir()) if p.is_file()}
+    scripts.update({f"{TOOLS_STORE}/{p.name}": p
+                    for p in sorted((REPO_ROOT / "scripts").iterdir()) if p.is_file()})
+    return scripts
+
+
+def python_shebang_scripts() -> dict[str, Path]:
+    """The :func:`deployed_scripts` whose source's first line is the python shebang."""
+    return {rel: src for rel, src in deployed_scripts().items()
+            if src.read_bytes().partition(b"\n")[0] == PYTHON_SHEBANG}
 
 
 # ------------------------------------------------------------------ source scans ----

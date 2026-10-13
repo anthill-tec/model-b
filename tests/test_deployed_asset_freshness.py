@@ -54,7 +54,13 @@ import unittest
 from pathlib import Path
 
 from tests._helpers import decode_axi as _decode
-from tests._helpers import python3_stub, write_interpreter_fixture
+from tests._helpers import (
+    deployed_scripts,
+    python3_stub,
+    python_shebang_scripts,
+    render_script,
+    write_interpreter_fixture,
+)
 from tests._helpers import write_executable as _write_exe
 from tests.pi_capability_sandbox import (
     AGENT_DIR_ENV,
@@ -669,6 +675,101 @@ class FreshnessUnknownQuotesPathsWithSpacesTest(FreshnessUnknownWithoutTargetRoo
 
     ROOT_PREFIX = "modelb cr037 unknown spaced "
 
+
+class RecordedInterpreterFreshnessTest(_InstalledMachineCase):
+    """CR-MDB-064 §S3: ``deployed_freshness`` judges a script against its source rendered
+    with the recorded interpreter (``[install] python``). A fresh install is current; an
+    install with no recorded interpreter (made before CR-MDB-064) has its python-shebang
+    scripts ``stale``; a recorded interpreter that no longer exists, or reports a version
+    below the floor, is reported with the re-install command."""
+
+    def recorded_python(self) -> str:
+        python = self.load_install()["install"].get("python")
+        self.assertEqual(python, str(self.bin_dir / "python3"),
+                         "fixture: the install records the fixture's python3 (§S2)")
+        return python
+
+    def make_pre_cr_install(self) -> None:
+        """Every script deployed as its source bytes, the manifest recording the source's
+        hash, no ``[install] python`` — an install made before CR-MDB-064."""
+        data = self.load_install()
+        data["install"].pop("python", None)
+        for entry in data["files"]:
+            source = deployed_scripts().get(entry["path"])
+            if source is not None:
+                (self.target_root / entry["path"]).write_bytes(source.read_bytes())
+                entry["sha256"] = _sha256(source)
+        self.write_install(data)
+
+    def interpreter_report(self, result, axi, python: str) -> str:
+        """The one report — a stderr line, or an envelope warning (``_warn`` prints each on
+        stderr too, so it counts once) — naming the recorded interpreter ``python`` and a
+        re-install."""
+        lines = [ln.strip() for ln in result.stderr.splitlines()
+                 if python in ln and "--reinstall" in ln]
+        lines += [w for w in axi.get("warnings", [])
+                  if python in w and "--reinstall" in w
+                  and not any(ln.endswith(w.strip()) for ln in lines)]
+        self.assertEqual(len(lines), 1,
+                         f"§S3: exactly one report names the recorded interpreter {python} "
+                         f"with the re-install; stderr={result.stderr!r} "
+                         f"warnings={axi.get('warnings')!r}")
+        return lines[0]
+
+    def assert_names_the_reinstall_command(self, line: str) -> None:
+        match = re.search(r"modelb-axi\s[^`]*", line)
+        if match is None:
+            self.fail(f"§S3: the report names the re-install command; line={line!r}")
+        argv = shlex.split(match.group(0))
+        self.assertEqual(argv[:2], ["modelb-axi", "--reinstall"], f"argv={argv!r}")
+        for flag, expected in (("--modelb-home", str(self.modelb_home)),
+                               ("--target-root", str(self.target_root))):
+            with self.subTest(flag=flag):
+                self.assertIn(flag, argv, f"the re-install acts on this install; argv={argv!r}")
+                at = argv.index(flag)
+                self.assertEqual(argv[at + 1:at + 2], [expected], f"argv={argv!r}")
+
+    def test_fresh_install_with_rendered_scripts_reports_every_list_empty(self):
+        python = self.recorded_python()
+        for rel, source in python_shebang_scripts().items():
+            with self.subTest(script=rel):
+                self.assertEqual((self.target_root / rel).read_bytes(),
+                                 render_script(source.read_bytes(), python),
+                                 f"fixture: {rel} is deployed rendered (§S3)")
+        result, axi = self.run_bare()
+        self.assert_already_installed(result, axi)
+        self.assert_lists(axi)
+        self.assertEqual(axi.get("freshness"), "current", f"axi={axi!r}")
+
+    def test_install_with_no_recorded_interpreter_reports_its_python_shebang_scripts_stale(self):
+        self.make_pre_cr_install()
+        result, axi = self.run_bare()
+        self.assert_already_installed(result, axi)
+        self.assert_lists(axi, stale=sorted(python_shebang_scripts()))
+        self.assertEqual(axi.get("freshness"), "outdated", f"axi={axi!r}")
+
+    def test_recorded_interpreter_that_no_longer_exists_is_reported_with_the_re_install_command(self):
+        python = self.recorded_python()
+        Path(python).unlink()
+        result, axi = self.run_bare()
+        self.assert_already_installed(result, axi)
+        self.assert_names_the_reinstall_command(self.interpreter_report(result, axi, python))
+
+    def test_recorded_interpreter_below_the_floor_is_reported_with_the_re_install_command(self):
+        python = self.recorded_python()
+        _write_exe(self.bin_dir, "python3", python3_stub("3.13.5"))
+        result, axi = self.run_bare()
+        self.assert_already_installed(result, axi)
+        self.assert_names_the_reinstall_command(self.interpreter_report(result, axi, python))
+
+    def test_recorded_interpreter_at_the_floor_is_not_reported(self):
+        python = self.recorded_python()
+        result, axi = self.run_bare()
+        self.assert_already_installed(result, axi)
+        hits = [ln for ln in result.stderr.splitlines() + list(axi.get("warnings", []))
+                if python in ln and "--reinstall" in ln]
+        self.assertEqual(hits, [],
+                         "a recorded interpreter that meets the floor needs no re-install")
 
 
 if __name__ == "__main__":
