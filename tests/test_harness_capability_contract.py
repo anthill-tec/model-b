@@ -27,7 +27,11 @@ import tomllib
 import unittest
 from pathlib import Path
 
-from tests._helpers import PYTHON_REMEDIATION, deploy_hook_scripts, write_interpreter_fixture
+from tests._helpers import (
+    PYTHON_REMEDIATION,
+    deploy_hook_scripts,
+    write_interpreter_fixture,
+)
 from tests._helpers import decode_axi as _decode
 from tests._helpers import requirements_rows as _requirements
 from tests._helpers import write_executable as _write_exe

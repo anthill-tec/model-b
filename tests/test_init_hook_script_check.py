@@ -521,7 +521,7 @@ class InstallFixturesDeployHookScriptsTest(unittest.TestCase):
 
 
 class StoreFixtureDiscoveryOnSampleTextTest(unittest.TestCase):
-    """C5 F4 \u2014 ``store_fixtures`` proved on sample module text both ways: each way a fixture
+    """C5 F4 — ``store_fixtures`` proved on sample module text both ways: each way a fixture
     qualifies is found, and a fixture that does neither is caught."""
 
     #: A shared-fixture module the samples import from.
