@@ -254,6 +254,46 @@ def client_source(key: str, log_path: Path, envelope: str) -> str:
         f"print({envelope!r})\n"
     )
 
+# ------------------------------------------------------------------ hook scripts ----
+
+#: The repo's hook protocol scripts — the real scripts a hook test runs.
+HOOK_SCRIPTS_DIR = REPO_ROOT / "hooks-src" / "scripts"
+
+
+def run_hook(name: str, payload, *, cwd=None, timeout: int = 10) -> subprocess.CompletedProcess:
+    """Run the REAL hook script ``hooks-src/scripts/<name>`` on the test's own interpreter with
+    ``payload`` on stdin: a mapping or a list is sent as JSON, a ``str`` as written (so a test can
+    send an unreadable payload). ``cwd`` is the script PROCESS's working directory, distinct from
+    the payload's ``cwd`` field — a test pins it to prove a hook never falls back to its own."""
+    data = payload if isinstance(payload, str) else json.dumps(payload)
+    return subprocess.run(
+        [sys.executable, str(HOOK_SCRIPTS_DIR / name)], input=data, capture_output=True,
+        text=True, timeout=timeout, cwd=cwd,
+    )
+
+
+def build_tree(root, files=(), *, git=None) -> Path:
+    """Build a project tree at ``root`` and return it. Each relative path in ``files`` becomes a
+    small file, its parents created; a path ending in ``/`` becomes an empty directory. ``git`` is
+    the git entry at ``root``: ``"dir"`` a ``.git`` directory (a clone), ``"file"`` a ``.git``
+    file ``gitdir: …`` (a worktree's or a submodule's), ``None`` none."""
+    root = Path(root)
+    root.mkdir(parents=True, exist_ok=True)
+    for rel in files:
+        path = root / rel
+        if rel.endswith("/"):
+            path.mkdir(parents=True, exist_ok=True)
+            continue
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("fixture\n", encoding="utf-8")
+    if git == "dir":
+        (root / ".git").mkdir(exist_ok=True)
+    elif git == "file":
+        (root / ".git").write_text("gitdir: ../.git/modules/fixture\n", encoding="utf-8")
+    elif git is not None:
+        raise ValueError(f"git must be 'dir', 'file' or None, not {git!r}")
+    return root
+
 # ------------------------------------------------------------------ interpreter fixture ----
 
 #: The published Python floor (CR-MDB-064 §S2): the installer accepts an interpreter at or
