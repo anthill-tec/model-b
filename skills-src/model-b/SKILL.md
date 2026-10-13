@@ -1,6 +1,6 @@
 ---
 name: model-b
-description: Model B workflow model — the canonical home. Load for orchestration roles (mainline/track/solo), waves, the CR queue (held on the Crucible board), cycle plans, and the universal sub-agent procedure. Triggers: model b, orchestration, mainline, track, solo, wave, CR queue, sub-agent procedure.
+description: Model B workflow model — the canonical home. Load for orchestration roles (mainline/track/solo), waves, the CR queue (held on the Crucible board), cycle plans, and the universal sub-agent procedure. Use for model b, orchestration, mainline, track, solo, wave, CR queue, sub-agent procedure.
 ---
 
 # Model B — the canonical workflow model

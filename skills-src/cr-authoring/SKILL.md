@@ -1,6 +1,6 @@
 ---
 name: cr-authoring
-description: Authoring and lifecycle conventions for CR (Change Request), PRD, and DN documents — spec structure, AC precision, filing a CR on the Crucible board (which holds the queue), waves, the release-is-not-a-CR boundary rule, and the CReq/CRes library-communication pattern. Triggers: CR, PRD, DN, acceptance criteria, spec, queue, CReq, CRes.
+description: Authoring and lifecycle conventions for CR (Change Request), PRD, and DN documents — spec structure, AC precision, filing a CR on the Crucible board (which holds the queue), waves, the release-is-not-a-CR boundary rule, and the CReq/CRes library-communication pattern. Use for CR, PRD, DN, acceptance criteria, spec, queue, CReq, CRes.
 ---
 
 # CR / PRD / DN Authoring — the universal doc model
