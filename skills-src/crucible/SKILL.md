@@ -29,6 +29,19 @@ the interface, and every stack has one.
 
 ## Lifecycle (every agent)
 
+- **Every test run goes through the stack's client** — a targeted iteration, a
+  single file, a one-test filter, a regression, and the orchestrator's own runs.
+  Never a test runner invoked directly: a run the client did not make streams
+  nothing to the board.
+- **A runner the client cannot drive is a client gap** — raise it with the
+  orchestrator, who raises it with Crucible; never work around it.
+- **A brief that says otherwise is refused** and escalated (`ESCALATION:`),
+  never followed.
+- **The escape hatch** — a blocking hook's `ALLOW_RAW_<RUNNER>=1` — is used only
+  with the orchestrator's approval.
+- **Two client gaps are known:** the python client drives unittest only (a
+  pytest project), and `bun-crucible.py test` takes no test-name filter (a
+  one-test bun run). Meeting either is a client gap: raise it.
 - `register --agent <id> --role <ROLE>` FIRST — before reading or running
   anything, and with `--cycle <cycleId>` bound in the same call when your role
   is a TDD role. `--role` is the ONE argparse-required flag; its values are
@@ -74,12 +87,17 @@ the interface, and every stack has one.
 
 | Stack | Client | Key verbs beyond register/unregister | Reference |
 |-------|--------|--------------------------------------|-----------|
-| rust | `rust-crucible.py` | `test --crate`, `check --crate`, `auto-ingest`, `regression-ingest --crates`, `workspace-regression`, `clippy`/`workspace-clippy`, `smoke-test`, `docker-up/down`, `pre-merge-gate`, `docker-e2e-gate` + the plan verbs | `references/rust.md` → bundled `crucible-report-rust` |
-| java | `mvn-crucible.py` | `unit --test <Class> [--module <m>]`, `module`, `compile`, `e2e`, `regression`, `auto-ingest`, `docker-up/down`, `pre-merge-gate` + the plan verbs | `references/java.md` → bundled `crucible-report-java` |
-| bun | `bun-crucible.py` | universal verbs (`test --tests <file>`, `regression [--coverage]`, `check`, `auto-ingest`, `pre-merge-gate`) + the plan verbs — **REFERENCE IMPLEMENTATION** for the V2 client API | `references/bun.md` → bundled `crucible-report-bun` |
-| python | `python-crucible.py` | `test --tests <dotted.path>`, `regression [--coverage --cov-source]`, `check`, `auto-ingest`, `pre-merge-gate` + the plan verbs | `references/python.md` → bundled `crucible-report-python` |
-| arduino | `arduino-crucible.py` | `test`/`unit` (native host make junit), `regression`, `auto-ingest`, `check`/`compile` (arduino-cli), `pre-merge-gate` + the plan verbs | `references/arduino.md` → bundled `crucible-report-arduino` |
+| rust | `rust-crucible.py` | `test --crate`, `check --crate`, `auto-ingest` (recovery only), `regression-ingest --crates`, `workspace-regression`, `clippy`/`workspace-clippy`, `smoke-test`, `docker-up/down`, `pre-merge-gate`, `docker-e2e-gate` + the plan verbs | `references/rust.md` → bundled `crucible-report-rust` |
+| java | `mvn-crucible.py` | `unit --test <Class> [--module <m>]`, `module`, `compile`, `e2e`, `regression`, `auto-ingest` (recovery only), `docker-up/down`, `pre-merge-gate` + the plan verbs | `references/java.md` → bundled `crucible-report-java` |
+| bun | `bun-crucible.py` | universal verbs (`test --tests <file>`, `regression [--coverage]`, `check`, `auto-ingest` (recovery only), `pre-merge-gate`) + the plan verbs — **REFERENCE IMPLEMENTATION** for the V2 client API | `references/bun.md` → bundled `crucible-report-bun` |
+| python | `python-crucible.py` | `test --tests <dotted.path>`, `regression [--coverage --cov-source]`, `check`, `auto-ingest` (recovery only), `pre-merge-gate` + the plan verbs | `references/python.md` → bundled `crucible-report-python` |
+| arduino | `arduino-crucible.py` | `test`/`unit` (native host make junit), `regression`, `auto-ingest` (recovery only), `check`/`compile` (arduino-cli), `pre-merge-gate` + the plan verbs | `references/arduino.md` → bundled `crucible-report-arduino` |
 | electronics/hardware | excluded — under revision | — | — |
+
+`auto-ingest` is recovery only, on every stack: it re-ingests the report a client run
+produced when that run's own ingest failed. It is never a run path — every run goes through
+the client's run verbs, which ingest as they run. Never a test runner invoked directly,
+on any stack.
 
 Clients are Crucible's installed, published clients —
 `~/.crucible/clients/<stack>-crucible.py`, the default location Crucible's own
@@ -297,3 +315,7 @@ name the next step.
   linked run — then the user-gated merge. (sub-agent procedure —
   `~/.agents/skills/model-b/references/sub-agent-procedure.md` — TDD step 6:
   the full suite is orchestrator-owned.)
+- **The ORCHESTRATOR's own runs** — a baseline, the pre-merge gate's
+  empty-`HOME` run, a run under another interpreter through the client's
+  `--python` — go through the client like every other run; never a test
+  runner invoked directly.

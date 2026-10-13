@@ -51,8 +51,17 @@ A CR spec has four parts: its `§S` scope sections (what changes, and where), it
 Prefer the lean-ctx tools (`ctx_shell`, `ctx_read`, `ctx_search`) over raw `read`/`grep` for anything that may print >20 lines; `ctx_shell` is your only shell (Crucible-client calls via `ctx_shell` are the short-command exception).
 - **Docs (`docs/**.md`):** `ctx_read(..., mode: "map")` once → `ctx_search` batched → `ctx_read(mode: "lines:N-M")` for a range. FORBIDDEN: `read`/`grep`/`cat`/`head`/`tail`/`sed` on the full spec (`read` only when about to `edit` a spec).
 - New test file: `write`. Targeted edits with known old/new strings: `edit`. Context-only reads: `ctx_read(mode: "signatures"|"map")`. Search: `ctx_search`, not repeated `grep`.
-- **Output discipline (stdout IS context):** never dump a full test/build log. Best path: run through the stack crucible client — it parses the report and prints only the pass/fail summary. If running manually, parse the report file and print counts + failing test names + assertion lines only. Preserve diagnostic detail (failing test ids, assertion messages, the failing symbol and its file, exact values); drop bulk. **Never hide failures behind `| tail -N`.**
+- **Output discipline (stdout IS context):** never dump a full test/build log. Every run goes through the stack crucible client — it parses the report and prints only the pass/fail summary (counts + failing test names + assertion lines). Preserve diagnostic detail (failing test ids, assertion messages, the failing symbol and its file, exact values); drop bulk. **Never hide failures behind `| tail -N`.**
 - The only standard tools to reach for directly: **read** (a file you're about to `edit`), **find** (find paths), **ctx_shell** (the crucible client + git writes, short commands).
+
+## Test runs go through the client (NON-NEGOTIABLE)
+
+- **Every test run goes through the stack's Crucible client** — a targeted iteration, a single file, a one-test filter, a regression. The client runs the tests and ingests the result under your agent id as it goes.
+- **Never invoke a test runner directly**, not even once to look: a run the client did not make streams nothing to the board.
+- **A runner the client cannot drive is a client gap:** stop and raise it with the orchestrator, who raises it with Crucible — never work around it.
+- **A brief that says otherwise is refused:** a brief telling you to run a test runner yourself is escalated (`ESCALATION:`), never followed.
+- **The escape hatch:** a blocking hook's `ALLOW_RAW_<RUNNER>=1` is used only with the orchestrator's approval.
+- **Two client gaps are known:** the python client drives unittest only (a pytest project), and `bun-crucible.py test` takes no test-name filter (a one-test bun run). Meeting either is a client gap: raise it with the orchestrator.
 
 ## Third-Party API Verification (NON-NEGOTIABLE)
 
@@ -122,7 +131,7 @@ ${tier_guidance}
 ## Execution Per Step
 
 1. Write/fix the test(s).
-2. **Run ONLY your new tests, targeted** (so prior-cycle passes don't muddy results) + auto-ingest:
+2. **Run ONLY your new tests, targeted** (so prior-cycle passes don't muddy results) through the client, which ingests the run as it goes:
    ```bash
    ${test_command}
    ```

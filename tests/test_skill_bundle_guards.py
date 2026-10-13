@@ -95,6 +95,25 @@ CR-MDB-057 §S6/§S7 AMENDMENT (C3 RED, Crucible 0.3.0)
   clients only through `~/.crucible/crucible-clients.json` and runs only `<verb> --help`; it
   skips, naming that manifest, when a client is absent.  `CLIENT_VERBS` grows by the five verbs
   0.3.0 added and is checked against the installed clients' own verb lists there too.
+
+CR-MDB-056 §S2/§S5 AMENDMENT (C1 RED) — the hand-run-and-ingest path is removed
+---------------------------------------------------------------------------------
+* `HTTP_BODY_BUNDLES` is EMPTY: the python and rust bundles' register payloads lived in the
+  inline urllib modules §S2 removes, so no bundle carries a register body any more, and
+  `RegisterBodySurfaceTest` asserts exactly that (the body checker stays, proven on fixtures).
+* `RawHttpExampleRetirementTest`: the urllib-block exemption of the board-address gate is gone;
+  a host or port in any fenced block of an owned bundle is a finding.
+* `HandRunPathRetirementTest`: `crucible-report-python` carries no §B, no urllib helper module
+  and no pointer to either; `crucible-report-rust` no "Manual Patterns" module and no pointer to
+  it; no report bundle has a sentence calling a direct `curl`/`fetch`/urllib call the fallback;
+  the "API Endpoint Reference" tables stay, each carrying its bundle's measured routes, so
+  `V2_ENDPOINTS_BY_BUNDLE` and the bundle-floor test hold on the tables alone.
+* `AutoIngestRecoveryOnlyTest`: under `skills-src/` (the memory templates excepted, CR-MDB-060)
+  `auto-ingest` appears only as recovery — re-ingesting a report a client run produced when its
+  ingest failed; never after a run made outside the client, never in a per-role row; the
+  `crucible` skill and each report bundle state that use.
+* `ClientInternalsInPlainWordsTest`: a sentence describing what a client runs says so in plain
+  words, never with the command in a code span.
 """
 
 import re
@@ -138,12 +157,12 @@ CLIENT_BUNDLES = (
 # the wire-key equivalent of the CLI flag families.  Named so the body family
 # below can assert they CONTRIBUTE one, never pass by matching nothing.
 # CR-MDB-057 §S6: `crucible-register` left this set -- its register and
-# unregister examples are client verbs now (see CLI_REGISTER_BUNDLES).  The two
-# left carry their payloads in the inline urllib modules CR-MDB-056 retires.
-HTTP_BODY_BUNDLES = (
-    "crucible-report-python",
-    "crucible-report-rust",
-)
+# unregister examples are client verbs now (see CLI_REGISTER_BUNDLES).
+# CR-MDB-056 §S2: EMPTY -- the python and rust bundles carried their payloads in
+# the inline urllib modules this CR removes, so no bundle posts a register body;
+# `RegisterBodySurfaceTest` asserts the set is empty AND that no bundle under
+# skills-src/ contributes a body example.
+HTTP_BODY_BUNDLES = ()
 
 # CR-MDB-057 §S6: the bundles whose register examples are CLI invocations and
 # are checked as CLI flags by RegisterFlagSurfaceTest -- the five CLI-owning
@@ -661,10 +680,9 @@ def _owned_bundle_paths():
 # replaces with client verbs or removes.
 CURL_V2_RE = re.compile(r"\bcurl\b.*?/api/v2/")
 # A fixed board address: a host with a port, or the production board's port.
+# CR-MDB-056 §S5: no fenced block is exempt any more -- the urllib
+# run-and-ingest modules the exemption existed for are removed.
 HOST_PORT_RE = re.compile(r"\blocalhost:\d+|\b127\.0\.0\.1:\d+|:3849\b")
-# A fenced block carrying this is one of the inline urllib run-and-ingest
-# modules CR-MDB-056 retires; this CR does not pin its address away.
-URLLIB_MODULE_MARKER = "urllib.request"
 
 
 def _curl_v2_hits(text):
@@ -678,16 +696,11 @@ def _curl_v2_hits(text):
 
 def _fixed_address_hits(text):
     """(lineno, line) for every line of `text` naming a board host or port,
-    outside a fenced block that is a CR-MDB-056 urllib module."""
-    lines = text.splitlines()
-    exempt = set()
-    for start, end in _fenced_block_spans(lines):
-        if any(URLLIB_MODULE_MARKER in line for line in lines[start:end]):
-            exempt.update(range(start, end))
+    fenced or not (CR-MDB-056 §S5: no urllib-block exemption)."""
     return [
-        (i + 1, line.strip())
-        for i, line in enumerate(lines)
-        if i not in exempt and HOST_PORT_RE.search(line)
+        (n, line.strip())
+        for n, line in enumerate(text.splitlines(), 1)
+        if HOST_PORT_RE.search(line)
     ]
 
 
@@ -1046,13 +1059,23 @@ class RegisterBodySurfaceTest(unittest.TestCase):
         self.examples = _register_body_examples(SKILLS_SRC)
         self.findings = _register_body_findings(SKILLS_SRC)
 
-    def test_body_bundles_are_named_and_each_contributes_a_body_example(self):
-        for bundle in HTTP_BODY_BUNDLES:
-            self.assertTrue(
-                (SKILLS_SRC / bundle).is_dir(),
-                f"HTTP_BODY_BUNDLES names {bundle!r}, which does not exist under "
-                "skills-src/; a stale category gates nothing.",
-            )
+    def test_no_bundle_carries_a_register_body_example(self):
+        """CR-MDB-056 §S2/§S5: the inline urllib modules were the last
+        register payloads; with them gone the body set is empty and no bundle
+        under skills-src/ contributes a body example."""
+        self.assertEqual(
+            HTTP_BODY_BUNDLES,
+            (),
+            "HTTP_BODY_BUNDLES is empty at CR-MDB-056 §S5: every register "
+            "example is a client verb, gated by RegisterFlagSurfaceTest.",
+        )
+        self.assertEqual(
+            [f"{rel}:{lineno}" for rel, lineno, _ in self.examples],
+            [],
+            "no bundle may post a register payload by hand -- the python and rust "
+            "bundles' urllib modules are removed with the hand-run path (CR-MDB-056 "
+            "§S2); these register bodies remain",
+        )
         self.assertNotIn(
             REGISTER_BUNDLE,
             HTTP_BODY_BUNDLES,
@@ -1065,14 +1088,6 @@ class RegisterBodySurfaceTest(unittest.TestCase):
             f"{REGISTER_BUNDLE!r} must sit in a category this module asserts "
             "about. Before CR-MDB-017 V1 it was in none, so it passed every "
             "family by matching nothing.",
-        )
-        contributors = {rel.split("/", 1)[0] for rel, _, _ in self.examples}
-        missing = sorted(b for b in HTTP_BODY_BUNDLES if b not in contributors)
-        self.assertEqual(
-            missing,
-            [],
-            "every body-surface bundle must contribute at least one register "
-            f"payload example, or this family passes it vacuously: {missing}",
         )
 
     def test_every_register_body_example_carries_a_role_key(self):
@@ -1356,9 +1371,9 @@ class RawHttpExampleRetirementTest(unittest.TestCase):
     """CR-MDB-057 §S6 -- the owned bundles' register, unregister and event
     examples use no raw HTTP and no fixed board address.
 
-    The inline urllib run-and-ingest modules of the python and rust bundles
-    (and the "direct v2 fallback" prose) are CR-MDB-056's; a fenced block
-    carrying `urllib.request` is left to that CR.
+    CR-MDB-056 §S5: the inline urllib run-and-ingest modules of the python and
+    rust bundles are removed, so no fenced block is exempt from the address
+    gate any more.
     """
 
     def test_no_owned_bundle_curls_the_v2_api(self):
@@ -1398,12 +1413,520 @@ class RawHttpExampleRetirementTest(unittest.TestCase):
                 self.assertEqual(_fixed_address_hits(clean), [])
         self.assertEqual(len(_fixed_address_hits(f"```bash\n{bun_event}\n```\n")), 1)
         self.assertEqual(len(_fixed_address_hits("Board at `127.0.0.1:3849`.\n")), 1)
+        # CR-MDB-056 §S5: the urllib-block exemption is removed -- an address
+        # inside such a block is a finding like any other.
         urllib_module = ('```python\nimport json, urllib.request\n'
                          'req = urllib.request.Request(f"http://localhost:3849{path}")\n```\n')
-        self.assertEqual(_fixed_address_hits(urllib_module), [],
-                         "CR-MDB-056's urllib modules are out of this gate")
-        self.assertEqual(len(_fixed_address_hits(urllib_module + bun_event + "\n")), 1,
-                         "the exemption reaches only the urllib block itself")
+        self.assertEqual(_fixed_address_hits(urllib_module),
+                         [(3, 'req = urllib.request.Request(f"http://localhost:3849{path}")')],
+                         "a urllib block is no longer exempt from the address gate")
+        self.assertEqual(len(_fixed_address_hits(urllib_module + bun_event + "\n")), 2,
+                         "the urllib block and the line after it are both reported")
+
+
+# ------------------------ CR-MDB-056 §S2: the hand-run-and-ingest path is gone ---
+
+PYTHON_BUNDLE = "crucible-report-python"
+RUST_BUNDLE = "crucible-report-rust"
+
+# What §B and the inline urllib helper module of `crucible-report-python` are
+# made of, and every pointer to them: the `B.` heading, a `§B` citation, urllib
+# itself, a Python `def`, a call to one of the `crucible_*` helpers, and the
+# "helpers below" / "helper functions" pointers.
+HELPER_MODULE_MARKERS = (
+    ("urllib", re.compile(r"\burllib\b", re.I)),
+    ("a helper function definition", re.compile(r"^[ \t]*def[ \t]+\w+[ \t]*\(", re.M)),
+    ("a call to a crucible_* helper", re.compile(r"\bcrucible_[a-z_]+\s*\(")),
+    ("a pointer to the helpers",
+     re.compile(r"\bhelpers?\b[^.\n]{0,20}\bbelow\b|\bhelper functions?\b", re.I)),
+)
+SECTION_B_MARKERS = (
+    ("a §B section heading", re.compile(r"^#{1,6}\s+B[.):]\s", re.M)),
+    ("a pointer to §B", re.compile(r"§\s*B\b")),
+)
+MANUAL_PATTERNS_MARKERS = (
+    ("the Manual Patterns module", re.compile(r"\bmanual patterns?\b", re.I)),
+)
+
+# A sentence calling a direct HTTP / hand-made call the fallback.  `fallback`
+# alone is not the defect -- java's "raw output is stored as fallback" is the
+# server's own parse fallback and stays.
+FALLBACK_RE = re.compile(r"\bfallback\b", re.I)
+DIRECT_CALL_RE = re.compile(r"\b(?:curl|fetch|urllib|direct(?:ly)?|manual(?:ly)?|hand)\b", re.I)
+SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
+
+# The bundles carrying an "API Endpoint Reference" table (arduino documents its
+# two routes in prose and has none).  §S2: the tables stay, as reference.
+ENDPOINT_TABLE_BUNDLES = (
+    REGISTER_BUNDLE,
+    "crucible-report-bun",
+    "crucible-report-java",
+    PYTHON_BUNDLE,
+    RUST_BUNDLE,
+)
+ENDPOINT_TABLE_HEADING_RE = re.compile(r"^(#{1,6})\s+API endpoint reference\s*$", re.I)
+MD_HEADING_RE = re.compile(r"^(#{1,6})\s+(.*?)\s*$")
+MD_ITEM_START_RE = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+")
+
+# ------------------------------------------- `auto-ingest` is recovery only ---
+
+# The memory templates are outside the change (CR-MDB-060 carries the rule
+# into the facts).
+MEMORY_TEMPLATES = "memory-templates"
+AUTO_INGEST_RE = re.compile(r"(?<![\w-])auto-ingest(?![\w-])")
+# A mention stated as recovery: "recovery", "re-ingest", or an ingest that failed.
+RECOVERY_RE = re.compile(
+    r"\brecover(?:y|ing|s|ed)?\b|\bre-?ingest\w*\b"
+    r"|\bingest(?:ion)?\b[^.]{0,40}\bfail(?:ed|s|ure)?\b"
+    r"|\bfail(?:ed|ure)\b[^.]{0,20}\bingest",
+    re.I,
+)
+# Offering it after a run made outside the client.
+OWN_RUN_RE = re.compile(
+    r"\balready ran\b|\byourself\b|\bpre-existing\b|\balready[- ]produced\b"
+    r"|\bwithout running\b|\boutside the client\b",
+    re.I,
+)
+# A negation earlier in the sentence governs the mention ("...; not `auto-ingest`").
+NEGATION_RE = re.compile(r"\b(?:never|not|no)\b", re.I)
+# The first cell of a per-role table row.
+ROLE_CELL_RE = re.compile(r"\b(?:RED|GREEN|FIX|VERIFY|ORCHESTRATOR|[Oo]rchestrator|[Aa]gent|post-merge)\b")
+FINDING_ROLE_ROW = "per-role row"
+FINDING_OWN_RUN = "after a run outside the client"
+FINDING_NOT_RECOVERY = "not stated as recovery"
+# The recovery USE stated in full: a report a client run produced, re-ingested
+# when its ingest failed.
+STATEMENT_FAIL_RE = re.compile(r"\bfail(?:ed|s|ure)?\b", re.I)
+STATEMENT_CLIENT_RE = re.compile(r"\bclient\b", re.I)
+STATEMENT_REPORT_RE = re.compile(r"\breports?\b", re.I)
+STATEMENT_INGEST_RE = re.compile(r"\b(?:re-?)?ingest", re.I)
+
+# ------------------------------ what a client runs, said in plain words ---
+
+# "Runs ...", "it runs ...", "The client runs ..." -- not the `/api/v2/runs` route.
+RUNS_VERB_RE = re.compile(r"(?<![\w/.-])[Rr]uns\b(?![/-])")
+# A whole-word prohibition earlier in the sentence governs a span (§S3's rule).
+PROHIBITION_RE = re.compile(r"\b(?:never|not)\b", re.I)
+TOOL_WORDS = frozenset({
+    "arduino-cli", "bun", "bunx", "cargo", "coverage", "g++", "gcc", "make", "mvn",
+    "mvnw", "nextest", "node", "npm", "npx", "playwright", "py.test", "pytest", "tsc", "uv",
+})
+PYTHON_WORD_RE = re.compile(r"python(?:\d+(?:\.\d+)?)?")
+ENV_ASSIGNMENT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=\S*")
+WRAPPER_WORDS = frozenset({"env", "nice", "time"})
+
+
+def _sentences(unit):
+    """`unit`, whitespace-normalised, split into sentences."""
+    return [s for s in SENTENCE_SPLIT_RE.split(" ".join(unit.split())) if s]
+
+
+def _md_units(text):
+    """(unit, fenced, heading, comments) for every unit of `text`.
+
+    The units are those `units` (tests/test_board_holds_the_queue.py) yields --
+    a bullet or numbered item with its continuation, a table row, a heading, a
+    fenced-code line or a paragraph -- each told whether it is a fenced line,
+    the nearest heading above it, and, for a fenced line, the comment lines
+    directly above it in its block.
+    """
+    out, cur, comments = [], [], []
+    fenced, heading = False, ""
+
+    def flush():
+        if cur:
+            out.append(("\n".join(cur), False, heading, ()))
+            cur.clear()
+
+    for line in text.splitlines():
+        stripped = line.strip()
+        if FENCE_RE.match(line):
+            flush()
+            fenced, comments = not fenced, []
+            continue
+        if fenced:
+            if not stripped:
+                comments = []
+                continue
+            out.append((line, True, heading, tuple(comments)))
+            comments = comments + [line] if stripped.startswith(("#", "//")) else []
+            continue
+        heading_match = MD_HEADING_RE.match(line)
+        if not stripped:
+            flush()
+        elif heading_match:
+            flush()
+            heading = heading_match.group(2)
+            out.append((line, False, heading, ()))
+        elif stripped.startswith("|"):
+            flush()
+            out.append((line, False, heading, ()))
+        elif MD_ITEM_START_RE.match(line):
+            flush()
+            cur.append(line)
+        else:
+            cur.append(line)
+    flush()
+    return out
+
+
+def _marker_hits(text, markers):
+    """'label: line N: text' for every line of `text` a marker matches."""
+    hits = []
+    for label, pattern in markers:
+        for match in pattern.finditer(text):
+            lineno = text.count("\n", 0, match.start()) + 1
+            line = text.splitlines()[lineno - 1].strip()
+            hits.append(f"{label}: line {lineno}: {line[:120]}")
+    return hits
+
+
+def _direct_fallback_sentences(text):
+    """Every sentence of `text` calling a direct or hand-made call the fallback."""
+    return [
+        sentence
+        for unit, _, _, _ in _md_units(text)
+        for sentence in _sentences(unit)
+        if FALLBACK_RE.search(sentence) and DIRECT_CALL_RE.search(sentence)
+    ]
+
+
+def _endpoint_table_routes(text):
+    """The first-cell text of every row of the "API Endpoint Reference" table
+    of `text`, joined; "" when there is no such section."""
+    lines = text.splitlines()
+    for index, line in enumerate(lines):
+        heading = ENDPOINT_TABLE_HEADING_RE.match(line)
+        if heading is None:
+            continue
+        level, cells = len(heading.group(1)), []
+        for row in lines[index + 1:]:
+            nxt = MD_HEADING_RE.match(row)
+            if nxt and len(nxt.group(1)) <= level:
+                break
+            if row.strip().startswith("|"):
+                cells.append(row.strip().strip("|").split("|")[0].strip())
+        return "\n".join(cells)
+    return ""
+
+
+def _missing_table_routes(text, routes):
+    """The routes of `routes` the endpoint table of `text` does not list."""
+    table = _endpoint_table_routes(text)
+    return [route for route in routes if not _documents_endpoint(table, route)]
+
+
+def _auto_ingest_findings(text):
+    """(code, unit) for every `auto-ingest` mention of `text` that is not recovery.
+
+    A per-role table row naming it is a run path whatever it says; a mention
+    beside an ungoverned "you already ran it yourself" offers it after a run
+    outside the client; any other mention must be stated as recovery -- in its
+    own unit, the comment lines above a fenced line, or its section heading --
+    or be governed by a negation earlier in its sentence.
+    """
+    findings = []
+    for unit, fenced, heading, comments in _md_units(text):
+        if not AUTO_INGEST_RE.search(unit):
+            continue
+        flat = " ".join(unit.split())
+        if not fenced and flat.startswith("|"):
+            first_cell = flat.strip("|").split("|")[0]
+            if ROLE_CELL_RE.search(first_cell):
+                findings.append((FINDING_ROLE_ROW, flat))
+                continue
+        context = " ".join([*(c.strip() for c in comments), flat])
+        sentences = _sentences(context)
+        own_run = any(
+            (match := OWN_RUN_RE.search(s)) and not NEGATION_RE.search(s[: match.start()])
+            for s in sentences
+        )
+        if own_run:
+            findings.append((FINDING_OWN_RUN, flat))
+            continue
+        negated = any(
+            (match := AUTO_INGEST_RE.search(s)) and NEGATION_RE.search(s[: match.start()])
+            for s in sentences
+        )
+        if not (negated or RECOVERY_RE.search(context) or RECOVERY_RE.search(heading)):
+            findings.append((FINDING_NOT_RECOVERY, flat))
+    return findings
+
+
+def _states_the_recovery_use(text):
+    """True when a prose unit of `text` states `auto-ingest`'s recovery use: a
+    report a client run produced, re-ingested when its ingest failed."""
+    for unit, fenced, _, _ in _md_units(text):
+        if fenced or not AUTO_INGEST_RE.search(unit):
+            continue
+        rest = AUTO_INGEST_RE.sub(" ", unit)
+        if all(p.search(rest) for p in (STATEMENT_FAIL_RE, STATEMENT_CLIENT_RE,
+                                        STATEMENT_REPORT_RE, STATEMENT_INGEST_RE)):
+            return True
+    return False
+
+
+def _span_command_word(span):
+    """The command word of a code span: its first token after any `VAR=value`,
+    `env`/`nice`/`time` or `timeout <n>`, as a basename."""
+    tokens = span.split()
+    index = 0
+    while index < len(tokens):
+        token = tokens[index]
+        if ENV_ASSIGNMENT_RE.fullmatch(token) or token in WRAPPER_WORDS:
+            index += 1
+        elif token == "timeout":
+            index += 2
+        else:
+            return token.rsplit("/", 1)[-1]
+    return ""
+
+
+def _is_tool_span(span):
+    word = _span_command_word(span)
+    return word in TOOL_WORDS or PYTHON_WORD_RE.fullmatch(word) is not None
+
+
+def _client_internals_in_code(text):
+    """Every prose sentence of `text` describing what something runs with an
+    ungoverned tool command in a code span."""
+    found = []
+    for unit, fenced, _, _ in _md_units(text):
+        if fenced:
+            continue
+        for sentence in _sentences(unit):
+            if not RUNS_VERB_RE.search(sentence):
+                continue
+            if any(
+                _is_tool_span(match.group(1))
+                and not PROHIBITION_RE.search(sentence[: match.start()])
+                for match in CODE_SPAN_RE.finditer(sentence)
+            ):
+                found.append(sentence)
+    return found
+
+
+def _skill_text_files():
+    """Every markdown file under skills-src/, the memory templates excepted."""
+    return [
+        path for path in _iter_files(SKILLS_SRC)
+        if path.suffix == ".md" and _rel(path, SKILLS_SRC).split("/", 1)[0] != MEMORY_TEMPLATES
+    ]
+
+
+class HandRunPathRetirementTest(unittest.TestCase):
+    """CR-MDB-056 §S2 -- the hand-run-and-ingest path is gone from the bundles;
+    their endpoint tables stay."""
+
+    def test_python_bundle_has_no_section_b_no_urllib_helper_module_and_no_pointer_to_either(self):
+        text = _read(SKILLS_SRC / PYTHON_BUNDLE / "SKILL.md")
+        hits = _marker_hits(text, SECTION_B_MARKERS + HELPER_MODULE_MARKERS)
+        self.assertEqual(
+            hits,
+            [],
+            f"{PYTHON_BUNDLE} must carry no §B (pytest run then hand ingest), no "
+            "inline urllib helper module and no pointer to either (CR-MDB-056 §S2):\n  "
+            + "\n  ".join(hits),
+        )
+
+    def test_rust_bundle_has_no_manual_patterns_module_and_no_pointer_to_it(self):
+        text = _read(SKILLS_SRC / RUST_BUNDLE / "SKILL.md")
+        hits = _marker_hits(text, MANUAL_PATTERNS_MARKERS + HELPER_MODULE_MARKERS)
+        self.assertEqual(
+            hits,
+            [],
+            f"{RUST_BUNDLE} must carry no \"Manual Patterns (fallback only)\" module "
+            "and no pointer to it (CR-MDB-056 §S2):\n  " + "\n  ".join(hits),
+        )
+
+    def test_no_report_bundle_calls_a_direct_or_hand_made_call_the_fallback(self):
+        hits = []
+        for bundle in CLIENT_BUNDLES:
+            hits += [f"{bundle}: {s[:140]}"
+                     for s in _direct_fallback_sentences(_read(SKILLS_SRC / bundle / "SKILL.md"))]
+        self.assertEqual(
+            hits,
+            [],
+            "the \"direct `curl`/`fetch` ... is the fallback\" sentences go, with the "
+            "python and rust pointers to their urllib fallback (CR-MDB-056 §S2):\n  "
+            + "\n  ".join(hits),
+        )
+
+    def test_each_endpoint_reference_table_stays_and_lists_its_bundles_routes(self):
+        missing = {}
+        for bundle in ENDPOINT_TABLE_BUNDLES:
+            text = _read(SKILLS_SRC / bundle / "SKILL.md")
+            gone = _missing_table_routes(text, V2_ENDPOINTS_BY_BUNDLE[bundle])
+            if gone:
+                missing[bundle] = gone
+        self.assertEqual(
+            missing,
+            {},
+            "the bundles' \"API Endpoint Reference\" tables stay, as reference, each "
+            "listing every route its bundle is measured to document (CR-MDB-056 §S2)",
+        )
+
+    def test_the_hand_run_detectors_both_ways(self):
+        section_b = (
+            "### B. pytest → JUnit XML → ingest (when you want pytest explicitly)\n"
+            "that's the fallback (§B) only for edge cases.\n"
+        )
+        self.assertEqual(len(_marker_hits(section_b, SECTION_B_MARKERS)), 2)
+        helper = (
+            "The urllib helpers below are the direct-call fallback.\n"
+            "```python\nimport json, urllib.request\n\ndef _post(path, payload):\n    pass\n```\n"
+            'crucible_auto_ingest("X", ENV)\n'
+        )
+        self.assertEqual(
+            sorted({hit.split(":", 1)[0] for hit in _marker_hits(helper, HELPER_MODULE_MARKERS)}),
+            sorted(label for label, _ in HELPER_MODULE_MARKERS),
+        )
+        self.assertEqual(
+            len(_marker_hits("## Manual Patterns (fallback only — prefer the client above)\n",
+                             MANUAL_PATTERNS_MARKERS)), 1)
+        clean = (
+            "## Usage\n\nThe client runs the tests and ingests them in one call.\n\n"
+            "| `/api/v2/runs` | POST | tests ran |\n"
+        )
+        for markers in (SECTION_B_MARKERS, HELPER_MODULE_MARKERS, MANUAL_PATTERNS_MARKERS):
+            self.assertEqual(_marker_hits(clean, markers), [])
+
+        arduino = ("id. Direct `curl`/`fetch` against the v2 endpoints is the fallback for edge\n"
+                   "cases only.\n")
+        self.assertEqual(_direct_fallback_sentences(arduino),
+                         ["Direct `curl`/`fetch` against the v2 endpoints is the fallback for edge cases only."])
+        rust = ("> coverage gate). Do NOT invoke the runner directly for a cycle run and\n"
+                "> then hand-ingest; that's the fallback only for edge cases.\n")
+        self.assertEqual(len(_direct_fallback_sentences(rust)), 1)
+        for spared in ("`POST /api/v2/runs/compile` with `format: \"java\"`. If parsing fails, raw\n"
+                       "output is stored as fallback.\n",
+                       "Run the tests through the client, never directly.\n"):
+            with self.subTest(spared=spared):
+                self.assertEqual(_direct_fallback_sentences(spared), [])
+
+        table = ("## API endpoint reference\n| Endpoint | Method | When |\n|---|---|---|\n"
+                 "| `/api/v2/runs` | POST | tests ran |\n| `/api/v2/runs/compile` | POST | x |\n"
+                 "\n## Rules\n- `/api/v2/projects` is named in prose only\n")
+        routes = ("/api/v2/runs", "/api/v2/runs/compile", "/api/v2/projects")
+        self.assertEqual(_missing_table_routes(table, routes), ["/api/v2/projects"],
+                         "a route named only outside the table is missing from it")
+        self.assertEqual(_missing_table_routes("# No table\n`/api/v2/runs`\n", routes), list(routes),
+                         "with the table removed every route is missing")
+
+
+class AutoIngestRecoveryOnlyTest(unittest.TestCase):
+    """CR-MDB-056 §S2 -- `auto-ingest`'s only sanctioned use is re-ingesting a
+    report a client run produced when that run's own ingest failed."""
+
+    def setUp(self):
+        self.findings = []
+        for path in _skill_text_files():
+            self.findings += [(code, f"{_rel(path)}: {unit[:140]}")
+                              for code, unit in _auto_ingest_findings(_read(path))]
+
+    def _by(self, *codes):
+        return [detail for code, detail in self.findings if code in codes]
+
+    def test_no_per_role_row_lists_auto_ingest_as_a_run_path(self):
+        hits = self._by(FINDING_ROLE_ROW)
+        self.assertEqual(hits, [], "no per-role row offers `auto-ingest` as a run path:\n  "
+                         + "\n  ".join(hits))
+
+    def test_no_text_offers_auto_ingest_after_a_run_made_outside_the_client(self):
+        hits = self._by(FINDING_OWN_RUN)
+        self.assertEqual(hits, [], "`auto-ingest` is never the second half of a run made "
+                         "outside the client:\n  " + "\n  ".join(hits))
+
+    def test_every_auto_ingest_mention_under_skills_src_is_stated_as_recovery(self):
+        hits = self._by(FINDING_NOT_RECOVERY)
+        self.assertEqual(hits, [], "`auto-ingest` appears only as recovery -- re-ingesting a "
+                         "report a client run produced when its ingest failed:\n  "
+                         + "\n  ".join(hits))
+
+    def test_the_crucible_skill_and_each_report_bundle_state_the_recovery_use(self):
+        surfaces = [SKILLS_SRC / "crucible" / "SKILL.md"] + [
+            SKILLS_SRC / bundle / "SKILL.md" for bundle in CLIENT_BUNDLES]
+        silent = [_rel(path) for path in surfaces if not _states_the_recovery_use(_read(path))]
+        self.assertEqual(silent, [], "each must state `auto-ingest`'s recovery use in prose: "
+                         "re-ingesting a report a client run produced when its ingest failed")
+
+    def test_the_auto_ingest_detectors_both_ways(self):
+        cases = (
+            # (label, fixture, expected finding codes)
+            ("rust's own-run offer",
+             "Runs the suite. If you already\nran the tests yourself, `auto-ingest` detects: XML exists.\n",
+             [FINDING_OWN_RUN]),
+            ("a per-role row", "| RED agent wrote tests | `test` / `auto-ingest` | junit |\n",
+             [FINDING_ROLE_ROW]),
+            ("a bare fenced invocation",
+             "```bash\npython3 bun-crucible.py auto-ingest  # ingest an existing report\n```\n",
+             [FINDING_NOT_RECOVERY]),
+            ("python's already-produced comment",
+             "```bash\n# ingest an already-produced reports dir\npython3 python-crucible.py auto-ingest\n```\n",
+             [FINDING_OWN_RUN]),
+            ("a bare verb-table cell", "| rust | `rust-crucible.py` | `test`, `auto-ingest`, `check` |\n",
+             [FINDING_NOT_RECOVERY]),
+            ("recovery dressing on an own-run offer",
+             "Recovery: if you already ran the tests yourself, run `auto-ingest`.\n",
+             [FINDING_OWN_RUN]),
+            ("the run-verb exclusion", "- The run verbs take `--cycle`; not `auto-ingest`.\n", []),
+            ("a recovery cell", "| rust | `rust-crucible.py` | `test`, `auto-ingest` (recovery only) |\n", []),
+            ("a recovery comment above the line",
+             "```bash\n# recovery: the run's ingest failed\npython3 rust-crucible.py auto-ingest\n```\n", []),
+            ("a recovery heading",
+             "### Recovery after a failed ingest\n\n```bash\npython3 mvn-crucible.py auto-ingest\n```\n", []),
+            ("the recovery statement",
+             "`auto-ingest` re-ingests the report a client run produced when that run's ingest "
+             "failed; never after a run made outside the client.\n", []),
+        )
+        for label, fixture, expected in cases:
+            with self.subTest(label=label):
+                self.assertEqual([code for code, _ in _auto_ingest_findings(fixture)], expected)
+        statement = ("`auto-ingest` is recovery only: it re-ingests the report a client run "
+                     "produced when that run's own ingest failed.\n")
+        self.assertTrue(_states_the_recovery_use(statement))
+        for weak in ("`auto-ingest` ingests an existing report.\n",
+                     "`auto-ingest` (recovery only)\n",
+                     f"```bash\n# {statement}```\n"):
+            with self.subTest(weak=weak):
+                self.assertFalse(_states_the_recovery_use(weak))
+
+
+class ClientInternalsInPlainWordsTest(unittest.TestCase):
+    """CR-MDB-056 §S2 -- a description of what the client runs says so in plain
+    words, not in a code span."""
+
+    def test_no_description_of_what_a_client_runs_puts_the_command_in_a_code_span(self):
+        hits = []
+        for path in _skill_text_files():
+            hits += [f"{_rel(path)}: {s[:140]}" for s in _client_internals_in_code(_read(path))]
+        self.assertEqual(hits, [], "say what the client runs in plain words (\"runs the "
+                         "tests with a JUnit reporter\"), not as a command in a code span:\n  "
+                         + "\n  ".join(hits))
+
+    def test_the_plain_words_detector_both_ways(self):
+        caught = (
+            "Runs `bun test` with a JUnit reporter, parses the XML, and POSTs it.",
+            "Runs: clean → `cargo llvm-cov nextest` → parse JUnit + lcov.",
+            "The client runs `mvn clean test` scoped to your SUT.",
+            "it runs the native host tests\n(`make junit`) AND ingests.",
+            "Runs `CI=1 .venv/bin/python -m unittest` and ingests.",
+            "Runs `cargo check` and ingests stderr as rustc compile errors.",
+        )
+        for text in caught:
+            with self.subTest(caught=text):
+                self.assertEqual(len(_client_internals_in_code(text + "\n")), 1)
+        spared = (
+            "Runs the tests with a JUnit reporter, parses the XML, and POSTs it.",
+            "Never invoke `bun test` directly; the client runs the tests.",
+            "Each agent's test runs use a private reports directory (`--reports`).",
+            "POSTs `/api/v2/runs/parsed` with `bun test` output.",
+            "The client `test` verb runs `bun-crucible.py` internals.",
+            "```bash\n# Runs `bun test`\n```",
+        )
+        for text in spared:
+            with self.subTest(spared=text):
+                self.assertEqual(_client_internals_in_code(text + "\n"), [])
 
 
 if __name__ == "__main__":

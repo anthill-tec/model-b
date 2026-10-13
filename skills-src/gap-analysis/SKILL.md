@@ -31,7 +31,8 @@ tree it never ran is guessing, and a figure quoted from memory is worse than no 
 into dispatch briefs as fact.
 
 - [ ] RUN the suites the CR touches, plus any suite that corroborates against a LIVE service or a
-      real engine, and write the exact pass/fail counts into the analysis with the time of the run.
+      real engine, through the stack's Crucible client — never a test runner invoked directly —
+      and write the exact pass/fail counts into the analysis with the time of the run.
 - [ ] Cut the feature branch only from a baseline you measured. A branch cut from an unmeasured
       tree inherits failures the CR will be blamed for.
 - [ ] NEVER state a count in a sub-agent brief that you did not measure in this session. If it is

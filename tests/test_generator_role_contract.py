@@ -66,6 +66,11 @@ DECLINED_RE = re.compile(
     r"(?i)(declined|closed|withdrawn|not to be built|never built|must not be built|"
     r"will not be built|won't be built)"
 )
+# CR-MDB-056 §S1: bun's tier guidance names the client's tier verbs, not the declared script.
+BUN_TIER_VERB_RE = re.compile(
+    r"bun-crucible\.py\s+(?:<tier>|(?:" + "|".join(TIER_VOCABULARY) + r")(?![\w-]))"
+)
+RUN_DECLARED_SCRIPT_RE = re.compile(r"(?i)\brun the declared script\b")
 UNREACHABLE_RE = re.compile(
     r"(?i)(cannot|can't|can not|unreachable|unavailable|not honou?r|"
     r"no\s+\w+\s+tier|never\s+report|out of reach|not\s+available)"
@@ -594,6 +599,36 @@ class GeneratorRoleContractS6bTest(unittest.TestCase):
             "an unhonourable tier must be declared, not left silent (CR-CRU-111 §S2, "
             f"CR-MDB-017 §S6b):\n{_fmt(problems)}",
         )
+
+    def test_s6b_bun_tier_guidance_names_the_clients_tier_verbs(self):
+        """bun's tier_guidance runs a tier through the client's tier verb (CR-MDB-056 §S1/§S5).
+
+        The client's tier verb (``bun-crucible.py <tier>``) runs the ``test:<tier>`` script the
+        project declares, so the guidance names that verb and never tells the agent to run the
+        declared script itself.
+        """
+        lineno = _key_lineno("bun", "tier_guidance")
+        guidance = _stack_params("bun").get("tier_guidance") or ""
+        problems = []
+        if not BUN_TIER_VERB_RE.search(guidance):
+            problems.append(("generator/stacks/bun.toml", lineno,
+                             "tier_guidance names no `bun-crucible.py <tier>` client tier verb"))
+        problems += [("generator/stacks/bun.toml", lineno, f"runs the declared script: {line.strip()[:120]}")
+                     for line in guidance.splitlines() if RUN_DECLARED_SCRIPT_RE.search(line)]
+        self.assertEqual(problems, [],
+                         "a bun tier runs through the client's tier verb, never the declared script "
+                         f"directly (CR-MDB-056 §S1):\n{_fmt(problems)}")
+
+    def test_s6b_bun_tier_verb_checks_bite_on_the_old_guidance(self):
+        old = ("- **Bun has no native tier split.** Run the declared script for the tier you intend "
+               "to report, and name that script in your report.")
+        self.assertIsNone(BUN_TIER_VERB_RE.search(old))
+        self.assertIsNotNone(RUN_DECLARED_SCRIPT_RE.search(old))
+        new = ("- **Run a tier with the client's tier verb** — `bun-crucible.py integration --agent "
+               "YOUR_AGENT_ID` runs the `test:integration` script the project declares.")
+        self.assertIsNotNone(BUN_TIER_VERB_RE.search(new))
+        self.assertIsNone(RUN_DECLARED_SCRIPT_RE.search(new))
+        self.assertIsNotNone(BUN_TIER_VERB_RE.search("run `bun-crucible.py <tier>`"))
 
     def test_s6b_arduino_names_hil_as_unreachable_from_the_native_host(self):
         """arduino's tier_guidance names HIL as unreachable from the native host."""

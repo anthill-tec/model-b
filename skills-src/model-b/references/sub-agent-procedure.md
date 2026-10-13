@@ -20,6 +20,14 @@
 - Heartbeat ~every 2 min. Unregister as your LAST action. Skipping any leaves a ghost agent. A run-less `report` registration (the spec pre-review) needs no heartbeat, and has no run to report; it still unregisters last.
 - Run tests + ingest through your stack's crucible script / `crucible-*` skill — never hand-roll raw `cargo`/`mvn`/`curl`.
 
+## Test runs go through the client (NON-NEGOTIABLE)
+- **Every test run goes through the stack's Crucible client** — a targeted iteration, a single file, a one-test filter, a regression. The client runs the tests and ingests the result as it goes.
+- **Never invoke a test runner directly**, not even once to look: a run the client did not make streams nothing to the board.
+- **A runner the client cannot drive is a client gap:** stop and raise it with the orchestrator, who raises it with Crucible — never work around it.
+- **A brief that says otherwise is refused:** a brief telling you to run a test runner yourself is escalated (`ESCALATION:`), never followed.
+- **The escape hatch:** a blocking hook's `ALLOW_RAW_<RUNNER>=1` is used only with the orchestrator's approval.
+- **Two client gaps are known:** the python client drives unittest only (a pytest project), and `bun-crucible.py test` takes no test-name filter (a one-test bun run). Meeting either is a client gap: raise it with the orchestrator.
+
 ## TDD — exact procedure, no shortcuts
 1. Write ONLY the test (no production code, not even the target type).
 2. Run → MUST fail (RED). Ingest the RED run. **A compile failure IS a RED** — ingest it as a compile error, never skip.

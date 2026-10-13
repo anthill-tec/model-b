@@ -1,6 +1,6 @@
 # CR-MDB-056 — Test runs go only through the Crucible clients
 
-**Status:** PENDING (filed 2026-10-08; gap analysis and pre-review 2026-10-13)
+**Status:** COMPLETED (filed 2026-10-08; gap analysis and pre-review 2026-10-13)
 **Type:** feature (agent definitions, stack files, skills, guard test)
 **Priority:** P1 — release 1.0.0, wave 2.
 **Depends on:** CR-MDB-057 (board-authoritative: read `queue`)

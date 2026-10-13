@@ -173,11 +173,13 @@ BESPOKE_AGENT_NAMES = [
 ]
 
 # Per-stack mechanic anchor that must survive distillation into every one of
-# that stack's 4 generated agent files.
+# that stack's 4 generated agent files. CR-MDB-056 §S5: the bun and quarkus
+# anchors name the client invocations the stack files carry, not the raw
+# runners (`bun test`, `mvn`) that every run now goes through the client for.
 STACK_ANCHORS = {
     "python": "--tests",
-    "bun": "bun test",
-    "quarkus": "mvn",
+    "bun": "bun-crucible.py test",
+    "quarkus": "mvn-crucible.py unit",
     "arduino": "arduino-cli",
     "rust": "cargo",
 }

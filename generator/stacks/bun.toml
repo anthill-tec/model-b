@@ -1,4 +1,4 @@
-# Stack parameters — Bun/TypeScript (`bun test` via bun-crucible.py)
+# Stack parameters — Bun/TypeScript (Bun's test runner via bun-crucible.py)
 # Distilled from the pre-CR-MDB-008 agent originals (archive/wave3/agents/bun-*).
 
 display_name = "Bun/TypeScript"
@@ -8,7 +8,7 @@ unregister_command = "python3 ~/.crucible/clients/bun-crucible.py unregister --a
 crucible_reference = "~/.agents/skills/crucible/references/bun.md"
 
 mechanics = '''
-- **Framework/client:** `bun test` driven through `bun-crucible.py` (`register` / `test` / `check` / `unregister`). `test` runs `bun test` on the given file(s), wipes the stale `test-reports/junit.xml` so only THIS run ingests, parses + ingests the JUnit XML, and prints `ingest: ok=True ... failed=N` — confirm it.
+- **Framework/client:** Bun's test runner, driven through `bun-crucible.py` (`register` / `test` / `check` / `unregister`). `bun-crucible.py test --tests <file>` runs Bun's runner on the given file(s), wipes the stale `test-reports/junit.xml` so only THIS run ingests, parses + ingests the JUnit XML, and prints `ingest: ok=True ... failed=N` — confirm it. `bun-crucible.py test` takes no test-name filter: a one-test bun run is a known client gap — target the file, and raise the gap with the orchestrator when one test must run alone.
 - **Run tests in the bun package dir** (default `integrations/pi/`), not the repo root. `bun-crucible.py` sets the cwd via `--package-dir`/`$BUN_CRUCIBLE_PACKAGE_DIR`; a wrong cwd gives "0 tests" or phantom missing-module errors. Read the package's `package.json`/`tsconfig.json`; tests are `*.test.ts` (colocated or `src/**/__tests__/`).
 - **Imports:** use `bun:test` (`import { test, expect, describe, mock, spyOn, beforeEach } from "bun:test"`). Import the code under test by its real relative path. If a test errors for a PATH/typing reason (not a missing SUT symbol), fix the import — that is not a real RED.
 - **Quick typecheck gate:** `bun-crucible.py check` (tsc) after each file change.
@@ -20,14 +20,14 @@ mechanics = '''
 # tier mechanism of its own, so the tier a run may claim is whatever the PROJECT
 # has declared in package.json — never what the agent selected by hand.
 tier_guidance = '''
-- **Bun has no native tier split — the PROJECT declares one.** `bun test` knows files and filters, not tiers; the boundary lives in `package.json` scripts: `test:unit`, `test:integration`, `test:regression`. Run the declared script for the tier you intend to report, and name that script in your report so the next agent can reproduce exactly the same set.
+- **Bun has no native tier split — the PROJECT declares one.** Bun's runner knows files and filters, not tiers; the boundary lives in `package.json` scripts: `test:unit`, `test:integration`, `test:regression`. Run a tier with the client's tier verb — `bun-crucible.py <tier> --agent YOUR_AGENT_ID` (e.g. `bun-crucible.py integration`) runs the `test:<tier>` script the project declares and ingests it — and name that script in your report so the next agent can reproduce exactly the same set.
 - **Never hand-pick a file list and call it a tier.** Passing `--tests a.test.ts b.test.ts` and ingesting the result as `integration` records a tier the project never defined: the next "same" run selects different files and the two are no longer comparable. A hand-picked list is a TARGETED run — report it as `unit`, and only when every file in it is genuinely dependency-free.
 - **A tier with no declared script cannot be honoured here.** With no `test:integration` in `package.json` this stack has no `integration` tier — report the tier you actually ran and raise the missing script as a finding. The same holds for `e2e` and `bdd`: Bun ships neither a driver nor a convention for either, so both are unavailable until the project declares one; `module` is only meaningful in a workspace that has declared its package boundaries.
 - **`regression` means the whole declared suite**, coverage on, not "the tests I happened to touch". A subset rerun after a fix is not a `regression` run whatever its size — and the full sweep is the orchestrator's merge gate, not yours.
 '''
 
 [description]
-red = "RED phase agent — test specialist for Bun/TypeScript projects (`bun test`). Two modes. (1) Write NEW failing tests for a CR spec. (2) Fix BROKEN test compilation/imports so existing tests can run. Does NOT write production code."
+red = "RED phase agent — test specialist for Bun/TypeScript projects (Bun's test runner, through bun-crucible.py). Two modes. (1) Write NEW failing tests for a CR spec. (2) Fix BROKEN test compilation/imports so existing tests can run. Does NOT write production code."
 green = "GREEN phase agent — implements production TypeScript code to make failing Bun tests pass. Works step-by-step, one module/tool at a time. Does NOT modify tests unless explicitly approved by the orchestrator. Used after RED tests are committed."
 verify = "VERIFY agent — reviews a Bun/TypeScript feature branch after implementation is complete. Read-only analysis of CR compliance, wiring completeness, test-coverage adequacy, boundary adherence, and code quality. Does NOT modify code."
 fix = "FIX agent — addresses specific findings from a VERIFY agent report in Bun/TypeScript projects. Fixes only what is listed and approved. Does NOT decide what to fix — the orchestrator tells it which findings to address."
@@ -54,7 +54,7 @@ skills = []
 
 [gotchas]
 red = '''
-- A `TypeError`/missing-export/compile error from a not-yet-existing SUT symbol counts as RED (`bun test` surfaces it in the JUnit XML).
+- A `TypeError`/missing-export/compile error from a not-yet-existing SUT symbol counts as RED (the client's run surfaces it in the JUnit XML).
 - **Verify the test COUNT increased.** N new tests but the total didn't move = silently skipped (wrong file glob, compile error). Never trust a 0-failure result without checking the count.
 - **No `.only`/`.skip`/`.todo` left on new tests** — they vacuously "pass".
 - **Assertion patterns:** POSITIVE with exact argv — `expect(args).toEqual(["--project","P","send","--from","A","--to","b,c","--subject","S"])`; NEGATIVE — assert the wrong flag is NOT present (no `--resolves`/`--all` on reply; no `--peek` when `mark` is true); ERROR path — the tool returns an error `AgentToolResult` carrying `stderr` when `pi.exec` resolves a non-zero `code` (or rejects), checked via `expect(result.content[0].text).toContain(...)`; MOCK — `expect(execMock).toHaveBeenCalledWith("sandesh", [..exact argv..], expect.anything())` or inspect `execMock.mock.calls[0]`.
@@ -80,7 +80,7 @@ green = '''
 - **Boundaries:** the shim only translates params↔CLI and shells out — no business logic, no Sandesh-core import.
 '''
 verify = '''
-- **Stack read-only tool lists:** ALLOWED — `bun test` / `bun-crucible.py test` (run-only), `tsc --noEmit`, `eslint`/`biome` in CHECK mode. FORBIDDEN — `prettier -w`, `eslint --fix`, `biome ... --write`, or any writer.
+- **Stack read-only tool lists:** ALLOWED — `bun-crucible.py test` / `check` (run-only; `check` is the `tsc --noEmit` typecheck), `eslint`/`biome` in CHECK mode. FORBIDDEN — a test runner invoked directly, `prettier -w`, `eslint --fix`, `biome ... --write`, or any writer.
 - **Wiring checks (stack flavour):** each verb/tool the CR lists is actually `pi.registerTool`-ed (not just defined) — count the registered tools against the AC; each tool's `execute` builds the CLI argv per the mapping table (spot-check the trickier ones: comma-joined `to`/`cc`; `parent_id`→`--to-msg`; inverted `--all`/`--peek`); `project_id`/address env fallback (`$SANDESH_PROJECT`/`$SANDESH_ADDRESS`) actually read; lifecycle wired where applicable (`session_start` starts the loop, `session_shutdown` stops it, exit-code branches all handled); the `export default function (pi) {...}` is the real entry and registers everything.
 - **Boundaries:** shim stays thin (tools only translate params↔CLI and shell to `sandesh`); no Sandesh-core import — `git diff <base>..HEAD -- sandesh/` is EMPTY; deps confined (`@earendil-works/*`/`typebox` devDeps/type-only as intended; no stray runtime deps).
 - **Quality checklist:** `strict`, no implicit `any`, no `@ts-ignore`/`as any` masking real errors, `tsc --noEmit` clean; no swallowed `catch {}`; a non-zero `pi.exec` code maps to an error result; camelCase funcs/vars, PascalCase types; no unused imports / stray `console.log`; `execute` awaits `pi.exec`, `signal` passed through, no floating promises.

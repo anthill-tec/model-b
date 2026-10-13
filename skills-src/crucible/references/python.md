@@ -3,7 +3,7 @@
 **Authority:** the Model-B-owned bundled skill `crucible-report-python`
 (`skills-src/crucible-report-python/`, deployed by the modelb-axi installer)
 — the full verb surface (`test --tests <dotted.path>`, `regression
-[--coverage]`, `check`, `auto-ingest`, gates), endpoint routing,
+[--coverage]`, `check`, `auto-ingest` (recovery only), gates), endpoint routing,
 venv/interpreter rules, and report locations live THERE. Read it before
 running anything.
 

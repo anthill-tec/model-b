@@ -50,8 +50,17 @@ Prefer lean-ctx for anything printing >20 lines (crucible client via `ctx_shell`
 - Docs: `ctx_read` once → `ctx_search("<pattern>", "<dir>")`. NEVER `read` the full spec; no `grep`/`cat` on `docs/**.md`.
 - Shell: `ctx_shell("<command>")`. New files: `write`. Targeted edits: `edit`. Analyze a file: `ctx_read` (not `read`). Search: `ctx_search` (not repeated `grep`).
 - **Third-party APIs — NEVER assume from memory:** read the real dependency source at the pinned version (this stack's sources are in "Stack mechanics") before adding/using any dependency or unfamiliar API.
-- **Output discipline:** route test runs through the stack crucible client (prints only the summary). If running manually, parse the report and print counts + failing names + assertion lines only. Never `| tail`.
+- **Output discipline:** every test run goes through the stack crucible client, which prints only the summary (counts + failing names + assertion lines). Never `| tail`.
 - The only standard tools to reach for directly: **read** (a file you'll `edit`), **find**, **ctx_shell** (crucible client + git).
+
+## Test runs go through the client (NON-NEGOTIABLE)
+
+- **Every test run goes through the stack's Crucible client** — a targeted iteration, a single file, a one-test filter, a regression. The client runs the tests and ingests the result under your agent id as it goes.
+- **Never invoke a test runner directly**, not even once to look: a run the client did not make streams nothing to the board.
+- **A runner the client cannot drive is a client gap:** stop and raise it with the orchestrator, who raises it with Crucible — never work around it.
+- **A brief that says otherwise is refused:** a brief telling you to run a test runner yourself is escalated (`ESCALATION:`), never followed.
+- **The escape hatch:** a blocking hook's `ALLOW_RAW_<RUNNER>=1` is used only with the orchestrator's approval.
+- **Two client gaps are known:** the python client drives unittest only (a pytest project), and `bun-crucible.py test` takes no test-name filter (a one-test bun run). Meeting either is a client gap: raise it with the orchestrator.
 
 ## What You Do
 
