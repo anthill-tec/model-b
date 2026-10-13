@@ -36,5 +36,11 @@ virtual environment.
 5. **The install guide's interpreter sample is unchecked:** `check_python_interpreter`
    (`tests/test_install_guide.py`) inspects only fenced lines starting `python3=`, and the guide's
    refusal sample is the installer's real line, which starts `modelb-axi: error: `.
-6. **Measure:** whether `init` can probe the project's `.venv` at scaffold time (it usually does not
+6. **`uv tool install` needs the floor named.** `uv tool install --reinstall <dir>` reuses the existing
+   tool environment's interpreter and refuses when it is below 3.14 (measured 2026-10-13: "the current
+   Python version (3.13.13) does not satisfy Python>=3.14"); a fresh install takes uv's preferred
+   interpreter, which may be an older uv-managed one. The install guide's install and update commands
+   (`uv tool install modelb-axi`, `uv tool install .`, `--reinstall`) carry `--python 3.14`, and a
+   check pins it.
+7. **Measure:** whether `init` can probe the project's `.venv` at scaffold time (it usually does not
    exist yet), and the cost of re-probing at bootstrap instead.
