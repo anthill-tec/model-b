@@ -41,10 +41,12 @@ searchable; the user rules it the one home for a Model B project's memory notes.
    does not follow the working directory), so the seeds are imported through the session's knowledge
    capability — *measure:* bootstrap's first run importing with skip-existing merge, the bundle format
    (lean-ctx's import/export, e.g. its Markdown bundle), and idempotence on re-runs.
-4. **The language references as facts:** the five `java-*.md` templates, the stack orchestration
+4. **The test-run rule reaches the facts** (DN-multi-harness-deploy-model §D21): no fact teaches a
+   runner invocation (`./mvnw test` in the java references today); a test run is the stack client's.
+5. **The language references as facts:** the five `java-*.md` templates, the stack orchestration
    templates and `operational-commands.md` are split into keyed facts under the project's category
    (or a stack-scoped one — a gap-analysis decision).
-5. **The skills.** Bootstrap and shutdown stop reading `docs/memory/INDEX.md`;
+6. **The skills.** Bootstrap and shutdown stop reading `docs/memory/INDEX.md`;
    `orchestration-common` § "Memory" names the knowledge store as the one home, and drops "Without the
    key, nothing changes"; every skill naming `docs/memory/` is updated.
 

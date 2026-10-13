@@ -856,6 +856,22 @@ and board-inspection `curl` examples become client verbs (CR-MDB-057); the hand-
 run a runner, then post its report through inline `urllib` — is removed with the test-run rule
 (CR-MDB-056).
 
+**AMENDED 2026-10-13 (user rulings at CR-MDB-056's gap analysis):**
+- **The raw-runner guard is strict.** It flags a runner invocation in any code span or fenced block,
+  except on a line that states a prohibition (never, do not, not). A text that describes what a
+  client runs says so in plain words, not in a code span.
+- **The guard's reach** is the skills (the `crucible-report-*` bundles included), the contracts,
+  `AGENTS.md`, the generator's templates and stack files, and the rendered definitions. The memory
+  templates are outside it: CR-MDB-060 turns them into knowledge facts and carries the rule for the
+  java references.
+- **Model B's own hooks.** Model B's installation is rebuilt from the canonical tree (a development
+  install, `uv tool install --reinstall <canonical model-b>` then `modelb-axi --reinstall` — the user's
+  steps; nothing is released) so the deployed hook scripts and skills are the current ones. Model B's
+  own project wiring (`.pi/extensions/`) is then compiled for its stack and committed as a chore,
+  holding only hooks whose scripts are deployed: a `closed` hook whose script is missing blocks every
+  shell call. After any CR that changes a hook script or adds one merges, the user redeploys and the
+  wiring is recompiled, before the next session in the repository.
+
 Implemented by CR-MDB-057 and CR-MDB-056.
 ## Consequences per CR
 
