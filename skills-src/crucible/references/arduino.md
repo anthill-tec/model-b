@@ -3,7 +3,7 @@
 **Authority:** the Model-B-owned bundled skill `crucible-report-arduino`
 (`skills-src/crucible-report-arduino/`, deployed by the modelb-axi installer)
 — the full verb surface (`test`/`unit` (native host make junit),
-`regression`, `auto-ingest`, `check`/`compile` (arduino-cli), gates),
+`regression`, `auto-ingest` (recovery only), `check`/`compile` (arduino-cli), gates),
 endpoint routing, and report locations live THERE. Read it before running
 anything.
 

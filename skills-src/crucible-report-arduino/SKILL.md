@@ -9,9 +9,8 @@ metadata:
 # Crucible Report — Arduino firmware
 
 `~/.crucible/clients/arduino-crucible.py` is the CLI client — it runs the native host tests
-(`make junit`) AND ingests to the Crucible v2 API in one call under your agent
-id. Direct `curl`/`fetch` against the v2 endpoints is the fallback for edge
-cases only.
+with their JUnit build target AND ingests to the Crucible v2 API in one call under
+your agent id.
 
 That path is the default location of Crucible's installed clients: the client
 is listed in `~/.crucible/crucible-clients.json` and installed by Crucible's own
@@ -50,7 +49,7 @@ WORKFLOW_CYCLE="my cycle label" \
 python3 ~/.crucible/clients/arduino-crucible.py test --agent AGENT_ID
 ```
 
-Runs the native host suite (`make junit`), parses the JUnit XML, and POSTs
+Runs the native host suite through its JUnit build target, parses the JUnit XML, and POSTs
 `/api/v2/runs/parsed` (or `/api/v2/runs/compile` when the suite fails to build).
 Use `--dir tests/native-mock` to target the ArduinoFake L2 tier instead of the
 default `tests/native`.
@@ -68,8 +67,12 @@ The server discards coverage on failing runs.
 
 ```bash
 python3 ~/.crucible/clients/arduino-crucible.py check --agent AGENT_ID    # arduino-cli compile → /api/v2/runs/compile on failure
-python3 ~/.crucible/clients/arduino-crucible.py auto-ingest --agent AGENT_ID  # ingest a PRE-EXISTING native reports dir
+# recovery only: re-ingest the report a client run produced when that run's ingest failed
+python3 ~/.crucible/clients/arduino-crucible.py auto-ingest --agent AGENT_ID
 ```
+
+`auto-ingest` is recovery only: it re-ingests the native report a client run
+produced when that run's own ingest failed. It is not a run path.
 
 ### Pre-merge gate
 

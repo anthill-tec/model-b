@@ -9,9 +9,9 @@ metadata:
 # Crucible Report — Rust / Cargo
 
 `~/.crucible/clients/rust-crucible.py` is the CLI client — it runs cargo AND ingests to the
-Crucible v2 API in one call under your agent id. The urllib helpers below are
-the direct-call fallback. The agent MUST pass its own agent ID explicitly — no
-shell env vars for identity.
+Crucible v2 API in one call under your agent id; every Crucible call goes
+through it. The agent MUST pass its own agent ID explicitly — no shell env vars
+for identity.
 
 That path is the default location of Crucible's installed clients: the client
 is listed in `~/.crucible/crucible-clients.json` and installed by Crucible's own
@@ -20,7 +20,7 @@ installer, and it is not shipped, vendored or maintained by Model B.
 > **MANDATORY for RED/GREEN/regression cycle runs:** run the tests **through
 > `rust-crucible.py`** (`test` for a targeted cycle, `regression-ingest` for the
 > coverage gate). Do NOT invoke `cargo nextest` directly for a cycle run and
-> then hand-ingest; that's the fallback only for edge cases.
+> then hand-ingest.
 
 ## Workflow context (env convention)
 
@@ -51,15 +51,16 @@ WORKFLOW_CYCLE="my cycle label" \
 python3 ~/.crucible/clients/rust-crucible.py test --crate nai_runtime --agent red-nai-042
 ```
 
-Runs `cargo nextest run -p <crate>` and ingests the JUnit XML. If you already
-ran the tests yourself, `auto-ingest` detects: JUnit XML exists → ingest as
-tests; no XML → capture `cargo check` stderr → ingest as rustc compile errors:
+Runs the crate's tests with nextest and ingests the JUnit XML.
+
+`auto-ingest` is recovery only: it re-ingests the report a client run produced
+when that run's own ingest failed — JUnit XML exists → ingest as tests; no XML →
+the crate's compile errors → ingest as rustc compile errors. It is not a run path:
 
 ```bash
+# recovery only: re-ingest the report a client run produced when that run's ingest failed
 python3 ~/.crucible/clients/rust-crucible.py auto-ingest --agent red-nai-042 --crate nai_runtime
 ```
-
-RED agents with compile failures get their errors tracked correctly.
 
 ### 2. After a full regression (VERIFY / post-merge / orchestrator — tier: regression)
 
@@ -68,8 +69,8 @@ WORKFLOW_CYCLE="my cycle label" \
 python3 ~/.crucible/clients/rust-crucible.py regression-ingest --agent vd-orchestrator --crates nai_ast,nai_runtime
 ```
 
-Runs: clean → `cargo llvm-cov nextest` → parse JUnit + lcov → ingest tests +
-coverage in one `POST /api/v2/runs/parsed`.
+Runs: clean → the tests under llvm-cov with nextest → parse JUnit + lcov → ingest
+tests + coverage in one `POST /api/v2/runs/parsed`.
 
 ### 3. Compile-only gates
 
@@ -77,85 +78,16 @@ coverage in one `POST /api/v2/runs/parsed`.
 python3 ~/.crucible/clients/rust-crucible.py check --crate nai_runtime --agent green-nai-017
 ```
 
-Runs `cargo check` and ingests stderr as rustc compile errors when it fails.
+Runs a cargo compile check and ingests stderr as rustc compile errors when it fails.
 
 ### Quick Reference
 
 | When | Call | What it does |
 |------|------|-------------|
-| RED agent wrote tests | `test` / `auto-ingest` | Compile failure → rustc ingest, else junit |
-| GREEN agent made tests pass | `test` / `auto-ingest` | Finds JUnit XML → junit ingest |
-| FIX agent applied fixes | `test` / `auto-ingest` | Finds JUnit XML → junit ingest |
+| RED agent wrote tests | `test` | Runs + junit ingest |
+| GREEN agent made tests pass | `test` | Runs + junit ingest |
+| FIX agent applied fixes | `test` | Runs + junit ingest |
 | VERIFY / post-merge | `regression-ingest` | Clean + coverage + parsed ingest |
-
----
-
-## Manual Patterns (fallback only — prefer the client above)
-
-```python
-import json, urllib.request
-
-def _read_env(env_path="/home/antonyj/Documents/data_projects/nai/.env"):
-    env = {}
-    with open(env_path) as f:
-        for line in f:
-            if "=" in line:
-                k, v = line.strip().split("=", 1)
-                env[k] = v
-    return env
-
-def _post(path, payload):
-    req = urllib.request.Request(f"http://localhost:3849{path}",
-        data=json.dumps(payload).encode(), headers={"Content-Type": "application/json"})
-    return json.loads(urllib.request.urlopen(req).read())
-
-def crucible_register(agent_id, role="RED", cycle_id=None):
-    """Register agent with Crucible. Call FIRST before any work.
-
-    role is case-exact: RED|GREEN|FIX|VERIFY|ORCHESTRATOR|report.
-    cycle_id is REQUIRED by the server for the four TDD roles (409 without);
-    ORCHESTRATOR/report may register unbound.
-    """
-    env = _read_env()
-    payload = {
-        "agentId": agent_id, "projectKey": env["CRUCIBLE_PROJECT_KEY"],
-        "role": role, "status": "online", "message": f"Starting {role}",
-        "identity": {"displayName": f"{role} {agent_id}", "source": "claude-md"}}
-    if cycle_id is not None:
-        payload["cycleId"] = cycle_id
-    return _post("/api/v2/agents/register", payload)
-
-def crucible_unregister(agent_id):
-    """Unregister agent from Crucible. Call LAST before session ends."""
-    env = _read_env()
-    return _post("/api/v2/agents/unregister",
-        {"agentId": agent_id, "projectKey": env["CRUCIBLE_PROJECT_KEY"]})
-
-def crucible_ingest_junit(agent_id, junit_path):
-    """Ingest JUnit XML test results (from cargo nextest)."""
-    env = _read_env()
-    return _post("/api/v2/runs",
-        {"projectKey": env["CRUCIBLE_PROJECT_KEY"], "codec": "junit",
-         "dataPath": junit_path, "agentId": agent_id, "tier": "unit"})
-
-def crucible_ingest_rustc(agent_id, rustc_output_path):
-    """Ingest Rust compiler errors with format=rustc."""
-    env = _read_env()
-    with open(rustc_output_path) as f:
-        errors_text = f.read()
-    return _post("/api/v2/runs/compile",
-        {"projectKey": env["CRUCIBLE_PROJECT_KEY"], "format": "rustc",
-         "errors": errors_text, "agentId": agent_id})
-
-def crucible_ingest_parsed(agent_id, summary, tree, coverage=None):
-    """Ingest pre-parsed results with optional coverage (regression runs with lcov)."""
-    env = _read_env()
-    payload = {"projectKey": env["CRUCIBLE_PROJECT_KEY"], "agentId": agent_id,
-               "summary": summary, "tree": tree, "tier": "regression"}
-    if coverage:
-        payload["coverage"] = coverage
-    return _post("/api/v2/runs/parsed", payload)
-```
 
 ## Report Locations
 
@@ -170,14 +102,14 @@ def crucible_ingest_parsed(agent_id, summary, tree, coverage=None):
 
 - **Every test run gets ingested** — RED, GREEN, regression, compile failure
 - **Register before first ingest, unregister when done** — between runs, ingest is the heartbeat; no ping loop
-- **Use the client (or Python urllib) for ALL Crucible calls** — not bash curl
+- **Use the client for ALL Crucible calls** — never a hand-made HTTP call
 - **Pass agent id explicitly** — never rely on env vars for agent identity
 - **Endpoint routing is mandatory — use the RIGHT endpoint for each scenario:**
   - **Tests didn't compile** → `/api/v2/runs/compile` with `format: "rustc"` and `errors` (raw stderr). Shows in the **compile panel**. No tests ran, so there are no test results to report.
   - **Tests compiled and ran** (pass or fail) → `/api/v2/runs` with `codec: "junit"` and JUnit XML. Shows in the **test results panel**. Even if all tests fail, they still ran — report them as test results, NOT compile errors.
   - **NEVER send test results to `/api/v2/runs/compile`** — that panel is for compiler errors only
   - **NEVER send compile errors to `/api/v2/runs`** — 0/N test results are logically inconsistent when tests never ran
-  - `auto-ingest` handles this automatically: JUnit XML exists → `/api/v2/runs`, no XML → `/api/v2/runs/compile`
+  - The client routes this itself; on recovery, `auto-ingest` re-ingests along the same split: JUnit XML exists → `/api/v2/runs`, no XML → `/api/v2/runs/compile`
 - **Coverage ONLY on full green regression** — ingest coverage ONLY when ALL tests across ALL crates pass (zero failures). Even 1 failure in 1 crate = no coverage; the server also discards coverage on failing runs as a safety net.
 - **Read the responses** — every JSON reply carries `help` hints; GETs also serve compact TOON (`?fmt=toon` or `Accept: text/toon`) for cheap reads.
 

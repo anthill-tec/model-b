@@ -9,8 +9,7 @@ metadata:
 # Crucible Report — Bun / TypeScript
 
 `~/.crucible/clients/bun-crucible.py` is the CLI client — it runs the tests AND ingests to
-the Crucible v2 API in one call under your agent id. Direct `curl`/`fetch`
-against the v2 endpoints is the fallback for edge cases only.
+the Crucible v2 API in one call under your agent id.
 
 That path is the default location of Crucible's installed clients: the client
 is listed in `~/.crucible/crucible-clients.json` and installed by Crucible's own
@@ -49,7 +48,7 @@ WORKFLOW_CYCLE="my cycle label" \
 python3 ~/.crucible/clients/bun-crucible.py test --tests tests/my-feature.test.ts --agent AGENT_ID
 ```
 
-Runs `bun test` with a JUnit reporter, parses the XML, and POSTs
+Runs the tests with a JUnit reporter, parses the XML, and POSTs
 `/api/v2/runs/parsed` (or `/api/v2/runs/compile` when the suite fails to load).
 
 ### Regression Run (full suite — with lcov coverage; tier: regression)
@@ -66,8 +65,12 @@ Coverage is parsed from `coverage/lcov.info` and sent in the SAME
 
 ```bash
 python3 ~/.crucible/clients/bun-crucible.py check --agent AGENT_ID     # tsc → /api/v2/runs/compile
-python3 ~/.crucible/clients/bun-crucible.py auto-ingest --agent AGENT_ID  # ingest an existing report
+# recovery only: re-ingest the report a client run produced when that run's ingest failed
+python3 ~/.crucible/clients/bun-crucible.py auto-ingest --agent AGENT_ID
 ```
+
+`auto-ingest` is recovery only: it re-ingests the report a client run produced
+when that run's own ingest failed. It is not a run path.
 
 ### Report Locations (Bun)
 

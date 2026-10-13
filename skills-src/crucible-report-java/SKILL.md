@@ -10,8 +10,8 @@ metadata:
 
 `~/.crucible/clients/mvn-crucible.py` is the CLI client — it runs Maven AND ingests to the
 Crucible v2 API in one call under your agent id (tiers: `unit` / `module` /
-`e2e` / `regression`, plus `compile`, `auto-ingest`, `docker-up`/`docker-down`,
-`pre-merge-gate`). Direct curl against the v2 endpoints is the fallback only.
+`e2e` / `regression`, plus `compile`, `docker-up`/`docker-down`, `pre-merge-gate`,
+and `auto-ingest` for recovery only).
 
 That path is the default location of Crucible's installed clients: the client
 is listed in `~/.crucible/crucible-clients.json` and installed by Crucible's own
@@ -40,8 +40,8 @@ python3 ~/.crucible/clients/mvn-crucible.py unregister --agent AGENT_ID
 
 ### Targeted Run (RED or GREEN — NEVER include coverage; tier: unit)
 
-The client runs `mvn clean test` scoped to your SUT — `clean` wipes
-`target/surefire-reports/` so only the SUT's XML exists, making the ingest
+The client runs a clean Maven test build scoped to your SUT — the clean step
+wipes `target/surefire-reports/` so only the SUT's XML exists, making the ingest
 accurate. A compile failure is auto-routed to `/api/v2/runs/compile`.
 
 ```bash
@@ -84,6 +84,15 @@ Crucible parses Maven/javac error output into structured per-file errors
 (pattern: `[ERROR] /path/File.java:[line,col] message`) via
 `POST /api/v2/runs/compile` with `format: "java"`. If parsing fails, raw
 output is stored as fallback.
+
+### Recovery after a failed ingest
+
+`auto-ingest` is recovery only: it re-ingests the surefire report a client run
+produced when that run's own ingest failed. It is not a run path.
+
+```bash
+python3 ~/.crucible/clients/mvn-crucible.py auto-ingest --module backend --agent AGENT_ID
+```
 
 ### Report Locations (Java / Maven)
 

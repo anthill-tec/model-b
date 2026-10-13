@@ -74,12 +74,16 @@ the interface, and every stack has one.
 
 | Stack | Client | Key verbs beyond register/unregister | Reference |
 |-------|--------|--------------------------------------|-----------|
-| rust | `rust-crucible.py` | `test --crate`, `check --crate`, `auto-ingest`, `regression-ingest --crates`, `workspace-regression`, `clippy`/`workspace-clippy`, `smoke-test`, `docker-up/down`, `pre-merge-gate`, `docker-e2e-gate` + the plan verbs | `references/rust.md` → bundled `crucible-report-rust` |
-| java | `mvn-crucible.py` | `unit --test <Class> [--module <m>]`, `module`, `compile`, `e2e`, `regression`, `auto-ingest`, `docker-up/down`, `pre-merge-gate` + the plan verbs | `references/java.md` → bundled `crucible-report-java` |
-| bun | `bun-crucible.py` | universal verbs (`test --tests <file>`, `regression [--coverage]`, `check`, `auto-ingest`, `pre-merge-gate`) + the plan verbs — **REFERENCE IMPLEMENTATION** for the V2 client API | `references/bun.md` → bundled `crucible-report-bun` |
-| python | `python-crucible.py` | `test --tests <dotted.path>`, `regression [--coverage --cov-source]`, `check`, `auto-ingest`, `pre-merge-gate` + the plan verbs | `references/python.md` → bundled `crucible-report-python` |
-| arduino | `arduino-crucible.py` | `test`/`unit` (native host make junit), `regression`, `auto-ingest`, `check`/`compile` (arduino-cli), `pre-merge-gate` + the plan verbs | `references/arduino.md` → bundled `crucible-report-arduino` |
+| rust | `rust-crucible.py` | `test --crate`, `check --crate`, `auto-ingest` (recovery only), `regression-ingest --crates`, `workspace-regression`, `clippy`/`workspace-clippy`, `smoke-test`, `docker-up/down`, `pre-merge-gate`, `docker-e2e-gate` + the plan verbs | `references/rust.md` → bundled `crucible-report-rust` |
+| java | `mvn-crucible.py` | `unit --test <Class> [--module <m>]`, `module`, `compile`, `e2e`, `regression`, `auto-ingest` (recovery only), `docker-up/down`, `pre-merge-gate` + the plan verbs | `references/java.md` → bundled `crucible-report-java` |
+| bun | `bun-crucible.py` | universal verbs (`test --tests <file>`, `regression [--coverage]`, `check`, `auto-ingest` (recovery only), `pre-merge-gate`) + the plan verbs — **REFERENCE IMPLEMENTATION** for the V2 client API | `references/bun.md` → bundled `crucible-report-bun` |
+| python | `python-crucible.py` | `test --tests <dotted.path>`, `regression [--coverage --cov-source]`, `check`, `auto-ingest` (recovery only), `pre-merge-gate` + the plan verbs | `references/python.md` → bundled `crucible-report-python` |
+| arduino | `arduino-crucible.py` | `test`/`unit` (native host make junit), `regression`, `auto-ingest` (recovery only), `check`/`compile` (arduino-cli), `pre-merge-gate` + the plan verbs | `references/arduino.md` → bundled `crucible-report-arduino` |
 | electronics/hardware | excluded — under revision | — | — |
+
+`auto-ingest` is recovery only, on every stack: it re-ingests the report a client run
+produced when that run's own ingest failed. It is never a run path — every run goes through
+the client's run verbs, which ingest as they run.
 
 Clients are Crucible's installed, published clients —
 `~/.crucible/clients/<stack>-crucible.py`, the default location Crucible's own
