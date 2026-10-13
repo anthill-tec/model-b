@@ -359,6 +359,12 @@ class InterpreterRefusalTest(_InterpreterSandboxCase):
                 self.assert_refused(self.run_installer(), "absent",
                                     reason="did not report its version")
 
+    def test_a_virtual_environment_python3_and_none_found_is_absent_and_refused(self):
+        """DN §D22: a ``python3`` at the floor rejected as a virtual environment counts as
+        none — ``absent``, the reason naming the virtual environment."""
+        write_interpreter_fixture(self.bin_dir, venv=True, uv_found=None)
+        self.assert_refused(self.run_installer(), "absent", reason="virtual environment")
+
     def test_allow_missing_capabilities_does_not_override_the_refusal(self):
         write_interpreter_fixture(self.bin_dir, version="3.12.3", uv_found=None)
         result = self.run_installer("--allow-missing-capabilities")
