@@ -1,6 +1,6 @@
 # CR-MDB-065 — Skill frontmatter parses, and stays within Pi's limits
 
-**Status:** PENDING (filed 2026-10-13; gap analysis and pre-review 2026-10-13) — **locked**
+**Status:** COMPLETED (filed 2026-10-13; gap analysis and pre-review 2026-10-13)
 **Type:** fix (skill metadata, guard test)
 **Priority:** P1 — release 1.0.0, wave 2.
 **Depends on:** CR-MDB-056 (merged; board-authoritative: read `queue`)

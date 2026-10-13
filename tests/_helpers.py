@@ -516,3 +516,17 @@ def at_line(path: str, line: int) -> str:
     Assembled at run time, so a test expecting a checker's located finding never carries a
     path-and-line citation in its own source (CR-MDB-044 §S4: code is cited by symbol)."""
     return ":".join((path, str(line)))
+
+
+def _find_pi_package_root(pi_binary_resolved: Path) -> Path | None:
+    """Walk up from the resolved `pi` binary looking for the un-bundled
+    package root (needs `dist/core/extensions/loader.js` -- the compiled
+    single-file `dist/bundle/cli.js` alone does not expose jiti loading).
+
+    One copy, shared by `test_pi_hook_runtime` and `test_skill_frontmatter`
+    (CR-MDB-065 §S3.2); each imports it under this name, so a skip test patches
+    it on the importing module, where that module's resolver looks it up."""
+    for parent in pi_binary_resolved.parents:
+        if (parent / "dist" / "core" / "extensions" / "loader.js").is_file():
+            return parent
+    return None
