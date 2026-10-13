@@ -893,7 +893,19 @@ Implemented by CR-MDB-057 and CR-MDB-056.
 (it declared `>=3.11`, set for `tomllib`). The floor is a public contract: pip and uv install the
 package only on an interpreter that meets it, and the hook scripts run under the user's own
 `python3`. With the floor equal to the development default, the pre-merge gate needs no
-second-interpreter run. Implemented by CR-MDB-064.
+second-interpreter run.
+
+**The floor reaches the scripts through a recorded interpreter (user ruling, same day).** The hook and
+tool scripts are not run by `modelb-axi`'s interpreter: they carry `#!/usr/bin/env python3`, and the
+Pi shim and the skills run them directly, so they get whatever `python3` comes first on `PATH` — on a
+long-term-support distribution often 3.11 or 3.12. So:
+- the installer records an interpreter that meets the floor — `python3` on `PATH` when it does, else
+  `uv python find 3.14` — and fails preflight, naming `uv python install 3.14`, when there is none;
+- the deploy step writes that interpreter into the shebang of every deployed script whose first line
+  is the python shebang, and the manifest records the rendered bytes' hash;
+- every documented invocation runs a deployed script directly, never through `python3`.
+
+Implemented by CR-MDB-064.
 
 ## Consequences per CR
 
