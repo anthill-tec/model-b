@@ -18,6 +18,7 @@ import ast
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -252,6 +253,162 @@ def client_source(key: str, log_path: Path, envelope: str) -> str:
         f"    fh.write(json.dumps({{'key': {key!r}, 'argv': sys.argv[1:]}}) + '\\n')\n"
         f"print({envelope!r})\n"
     )
+
+# ------------------------------------------------------------------ interpreter fixture ----
+
+#: The published Python floor (CR-MDB-064 §S2): the installer accepts an interpreter at or
+#: above it and records it.
+PYTHON_FLOOR = "3.14"
+#: The version the shared installer fixture's ``python3`` reports: exactly the floor.
+FIXTURE_PYTHON_VERSION = "3.14.0"
+#: The remediation §S2 names when no interpreter meets the floor.
+PYTHON_REMEDIATION = "uv python install 3.14"
+#: The uv query §S2 names for the second candidate: ``uv python find --system '>=3.14'``.
+UV_PYTHON_FIND_ARGS = ("python", "find", "--system", ">=3.14")
+
+#: What a fake ``uv`` does for every invocation but the interpreter query: a ``tool install``
+#: succeeds, anything else prints a version and exits 0.
+DEFAULT_UV_BODY = (
+    "#!/bin/sh\n"
+    'if [ "$1" = "tool" ] && [ "$2" = "install" ]; then exit 0; fi\n'
+    'echo "uv 0.0.0-fake"\n'
+    "exit 0\n"
+)
+
+_PYTHON3_STUB_BODY = r'''
+import collections
+import os
+import re
+import sys
+
+_args = sys.argv[1:]
+if _LOG:
+    with open(_LOG, "a", encoding="utf-8") as _fh:
+        _fh.write(" ".join(["python3", *_args]).replace("\n", "\\n") + "\n")
+_major, _minor, _micro = (int(_p) for _p in _VERSION.split("."))
+_i = 0
+while _i < len(_args):
+    _a = _args[_i]
+    if _a in ("-V", "--version", "-VV"):
+        print(f"Python {_VERSION}")
+        sys.exit(0)
+    if _a in ("-c", "-m", "-") or not _a.startswith("-"):
+        break
+    _i += 2 if _a in ("-X", "-W") else 1
+_rest = _args[_i:]
+if not _rest:
+    sys.exit(0)
+if _rest[0] == "-m":
+    sys.exit(0)
+if _rest[0] == "-c":
+    _code, _argv = (_rest[1] if len(_rest) > 1 else ""), ["-c", *_rest[2:]]
+elif _rest[0] == "-":
+    _code, _argv = sys.stdin.read(), ["-", *_rest[1:]]
+else:
+    with open(_rest[0], encoding="utf-8") as _fh:
+        _code = _fh.read()
+    _argv = list(_rest)
+# An import-only program is a module check (the stack python probe's `-c "import …"`):
+# answered without importing anything, as a bare `exit 0` stub answered it.
+if re.fullmatch(r"\s*(?:import\s+[\w.]+(?:\s*,\s*[\w.]+)*\s*;?\s*)+", _code):
+    sys.exit(0 if _IMPORTS_OK else 1)
+_info = collections.namedtuple("version_info", "major minor micro releaselevel serial")(
+    _major, _minor, _micro, "final", 0)
+sys.version_info = _info
+sys.version = f"{_VERSION} (main, Oct  1 2026, 00:00:00) [GCC 14.2.0]"
+sys.hexversion = (_major << 24) | (_minor << 16) | (_micro << 8) | 0xF0
+try:
+    sys.implementation.version = _info
+except (AttributeError, TypeError):
+    pass
+sys.base_prefix = sys.base_exec_prefix = "/usr"
+sys.prefix = sys.exec_prefix = "/opt/fixture-venv" if _VENV else "/usr"
+sys.executable = os.path.abspath(sys.argv[0])
+sys.argv = _argv
+exec(compile(_code, "<string>" if _argv[0] in ("-c", "-") else _argv[0], "exec"),
+     {"__name__": "__main__", "__builtins__": __builtins__})
+'''
+
+
+def python3_stub(version: str = FIXTURE_PYTHON_VERSION, *, venv: bool = False,
+                 imports_ok: bool = True, log=None) -> str:
+    """An executable ``python3`` stand-in reporting ``version`` (``X.Y.Z``) — the shared
+    installer fixture's interpreter (CR-MDB-064 §S7).
+
+    It answers the way a real interpreter does, whatever the caller asks: ``-V``/``--version``
+    print ``Python <version>``; a program (``-c``, a script path, or ``-`` on stdin) runs on the
+    test's own interpreter with ``sys.version_info``, ``sys.version``, ``sys.hexversion`` and
+    ``sys.implementation.version`` reporting ``version``, ``sys.base_prefix`` ``/usr`` and
+    ``sys.prefix`` ``/usr`` — or, with ``venv``, a virtual environment's prefix — and
+    ``sys.executable`` its own path as invoked. An import-only program (the stack ``python``
+    probe's module check) imports nothing and exits 0, or 1 without ``imports_ok``; ``-m``
+    (``-m pip install …``) runs nothing and exits 0. ``log``, when given, gets one
+    ``python3 <args>`` line per run, a newline in an argument written ``\\n``."""
+    header = (
+        f"#!{sys.executable}\n"
+        f"_VERSION = {version!r}\n"
+        f"_VENV = {bool(venv)!r}\n"
+        f"_IMPORTS_OK = {bool(imports_ok)!r}\n"
+        f"_LOG = {str(log) if log else None!r}\n"
+    )
+    return header + _PYTHON3_STUB_BODY
+
+
+def uv_stub(found=None, body: str = DEFAULT_UV_BODY, *, log=None) -> str:
+    """An executable ``uv`` stand-in (CR-MDB-064 §S7). ``uv python find`` called with both
+    ``--system`` and ``>=3.14`` prints ``found`` and exits 0; with ``found`` ``None``, or without
+    either argument, it reports no interpreter and exits 2, as uv does. Every other invocation
+    runs ``body`` (a ``/bin/sh`` script; its shebang line is dropped). ``log``, when given, gets
+    the arguments of every ``python find`` call, one line each."""
+    lines = ["#!/bin/sh", 'if [ "$1" = "python" ] && [ "$2" = "find" ]; then']
+    if log:
+        lines.append(f"    printf '%s\\n' \"$*\" >> {shlex.quote(str(log))}")
+    lines += [
+        "    system=; floor=",
+        '    for arg in "$@"; do',
+        '        case "$arg" in',
+        "            --system) system=1 ;;",
+        "            '>=3.14') floor=1 ;;",
+        "        esac",
+        "    done",
+    ]
+    if found is not None:
+        lines.append('    if [ -n "$system" ] && [ -n "$floor" ]; then '
+                     f"printf '%s\\n' {shlex.quote(str(found))}; exit 0; fi")
+    lines += [
+        "    echo 'error: No interpreter found for Python >=3.14 in virtual environments, "
+        "managed installations, or search path' >&2",
+        "    exit 2",
+        "fi",
+    ]
+    rest = body.split("\n", 1)[1] if body.startswith("#!") else body
+    return "\n".join(lines) + "\n" + rest
+
+
+#: ``write_interpreter_fixture``'s default for ``uv_found``: the ``python3`` it wrote.
+FIXTURE_PYTHON3 = object()
+
+
+def write_interpreter_fixture(bin_dir, *, version: str = FIXTURE_PYTHON_VERSION,
+                              venv: bool = False, imports_ok: bool = True,
+                              python3: bool = True, uv_found=FIXTURE_PYTHON3,
+                              uv_body: str = DEFAULT_UV_BODY, uv_log=None,
+                              python3_log=None):
+    """The shared installer fixture (CR-MDB-064 §S7): writes ``bin_dir/python3`` — a
+    :func:`python3_stub` reporting ``version`` (the floor, 3.14, by default), not a virtual
+    environment unless ``venv`` — and ``bin_dir/uv`` — a :func:`uv_stub` answering
+    ``uv python find --system '>=3.14'`` with ``uv_found`` (by default that ``python3``'s path;
+    ``None`` finds none) and running ``uv_body`` for everything else. ``python3=False`` writes
+    no ``python3``. Returns the ``python3`` path, or ``None``."""
+    bin_dir = Path(bin_dir)
+    python3_path = None
+    if python3:
+        python3_path = write_executable(bin_dir, "python3", python3_stub(
+            version, venv=venv, imports_ok=imports_ok, log=python3_log))
+    if uv_found is FIXTURE_PYTHON3:
+        uv_found = python3_path
+    write_executable(bin_dir, "uv", uv_stub(uv_found, uv_body, log=uv_log))
+    return python3_path
 
 
 # ------------------------------------------------------------------ source scans ----

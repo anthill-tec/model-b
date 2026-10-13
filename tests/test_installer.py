@@ -38,6 +38,7 @@ from pathlib import Path
 
 from tests._helpers import decode_envelope as _decode_envelope
 from tests._helpers import write_executable as _write_fake_executable
+from tests._helpers import write_interpreter_fixture
 from tests.pi_capability_sandbox import shared_home_without_crucible, with_agent_dir
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -106,6 +107,10 @@ def _run_module(*args, env_overrides=None, timeout=15, stdin=subprocess.DEVNULL)
 # Fake `uv` fixture: `uv tool install <pkg>` writes an invocation marker
 # (when $FAKE_UV_INSTALL_MARKER is set) instead of touching the network;
 # any other invocation (e.g. `--version`) just exits 0.
+# MIGRATED at CR-MDB-064 C2 RED (§S7): every installer run here writes its fake `uv`
+# through the shared installer fixture (`write_interpreter_fixture`), which puts a
+# `python3` at the 3.14 floor beside it (the interpreter is required, CR-MDB-064 §S2)
+# and answers `uv python find --system '>=3.14'`.
 _FAKE_UV_SCRIPT = (
     "#!/bin/sh\n"
     'if [ "$1" = "tool" ] && [ "$2" = "install" ]; then\n'
@@ -366,7 +371,7 @@ class NonInteractivePromptsTest(unittest.TestCase):
         # one -- fake `uv`/`sandesh` stand in for the bootstrap deps this
         # run previously found on the developer's PATH.
         self._tmp_bin = tempfile.mkdtemp(prefix="modelb-axi-fakebin-")
-        _write_fake_executable(self._tmp_bin, "uv", _FAKE_UV_SCRIPT)
+        write_interpreter_fixture(self._tmp_bin, uv_body=_FAKE_UV_SCRIPT)
         _write_fake_executable(self._tmp_bin, "sandesh", _FAKE_SANDESH_SCRIPT)
 
     def tearDown(self):
@@ -426,7 +431,7 @@ class DependencyPreflightReportingTest(unittest.TestCase):
         shutil.rmtree(self._tmp_bin, ignore_errors=True)
 
     def test_all_three_deps_reported_with_exact_detected_and_absent_verdicts(self):
-        _write_fake_executable(self._tmp_bin, "uv", _FAKE_UV_SCRIPT)
+        write_interpreter_fixture(self._tmp_bin, uv_body=_FAKE_UV_SCRIPT)
         _write_fake_executable(self._tmp_bin, "sandesh", _FAKE_SANDESH_SCRIPT)
         # CR-MDB-036 migration: `crucible` is now judged by Crucible's
         # released-client manifest (~/.crucible/crucible-clients.json),
@@ -462,7 +467,7 @@ class DependencyPreflightReportingTest(unittest.TestCase):
         )
 
     def test_sandesh_absent_from_path_reported_as_absent_not_detected(self):
-        _write_fake_executable(self._tmp_bin, "uv", _FAKE_UV_SCRIPT)
+        write_interpreter_fixture(self._tmp_bin, uv_body=_FAKE_UV_SCRIPT)
         # No fake `sandesh` written -- the isolated PATH (only this tmp
         # bin dir, never the host's real PATH) guarantees truthful
         # absence regardless of what's installed on the machine running
@@ -495,7 +500,7 @@ class DependencyPreflightReportingTest(unittest.TestCase):
         the stage-2 harness-targeting announcement (CR-MDB-033 §S6
         migration: this is an ORDERING check over human prose, which now
         lives entirely on stderr, not stdout)."""
-        _write_fake_executable(self._tmp_bin, "uv", _FAKE_UV_SCRIPT)
+        write_interpreter_fixture(self._tmp_bin, uv_body=_FAKE_UV_SCRIPT)
         _write_fake_executable(self._tmp_bin, "sandesh", _FAKE_SANDESH_SCRIPT)
         # CR-MDB-036 C2 migration: HOME pinned to a manifest-less sandbox --
         # this run used to read the real ~/.crucible (found at C1 GREEN).
@@ -541,7 +546,7 @@ class CrucibleAbsentWarnsRecordsAbsentAndDeploysNothingTest(unittest.TestCase):
         shutil.rmtree(self._tmp_bin, ignore_errors=True)
 
     def test_crucible_absent_warns_names_own_installer_and_deploys_zero_files(self):
-        _write_fake_executable(self._tmp_bin, "uv", _FAKE_UV_SCRIPT)
+        write_interpreter_fixture(self._tmp_bin, uv_body=_FAKE_UV_SCRIPT)
         _write_fake_executable(self._tmp_bin, "sandesh", _FAKE_SANDESH_SCRIPT)
         # CR-MDB-036 migration: "Crucible absent" now means no released-
         # client manifest at ~/.crucible/crucible-clients.json -- an EMPTY sandbox
@@ -630,8 +635,8 @@ class SandeshAbsentInstallViaUvShimTest(unittest.TestCase):
             os.remove(self._marker_path)
 
     def test_sandesh_absent_yes_invokes_uv_tool_install_sandesh_relay_via_shim(self):
-        _write_fake_executable(
-            self._tmp_bin, "uv", _fake_uv_script_placing_sandesh(self._tmp_bin),
+        write_interpreter_fixture(
+            self._tmp_bin, uv_body=_fake_uv_script_placing_sandesh(self._tmp_bin),
         )
         # No fake `sandesh` -- absent, which must trigger the proactive
         # install path under this chosen contract. CR-MDB-037 \u00a7S5
@@ -825,7 +830,7 @@ class HarnessTargetingTest(unittest.TestCase):
         return list(axi.get("harnesses", []))
 
     def test_detected_roster_binaries_proposed_as_default_selection_without_harnesses_flag(self):
-        _write_fake_executable(self._tmp_bin, "uv", _FAKE_UV_SCRIPT)
+        write_interpreter_fixture(self._tmp_bin, uv_body=_FAKE_UV_SCRIPT)
         _write_fake_executable(self._tmp_bin, "sandesh", _FAKE_SANDESH_SCRIPT)
         _write_fake_executable(self._tmp_bin, "pi", _FAKE_HARNESS_BIN_SCRIPT)
         result = _run_module(
@@ -848,7 +853,7 @@ class HarnessTargetingTest(unittest.TestCase):
         )
 
     def test_explicit_harnesses_flag_wins_over_detected_set(self):
-        _write_fake_executable(self._tmp_bin, "uv", _FAKE_UV_SCRIPT)
+        write_interpreter_fixture(self._tmp_bin, uv_body=_FAKE_UV_SCRIPT)
         _write_fake_executable(self._tmp_bin, "sandesh", _FAKE_SANDESH_SCRIPT)
         # Detected set is EMPTY (no `pi` binary on PATH) -- the explicit
         # --harnesses pi must win outright (CR-MDB-031 §S1 flip).
@@ -867,7 +872,7 @@ class HarnessTargetingTest(unittest.TestCase):
         )
 
     def test_unknown_harness_name_in_flag_exits_nonzero_naming_valid_roster(self):
-        _write_fake_executable(self._tmp_bin, "uv", _FAKE_UV_SCRIPT)
+        write_interpreter_fixture(self._tmp_bin, uv_body=_FAKE_UV_SCRIPT)
         _write_fake_executable(self._tmp_bin, "sandesh", _FAKE_SANDESH_SCRIPT)
         result = _run_module(
             "--yes", "--harnesses", "bogus-harness",
@@ -904,7 +909,7 @@ class DeployEngineTest(unittest.TestCase):
         self._tmp_home = tempfile.mkdtemp(prefix="modelb-axi-home-")
         self._tmp_bin = tempfile.mkdtemp(prefix="modelb-axi-fakebin-")
         self._tmp_target_root = tempfile.mkdtemp(prefix="modelb-axi-target-")
-        _write_fake_executable(self._tmp_bin, "uv", _FAKE_UV_SCRIPT)
+        write_interpreter_fixture(self._tmp_bin, uv_body=_FAKE_UV_SCRIPT)
         _write_fake_executable(self._tmp_bin, "sandesh", _FAKE_SANDESH_SCRIPT)
 
     def tearDown(self):

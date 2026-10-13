@@ -41,6 +41,7 @@ from pathlib import Path
 
 from tests._helpers import decode_axi as _decode
 from tests._helpers import write_executable as _write_exe
+from tests._helpers import write_interpreter_fixture
 from tests.pi_capability_sandbox import (
     AGENT_DIR_ENV,
     MODELB_PI_PACKAGE,
@@ -57,7 +58,6 @@ WORKTREE_INSTALL = f"pi install npm:{MODELB_PI_PACKAGE}"
 WORKTREE_PI_ARGS = f"install npm:{MODELB_PI_PACKAGE}"
 
 _FAKE_UV = "#!/bin/sh\necho uv-fake\nexit 0\n"
-_FAKE_OK = "#!/bin/sh\nexit 0\n"
 
 
 def _worktree_row() -> dict:
@@ -129,7 +129,11 @@ class WorktreeRequirementRowTest(unittest.TestCase):
 class _WorktreeSandboxCase(unittest.TestCase):
     """Per-test sandbox: MODELB_HOME, target root, XDG_DATA_HOME, fake-bin
     PATH (``uv``, ``sandesh``, a succeeding ``python3``), a Crucible-less
-    HOME, and an agent dir. ``pi`` is a recording shim added per test."""
+    HOME, and an agent dir. ``pi`` is a recording shim added per test.
+
+    MIGRATED at CR-MDB-064 C2 RED (§S7): ``python3`` and ``uv`` are the shared
+    installer fixture's — an interpreter at the 3.14 floor (required, §S2) and a
+    ``uv`` answering ``uv python find --system '>=3.14'``."""
 
     def setUp(self):
         self._root = Path(tempfile.mkdtemp(prefix="modelb-cr029-worktree-")).resolve()
@@ -143,10 +147,9 @@ class _WorktreeSandboxCase(unittest.TestCase):
         for d in (self.modelb_home, self.target_root, self.xdg_data, self.bin_dir):
             d.mkdir(parents=True)
         self.home = make_home(self._root / "home", crucible_manifest=False)
-        _write_exe(self.bin_dir, "uv", _FAKE_UV)
+        write_interpreter_fixture(self.bin_dir, uv_body=_FAKE_UV)
         # MIGRATED at CR-MDB-047 C1 RED (§S1 version floor): a current sandesh.
         _write_exe(self.bin_dir, "sandesh", fake_sandesh())
-        _write_exe(self.bin_dir, "python3", _FAKE_OK)
 
     # -- fixtures ---------------------------------------------------------
 

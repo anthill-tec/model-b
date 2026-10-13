@@ -70,6 +70,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from tests._helpers import requirements_rows as _requirements
+from tests._helpers import write_interpreter_fixture
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 GUIDE = REPO_ROOT / "docs" / "install-guide.md"
@@ -350,11 +351,13 @@ def preflight_prefixes() -> tuple[str, ...]:
         for d in (bin_dir, home, agent):
             d.mkdir()
         # MIGRATED at CR-MDB-047 C1 RED (§S1 version floor): a current sandesh.
-        for name, body in (("uv", "#!/bin/sh\nexit 0\n"),
-                           ("sandesh", "#!/bin/sh\necho 'sandesh 0.4.0'\nexit 0\n")):
-            exe = bin_dir / name
-            exe.write_text(body, encoding="utf-8")
-            exe.chmod(0o755)
+        # MIGRATED at CR-MDB-064 C2 RED (§S7): `python3` and `uv` are the shared installer
+        # fixture's — an interpreter at the 3.14 floor, which the pre-flight requires
+        # (CR-MDB-064 §S2), and a `uv` answering `uv python find --system '>=3.14'`.
+        write_interpreter_fixture(bin_dir, uv_body="#!/bin/sh\nexit 0\n")
+        exe = bin_dir / "sandesh"
+        exe.write_text("#!/bin/sh\necho 'sandesh 0.4.0'\nexit 0\n", encoding="utf-8")
+        exe.chmod(0o755)
         env = dict(os.environ)
         env["PYTHONPATH"] = str(REPO_ROOT) + (
             os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
@@ -986,6 +989,14 @@ class InstallGuideSandeshCliRequiredTest(unittest.TestCase):
 
     def test_every_required_row_stops_an_install_in_the_guide(self):
         self.assertEqual(check_required_rows_stop_an_install(_read(GUIDE)), [])
+
+    def test_the_python3_interpreter_is_a_required_row_the_guide_says_stops_an_install(self):
+        """CR-MDB-064 §S2/§S5: ``python3`` becomes ``required``, so the Warnings
+        section's stop-an-install sentence names it with the other required rows."""
+        required = [r["id"] for r in _requirements() if r["policy"] == "required"]
+        self.assertIn("python3", required, "CR-MDB-064 §S2: the interpreter is required")
+        self.assertNotIn(f"{WARNINGS}: the stop-an-install sentence omits `python3`",
+                         check_required_rows_stop_an_install(_read(GUIDE)))
 
     def test_checker_bites(self):
         ids = [r["id"] for r in _requirements() if r["policy"] == "required"]

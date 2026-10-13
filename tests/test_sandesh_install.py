@@ -39,6 +39,7 @@ from pathlib import Path
 
 from tests._helpers import decode_axi as _decode
 from tests._helpers import write_executable as _write_exe
+from tests._helpers import write_interpreter_fixture
 from tests.pi_capability_sandbox import (
     AGENT_DIR_ENV,
     make_home,
@@ -103,8 +104,12 @@ class _SandeshSandboxCase(unittest.TestCase):
         make_provisioned_agent_dir(self.agent_dir)
         for name in ("bun", "node"):
             _write_exe(self.bin_dir, name, _FAKE_TOOL)
-        _write_exe(self.bin_dir, "uv",
-                   _uv_shim(self.marker, self.bin_dir, places_sandesh=self.places_sandesh))
+        # MIGRATED at CR-MDB-064 C2 RED (§S7): the shared installer fixture — a `python3`
+        # at the 3.14 floor (the interpreter is required, CR-MDB-064 §S2) and a `uv`
+        # answering `uv python find --system '>=3.14'`, otherwise this module's shim.
+        write_interpreter_fixture(
+            self.bin_dir,
+            uv_body=_uv_shim(self.marker, self.bin_dir, places_sandesh=self.places_sandesh))
         self.assertIsNone(
             shutil.which("sandesh", path=str(self.bin_dir)),
             "fixture: sandesh must start absent",
@@ -289,8 +294,10 @@ class SandeshDeclineRecordsWarningTest(_SandeshSandboxCase):
                AGENT_DIR_ENV: str(self.agent_dir)}
         with mock.patch.dict(os.environ, env), \
                 contextlib.redirect_stderr(io.StringIO()) as err:
-            code, deps, _caps = run_preflight(decline, warnings, stacks=(),
-                                              allow_missing_capabilities=True)
+            # MIGRATED at CR-MDB-064 C2 RED (§S2): the accepted interpreter is the
+            # fourth result.
+            code, deps, _caps, _python = run_preflight(decline, warnings, stacks=(),
+                                                       allow_missing_capabilities=True)
         # MIGRATED at CR-MDB-047 C4 FIX (F9): a declined install fails the
         # pre-flight without the override, so the warning is read under it.
         self.assertEqual(code, 0, err.getvalue())

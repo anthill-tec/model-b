@@ -55,7 +55,7 @@ import unittest
 import zipfile
 from pathlib import Path
 
-from tests._helpers import decode_axi
+from tests._helpers import decode_axi, write_interpreter_fixture
 from tests.pi_capability_sandbox import (
     AGENT_DIR_ENV,
     make_home,
@@ -520,9 +520,12 @@ def exercise_sdist(test: unittest.TestCase, sdist: Path) -> None:
     modelb_home, target_root, fake_bin = root / "modelb-home", root / "target", root / "fakebin"
     for d in (modelb_home, target_root, fake_bin, root / "xdg"):
         d.mkdir(parents=True)
-    for name, body in (("uv", _FAKE_UV), ("sandesh", _FAKE_SANDESH)):
-        (fake_bin / name).write_text(body, encoding="utf-8")
-        (fake_bin / name).chmod(0o755)
+    # MIGRATED at CR-MDB-064 C2 RED (§S7): the shared installer fixture — a `python3` at
+    # the 3.14 floor (the interpreter is required, CR-MDB-064 §S2) and a `uv` answering
+    # `uv python find --system '>=3.14'`, otherwise this module's fake.
+    write_interpreter_fixture(fake_bin, uv_body=_FAKE_UV)
+    (fake_bin / "sandesh").write_text(_FAKE_SANDESH, encoding="utf-8")
+    (fake_bin / "sandesh").chmod(0o755)
 
     env = dict(os.environ)
     env.pop("PYTHONPATH", None)  # the repo copy must never shadow the install

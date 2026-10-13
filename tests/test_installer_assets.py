@@ -58,7 +58,7 @@ import tomllib
 import unittest
 from pathlib import Path
 
-from tests._helpers import at_line
+from tests._helpers import at_line, write_interpreter_fixture
 from tests._helpers import write_executable as _write_fake_executable
 from tests.pi_capability_sandbox import with_agent_dir
 
@@ -146,6 +146,10 @@ def _load_build_module():
     return module
 
 
+# MIGRATED at CR-MDB-064 C2 RED (§S7): every installer run here writes its fake `uv`
+# through the shared installer fixture (`write_interpreter_fixture`), which puts a
+# `python3` at the 3.14 floor beside it (the interpreter is required, CR-MDB-064 §S2)
+# and answers `uv python find --system '>=3.14'`.
 _FAKE_UV_SCRIPT = (
     "#!/bin/sh\n"
     'if [ "$1" = "tool" ] && [ "$2" = "install" ]; then\n'
@@ -1067,7 +1071,7 @@ class DeployEngineAllBundlesEndToEndTest(unittest.TestCase):
         self._tmp_home = tempfile.mkdtemp(prefix="modelb-axi-s7-home-")
         self._tmp_bin = tempfile.mkdtemp(prefix="modelb-axi-s7-fakebin-")
         self._tmp_target_root = tempfile.mkdtemp(prefix="modelb-axi-s7-target-")
-        _write_fake_executable(self._tmp_bin, "uv", _FAKE_UV_SCRIPT)
+        write_interpreter_fixture(self._tmp_bin, uv_body=_FAKE_UV_SCRIPT)
         _write_fake_executable(self._tmp_bin, "sandesh", _FAKE_SANDESH_SCRIPT)
 
     def tearDown(self):
@@ -1155,7 +1159,7 @@ class InstalledPackageAssetRootEndToEndTest(unittest.TestCase):
         self._tmp_home = self._mkdtemp("modelb-axi-e2e-home-")
         self._tmp_bin = self._mkdtemp("modelb-axi-e2e-fakebin-")
         self._tmp_target_root = self._mkdtemp("modelb-axi-e2e-target-")
-        _write_fake_executable(self._tmp_bin, "uv", _FAKE_UV_SCRIPT)
+        write_interpreter_fixture(self._tmp_bin, uv_body=_FAKE_UV_SCRIPT)
         _write_fake_executable(self._tmp_bin, "sandesh", _FAKE_SANDESH_SCRIPT)
 
     def _mkdtemp(self, prefix: str) -> str:
@@ -1329,7 +1333,7 @@ class HookScriptsDeployEndToEndTest(unittest.TestCase):
         self._tmp_home = tempfile.mkdtemp(prefix="modelb-axi-hookdeploy-home-")
         self._tmp_bin = tempfile.mkdtemp(prefix="modelb-axi-hookdeploy-fakebin-")
         self._tmp_target_root = tempfile.mkdtemp(prefix="modelb-axi-hookdeploy-target-")
-        _write_fake_executable(self._tmp_bin, "uv", _FAKE_UV_SCRIPT)
+        write_interpreter_fixture(self._tmp_bin, uv_body=_FAKE_UV_SCRIPT)
         _write_fake_executable(self._tmp_bin, "sandesh", _FAKE_SANDESH_SCRIPT)
 
     def tearDown(self):

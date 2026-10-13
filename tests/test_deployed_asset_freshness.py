@@ -54,6 +54,7 @@ import unittest
 from pathlib import Path
 
 from tests._helpers import decode_axi as _decode
+from tests._helpers import python3_stub, write_interpreter_fixture
 from tests._helpers import write_executable as _write_exe
 from tests.pi_capability_sandbox import (
     AGENT_DIR_ENV,
@@ -137,7 +138,15 @@ class _InstalledMachineCase(unittest.TestCase):
             d.mkdir(parents=True)
         make_home(self.home, crucible_manifest=False)
         make_provisioned_agent_dir(self.agent_dir)
-        _write_exe(self.bin_dir, "uv", _FAKE_UV)
+        # MIGRATED at CR-MDB-064 C2 RED (§S7): the shared installer fixture — a `python3`
+        # at the 3.14 floor (the interpreter is required, CR-MDB-064 §S2) and a `uv`
+        # answering `uv python find --system '>=3.14'`. uv reports an interpreter in a
+        # whitespace-free dir, so a sandbox whose root holds a space (a subclass's
+        # ROOT_PREFIX) records that one: a path holding whitespace is rejected (§S2).
+        clean = Path(tempfile.mkdtemp(prefix="modelb-cr064-python-"))
+        self.addCleanup(shutil.rmtree, clean, True)
+        uv_python = _write_exe(clean, "python3.14", python3_stub())
+        write_interpreter_fixture(self.bin_dir, uv_body=_FAKE_UV, uv_found=uv_python)
         _write_exe(self.bin_dir, "sandesh", _FAKE_SANDESH)
         for name in ("bun", "node"):
             _write_exe(self.bin_dir, name, _FAKE_TOOL)

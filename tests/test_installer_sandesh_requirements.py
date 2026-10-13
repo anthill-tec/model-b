@@ -57,7 +57,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from tests._helpers import decode_axi, write_executable
+from tests._helpers import decode_axi, write_executable, write_interpreter_fixture
 from tests.pi_capability_sandbox import (
     AGENT_DIR_ENV,
     MODELB_PI_PACKAGE,
@@ -81,7 +81,6 @@ PREFLIGHT_FAILED = "pre-flight failed"
 DIRENV_FISH_HOOK = "direnv hook fish | source"
 DIRENV_BASH_HOOK = 'eval "$(direnv hook bash)"'
 
-_FAKE_OK = "#!/bin/sh\nexit 0\n"
 #: The scaffold's ``--token`` value (a project short name, not a credential).
 PROJECT_SHORT_NAME = "floorproj"
 
@@ -214,7 +213,10 @@ class _PreflightSandboxCase(unittest.TestCase):
         self.agent_dir = make_provisioned_agent_dir(self.root / "pi-agent")
         self.sandesh_log = self.root / "sandesh-runs"
         self.uv_log = self.root / "uv-runs"
-        write_executable(self.bin_dir, "uv", _recording_shim(self.uv_log))
+        # MIGRATED at CR-MDB-064 C2 RED (§S7): the shared installer fixture — a `python3`
+        # at the 3.14 floor (the interpreter is required, CR-MDB-064 §S2) and a `uv`
+        # answering `uv python find --system '>=3.14'`, recording every other run.
+        write_interpreter_fixture(self.bin_dir, uv_body=_recording_shim(self.uv_log))
 
     def sandesh_at(self, version: str) -> None:
         write_executable(self.bin_dir, "sandesh", fake_sandesh(version, self.sandesh_log))
@@ -227,7 +229,9 @@ class _PreflightSandboxCase(unittest.TestCase):
         env = {"HOME": str(self.home), "PATH": str(self.bin_dir),
                AGENT_DIR_ENV: str(self.agent_dir)}
         with mock.patch.dict(os.environ, env), contextlib.redirect_stderr(err):
-            rc, deps, caps = preflight.run_preflight(
+            # MIGRATED at CR-MDB-064 C2 RED (§S2): the accepted interpreter is the fourth
+            # result.
+            rc, deps, caps, _python = preflight.run_preflight(
                 confirm, warnings, stacks=(), harnesses=("pi",),
                 allow_missing_capabilities=allow_missing)
         return rc, deps, caps, warnings, err.getvalue()
@@ -407,9 +411,11 @@ class _InstallerSandboxCase(unittest.TestCase):
         for path in (self.modelb_home, self.target_root, self.xdg_data, self.bin_dir):
             path.mkdir(parents=True)
         self.home = make_home(self.root / "home", crucible_manifest=False)
-        write_executable(self.bin_dir, "uv", _recording_shim(self.uv_log))
+        # MIGRATED at CR-MDB-064 C2 RED (§S7): the shared installer fixture's `python3`
+        # (at the floor, its module checks succeeding) and `uv` (recording every run but
+        # the interpreter query).
+        write_interpreter_fixture(self.bin_dir, uv_body=_recording_shim(self.uv_log))
         write_executable(self.bin_dir, "sandesh", fake_sandesh("0.4.0"))
-        write_executable(self.bin_dir, "python3", _FAKE_OK)
         write_executable(self.bin_dir, "pi", _recording_shim(self.pi_log))
 
     def run_yes(self, *extra) -> subprocess.CompletedProcess:

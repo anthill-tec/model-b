@@ -78,10 +78,10 @@ import tomllib
 import unittest
 from pathlib import Path
 
-from tests.pi_capability_sandbox import with_agent_dir
-
 from modelb_axi import deploy
 from tests._helpers import write_executable as _write_fake_executable
+from tests._helpers import write_interpreter_fixture
+from tests.pi_capability_sandbox import with_agent_dir
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS_DIR = REPO_ROOT / "scripts"
@@ -172,6 +172,10 @@ FORBIDDEN_REAL_HOME_TOKENS = tuple(
     )
 )
 
+# MIGRATED at CR-MDB-064 C2 RED (§S7): every installer run here writes its fake `uv`
+# through the shared installer fixture (`write_interpreter_fixture`), which puts a
+# `python3` at the 3.14 floor beside it (the interpreter is required, CR-MDB-064 §S2)
+# and answers `uv python find --system '>=3.14'`.
 _FAKE_UV_SCRIPT = (
     "#!/bin/sh\n"
     'if [ "$1" = "tool" ] && [ "$2" = "install" ]; then\n'
@@ -386,7 +390,7 @@ class ToolingDeployS4Test(unittest.TestCase):
         self._tmp_home = tempfile.mkdtemp(prefix="modelb-axi-tooling-home-")
         self._tmp_bin = tempfile.mkdtemp(prefix="modelb-axi-tooling-fakebin-")
         self._tmp_target_root = tempfile.mkdtemp(prefix="modelb-axi-tooling-target-")
-        _write_fake_executable(self._tmp_bin, "uv", _FAKE_UV_SCRIPT)
+        write_interpreter_fixture(self._tmp_bin, uv_body=_FAKE_UV_SCRIPT)
         _write_fake_executable(self._tmp_bin, "sandesh", _FAKE_SANDESH_SCRIPT)
 
     def tearDown(self):
