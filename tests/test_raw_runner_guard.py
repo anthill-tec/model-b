@@ -9,8 +9,9 @@ not" or "not" earlier in the same clause as the runner span. A fenced-block line
 its own; prose around a fence never exempts it.
 
 **The runner** is matched as a whole command word at a command position — the start of the span
-or line, or after ``&&``, ``||``, ``;``, ``|``, a leading ``VAR=value``, or one of ``env``,
-``timeout <n>``, ``nice``, ``time`` (``runner_at``):
+or line, or after ``&&``, ``||``, ``;``, ``|``, a leading ``VAR=value``, or one of ``env`` (with
+any options, e.g. ``env -i``, ``env -u NAME``), ``timeout <n>``, ``nice``, ``time``
+(``runner_at``):
 
 - a python interpreter (bare, versioned or a path), with any options, then ``-m unittest``,
   ``-m pytest``, ``-m xmlrunner`` or ``-m coverage run``;
@@ -70,9 +71,15 @@ GUARD_EXCLUDED = ("skills-src/memory-templates",)
 _END = r"(?=$|[\s)\"'`,])"
 #: A command separator; the text after one is a command position.
 _SEPARATOR = re.compile(r"&&|\|\||;|\|")
-#: A wrapper before a command: ``VAR=value``, ``env``, ``timeout <n>``, ``nice``, ``time``.
+#: ``env``'s options: ``-u NAME``/``-C DIR`` and their long forms take an argument; any other
+#: option stands alone. Assignments after ``env`` are matched as ``VAR=value`` wrappers.
+_ENV_OPTION = (r"(?:-[uC]\s*\S+|--(?:unset|chdir)(?:=\S+|\s+\S+)"
+               r"|-{1,2}[A-Za-z0-9][\w-]*(?:=\S+)?)")
+#: A wrapper before a command: ``VAR=value``, ``env [options]``, ``timeout <n>``, ``nice``,
+#: ``time``.
 _WRAPPER = re.compile(
-    r"(?:[A-Za-z_][A-Za-z0-9_]*=(?:\"[^\"]*\"|'[^']*'|\S*)|env|timeout\s+\S+|nice|time)(?:\s+|$)")
+    r"(?:[A-Za-z_][A-Za-z0-9_]*=(?:\"[^\"]*\"|'[^']*'|\S*)|env(?:\s+" + _ENV_OPTION + r")*"
+    r"|timeout\s+\S+|nice|time)(?:\s+|$)")
 #: The runners §S3 lists, each anchored at a command position.
 _RUNNERS = (
     re.compile(r"(?:\S*/)?python(?:\d+(?:\.\d+)*)?(?=\s)"
@@ -287,6 +294,10 @@ WRAPPED_FORMS = (
     "cd crates/core; cargo nextest run",
     "echo tests | pytest",
     "env FOO=1 timeout 60 nice time pytest",
+    "env -i HOME=/tmp/h pytest",
+    "env -u PYTHONPATH python3 -m unittest",
+    "env --unset=FOO -i cargo test",
+    "env -C tests/native HOME=/tmp/h make junit",
 )
 
 #: Client invocations: never runners.
@@ -389,6 +400,15 @@ class RawRunnerDetectorOnSampleTextTest(unittest.TestCase):
                      "One rule; do not type `npm test`."):
             with self.subTest(text=text):
                 self.assertCaught(text, [])
+
+    def test_env_options_before_the_runner_are_part_of_the_wrapper(self):
+        for text in ("Use `env -u pytest echo hi` to clear the variable.",
+                     "Then `env -i HOME=/tmp/h ls` lists it.",
+                     "Never `env -i HOME=/tmp/h pytest` by hand."):
+            with self.subTest(text=text):
+                self.assertCaught(text, [])
+        self.assertCaught("```\nenv -i -u X HOME=/tmp/h bun test\n```",
+                          [(2, "env -i -u X HOME=/tmp/h bun test")])
 
     def test_a_prohibition_in_one_block_does_not_govern_the_next(self):
         self.assertCaught("- Never hand-run a suite.\n- `pytest -x`", [(2, "pytest -x")])
