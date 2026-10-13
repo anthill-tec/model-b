@@ -872,7 +872,29 @@ run a runner, then post its report through inline `urllib` — is removed with t
   shell call. After any CR that changes a hook script or adds one merges, the user redeploys and the
   wiring is recompiled, before the next session in the repository.
 
+**AMENDED again 2026-10-13 (user rulings at CR-MDB-056's spec pre-review):**
+- **The prohibition exemption is narrowed.** A guarded line escapes the raw-runner guard only when a
+  whole-word prohibition ("never", "do not", "must not", "not") governs the runner span — earlier in
+  the same sentence. A fenced-block line is judged on its own.
+- **`auto-ingest` is for recovery only:** re-ingesting a report a client run produced when that run's
+  ingest failed. It is never the second half of a run made outside the client.
+- **The rule's reach.** It binds agents and the orchestrator. A CI workflow and the no-mistakes gate's
+  own test step run outside any agent session and are outside it. The client gaps it exposes — the
+  python client drives `unittest` only; `bun-crucible.py test` takes no test-name filter — are raised
+  with Crucible.
+- **The change is split by the 13-point cap:** CR-MDB-056 (the rule, the stack files, the skills, the
+  hand-run path, the guard), CR-MDB-062 (the python and bun blocking hooks, `init` refusing a hook
+  whose script is not deployed), CR-MDB-063 (the test-interpreter probe).
+
 Implemented by CR-MDB-057 and CR-MDB-056.
+### D22 — The published Python floor is 3.14
+
+**User ruling 2026-10-13.** `modelb-axi` declares `requires-python = ">=3.14"` from release 1.0.0
+(it declared `>=3.11`, set for `tomllib`). The floor is a public contract: pip and uv install the
+package only on an interpreter that meets it, and the hook scripts run under the user's own
+`python3`. With the floor equal to the development default, the pre-merge gate needs no
+second-interpreter run. Implemented by CR-MDB-064.
+
 ## Consequences per CR
 
 | CR | What this DN changes |
@@ -888,6 +910,9 @@ Implemented by CR-MDB-057 and CR-MDB-056.
 | **039** (worktree isolation) | §D19: the Model B Pi package routes each dispatch into its CR's worktree through pi-subagents' workspace seam, and `modelb_worktree_enter`/`_exit` confine the orchestrator's own writes via `WF_WORKTREE_ROOT`. |
 | **057** (Crucible 0.3.0 doc-sync) | §D21: `init` writes `crucible.toml` with `[gate] skip`; no client is steered through the environment; the `project-meta` setup task; the register and board-inspection `curl` text becomes client verbs. |
 | **056** (test runs through the client) | §D21: the rule binds agents and the orchestrator; blocking hooks keep the `ALLOW_RAW_<RUNNER>=1` escape hatch; the hand-run-and-ingest path is removed. |
+| **062** (blocking hooks) | §D21 amended: python and bun hooks; `init` refuses a hook whose script is not deployed. |
+| **063** (test-interpreter probe) | §D21 amended: the python client's interpreter is probed where the client will use it. |
+| **064** (Python floor) | §D22: `requires-python >=3.14`. |
 
 ## Open, deliberately not decided here
 
