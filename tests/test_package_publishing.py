@@ -12,9 +12,14 @@ Orchestrator rulings (2026-09-24, cycle 106) these tests pin:
 
 - R1 (classifiers, families only): exactly one ``License ::`` classifier and
   it is ``License :: OSI Approved :: MIT License``;
-  ``Programming Language :: Python :: 3.11`` present and no
-  ``Programming Language :: Python :: <version>`` below 3.11;
   ``Environment :: Console`` present. The full list is not pinned.
+  MIGRATED at CR-MDB-064 C1 RED ("§S1", the published floor is 3.14; was:
+  ``… :: 3.11`` present and none below 3.11): ``Programming Language ::
+  Python :: 3``, ``… :: 3 :: Only`` and ``… :: 3.14`` present, and no
+  ``Programming Language :: Python :: <version>`` below 3.14. The
+  ``Requires-Python`` pin moves from ``>=3.11`` to ``>=3.14`` with it, and
+  ``PyprojectPythonFloorTest`` reads the same two facts from
+  ``pyproject.toml`` without a build.
 - R2 (one version): the hatch mechanism is not pinned. ``[project]`` has no
   ``version`` key and lists ``version`` in ``dynamic``; the wheel's
   ``Version`` equals ``__version__`` in ``modelb_axi/__init__.py``; and a
@@ -70,7 +75,12 @@ EXCLUDED_ROOTS = ("tests", "archive", "audits")
 INTERNAL_MARKERS = ("DN-", "CR-", "§")
 
 MIT_CLASSIFIER = "License :: OSI Approved :: MIT License"
-PYTHON_311_CLASSIFIER = "Programming Language :: Python :: 3.11"
+#: CR-MDB-064 §S1 — the published floor, and the version classifiers it declares.
+PYTHON_FLOOR = (3, 14)
+REQUIRES_PYTHON = ">=3.14"
+PYTHON_3_CLASSIFIER = "Programming Language :: Python :: 3"
+PYTHON_3_ONLY_CLASSIFIER = "Programming Language :: Python :: 3 :: Only"
+PYTHON_314_CLASSIFIER = "Programming Language :: Python :: 3.14"
 CONSOLE_CLASSIFIER = "Environment :: Console"
 _PYTHON_VERSION_CLASSIFIER = re.compile(
     r"Programming Language :: Python :: (\d+)(?:\.(\d+))?"
@@ -150,20 +160,22 @@ def summary_faults(summary: str | None) -> list[str]:
 
 
 def classifier_faults(classifiers: list[str]) -> list[str]:
-    """Ruling R1 — the three classifier families."""
+    """Ruling R1 — the three classifier families; the Python family at the
+    3.14 floor (CR-MDB-064 §S1)."""
     out = []
     licences = [c for c in classifiers if c.startswith("License ::")]
     if licences != [MIT_CLASSIFIER]:
         out.append(f"License classifiers must be exactly [{MIT_CLASSIFIER!r}]; got {licences!r}")
-    if PYTHON_311_CLASSIFIER not in classifiers:
-        out.append(f"missing {PYTHON_311_CLASSIFIER!r}")
+    for required in (PYTHON_3_CLASSIFIER, PYTHON_3_ONLY_CLASSIFIER, PYTHON_314_CLASSIFIER):
+        if required not in classifiers:
+            out.append(f"missing {required!r}")
     for c in classifiers:
         m = _PYTHON_VERSION_CLASSIFIER.fullmatch(c)
         if not m:
             continue
         major, minor = int(m.group(1)), m.group(2)
-        if major < 3 or (minor is not None and (major, int(minor)) < (3, 11)):
-            out.append(f"Python classifier below 3.11: {c!r}")
+        if major < 3 or (minor is not None and (major, int(minor)) < PYTHON_FLOOR):
+            out.append(f"Python classifier below 3.14: {c!r}")
     if CONSOLE_CLASSIFIER not in classifiers:
         out.append(f"missing {CONSOLE_CLASSIFIER!r}")
     return out
@@ -331,13 +343,16 @@ class WheelMetadataTest(unittest.TestCase):
         self.assertEqual(wheel_read(self.wheel, shipped), LICENSE.read_bytes(),
                          "§S1: the wheel's license file must be the repository LICENSE")
 
-    def test_classifiers_name_mit_python_3_11_and_console(self):
+    def test_classifiers_name_mit_python_3_only_3_14_none_below_and_console(self):
+        # MIGRATED at CR-MDB-064 C1 RED (§S1): the 3.14 floor's classifiers.
         self.assertEqual(classifier_faults(self.meta.get_all("Classifier") or []), [])
 
-    def test_requires_python_is_3_11_and_no_project_url_is_published(self):
-        # Pin — already true at RED; guards the "no repository URL while
-        # private" rule against a metadata edit adding [project.urls].
-        self.assertEqual(self.meta.get_all("Requires-Python"), [">=3.11"])
+    def test_requires_python_is_3_14_and_no_project_url_is_published(self):
+        # MIGRATED at CR-MDB-064 C1 RED (§S1; was `>=3.11`). The URL half is a
+        # pin guarding the "no repository URL while private" rule against a
+        # metadata edit adding [project.urls].
+        self.assertEqual(self.meta.get_all("Requires-Python"), [REQUIRES_PYTHON],
+                         "§S1: the built wheel must publish `Requires-Python: >=3.14`")
         self.assertEqual(self.meta.get_all("Project-URL"), None,
                          "§S1: no Project-URL while the repository is private")
         self.assertEqual(self.meta.get_all("Home-page"), None,
@@ -354,6 +369,24 @@ class WheelMetadataTest(unittest.TestCase):
         self.assertTrue(body.strip(), "§S1: METADATA must carry a description body")
         self.assertEqual(body.rstrip("\n"), guide.rstrip("\n"),
                          "§S1: the description body must be docs/install-guide.md, unchanged")
+
+
+class PyprojectPythonFloorTest(unittest.TestCase):
+    """CR-MDB-064 §S1 — ``pyproject.toml`` declares the 3.14 floor: read
+    straight from the file, so the fault shows without a build."""
+
+    def test_requires_python_declares_the_3_14_floor(self):
+        self.assertEqual(_pyproject().get("project", {}).get("requires-python"), REQUIRES_PYTHON,
+                         "§S1: pyproject.toml must declare requires-python = '>=3.14'")
+
+    def test_version_classifiers_are_3_3_only_and_3_14_and_none_below(self):
+        classifiers = _pyproject().get("project", {}).get("classifiers", [])
+        self.assertEqual(classifier_faults(classifiers), [])
+        python = [c for c in classifiers if c.startswith("Programming Language :: Python ::")]
+        self.assertEqual(
+            python, [PYTHON_3_CLASSIFIER, PYTHON_3_ONLY_CLASSIFIER, PYTHON_314_CLASSIFIER],
+            "§S1: the version classifiers are `… :: 3`, `… :: 3 :: Only` and `… :: 3.14`",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -554,10 +587,11 @@ class BuiltArtifactsInstallAndWorkTest(unittest.TestCase):
 # Checker proofs — the pure checkers pass a conforming input and catch faults
 # ---------------------------------------------------------------------------
 
+# MIGRATED at CR-MDB-064 C1 RED (§S7): the sample classifier sets follow the
+# 3.14 floor (was: 3.11 and 3.12 in the conforming set).
 _GOOD_CLASSIFIERS = [
-    MIT_CLASSIFIER, "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3 :: Only", PYTHON_311_CLASSIFIER,
-    "Programming Language :: Python :: 3.12", CONSOLE_CLASSIFIER,
+    MIT_CLASSIFIER, PYTHON_3_CLASSIFIER, PYTHON_3_ONLY_CLASSIFIER, PYTHON_314_CLASSIFIER,
+    CONSOLE_CLASSIFIER,
 ]
 
 
@@ -585,18 +619,27 @@ class PackageMetadataCheckerProofTest(unittest.TestCase):
 
     def test_classifier_checker_both_ways(self):
         self.assertEqual(classifier_faults(_GOOD_CLASSIFIERS), [])
+        # A version above the floor is not refused (a 3.15 classifier may join later).
+        self.assertEqual(
+            classifier_faults(_GOOD_CLASSIFIERS + ["Programming Language :: Python :: 3.15"]), [])
         cases = {
             "no licence": ([c for c in _GOOD_CLASSIFIERS if c != MIT_CLASSIFIER],
                            f"License classifiers must be exactly [{MIT_CLASSIFIER!r}]; got []"),
             "second licence": (_GOOD_CLASSIFIERS + ["License :: OSI Approved :: Apache Software License"],
                                f"License classifiers must be exactly [{MIT_CLASSIFIER!r}]; got "
                                f"[{MIT_CLASSIFIER!r}, 'License :: OSI Approved :: Apache Software License']"),
-            "no 3.11": ([c for c in _GOOD_CLASSIFIERS if c != PYTHON_311_CLASSIFIER],
-                        f"missing {PYTHON_311_CLASSIFIER!r}"),
-            "3.10": (_GOOD_CLASSIFIERS + ["Programming Language :: Python :: 3.10"],
-                     "Python classifier below 3.11: 'Programming Language :: Python :: 3.10'"),
+            "no 3.14": ([c for c in _GOOD_CLASSIFIERS if c != PYTHON_314_CLASSIFIER],
+                        f"missing {PYTHON_314_CLASSIFIER!r}"),
+            "no 3": ([c for c in _GOOD_CLASSIFIERS if c != PYTHON_3_CLASSIFIER],
+                     f"missing {PYTHON_3_CLASSIFIER!r}"),
+            "no 3 only": ([c for c in _GOOD_CLASSIFIERS if c != PYTHON_3_ONLY_CLASSIFIER],
+                          f"missing {PYTHON_3_ONLY_CLASSIFIER!r}"),
+            "3.13": (_GOOD_CLASSIFIERS + ["Programming Language :: Python :: 3.13"],
+                     "Python classifier below 3.14: 'Programming Language :: Python :: 3.13'"),
+            "3.11": (_GOOD_CLASSIFIERS + ["Programming Language :: Python :: 3.11"],
+                     "Python classifier below 3.14: 'Programming Language :: Python :: 3.11'"),
             "python 2": (_GOOD_CLASSIFIERS + ["Programming Language :: Python :: 2"],
-                         "Python classifier below 3.11: 'Programming Language :: Python :: 2'"),
+                         "Python classifier below 3.14: 'Programming Language :: Python :: 2'"),
             "no console": ([c for c in _GOOD_CLASSIFIERS if c != CONSOLE_CLASSIFIER],
                            f"missing {CONSOLE_CLASSIFIER!r}"),
         }

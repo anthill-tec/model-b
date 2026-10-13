@@ -457,9 +457,9 @@ class UnresolvedFeedDegradesS2Test(_SandboxCase):
         self.assert_board_rendered(self.sb.run_hook(), via_key="python")
 
     # -- hardening: filesystem errors and malformed shapes never raise --------
-    # Permission-denied stats raise PermissionError from ``Path.is_file()`` on
-    # Python 3.11/3.12 (only ENOENT/ENOTDIR/EBADF/ELOOP are swallowed there);
-    # 3.13+ swallows every OSError, so run under 3.11 to see these bite.
+    # On the 3.14 floor ``Path.is_file()`` swallows every OSError, so a
+    # permission-denied stat reads as "not a file"; the hook's defensive code
+    # and these tests stay, guarding every stat the hook makes (CR-MDB-064 §S6).
 
     def _deny(self, directory: Path):
         """chmod 000 ``directory``, restored before the sandbox is removed."""

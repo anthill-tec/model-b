@@ -39,7 +39,7 @@ to the backlog's listed files only (the whole repo does not pass it today; see t
 The TOP-OF-FILE import block is the run of consecutive ``import``/``from … import`` statements in
 the module body, after an optional module docstring. Each statement is in a section:
 ``0`` ``from __future__``; ``1`` stdlib (top-level name in ``sys.stdlib_module_names`` — so
-``tomllib`` IS stdlib on the project's Python ≥3.11); ``3`` first-party (``modelb_axi``, ``tests``,
+``tomllib`` IS stdlib on the project's 3.14 floor); ``3`` first-party (``modelb_axi``, ``tests``,
 ``generator``, or a relative import); ``2`` anything else (third-party). The block is sorted when:
 
 1. every ``import`` statement names exactly one module;
@@ -319,7 +319,7 @@ def _import_order_violations(text: str) -> list:
 
 class ImportOrderDetectorS5Test(unittest.TestCase):
     """§S5 — the import-order rule's detector: it bites on each defect shape, and passes a sorted
-    block (including ``tomllib`` among the stdlib, since the project targets Python ≥3.11)."""
+    block (including ``tomllib`` among the stdlib, on the project's 3.14 floor)."""
 
     SORTED = (
         '"""Doc."""\n\n'
