@@ -10,16 +10,25 @@ delivery is owned by the TRACKS header here plus CR-MDB-011's doc pass.
 
 Measured against the production Crucible installed on this machine:
 
-- **Product version `0.2.2`** — the release Model B documents against.
+- **Product version `0.3.0`** — the release Model B documents against (re-measured
+  2026-10-13, CR-MDB-057 §S5).
 - The installer is `crucible-axi install`, which stages the client fleet + manifest.
 - `--target-dir` chooses where that fleet is laid down.
 - The default target is `~/.crucible`, so the clients live at `~/.crucible/clients/`.
 - The run verb is `crucible-axi serve` — the provisioned server, in the foreground.
 - `crucible-axi uninstall` reverses the install (the exact inverse of `install`).
-- This document tracks `STATUS-CONTRACT.md` at its **document version 2.0.0** (verified at `~/.crucible/clients/STATUS-CONTRACT.md`).
+- This document tracks `STATUS-CONTRACT.md` at its **document version 3.0.0** (verified at `~/.crucible/clients/STATUS-CONTRACT.md`).
+- Under that status contract, `status` shows the work in flight: `plans` holds the open
+  plans only and `count` counts them; `filed` is the number of plans ever filed (open,
+  closed or aborted), `null` when the board is unreachable — unknown, never 0; and
+  `lastClosedCr` is the last closed CR, `null` when none has closed. `lastClosedCr` never
+  tells an empty board from a drained one — `count` and `filed` do (Crucible #1443).
+- A client finds its board from `[client] url`, read from the first `crucible.toml` that
+  exists and parses — the project's, the install's (beside `clients/`), the shipped one
+  (the production board) — and takes `[client]` from that file only (Crucible #1445).
 
-**Three version axes, never conflated:** the PRODUCT version is `0.2.x`
-(installed `0.2.2`); `/api/v2` is the API GENERATION the clients speak; and `2.0.0`
+**Three version axes, never conflated:** the PRODUCT version is `0.3.x`
+(installed `0.3.0`); `/api/v2` is the API GENERATION the clients speak; and `3.0.0`
 is the semver of one document only — `STATUS-CONTRACT.md`. It is not a Crucible
 product or release number and must never be read as one.
 
@@ -107,12 +116,15 @@ from the reference port on that reading; it sidesteps the ambiguity on emit.
 This is the flag surface four consumers mirror (`skills-src/crucible/SKILL.md`, the six
 `crucible-report-*` bundles, `generator/templates/*.tmpl`, and `AGENTS.md`); a consumer
 that drifts from it teaches a registration the released server rejects. Measured against
-the installed `0.2.2` fleet, 2026-09-21.
+the installed `0.3.0` fleet, 2026-10-13.
 
 ```
-register --agent <id> --role <ROLE> [--cycle <cycleId>] [--display-name <n>]
-         [--source <src>] [--message <m>] [--project-dir <dir>]
+register --agent <id> --role <ROLE> [--cycle <cycleId>] [--source <src>] [--project-dir <dir>]
 ```
+
+That block is the surface all five clients take. Two flags are per-client, as each client's
+`--help` shows: `--message <m>` is on every client but arduino's, and `--display-name <n>`
+only on the bun and python clients.
 
 - **`--role` is required and CASE-EXACT**, from `{RED, GREEN, FIX, VERIFY, ORCHESTRATOR,
   report}` — five uppercase, `report` lowercase. It is the ONLY role channel. A missing

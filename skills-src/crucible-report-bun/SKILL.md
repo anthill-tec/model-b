@@ -78,22 +78,11 @@ python3 ~/.crucible/clients/bun-crucible.py auto-ingest --agent AGENT_ID  # inge
 
 ---
 
-## Event Management
+## Reading the board
 
-All GETs support compact TOON responses (`?fmt=toon` or `Accept: text/toon`)
-for cheap reads; JSON responses carry `help` hints.
-
-```bash
-# List events (default limit 50)
-curl -s "http://localhost:3849/api/v2/events?limit=20&fmt=toon"
-
-# For a specific project
-curl -s "http://localhost:3849/api/v2/events?project=PROJECT_KEY_UUID&limit=20"
-
-# Read / delete a single event
-curl -s "http://localhost:3849/api/v2/events/EVENT_ID"
-curl -s -X DELETE "http://localhost:3849/api/v2/events/EVENT_ID"
-```
+No client verb lists or deletes events, and no example here sends a raw request to the
+board. Read it with the client's read verbs, which post nothing and take no `--agent`:
+`status` (the work in flight), `history` (past releases) and `queue` (the CR queue).
 
 ---
 

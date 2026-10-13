@@ -95,6 +95,10 @@ that empties is a signal, not a decision.
 - **The record comes after the fact**, never before: the release is proposed (a label and a
   target), approved by a human, executed, and only then recorded — a milestone is a record, not
   an event.
+- **The release's verification runs are filed under the release.** The `regression` and the
+  `pre-merge-gate` run on the release branch are filed with `--release <label>` — the release
+  the roadmap declares — as release verification instead of a cycle's runs, and never beside
+  `--cycle`.
 
 **Read release readiness from the live CI config and `gh`** (workflows, environments, secrets), never from an old queue note.
 

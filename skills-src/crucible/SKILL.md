@@ -5,12 +5,26 @@ description: One skill for the whole Crucible test-reporting lifecycle, any stac
 
 # Crucible — agent lifecycle + test ingest
 
-Crucible (`localhost:3849`) is the test-outcome and Model B workflow reporting
-and tracking dashboard. The LIFECYCLE is universal — register first, ingest
+Crucible is the test-outcome and Model B workflow reporting and tracking
+dashboard — the board. The LIFECYCLE is universal — register first, ingest
 every run, unregister last — but the VERB SURFACE differs per stack: read your
 stack's reference file before running anything. The client runs the tests AND
-ingests in one call under your agent id. Never hand-roll `curl`; the client
-(or, on a clientless stack, the documented urllib procedure) is the interface.
+ingests in one call under your agent id. Never hand-roll `curl`; the client is
+the interface, and every stack has one.
+
+## Connection — the board is project configuration
+
+- A client reads its board from `[client] url` (a full base URL) in the first
+  `crucible.toml` that exists and parses, in this order: the project's (at the
+  project root — `--project-dir`, else the git top level of the working
+  directory), the install's (beside `clients/`), the shipped one
+  (`http://localhost:3849`, the production board).
+- `[client]` is taken from that file only, so a project file without `[client]`
+  sends the client to the shipped default, whatever the install's file declares.
+  A Model B project's `crucible.toml` declares `[gate] skip` and no `[client]`,
+  so its board is the production board.
+- No environment variable points a client at a board: to reach another board,
+  name it in the project's own `crucible.toml`.
 
 ## Lifecycle (every agent)
 
@@ -207,6 +221,45 @@ place in it changes.
   Without `--release` the plan is filed and nothing is claimed on the queue.
 - **`queue-file` is retired from the workflow and is never run:** it replaces the whole board
   queue from a Markdown file, wiping every CR the verbs above recorded.
+
+## The 0.3.0 verb surface — on all five clients
+
+Crucible 0.3.0 put these verbs and flags on all five clients: `history`, `landings`,
+`project-meta`, `cycle-skip` and `gate-respond`, `--points` on `cr-plan`, `queue --fields`/`--full`,
+and `--cycle`/`--release` on the run verbs. Where a client's `--help` differs, the exception is
+named below; read `<verb> --help` before using a flag this skill does not show.
+
+- **The run verbs** — `test`, the tier verbs (`unit`, `module`, `integration`, `e2e`, `bdd`),
+  `regression` and `pre-merge-gate` — take `--cycle` and `--release <label>`; not
+  `auto-ingest`. `--cycle <id>` binds the run's agent to an active cycle when it did not
+  register bound.
+- **`--release <label>`** files the run as release verification under a release the roadmap
+  declares, instead of a cycle; it is never given beside `--cycle`.
+- **The exception:** the rust client's `regression` takes no `--cycle` — bind the rust
+  regression run at registration instead.
+- **`history`** lists past releases: a release appears once it has shipped or has a completed
+  CR, so planned releases are read with `queue --fields release,seq,points,dependsOn`.
+- **`queue --full`** shows every column, including `warning`.
+- **`status`** shows the work in flight (status contract 3.0.0: the open plans, `count`,
+  `filed` and `lastClosedCr`).
+- **`landings`** lists each closed CR's merge commit.
+- **`cr-plan`'s `--points <n>`** takes a story-point score on the scale 1, 2, 3, 5, 8, 13.
+- **Re-sending a CR's current title, release and wave** with `--points` changes only its points.
+- **`cycle-add`:** a `fix` append needs nothing more. A `--before <cycle id>` insert, or any
+  other kind, is a recorded plan change, and needs `--reason`, `--cause` (`spec-design` or
+  `gap-analysis`) and `--spec-ref`.
+- **`cycle-skip <cycle id>`** takes the same three flags; a skipped cycle is recorded as a
+  failure.
+- **`gate-run`** gives each run its own board identity, `<caller>·gate·<run>`, removed when the
+  run ends; the decision stays the caller's (Crucible #1432).
+- **`gate-respond`** answers a held step with `--action approve|fix|skip`; a decision the tool
+  accepted is recorded even when the wait elapses. It has no `--release`.
+- **After a wait that elapsed while a step was still running,** check `status` and reattach
+  with `gate-run --intent <goal> --agent <id>` (Crucible #1432).
+- **Client output goes to a file** — `--log <path>` where the verb takes it, a redirect
+  otherwise — and never through `| head`.
+- **Where `--log` is absent:** the rust client's `regression`, and `pre-merge-gate` on the
+  arduino, mvn and rust clients — redirect their output to a file instead.
 
 ## Envelope — TOON-AXI on stdout (shipped fleet-wide)
 
