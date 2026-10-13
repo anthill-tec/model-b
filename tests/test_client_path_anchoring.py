@@ -486,8 +486,21 @@ def _pi_tool_violations(stack_tomls):
 
 #: CR-MDB-062 §S4 — each runner hook's block-reason contract: the client it names, exactly the
 #: verbs of §S4's table (pinned statically, never read from a client run), and its escape hatch.
-#: ``marker`` and ``command`` build the blocking payload the reason is read from.
+#: ``marker`` and ``command`` build the blocking payload the reason is read from. ``gap`` is the
+#: client gap a reason names in plain words (python and bun only; the spec's own phrase, matched
+#: case-insensitively with whitespace collapsed). The bun client's tier verbs are the fleet's
+#: (``unit``, ``module``, ``integration``, ``e2e``, ``bdd``) beside ``regression``.
 RUNNER_HOOK_REASONS = {
+    "block-direct-python-test": {
+        "marker": "pyproject.toml", "command": "python3 -m unittest",
+        "client": "python-crucible.py", "verbs": ("test", "check", "regression"),
+        "hatch": "ALLOW_RAW_PYTHON=1", "gap": "pytest project",
+    },
+    "block-direct-bun-test": {
+        "marker": "package.json", "command": "bun test", "client": "bun-crucible.py",
+        "verbs": ("test", "check", "unit", "module", "integration", "e2e", "bdd", "regression"),
+        "hatch": "ALLOW_RAW_BUN=1", "gap": "single test selected by name",
+    },
     "block-direct-cargo-test": {
         "marker": "Cargo.toml", "command": "cargo test", "client": "rust-crucible.py",
         "verbs": ("test", "check", "workspace-regression"), "hatch": "ALLOW_RAW_CARGO=1",
@@ -538,6 +551,9 @@ def _reason_contract_failures(reason, contract):
     elif not any(re.search(r"\borchestrator", p, re.I) and re.search(r"\bapprov", p, re.I)
                  for p in hatch_paras):
         failures.append(f"does not say {hatch} is used only with the orchestrator's approval")
+    gap = contract.get("gap")
+    if gap and gap.lower() not in " ".join(reason.split()).lower():
+        failures.append(f"does not name its client gap ({gap})")
     for label, rx in STALE_REASON_REFERENCES:
         if rx.search(reason):
             failures.append(f"carries the stale reference {label}")
@@ -685,6 +701,7 @@ class ClientPathAnchoringS1Test(unittest.TestCase):
         """The block reason the REAL hook ``name`` prints for its ``RUNNER_HOOK_REASONS`` command,
         run in a temp project holding its marker."""
         contract = RUNNER_HOOK_REASONS[name]
+        self.assertTrue((HOOK_SCRIPTS / name).is_file(), f"CR-MDB-062 §S2: {name} does not exist")
         with tempfile.TemporaryDirectory() as tmp:
             (Path(tmp) / contract["marker"]).write_text("fixture\n", encoding="utf-8")
             res = run_hook(name, {
@@ -710,6 +727,36 @@ class ClientPathAnchoringS1Test(unittest.TestCase):
         self.assertEqual(_reason_contract_failures(reason, RUNNER_HOOK_REASONS[name]), [],
                          f"CR-MDB-062 §S4: the {name} reason breaks its contract:\n{reason}")
 
+    def test_s1_python_hook_block_reason_names_the_manifest_listed_client_and_its_gap(self):
+        # CR-MDB-062 §S4: the python reason keeps the runner-hook reason contract, its gap included.
+        name = "block-direct-python-test"
+        reason = self._runner_hook_reason(name)
+        self._assert_reason_names_manifest_client("python REASON", reason, "python-crucible.py")
+        self.assertEqual(_reason_contract_failures(reason, RUNNER_HOOK_REASONS[name]), [],
+                         f"CR-MDB-062 §S4: the {name} reason breaks its contract:\n{reason}")
+
+    def test_s1_bun_hook_block_reason_names_the_manifest_listed_client_and_its_gap(self):
+        # CR-MDB-062 §S4: the bun reason keeps the runner-hook reason contract, its gap included.
+        name = "block-direct-bun-test"
+        reason = self._runner_hook_reason(name)
+        self._assert_reason_names_manifest_client("bun REASON", reason, "bun-crucible.py")
+        self.assertEqual(_reason_contract_failures(reason, RUNNER_HOOK_REASONS[name]), [],
+                         f"CR-MDB-062 §S4: the {name} reason breaks its contract:\n{reason}")
+
+    def test_s1_runner_hook_reason_contract_bites_on_a_missing_client_gap(self):
+        for name in ("block-direct-python-test", "block-direct-bun-test"):
+            contract = RUNNER_HOOK_REASONS[name]
+            with self.subTest(hook=name):
+                lines = [f"⛔ BLOCKED: a direct `{contract['command']}` run is not allowed here.",
+                         f"Use the client in `~/.crucible/{MANIFEST_NAME}`:"]
+                lines += [f"  {ANCHOR}{contract['client']} {verb}" for verb in contract["verbs"]]
+                lines += ["", f"Only with the orchestrator's approval: {contract['hatch']}."]
+                self.assertEqual(_reason_contract_failures("\n".join(lines), contract),
+                                 [f"does not name its client gap ({contract['gap']})"])
+                wrapped = contract["gap"].replace(" ", "\n  ", 1).capitalize()
+                lines += ["", f"Client gap: {wrapped} is not served."]
+                self.assertEqual(_reason_contract_failures("\n".join(lines), contract), [])
+
     def test_s1_runner_hook_reason_contract_accepts_a_spec_shaped_reason(self):
         # Proof a correct reason can pass: one written to CR-MDB-062 §S4 keeps each contract.
         for name, contract in RUNNER_HOOK_REASONS.items():
@@ -721,6 +768,8 @@ class ClientPathAnchoringS1Test(unittest.TestCase):
                           for verb in contract["verbs"]]
                 lines += ["", f"Escape hatch, only with the orchestrator's approval: prefix "
                                f"{contract['hatch']}."]
+                if "gap" in contract:
+                    lines += ["", f"Client gap: a {contract['gap']} is not served."]
                 self.assertEqual(_reason_contract_failures("\n".join(lines), contract), [])
 
     def test_s1_runner_hook_reason_contract_bites_on_each_breach(self):
@@ -748,7 +797,10 @@ class ClientPathAnchoringS1Test(unittest.TestCase):
 
     def test_s1_block_hook_docstrings_name_the_manifest_listed_client(self):
         failures = []
-        for name in ("block-direct-cargo-test", "block-direct-mvn-test"):
+        for name in RUNNER_HOOK_REASONS:
+            if not (HOOK_SCRIPTS / name).is_file():
+                failures.append(f"{name}: missing")
+                continue
             doc = ast.get_docstring(ast.parse((HOOK_SCRIPTS / name).read_text(encoding="utf-8"))) or ""
             if MANIFEST_NAME not in doc:
                 failures.append(f"{name}: docstring does not name {MANIFEST_NAME}")

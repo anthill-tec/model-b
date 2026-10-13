@@ -38,7 +38,8 @@ the neutral name, per the mapping table in the CR spec):
     — all through the REAL `hooks-src/scripts/block-write-outside-worktree`
     script, driven through the emitted pi shim (never the fixture scripts).
   * `PiHookCargoMvnGuardAcrossToolsTest` — `block-direct-cargo-test` /
-    `block-direct-mvn-test` through `bash`, `ctx_shell`, and a shell-
+    `block-direct-mvn-test` (and, CR-MDB-062 §S8, `block-direct-python-test` /
+    `block-direct-bun-test`) through `bash`, `ctx_shell`, and a shell-
     language `ctx_execute`, against the REAL scripts through the emitted
     shim.
   * `PiHookMatcherFiltersOnNeutralNameTest` — the counting-fake-script
@@ -949,6 +950,50 @@ class PiHookCargoMvnGuardAcrossToolsTest(PiLoaderTestCase):
                     "mvn-crucible", (result.get("reason") or "").lower(),
                     f"[{case_name}] reason must point at the mvn-crucible.py wrapper: {result!r}",
                 )
+
+    def _assert_blocks_through_every_shell_tool(self, script, marker, cases, client):
+        """CR-MDB-062 §S8: the REAL runner hook ``script``, compiled into the pi shim, blocks
+        each of ``cases`` in a temp project holding ``marker``, its reason naming ``client``."""
+        project = Path(tempfile.mkdtemp(dir=self.target))
+        (project / marker).write_text("fixture\n", encoding="utf-8")
+        ext_path = self._compile_guard(script)
+        for case_name, tool_name, tool_input in cases:
+            with self.subTest(tool=case_name):
+                result = self._drive_guard(ext_path, tool_name, tool_input, cwd=str(project))
+                self.assertIsInstance(result, dict, f"[{case_name}] expected a block result, got {result!r}")
+                self.assertIs(result.get("block"), True, f"[{case_name}] must block: {result!r}")
+                self.assertIn(
+                    f"~/.crucible/clients/{client}", result.get("reason") or "",
+                    f"[{case_name}] reason must point at the {client} client: {result!r}",
+                )
+
+    def test_block_direct_python_test_through_bash_ctx_shell_and_shell_ctx_execute(self):
+        self._assert_blocks_through_every_shell_tool(
+            "block-direct-python-test", "pyproject.toml",
+            [
+                ("bash", "bash", {"command": "python3 -m unittest discover -s tests"}),
+                ("ctx_shell", "ctx_shell", {"command": "pytest -x tests/"}),
+                ("ctx_execute (language=bash)", "ctx_execute",
+                 {"language": "bash", "code": "uv run --with pytest pytest"}),
+                ("ctx_execute (language=sh)", "ctx_execute",
+                 {"language": "sh", "code": "echo hi\npython3 tests/test_x.py"}),
+            ],
+            "python-crucible.py",
+        )
+
+    def test_block_direct_bun_test_through_bash_ctx_shell_and_shell_ctx_execute(self):
+        self._assert_blocks_through_every_shell_tool(
+            "block-direct-bun-test", "package.json",
+            [
+                ("bash", "bash", {"command": "bun test src/a.test.ts"}),
+                ("ctx_shell", "ctx_shell", {"command": "npm run test:unit"}),
+                ("ctx_execute (language=bash)", "ctx_execute",
+                 {"language": "bash", "code": "npx playwright test"}),
+                ("ctx_execute (language=sh)", "ctx_execute",
+                 {"language": "sh", "code": "timeout 60 bun run test"}),
+            ],
+            "bun-crucible.py",
+        )
 
 
 # --------------------------------------------------------------------------

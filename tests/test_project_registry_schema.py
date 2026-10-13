@@ -1620,6 +1620,8 @@ NOT_REGISTRY_KEYS = {
     # hook escape hatches — per-command environment, read by the hook scripts
     "ALLOW_RAW_CARGO": "block-direct-cargo-test escape hatch (per-command env)",
     "ALLOW_RAW_MVN": "block-direct-mvn-test escape hatch (per-command env)",
+    "ALLOW_RAW_PYTHON": "block-direct-python-test escape hatch (per-command env)",
+    "ALLOW_RAW_BUN": "block-direct-bun-test escape hatch (per-command env)",
     "ALLOW_WRITE_OUTSIDE_WORKTREE": "block-write-outside-worktree escape hatch (env)",
     # Crucible client configuration — optional `.env` keys Crucible's clients own
     "CRUCIBLE_MAVEN_DIR": "Crucible mvn client config (non-root pom), Crucible's contract",

@@ -76,6 +76,7 @@ tempfile + tomllib + pathlib.
 
 import json
 import os
+import re
 import shutil
 import stat
 import subprocess
@@ -90,20 +91,25 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 HOOKS_SRC_DIR = REPO_ROOT / "hooks-src"
 SCHEMA_MD = HOOKS_SRC_DIR / "schema.md"
 SCRIPTS_DIR = HOOKS_SRC_DIR / "scripts"
+AGENTS_MD = REPO_ROOT / "AGENTS.md"
 
 # §S3 (CR-MDB-030, migrated this cycle): the five remaining imported
 # Model-B-owned guard scripts + the new ambient-board-status (six protocol
 # scripts total, AC2) -- the cycle-todo-naming guard retired under §S7
 # (CR-MDB-030 C2, tests/test_hook_retirement.py owns that AC now; its
 # retired identifier is spelled ONLY there, never here).
+# MIGRATED (CR-MDB-062 §S2/§S8): the two new runner hooks join the roster --
+# eight protocol scripts in all.
 IMPORTED_SCRIPT_NAMES = [
     "block-direct-cargo-test",
     "block-direct-mvn-test",
+    "block-direct-python-test",
+    "block-direct-bun-test",
     "block-cr-completed-without-spec-update",
     "block-write-outside-worktree",
     "post-regression-disk-reminder",
 ]
-ALL_SIX_SCRIPT_NAMES = IMPORTED_SCRIPT_NAMES + ["ambient-board-status"]
+ALL_SCRIPT_NAMES = IMPORTED_SCRIPT_NAMES + ["ambient-board-status"]
 
 
 def _run_script(name, payload, env_overrides=None, timeout=5):
@@ -200,9 +206,10 @@ class ProtocolScriptLibraryStructureTest(unittest.TestCase):
     C2) -- its own nonexistence is tests/test_hook_retirement.py's job, not
     this structural pin's."""
 
-    def test_all_six_protocol_scripts_exist_executable_and_clean_of_forbidden_references(self):
+    def test_all_eight_protocol_scripts_exist_executable_and_clean_of_forbidden_references(self):
+        self.assertEqual(len(ALL_SCRIPT_NAMES), 8)
         failures = []
-        for name in ALL_SIX_SCRIPT_NAMES:
+        for name in ALL_SCRIPT_NAMES:
             path = SCRIPTS_DIR / name
             if not path.is_file():
                 failures.append(f"{name}: missing at {path}")
@@ -215,7 +222,7 @@ class ProtocolScriptLibraryStructureTest(unittest.TestCase):
                 failures.append(f"{name}: contains forbidden WORKFLOW_CYCLE_ID reference")
             if ".claude/scripts" in text:
                 failures.append(f"{name}: contains forbidden .claude/scripts client path")
-        # POSITIVE/EXACT -- zero failures across all six scripts.
+        # POSITIVE/EXACT -- zero failures across all eight scripts.
         self.assertEqual(failures, [], "\n".join(failures))
 
 
@@ -560,6 +567,60 @@ class AmbientBoardStatusScriptTest(unittest.TestCase):
             any(kw in result.stdout.lower() for kw in ("degrad", "unavailable", "no plan", "no server")),
             f"expected a degradation note in stdout; got {result.stdout!r}",
         )
+
+
+
+# CR-MDB-062 §S8 -- the two documents that state the script roster: schema.md's
+# security-class roster names every block-* script, and AGENTS.md's Key
+# Directories row states the real hook-script count.
+
+#: AGENTS.md's ``hooks-src/`` row: "``scripts/`` (N executable stdin/exit protocol scripts".
+AGENTS_HOOK_SCRIPT_COUNT = re.compile(r"`scripts/` \((\d+) executable stdin/exit protocol scripts")
+#: schema.md's normative section holding the security-class roster.
+SECURITY_CLASS_HEADING = "## Security-class definition"
+
+
+def _security_class_roster(schema_text):
+    """The ``block-*`` script names written as code spans in schema.md's security-class
+    section (from its heading to the next ``## `` heading)."""
+    start = schema_text.find(SECURITY_CLASS_HEADING)
+    if start < 0:
+        return []
+    end = schema_text.find("\n## ", start + len(SECURITY_CLASS_HEADING))
+    section = schema_text[start:] if end < 0 else schema_text[start:end]
+    return sorted(set(re.findall(r"`(block-[a-z0-9-]+)`", section)))
+
+
+class HookScriptRosterDocsTest(unittest.TestCase):
+    """CR-MDB-062 §S8: schema.md's security-class roster and AGENTS.md's script count."""
+
+    def test_the_roster_reader_reads_only_the_security_class_section(self):
+        sample = ("# Schema\n\n`block-outside` here.\n\n## Security-class definition (v1)\n\n"
+                  "The roster: `block-a-test`,\n`block-b`, and `ambient-x`.\n\n"
+                  "## Neutral payload\n\n`block-after` there.\n")
+        self.assertEqual(_security_class_roster(sample), ["block-a-test", "block-b"])
+        self.assertEqual(_security_class_roster("## Other\n`block-a`\n"), [])
+
+    def test_schema_security_class_roster_names_all_six_block_scripts(self):
+        expected = sorted(name for name in ALL_SCRIPT_NAMES if name.startswith("block-"))
+        self.assertEqual(len(expected), 6, "precondition: six block-* scripts in the roster")
+        roster = _security_class_roster(SCHEMA_MD.read_text(encoding="utf-8"))
+        self.assertEqual(roster, expected,
+                         "schema.md's security-class roster must name every block-* script")
+
+    def test_the_count_reader_reads_the_agents_md_row(self):
+        row = ("| `hooks-src/` | `schema.md` (neutral schema v1) + `scripts/` (8 executable "
+               "stdin/exit protocol scripts, no file extension) |")
+        self.assertEqual(AGENTS_HOOK_SCRIPT_COUNT.findall(row), ["8"])
+        self.assertEqual(AGENTS_HOOK_SCRIPT_COUNT.findall(row.replace("8 executable", "eight")), [])
+
+    def test_agents_md_states_the_real_hook_script_count(self):
+        on_disk = sorted(p.name for p in SCRIPTS_DIR.iterdir() if p.is_file())
+        self.assertEqual(on_disk, sorted(ALL_SCRIPT_NAMES),
+                         "hooks-src/scripts/ must hold exactly the eight protocol scripts")
+        counts = AGENTS_HOOK_SCRIPT_COUNT.findall(AGENTS_MD.read_text(encoding="utf-8"))
+        self.assertEqual(counts, [str(len(ALL_SCRIPT_NAMES))],
+                         "AGENTS.md must state the hook-script count exactly once, as 8")
 
 
 if __name__ == "__main__":
