@@ -59,7 +59,7 @@ Key invariants:
 
 ```bash
 # Install the CLI (uv tool; no lockfile committed)
-uv tool install .                       # or: pip install -e .
+uv tool install --python 3.14 .
 modelb-axi --version
 
 # Installer / scaffold (always sandbox with --target-root when experimenting)
@@ -106,7 +106,7 @@ A brief that may run `modelb-axi` pins `--modelb-home` / `--target-root` and exp
 
 ## Runtime/Tooling Preferences
 
-- **Python ≥ 3.14** (`tomllib`); the published floor, `requires-python = ">=3.14"`. Package manager: **uv** (`uv tool install .`); no `uv.lock`, no `requirements.txt`.
+- **Python ≥ 3.14** (`tomllib`); the published floor, `requires-python = ">=3.14"`. Package manager: **uv** (`uv tool install --python 3.14 .`); no `uv.lock`, no `requirements.txt`.
 - Crucible's installed clients, `~/.crucible/clients/<stack>-crucible.py` (listed in `~/.crucible/crucible-clients.json`, installed by Crucible's own installer), are the only sanctioned client surface — never a checkout of the Crucible project. Model B ships, vendors and maintains none of them.
 - Prefer lean-ctx reads (`ctx_read`/`ctx_search`/`ctx_shell`/`ctx_tree`) over raw file/grep/shell calls.
 - Confirm destructive operations; delegate super-user ops to the user.
@@ -133,7 +133,7 @@ python3 ~/.crucible/clients/python-crucible.py regression --coverage \
 - **Agent ids:** free-form, and a READABILITY habit rather than a parsed key — TDD-role agents by convention `CR-MDB-NNN-<cycle>-<ROLE>` (e.g. `CR-MDB-017-F1-FIX`), the spec pre-review `CR-MDB-NNN-SPEC-REVIEW` (a VERIFY agent registered as `report` with no cycle, before `plan-file`), orchestrator ops `vidushi-mdb`. The id is assigned by the dispatcher and never minted by the agent; the ROLE is declared at registration via `--role` from the case-exact set `{RED, GREEN, FIX, VERIFY, ORCHESTRATOR, report}` and is never inferred from the id's shape, and the four TDD roles must additionally bind their cycle with `--cycle <id>` (the server refuses an unbound TDD registration 409). Read the client's agent-naming header rather than improvising.
 - JUnit XML lands in `test-reports/<agent>/` — the client's per-agent reports directory for `test --agent <agent>` — as `TEST-<module>.<Class>-<YYYYMMDDHHMMSS>.xml` (gitignored; the client wipes it before each run).
 - **Most tests are structural gates, so ordinary edits break them.** They assert repo layout, the state a sandboxed install deploys, SKILL.md frontmatter, byte-identity of imported bundles, reference-router parity, and grep-gates for retired terms (e.g. zero `WORKFLOW_CYCLE_ID`). Renaming a skill, doc, or reference file requires updating its gate.
-- Tests import `modelb_axi` directly — install the package (`pip install -e .`) or run from the repo root.
+- Tests import `modelb_axi` directly — run them from the repo root.
 - **The suite is expected to be GREEN, and hermetic** — no test writes to or depends on the real home, except to read Crucible's installed clients (CR-MDB-032 §S1/§S2) and one installed Pi package's released source — the pi-subagents service key, under `$PI_CODING_AGENT_DIR`, else `~/.pi/agent` (CR-MDB-039). Baselines for the full suite through the client (`python-crucible.py test`), measured 2026-10-14 at CR-MDB-062 C5 FIX through the Crucible client, with `MODELB_HOME`/`XDG_DATA_HOME` pointed at temp dirs:
   - real `HOME` (Crucible clients installed): **2537 tests, 0 failures, 0 errors, 1 skip** with `PI_CODING_AGENT_DIR` also pointed at a temp dir — the pi-subagents service-key check, its package absent there (with it unset and pi-subagents installed, that check runs: 0 skips).
   - empty `HOME` (a fresh temp dir; `PYTHONUSERBASE` keeps user site-packages; `PI_CODING_AGENT_DIR` at a temp dir): **2537 tests, 0 failures, 0 errors, 12 skips**; the temp dir is still empty afterwards.
