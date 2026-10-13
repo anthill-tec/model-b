@@ -82,6 +82,11 @@ _STATE_RE = re.compile(r"\b(present|absent|unknown)\b")
 _FIRST_CODE_SPAN_RE = re.compile(r"`([^`]+)`")
 _HEADING_RE = re.compile(r"^(#{2,3}) (.*)$")
 
+#: CR-MDB-063 §S3: the merged python3 line's remediation when a selected
+#: stack's ``<stack>.python3`` state is non-present and at least as bad as the
+#: row's own (ties included).
+PYTHON3_DEFAULT_REMEDIATION = "uv python install --default 3.14"
+
 
 # ------------------------------------------------------------------ helpers ----
 
@@ -558,9 +563,14 @@ class CapabilityContractStateTest(_ProjectCase):
         section = self.contract_for(None)
         # MIGRATED at CR-MDB-047 C1 RED (§S1): watcher -> worktree, + direnv.
         for rid in ("dispatch", "lean-ctx", "permissions", "worktree", "sandesh-pi",
-                    "python3", "bash", "gh", "jq", "direnv", "crucible-client"):
+                    "bash", "gh", "jq", "direnv", "crucible-client"):
             with self.subTest(tool=rid):
                 self.assert_listed(section, rid, UNKNOWN, _row(rid)["remediation"])
+        # MIGRATED at CR-MDB-063 C1 RED (§S3): the python3 row and python.python3 are
+        # both unrecorded — a tie of two unknowns — so the merged line names
+        # `uv python install --default 3.14`, not the row's `uv python install 3.14`.
+        with self.subTest(tool="python3"):
+            self.assert_listed(section, "python3", UNKNOWN, PYTHON3_DEFAULT_REMEDIATION)
         for rid in ("uv", "sandesh", "crucible"):
             with self.subTest(tool=rid):
                 self.assert_listed(section, rid, PRESENT, _row(rid)["remediation"])
@@ -588,7 +598,9 @@ class CapabilityContractStateTest(_ProjectCase):
     def test_the_merged_line_carries_the_worse_state(self):
         section = self.contract_for(self.verdicts(python_python3="absent"))
         self.assertEqual(len(_subject_lines(section, "python3")), 1, section)
-        self.assert_listed(section, "python3", ABSENT, _row("python3")["remediation"])
+        # MIGRATED at CR-MDB-063 C1 RED (§S3): python.python3 is absent, worse than
+        # the present row, so the line names `uv python install --default 3.14`.
+        self.assert_listed(section, "python3", ABSENT, PYTHON3_DEFAULT_REMEDIATION)
 
 
 class SetupTasksNameRemediationTest(_ProjectCase):

@@ -33,17 +33,28 @@ import tempfile
 import tomllib
 import unittest
 from pathlib import Path
+from unittest import mock
 
+from tests._helpers import (
+    code_string_literals,
+    python3_stub,
+    uv_stub,
+    write_interpreter_fixture,
+)
 from tests._helpers import decode_axi as _decode
 from tests._helpers import write_executable as _write_exe
-from tests._helpers import write_interpreter_fixture
 from tests.pi_capability_sandbox import (
     AGENT_DIR_ENV,
     make_home,
     make_provisioned_agent_dir,
     parse_group_line,
 )
-from tests.scripted_terminal import make_responder, run_installer_interactive
+from tests.scripted_terminal import (
+    PROCEED_PROMPT,
+    last_line,
+    make_responder,
+    run_installer_interactive,
+)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SKILLS_SRC = REPO_ROOT / "skills-src"
@@ -52,14 +63,90 @@ SKILLS_SRC = REPO_ROOT / "skills-src"
 ALL_STACKS = ("arduino", "bun", "python", "quarkus", "rust", "java")
 
 #: §S8 table: stack -> the binaries/modules probed, in table order.
+#: MIGRATED at CR-MDB-063 C1 RED (§S1): every stack's probes begin with
+#: ``python3`` — each stack's Crucible client is a python script run as
+#: ``python3 <client>``.
 STACK_PROBES = {
     "python": ("python3", "xmlrunner", "coverage"),
-    "rust": ("cargo", "cargo-nextest", "cargo-llvm-cov"),
-    "quarkus": ("mvn", "java"),
-    "java": ("mvn", "java"),
-    "bun": ("bun", "node"),
-    "arduino": ("arduino-cli", "g++"),
+    "rust": ("python3", "cargo", "cargo-nextest", "cargo-llvm-cov"),
+    "quarkus": ("python3", "mvn", "java"),
+    "java": ("python3", "mvn", "java"),
+    "bun": ("python3", "bun", "node"),
+    "arduino": ("python3", "arduino-cli", "g++"),
 }
+
+#: CR-MDB-063 §S1: the ``python3`` PATH probe every stack leads with — its
+#: remediation, its install argv and where a re-probe looks after it ran.
+PYTHON3_REMEDIATION = "put python3 on PATH with uv: `uv python install --default 3.14`"
+PYTHON3_INSTALL = ("uv", "python", "install", "--default", "3.14")
+PYTHON3_INSTALL_DISPLAY = "uv python install --default 3.14"
+PYTHON3_EXPECTED = (
+    "in uv's executable directory (~/.local/bin, unless UV_PYTHON_BIN_DIR or "
+    "XDG_BIN_HOME names another), which must be on PATH"
+)
+
+#: CR-MDB-063 §S2: the project ``.venv`` route for ``xmlrunner`` and
+#: ``coverage``, in order.
+ROUTE_COMMANDS = ("uv venv --python 3.14", "uv pip install unittest-xml-reporting coverage")
+
+#: CR-MDB-063 §S2: why a probe has no install argv — each such probe
+#: declares exactly one, as data.
+NO_INSTALL_REASONS = ("elevated", "per-project")
+ELEVATED_PROBES = ("mvn", "java", "node", "g++")
+PER_PROJECT_PROBES = ("xmlrunner", "coverage")
+
+
+def _module_route_warning(name: str, verdict: str) -> str:
+    """§S2's exact warning for an absent (or unknown) python module."""
+    return (
+        f"stack python: {name}={verdict} — the PATH python3 cannot run python tests; "
+        "a python project's tests run under its own .venv: in the project, run "
+        "`uv venv --python 3.14`, then `uv pip install unittest-xml-reporting coverage`"
+    )
+
+
+def _declared_reasons(probe: dict) -> list[str]:
+    """The no-install reasons ``probe`` declares, read from its data whatever
+    the field holding it is called: every value exactly ``elevated`` or
+    ``per-project`` (§S2 names the values, not the field)."""
+    return [v for v in probe.values() if isinstance(v, str) and v in NO_INSTALL_REASONS]
+
+
+def _as_commands(value) -> tuple[str, ...] | None:
+    """``value`` read as a sequence of commands — each item a command string
+    or an argv of strings, joined — else ``None``."""
+    if not isinstance(value, (tuple, list)) or not value:
+        return None
+    commands = []
+    for item in value:
+        if isinstance(item, str):
+            commands.append(item)
+        elif isinstance(item, (tuple, list)) and item and all(isinstance(p, str) for p in item):
+            commands.append(" ".join(item))
+        else:
+            return None
+    return tuple(commands)
+
+
+def _declared_route() -> dict[str, tuple[str, ...]]:
+    """Every module-level attribute of ``modelb_axi.requirements`` whose value
+    is §S2's route — exactly :data:`ROUTE_COMMANDS`, in order. §S2 declares
+    the route as data there without naming the attribute."""
+    from modelb_axi import requirements
+    return {name: ROUTE_COMMANDS for name, value in vars(requirements).items()
+            if _as_commands(value) == ROUTE_COMMANDS}
+
+
+class _RecordingOffer:
+    """An ``offer`` seam that records every prompt and answers ``answer``."""
+
+    def __init__(self, answer: bool):
+        self.answer = answer
+        self.prompts: list[str] = []
+
+    def __call__(self, prompt: str) -> bool:
+        self.prompts.append(prompt)
+        return self.answer
 
 #: Every toolchain BINARY in the §S8 table (xmlrunner/coverage are modules).
 TOOLCHAIN_BINARIES = (
@@ -510,8 +597,10 @@ class ToolchainProbeScopeTest(_StackSandboxCase):
             self.assertEqual(which.count(tool), 1, f"§S8: probe {tool} exactly once; which={which}")
         others = sorted({t for t in which if t in TOOLCHAIN_BINARIES and t not in STACK_PROBES["rust"]})
         self.assertEqual(others, [], f"§S8: unselected stacks cost no probe; which={which}")
+        # MIGRATED at CR-MDB-063 C1 RED (§S1): the line leads with python3.
         self.assertEqual(self.stack_lines(result.stderr), [
-            "stack rust: cargo=detected cargo-nextest=detected cargo-llvm-cov=detected client=absent",
+            "stack rust: python3=detected cargo=detected cargo-nextest=detected "
+            "cargo-llvm-cov=detected client=absent",
         ])
 
     def test_rust_selection_runs_no_subprocess_and_executes_no_toolchain(self):
@@ -591,7 +680,9 @@ class ToolchainAbsentWarningTest(_StackSandboxCase):
     def test_absent_rust_toolchain_warns_names_installers_and_installs(self):
         result = self.run_installer("--stacks", "rust")
         axi = self.assert_installed(result)
+        # MIGRATED at CR-MDB-063 C1 RED (§S1): the group leads with python3.
         self.assertEqual(self.stack_group(result.stderr, "rust"), {
+            "python3": "detected",
             "cargo": "absent", "cargo-nextest": "absent", "cargo-llvm-cov": "absent",
             "client": "absent",
         })
@@ -604,7 +695,10 @@ class ToolchainAbsentWarningTest(_StackSandboxCase):
         self.assertEqual(caps.get("rust.cargo"), "absent")
         self.assertEqual(caps.get("rust.cargo-nextest"), "absent")
 
-    def test_absent_python_modules_name_the_install_command(self):
+    def test_absent_python_modules_name_the_project_venv_route(self):
+        # MIGRATED at CR-MDB-063 C1 RED (§S2), was
+        # test_absent_python_modules_name_the_install_command: each module's warning
+        # is §S2's exact route warning, and no `python3 -m pip install` is named.
         # MIGRATED at CR-MDB-064 C2 RED (§S7): the fixture's python3 at the floor,
         # every import check failing.
         write_interpreter_fixture(self.bin_dir, uv_body=_FAKE_UV, imports_ok=False)
@@ -616,8 +710,12 @@ class ToolchainAbsentWarningTest(_StackSandboxCase):
         self.assertEqual(group.get("coverage"), "absent", result.stderr)
         warnings = axi.get("warnings", [])
         for module in ("xmlrunner", "coverage"):
-            hits = [w for w in warnings if module in w and "pip install" in w]
-            self.assertTrue(hits, f"§S8: {module} absence names its install command; {warnings!r}")
+            with self.subTest(module=module):
+                own = [w for w in warnings if w.startswith(f"stack python: {module}=")]
+                self.assertEqual(own, [_module_route_warning(module, "absent")],
+                                 f"§S2: {module}'s warning names the .venv route; {warnings!r}")
+        self.assertEqual([w for w in warnings if "-m pip" in w], [],
+                         f"§S2: no pip install into the PATH python3 is named; {warnings!r}")
         caps = self.install_toml().get("capabilities", {})
         self.assertEqual(caps.get("python.xmlrunner"), "absent")
         self.assertEqual(caps.get("python.coverage"), "absent")
@@ -679,8 +777,11 @@ class ToolchainInstallerConfirmationTest(_StackSandboxCase):
         axi = self.assert_installed(result)
         ran = [r for r in self.executions() if r.split(" ", 1)[0] in ELEVATED_INSTALLERS]
         self.assertEqual(ran, [], f"§S8: elevated installers are never run; ran={ran!r}")
+        # MIGRATED at CR-MDB-063 C1 RED (§S1): the group leads with python3, which
+        # the fixture puts on PATH — so the all-yes answer meets no python3 offer.
         self.assertEqual(self.stack_group(result.stderr, "java"),
-                         {"mvn": "absent", "java": "absent", "client": "absent"})
+                         {"python3": "detected", "mvn": "absent", "java": "absent",
+                          "client": "absent"})
         warnings = axi.get("warnings", [])
         self.assertTrue(any("mvn" in w for w in warnings), f"warnings={warnings!r}")
         caps = self.install_toml()["capabilities"]
@@ -740,11 +841,6 @@ class StackVerdictKeysTest(_StackSandboxCase):
 # re-probe after a confirmed install, shared-install warnings, warning
 # shape, duplicate stack names.
 # ---------------------------------------------------------------------------
-
-#: The executables a warning's backticked command may start with — a
-#: backticked span is a COMMAND, never prose (finding 7).
-_COMMAND_HEADS = {"curl", "cargo", "python3", "pi", "uv"}
-
 
 def _backticked(text: str) -> list[str]:
     import re
@@ -1007,70 +1103,401 @@ class ProviderInstallerReprobeTest(_StackSandboxCase):
             local.chmod(0o700)
 
 
-class SharedInstallCommandWarningTest(_StackSandboxCase):
-    """Finding 5 (§S8): xmlrunner and coverage share one install command.
-    Under interactive offers the command is offered once, yet coverage
-    keeps its OWN warning naming it — whether the offer was taken or
-    declined. Fixture: the PATH ``python3`` fails every import check but
-    runs ``-m pip`` (recorded).
+class ModuleRouteWarningTest(_StackSandboxCase):
+    """Finding 5 (§S8), as CR-MDB-063 §S2 changes it: ``xmlrunner`` and
+    ``coverage`` are never offered anything — their route, the project
+    ``.venv``, runs in each python project — and each keeps its OWN warning
+    naming that route. Fixture: the PATH ``python3`` (at the floor, so the
+    interpreter probe accepts it, and on PATH, so no ``uv python install
+    --default`` offer is met) fails every import check, recording every run.
 
-    MIGRATED at CR-MDB-064 C2 RED (§S7): the shared fixture's python3 — at the
-    floor, so the interpreter probe (§S2) accepts it — with failing import
-    checks, recording every run."""
+    MIGRATED at CR-MDB-063 C1 RED (§S2), was SharedInstallCommandWarningTest
+    (the shared ``python3 -m pip install`` offer, accepted or declined): the run
+    answers yes to everything, and nothing but the proceed gate is asked.
+    MIGRATED at CR-MDB-064 C2 RED (§S7): the shared fixture's python3."""
 
     def setUp(self):
         super().setUp()
         write_interpreter_fixture(self.bin_dir, uv_body=_FAKE_UV, imports_ok=False,
                                   python3_log=self.marker)
 
-    def _run(self, answer: str):
-        result = self.run_interactive(
-            make_responder([(lambda chunk: "pip install" in chunk, answer)]), "--stacks", "python",
-        )
-        self.assertEqual(len(result.offers_naming("pip install")), 1,
-                         f"the shared command is offered once; reads={result.reads!r}")
-        return self.assert_installed(result)
-
-    def _assert_own_warnings(self, axi: dict):
+    def test_an_all_yes_run_asks_nothing_for_the_modules_and_installs_nothing(self):
+        result = self.run_interactive(make_responder([], default="y"), "--stacks", "python")
+        axi = self.assert_installed(result)
+        prompts = [last_line(chunk) for chunk, _ in result.reads]
+        self.assertEqual([p for p in prompts if PROCEED_PROMPT not in p], [],
+                         f"§S2: neither module is offered anything, and python3 is on "
+                         f"PATH so no `{PYTHON3_INSTALL_DISPLAY}` offer is met; "
+                         f"prompts={prompts!r}")
+        installs = [r for r in self.executions() if " -m " in f"{r} "]
+        self.assertEqual(installs, [], f"§S2: nothing is installed; ran={self.executions()!r}")
         warnings = axi.get("warnings", [])
         for module in ("xmlrunner", "coverage"):
             with self.subTest(module=module):
                 own = [w for w in warnings if w.startswith(f"stack python: {module}=")]
-                self.assertTrue(own, f"finding 5: {module} keeps its own warning; {warnings!r}")
-                self.assertTrue(any("pip install" in w for w in own), own)
-
-    def test_accepted_shared_install_keeps_coverages_own_warning(self):
-        axi = self._run("y")
-        pip_runs = [r for r in self.executions() if "pip install" in r]
-        self.assertEqual(len(pip_runs), 1, f"ran once; ran={self.executions()!r}")
-        self._assert_own_warnings(axi)
+                self.assertEqual(own, [_module_route_warning(module, "absent")],
+                                 f"finding 5: {module} keeps its own route warning; {warnings!r}")
         caps = self.install_toml()["capabilities"]
-        # Imports still fail after the install: the re-probe records absent.
         self.assertEqual((caps.get("python.xmlrunner"), caps.get("python.coverage")),
                          ("absent", "absent"))
 
-    def test_declined_shared_install_keeps_coverages_own_warning(self):
-        axi = self._run("n")
-        self.assertEqual([r for r in self.executions() if "pip install" in r], [])
-        self._assert_own_warnings(axi)
+
+def _non_command_spans(warnings: list[str], commands: set[str]) -> list[str]:
+    """Every backticked span in ``warnings`` that is not exactly one of
+    ``commands`` — finding 7's shape check."""
+    return [s for w in warnings for s in _backticked(w) if s not in commands]
 
 
 class WarningCommandShapeTest(_StackSandboxCase):
     """Finding 7: a warning separates the command from the prose — every
     backticked span is exactly a command from the requirements data,
-    never prose such as ``install Rust with rustup: …``."""
+    never prose such as ``install Rust with rustup: …``.
 
-    def test_backticked_spans_in_toolchain_warnings_are_commands_only(self):
+    MIGRATED at CR-MDB-063 C1 RED (§S2): the invariant is widened — a span is
+    an install argv's display OR one of the route commands declared in
+    ``modelb_axi.requirements`` — and still fails on any other span. The run's
+    import checks fail, so the module warnings (and their route) are exercised."""
+
+    def _commands(self) -> set[str]:
         from modelb_axi.requirements import STACK_TOOLCHAINS
-        commands = {
+        route = _declared_route()
+        self.assertEqual(len(route), 1,
+                         f"§S2: the route {ROUTE_COMMANDS!r} is declared once in "
+                         f"modelb_axi.requirements; found {sorted(route)!r}")
+        displays = {
             _install_display(p["install"])
             for probes in STACK_TOOLCHAINS.values() for p in probes if p["install"]
         }
+        return displays | set(next(iter(route.values())))
+
+    def test_backticked_spans_in_toolchain_warnings_are_commands_only(self):
+        write_interpreter_fixture(self.bin_dir, uv_body=_FAKE_UV, imports_ok=False)
+        commands = self._commands()
         axi = self.assert_installed(self.run_installer())
-        spans = [s for w in axi.get("warnings", []) for s in _backticked(w)]
-        self.assertTrue(spans, f"precondition: toolchain warnings name commands; {axi!r}")
-        prose = [s for s in spans if s.split()[0] not in _COMMAND_HEADS or s not in commands]
-        self.assertEqual(prose, [], f"finding 7: backticks hold a command only; spans={spans!r}")
+        warnings = axi.get("warnings", [])
+        spans = [s for w in warnings for s in _backticked(w)]
+        self.assertTrue(set(ROUTE_COMMANDS) <= set(spans),
+                        f"precondition: the module warnings name the route; spans={spans!r}")
+        self.assertEqual(_non_command_spans(warnings, commands), [],
+                         f"finding 7: backticks hold a command only; spans={spans!r}")
+
+    def test_the_shape_check_fails_on_any_other_span(self):
+        """The check proved on synthetic warnings: a declared command passes;
+        prose, a truncated command and a retired command each fail."""
+        commands = {"cargo install cargo-nextest", *ROUTE_COMMANDS}
+        clean = ["stack rust: cargo-nextest=absent — install it with cargo: "
+                 "`cargo install cargo-nextest`",
+                 _module_route_warning("coverage", "absent")]
+        self.assertEqual(_non_command_spans(clean, commands), [])
+        for span in ("install Rust with rustup: cargo install cargo-nextest", "uv venv",
+                     "python3 -m pip install unittest-xml-reporting coverage"):
+            with self.subTest(span=span):
+                self.assertEqual(_non_command_spans([f"x — `{span}`"], commands), [span])
+
+
+# ---------------------------------------------------------------------------
+# CR-MDB-063 §S1 — python3 on PATH for every stack's client
+# ---------------------------------------------------------------------------
+
+class Python3ProbeDataTest(unittest.TestCase):
+    """§S1 AC: ``STACK_TOOLCHAINS`` gives each of the six stacks a first probe
+    named ``python3`` — a PATH presence check — with §S1's exact
+    remediation, install argv and ``expected`` text; the rest of each
+    stack's group is unchanged."""
+
+    def test_every_stack_leads_with_the_python3_path_probe(self):
+        from modelb_axi.requirements import STACK_TOOLCHAINS
+        self.assertEqual(sorted(STACK_TOOLCHAINS), sorted(ALL_STACKS))
+        for stack in ALL_STACKS:
+            with self.subTest(stack=stack):
+                probes = STACK_TOOLCHAINS[stack]
+                self.assertEqual(tuple(p["name"] for p in probes), STACK_PROBES[stack])
+                first = probes[0]
+                self.assertEqual(
+                    (first["name"], first["kind"], first["remediation"], first["install"],
+                     first["expected"]),
+                    ("python3", "binary", PYTHON3_REMEDIATION, PYTHON3_INSTALL,
+                     PYTHON3_EXPECTED),
+                )
+
+
+class Python3ProbePreflightTest(_StackSandboxCase):
+    """§S1 AC through the real installer (``run_preflight``): a six-stack
+    pre-flight prints six ``stack <name>:`` lines, each beginning
+    ``python3=``; with no offer accepted ``python3`` is resolved once; each
+    selected stack records ``<stack>.python3``. The §D22 ``python3:`` line is
+    a separate check, pinned by tests.test_installer_interpreter_probe."""
+
+    def test_a_six_stack_preflight_prints_six_lines_each_leading_with_python3(self):
+        result = self.run_installer()
+        self.assert_installed(result)
+        lines = self.stack_lines(result.stderr)
+        self.assertEqual(sorted(ln.split(":", 1)[0][len("stack "):] for ln in lines),
+                         sorted(ALL_STACKS), f"one line per stack; lines={lines!r}")
+        for line in lines:
+            with self.subTest(line=line):
+                self.assertRegex(line, r"^stack [a-z]+: python3=detected ",
+                                 "§S1: every stack line begins python3=<verdict>")
+
+    def test_python3_is_resolved_once_whatever_the_number_of_stacks(self):
+        result, log = self.run_counting()
+        self.assert_installed(result)
+        lines = self.stack_lines(result.stderr)
+        self.assertEqual(len([ln for ln in lines if ": python3=detected " in ln]), 6,
+                         f"§S1: all six stacks probe python3; lines={lines!r}")
+        self.assertEqual(log["which"].count("python3"), 1,
+                         f"§S1: python3 resolved once per run; which={log['which']!r}")
+
+    def test_every_selected_stack_records_its_python3_key(self):
+        self.assert_installed(self.run_installer())
+        caps = self.install_toml().get("capabilities", {})
+        self.assertEqual({s: caps.get(f"{s}.python3") for s in ALL_STACKS},
+                         dict.fromkeys(ALL_STACKS, "detected"), f"caps={caps!r}")
+
+    def test_an_unselected_stack_records_no_python3_key(self):
+        self.assert_installed(self.run_installer("--stacks", "rust"))
+        caps = self.install_toml().get("capabilities", {})
+        self.assertEqual(sorted(k for k in caps if k.endswith(".python3")), ["rust.python3"],
+                         f"caps={caps!r}")
+
+
+class Python3OfferRemediationTest(unittest.TestCase):
+    """§S1 AC through the real ``remediate_toolchains``: the ``python3``
+    offer is made at most once per run, whatever the number of stacks, and
+    an accepted one is re-probed for every stack it covers. ``run_on_terminal``
+    and ``shutil.which`` are stubbed: nothing is run, nothing is resolved on
+    the real PATH."""
+
+    _UV = "/sandbox/bin/uv"
+    _PYTHON3 = "/sandbox/bin/python3"
+
+    @staticmethod
+    def _verdicts() -> dict:
+        return {
+            "rust": {"python3": "absent", "cargo": "detected", "cargo-nextest": "detected",
+                     "cargo-llvm-cov": "detected"},
+            "bun": {"python3": "absent", "bun": "detected", "node": "detected"},
+        }
+
+    def _remediate(self, answer: bool):
+        from modelb_axi.toolchains import remediate_toolchains
+        verdicts, warnings, offer = self._verdicts(), [], _RecordingOffer(answer)
+        which_calls: list[str] = []
+
+        def which(name, *args, **kwargs):
+            which_calls.append(name)
+            return self._PYTHON3 if name == "python3" else None
+
+        with mock.patch("modelb_axi.toolchains.run_on_terminal", return_value=0) as run, \
+                mock.patch("modelb_axi.toolchains.shutil.which", side_effect=which):
+            remediate_toolchains(verdicts, {"uv": self._UV, "python3": None},
+                                 warnings.append, offer)
+        return verdicts, warnings, offer, run, which_calls
+
+    def test_an_accepted_offer_runs_once_and_is_reprobed_for_every_stack(self):
+        verdicts, warnings, offer, run, which_calls = self._remediate(True)
+        self.assertEqual(len(offer.prompts), 1, f"one offer per run; prompts={offer.prompts!r}")
+        self.assertIn(PYTHON3_INSTALL_DISPLAY, offer.prompts[0])
+        self.assertEqual([c.args[0] for c in run.call_args_list],
+                         [[self._UV, *PYTHON3_INSTALL[1:]]],
+                         "the installer runs once, its runner resolved on PATH")
+        self.assertEqual((verdicts["rust"]["python3"], verdicts["bun"]["python3"]),
+                         ("installed", "installed"), "re-probed for every stack it covers")
+        self.assertEqual(which_calls.count("python3"), 2,
+                         f"one re-probe per stack covered; which={which_calls!r}")
+        for stack in ("rust", "bun"):
+            with self.subTest(stack=stack):
+                own = [w for w in warnings if w.startswith(f"stack {stack}: python3=absent")]
+                self.assertEqual(len(own), 1, f"each stack its own warning; {warnings!r}")
+                self.assertIn(PYTHON3_REMEDIATION, own[0])
+
+    def test_a_declined_offer_is_made_once_and_runs_nothing(self):
+        verdicts, warnings, offer, run, _ = self._remediate(False)
+        self.assertEqual(len(offer.prompts), 1, f"one offer per run; prompts={offer.prompts!r}")
+        self.assertIn(PYTHON3_INSTALL_DISPLAY, offer.prompts[0])
+        run.assert_not_called()
+        self.assertEqual((verdicts["rust"]["python3"], verdicts["bun"]["python3"]),
+                         ("absent", "absent"))
+        declined = [w for w in warnings if "declined" in w and PYTHON3_INSTALL_DISPLAY in w]
+        self.assertEqual(len(declined), 1, f"the decline is recorded once; {warnings!r}")
+
+
+class Python3OfferOnAUvOnlyMachineTest(_StackSandboxCase):
+    """§S1 through the real installer: a machine whose only 3.14 is uv's
+    passes the §D22 interpreter check (``uv python find``) but has no
+    ``python3`` on PATH, so every stack's client cannot run. Interactively
+    ``uv python install --default 3.14`` is offered once and, accepted, run
+    once (a fake ``uv`` that logs the run and puts a ``python3`` on the
+    sandbox PATH); ``--yes`` never runs it. rust and bun are selected with
+    their toolchains present, so ``python3`` is the only offer."""
+
+    def setUp(self):
+        super().setUp()
+        self.uv_runs = self._root / "uv-python-installs"
+        # uv's own 3.14, off PATH: the §D22 check finds it through `uv python find`.
+        uv_managed = self._root / "uv-managed"
+        uv_managed.mkdir()
+        uv_python = _write_exe(uv_managed, "python3", python3_stub())
+        (self.bin_dir / "python3").unlink()
+        cp = _tool_path("cp")
+        body = (
+            "#!/bin/sh\n"
+            'if [ "$1" = "python" ] && [ "$2" = "install" ]; then\n'
+            f'    printf \'%s\\n\' "$*" >> "{self.uv_runs}"\n'
+            f'    {cp} "{uv_python}" "{self.bin_dir}/python3"\n'
+            "    exit 0\n"
+            "fi\n"
+            'if [ "$1" = "tool" ] && [ "$2" = "install" ]; then exit 0; fi\n'
+            'echo "uv 0.0.0-fake"\n'
+            "exit 0\n"
+        )
+        _write_exe(self.bin_dir, "uv", uv_stub(uv_python, body))
+        self.shim("cargo", "cargo-nextest", "cargo-llvm-cov", "bun", "node")
+
+    def _uv_installs(self) -> list[str]:
+        if not self.uv_runs.exists():
+            return []
+        return [ln for ln in self.uv_runs.read_text(encoding="utf-8").splitlines() if ln]
+
+    def _run(self, answer: str):
+        return self.run_interactive(
+            make_responder([(lambda chunk: PYTHON3_INSTALL_DISPLAY in last_line(chunk), answer)]),
+            "--stacks", "rust,bun",
+        )
+
+    def _assert_detection_reported(self, stderr: str):
+        for stack in ("rust", "bun"):
+            self.assertEqual(self.stack_group(stderr, stack).get("python3"), "absent",
+                             f"the detection report comes first; stderr={stderr!r}")
+
+    def test_an_accepted_offer_runs_uv_once_and_records_installed_for_every_stack(self):
+        result = self._run("y")
+        offers = [c for c, _ in result.reads if PYTHON3_INSTALL_DISPLAY in last_line(c)]
+        self.assertEqual(len(offers), 1, f"one offer for both stacks; reads={result.reads!r}")
+        self.assertEqual(self._uv_installs(), ["python install --default 3.14"])
+        self.assert_installed(result)
+        self._assert_detection_reported(result.stderr)
+        caps = self.install_toml()["capabilities"]
+        self.assertEqual((caps.get("rust.python3"), caps.get("bun.python3")),
+                         ("installed", "installed"), f"caps={caps!r}")
+
+    def test_a_declined_offer_runs_nothing_and_records_absent(self):
+        result = self._run("n")
+        offers = [c for c, _ in result.reads if PYTHON3_INSTALL_DISPLAY in last_line(c)]
+        self.assertEqual(len(offers), 1, f"reads={result.reads!r}")
+        self.assertEqual(self._uv_installs(), [])
+        self.assert_installed(result)
+        caps = self.install_toml()["capabilities"]
+        self.assertEqual((caps.get("rust.python3"), caps.get("bun.python3")),
+                         ("absent", "absent"))
+
+    def test_yes_never_runs_it_and_names_it_for_every_stack(self):
+        result = self.run_installer("--stacks", "rust,bun")
+        axi = self.assert_installed(result)
+        self.assertEqual(self._uv_installs(), [], "--yes never confirms a provider installer")
+        self._assert_detection_reported(result.stderr)
+        warnings = axi.get("warnings", [])
+        for stack in ("rust", "bun"):
+            with self.subTest(stack=stack):
+                own = [w for w in warnings if w.startswith(f"stack {stack}: python3=absent")]
+                self.assertEqual(len(own), 1, f"each stack its own warning; {warnings!r}")
+                self.assertIn(PYTHON3_REMEDIATION, own[0])
+
+
+# ---------------------------------------------------------------------------
+# CR-MDB-063 §S2 — xmlrunner and coverage: the project .venv route
+# ---------------------------------------------------------------------------
+
+class NoInstallReasonDataTest(unittest.TestCase):
+    """§S2 AC: every probe without an install argv declares why, as data —
+    ``elevated`` (mvn, java, node, g++) or ``per-project`` (xmlrunner,
+    coverage) — and a probe with one declares neither."""
+
+    def test_every_probe_without_an_installer_declares_elevated_or_per_project(self):
+        from modelb_axi.requirements import STACK_TOOLCHAINS
+        expected = {**dict.fromkeys(ELEVATED_PROBES, "elevated"),
+                    **dict.fromkeys(PER_PROJECT_PROBES, "per-project")}
+        seen: dict[str, str] = {}
+        for stack, probes in STACK_TOOLCHAINS.items():
+            for probe in probes:
+                with self.subTest(stack=stack, probe=probe["name"]):
+                    reasons = _declared_reasons(probe)
+                    if probe["install"]:
+                        self.assertEqual(reasons, [], f"an installer needs no reason: {probe!r}")
+                    else:
+                        self.assertEqual(len(reasons), 1, f"exactly one reason: {probe!r}")
+                        seen[probe["name"]] = reasons[0]
+        self.assertEqual(seen, expected)
+
+
+class ModuleRouteDeclarationTest(unittest.TestCase):
+    """§S2 AC: the route's commands are declared once, as data, in
+    ``modelb_axi.requirements`` — no other module, and no second literal
+    there, carries either command."""
+
+    def test_the_route_is_declared_once_in_requirements(self):
+        found = _declared_route()
+        self.assertEqual(len(found), 1,
+                         f"one declaration of {ROUTE_COMMANDS!r}; found {sorted(found)!r}")
+        package = REPO_ROOT / "modelb_axi"
+        for path in sorted(package.rglob("*.py")):
+            literals = code_string_literals(path.read_text(encoding="utf-8"))
+            bound = 1 if path == package / "requirements.py" else 0
+            for command in ROUTE_COMMANDS:
+                with self.subTest(module=path.name, command=command):
+                    hits = [lit for lit in literals if command in lit]
+                    self.assertLessEqual(len(hits), bound,
+                                         f"the route is read from the data, never copied; "
+                                         f"{path.relative_to(REPO_ROOT)}: {hits!r}")
+
+
+class ModuleRouteRemediationTest(unittest.TestCase):
+    """§S2 AC through the real ``remediate_toolchains``: with both modules
+    absent and a recording ``offer`` there are zero prompts and each module
+    gets §S2's exact warning; ``_ELEVATED_NOTE`` rides an ``elevated``
+    warning (node) and never a ``per-project`` one (xmlrunner)."""
+
+    _RESOLVED = {"python3": "/sandbox/bin/python3", "uv": "/sandbox/bin/uv"}
+
+    def _remediate(self, verdicts: dict, offer) -> list[str]:
+        from modelb_axi.toolchains import remediate_toolchains
+        warnings: list[str] = []
+        with mock.patch("modelb_axi.toolchains.run_on_terminal") as run:
+            remediate_toolchains(verdicts, dict(self._RESOLVED), warnings.append, offer)
+        run.assert_not_called()
+        return warnings
+
+    def test_absent_modules_get_no_prompt_and_the_exact_route_warning(self):
+        offer = _RecordingOffer(True)
+        verdicts = {"python": {"python3": "detected", "xmlrunner": "absent",
+                               "coverage": "absent"}}
+        warnings = self._remediate(verdicts, offer)
+        self.assertEqual(offer.prompts, [], "§S2: neither module is offered anything")
+        self.assertEqual(warnings, [_module_route_warning("xmlrunner", "absent"),
+                                    _module_route_warning("coverage", "absent")])
+        self.assertEqual(verdicts["python"], {"python3": "detected", "xmlrunner": "absent",
+                                              "coverage": "absent"})
+
+    def test_an_unknown_module_verdict_reads_in_the_same_warning(self):
+        offer = _RecordingOffer(True)
+        warnings = self._remediate({"python": {"python3": "detected", "xmlrunner": "unknown",
+                                               "coverage": "detected"}}, offer)
+        self.assertEqual(offer.prompts, [])
+        self.assertEqual(warnings, [_module_route_warning("xmlrunner", "unknown")])
+
+    def test_the_elevated_note_rides_node_and_never_xmlrunner(self):
+        from modelb_axi.toolchains import _ELEVATED_NOTE
+        warnings = self._remediate({
+            "bun": {"python3": "detected", "bun": "detected", "node": "absent"},
+            "python": {"python3": "detected", "xmlrunner": "absent", "coverage": "detected"},
+        }, None)
+        node = [w for w in warnings if w.startswith("stack bun: node=")]
+        self.assertEqual(len(node), 1, warnings)
+        self.assertTrue(node[0].endswith(_ELEVATED_NOTE), f"elevated: {node[0]!r}")
+        xmlrunner = [w for w in warnings if w.startswith("stack python: xmlrunner=")]
+        self.assertEqual(xmlrunner, [_module_route_warning("xmlrunner", "absent")],
+                         "per-project: the route warning, without the elevated note")
+        self.assertNotIn(_ELEVATED_NOTE, xmlrunner[0])
 
 
 class DuplicateStackNamesTest(_StackSandboxCase):

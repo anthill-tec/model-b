@@ -1469,13 +1469,28 @@ def _tier1_rows() -> list[dict]:
     return [row for row in _requirements.REQUIREMENTS if row["tier"] == 1]
 
 
+#: CR-MDB-063 §S3: the merged ``python3`` contract line's remediation when a
+#: selected stack's ``python3`` is non-present and at least as bad as the row's.
+_PYTHON3_DEFAULT_REMEDIATION = "uv python install --default 3.14"
+#: CR-MDB-063 §S3: the ``python3`` row's own remediation, named otherwise.
+_PYTHON3_ROW_REMEDIATION = "uv python install 3.14"
+
+
 def _contract_remediation(probe: dict) -> str:
     """The remediation the capability contract writes beside a toolchain probe.
 
     MIGRATED at CR-MDB-064 C2 RED (§S2): a probe named like an always-scoped
     requirement row (``python3``) is merged into that row's line, which names the
     ROW's remediation (``_render_capability_contract``) — the two were the same
-    string until the ``python3`` row's became ``uv python install 3.14``."""
+    string until the ``python3`` row's became ``uv python install 3.14``.
+
+    MIGRATED at CR-MDB-063 C1 RED (§S3): the merged ``python3`` line names
+    ``uv python install --default 3.14`` when a selected stack's ``<stack>.python3``
+    state is non-present and ranks at least as bad as the row's own, ties included.
+    Every fixture this helper serves records no ``[capabilities]``: the row and each
+    stack's ``python3`` are both ``unknown`` — a tie — so the line names it."""
+    if probe["name"] == "python3":
+        return _PYTHON3_DEFAULT_REMEDIATION
     rows = {r["id"]: r for r in _requirements.REQUIREMENTS if r["scope"] == "always"}
     row = rows.get(probe["name"])
     return row["remediation"] if row is not None else probe["remediation"]
@@ -1742,6 +1757,87 @@ class ScaffoldCapabilityContractReadsRequirementsDataTest(unittest.TestCase):
         self.assertNotIn(original_dispatch, content)
         for remediation in original_python:
             self.assertNotIn(remediation, content)
+
+
+class CapabilityContractPython3LineTest(unittest.TestCase):
+    """CR-MDB-063 §S3 AC, through the real ``_render_capability_contract``: one
+    ``python3`` line for every stack selection — the §D22 row merged with every
+    selected stack's ``python3`` probe at the worse state — labelled
+    ``required; <stacks> toolchain`` with the selected stacks in selection order.
+    It names ``uv python install --default 3.14`` when a selected stack's
+    ``<stack>.python3`` state is non-present and ranks at least as bad as the
+    row's (ties included), else the row's ``uv python install 3.14``. States are
+    the tool states ``_tool_key_states`` reads (present / unknown / absent)."""
+
+    _STACKS = ("arduino", "bun", "python", "quarkus", "rust", "java")
+
+    def _python3_lines(self, stacks: list[str], states: dict) -> list[str]:
+        from modelb_axi import scaffold
+        content = scaffold._render_capability_contract(stacks, (), states)
+        return [ln for ln in content.splitlines() if ln.startswith("- `python3` ")]
+
+    def _line(self, stacks: list[str], states: dict) -> str:
+        lines = self._python3_lines(stacks, states)
+        self.assertEqual(len(lines), 1, f"exactly one python3 line for {stacks}; {lines!r}")
+        return lines[0]
+
+    def _assert_line(self, line: str, label: str, state: str, remediation: str | None):
+        self.assertTrue(line.startswith(f"- `python3` ({label}): {state}"),
+                        f"§S3: label {label!r}, state {state!r}; line={line!r}")
+        if remediation == _PYTHON3_DEFAULT_REMEDIATION:
+            self.assertIn(_PYTHON3_DEFAULT_REMEDIATION, line)
+        elif remediation == _PYTHON3_ROW_REMEDIATION:
+            self.assertIn(_PYTHON3_ROW_REMEDIATION, line)
+            self.assertNotIn("--default", line, f"the row's remediation only; line={line!r}")
+        else:
+            self.assertEqual(line, f"- `python3` ({label}): {state}", "no remediation")
+
+    def test_exactly_one_python3_line_for_every_stack_selection(self):
+        selections = [[s] for s in self._STACKS] + [list(self._STACKS), ["rust", "python"],
+                                                    ["quarkus", "java"]]
+        for stacks in selections:
+            with self.subTest(stacks=stacks):
+                line = self._line(stacks, {})
+                self.assertIn(f"(required; {', '.join(stacks)} toolchain)", line)
+
+    def test_python_only_selection_names_default_when_its_probe_is_as_bad_as_the_row(self):
+        line = self._line(["python"], {"python3": "present", "python.python3": "absent"})
+        self._assert_line(line, "required; python toolchain", "absent",
+                          _PYTHON3_DEFAULT_REMEDIATION)
+
+    def test_rust_only_selection_merges_rusts_python3_probe(self):
+        line = self._line(["rust"], {"python3": "unknown", "rust.python3": "absent"})
+        self._assert_line(line, "required; rust toolchain", "absent",
+                          _PYTHON3_DEFAULT_REMEDIATION)
+
+    def test_mixed_selection_lists_the_stacks_in_selection_order_and_ties_name_default(self):
+        states = {"python3": "absent", "python.python3": "present", "rust.python3": "absent"}
+        self._assert_line(self._line(["python", "rust"], states),
+                          "required; python, rust toolchain", "absent",
+                          _PYTHON3_DEFAULT_REMEDIATION)
+        self._assert_line(self._line(["rust", "python"], states),
+                          "required; rust, python toolchain", "absent",
+                          _PYTHON3_DEFAULT_REMEDIATION)
+
+    def test_mixed_selection_with_no_probe_as_bad_as_the_row_names_the_rows_command(self):
+        states = {"python3": "absent", "python.python3": "unknown", "rust.python3": "present"}
+        self._assert_line(self._line(["python", "rust"], states),
+                          "required; python, rust toolchain", "absent", _PYTHON3_ROW_REMEDIATION)
+
+    def test_a_tie_of_two_unknown_states_names_default(self):
+        line = self._line(["bun"], {})
+        self._assert_line(line, "required; bun toolchain", "unknown",
+                          _PYTHON3_DEFAULT_REMEDIATION)
+
+    def test_an_absent_row_with_present_probes_names_the_rows_command(self):
+        states = {"python3": "absent", "python.python3": "present", "rust.python3": "present"}
+        self._assert_line(self._line(["python", "rust"], states),
+                          "required; python, rust toolchain", "absent", _PYTHON3_ROW_REMEDIATION)
+
+    def test_everything_present_names_no_remediation(self):
+        states = {"python3": "present", "java.python3": "present", "arduino.python3": "present"}
+        self._assert_line(self._line(["java", "arduino"], states),
+                          "required; java, arduino toolchain", "present", None)
 
 
 class RegistryKeyDocPropagationTest(unittest.TestCase):
