@@ -5,12 +5,27 @@ description: One skill for the whole Crucible test-reporting lifecycle, any stac
 
 # Crucible — agent lifecycle + test ingest
 
-Crucible (`localhost:3849`) is the test-outcome and Model B workflow reporting
-and tracking dashboard. The LIFECYCLE is universal — register first, ingest
+Crucible is the test-outcome and Model B workflow reporting and tracking
+dashboard — the board. The LIFECYCLE is universal — register first, ingest
 every run, unregister last — but the VERB SURFACE differs per stack: read your
 stack's reference file before running anything. The client runs the tests AND
-ingests in one call under your agent id. Never hand-roll `curl`; the client
-(or, on a clientless stack, the documented urllib procedure) is the interface.
+ingests in one call under your agent id. Never hand-roll `curl`; the client is
+the interface, and every stack has one.
+
+## Connection — the board is project configuration
+
+- A client reads its board from `[client] url` (a full base URL) in the first
+  `crucible.toml` that exists and parses, in this order: the project's (at the
+  project root — `--project-dir`, else the client's project-dir variable
+  (python's `PY_CRUCIBLE_PROJECT_DIR`), else the git top level of the working
+  directory), the install's (beside `clients/`), the shipped one
+  (`http://localhost:3849`, the production board).
+- `[client]` is taken from that file only, so a project file without `[client]`
+  sends the client to the shipped default, whatever the install's file declares.
+  A Model B project's `crucible.toml` declares `[gate] skip` and no `[client]`,
+  so its board is the production board.
+- No environment variable points a client at a board: to reach another board,
+  name it in the project's own `crucible.toml`.
 
 ## Lifecycle (every agent)
 
@@ -152,18 +167,27 @@ Display/classification context survives as env vars:
   is declared or the verb fails, and an unregistered id is refused 409 by the
   server — it is never silently downgraded. The free-text `--orchestrator` label
   is retired; the registered `--agent` id IS the plan's orchestrator.
-- **`--release <label>`**, when given at filing, also REGISTERS the CR in the queue
+- **`plan-file … --release <label> --agent <id>`** also REGISTERS the CR in the queue
   in the same call (which makes `--wave` and `--title` required); omitted, the plan
   is filed and nothing is claimed on the roadmap.
 - **Gate verb — `gate-run`, which replaces the legacy `gate-report`.**
   `gate-run --intent <goal> --agent <id>` STREAMS the no-mistakes pipeline; the
   retired one-shot `gate-report` still answers but emits a `prefer-gate-run`
-  discouragement warning (Crucible #1369). `--skip <steps>` is forwarded VERBATIM
-  to `no-mistakes axi run --skip`; it exists because that pipeline's `ci` step is PR-based,
-  and a git-flow project that merges directly has none for it to watch, so
-  without `--skip` the gate blocks until `ci_timeout`. `--release <label>` names
-  the release a gate gates (a gate naming one is exempt from pruning until that
-  release records) — omit it unless the gate really gates a release.
+  discouragement warning (Crucible #1369). The steps a project never runs are
+  declared in its `crucible.toml` as `[gate] skip` (a Model B project declares
+  `skip = ["ci"]`), and the gate applies that declaration when no `--skip` is given.
+  The declaration exists because no-mistakes' `ci` step is PR-based, and a git-flow project that
+  merges directly has no PR for it to watch, so a gate that ran it would block until
+  `ci_timeout`. An explicit `--skip <steps>` replaces the declaration (forwarded
+  VERBATIM to `no-mistakes axi run --skip`), and `--skip ""` skips nothing.
+  `gate-run --intent <goal> --release <label> --agent <id>` names the release a gate gates
+  (a gate naming one is exempt from pruning until that release records) — omit it unless the gate really gates a release.
+- **`project-meta` — the project's metadata map.** A read, `project-meta` alone,
+  takes no `--agent`: it posts nothing. A write, `project-meta --set KEY=VALUE …
+  --agent <id>` or `project-meta --unset KEY --agent <id>`, posts as a registered
+  ORCHESTRATOR; an unregistered id is refused 409. A Model B project mirrors its
+  root registry's keys there, all but `CRUCIBLE_PROJECT_KEY`, and re-runs the write
+  whenever that registry changes (the project's Setup section carries the task).
 
 ## Queue verbs — the board holds the queue
 
@@ -198,6 +222,52 @@ place in it changes.
   Without `--release` the plan is filed and nothing is claimed on the queue.
 - **`queue-file` is retired from the workflow and is never run:** it replaces the whole board
   queue from a Markdown file, wiping every CR the verbs above recorded.
+
+## The 0.3.0 verb surface — on all five clients
+
+Crucible 0.3.0 put these verbs and flags on all five clients: `history`, `landings`,
+`project-meta`, `cycle-skip` and `gate-respond`, story points on `cr-plan`, the `queue` field
+selection and full view, and a cycle and a release flag on the run verbs. Where a client's
+`--help` differs, the exception is named below; read `<verb> --help` before using a flag this
+skill does not show.
+
+- **The run verbs** — `test`, the tier verbs (`unit`, `module`, `integration`, `e2e`, `bdd`),
+  `regression` and `pre-merge-gate` — take `--cycle` and `--release <label>`; not
+  `auto-ingest`. `test --cycle <id> --agent <id>` binds the run's agent to an active cycle
+  when it did not register bound.
+- **`regression --release <label> --agent <id>`** files the run as release verification under
+  a release the roadmap declares, instead of a cycle; `--release` is never given beside
+  `--cycle`.
+- **The exception:** the rust client's `regression` takes no `--cycle` — bind the rust
+  regression run at registration instead.
+- **`history`** lists past releases: a release appears once it has shipped or has a completed
+  CR, so planned releases are read with `queue --fields release,seq,points,dependsOn`.
+- **`queue --full`** shows every column, including `warning`.
+- **`status`** shows the work in flight (status contract 3.0.0: the open plans, `count`,
+  `filed` and `lastClosedCr`).
+- **`landings`** lists each closed CR's merge commit.
+- **Story points:** `cr-plan --cr <id> --title <t> --release <label> --wave <w> --points <n> --agent <id>`
+  takes a story-point score on the scale 1, 2, 3, 5, 8, 13.
+- **Re-sending a CR's current title, release and wave** with `--points` changes only its points.
+- **`cycle-add`:** a `fix` append, `cycle-add <label> --cr <id> --kind fix --agent <id>`, needs
+  nothing more. An insert,
+  `cycle-add <label> --cr <id> --before <cycle id> --reason <why> --cause spec-design --spec-ref <ref> --agent <id>`,
+  or any other kind, is a recorded plan change, and needs `--reason`, `--cause` (`spec-design`
+  or `gap-analysis`) and `--spec-ref`.
+- **Skipping a cycle:**
+  `cycle-skip <cycle id> --reason <why> --cause gap-analysis --spec-ref <ref> --agent <id>`
+  takes the same three flags; a skipped cycle is recorded as a failure.
+- **`gate-run`** gives each run its own board identity, `<caller>·gate·<run>`, removed when the
+  run ends; the decision stays the caller's (Crucible #1432).
+- **`gate-respond`** answers a held step with
+  `gate-respond --action approve|fix|skip --agent <id>`; a decision the tool accepted is
+  recorded even when the wait elapses. It has no `--release`.
+- **After a wait that elapsed while a step was still running,** check `status` and reattach
+  with `gate-run --intent <goal> --agent <id>` (Crucible #1432).
+- **Client output goes to a file** — `test --log <path> --agent <id>` where the verb takes
+  `--log`, a redirect otherwise — and never through `| head`.
+- **Where `--log` is absent:** the rust client's `regression`, and `pre-merge-gate` on the
+  arduino, mvn and rust clients — redirect their output to a file instead.
 
 ## Envelope — TOON-AXI on stdout (shipped fleet-wide)
 

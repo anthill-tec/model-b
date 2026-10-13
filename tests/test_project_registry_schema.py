@@ -835,7 +835,10 @@ class _Shared:
             golden = _golden_setup_tasks(self._today)
             self.assertEqual([ln for ln in golden if not any(ln == seen for seen in remaining)], [],
                              f"the README's setup tasks are kept, as they stand, in order; Setup={setup!r}")
-            tasks = [ln for ln in actual if "CRUCIBLE_PROJECT_KEY" in ln]
+            tasks = [ln for ln in actual if "CRUCIBLE_PROJECT_KEY" in ln
+                     and "project-meta" not in ln]
+            # MIGRATED at CR-MDB-057 C1 RED (§S3): the project-meta task names the key it does
+            # not mirror; it is not the key's setup task, so it is left out of this count.
             self.assertEqual(len(tasks), 1, setup)
             self.assertIn("`.env`", tasks[0], "§S2: the setup task names `.env` for the key")
             self.assertNotIn(".env.local", tasks[0], "§S2: the key no longer goes to .env.local")
@@ -963,9 +966,10 @@ class _Shared:
             """Regression pin (passes before GREEN): no file added or dropped."""
             # MIGRATED at CR-MDB-047 C1 RED (§S2): an `.envrc` beside every `.env`.
             # MIGRATED at CR-MDB-048 C2 RED (§S2): `docs/changes/.gitkeep`, not the queue README.
+            # MIGRATED at CR-MDB-057 C1 RED (§S2): one `crucible.toml`, at the root only.
             expected = set(self._reference) | {
                 ".env", ".env.local", ".gitignore", "AGENTS.md",
-                "docs/changes/.gitkeep", "docs/memory/INDEX.md", ".envrc",
+                "docs/changes/.gitkeep", "docs/memory/INDEX.md", ".envrc", "crucible.toml",
             }
             for sub in self.SUBS:
                 expected |= {f"{sub}/.env", f"{sub}/AGENTS.md", f"{sub}/.envrc"}
@@ -1185,18 +1189,23 @@ class RenderedValueHygieneTest(unittest.TestCase):
 
 
 class _StubCrucible(http.server.BaseHTTPRequestHandler):
-    """Answers every GET with an empty plan list; records the request paths."""
+    """Answers every request with an empty plan list; records each request's method and path."""
 
     seen: list = []
 
-    def do_GET(self):  # noqa: N802 -- http.server's method name
-        type(self).seen.append(self.path)
+    def _answer(self):
+        type(self).seen.append((self.command, self.path))
+        length = int(self.headers.get("Content-Length") or 0)
+        if length:
+            self.rfile.read(length)
         body = json.dumps({"ok": True, "plans": []}).encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    do_GET = do_POST = do_PUT = do_PATCH = do_DELETE = _answer  # noqa: N815 -- http.server's names
 
     def log_message(self, format, *args):  # noqa: A002 -- the base's name
         pass
@@ -1205,7 +1214,13 @@ class _StubCrucible(http.server.BaseHTTPRequestHandler):
 class CrucibleClientResolvesScaffoldedKeyTest(unittest.TestCase):
     """§S2/AC — once its key is filled in `.env`, a freshly scaffolded project
     resolves through Crucible's installed client, out of process: the client's
-    read-only `status` verb against an in-test stub server on an ephemeral port."""
+    read-only `status` verb against an in-test stub server on an ephemeral port.
+
+    MIGRATED at CR-MDB-057 C1 RED (§S1): a 0.3.0 client takes its board from
+    `[client] url` in the first `crucible.toml` that exists and parses, the
+    project's first, and no longer from an environment variable; the test writes
+    the stub's url into the scaffolded project's own `crucible.toml` and names the
+    project with `--project-dir`, so no request leaves for any other board."""
 
     FILLED_KEY = "r43-stub-project-key"
 
@@ -1236,8 +1251,17 @@ class CrucibleClientResolvesScaffoldedKeyTest(unittest.TestCase):
         )
         env = dict(os.environ)
         env.pop("PY_CRUCIBLE_PROJECT_DIR", None)
-        env.update(HOME=str(self.root / "home"),
-                   CRUCIBLE_URL=f"http://127.0.0.1:{self.server.server_address[1]}")
+        env.update(HOME=str(self.root / "home"))
+        # The board is project configuration: `[client] url` in the project's own
+        # crucible.toml (appended to the one init writes, else a new file).
+        stub_url = f"http://127.0.0.1:{self.server.server_address[1]}"
+        toml_path = target / "crucible.toml"
+        existing = toml_path.read_text(encoding="utf-8") if toml_path.is_file() else ""
+        if existing and not existing.endswith("\n"):
+            existing += "\n"
+        toml_path.write_text(existing + f'\n[client]\nurl = "{stub_url}"\n', encoding="utf-8")
+        self.assertEqual(tomllib.loads(toml_path.read_text(encoding="utf-8"))["client"]["url"],
+                         stub_url, "the project's crucible.toml parses and names the stub")
         run = subprocess.run(
             [sys.executable, str(self.client), "status", "--project-dir", str(target)],
             capture_output=True, text=True, env=env, cwd=str(target), timeout=60,
@@ -1248,8 +1272,14 @@ class CrucibleClientResolvesScaffoldedKeyTest(unittest.TestCase):
             f"the scaffold must put it there. client stderr={run.stderr[-400:]!r}",
         )
         self.assertEqual(run.returncode, 0, f"stdout={run.stdout[-400:]!r} stderr={run.stderr[-400:]!r}")
-        self.assertIn(f"/api/v2/projects/{self.FILLED_KEY}/plans", _StubCrucible.seen,
-                      "the client addressed the filled project key")
+        paths = [path for _method, path in _StubCrucible.seen]
+        self.assertTrue(
+            any(p.startswith(f"/api/v2/projects/{self.FILLED_KEY}/plans") for p in paths),
+            f"the client reached the stub with the filled project key; stub saw {paths!r}")
+        self.assertEqual(
+            [p for p in paths if "/projects/" in p
+             and not p.startswith(f"/api/v2/projects/{self.FILLED_KEY}/")], [],
+            "every project-scoped request names the filled key")
 
 
 # ------------------------------------------------------------------ extensibility ----

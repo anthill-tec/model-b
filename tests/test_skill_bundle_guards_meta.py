@@ -127,8 +127,10 @@ BANNED_OS_CALLS = (
     "spawnlp",
 )
 
-# §S5: the guard reads NO client source and no `--help` output. These are PATH
-# shapes that can only mean "reach outside this repo into a Crucible checkout" —
+# §S5: the guard reads NO client source. Its one read of a client is the
+# CR-MDB-057 carve-out below: the installed client's `--help` output, read only
+# inside `CLIENT_READ_CLASS`, which alone may carry `HELP_FLAG_LITERAL`. The
+# other markers are PATH shapes that can only mean "reach outside this repo into a Crucible checkout" —
 # the token `-crucible.py` is deliberately NOT banned, because matching it inside
 # OUR OWN bundle text is exactly what the flag-surface check is for.
 CLIENT_PATH_MARKERS = (
@@ -148,6 +150,61 @@ HOME_ESCAPE_MARKERS = ("Path.home", "expanduser", "expandvars")
 # retired one/--agent); a mirror of the client surface needs dozens.
 MAX_DISTINCT_FLAG_LITERALS = 10
 FLAG_LITERAL_RE = re.compile(r"--[A-Za-z][A-Za-z0-9-]+")
+
+# CR-MDB-057 §S7 MIGRATION: the spec extends the guard's
+# `test_client_examples_use_verbs_the_released_clients_expose` to check every
+# flag the `crucible` skill and the envelope contract name against the
+# INSTALLED client's own usage for that verb -- the shell-the-client design the
+# 2026-09-21 gap-analysis cut, reversed for that one check (Crucible 0.3.0 put
+# the flag surface Model B documents on every client). The bans above stay;
+# the carve-out is exactly this narrow:
+# * the client is spawned only inside the class `CLIENT_READ_CLASS` -- a plain
+#   `import subprocess` (no alias, no `from subprocess import ...`) is the one
+#   banned import allowed, every use of the name `subprocess` sits inside that
+#   class, and only that class carries the help-flag literal;
+# * the client is located only through the manifest helper
+#   `CLIENT_READ_LOCATOR` (tests/_helpers.py), never a path or a home escape;
+# * the flags the checker's bite-proof fixtures carry (`FLAG_FIXTURE_TEST`)
+#   are fixtures, not an allow-list: they are left out of the flag bound, and
+#   every other literal still counts against it.
+CLIENT_READ_CLASS = "_ReleasedHelp"
+CLIENT_READ_IMPORTS = ("subprocess",)
+CLIENT_READ_LOCATOR = "installed_crucible_file"
+HELP_FLAG_LITERAL = "--help"
+FLAG_FIXTURE_TEST = "test_the_released_flag_checker_bites_on_a_flag_the_verb_lacks"
+
+
+def _node_ids_inside(tree, name):
+    """ids of every node inside the class or function definition named `name`."""
+    ids = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == name:
+            ids.update(id(inner) for inner in ast.walk(node))
+    return ids
+
+
+def _client_read_exception_findings(tree):
+    """What breaks the narrow `subprocess` exception (CR-MDB-057 S7): an import
+    of it other than a plain `import subprocess` -- an alias, a submodule or a
+    `from subprocess import ...` -- or a use of the name `subprocess` outside
+    `CLIENT_READ_CLASS`."""
+    reader = _node_ids_inside(tree, CLIENT_READ_CLASS)
+    found = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name.split(".")[0] in CLIENT_READ_IMPORTS and (
+                        alias.asname or alias.name not in CLIENT_READ_IMPORTS):
+                    as_part = f" as {alias.asname}" if alias.asname else ""
+                    found.append(f"import {alias.name}{as_part} (line {node.lineno})")
+        elif isinstance(node, ast.ImportFrom):
+            if not node.level and node.module and \
+                    node.module.split(".")[0] in CLIENT_READ_IMPORTS:
+                found.append(f"from {node.module} import ... (line {node.lineno})")
+        elif isinstance(node, ast.Name) and node.id in CLIENT_READ_IMPORTS \
+                and id(node) not in reader:
+            found.append(f"{node.id} used outside {CLIENT_READ_CLASS} (line {node.lineno})")
+    return sorted(found)
 
 # CR-MDB-024 \u00a7S3 (this cycle, C2 RED, 2026-09-22 VS Code ruling): \u00a7S5 AC5's
 # API-path exemption constant is retired along with the bundle it named --
@@ -482,11 +539,15 @@ class SkillBundleGuardsMetaTest(unittest.TestCase):
         (`tests/test_generator_role_contract.py` legitimately shells
         `build.py --check`); §S5 makes it explicit for THIS module."""
         source, tree = self._require_guard()
+        # CR-MDB-057 §S7: `subprocess` is the one banned root the client-read
+        # class may use; it must then be the only place that calls it.
+        reader = _node_ids_inside(tree, CLIENT_READ_CLASS)
+        allowed_roots = CLIENT_READ_IMPORTS if reader else ()
 
         banned_imports = sorted(
             f"{name} (line {lineno})"
             for name, lineno in _import_roots(tree)
-            if name in BANNED_IMPORT_ROOTS
+            if name in BANNED_IMPORT_ROOTS and name not in allowed_roots
         )
         self.assertEqual(
             banned_imports,
@@ -494,6 +555,13 @@ class SkillBundleGuardsMetaTest(unittest.TestCase):
             f"{_rel(GUARD_MODULE)} must spawn no subprocess and start no server; "
             f"banned imports found: {banned_imports}. Banned roots: "
             f"{list(BANNED_IMPORT_ROOTS)}",
+        )
+        breaches = _client_read_exception_findings(tree)
+        self.assertEqual(
+            breaches,
+            [],
+            f"{_rel(GUARD_MODULE)}: the `subprocess` exception is a plain `import "
+            f"subprocess` used only inside {CLIENT_READ_CLASS}; found: {breaches}",
         )
 
         banned_calls = []
@@ -507,6 +575,8 @@ class SkillBundleGuardsMetaTest(unittest.TestCase):
                 if owner_name == "os" and func.attr in BANNED_OS_CALLS:
                     banned_calls.append(f"os.{func.attr} (line {node.lineno})")
                 if owner_name in ("subprocess", "socket", "urllib", "requests"):
+                    if owner_name in allowed_roots and id(node) in reader:
+                        continue
                     banned_calls.append(
                         f"{owner_name}.{func.attr} (line {node.lineno})"
                     )
@@ -521,18 +591,46 @@ class SkillBundleGuardsMetaTest(unittest.TestCase):
             f"network calls found: {sorted(banned_calls)}",
         )
 
+    def test_s5_the_subprocess_exception_detector_bites(self):
+        """CR-MDB-057 S7: the `subprocess` exception admits a plain import used
+        inside the client-read class, and bites on an alias, a from-import and a
+        use of the name outside that class."""
+        reader = f"class {CLIENT_READ_CLASS}:\n    def f(self):\n        return subprocess.run\n"
+        cases = (
+            ("import subprocess\n" + reader, 0),
+            ("import subprocess as sp\n" + reader, 1),
+            ("import subprocess.run\n" + reader, 1),
+            ("from subprocess import run\n" + reader, 1),
+            ("import subprocess\n" + reader + "runner = subprocess\n", 1),
+            ("import subprocess\n" + reader + "def g():\n    subprocess.run(['x'])\n", 1),
+        )
+        for source, expected in cases:
+            with self.subTest(source=source):
+                found = _client_read_exception_findings(ast.parse(source))
+                self.assertEqual(len(found), expected, found)
+
     def test_s5_guard_module_reads_no_client_and_mirrors_no_flag_surface(self):
         """DEMANDS: every assertion is about text under `skills-src/` — no path
-        into a Crucible checkout or `~/.crucible`, no `--help` output, no escape
-        from the repo root, and no maintained allow-list of Crucible's flags."""
+        into a Crucible checkout or `~/.crucible`, no `--help` output outside the
+        client-read class, no escape from the repo root, and no maintained
+        allow-list of Crucible's flags."""
         source, tree = self._require_guard()
         literals = _non_docstring_str_literals(tree)
+        # CR-MDB-057 §S7 carve-out: the help-flag literal is legal only in the
+        # client-read class; the bite-proof fixtures stay out of the flag bound.
+        reader_ids = _node_ids_inside(tree, CLIENT_READ_CLASS)
+        fixture_ids = _node_ids_inside(tree, FLAG_FIXTURE_TEST)
+        strings = [node for node in ast.walk(tree)
+                   if isinstance(node, ast.Constant) and isinstance(node.value, str)]
+        reader = {(node.lineno, node.value) for node in strings if id(node) in reader_ids}
+        fixtures = {(node.lineno, node.value) for node in strings if id(node) in fixture_ids}
 
         client_reads = sorted(
             f"line {lineno}: {value!r} contains {marker!r}"
             for lineno, value in literals
             for marker in CLIENT_PATH_MARKERS
             if marker in value
+            and not (marker == HELP_FLAG_LITERAL and (lineno, value) in reader)
         )
         self.assertEqual(
             client_reads,
@@ -553,7 +651,9 @@ class SkillBundleGuardsMetaTest(unittest.TestCase):
         )
 
         flags = set()
-        for _, value in literals:
+        for lineno, value in literals:
+            if (lineno, value) in fixtures:
+                continue
             flags.update(FLAG_LITERAL_RE.findall(value))
         self.assertLessEqual(
             len(flags),
@@ -565,6 +665,28 @@ class SkillBundleGuardsMetaTest(unittest.TestCase):
             f"asserts about our own bundle text (bound: "
             f"{MAX_DISTINCT_FLAG_LITERALS}).",
         )
+
+    def test_guard_module_reads_the_installed_clients_only_through_the_manifest(self):
+        """DEMANDS (CR-MDB-057 §S7): the guard's one client read -- the extended
+        verbs test's usage check -- locates the clients only through the
+        manifest helper, spawns them only inside the client-read class, and
+        skips (naming the manifest) when they are absent."""
+        source, tree = self._require_guard()
+        code_text = self._guard_code_text(source, tree)
+        self.assertIn(CLIENT_READ_LOCATOR, code_text,
+                      "the clients are located through the manifest helper")
+        self.assertTrue(_node_ids_inside(tree, CLIENT_READ_CLASS),
+                        f"the client read lives in {CLIENT_READ_CLASS}")
+        verbs_test = next(
+            (node for node in ast.walk(tree)
+             if isinstance(node, ast.FunctionDef)
+             and node.name == "test_client_examples_use_verbs_the_released_clients_expose"),
+            None)
+        self.assertIsNotNone(verbs_test, "the extended verbs test exists")
+        called = {node.func.attr for node in ast.walk(verbs_test)
+                  if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)}
+        self.assertIn("skipTest", called,
+                      "the usage check skips when the installed clients are absent")
 
     def test_s5_guard_module_covers_all_six_owned_bundles_including_arduino(self):
         """DEMANDS: the guard names every owned bundle measured from

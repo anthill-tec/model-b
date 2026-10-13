@@ -1,6 +1,6 @@
 # CR-MDB-057 — Crucible 0.3.0 doc-sync
 
-**Status:** PENDING — spec locked 2026-10-13 (gap analysis and pre-review folded); awaiting approval
+**Status:** COMPLETED (filed 2026-10-10; gap analysis and pre-review 2026-10-13)
 **Type:** refactor (skills, contract, scaffold, hook, tests)
 **Priority:** P1 — release 1.0.0, wave 2.
 **Depends on:** none (board-authoritative: read `queue`)
@@ -106,10 +106,12 @@ aborted-only board, and a 2.0.0 envelope.
 
 The per-stack table and the verb sections match the installed 0.3.0 `--help`, and say these verbs
 are on all five clients:
-- **Every run verb** — `test`, the tier verbs (`unit`, `module`, `integration`, `e2e`, `bdd`),
-  `regression` and `pre-merge-gate`, not `auto-ingest` — takes `--cycle` (bind the run's agent to an
+- **The run verbs** — `test`, the tier verbs (`unit`, `module`, `integration`, `e2e`, `bdd`),
+  `regression` and `pre-merge-gate`; not `auto-ingest` — take `--cycle` (bind the run's agent to an
   active cycle when it did not register bound) and `--release <label>` (file the run as release
-  verification under a release the roadmap declares, instead of a cycle; never beside `--cycle`).
+  verification under a release the roadmap declares, instead of a cycle; never beside `--cycle`), with
+  the exceptions the installed `--help` shows, which the skill names: rust `regression` takes no
+  `--cycle`.
 - **`history`** lists past releases: a release appears once it has shipped or has a completed CR, so
   planned releases are read with `queue --fields release,seq,points,dependsOn`. `queue --full` shows
   every column, including `warning`.
@@ -126,8 +128,9 @@ are on all five clients:
   `--action approve|fix|skip`; a decision the tool accepted is recorded even when the wait elapses.
   It has no `--release`. After a wait that elapsed while a step was still running, check `status` and
   reattach with `gate-run --intent <goal>` (#1432).
-- **Client output goes to a file** — `--log <path>` on a run verb, a redirect otherwise — never
-  through `| head`.
+- **Client output goes to a file** — `--log <path>` where the verb takes it, a redirect otherwise —
+  never through `| head`. The skill names where `--log` is absent: rust `regression`, and
+  `pre-merge-gate` on the arduino, mvn and rust clients.
 - **Every stack has a client.** The clause about a "clientless stack" and its "documented urllib
   procedure" is removed.
 
@@ -152,9 +155,10 @@ Each is updated in the cycle that changes the text it pins:
 - `tests/test_ambient_status_contract.py`: `STATUS_CONTRACT_VERSION`, the docstring and the degrade
   note name 3.0.0.
 - `tests/test_client_verb_sweep.py`: `test_s4c_envelope_contract_cites_status_contract_document_version`
-  (3.0.0), `test_s4c_envelope_contract_matches_the_installed_product_facts` (0.3.0), the
-  `--skip`-rationale gate asserting the declaration form, and `NORMATIVE_SURFACES` extended to
-  `AGENTS.md`.
+  (3.0.0), `test_s4c_envelope_contract_matches_the_installed_product_facts` (0.3.0), and the
+  `--skip`-rationale and gate-example tests run over the `crucible` skill, the contract and
+  `AGENTS.md` — without extending the surfaces the plan-file and 409 rule checks read, which
+  `AGENTS.md` does not state.
 - `tests/test_skill_bundle_guards.py`: `crucible-register` moves from `HTTP_BODY_BUNDLES` to the CLI
   register-flag family (`RegisterFlagSurfaceTest`); `V2_ENDPOINTS_BY_BUNDLE` drops the routes no
   bundle documents any more.
@@ -202,12 +206,13 @@ Each is updated in the cycle that changes the text it pins:
       (`filed > 0`, `lastClosedCr` null → "no open plan", no last-closed line). A 2.0.0 envelope (no
       `filed`) renders as today.
 - [ ] **The `crucible` skill's per-stack table and verb sections** name, for all five clients:
-      `--cycle` and `--release` on every run verb (not `auto-ingest`), `history`, `landings`,
+      `--cycle` and `--release` on the run verbs (not `auto-ingest`) with the exception named (rust
+      `regression`: no `--cycle`), `history`, `landings`,
       `project-meta`, `cr-plan --points` (scale 1–13), `cycle-add` (`fix` append; `--before` and other
       kinds with `--reason`/`--cause`/`--spec-ref`), `cycle-skip`, `gate-respond` (actions, no
       `--release`, the reattach), the gate run identity, `status` as work in flight,
-      `queue --fields`/`--full`, and output to a file (`--log` on run verbs, else a redirect), never
-      `| head`. No "clientless stack" clause remains.
+      `queue --fields`/`--full`, and output to a file (`--log` where the verb takes it, else a
+      redirect; the verbs without `--log` named), never `| head`. No "clientless stack" clause remains.
 - [ ] **`contracts/crucible-envelope.md`** states product 0.3.0 and status contract 3.0.0.
 - [ ] **Every flag the skill and the contract name** exists in the installed client's `--help` for
       that verb, checked by the extended verbs-the-released-clients-expose test, which skips naming

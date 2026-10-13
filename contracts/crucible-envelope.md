@@ -10,16 +10,25 @@ delivery is owned by the TRACKS header here plus CR-MDB-011's doc pass.
 
 Measured against the production Crucible installed on this machine:
 
-- **Product version `0.2.2`** — the release Model B documents against.
+- **Product version `0.3.0`** — the release Model B documents against (re-measured
+  2026-10-13, CR-MDB-057 §S5).
 - The installer is `crucible-axi install`, which stages the client fleet + manifest.
 - `--target-dir` chooses where that fleet is laid down.
 - The default target is `~/.crucible`, so the clients live at `~/.crucible/clients/`.
 - The run verb is `crucible-axi serve` — the provisioned server, in the foreground.
 - `crucible-axi uninstall` reverses the install (the exact inverse of `install`).
-- This document tracks `STATUS-CONTRACT.md` at its **document version 2.0.0** (verified at `~/.crucible/clients/STATUS-CONTRACT.md`).
+- This document tracks `STATUS-CONTRACT.md` at its **document version 3.0.0** (Crucible #1443).
+- Under that status contract, `status` shows the work in flight: `plans` holds the open
+  plans only and `count` counts them; `filed` is the number of plans ever filed (open,
+  closed or aborted), `null` when the board is unreachable — unknown, never 0; and
+  `lastClosedCr` is the last closed CR, `null` when none has closed. `lastClosedCr` never
+  tells an empty board from a drained one — `count` and `filed` do (Crucible #1443).
+- A client finds its board from `[client] url`, read from the first `crucible.toml` that
+  exists and parses — the project's, the install's (beside `clients/`), the shipped one
+  (the production board) — and takes `[client]` from that file only (Crucible #1445).
 
-**Three version axes, never conflated:** the PRODUCT version is `0.2.x`
-(installed `0.2.2`); `/api/v2` is the API GENERATION the clients speak; and `2.0.0`
+**Three version axes, never conflated:** the PRODUCT version is `0.3.x`
+(installed `0.3.0`); `/api/v2` is the API GENERATION the clients speak; and `3.0.0`
 is the semver of one document only — `STATUS-CONTRACT.md`. It is not a Crucible
 product or release number and must never be read as one.
 
@@ -107,12 +116,18 @@ from the reference port on that reading; it sidesteps the ambiguity on emit.
 This is the flag surface four consumers mirror (`skills-src/crucible/SKILL.md`, the six
 `crucible-report-*` bundles, `generator/templates/*.tmpl`, and `AGENTS.md`); a consumer
 that drifts from it teaches a registration the released server rejects. Measured against
-the installed `0.2.2` fleet, 2026-09-21.
+the installed `0.3.0` fleet, 2026-10-13.
 
 ```
-register --agent <id> --role <ROLE> [--cycle <cycleId>] [--display-name <n>]
-         [--source <src>] [--message <m>] [--project-dir <dir>]
+register --agent <id> --role <ROLE> [--cycle <cycleId>] [--source <src>] [--project-dir <dir>]
 ```
+
+That block is the surface all five clients take. Two flags are per-client, as each client's
+`--help` shows:
+
+- `register --message <m>` is on every client but arduino's: `bun-crucible.py`,
+  `mvn-crucible.py`, `python-crucible.py` and `rust-crucible.py`.
+- `register --display-name <n>` is only on `bun-crucible.py` and `python-crucible.py`.
 
 - **`--role` is required and CASE-EXACT**, from `{RED, GREEN, FIX, VERIFY, ORCHESTRATOR,
   report}` — five uppercase, `report` lowercase. It is the ONLY role channel. A missing
@@ -228,8 +243,9 @@ Filed by the orchestrator, on ALL stack clients:
   or the verb fails, and an unregistered id is refused by the server with 409 — there is no
   silent downgrade. The free-text `--orchestrator` label is retired; the registered
   `--agent` id IS the plan's orchestrator.
-- `--release <label>` at filing also REGISTERS the CR in the queue in the same call (which
-  makes `--wave` and `--title` required); omitted, nothing is claimed on the roadmap.
+- `plan-file … --release <label> --agent <id>` at filing also REGISTERS the CR in the queue
+  in the same call (which makes `--wave` and `--title` required); omitted, nothing is
+  claimed on the roadmap.
 - `cycle-activate <cycle-id> --agent <id>` / `cycle-done <cycle-id> --agent <id>` — legal
   transitions planned → active → done.
 - `cr-close --commit <sha> --agent <id>` — closes the CR on feature merge.
@@ -238,11 +254,14 @@ Filed by the orchestrator, on ALL stack clients:
 - `gate-run --intent <goal> --agent <id>` — wave-boundary no-mistakes gate evidence
   (`kind:"gate"`), STREAMED. It replaces `gate-report`, which survives only as the retired
   one-shot and emits a `prefer-gate-run` discouragement warning (Crucible #1369).
-- `--skip <steps>` on the gate verb is forwarded VERBATIM to `no-mistakes axi run --skip`.
-  It exists because no-mistakes' `ci` step is PR-based: a git-flow project that merges
-  directly has no PR for it to watch, so without `--skip` the gate blocks until
-  `ci_timeout`. `--release <label>` names the release a gate gates (exempt from pruning
-  until that release records) — omit it unless the gate really gates a release.
+- The steps a project never runs are declared in its `crucible.toml` as `[gate] skip`
+  (a Model B project declares `skip = ["ci"]`); the gate applies the declaration when
+  no `--skip` is given. It exists because no-mistakes' `ci` step is PR-based: a git-flow
+  project that merges directly has no PR for it to watch, so a gate that ran it would
+  block until `ci_timeout`. An explicit `--skip <steps>` replaces the declaration
+  (forwarded VERBATIM to `no-mistakes axi run --skip`), and `--skip ""` skips nothing.
+  `gate-run --intent <goal> --release <label> --agent <id>` names the release a gate gates
+  (exempt from pruning until that release records) — omit it unless the gate really gates a release.
 
 ### Agent-naming header (bundled agent-naming skill)
 - TDD-ROLE agents: `CR-<PROJ>-NNN-<cycle>-<ROLE>` (e.g. `CR-MDB-009-C1-GREEN`) — a

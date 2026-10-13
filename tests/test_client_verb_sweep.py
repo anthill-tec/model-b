@@ -63,10 +63,16 @@ NORMATIVE_SURFACES = (
     "contracts/crucible-envelope.md",
 )
 
+# CR-MDB-057 §S2/§S7: the surfaces that teach the wave-boundary gate's invocation and its
+# `[gate] skip` declaration — the two normative surfaces plus the repo's own `AGENTS.md`
+# (Workflow rules). Kept apart from NORMATIVE_SURFACES so the plan-file and 409 refusal-rule
+# gates do not start demanding those statements of `AGENTS.md`.
+GATE_SURFACES = NORMATIVE_SURFACES + ("AGENTS.md",)
+
 PRD = "docs/research/PRD-model-b-rationalization.md"
 DN_PLAN_REVIEW = "docs/research/DN-rationalization-plan-review.md"
 ENVELOPE_CONTRACT = "contracts/crucible-envelope.md"
-# CR-MDB-024 \u00a7S3 (this cycle, C2 RED, 2026-09-22 vscode ruling): VSCODE_BUNDLE
+# CR-MDB-024 §S3 (this cycle, C2 RED, 2026-09-22 vscode ruling): VSCODE_BUNDLE
 # retired -- the skills-src/crucible-report-vscode/ bundle it named is deleted
 # outright, not migrated, so the cycle-binding-comment test that used it is
 # deleted below too (tests/test_ide_overlay_retirement.py gates the deletion).
@@ -436,26 +442,98 @@ class ClientVerbSweepS4bTest(unittest.TestCase):
         )
 
     def test_s4b_skip_rationale_is_stated_with_the_gate_verb(self):
-        """The ``--skip`` rationale (PR-based ``ci`` step vs a git-flow direct merge) is stated."""
+        """The ``[gate] skip`` declaration, ``--skip`` replacing it, ``--skip ""`` and the
+        rationale (PR-based ``ci`` step vs a git-flow direct merge) are stated on every gate
+        surface.
+
+        MIGRATED at CR-MDB-057 C1 RED (§S2/§S7): was the ``--skip`` flag plus its rationale on
+        the two normative surfaces; now the declaration form, on ``AGENTS.md`` too."""
         required = (
             re.compile(r"--skip(?![\w-])"),
             re.compile(r"(?is)\bci\b[^\n]{0,200}(pull request|\bPR\b)|(pull request|\bPR\b)[^\n]{0,200}\bci\b"),
             re.compile(r"(?i)ci_timeout"),
+            re.compile(r"crucible\.toml"),
+            re.compile(r"\[gate\]`?\s*`?skip\b"),
+            re.compile(r"(?is)--skip(?![\w-]).{0,120}\breplac\w*"),
+            re.compile(r'(?is)--skip ""`?.{0,60}\bskips? nothing\b'),
         )
         offenders = []
-        for rel in NORMATIVE_SURFACES:
+        for rel in GATE_SURFACES:
             missing = _missing_statement(rel, required)
             if missing:
                 offenders.append(
-                    (rel, _anchor(rel, RE_GATE_REPORT), "missing: " + " | ".join(missing))
+                    (rel, _anchor(rel, RE_GATE_RUN), "missing: " + " | ".join(missing))
                 )
         self.assertEqual(
             [],
             offenders,
-            "the --skip rationale is not stated (no-mistakes' ci step is PR-based; a git-flow "
-            "project merging directly has no PR, so the gate blocks until ci_timeout):\n"
+            "the gate's skipped steps are not stated as a declaration (crucible.toml `[gate] "
+            "skip`; an explicit --skip replaces it; --skip \"\" skips nothing; no-mistakes' ci "
+            "step is PR-based, a git-flow project merging directly has no PR, and ci_timeout):\n"
             + _fmt(offenders),
         )
+
+    def test_s4b_gate_run_is_shown_without_skip_on_every_gate_surface(self):
+        """CR-MDB-057 §S2: every gate surface shows ``gate-run --intent <goal> --agent <id>``
+        and no ``gate-run`` invocation carries ``--skip`` — the project's ``[gate] skip``
+        declaration applies."""
+        shown = re.compile(r"(?<![\w-])gate-run --intent <goal> --agent \S+")
+        offenders = []
+        for rel in GATE_SURFACES:
+            spans = [(lineno, span) for lineno, line in enumerate(_lines(rel), 1)
+                     for span in _code_spans(line) if RE_GATE_RUN.search(span)]
+            offenders += [(rel, lineno, f"carries --skip: {span}") for lineno, span in spans
+                          if re.search(r"--skip(?![\w-])", span)]
+            if not any(shown.search(span) for _lineno, span in spans):
+                offenders.append((rel, _anchor(rel, RE_GATE_RUN),
+                                  "no `gate-run --intent <goal> --agent <id>` example"))
+        self.assertEqual(
+            [],
+            offenders,
+            "the gate is run as `gate-run --intent <goal> --agent <id>`, with no --skip:\n"
+            + _fmt(offenders),
+        )
+
+    def test_s4b_no_gate_surface_says_the_gate_needs_skip(self):
+        """CR-MDB-057 §S2 (Context): once ``[gate] skip`` is declared, "without ``--skip`` the
+        gate blocks until ``ci_timeout``" and "``--skip`` is needed" no longer hold."""
+        stale = (
+            re.compile(r"(?is)without\s+`?--skip`?[^.]{0,80}\bblocks?\b"),
+            re.compile(r"(?is)`?--skip`?\s+is\s+(?:needed|required)\b"),
+        )
+        offenders = [
+            (rel, _anchor(rel, rx), f"states: {hit.group(0)!r}")
+            for rel in GATE_SURFACES for rx in stale
+            if (hit := rx.search(_text(rel))) is not None
+        ]
+        self.assertEqual(
+            [],
+            offenders,
+            "a gate surface still says the gate needs --skip (the project's [gate] skip "
+            "declaration applies when it is omitted):\n" + _fmt(offenders),
+        )
+
+    def test_s4b_gate_declaration_detectors_both_ways(self):
+        """The three gate detectors above, proven on synthetic text."""
+        good = (
+            "Run `gate-run --intent <goal> --agent <id>`. The project's `crucible.toml` "
+            "declares `[gate] skip = [\"ci\"]`: no-mistakes' `ci` step is PR-based, and a "
+            "git-flow project that merges directly has no PR for it to watch, so skipping "
+            "nothing the gate blocks until `ci_timeout`. An explicit `--skip` replaces the "
+            "declaration, and `--skip \"\"` skips nothing.\n"
+        )
+        stale_skip = re.compile(r"(?is)without\s+`?--skip`?[^.]{0,80}\bblocks?\b")
+        decl = re.compile(r"\[gate\]`?\s*`?skip\b")
+        replaces = re.compile(r"(?is)--skip(?![\w-]).{0,120}\breplac\w*")
+        nothing = re.compile(r'(?is)--skip ""`?.{0,60}\bskips? nothing\b')
+        for rx in (decl, replaces, nothing):
+            with self.subTest(rx=rx.pattern):
+                self.assertRegex(good, rx)
+        self.assertNotRegex(good, stale_skip)
+        self.assertNotRegex(good.replace("`[gate] skip", "`[gate]`"), decl)
+        self.assertNotRegex(good.replace("replaces the", "overrides the"), replaces)
+        self.assertNotRegex(good.replace('`--skip ""` skips nothing', ""), nothing)
+        self.assertRegex("so without `--skip` the gate blocks until `ci_timeout`", stale_skip)
 
     def test_s4b_no_develop_only_port_rule_surface_is_documented(self):
         """No bundle/contract/AGENTS.md text teaches the unreleased ``portRule`` listener block."""
@@ -606,25 +684,44 @@ class ClientVerbSweepS4cTest(unittest.TestCase):
         )
 
     def test_s4c_envelope_contract_cites_status_contract_document_version(self):
-        """``contracts/crucible-envelope.md`` cites STATUS-CONTRACT.md document version 2.0.0."""
+        """``contracts/crucible-envelope.md`` cites STATUS-CONTRACT.md document version 3.0.0.
+
+        MIGRATED PIN (CR-MDB-057 §S5/§S7): was 2.0.0. Crucible 0.3.0 installs status contract
+        3.0.0 (Crucible #1443), and the contract tracks the installed document; no line may still
+        state the old document version as the one tracked.
+        """
         hits = [
             (ENVELOPE_CONTRACT, lineno, line)
             for lineno, line in enumerate(_lines(ENVELOPE_CONTRACT), 1)
-            if "STATUS-CONTRACT" in line and "2.0.0" in line
+            if "STATUS-CONTRACT" in line and "3.0.0" in line
         ]
         status_anchor = _anchor(ENVELOPE_CONTRACT, re.compile(r"^#"))
         self.assertTrue(
             hits,
             f"{ENVELOPE_CONTRACT}:{status_anchor}: the contract does not cite "
-            "STATUS-CONTRACT.md by its DOCUMENT version (2.0.0, verified at "
-            "~/.crucible/clients/STATUS-CONTRACT.md).",
+            "STATUS-CONTRACT.md by its DOCUMENT version (3.0.0, Crucible #1443).",
+        )
+        stale = [
+            (ENVELOPE_CONTRACT, lineno, line)
+            for lineno, line in enumerate(_lines(ENVELOPE_CONTRACT), 1)
+            if re.search(r"(?i)document version\W{0,4}2\.0\.0", line)
+        ]
+        self.assertEqual(
+            [],
+            stale,
+            "the contract still tracks STATUS-CONTRACT.md at document version 2.0.0:\n"
+            + _fmt(stale),
         )
 
     def test_s4c_envelope_contract_never_implies_a_product_version_of_2_0_0(self):
-        """No line reads ``2.0.0`` as a Crucible PRODUCT/release version."""
+        """No line reads ``2.0.0`` or ``3.0.0`` as a Crucible PRODUCT/release version.
+
+        EXTENDED (CR-MDB-057 §S5): the status contract's document version is now 3.0.0, so the
+        same conflation is forbidden for it.
+        """
         product_claim = re.compile(
-            r"(?i)(crucible\s+v?2\.0\.0|product\s+version[^\n]{0,40}2\.0\.0|"
-            r"release\s+2\.0\.0|2\.0\.0\s+release)"
+            r"(?i)(crucible\s+v?[23]\.0\.0|product\s+version[^\n]{0,40}[23]\.0\.0|"
+            r"release\s+[23]\.0\.0|[23]\.0\.0\s+release)"
         )
         offenders = [
             (ENVELOPE_CONTRACT, lineno, line)
@@ -639,10 +736,14 @@ class ClientVerbSweepS4cTest(unittest.TestCase):
         )
 
     def test_s4c_envelope_contract_matches_the_installed_product_facts(self):
-        """Documented product facts match the installed install (version, install/serve/uninstall)."""
+        """Documented product facts match the installed install (version, install/serve/uninstall).
+
+        MIGRATED PIN (CR-MDB-057 §S5/§S7): the product version was 0.2.2; the installed
+        product is 0.3.0, and the product-version line names it and not the old one.
+        """
         text = _text(ENVELOPE_CONTRACT)
         required = {
-            "product version 0.2.2": re.compile(r"0\.2\.2"),
+            "product version 0.3.0": re.compile(r"(?i)product version\W{0,4}0\.3\.0"),
             "crucible-axi install": re.compile(r"crucible-axi\s+install"),
             "--target-dir": re.compile(r"--target-dir(?![\w-])"),
             "default ~/.crucible": re.compile(r"~/\.crucible"),
@@ -661,6 +762,16 @@ class ClientVerbSweepS4cTest(unittest.TestCase):
             f"{ENVELOPE_CONTRACT}:{anchor}: installed-product facts absent or mis-ordered "
             f"— missing {detail}; install/serve/uninstall order ok={order_ok}",
         )
+        stale = [
+            (ENVELOPE_CONTRACT, lineno, line)
+            for lineno, line in enumerate(_lines(ENVELOPE_CONTRACT), 1)
+            if re.search(r"(?i)product version\W{0,4}0\.2\.2|\binstalled\W{1,3}0\.2\.2", line)
+        ]
+        self.assertEqual(
+            [],
+            stale,
+            "the contract still states 0.2.2 as the installed product version:\n" + _fmt(stale),
+        )
 
     def test_s4c_no_doc_states_0_1_2_as_the_latest_release(self):
         """No Model B doc still calls the superseded 0.1.2 snapshot the latest release."""
@@ -673,7 +784,7 @@ class ClientVerbSweepS4cTest(unittest.TestCase):
             "0.2.2:\n" + _fmt(offenders),
         )
 
-    # CR-MDB-024 \u00a7S3 (this cycle, C2 RED, 2026-09-22 vscode ruling): the
+    # CR-MDB-024 §S3 (this cycle, C2 RED, 2026-09-22 vscode ruling): the
     # cycle-binding-comment test that used to live here
     # (test_s4c_vscode_bundle_states_cycle_binding_is_declared_at_registration)
     # is DELETED, not migrated -- it read
