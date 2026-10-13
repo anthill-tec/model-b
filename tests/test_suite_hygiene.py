@@ -19,7 +19,11 @@ Class map:
   ``"…".format(…)`` in ``test_client_verb_sweep``, no directly nested ``with`` in
   ``test_installer_correctness``, and no un-chained ``raise`` inside an ``except`` handler in
   ``test_toon_codec`` (B904; added by the orchestrator's dispatch for this cycle).
-- ``AgentsMdTestingSectionS6Test`` — §S6: ``AGENTS.md`` Testing & QA tells the truth.
+- ``AgentsMdTestingSectionS6Test`` — §S6: ``AGENTS.md`` Testing & QA tells the truth; with
+  CR-MDB-056 §S1, Testing & QA and Development Commands show client commands only (the full suite,
+  ``--tests`` for a module and a class, the empty-``HOME`` run, ``--python``).
+- ``AgentsMdClientCommandDetectorTest`` — CR-MDB-056 §S1: those client-command checks, proved on
+  synthetic text.
 - ``NoUnicodeEscapeInCommentsTest`` — CR-MDB-047 (VERIFY F11): no comment the CR wrote carries a
   literal unicode escape — every comment of :data:`CR047_FILES`, and elsewhere each comment block
   naming CR-MDB-047; its detector bites on synthetic text first.
@@ -65,6 +69,7 @@ import unittest
 from pathlib import Path
 
 from tests import test_deployed_asset_freshness as freshness
+from tests._helpers import md_section
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 TESTS_DIR = REPO_ROOT / "tests"
@@ -548,6 +553,70 @@ def _stale_figures(text: str) -> list[str]:
     return [s for s in STALE_FIGURES if re.search(rf"(?<!\d){re.escape(s)}", text)]
 
 
+# CR-MDB-056 §S1 — AGENTS.md's Testing and Development Commands show client commands only.
+
+#: A test run through Model B's client.
+CLIENT_TEST_RUN = re.compile(r"python-crucible\.py\s+(?:test|regression|pre-merge-gate)\b")
+#: A command line that runs tests at all — through the client or not.
+TEST_RUN_COMMAND = re.compile(
+    r"-crucible\.py\s+(?:test|regression|pre-merge-gate)\b|-m\s+(?:unittest|pytest|xmlrunner)\b"
+    r"|(?:^|[\s/])py\.?test\b|\bdiscover\b")
+#: A runner invoked itself in a code span (only this section's runner: unittest, pytest, xmlrunner).
+RAW_RUN_SPAN = re.compile(r"(?:^|\s)-m\s+(?:unittest|pytest|xmlrunner)\b|^(?:\S*/)?py\.?test\b")
+#: A whole-word prohibition earlier in the sentence governs a span.
+PROHIBITION = re.compile(r"\b(?:never|not)\b", re.IGNORECASE)
+#: ``--tests tests.test_x`` (a module) and ``--tests tests.test_x.SomeTest`` (a class).
+TESTS_MODULE = re.compile(r"--tests\s+tests\.test_\w+(?=\s|$)")
+TESTS_CLASS = re.compile(r"--tests\s+tests\.test_\w+\.[A-Z]\w*(?=\s|$)")
+
+
+def _fenced_commands(section: str) -> list[str]:
+    """Each command inside the fenced blocks of ``section``: blank and ``#`` comment lines
+    dropped, a trailing comment cut, a ``\\`` continuation joined to its next line."""
+    commands, fenced, pending = [], False, ""
+    for line in section.splitlines():
+        if line.lstrip().startswith("```"):
+            fenced, pending = not fenced, ""
+            continue
+        stripped = line.strip()
+        if not fenced or not stripped or stripped.startswith("#"):
+            continue
+        command = " ".join((pending + " " + stripped.split("  #", 1)[0]).split())
+        if command.endswith("\\"):
+            pending = command[:-1]
+            continue
+        commands.append(command)
+        pending = ""
+    return commands
+
+
+def _raw_test_runs(section: str) -> list[str]:
+    """Every test run ``section`` shows outside the client: a fenced command that runs tests
+    and is no client run, and a prose code span invoking a runner with no prohibition earlier in
+    its sentence."""
+    found = [f"fenced: {c}" for c in _fenced_commands(section)
+             if TEST_RUN_COMMAND.search(c) and not CLIENT_TEST_RUN.search(c)]
+    prose = re.sub(r"^[ \t]*```.*?^[ \t]*```[^\n]*$", " ", section, flags=re.S | re.M)
+    for sentence in re.split(r"(?<=[.!?])\s+", " ".join(prose.split())):
+        for match in re.finditer(r"`([^`]+)`", sentence):
+            if RAW_RUN_SPAN.search(match.group(1)) and not PROHIBITION.search(sentence[: match.start()]):
+                found.append(f"prose: {match.group(1)}")
+    return found
+
+
+def _client_runs(section: str) -> list[str]:
+    """The fenced commands of ``section`` that run tests through the client."""
+    return [c for c in _fenced_commands(section) if CLIENT_TEST_RUN.search(c)]
+
+
+def _full_suite_runs(section: str) -> list[str]:
+    """The client runs of ``section`` over the full suite: ``test`` without ``--tests``, or
+    ``regression``."""
+    return [c for c in _client_runs(section)
+            if re.search(r"python-crucible\.py\s+regression\b", c)
+            or (re.search(r"python-crucible\.py\s+test\b", c) and "--tests" not in c)]
+
+
 class AgentsMdTestingSectionS6Test(unittest.TestCase):
     """§S6 — ``AGENTS.md`` Testing & QA states the real module count, the post-CR baseline for a
     real ``HOME`` and an empty ``HOME``, the skip causes, the naming convention as practised, and
@@ -627,6 +696,84 @@ class AgentsMdTestingSectionS6Test(unittest.TestCase):
     def test_s6_the_crucible_run_command_stays_as_cr_mdb_020_left_it(self):
         self.assertTrue("python-crucible.py regression --coverage" in self.section,
                         "§S6: the canonical Crucible run command stays in Testing & QA")
+
+    # CR-MDB-056 §S1/§S5 — the Testing section's commands are client commands only.
+
+    def test_testing_section_runs_tests_only_through_the_client(self):
+        self.assertEqual(_raw_test_runs(self.section), [],
+                         "CR-MDB-056 §S1: Testing & QA shows only client commands")
+        self.assertTrue(_full_suite_runs(self.section),
+                        "CR-MDB-056 §S1: Testing & QA shows the full suite through the client")
+
+    def test_testing_section_runs_a_module_and_a_class_through_the_client_tests_flag(self):
+        runs = _client_runs(self.section)
+        self.assertTrue([c for c in runs if TESTS_MODULE.search(c)],
+                        f"CR-MDB-056 §S1: a module through `--tests`; client runs: {runs}")
+        self.assertTrue([c for c in runs if TESTS_CLASS.search(c)],
+                        f"CR-MDB-056 §S1: a class through `--tests`; client runs: {runs}")
+
+    def test_testing_section_runs_the_empty_home_suite_through_the_client(self):
+        runs = [c for c in _client_runs(self.section) if re.search(r"(?<![\w$])HOME=", c)]
+        self.assertTrue(runs, "CR-MDB-056 §S1: the empty-HOME run goes through the client")
+
+    def test_testing_section_runs_another_interpreter_through_the_client_python_flag(self):
+        runs = [c for c in _client_runs(self.section) if re.search(r"\s--python\s+\S", c)]
+        self.assertTrue(runs, "CR-MDB-056 §S1: another interpreter runs through `--python`")
+
+    def test_development_commands_run_tests_only_through_the_client(self):
+        section = md_section(self.text, "## Development Commands")
+        self.assertTrue(section, "AGENTS.md keeps a '## Development Commands' section")
+        self.assertEqual(_raw_test_runs(section), [],
+                         "CR-MDB-056 §S1: Development Commands shows only client commands")
+        self.assertTrue(_client_runs(section),
+                        "CR-MDB-056 §S1: Development Commands runs the tests through the client")
+
+
+class AgentsMdClientCommandDetectorTest(unittest.TestCase):
+    """CR-MDB-056 §S1 — the AGENTS.md client-command checks, proved on synthetic text."""
+
+    OLD = ("Pure **`unittest`**.\n\n"
+           "```bash\n"
+           "python3 -m unittest tests.test_hooks                       # one module\n"
+           "python3 -m unittest discover -s tests -t .                 # full suite\n"
+           "```\n\n"
+           "```bash\n"
+           "python3 ~/.crucible/clients/python-crucible.py regression --coverage \\\n"
+           "  --agent vidushi-mdb --project-dir \"$PWD\"\n"
+           "```\n\n"
+           "- Baselines for `python3 -m unittest discover -s tests -t .`, measured today.\n"
+           "- Never run `python3 -m pytest` here.\n")
+    NEW = ("```bash\n"
+           "# one module, one class, the full suite\n"
+           "python3 ~/.crucible/clients/python-crucible.py test --tests tests.test_hooks --agent A --log /tmp/a.log\n"
+           "python3 ~/.crucible/clients/python-crucible.py test --tests tests.test_contracts.ContractsS2Test --agent A\n"
+           "python3 ~/.crucible/clients/python-crucible.py test --agent A --log /tmp/full.log\n"
+           "env HOME=\"$(mktemp -d)\" PYTHONUSERBASE=\"$HOME/.local\" python3 ~/.crucible/clients/python-crucible.py test --agent A\n"
+           "python3 ~/.crucible/clients/python-crucible.py test --python python3.14 --agent A\n"
+           "```\n")
+
+    def test_raw_runs_are_found_in_fences_and_ungoverned_prose_spans(self):
+        self.assertEqual(_raw_test_runs(self.OLD), [
+            "fenced: python3 -m unittest tests.test_hooks",
+            "fenced: python3 -m unittest discover -s tests -t .",
+            "prose: python3 -m unittest discover -s tests -t .",
+        ])
+
+    def test_a_continued_client_command_is_one_client_run(self):
+        self.assertEqual(_client_runs(self.OLD), [
+            "python3 ~/.crucible/clients/python-crucible.py regression --coverage "
+            "--agent vidushi-mdb --project-dir \"$PWD\""])
+        self.assertEqual(len(_full_suite_runs(self.OLD)), 1)
+
+    def test_client_commands_only_pass_and_each_anchor_is_found(self):
+        self.assertEqual(_raw_test_runs(self.NEW), [])
+        runs = _client_runs(self.NEW)
+        self.assertEqual(len(runs), 5)
+        self.assertEqual(len([c for c in runs if TESTS_MODULE.search(c)]), 1)
+        self.assertEqual(len([c for c in runs if TESTS_CLASS.search(c)]), 1)
+        self.assertEqual(len(_full_suite_runs(self.NEW)), 3)
+        self.assertEqual(len([c for c in runs if re.search(r"(?<![\w$])HOME=", c)]), 1)
+        self.assertEqual(len([c for c in runs if re.search(r"\s--python\s+\S", c)]), 1)
 
 
 if __name__ == "__main__":
