@@ -127,7 +127,7 @@ stack python: python3=detected xmlrunner=absent coverage=detected client=detecte
   none is found, the line names the verdict, the reason and the remedy instead, for example:
 
   ```text
-  python3=outdated — /usr/bin/python3 is 3.12.3; install it with: uv python install 3.14
+  modelb-axi: error: python3=outdated — python3 on PATH (/usr/bin/python3) is 3.12.3, below the 3.14 floor, and `uv python find --system '>=3.14'` found none; install it with: uv python install 3.14
   ```
 - `stack <name>:` — one line per chosen stack: each toolchain tool, then `client=` for that
   stack's Crucible client, looked up in the same manifest. The tools checked are:
