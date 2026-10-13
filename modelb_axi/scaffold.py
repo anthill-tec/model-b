@@ -28,6 +28,7 @@ Each file is itself written atomically (§S2). Stdlib only.
 
 import argparse
 import datetime
+import os
 import re
 import shlex
 import subprocess
@@ -955,7 +956,10 @@ def _render_sub_agents_md(
 
 # CR-MDB-015 §S5 hook-selection table (stack/mode-derived). Pinned rows
 # (CR text + the C3 RED tests): the cargo guard iff a rust stack; the mvn
-# guard iff a java/quarkus stack; the worktree + CR-completion guards iff
+# guard iff a java/quarkus stack; the python runner guard
+# (`block-direct-python-test`) iff a python stack and the bun runner guard
+# (`block-direct-bun-test`) iff a bun stack, each `pre-tool-use` / `bash` /
+# `core` / `closed` (CR-MDB-062 §S7); the worktree + CR-completion guards iff
 # multi mode; ambient-board-status always. Unpinned row — this slice's
 # documented choice: `post-regression-disk-reminder` is a stack-neutral AND
 # mode-neutral workflow-hygiene hook (the post-regression disk reminder
@@ -1003,6 +1007,19 @@ def _hook_instances(stacks: list[str], mode: str) -> list[dict]:
             "tier": "core",
             "fail_direction": "closed",
         })
+    # CR-MDB-062 §S7: each test-runner guard exactly for its stack.
+    for stack, command in (
+        ("python", "block-direct-python-test"),
+        ("bun", "block-direct-bun-test"),
+    ):
+        if stack in stacks:
+            instances.append({
+                "event": "pre-tool-use",
+                "matcher": "bash",
+                "command": command,
+                "tier": "core",
+                "fail_direction": "closed",
+            })
     if mode != "solo":
         instances.append({
             "event": "pre-tool-use",
@@ -1089,6 +1106,31 @@ def _hook_scripts_root(home: Path) -> Path:
             "record it, then re-run init"
         )
     return Path(str(configured)).expanduser()
+
+
+def _check_hook_scripts(scripts_root: Path, instances: list[dict]) -> None:
+    """Every hook init would emit has its script as an executable file in
+    the resolved store (CR-MDB-062 §S7).
+
+    Called from :func:`run_init`'s validation phase, once
+    :func:`_hook_scripts_root` resolves and before the first write — a
+    wiring whose command names a missing or non-executable script would
+    fail closed on every tool call. Raises ONE :class:`ScaffoldError`
+    naming each unusable script and ``modelb-axi --reinstall``, the run
+    that redeploys the store. Read-only."""
+    unusable = []
+    for instance in instances:
+        command = instance["command"]
+        script = scripts_root / command
+        if not (script.is_file() and os.access(script, os.X_OK)):
+            unusable.append(command)
+    if unusable:
+        raise ScaffoldError(
+            f"the hook-script store {scripts_root} lacks an executable "
+            f"script for {', '.join(unusable)}, which init would wire; run "
+            "`modelb-axi --reinstall` to redeploy the hook scripts, then "
+            "re-run init"
+        )
 
 
 def _render_hooks_readme(
@@ -1496,6 +1538,10 @@ def run_init(args: argparse.Namespace, home: Path) -> int:
     if any(h in HARNESS_ROSTER_IDS for h in harnesses):
         try:
             hook_scripts_root = _hook_scripts_root(home)
+            # CR-MDB-062 §S7: once the store resolves, every emitted hook's
+            # script must be an executable file there — same refuse-or-warn
+            # rule; an unresolved store keeps today's error alone.
+            _check_hook_scripts(hook_scripts_root, _hook_instances(stacks, args.mode))
         except ScaffoldError as exc:
             if not dry_run:
                 print(f"modelb-axi: error: {exc}", file=sys.stderr)

@@ -58,9 +58,8 @@ from unittest import mock
 
 from modelb_axi.harness import HARNESS_ROSTER_IDS
 from tests._helpers import decode_envelope as _decode_envelope
-from tests._helpers import deploy_hook_scripts
+from tests._helpers import deploy_hook_scripts, write_interpreter_fixture
 from tests._helpers import write_executable as _write_fake_executable
-from tests._helpers import write_interpreter_fixture
 from tests.pi_capability_sandbox import shared_home_without_crucible, with_agent_dir
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
