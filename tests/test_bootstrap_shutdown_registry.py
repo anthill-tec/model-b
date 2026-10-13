@@ -51,6 +51,7 @@ Hermetic: reads only repo files; the one ``init`` run is sandboxed under a temp 
 home dir pointed there). Stdlib only.
 """
 
+import json
 import re
 import shutil
 import tempfile
@@ -58,8 +59,8 @@ import unittest
 from pathlib import Path
 
 from modelb_axi import scaffold
-from modelb_axi.requirements import STACK_CLIENT_KEYS
-from tests._helpers import REPO_ROOT, read_text, split_frontmatter
+from modelb_axi.requirements import PYTHON_VENV_ROUTE, STACK_CLIENT_KEYS
+from tests._helpers import REPO_ROOT, build_tree, read_text, run_hook, split_frontmatter
 from tests.test_orchestrator_rule_triage import (
     EXEMPT_BUNDLES,
     model_b_owned_skill_files,
@@ -71,6 +72,7 @@ from tests.test_project_registry_schema import (
     _init,
     _registry_names_named,
 )
+from tests.test_raw_runner_guard import runner_findings, stack_of
 
 SKILLS = {
     "bootstrap": "skills-src/bootstrap/SKILL.md",
@@ -943,6 +945,330 @@ class WatcherWordingTest(unittest.TestCase):
             with self.subTest(skill=name):
                 hits = [line.strip() for line in _skill_text(name).splitlines() if "pkill" in line]
                 self.assertEqual(hits, [], f"{name}: the watcher is stopped by address, never killed")
+
+
+# ------------------------------------------- the python test-interpreter step (CR-MDB-063 §S6) ----
+#
+# Contract: ``docs/changes/CR-MDB-063-python-test-interpreter-probe.md`` §S6 (DN §D21, amended
+# 2026-10-14). The bootstrap skill gains Step 0.7, after Step 0.6 and before Step 1. It names, in
+# order: the project root rule, ``$PY_CRUCIBLE_PYTHON`` (used when set, a missing path reported),
+# ``<root>/.venv/bin/python``, the ``python3`` on ``PATH``, the import check, §S2's two route
+# commands (``requirements.PYTHON_VENV_ROUTE``, never a copy) and the client's ``--help`` as the
+# authority; Steps 3A and 3B each take the result into their report. The raw-runner guard and the
+# real ``block-direct-python-test`` both allow the step's import check, read from the skill's own
+# text. Pi's loader over ``skills-src/`` is already gated by
+# ``tests/test_skill_frontmatter.PiSkillLoaderOracleTest`` (every bundle, no diagnostics), so it
+# is not repeated here.
+
+#: §S6 — the step's heading, exactly.
+INTERPRETER_STEP_HEADING = ("## Step 0.7 — Check the python test interpreter (BOTH roles, only "
+                            "where `PROJECT_STACKS` includes `python`)")
+#: §S6 item 3 — the import check, exactly as the step writes it.
+IMPORT_CHECK = '<interpreter> -c "import xmlrunner, coverage"'
+#: How a code span or fenced line of the step is recognised as its import check.
+_IMPORT_CHECK_RE = re.compile(r"-c\s+[\"']import\b")
+#: The interpreters §S6 item 2 resolves to, substituted for ``<interpreter>``: each form a reader
+#: types must be allowed by the guard and the hook alike.
+RESOLVED_INTERPRETERS = ("$PY_CRUCIBLE_PYTHON", "/home/u/proj/.venv/bin/python", ".venv/bin/python",
+                         "python3", "/usr/bin/python3.14")
+
+#: §S6's elements, in the order the step names them: ``(label, regex on the normalised step)``.
+INTERPRETER_STEP_ELEMENTS = (
+    ("the project root rule", r"\$py_crucible_project_dir\b"),
+    ("$PY_CRUCIBLE_PYTHON", r"\$py_crucible_python\b"),
+    ("<root>/.venv/bin/python", r"<root>/\.venv/bin/python\b"),
+    ("the python3 on PATH", r"\bpython3 on (?:your )?path\b"),
+    ("the import check", re.escape(normalise(IMPORT_CHECK))),
+    (f"`{PYTHON_VENV_ROUTE[0]}`", re.escape(normalise(PYTHON_VENV_ROUTE[0]))),
+    (f"`{PYTHON_VENV_ROUTE[1]}`", re.escape(normalise(PYTHON_VENV_ROUTE[1]))),
+    ("the client's --help", r"(?<![\w-])--help\b"),
+)
+
+
+def _code_texts(text: str) -> list[str]:
+    """Each inline code span (it may wrap a line) and each fenced-block line of ``text``."""
+    out, inside, prose = [], False, []
+    for line in text.splitlines():
+        if re.match(r"^\s*(```|~~~)", line):
+            inside = not inside
+            continue
+        (out if inside else prose).append(line.strip() if inside else line)
+    spans = [re.sub(r"\s+", " ", s).strip() for s in re.findall(r"`([^`]+)`", "\n".join(prose))]
+    return spans + out
+
+
+def interpreter_step_findings(text: str) -> list[str]:
+    """Each way the bootstrap skill ``text`` misses §S6's Step 0.7 (empty = conforming)."""
+    heads = [line.rstrip() for line in text.splitlines() if line.startswith("## ")]
+    count = heads.count(INTERPRETER_STEP_HEADING)
+    if count != 1:
+        return [f"the heading {INTERPRETER_STEP_HEADING!r} appears {count} times (want 1)"]
+    out = []
+    at = heads.index(INTERPRETER_STEP_HEADING)
+    if at == 0 or not heads[at - 1].startswith("## Step 0.6 "):
+        out.append("Step 0.7 does not come right after Step 0.6")
+    if at + 1 >= len(heads) or not heads[at + 1].startswith("## Step 1 "):
+        out.append("Step 0.7 does not come right before Step 1")
+    step = _h2_section(text, INTERPRETER_STEP_HEADING)
+    body = normalise(step.split("\n", 1)[1] if "\n" in step else "")
+    found = []
+    for label, pattern in INTERPRETER_STEP_ELEMENTS:
+        m = re.search(pattern, body)
+        if m is None:
+            out.append(f"Step 0.7 does not name {label}")
+        else:
+            found.append((m.start(), label))
+    if [label for _, label in sorted(found)] != [label for _, label in found]:
+        out.append("Step 0.7 names its elements out of order: "
+                   + ", ".join(label for _, label in sorted(found)))
+    units = sentences(step)
+    if not any(re.search(r"without the python stack\b.*\bskip", u) for u in units):
+        out.append("Step 0.7 does not say a project without the python stack skips it")
+    if not re.search(r"\$py_crucible_project_dir\b.{0,60}\belse\b.{0,30}\bgit repo(?:sitory)? "
+                     r"containing the (?:current )?working directory\b", body):
+        out.append("Step 0.7 does not give the project root as $PY_CRUCIBLE_PROJECT_DIR, else the "
+                   "git repo containing the working directory")
+    item = next((b for b in re.split(r"\n\s*\n|\n(?=\s*(?:[-*]|\d+\.)\s)", step)
+                 if "$PY_CRUCIBLE_PYTHON" in b), "")
+    flat = normalise(item)
+    if not (re.search(r"\bwhen (?:it is )?set\b", flat) and re.search(r"\bmissing\b", flat)
+            and re.search(r"\breport", flat) and re.search(r"\bnever fall(?:en|s)? through\b", flat)):
+        out.append("Step 0.7 does not say $PY_CRUCIBLE_PYTHON is used when set, a missing path "
+                   "reported, never fallen through")
+    codes = _code_texts(step)
+    if IMPORT_CHECK not in codes:
+        out.append(f"Step 0.7 does not show the import check `{IMPORT_CHECK}` as code")
+    route = [codes.index(c) if c in codes else -1 for c in PYTHON_VENV_ROUTE]
+    if -1 in route or route != sorted(route) or not any(
+            "missing" in b and all(normalise(c) in b for c in PYTHON_VENV_ROUTE)
+            for b in blocks(step) + [normalise(p) for p in
+                                     re.split(r"\n(?=\s*(?:[-*]|\d+\.)\s)", step)]):
+        out.append("Step 0.7 does not report a missing interpreter or module with the route, "
+                   + ", then ".join(f"`{c}`" for c in PYTHON_VENV_ROUTE))
+    if not any("step 3a" in u and "report" in u and "user" in u for u in units):
+        out.append("Step 0.7 does not fold the result into Mainline's Step 3A report to the user")
+    if not any("step 3b" in u and "status" in u and "mainline" in u for u in units):
+        out.append("Step 0.7 does not fold the result into a Track's Step 3B status to Mainline")
+    if not any(re.search(r"(?<![\w-])--help\b", u) and "authorit" in u for u in units):
+        out.append("Step 0.7 does not name the client's --help as the authority")
+    return out
+
+
+def import_check_of(text: str) -> str | None:
+    """The import check Step 0.7 of the skill ``text`` shows — its first code span or fenced line
+    running ``-c "import …"`` — or ``None``."""
+    step = _h2_section(text, INTERPRETER_STEP_HEADING)
+    return next((c for c in _code_texts(step) if _IMPORT_CHECK_RE.search(c)), None)
+
+
+def resolved_forms(command: str) -> list[str]:
+    """``command`` as written, then with each of ``RESOLVED_INTERPRETERS`` for ``<interpreter>``."""
+    return [command] + [command.replace("<interpreter>", i) for i in RESOLVED_INTERPRETERS]
+
+
+GOOD_INTERPRETER_SKILL = f"""\
+# Bootstrap
+
+## Step 0.6 — Load the execution knowledge (BOTH roles, only where `KNOWLEDGE_CATEGORY` is set)
+
+Load the category.
+
+{INTERPRETER_STEP_HEADING}
+
+A project without the python stack skips this step.
+
+1. **The project root** is `$PY_CRUCIBLE_PROJECT_DIR`, else the git repo containing the working
+   directory.
+2. **Resolve the interpreter as the client does:**
+   - `$PY_CRUCIBLE_PYTHON` when set, even if it does not exist (a missing path is reported,
+     never fallen through);
+   - else `<root>/.venv/bin/python` when it exists;
+   - else the `python3` on `PATH`.
+3. **Check it** with `{IMPORT_CHECK}`.
+4. **Fold the result into the role's report:**
+   - Mainline's Step 3A report to the user;
+   - a Track's Step 3B status to Mainline.
+
+   A missing interpreter or module is reported with the route: in the project root, run
+   `{PYTHON_VENV_ROUTE[0]}`, then `{PYTHON_VENV_ROUTE[1]}`.
+
+The client's `--help` is the authority for the resolution order.
+
+## Step 1 — Bring up the wake
+
+Start the watcher.
+"""
+
+
+class PythonTestInterpreterStepCheckerTest(unittest.TestCase):
+    """§S6 — the Step 0.7 checker, proved on sample text both ways before it judges the skill."""
+
+    maxDiff = None
+
+    def test_the_spec_worded_step_passes(self):
+        self.assertEqual(interpreter_step_findings(GOOD_INTERPRETER_SKILL), [])
+        self.assertEqual(import_check_of(GOOD_INTERPRETER_SKILL), IMPORT_CHECK)
+
+    def test_a_missing_or_renamed_heading_is_reported(self):
+        for label, text in (
+                ("missing", GOOD_INTERPRETER_SKILL.replace(INTERPRETER_STEP_HEADING + "\n", "")),
+                ("renamed", GOOD_INTERPRETER_SKILL.replace("Check the python test interpreter",
+                                                           "Check the interpreter"))):
+            with self.subTest(case=label):
+                self.assertEqual(interpreter_step_findings(text), [
+                    f"the heading {INTERPRETER_STEP_HEADING!r} appears 0 times (want 1)"])
+                if label == "missing":
+                    self.assertIsNone(import_check_of(text))
+
+    def test_a_step_placed_after_step_1_is_reported(self):
+        head, rest = GOOD_INTERPRETER_SKILL.split(INTERPRETER_STEP_HEADING)
+        step, step1 = rest.split("## Step 1 ")
+        moved = head + "## Step 1 " + step1 + "\n" + INTERPRETER_STEP_HEADING + step
+        self.assertEqual(interpreter_step_findings(moved), [
+            "Step 0.7 does not come right after Step 0.6",
+            "Step 0.7 does not come right before Step 1"])
+
+    def test_the_venv_named_before_py_crucible_python_is_out_of_order(self):
+        swapped = GOOD_INTERPRETER_SKILL.replace(
+            "   - `$PY_CRUCIBLE_PYTHON` when set, even if it does not exist (a missing path is "
+            "reported,\n     never fallen through);\n   - else `<root>/.venv/bin/python` when it exists;",
+            "   - `<root>/.venv/bin/python` when it exists;\n   - else `$PY_CRUCIBLE_PYTHON` when set, "
+            "even if it does not exist (a missing path is reported,\n     never fallen through);")
+        self.assertNotEqual(swapped, GOOD_INTERPRETER_SKILL, "precondition: the swap applied")
+        self.assertEqual(interpreter_step_findings(swapped), [
+            "Step 0.7 names its elements out of order: the project root rule, "
+            "<root>/.venv/bin/python, $PY_CRUCIBLE_PYTHON, the python3 on PATH, the import check, "
+            f"`{PYTHON_VENV_ROUTE[0]}`, `{PYTHON_VENV_ROUTE[1]}`, the client's --help"])
+
+    def test_a_py_crucible_python_that_falls_through_is_reported(self):
+        text = GOOD_INTERPRETER_SKILL.replace(
+            "(a missing path is reported,\n     never fallen through)", "(a missing path is skipped)")
+        self.assertEqual(interpreter_step_findings(text), [
+            "Step 0.7 does not say $PY_CRUCIBLE_PYTHON is used when set, a missing path reported, "
+            "never fallen through"])
+
+    def test_a_root_without_the_git_fallback_is_reported(self):
+        text = GOOD_INTERPRETER_SKILL.replace(
+            ", else the git repo containing the working\n   directory", "")
+        self.assertEqual(interpreter_step_findings(text), [
+            "Step 0.7 does not give the project root as $PY_CRUCIBLE_PROJECT_DIR, else the git "
+            "repo containing the working directory"])
+
+    def test_no_skip_sentence_is_reported(self):
+        text = GOOD_INTERPRETER_SKILL.replace("A project without the python stack skips this step.\n\n",
+                                              "")
+        self.assertEqual(interpreter_step_findings(text), [
+            "Step 0.7 does not say a project without the python stack skips it"])
+
+    def test_a_changed_import_check_is_reported(self):
+        changed = '<interpreter> -c "import xmlrunner"'
+        text = GOOD_INTERPRETER_SKILL.replace(IMPORT_CHECK, changed)
+        self.assertEqual(interpreter_step_findings(text), [
+            "Step 0.7 does not name the import check",
+            f"Step 0.7 does not show the import check `{IMPORT_CHECK}` as code"])
+        self.assertEqual(import_check_of(text), changed)
+
+    def test_a_missing_or_reordered_route_is_reported(self):
+        route = ("Step 0.7 does not report a missing interpreter or module with the route, "
+                 + ", then ".join(f"`{c}`" for c in PYTHON_VENV_ROUTE))
+        dropped = GOOD_INTERPRETER_SKILL.replace(f", then `{PYTHON_VENV_ROUTE[1]}`", "")
+        self.assertEqual(interpreter_step_findings(dropped), [
+            f"Step 0.7 does not name `{PYTHON_VENV_ROUTE[1]}`", route])
+        unreported = GOOD_INTERPRETER_SKILL.replace("A missing interpreter or module is reported",
+                                                    "Make the venv")
+        self.assertEqual(interpreter_step_findings(unreported), [route])
+
+    def test_a_report_without_step_3a_or_step_3b_is_reported(self):
+        no_3a = GOOD_INTERPRETER_SKILL.replace("Mainline's Step 3A report to the user",
+                                               "Mainline's notes")
+        self.assertEqual(interpreter_step_findings(no_3a), [
+            "Step 0.7 does not fold the result into Mainline's Step 3A report to the user"])
+        no_3b = GOOD_INTERPRETER_SKILL.replace("a Track's Step 3B status to Mainline",
+                                               "a Track's notes")
+        self.assertEqual(interpreter_step_findings(no_3b), [
+            "Step 0.7 does not fold the result into a Track's Step 3B status to Mainline"])
+
+    def test_no_help_authority_is_reported(self):
+        text = GOOD_INTERPRETER_SKILL.replace(
+            "The client's `--help` is the authority for the resolution order.\n\n", "")
+        self.assertEqual(interpreter_step_findings(text), [
+            "Step 0.7 does not name the client's --help",
+            "Step 0.7 does not name the client's --help as the authority"])
+
+    def test_the_spec_import_check_in_every_resolved_form_is_no_runner_to_the_guard(self):
+        # The oracle: a step showing the spec's import check can pass the guard test below.
+        assert_guard_allows(self, IMPORT_CHECK)
+
+    def test_the_spec_import_check_in_every_resolved_form_is_allowed_by_the_python_hook(self):
+        # The oracle: a step showing the spec's import check can pass the hook test below.
+        assert_python_hook_allows(self, IMPORT_CHECK)
+
+    def test_a_runner_shown_as_the_import_check_is_caught_by_the_guard(self):
+        # The bite: had the step shown a runner instead, the guard test would fail.
+        runner = "<interpreter> -m xmlrunner discover"
+        self.assertEqual(stack_of(runner.replace("<interpreter>", "python3")), "python")
+        self.assertEqual(runner_findings(f"Check it with `{runner.replace('<interpreter>', 'python3')}`."),
+                         [(1, "python3 -m xmlrunner discover")])
+
+
+def assert_guard_allows(test: unittest.TestCase, command: str) -> None:
+    """The raw-runner guard reads no runner in ``command`` (each resolved form), in a code span
+    or on a fenced line."""
+    for form in resolved_forms(command):
+        with test.subTest(form=form):
+            test.assertIsNone(stack_of(form))
+            test.assertEqual(runner_findings(f"Check it with `{form}`."), [])
+            test.assertEqual(runner_findings(f"```bash\n{form}\n```\n"), [])
+
+
+def assert_python_hook_allows(test: unittest.TestCase, command: str) -> None:
+    """The real ``block-direct-python-test`` allows ``command`` (each resolved form) run in a
+    sandboxed python project — a project it is proved to guard (``python3 -m unittest`` blocked)."""
+    tmp = Path(tempfile.mkdtemp(prefix="modelb-interpreter-step-", dir="/tmp"))
+    test.addCleanup(shutil.rmtree, tmp, True)
+    project = build_tree(tmp / "proj", ["pyproject.toml", "tests/"], git="dir")
+    for parent in project.parents:
+        test.assertFalse((parent / "pyproject.toml").exists() or (parent / ".git").exists(),
+                         f"precondition: nothing above the sandbox is a project ({parent})")
+
+    def verdict(cmd: str) -> tuple[int, str]:
+        res = run_hook("block-direct-python-test", {
+            "tool_name": "bash", "tool_input": {"command": cmd}, "cwd": str(project)})
+        test.assertNotIn("Traceback", res.stderr, res.stderr)
+        return res.returncode, res.stdout
+
+    code, out = verdict("python3 -m unittest")
+    test.assertEqual((code, json.loads(out).get("decision")), (2, "block"),
+                     "control: the sandbox is a python project the hook guards")
+    for form in resolved_forms(command):
+        with test.subTest(form=form):
+            test.assertEqual(verdict(form), (0, ""), f"the hook blocks {form!r}")
+
+
+class PythonTestInterpreterStepTest(unittest.TestCase):
+    """§S6 — the bootstrap skill holds Step 0.7, and its import check is no test runner to the
+    raw-runner guard or to the real ``block-direct-python-test``."""
+
+    maxDiff = None
+
+    def setUp(self):
+        self.text = _skill_text("bootstrap")
+
+    def _import_check(self) -> str:
+        command = import_check_of(self.text)
+        if command is None:
+            self.fail(f"{SKILLS['bootstrap']} shows no import check under "
+                      f"{INTERPRETER_STEP_HEADING!r}")
+        return command
+
+    def test_bootstrap_holds_step_0_7_naming_each_element_in_order(self):
+        self.assertEqual(interpreter_step_findings(self.text), [])
+
+    def test_the_raw_runner_guard_allows_the_steps_import_check(self):
+        assert_guard_allows(self, self._import_check())
+
+    def test_block_direct_python_test_allows_the_steps_import_check_in_a_python_project(self):
+        assert_python_hook_allows(self, self._import_check())
 
 
 if __name__ == "__main__":

@@ -69,6 +69,14 @@ import unittest
 from functools import lru_cache
 from pathlib import Path
 
+from modelb_axi.requirements import (
+    ELEVATED,
+    PER_PROJECT,
+    PYTHON_VENV_ROUTE,
+    STACK_TOOLCHAINS,
+    install_display,
+)
+from modelb_axi.requirements import requirement as _requirement
 from tests._helpers import requirements_rows as _requirements
 from tests._helpers import write_interpreter_fixture
 
@@ -174,8 +182,12 @@ PI_PROJECT_SPECIFIC_NAMES = PROJECT_SPECIFIC_NAMES + ("anthill-tec",)
 
 # (G) — where the installer comes from (VERIFY cycle 100 findings 2/6), and
 # the source-copy note that stays true after publishing (CR-MDB-038 \u00a7S4).
-INSTALLER_INSTALL = "uv tool install modelb-axi"
-SOURCE_COPY_INSTALL = "uv tool install ."
+# MIGRATED at CR-MDB-063 C3 RED (§S7): each install and update command names `--python 3.14`
+# (was: `uv tool install modelb-axi`, `uv tool install .`); the two update commands join them.
+INSTALLER_INSTALL = "uv tool install --python 3.14 modelb-axi"
+INSTALLER_UPGRADE = "uv tool upgrade --python 3.14 modelb-axi"
+SOURCE_COPY_INSTALL = "uv tool install --python 3.14 ."
+SOURCE_COPY_UPDATE = "uv tool install --reinstall --python 3.14 ."
 #: CR-MDB-038 \u00a7S4 — wording that makes the source-copy note expire at the
 #: first upload (case-insensitive, whole word, whitespace-normalised).
 EXPIRING_NOTE_WORDING = (
@@ -744,6 +756,11 @@ def check_installer_source(text: str) -> list[str]:
     out = []
     if not has_code_token(sec, INSTALLER_INSTALL):
         out.append(f"{PREREQUISITES}: the installer step must name `{INSTALLER_INSTALL}`")
+    # MIGRATED at CR-MDB-063 C3 RED (§S7): the two update commands are named too.
+    if not has_code_token(sec, INSTALLER_UPGRADE):
+        out.append(f"{PREREQUISITES}: the installer step must name `{INSTALLER_UPGRADE}`")
+    if not has_code_token(sec, SOURCE_COPY_UPDATE):
+        out.append(f"{PREREQUISITES}: the source-copy note must name `{SOURCE_COPY_UPDATE}`")
     if not re.search(r"(?<![\w-])PyPI(?![\w-])", sec):
         out.append(f"{PREREQUISITES}: must say the installer comes from PyPI")
     notes = [" ".join(b.split()) for b in _prose_blocks(sec)
@@ -847,14 +864,16 @@ def check_harness_rejected(text: str) -> list[str]:
 
 #: The conforming guide's installer step (PyPI + the always-true source-copy
 #: note, CR-MDB-038 \u00a7S4).
+#: MIGRATED at CR-MDB-063 C3 RED (§S7): each form names its update command too.
 _CONFORMING_INSTALLER_LINE = (
-    f"- The installer, from PyPI: `{INSTALLER_INSTALL}`; or, from a source copy: "
-    f"`{SOURCE_COPY_INSTALL}`"
+    f"- The installer, from PyPI: `{INSTALLER_INSTALL}`, updated with `{INSTALLER_UPGRADE}`; "
+    f"or, from a source copy: `{SOURCE_COPY_INSTALL}`, updated with `{SOURCE_COPY_UPDATE}`"
 )
 #: The CR-MDB-037 installer step whose note expires at the first upload.
 _EXPIRING_INSTALLER_LINE = (
-    f"- The installer, from PyPI: `{INSTALLER_INSTALL}`; until then, from a source copy "
-    f"obtained from the maintainer: `{SOURCE_COPY_INSTALL}`"
+    f"- The installer, from PyPI: `{INSTALLER_INSTALL}`, updated with `{INSTALLER_UPGRADE}`; "
+    f"until then, from a source copy obtained from the maintainer: `{SOURCE_COPY_INSTALL}`, "
+    f"updated with `{SOURCE_COPY_UPDATE}`"
 )
 #: The conforming guide's statement of where workflow permissions come from
 #: (CR-MDB-038 \u00a7S3).
@@ -1628,8 +1647,9 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
 # CR-MDB-064 §S5 — the guide's Python 3.14 interpreter
 # ---------------------------------------------------------------------------
 
-#: §S5/§S2 — the remediation the guide names for the interpreter.
-PYTHON_REMEDIATION = "uv python install 3.14"
+#: §S5/§S2 — the remediation the guide names for the interpreter. MIGRATED at CR-MDB-063 C3 RED:
+#: read from the ``python3`` requirement row, never a copy (was the literal).
+PYTHON_REMEDIATION = _requirement("python3")["remediation"]
 PYTHON_FLOOR = (3, 14)
 #: "a Python 3.14 interpreter" ("Python ≥ 3.14" and "Python 3.14 or later" read the same).
 _PYTHON_FLOOR_WORDING = re.compile(r"(?<![\w-])Python (?:≥ ?|>= ?)?3\.14(?!\d|\.\d)")
@@ -1638,7 +1658,7 @@ _PATH_WORD = re.compile(r"(?<![\w-])PATH(?![\w-])")
 PYTHON_ACCEPTED_LINE = re.compile(r"^python3: (/\S+) \((\d+)\.(\d+)[^()\s]*\)$")
 #: §S2's stderr line when none is: ``python3=outdated|absent — <reason>; install it with: …``.
 PYTHON_REFUSAL_LINE = re.compile(
-    r"^python3=(?:outdated|absent) — \S.*; install it with: uv python install 3\.14$")
+    r"^python3=(?:outdated|absent) — \S.*; install it with: " + re.escape(PYTHON_REMEDIATION) + "$")
 #: The parenthesised list of tools whose installer needs elevated privileges.
 _ELEVATED_LIST = re.compile(r"(?<![\w-])needs? elevated privileges\s*\(([^)]*)\)")
 _LIST_ITEM_START = re.compile(r"^\s*(?:\d+\.|[-*])\s")
@@ -1705,7 +1725,10 @@ def check_python_interpreter(text: str) -> list[str]:
     for line in _fenced_lines(text):
         if line.startswith("python3:") and not PYTHON_ACCEPTED_LINE.match(line):
             out.append(f"sample line {line!r} does not match `python3: <path> (<version>)`")
-        if line.startswith("python3=") and not PYTHON_REFUSAL_LINE.match(line):
+        # MIGRATED at CR-MDB-063 C3 RED (§S7): a refusal sample behind the installer's
+        # error prefix is judged too (was: only lines beginning `python3=`).
+        refusal = line.removeprefix(ERROR_PREFIX)
+        if refusal.startswith("python3=") and not PYTHON_REFUSAL_LINE.match(refusal):
             out.append(f"sample line {line!r} does not match `python3=outdated|absent — <reason>; "
                        f"install it with: {PYTHON_REMEDIATION}`")
     return out
@@ -1801,6 +1824,454 @@ class InstallGuidePythonInterpreterTest(unittest.TestCase):
         self.assertTrue(check_python_interpreter(refusal)[0].startswith(
             "sample line 'python3=outdated — /usr/bin/python3 is 3.12.3; install it with: "
             "apt install python3' does not match"))
+
+    # -- CR-MDB-063 §S7: a refusal sample behind the installer's error prefix is judged too ----
+
+    def test_checker_judges_a_refusal_sample_behind_the_error_prefix(self):
+        refusal = f"python3=outdated — /usr/bin/python3 is 3.12.3; install it with: {PYTHON_REMEDIATION}"
+        prefixed = _CONFORMING_PYTHON_GUIDE.replace(refusal, ERROR_PREFIX + refusal)
+        self.assertNotEqual(prefixed, _CONFORMING_PYTHON_GUIDE, "precondition: the prefix applied")
+        self.assertEqual(check_python_interpreter(prefixed), [],
+                         "a conforming refusal sample behind the prefix passes")
+        wrong = prefixed.replace(f"install it with: {PYTHON_REMEDIATION}",
+                                 "install it with: apt install python3")
+        found = check_python_interpreter(wrong)
+        self.assertEqual(len(found), 1, found)
+        self.assertTrue(found[0].startswith(
+            f"sample line '{ERROR_PREFIX}python3=outdated — /usr/bin/python3 is 3.12.3; "
+            "install it with: apt install python3' does not match"), found[0])
+        other = prefixed.replace("python3=outdated — ", "python3=missing — ")
+        self.assertEqual(len(check_python_interpreter(other)), 1,
+                         "a verdict other than outdated|absent behind the prefix is reported")
+
+    def test_the_guides_own_refusal_sample_is_judged_and_conforms(self):
+        text = _read(GUIDE)
+        samples = [line for line in _fenced_lines(text)
+                   if line.startswith(ERROR_PREFIX + "python3=")]
+        self.assertEqual(len(samples), 1, f"the guide's refusal sample: {samples!r}")
+        self.assertEqual(check_python_interpreter(text), [])
+        broken = text.replace(samples[0], samples[0].replace(
+            f"install it with: {PYTHON_REMEDIATION}", "install it with: apt install python3"))
+        self.assertNotEqual(broken, text, "precondition: the sample was changed")
+        found = check_python_interpreter(broken)
+        self.assertEqual(len(found), 1, found)
+        self.assertTrue(found[0].startswith("sample line "), found[0])
+        self.assertIn("install it with: apt install python3", found[0])
+        self.assertIn("does not match `python3=outdated|absent", found[0])
+
+
+# ---------------------------------------------------------------------------
+# CR-MDB-063 §S7 — the install commands, the test interpreters, the offers
+# ---------------------------------------------------------------------------
+#
+# Contract: ``docs/changes/CR-MDB-063-python-test-interpreter-probe.md`` §S7 (DN §D21 amended
+# 2026-10-14). Every expected string is DERIVED from ``modelb_axi.requirements``: the ``python3``
+# PATH probe's install argv (``uv python install --default 3.14``), the ``.venv`` route
+# (``PYTHON_VENV_ROUTE``), the per-project modules and the elevated tools (each probe's
+# ``no_install``), and the interpreter's remediation (the ``python3`` requirement row).
+
+PI_PACKAGE_README = REPO_ROOT / "pi-package" / "README.md"
+AGENTS_MD = REPO_ROOT / "AGENTS.md"
+#: The interpreter every install or update of the installer names.
+PYTHON_FLAG = ("--python", "3.14")
+#: The installer's error prefix ahead of a refusal on stderr.
+ERROR_PREFIX = "modelb-axi: error: "
+#: A ``uv tool install|upgrade`` command, up to a shell separator or a comment.
+_UV_TOOL_COMMAND = re.compile(r"(?<![\w-])uv tool (install|upgrade)\b([^;&|#]*)")
+_PIP_EDITABLE = re.compile(r"(?<![\w-])pip install -e \.(?![\w/])")
+_RAW_PIP_INSTALL = re.compile(r"(?:^|-m )pip install\b")
+
+
+def python3_path_install() -> str:
+    """The ``python3`` PATH probe's installer command, as the pre-flight shows it."""
+    probes = {p["name"]: p for p in STACK_TOOLCHAINS["python"]}
+    return install_display(probes["python3"]["install"])
+
+
+def _no_install_names(reason: str) -> list[str]:
+    names: list[str] = []
+    for probes in STACK_TOOLCHAINS.values():
+        for probe in probes:
+            if probe["no_install"] == reason and probe["name"] not in names:
+                names.append(probe["name"])
+    return names
+
+
+def elevated_tools() -> list[str]:
+    """The probes named, never run, because their installer needs elevated privileges."""
+    return _no_install_names(ELEVATED)
+
+
+def per_project_modules() -> list[str]:
+    """The probes never offered, because their route runs in each python project."""
+    return _no_install_names(PER_PROJECT)
+
+
+def _flat(text: str) -> str:
+    """Backticks and ``*`` dropped, curly apostrophes straightened, whitespace collapsed,
+    lower-cased."""
+    text = text.replace("`", "").replace("*", "").replace("\N{RIGHT SINGLE QUOTATION MARK}", "'")
+    return " ".join(text.split()).lower()
+
+
+def install_command_findings(text: str) -> list[str]:
+    """Each ``uv tool install`` or ``uv tool upgrade`` of ``modelb-axi`` or ``.`` shown in
+    ``text`` (a code span or a fenced line) without ``--python 3.14``."""
+    out = []
+    for code in code_texts(text):
+        for m in _UV_TOOL_COMMAND.finditer(code):
+            words = m.group(2).split()
+            if not words or words[-1] not in ("modelb-axi", "."):
+                continue
+            if PYTHON_FLAG not in list(zip(words, words[1:], strict=False)):
+                out.append(f"`uv tool {m.group(1)} {' '.join(words)}` lacks `--python 3.14`")
+    return out
+
+
+def check_agents_md_install(text: str) -> list[str]:
+    """Model B's ``AGENTS.md``: no install of ``.`` without ``--python 3.14``, and no
+    ``pip install -e .`` (PEP 668 refuses it)."""
+    return install_command_findings(text) + [
+        f"names `{m.group(0)}`, which PEP 668 refuses" for m in _PIP_EDITABLE.finditer(text)]
+
+
+def check_python3_prerequisite(text: str) -> list[str]:
+    """The prerequisites' ``python3`` item names both uv installs and says every stack's
+    Crucible client runs on the ``python3`` on ``PATH``."""
+    default = python3_path_install()
+    items = [i for i in _list_items(_section(text, PREREQUISITES)) if has_code_token(i, "python3")]
+    out = []
+    if not any(has_code_token(i, PYTHON_REMEDIATION) and has_code_token(i, default) for i in items):
+        out.append(f"{PREREQUISITES}: the `python3` item does not name both `{PYTHON_REMEDIATION}` "
+                   f"and `{default}`")
+    if not any(re.search(r"\bevery stack'?s (?:crucible )?clients?\b", _flat(i))
+               and re.search(r"\bpython3 on (?:your )?path\b", _flat(i)) for i in items):
+        out.append(f"{PREREQUISITES}: the `python3` item does not say every stack's Crucible "
+                   "client runs on the `python3` on `PATH`")
+    return out
+
+
+def _stack_tool_entry(section: str, stack: str) -> str | None:
+    """The tools the pre-flight section's list gives ``stack`` (``\\`<stack>\\` — …``, up to
+    ``;`` or the sentence's end), or ``None``."""
+    flat = " ".join(section.split())
+    m = re.search(rf"`{re.escape(stack)}`(?: and `[\w+-]+`)?\s*[—:-]\s*(.*?)(?:;|\.(?=\s|$))", flat)
+    return m.group(1) if m else None
+
+
+def check_preflight_python3(text: str) -> list[str]:
+    """The pre-flight section tells ``stack <name>: python3=`` (the ``PATH`` presence check
+    for that stack's client) from the ``python3:`` line, says the two can disagree, lists
+    ``python3`` for every stack, and says ``xmlrunner``/``coverage`` are checked in the
+    ``PATH`` ``python3`` while a python project's tests run under its ``.venv``."""
+    sec = _section(text, PREFLIGHT)
+    prose = _prose_blocks(sec)
+    out = []
+    if not any(has_code_token(b, "stack <name>: python3=") and has_code_token(b, "python3:")
+               and all(w in _flat(b) for w in ("presence", "client", "path")) for b in prose):
+        out.append(f"{PREFLIGHT}: does not say `stack <name>: python3=` is a `PATH` presence "
+                   "check for that stack's client, distinct from the `python3:` line")
+    if "disagree" not in _flat(sec):
+        out.append(f"{PREFLIGHT}: does not say the two `python3` lines can disagree")
+    for stack in known_stacks():
+        entry = _stack_tool_entry(sec, stack)
+        if entry is None or not has_code_token(entry, "python3"):
+            out.append(f"{PREFLIGHT}: the tool list does not name `python3` for `{stack}`")
+    modules = per_project_modules()
+    if not any(all(has_code_token(b, m) for m in modules) and ".venv" in _flat(b)
+               and "python project" in _flat(b) and "path" in _flat(b) for b in prose):
+        out.append(f"{PREFLIGHT}: does not say `xmlrunner` and `coverage` are checked in the "
+                   "`PATH` `python3` and a python project's tests run under its `.venv`")
+    return out
+
+
+def check_toolchain_warning(text: str) -> list[str]:
+    """The warnings table's ``toolchain`` row: an absent ``xmlrunner``/``coverage`` means the
+    ``PATH`` ``python3`` cannot run python tests; a python project runs them under its
+    ``.venv``."""
+    row = re.search(r"^\| `toolchain` \|.*$", _section(text, WARNINGS), re.M)
+    if row is None:
+        return [f"{WARNINGS}: no `toolchain` row"]
+    line, flat = row.group(0), _flat(row.group(0))
+    if (all(has_code_token(line, m) for m in per_project_modules())
+            and all(w in flat for w in ("cannot run python tests", "path", "python3", ".venv",
+                                        "python project"))):
+        return []
+    return [f"{WARNINGS}: the `toolchain` row does not say an absent `xmlrunner`/`coverage` means "
+            "the `PATH` `python3` cannot run python tests, and a python project runs them under "
+            "its `.venv`"]
+
+
+def check_offers_route(text: str) -> list[str]:
+    """Choosing stacks and Install offers each name ``uv python install --default 3.14`` as an
+    offer, show no ``pip install`` and say ``xmlrunner``/``coverage`` are never offered (their
+    route runs in each python project); the elevated-privileges list stays the elevated tools."""
+    default = python3_path_install()
+    modules = per_project_modules()
+    out = []
+    for heading in (STACKS, OFFERS):
+        sec = _section(text, heading)
+        if not has_code_token(sec, default):
+            out.append(f"{heading}: does not name `{default}` as an offer")
+        out.extend(f"{heading}: still shows `{c}`" for c in code_texts(sec)
+                   if _RAW_PIP_INSTALL.search(c))
+        if not any(all(has_code_token(b, m) for m in modules)
+                   and re.search(r"\bnever\b.{0,20}\boffered\b", _flat(b))
+                   and re.search(r"\beach (?:python )?project\b", _flat(b))
+                   for b in _prose_blocks(sec)):
+            out.append(f"{heading}: does not say `xmlrunner` and `coverage` are never offered, "
+                       "their route running in each python project")
+    lists = [re.findall(r"`([^`]+)`", m.group(1))
+             for m in _ELEVATED_LIST.finditer(" ".join(_section(text, OFFERS).split()))]
+    if not lists:
+        out.append(f"{OFFERS}: no list of the tools that need elevated privileges")
+    out.extend(f"{OFFERS}: the elevated-privileges list is {names}, not {elevated_tools()}"
+               for names in lists if names != elevated_tools())
+    return out
+
+
+def check_already_installed_interpreter(text: str) -> list[str]:
+    """The ``already_installed`` report names the dead-interpreter case: ``outdated`` with an
+    ``interpreter`` object (``path``, ``reason``)."""
+    if any(all(has_code_token(b, t) for t in ("outdated", "interpreter", "path", "reason"))
+           for b in _prose_blocks(_section(text, OUTCOMES))):
+        return []
+    return [f"{OUTCOMES}: the `already_installed` report does not name `outdated` with an "
+            "`interpreter` object (`path`, `reason`)"]
+
+
+#: §S7's guide points, each a checker over the whole guide.
+INTERPRETER_POINT_CHECKERS = {
+    "prerequisite": check_python3_prerequisite,
+    "pre-flight": check_preflight_python3,
+    "warnings table": check_toolchain_warning,
+    "choosing stacks and offers": check_offers_route,
+    "already_installed": check_already_installed_interpreter,
+}
+
+
+def conforming_interpreter_points() -> str:
+    """A sample guide stating every §S7 point, built from the requirements data."""
+    default = python3_path_install()
+    route = ", then ".join(f"`{c}`" for c in PYTHON_VENV_ROUTE)
+    elevated = ", ".join(f"`{t}`" for t in elevated_tools())
+    tools = "; ".join(f"`{s}` — " + ", ".join(f"`{p['name']}`" for p in STACK_TOOLCHAINS[s])
+                      for s in known_stacks())
+    never = ("`xmlrunner` and `coverage` are never offered: their route runs in each python "
+             f"project, {route}.")
+    return (
+        f"## {PREREQUISITES}\n\n"
+        "7. **`python3`** — required: a Python 3.14 interpreter. Install one with "
+        f"`{PYTHON_REMEDIATION}`;\n   `{default}` also puts `python3` on your `PATH`. Every "
+        "stack's Crucible client runs on the\n   `python3` on your `PATH`.\n\n"
+        f"## {STACKS}\n\n"
+        f"A missing tool is offered its installer, such as `{default}`.\n\n{never}\n\n"
+        f"## {PREFLIGHT}\n\n"
+        f"- `stack <name>:` — the tools checked are: {tools}. `xmlrunner` and `coverage` are "
+        "checked in the `python3` on your `PATH`; a python project's tests run under its own "
+        "`.venv`.\n\n"
+        "`stack <name>: python3=` is a `PATH` presence check for that stack's client, distinct "
+        "from the `python3:` line, the interpreter the deployed scripts run on. On a uv-only "
+        "machine the two lines can disagree.\n\n"
+        f"## {WARNINGS}\n\n"
+        "| Requirement | If it is missing |\n|---|---|\n"
+        "| `toolchain` | an absent `xmlrunner` or `coverage` means the `PATH` `python3` cannot "
+        "run python tests; a python project runs them under its `.venv`. |\n\n"
+        f"## {OFFERS}\n\n"
+        f"- **Toolchain installers.** For example `{default}`.\n\n{never}\n\n"
+        f"Tools that need elevated privileges ({elevated}) are only named.\n\n"
+        f"## {OUTCOMES}\n\n"
+        "When the recorded interpreter is gone, `freshness` is `outdated` and the report carries "
+        "`interpreter`, with its `path` and the `reason`.\n"
+    )
+
+
+class InstallCommandsNamePython314Test(unittest.TestCase):
+    """§S7 — every install or update of the installer (``modelb-axi`` or ``.``) in the guide,
+    the Pi package README and Model B's ``AGENTS.md`` names ``--python 3.14``; ``AGENTS.md``
+    names no ``pip install -e .``."""
+
+    maxDiff = None
+
+    GOOD = ("```sh\nuv tool install --python 3.14 modelb-axi\nmodelb-axi --version\n```\n\n"
+            "Update with `uv tool upgrade --python 3.14 modelb-axi`. From a source copy run "
+            "`uv tool install --python 3.14 .`; update with\n"
+            "`uv tool install --reinstall --python 3.14 .`. Sandesh: `uv tool install sandesh-relay`, "
+            "`uv tool upgrade sandesh-relay`, `uv tool install --reinstall sandesh-relay`.\n")
+
+    def test_the_derived_vocabulary_matches_the_requirements(self):
+        self.assertEqual(python3_path_install(), "uv python install --default 3.14")
+        self.assertEqual(elevated_tools(), ["mvn", "java", "node", "g++"])
+        self.assertEqual(per_project_modules(), ["xmlrunner", "coverage"])
+        self.assertEqual(PYTHON_REMEDIATION, "uv python install 3.14")
+
+    def test_checker_passes_every_command_naming_python_3_14_and_other_tools(self):
+        self.assertEqual(install_command_findings(self.GOOD), [])
+        self.assertEqual(check_agents_md_install(self.GOOD), [])
+
+    def test_checker_reports_each_install_or_upgrade_without_python_3_14(self):
+        cases = {
+            "uv tool install --python 3.14 modelb-axi": "uv tool install modelb-axi",
+            "uv tool upgrade --python 3.14 modelb-axi": "uv tool upgrade modelb-axi",
+            "uv tool install --python 3.14 .`;": "uv tool install .",
+            "uv tool install --reinstall --python 3.14 .`.": "uv tool install --reinstall .",
+        }
+        for good, shown in cases.items():
+            with self.subTest(command=shown):
+                text = self.GOOD.replace(good, good.replace("--python 3.14 ", ""))
+                self.assertNotEqual(text, self.GOOD, "precondition: the command was changed")
+                self.assertEqual(install_command_findings(text),
+                                 [f"`{shown}` lacks `--python 3.14`"])
+        older = self.GOOD.replace("upgrade --python 3.14", "upgrade --python 3.13")
+        self.assertEqual(install_command_findings(older),
+                         ["`uv tool upgrade --python 3.13 modelb-axi` lacks `--python 3.14`"])
+
+    def test_agents_md_checker_reports_a_bare_dot_install_and_pip_editable(self):
+        text = ("```bash\nuv tool install .                       # or: pip install -e .\n```\n"
+                "- Tests import `modelb_axi` — install the package (`pip install -e .`).\n")
+        self.assertEqual(check_agents_md_install(text), [
+            "`uv tool install .` lacks `--python 3.14`",
+            "names `pip install -e .`, which PEP 668 refuses",
+            "names `pip install -e .`, which PEP 668 refuses",
+        ])
+        fixed = text.replace("install .  ", "install --python 3.14 .").replace(
+            "  # or: pip install -e .", "").replace(" (`pip install -e .`)", "")
+        self.assertEqual(check_agents_md_install(fixed), [])
+
+    def test_the_guide_names_python_3_14_on_every_installer_command(self):
+        self.assertEqual(install_command_findings(_read(GUIDE)), [])
+
+    def test_the_pi_package_readme_names_python_3_14_on_every_installer_command(self):
+        self.assertTrue(PI_PACKAGE_README.is_file(), "pi-package/README.md must exist")
+        self.assertEqual(install_command_findings(_read(PI_PACKAGE_README)), [])
+
+    def test_model_b_agents_md_installs_with_python_3_14_and_never_pip_editable(self):
+        self.assertEqual(check_agents_md_install(_read(AGENTS_MD)), [])
+
+
+class InstallGuideTestInterpreterPointsTest(unittest.TestCase):
+    """§S7 — the guide states each test-interpreter point; each checker proved both ways on
+    sample text, then run over the real guide."""
+
+    maxDiff = None
+
+    def setUp(self):
+        self.sample = conforming_interpreter_points()
+
+    def test_the_sample_passes_every_point(self):
+        for label, checker in INTERPRETER_POINT_CHECKERS.items():
+            with self.subTest(point=label):
+                self.assertEqual(checker(self.sample), [])
+
+    def _changed(self, old: str, new: str, count: int = -1) -> str:
+        text = self.sample.replace(old, new, count)
+        self.assertNotEqual(text, self.sample, f"precondition: {old!r} is in the sample")
+        return text
+
+    def test_prerequisite_point_bites(self):
+        default = python3_path_install()
+        no_default = self._changed(f"`{default}` also puts `python3` on your `PATH`. ", "")
+        self.assertEqual(check_python3_prerequisite(no_default), [
+            f"{PREREQUISITES}: the `python3` item does not name both `{PYTHON_REMEDIATION}` and "
+            f"`{default}`"])
+        no_client = self._changed("Every stack's Crucible client runs on the\n   `python3` on your "
+                                  "`PATH`.", "")
+        self.assertEqual(check_python3_prerequisite(no_client), [
+            f"{PREREQUISITES}: the `python3` item does not say every stack's Crucible client runs "
+            "on the `python3` on `PATH`"])
+
+    def test_preflight_point_bites(self):
+        cases = {
+            "no presence check": (("is a `PATH` presence check", "is a `PATH` check"),
+                                  f"{PREFLIGHT}: does not say `stack <name>: python3=` is a `PATH` "
+                                  "presence check for that stack's client, distinct from the "
+                                  "`python3:` line"),
+            "not told from the python3: line": (("distinct from the `python3:` line", "apart"),
+                                                f"{PREFLIGHT}: does not say `stack <name>: "
+                                                "python3=` is a `PATH` presence check for that "
+                                                "stack's client, distinct from the `python3:` line"),
+            "no disagreement": (("can disagree", "can differ"),
+                                f"{PREFLIGHT}: does not say the two `python3` lines can disagree"),
+            "rust lists no python3": (("`rust` — `python3`, ", "`rust` — "),
+                                      f"{PREFLIGHT}: the tool list does not name `python3` for "
+                                      "`rust`"),
+            "no .venv": (("; a python project's tests run under its own `.venv`", ""),
+                         f"{PREFLIGHT}: does not say `xmlrunner` and `coverage` are checked in the "
+                         "`PATH` `python3` and a python project's tests run under its `.venv`"),
+        }
+        for label, ((old, new), expected) in cases.items():
+            with self.subTest(case=label):
+                self.assertEqual(check_preflight_python3(self._changed(old, new)), [expected])
+
+    def test_warnings_point_bites(self):
+        expected = [f"{WARNINGS}: the `toolchain` row does not say an absent `xmlrunner`/`coverage` "
+                    "means the `PATH` `python3` cannot run python tests, and a python project "
+                    "runs them under its `.venv`"]
+        self.assertEqual(check_toolchain_warning(self._changed(
+            "; a python project runs them under its `.venv`", "")), expected)
+        self.assertEqual(check_toolchain_warning(self._changed(
+            "cannot run python tests", "is incomplete")), expected)
+        self.assertEqual(check_toolchain_warning(self._changed("| `toolchain` |", "| `chain` |")),
+                         [f"{WARNINGS}: no `toolchain` row"])
+
+    def test_offers_point_bites(self):
+        default = python3_path_install()
+        never = (f"{STACKS}: does not say `xmlrunner` and `coverage` are never offered, their route "
+                 "running in each python project")
+        cases = {
+            "stacks names no default": (
+                self._changed(f"such as `{default}`", "such as rustup"),
+                [f"{STACKS}: does not name `{default}` as an offer"]),
+            "offers names no default": (
+                self._changed(f"For example `{default}`", "For example rustup"),
+                [f"{OFFERS}: does not name `{default}` as an offer"]),
+            "pip parenthetical kept": (
+                self._changed("For example", "For example (`python3 -m pip install "
+                                             "unittest-xml-reporting coverage` covers both)"),
+                [f"{OFFERS}: still shows `python3 -m pip install unittest-xml-reporting "
+                 "coverage`"]),
+            "modules offered": (self._changed("are never offered", "are offered", 1), [never]),
+            "route not per project": (
+                self._changed("runs in each python project", "runs once", 1), [never]),
+            "elevated list widened": (
+                self._changed("`g++`)", "`g++`, `python3`)"),
+                [f"{OFFERS}: the elevated-privileges list is {elevated_tools() + ['python3']}, "
+                 f"not {elevated_tools()}"]),
+            "elevated list gone": (
+                self._changed("Tools that need elevated privileges", "Some tools"),
+                [f"{OFFERS}: no list of the tools that need elevated privileges"]),
+        }
+        for label, (text, expected) in cases.items():
+            with self.subTest(case=label):
+                self.assertEqual(check_offers_route(text), expected)
+        self.assertEqual(check_offers_route(self.sample + "\nRun `uv pip install x` in the venv.\n"),
+                         [], "the route's own `uv pip install` is no pip parenthetical")
+
+    def test_already_installed_point_bites(self):
+        expected = [f"{OUTCOMES}: the `already_installed` report does not name `outdated` with an "
+                    "`interpreter` object (`path`, `reason`)"]
+        for old, new in (("`interpreter`", "an interpreter field"), ("`reason`", "why"),
+                         ("`path`", "path"), ("is `outdated`", "is stale")):
+            with self.subTest(case=old):
+                self.assertEqual(check_already_installed_interpreter(self._changed(old, new)),
+                                 expected)
+
+    # -- the real guide ---------------------------------------------------------------------
+
+    def test_the_guide_states_the_python3_prerequisite(self):
+        self.assertEqual(check_python3_prerequisite(_read(GUIDE)), [])
+
+    def test_the_guide_explains_the_stack_python3_line_and_the_venv(self):
+        self.assertEqual(check_preflight_python3(_read(GUIDE)), [])
+
+    def test_the_guides_toolchain_warning_names_the_path_python3_and_the_venv(self):
+        self.assertEqual(check_toolchain_warning(_read(GUIDE)), [])
+
+    def test_the_guides_stacks_and_offers_name_the_default_install_and_never_offer_the_modules(self):
+        self.assertEqual(check_offers_route(_read(GUIDE)), [])
+
+    def test_the_guides_already_installed_report_names_the_dead_interpreter(self):
+        self.assertEqual(check_already_installed_interpreter(_read(GUIDE)), [])
 
 
 if __name__ == "__main__":
