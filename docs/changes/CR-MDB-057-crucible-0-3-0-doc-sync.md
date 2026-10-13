@@ -155,9 +155,10 @@ Each is updated in the cycle that changes the text it pins:
 - `tests/test_ambient_status_contract.py`: `STATUS_CONTRACT_VERSION`, the docstring and the degrade
   note name 3.0.0.
 - `tests/test_client_verb_sweep.py`: `test_s4c_envelope_contract_cites_status_contract_document_version`
-  (3.0.0), `test_s4c_envelope_contract_matches_the_installed_product_facts` (0.3.0), the
-  `--skip`-rationale gate asserting the declaration form, and `NORMATIVE_SURFACES` extended to
-  `AGENTS.md`.
+  (3.0.0), `test_s4c_envelope_contract_matches_the_installed_product_facts` (0.3.0), and the
+  `--skip`-rationale and gate-example tests run over the `crucible` skill, the contract and
+  `AGENTS.md` — without extending the surfaces the plan-file and 409 rule checks read, which
+  `AGENTS.md` does not state.
 - `tests/test_skill_bundle_guards.py`: `crucible-register` moves from `HTTP_BODY_BUNDLES` to the CLI
   register-flag family (`RegisterFlagSurfaceTest`); `V2_ENDPOINTS_BY_BUNDLE` drops the routes no
   bundle documents any more.
