@@ -127,8 +127,10 @@ BANNED_OS_CALLS = (
     "spawnlp",
 )
 
-# §S5: the guard reads NO client source and no `--help` output. These are PATH
-# shapes that can only mean "reach outside this repo into a Crucible checkout" —
+# §S5: the guard reads NO client source. Its one read of a client is the
+# CR-MDB-057 carve-out below: the installed client's `--help` output, read only
+# inside `CLIENT_READ_CLASS`, which alone may carry `HELP_FLAG_LITERAL`. The
+# other markers are PATH shapes that can only mean "reach outside this repo into a Crucible checkout" —
 # the token `-crucible.py` is deliberately NOT banned, because matching it inside
 # OUR OWN bundle text is exactly what the flag-surface check is for.
 CLIENT_PATH_MARKERS = (
@@ -156,9 +158,10 @@ FLAG_LITERAL_RE = re.compile(r"--[A-Za-z][A-Za-z0-9-]+")
 # 2026-09-21 gap-analysis cut, reversed for that one check (Crucible 0.3.0 put
 # the flag surface Model B documents on every client). The bans above stay;
 # the carve-out is exactly this narrow:
-# * the client is spawned only inside the class `CLIENT_READ_CLASS` -- the
-#   `subprocess` import is the one banned root it may use, and only it may call
-#   `subprocess.*` or carry the help-flag literal;
+# * the client is spawned only inside the class `CLIENT_READ_CLASS` -- a plain
+#   `import subprocess` (no alias, no `from subprocess import ...`) is the one
+#   banned import allowed, every use of the name `subprocess` sits inside that
+#   class, and only that class carries the help-flag literal;
 # * the client is located only through the manifest helper
 #   `CLIENT_READ_LOCATOR` (tests/_helpers.py), never a path or a home escape;
 # * the flags the checker's bite-proof fixtures carry (`FLAG_FIXTURE_TEST`)
@@ -178,6 +181,30 @@ def _node_ids_inside(tree, name):
         if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == name:
             ids.update(id(inner) for inner in ast.walk(node))
     return ids
+
+
+def _client_read_exception_findings(tree):
+    """What breaks the narrow `subprocess` exception (CR-MDB-057 S7): an import
+    of it other than a plain `import subprocess` -- an alias, a submodule or a
+    `from subprocess import ...` -- or a use of the name `subprocess` outside
+    `CLIENT_READ_CLASS`."""
+    reader = _node_ids_inside(tree, CLIENT_READ_CLASS)
+    found = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name.split(".")[0] in CLIENT_READ_IMPORTS and (
+                        alias.asname or alias.name not in CLIENT_READ_IMPORTS):
+                    as_part = f" as {alias.asname}" if alias.asname else ""
+                    found.append(f"import {alias.name}{as_part} (line {node.lineno})")
+        elif isinstance(node, ast.ImportFrom):
+            if not node.level and node.module and \
+                    node.module.split(".")[0] in CLIENT_READ_IMPORTS:
+                found.append(f"from {node.module} import ... (line {node.lineno})")
+        elif isinstance(node, ast.Name) and node.id in CLIENT_READ_IMPORTS \
+                and id(node) not in reader:
+            found.append(f"{node.id} used outside {CLIENT_READ_CLASS} (line {node.lineno})")
+    return sorted(found)
 
 # CR-MDB-024 \u00a7S3 (this cycle, C2 RED, 2026-09-22 VS Code ruling): \u00a7S5 AC5's
 # API-path exemption constant is retired along with the bundle it named --
@@ -529,6 +556,13 @@ class SkillBundleGuardsMetaTest(unittest.TestCase):
             f"banned imports found: {banned_imports}. Banned roots: "
             f"{list(BANNED_IMPORT_ROOTS)}",
         )
+        breaches = _client_read_exception_findings(tree)
+        self.assertEqual(
+            breaches,
+            [],
+            f"{_rel(GUARD_MODULE)}: the `subprocess` exception is a plain `import "
+            f"subprocess` used only inside {CLIENT_READ_CLASS}; found: {breaches}",
+        )
 
         banned_calls = []
         for node in ast.walk(tree):
@@ -557,10 +591,29 @@ class SkillBundleGuardsMetaTest(unittest.TestCase):
             f"network calls found: {sorted(banned_calls)}",
         )
 
+    def test_s5_the_subprocess_exception_detector_bites(self):
+        """CR-MDB-057 S7: the `subprocess` exception admits a plain import used
+        inside the client-read class, and bites on an alias, a from-import and a
+        use of the name outside that class."""
+        reader = f"class {CLIENT_READ_CLASS}:\n    def f(self):\n        return subprocess.run\n"
+        cases = (
+            ("import subprocess\n" + reader, 0),
+            ("import subprocess as sp\n" + reader, 1),
+            ("import subprocess.run\n" + reader, 1),
+            ("from subprocess import run\n" + reader, 1),
+            ("import subprocess\n" + reader + "runner = subprocess\n", 1),
+            ("import subprocess\n" + reader + "def g():\n    subprocess.run(['x'])\n", 1),
+        )
+        for source, expected in cases:
+            with self.subTest(source=source):
+                found = _client_read_exception_findings(ast.parse(source))
+                self.assertEqual(len(found), expected, found)
+
     def test_s5_guard_module_reads_no_client_and_mirrors_no_flag_surface(self):
         """DEMANDS: every assertion is about text under `skills-src/` — no path
-        into a Crucible checkout or `~/.crucible`, no `--help` output, no escape
-        from the repo root, and no maintained allow-list of Crucible's flags."""
+        into a Crucible checkout or `~/.crucible`, no `--help` output outside the
+        client-read class, no escape from the repo root, and no maintained
+        allow-list of Crucible's flags."""
         source, tree = self._require_guard()
         literals = _non_docstring_str_literals(tree)
         # CR-MDB-057 §S7 carve-out: the help-flag literal is legal only in the
