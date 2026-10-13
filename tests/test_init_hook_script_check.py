@@ -10,16 +10,25 @@ script is present, ``init`` succeeds and wires them.
 
 The second half pins the fixtures (§S8): every install fixture that leads ``init`` to emit
 hooks deploys all eight scripts, executable, into the store its ``install.toml`` names
-(``tests._helpers.deploy_hook_scripts``).
+(``tests._helpers.deploy_hook_scripts``). The fixtures are DISCOVERED (CR-MDB-062 C5 F4,
+``store_fixtures``): every function in ``tests/*.py`` holding a string that writes a
+``hooks_scripts_dir =`` line into an install TOML must deploy the hook scripts — it calls
+``deploy_hook_scripts``, directly or through a function that does (in its module or imported
+from another test module), or every caller of it in its module does — or point that line's
+value at the repo's ``hooks-src/scripts`` (a name bound to ``... / "hooks-src" / "scripts"``,
+such as ``HOOK_SCRIPTS_DIR``). The discovery is proved on sample module text both ways, and
+every fixture it finds is one the run-time check drives.
 
 Every run is sandboxed: ``--modelb-home`` and ``--target`` under temp dirs, ``PI_CODING_AGENT_DIR``
 pinned by ``run_module``. Stdlib only.
 """
 
 import argparse
+import ast
 import contextlib
 import io
 import os
+import re
 import shutil
 import stat
 import tempfile
@@ -29,6 +38,8 @@ from pathlib import Path
 from unittest import mock
 
 from modelb_axi import scaffold
+from tests import test_claude_era_retirement as _retirement
+from tests import test_harness_capability_contract as _capability
 from tests import test_init_tool_verdicts as _verdicts
 from tests import test_installer_correctness as _correctness
 from tests import test_installer_sandesh_requirements as _sandesh_requirements
@@ -37,8 +48,10 @@ from tests import test_project_permission_policy as _permission_policy
 from tests import test_project_trust as _project_trust
 from tests._helpers import (
     HOOK_SCRIPTS_DIR,
+    REPO_ROOT,
     decode_axi,
     deploy_hook_scripts,
+    docstring_nodes,
     run_module,
     write_install_toml,
 )
@@ -269,9 +282,152 @@ def _store_named_by(install_toml: Path) -> Path:
         return Path(tomllib.load(fh)["install"]["hooks_scripts_dir"])
 
 
+#: A line of an install TOML naming the hook-script store.
+_STORE_LINE = re.compile(r"(?m)^[ \t]*hooks_scripts_dir[ \t]*=")
+#: A path expression naming the repo's own hook scripts: ``"hooks-src" / "scripts"`` or the
+#: string ``"hooks-src/scripts"``.
+_REPO_SCRIPTS = re.compile(r"""["']hooks-src["']\s*/\s*["']scripts["']|hooks-src/scripts""")
+#: The shared fixture that copies every hook script into a store.
+_DEPLOY = "deploy_hook_scripts"
+
+
+def _called_names(node: ast.AST) -> set[str]:
+    """The bare name of each call under ``node``: ``f(...)`` and ``x.f(...)`` both give ``f``."""
+    names = set()
+    for call in ast.walk(node):
+        if isinstance(call, ast.Call):
+            if isinstance(call.func, ast.Name):
+                names.add(call.func.id)
+            elif isinstance(call.func, ast.Attribute):
+                names.add(call.func.attr)
+    return names
+
+
+def _store_line_value(text: str, constant: ast.Constant, parent: ast.AST | None):
+    """The expression a store line in ``text`` (the value of ``constant``) takes its value
+    from: the f-string field right after it on the same line, or ``None`` for a literal value."""
+    last = list(_STORE_LINE.finditer(text))[-1]
+    if not isinstance(parent, ast.JoinedStr) or "\n" in text[last.end():]:
+        return None
+    parts = parent.values
+    following = parts[parts.index(constant) + 1:]
+    if following and isinstance(following[0], ast.FormattedValue):
+        return following[0].value
+    return None
+
+
+def _module_facts(source: str) -> dict:
+    """What ``store_fixtures`` reads of one module: its functions, the names it imports from
+    another test module, the module-level names bound to the repo's hook scripts, and each
+    store line as ``(enclosing function or None, value expression or None)``."""
+    tree = ast.parse(source)
+    docstrings = docstring_nodes(tree)
+    facts = {"functions": [], "imports": {}, "repo_names": set(), "sites": []}
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and _REPO_SCRIPTS.search(ast.unparse(node.value)):
+            facts["repo_names"].update(t.id for t in node.targets if isinstance(t, ast.Name))
+        elif isinstance(node, ast.ImportFrom) and node.module and node.module.startswith("tests."):
+            origin = node.module.removeprefix("tests.")
+            for alias in node.names:
+                facts["imports"][alias.asname or alias.name] = (origin, alias.name)
+
+    def visit(node, parent, enclosing):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            facts["functions"].append(node)
+            enclosing = node
+        if (isinstance(node, ast.Constant) and isinstance(node.value, str)
+                and id(node) not in docstrings and _STORE_LINE.search(node.value)):
+            facts["sites"].append((enclosing, _store_line_value(node.value, node, parent)))
+        for child in ast.iter_child_nodes(node):
+            visit(child, node, enclosing)
+
+    visit(tree, None, None)
+    return facts
+
+
+def store_fixtures(sources: dict[str, str]) -> dict[str, tuple[str, frozenset]]:
+    """Each function in ``sources`` (``{module stem: source}``) holding a string that writes a
+    ``hooks_scripts_dir =`` line into an install TOML, as ``"<module>.<function>"`` (a store
+    line outside a function is ``"<module>.<module level>"``) mapped to how it qualifies and
+    the functions of its module that a run-time check drives:
+
+    - ``("deploys", {itself})`` — it calls ``deploy_hook_scripts``, directly or through a
+      function that does, in its module or imported from another module in ``sources``;
+    - ``("callers deploy", {each caller})`` — it has a caller in its module, and each one
+      qualifies;
+    - ``("repo scripts", {itself})`` — the line's value names the repo's ``hooks-src/scripts``;
+    - ``("neither", {})`` — none of these: the fixture leaves the store it names empty.
+    """
+    facts = {module: _module_facts(source) for module, source in sources.items()}
+    deploying = {module: set() for module in facts}
+    changed = True
+    while changed:  # the fixed point of "calls something that deploys", across modules
+        changed = False
+        for module, fact in facts.items():
+            reach = {_DEPLOY} | deploying[module] | {
+                local for local, (origin, name) in fact["imports"].items()
+                if name == _DEPLOY or name in deploying.get(origin, ())}
+            for function in fact["functions"]:
+                if function.name not in deploying[module] and _called_names(function) & reach:
+                    deploying[module].add(function.name)
+                    changed = True
+
+    def repo_names(module):
+        fact = facts[module]
+        return fact["repo_names"] | {
+            local for local, (origin, name) in fact["imports"].items()
+            if name in facts.get(origin, {}).get("repo_names", ())}
+
+    def qualifying_callers(module, function, seen):
+        """The deploying callers of ``function`` in ``module``, or ``None`` when it has no
+        caller there or one of them neither deploys nor has only qualifying callers itself."""
+        callers = [f for f in facts[module]["functions"]
+                   if f is not function and function.name in _called_names(f)]
+        if not callers:
+            return None
+        drivers = set()
+        for caller in callers:
+            if caller.name in deploying[module]:
+                drivers.add(caller.name)
+                continue
+            if caller.name in seen:
+                return None
+            above = qualifying_callers(module, caller, seen | {caller.name})
+            if above is None:
+                return None
+            drivers |= above
+        return drivers
+
+    found = {}
+    for module, fact in facts.items():
+        for function, value in fact["sites"]:
+            name = function.name if function else "<module level>"
+            names_repo = value is not None and (
+                {n.id for n in ast.walk(value) if isinstance(n, ast.Name)} & repo_names(module)
+                or _REPO_SCRIPTS.search(ast.unparse(value)))
+            if names_repo:
+                verdict = ("repo scripts", frozenset({name}))
+            elif function and function.name in deploying[module]:
+                verdict = ("deploys", frozenset({name}))
+            else:
+                drivers = function and qualifying_callers(module, function, {function.name})
+                verdict = (("callers deploy", frozenset(drivers)) if drivers
+                           else ("neither", frozenset()))
+            found[f"{module}.{name}"] = verdict
+    return found
+
+
+def _tree_sources() -> dict[str, str]:
+    """Every ``tests/*.py`` module's source, keyed by its stem."""
+    return {path.stem: path.read_text(encoding="utf-8")
+            for path in sorted((REPO_ROOT / "tests").glob("*.py"))}
+
+
 class InstallFixturesDeployHookScriptsTest(unittest.TestCase):
     """§S8: every install fixture that leads ``init`` to emit hooks deploys all eight hook
-    scripts, executable, into the store its ``install.toml`` names."""
+    scripts, executable, into the store its ``install.toml`` names — or names the repo's own
+    ``hooks-src/scripts`` as that store. Every fixture ``store_fixtures`` discovers in
+    ``tests/*.py`` qualifies one of these ways, and is one the run-time check drives."""
 
     def _fixtures(self, home: Path) -> dict:
         """Each fixture, writing into ``home``; returns its ``install.toml`` path."""
@@ -290,6 +446,12 @@ class InstallFixturesDeployHookScriptsTest(unittest.TestCase):
             case.modelb_home = home
             return case.write_install({}, {"uv": "detected"})
 
+        def pre036():
+            case = _capability.InstallTomlCapabilitiesRecordTest()
+            case.modelb_home, case.target_root = home, home / "target"
+            case._write_pre036()
+            return home / "install.toml"
+
         return {
             "_helpers.write_install_toml": lambda: write_install_toml(str(home)),
             "test_project_permission_policy.write_install_toml": permission_policy,
@@ -302,6 +464,10 @@ class InstallFixturesDeployHookScriptsTest(unittest.TestCase):
                 lambda: _correctness._write_full_install_toml(str(home)),
             "test_installer_sandesh_requirements.InitReadsTheRecordedVerdictsTest.write_install":
                 sandesh_requirements,
+            "test_harness_capability_contract.InstallTomlCapabilitiesRecordTest._write_pre036":
+                pre036,
+            # Qualifies through the repo path: its store IS the repo's hooks-src/scripts.
+            "test_claude_era_retirement.pi_install_toml": lambda: _retirement.pi_install_toml(home),
         }
 
     def test_every_fixture_store_holds_all_eight_scripts_executable(self):
@@ -312,7 +478,11 @@ class InstallFixturesDeployHookScriptsTest(unittest.TestCase):
                 self.addCleanup(shutil.rmtree, home, ignore_errors=True)
                 install_toml = self._fixtures(home)[name]()
                 store = _store_named_by(install_toml)
-                found = sorted(p.name for p in store.iterdir()) if store.is_dir() else []
+                if store.resolve() == HOOK_SCRIPTS_DIR.resolve():
+                    # the repo's own scripts dir: a local __pycache__ beside them is no script
+                    found = sorted(p.name for p in store.iterdir() if p.is_file())
+                else:
+                    found = sorted(p.name for p in store.iterdir()) if store.is_dir() else []
                 self.assertEqual(found, sorted(HOOK_SCRIPT_NAMES),
                                  f"§S8: {name}'s store {store} holds all eight scripts")
                 for script in found:
@@ -330,6 +500,131 @@ class InstallFixturesDeployHookScriptsTest(unittest.TestCase):
         self.assertEqual(sorted(p.name for p in store.iterdir()), sorted(HOOK_SCRIPT_NAMES))
         for script in store.iterdir():
             self.assertEqual(oct(stat.S_IMODE(script.stat().st_mode)), oct(0o755), script.name)
+
+    def test_every_discovered_fixture_deploys_or_names_the_repo_scripts(self):
+        found = store_fixtures(_tree_sources())
+        self.assertGreater(len(found), 0, "precondition: the discovery finds the store fixtures")
+        self.assertEqual({site: how for site, (how, _drivers) in found.items() if how == "neither"},
+                         {}, "C5 F4: a fixture writes a hooks_scripts_dir line into an install "
+                             "TOML but neither deploys the hook scripts nor names hooks-src/scripts")
+
+    def test_the_run_time_check_drives_every_discovered_fixture(self):
+        driven = {(key.split(".")[0], key.split(".")[-1])
+                  for key in self._fixtures(Path("/nonexistent"))}
+        for site, (how, drivers) in store_fixtures(_tree_sources()).items():
+            module = site.split(".")[0]
+            with self.subTest(site=site):
+                self.assertTrue(drivers, f"{site} qualifies {how!r} through no fixture")
+                self.assertEqual(sorted(d for d in drivers if (module, d) not in driven), [],
+                                 f"C5 F4: {site} ({how}) is written by a fixture the run-time "
+                                 "check never drives")
+
+
+class StoreFixtureDiscoveryOnSampleTextTest(unittest.TestCase):
+    """C5 F4 \u2014 ``store_fixtures`` proved on sample module text both ways: each way a fixture
+    qualifies is found, and a fixture that does neither is caught."""
+
+    #: A shared-fixture module the samples import from.
+    SHARED = (
+        "from tests._helpers import deploy_hook_scripts\n"
+        "SCRIPTS = REPO_ROOT / 'hooks-src' / 'scripts'\n"
+        "def prepare(home):\n"
+        "    return deploy_hook_scripts(home / 'store')\n"
+    )
+
+    def assertFound(self, source: str, expected: dict):
+        found = store_fixtures({"shared": self.SHARED, "sample": source})
+        self.assertEqual({site: (how, sorted(drivers)) for site, (how, drivers) in found.items()
+                          if site.startswith("sample.")}, expected, source)
+
+    def test_a_fixture_that_calls_deploy_hook_scripts_directly_deploys(self):
+        self.assertFound(
+            "from tests._helpers import deploy_hook_scripts\n"
+            "def fixture(home):\n"
+            "    store = deploy_hook_scripts(home / 'store')\n"
+            "    (home / 'install.toml').write_text(\n"
+            "        '[install]\\n'\n"
+            "        f'hooks_scripts_dir = \"{store}\"\\n')\n",
+            {"sample.fixture": ("deploys", ["fixture"])})
+
+    def test_a_fixture_that_deploys_through_a_helper_or_a_shared_fixture_deploys(self):
+        self.assertFound(
+            "from tests._helpers import deploy_hook_scripts\n"
+            "from tests.shared import prepare as _prepare\n"
+            "def _store(home):\n"
+            "    return deploy_hook_scripts(home / 'store')\n"
+            "class Case:\n"
+            "    def local(self, home):\n"
+            "        store = _store(home)\n"
+            "        return f'hooks_scripts_dir = \"{store}\"'\n"
+            "    def shared(self, home):\n"
+            "        store = _prepare(home)\n"
+            "        return f'hooks_scripts_dir = \"{store}\"'\n",
+            {"sample.local": ("deploys", ["local"]), "sample.shared": ("deploys", ["shared"])})
+
+    def test_a_text_builder_qualifies_when_each_of_its_callers_deploys(self):
+        self.assertFound(
+            "from tests._helpers import deploy_hook_scripts\n"
+            "def _text(home):\n"
+            "    return '\\n'.join(['[install]', f'hooks_scripts_dir = \"{home}/s\"'])\n"
+            "def write(home):\n"
+            "    deploy_hook_scripts(home / 's')\n"
+            "    (home / 'install.toml').write_text(_text(home))\n",
+            {"sample._text": ("callers deploy", ["write"])})
+
+    def test_a_fixture_that_names_the_repo_scripts_qualifies_through_the_repo_path(self):
+        self.assertFound(
+            "import json\n"
+            "from tests._helpers import HOOK_SCRIPTS_DIR\n"
+            "from tests.shared import SCRIPTS\n"
+            "HOOKS = REPO_ROOT / 'hooks-src' / 'scripts'\n"
+            "def own(home):\n"
+            "    return f'hooks_scripts_dir = {json.dumps(str(HOOKS))}'\n"
+            "def imported(home):\n"
+            "    return f'hooks_scripts_dir = \"{SCRIPTS}\"'\n"
+            "def inline(home):\n"
+            "    return f'hooks_scripts_dir = \"{REPO_ROOT / \"hooks-src\" / \"scripts\"}\"'\n",
+            {"sample.own": ("repo scripts", ["own"]),
+             "sample.imported": ("repo scripts", ["imported"]),
+             "sample.inline": ("repo scripts", ["inline"])})
+
+    def test_a_fixture_that_does_neither_is_caught(self):
+        self.assertFound(
+            "def literal(home):\n"
+            "    (home / 'install.toml').write_text(\n"
+            "        '[install]\\n'\n"
+            "        'hooks_scripts_dir = \"/tmp/store\"\\n')\n"
+            "def temp_store(home):\n"
+            "    return f'hooks_scripts_dir = \"{home}/.agents/hooks/scripts\"'\n"
+            "def deploys_elsewhere(home):\n"
+            "    return f'version = \"0.1.0\"\\nhooks_scripts_dir = \"{home}\"'\n",
+            {"sample.literal": ("neither", []), "sample.temp_store": ("neither", []),
+             "sample.deploys_elsewhere": ("neither", [])})
+
+    def test_a_text_builder_with_one_caller_that_does_not_deploy_is_caught(self):
+        self.assertFound(
+            "from tests._helpers import deploy_hook_scripts\n"
+            "def _text(home):\n"
+            "    return f'hooks_scripts_dir = \"{home}/s\"'\n"
+            "def write(home):\n"
+            "    deploy_hook_scripts(home / 's')\n"
+            "    return _text(home)\n"
+            "def write_bare(home):\n"
+            "    return _text(home)\n",
+            {"sample._text": ("neither", [])})
+
+    def test_a_store_line_at_module_level_is_caught(self):
+        self.assertFound("TOML = 'hooks_scripts_dir = \"/tmp/store\"'\n",
+                         {"sample.<module level>": ("neither", [])})
+
+    def test_a_docstring_or_a_key_read_is_no_store_fixture(self):
+        key = "hooks_scripts_dir"  # spliced in, so this module's own text holds no store line
+        self.assertFound(
+            "def reader(data):\n"
+            f"    '''Reads the {key} = line:\n"
+            f"    {key} = \"/tmp/store\" is what it parses.'''\n"
+            f"    return data['install']['{key}']\n",
+            {})
 
 
 if __name__ == "__main__":
