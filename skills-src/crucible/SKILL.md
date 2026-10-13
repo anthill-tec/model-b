@@ -16,7 +16,8 @@ the interface, and every stack has one.
 
 - A client reads its board from `[client] url` (a full base URL) in the first
   `crucible.toml` that exists and parses, in this order: the project's (at the
-  project root — `--project-dir`, else the git top level of the working
+  project root — `--project-dir`, else the client's project-dir variable
+  (python's `PY_CRUCIBLE_PROJECT_DIR`), else the git top level of the working
   directory), the install's (beside `clients/`), the shipped one
   (`http://localhost:3849`, the production board).
 - `[client]` is taken from that file only, so a project file without `[client]`
