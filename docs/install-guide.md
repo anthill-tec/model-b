@@ -49,21 +49,28 @@ Install these in the order given; no step relies on one that comes after it.
    with `uv`:
 
    ```sh
-   uv tool install modelb-axi
+   uv tool install --python 3.14 modelb-axi
    modelb-axi --version
    ```
 
-   To update later, run `uv tool upgrade modelb-axi`.
+   To update later, run `uv tool upgrade --python 3.14 modelb-axi`.
 
-   From a source copy of Model B, run `uv tool install .` from the root of that copy instead;
-   to update, run `uv tool install --reinstall .` from a newer copy.
+   From a source copy of Model B, run `uv tool install --python 3.14 .` from the root of that
+   copy instead; to update, run `uv tool install --reinstall --python 3.14 .` from a newer copy.
+
+   `--python 3.14` makes uv build the installer's environment on Python 3.14: without it, a
+   fresh install takes uv's preferred interpreter, and an update keeps the one the environment
+   was built with.
 6. **`sandesh`** — required, version 0.4.0 or later: Sandesh's Pi extension refuses a missing
    or older CLI. Install it with `uv tool install sandesh-relay` (the installer offers to run
    this for you); an older one is reported `outdated`: run `uv tool upgrade sandesh-relay`.
 7. **`python3`** — required: a Python 3.14 interpreter, the `python3` on your `PATH`, else one
    uv provides (`uv python find --system '>=3.14'`). A virtual environment does not count.
-   Install one with `uv python install 3.14`. The installer records the interpreter it found,
-   and the deployed tool and hook scripts run on it.
+   Install one with `uv python install 3.14`, which adds `python3.14` to your `PATH`;
+   `uv python install --default 3.14` adds `python3` as well. The installer records the
+   interpreter it found, and the deployed tool and hook scripts run on it. Every stack's
+   Crucible client runs on the `python3` on your `PATH`, so the installer also checks that one
+   for each stack you choose.
 8. **Recommended tools.** The install goes ahead without them, but some assets will not work
    (see [Warnings: what stops working](#warnings-what-stops-working)):
    - `crucible` — Crucible's released clients, installed with Crucible's own installer; the
@@ -98,9 +105,14 @@ For each stack you choose, the installer:
 
 A stack does not install its toolchain: a missing tool is reported, and where the tool's own
 installer can run without elevated privileges the installer offers to run it — nothing more.
-It does not install Crucible's clients either. The hook scripts, the workflow scripts and every
+For a missing `python3`, which every stack's client runs on, it offers
+`uv python install --default 3.14`. It does not install Crucible's clients either. The hook scripts, the workflow scripts and every
 other skill but `code-health` are deployed whatever stacks you choose, and a project's own
 stacks are chosen separately, when you create it with `modelb-axi init --stacks`.
+
+The python stack's `xmlrunner` and `coverage` are never offered: their route runs in each python
+project, whose tests run under its own `.venv`. In the project, run `uv venv --python 3.14`,
+then `uv pip install unittest-xml-reporting coverage`.
 <!-- install-guide:end choosing-stacks -->
 
 <!-- install-guide:begin reading-the-pre-flight -->
@@ -131,9 +143,18 @@ stack python: python3=detected xmlrunner=absent coverage=detected client=detecte
   ```
 - `stack <name>:` — one line per chosen stack: each toolchain tool, then `client=` for that
   stack's Crucible client, looked up in the same manifest. The tools checked are:
-  `python` — `python3`, `xmlrunner`, `coverage` (the last two must import in the `python3` on
-  your `PATH`); `rust` — `cargo`, `cargo-nextest`, `cargo-llvm-cov`; `bun` — `bun`, `node`;
-  `arduino` — `arduino-cli`, `g++`; `quarkus` and `java` — `mvn`, `java`.
+  `python` — `python3`, `xmlrunner`, `coverage`; `rust` — `python3`, `cargo`,
+  `cargo-nextest`, `cargo-llvm-cov`; `bun` — `python3`, `bun`, `node`; `arduino` —
+  `python3`, `arduino-cli`, `g++`; `quarkus` and `java` — `python3`, `mvn`, `java`.
+  `xmlrunner` and `coverage` are checked by importing them in the `python3` on your `PATH`,
+  the interpreter the client falls back to; a python project's tests run under its own `.venv`
+  when it has one, so `absent` here does not stop such a project's tests.
+
+`stack <name>: python3=` is a `PATH` presence check for that stack's Crucible client, which is a
+Python script run by the `python3` on your `PATH`. It is distinct from the `python3:` line, the
+interpreter the deployed tool and hook scripts run on, which may be one uv provides. On a uv-only
+machine the two lines can disagree: `python3:` shows uv's 3.14 while the `stack` line shows
+`python3=absent`; `uv python install --default 3.14` puts a `python3` on your `PATH`.
 
 Each check ends in one of these verdicts:
 
@@ -179,7 +200,7 @@ provides it. By requirement:
 | `gh` | the git-workflow skill cannot reach GitHub (pull requests, releases). |
 | `jq` | the tool scripts that call it will not run. |
 | `direnv` | the project .envrc, which loads .env into the environment, never runs: a session started in the project does not get its Sandesh identity (`SANDESH_ADDRESS`, `SANDESH_PROJECT`) from the environment. |
-| `toolchain` | that stack's tests cannot run on this machine, so its agent definitions cannot carry out test-first work there; shown as `<tool>=absent` on the `stack <name>:` line. |
+| `toolchain` | that stack's tests cannot run on this machine, so its agent definitions cannot carry out test-first work there; shown as `<tool>=absent` on the `stack <name>:` line. An absent `xmlrunner` or `coverage` means the `PATH` `python3` cannot run python tests; a python project runs them under its own `.venv`. |
 
 Only `uv`, `dispatch`, `lean-ctx`, `sandesh-pi`, `sandesh` and `python3` stop an install. Every other warning is recorded and the
 install continues, so you can fix it later and re-run.
@@ -198,10 +219,13 @@ offer to run that command for you:
   pre-flight into a passing one.
 - **Toolchain installers.** For a missing tool whose own installer needs no elevated
   privileges, and when the command that installer starts with is on your `PATH`, for example ``Run `curl -fsSL https://bun.sh/install | bash` to install bun for
-  stack bun? [y/N]``. The same installer is offered once even when it provides several tools
-  (`python3 -m pip install unittest-xml-reporting coverage` covers both Python modules). Tools
-  that need elevated privileges (`mvn`, `java`, `node`, `g++`) are only named,
-  never run.
+  stack bun? [y/N]``. The same installer is offered once even when it provides several tools:
+  `uv python install --default 3.14`, for a missing `python3`, is offered once for all the
+  stacks you choose. Tools that need elevated privileges (`mvn`, `java`, `node`, `g++`) are only
+  named, never run.
+
+`xmlrunner` and `coverage` are never offered, because their route runs in each python project:
+in the project, `uv venv --python 3.14`, then `uv pip install unittest-xml-reporting coverage`.
 
 These offers need an explicit `y` or `yes`; pressing Enter declines, and a decline is recorded
 as a warning. A command you accept runs in your terminal, so you see its output and answer its
@@ -300,6 +324,11 @@ install compares what is deployed with what the installed package ships. `freshn
   them.
 - `kept` — no longer deployed, and left in place because you edited it: restore or delete it,
   then re-run with `--reinstall` (the command the report prints).
+
+When the interpreter `install.toml` records is gone or below 3.14, the deployed scripts cannot
+run: `freshness` is `outdated` whatever the lists hold, and the report carries `interpreter`, an
+object with the recorded `path` and the `reason` it is rejected. Install Python 3.14 and re-run
+with `--reinstall`.
 
 An `install.toml` written by an older version records no target root; the report is then
 `freshness: unknown` with a warning telling you to re-run with `--reinstall --target-root`.
