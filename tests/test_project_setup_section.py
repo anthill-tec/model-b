@@ -64,6 +64,10 @@ MONOREPO = "monorepo:" + ",".join(SUBS)
 MULTI = "multi:2"
 PROJECT = _verdicts.DERIVED_CHANNEL
 ONTOLOGY_PATH = "~/.agents/skills/model-b/SKILL.md"
+#: The rendered orchestrator labels of the sandboxed ``init`` (\u00a7S3.1: ``vidushi-<token>`` solo,
+#: ``Mainline-<token>`` multi) \u2014 the ``<label>`` CR-MDB-057 \u00a7S3's project-meta task names.
+SOLO_LABEL = f"vidushi-{_verdicts.TOKEN}"
+MULTI_LABEL = f"Mainline-{_verdicts.TOKEN}"
 
 #: A ``## Setup`` heading (any suffix after a word boundary), outside fenced code.
 SETUP_HEADING = re.compile(r"^##\s+Setup\b")
@@ -109,6 +113,70 @@ def _remediation_first(unit: str, remediation: str, anchor: str, label: str) -> 
     return []
 
 
+def _registration_tasks(body: str) -> list[str]:
+    """The normalised units of ``body`` that are a Crucible registration task: they name
+    ``CRUCIBLE_PROJECT_KEY`` and a registration. The ``project-meta`` task (CR-MDB-057 \u00a7S3)
+    registers the orchestrator and names the key it does not mirror, but it is not a
+    registration task, so a unit naming ``project-meta`` is not counted."""
+    return [u for u in units_with(body, r"crucible_project_key", r"\bregist")
+            if "project-meta" not in u]
+
+
+#: CR-MDB-057 \u00a7S3: the ``project-meta`` task leaves ``CRUCIBLE_PROJECT_KEY`` out, in words.
+_KEY_NOT_MIRRORED = re.compile(
+    r"\b(?:except|excluding|other than|but not|not|never|without)\b.{0,40}crucible_project_key"
+    r"|crucible_project_key.{0,40}\b(?:is not|isn't|is never|not|never)\b")
+
+
+def project_meta_task_findings(body: str, *, label: str, multi: bool, project: str,
+                               crucible_absent: bool = False) -> list[str]:
+    """What the Setup section ``body`` lacks of CR-MDB-057 \u00a7S3's ``project-meta`` task: ONE
+    task, the unit directly after the Crucible registration task (and before the Sandesh task
+    in multi mode), that registers the orchestrator (``register --agent <label> --role
+    ORCHESTRATOR``), then mirrors the root ``.env``'s keys with ``project-meta --set \u2026 --agent
+    <label>`` \u2014 ``CRUCIBLE_PROJECT_KEY`` left out, in words, and never ``--set`` \u2014 and is re-run
+    whenever ``.env`` changes; ``<label>`` is the project's real orchestrator label; the
+    Crucible remediation comes first when Crucible is absent."""
+    out: list[str] = []
+    label = label.lower()
+    all_units = norm_units(body)
+    tasks = [i for i, u in enumerate(all_units) if "project-meta" in u]
+    if len(tasks) != 1:
+        return [f"want one project-meta task, found {len(tasks)}"]
+    at, task = tasks[0], all_units[tasks[0]]
+    registration = [i for i, u in enumerate(all_units) if u in _registration_tasks(body)]
+    if len(registration) != 1 or at != registration[0] + 1:
+        out.append(f"the project-meta task is not directly after the registration task: {task!r}")
+    if multi:
+        mainline = f"mainline - {project.lower()}"
+        sandesh = [i for i, u in enumerate(all_units) if mainline in u]
+        if not sandesh or at > sandesh[0]:
+            out.append("the project-meta task does not come before the Sandesh task")
+    register = f"register --agent {label} --role orchestrator"
+    if register not in task:
+        out.append(f"the task does not register the orchestrator ({register!r}): {task!r}")
+    if not re.search(r"project-meta --set\b.*--agent " + re.escape(label) + r"(?![\w-])", task):
+        out.append(f"the task does not write with project-meta --set \u2026 --agent {label}: {task!r}")
+    if register in task and "project-meta" in task and task.index(register) > task.index(
+            "project-meta"):
+        out.append("the task does not register the orchestrator before project-meta")
+    if not re.search(r"\.env(?!\.local)\b", task):
+        out.append(f"the task does not name the root .env: {task!r}")
+    if (re.search(r"--set crucible_project_key", task)
+            or not _KEY_NOT_MIRRORED.search(task)):
+        out.append(f"the task does not leave CRUCIBLE_PROJECT_KEY unmirrored: {task!r}")
+    if not (re.search(r"\bre-?run\b", task)
+            and re.search(r"\.env\b.{0,40}\bchang|\bchang\w*.{0,20}\.env\b", task)):
+        out.append(f"the task is not re-run whenever .env changes: {task!r}")
+    if "<label>" in task:
+        out.append("the task names the <label> placeholder, not the project's label")
+    if crucible_absent:
+        anchor = register if register in task else "project-meta"
+        out += _remediation_first(task, _remediation("crucible"), anchor,
+                                  "Crucible (project-meta)")
+    return out
+
+
 def setup_task_findings(body: str, *, today: str, multi: bool, project: str,
                         crucible_absent: bool = False, sandesh_absent: bool = False) -> list[str]:
     """What the Setup section ``body`` lacks of the README's setup tasks (CR-MDB-048 §S2): the
@@ -120,7 +188,7 @@ def setup_task_findings(body: str, *, today: str, multi: bool, project: str,
     out: list[str] = []
     if not units_with(body, r"modelb-axi init", re.escape(today)):
         out.append(f"no dated scaffold line ({today}, modelb-axi init)")
-    crucible = units_with(body, r"crucible_project_key", r"\bregist")
+    crucible = _registration_tasks(body)
     if len(crucible) != 1:
         out.append(f"want one Crucible registration task, found {len(crucible)}")
     else:
@@ -352,6 +420,50 @@ class RootSetupSectionTest(_Case):
                 self.assertNotIn("CRUCIBLE_PROJECT_KEY", text, "no setup task in a sub-project")
 
 
+class RootSetupProjectMetaTaskTest(_Case):
+    """CR-MDB-057 \u00a7S3/AC \u2014 the Setup section ``init`` writes carries the ``project-meta`` task
+    directly after the Crucible registration task (before the Sandesh task in multi mode):
+    register the orchestrator under the project's real label, mirror the root ``.env``'s keys
+    but ``CRUCIBLE_PROJECT_KEY`` with ``project-meta --set \u2026 --agent <label>``, re-run on any
+    ``.env`` change; the Crucible remediation first when Crucible is absent; and
+    ``setup_task_findings`` still finds exactly one registration task."""
+
+    def setup_of(self, **fields) -> str:
+        self.init_ok(**fields)
+        return setup_body(self.text("AGENTS.md"))
+
+    def test_solo_carries_the_task_after_the_registration_under_the_solo_label(self):
+        body = self.setup_of()
+        self.assertEqual(project_meta_task_findings(body, label=SOLO_LABEL, multi=False,
+                                                    project=PROJECT), [], body)
+        self.assertEqual(setup_task_findings(body, today=self.today, multi=False,
+                                             project=PROJECT), [], body)
+
+    def test_multi_carries_the_task_before_the_sandesh_task_under_the_mainline_label(self):
+        body = self.setup_of(mode=MULTI)
+        self.assertEqual(project_meta_task_findings(body, label=MULTI_LABEL, multi=True,
+                                                    project=PROJECT), [], body)
+        self.assertEqual(setup_task_findings(body, today=self.today, multi=True,
+                                             project=PROJECT), [], body)
+
+    def test_an_absent_crucible_puts_its_remediation_first_in_the_task(self):
+        self.install_with(crucible="absent")
+        body = self.setup_of()
+        self.assertEqual(project_meta_task_findings(body, label=SOLO_LABEL, multi=False,
+                                                    project=PROJECT, crucible_absent=True),
+                         [], body)
+        self.assertEqual(setup_task_findings(body, today=self.today, multi=False, project=PROJECT,
+                                             crucible_absent=True), [], body)
+
+    def test_the_monorepo_root_carries_the_task_and_no_sub_project_does(self):
+        body = self.setup_of(mode=MULTI, repo_shape=MONOREPO)
+        self.assertEqual(project_meta_task_findings(body, label=MULTI_LABEL, multi=True,
+                                                    project=PROJECT), [], body)
+        for sub in SUBS:
+            with self.subTest(sub=sub):
+                self.assertNotIn("project-meta", self.text(f"{sub}/AGENTS.md"))
+
+
 # ------------------------------------------------------------------ header lines ----
 
 class RootHeaderLinesTest(_Case):
@@ -461,6 +573,80 @@ class SetupDetectorsOnSyntheticTextTest(unittest.TestCase):
 
     def findings(self, body: str, **kw) -> list[str]:
         return setup_task_findings(body, today=self.TODAY, project="P", **kw)
+
+    #: CR-MDB-057 \u00a7S3's project-meta task, conforming, for the label ``vidushi-p``.
+    META_TASK = (
+        "- [ ] Once the key is filled, register the orchestrator (`register --agent vidushi-p "
+        "--role ORCHESTRATOR`), then mirror the root `.env`'s keys, except "
+        "`CRUCIBLE_PROJECT_KEY`, with `project-meta --set KEY=VALUE \u2026 --agent vidushi-p`; "
+        "re-run it whenever `.env` changes\n"
+    )
+
+    def with_meta(self, task: str | None = None, *, multi: bool = False) -> str:
+        """GOOD_SOLO with the project-meta task directly after the registration task (and the
+        Sandesh task after it in multi mode)."""
+        lines = self.GOOD_SOLO.splitlines(True)
+        body = lines[0] + lines[1] + (self.META_TASK if task is None else task)
+        return body + (self.SANDESH_TASK if multi else "") + "".join(lines[2:])
+
+    def meta(self, body: str, **kw) -> list[str]:
+        kw.setdefault("label", "vidushi-p")
+        kw.setdefault("multi", False)
+        return project_meta_task_findings(body, project="P", **kw)
+
+    def test_the_registration_detector_still_finds_one_task_beside_the_project_meta_task(self):
+        self.assertEqual(self.findings(self.with_meta(), multi=False), [])
+        self.assertEqual(self.findings(self.with_meta(multi=True), multi=True), [])
+        merged = self.GOOD_SOLO.replace("manual step", "manual step; then " + self.META_TASK[6:])
+        self.assertTrue(self.findings(merged, multi=False),
+                        "a registration task merged into the project-meta task is not one")
+
+    def test_project_meta_task_passes_conforming_solo_and_multi_text(self):
+        self.assertEqual(self.meta(self.with_meta()), [])
+        self.assertEqual(self.meta(self.with_meta(multi=True), multi=True), [])
+
+    def test_project_meta_task_bites_on_each_defect(self):
+        meta = self.META_TASK
+        late = self.GOOD_SOLO + meta
+        for why, body, kw in (
+            ("no task", self.GOOD_SOLO, {}),
+            ("two tasks", self.with_meta(meta + meta), {}),
+            ("not directly after the registration", late, {}),
+            ("after the Sandesh task", self.GOOD_SOLO.replace(
+                "- [ ] Confirm", self.SANDESH_TASK + meta + "- [ ] Confirm"), {"multi": True}),
+            ("no orchestrator registration", self.with_meta(meta.replace(
+                "register the orchestrator (`register --agent vidushi-p --role ORCHESTRATOR`), "
+                "then ", "")), {}),
+            ("registration after project-meta", self.with_meta(
+                "- [ ] Mirror the root `.env`'s keys, except `CRUCIBLE_PROJECT_KEY`, with "
+                "`project-meta --set KEY=VALUE --agent vidushi-p` after `register --agent "
+                "vidushi-p --role ORCHESTRATOR`; re-run it whenever `.env` changes\n"), {}),
+            ("the write has no --agent", self.with_meta(meta.replace(
+                " \u2026 --agent vidushi-p`", "`")), {}),
+            ("the <label> placeholder", self.with_meta(meta.replace("vidushi-p", "<label>")), {}),
+            ("another label", self.with_meta(meta.replace("vidushi-p", "vidushi-q")), {}),
+            ("the key mirrored", self.with_meta(meta.replace(
+                ", except `CRUCIBLE_PROJECT_KEY`,", " (`project-meta --set CRUCIBLE_PROJECT_KEY="
+                "x`)")), {}),
+            ("the key not left out", self.with_meta(meta.replace(
+                ", except `CRUCIBLE_PROJECT_KEY`,", "")), {}),
+            ("no re-run", self.with_meta(meta.replace("; re-run it whenever `.env` changes",
+                                                      "")), {}),
+            ("the overlay, not the root .env", self.with_meta(meta.replace(
+                "`.env`", "`.env.local`")), {}),
+        ):
+            with self.subTest(why=why):
+                self.assertTrue(self.meta(body, **kw), body)
+
+    def test_project_meta_task_remediation_first_both_ways(self):
+        first = self.META_TASK.replace(
+            "Once the key", f"Crucible is absent \u2014 first: {self.CRU}. Then: Once the key")
+        self.assertEqual(self.meta(self.with_meta(first), crucible_absent=True), [])
+        self.assertTrue(self.meta(self.with_meta(), crucible_absent=True),
+                        "absent Crucible without its remediation")
+        late = self.META_TASK.replace("changes", f"changes; first: {self.CRU}")
+        self.assertTrue(self.meta(self.with_meta(late), crucible_absent=True),
+                        "remediation last")
 
     def test_setup_tasks_pass_conforming_solo_and_multi_text(self):
         self.assertEqual(self.findings(self.GOOD_SOLO, multi=False), [])
