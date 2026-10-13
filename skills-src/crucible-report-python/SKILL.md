@@ -48,7 +48,8 @@ python3 ~/.crucible/clients/python-crucible.py regression --coverage --agent ver
 # syntax gate (py_compile → /api/v2/runs/compile)
 python3 ~/.crucible/clients/python-crucible.py check
 # recovery only: re-ingest the report a client run produced when that run's ingest failed
-python3 ~/.crucible/clients/python-crucible.py auto-ingest --agent CR-OA-002-A-RED --project-dir $PWD
+# (`test --agent X` writes its report to test-reports/X; auto-ingest reads test-reports unless told)
+python3 ~/.crucible/clients/python-crucible.py auto-ingest --agent CR-OA-002-A-RED --reports $PWD/test-reports/CR-OA-002-A-RED --project-dir $PWD
 ```
 The script reads `CRUCIBLE_PROJECT_KEY` from `<project-dir>/.env`.
 

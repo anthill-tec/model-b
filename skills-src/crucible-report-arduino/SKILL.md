@@ -68,7 +68,8 @@ The server discards coverage on failing runs.
 ```bash
 python3 ~/.crucible/clients/arduino-crucible.py check --agent AGENT_ID    # arduino-cli compile → /api/v2/runs/compile on failure
 # recovery only: re-ingest the report a client run produced when that run's ingest failed
-python3 ~/.crucible/clients/arduino-crucible.py auto-ingest --agent AGENT_ID
+# (`test --agent X` writes its report to test-reports/X; auto-ingest reads tests/native/reports unless told)
+python3 ~/.crucible/clients/arduino-crucible.py auto-ingest --agent AGENT_ID --reports $PWD/test-reports/AGENT_ID
 ```
 
 `auto-ingest` is recovery only: it re-ingests the native report a client run
