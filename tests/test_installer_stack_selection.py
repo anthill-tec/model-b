@@ -808,6 +808,8 @@ class StackVerdictKeysTest(_StackSandboxCase):
             "python.xmlrunner": "detected",
             "python.coverage": "detected",
             "python.client": "detected",
+            # MIGRATED at CR-MDB-063 C1 GREEN (§S1, orchestrator-approved): rust records its python3.
+            "rust.python3": "detected",
             "rust.cargo": "detected",
             "rust.cargo-nextest": "detected",
             "rust.cargo-llvm-cov": "absent",
@@ -833,7 +835,8 @@ class StackVerdictKeysTest(_StackSandboxCase):
         self.assertEqual(prefixes, ["bun"], f"caps={caps!r}")
         self.assertEqual(
             {k for k in caps if k.startswith("bun.")},
-            {"bun.bun", "bun.node", "bun.client"},
+            # MIGRATED at CR-MDB-063 C1 GREEN (§S1, orchestrator-approved): bun records its python3.
+            {"bun.python3", "bun.bun", "bun.node", "bun.client"},
         )
 
 # ---------------------------------------------------------------------------
