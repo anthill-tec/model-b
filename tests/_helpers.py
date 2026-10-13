@@ -19,6 +19,7 @@ import json
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -215,9 +216,10 @@ def write_install_toml(home: str, harnesses=("pi",)) -> Path:
     """Valid install.toml fixture -- the seam §S2 reads the installed
     harness set from (DN-scaffold-packaging.md §3). Records
     ``hooks_scripts_dir`` as every install after CR-MDB-033 §S1 does,
-    pointed at the sandbox (never the real home)."""
+    pointed at the sandbox (never the real home), and deploys every hook script there
+    (:func:`deploy_hook_scripts`), as the installer does (CR-MDB-062 §S8)."""
     harnesses_toml = ", ".join(f'"{h}"' for h in harnesses)
-    hooks_scripts_dir = Path(home) / ".agents" / "hooks" / "scripts"
+    hooks_scripts_dir = deploy_hook_scripts(Path(home) / ".agents" / "hooks" / "scripts")
     install_toml = Path(home) / "install.toml"
     install_toml.write_text(
         "[install]\n"
@@ -258,6 +260,21 @@ def client_source(key: str, log_path: Path, envelope: str) -> str:
 
 #: The repo's hook protocol scripts — the real scripts a hook test runs.
 HOOK_SCRIPTS_DIR = REPO_ROOT / "hooks-src" / "scripts"
+
+def deploy_hook_scripts(store) -> Path:
+    """Copy every ``hooks-src/scripts/*`` into the sandbox store ``store`` (created if absent)
+    with mode 0755 and return ``store`` — the deployed hook-script store an install fixture's
+    ``hooks_scripts_dir`` names, so an ``init`` driven against it finds every script it would
+    wire as an executable file (CR-MDB-062 §S7/§S8). Test infrastructure: the real store is
+    the installer's."""
+    store = Path(store)
+    store.mkdir(parents=True, exist_ok=True)
+    for source in sorted(HOOK_SCRIPTS_DIR.iterdir()):
+        if source.is_file():
+            dest = store / source.name
+            shutil.copyfile(source, dest)
+            dest.chmod(0o755)
+    return store
 
 
 def run_hook(name: str, payload, *, cwd=None, timeout: int = 10) -> subprocess.CompletedProcess:

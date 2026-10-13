@@ -240,6 +240,7 @@ from tests.pi_capability_sandbox import with_agent_dir
 
 from modelb_axi import agents as agents_mod
 from tests._helpers import decode_envelope as _decode_envelope_c3
+from tests._helpers import deploy_hook_scripts, write_install_toml
 from tests._helpers import parse_env_file as _parse_env_file_c3
 from tests._helpers import read_text_lenient as _read
 from tests._helpers import split_frontmatter as _split_frontmatter
@@ -1461,9 +1462,12 @@ def _write_install_toml_c3(home: Path, asset_root: Path, harnesses=("pi",)) -> P
     MIGRATED (CR-MDB-045 C2 RED): records lean-ctx as ``detected`` in
     ``[capabilities]`` -- init and `agents` render the lean-ctx form (today's
     bytes, which these tests compare with ``agents.render()``) only when the
-    installation recorded lean-ctx present (CR-MDB-045 \u00a7S8)."""
+    installation recorded lean-ctx present (CR-MDB-045 §S8).
+
+    MIGRATED (CR-MDB-062 C4 RED, §S8): the store holds every hook script
+    (``deploy_hook_scripts``), so init's script check finds each one it wires."""
     harnesses_toml = ", ".join(f'"{h}"' for h in harnesses)
-    hooks_scripts_dir = home / ".agents" / "hooks" / "scripts"
+    hooks_scripts_dir = deploy_hook_scripts(home / ".agents" / "hooks" / "scripts")
     home.mkdir(parents=True, exist_ok=True)
     install_toml = home / "install.toml"
     install_toml.write_text(
@@ -1655,16 +1659,9 @@ class InitToleratesStackWithoutAgentTemplateS6Test(unittest.TestCase):
         # EXACTLY (a bogus configured asset_root relying on the real repo's
         # default_asset_root() fallback) -- the SAME configuration
         # PiWorktreeCarryAndClosedGuardsTest already uses.
-        hooks_scripts_dir = Path(tmp_home) / ".agents" / "hooks" / "scripts"
-        Path(tmp_home, "install.toml").write_text(
-            "[install]\n"
-            'version = "0.1.0"\n'
-            'harnesses = ["pi"]\n'
-            'asset_root = "/tmp/does-not-matter-for-this-test"\n'
-            f'hooks_scripts_dir = "{hooks_scripts_dir}"\n'
-            "\n[deps]\nuv = \"present\"\n\n[files]\n",
-            encoding="utf-8",
-        )
+        # MIGRATED (CR-MDB-062 C4 RED, §S8): the shared fixture -- the same install.toml
+        # this test wrote inline, its store holding every hook script.
+        write_install_toml(tmp_home, harnesses=("pi",))
         result = _run_module_c3(
             "--yes", "init",
             "--name", "X", "--token", "xproj", "--acronym", "XP",

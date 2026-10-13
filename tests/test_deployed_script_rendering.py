@@ -50,6 +50,8 @@ VERBATIM_SCRIPTS = (f"{TOOLS_STORE}/gate-lock.sh", f"{TOOLS_STORE}/toon.py",
 CARGO_HOOK = f"{HOOKS_STORE}/block-direct-cargo-test"
 #: A tool script carrying the python shebang.
 WORKTREE_FLOW = f"{TOOLS_STORE}/worktree-flow.py"
+#: The python and bun runner hooks CR-MDB-062 adds (§S2), deployed like every hook script.
+RUNNER_HOOKS = (f"{HOOKS_STORE}/block-direct-python-test", f"{HOOKS_STORE}/block-direct-bun-test")
 
 
 def _sha256(data: bytes) -> str:
@@ -63,6 +65,8 @@ class ScriptSetPreconditionTest(unittest.TestCase):
         rendered = python_shebang_scripts()
         self.assertIn(CARGO_HOOK, rendered)
         self.assertIn(WORKTREE_FLOW, rendered)
+        for rel in RUNNER_HOOKS:
+            self.assertIn(rel, rendered, f"CR-MDB-062: {rel} carries the python shebang")
         self.assertEqual(
             sorted(set(deployed_scripts()) - set(rendered)), sorted(VERBATIM_SCRIPTS),
             "§S3: exactly gate-lock.sh, toon.py and schedule_db.py render to their source bytes",
@@ -153,6 +157,27 @@ class DeployedScriptRenderingTest(_RenderingCase):
                 self.assertEqual(deployed.partition(b"\n")[2],
                                  source.read_bytes().partition(b"\n")[2],
                                  f"§S3: every byte after {rel}'s first line is the source's")
+
+    def test_python_and_bun_runner_hooks_deploy_rendered_executable_with_their_hash_recorded(self):
+        # CR-MDB-062 AC (a sandboxed install): both new scripts are deployed, each with the
+        # recorded interpreter in its shebang and its rendered hash in the manifest.
+        python = self.recorded_python()
+        recorded = self.manifest_hashes()
+        for rel in RUNNER_HOOKS:
+            source = REPO_ROOT / "hooks-src" / "scripts" / Path(rel).name
+            deployed_path = self.target_root / rel
+            with self.subTest(script=rel):
+                self.assertTrue(deployed_path.is_file(), f"CR-MDB-062: {rel} is deployed")
+                self.assertTrue(os.access(deployed_path, os.X_OK),
+                                f"CR-MDB-062: {rel} is deployed executable")
+                deployed = deployed_path.read_bytes()
+                self.assertEqual(deployed.partition(b"\n")[0], b"#!" + python.encode(),
+                                 f"CR-MDB-062: {rel} starts #!<recorded interpreter>")
+                expected = render(source.read_bytes(), python)
+                self.assertEqual(deployed, expected,
+                                 f"CR-MDB-062: {rel} is its source with only the shebang rendered")
+                self.assertEqual(recorded.get(rel), _sha256(expected),
+                                 f"CR-MDB-062: the manifest records {rel}'s rendered hash")
 
     def test_gate_lock_toon_and_schedule_db_deploy_byte_identical(self):
         for rel in VERBATIM_SCRIPTS:

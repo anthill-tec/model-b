@@ -57,7 +57,12 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from tests._helpers import decode_axi, write_executable, write_interpreter_fixture
+from tests._helpers import (
+    decode_axi,
+    deploy_hook_scripts,
+    write_executable,
+    write_interpreter_fixture,
+)
 from tests.pi_capability_sandbox import (
     AGENT_DIR_ENV,
     MODELB_PI_PACKAGE,
@@ -571,10 +576,19 @@ class InitReadsTheRecordedVerdictsTest(unittest.TestCase):
             caps[f"python.{probe['name']}"] = "detected"
         return caps
 
+    def write_install(self, capabilities: dict, deps: dict) -> Path:
+        """``install.toml`` holding :func:`_install_toml_text`, its store holding every hook
+        script (``deploy_hook_scripts``, CR-MDB-062 §S8), so init's script check adds no
+        warning of its own to the dry run these tests read."""
+        deploy_hook_scripts(self.modelb_home / ".agents" / "hooks" / "scripts")
+        install_toml = self.modelb_home / "install.toml"
+        install_toml.write_text(_install_toml_text(self.modelb_home, capabilities, deps),
+                                encoding="utf-8")
+        return install_toml
+
     def run_init(self, capabilities: dict, deps: dict) -> tuple[dict, str]:
         from modelb_axi import scaffold
-        (self.modelb_home / "install.toml").write_text(
-            _install_toml_text(self.modelb_home, capabilities, deps), encoding="utf-8")
+        self.write_install(capabilities, deps)
         args = argparse.Namespace(
             name="Floor Project", token=PROJECT_SHORT_NAME, acronym="FLR", mode="solo",
             repo_shape="standalone", stacks="python", owner="tester",

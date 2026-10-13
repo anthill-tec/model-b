@@ -717,10 +717,18 @@ class HooksSeamSoloRustEmissionTest(unittest.TestCase):
         ambient-board-status                      | none (always)            | none (always)
         block-direct-cargo-test                   | stacks ∩ {rust}          | none
         block-direct-mvn-test                     | stacks ∩ {java, quarkus} | none
+        block-direct-python-test                  | stacks ∩ {python}        | none
+        block-direct-bun-test                     | stacks ∩ {bun}           | none
         block-write-outside-worktree              | none (stack-neutral)     | multi only
         block-cr-completed-without-spec-update    | none (stack-neutral)     | multi only
         post-regression-disk-reminder             | none (stack-neutral per  | UNPINNED by
                                                    | dispatch note)           | this CR slice
+
+    MIGRATED (CR-MDB-062 C4 RED, §S7): the python and bun runner hooks are
+    the two rows CR-MDB-062 adds -- each `pre-tool-use`, `bash`, `core`,
+    `closed`, emitted exactly for its stack. The table comment above
+    `scaffold._hook_instances` carries both rows
+    (HookInstancesRunnerRowsTest pins it).
     """
 
     @classmethod
@@ -809,6 +817,21 @@ class HooksSeamSoloRustEmissionTest(unittest.TestCase):
             "S5: solo mode must not emit the CR-completion guard instance",
         )
 
+    def test_python_and_bun_runner_hooks_not_emitted_for_solo_rust(self):
+        # Fixture precondition: the run emitted a tree at all, so an absence
+        # below is the selection's, not a failed init's.
+        self.assertEqual(
+            self._result.returncode, 0,
+            f"init must succeed; stdout={self._result.stdout!r} "
+            f"stderr={self._result.stderr!r}",
+        )
+        # NEGATIVE -- CR-MDB-062 §S7: each runner hook only for its stack.
+        for command in ("block-direct-python-test", "block-direct-bun-test"):
+            self.assertFalse(
+                self._instance_path(command).exists(),
+                f"CR-MDB-062 §S7: `--stacks rust` must not emit {command!r}",
+            )
+
 
 class HooksSeamMultiPythonEmissionTest(unittest.TestCase):
     """§S5 AC (CR-MDB-015) -- a `--mode multi:2 --stacks python` init emits
@@ -816,6 +839,10 @@ class HooksSeamMultiPythonEmissionTest(unittest.TestCase):
     withholds the stack-gated cargo/mvn guards (python selects neither rust
     nor java/quarkus). See HooksSeamSoloRustEmissionTest's docstring for the
     full derived selection table this pair of test classes is pinned from.
+
+    MIGRATED (CR-MDB-062 C4 RED, §S7): `--stacks python` now also emits
+    `block-direct-python-test` (`pre-tool-use`, `bash`, `core`, `closed`) and
+    still withholds the bun runner hook.
     """
 
     @classmethod
@@ -880,9 +907,51 @@ class HooksSeamMultiPythonEmissionTest(unittest.TestCase):
             "guard instance",
         )
 
+    def test_python_runner_hook_instance_emitted_pre_tool_use_bash_core_closed(self):
+        path = self._instance_path("block-direct-python-test")
+        self.assertTrue(
+            path.is_file(),
+            "CR-MDB-062 §S7: a `--stacks python` init must emit the python "
+            f"runner hook instance at {path}; init exit={self._result.returncode} "
+            f"stderr={self._result.stderr!r}",
+        )
+        with open(path, "rb") as fh:
+            instance = tomllib.load(fh)
+        # POSITIVE/EXACT -- every field the instance carries, and no timeout.
+        self.assertEqual(
+            instance,
+            {
+                "event": "pre-tool-use",
+                "matcher": "bash",
+                "command": "block-direct-python-test",
+                "tier": "core",
+                "fail_direction": "closed",
+            },
+            f"CR-MDB-062 §S7: got instance={instance!r}",
+        )
+
+    def test_python_runner_hook_wired_for_pi(self):
+        extension = self._target / ".pi" / "extensions" / "block-direct-python-test.ts"
+        # POSITIVE -- the emitted instance is compiled for the installed
+        # harness like every other (§S4 compiler).
+        self.assertTrue(
+            extension.is_file(),
+            f"CR-MDB-062 §S7: pi wiring for the python runner hook at {extension}; "
+            f"init exit={self._result.returncode} stderr={self._result.stderr!r}",
+        )
+
+    def test_bun_runner_hook_instance_not_emitted_for_python_stack(self):
+        self.assertEqual(self._result.returncode, 0,
+                         f"init must succeed; stderr={self._result.stderr!r}")
+        # NEGATIVE -- the bun hook only for a bun stack.
+        self.assertFalse(
+            self._instance_path("block-direct-bun-test").exists(),
+            "CR-MDB-062 §S7: `--stacks python` must not emit the bun runner hook",
+        )
+
 
 class PiWorktreeCarryAndClosedGuardsTest(unittest.TestCase):
-    """\u00a7S6 AC (CR-MDB-030) -- the scaffold's `.gitignore` stops ignoring
+    """§S6 AC (CR-MDB-030) -- the scaffold's `.gitignore` stops ignoring
     `.pi/` wholesale so a fresh `git worktree add` carries the project's
     `.pi/extensions/` (compiled pi hook shims) and `.pi/agents/` (subagent
     defs); every scaffold `block-*` guard instance is emitted
@@ -890,11 +959,14 @@ class PiWorktreeCarryAndClosedGuardsTest(unittest.TestCase):
     Claude-refusal rationale comment that justified `open` is gone from
     `scaffold.py`'s source.
 
-    RUN CONTEXT -- one `--mode multi:2 --stacks rust,java` init fixture for
-    a pi install (flipped from claude-code,pi by CR-MDB-031 §S1), shared by
-    every test method below: multi mode + rust + java together select ALL FOUR block-* instances (see
-    HooksSeamSoloRustEmissionTest's derived selection table), and `pi` in
-    the installed harness roster makes the \u00a7S4 compiler
+    RUN CONTEXT -- one `--mode multi:2 --stacks rust,java,python,bun` init
+    fixture for a pi install (flipped from claude-code,pi by CR-MDB-031 §S1),
+    shared by every test method below: multi mode + rust + java + python +
+    bun together select ALL SIX block-* instances (see
+    HooksSeamSoloRustEmissionTest's derived selection table; MIGRATED at
+    CR-MDB-062 C4 RED, §S7/§S8: python and bun added to the stacks, the
+    python and bun runner hooks to the `closed` list), and `pi` in
+    the installed harness roster makes the §S4 compiler
     (`hooks.compile_wiring` -> `_emit_pi`) emit one `.pi/extensions/
     <command>.ts` per instance.
     """
@@ -908,9 +980,10 @@ class PiWorktreeCarryAndClosedGuardsTest(unittest.TestCase):
             "--yes", "init",
             "--name", "X", "--token", "xproj", "--acronym", "XP",
             "--mode", "multi:2", "--repo-shape", "standalone",
-            "--stacks", "rust,java", "--owner", "tester",
+            "--stacks", "rust,java,python,bun", "--owner", "tester",
             "--target", cls._tmp_target,
             "--modelb-home", cls._tmp_home,
+            timeout=60,
         )
         cls._target = Path(cls._tmp_target)
 
@@ -954,6 +1027,8 @@ class PiWorktreeCarryAndClosedGuardsTest(unittest.TestCase):
         for command in (
             "block-direct-cargo-test",
             "block-direct-mvn-test",
+            "block-direct-python-test",
+            "block-direct-bun-test",
             "block-write-outside-worktree",
             "block-cr-completed-without-spec-update",
         ):
@@ -961,7 +1036,7 @@ class PiWorktreeCarryAndClosedGuardsTest(unittest.TestCase):
             self.assertTrue(
                 path.is_file(),
                 f"S6 fixture precondition: {command!r} instance must be "
-                f"emitted by this run (rust+java stacks, multi mode); init "
+                f"emitted by this run (rust+java+python+bun stacks, multi mode); init "
                 f"stderr={self._result.stderr!r}",
             )
             with open(path, "rb") as fh:
@@ -1106,6 +1181,132 @@ class PiWorktreeCarryAndClosedGuardsTest(unittest.TestCase):
             f"S6: fresh worktree checkout must carry .pi/extensions/*.ts; "
             f"listing={pi_listing}",
         )
+
+
+#: Today's rows of ``scaffold._hook_instances``, each exactly as emitted before
+#: CR-MDB-062 — §S7 adds two rows and leaves these unchanged.
+_UNCHANGED_HOOK_ROWS = {
+    "ambient-board-status": {
+        "event": "session-start", "command": "ambient-board-status",
+        "tier": "core", "timeout": 10,
+    },
+    "post-regression-disk-reminder": {
+        "event": "post-tool-use", "matcher": "bash",
+        "command": "post-regression-disk-reminder", "tier": "core",
+    },
+    "block-direct-cargo-test": {
+        "event": "pre-tool-use", "matcher": "bash", "command": "block-direct-cargo-test",
+        "tier": "core", "fail_direction": "closed",
+    },
+    "block-direct-mvn-test": {
+        "event": "pre-tool-use", "matcher": "bash", "command": "block-direct-mvn-test",
+        "tier": "core", "fail_direction": "closed",
+    },
+    "block-write-outside-worktree": {
+        "event": "pre-tool-use", "matcher": "write|edit",
+        "command": "block-write-outside-worktree", "tier": "core", "fail_direction": "closed",
+    },
+    "block-cr-completed-without-spec-update": {
+        "event": "pre-tool-use", "matcher": "bash",
+        "command": "block-cr-completed-without-spec-update", "tier": "core",
+        "fail_direction": "closed",
+    },
+}
+
+
+def _runner_row(command: str) -> dict:
+    """A CR-MDB-062 §S7 runner-hook row: ``pre-tool-use``, ``bash``, ``core``, ``closed``."""
+    return {"event": "pre-tool-use", "matcher": "bash", "command": command,
+            "tier": "core", "fail_direction": "closed"}
+
+
+def _comment_above(source: str, def_line: str) -> str:
+    """The comment block directly above ``def_line`` in ``source``: the run of ``#``
+    and blank lines immediately preceding it, joined (``""`` when none)."""
+    lines = source.splitlines()
+    index = next((i for i, line in enumerate(lines) if line.startswith(def_line)), None)
+    if index is None:
+        return ""
+    block: list[str] = []
+    for line in reversed(lines[:index]):
+        if line.strip() and not line.lstrip().startswith("#"):
+            break
+        block.append(line)
+    return "\n".join(reversed(block))
+
+
+class HookInstancesRunnerRowsTest(unittest.TestCase):
+    """CR-MDB-062 §S7 — ``scaffold._hook_instances`` emits
+    ``block-direct-python-test`` iff ``python`` is in the stacks and
+    ``block-direct-bun-test`` iff ``bun`` is, each exactly once as a
+    ``pre-tool-use`` / ``bash`` / ``core`` / ``closed`` row; every other row is
+    unchanged; the table comment above ``_hook_instances`` lists both rows (the
+    rows HooksSeamSoloRustEmissionTest's docstring table carries)."""
+
+    def _rows(self, stacks, mode="solo") -> dict:
+        from modelb_axi import scaffold
+
+        instances = scaffold._hook_instances(list(stacks), mode)
+        commands = [i["command"] for i in instances]
+        self.assertEqual(len(commands), len(set(commands)),
+                         f"one instance per hook; got {commands!r}")
+        return {i["command"]: i for i in instances}
+
+    def test_python_stack_emits_the_python_runner_row_and_not_the_bun_one(self):
+        rows = self._rows(["python"])
+        self.assertEqual(rows.get("block-direct-python-test"),
+                         _runner_row("block-direct-python-test"),
+                         f"§S7: the python row; got rows={rows!r}")
+        self.assertNotIn("block-direct-bun-test", rows, "§S7: no bun row without bun")
+
+    def test_bun_stack_emits_the_bun_runner_row_and_not_the_python_one(self):
+        rows = self._rows(["bun"])
+        self.assertEqual(rows.get("block-direct-bun-test"),
+                         _runner_row("block-direct-bun-test"),
+                         f"§S7: the bun row; got rows={rows!r}")
+        self.assertNotIn("block-direct-python-test", rows,
+                         "§S7: no python row without python")
+
+    def test_python_and_bun_stacks_emit_both_runner_rows_in_either_mode(self):
+        for mode in ("solo", "multi:2"):
+            with self.subTest(mode=mode):
+                rows = self._rows(["python", "bun"], mode)
+                for command in ("block-direct-python-test", "block-direct-bun-test"):
+                    self.assertEqual(rows.get(command), _runner_row(command),
+                                     f"§S7: {command} in {mode}; got rows={rows!r}")
+
+    def test_stacks_without_python_or_bun_emit_neither_runner_row(self):
+        for stacks in (["rust"], ["java"], ["quarkus"], ["arduino"], ["rust", "java"]):
+            with self.subTest(stacks=stacks):
+                rows = self._rows(stacks, "multi:2")
+                self.assertEqual(
+                    {"block-direct-python-test", "block-direct-bun-test"} & set(rows), set(),
+                    f"§S7: no runner row for {stacks}; got {sorted(rows)}",
+                )
+
+    def test_every_stack_in_multi_mode_emits_exactly_the_eight_rows(self):
+        rows = self._rows(["arduino", "bun", "python", "quarkus", "rust", "java"], "multi:2")
+        self.assertEqual(
+            sorted(rows),
+            sorted([*_UNCHANGED_HOOK_ROWS, "block-direct-python-test", "block-direct-bun-test"]),
+            "§S7: the six rows of today plus the two runner rows, nothing else",
+        )
+
+    def test_the_other_rows_are_unchanged(self):
+        rows = self._rows(["bun", "python", "rust", "java"], "multi:2")
+        for command, expected in _UNCHANGED_HOOK_ROWS.items():
+            with self.subTest(command=command):
+                self.assertEqual(rows.get(command), expected,
+                                 f"§S7: {command}'s row is unchanged")
+
+    def test_table_comment_above_hook_instances_lists_both_runner_rows(self):
+        source = (REPO_ROOT / "modelb_axi" / "scaffold.py").read_text(encoding="utf-8")
+        comment = _comment_above(source, "def _hook_instances(")
+        self.assertIn("CR-MDB-015 §S5 hook-selection table", comment,
+                      "precondition: the table comment sits directly above _hook_instances")
+        for command in ("block-direct-python-test", "block-direct-bun-test"):
+            self.assertIn(command, comment,
+                          f"§S7: the table comment above _hook_instances lists {command}")
 
 
 class MonorepoEmissionTest(unittest.TestCase):
