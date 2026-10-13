@@ -609,7 +609,7 @@ class SetupTasksNameRemediationTest(_ProjectCase):
         return section
 
     def _setup_task(self, target: Path, anchor: str) -> str:
-        # MIGRATED at CR-MDB-057 C1 RED (\u00a7S3): the project-meta task, directly after the
+        # MIGRATED at CR-MDB-057 C1 RED (§S3): the project-meta task, directly after the
         # registration task, names the CRUCIBLE_PROJECT_KEY it does not mirror; it is not a
         # setup task for the key, so it is left out of the anchor's one-task count.
         section = self._setup_section(target)

@@ -837,7 +837,7 @@ class _Shared:
                              f"the README's setup tasks are kept, as they stand, in order; Setup={setup!r}")
             tasks = [ln for ln in actual if "CRUCIBLE_PROJECT_KEY" in ln
                      and "project-meta" not in ln]
-            # MIGRATED at CR-MDB-057 C1 RED (\u00a7S3): the project-meta task names the key it does
+            # MIGRATED at CR-MDB-057 C1 RED (§S3): the project-meta task names the key it does
             # not mirror; it is not the key's setup task, so it is left out of this count.
             self.assertEqual(len(tasks), 1, setup)
             self.assertIn("`.env`", tasks[0], "§S2: the setup task names `.env` for the key")
