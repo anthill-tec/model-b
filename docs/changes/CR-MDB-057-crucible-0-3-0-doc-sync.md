@@ -5,7 +5,7 @@
 **Priority:** P1 — release 1.0.0, wave 2.
 **Depends on:** none (board-authoritative: read `queue`)
 **Labels:** crucible, doc-sync, scaffold, hooks, release
-**Design reference:** DN-multi-harness-deploy-model §D21; `skills-src/CRUCIBLE-HANDOVER.md` § Maintenance
+**Design reference:** DN-multi-harness-deploy-model §D21; Crucible status contract 3.0.0 (#1443); `skills-src/CRUCIBLE-HANDOVER.md` § Maintenance
 contract; Crucible #1432 (0.3.0 client changes) and #1436 (`history`); the installed 0.3.0 clients'
 `--help` (`~/.crucible/clients/<stack>-crucible.py`).
 
@@ -66,17 +66,24 @@ Three defects follow on Model B's side:
 - **The `crucible` skill** documents `project-meta`: a read without `--agent`, and a write with
   `--set`/`--unset` and `--agent`.
 
-### §S4 — The session-start hook reads 0.3.0's `status`
+### §S4 — The session-start hook reads status contract 3.0.0
 
-`ambient-board-status` renders the three definitive states from the 0.3.0 envelope:
-- open plans present: the open rows, plus `last closed: <id>` when `lastClosedCr` is set;
-- no open plan but `filed > 0`: "no open plan", plus `last closed: <id>`;
-- `filed == 0`: "no plan filed".
+Crucible 0.3.0's `status` follows status contract **3.0.0**: `plans` holds the open plans only and
+`count` counts them; `filed` is the number of plans ever filed (open, closed or aborted), and is `null`
+when the board is unreachable; `lastClosedCr` is the last closed CR, or `null` when none has closed.
+`ambient-board-status` pins `STATUS_CONTRACT_VERSION = "3.0.0"` and tells the states apart by `count`
+and `filed` alone:
+- `count > 0`: the open rows;
+- `count == 0` and `filed > 0`: "no open plan";
+- `count == 0` and `filed == 0`: "no plan filed";
+- `filed` null with a `status-unavailable` warning: the board-unavailable degrade note — null is
+  unknown, never 0.
 
-An envelope without `filed` (a pre-0.3.0 client) keeps today's `count`-based reading. The degrade
-paths are unchanged. `STATUS_CONTRACT_VERSION` names the status-contract version Crucible confirms
-for 0.3.0. The hook's tests carry the measured 0.3.0 envelope for all three states, and a 0.2.x
-envelope.
+In every reachable state it adds `last closed: <id>` when `lastClosedCr` is not null; `lastClosedCr`
+never decides the state (a board whose only plans were aborted has `filed > 0` and no last closed
+CR). An envelope without `filed` (a 2.0.0 client) keeps today's `count`-based reading. The other
+degrade paths are unchanged. The hook's tests carry a 3.0.0 envelope for each of the four states, an
+aborted-only board, and a 2.0.0 envelope.
 
 ### §S5 — The verb surface in the `crucible` skill and the contract
 
@@ -134,10 +141,12 @@ are on all five clients:
 - [ ] **The Setup section `init` writes** carries the `project-meta --set` task after the
       registration task, re-run on any `.env` change, excluding `CRUCIBLE_PROJECT_KEY`, with the
       Crucible remediation first when Crucible is absent.
-- [ ] **`ambient-board-status`** prints, for the 0.3.0 envelopes: the open rows plus `last closed`;
-      "no open plan" plus `last closed` when `count == 0` and `filed > 0`; "no plan filed" when
-      `filed == 0`. A 0.2.x envelope renders as today. `STATUS_CONTRACT_VERSION` holds the version
-      Crucible confirms.
+- [ ] **`ambient-board-status`** pins `STATUS_CONTRACT_VERSION = "3.0.0"` and prints, for 3.0.0
+      envelopes: the open rows when `count > 0`; "no open plan" when `count == 0` and `filed > 0`;
+      "no plan filed" when `count == 0` and `filed == 0`; the board-unavailable degrade note when
+      `filed` is null with `status-unavailable`. It adds `last closed: <id>` exactly when `lastClosedCr`
+      is not null, including the aborted-only board (`filed > 0`, `lastClosedCr` null → "no open
+      plan", no last-closed line). A 2.0.0 envelope (no `filed`) renders as today.
 - [ ] **The `crucible` skill's per-stack table and verb sections** name, for all five clients:
       `test`/`e2e --cycle` and `--release`, `history`, `landings`, `project-meta`, `cr-plan --points`
       (scale 1–13), `cycle-add` (`fix` append; `--before` and other kinds with
