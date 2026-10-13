@@ -44,5 +44,12 @@ at tool-call time.
 
 ## To measure at gap analysis
 
+- **Runner forms CR-MDB-056's VERIFY (C4) found outside the guard's set** — decide for the hooks and
+  for the shared table (the guard and the hooks stay in parity): `uv run python -m pytest`, `/usr/bin/mvn
+  test` (a path to mvn), `python3 -munittest` (no space after `-m`), `python3 tests/test_x.py` (a test
+  file run directly — the incident form), `make test`, `mvn clean install`, `npx vitest`; and indented
+  (non-fenced) code blocks, which the guard does not read. The guard already takes `env` options
+  (`env -i …`, `env -u X …`) and ends a clause at `;`/`:`; a comma-separated "not" clause is a
+  documented limit.
 - The block-reason convention the anchoring tests enforce; Model B's own wiring after merge (the user
   redeploys, then the wiring is recompiled — DN §D21 amendment).
