@@ -6,7 +6,8 @@ The file set is every ``skills-src/*/SKILL.md``, ``generator/agents/*.md`` and
 - **§S3.1, the stdlib rule, always run** (``frontmatter_violations``). It reads ``name`` and
   ``description`` only: one top-level line each, holding a one-line plain scalar YAML can read
   only as one string, a ``description`` of at most 1024 UTF-16 code units (the unit Pi counts),
-  and a skill ``name`` that follows Pi's name rules and equals its directory. The rule is proved
+  and a skill ``name`` that follows Pi's name rules and equals its directory. Past any comment
+  lines, each value is followed by a top-level key or the closing ``---``. The rule is proved
   on sample text in both directions (``FrontmatterRuleCatchesTest`` /
   ``FrontmatterRulePassesTest``) and then run over the tree (``FrontmatterTreeTest``).
 - **§S3.2, Pi's own loader, when it is installed** (``PiSkillLoaderOracleTest``). ``node`` runs
@@ -77,9 +78,11 @@ def _is_control(char: str) -> bool:
     return ord(char) < 0x20 or ord(char) == 0x7F
 
 
-def _value_violations(key: str, raw: str, following: str) -> tuple[list, str]:
+def _value_violations(key: str, raw: str, following: str,
+                      after_comment: bool = False) -> tuple[list, str]:
     """``(problems, value)`` for one ``key:`` line whose text after the colon is ``raw`` and
-    whose next frontmatter line is ``following``."""
+    whose next non-comment frontmatter line is ``following``; ``after_comment`` says one or more
+    comment lines came between them."""
     problems = []
     if raw and not raw.startswith(" "):
         problems.append(f"{key}: `{key}:` must be followed by a space")
@@ -104,7 +107,12 @@ def _value_violations(key: str, raw: str, following: str) -> tuple[list, str]:
         problems.append(f"{key} ends with `:` — reword it")
     if value and CORE_SCHEMA_SCALAR_RE.fullmatch(value):
         problems.append(f"{key} {value!r} reads as a YAML null, boolean or number — reword it")
-    if not (following == "---" or following.startswith("#") or TOP_LEVEL_KEY_RE.match(following)):
+    if after_comment and not (following == "---" or TOP_LEVEL_KEY_RE.match(following)):
+        problems.append(f"{key} is followed by a comment line and then {following!r}, not a "
+                        "top-level key or the closing `---`: Pi's YAML refuses a line after a "
+                        "comment line that is not a top-level key (All mapping items must start "
+                        "at the same column)")
+    elif not (following == "---" or TOP_LEVEL_KEY_RE.match(following)):
         problems.append(f"{key} is followed by {following!r}, not a top-level key, a comment or "
                         "the closing `---`: an indented continuation line folds into the value")
     return problems, value
@@ -145,8 +153,10 @@ def frontmatter_violations(text: str, skill_dir: str | None = None) -> list:
             problems.append(f"frontmatter: {len(hits)} top-level `{key}:` lines (want exactly 1)")
             continue
         index = hits[0]
-        following = block[index + 1] if index + 1 < len(block) else "---"
-        found, values[key] = _value_violations(key, block[index][len(key) + 1:], following)
+        rest = block[index + 1:] + ["---"]
+        skipped = next(i for i, line in enumerate(rest) if not line.startswith("#"))
+        found, values[key] = _value_violations(key, block[index][len(key) + 1:], rest[skipped],
+                                               after_comment=skipped > 0)
         problems += found
     description = values.get("description", "")
     if utf16_length(description) > MAX_DESCRIPTION_UTF16:
@@ -161,6 +171,31 @@ def _doc(name: str = "sample-skill", description: str = "A clean description.",
          extra: str = "") -> str:
     """A sample ``SKILL.md``: ``extra`` lands between the ``description:`` line and ``---``."""
     return f"---\nname: {name}\ndescription: {description}\n{extra}---\n\nBody.\n"
+
+
+#: ``(label, text)``: an indented line after a comment line that follows ``name:`` or
+#: ``description:``. Pi's ``parseFrontmatter`` throws "All mapping items must start at the same
+#: column" on each (``PiSkillLoaderOracleTest`` proves it when Pi is installed).
+COMMENT_THEN_INDENTED = (
+    ("after description",
+     "---\nname: sample-skill\ndescription: A description.\n# c\n  bar\n---\n\nBody.\n"),
+    ("after name",
+     "---\nname: sample-skill\n# c\n  bar\ndescription: A description.\n---\n\nBody.\n"),
+    ("after two comments",
+     "---\nname: sample-skill\ndescription: A description.\n# c\n# d\n  bar\n---\n\nBody.\n"),
+)
+
+#: ``(label, text)``: comment lines followed by a top-level key or the close, and a clean
+#: ``---`` close after a further key. Pi reads ``name`` ``sample-skill`` and ``description``
+#: ``A description.`` from each (``PiSkillLoaderOracleTest`` proves it when Pi is installed).
+CLEAN_LAYOUTS = (
+    ("comments then a key",
+     "---\nname: sample-skill\n# c\ndescription: A description.\n# d\n# e\ntools: x\n---\n\nBody.\n"),
+    ("a comment then the close",
+     "---\nname: sample-skill\ndescription: A description.\n# d\n---\n\nBody.\n"),
+    ("a clean close after a further key",
+     "---\nname: sample-skill\ntools: x\ndescription: A description.\n---\n\nBody.\n"),
+)
 
 
 class FrontmatterRuleCatchesTest(unittest.TestCase):
@@ -237,6 +272,11 @@ class FrontmatterRuleCatchesTest(unittest.TestCase):
                             "continuation line")
         self._assert_caught("---\nname: sample-skill\n  more name\ndescription: Clean.\n---\n",
                             "continuation line")
+
+    def test_an_indented_line_after_a_comment_line_is_caught(self):
+        for label, text in COMMENT_THEN_INDENTED:
+            with self.subTest(label=label):
+                self._assert_caught(text, "followed by a comment line and then '  bar'")
 
     def test_an_empty_value_is_caught(self):
         self._assert_caught(_doc(description=""), "description is empty")
@@ -318,6 +358,11 @@ class FrontmatterRulePassesTest(unittest.TestCase):
         text = ("---\n# generated by a renderer\nname: sample-agent\n# a comment\n"
                 "description: Clean.\ntools: read, write\npermission:\n  read: allow\n---\n")
         self.assertEqual(frontmatter_violations(text), [])
+
+    def test_comments_followed_by_a_key_or_the_close_and_a_clean_close_pass(self):
+        for label, text in CLEAN_LAYOUTS:
+            with self.subTest(label=label):
+                self.assertEqual(frontmatter_violations(text, "sample-skill"), [])
 
     def test_agent_files_are_not_held_to_the_skill_name_rules(self):
         self.assertEqual(frontmatter_violations(_doc(name="Some_Agent"), None), [])
@@ -604,6 +649,22 @@ class PiSkillLoaderOracleTest(unittest.TestCase):
                 self.assertIsNone(parsed["threw"])
                 self.assertEqual((parsed["name"], parsed["description"]),
                                  ("sample-skill", description))
+
+    def test_pi_throws_on_each_indented_line_after_a_comment_line(self):
+        out = _run_pi_oracle(self, self.api,
+                             {"documents": [text for _, text in COMMENT_THEN_INDENTED]})
+        for (label, _), parsed in zip(COMMENT_THEN_INDENTED, out["documents"], strict=True):
+            with self.subTest(label=label):
+                self.assertIsNotNone(parsed["threw"], f"§S3.1: Pi parsed {label} as {parsed}")
+                self.assertIn("All mapping items must start at the same column", parsed["threw"])
+
+    def test_pi_reads_each_clean_layout_as_exactly_its_text(self):
+        out = _run_pi_oracle(self, self.api, {"documents": [text for _, text in CLEAN_LAYOUTS]})
+        for (label, _), parsed in zip(CLEAN_LAYOUTS, out["documents"], strict=True):
+            with self.subTest(label=label):
+                self.assertIsNone(parsed["threw"])
+                self.assertEqual((parsed["name"], parsed["description"]),
+                                 ("sample-skill", "A description."))
 
 
 # ------------------------------------------------------------------ one finder ----
