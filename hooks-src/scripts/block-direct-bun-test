@@ -217,9 +217,13 @@ def _normal(segment: str) -> str:
 
 
 def _is_bun_test_invocation(command: str) -> bool:
-    """True when a bun runner form is the command at a command position in `command`."""
-    return any(runner.match(_normal(segment)) for segment in _commands(command)
-               for runner in BUN_RUNNERS)
+    """True when a bun runner form is the command at a command position in `command`; each
+    segment is read into its shell words once, then tried against every form."""
+    for segment in _commands(command):
+        normal = _normal(segment)
+        if any(runner.match(normal) for runner in BUN_RUNNERS):
+            return True
+    return False
 
 
 def _has_marker(directory: Path) -> bool:
