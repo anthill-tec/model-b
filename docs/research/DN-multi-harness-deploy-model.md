@@ -919,6 +919,28 @@ Implemented by CR-MDB-057 and CR-MDB-056.
   write, naming `modelb-axi --reinstall`.
 
 Implemented by CR-MDB-062.
+
+**AMENDED 2026-10-14 (user rulings at CR-MDB-063's gap analysis):**
+- **A python project's test interpreter is its own `.venv`.** The python client runs tests under
+  `$PY_CRUCIBLE_PYTHON`, else `<project>/.venv/bin/python`, else the `python3` running it, and that
+  interpreter needs `xmlrunner` (and `coverage` for `--coverage`). A system or uv-managed interpreter
+  refuses a package install (PEP 668, measured on Arch and on uv's own interpreters, `--user`
+  included), so the route is a virtual environment in the project: `uv venv --python 3.14`, then
+  `uv pip install unittest-xml-reporting coverage`. The installer names that route and no longer
+  offers a `pip install` into the `PATH` `python3`; `init`'s Setup section carries it as a task for a
+  python project.
+- **The test interpreter is checked at bootstrap, not at install.** The installer runs from any
+  directory, so a per-project `$PY_CRUCIBLE_PYTHON` is not its to judge. Bootstrap, in a python
+  project, resolves the interpreter as the client does and reports a missing module with the route.
+- **Every stack's client needs `python3` on `PATH`.** Each Crucible client is a Python script run as
+  `python3 <client>`, so the `PATH` `python3` check covers every selected stack, not only python. Its
+  remediation is `uv python install --default 3.14`, which also puts `python3` on `PATH`;
+  `uv python install 3.14` alone adds only `python3.14`. The `python3` interpreter that §D22 records
+  for the deployed scripts is a separate check.
+- **A dead recorded interpreter makes the install outdated.** When the interpreter `install.toml`
+  records is missing or no longer accepted, the `already_installed` envelope's `freshness` reads
+  `outdated` and an `interpreter` field names the recorded path and why it was rejected.
+
 ### D22 — The published Python floor is 3.14
 
 **User ruling 2026-10-13.** `modelb-axi` declares `requires-python = ">=3.14"` from release 1.0.0
@@ -963,7 +985,7 @@ Implemented by CR-MDB-064.
 | **057** (Crucible 0.3.0 doc-sync) | §D21: `init` writes `crucible.toml` with `[gate] skip`; no client is steered through the environment; the `project-meta` setup task; the register and board-inspection `curl` text becomes client verbs. |
 | **056** (test runs through the client) | §D21: the rule binds agents and the orchestrator; blocking hooks keep the `ALLOW_RAW_<RUNNER>=1` escape hatch; the hand-run-and-ingest path is removed. |
 | **062** (blocking hooks) | §D21 amended: python and bun hooks; `init` refuses a hook whose script is not deployed. |
-| **063** (test-interpreter probe) | §D21 amended: the python client's interpreter is probed where the client will use it. |
+| **063** (test-interpreter probe) | §D21 amended (2026-10-14): the project `.venv` route, the bootstrap check, `python3` on `PATH` for every stack's client, and `freshness` with a dead recorded interpreter. |
 | **064** (Python floor) | §D22: `requires-python >=3.14`. |
 
 ## Open, deliberately not decided here
