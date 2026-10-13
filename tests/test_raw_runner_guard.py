@@ -5,7 +5,7 @@ reference DN-multi-harness-deploy-model §D21 and its 2026-10-13 amendments). Ev
 through the stack's Crucible client, so no guarded file shows a runner invocation as something to
 type: a guarded file fails when it shows a runner invocation in a code span or on a fenced-block
 line, unless a prohibition governs it — a whole-word, case-insensitive "never", "do not", "must
-not" or "not" earlier in the same sentence as the runner span. A fenced-block line is judged on
+not" or "not" earlier in the same clause as the runner span. A fenced-block line is judged on
 its own; prose around a fence never exempts it.
 
 **The runner** is matched as a whole command word at a command position — the start of the span
@@ -35,8 +35,11 @@ or tildes; each line inside it is one command line, judged alone. Outside fences
 paragraph or a list item with its wrapped lines; a heading and a table row are blocks of their
 own. A code span is a backtick run closed by a run of the same length, and may wrap a line. A
 sentence ends at ``.``, ``!`` or ``?`` before whitespace (not after ``e.g.``, ``i.e.``, ``cf.``,
-``vs.``), at a table-cell ``|`` and at the block's edge; code-span contents never end a sentence
-and never supply a prohibition word.
+``vs.``), at a table-cell ``|`` and at the block's edge; a clause ends there too, and also at
+``;`` and ``:``, so a prohibition governs a span only in its own clause ("Do not stop: run
+`pytest`." is caught). Code-span contents never end a sentence or a clause and never supply a
+prohibition word. A known limit: a comma does not end a clause, so "If the build is not green,
+run `cargo test`." is read as governed — commas are not parsed.
 
 The detector is a pure function proved on sample text both ways in
 ``RawRunnerDetectorOnSampleTextTest`` before ``GuardedTreeHasNoRawRunnerTest`` applies it to the
@@ -94,6 +97,8 @@ _MAVEN_TEST_PLUGINS = ("surefire:", "failsafe:")
 PROHIBITION = re.compile(r"\b(?:never|do\s+not|must\s+not|not)\b", re.IGNORECASE)
 #: A sentence boundary in masked prose: terminal punctuation before whitespace, or a table cell.
 _SENTENCE_END = re.compile(r"(?<!\be\.g)(?<!\bi\.e)(?<!\bcf)(?<!\bvs)[.!?](?=\s|$)|\|")
+#: A clause boundary: a sentence boundary, ``;`` or ``:`` — a prohibition governs its own clause.
+_CLAUSE_END = re.compile(_SENTENCE_END.pattern + r"|[;:]")
 #: A fence opener or closer: three or more backticks or tildes.
 _FENCE = re.compile(r"^\s*(`{3,}|~{3,})")
 #: A line that opens a block of its own: a heading, a list item, a table row.
@@ -131,10 +136,10 @@ def runner_at(fragment: str):
 
 
 def _governed(masked_prefix: str) -> bool:
-    """True when a prohibition appears in the sentence ``masked_prefix`` ends in."""
-    boundaries = list(_SENTENCE_END.finditer(masked_prefix))
-    sentence = masked_prefix[boundaries[-1].end():] if boundaries else masked_prefix
-    return bool(PROHIBITION.search(sentence))
+    """True when a prohibition appears in the clause ``masked_prefix`` ends in."""
+    boundaries = list(_CLAUSE_END.finditer(masked_prefix))
+    clause = masked_prefix[boundaries[-1].end():] if boundaries else masked_prefix
+    return bool(PROHIBITION.search(clause))
 
 
 def _code_spans(text: str):
@@ -367,6 +372,23 @@ class RawRunnerDetectorOnSampleTextTest(unittest.TestCase):
         for text, expected in cases:
             with self.subTest(text=text):
                 self.assertCaught(text, expected)
+
+    def test_a_prohibition_governs_only_its_own_clause(self):
+        cases = (
+            ("Do not stop: run `pytest`.", [(1, "pytest")]),
+            ("Never mind; run `cargo test`.", [(1, "cargo test")]),
+            ("x; do not y; run `pytest`.", [(1, "pytest")]),
+            ("> Never stop:\n> run `bun test` now.", [(2, "bun test")]),
+        )
+        for text, expected in cases:
+            with self.subTest(text=text):
+                self.assertCaught(text, expected)
+        for text in ("Never run `pytest`.",
+                     "Do NOT invoke `bun test`/`make junit` directly.",
+                     "Run it through the client: never `cargo test` yourself.",
+                     "One rule; do not type `npm test`."):
+            with self.subTest(text=text):
+                self.assertCaught(text, [])
 
     def test_a_prohibition_in_one_block_does_not_govern_the_next(self):
         self.assertCaught("- Never hand-run a suite.\n- `pytest -x`", [(2, "pytest -x")])
