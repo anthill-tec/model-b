@@ -12,7 +12,7 @@ wave 7 and its 0.3.0 release); PRD D5; DN-model-b-language (LOCKED — cite, nev
 ## Context
 
 Crucible runs on Model B's workflow and proposed twelve orchestration rules. Measured 2026-10-10:
-B2 is CR-MDB-056 (plus CR-MDB-057 item 6); B3 is already in the source (#1426/#1427); B1, B5 and B6
+B2 is CR-MDB-056 (plus CR-MDB-057 §S5, client output to a file); B3 is already in the source (#1426/#1427); B1, B5 and B6
 largely match existing rules; B4, B7 and B8 conflict with current text; B9 is Crucible-specific.
 
 ## Scope (seed — the adopted rules)

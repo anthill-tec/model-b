@@ -38,7 +38,8 @@ refuse a brief that contradicts it. Only cargo and mvn have blocking hooks
    call time, not only discouraged in text. Each keeps an `ALLOW_RAW_<RUNNER>=1` escape hatch, as the
    cargo and mvn hooks do; an agent uses it only with the orchestrator's approval.
 4. **The hand-run-and-ingest path is removed** from the `crucible-report-*` skills: running a runner,
-   then posting its report through inline `urllib`.
+   then posting its report through inline `urllib`, and the bundles' "direct `curl`/`fetch` against the
+   v2 endpoints is the fallback" prose.
 
 ## To measure at gap analysis
 
