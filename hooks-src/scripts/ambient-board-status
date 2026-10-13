@@ -5,24 +5,37 @@ active cycle, last closed CR) into session context as ambient status
 
 NEW in hooks-src (not an import): authored against Crucible's `status`
 envelope contract document, `~/.crucible/clients/STATUS-CONTRACT.md`,
-document version 2.0.0 (CR-MDB-019 §S1). That number is the version of the
-contract document itself, not a Crucible product release (Crucible's own
-releases are 0.x); `STATUS_CONTRACT_VERSION` pins it so a degrade note names
-the contract in force. The status feed is the project stack client's
-`status` verb — a read-only, hook-safe board query that always exits 0 and
-reports one of THREE definitive terminal states, each rendered DISTINCTLY
-here:
+document version 3.0.0 (CR-MDB-019 §S1, re-pinned by CR-MDB-057 §S4). That
+number is the version of the contract document itself, not a Crucible
+product release (Crucible's own releases are 0.x); `STATUS_CONTRACT_VERSION`
+pins it so a degrade note names the contract in force. The status feed is
+the project stack client's `status` verb — a read-only, hook-safe board
+query that always exits 0.
 
-  1. board present   -> the OPEN plan rows only (cr / wave / status /
-                        activeCycleId; closed rows are neither listed nor
-                        counted, CR-MDB-019 §S3) + `last closed: <id>` from
-                        lastClosedCr (§S2); a board whose rows are all
-                        closed prints a definitive "no open plan" note;
-  2. no plan filed   -> `ok:true`, empty plans, `warnings:[]` — a DEFINITIVE
-                        "no plan filed" note (never blurred with an outage);
-  3. tolerant degrade-> same empty shape but `warnings[]` carries
-                        `{code:"status-unavailable"}` — rendered as a board-
-                        unavailable degradation note (never "no plan").
+A 3.0.0 envelope carries `plans` (the open plans only), `count` (how many),
+`filed` (every plan ever filed — open, closed or aborted — or null when the
+board is unreachable) and `lastClosedCr` (null when nothing has closed). The
+state is told apart by `count` and `filed` alone, each rendered DISTINCTLY:
+
+  1. count > 0       -> the OPEN plan rows (cr / wave / status /
+                        activeCycleId);
+  2. count == 0, filed > 0
+                     -> a definitive "no open plan" note;
+  3. count == 0, filed == 0
+                     -> a definitive "no plan filed" note;
+  4. filed null with a `{code:"status-unavailable"}` warning
+                     -> a board-unavailable degradation note (null is
+                        unknown, never 0; a null `filed` without the
+                        warning degrades too).
+
+In every reachable state `last closed: <id>` is added when lastClosedCr is
+not null (§S2); it never decides the state (an aborted-only board has
+`filed > 0` and no last closed CR).
+
+An envelope without `filed` (a 2.0.0 client) keeps the `count`-based
+reading: open rows only (closed rows are neither listed nor counted,
+CR-MDB-019 §S3) + `last closed: <id>`; a board whose rows are all closed
+prints "no open plan"; `count: 0` with empty plans prints "no plan filed".
 
 Table cells the TOON encoder quoted (e.g. `"1"`) are rendered unquoted (§S4).
 
@@ -58,7 +71,11 @@ import subprocess
 import sys
 from pathlib import Path
 
-STATUS_CONTRACT_VERSION = "2.0.0"
+STATUS_CONTRACT_VERSION = "3.0.0"
+
+#: `filed` absent from the envelope (a 2.0.0 client), as distinct from a
+#: present `filed: null` (unknown).
+_ABSENT = object()
 
 #: Bound on the feed subprocess — a session start must never hang.
 _FEED_TIMEOUT_SECONDS = 2.0
@@ -196,12 +213,14 @@ def _unquote(cell: str) -> str:
 
 def _parse_envelope(text: str) -> dict:
     """Minimal TOON-AXI reader for the status envelope contract document
-    2.0.0 `status` envelope: plans table rows, lastClosedCr, count,
+    3.0.0 `status` envelope: plans table rows, lastClosedCr, count, filed
+    (`_ABSENT` when the envelope has none, as a 2.0.0 envelope does),
     warnings codes. Quoted cells are unquoted."""
     plans: list[dict] = []
     warnings: list[dict] = []
     last_closed_cr = None
     count = None
+    filed = _ABSENT
     lines = text.splitlines()
     i = 0
     while i < len(lines):
@@ -233,9 +252,13 @@ def _parse_envelope(text: str) -> dict:
         scalar = re.match(r"count:\s*(\d+)$", stripped)
         if scalar:
             count = int(scalar.group(1))
+        scalar = re.match(r"filed:\s*(\d+|null)$", stripped)
+        if scalar:
+            value = scalar.group(1)
+            filed = None if value == "null" else int(value)
         i += 1
     return {"plans": plans, "warnings": warnings,
-            "lastClosedCr": last_closed_cr, "count": count}
+            "lastClosedCr": last_closed_cr, "count": count, "filed": filed}
 
 
 def _degrade(note: str) -> int:
@@ -279,7 +302,7 @@ def main() -> int:
     except (OSError, subprocess.TimeoutExpired) as exc:
         return _degrade(f"status feed could not be run ({exc})")
     if result.returncode != 0:
-        # Contract 2.0.0: a real feed never exits non-zero -> broken feed.
+        # Contract 3.0.0: a real feed never exits non-zero -> broken feed.
         return _degrade(f"status feed exited {result.returncode}")
 
     envelope = _parse_envelope(result.stdout)
@@ -308,12 +331,36 @@ def main() -> int:
         if envelope["lastClosedCr"]:
             print(f"last closed: {envelope['lastClosedCr']}")
         return 0
+    filed = envelope["filed"]
+    if filed is not _ABSENT and envelope["count"] == 0:
+        return _render_3_empty(filed, envelope["lastClosedCr"])
     if envelope["count"] == 0:
         print("Crucible board: no plan filed (an empty board is definitive). "
               "Next: plan-file --cr <CR-ID> --wave <n>.")
         return 0
     return _degrade("status feed output did not match the status envelope "
                     f"contract document {STATUS_CONTRACT_VERSION}")
+
+
+def _render_3_empty(filed: int | None, last_closed_cr: str | None) -> int:
+    """A 3.0.0 board with no open plan, told apart by `filed` alone
+    (CR-MDB-057 §S4): a null `filed` is unknown, never 0, so it degrades;
+    `last closed: <id>` is added whenever lastClosedCr is not null."""
+    if filed is None:
+        return _degrade("the status envelope reports `filed: null` (the "
+                        "number of filed plans is unknown) without a "
+                        "status-unavailable warning, under the status "
+                        "envelope contract document "
+                        f"{STATUS_CONTRACT_VERSION}")
+    if filed > 0:
+        print(f"Crucible board: no open plan ({filed} plan(s) filed, none "
+              "open; the board is definitive).")
+    else:
+        print("Crucible board: no plan filed (an empty board is definitive). "
+              "Next: plan-file --cr <CR-ID> --wave <n>.")
+    if last_closed_cr:
+        print(f"last closed: {last_closed_cr}")
+    return 0
 
 
 def _run() -> int:
