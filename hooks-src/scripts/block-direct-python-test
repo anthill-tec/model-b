@@ -65,9 +65,11 @@ _UV_RUN = re.compile(
     r"(?:=\S+|\s+\S+)"
     r"|--?[A-Za-z][\w-]*(?:=\S+)?))*(?:\s+|$)")
 #: A python interpreter (bare, versioned or a path) and its options; an option never opens with
-#: `-m`, so an attached `-m<module>` is read as the module flag.
+#: `-m`, so an attached `-m<module>` is read as the module flag. `-W` / `-X` take a value,
+#: attached or the next word; the three option forms share no string, so a run of options is
+#: read one way only and a non-matching command fails in linear time.
 _INTERPRETER = (r"(?:\S*/)?python(?:\d+(?:\.\d+)*)?(?=\s)"
-                r"(?:\s+(?:-[WX]\s*\S+|-(?!m)\S+))*")
+                r"(?:\s+(?:-[WX]\S+|-[WX]\s+\S+|-(?![mWX])\S+))*")
 #: The python runner forms (CR-MDB-062 §S1): `-m` (separate or attached) with a runner module,
 #: `pytest` / `py.test`, `coverage run -m`, and a test file run directly.
 PYTHON_RUNNERS = (

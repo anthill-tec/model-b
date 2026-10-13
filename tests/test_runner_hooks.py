@@ -61,6 +61,7 @@ import os
 import shutil
 import sys
 import tempfile
+import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -76,6 +77,8 @@ from tests.test_raw_runner_guard import (
     NARROWED_BUN_SCRIPTS,
     NON_RUNNER_MENTIONS,
     NON_TEST_SCRIPTS,
+    OPTION_RUN_BUDGET,
+    OPTION_RUNS,
     POSITION_FORMS,
     QUOTED_LINES,
     RUNNER_FORMS,
@@ -768,6 +771,17 @@ class _FailOpen(_MixinBase):
     def test_allows_a_client_invocation(self):
         project = self.project()
         self.assertVerdict("allow", self.CLIENT_RUN, project)
+
+    def test_judges_a_long_run_of_interpreter_options_within_the_budget(self):
+        project = self.project()
+        for command, stack in OPTION_RUNS:
+            with self.subTest(command=command[:40]):
+                start = time.perf_counter()
+                got = self.verdict(self.bash(command, project))
+                elapsed = time.perf_counter() - start
+                self.assertEqual(got, "block" if stack == self.HOOK else "allow", command)
+                self.assertLess(elapsed, OPTION_RUN_BUDGET,
+                                f"{self.spec['script']} took {elapsed:.2f}s on {command!r}")
 
     def test_another_runners_escape_hatch_does_not_open_this_hook(self):
         others = [f"{hatch}=1 {self.run_cmd}" for hatch in ESCAPE_HATCHES if hatch != self.HATCH]

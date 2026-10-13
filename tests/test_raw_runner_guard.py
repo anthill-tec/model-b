@@ -58,6 +58,7 @@ import os
 import re
 import shlex
 import sys
+import time
 import unittest
 from pathlib import Path
 
@@ -108,9 +109,11 @@ _UV_RUN = re.compile(
     r"(?:=\S+|\s+\S+)"
     r"|--?[A-Za-z][\w-]*(?:=\S+)?))*(?:\s+|$)")
 #: A python interpreter (bare, versioned or a path) and its options; an option never opens with
-#: ``-m``, so an attached ``-m<module>`` is read as the module flag.
+#: ``-m``, so an attached ``-m<module>`` is read as the module flag. ``-W``/``-X`` take a value,
+#: attached or the next word; the three option forms share no string, so a run of options is
+#: read one way only and a non-matching command fails in linear time.
 _INTERPRETER = (r"(?:\S*/)?python(?:\d+(?:\.\d+)*)?(?=\s)"
-                r"(?:\s+(?:-[WX]\s*\S+|-(?!m)\S+))*")
+                r"(?:\s+(?:-[WX]\S+|-[WX]\s+\S+|-(?![mWX])\S+))*")
 #: The python runner forms (CR-MDB-062 §S1): ``-m`` (separate or attached) with a runner
 #: module, ``pytest``/``py.test``, ``coverage run -m``, and a test file run directly.
 PYTHON_RUNNERS = (
@@ -608,6 +611,23 @@ NON_RUNNER_MENTIONS = (
     "mvn package",
 )
 
+#: Long runs of interpreter options (CR-MDB-062 C5 F1): ``-W``/``-X`` take a value, attached or
+#: the next word, and the option forms share no string, so each run is read one way only and is
+#: judged well inside a hook's timeout — a run that names no runner as fast as one that does.
+OPTION_RUN_LENGTH = 60
+OPTION_RUNS = (
+    ("python3 " + "-W " * OPTION_RUN_LENGTH + "x", None),
+    ("python3 " + "-X " * OPTION_RUN_LENGTH + "x", None),
+    ("python3 " + "-Wa " * OPTION_RUN_LENGTH + "x", None),
+    ("uv run python3 " + "-W -Xa " * (OPTION_RUN_LENGTH // 2) + "tests/x.py", None),
+    ("env timeout 5 python3 " + "-Xa -W " * (OPTION_RUN_LENGTH // 2) + "-m pytes", None),
+    ("python3 " + "-Wa " * OPTION_RUN_LENGTH + "-m pytest", "python"),
+    ("python3 " + "-W error " * OPTION_RUN_LENGTH + "tests/test_x.py", "python"),
+)
+#: How long one judgement of an ``OPTION_RUNS`` command may take, in seconds; Pi kills a hook
+#: after 10, and a timed-out ``closed`` hook blocks.
+OPTION_RUN_BUDGET = 1.0
+
 
 class RawRunnerDetectorOnSampleTextTest(unittest.TestCase):
     """§S3 — the detector, proved on sample text both ways before it is applied to the tree."""
@@ -872,6 +892,16 @@ class RunnerStackOnSampleTextTest(unittest.TestCase):
         for command in NON_TEST_SCRIPTS + CLIENT_FORMS + (HEREDOC_BODIES[-1],):
             with self.subTest(command=command):
                 self.assertNoRunner(command)
+
+    def test_a_long_run_of_interpreter_options_is_judged_within_the_budget(self):
+        for command, stack in OPTION_RUNS:
+            with self.subTest(command=command[:40]):
+                start = time.perf_counter()
+                got = _detector("stack_of")(command)
+                elapsed = time.perf_counter() - start
+                self.assertEqual(got, stack, f"for {command!r}")
+                self.assertLess(elapsed, OPTION_RUN_BUDGET,
+                                f"stack_of took {elapsed:.2f}s on {command!r}")
 
     # -- item 4: the bun script rows narrow -------------------------------------------------
 
