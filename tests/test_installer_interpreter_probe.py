@@ -290,6 +290,38 @@ class InterpreterRejectionTest(_InterpreterSandboxCase):
         result = self.run_installer(path=deep)
         self.assert_recorded(result, uv_python, "3.14.0")
 
+    def _path_dir_for_python3_of(self, length: int) -> Path:
+        """A fresh ``PATH`` dir (holding a ``sandesh``) in which ``python3``'s absolute path is
+        exactly ``length`` bytes."""
+        base = self.root / "shebang"
+        remaining = length - len(str(base).encode()) - len("/python3")
+        self.assertGreaterEqual(remaining, 2, f"fixture: {base} leaves no room for {length}")
+        count = -(-remaining // 101)
+        names = remaining - count
+        sizes = [names // count + (1 if i < names % count else 0) for i in range(count)]
+        directory = base.joinpath(*(f"{i % 10}" * size for i, size in enumerate(sizes)))
+        directory.mkdir(parents=True)
+        write_executable(directory, "sandesh", fake_sandesh())
+        self.assertEqual(len(str(directory / "python3").encode()), length, "fixture: the path")
+        return directory
+
+    def test_a_path_python3_whose_shebang_line_is_exactly_the_limit_is_accepted(self):
+        directory = self._path_dir_for_python3_of(253)
+        python3 = write_interpreter_fixture(directory, uv_found=None)
+        self.assertEqual(len(f"#!{python3}\n".encode()), 256,
+                         "fixture: `#!<path>\\n` fills the 256-byte shebang buffer exactly")
+        result = self.run_installer(path=directory)
+        self.assert_recorded(result, python3, "3.14.0")
+
+    def test_a_path_python3_whose_shebang_line_is_one_byte_over_the_limit_is_passed_over(self):
+        directory = self._path_dir_for_python3_of(254)
+        uv_python = self.uv_python("3.14.0")
+        python3 = write_interpreter_fixture(directory, uv_found=uv_python)
+        self.assertEqual(len(f"#!{python3}\n".encode()), 257,
+                         "fixture: `#!<path>\\n` is one byte over the 256-byte shebang buffer")
+        result = self.run_installer(path=directory)
+        self.assert_recorded(result, uv_python, "3.14.0")
+
 
 # ---------------------------------------------------------------------------
 # §S2 — the verdict and the refusal
