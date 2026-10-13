@@ -1,27 +1,34 @@
-"""The raw-runner guard — CR-MDB-056 §S3.
+"""The raw-runner guard — CR-MDB-056 §S3, its detector reshaped by CR-MDB-062 §S1.
 
-Contract: ``docs/changes/CR-MDB-056-tests-run-only-through-crucible-clients.md`` §S3 (design
-reference DN-multi-harness-deploy-model §D21 and its 2026-10-13 amendments). Every test run goes
+Contract: ``docs/changes/CR-MDB-062-blocking-hooks-for-python-and-bun.md`` §S1 (the per-stack
+groups, the hooks' command positions, the three python forms) over
+``docs/changes/CR-MDB-056-tests-run-only-through-crucible-clients.md`` §S3 (design reference
+DN-multi-harness-deploy-model §D21 and its amendments). Every test run goes
 through the stack's Crucible client, so no guarded file shows a runner invocation as something to
 type: a guarded file fails when it shows a runner invocation in a code span or on a fenced-block
 line, unless a prohibition governs it — a whole-word, case-insensitive "never", "do not", "must
 not" or "not" earlier in the same clause as the runner span. A fenced-block line is judged on
 its own; prose around a fence never exempts it.
 
-**The runner** is matched as a whole command word at a command position — the start of the span
-or line, or after ``&&``, ``||``, ``;``, ``|``, a leading ``VAR=value``, or one of ``env`` (with
-any options, e.g. ``env -i``, ``env -u NAME``), ``timeout <n>``, ``nice``, ``time``
-(``runner_at``):
+**The runner** is matched as a whole command word at a command position — the hooks' set
+(CR-MDB-062 §S1 item 2): every line start outside quotes and outside a heredoc body (``<<WORD``,
+``<<'WORD'``, ``<<"WORD"``, ``<<-WORD`` up to the line ``WORD``), and after ``&&``, ``||``,
+``;``, ``|``, ``&`` or ``(`` outside quotes; past a leading ``VAR=value``, ``env`` with any
+options and assignments, ``timeout`` with any options and a duration, ``nice [-n N]`` and
+``time`` (``runner_at``). ``stack_of`` names the stack of that runner. The forms, in per-stack
+groups (§S1 item 1):
 
-- a python interpreter (bare, versioned or a path), with any options, then ``-m unittest``,
-  ``-m pytest``, ``-m xmlrunner`` or ``-m coverage run``;
-- ``pytest`` or ``py.test`` (bare or a path), ``uv run pytest``, ``coverage run -m <runner>``;
-- ``bun test``, ``bun run test…``, ``npm test``, ``npm run test…``, ``bunx``/``bun x``/``npx``
-  ``playwright test``, ``playwright test``;
-- ``cargo test``, ``cargo nextest``, ``cargo llvm-cov``;
-- ``mvn``/``mvnw``/``./mvnw`` with the goal ``test``, ``verify``, ``integration-test`` or
-  ``test-compile``, or a ``surefire:``/``failsafe:`` goal (exact goals);
-- ``make junit``.
+- ``PYTHON_RUNNERS``: a python interpreter (bare, versioned or a path), with any options, then
+  ``-m unittest``, ``-m pytest``, ``-m xmlrunner`` or ``-m coverage run``, the ``-m`` separate or
+  attached; ``pytest`` or ``py.test`` (bare or a path); ``coverage run [options] -m <module>``;
+  a test file (``test_*.py``, ``*_test.py``) run directly by an interpreter. ``uv run`` with
+  its options (and their values) is a command position before any of these;
+- ``BUN_RUNNERS``: ``bun test``, ``bun run test``/``npm run test`` alone or as ``test:<name>``,
+  ``npm test``, ``bunx``/``bun x``/``npx`` ``playwright test``, ``playwright test``;
+- ``CARGO_RUNNERS``: ``cargo test``, ``cargo nextest``, ``cargo llvm-cov``;
+- the Maven rule: ``mvn``/``mvnw``/``./mvnw`` with the goal ``test``, ``verify``,
+  ``integration-test`` or ``test-compile``, or a ``surefire:``/``failsafe:`` goal (exact goals);
+- ``MAKE_RUNNERS``: ``make junit``.
 
 A client invocation (``<stack>-crucible.py …``) and a non-runner mention (``[tool.pytest]``,
 ``pytest.ini``, ``pytest-cov``, ``/tmp/pytest-collect.txt``, ``mvn package``) are never runner
@@ -70,32 +77,62 @@ GUARD_EXCLUDED = ("skills-src/memory-templates",)
 
 #: Where a runner command word ends: whitespace, the fragment's end, or closing punctuation.
 _END = r"(?=$|[\s)\"'`,])"
-#: A command separator; the text after one is a command position.
-_SEPARATOR = re.compile(r"&&|\|\||;|\|")
+#: A command separator outside quotes; the text after one is a command position. A ``&`` in a
+#: redirection (``2>&1``, ``<&0``, ``&>file``) and the ``|`` of ``>|`` separate nothing.
+_SEPARATOR = re.compile(r"&&|\|\||\|&|;|(?<![<>])\|(?!\|)|(?<![<>])&(?![&>])|\(")
+#: A heredoc operator (``<<WORD``, ``<<'WORD'``, ``<<"WORD"``, ``<<\WORD``, ``<<-WORD``): its
+#: body, from the next line to the line ``WORD``, is never a command position.
+_HEREDOC = re.compile(r"<<(-?)[ \t]*(?:'([^'\n]*)'|\"([^\"\n]*)\"|\\?([A-Za-z0-9_][\w.-]*))")
 #: ``env``'s options: ``-u NAME``/``-C DIR`` and their long forms take an argument; any other
-#: option stands alone. Assignments after ``env`` are matched as ``VAR=value`` wrappers.
+#: option stands alone, a bare ``-`` and ``--`` included. Assignments after ``env`` are matched
+#: as ``VAR=value`` wrappers.
 _ENV_OPTION = (r"(?:-[uC]\s*\S+|--(?:unset|chdir)(?:=\S+|\s+\S+)"
-               r"|-{1,2}[A-Za-z0-9][\w-]*(?:=\S+)?)")
-#: A wrapper before a command: ``VAR=value``, ``env [options]``, ``timeout <n>``, ``nice``,
-#: ``time``.
+               r"|-{1,2}[A-Za-z0-9][\w-]*(?:=\S+)?|--?(?=\s|$))")
+#: ``timeout``'s options: ``-k``/``-s`` and their long forms take an argument; any other option
+#: stands alone.
+_TIMEOUT_OPTION = (r"(?:-[ks]\s*\S+|--(?:kill-after|signal)(?:=\S+|\s+\S+)"
+                   r"|-{1,2}[A-Za-z][\w-]*(?:=\S+)?)")
+#: A wrapper before a command: ``VAR=value``, ``env [options]``, ``timeout [options] <n>``,
+#: ``nice [-n N]``, ``time``.
 _WRAPPER = re.compile(
     r"(?:[A-Za-z_][A-Za-z0-9_]*=(?:\"[^\"]*\"|'[^']*'|\S*)|env(?:\s+" + _ENV_OPTION + r")*"
-    r"|timeout\s+\S+|nice|time)(?:\s+|$)")
-#: The runners §S3 lists, each anchored at a command position.
-_RUNNERS = (
-    re.compile(r"(?:\S*/)?python(?:\d+(?:\.\d+)*)?(?=\s)"
-               r"(?:\s+(?:-[WX]\s*\S+|-(?!m(?:\s|$))\S+))*"
-               r"\s+-m\s+(?:unittest|pytest|xmlrunner|coverage\s+run)" + _END),
+    r"|timeout(?:\s+" + _TIMEOUT_OPTION + r")*\s+\S+"
+    r"|nice(?:\s+(?:-n\s*\S+|--adjustment(?:=\S+|\s+\S+)|-\d+))?|time)(?:\s+|$)")
+#: ``uv run`` with its options, the ones that take a value stepped over with it: a command
+#: position before a python runner form (CR-MDB-062 §S1 item 3).
+_UV_RUN = re.compile(
+    r"uv\s+run(?:\s+(?:-[pw]\s*\S+"
+    r"|--(?:with-requirements|with-editable|with|python|project|directory|package|group"
+    r"|extra|only-group|env-file|index|default-index|index-url|extra-index-url)"
+    r"(?:=\S+|\s+\S+)"
+    r"|--?[A-Za-z][\w-]*(?:=\S+)?))*(?:\s+|$)")
+#: A python interpreter (bare, versioned or a path) and its options; an option never opens with
+#: ``-m``, so an attached ``-m<module>`` is read as the module flag.
+_INTERPRETER = (r"(?:\S*/)?python(?:\d+(?:\.\d+)*)?(?=\s)"
+                r"(?:\s+(?:-[WX]\s*\S+|-(?!m)\S+))*")
+#: The python runner forms (CR-MDB-062 §S1): ``-m`` (separate or attached) with a runner
+#: module, ``pytest``/``py.test``, ``coverage run -m``, and a test file run directly.
+PYTHON_RUNNERS = (
+    re.compile(_INTERPRETER + r"\s+-m\s*(?:unittest|pytest|xmlrunner|coverage\s+run)" + _END),
     re.compile(r"(?:\S*/)?(?:pytest|py\.test)" + _END),
-    re.compile(r"uv\s+run\s+(?:pytest|py\.test)" + _END),
     re.compile(r"coverage\s+run(?:\s+-(?!m(?:\s|$))\S+)*\s+-m\s+\S+"),
+    re.compile(_INTERPRETER + r"\s+(?:[^\s'\"`]*/)?(?:test_[^\s/'\"`]*|[^\s/'\"`]*_test)\.py"
+               + _END),
+)
+#: The bun runner forms; a script row is ``test`` alone or ``test:<name>`` (§S1 item 4).
+BUN_RUNNERS = (
     re.compile(r"bun\s+test" + _END),
-    re.compile(r"(?:bun|npm)\s+run\s+test\S*"),
+    re.compile(r"(?:bun|npm)\s+run\s+test(?::\S+)?" + _END),
     re.compile(r"npm\s+test" + _END),
     re.compile(r"(?:(?:bunx|bun\s+x|npx)\s+)?playwright\s+test" + _END),
-    re.compile(r"cargo\s+(?:test|nextest|llvm-cov)" + _END),
-    re.compile(r"make\s+junit" + _END),
 )
+#: The cargo runner forms.
+CARGO_RUNNERS = (re.compile(r"cargo\s+(?:test|nextest|llvm-cov)" + _END),)
+#: The make runner form.
+MAKE_RUNNERS = (re.compile(r"make\s+junit" + _END),)
+#: Each named group with the stack ``stack_of`` names for it; Maven's rule follows them.
+_GROUPS = (("python", PYTHON_RUNNERS), ("bun", BUN_RUNNERS), ("cargo", CARGO_RUNNERS),
+           ("make", MAKE_RUNNERS))
 #: Maven's launcher words and the goals that run tests (exact goals).
 _MAVEN = re.compile(r"(?:mvn|mvnw|\./mvnw)" + _END)
 _MAVEN_TEST_GOALS = frozenset({"test", "verify", "integration-test", "test-compile"})
@@ -123,12 +160,75 @@ def _is_maven_test_run(segment: str) -> bool:
     return any(g in _MAVEN_TEST_GOALS or g.startswith(_MAVEN_TEST_PLUGINS) for g in goals)
 
 
-def runner_at(fragment: str):
-    """The offset in ``fragment`` where a §S3 runner command starts at a command position, or
-    ``None``. ``fragment`` is a code span's content or one fenced line."""
-    position = 0
-    for piece in _SEPARATOR.split(fragment):
-        start = position + len(piece) - len(piece.lstrip())
+def _skip_heredoc_bodies(text: str, index: int, pending: list[tuple[str, bool]]) -> int:
+    """The offset just past the heredoc bodies ``pending`` opens, read in order from the line
+    at ``index``; each ends at the line holding its word (leading tabs stripped for ``<<-``)."""
+    for word, strip_tabs in pending:
+        while index < len(text):
+            newline = text.find("\n", index)
+            end = len(text) if newline < 0 else newline
+            line = text[index:end]
+            index = end + 1
+            if (line.lstrip("\t") if strip_tabs else line) == word:
+                break
+    return min(index, len(text))
+
+
+def _segments(text: str) -> list[tuple[int, int]]:
+    """Each command segment of ``text`` as ``(start, end)``: a segment starts at a command
+    position — the text's start, a line start, or after a separator — and runs to the next one.
+    Quotes, a ``#`` comment and a backslash escape hide what they hold; a heredoc body is
+    skipped whole, so nothing in it is a position."""
+    segments, start, quote, pending = [], 0, None, []
+    index = 0
+    while index < len(text):
+        char = text[index]
+        if quote:
+            if char == "\\" and quote == '"':
+                index += 2
+                continue
+            quote = None if char == quote else quote
+            index += 1
+            continue
+        if char == "\\":
+            index += 2
+            continue
+        if char in "'\"":
+            quote = char
+            index += 1
+            continue
+        if char == "#" and (index == 0 or text[index - 1] in " \t\n;&|("):
+            newline = text.find("\n", index)
+            index = len(text) if newline < 0 else newline
+            continue
+        if char == "\n":
+            segments.append((start, index))
+            index = _skip_heredoc_bodies(text, index + 1, pending)
+            start, pending = index, []
+            continue
+        heredoc = None if text.startswith("<<<", index) else _HEREDOC.match(text, index)
+        if heredoc:
+            word = next(g for g in heredoc.groups()[1:] if g is not None)
+            pending.append((word, bool(heredoc.group(1))))
+            index = heredoc.end()
+            continue
+        separator = _SEPARATOR.match(text, index)
+        if separator:
+            segments.append((start, index))
+            index = start = separator.end()
+            continue
+        index += 1
+    segments.append((start, len(text)))
+    return segments
+
+
+def _runner(fragment: str):
+    """``(offset, stack)`` of the first runner at a command position in ``fragment``, or
+    ``None``. Wrappers before a command are stepped over; ``uv run`` and its options are a
+    position before a python runner form only."""
+    for begin, end in _segments(fragment):
+        piece = fragment[begin:end]
+        start = begin + len(piece) - len(piece.lstrip())
         segment = piece.lstrip()
         while True:
             wrapper = _WRAPPER.match(segment)
@@ -136,11 +236,32 @@ def runner_at(fragment: str):
                 break
             start += wrapper.end()
             segment = segment[wrapper.end():]
-        if any(r.match(segment) for r in _RUNNERS) or _is_maven_test_run(segment):
-            return start
-        separator = _SEPARATOR.match(fragment, position + len(piece))
-        position += len(piece) + (len(separator.group(0)) if separator else 0)
+        uv_run = _UV_RUN.match(segment)
+        if uv_run:
+            after = segment[uv_run.end():]
+            if any(r.match(after) for r in PYTHON_RUNNERS):
+                return start + uv_run.end(), "python"
+            continue
+        for stack, group in _GROUPS:
+            if any(r.match(segment) for r in group):
+                return start, stack
+        if _is_maven_test_run(segment):
+            return start, "mvn"
     return None
+
+
+def runner_at(fragment: str):
+    """The offset in ``fragment`` where a runner command starts at a command position, or
+    ``None``. ``fragment`` is a code span's content, one fenced line, or a hook's command."""
+    found = _runner(fragment)
+    return None if found is None else found[0]
+
+
+def stack_of(command: str):
+    """The stack of the runner at a command position in ``command`` — ``"python"``,
+    ``"bun"``, ``"cargo"``, ``"mvn"`` or ``"make"`` (``STACKS``) — or ``None``."""
+    found = _runner(command)
+    return None if found is None else found[1]
 
 
 def _governed(masked_prefix: str) -> bool:
