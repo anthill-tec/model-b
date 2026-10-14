@@ -263,8 +263,11 @@ def artifacts() -> tuple[Path, Path]:
 
 
 def tearDownModule():
+    global _ARTIFACTS
     if _BUILD_ROOT is not None:
         shutil.rmtree(_BUILD_ROOT, ignore_errors=True)
+    # CR-MDB-058 C2 (orchestrator-approved): drop the cache too, so a later module's artifacts() rebuilds instead of reading the deleted build.
+    _ARTIFACTS = None
 
 
 def sdist_members(sdist: Path) -> dict[str, tarfile.TarInfo]:
