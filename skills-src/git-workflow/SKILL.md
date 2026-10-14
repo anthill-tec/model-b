@@ -132,7 +132,7 @@ an empty section (one holding only `###` headings counts as empty):
 ```yaml
 - name: Create the release
   env:
-    GH_TOKEN: ${{ github.token }}
+    GH_TOKEN: ${{ secrets.RELEASE_PAT }}
     tag: ${{ github.ref_name }}
   run: |
     awk -v head="## [$tag] - " '
@@ -142,8 +142,13 @@ an empty section (one holding only `###` headings counts as empty):
       END { if (!found) exit 1 }
     ' CHANGELOG.md > release-notes.md || { echo "no CHANGELOG.md section for $tag" >&2; exit 1; }
     grep -qv -e '^###' -e '^[[:space:]]*$' release-notes.md || { echo "empty section for $tag" >&2; exit 1; }
-    gh release create "$tag" --notes-file release-notes.md --verify-tag
+    gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --notes-file release-notes.md --verify-tag
 ```
+
+`GH_TOKEN` is a personal access token kept as a repository secret, never the default
+`github.token`: a release made with the default token triggers no `on: release` publish job, so
+a project publishing on `on: release` would never publish. A release that already exists is left
+as it is, so a re-run of the job does not fail.
 
 The packaging entries, per stack:
 
