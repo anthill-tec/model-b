@@ -236,14 +236,13 @@ import tomllib
 import unittest
 from pathlib import Path
 
-from tests.pi_capability_sandbox import with_agent_dir
-
 from modelb_axi import agents as agents_mod
 from tests._helpers import decode_envelope as _decode_envelope_c3
-from tests._helpers import deploy_hook_scripts, write_install_toml
+from tests._helpers import deploy_hook_scripts, write_executable, write_install_toml
 from tests._helpers import parse_env_file as _parse_env_file_c3
 from tests._helpers import read_text_lenient as _read
 from tests._helpers import split_frontmatter as _split_frontmatter
+from tests.pi_capability_sandbox import fake_sandesh, with_agent_dir
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 GENERATOR_DIR = REPO_ROOT / "generator"
@@ -1744,6 +1743,12 @@ class InstalledWheelInitRendersAgentsS6Test(unittest.TestCase):
         run_env.pop("PYTHONPATH", None)
         # CR-MDB-036: sandboxed, provisioned Pi agent dir -- never ~/.pi.
         run_env.update(with_agent_dir(None))
+        # MIGRATED at CR-MDB-067 C2 RED (§S4): a fake `sandesh` first on PATH, so the
+        # pre-flight finds it on a clean runner and never runs `uv tool install sandesh-relay`.
+        fake_bin = self._mkdtemp("modelb-axi-c3-e2e-fakebin-")
+        sandesh_log = Path(fake_bin) / "sandesh.log"
+        write_executable(fake_bin, "sandesh", fake_sandesh(log=sandesh_log))
+        run_env["PATH"] = fake_bin + os.pathsep + run_env.get("PATH", "")
 
         # Stage 1: a real installer run -> install.toml with asset_root
         # pointing INSIDE the installed package, harnesses=[pi].
@@ -1760,6 +1765,11 @@ class InstalledWheelInitRendersAgentsS6Test(unittest.TestCase):
             f"exit={installer_result.returncode} "
             f"stdout={installer_result.stdout!r} stderr={installer_result.stderr!r}",
         )
+        # MIGRATED at CR-MDB-067 C2 RED (§S4): the pre-flight ran the fake, so no install
+        # path ran.
+        self.assertTrue(sandesh_log.is_file(), "§S4: the pre-flight never ran the fake `sandesh`")
+        self.assertIn("--version", sandesh_log.read_text(encoding="utf-8").splitlines(),
+                      "§S4: the installer's pre-flight must run the fake `sandesh --version`")
         install_toml_path = Path(self._tmp_home) / "install.toml"
         with open(install_toml_path, "rb") as fh:
             data = tomllib.load(fh)
@@ -1995,22 +2005,37 @@ class InstallerWritesNoAgentsS6Test(unittest.TestCase):
     def setUp(self):
         self._tmp_home = tempfile.mkdtemp(prefix="modelb-axi-c3-s6-noagents-home-")
         self._tmp_target_root = tempfile.mkdtemp(prefix="modelb-axi-c3-s6-noagents-target-")
+        # MIGRATED at CR-MDB-067 C2 RED (§S4): a fake `sandesh` first on PATH, so the
+        # pre-flight finds it on a clean runner and never runs `uv tool install sandesh-relay`;
+        # it reaches each run through `_run_module_c3`'s env_overrides seam.
+        self._fake_bin = tempfile.mkdtemp(prefix="modelb-axi-c3-s6-noagents-fakebin-")
+        self._sandesh_log = Path(self._fake_bin) / "sandesh.log"
+        write_executable(self._fake_bin, "sandesh", fake_sandesh(log=self._sandesh_log))
+        self._path = self._fake_bin + os.pathsep + os.environ.get("PATH", "")
 
     def tearDown(self):
         shutil.rmtree(self._tmp_home, ignore_errors=True)
         shutil.rmtree(self._tmp_target_root, ignore_errors=True)
+        shutil.rmtree(self._fake_bin, ignore_errors=True)
 
     def test_s6_installer_run_writes_no_pi_agents_directory(self):
         result = _run_module_c3(
             "--yes", "--harnesses", "pi",
             "--modelb-home", self._tmp_home,
             "--target-root", self._tmp_target_root,
+            env_overrides={"PATH": self._path},
         )
         self.assertEqual(
             result.returncode, 0,
             f"S6 fixture precondition: installer run must succeed; "
             f"stdout={result.stdout!r} stderr={result.stderr!r}",
         )
+        # MIGRATED at CR-MDB-067 C2 RED (§S4): the pre-flight ran the fake, so no install
+        # path ran.
+        self.assertTrue(self._sandesh_log.is_file(),
+                        "§S4: the pre-flight never ran the fake `sandesh`")
+        self.assertIn("--version", self._sandesh_log.read_text(encoding="utf-8").splitlines(),
+                      "§S4: the installer's pre-flight must run the fake `sandesh --version`")
         agents_dir = Path(self._tmp_target_root) / PI_AGENTS_RELDIR
         # NEGATIVE -- the installer must write NOTHING under any agents
         # directory.
@@ -2025,8 +2050,15 @@ class InstallerWritesNoAgentsS6Test(unittest.TestCase):
             "--yes", "--harnesses", "pi",
             "--modelb-home", self._tmp_home,
             "--target-root", self._tmp_target_root,
+            env_overrides={"PATH": self._path},
         )
         self.assertEqual(result.returncode, 0, result.stderr)
+        # MIGRATED at CR-MDB-067 C2 RED (§S4): the pre-flight ran the fake, so no install
+        # path ran.
+        self.assertTrue(self._sandesh_log.is_file(),
+                        "§S4: the pre-flight never ran the fake `sandesh`")
+        self.assertIn("--version", self._sandesh_log.read_text(encoding="utf-8").splitlines(),
+                      "§S4: the installer's pre-flight must run the fake `sandesh --version`")
         install_toml_path = Path(self._tmp_home) / "install.toml"
         with open(install_toml_path, "rb") as fh:
             data = tomllib.load(fh)

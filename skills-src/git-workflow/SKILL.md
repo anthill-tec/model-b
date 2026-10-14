@@ -113,10 +113,16 @@ that empties is a signal, not a decision.
    user-facing docs are read against the code being released, and every inaccuracy is fixed
    before the tag.
 
+**Publishing the branch.** After `git flow release start X.Y.Z` (or `git flow hotfix start
+X.Y.Z`), commit the version bump in every version source and the release's `CHANGELOG.md`
+section, then publish the branch (`git flow release publish X.Y.Z`, or `git flow hotfix publish
+X.Y.Z` for a hotfix). Every push of the branch is the rehearsal; `finish` deletes the remote
+branch.
+
 ### Release notes (`CHANGELOG.md`)
 
-The release notes are the release's `CHANGELOG.md` section. On the release branch, before
-`git flow release finish`:
+The release notes are the release's `CHANGELOG.md` section. On the release branch, before the
+branch is first published:
 
 1. Write the release's section: move `[Unreleased]` under `## [X.Y.Z] - YYYY-MM-DD`.
 2. Or, when `[Unreleased]` was not kept, write it from the release's CRs, read with the Crucible
@@ -214,14 +220,11 @@ After building: switch back to develop for continued work. Bump develop to the n
 
 1. **Build** — on the release branch, set the version in its single source (the one place the
    package reads it from), commit, then build the sdist and wheel with `uv build`.
-2. **Rehearse on TestPyPI** — upload the release candidate to TestPyPI and install it into an
-   isolated tool directory (`UV_TOOL_DIR` / `UV_TOOL_BIN_DIR` pointed at a scratch path) from
-   TestPyPI, with PyPI kept only for dependencies:
-   `--index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/`; then
-   run it there before anything reaches the real index.
-3. **Upload to PyPI** — only after `git flow release finish`, build from the tagged commit and
-   upload with a token the user supplies at upload time; never store the token in the repository
-   or in agent-readable config.
+2. **Rehearse on TestPyPI** — each release-branch push (and each hotfix-branch push) uploads the
+   stamped dev version to TestPyPI through Trusted Publishing, before anything reaches the real
+   index.
+3. **Publish to PyPI** — after `git flow release finish`, the tag's release job builds from the
+   tagged commit and uploads to PyPI through Trusted Publishing, with no token anywhere.
 4. **Post-release maintenance** — on the maintainer's machine: install the released version from
    PyPI; replace the prior installation with
    `--reinstall --target-root ~ --harnesses <harnesses> --stacks <stacks>`; remove workflow
@@ -230,17 +233,33 @@ After building: switch back to develop for continued work. Bump develop to the n
 
 ### Pi package releases (npm)
 
-1. **Publish** — after the version is set, publish the Pi package with `npm publish` (a scoped
-   package with `npm publish --access public`), using credentials the user supplies at publish
-   time; never store them in the repository or in agent-readable config. The first publish of a
-   new package uses a one-time granular token; then add trusted publishing, require 2FA, and
-   delete the token.
+1. **Publish** — after the version is set, the tag's release job publishes the Pi package with
+   `npm publish` (a scoped package with `npm publish --access public`) through Trusted
+   Publishing. The first publish of a new package uses a one-time granular token kept as a
+   repository secret; then the trusted publisher is added, 2FA is required and the token
+   deleted.
 2. **Verify the published version** — install the published version with `pi install` into an
    isolated Pi agent directory (`PI_CODING_AGENT_DIR` pointed at a temp dir) and confirm the
    extension loads there.
 3. **Post-release live check** — as part of the post-release maintenance, once the published
    package is installed into the maintainer's real Pi configuration, confirm Pi loads the
    worktree extension there.
+
+### Rehearsal and CI
+
+Each push to `release/X.Y.Z` or `hotfix/X.Y.Z` builds `X.Y.Z` with a dev marker and the CI run
+number in the stack's own form, refuses a committed version other than `X.Y.Z`, and fails when
+the release's notes section is missing or empty.
+
+| Stack | Dev version | Rehearsal |
+|---|---|---|
+| `python` | `X.Y.Z.devN` | the upload to the test index |
+| `bun` | `X.Y.Z-dev.N` | the package manager's dry-run publish with a dist-tag |
+| `arduino`, `quarkus`, `java`, `rust` | — | the notes check only |
+
+A CI workflow runs the suite on every push to `develop`, release and hotfix branches and on
+pull requests, on the stack's floor interpreter, in a clean home, with full history. It runs
+outside any agent session, the one place the suite runs without the stack's Crucible client.
 
 ## Multi-Account Pushing (dual remote: origin + mirror)
 

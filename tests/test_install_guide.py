@@ -47,9 +47,22 @@ Design (proposed at RED, approved by the orchestrator):
     into the release notes; a documentation review"). CR-MDB-029 ``### §S1`` names the guide's marked regions as the
     Pi package README's source. CR-MDB-038 §S5: ``## Releases`` also names
     the four Python release steps in order (single-source version + ``uv
-    build``; TestPyPI rehearsal into an isolated tool directory; PyPI upload
-    after ``git flow release finish`` with a token the user supplies; the
-    post-release maintenance) and names no one project.
+    build``; the rehearsal, each release-branch push uploading the stamped dev
+    version to TestPyPI through Trusted Publishing; the PyPI upload after
+    ``git flow release finish`` through Trusted Publishing, with no token
+    anywhere; the post-release maintenance) and names no one project.
+    MIGRATED at CR-MDB-067 C3 RED (§S5; was: "TestPyPI rehearsal into an
+    isolated tool directory; PyPI upload after ``git flow release finish``
+    with a token the user supplies"). CR-MDB-067 §S5 adds: the branch is
+    published (``git flow release publish``, ``git flow hotfix publish``),
+    every push of it is the rehearsal and ``finish`` deletes the remote branch
+    (:data:`PUBLISH_STEP_PHRASES`); the release-notes step is written before
+    the branch is first published (was: before ``git flow release finish``);
+    a ``### Rehearsal and CI`` subsection after ``### Pi package releases``
+    carries the rehearsal rule, the forms table and the CI rule
+    (:data:`REHEARSAL_AND_CI_PHRASES`) and names none of the Python or Pi
+    steps' anchors; and no phrase of :data:`RETIRED_RELEASE_PHRASES` appears
+    anywhere in ``## Releases``.
 
 Orchestrator rulings (2026-09-24, on the RED design):
 
@@ -204,15 +217,21 @@ RETIRED_COPY_STEP_RE = re.compile(
 #: §S6 — the snippet's fenced block: a create-release step passing the section as a file.
 SNIPPET_TERMS = ("gh release create", "--notes-file", "changelog.md")
 CR_029_S1_TERMS = ("install-guide.md", "marked region", "README")
-#: CR-MDB-038 \u00a7S5 — the four Python release steps, in ritual order. Each
+#: CR-MDB-038 §S5 — the four Python release steps, in ritual order. Each
 #: step is (label, anchor alternatives, further required terms); a term is an
 #: alternatives tuple, matched case-insensitively on whitespace-normalised
 #: ``## Releases`` text. The first anchor found of each step must appear in
 #: step order (build, rehearse, upload, maintain).
+#: MIGRATED at CR-MDB-067 C3 RED (§S5): the rehearsal is each release-branch push uploading
+#: the stamped dev version to TestPyPI through Trusted Publishing, and the upload is the tag's
+#: release job after ``git flow release finish``, with no token anywhere (was: rehearse terms
+#: "isolated tool directory"; upload anchors "token the user supplies", "user-supplied token").
+#: Build and post-release maintenance are unchanged.
 PYTHON_RELEASE_STEPS = (
     ("build", ("uv build",), (("version in its single source",),)),
-    ("testpypi rehearsal", ("testpypi",), (("isolated tool directory",),)),
-    ("pypi upload", ("token the user supplies", "user-supplied token"),
+    ("testpypi rehearsal", ("testpypi",),
+     (("each release-branch push",), ("stamped dev version",), ("trusted publishing",))),
+    ("pypi upload", ("no token anywhere",),
      (("git flow release finish",),)),
     ("post-release maintenance", ("--reinstall",),
      (("from pypi",), ("global permission config",), ("per-project",),
@@ -233,11 +252,14 @@ PROJECT_SPECIFIC_NAMES = ("modelb", "model b", "model-b")
 #: the package carries only the worktree extension, so the live check confirms
 #: Pi loads the worktree extension, and the section names no watcher (was:
 #: "watcher", "sandesh message", "wakes the session").
+#: MIGRATED at CR-MDB-067 C3 RED (§S5): the tag's release job publishes through Trusted
+#: Publishing; a new package's first publish uses a one-time token kept as a repository
+#: secret, then 2FA is required and the token deleted (was: "credentials the user supplies" /
+#: "user-supplied credentials" and "at publish time").
 PI_PACKAGE_RELEASE_STEPS = (
     ("npm publish", ("npm publish",),
-     (("pi package",), ("version is set",),
-      ("credentials the user supplies", "user-supplied credentials"),
-      ("at publish time",), ("--access public",))),
+     (("pi package",), ("version is set",), ("trusted publishing",),
+      ("repository secret",), ("2fa",), ("--access public",))),
     ("isolated pi install", ("pi_coding_agent_dir",),
      (("pi install",), ("published version",), ("extension loads",))),
     ("live check", ("live check",),
@@ -247,6 +269,88 @@ PI_PACKAGE_RELEASE_STEPS = (
 PI_PACKAGE_RETIRED_TERM = "watcher"
 #: The Pi step names no project, and not the npm scope of any one project.
 PI_PROJECT_SPECIFIC_NAMES = PROJECT_SPECIFIC_NAMES + ("anthill-tec",)
+
+# CR-MDB-067 §S5 — the release flow publishes the branch, writes the notes before the first
+# publish, and carries a ``### Rehearsal and CI`` subsection; the manual-rehearsal and
+# user-supplied-credential phrasing is retired. Steps are matched like
+# :data:`RELEASE_STEP_PHRASES`: ONE normalised unit matches every regex of a step.
+PUBLISH_STEP = "publish step"
+NOTES_BEFORE_PUBLISH = "notes before the first publish"
+REHEARSAL_AND_CI = "rehearsal and ci"
+RETIRED_PHRASES = "retired phrases"
+#: §S5 "Publishing the branch" — matched in any unit of ``## Releases``.
+PUBLISH_STEP_PHRASES = (
+    (PUBLISH_STEP, "the release branch is published with git flow release publish",
+     (r"git flow release publish\b",)),
+    (PUBLISH_STEP, "a hotfix branch is published with git flow hotfix publish",
+     (r"git flow hotfix publish\b",)),
+    (PUBLISH_STEP, "every push of the branch is the rehearsal",
+     (r"\b(?:every|each)\b", r"\bpush(?:es)?\b", r"\b(?:is|are) the rehearsal\b")),
+    (PUBLISH_STEP, "finish deletes the remote branch",
+     (r"(?<![\w-])finish(?:es)?(?![\w-])", r"\bdelet(?:e|es|ed|ing)\b", r"\bremote\b",
+      r"\bbranch\b")),
+)
+#: §S5 — the release-notes step is written before the branch is first published (it was
+#: "before ``git flow release finish``"); matched in a unit of the ``### Release notes``
+#: subsection (its heading title starts with :data:`RELEASE_NOTES_SUBSECTION`).
+RELEASE_NOTES_SUBSECTION = "Release notes"
+NOTES_BEFORE_PUBLISH_PHRASE = (
+    NOTES_BEFORE_PUBLISH, "the release notes are written before the branch is first published",
+    (r"\bbefore\b[^.;]{0,40}\bfirst publish(?:ed|es)?\b",))
+#: §S5 — the subsection's exact heading title, and the heading it must follow.
+REHEARSAL_AND_CI_HEADING = "Rehearsal and CI"
+PI_PACKAGE_HEADING = "Pi package releases"
+#: §S5's forms table — the stacks whose rehearsal is the notes check only.
+NOTES_CHECK_ONLY_STACKS = ("arduino", "quarkus", "java", "rust")
+#: §S5 — the rehearsal rule, the forms table and the CI rule, each step matched in one unit of
+#: the ``### Rehearsal and CI`` subsection.
+REHEARSAL_AND_CI_PHRASES = (
+    (REHEARSAL_AND_CI, "rehearsal rule: each push to release/X.Y.Z or hotfix/X.Y.Z",
+     (r"\b(?:each|every)\b", r"\bpush(?:es)?\b", r"(?<![\w-])release/x\.y\.z\b",
+      r"(?<![\w-])hotfix/x\.y\.z\b")),
+    (REHEARSAL_AND_CI, "rehearsal rule: builds X.Y.Z with a dev marker and the CI run number in "
+     "the stack's form",
+     (r"\bbuild\w*\b", r"\bdev marker\b", r"(?<![\w-])ci(?![\w-])", r"\brun number\b",
+      r"\bforms?\b")),
+    (REHEARSAL_AND_CI, "rehearsal rule: refuses a committed version other than X.Y.Z",
+     (r"\brefus\w*\b", r"\bcommitted version\b", r"\bother than\b")),
+    (REHEARSAL_AND_CI, "rehearsal rule: fails on a missing or empty notes section",
+     (r"\bfail\w*\b", r"\bmissing\b", r"\bempty\b", r"\bnotes\b")),
+    (REHEARSAL_AND_CI, "forms table: python, X.Y.Z.devN, the upload to the test index",
+     (r"(?<![\w-])python(?![\w-])", r"(?<![\w.])x\.y\.z\.devn\b", r"\bupload\b",
+      r"\btest index\b")),
+    (REHEARSAL_AND_CI, "forms table: bun, X.Y.Z-dev.N, the package manager's dry-run publish "
+     "with a dist-tag",
+     (r"(?<![\w-])bun(?![\w-])", r"(?<![\w.])x\.y\.z-dev\.n\b", r"\bdry-run\b",
+      r"\bpublish\b", r"\bdist-tag\b")),
+    *((REHEARSAL_AND_CI, f"forms table: {stack}, the notes check only",
+       (rf"(?<![\w-]){stack}(?![\w-])", r"\bnotes check only\b"))
+      for stack in NOTES_CHECK_ONLY_STACKS),
+    (REHEARSAL_AND_CI, "CI rule: a CI workflow runs the suite on every push to develop, release "
+     "and hotfix branches and on pull requests",
+     (r"(?<![\w-])ci(?![\w-])", r"\bsuite\b", r"(?<![\w-])develop(?![\w-])", r"\brelease\b",
+      r"\bhotfix\b", r"\bpull requests?\b")),
+    (REHEARSAL_AND_CI, "CI rule: on the stack's floor interpreter", (r"\bfloor interpreter\b",)),
+    (REHEARSAL_AND_CI, "CI rule: in a clean home", (r"\bclean home\b",)),
+    (REHEARSAL_AND_CI, "CI rule: with full history", (r"\bfull history\b",)),
+    (REHEARSAL_AND_CI, "CI rule: it runs outside any agent session",
+     (r"\boutside (?:of )?(?:any |an |every )?agent sessions?\b",)),
+    (REHEARSAL_AND_CI, "CI rule: the one place the suite runs without the stack's Crucible "
+     "client",
+     (r"\bsuite\b", r"\bwithout\b", r"\bcrucible client\b")),
+)
+#: §S5 — the subsection names neither the Python steps' anchors nor the Pi step's, so each
+#: checker's first-occurrence order is unchanged.
+SUBSECTION_FORBIDDEN_ANCHORS = (
+    *(("python step", a) for _, anchors, _ in PYTHON_RELEASE_STEPS for a in anchors),
+    *(("pi package step", a) for _, anchors, _ in PI_PACKAGE_RELEASE_STEPS for a in anchors),
+)
+#: §S6's C3 gate content — none of these anywhere in ``## Releases`` (normalised: backticks
+#: and ``*`` dropped, whitespace collapsed, lower-cased).
+RETIRED_RELEASE_PHRASES = (
+    "isolated tool directory", "uv_tool_dir", "test.pypi.org/simple", "token the user supplies",
+    "user-supplied token", "credentials the user supplies", "user-supplied credentials",
+)
 
 # (G) — where the installer comes from (VERIFY cycle 100 findings 2/6), and
 # the source-copy note that stays true after publishing (CR-MDB-038 \u00a7S4).
@@ -766,7 +870,13 @@ def check_release_steps(text: str) -> list[str]:
     in one unit, carries a fenced release-job snippet passing the tag's ``CHANGELOG.md``
     section as ``--notes-file`` (and no ``--generate-notes`` in a fence), and no longer says to
     copy the marked regions into the release notes. One message per fault, each prefixed
-    ``## Releases: <group>: ``."""
+    ``## Releases: <group>: ``.
+
+    MIGRATED at CR-MDB-067 C3 RED (§S5): it also checks the publish step
+    (:data:`PUBLISH_STEP_PHRASES`), the release-notes step written before the branch is first
+    published (in the ``### Release notes`` subsection), the ``### Rehearsal and CI``
+    subsection after ``### Pi package releases`` (:data:`REHEARSAL_AND_CI_PHRASES`, naming none
+    of :data:`SUBSECTION_FORBIDDEN_ANCHORS`), and no :data:`RETIRED_RELEASE_PHRASES`."""
     sec = next((body for head, body in sections(text).items()
                 if head.startswith("Releases")), "")
     if not sec:
@@ -784,6 +894,57 @@ def check_release_steps(text: str) -> list[str]:
     if RETIRED_COPY_STEP_RE.search(normalise(sec)):
         out.append(f"## Releases: {RETIRED_COPY_STEP}: still says to copy the marked regions "
                    "into the release notes")
+    out += _publish_and_rehearsal_faults(sec, found)
+    return out
+
+
+_SUBHEADING_RE = re.compile(r"^(#{2,3}) (.*?)\s*$")
+
+
+def _subsection(section: str, matches) -> tuple[int, str] | None:
+    """The first ``### `` subsection of ``section`` whose heading title satisfies ``matches``:
+    ``(the heading's line index, its body up to the next ``## ``/``### `` heading)``. A line
+    inside a fence is never a heading. ``None`` when there is none."""
+    lines = section.splitlines()
+    start = None
+    for i, (line, fenced) in enumerate(zip(lines, _fence_mask(lines), strict=True)):
+        heading = None if fenced else _SUBHEADING_RE.match(line)
+        if start is None:
+            if heading and heading.group(1) == "###" and matches(heading.group(2)):
+                start = i
+        elif heading:
+            return start, "\n".join(lines[start + 1:i])
+    return None if start is None else (start, "\n".join(lines[start + 1:]))
+
+
+def _missing_steps(phrases, units: list[str]) -> list[str]:
+    """``## Releases: <group>: <label>`` for each step of ``phrases`` no unit carries whole."""
+    return [f"## Releases: {group}: {label}" for group, label, regexes in phrases
+            if not any(all(re.search(rx, u) for rx in regexes) for u in units)]
+
+
+def _publish_and_rehearsal_faults(sec: str, found: list[str]) -> list[str]:
+    """CR-MDB-067 §S5's faults of one ``## Releases`` body ``sec`` (``found`` = its units)."""
+    out = _missing_steps(PUBLISH_STEP_PHRASES, found)
+    notes = _subsection(sec, lambda title: title.startswith(RELEASE_NOTES_SUBSECTION))
+    out += _missing_steps((NOTES_BEFORE_PUBLISH_PHRASE,), norm_units(notes[1]) if notes else [])
+    rehearsal = _subsection(sec, lambda title: title == REHEARSAL_AND_CI_HEADING)
+    if rehearsal is None:
+        out.append(f"## Releases: {REHEARSAL_AND_CI}: no '### {REHEARSAL_AND_CI_HEADING}' "
+                   "subsection")
+    else:
+        start, body = rehearsal
+        pi = _subsection(sec, lambda title: title.startswith(PI_PACKAGE_HEADING))
+        if pi is None or pi[0] > start:
+            out.append(f"## Releases: {REHEARSAL_AND_CI}: '### {REHEARSAL_AND_CI_HEADING}' is not "
+                       f"after '### {PI_PACKAGE_HEADING}'")
+        out += _missing_steps(REHEARSAL_AND_CI_PHRASES, norm_units(body))
+        flat = " ".join(body.lower().split())
+        out += [f"## Releases: {REHEARSAL_AND_CI}: names the {kind} anchor {anchor!r}"
+                for kind, anchor in SUBSECTION_FORBIDDEN_ANCHORS if anchor in flat]
+    plain = normalise(sec)
+    out += [f"## Releases: {RETIRED_PHRASES}: names {phrase!r}"
+            for phrase in RETIRED_RELEASE_PHRASES if phrase in plain]
     return out
 
 
@@ -837,8 +998,9 @@ def check_python_release_steps(text: str) -> list[str]:
 
 def check_pi_package_release_steps(text: str) -> list[str]:
     """CR-MDB-029 \u00a7S4: ``## Releases`` names the project-neutral Pi package
-    step — npm publish (``--access public``) with user-supplied credentials,
-    then an isolated ``PI_CODING_AGENT_DIR`` install confirming the extension
+    step — npm publish (``--access public``) through Trusted Publishing, a new package's
+    one-time token kept as a repository secret and 2FA required (MIGRATED at CR-MDB-067 C3 RED,
+    §S5; was: with user-supplied credentials at publish time), then an isolated ``PI_CODING_AGENT_DIR`` install confirming the extension
     loads, then the post-release live check in the real Pi configuration."""
     sec = next((body for head, body in sections(text).items()
                 if head.startswith("Releases")), "")
@@ -1069,6 +1231,9 @@ def conforming_guide() -> str:
 #: :data:`RELEASE_STEP_PHRASES`, one unit each, the fenced release-job snippet, and no copy
 #: step. It names no project and none of the Python or Pi steps' anchors, so it can sit beside
 #: them without moving their first-occurrence order.
+#: MIGRATED at CR-MDB-067 C3 RED (§S5): it carries the publish step, and the release-notes
+#: step is written before the branch is first published (was: "On the release branch, before
+#: `git flow release finish`:").
 CONFORMING_RELEASES_BODY = (
     "**Two documentation steps belong to every release** (on the release branch, before "
     "finishing):\n"
@@ -1078,9 +1243,13 @@ CONFORMING_RELEASES_BODY = (
     "\n"
     "The guide's marked regions still feed generated surfaces, such as a package README.\n"
     "\n"
+    "With the version bump in place, publish the branch (`git flow release publish X.Y.Z`, or\n"
+    "`git flow hotfix publish X.Y.Z` for a hotfix). Every push of the branch is the rehearsal;\n"
+    "`finish` deletes the remote branch.\n"
+    "\n"
     "### Release notes (`CHANGELOG.md`)\n"
     "\n"
-    "On the release branch, before `git flow release finish`:\n"
+    "On the release branch, before the branch is first published:\n"
     "\n"
     "1. Write the release's section: move `[Unreleased]` under `## [X.Y.Z] - YYYY-MM-DD`.\n"
     "2. Or write it from the release's CRs, read with the Crucible client's `history` and "
@@ -1111,7 +1280,35 @@ CONFORMING_RELEASES_BODY = (
     "| `java` | the release body only |\n"
     "| `rust` | the release body only |\n"
 )
-CONFORMING_RELEASES = "## Releases (NON-NEGOTIABLE)\n\n" + CONFORMING_RELEASES_BODY + "\n## Next\n"
+#: CR-MDB-067 §S5 — the ``### Pi package releases`` heading the new subsection follows; its body
+#: is a placeholder naming none of the Pi step's anchors.
+CONFORMING_PI_PACKAGE_HEADING = "### Pi package releases\n\nThe Pi package's own steps.\n"
+#: CR-MDB-067 §S5 — a ``### Rehearsal and CI`` subsection carrying every step of
+#: :data:`REHEARSAL_AND_CI_PHRASES`, one unit each. It names none of the Python or Pi steps'
+#: anchors, and no unit of it carries a step of :data:`RELEASE_STEP_PHRASES` or
+#: :data:`PUBLISH_STEP_PHRASES`.
+CONFORMING_REHEARSAL_AND_CI = (
+    "### Rehearsal and CI\n"
+    "\n"
+    "Each push to `release/X.Y.Z` or `hotfix/X.Y.Z` builds `X.Y.Z` with a dev marker and the CI run\n"
+    "number in the stack's own form, refuses a committed version other than `X.Y.Z`, and fails when\n"
+    "the release's notes are missing or empty.\n"
+    "\n"
+    "| Stack | Dev version | Rehearsal |\n"
+    "|---|---|---|\n"
+    "| `python` | `X.Y.Z.devN` | the upload to the test index |\n"
+    "| `bun` | `X.Y.Z-dev.N` | the package manager's dry-run publish with a dist-tag |\n"
+    "| `arduino`, `quarkus`, `java`, `rust` | — | the notes check only |\n"
+    "\n"
+    "A CI workflow runs the suite on every push to `develop`, release and hotfix branches and on\n"
+    "pull requests, on the stack's floor interpreter, in a clean home, with full history. It runs\n"
+    "outside any agent session, the one place the suite runs without the stack's Crucible client.\n"
+)
+# MIGRATED at CR-MDB-067 C3 RED (§S5): the Pi heading and the Rehearsal and CI subsection
+# follow the body (was: the body alone).
+CONFORMING_RELEASES = ("## Releases (NON-NEGOTIABLE)\n\n" + CONFORMING_RELEASES_BODY + "\n"
+                       + CONFORMING_PI_PACKAGE_HEADING + "\n" + CONFORMING_REHEARSAL_AND_CI
+                       + "\n## Next\n")
 
 
 CONFORMING_README = (
@@ -1373,6 +1570,20 @@ class ReleaseDocsTest(unittest.TestCase):
 
     def test_git_workflow_releases_names_the_pi_package_publish_and_isolated_install(self):
         self.assertEqual(check_pi_package_release_steps(_read(GIT_WORKFLOW_SKILL)), [])
+
+    # CR-MDB-067 §S5 — the release flow's publish step, the notes before the first publish, the
+    # Rehearsal and CI subsection and the retired phrases, one test per group.
+    def test_git_workflow_releases_publishes_the_branch_and_every_push_is_the_rehearsal(self):
+        self.assertEqual(release_step_faults(_read(GIT_WORKFLOW_SKILL), PUBLISH_STEP), [])
+
+    def test_git_workflow_releases_writes_the_notes_before_the_branch_is_first_published(self):
+        self.assertEqual(release_step_faults(_read(GIT_WORKFLOW_SKILL), NOTES_BEFORE_PUBLISH), [])
+
+    def test_git_workflow_releases_carries_the_rehearsal_and_ci_subsection_after_pi_releases(self):
+        self.assertEqual(release_step_faults(_read(GIT_WORKFLOW_SKILL), REHEARSAL_AND_CI), [])
+
+    def test_git_workflow_releases_names_none_of_the_retired_rehearsal_and_credential_phrases(self):
+        self.assertEqual(release_step_faults(_read(GIT_WORKFLOW_SKILL), RETIRED_PHRASES), [])
 
     def test_pi_package_cr_s1_names_guide_marked_regions_as_readme_source(self):
         self.assertEqual(check_cr029_s1(_read(CR_029)), [])
@@ -1686,15 +1897,19 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
         self.assertEqual(check_cr029_s1(cr.replace("marked regions", "text")),
                          ["§S1: missing 'marked region'"])
 
+    # MIGRATED at CR-MDB-067 C3 RED (§S5): the rehearse step is each release-branch push uploading
+    # the stamped dev version to TestPyPI through Trusted Publishing, and the upload step names no
+    # token anywhere (was: "Rehearse: upload to TestPyPI and install into an isolated tool
+    # directory"; "upload to PyPI with a token the user supplies at upload time").
     def test_python_release_steps_checker_both_ways(self):
         good = ("## Releases (NON-NEGOTIABLE)\n\n"
                 "### Publishing a Python package\n\n"
                 "1. On the release branch, set the version in its\n   single source, then "
                 "build with `uv build`.\n"
-                "2. Rehearse: upload to TestPyPI and install into an isolated tool\n"
-                "   directory.\n"
-                "3. After `git flow release finish`, upload to PyPI with a token the user\n"
-                "   supplies at upload time.\n"
+                "2. Rehearse: each release-branch push uploads the stamped dev version to\n"
+                "   TestPyPI through Trusted Publishing.\n"
+                "3. Publish: after `git flow release finish`, the tag's release job uploads to\n"
+                "   PyPI through Trusted Publishing, with no token anywhere.\n"
                 "4. Post-release: install from PyPI, replace the previous installation\n"
                 "   (`--reinstall --target-root ~`), remove workflow entries from any global\n"
                 "   permission config in favour of per-project policies, and confirm a\n"
@@ -1702,7 +1917,9 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
                 "\n## Next\n\nuv build, TestPyPI, --reinstall\n")
         self.assertEqual(check_python_release_steps(good), [])
         self.assertEqual(check_python_release_steps(
-            good.replace("a token the user\n   supplies", "a user-supplied token")), [])
+            good.replace("each release-branch push", "each release-branch\n   push")
+            .replace("no token anywhere", "no token\n   anywhere")), [],
+            "a step wrapped across lines counts")
         bad = {
             "no build": (good.replace("`uv build`", "make"),
                          "## Releases: build: missing 'uv build'"),
@@ -1711,12 +1928,22 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
                                          "'version in its single source'"),
             "no rehearsal": (good.replace("TestPyPI", "a staging index"),
                              "## Releases: testpypi rehearsal: missing 'testpypi'"),
-            "no isolation": (good.replace("an isolated tool\n   directory", "~"),
-                             "## Releases: testpypi rehearsal: missing "
-                             "'isolated tool directory'"),
-            "stored token": (good.replace("a token the user\n   supplies at upload time",
-                                          "the stored token"),
-                             "## Releases: pypi upload: missing 'token the user supplies'"),
+            "a manual rehearsal": (good.replace("each release-branch push uploads",
+                                                "a manual run uploads"),
+                                   "## Releases: testpypi rehearsal: missing "
+                                   "'each release-branch push'"),
+            "no stamped dev version": (good.replace("the stamped dev version",
+                                                    "the release candidate"),
+                                       "## Releases: testpypi rehearsal: missing "
+                                       "'stamped dev version'"),
+            "no trusted publishing": (good.replace("Trusted Publishing", "a stored token"),
+                                      "## Releases: testpypi rehearsal: missing "
+                                      "'trusted publishing'"),
+            "a token kept": (good.replace(", with no token anywhere",
+                                          " with a token the user supplies"),
+                             "## Releases: pypi upload: missing 'no token anywhere'"),
+            "no finish": (good.replace("after `git flow release finish`,", "after the tag,"),
+                          "## Releases: pypi upload: missing 'git flow release finish'"),
             "no reinstall": (good.replace("--reinstall ", ""),
                              "## Releases: post-release maintenance: missing '--reinstall'"),
             "global kept": (good.replace("global\n   permission config", "settings"),
@@ -1736,18 +1963,32 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
                      "permission config entries for per-project policies, confirm a trusted "
                      "project runs without a permission prompt.\n"
                      "2. Set the version in its single source; `uv build`.\n"
-                     "3. TestPyPI into an isolated tool directory.\n"
-                     "4. After git flow release finish, upload with a token the user supplies.\n")
+                     "3. Each release-branch push uploads the stamped dev version to TestPyPI "
+                     "through Trusted Publishing.\n"
+                     "4. After git flow release finish, the release job uploads with no token "
+                     "anywhere.\n")
         self.assertEqual(check_python_release_steps(reordered),
                          ["## Releases: python release steps out of order"])
+        swapped = good.replace(
+            "2. Rehearse: each release-branch push uploads the stamped dev version to\n"
+            "   TestPyPI through Trusted Publishing.\n", "").replace(
+            "4. Post-release:", "4. Rehearse: each release-branch push uploads the stamped dev "
+            "version to TestPyPI through Trusted Publishing.\n5. Post-release:")
+        self.assertEqual(check_python_release_steps(swapped),
+                         ["## Releases: python release steps out of order"],
+                         "the publish anchor 'no token anywhere' must follow 'testpypi'")
         self.assertEqual(check_python_release_steps("## Other\n\nuv build TestPyPI\n"),
                          ["no '## Releases' section"])
 
+    # MIGRATED at CR-MDB-067 C3 RED (§S5): the publish step runs through Trusted Publishing, a
+    # new package's one-time token kept as a repository secret, then 2FA required (was: "with
+    # credentials the user supplies at publish time; never store them").
     def test_pi_package_release_steps_checker_both_ways(self):
         pi_step = ("### Publishing a Pi package\n\n"
-                   "1. Once the version is set, run `npm publish --access public` with\n"
-                   "   credentials the user\n"
-                   "   supplies at publish time; never store them.\n"
+                   "1. Once the version is set, the tag's release job runs `npm publish --access\n"
+                   "   public` through Trusted Publishing; the first publish of a new package\n"
+                   "   uses a one-time token kept as a repository secret, then the trusted\n"
+                   "   publisher is added, 2FA is required and the token deleted.\n"
                    "2. Point `PI_CODING_AGENT_DIR` at a scratch path, `pi install` the\n"
                    "   published version there, and confirm the extension loads.\n"
                    "3. Live check, post-release: installed into the real Pi configuration,\n"
@@ -1756,11 +1997,13 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
                 "npm publish PI_CODING_AGENT_DIR anthill-tec\n")
         self.assertEqual(check_pi_package_release_steps(good), [])
         self.assertEqual(check_pi_package_release_steps(
-            good.replace("credentials the user\n   supplies", "user-supplied credentials")), [])
+            good.replace("Trusted Publishing", "Trusted\n   Publishing")
+            .replace("repository secret", "repository\n   secret")), [],
+            "a term wrapped across lines counts")
         bad = {
-            "no publish": (good.replace("`npm publish --access public`", "`npm pack`"),
+            "no publish": (good.replace("`npm publish --access\n   public`", "`npm pack`"),
                            "## Releases: npm publish: missing 'npm publish'"),
-            "scoped package not public": (good.replace(" --access public", ""),
+            "scoped package not public": (good.replace(" --access\n   public", ""),
                                           "## Releases: npm publish: missing '--access public'"),
             "no live check": (good.replace("Live check, post-release", "Post-release"),
                               "## Releases: live check: missing 'live check'"),
@@ -1774,15 +2017,17 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
                 "## Releases: live check: missing 'loads the worktree extension'"),
             "not a pi package": (good.replace("a Pi package", "an npm module"),
                                  "## Releases: npm publish: missing 'pi package'"),
-            "version not set first": (good.replace("Once the version is set, run", "Run"),
+            "version not set first": (good.replace("Once the version is set, the tag's", "The tag's"),
                                       "## Releases: npm publish: missing 'version is set'"),
-            "stored credentials": (good.replace("credentials the user\n   supplies",
-                                                "the stored npm token"),
-                                   "## Releases: npm publish: missing "
-                                   "'credentials the user supplies'"),
-            "credentials not at publish time": (good.replace(" at publish time", ""),
-                                                "## Releases: npm publish: missing "
-                                                "'at publish time'"),
+            "no trusted publishing": (good.replace("through Trusted Publishing",
+                                                   "with the stored npm token"),
+                                      "## Releases: npm publish: missing 'trusted publishing'"),
+            "token not a repository secret": (good.replace("kept as a repository secret",
+                                                           "kept in a local file"),
+                                              "## Releases: npm publish: missing "
+                                              "'repository secret'"),
+            "no 2fa": (good.replace("2FA is required and ", ""),
+                       "## Releases: npm publish: missing '2fa'"),
             "not isolated": (good.replace("Point `PI_CODING_AGENT_DIR` at a scratch path,",
                                           "Then"),
                              "## Releases: isolated pi install: missing 'pi_coding_agent_dir'"),
@@ -1804,15 +2049,17 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
                 self.assertIn(expected, check_pi_package_release_steps(text))
         reordered = ("## Releases\n\nFor a Pi package: point PI_CODING_AGENT_DIR at a scratch "
                      "path, pi install the published version, confirm the extension loads. "
-                     "Once the version is set, npm publish --access public with credentials "
-                     "the user supplies at publish time. Live check: in the real Pi "
+                     "Once the version is set, npm publish --access public through Trusted "
+                     "Publishing, a first-publish token kept as a repository secret, then 2FA "
+                     "required. Live check: in the real Pi "
                      "configuration, Pi loads the worktree extension.\n")
         self.assertEqual(check_pi_package_release_steps(reordered),
                          ["## Releases: pi package steps out of order"])
         live_first = ("## Releases\n\nLive check: in the real Pi configuration, Pi loads the "
                       "worktree extension. For a Pi package, once "
-                      "the version is set, npm publish --access public with credentials the "
-                      "user supplies at publish time; then point PI_CODING_AGENT_DIR at a "
+                      "the version is set, npm publish --access public through Trusted "
+                      "Publishing (a first-publish token kept as a repository secret, then 2FA "
+                      "required); then point PI_CODING_AGENT_DIR at a "
                       "scratch path, pi install the published version, confirm the extension "
                       "loads.\n")
         self.assertEqual(check_pi_package_release_steps(live_first),
@@ -1974,29 +2221,48 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
         # MIGRATED at CR-MDB-058 C3 RED (§S6): the documentation steps are the conforming
         # section's (was "Copy the install guide's marked regions verbatim into the release
         # notes, then hold a documentation review.").
+        # MIGRATED at CR-MDB-067 C3 RED (§S5): the Python and Pi samples are the CI-path steps
+        # (was: "TestPyPI into an isolated tool directory", "upload with a token the user
+        # supplies", "with credentials the user supplies at publish time"); the Pi step sits under
+        # its own heading and the Rehearsal and CI subsection follows it; the python-only faults
+        # drop the two retired terms and gain 'repository secret' and '2fa' ('trusted
+        # publishing' is named by the Python rehearse step, so it is not missing).
         docs = CONFORMING_RELEASES_BODY + "\n"
         python = ("1. Set the version in its single source, then `uv build`.\n"
-                  "2. TestPyPI into an isolated tool directory.\n"
-                  "3. After git flow release finish, upload with a token the user supplies.\n"
+                  "2. Each release-branch push uploads the stamped dev version to TestPyPI "
+                  "through Trusted Publishing.\n"
+                  "3. After git flow release finish, the release job uploads to PyPI with no "
+                  "token anywhere.\n"
                   "4. Install from PyPI with `--reinstall`; drop global permission config "
                   "entries for per-project policies; a trusted project runs without a "
                   "permission prompt.\n\n")
-        pi = ("For a Pi package, once the version is set, npm publish --access public with "
-              "credentials the user supplies at publish time; then with PI_CODING_AGENT_DIR on "
+        pi = ("For a Pi package, once the version is set, npm publish --access public through "
+              "Trusted Publishing, a new package's first-publish token kept as a repository "
+              "secret, then 2FA required; then with PI_CODING_AGENT_DIR on "
               "a scratch path, pi install the published version and confirm the extension "
               "loads. Live check, post-release: in the real Pi configuration confirm Pi "
               "loads the worktree extension.\n")
-        combined = "## Releases\n\n" + docs + python + pi
+        pi_section = "### Pi package releases\n\n" + pi + "\n"
+        combined = "## Releases\n\n" + docs + python + pi_section + CONFORMING_REHEARSAL_AND_CI
         self.assertEqual(check_release_steps(combined), [])
         self.assertEqual(check_python_release_steps(combined), [])
         self.assertEqual(check_pi_package_release_steps(combined), [])
+        # The subsection names none of the steps' anchors: put first, it moves no checker's
+        # first-occurrence order; only its placement is reported.
+        subsection_first = ("## Releases\n\n" + CONFORMING_REHEARSAL_AND_CI + "\n" + docs + python
+                            + pi_section)
+        self.assertEqual(check_python_release_steps(subsection_first), [])
+        self.assertEqual(check_pi_package_release_steps(subsection_first), [])
+        self.assertEqual(check_release_steps(subsection_first),
+                         [f"## Releases: {REHEARSAL_AND_CI}: '### Rehearsal and CI' is not after "
+                          "'### Pi package releases'"])
         python_only = "## Releases\n\n" + docs + python
         self.assertEqual(check_pi_package_release_steps(python_only), [
             "## Releases: npm publish: missing 'npm publish'",
             "## Releases: npm publish: missing 'pi package'",
             "## Releases: npm publish: missing 'version is set'",
-            "## Releases: npm publish: missing 'credentials the user supplies'",
-            "## Releases: npm publish: missing 'at publish time'",
+            "## Releases: npm publish: missing 'repository secret'",
+            "## Releases: npm publish: missing '2fa'",
             "## Releases: npm publish: missing '--access public'",
             "## Releases: isolated pi install: missing 'pi_coding_agent_dir'",
             "## Releases: isolated pi install: missing 'pi install'",
@@ -2006,6 +2272,173 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
             "## Releases: live check: missing 'real pi configuration'",
             "## Releases: live check: missing 'loads the worktree extension'",
         ])
+
+    # CR-MDB-067 §S5 — the new groups of check_release_steps, each proved both ways.
+
+    def test_publish_step_gate_passes_the_conforming_section_and_bites_once_per_step(self):
+        good = CONFORMING_RELEASES
+        self.assertEqual(check_release_steps(good), [])
+        cases = {
+            "the release branch is published with git flow release publish":
+                ("`git flow release publish X.Y.Z`, or\n", ""),
+            "a hotfix branch is published with git flow hotfix publish":
+                (", or\n`git flow hotfix publish X.Y.Z` for a hotfix", ""),
+            "every push of the branch is the rehearsal":
+                ("Every push of the branch is the rehearsal;\n", ""),
+            "finish deletes the remote branch": ("\n`finish` deletes the remote branch.", ""),
+        }
+        self.assertEqual(len(cases), len(PUBLISH_STEP_PHRASES), "one case per step")
+        for label, (old, new) in cases.items():
+            with self.subTest(step=label):
+                self.assertIn(old, good)
+                self.assertEqual(check_release_steps(good.replace(old, new)),
+                                 [f"## Releases: {PUBLISH_STEP}: {label}"])
+        rehearsal = f"## Releases: {PUBLISH_STEP}: every push of the branch is the rehearsal"
+        self.assertEqual(check_release_steps(good.replace(
+            "Every push of the branch is the rehearsal", "Every push of the branch is not the rehearsal")),
+            [rehearsal], "a push that is not the rehearsal is not the step")
+        self.assertEqual(check_release_steps(good.replace(
+            "Every push of the branch is the rehearsal;", "Every push of the branch counts.\n\nIt is the rehearsal;")),
+            [rehearsal], "a step's words split across two units do not count")
+        paragraph = ("With the version bump in place, publish the branch (`git flow release publish "
+                     "X.Y.Z`, or\n`git flow hotfix publish X.Y.Z` for a hotfix). Every push of the "
+                     "branch is the rehearsal;\n`finish` deletes the remote branch.\n")
+        self.assertIn(paragraph, good)
+        outside = good.replace(paragraph, "").replace("\n## Next\n", "\n## Next\n\n" + paragraph)
+        self.assertEqual(release_step_faults(outside, PUBLISH_STEP),
+                         [f"## Releases: {PUBLISH_STEP}: {label}" for _, label, _ in PUBLISH_STEP_PHRASES],
+                         "the publish step counts only inside ## Releases")
+
+    def test_notes_before_first_publish_gate_both_ways(self):
+        fault = (f"## Releases: {NOTES_BEFORE_PUBLISH}: the release notes are written before the "
+                 "branch is first published")
+        good = CONFORMING_RELEASES
+        preamble = "On the release branch, before the branch is first published:\n"
+        self.assertIn(preamble, good)
+        self.assertEqual(release_step_faults(good, NOTES_BEFORE_PUBLISH), [])
+        self.assertEqual(check_release_steps(good.replace(
+            preamble, "On the release branch, before `git flow release finish`:\n")), [fault],
+            "the old 'before finish' step is reported")
+        self.assertEqual(check_release_steps(good.replace(
+            preamble, "On the release branch, before its first publish:\n")), [],
+            "'before its first publish' reads the same")
+        self.assertEqual(check_release_steps(good.replace(
+            preamble, "On the release branch, before the release\nbranch is first published:\n")), [],
+            "a step wrapped across lines counts")
+        moved = good.replace(preamble, "On the release branch:\n").replace(
+            "### Release notes (`CHANGELOG.md`)\n",
+            "The release notes are written before the branch is first published.\n\n"
+            "### Release notes (`CHANGELOG.md`)\n")
+        self.assertEqual(check_release_steps(moved), [fault],
+                         "the step counts only in the ### Release notes subsection")
+        self.assertEqual(check_release_steps(good.replace("### Release notes (`CHANGELOG.md`)\n", "")),
+                         [fault], "without the subsection the step is missing")
+
+    def test_rehearsal_and_ci_gate_passes_the_conforming_subsection_and_bites_once_per_step(self):
+        good = CONFORMING_RELEASES
+        self.assertEqual(release_step_faults(good, REHEARSAL_AND_CI), [])
+        labels = [label for _, label, _ in REHEARSAL_AND_CI_PHRASES]
+        edits = [
+            (" or `hotfix/X.Y.Z`", ""),
+            ("with a dev marker and the CI run", "with the CI run"),
+            ("refuses a committed version other than `X.Y.Z`, and ", ""),
+            (", and fails when\nthe release's notes are missing or empty.", "."),
+            ("the upload to the test index", "a build"),
+            (" with a dist-tag", ""),
+            ("`arduino`, ", ""),
+            ("`quarkus`, ", ""),
+            ("`java`, ", ""),
+            (", `rust`", ""),
+            (" and on\npull requests", ""),
+            ("on the stack's floor interpreter, ", ""),
+            ("in a clean home, ", ""),
+            (", with full history", ""),
+            ("It runs\noutside any agent session, the", "It is the"),
+            (" without the stack's Crucible client", ""),
+        ]
+        self.assertEqual(len(edits), len(labels), "one case per step")
+        self.assertEqual(labels[6:10], [f"forms table: {s}, the notes check only"
+                                        for s in ("arduino", "quarkus", "java", "rust")])
+        for label, (old, new) in zip(labels, edits, strict=True):
+            with self.subTest(step=label):
+                self.assertEqual(good.count(old), 1, old)
+                self.assertEqual(check_release_steps(good.replace(old, new)),
+                                 [f"## Releases: {REHEARSAL_AND_CI}: {label}"])
+        ci_rule = ("A CI workflow runs the suite on every push to `develop`, release and hotfix "
+                   "branches and on\npull requests, on the stack's floor interpreter, in a clean "
+                   "home, with full history. It runs\noutside any agent session, the one place the "
+                   "suite runs without the stack's Crucible client.\n")
+        self.assertIn(ci_rule, good)
+        moved = good.replace(ci_rule, "").replace("### Release notes", ci_rule + "\n### Release notes")
+        self.assertEqual(check_release_steps(moved),
+                         [f"## Releases: {REHEARSAL_AND_CI}: {label}" for label in labels[10:]],
+                         "a step counts only inside the ### Rehearsal and CI subsection")
+
+    def test_rehearsal_and_ci_subsection_must_exist_and_follow_the_pi_package_releases(self):
+        good = CONFORMING_RELEASES
+        missing = f"## Releases: {REHEARSAL_AND_CI}: no '### Rehearsal and CI' subsection"
+        misplaced = (f"## Releases: {REHEARSAL_AND_CI}: '### Rehearsal and CI' is not after "
+                     "'### Pi package releases'")
+        self.assertEqual(check_release_steps(good.replace("### Rehearsal and CI\n", "")), [missing])
+        self.assertEqual(check_release_steps(
+            good.replace("### Rehearsal and CI\n", "### Rehearsal\n")), [missing],
+            "the heading title is exactly 'Rehearsal and CI'")
+        self.assertEqual(check_release_steps(good.replace("### Rehearsal and CI\n", "#### Rehearsal and CI\n")),
+                         [missing], "the subsection is a ### heading")
+        self.assertEqual(check_release_steps(good.replace(CONFORMING_PI_PACKAGE_HEADING, "")), [misplaced])
+        before = ("## Releases (NON-NEGOTIABLE)\n\n" + CONFORMING_RELEASES_BODY + "\n"
+                  + CONFORMING_REHEARSAL_AND_CI + "\n" + CONFORMING_PI_PACKAGE_HEADING + "\n## Next\n")
+        self.assertEqual(check_release_steps(before), [misplaced])
+        fenced = good.replace("### Rehearsal and CI\n", "```text\n### Rehearsal and CI\n```\n")
+        self.assertIn(missing, check_release_steps(fenced), "a heading inside a fence is no heading")
+
+    def test_rehearsal_and_ci_subsection_names_none_of_the_python_or_pi_anchors(self):
+        self.assertEqual([a for _, a in SUBSECTION_FORBIDDEN_ANCHORS],
+                         ["uv build", "testpypi", "no token anywhere", "--reinstall",
+                          "npm publish", "pi_coding_agent_dir", "live check"])
+        good = CONFORMING_RELEASES
+        for kind, anchor in SUBSECTION_FORBIDDEN_ANCHORS:
+            with self.subTest(anchor=anchor):
+                named = good.replace("\n## Next\n", f"\nSee also `{anchor}`.\n\n## Next\n")
+                self.assertEqual(check_release_steps(named),
+                                 [f"## Releases: {REHEARSAL_AND_CI}: names the {kind} anchor {anchor!r}"])
+        self.assertEqual(check_release_steps(good.replace("the upload to the test index",
+                                                          "the upload to TestPyPI")),
+                         [f"## Releases: {REHEARSAL_AND_CI}: forms table: python, X.Y.Z.devN, the "
+                          "upload to the test index",
+                          f"## Releases: {REHEARSAL_AND_CI}: names the python step anchor 'testpypi'"])
+        self.assertEqual(check_release_steps(good.replace(
+            "dry-run publish with a dist-tag", "dry-run publish with a dist-tag (`npm publish --dry-run`)")),
+            [f"## Releases: {REHEARSAL_AND_CI}: names the pi package step anchor 'npm publish'"])
+        self.assertEqual(check_release_steps(good + "\nSee also `TestPyPI` and `npm publish`.\n"), [],
+                         "an anchor outside ## Releases is not the subsection's")
+
+    def test_retired_release_phrases_gate_both_ways(self):
+        self.assertEqual(RETIRED_RELEASE_PHRASES, (
+            "isolated tool directory", "uv_tool_dir", "test.pypi.org/simple",
+            "token the user supplies", "user-supplied token", "credentials the user supplies",
+            "user-supplied credentials"))
+        good = CONFORMING_RELEASES
+        self.assertEqual(release_step_faults(good, RETIRED_PHRASES), [])
+        for phrase in RETIRED_RELEASE_PHRASES:
+            with self.subTest(phrase=phrase):
+                named = good.replace("\n## Next\n", f"\nNever write {phrase}.\n\n## Next\n")
+                self.assertEqual(check_release_steps(named),
+                                 [f"## Releases: {RETIRED_PHRASES}: names {phrase!r}"])
+        old_steps = ("2. **Rehearse on TestPyPI** — install it into an\n"
+                     "   Isolated tool directory (`UV_TOOL_DIR` pointed at a scratch path) from\n"
+                     "   `--index-url https://test.pypi.org/simple/`.\n"
+                     "3. **Upload to PyPI** — upload with a token the user supplies.\n"
+                     "4. **Publish** — `npm publish`, using credentials the user supplies.\n")
+        self.assertEqual(release_step_faults(good.replace("\n## Next\n", "\n" + old_steps + "\n## Next\n"),
+                                             RETIRED_PHRASES),
+                         [f"## Releases: {RETIRED_PHRASES}: names {p!r}" for p in (
+                             "isolated tool directory", "uv_tool_dir", "test.pypi.org/simple",
+                             "token the user supplies", "credentials the user supplies")],
+                         "the old Python and Pi steps' phrasing, wrapped and in any case")
+        self.assertEqual(check_release_steps(good + "\nInstall into an isolated tool directory with a "
+                                                    "token the user supplies.\n"), [],
+                         "a phrase outside ## Releases is not gated")
 
 
 # ---------------------------------------------------------------------------
