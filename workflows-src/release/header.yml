@@ -1,0 +1,35 @@
+# Release workflow: the project's test jobs gate every publish.
+#
+# The test jobs run in every run. They carry no `if:` and must never be
+# scoped: `needs:` orders jobs only within one run, and a publish that
+# needs a skipped job is itself skipped, silently.
+#
+# - A release or hotfix push runs the tests and the rehearsal.
+# - A master push runs the tests and create-release, which releases the
+#   version tag at HEAD.
+# - A published release runs the tests@@PUBLISHES@@.
+# Every publish needs the tests.
+#
+# Recovery: when the master run finds no version tag at HEAD, dispatch
+# the workflow on master.
+#
+# A red run: when the master run or the release run fails its tests,
+# nothing publishes. Re-run the failed jobs; a real failure is fixed on
+# a hotfix branch.
+#
+# One-time setup:
+@@SETUP@@
+
+name: release
+
+on:
+  push:
+    branches: [master, "release/**", "hotfix/**"]
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:

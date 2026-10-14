@@ -1,0 +1,7 @@
+@@BUILD_ASSETS@@
+      - name: The release assets are not empty
+        run: |
+          if [ -z "$(ls -A dist-assets 2>/dev/null)" ]; then
+            echo "::error::dist-assets/ is empty"
+            exit 1
+          fi

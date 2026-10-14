@@ -228,6 +228,13 @@ def _add_init_parser(subparsers) -> None:
     )
     init.add_argument("--owner", metavar="OWNER", help="REPO_OWNER registry value")
     init.add_argument(
+        "--release-targets", metavar="CSV",
+        help=(
+            "RELEASE_TARGETS registry value: where a release publishes, each "
+            "`name` or `name:dir` of pypi, npm, github-assets (default: none)"
+        ),
+    )
+    init.add_argument(
         "--sandesh-project", metavar="ID",
         help=(
             "SANDESH_PROJECT registry value, the Sandesh project id exactly "

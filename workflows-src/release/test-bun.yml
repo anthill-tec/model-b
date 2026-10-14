@@ -1,0 +1,11 @@
+  test-bun:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: @@USES:actions/checkout@@
+        with:
+          fetch-depth: 0
+      - uses: @@USES:oven-sh/setup-bun@@
+      - name: Install the locked dependencies
+        run: bun install --frozen-lockfile
+      - name: Run the tests
+        run: bun test

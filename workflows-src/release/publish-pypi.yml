@@ -1,0 +1,15 @@
+  publish-pypi:
+    needs: [@@NEEDS@@]
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+@@GUARD@@
+      - uses: @@USES:astral-sh/setup-uv@@
+      - run: uv build
+@@WORKDIR@@
+      - uses: @@USES:pypa/gh-action-pypi-publish@@
+@@PACKAGES_DIR@@

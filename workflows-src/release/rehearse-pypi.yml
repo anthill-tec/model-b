@@ -1,0 +1,8 @@
+      - uses: @@USES:astral-sh/setup-uv@@
+      - run: uv build
+@@WORKDIR@@
+      - uses: @@USES:pypa/gh-action-pypi-publish@@
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          skip-existing: true
+@@PACKAGES_DIR@@

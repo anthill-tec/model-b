@@ -1,0 +1,2 @@
+# - npm: environment `npm`; the NPM_TOKEN secret for the first publish,
+#   deleted once the npm trusted publisher exists;

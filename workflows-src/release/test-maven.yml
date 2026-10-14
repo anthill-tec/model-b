@@ -1,0 +1,12 @@
+  test-@@STACK@@:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: @@USES:actions/checkout@@
+        with:
+          fetch-depth: 0
+      - uses: @@USES:actions/setup-java@@
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Run the tests
+        run: ./mvnw -B verify

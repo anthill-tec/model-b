@@ -1,0 +1,36 @@
+  create-release:
+    needs: [@@NEEDS@@]
+    if: >-
+      github.ref == 'refs/heads/master' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: @@USES:actions/checkout@@
+        with:
+          fetch-depth: 0
+      - name: The version tag at HEAD
+        id: tag
+        run: |
+          tags=$(git tag --points-at HEAD | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' || true)
+          count=$(printf '%s' "$tags" | grep -c . || true)
+          if [ "$count" -gt 1 ]; then
+            echo "::error::more than one version tag at HEAD: $(echo $tags)"
+            exit 1
+          fi
+          if [ -z "$tags" ]; then
+            echo "::notice::no version tag at HEAD — nothing to release"
+          fi
+          echo "tag=$tags" >> "$GITHUB_OUTPUT"
+@@CHECK@@
+      - name: Create the GitHub Release
+        if: steps.tag.outputs.tag != ''
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          python3 .github/scripts/changelog_section.py CHANGELOG.md "$TAG" > "$RUNNER_TEMP/notes.md"
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --notes-file "$RUNNER_TEMP/notes.md" --verify-tag
+          fi

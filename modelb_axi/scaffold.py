@@ -35,7 +35,7 @@ import subprocess
 import sys
 import tomllib
 import unicodedata
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from modelb_axi import agents, permission_policy, project_trust, requirements
 from modelb_axi._fsutil import atomic_write
@@ -443,6 +443,51 @@ def _check_kebab_id(value: str) -> str:
     return value
 
 
+#: The release targets ``RELEASE_TARGETS`` may name, in canonical order
+#: (CR-MDB-068 §S1).
+RELEASE_TARGETS: tuple[str, ...] = ("pypi", "npm", "github-assets")
+#: The release targets that take a ``:<dir>`` (CR-MDB-068 §S1).
+_DIR_TARGETS = frozenset({"pypi", "npm"})
+
+
+def _release_target(item: str) -> tuple[str, str]:
+    """``(name, dir)`` of one ``name`` or ``name:dir`` target, ``dir``
+    normalised as a :class:`PurePosixPath` (``.`` for none); raises
+    ``ValueError`` naming the bad part (CR-MDB-068 §S1)."""
+    name, sep, raw = item.partition(":")
+    if name not in RELEASE_TARGETS:
+        raise ValueError(f"names an unknown release target {name!r}; "
+                         f"supported: {', '.join(RELEASE_TARGETS)}")
+    if not sep:
+        return name, "."
+    if name not in _DIR_TARGETS:
+        raise ValueError(f"gives a dir to {name}, which takes none")
+    if not raw.strip():
+        raise ValueError(f"gives {name} an empty dir")
+    path = PurePosixPath(raw.strip())
+    if path.is_absolute() or ".." in path.parts:
+        raise ValueError(f"gives {name} the dir {raw.strip()!r}, which must be relative "
+                         "and hold no `..`")
+    return name, str(path)
+
+
+def _check_release_targets_csv(value: str) -> str:
+    """Validate rule: a ``RELEASE_TARGETS`` CSV of ``name`` or
+    ``name:dir`` targets (CR-MDB-068 §S1), returned canonical: the order of
+    :data:`RELEASE_TARGETS`, each ``dir`` normalised and a ``.`` dir
+    omitted, no whitespace; empty for no target. Refuses an unknown name, a
+    duplicate name, an empty or blank ``dir``, an absolute ``dir`` or one
+    holding ``..``, and a ``dir`` on ``github-assets``."""
+    found: dict[str, str] = {}
+    for item in (part.strip() for part in value.split(",")) if value.strip() else ():
+        name, directory = _release_target(item)
+        if name in found:
+            raise ValueError(f"names the release target {name} twice (a duplicate)")
+        found[name] = directory
+    return ",".join(name if found[name] == "." else f"{name}:{found[name]}"
+                    for name in RELEASE_TARGETS if name in found)
+
+
 def _has_control_character(value: str) -> bool:
     """Whether ``value`` carries a control character (Unicode ``Cc``,
     newline and tab included)."""
@@ -458,6 +503,7 @@ VALIDATE_RULES: dict = {
     "stack_csv": _check_stack_csv,
     "sandesh_id": _check_sandesh_id,
     "kebab_id": _check_kebab_id,
+    "release_targets_csv": _check_release_targets_csv,
 }
 
 _SCHEMA_FILES = (".env", ".env.local")
@@ -1255,6 +1301,26 @@ def _agent_sources(home: Path) -> tuple[Path, Path]:
     raise ScaffoldError(
         "no generator/templates + generator/stacks found under any asset "
         "root; tried: " + ", ".join(str(c) for c in candidates)
+    )
+
+
+def _workflow_sources(home: Path) -> Path:
+    """Asset-root resolution for the release-workflow templates and scripts
+    (CR-MDB-068 §S2), the chain of :func:`_agent_sources`:
+    ``install.toml [install].asset_root`` → :func:`default_asset_root`.
+    Returns the ``workflows-src`` directory of the first root holding one."""
+    candidates: list[Path] = []
+    configured = load_install_toml(home).get("install", {}).get("asset_root")
+    if configured:
+        candidates.append(Path(str(configured)))
+    candidates.append(default_asset_root())
+    for root in candidates:
+        source = root / "workflows-src"
+        if source.is_dir():
+            return source
+    raise ScaffoldError(
+        "no workflows-src/ found under any asset root; tried: "
+        + ", ".join(str(c) for c in candidates)
     )
 
 

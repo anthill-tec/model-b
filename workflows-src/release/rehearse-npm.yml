@@ -1,0 +1,9 @@
+      - uses: @@USES:actions/setup-node@@
+        with:
+          node-version: "22"
+      - name: npm new enough for the dry-run publish
+        run: npm install -g npm@latest
+@@COPY@@
+      - name: Dry-run the npm publish
+@@WORKDIR@@
+        run: npm publish --dry-run --access public --tag dev

@@ -1,0 +1,14 @@
+  publish-github-assets:
+    needs: [@@NEEDS@@]
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+@@GUARD@@
+@@BUILD_ASSETS@@
+      - name: Upload the release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: gh release upload "$TAG" dist-assets/* --clobber
