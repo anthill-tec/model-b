@@ -208,6 +208,21 @@ CRUCIBLE_TOML_TEXT = (
     "skip = [\"ci\"]\n"
 )
 
+#: CR-MDB-058 §S5: the one ``CHANGELOG.md`` ``init`` writes, at the root only,
+#: in §S1's starting form — a ``# Changelog`` title, the Keep a Changelog and
+#: Semantic Versioning links, and an empty ``## [Unreleased]``. A root
+#: ``CHANGELOG.md`` already present is the project's own: never overwritten.
+CHANGELOG_NAME = "CHANGELOG.md"
+CHANGELOG_TEXT = (
+    "# Changelog\n"
+    "\n"
+    "All notable changes to this project are documented in this file. The format is based on\n"
+    "[Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to\n"
+    "[Semantic Versioning](https://semver.org/spec/v2.0.0.html).\n"
+    "\n"
+    "## [Unreleased]\n"
+)
+
 
 def resolve_harnesses(home: Path, dev_override: str | None) -> tuple[list[str], str]:
     """Resolve the installed harness set per the §S2 seam.
@@ -332,6 +347,7 @@ def plan_files(sub_projects: list[str]) -> list[str]:
         ".env.local",
         ".gitignore",
         CRUCIBLE_TOML_NAME,
+        CHANGELOG_NAME,
         "AGENTS.md",
         "docs/changes/.gitkeep",
         "docs/research/.gitkeep",
@@ -1396,6 +1412,17 @@ def _emit_plan(
             return
         write(rel, ENVRC_TEXT)
 
+    def write_changelog() -> None:
+        """CR-MDB-058 §S5: the root ``CHANGELOG.md`` skeleton
+        (:data:`CHANGELOG_TEXT`). An existing one is the project's own — left
+        byte for byte and reported as unmanaged, as ``.envrc`` is."""
+        path = target / CHANGELOG_NAME
+        if path.exists() or path.is_symlink():
+            if ownership is not None:
+                ownership.setdefault("unmanaged", []).append(CHANGELOG_NAME)
+            return
+        write(CHANGELOG_NAME, CHANGELOG_TEXT)
+
     templates = _select_memory_templates(_memory_templates_dir(home), stacks)
     target.mkdir(parents=True, exist_ok=True)
 
@@ -1407,6 +1434,9 @@ def _emit_plan(
     # CR-MDB-057 §S2: one crucible.toml, at the root only — a monorepo
     # sub-project gets none (the client resolves to the repository root).
     write(CRUCIBLE_TOML_NAME, CRUCIBLE_TOML_TEXT)
+    # CR-MDB-058 §S5: one CHANGELOG.md, at the root only — a sub-project
+    # gets none.
+    write_changelog()
 
     # §S3.2 docs model; CR-MDB-048 §S2: no queue README — the Crucible
     # board holds the queue, docs/changes/ the specs.
