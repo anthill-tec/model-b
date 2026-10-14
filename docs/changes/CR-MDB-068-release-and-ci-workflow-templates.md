@@ -196,9 +196,11 @@ Beside `modelb-axi agents` (its own parser and `main` dispatch in `cli.py`):
   - `tests/test_project_registry_schema.py` — `SCHEMA_KEYS`, `ASK_FLAGS`, the emitted file set, the `.env`
     goldens (`RELEASE_TARGETS=`), `_reference_other_files`;
   - `tests/test_installer_assets.py`, the asset-slot gates — the new root;
-  - `GATE_ROOTS` (registry-key and real-project-name gates) gains `workflows-src/`, with `GITHUB_*`,
-    `RUNNER_TEMP`, `TAG`, `GH_TOKEN`, `NODE_AUTH_TOKEN` added to `NOT_REGISTRY_KEYS`; the harness-neutral
-    surfaces and `GATED_TREES` include it or name why not;
+  - `GATE_ROOTS` (registry-key and real-project-name gates) gains `workflows-src/`, with the `$NAME`
+    runtime variables `workflows-src` actually uses (`GITHUB_*`, `RUNNER_TEMP`, `TAG`) added to
+    `NOT_REGISTRY_KEYS` — not `GH_TOKEN` or `NODE_AUTH_TOKEN`, which appear only as YAML `env:` keys the
+    detector never matches, and which its stale-name guard would refuse; the harness-neutral surfaces and
+    `GATED_TREES` include it or name why not;
   - `tests/test_install_guide.py` — the snippet gates, `### Rehearsal and CI`'s table;
   - the `AGENTS.md` baselines and module counts.
 
