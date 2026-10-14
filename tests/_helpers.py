@@ -657,7 +657,8 @@ def changelog_form_faults(text: str) -> list[str]:
 
 # ------------------------------------------------------------------ GitHub workflow text ----
 # A release workflow is read as TEXT, stdlib only (no YAML parser): CR-MDB-058 §S2 reads
-# `create-release`, §S4 reads `publish-npm`. These readers understand the block layout the
+# `create-release`, §S4 reads `publish-npm`; CR-MDB-067 §S2 reads `rehearse`, the job keys and the
+# `on.push` triggers. These readers understand the block layout the
 # repository's `.github/workflows/release.yml` uses — two-space jobs under `jobs:`, a `steps:`
 # list of `- ` items, `run:` inline or as a `|` block — and nothing more.
 
@@ -698,14 +699,62 @@ def workflow_job_working_directory(job: list[str]) -> str | None:
     return None
 
 
+def _strip_comment(value: str) -> str:
+    """A YAML scalar without its trailing `` # comment``: a quoted scalar ends at its closing
+    quote, a plain one at the first ``#`` that follows whitespace (CR-MDB-067 §S6)."""
+    value = value.strip()
+    if value.startswith("#"):
+        return ""
+    if value[:1] in ("'", '"'):
+        close = value.find(value[0], 1)
+        if close != -1:
+            return value[:close + 1]
+        return value
+    return re.split(r"\s+#", value, maxsplit=1)[0].rstrip()
+
+
+def _scalar(value: str) -> str:
+    """A one-line YAML scalar's value: its comment stripped, then its quotes."""
+    return _unquote(_strip_comment(value))
+
+
+def _nested_lines(lines: list[str], start: int, indent: int) -> list[str]:
+    """The lines from ``start`` that sit deeper than ``indent`` (blank lines kept), up to the
+    first non-blank line at ``indent`` or shallower."""
+    out = []
+    for line in lines[start:]:
+        if line.strip() and _indent_of(line) <= indent:
+            break
+        out.append(line)
+    return out
+
+
+def _scalar_mapping(lines: list[str]) -> dict:
+    """The ``key: scalar`` pairs at the shallowest indent of ``lines`` (comments skipped)."""
+    keyed = [line for line in lines if line.strip() and not line.strip().startswith("#")]
+    if not keyed:
+        return {}
+    indent = min(_indent_of(line) for line in keyed)
+    out = {}
+    for line in keyed:
+        if _indent_of(line) != indent:
+            continue
+        match = re.match(r"\s*([\w.-]+):(?:\s+(.*?))?\s*$", line)
+        if match:
+            out[match.group(1)] = _scalar(match.group(2) or "")
+    return out
+
+
 def _workflow_step(item: list[str]) -> dict:
-    """One ``- `` step item as ``{"name", "run", "working-directory"}``; ``run`` is the list of
-    its command lines, dedented (``[]`` for a ``uses:`` step)."""
+    """One ``- `` step item as ``{"name", "run", "working-directory", "uses", "with"}``; ``run``
+    is the list of its command lines, dedented (``[]`` for a ``uses:`` step); ``uses`` is the
+    action reference without its trailing comment (``None`` for a ``run`` step); ``with`` is the
+    step's ``with:`` scalars as a dict (``{}`` when it has none) — CR-MDB-067 §S6."""
     first = item[0]
     at = _indent_of(first)
     lines = [first[:at] + "  " + first[at + 2:], *item[1:]]
     key_indent = at + 2
-    step = {"name": None, "run": [], "working-directory": None}
+    step = {"name": None, "run": [], "working-directory": None, "uses": None, "with": {}}
     i = 0
     while i < len(lines):
         line = lines[i]
@@ -716,7 +765,13 @@ def _workflow_step(item: list[str]) -> dict:
         if match is None:
             continue
         key, value = match.groups()
-        if key == "run" and value in ("|", "|-"):
+        if key == "with" and not _strip_comment(value):
+            body = _nested_lines(lines, i, key_indent)
+            i += len(body)
+            step["with"] = _scalar_mapping(body)
+        elif key == "uses":
+            step["uses"] = _scalar(value)
+        elif key == "run" and value in ("|", "|-"):
             body = []
             while i < len(lines) and (not lines[i].strip() or _indent_of(lines[i]) > key_indent):
                 body.append(lines[i])
@@ -746,6 +801,105 @@ def workflow_steps(job: list[str]) -> list[dict]:
         elif items:
             items[-1].append(line)
     return [_workflow_step(item) for item in items]
+
+
+def workflow_job_key(job: list[str], key: str) -> str | None:
+    """A job-level scalar key of ``job`` (``if``, ``runs-on``, ``environment`` …), read at the
+    job's own key indent only, never a step's (CR-MDB-067 §S6). A plain scalar's continuation
+    lines and a ``>``/``>-`` block fold into one space-joined line, a ``|``/``|-`` block keeps
+    its newlines; the comment and the quotes go. ``""`` for a key whose value is a nested block
+    (``defaults:``), ``None`` when the job declares no such key."""
+    base = _indent_of(job[0]) + 2
+    for i, line in enumerate(job[1:], start=1):
+        if not line.strip() or _indent_of(line) != base:
+            continue
+        match = re.match(r"\s*([\w-]+):(?:\s+(.*?))?\s*$", line)
+        if match is None or match.group(1) != key:
+            continue
+        value = _strip_comment(match.group(2) or "")
+        body = [ln.strip() for ln in _nested_lines(job, i + 1, base)]
+        if value in ("|", "|-"):
+            return "\n".join(ln for ln in body if ln)
+        if value in (">", ">-"):
+            return " ".join(ln for ln in body if ln)
+        if not value:
+            return ""
+        return _unquote(" ".join([value, *(ln for ln in body if ln and not ln.startswith("#"))]))
+    return None
+
+
+def workflow_job_permissions(job: list[str]) -> dict | str | None:
+    """The job's ``permissions:`` — a dict of scope to access for the mapping form, the string
+    for the scalar form (``read-all``), ``None`` when the job declares none (CR-MDB-067 §S6)."""
+    base = _indent_of(job[0]) + 2
+    for i, line in enumerate(job[1:], start=1):
+        if not line.strip() or _indent_of(line) != base:
+            continue
+        match = re.match(r"\s*permissions:(?:\s+(.*?))?\s*$", line)
+        if match is None:
+            continue
+        value = _scalar(match.group(1) or "")
+        if value:
+            return value
+        return _scalar_mapping(_nested_lines(job, i + 1, base))
+    return None
+
+
+def _flow_or_block_list(inline: str, nested: list[str]) -> list[str]:
+    """A YAML sequence given inline as ``[a, "b"]`` (or one scalar), else as ``- `` lines."""
+    inline = _strip_comment(inline)
+    if inline.startswith("[") and inline.endswith("]"):
+        return [_unquote(part) for part in inline[1:-1].split(",") if part.strip()]
+    if inline:
+        return [_unquote(inline)]
+    return [_scalar(line.strip()[2:]) for line in nested if line.strip().startswith("- ")]
+
+
+def workflow_push_triggers(text: str) -> dict:
+    """The workflow's ``on:`` as ``{"tags", "branches", "pull_request", "workflow_dispatch"}``:
+    the ``on.push`` tag and branch patterns (lists, ``[]`` when absent), and whether the
+    ``pull_request`` and ``workflow_dispatch`` events are present (CR-MDB-067 §S6). Reads the
+    block form and the flow form ``on: [push, …]``; a workflow with no ``on:`` raises."""
+    lines = text.splitlines()
+    start = next((i for i, line in enumerate(lines)
+                  if re.match(r"""(?:on|"on"|'on'):(?:\s|$)""", line)), None)
+    if start is None:
+        raise AssertionError("the workflow has no top-level on: key")
+    out = {"tags": [], "branches": [], "pull_request": False, "workflow_dispatch": False}
+    inline = _strip_comment(lines[start].split(":", 1)[1])
+    if inline:
+        events = _flow_or_block_list(inline, [])
+        out["pull_request"] = "pull_request" in events
+        out["workflow_dispatch"] = "workflow_dispatch" in events
+        return out
+    block = _nested_lines(lines, start + 1, 0)
+    keyed = [line for line in block if line.strip() and not line.strip().startswith("#")]
+    if not keyed:
+        return out
+    event_indent = min(_indent_of(line) for line in keyed)
+    for i, line in enumerate(block):
+        if not line.strip() or _indent_of(line) != event_indent:
+            continue
+        match = re.match(r"\s*([\w-]+):", line)
+        if match is None:
+            continue
+        event = match.group(1)
+        if event in ("pull_request", "workflow_dispatch"):
+            out[event] = True
+        if event != "push":
+            continue
+        filters = _nested_lines(block, i + 1, event_indent)
+        keyed_filters = [ln for ln in filters if ln.strip() and not ln.strip().startswith("#")]
+        if not keyed_filters:
+            continue
+        filter_indent = min(_indent_of(ln) for ln in keyed_filters)
+        for j, inner in enumerate(filters):
+            found = re.match(r"(\s*)(tags|branches):(.*)$", inner)
+            if found is None or _indent_of(inner) != filter_indent:
+                continue
+            out[found.group(2)] = _flow_or_block_list(
+                found.group(3), _nested_lines(filters, j + 1, filter_indent))
+    return out
 
 
 def _find_pi_package_root(pi_binary_resolved: Path) -> Path | None:
