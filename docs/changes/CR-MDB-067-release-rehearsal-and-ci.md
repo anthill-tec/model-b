@@ -1,6 +1,6 @@
 # CR-MDB-067 — The release rehearsal on every release or hotfix push, and CI tests on develop
 
-**Status:** PENDING — spec (gap analysis and pre-review 2026-10-14).
+**Status:** COMPLETED (filed 2026-10-14; gap analysis and pre-review 2026-10-14)
 **Type:** feature (CI workflows, release workflow, git-workflow skill)
 **Priority:** P1 — release 1.0.0, wave 2; lands before 1.0.0's release starts.
 **Depends on:** CR-MDB-058 (board-authoritative: read `queue`)
