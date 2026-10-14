@@ -74,7 +74,8 @@ the trusted-publisher configurations exactly.
 - **`anthill-tec/model-b` becomes public** under the MIT license (CR-MDB-038), so `--provenance` and
   environment reviewers are available.
 - **Maintainer's one-time setup** (none of it is automatable from here): the `RELEASE_PAT` secret;
-  environments `pypi`, `testpypi`, `npm` (add required reviewers once public); pending Trusted
+  environments `pypi`, `testpypi`, `npm` (add required reviewers to `pypi` and `npm` once public;
+  `testpypi` carries none); pending Trusted
   Publishers on pypi.org and test.pypi.org (owner `anthill-tec`, repository `model-b`, workflow
   `release.yml`); `NPM_TOKEN` for the first npm publish, then the npm trusted publisher, then delete
   `NPM_TOKEN`.

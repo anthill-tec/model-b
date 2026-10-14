@@ -220,8 +220,9 @@ After building: switch back to develop for continued work. Bump develop to the n
 
 1. **Build** — on the release branch, set the version in its single source (the one place the
    package reads it from), commit, then build the sdist and wheel with `uv build`.
-2. **Rehearse on TestPyPI** — each release-branch push uploads the stamped dev version to
-   TestPyPI through Trusted Publishing, before anything reaches the real index.
+2. **Rehearse on TestPyPI** — each release-branch push (and each hotfix-branch push) uploads the
+   stamped dev version to TestPyPI through Trusted Publishing, before anything reaches the real
+   index.
 3. **Publish to PyPI** — after `git flow release finish`, the tag's release job builds from the
    tagged commit and uploads to PyPI through Trusted Publishing, with no token anywhere.
 4. **Post-release maintenance** — on the maintainer's machine: install the released version from
