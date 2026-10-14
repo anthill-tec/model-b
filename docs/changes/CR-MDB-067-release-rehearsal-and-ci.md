@@ -21,8 +21,10 @@ per push.
 
 1. **Every push to `release/**` or `hotfix/**` is the rehearsal.** In CI's own checkout, the version is
    stamped from the branch name and the run: `X.Y.Z.devN` into `__version__` and `X.Y.Z-dev.N` into
-   `pi-package/package.json`. The rehearsal uploads to TestPyPI and runs `npm publish --dry-run`. A
-   manual dispatch only re-runs one. A tag still builds exactly `X.Y.Z`, and the repository's version
+   `pi-package/package.json`. The rehearsal uploads to TestPyPI and, after copying the root
+   `CHANGELOG.md` into `pi-package/` exactly as `publish-npm` does (CR-MDB-058 §S4), runs
+   `npm publish --dry-run`; npm does not fail on a missing `files` entry, so without the copy the dry
+   run proves nothing about the changelog shipping. A manual dispatch only re-runs one. A tag still builds exactly `X.Y.Z`, and the repository's version
    source is unchanged.
 2. **The rehearsal also proves the release body:** it extracts the branch version's `CHANGELOG.md`
    section the way `create-release` will (CR-MDB-058), and fails on a missing or empty one.
