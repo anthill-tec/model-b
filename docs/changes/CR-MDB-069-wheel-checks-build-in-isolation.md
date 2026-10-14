@@ -1,6 +1,6 @@
 # CR-MDB-069 — The built-wheel checks build in isolation, so CI needs no `build` frontend
 
-**Status:** PENDING — spec (gap analysis and pre-review 2026-10-14).
+**Status:** COMPLETED (filed 2026-10-14; gap analysis and pre-review 2026-10-14)
 **Type:** fix (tests, CI workflow, `AGENTS.md`)
 **Priority:** P1 — release 1.0.0, wave 2; next after CR-MDB-067.
 **Depends on:** CR-MDB-067 (board-authoritative: read `queue`)
