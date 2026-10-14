@@ -1,11 +1,12 @@
-"""The CI test workflow, ``.github/workflows/ci.yml`` (CR-MDB-067 §S3, and §S6's readers).
+"""The CI test workflow, ``.github/workflows/ci.yml`` (CR-MDB-067 §S3 as amended by CR-MDB-069
+§S2, and CR-MDB-067 §S6's readers).
 
 Contract: ``docs/changes/CR-MDB-067-release-rehearsal-and-ci.md`` §S3: ``name: ci``, workflow
 ``permissions: contents: read``, one job ``test`` on ``ubuntu-latest``, pushes to ``develop``,
-``release/**`` and ``hotfix/**`` plus ``pull_request`` and ``workflow_dispatch``, and five steps in
+``release/**`` and ``hotfix/**`` plus ``pull_request`` and ``workflow_dispatch``, and four steps in
 order — checkout with ``fetch-depth: 0``, ``actions/setup-python`` with ``python-version: "3.14"``,
-``setup-uv``, ``python -m pip install build``, and the suite run directly with the three sandbox
-variables under ``${{ runner.temp }}`` — every action pinned as §S2 pins them.
+``setup-uv``, and the suite run directly with the three sandbox variables under
+``${{ runner.temp }}`` — every action pinned as §S2 pins them.
 
 Each §S3 item is one check, a pure function of the workflow text returning its faults (``[]``
 when the item holds). The checks are proved on sample text in both directions before they are
@@ -18,6 +19,15 @@ applied to the real file:
   mutation in :data:`MUTATIONS` makes its check report exactly one fault.
 - ``CiWorkflowTest`` — every check applied to the real ``ci.yml``.
 
+CR-MDB-069 §S2 amends CR-MDB-067 §S3: the ``python -m pip install build`` step (once step 4)
+is gone, because every built-wheel check builds in isolation through ``uv build``. MIGRATED at
+CR-MDB-069 C1 RED (§S2): ``STEP_ORDER`` lists four steps; ``build_faults`` is inverted, a fault
+for every step whose run line holds ``install`` and a whole-word ``build`` or ``hatchling`` (so
+``uv build`` never matches); :data:`CONFORMING_CI` loses the step; the "bare pip" mutation is
+replaced by a re-added ``python -m pip install build`` step and a ``pip install hatchling`` step;
+``test_the_four_steps_run_in_order`` and ``test_no_build_frontend_or_backend_is_installed``
+replace the five-step and build-frontend tests.
+
 Stdlib only.
 """
 
@@ -26,6 +36,7 @@ import unittest
 from pathlib import Path
 
 from tests._helpers import (
+    md_section,
     workflow_job,
     workflow_job_key,
     workflow_job_names,
@@ -39,19 +50,23 @@ from tests.test_release_rehearsal import action_pin_faults
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CI_REL = ".github/workflows/ci.yml"
 CI_YML = REPO_ROOT / ".github" / "workflows" / "ci.yml"
+CR_067 = REPO_ROOT / "docs" / "changes" / "CR-MDB-067-release-rehearsal-and-ci.md"
 
 #: §S3's values.
 CI_BRANCHES = ("develop", "release/**", "hotfix/**")
 CHECKOUT = "actions/checkout"
 SETUP_PYTHON = "actions/setup-python"
 SETUP_UV = "astral-sh/setup-uv"
+#: MIGRATED at CR-MDB-069 C1 RED (§S2): the step CR-MDB-069 §S2 retired; a mutation re-adds it.
 BUILD_LINE = "python -m pip install build"
 SUITE_LINE = "python -m unittest discover -s tests -t ."
 SANDBOX_VARS = ("MODELB_HOME", "XDG_DATA_HOME", "PI_CODING_AGENT_DIR")
-STEP_ORDER = [CHECKOUT, SETUP_PYTHON, SETUP_UV, BUILD_LINE, SUITE_LINE]
+# MIGRATED at CR-MDB-069 C1 RED (§S2): was five steps, with BUILD_LINE fourth.
+STEP_ORDER = [CHECKOUT, SETUP_PYTHON, SETUP_UV, SUITE_LINE]
 
 _UNDER_RUNNER_TEMP = re.compile(r"\$\{\{\s*runner\.temp\s*\}\}/\S+")
 _QUOTED_PYTHON_VERSION = re.compile(r"""\s*python-version:\s*(["'])3\.14\1\s*(?:#.*)?""")
+_BUILD_TOOL = re.compile(r"\b(?:build|hatchling)\b")
 
 
 # ------------------------------------------------------------------ the checks ----
@@ -112,7 +127,7 @@ def job_faults(text: str) -> list[str]:
 
 
 def step_order_faults(text: str) -> list[str]:
-    """§S3 — the five steps, in order, and nothing else."""
+    """§S3 as amended by CR-MDB-069 §S2 — the four steps, in order, and nothing else."""
     found = [_action(step) or " / ".join(ln.strip() for ln in step["run"])
              for step in _test_steps(text)]
     return [] if found == STEP_ORDER else [f"the steps are {found!r}, not {STEP_ORDER!r}"]
@@ -147,9 +162,17 @@ def uv_faults(text: str) -> list[str]:
 
 
 def build_faults(text: str) -> list[str]:
-    """§S3 step 4 — one step running exactly ``python -m pip install build``."""
-    count = len(_steps_running(text, BUILD_LINE))
-    return [] if count == 1 else [f"expected one step running {BUILD_LINE!r}; found {count}"]
+    """CR-MDB-069 §S2 — no step installs a build frontend or backend: one fault for every step
+    whose run line holds ``install`` and a whole-word ``build`` or ``hatchling`` (``uv build``
+    installs nothing, so it never matches).
+
+    MIGRATED at CR-MDB-069 C1 RED (§S2): was one step running exactly ``python -m pip install build``."""
+    faults = []
+    for step in _test_steps(text):
+        lines = [ln.strip() for ln in step["run"] if "install" in ln and _BUILD_TOOL.search(ln)]
+        if lines:
+            faults.append(f"a step installs a build frontend or backend: {lines[0]!r}")
+    return faults
 
 
 def suite_faults(text: str) -> list[str]:
@@ -228,8 +251,6 @@ jobs:
         with:
           python-version: "3.14"
       - uses: astral-sh/setup-uv@PIN # v7.1.0
-      - name: The build frontend, for the built-wheel checks
-        run: python -m pip install build
       - name: The suite
         env:
           MODELB_HOME: ${{ runner.temp }}/modelb-home
@@ -267,7 +288,12 @@ MUTATIONS = (
     ("Python 3.13", 'python-version: "3.14"', 'python-version: "3.13"', "python"),
     ("an unquoted version", 'python-version: "3.14"', "python-version: 3.14", "python"),
     ("another uv action", "astral-sh/setup-uv@", "yezz123/setup-uv@", "uv"),
-    ("bare pip", "run: python -m pip install build", "run: pip install build", "build"),
+    # MIGRATED at CR-MDB-069 C1 RED (§S2): was "bare pip" (the step's pip spelled bare).
+    ("a re-added python -m pip install build step", "      - name: The suite\n",
+     "      - name: The build frontend\n        run: " + BUILD_LINE + "\n      - name: The suite\n",
+     "build"),
+    ("a pip install hatchling step", "      - name: The suite\n",
+     "      - run: pip install hatchling\n      - name: The suite\n", "build"),
     ("another top level", "discover -s tests -t .", "discover -s tests -t tests", "suite"),
     ("python3", "run: python -m unittest", "run: python3 -m unittest", "suite"),
     ("a working directory", "      - name: The suite\n",
@@ -418,6 +444,31 @@ class CiWorkflowChecksProofTest(unittest.TestCase):
     def test_the_suite_command_is_read_from_the_workflow_text(self):
         self.assertEqual(_steps_running(CONFORMING_CI, SUITE_LINE)[0]["run"], [SUITE_LINE])
 
+    def test_build_faults_never_match_uv_build_or_an_unrelated_install(self):
+        # CR-MDB-069 §S2: `uv build` installs nothing; installing a test dependency is no build tool.
+        text = CONFORMING_CI.replace(
+            "      - name: The suite\n",
+            "      - run: uv build --wheel\n"
+            "      - run: python -m pip install unittest-xml-reporting\n"
+            "      - run: echo build\n"
+            "      - name: The suite\n")
+        self.assertEqual(build_faults(text), [])
+
+    def test_build_faults_report_every_installing_step_once(self):
+        # CR-MDB-069 §S2: one fault per step, including a line inside a `run: |` block.
+        text = CONFORMING_CI.replace(
+            "      - name: The suite\n",
+            "      - run: uv pip install build hatchling\n"
+            "      - run: |\n"
+            "          uv sync\n"
+            "          python -m pip install --upgrade hatchling\n"
+            "      - name: The suite\n")
+        self.assertEqual(build_faults(text), [
+            "a step installs a build frontend or backend: 'uv pip install build hatchling'",
+            "a step installs a build frontend or backend: "
+            "'python -m pip install --upgrade hatchling'",
+        ])
+
 
 # ------------------------------------------------------------------ §S3 the real file ----
 
@@ -442,7 +493,8 @@ class CiWorkflowTest(unittest.TestCase):
     def test_its_one_job_test_runs_on_ubuntu_latest(self):
         self.assertEqual(job_faults(_ci_text()), [])
 
-    def test_the_five_steps_run_in_order(self):
+    # MIGRATED at CR-MDB-069 C1 RED (§S2): was test_the_five_steps_run_in_order.
+    def test_the_four_steps_run_in_order(self):
         self.assertEqual(step_order_faults(_ci_text()), [])
 
     def test_the_checkout_fetches_the_whole_history(self):
@@ -454,7 +506,8 @@ class CiWorkflowTest(unittest.TestCase):
     def test_uv_is_set_up(self):
         self.assertEqual(uv_faults(_ci_text()), [])
 
-    def test_the_build_frontend_is_installed(self):
+    # MIGRATED at CR-MDB-069 C1 RED (§S2): was test_the_build_frontend_is_installed.
+    def test_no_build_frontend_or_backend_is_installed(self):
         self.assertEqual(build_faults(_ci_text()), [])
 
     def test_the_suite_runs_directly_with_unittest_discover(self):
@@ -465,6 +518,16 @@ class CiWorkflowTest(unittest.TestCase):
 
     def test_every_action_is_pinned_to_a_sha_with_a_version_comment(self):
         self.assertEqual(pin_faults(_ci_text()), [])
+
+
+class CiWorkflowAmendmentNoteTest(unittest.TestCase):
+    """CR-MDB-069 §S4 — CR-MDB-067's §S3 carries the dated line retiring its step 4."""
+
+    def test_cr_mdb_067_s3_records_step_4_retired_by_cr_mdb_069(self):
+        section = md_section(CR_067.read_text(encoding="utf-8"), "### §S3", stop_prefix="#")
+        self.assertIn("python -m pip install build", section)
+        self.assertIn("retired by CR-MDB-069 §S2, 2026-10-14", section,
+                      "CR-MDB-069 §S4: CR-MDB-067 §S3 step 4 carries no dated retirement line")
 
 
 if __name__ == "__main__":

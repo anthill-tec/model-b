@@ -32,7 +32,6 @@ import argparse
 import contextlib
 import datetime
 import http.server
-import importlib.util
 import inspect
 import io
 import json
@@ -57,6 +56,9 @@ from modelb_axi import scaffold
 from modelb_axi.hooks import compile_wiring
 from tests._helpers import at_line, decode_axi, installed_crucible_file, md_section, parse_env_file
 from tests._helpers import run_module, write_install_toml
+
+# MIGRATED at CR-MDB-069 C1 RED (§S1): the shared isolated wheel build.
+from tests.test_package_publishing import build_wheel
 # The sibling grep gate's provenance exemption (imported as a module so its
 # TestCase classes are not re-collected here).
 from tests import test_crucible_skill as _crucible_skill_gates
@@ -656,28 +658,17 @@ class ProjectSchemaWheelTest(unittest.TestCase):
 
     def test_built_wheel_ships_the_schema_with_the_registry_keys(self):
         # MIGRATED PIN (CR-MDB-045 C2 RED): was ..._with_the_eight_keys.
-        if importlib.util.find_spec("build") is None:
-            self.skipTest(
-                "the `build` frontend is unavailable, so no genuine wheel can be "
-                "produced; the source tree is not an acceptable substitute"
-            )
+        # MIGRATED at CR-MDB-069 C1 RED (§S1): was a skip when the `build` frontend was
+        # absent and a build without isolation in this interpreter. It builds through the
+        # shared isolated `build_wheel` (`uv build`), which fails, guarded, on a failed build,
+        # on more or fewer than one wheel, or when `uv` is absent; it never skips.
         with tempfile.TemporaryDirectory(prefix="r43-wheel-") as outdir:
-            result = subprocess.run(
-                [sys.executable, "-m", "build", "--wheel", "--no-isolation",
-                 "--outdir", outdir, str(REPO_ROOT)],
-                capture_output=True, text=True, timeout=600,
-            )
-            self.assertEqual(
-                0, result.returncode,
-                f"the wheel build failed: {(result.stderr or result.stdout).strip()[-600:]}",
-            )
-            wheels = sorted(Path(outdir).glob("*.whl"))
-            self.assertEqual(1, len(wheels), f"got {[w.name for w in wheels]}")
-            with zipfile.ZipFile(wheels[0]) as archive:
+            wheel = build_wheel(REPO_ROOT, Path(outdir))
+            with zipfile.ZipFile(wheel) as archive:
                 members = set(archive.namelist())
                 self.assertIn(
                     SCHEMA_WHEEL_MEMBER, members,
-                    f"§S1/AC: the built wheel {wheels[0].name} must ship the schema",
+                    f"§S1/AC: the built wheel {wheel.name} must ship the schema",
                 )
                 shipped = tomllib.loads(archive.read(SCHEMA_WHEEL_MEMBER).decode("utf-8"))
         tables = [v for v in shipped.values() if isinstance(v, list)]

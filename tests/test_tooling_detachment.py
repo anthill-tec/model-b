@@ -108,12 +108,13 @@ OUT-OF-PROCESS oracle: its `_gate_lock_path` source segment is extracted by
 installed clients is ever imported into this process and no file of theirs is
 modified.
 
-Stdlib only: ast, importlib.util, os, re, shutil, subprocess, sys, tempfile,
-unittest, zipfile, pathlib.
+Stdlib only: ast, os, re, shutil, subprocess, sys, tempfile, unittest,
+zipfile, pathlib. (MIGRATED at CR-MDB-069 C1 RED (§S1): importlib.util left
+with the find_spec skip; the built-wheel check imports `build_wheel` from
+`tests.test_package_publishing`.)
 """
 
 import ast
-import importlib.util
 import os
 import re
 import shutil
@@ -128,6 +129,9 @@ from modelb_axi import deploy
 from tests._helpers import installed_crucible_file
 from tests._helpers import read_text_lenient as _read
 from tests._helpers import rel_to_repo as _rel
+
+# MIGRATED at CR-MDB-069 C1 RED (§S1): the shared isolated wheel build.
+from tests.test_package_publishing import build_wheel
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS_DIR = REPO_ROOT / "scripts"
@@ -1103,29 +1107,13 @@ class AssetSlotGatesS7Test(unittest.TestCase):
         """STANDING GUARD against CR-MDB-014's VERIFY defect class: assets
         absent from the wheel while dev-mode tests pass. Asserted against a
         genuinely BUILT artifact, never the source tree."""
-        if importlib.util.find_spec("build") is None:
-            self.skipTest(
-                "the `build` frontend is unavailable, so no genuine wheel can "
-                "be produced; the source tree is NOT an acceptable substitute "
-                "for this AC (CR-MDB-014's VERIFY caught exactly that)"
-            )
-        outdir = self.sandbox / "dist"
-        result = _run(
-            [sys.executable, "-m", "build", "--wheel", "--no-isolation",
-             "--outdir", str(outdir), str(REPO_ROOT)],
-        )
-        self.assertEqual(
-            0, result.returncode,
-            f"§S7/AC2: the wheel build failed: "
-            f"{(result.stderr or result.stdout).strip()[-600:]}",
-        )
-        wheels = sorted(outdir.glob("*.whl"))
-        self.assertEqual(
-            1, len(wheels),
-            f"§S7/AC2: expected exactly one built wheel, got "
-            f"{[w.name for w in wheels]}",
-        )
-        with zipfile.ZipFile(wheels[0]) as archive:
+        # MIGRATED at CR-MDB-069 C1 RED (§S1): was a skip when the `build`
+        # frontend was absent and a build without isolation in this
+        # interpreter. It builds through the shared isolated `build_wheel`
+        # (`uv build`), which fails, guarded, on a failed build, on more or
+        # fewer than one wheel, or when `uv` is absent; it never skips.
+        wheel = build_wheel(REPO_ROOT, self.sandbox / "dist")
+        with zipfile.ZipFile(wheel) as archive:
             members = set(archive.namelist())
         missing = [
             name for name in TOOL_SCRIPT_NAMES
@@ -1133,7 +1121,7 @@ class AssetSlotGatesS7Test(unittest.TestCase):
         ]
         self.assertEqual(
             [], missing,
-            f"§S7/AC2: the built wheel {wheels[0].name} must carry all eight "
+            f"§S7/AC2: the built wheel {wheel.name} must carry all eight "
             f"tool scripts under {WHEEL_ASSET_PREFIX}; missing {missing}. "
             f"Present there: "
             f"{sorted(m for m in members if m.startswith(WHEEL_ASSET_PREFIX))}",
