@@ -5,7 +5,10 @@ Usage: ``python3 .github/scripts/changelog_section.py <changelog> <tag>``
 Prints the body of the section whose heading's bracketed label equals ``<tag>`` exactly: the lines
 after that heading, up to the next ``## `` heading, the first ``[label]: url`` compare link, or the
 end of the file, trimmed. Exits 1, naming the tag on stderr, when no section has that label or the
-body holds nothing but whitespace and ``###`` headings.
+body holds nothing but whitespace and ``###`` headings — a ``###`` heading being a line that starts
+with ``###`` followed by whitespace or the end of the line, so a bare ``###`` is one and a
+``#### …`` line is content. Exits 1, naming the changelog's path and the tag on stderr, when the
+changelog cannot be read.
 
 The release workflow's ``create-release`` job writes this body to a file and passes it to
 ``gh release create --notes-file``. Repo-only: never in the wheel or the sdist. Stdlib only, and no
@@ -18,6 +21,7 @@ from pathlib import Path
 
 _HEADING = re.compile(r"## \[([^\]]+)\]")
 _COMPARE_LINK = re.compile(r"\[[^\]]+\]: ")
+_GROUP_HEADING = re.compile(r"###(\s|$)")
 
 
 def section_body(text: str, tag: str) -> str | None:
@@ -40,14 +44,18 @@ def section_body(text: str, tag: str) -> str | None:
 
 
 def _is_empty(body: str) -> bool:
-    return all(not line.strip() or line.startswith("### ") for line in body.splitlines())
+    return all(not line.strip() or _GROUP_HEADING.match(line) for line in body.splitlines())
 
 
 def main(argv: list[str]) -> int:
     if len(argv) != 3:
         sys.exit("usage: changelog_section.py <changelog> <tag>")
     changelog, tag = Path(argv[1]), argv[2]
-    body = section_body(changelog.read_text(encoding="utf-8"), tag)
+    try:
+        text = changelog.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as error:
+        sys.exit(f"{changelog}: cannot read the changelog for tag {tag}: {error}")
+    body = section_body(text, tag)
     if body is None:
         sys.exit(f"{changelog}: no section for tag {tag}")
     if _is_empty(body):
