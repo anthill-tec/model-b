@@ -4,8 +4,8 @@
 The design is discussed with the user at this CR's gap analysis; the spec is written then.
 **Type:** feature (CLI, scaffold)
 **Priority:** P2 — release 1.1.0, wave 3.
-**Depends on:** CR-MDB-050 (both change `init`'s handling of an existing target; board-authoritative:
-read `queue`, not this line)
+**Depends on:** CR-MDB-050 (both change `init`'s handling of an existing target) and CR-MDB-068 (the
+release workflow templates); board-authoritative: read `queue`, not this line
 **Labels:** cli, scaffold, migration, schema
 **Design reference:** PRD D9/D10 (D10 amended 2026-10-03); `DN-scaffold-packaging.md` §10;
 CR-MDB-043 (schema-driven registry); CR-MDB-041, CR-MDB-045, CR-MDB-047, CR-MDB-048
@@ -35,7 +35,11 @@ A `migrate` verb that brings an existing project up to what `init` would have pr
    `docs/memory/` or the knowledge store, README queue rows to file on the board (never `queue-file`),
    Claude-era hook wiring to retire. Model B never writes `~/.claude`.
 5. **Dogfood:** Model B is the first project migrated; its hand-made additions are the acceptance check.
-6. **The skills' older-project paths point at `migrate`.** The by-hand steps the skills describe for a
+6. **Release files, so every Model B project releases the same way:** the `CHANGELOG.md` skeleton
+   (CR-MDB-058) where none exists, and `.github/workflows/release.yml` rendered from the project's
+   stacks by CR-MDB-068's templates, under the same ownership rules as `init`. A project with its own
+   release or CI workflow keeps it; `migrate` reports it beside what the template would render.
+7. **The skills' older-project paths point at `migrate`.** The by-hand steps the skills describe for a
    project scaffolded before a feature existed (bootstrap Step 1's `SANDESH_ADDRESS`/`.envrc`, which today
    warns that re-running `init` overwrites the project; orchestration-common's older-project notes) name
    `migrate` instead.
@@ -46,4 +50,5 @@ and shape flags, only for values the project does not record, and `init`'s `--dr
 overrides it, for `init`, `migrate` and `agents` alike (aligning all three is in this CR's scope).
 
 Open design questions for the gap analysis: how a hand-written `AGENTS.md` takes rendered sections
-(markers or a managed region); the monorepo shape.
+(markers or a managed region); the monorepo shape; how a project's existing release or CI workflow
+is brought to the template (reported only, replaced on confirmation, or adopted as hand-edited).

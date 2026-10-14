@@ -43,7 +43,9 @@ checks that a project is set up for a release or hotfix run.
    Multi-stack and monorepo shapes get one workflow with a test job per stack, not one workflow per
    stack.
 2. **Ownership.** Rendered workflow files are tracked by hash like `init`'s other emitted files: a
-   re-run rewrites an unchanged file, leaves a hand-edited one alone and reports it.
+   re-run rewrites an unchanged file, leaves a hand-edited one alone and reports it. The renderer is
+   one function `init` calls and `migrate` (CR-MDB-055) calls for an existing project, so every Model B
+   project gets the same workflow.
 3. **Model B renders its own workflows** from the `python` and `bun` templates, replacing the
    hand-written `release.yml`.
 4. **A release-readiness check** reports, read-only, what a project lacks for a release or hotfix
