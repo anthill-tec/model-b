@@ -91,6 +91,39 @@ the trusted-publisher configurations exactly.
 - [ ] After the first publish: the npm trusted publisher (`model-b`, `release.yml`, environment
       `npm`), "require 2FA and disallow tokens", then delete `NPM_TOKEN` from npm and the repository
 
+## What Model B adopted (2026-10-14, user rulings at CR-MDB-058's gap analysis)
+
+Crucible #1433 §A (release notes as a release task; every release-branch push is the rehearsal),
+adopted for 1.0.0 and split by the 13-point cap:
+
+- **Release notes (CR-MDB-058).** `CHANGELOG.md` at the repository root, in Keep a Changelog 1.1.0
+  form, written on the release branch before `finish`. The tag's section is the GitHub Release body
+  (`gh release create --notes-file`, replacing `--generate-notes`). PyPI links it through
+  `[project.urls]` `Changelog` and `Release Notes`; the npm package ships it through `package.json`
+  `files`. The repository is public, so the earlier "no project URL while the repository is private"
+  rule no longer holds.
+- **Templates (CR-MDB-058).** `init` writes a `CHANGELOG.md` skeleton for every project. The
+  `git-workflow` skill's release flow carries the release step, the release-job snippet and each
+  stack's packaging entries; no workflow file is written into a project.
+- **Install text in the release notes is retired.** Release notes link to the install guide instead
+  of copying its marked regions; the regions still feed the generated package README, and PyPI shows
+  the whole guide. The documentation-review step stays.
+- **The version stays a fixed `__version__`.** hatch-vcs was measured and declined: it is a
+  Python-only mechanism, `release-branch-semver` numbers a rehearsal on `release/1.0.0` as
+  `0.1.0.devN` (no tags) or `0.10.0.devN` (it treats a branch as a release branch only when it matches
+  the last tag's major.minor), its `+g<sha>` local part is refused by PyPI and TestPyPI, and a
+  shallow CI clone versions wrongly. The stack-neutral rule is: a tag `X.Y.Z` builds exactly
+  `X.Y.Z`; a push to `release/X.Y.Z` or `hotfix/X.Y.Z` builds `X.Y.Z` with a dev marker and the CI
+  run number, written in each stack's own form (PEP 440 `X.Y.Z.devN`, npm `X.Y.Z-dev.N`).
+- **Rehearsal on every release or hotfix push, and CI on develop (CR-MDB-067).** Each such push
+  rehearses with the version stamped in CI's own checkout (TestPyPI upload and `npm publish
+  --dry-run`), so a manual dispatch only re-runs one. A CI test workflow runs the suite on develop,
+  release and hotfix pushes and pull requests; CI runs outside any agent session (DN-multi-harness-
+  deploy-model §D21), so it may run the suite directly.
+- **Drafting the notes from the board is Crucible's.** A client verb that drafts a release's
+  Keep a Changelog section from the CRs it landed is requested from Crucible (it owns its clients);
+  until it ships, the section is written from `history` and `landings`.
+
 ## What this means for Model B
 
 Model B has **no** `release.yml`. CR-MDB-038 and CR-MDB-029 wrote the release steps as **manual**
