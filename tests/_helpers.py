@@ -575,6 +575,85 @@ def at_line(path: str, line: int) -> str:
     return ":".join((path, str(line)))
 
 
+# ------------------------------------------------------------------ changelog form ----
+
+#: CR-MDB-058 §S1 — the two links the opening sentence of a Keep a Changelog 1.1.0 file carries.
+CHANGELOG_URLS = ("https://keepachangelog.com/en/1.1.0/", "https://semver.org/spec/v2.0.0.html")
+#: §S1 — the six Keep a Changelog group names.
+CHANGELOG_GROUPS = ("Added", "Changed", "Deprecated", "Removed", "Fixed", "Security")
+#: §S1 — the operator note, first in its section when present.
+CHANGELOG_UPGRADING = "Upgrading"
+CHANGELOG_UNRELEASED_HEADING = "## [Unreleased]"
+_CHANGELOG_RELEASE_HEADING = re.compile(
+    r"## \[(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)\] - \d{4}-\d{2}-\d{2}")
+#: A compare link at the foot, ``[label]: url`` — it ends the last section.
+_CHANGELOG_LINK_DEFINITION = re.compile(r"\[[^\]]+\]: ")
+
+
+def _changelog_sections(text: str) -> list[tuple[str, list[str]]]:
+    """Every ``## `` heading with its lines, each section ending at the next ``## `` heading,
+    the first compare link, or the end of the file."""
+    sections = []
+    current = None
+    for raw in text.splitlines():
+        line = raw.rstrip()
+        if line.startswith("## "):
+            current = (line, [])
+            sections.append(current)
+        elif _CHANGELOG_LINK_DEFINITION.match(line):
+            current = None
+        elif current is not None:
+            current[1].append(line)
+    return sections
+
+
+def changelog_form_faults(text: str) -> list[str]:
+    """The CR-MDB-058 §S1 form checker, shared by §S1 (Model B's own ``CHANGELOG.md``) and §S5
+    (``init``'s skeleton). It checks, and only these:
+
+    - the two URLs (:data:`CHANGELOG_URLS`);
+    - ``## [Unreleased]`` as the first ``##`` heading;
+    - every later ``##`` heading reading ``## [X.Y.Z] - YYYY-MM-DD``, versions descending;
+    - group headings drawn only from :data:`CHANGELOG_GROUPS` and ``### Upgrading``, with
+      ``### Upgrading`` first in its section when present, and none empty (no non-blank line
+      before the next heading, the first compare link, or the end of the file).
+
+    Returns one message per fault; ``[]`` is a file in form."""
+    faults = [f"missing link {url}" for url in CHANGELOG_URLS if url not in text]
+    sections = _changelog_sections(text)
+    if not sections or sections[0][0] != CHANGELOG_UNRELEASED_HEADING:
+        first = sections[0][0] if sections else None
+        faults.append(f"first ## heading is not {CHANGELOG_UNRELEASED_HEADING!r}: {first!r}")
+    previous = None
+    for heading, _lines in sections[1:]:
+        match = _CHANGELOG_RELEASE_HEADING.fullmatch(heading)
+        if match is None:
+            faults.append(f"release heading not in '## [X.Y.Z] - YYYY-MM-DD' form: {heading!r}")
+            continue
+        version = tuple(int(part) for part in match.groups())
+        if previous is not None and version >= previous:
+            faults.append(f"versions not descending: {heading!r} follows "
+                          f"{'.'.join(map(str, previous))}")
+        previous = version
+    allowed = (*CHANGELOG_GROUPS, CHANGELOG_UPGRADING)
+    for heading, lines in sections:
+        groups = []
+        for line in lines:
+            if line.startswith("### "):
+                groups.append([line[len("### "):].strip(), False])
+            elif line.strip() and groups:
+                groups[-1][1] = True
+        names = [name for name, _entry in groups]
+        for name, has_entry in groups:
+            if name not in allowed:
+                faults.append(f"unknown group heading '### {name}' under {heading!r}")
+            if not has_entry:
+                faults.append(f"empty group heading '### {name}' under {heading!r}")
+        if CHANGELOG_UPGRADING in names and names[0] != CHANGELOG_UPGRADING:
+            faults.append(f"'### {CHANGELOG_UPGRADING}' is not the first group under {heading!r}")
+    return faults
+
+
 def _find_pi_package_root(pi_binary_resolved: Path) -> Path | None:
     """Walk up from the resolved `pi` binary looking for the un-bundled
     package root (needs `dist/core/extensions/loader.js` -- the compiled
