@@ -119,6 +119,11 @@ section, then publish the branch (`git flow release publish X.Y.Z`, or `git flow
 X.Y.Z` for a hotfix). Every push of the branch is the rehearsal; `finish` deletes the remote
 branch.
 
+**Pushing the release.** After `git flow release finish X.Y.Z`, push `master`, `develop` and the
+tags in one `git push origin master develop --tags`: the `master` push runs the tests and creates
+the release, and the release event publishes. If the `master` run reports no version tag at
+`HEAD`, dispatch the workflow on `master`.
+
 ### Release notes (`CHANGELOG.md`)
 
 The release notes are the release's `CHANGELOG.md` section. On the release branch, before the
@@ -131,24 +136,35 @@ branch is first published:
 4. Update the compare links at the foot of the file.
 5. Commit the `CHANGELOG.md` section on the release branch.
 
-The release job publishes the tag's section as the release body. It matches the section's
-heading literally, so `1.0.1` never matches `1.0.10`, and it fails on a missing section and on
-an empty section (one holding only `###` headings counts as empty):
+The release job publishes the tag's section as the release body. It runs on the `master` push,
+needs the test job, and checks out with full history; it takes the tag from the `X.Y.Z` tag at
+`HEAD`, and when there is none it exits cleanly with nothing to release. It matches the
+section's heading literally, so `1.0.1` never matches `1.0.10`, and it fails on a missing section
+and on an empty section (one holding only `###` headings counts as empty):
 
 ```yaml
-- name: Create the release
-  env:
-    GH_TOKEN: ${{ secrets.RELEASE_PAT }}
-    tag: ${{ github.ref_name }}
-  run: |
-    awk -v head="## [$tag] - " '
-      index($0, head) == 1 { found = 1; next }
-      found && (/^## / || /^\[[^]]+\]: /) { exit }
-      found { print }
-      END { if (!found) exit 1 }
-    ' CHANGELOG.md > release-notes.md || { echo "no CHANGELOG.md section for $tag" >&2; exit 1; }
-    grep -Eqv -e '^###([[:space:]]|$)' -e '^[[:space:]]*$' release-notes.md || { echo "empty section for $tag" >&2; exit 1; }
-    gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --notes-file release-notes.md --verify-tag
+create-release:
+  needs: test
+  if: github.ref == 'refs/heads/master'
+  runs-on: ubuntu-latest
+  steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - name: Create the release
+      env:
+        GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+      run: |
+        tag=$(git tag --points-at HEAD | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' || true)
+        [ -n "$tag" ] || { echo "no version tag at HEAD, nothing to release"; exit 0; }
+        awk -v head="## [$tag] - " '
+          index($0, head) == 1 { found = 1; next }
+          found && (/^## / || /^\[[^]]+\]: /) { exit }
+          found { print }
+          END { if (!found) exit 1 }
+        ' CHANGELOG.md > release-notes.md || { echo "no CHANGELOG.md section for $tag" >&2; exit 1; }
+        grep -Eqv -e '^###([[:space:]]|$)' -e '^[[:space:]]*$' release-notes.md || { echo "empty section for $tag" >&2; exit 1; }
+        gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --notes-file release-notes.md --verify-tag
 ```
 
 `GH_TOKEN` is a personal access token kept as a repository secret, never the default
@@ -257,9 +273,12 @@ the release's notes section is missing or empty.
 | `bun` | `X.Y.Z-dev.N` | the package manager's dry-run publish with a dist-tag |
 | `arduino`, `quarkus`, `java`, `rust` | — | the notes check only |
 
-A CI workflow runs the suite on every push to `develop`, release and hotfix branches and on
-pull requests, on the stack's floor interpreter, in a clean home, with full history. It runs
-outside any agent session, the one place the suite runs without the stack's Crucible client.
+The release workflow's test job runs the suite in every run: each push to a release or hotfix
+branch, each push to `master`, each published release. It runs on the stack's floor
+interpreter, in a clean home, with full history. It runs outside any agent session, the one
+place the suite runs without the stack's Crucible client. Every publish job (the rehearsal
+included) needs the test job, because a dependency gates only within one run. No CI on
+`develop` or pull requests.
 
 ## Multi-Account Pushing (dual remote: origin + mirror)
 
