@@ -22,6 +22,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import textwrap
 from pathlib import Path
 
 from tests.pi_capability_sandbox import with_agent_dir
@@ -652,6 +653,99 @@ def changelog_form_faults(text: str) -> list[str]:
         if CHANGELOG_UPGRADING in names and names[0] != CHANGELOG_UPGRADING:
             faults.append(f"'### {CHANGELOG_UPGRADING}' is not the first group under {heading!r}")
     return faults
+
+
+# ------------------------------------------------------------------ GitHub workflow text ----
+# A release workflow is read as TEXT, stdlib only (no YAML parser): CR-MDB-058 §S2 reads
+# `create-release`, §S4 reads `publish-npm`. These readers understand the block layout the
+# repository's `.github/workflows/release.yml` uses — two-space jobs under `jobs:`, a `steps:`
+# list of `- ` items, `run:` inline or as a `|` block — and nothing more.
+
+def _indent_of(line: str) -> int:
+    return len(line) - len(line.lstrip())
+
+
+def _unquote(value: str) -> str:
+    value = value.strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+        return value[1:-1]
+    return value
+
+
+def workflow_job(text: str, name: str) -> list[str]:
+    """The lines of ``jobs.<name>``: from its key to the next two-space-indented key."""
+    lines = text.splitlines()
+    key = f"  {name}:"
+    if key not in lines:
+        raise AssertionError(f"the workflow has no jobs.{name}")
+    start = lines.index(key)
+    end = next((i for i in range(start + 1, len(lines)) if re.match(r"  \S", lines[i])), len(lines))
+    return lines[start:end]
+
+
+def workflow_job_working_directory(job: list[str]) -> str | None:
+    """The job's ``defaults.run.working-directory``, or ``None`` when it declares none."""
+    for i, line in enumerate(job):
+        if line.strip() != "defaults:":
+            continue
+        base = _indent_of(line)
+        for inner in job[i + 1:]:
+            if inner.strip() and _indent_of(inner) <= base:
+                break
+            match = re.match(r"\s*working-directory:\s*(\S.*)$", inner)
+            if match:
+                return _unquote(match.group(1))
+    return None
+
+
+def _workflow_step(item: list[str]) -> dict:
+    """One ``- `` step item as ``{"name", "run", "working-directory"}``; ``run`` is the list of
+    its command lines, dedented (``[]`` for a ``uses:`` step)."""
+    first = item[0]
+    at = _indent_of(first)
+    lines = [first[:at] + "  " + first[at + 2:], *item[1:]]
+    key_indent = at + 2
+    step = {"name": None, "run": [], "working-directory": None}
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        i += 1
+        if not line.strip() or _indent_of(line) != key_indent:
+            continue
+        match = re.match(r"\s*([\w-]+):\s*(.*?)\s*$", line)
+        if match is None:
+            continue
+        key, value = match.groups()
+        if key == "run" and value in ("|", "|-"):
+            body = []
+            while i < len(lines) and (not lines[i].strip() or _indent_of(lines[i]) > key_indent):
+                body.append(lines[i])
+                i += 1
+            step["run"] = [ln for ln in textwrap.dedent("\n".join(body)).splitlines() if ln.strip()]
+        elif key == "run":
+            step["run"] = [value]
+        elif key in ("name", "working-directory"):
+            step[key] = _unquote(value)
+    return step
+
+
+def workflow_steps(job: list[str]) -> list[dict]:
+    """The job's ``steps:`` in order, each as :func:`_workflow_step` reads it."""
+    starts = [i for i, line in enumerate(job) if line.strip() == "steps:"]
+    if len(starts) != 1:
+        raise AssertionError(f"expected one steps: key in {job[0].strip()!r}; found {len(starts)}")
+    base = _indent_of(job[starts[0]])
+    items: list[list[str]] = []
+    item_indent = None
+    for line in job[starts[0] + 1:]:
+        if line.strip() and _indent_of(line) <= base:
+            break
+        if line.lstrip().startswith("- ") and item_indent in (None, _indent_of(line)):
+            item_indent = _indent_of(line)
+            items.append([line])
+        elif items:
+            items[-1].append(line)
+    return [_workflow_step(item) for item in items]
 
 
 def _find_pi_package_root(pi_binary_resolved: Path) -> Path | None:

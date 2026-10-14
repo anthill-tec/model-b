@@ -8,7 +8,13 @@ What is gated:
   or ``.omp`` path in any file;
 - ``pi-package/README.md`` is the install guide's marked regions as
   ``generator/build.py`` renders them, and ``build.py --check`` fails on a
-  one-byte drift in either the README or a region of the guide.
+  one-byte drift in either the README or a region of the guide;
+- CR-MDB-058 §S4: the package ships ``CHANGELOG.md``, copied at publish time —
+  ``files`` is exactly ``["extensions", "CHANGELOG.md"]``, ``release.yml``'s
+  ``publish-npm`` job copies the root ``CHANGELOG.md`` into ``pi-package/``
+  before ``npm publish`` (read as text, the copy line executed in a temp
+  workspace), ``.gitignore`` lists ``pi-package/CHANGELOG.md``, and git tracks
+  no ``pi-package/CHANGELOG.md``.
 
 Orchestrator rulings (2026-09-24, on the cycle-111 RED design):
 
@@ -27,8 +33,9 @@ Orchestrator rulings (2026-09-24, on the cycle-111 RED design):
   OUTSIDE every region leaves ``--check`` clean.
 - D5 \u2014 ``peerDependencies`` is exactly
   ``{"@earendil-works/pi-coding-agent": "*"}``; other top-level keys
-  (``description``, ``files``, ...) are not gated; the path gate is the regex
-  :data:`HARNESS_HOME_PATH`.
+  (``description``, ...) are not gated; the path gate is the regex
+  :data:`HARNESS_HOME_PATH`. MIGRATED at CR-MDB-058 C2 RED (§S4; was: ``files``
+  not gated): ``files`` is now gated, exactly ``["extensions", "CHANGELOG.md"]``.
 - Q1 \u2014 this cycle pins only the agreement between ``pi.extensions`` and
   the files under ``pi-package/extensions/`` (a missing or empty directory
   counts as an empty list); the exact ``["extensions/worktree.ts"]``
@@ -78,12 +85,16 @@ Stdlib only.
 """
 
 import json
+import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
+from tests._helpers import workflow_job, workflow_job_working_directory, workflow_steps
 from tests.test_install_guide import parse_marked_regions
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -456,6 +467,210 @@ class PiPackageOracleProofTest(unittest.TestCase):
         with self.assertRaises(AssertionError) as ctx:
             render_readme("<!-- install-guide:begin one -->\nx\n")
         self.assertIn("never ended", str(ctx.exception))
+
+
+# ------------------------------------------------------------------ CR-MDB-058 §S4 ----
+
+RELEASE_YML = REPO_ROOT / ".github" / "workflows" / "release.yml"
+GITIGNORE = REPO_ROOT / ".gitignore"
+PI_CHANGELOG_REL = "pi-package/CHANGELOG.md"
+#: §S4 — ``package.json`` ``files``; npm adds ``package.json`` and ``README.md`` on its own.
+PACKAGE_FILES = ["extensions", "CHANGELOG.md"]
+#: The root ``CHANGELOG.md`` a copy line is run against; its em dash must survive the copy.
+_SAMPLE_ROOT_CHANGELOG = (
+    "# Changelog\n\n## [Unreleased]\n\n### Fixed\n\n- The root copy — its dash survives.\n"
+)
+_NPM_PUBLISH = re.compile(r"npm publish\b")
+
+
+def _copy_line_faults(line: str, working_directory: str) -> list[str]:
+    """Run ``line`` as GitHub's default ``run`` shell does, from ``working_directory`` under a
+    temp workspace holding a root ``CHANGELOG.md`` and an empty ``pi-package/``. The faults when
+    it does not leave ``pi-package/CHANGELOG.md`` byte-identical to the root file, with the root
+    file still in place."""
+    work = Path(tempfile.mkdtemp(prefix="publish-npm-copy-"))
+    try:
+        workspace = work / "workspace"
+        (workspace / "pi-package").mkdir(parents=True)
+        (work / "home").mkdir()
+        root_changelog = workspace / "CHANGELOG.md"
+        root_changelog.write_text(_SAMPLE_ROOT_CHANGELOG, encoding="utf-8")
+        expected = root_changelog.read_bytes()
+        cwd = workspace / working_directory.replace("${{ github.workspace }}", ".")
+        if not cwd.is_dir():
+            return [f"publish-npm: the copy runs from {working_directory!r}, "
+                    "which is not a directory of the workspace"]
+        env = dict(os.environ, GITHUB_WORKSPACE=str(workspace), HOME=str(work / "home"))
+        result = subprocess.run(
+            ["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", line],
+            cwd=cwd, env=env, capture_output=True, text=True, encoding="utf-8", timeout=30,
+            stdin=subprocess.DEVNULL,
+        )
+        faults = []
+        if result.returncode != 0:
+            faults.append(f"publish-npm: the copy line {line!r} failed (exit {result.returncode})")
+        copied = workspace / "pi-package" / "CHANGELOG.md"
+        if not copied.is_file():
+            faults.append(f"publish-npm: {line!r} leaves no pi-package/CHANGELOG.md")
+        elif copied.read_bytes() != expected:
+            faults.append("publish-npm: pi-package/CHANGELOG.md is not the root CHANGELOG.md "
+                          "byte for byte")
+        if not root_changelog.is_file() or root_changelog.read_bytes() != expected:
+            faults.append("publish-npm: the root CHANGELOG.md must be copied, not moved or changed")
+        return faults
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
+def npm_changelog_copy_faults(workflow_text: str) -> list[str]:
+    """CR-MDB-058 §S4 — ``publish-npm`` copies the root ``CHANGELOG.md`` into ``pi-package/``
+    before ``npm publish``. Exactly one command line of the job names ``CHANGELOG.md``; it runs
+    before the one ``npm publish`` line (an earlier step, or earlier in the same ``run``
+    block); and, executed from its working directory (the step's, else the job's default, else
+    the workspace), it leaves a byte-identical copy. ``[]`` when all of that holds."""
+    job = workflow_job(workflow_text, "publish-npm")
+    default = workflow_job_working_directory(job) or "."
+    lines = [
+        (s, n, step, raw.strip())
+        for s, step in enumerate(workflow_steps(job))
+        for n, raw in enumerate(step["run"])
+        if raw.strip() and not raw.strip().startswith("#")
+    ]
+    publishes = [(s, n) for s, n, _step, line in lines if _NPM_PUBLISH.match(line)]
+    if len(publishes) != 1:
+        return [f"publish-npm: expected one `npm publish` line; found {len(publishes)}"]
+    copies = [(s, n, step, line) for s, n, step, line in lines if "CHANGELOG.md" in line]
+    if len(copies) != 1:
+        return ["publish-npm: expected one line copying CHANGELOG.md into pi-package/; "
+                f"found {[line for *_rest, line in copies]}"]
+    s, n, step, line = copies[0]
+    faults = []
+    if (s, n) >= publishes[0]:
+        faults.append("publish-npm: the CHANGELOG.md copy must run before `npm publish`")
+    faults += _copy_line_faults(line, step["working-directory"] or default)
+    return faults
+
+
+class PiPackageChangelogTest(unittest.TestCase):
+    """CR-MDB-058 §S4 — the npm package ships ``CHANGELOG.md``, copied at publish time and
+    never committed under ``pi-package/``."""
+
+    def test_files_are_exactly_extensions_and_the_changelog(self):
+        files = _manifest().get("files")
+        self.assertEqual(files, PACKAGE_FILES,
+                         f"§S4: package.json files must be exactly {PACKAGE_FILES}; got {files!r}")
+
+    def test_publish_npm_copies_the_root_changelog_into_the_package_before_npm_publish(self):
+        self.assertEqual(npm_changelog_copy_faults(RELEASE_YML.read_text(encoding="utf-8")), [])
+
+    def test_gitignore_lists_the_copied_package_changelog(self):
+        lines = [line.strip() for line in GITIGNORE.read_text(encoding="utf-8").splitlines()]
+        self.assertIn(PI_CHANGELOG_REL, lines,
+                      f"§S4: .gitignore must list {PI_CHANGELOG_REL}; got {lines!r}")
+
+    def test_no_package_changelog_is_tracked(self):
+        # Regression pin: passes before GREEN (nothing is committed there today); it fails the
+        # moment a pi-package/CHANGELOG.md is committed, because ls-files then prints its path.
+        result = subprocess.run(
+            ["git", "ls-files", "--", PI_CHANGELOG_REL],
+            cwd=REPO_ROOT, capture_output=True, text=True, timeout=30, stdin=subprocess.DEVNULL,
+        )
+        self.assertEqual(result.returncode, 0, f"git ls-files failed: {result.stderr!r}")
+        self.assertEqual(result.stdout, "", f"§S4: {PI_CHANGELOG_REL} must not be tracked")
+
+
+def _sample_publish_npm(steps: str) -> str:
+    """A workflow shaped like ``release.yml``: ``publish-npm`` runs from ``pi-package`` by
+    default, after a checkout step, and another job follows it."""
+    return (
+        "jobs:\n"
+        "  publish-npm:\n"
+        "    runs-on: ubuntu-latest\n"
+        "    defaults:\n"
+        "      run:\n"
+        "        working-directory: pi-package\n"
+        "    steps:\n"
+        "      - uses: actions/checkout@v4\n"
+        + steps +
+        "\n"
+        "  later:\n"
+        "    runs-on: ubuntu-latest\n"
+        "    steps:\n"
+        "      - run: cp CHANGELOG.md elsewhere/\n"
+    )
+
+
+_PUBLISH_STEP = (
+    "      - name: Publish\n"
+    "        env:\n"
+    "          NODE_AUTH_TOKEN: x\n"
+    "        run: npm publish --provenance --access public\n"
+)
+_COPY_FROM_PACKAGE_DIR = "      - name: Ship the changelog\n        run: cp ../CHANGELOG.md .\n"
+
+
+class NpmChangelogCopyCheckerProofTest(unittest.TestCase):
+    """:func:`npm_changelog_copy_faults` is proved both ways on sample workflows: each correct
+    spelling of the copy passes, and each way of getting it wrong bites with its own fault."""
+
+    def test_a_copy_step_before_publish_from_the_job_default_directory_passes(self):
+        self.assertEqual(npm_changelog_copy_faults(
+            _sample_publish_npm(_COPY_FROM_PACKAGE_DIR + _PUBLISH_STEP)), [])
+
+    def test_a_copy_step_from_the_workspace_root_passes(self):
+        step = ("      - name: Ship the changelog\n"
+                "        working-directory: .\n"
+                "        run: cp CHANGELOG.md pi-package/\n")
+        self.assertEqual(npm_changelog_copy_faults(_sample_publish_npm(step + _PUBLISH_STEP)), [])
+
+    def test_a_copy_line_ahead_of_publish_in_one_run_block_passes(self):
+        step = ("      - name: Publish\n"
+                "        run: |\n"
+                '          cp "$GITHUB_WORKSPACE/CHANGELOG.md" .\n'
+                "          npm publish --provenance --access public\n")
+        self.assertEqual(npm_changelog_copy_faults(_sample_publish_npm(step)), [])
+
+    def test_todays_shape_with_no_copy_bites(self):
+        self.assertEqual(
+            npm_changelog_copy_faults(_sample_publish_npm(_PUBLISH_STEP)),
+            ["publish-npm: expected one line copying CHANGELOG.md into pi-package/; found []"],
+        )
+
+    def test_a_copy_after_npm_publish_bites(self):
+        self.assertEqual(
+            npm_changelog_copy_faults(_sample_publish_npm(_PUBLISH_STEP + _COPY_FROM_PACKAGE_DIR)),
+            ["publish-npm: the CHANGELOG.md copy must run before `npm publish`"],
+        )
+
+    def test_a_copy_that_misses_the_root_file_bites(self):
+        # From the job's default directory, pi-package/, `CHANGELOG.md` names no file.
+        step = "      - name: Ship the changelog\n        run: cp CHANGELOG.md .\n"
+        faults = npm_changelog_copy_faults(_sample_publish_npm(step + _PUBLISH_STEP))
+        self.assertEqual(faults, [
+            "publish-npm: the copy line 'cp CHANGELOG.md .' failed (exit 1)",
+            "publish-npm: 'cp CHANGELOG.md .' leaves no pi-package/CHANGELOG.md",
+        ])
+
+    def test_a_move_instead_of_a_copy_bites(self):
+        step = "      - name: Ship the changelog\n        run: mv ../CHANGELOG.md .\n"
+        self.assertEqual(
+            npm_changelog_copy_faults(_sample_publish_npm(step + _PUBLISH_STEP)),
+            ["publish-npm: the root CHANGELOG.md must be copied, not moved or changed"],
+        )
+
+    def test_a_copy_that_rewrites_the_text_bites(self):
+        step = ("      - name: Ship the changelog\n"
+                "        run: tr -d '—' < ../CHANGELOG.md > CHANGELOG.md\n")
+        self.assertEqual(
+            npm_changelog_copy_faults(_sample_publish_npm(step + _PUBLISH_STEP)),
+            ["publish-npm: pi-package/CHANGELOG.md is not the root CHANGELOG.md byte for byte"],
+        )
+
+    def test_a_workflow_without_one_npm_publish_line_bites(self):
+        self.assertEqual(
+            npm_changelog_copy_faults(_sample_publish_npm(_COPY_FROM_PACKAGE_DIR)),
+            ["publish-npm: expected one `npm publish` line; found 0"],
+        )
 
 
 #: The module, its fixture and every test CR-MDB-047 retired with the Model B

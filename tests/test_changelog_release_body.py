@@ -42,7 +42,7 @@ import unittest
 from pathlib import Path
 
 from tests import test_package_publishing as publishing
-from tests._helpers import changelog_form_faults
+from tests._helpers import changelog_form_faults, workflow_job
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CHANGELOG = REPO_ROOT / "CHANGELOG.md"
@@ -487,14 +487,6 @@ _NOTES_LINE = re.compile(
 _CREATE_LINE = re.compile(r'gh release create "\$TAG" --notes-file (\S+) --verify-tag')
 
 
-def create_release_job(text: str) -> list[str]:
-    """The lines of ``jobs.create-release``: from its key to the next two-space-indented key."""
-    lines = text.splitlines()
-    start = lines.index("  create-release:")
-    end = next((i for i in range(start + 1, len(lines)) if re.match(r"  \S", lines[i])), len(lines))
-    return lines[start:end]
-
-
 def run_blocks(job: list[str]) -> list[list[str]]:
     """Every ``run: |`` block of a job, dedented, one list of lines per block."""
     blocks = []
@@ -521,7 +513,9 @@ class CreateReleaseNotesStepTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.job = create_release_job(RELEASE_YML.read_text(encoding="utf-8"))
+        # The job reader is shared with CR-MDB-058 §S4's publish-npm gate (tests/_helpers.py,
+        # hoisted at C2 RED from this module's create_release_job).
+        cls.job = workflow_job(RELEASE_YML.read_text(encoding="utf-8"), "create-release")
         cls.blocks = [b for b in run_blocks(cls.job) if any("gh release create" in line for line in b)]
 
     def _block(self) -> list[str]:
