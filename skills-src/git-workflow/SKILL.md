@@ -133,16 +133,16 @@ an empty section (one holding only `###` headings counts as empty):
 - name: Create the release
   env:
     GH_TOKEN: ${{ github.token }}
-    TAG: ${{ github.ref_name }}
+    tag: ${{ github.ref_name }}
   run: |
-    awk -v head="## [$TAG] - " '
+    awk -v head="## [$tag] - " '
       index($0, head) == 1 { found = 1; next }
       found && (/^## / || /^\[[^]]+\]: /) { exit }
       found { print }
       END { if (!found) exit 1 }
-    ' CHANGELOG.md > release-notes.md || { echo "no CHANGELOG.md section for $TAG" >&2; exit 1; }
-    grep -qv -e '^###' -e '^[[:space:]]*$' release-notes.md || { echo "empty section for $TAG" >&2; exit 1; }
-    gh release create "$TAG" --notes-file release-notes.md --verify-tag
+    ' CHANGELOG.md > release-notes.md || { echo "no CHANGELOG.md section for $tag" >&2; exit 1; }
+    grep -qv -e '^###' -e '^[[:space:]]*$' release-notes.md || { echo "empty section for $tag" >&2; exit 1; }
+    gh release create "$tag" --notes-file release-notes.md --verify-tag
 ```
 
 The packaging entries, per stack:
