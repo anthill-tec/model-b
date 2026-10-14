@@ -135,8 +135,8 @@ What each release target adds to the rendered workflow:
 
 | Target | Rehearsal | Publish | Environment / secret |
 |---|---|---|---|
-| `pypi` | the upload of the stamped dev version to the test index | PyPI through Trusted Publishing | the environment `pypi`; no secret |
-| `npm` | the package manager's dry-run publish with a dist-tag | npm, with provenance | the environment `npm` and the secret `NPM_TOKEN` |
+| `pypi` | the upload of the stamped dev version to the test index | PyPI through Trusted Publishing | the environments `pypi` and `testpypi`; no secret |
+| `npm` | the package manager's dry-run publish with a dist-tag | npm, with provenance | the environment `npm` and the repository secret `NPM_TOKEN` |
 | `github-assets` | the project's `build-assets` script, its `dist-assets/` output checked non-empty | an upload of `dist-assets/` to the release | no environment, no secret |
 
 ### Release notes (`CHANGELOG.md`)
@@ -271,11 +271,11 @@ the release's notes section is missing or empty.
 | `github-assets` | — | the project's `build-assets` script, its `dist-assets/` output checked not empty |
 | no target | — | the notes check only |
 
-The release workflow's test job runs the suite in every run: each push to a release or hotfix
-branch, each push to `master`, each published release. It runs on the stack's floor
-interpreter, in a clean home, with full history. It runs outside any agent session, the one
+The release workflow's test jobs run the suite in every run: each push to a release or hotfix
+branch, each push to `master`, each published release. They run on the stack's floor
+interpreter, on a fresh runner, with full history. They run outside any agent session, the one
 place the suite runs without the stack's Crucible client. Every publish job (the rehearsal
-included) needs the test job, because a dependency gates only within one run. No CI on
+included) needs the test jobs, because a dependency gates only within one run. No CI on
 `develop` or pull requests.
 
 ## Multi-Account Pushing (dual remote: origin + mirror)
