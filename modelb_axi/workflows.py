@@ -163,6 +163,13 @@ def _with_marker(body: str) -> str:
     return f"{MARKER_PREFIX}{agents._sha256_text(body)}\n{body}"
 
 
+def ownership_state(text: str) -> str:
+    """Classify an existing release file by its first-line marker (CR-MDB-068 §S2): delegates to
+    :func:`modelb_axi.agents.first_line_ownership` with :data:`MARKER_PREFIX`; the ``classify`` of
+    ``agents.place_owned`` for the three rendered files."""
+    return agents.first_line_ownership(text, MARKER_PREFIX)
+
+
 def render(stacks: list[str], targets: list[str], source_dir: Path) -> dict[str, str]:
     """The three release files for ``stacks`` and the canonical ``targets`` (CR-MDB-068 §S2),
     keyed by project-relative path, each under its ownership marker. Deterministic; reads

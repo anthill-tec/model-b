@@ -37,7 +37,7 @@ import tomllib
 import unicodedata
 from pathlib import Path, PurePosixPath
 
-from modelb_axi import agents, permission_policy, project_trust, requirements
+from modelb_axi import agents, permission_policy, project_trust, requirements, workflows
 from modelb_axi._fsutil import atomic_write
 from modelb_axi.axi import envelope
 from modelb_axi.capabilities import resolve_agent_dir
@@ -353,10 +353,21 @@ def plan_files(sub_projects: list[str]) -> list[str]:
         "docs/research/.gitkeep",
         "docs/memory/INDEX.md",
         "hooks/README.md",
+        # CR-MDB-068 §S5: the release workflow and its two scripts, at the root only.
+        *RELEASE_FILES,
     ]
     for sub in sub_projects:
         base += [f"{sub}/.env", f"{sub}/.envrc", f"{sub}/AGENTS.md"]
     return base
+
+
+#: The release workflow and its two scripts, as :func:`workflows.render` keys them
+#: (CR-MDB-068 §S5).
+RELEASE_FILES: tuple[str, ...] = (
+    workflows.RELEASE_YML, workflows.STAMP_SCRIPT, workflows.SECTION_SCRIPT,
+)
+#: The registry key naming where a release publishes (CR-MDB-068 §S1).
+RELEASE_TARGETS_KEY = "RELEASE_TARGETS"
 
 
 def _orchestrator_label(mode: str, token: str) -> str:
@@ -776,7 +787,8 @@ def _remediation_first(tools: dict, rid: str, label: str) -> str:
 
 
 def _render_setup_section(mode: str, sandesh_project: str, tools: dict | None = None,
-                          label: str = "", stacks: tuple[str, ...] | list[str] = ()) -> str:
+                          label: str = "", stacks: tuple[str, ...] | list[str] = (),
+                          release_setup: tuple[str, ...] | list[str] = ()) -> str:
     """The root ``AGENTS.md``'s ``## Setup`` section (CR-MDB-048 §S2): the
     setup tasks the retired queue README carried, as they stood — the dated
     scaffold line, the manual Crucible registration (registrations are
@@ -797,7 +809,10 @@ def _render_setup_section(mode: str, sandesh_project: str, tools: dict | None = 
     to create the python test interpreter, after the ``project-meta`` task
     and the Sandesh task (multi mode), before the ``REPO_OWNER`` check. Its
     commands are :data:`modelb_axi.requirements.PYTHON_VENV_ROUTE`, read at
-    call time (never a copied string); no python stack, no task."""
+    call time (never a copied string); no python stack, no task.
+
+    CR-MDB-068 §S5: each of ``release_setup`` (:func:`release_setup_tasks`) as one
+    unchecked task, after the python task, before the ``REPO_OWNER`` check."""
     today = datetime.date.today().isoformat()
     tools = tools or {}
     project_meta_task = (
@@ -819,6 +834,7 @@ def _render_setup_section(mode: str, sandesh_project: str, tools: dict | None = 
         f'launch a Track with `env SANDESH_ADDRESS="Track <N> - {sandesh_project}" pi`\n'
         if mode != "solo" else ""
     )
+    release_tasks = "".join(f"- [ ] {task}\n" for task in release_setup)
     python_task = ""
     if "python" in stacks:
         commands = ", then ".join(f"`{command}`" for command in requirements.PYTHON_VENV_ROUTE)
@@ -839,6 +855,7 @@ def _render_setup_section(mode: str, sandesh_project: str, tools: dict | None = 
         f"{project_meta_task}"
         f"{sandesh_task}"
         f"{python_task}"
+        f"{release_tasks}"
         "- [ ] Confirm the remote owner matches `REPO_OWNER` in `.env` "
         "before the first wave-boundary gate\n"
     )
@@ -950,7 +967,7 @@ def _render_agents_md(
     name: str, token: str, acronym: str, mode: str, owner: str,
     stacks: list[str], harnesses: list[str], sandesh_project: str | None = None,
     states: dict | None = None, knowledge_category: str | None = None,
-    tools: dict | None = None,
+    tools: dict | None = None, release_setup: list[str] | None = None,
 ) -> str:
     """Project ``AGENTS.md`` override (§S3.3/§S3.8): identity from the
     registry, the design-reference lines (the retired queue README's
@@ -1009,7 +1026,8 @@ def _render_agents_md(
         "- Registrations are manual in scaffold v1 — complete them from "
         "the Setup section below.\n"
         "\n"
-        + _render_setup_section(mode, sandesh_project or "", tools, label, stacks)
+        + _render_setup_section(mode, sandesh_project or "", tools, label, stacks,
+                                release_setup or ())
         + "\n"
         f"## Skill freeze (derived from --stacks: {', '.join(stacks)})\n"
         f"{stack_lines}\n"
@@ -1324,6 +1342,95 @@ def _workflow_sources(home: Path) -> Path:
     )
 
 
+#: CR-MDB-068 §S5: the release setup task of each stack, keyed by stack; stacks sharing a
+#: task (quarkus and java: the Maven wrapper) carry it once.
+_RELEASE_STACK_TASKS: dict[str, str] = {
+    "python": ("Add a `tests/` package holding the project's unittest modules — the "
+               "release workflow's `test-python` job discovers its tests there"),
+    "bun": ("Commit `bun.lock` — the release workflow's `test-bun` job installs from "
+            "the frozen lockfile"),
+    "rust": ("Commit `Cargo.lock` — the release workflow's `test-rust` job builds "
+             "locked"),
+    "quarkus": ("Commit the executable Maven wrapper `mvnw` — the release workflow's "
+                "Maven test job runs it"),
+    "java": ("Commit the executable Maven wrapper `mvnw` — the release workflow's "
+             "Maven test job runs it"),
+    "arduino": ("Add an executable `.github/scripts/ci-test` — the release workflow's "
+                "`test-arduino` job runs it and fails naming it when it is missing"),
+}
+#: CR-MDB-068 §S5: the one task every rendered workflow needs (its `create-release` job).
+_RELEASE_PAT_TASK = (
+    "Add the `RELEASE_PAT` repository secret, a token with `contents: write` — the "
+    "release workflow's `create-release` job creates the release with it, so the release "
+    "fires the publish run"
+)
+#: CR-MDB-068 §S5: the release setup task of each target, keyed by target name.
+_RELEASE_TARGET_TASKS: dict[str, str] = {
+    "pypi": ("Create the `pypi` and `testpypi` environments in the repository settings, "
+             "and add `release.yml` as a trusted publisher on PyPI (environment `pypi`) and "
+             "on TestPyPI (environment `testpypi`)"),
+    "npm": ("Create the `npm` environment in the repository settings with the `NPM_TOKEN` "
+            "secret, and add `release.yml` as the package's trusted publisher on npm "
+            "(environment `npm`)"),
+    "github-assets": ("Add an executable `.github/scripts/build-assets` that fills "
+                      "`dist-assets/` — the release workflow's rehearsal and its "
+                      "`publish-github-assets` job run it"),
+}
+
+
+def release_setup_tasks(stacks: list[str], targets: list[str]) -> list[str]:
+    """The release workflow's setup tasks (CR-MDB-068 §S5), each without its ``- [ ] ``
+    prefix: one per stack (a task two stacks share, once), the ``RELEASE_PAT`` secret, then one
+    per canonical target (``name`` or ``name:dir``)."""
+    tasks: list[str] = []
+    for stack in stacks:
+        task = _RELEASE_STACK_TASKS.get(stack)
+        if task is not None and task not in tasks:
+            tasks.append(task)
+    tasks.append(_RELEASE_PAT_TASK)
+    for target in targets:
+        tasks.append(_RELEASE_TARGET_TASKS[target.partition(":")[0]])
+    return tasks
+
+
+def _release_targets(value: str) -> list[str]:
+    """The canonical ``RELEASE_TARGETS`` value as a list (empty for no target)."""
+    return value.split(",") if value else []
+
+
+def _place_release_files(root: Path, texts: dict[str, str], force_managed: bool,
+                         report: dict) -> dict:
+    """Write the pre-rendered release files under ``root`` by the ownership rules
+    (``agents.place_owned`` classifying by :func:`workflows.ownership_state`, CR-MDB-068
+    §S5/§S6); fills and returns ``report`` (``written`` / ``unchanged`` / ``skipped``
+    / ``unmanaged``)."""
+    for key in ("written", "unchanged", "skipped", "unmanaged"):
+        report.setdefault(key, [])
+    for rel, text in texts.items():
+        agents.place_owned(root / rel, rel, text, force_managed, report,
+                           classify=workflows.ownership_state)
+    return report
+
+
+def _managed_release_workflow(root: Path) -> bool:
+    """Whether ``root`` holds a ``release.yml`` under the release-workflow marker, intact or
+    hand-modified (CR-MDB-068 §S6)."""
+    path = root / workflows.RELEASE_YML
+    if not path.is_file():
+        return False
+    text = path.read_bytes().decode("utf-8", errors="replace")
+    return workflows.ownership_state(text) != agents.NOT_OWNED
+
+
+def _ownership_warnings(skipped: list[str], unmanaged: list[str]) -> list[str]:
+    """One warning per file the ownership rules left alone (CR-MDB-025 §S6): a hand-modified
+    one names ``--force-managed``; an unmanaged one says no flag overwrites it."""
+    return ([f"skipping hand-modified managed file {rel} (marker hash mismatch; re-run with "
+             "--force-managed to overwrite)" for rel in skipped]
+            + [f"unmanaged: {rel} — no Model B marker; left untouched (no flag "
+               "overwrites it)" for rel in unmanaged])
+
+
 def _renders_agents(harnesses: list[str]) -> bool:
     """True when any harness has a project agent directory + emitter."""
     return any(h in agents.PROJECT_AGENT_DIRS for h in harnesses)
@@ -1422,6 +1529,8 @@ def _emit_plan(
     registry: dict,
     tools: dict | None = None,
     tool_states: dict | None = None,
+    release_texts: dict[str, str] | None = None,
+    release_setup: list[str] | None = None,
 ) -> list[str]:
     """Perform the real §S3/§S4 emission under ``target``; returns the
     emitted file paths (relative to ``target``).
@@ -1452,7 +1561,12 @@ def _emit_plan(
     ``tools``/``tool_states`` are the installation's recorded verdicts
     (:func:`read_tool_verdicts`, :func:`_tool_key_states`): they shape the
     capability contract and the setup tasks, and the agents take the
-    lean-ctx form only when lean-ctx is present (CR-MDB-045 §S5/§S8)."""
+    lean-ctx form only when lean-ctx is present (CR-MDB-045 §S5/§S8).
+
+    ``release_texts`` is the release workflow and its two scripts
+    :func:`run_init` rendered in validation, written at the root under the
+    ownership rules; ``release_setup`` their setup tasks, carried by the
+    root ``AGENTS.md``'s Setup section (CR-MDB-068 §S5)."""
     if emitted is None:
         emitted = []
     tools = tools or {}
@@ -1518,7 +1632,7 @@ def _emit_plan(
         "AGENTS.md",
         _render_agents_md(name, token, acronym, mode, owner, stacks, harnesses,
                           registry.get("SANDESH_PROJECT"), tool_states,
-                          knowledge_category, tools),
+                          knowledge_category, tools, release_setup),
     )
 
     # §S3.4 in-repo project memory.
@@ -1573,6 +1687,18 @@ def _emit_plan(
             if ownership is not None:
                 for key in ("skipped", "unmanaged"):
                     ownership.setdefault(key, []).extend(policy_report.get(key, []))
+
+    # CR-MDB-068 §S5: the release workflow and its two scripts, at the root
+    # only, under the same ownership rules.
+    if release_texts is not None:
+        release_report: dict = {}
+        try:
+            _place_release_files(target, release_texts, force_managed, release_report)
+        finally:
+            emitted.extend(release_report.get("written", []))
+            if ownership is not None:
+                for key in ("skipped", "unmanaged"):
+                    ownership.setdefault(key, []).extend(release_report.get(key, []))
 
     # §S3 monorepo: per-sub-project registry + override.
     for sub in sub_projects:
@@ -1704,6 +1830,19 @@ def run_init(args: argparse.Namespace, home: Path) -> int:
             print(envelope("init", False, warnings=[str(exc)], dry_run=dry_run))
             return 2
 
+    # CR-MDB-068 §S5: the release workflow and its two scripts are rendered
+    # in memory now — a render failure is refused before the first write,
+    # --dry-run included; emission writes only this text.
+    release_targets = _release_targets(registry.get(RELEASE_TARGETS_KEY, ""))
+    try:
+        release_texts = workflows.render(stacks, release_targets, _workflow_sources(home))
+    except (ScaffoldError, OSError, ValueError) as exc:
+        message = f"the release workflow cannot be rendered: {exc}"
+        print(f"modelb-axi: error: {message}", file=sys.stderr)
+        print(envelope("init", False, warnings=[message], dry_run=dry_run))
+        return 2
+    release_setup = release_setup_tasks(stacks, release_targets)
+
     emitted: list[str] = []
     ownership: dict = {"skipped": [], "unmanaged": []}
     if not dry_run:
@@ -1730,6 +1869,8 @@ def run_init(args: argparse.Namespace, home: Path) -> int:
                 registry=registry,
                 tools=tools,
                 tool_states=tool_states,
+                release_texts=release_texts,
+                release_setup=release_setup,
             )
         except (ScaffoldError, OSError) as exc:
             # CR-MDB-033 §S4: a mid-emission failure may leave a partial
@@ -1748,14 +1889,7 @@ def run_init(args: argparse.Namespace, home: Path) -> int:
 
     # CR-MDB-037 §S3: a policy left alone under the ownership rules is
     # reported, in the wording `agents` uses for its own files.
-    for rel in ownership["skipped"]:
-        warning = (f"skipping hand-modified managed file {rel} (marker hash "
-                   "mismatch; re-run with --force-managed to overwrite)")
-        print(f"modelb-axi: warning: {warning}", file=sys.stderr)
-        plan_warnings.append(warning)
-    for rel in ownership["unmanaged"]:
-        warning = (f"unmanaged: {rel} — no Model B marker; left untouched (no "
-                   "flag overwrites it)")
+    for warning in _ownership_warnings(ownership["skipped"], ownership["unmanaged"]):
         print(f"modelb-axi: warning: {warning}", file=sys.stderr)
         plan_warnings.append(warning)
 
@@ -1801,6 +1935,7 @@ def run_init(args: argparse.Namespace, home: Path) -> int:
             registry=registry,
             tools=tools,
             setup_required=setup_required,
+            release_setup=release_setup,
             skipped=ownership["skipped"],
             unmanaged=ownership["unmanaged"],
             **trust_fields,
@@ -1915,18 +2050,16 @@ def run_agents(args: argparse.Namespace, home: Path, project_root: Path | None =
             "no installed harness has an agent emitter; nothing rendered "
             f"(harnesses: {', '.join(harnesses)})"
         )
-    for rel in report["skipped"]:
-        warnings.append(
-            f"skipping hand-modified managed file {rel} (marker hash "
-            "mismatch; re-run with --force-managed to overwrite)"
-        )
-    for rel in report["unmanaged"]:
-        warnings.append(
-            f"unmanaged: {rel} — no Model B marker; left untouched (no "
-            "flag overwrites it)"
-        )
+    warnings += _ownership_warnings(report["skipped"], report["unmanaged"])
     for stack in report["no_definitions"]:
         warnings.append(f"stack {stack!r} has no agent definitions; none rendered")
+    # CR-MDB-068 §S6: a new stack set does not re-render a managed release
+    # workflow — say so, and name the verb that does.
+    if requested and _managed_release_workflow(root):
+        warnings.append(
+            f"{workflows.RELEASE_YML} is not re-rendered for the new stacks; run "
+            "`modelb-axi release-workflow` to re-render it"
+        )
     for message in warnings:
         print(f"modelb-axi: warning: {message}", file=sys.stderr)
     print(envelope(
@@ -1936,6 +2069,88 @@ def run_agents(args: argparse.Namespace, home: Path, project_root: Path | None =
         stacks=stacks,
         harnesses=harnesses,
         harness_source=harness_source,
+        force_managed=force_managed,
+        **report,
+    ))
+    return 0
+
+
+def run_release_workflow(args: argparse.Namespace, home: Path,
+                         project_root: Path | None = None) -> int:
+    """Entry for the ``release-workflow`` subcommand (CR-MDB-068 §S6): re-render
+    the release workflow and its two scripts of the project in the current
+    directory from its ``PROJECT_STACKS`` and ``RELEASE_TARGETS``;
+    ``--release-targets`` replaces the set and records it in ``.env``. The
+    files are rendered in memory, then written under the ownership rules.
+    Emits one AXI envelope (verb ``release-workflow``); exit 2 on a refusal,
+    3 on an I/O error."""
+    print("modelb-axi: release-workflow — re-render the project's release workflow",
+          file=sys.stderr)
+    root = project_root if project_root is not None else Path.cwd()
+    env_path = root / ".env"
+    requested = getattr(args, "release_targets", None)
+    force_managed = bool(getattr(args, "force_managed", False))
+    try:
+        if not env_path.is_file():
+            raise ScaffoldError(
+                f"no .env in {root}; run `modelb-axi release-workflow` from the root "
+                "of a project scaffolded by `modelb-axi init`"
+            )
+        schema = load_schema(PROJECT_SCHEMA_PATH)
+        recorded_stacks = read_registry_value(root, schema, PROJECT_STACKS_KEY)
+        if not recorded_stacks:
+            raise ScaffoldError(
+                f"{env_path} records no {PROJECT_STACKS_KEY}; set the project's stacks "
+                "with `modelb-axi agents --stacks <csv>`"
+            )
+        stacks = parse_stacks(recorded_stacks)
+        value = requested
+        if value is None:
+            value = read_registry_value(root, schema, RELEASE_TARGETS_KEY)
+            if value is None:
+                raise ScaffoldError(
+                    f"{env_path} records no {RELEASE_TARGETS_KEY}; pass "
+                    "--release-targets <csv> (or \"\" for no target) to render and "
+                    "record where a release publishes"
+                )
+        try:
+            value = _check_release_targets_csv(value)
+        except ValueError as exc:
+            raise ScaffoldError(
+                f"{RELEASE_TARGETS_KEY} (--release-targets): value {value!r} {exc}") from exc
+        targets = _release_targets(value)
+        try:
+            texts = workflows.render(stacks, targets, _workflow_sources(home))
+        except (OSError, ValueError) as exc:
+            raise ScaffoldError(f"the release workflow cannot be rendered: {exc}") from exc
+    except ScaffoldError as exc:
+        print(f"modelb-axi: error: {exc}", file=sys.stderr)
+        print(envelope("release-workflow", False, warnings=[str(exc)], project=str(root)))
+        return 2
+
+    print(f"  stacks: {', '.join(stacks)}", file=sys.stderr)
+    print(f"  targets: {', '.join(targets) or '(none)'}", file=sys.stderr)
+    report: dict = {}
+    try:
+        _place_release_files(root, texts, force_managed, report)
+        if requested is not None:
+            _set_env_value(env_path, RELEASE_TARGETS_KEY, value)
+    except OSError as exc:
+        print(f"modelb-axi: error: {exc}", file=sys.stderr)
+        print(envelope(
+            "release-workflow", False, warnings=[str(exc)], project=str(root), **report,
+        ))
+        return 3
+
+    warnings = _ownership_warnings(report["skipped"], report["unmanaged"])
+    for message in warnings:
+        print(f"modelb-axi: warning: {message}", file=sys.stderr)
+    print(envelope(
+        "release-workflow", True,
+        warnings=warnings,
+        project=str(root),
+        stacks=stacks,
+        targets=targets,
         force_managed=force_managed,
         **report,
     ))
