@@ -1,9 +1,10 @@
 # CR-MDB-052 — Test hygiene: a flaky oracle, a dead branch and the ledger query
 
-**Status:** PENDING — **SEED, not the finished spec** (filed 2026-10-02 into release 1.1.0, wave 3).
+**Status:** PENDING — **SEED, not the finished spec** (filed 2026-10-02).
 Every item below is re-measured at gap analysis; the spec is written then.
 **Type:** test/skill hygiene
-**Priority:** P3 — release 1.1.0, wave 3.
+**Priority:** P2 — release 1.0.0, wave 2: the release's test-hygiene CR, the last CR before the
+release starts.
 **Depends on:** none (board-authoritative: read `queue`, not this line)
 **Labels:** tests, hygiene, code-health
 **Design reference:** AGENTS.md § Testing & QA (the suite is green and hermetic; a failure is a
@@ -17,3 +18,16 @@ regression); CR-MDB-032 (suite relocation and hermeticity)
    from `modelb_axi.deploy.prune_assets`, which the merged tuple shape makes dead (CR-MDB-040 nit).
 3. **The `code-health` skill's `query ledger OPEN`** (CR-MDB-023 VERIFY F7) matches no status the
    tools produce (PROPOSED / APPROVED / IN_PROGRESS / COMPLETED / STRUCK).
+4. **The empty-`HOME` run relies on `XDG_CACHE_HOME` sitting outside `HOME`.** `tests/test_package_publishing.py`'s
+   `_run_uv_build` (behind `build_wheel` and `build_sdist`) lets `uv build` write its cache; with
+   `XDG_CACHE_HOME` unset, an empty-`HOME` run would leave `~/.cache/uv` in the temp home. Pass a temp
+   `UV_CACHE_DIR`, or state the dependency beside the empty-`HOME` baseline.
+5. **The isolated-wheel gate** (`IsolatedWheelBuildGateTest`) matches its non-isolated markers as
+   literal strings and catches only a `def build_wheel` redefinition (not another quoting or spacing of
+   `-m build`, an `async def`, an assignment or a shadowing import).
+6. **Analyzer findings in the test tree:** `tests/test_package_publishing.py`'s import block is unsorted
+   under `ruff --isolated` (I001); `tests/test_tooling_detachment.py` carries Optional-typing faults at
+   its home-resolution lines (~820–834) and an insecure temp-file call (~189).
+7. **A sweep of the suite's own health** at gap analysis: every analyzer finding in `tests/`, slow or
+   network-bound tests, skip reasons, and helpers defined in more than one module, each fixed or
+   recorded with a reason.

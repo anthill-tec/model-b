@@ -182,6 +182,13 @@ separate `ci.yml` ran on every `develop` push and pull request and gated no publ
   `origin/master`, beside `needs:` on the tests.
 - **Per-stack workflow templates (CR-MDB-068) take this shape.**
 
+## A test-hygiene CR in every release (user ruling, 2026-10-14)
+
+Every release carries a test-hygiene CR, sequenced last in the release's final wave, so the suite is
+swept before the release steps begin: analyzer findings in the test tree, flaky, slow or network-bound
+tests, skip reasons, duplicated helpers, and the hygiene notes its CRs deferred. For 1.0.0 that CR is
+CR-MDB-052 (moved from 1.1.0). The rule reaches the skills through CR-MDB-059.
+
 ## What this means for Model B
 
 Model B runs Crucible's shape in its own `release.yml` since 2026-09-24: `create-release` →

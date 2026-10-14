@@ -47,6 +47,12 @@ largely match existing rules; B4, B7 and B8 conflict with current text; B9 is Cr
     and that file's envelope is read whole. The rule reaches the skills, the agent templates and
     stack files, the orchestration references and the dispatch-brief procedure, and the scaffold's
     templates.
+11. **Every release carries a test-hygiene CR, sequenced last in the release's final wave,** so it
+    runs before the release starts: it sweeps the suite's analyzer findings, flaky, slow or
+    network-bound tests, skip reasons and duplicated helpers, and folds in the hygiene notes the
+    release's own CRs deferred. The release flow (`git-workflow` skill § Releases), the wave and queue
+    rules (`model-b` skill) and CR filing (`cr-authoring`) name it; a release does not start while its
+    hygiene CR is open.
 
 Not adopted: **B9** (restart the dev board after every `src/` commit) is Crucible-specific; gap
 analysis decides whether a generic form ("restart any service the project itself runs") is worth a
