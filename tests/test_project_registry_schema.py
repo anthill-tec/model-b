@@ -52,7 +52,7 @@ from unittest import mock
 from modelb_axi import agents as _agents
 from modelb_axi import cli as _cli
 from modelb_axi import permission_policy as _permission_policy
-from modelb_axi import scaffold
+from modelb_axi import scaffold, workflows
 from modelb_axi.hooks import compile_wiring
 from tests._helpers import at_line, decode_axi, installed_crucible_file, md_section, parse_env_file
 from tests._helpers import run_module, write_install_toml
@@ -416,8 +416,9 @@ def _reference_other_files(home: Path, mode: str, scratch: Path) -> dict:
     """Today's bytes for every emitted file init renders WITHOUT any registry
     value — hook instances + compiled wiring + compiler report, agent
     definitions, the permission policy, memory templates, the research
-    placeholder — produced by the modules that own them (none in this CR's
-    scope), into ``scratch``."""
+    placeholder, and (MIGRATED at CR-MDB-068 C2 RED, §S5) the release workflow
+    and its two scripts — produced by the modules that own them (none in this
+    CR's scope), into ``scratch``."""
     stacks, harnesses = [STACKS], ["pi"]
     files: dict = {"docs/research/.gitkeep": b""}
     instances = scaffold._hook_instances(stacks, mode)
@@ -438,6 +439,10 @@ def _reference_other_files(home: Path, mode: str, scratch: Path) -> dict:
     for template in scaffold._select_memory_templates(
             scaffold._memory_templates_dir(home), stacks):
         files[f"docs/memory/{template.name}"] = template.read_bytes()
+    # MIGRATED at CR-MDB-068 C2 RED (§S5): init renders the release workflow and its two scripts
+    # (no --release-targets: no target), from the workflow sources its home resolves.
+    for rel, text in workflows.render(stacks, [], scaffold._workflow_sources(home)).items():
+        files[rel] = text.encode("utf-8")
     return files
 
 
@@ -972,6 +977,8 @@ class _Shared:
                 # MIGRATED at CR-MDB-058 C3 RED (§S5): one `CHANGELOG.md`, at the root only.
                 "CHANGELOG.md",
             }
+            # MIGRATED at CR-MDB-068 C2 RED (§S5): the reference now holds the three release files
+            # (`.github/workflows/release.yml` and its two scripts), at the root only.
             for sub in self.SUBS:
                 expected |= {f"{sub}/.env", f"{sub}/AGENTS.md", f"{sub}/.envrc"}
             self.assertEqual(_emitted_files(self._target), expected)

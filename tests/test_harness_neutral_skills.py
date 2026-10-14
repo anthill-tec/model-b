@@ -49,12 +49,13 @@ import unittest
 from pathlib import Path
 
 from tests import test_deployed_asset_freshness as freshness
-from tests._helpers import REPO_ROOT, at_line, parse_env_file
+from tests._helpers import REPO_ROOT, at_line
 from tests.test_client_path_anchoring import (
     TOOL_BASELINE,
     _ratchet_violations,
     _tool_occurrences,
 )
+from tests.test_model_b_release_files import MODEL_B_STACKS
 from tests.test_pi_agent_definitions import (
     _copy_c3_asset_root,
     _run_module_c3,
@@ -507,7 +508,9 @@ class RegenerationCleanTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, f"§S2: build.py --check drift:\n{result.stdout}\n{result.stderr}")
 
     def test_pi_agents_equal_a_fresh_sandboxed_agents_render(self):
-        stacks = parse_env_file(REPO_ROOT / ".env").get("PROJECT_STACKS") or "python"
+        # MIGRATED at CR-MDB-068 C2 RED (§S7): no test reads Model B's gitignored .env (a fresh
+        # clone has none); Model B's stacks are written once, in tests.test_model_b_release_files.
+        stacks = ",".join(MODEL_B_STACKS)
         with tempfile.TemporaryDirectory(prefix="mdb-031-c2-render-") as tmp:
             sandbox = Path(tmp)
             home, assets, project, user_home = (sandbox / n for n in ("mh", "assets", "proj", "home"))
