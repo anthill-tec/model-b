@@ -35,3 +35,9 @@ CR-MDB-062's VERIFY (C5) found no defect in its scope. It recorded these points 
    directory would serve it.
 4. **The bun reason's wording:** a tier verb runs the declared `test:<tier>` script, and the client
    refuses when none is declared.
+5. **A shared installer's offer names one stack** (from CR-MDB-063's verify, F2). The
+   `uv python install --default 3.14` offer covers every selected stack's `python3`, but its prompt
+   names only the first ("…to install python3 for stack rust?"). After a successful install, the later
+   stacks' warnings still read `python3=absent` while `install.toml` records `installed`. Shared
+   installers behaved this way before CR-MDB-063; word the prompt and the later warnings for every
+   stack the installer covers.
