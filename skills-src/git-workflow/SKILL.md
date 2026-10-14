@@ -125,6 +125,20 @@ the release, and the release event publishes. If the `master` run reports no ver
 `HEAD`, dispatch the workflow on `master`. When the `master` run or the release run fails its
 tests, nothing publishes: re-run the failed jobs, and fix a real failure on a hotfix branch.
 
+**The release workflow is rendered, never hand-written.**
+
+- `modelb-axi init` renders the release workflow from the project's stacks and its
+  `RELEASE_TARGETS`.
+- `modelb-axi release-workflow` re-renders it whenever the stacks or the targets change.
+
+What each release target adds to the rendered workflow:
+
+| Target | Rehearsal | Publish | Environment / secret |
+|---|---|---|---|
+| `pypi` | the upload of the stamped dev version to the test index | PyPI through Trusted Publishing | the environment `pypi`; no secret |
+| `npm` | the package manager's dry-run publish with a dist-tag | npm, with provenance | the environment `npm` and the secret `NPM_TOKEN` |
+| `github-assets` | the project's `build-assets` script, its `dist-assets/` output checked non-empty | an upload of `dist-assets/` to the release | no environment, no secret |
+
 ### Release notes (`CHANGELOG.md`)
 
 The release notes are the release's `CHANGELOG.md` section. On the release branch, before the
@@ -137,39 +151,17 @@ branch is first published:
 4. Update the compare links at the foot of the file.
 5. Commit the `CHANGELOG.md` section on the release branch.
 
-The release job publishes the tag's section as the release body. It runs on the `master` push,
-needs the test job, and checks out with full history; it takes the tag from the `X.Y.Z` tag at
-`HEAD`, and when there is none it exits cleanly with nothing to release; when there is more
-than one it fails, naming them. It matches the
-section's heading literally, so `1.0.1` never matches `1.0.10`, and it fails on a missing section
-and on an empty section (one holding only `###` headings counts as empty):
+The rendered workflow's `create-release` job publishes the tag's section as the release body:
 
-```yaml
-create-release:
-  needs: test
-  if: github.ref == 'refs/heads/master'
-  runs-on: ubuntu-latest
-  steps:
-    - uses: actions/checkout@v4 # pin to a full commit SHA
-      with:
-        fetch-depth: 0
-    - name: Create the release
-      env:
-        GH_TOKEN: ${{ secrets.RELEASE_PAT }}
-      run: |
-        tags=$(git tag --points-at HEAD | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' || true)
-        [ -n "$tags" ] || { echo "no version tag at HEAD, nothing to release"; exit 0; }
-        [ "$(printf '%s\n' "$tags" | wc -l)" -eq 1 ] || { echo "more than one version tag at HEAD:" $tags >&2; exit 1; }
-        tag=$tags
-        awk -v head="## [$tag] - " '
-          index($0, head) == 1 { found = 1; next }
-          found && (/^## / || /^\[[^]]+\]: /) { exit }
-          found { print }
-          END { if (!found) exit 1 }
-        ' CHANGELOG.md > release-notes.md || { echo "no CHANGELOG.md section for $tag" >&2; exit 1; }
-        grep -Eqv -e '^###([[:space:]]|$)' -e '^[[:space:]]*$' release-notes.md || { echo "empty section for $tag" >&2; exit 1; }
-        gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --notes-file release-notes.md --verify-tag
-```
+- `create-release` runs on the `master` push and needs the test jobs, so the release is only
+  created after the tests pass.
+- It checks out with full history and takes the `X.Y.Z` tag at `HEAD`; when there is none it
+  exits cleanly with nothing to release.
+- When there is more than one version tag at `HEAD`, it fails, naming them.
+- It matches the section's heading literally, so `1.0.1` never matches `1.0.10`.
+- It fails on a missing section.
+- It fails on an empty section (one holding only `###` headings counts as empty).
+- It passes the section to the release as `--notes-file`, never generated notes.
 
 `GH_TOKEN` is a personal access token kept as a repository secret, never the default
 `github.token`: a release made with the default token triggers no `on: release` publish job, so
@@ -269,14 +261,15 @@ After building: switch back to develop for continued work. Bump develop to the n
 ### Rehearsal and CI
 
 Each push to `release/X.Y.Z` or `hotfix/X.Y.Z` builds `X.Y.Z` with a dev marker and the CI run
-number in the stack's own form, refuses a committed version other than `X.Y.Z`, and fails when
+number in each target's own form, refuses a committed version other than `X.Y.Z`, and fails when
 the release's notes section is missing or empty.
 
-| Stack | Dev version | Rehearsal |
+| Target | Dev version | Rehearsal |
 |---|---|---|
-| `python` | `X.Y.Z.devN` | the upload to the test index |
-| `bun` | `X.Y.Z-dev.N` | the package manager's dry-run publish with a dist-tag |
-| `arduino`, `quarkus`, `java`, `rust` | — | the notes check only |
+| `pypi` | `X.Y.Z.devN` | the upload to the test index |
+| `npm` | `X.Y.Z-dev.N` | the package manager's dry-run publish with a dist-tag |
+| `github-assets` | — | the project's `build-assets` script, its `dist-assets/` output checked not empty |
+| no target | — | the notes check only |
 
 The release workflow's test job runs the suite in every run: each push to a release or hotfix
 branch, each push to `master`, each published release. It runs on the stack's floor

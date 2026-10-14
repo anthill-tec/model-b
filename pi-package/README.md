@@ -366,6 +366,16 @@ modelb-axi agents --stacks python,rust
 This re-renders the project's agent definitions for the new list and records it in the
 project's `.env`. Agent definitions you have edited are left alone.
 
+The project's release workflow is built from the same list, so run this next:
+
+```sh
+modelb-axi release-workflow
+```
+
+This re-renders the release workflow under `.github/` for the project's stacks and release
+targets. Add `--release-targets` to change the targets too. Files you have edited are left
+alone.
+
 ## Project trust
 
 Pi loads a project's own settings, extensions, skills, prompts and themes (`.pi/settings.json`,
@@ -406,7 +416,10 @@ policy, and Model B never writes it.
 **Creating a project.** For example:
 
 ```sh
-modelb-axi init --name "My Project" --token myproject --acronym MYP --mode solo --repo-shape standalone --stacks python --owner your-github-name --target ~/code/myproject
+modelb-axi init --name "My Project" --token myproject --acronym MYP --mode solo --repo-shape standalone --stacks python --release-targets pypi --owner your-github-name --target ~/code/myproject
 ```
+
+`--release-targets` names where a release publishes (`pypi`, `npm:<dir>`, `github-assets`, or
+none); `init` builds the project's release workflow from it and the stacks.
 
 Add `--dry-run` to see what would be written without writing anything.
