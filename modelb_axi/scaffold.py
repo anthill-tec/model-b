@@ -1345,9 +1345,9 @@ _RELEASE_TARGET_TASKS: dict[str, str] = {
     "pypi": ("Create the `pypi` and `testpypi` environments in the repository settings, "
              "and add `release.yml` as a trusted publisher on PyPI (environment `pypi`) and "
              "on TestPyPI (environment `testpypi`)"),
-    "npm": ("Create the `npm` environment in the repository settings with the `NPM_TOKEN` "
-            "secret, and add `release.yml` as the package's trusted publisher on npm "
-            "(environment `npm`)"),
+    "npm": ("Create the `npm` environment in the repository settings and add the "
+            "`NPM_TOKEN` repository secret for the first publish; then add `release.yml` as "
+            "the package's trusted publisher on npm (environment `npm`) and delete the token"),
     "github-assets": ("Add an executable `.github/scripts/build-assets` that fills "
                       "`dist-assets/` — the release workflow's rehearsal and its "
                       "`publish-github-assets` job run it"),
