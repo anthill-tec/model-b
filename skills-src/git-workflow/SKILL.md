@@ -141,7 +141,7 @@ an empty section (one holding only `###` headings counts as empty):
       found { print }
       END { if (!found) exit 1 }
     ' CHANGELOG.md > release-notes.md || { echo "no CHANGELOG.md section for $tag" >&2; exit 1; }
-    grep -qv -e '^###' -e '^[[:space:]]*$' release-notes.md || { echo "empty section for $tag" >&2; exit 1; }
+    grep -Eqv -e '^###([[:space:]]|$)' -e '^[[:space:]]*$' release-notes.md || { echo "empty section for $tag" >&2; exit 1; }
     gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --notes-file release-notes.md --verify-tag
 ```
 
