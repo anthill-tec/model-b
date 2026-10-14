@@ -104,7 +104,7 @@ that use `python3 ~/.agents/scripts/rust-code-health.py` as input to a flag dete
 
 - **`AGENTS.md`:** Python ≥ 3.14 (Runtime/Tooling); a sentence that the pre-merge gate runs one
   interpreter, the floor; the skip list's "interpreter without the `build` frontend" example names no
-  `python3.11`.
+  `python3.11`. The `build`-frontend example rule was retired by CR-MDB-069 §S3, 2026-10-14.
 - **`docs/install-guide.md`:** the `python3` requirement reads as a Python 3.14 interpreter — `python3` on
   `PATH`, else one uv provides — with `uv python install 3.14` as the remediation; `python3` leaves the
   list of tools needing elevated privileges; its sample preflight lines match §S2's stderr line.

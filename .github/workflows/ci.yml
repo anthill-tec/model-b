@@ -27,8 +27,6 @@ jobs:
         with:
           python-version: "3.14"
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
-      - name: Install the build frontend
-        run: python -m pip install build
       - name: Run the suite
         env:
           MODELB_HOME: ${{ runner.temp }}/modelb-home
