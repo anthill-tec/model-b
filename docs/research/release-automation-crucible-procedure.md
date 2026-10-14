@@ -157,6 +157,23 @@ adopted for 1.0.0 and split by the 13-point cap:
 - **Setup note:** the `testpypi` environment carries no required reviewers, or every release push
   waits for an approval before it rehearses.
 
+## What Model B adopted (2026-10-14, user rulings at CR-MDB-070's gap analysis)
+
+Crucible's `release.yml` shape (CR-CRU-062 "the gate is the dependency graph"), adopted after CR-MDB-067's
+separate `ci.yml` ran on every `develop` push and pull request and gated no publish:
+
+- **One workflow.** The tests are a job inside `release.yml` with no event condition, so they exist in
+  every run, and every publish job — the TestPyPI rehearsal included — `needs:` them. `needs:` orders
+  jobs only within one run, so a separate CI workflow cannot gate a publish. `ci.yml` is retired.
+- **CI runs only on release candidates and production:** pushes to `release/**`, `hotfix/**` and
+  `master`, and the published release. Not on `develop`, not on pull requests: a red `develop` is caught
+  by the release branch's first push, before anything publishes.
+- **The release is created from the `master` push** for the `X.Y.Z` tag at `HEAD` (none → nothing to
+  release), so one run tests and releases; the tag-push trigger is dropped.
+- **The registry publishes guard their ref:** a bare `X.Y.Z` tag whose commit is an ancestor of
+  `origin/master`, beside `needs:` on the tests.
+- **Per-stack workflow templates (CR-MDB-068) take this shape.**
+
 ## What this means for Model B
 
 Model B runs Crucible's shape in its own `release.yml` since 2026-09-24: `create-release` →
