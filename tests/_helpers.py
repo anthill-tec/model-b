@@ -659,7 +659,8 @@ def changelog_form_faults(text: str) -> list[str]:
 # A release workflow is read as TEXT, stdlib only (no YAML parser): CR-MDB-058 §S2 reads
 # `create-release`, §S4 reads `publish-npm`; CR-MDB-067 §S2 reads `rehearse`, the job keys and the
 # `on.push` triggers; CR-MDB-067 §S3 reads `ci.yml`'s top-level `name:` and `permissions:`, its
-# job names and a step's `env:`. These readers understand the block layout the
+# job names and a step's `env:`; CR-MDB-070 §S7 adds a step's `id:` and step-level `if:` and the
+# `release` event, and points the CI checks at `release.yml`. These readers understand the block layout the
 # repository's `.github/workflows/*.yml` use — two-space jobs under `jobs:`, a `steps:`
 # list of `- ` items, `run:` inline or as a `|` block — and nothing more.
 
@@ -752,13 +753,16 @@ def _workflow_step(item: list[str]) -> dict:
     action reference without its trailing comment (``None`` for a ``run`` step); ``with`` is the
     step's ``with:`` scalars as a dict (``{}`` when it has none) — CR-MDB-067 §S6; ``env`` is the
     step's own ``env:`` scalars as a dict, read the same way (``{}`` when it has none) —
-    CR-MDB-067 §S3."""
+    CR-MDB-067 §S3; ``id`` and ``if`` are the step's own ``id:`` and step-level ``if:``, read as
+    :func:`workflow_job_key` reads a job's (a folded ``if:`` joined into one line), ``None`` when
+    the step declares none — never a key nested under ``with:`` or ``env:`` (CR-MDB-070 §S7)."""
     first = item[0]
     at = _indent_of(first)
     lines = [first[:at] + "  " + first[at + 2:], *item[1:]]
     key_indent = at + 2
     step = {"name": None, "run": [], "working-directory": None, "uses": None, "with": {},
-            "env": {}}
+            "env": {}, "id": _key_at(lines, 0, key_indent, "id"),
+            "if": _key_at(lines, 0, key_indent, "if")}
     i = 0
     while i < len(lines):
         line = lines[i]
@@ -907,21 +911,26 @@ def _flow_or_block_list(inline: str, nested: list[str]) -> list[str]:
 
 
 def workflow_push_triggers(text: str) -> dict:
-    """The workflow's ``on:`` as ``{"tags", "branches", "pull_request", "workflow_dispatch"}``:
-    the ``on.push`` tag and branch patterns (lists, ``[]`` when absent), and whether the
-    ``pull_request`` and ``workflow_dispatch`` events are present (CR-MDB-067 §S6). Reads the
-    block form and the flow form ``on: [push, …]``; a workflow with no ``on:`` raises."""
+    """The workflow's ``on:`` as ``{"tags", "branches", "pull_request", "workflow_dispatch",
+    "release"}``: the ``on.push`` tag and branch patterns (lists, ``[]`` when absent), and whether
+    the ``pull_request`` and ``workflow_dispatch`` events are present (CR-MDB-067 §S6); ``release``
+    is the ``release`` event's ``types`` as a list (``[]`` for the event with no ``types``),
+    ``None`` when the workflow has no ``release`` event (CR-MDB-070 §S7). Reads the block form and
+    the flow form ``on: [push, …]``; a workflow with no ``on:`` raises."""
     lines = text.splitlines()
     start = next((i for i, line in enumerate(lines)
                   if re.match(r"""(?:on|"on"|'on'):(?:\s|$)""", line)), None)
     if start is None:
         raise AssertionError("the workflow has no top-level on: key")
-    out = {"tags": [], "branches": [], "pull_request": False, "workflow_dispatch": False}
+    out = {"tags": [], "branches": [], "pull_request": False, "workflow_dispatch": False,
+           "release": None}
     inline = _strip_comment(lines[start].split(":", 1)[1])
     if inline:
         events = _flow_or_block_list(inline, [])
         out["pull_request"] = "pull_request" in events
         out["workflow_dispatch"] = "workflow_dispatch" in events
+        if "release" in events:
+            out["release"] = []
         return out
     block = _nested_lines(lines, start + 1, 0)
     keyed = [line for line in block if line.strip() and not line.strip().startswith("#")]
@@ -937,19 +946,24 @@ def workflow_push_triggers(text: str) -> dict:
         event = match.group(1)
         if event in ("pull_request", "workflow_dispatch"):
             out[event] = True
-        if event != "push":
+        if event not in ("push", "release"):
             continue
+        if event == "release":
+            out["release"] = []
+        wanted = ("tags", "branches") if event == "push" else ("types",)
         filters = _nested_lines(block, i + 1, event_indent)
         keyed_filters = [ln for ln in filters if ln.strip() and not ln.strip().startswith("#")]
         if not keyed_filters:
             continue
         filter_indent = min(_indent_of(ln) for ln in keyed_filters)
         for j, inner in enumerate(filters):
-            found = re.match(r"(\s*)(tags|branches):(.*)$", inner)
-            if found is None or _indent_of(inner) != filter_indent:
+            found = re.match(r"(\s*)([\w-]+):(.*)$", inner)
+            if (found is None or _indent_of(inner) != filter_indent
+                    or found.group(2) not in wanted):
                 continue
-            out[found.group(2)] = _flow_or_block_list(
+            values = _flow_or_block_list(
                 found.group(3), _nested_lines(filters, j + 1, filter_indent))
+            out["release" if event == "release" else found.group(2)] = values
     return out
 
 
