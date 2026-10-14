@@ -512,7 +512,6 @@ def tearDownModule():
     # and drop the cache, so that module rebuilds rather than reading a removed directory.
     publishing.tearDownModule()
     publishing._BUILD_ROOT = None
-    publishing._ARTIFACTS = None
 
 
 class ChangelogSectionScriptNotShippedTest(unittest.TestCase):
@@ -617,7 +616,9 @@ class CreateReleaseNotesStepTest(unittest.TestCase):
         (work / "home").mkdir()
         env = dict(os.environ, TAG=tag, RUNNER_TEMP=str(work / "runner-temp"),
                    GITHUB_WORKSPACE=str(work), HOME=str(work / "home"))
-        # GitHub's default `run` shell; the trailing printf reports where the line wrote.
+        # The `shell: bash` form (`bash --noprofile --norc -eo pipefail`), stricter than the
+        # default `bash -e` of a step without `shell:`; the trailing printf reports where the
+        # line wrote.
         result = subprocess.run(
             ["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c",
              f"{line}\nprintf '%s' {target}\n"],

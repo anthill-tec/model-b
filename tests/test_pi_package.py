@@ -484,8 +484,9 @@ _NPM_PUBLISH = re.compile(r"npm publish\b")
 
 
 def _copy_line_faults(line: str, working_directory: str) -> list[str]:
-    """Run ``line`` as GitHub's default ``run`` shell does, from ``working_directory`` under a
-    temp workspace holding a root ``CHANGELOG.md`` and an empty ``pi-package/``. The faults when
+    """Run ``line`` in the ``shell: bash`` form (``bash --noprofile --norc -eo pipefail``),
+    stricter than the default ``bash -e`` of a step without ``shell:``, from
+    ``working_directory`` under a temp workspace holding a root ``CHANGELOG.md`` and an empty ``pi-package/``. The faults when
     it does not leave ``pi-package/CHANGELOG.md`` byte-identical to the root file, with the root
     file still in place."""
     work = Path(tempfile.mkdtemp(prefix="publish-npm-copy-"))
