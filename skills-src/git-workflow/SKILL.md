@@ -106,12 +106,60 @@ that empties is a signal, not a decision.
 
 **Two documentation steps belong to every release** (on the release branch, before finishing):
 
-1. **Install text from its single source.** If the project keeps an install guide with marked
-   regions, copy those marked regions verbatim into the release notes (and into any other
-   surface that takes them, such as a package README) — never rewrite install text by hand.
+1. **Release notes link to the install guide** when the project keeps one; they never repeat
+   install text. The guide's marked regions feed generated surfaces only, such as a package
+   README — never rewrite install text by hand.
 2. **A documentation review** over the doc set: the install guide, the README and any other
    user-facing docs are read against the code being released, and every inaccuracy is fixed
    before the tag.
+
+### Release notes (`CHANGELOG.md`)
+
+The release notes are the release's `CHANGELOG.md` section. On the release branch, before
+`git flow release finish`:
+
+1. Write the release's section: move `[Unreleased]` under `## [X.Y.Z] - YYYY-MM-DD`.
+2. Or, when `[Unreleased]` was not kept, write it from the release's CRs, read with the Crucible
+   client's `history` and `landings` verbs.
+3. Add an `### Upgrading` note first in the section whenever an operator must act.
+4. Update the compare links at the foot of the file.
+5. Commit the `CHANGELOG.md` section on the release branch.
+
+The release job publishes the tag's section as the release body. It matches the section's
+heading literally, so `1.0.1` never matches `1.0.10`, and it fails on a missing section and on
+an empty section (one holding only `###` headings counts as empty):
+
+```yaml
+- name: Create the release
+  env:
+    GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+    tag: ${{ github.ref_name }}
+  run: |
+    awk -v head="## [$tag] - " '
+      index($0, head) == 1 { found = 1; next }
+      found && (/^## / || /^\[[^]]+\]: /) { exit }
+      found { print }
+      END { if (!found) exit 1 }
+    ' CHANGELOG.md > release-notes.md || { echo "no CHANGELOG.md section for $tag" >&2; exit 1; }
+    grep -Eqv -e '^###([[:space:]]|$)' -e '^[[:space:]]*$' release-notes.md || { echo "empty section for $tag" >&2; exit 1; }
+    gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --notes-file release-notes.md --verify-tag
+```
+
+`GH_TOKEN` is a personal access token kept as a repository secret, never the default
+`github.token`: a release made with the default token triggers no `on: release` publish job, so
+a project publishing on `on: release` would never publish. A release that already exists is left
+as it is, so a re-run of the job does not fail.
+
+The packaging entries, per stack:
+
+| Stack | Packaging entry |
+|---|---|
+| `python` | `[project.urls]` carries `Changelog` (the `CHANGELOG.md` file) and `Release Notes` (the releases page) |
+| `bun` | `CHANGELOG.md` in `package.json` `files`; copied into the package directory at publish time when the package is not at the repository root |
+| `arduino` | the release body only |
+| `quarkus` | the release body only |
+| `java` | the release body only |
+| `rust` | the release body only |
 
 ### The 10-step git flow release (Java Maven projects)
 

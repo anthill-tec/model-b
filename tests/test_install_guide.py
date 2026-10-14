@@ -33,9 +33,18 @@ Design (proposed at RED, approved by the orchestrator):
 (E) README: <= 20 non-blank lines, a ``# `` title then a description
     paragraph, a markdown link to ``docs/install-guide.md``, and no line or
     inline code span beginning with an installer command.
-(F) git-workflow ``## Releases`` names both release steps (copying the
-    guide's marked regions verbatim into the release notes; a documentation
-    review); CR-MDB-029 ``### §S1`` names the guide's marked regions as the
+(F) git-workflow ``## Releases`` (MIGRATED at CR-MDB-058 C3 RED, §S6) carries
+    the release steps of :data:`RELEASE_STEP_PHRASES`, each stated in ONE unit
+    of the section: the release notes link to the install guide, its marked
+    regions feed generated surfaces such as a package README, and a
+    documentation review; the release-notes step (move ``[Unreleased]`` under
+    ``## [X.Y.Z] - YYYY-MM-DD`` or write it from ``history`` and ``landings``,
+    an ``### Upgrading`` note first, update the compare links, commit); a
+    fenced release-job snippet passing the tag's section as ``--notes-file``
+    (literal match, failing on a missing or empty section); and the packaging
+    entries of the six stacks. It no longer says to copy the marked regions
+    into the release notes (was: "copying the guide's marked regions verbatim
+    into the release notes; a documentation review"). CR-MDB-029 ``### §S1`` names the guide's marked regions as the
     Pi package README's source. CR-MDB-038 §S5: ``## Releases`` also names
     the four Python release steps in order (single-source version + ``uv
     build``; TestPyPI rehearsal into an isolated tool directory; PyPI upload
@@ -79,6 +88,8 @@ from modelb_axi.requirements import (
 from modelb_axi.requirements import requirement as _requirement
 from tests._helpers import requirements_rows as _requirements
 from tests._helpers import write_interpreter_fixture
+from tests.test_board_holds_the_queue import NEGATION, norm_units
+from tests.test_bootstrap_shutdown_registry import normalise
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 GUIDE = REPO_ROOT / "docs" / "install-guide.md"
@@ -132,9 +143,66 @@ README_MAX_NONBLANK_LINES = 20
 INSTALLER_COMMAND_PREFIXES = ("modelb-axi", "uv tool install", "pip install", "pi install")
 
 # (F)
+#: The ``## Releases`` steps, each ``(group, label, regexes)``: ONE normalised unit of the
+#: section (a paragraph, a list item with its continuation lines, a table row or a fenced-code
+#: line, as :func:`tests.test_board_holds_the_queue.norm_units` splits them) matches every regex
+#: of a step. Backticks and ``*`` are dropped and the text lower-cased before matching.
+#: MIGRATED at CR-MDB-058 C3 RED (§S6): the copy step is retired — release notes link
+#: to the install guide, and the marked regions feed generated surfaces such as a package README;
+#: the documentation review stays; the release-notes step, the release-job snippet and the
+#: packaging entries of the six stacks join it (was the flat phrases "install guide",
+#: "marked region", "verbatim", "release notes", "documentation review").
+DOCUMENTATION_STEPS = "documentation steps"
+RELEASE_NOTES_STEP = "release-notes step"
+RELEASE_JOB_SNIPPET = "release-job snippet"
+PACKAGING_ENTRIES = "packaging entries"
+RETIRED_COPY_STEP = "retired copy step"
+#: A failure word, for the snippet's missing and empty sections.
+_FAILS = r"\b(?:fail\w*|exit\w*|error\w*|refus\w*|abort\w*|stop\w*)\b"
+#: §S6 — the stacks whose packaging entry is the release body only.
+RELEASE_BODY_ONLY_STACKS = ("arduino", "quarkus", "java", "rust")
 RELEASE_STEP_PHRASES = (
-    "install guide", "marked region", "verbatim", "release notes", "documentation review",
+    (DOCUMENTATION_STEPS, "release notes link to the install guide",
+     (r"\brelease notes\b", r"\blink(?:s|ed|ing)?\b", r"\binstall guide\b")),
+    (DOCUMENTATION_STEPS, "the marked regions feed generated surfaces such as a package README",
+     (r"\bmarked regions?\b", r"\b(?:feed\w*|generat\w*)\b", r"\breadme\b")),
+    (DOCUMENTATION_STEPS, "a documentation review", (r"\bdocumentation review\b",)),
+    (RELEASE_NOTES_STEP, "move [Unreleased] under ## [X.Y.Z] - YYYY-MM-DD",
+     (r"\bmov(?:e|es|ed|ing)\b", r"\[unreleased\]", r"## \[x\.y\.z\] - yyyy-mm-dd")),
+    (RELEASE_NOTES_STEP, "or write it from the release's CRs (history and landings)",
+     (r"(?<![\w-])history(?![\w-])", r"(?<![\w-])landings(?![\w-])")),
+    (RELEASE_NOTES_STEP, "an ### Upgrading note first when an operator must act",
+     (r"### upgrading\b", r"\bfirst\b", r"\boperators?\b")),
+    (RELEASE_NOTES_STEP, "update the compare links",
+     (r"\bupdat(?:e|es|ed|ing)\b", r"\bcompare links?\b")),
+    (RELEASE_NOTES_STEP, "commit",
+     (r"\bcommit(?:s|ted|ting)?\b",
+      r"changelog|\bsection\b|\bcompare links?\b|\[unreleased\]|\brelease notes\b")),
+    (RELEASE_JOB_SNIPPET, "the tag's section is matched literally",
+     (r"\bliteral(?:ly)?\b|\bexact(?:ly)?\b", r"\bmatch\w*\b", r"\b(?:section|tag|heading|label)\b")),
+    (RELEASE_JOB_SNIPPET, "it fails on a missing section",
+     (_FAILS, r"\bmissing\b|\babsent\b", r"\b(?:section|tag)\b")),
+    (RELEASE_JOB_SNIPPET, "it fails on an empty section",
+     (_FAILS, r"\bempty\b", r"\bsection\b")),
+    (PACKAGING_ENTRIES, "python: [project.urls] Changelog and Release Notes",
+     (r"(?<![\w-])python(?![\w-])", r"\[project\.urls\]", r"\bchangelog\b",
+      r"\brelease notes\b")),
+    (PACKAGING_ENTRIES, "bun: CHANGELOG.md in package.json files, copied into the package "
+     "directory at publish time when the package is not at the repository root",
+     (r"(?<![\w-])bun(?![\w-])", r"package\.json", r"\bfiles\b", r"changelog\.md",
+      r"\bcop(?:y|ies|ied|ying)\b", r"\bpublish\w*\b", r"\broot\b")),
+    *((PACKAGING_ENTRIES, f"{stack}: the release body only",
+       (rf"(?<![\w-]){stack}(?![\w-])", r"\brelease body\b", r"\bonly\b"))
+      for stack in RELEASE_BODY_ONLY_STACKS),
 )
+#: §S6 — the retired copy step: "Install text from its single source … copy those
+#: marked regions verbatim into the release notes" (normalised, whole section). A copy the
+#: text forbids ("never copy", "not copy") is not the step.
+RETIRED_COPY_STEP_RE = re.compile(
+    r"\binstall text from its single source\b"
+    r"|(?<!never )(?<!not )\bcop(?:y|ies)\b[^.;]{0,120}\binto (?:the |its )?release notes\b")
+#: §S6 — the snippet's fenced block: a create-release step passing the section as a file.
+SNIPPET_TERMS = ("gh release create", "--notes-file", "changelog.md")
 CR_029_S1_TERMS = ("install-guide.md", "marked region", "README")
 #: CR-MDB-038 \u00a7S5 — the four Python release steps, in ritual order. Each
 #: step is (label, anchor alternatives, further required terms); a term is an
@@ -640,6 +708,31 @@ def check_pypi_surface(text: str) -> list[str]:
     return []
 
 
+#: CR-MDB-058 §S7 — what the ``Marked regions`` section says the regions are for, each
+#: ``(label, regexes)`` matched in ONE normalised unit of the section: release notes link to the
+#: guide, and the regions feed the generated package README.
+MARKED_REGIONS_USE = (
+    ("release notes link to the guide",
+     (r"\brelease notes\b", r"\blink(?:s|ed|ing)?\b", r"\bguide\b|\bthis file\b")),
+    ("the regions feed the generated package README",
+     (r"\bregions?\b", r"\b(?:feed\w*|generat\w*)\b", r"\bpackage\b", r"\breadme\b")),
+)
+
+
+def check_marked_regions_use(text: str) -> list[str]:
+    """CR-MDB-058 §S7: the ``Marked regions`` section no longer says the regions are copied
+    into the release notes (a unit naming a copy and the release notes, with no negation), and
+    says release notes link to the guide and the regions feed the generated package README."""
+    found = norm_units(_section(text, MARKED))
+    out = [f"section '{MARKED}' must say {label}" for label, regexes in MARKED_REGIONS_USE
+           if not any(all(re.search(rx, u) for rx in regexes) for u in found)]
+    if any(re.search(r"\bcop(?:y|ies|ied|ying)\b", u) and re.search(r"\brelease notes\b", u)
+           and not NEGATION.search(u) for u in found):
+        out.append(f"section '{MARKED}' must not say the regions are copied into the release "
+                   "notes")
+    return out
+
+
 def check_vocabulary(text: str) -> list[str]:
     out = [f"{label}: {m.group(0)!r}" for label, pattern in BLOCKED_PATTERNS
            for m in pattern.finditer(text)]
@@ -669,11 +762,52 @@ def check_readme(text: str) -> list[str]:
 
 
 def check_release_steps(text: str) -> list[str]:
+    """CR-MDB-058 §S6: ``## Releases`` states every step of :data:`RELEASE_STEP_PHRASES`
+    in one unit, carries a fenced release-job snippet passing the tag's ``CHANGELOG.md``
+    section as ``--notes-file`` (and no ``--generate-notes`` in a fence), and no longer says to
+    copy the marked regions into the release notes. One message per fault, each prefixed
+    ``## Releases: <group>: ``."""
     sec = next((body for head, body in sections(text).items()
-                if head.startswith("Releases")), "").lower()
+                if head.startswith("Releases")), "")
     if not sec:
         return ["no '## Releases' section"]
-    return [f"## Releases: missing {p!r}" for p in RELEASE_STEP_PHRASES if p not in sec]
+    found = norm_units(sec)
+    out = [f"## Releases: {group}: {label}" for group, label, regexes in RELEASE_STEP_PHRASES
+           if not any(all(re.search(rx, u) for rx in regexes) for u in found)]
+    blocks = _fenced_blocks(sec)
+    if not any(all(term in block.lower() for term in SNIPPET_TERMS) for block in blocks):
+        out.append(f"## Releases: {RELEASE_JOB_SNIPPET}: no fenced create-release step passing "
+                   "the CHANGELOG.md section as --notes-file")
+    if any("--generate-notes" in block for block in blocks):
+        out.append(f"## Releases: {RELEASE_JOB_SNIPPET}: a fenced step still uses "
+                   "--generate-notes")
+    if RETIRED_COPY_STEP_RE.search(normalise(sec)):
+        out.append(f"## Releases: {RETIRED_COPY_STEP}: still says to copy the marked regions "
+                   "into the release notes")
+    return out
+
+
+def release_step_faults(text: str, group: str) -> list[str]:
+    """The faults of :func:`check_release_steps` in one ``group``."""
+    return [f for f in check_release_steps(text) if f.startswith(f"## Releases: {group}: ")
+            or f == "no '## Releases' section"]
+
+
+def _fenced_blocks(text: str) -> list[str]:
+    """The body of every fenced block of ``text``, delimiters excluded."""
+    lines = text.splitlines()
+    blocks: list[list[str]] = []
+    current: list[str] | None = None
+    for line, fenced in zip(lines, _fence_mask(lines), strict=True):
+        if fenced and _FENCE_RE.match(line):
+            if current is None:
+                current = []
+            else:
+                blocks.append(current)
+                current = None
+        elif fenced and current is not None:
+            current.append(line)
+    return ["\n".join(b) for b in blocks]
 
 
 def check_python_release_steps(text: str) -> list[str]:
@@ -883,6 +1017,11 @@ _CONFORMING_PERMISSION_SOURCE = (
 )
 
 
+#: CR-MDB-058 §S7 — the conforming guide's statement of what the marked regions are for.
+CONFORMING_MARKED_REGIONS_USE = (
+    "Release notes link to this guide. The regions feed the generated package README.")
+
+
 def conforming_guide() -> str:
     rows = _requirements()
     uv = next(r for r in rows if r["id"] == "uv")
@@ -920,8 +1059,59 @@ def conforming_guide() -> str:
     out += ["<!-- install-guide:end install -->", "", f"## {MARKED}", "",
             "Regions open with `<!-- install-guide:begin <name> -->` and close with "
             "`<!-- install-guide:end <name> -->`.", "",
+            # MIGRATED at CR-MDB-058 C3 RED (§S7): the section says what the regions are for.
+            CONFORMING_MARKED_REGIONS_USE, "",
             f"The {PYPI_PAGE} shows the whole guide, as the package readme.", ""]
     return "\n".join(out)
+
+
+#: CR-MDB-058 §S6 — a ``## Releases`` body carrying every step of
+#: :data:`RELEASE_STEP_PHRASES`, one unit each, the fenced release-job snippet, and no copy
+#: step. It names no project and none of the Python or Pi steps' anchors, so it can sit beside
+#: them without moving their first-occurrence order.
+CONFORMING_RELEASES_BODY = (
+    "**Two documentation steps belong to every release** (on the release branch, before "
+    "finishing):\n"
+    "\n"
+    "1. **Release notes link to the install guide**; they never repeat its text.\n"
+    "2. **A documentation review** over the doc set, before the tag.\n"
+    "\n"
+    "The guide's marked regions still feed generated surfaces, such as a package README.\n"
+    "\n"
+    "### Release notes (`CHANGELOG.md`)\n"
+    "\n"
+    "On the release branch, before `git flow release finish`:\n"
+    "\n"
+    "1. Write the release's section: move `[Unreleased]` under `## [X.Y.Z] - YYYY-MM-DD`.\n"
+    "2. Or write it from the release's CRs, read with the Crucible client's `history` and "
+    "`landings`.\n"
+    "3. Add an `### Upgrading` note first whenever an operator must act.\n"
+    "4. Update the compare links at the foot of the file.\n"
+    "5. Commit the `CHANGELOG.md` section.\n"
+    "\n"
+    "The release job publishes the tag's section as the release body:\n"
+    "\n"
+    "```yaml\n"
+    "- name: Create the release\n"
+    "  run: |\n"
+    "    # the tag's section, matched literally: 1.0.1 never matches 1.0.10\n"
+    "    # fails when the section is missing\n"
+    "    # fails when the section is empty\n"
+    "    extract-section CHANGELOG.md \"$TAG\" > notes.md\n"
+    "    gh release create \"$TAG\" --notes-file notes.md --verify-tag\n"
+    "```\n"
+    "\n"
+    "| Stack | Packaging entry |\n"
+    "|---|---|\n"
+    "| `python` | `[project.urls]` `Changelog` and `Release Notes` |\n"
+    "| `bun` | `CHANGELOG.md` in `package.json` `files`, copied into the package directory when "
+    "it is published, if the package is not at the repository root |\n"
+    "| `arduino` | the release body only |\n"
+    "| `quarkus` | the release body only |\n"
+    "| `java` | the release body only |\n"
+    "| `rust` | the release body only |\n"
+)
+CONFORMING_RELEASES = "## Releases (NON-NEGOTIABLE)\n\n" + CONFORMING_RELEASES_BODY + "\n## Next\n"
 
 
 CONFORMING_README = (
@@ -1110,6 +1300,14 @@ class InstallGuideMarkedRegionsTest(unittest.TestCase):
         self.assertTrue(GUIDE.is_file(), f"{GUIDE.relative_to(REPO_ROOT)} must exist")
         self.assertEqual(check_marked_regions(_read(GUIDE)), [])
 
+    def test_marked_regions_section_says_release_notes_link_and_regions_feed_the_readme(self):
+        """CR-MDB-058 §S7: the section no longer says the regions are copied into the
+        release notes; release notes link to the guide, and the regions feed the generated
+        package README. ``pi-package/README.md`` staying unchanged is the mirror gate's
+        (``tests.test_pi_package``); the PyPI sentence is ``check_pypi_surface``'s."""
+        self.assertTrue(GUIDE.is_file(), f"{GUIDE.relative_to(REPO_ROOT)} must exist")
+        self.assertEqual(check_marked_regions_use(_read(GUIDE)), [])
+
 
 class InstallGuidePermissionSourceTest(unittest.TestCase):
     """CR-MDB-038 \u00a7S3 (user ruling 2026-09-24): the installer's global-policy
@@ -1149,7 +1347,25 @@ class RepoReadmeTest(unittest.TestCase):
 
 class ReleaseDocsTest(unittest.TestCase):
 
-    def test_git_workflow_releases_names_guide_copy_and_documentation_review(self):
+    # MIGRATED at CR-MDB-058 C3 RED (§S6; was
+    # test_git_workflow_releases_names_guide_copy_and_documentation_review): the copy step is
+    # retired; check_release_steps carries the new steps, one test per group of them.
+    def test_git_workflow_releases_links_release_notes_to_the_guide_and_keeps_the_review(self):
+        self.assertEqual(release_step_faults(_read(GIT_WORKFLOW_SKILL), DOCUMENTATION_STEPS), [])
+
+    def test_git_workflow_releases_no_longer_copies_the_marked_regions_into_release_notes(self):
+        self.assertEqual(release_step_faults(_read(GIT_WORKFLOW_SKILL), RETIRED_COPY_STEP), [])
+
+    def test_git_workflow_releases_names_the_release_notes_step_and_its_four_parts(self):
+        self.assertEqual(release_step_faults(_read(GIT_WORKFLOW_SKILL), RELEASE_NOTES_STEP), [])
+
+    def test_git_workflow_releases_names_the_release_job_snippet_passing_notes_file(self):
+        self.assertEqual(release_step_faults(_read(GIT_WORKFLOW_SKILL), RELEASE_JOB_SNIPPET), [])
+
+    def test_git_workflow_releases_names_the_packaging_entries_of_the_six_stacks(self):
+        self.assertEqual(release_step_faults(_read(GIT_WORKFLOW_SKILL), PACKAGING_ENTRIES), [])
+
+    def test_git_workflow_releases_passes_the_whole_release_step_gate(self):
         self.assertEqual(check_release_steps(_read(GIT_WORKFLOW_SKILL)), [])
 
     def test_git_workflow_releases_names_the_four_python_release_steps_in_order(self):
@@ -1184,6 +1400,7 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
         self.assertEqual(check_installer_source(self.guide), [])
         self.assertEqual(check_pypi_surface(self.guide), [])
         self.assertEqual(check_permission_source(self.guide), [])
+        self.assertEqual(check_marked_regions_use(self.guide), [])
 
     def test_permission_source_faults_are_reported(self):
         stated = _CONFORMING_PERMISSION_SOURCE
@@ -1456,12 +1673,11 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
             with self.subTest(case=label):
                 self.assertIn(expected, check_readme(text))
 
+    # MIGRATED at CR-MDB-058 C3 RED (§S6): the release-step half moved to
+    # test_release_step_gate_passes_the_conforming_section_and_bites_once_per_step on
+    # CONFORMING_RELEASES (was the copy-step sample "Copy the install guide's marked regions
+    # verbatim into the release notes, then hold a documentation review").
     def test_release_and_cr029_checkers_both_ways(self):
-        good = ("## Releases\n\nCopy the install guide's marked regions verbatim into the "
-                "release notes, then hold a documentation review over the doc set.\n\n## Next\n")
-        self.assertEqual(check_release_steps(good), [])
-        self.assertEqual(check_release_steps(good.replace("documentation review", "check")),
-                         ["## Releases: missing 'documentation review'"])
         self.assertEqual(check_release_steps("## Other\n\nverbatim release notes\n"),
                          ["no '## Releases' section"])
         cr = ("### §S1 — Layout\nThe README is the install-guide.md marked regions.\n"
@@ -1604,12 +1820,161 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
         self.assertEqual(check_pi_package_release_steps("## Other\n\nnpm publish\n"),
                          ["no '## Releases' section"])
 
+    def test_release_step_gate_passes_the_conforming_section_and_bites_once_per_step(self):
+        """CR-MDB-058 §S6: each step of :data:`RELEASE_STEP_PHRASES` taken out of the
+        conforming section is reported alone, by its own group and label."""
+        good = CONFORMING_RELEASES
+        self.assertEqual(check_release_steps(good), [])
+        docs, notes, snippet, packaging = (DOCUMENTATION_STEPS, RELEASE_NOTES_STEP,
+                                           RELEASE_JOB_SNIPPET, PACKAGING_ENTRIES)
+        cases = {
+            (docs, "release notes link to the install guide"):
+                ("link to the install guide", "are written by hand"),
+            (docs, "the marked regions feed generated surfaces such as a package README"):
+                ("still feed generated surfaces, such as a package README", "are kept"),
+            (docs, "a documentation review"): ("**A documentation review**", "**A check**"),
+            (notes, "move [Unreleased] under ## [X.Y.Z] - YYYY-MM-DD"):
+                ("move `[Unreleased]` under", "fill in"),
+            (notes, "or write it from the release's CRs (history and landings)"):
+                (" and `landings`", ""),
+            (notes, "an ### Upgrading note first when an operator must act"):
+                ("first whenever", "whenever"),
+            (notes, "update the compare links"):
+                ("4. Update the compare links at the foot of the file.\n", ""),
+            (notes, "commit"): ("5. Commit the `CHANGELOG.md` section.\n", ""),
+            (snippet, "the tag's section is matched literally"):
+                ("matched literally: 1.0.1 never matches 1.0.10", "taken as it is"),
+            (snippet, "it fails on a missing section"):
+                ("    # fails when the section is missing\n", ""),
+            (snippet, "it fails on an empty section"):
+                ("    # fails when the section is empty\n", ""),
+            (PACKAGING_ENTRIES, "python: [project.urls] Changelog and Release Notes"):
+                ("`[project.urls]` `Changelog`", "`Changelog`"),
+            (packaging, "bun: CHANGELOG.md in package.json files, copied into the package "
+                        "directory at publish time when the package is not at the repository "
+                        "root"):
+                (", if the package is not at the repository root", ""),
+            **{(packaging, f"{stack}: the release body only"):
+               (f"| `{stack}` | the release body only |", f"| `{stack}` | a package README |")
+               for stack in RELEASE_BODY_ONLY_STACKS},
+        }
+        self.assertEqual(len(cases), len(RELEASE_STEP_PHRASES), "one case per step")
+        for (group, label), (old, new) in cases.items():
+            with self.subTest(step=label):
+                self.assertIn(old, good)
+                self.assertEqual(check_release_steps(good.replace(old, new)),
+                                 [f"## Releases: {group}: {label}"])
+        self.assertEqual(
+            check_release_steps(good.replace("`package.json` `files`", "the tarball")),
+            [f"## Releases: {packaging}: bun: CHANGELOG.md in package.json files, copied into "
+             "the package directory at publish time when the package is not at the repository "
+             "root"])
+        wrapped = good.replace("Update the compare links", "Update the compare\n   links")
+        self.assertEqual(check_release_steps(wrapped), [], "a step wrapped across lines counts")
+        split = good.replace("4. Update the compare links at the foot of the file.\n",
+                             "4. Update the file's foot.\n\nThe compare links are listed there.\n\n")
+        self.assertEqual(check_release_steps(split),
+                         [f"## Releases: {notes}: update the compare links"],
+                         "a step's words split across two units do not count")
+        outside = good.replace("5. Commit the `CHANGELOG.md` section.\n", "").replace(
+            "\n## Next\n", "\n## Next\n\nCommit the section.\n")
+        self.assertEqual(check_release_steps(outside), [f"## Releases: {notes}: commit"],
+                         "a step counts only inside ## Releases")
+        self.assertEqual(release_step_faults(good.replace(" and `landings`", ""), notes),
+                         [f"## Releases: {notes}: or write it from the release's CRs "
+                          "(history and landings)"])
+        self.assertEqual(release_step_faults(good.replace(" and `landings`", ""), packaging), [])
+
+    def test_release_step_gate_flags_the_retired_copy_step_but_not_a_forbidden_copy(self):
+        """CR-MDB-058 §S6: the copy step ("Install text from its single source … copy
+        those marked regions verbatim into the release notes") is reported; a sentence that
+        forbids the copy is not."""
+        fault = (f"## Releases: {RETIRED_COPY_STEP}: still says to copy the marked regions "
+                 "into the release notes")
+        old_step = ("3. **Install text from its single source.** If the project keeps an install "
+                    "guide with marked\n   regions, copy those marked regions verbatim into the "
+                    "release notes (and into any other\n   surface that takes them, such as a "
+                    "package README).\n")
+        anchor = "2. **A documentation review** over the doc set, before the tag.\n"
+        self.assertEqual(check_release_steps(CONFORMING_RELEASES.replace(anchor, anchor + old_step)),
+                         [fault])
+        copy_only = CONFORMING_RELEASES.replace(
+            anchor, anchor + "3. Copy the marked regions into the release notes.\n")
+        self.assertEqual(check_release_steps(copy_only), [fault])
+        heading_only = CONFORMING_RELEASES.replace(
+            anchor, anchor + "3. **Install text from its single source.**\n")
+        self.assertEqual(check_release_steps(heading_only), [fault])
+        for forbidden in ("3. Never copy the marked regions into the release notes.\n",
+                          "3. Do not copy the marked regions into the release notes.\n",
+                          "3. They link to the guide instead of copying its marked regions.\n"):
+            with self.subTest(forbidden=forbidden):
+                self.assertEqual(
+                    check_release_steps(CONFORMING_RELEASES.replace(anchor, anchor + forbidden)), [])
+
+    def test_release_job_snippet_must_be_a_fenced_step_passing_notes_file(self):
+        """CR-MDB-058 §S6: the snippet is fenced, runs ``gh release create`` with the
+        ``CHANGELOG.md`` section as ``--notes-file``, and no fenced step uses
+        ``--generate-notes``."""
+        missing = (f"## Releases: {RELEASE_JOB_SNIPPET}: no fenced create-release step passing "
+                   "the CHANGELOG.md section as --notes-file")
+        generated = f"## Releases: {RELEASE_JOB_SNIPPET}: a fenced step still uses --generate-notes"
+        good = CONFORMING_RELEASES
+        self.assertEqual(check_release_steps(
+            good.replace("--notes-file notes.md", "--notes notes.md")), [missing])
+        self.assertEqual(check_release_steps(
+            good.replace("--notes-file notes.md", "--generate-notes")), [missing, generated])
+        self.assertEqual(check_release_steps(
+            good.replace("extract-section CHANGELOG.md", "extract-section NOTES.txt")), [missing])
+        self.assertEqual(check_release_steps(good.replace(
+            "\n## Next\n", "\n```bash\ngh release create \"$TAG\" --generate-notes\n```\n\n## Next\n")),
+            [generated])
+        self.assertEqual(check_release_steps(
+            good + "\n```bash\ngh release create \"$TAG\" --generate-notes\n```\n"), [],
+            "a fenced step outside ## Releases is not the snippet")
+        unfenced = good.replace("```yaml\n", "").replace("--verify-tag\n```\n", "--verify-tag\n")
+        self.assertIn(missing, check_release_steps(unfenced),
+                      "the snippet counts only as a fenced block")
+        self.assertEqual(check_release_steps(good.replace("```yaml", "~~~yaml").replace(
+            "--verify-tag\n```", "--verify-tag\n~~~")), [], "a tilde fence counts too")
+
+    def test_marked_regions_use_checker_both_ways(self):
+        """CR-MDB-058 §S7: the ``Marked regions`` statement, proved on the conforming guide."""
+        link = f"section '{MARKED}' must say release notes link to the guide"
+        feed = f"section '{MARKED}' must say the regions feed the generated package README"
+        copied = f"section '{MARKED}' must not say the regions are copied into the release notes"
+        good = self.guide
+        self.assertEqual(check_marked_regions_use(good), [])
+        old = ("Each section above sits between two marker lines, so its text can be copied, "
+               "unchanged, into\nthe release notes and the Pi package's README:")
+        self.assertEqual(check_marked_regions_use(good.replace(CONFORMING_MARKED_REGIONS_USE, old)),
+                         [link, feed, copied])
+        self.assertEqual(check_marked_regions_use(
+            good.replace("Release notes link to this guide. ", "")), [link])
+        self.assertEqual(check_marked_regions_use(
+            good.replace(" The regions feed the generated package README.", "")), [feed])
+        self.assertEqual(check_marked_regions_use(
+            good + "\nThe regions are copied into the release notes as well.\n"), [copied])
+        self.assertEqual(check_marked_regions_use(
+            good + "\nThe regions are never copied into the release notes.\n"), [],
+            "a sentence that forbids the copy is not the copy")
+        self.assertEqual(check_marked_regions_use(good.replace(
+            CONFORMING_MARKED_REGIONS_USE,
+            "Release notes\nlink to this guide. The regions feed the generated\npackage README.")),
+            [], "a statement wrapped across lines counts")
+        inside = good.replace(CONFORMING_MARKED_REGIONS_USE, "").replace(
+            "<!-- install-guide:end install -->",
+            CONFORMING_MARKED_REGIONS_USE + "\n\n<!-- install-guide:end install -->")
+        self.assertEqual(check_marked_regions_use(inside), [link, feed],
+                         "the statement counts only in the Marked regions section")
+
     def test_pi_package_step_keeps_python_and_documentation_steps_intact(self):
         """Adding the Pi step to a section already carrying the two
         documentation steps and the four Python steps leaves both their
         checkers clean, and the Pi checker does not accept Python-only text."""
-        docs = ("Copy the install guide's marked regions verbatim into the release notes, "
-                "then hold a documentation review.\n\n")
+        # MIGRATED at CR-MDB-058 C3 RED (§S6): the documentation steps are the conforming
+        # section's (was "Copy the install guide's marked regions verbatim into the release
+        # notes, then hold a documentation review.").
+        docs = CONFORMING_RELEASES_BODY + "\n"
         python = ("1. Set the version in its single source, then `uv build`.\n"
                   "2. TestPyPI into an isolated tool directory.\n"
                   "3. After git flow release finish, upload with a token the user supplies.\n"

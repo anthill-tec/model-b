@@ -4,6 +4,7 @@
   "description": "Model B workflow extensions for the Pi coding agent.",
   "keywords": ["pi-package"],
   "license": "MIT",
+  "files": ["extensions", "CHANGELOG.md"],
   "pi": {
     "extensions": ["extensions/worktree.ts"]
   },

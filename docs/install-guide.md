@@ -445,8 +445,8 @@ Add `--dry-run` to see what would be written without writing anything.
 
 ## Marked regions
 
-Each section above sits between two marker lines, so its text can be copied, unchanged, into
-the release notes and the Pi package's README:
+Release notes link to this guide; they never repeat its text. Each section above sits between
+two marker lines, and those regions feed the generated Pi package README, unchanged:
 
 - a region opens with `<!-- install-guide:begin <name> -->` on a line of its own;
 - a region closes with `<!-- install-guide:end <name> -->` on a line of its own, with the same
@@ -454,6 +454,6 @@ the release notes and the Pi package's README:
 
 Names are lower-case words joined by hyphens, each name is used once, regions are never
 nested and never empty. This section is outside every region and is not copied. To change the
-install instructions, edit this file; the other copies are taken from it at release time.
+install instructions, edit this file; the package README is generated from it.
 
 The PyPI project page shows the whole guide, this file unchanged, as the package readme.

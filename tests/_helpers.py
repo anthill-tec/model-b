@@ -22,6 +22,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import textwrap
 from pathlib import Path
 
 from tests.pi_capability_sandbox import with_agent_dir
@@ -573,6 +574,178 @@ def at_line(path: str, line: int) -> str:
     Assembled at run time, so a test expecting a checker's located finding never carries a
     path-and-line citation in its own source (CR-MDB-044 §S4: code is cited by symbol)."""
     return ":".join((path, str(line)))
+
+
+# ------------------------------------------------------------------ changelog form ----
+
+#: CR-MDB-058 §S1 — the two links the opening sentence of a Keep a Changelog 1.1.0 file carries.
+CHANGELOG_URLS = ("https://keepachangelog.com/en/1.1.0/", "https://semver.org/spec/v2.0.0.html")
+#: §S1 — the six Keep a Changelog group names.
+CHANGELOG_GROUPS = ("Added", "Changed", "Deprecated", "Removed", "Fixed", "Security")
+#: §S1 — the operator note, first in its section when present.
+CHANGELOG_UPGRADING = "Upgrading"
+CHANGELOG_UNRELEASED_HEADING = "## [Unreleased]"
+_CHANGELOG_RELEASE_HEADING = re.compile(
+    r"## \[(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)\] - \d{4}-\d{2}-\d{2}")
+#: A compare link at the foot, ``[label]: url`` — it ends the last section.
+_CHANGELOG_LINK_DEFINITION = re.compile(r"\[[^\]]+\]: ")
+
+
+def _changelog_sections(text: str) -> list[tuple[str, list[str]]]:
+    """Every ``## `` heading with its lines, each section ending at the next ``## `` heading,
+    the first compare link, or the end of the file."""
+    sections = []
+    current = None
+    for raw in text.splitlines():
+        line = raw.rstrip()
+        if line.startswith("## "):
+            current = (line, [])
+            sections.append(current)
+        elif _CHANGELOG_LINK_DEFINITION.match(line):
+            current = None
+        elif current is not None:
+            current[1].append(line)
+    return sections
+
+
+def changelog_form_faults(text: str) -> list[str]:
+    """The CR-MDB-058 §S1 form checker, shared by §S1 (Model B's own ``CHANGELOG.md``) and §S5
+    (``init``'s skeleton). It checks, and only these:
+
+    - the two URLs (:data:`CHANGELOG_URLS`);
+    - ``## [Unreleased]`` as the first ``##`` heading;
+    - every later ``##`` heading reading ``## [X.Y.Z] - YYYY-MM-DD``, versions descending;
+    - group headings drawn only from :data:`CHANGELOG_GROUPS` and ``### Upgrading``, with
+      ``### Upgrading`` first in its section when present, and none empty (no non-blank line
+      before the next heading, the first compare link, or the end of the file).
+
+    Returns one message per fault; ``[]`` is a file in form."""
+    faults = [f"missing link {url}" for url in CHANGELOG_URLS if url not in text]
+    sections = _changelog_sections(text)
+    if not sections or sections[0][0] != CHANGELOG_UNRELEASED_HEADING:
+        first = sections[0][0] if sections else None
+        faults.append(f"first ## heading is not {CHANGELOG_UNRELEASED_HEADING!r}: {first!r}")
+    previous = None
+    for heading, _lines in sections[1:]:
+        match = _CHANGELOG_RELEASE_HEADING.fullmatch(heading)
+        if match is None:
+            faults.append(f"release heading not in '## [X.Y.Z] - YYYY-MM-DD' form: {heading!r}")
+            continue
+        version = tuple(int(part) for part in match.groups())
+        if previous is not None and version >= previous:
+            faults.append(f"versions not descending: {heading!r} follows "
+                          f"{'.'.join(map(str, previous))}")
+        previous = version
+    allowed = (*CHANGELOG_GROUPS, CHANGELOG_UPGRADING)
+    for heading, lines in sections:
+        groups = []
+        for line in lines:
+            if line.startswith("### "):
+                groups.append([line[len("### "):].strip(), False])
+            elif line.strip() and groups:
+                groups[-1][1] = True
+        names = [name for name, _entry in groups]
+        for name, has_entry in groups:
+            if name not in allowed:
+                faults.append(f"unknown group heading '### {name}' under {heading!r}")
+            if not has_entry:
+                faults.append(f"empty group heading '### {name}' under {heading!r}")
+        if CHANGELOG_UPGRADING in names and names[0] != CHANGELOG_UPGRADING:
+            faults.append(f"'### {CHANGELOG_UPGRADING}' is not the first group under {heading!r}")
+    return faults
+
+
+# ------------------------------------------------------------------ GitHub workflow text ----
+# A release workflow is read as TEXT, stdlib only (no YAML parser): CR-MDB-058 §S2 reads
+# `create-release`, §S4 reads `publish-npm`. These readers understand the block layout the
+# repository's `.github/workflows/release.yml` uses — two-space jobs under `jobs:`, a `steps:`
+# list of `- ` items, `run:` inline or as a `|` block — and nothing more.
+
+def _indent_of(line: str) -> int:
+    return len(line) - len(line.lstrip())
+
+
+def _unquote(value: str) -> str:
+    value = value.strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+        return value[1:-1]
+    return value
+
+
+def workflow_job(text: str, name: str) -> list[str]:
+    """The lines of ``jobs.<name>``: from its key to the next two-space-indented key."""
+    lines = text.splitlines()
+    key = f"  {name}:"
+    if key not in lines:
+        raise AssertionError(f"the workflow has no jobs.{name}")
+    start = lines.index(key)
+    end = next((i for i in range(start + 1, len(lines)) if re.match(r"  \S", lines[i])), len(lines))
+    return lines[start:end]
+
+
+def workflow_job_working_directory(job: list[str]) -> str | None:
+    """The job's ``defaults.run.working-directory``, or ``None`` when it declares none."""
+    for i, line in enumerate(job):
+        if line.strip() != "defaults:":
+            continue
+        base = _indent_of(line)
+        for inner in job[i + 1:]:
+            if inner.strip() and _indent_of(inner) <= base:
+                break
+            match = re.match(r"\s*working-directory:\s*(\S.*)$", inner)
+            if match:
+                return _unquote(match.group(1))
+    return None
+
+
+def _workflow_step(item: list[str]) -> dict:
+    """One ``- `` step item as ``{"name", "run", "working-directory"}``; ``run`` is the list of
+    its command lines, dedented (``[]`` for a ``uses:`` step)."""
+    first = item[0]
+    at = _indent_of(first)
+    lines = [first[:at] + "  " + first[at + 2:], *item[1:]]
+    key_indent = at + 2
+    step = {"name": None, "run": [], "working-directory": None}
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        i += 1
+        if not line.strip() or _indent_of(line) != key_indent:
+            continue
+        match = re.match(r"\s*([\w-]+):\s*(.*?)\s*$", line)
+        if match is None:
+            continue
+        key, value = match.groups()
+        if key == "run" and value in ("|", "|-"):
+            body = []
+            while i < len(lines) and (not lines[i].strip() or _indent_of(lines[i]) > key_indent):
+                body.append(lines[i])
+                i += 1
+            step["run"] = [ln for ln in textwrap.dedent("\n".join(body)).splitlines() if ln.strip()]
+        elif key == "run":
+            step["run"] = [value]
+        elif key in ("name", "working-directory"):
+            step[key] = _unquote(value)
+    return step
+
+
+def workflow_steps(job: list[str]) -> list[dict]:
+    """The job's ``steps:`` in order, each as :func:`_workflow_step` reads it."""
+    starts = [i for i, line in enumerate(job) if line.strip() == "steps:"]
+    if len(starts) != 1:
+        raise AssertionError(f"expected one steps: key in {job[0].strip()!r}; found {len(starts)}")
+    base = _indent_of(job[starts[0]])
+    items: list[list[str]] = []
+    item_indent = None
+    for line in job[starts[0] + 1:]:
+        if line.strip() and _indent_of(line) <= base:
+            break
+        if line.lstrip().startswith("- ") and item_indent in (None, _indent_of(line)):
+            item_indent = _indent_of(line)
+            items.append([line])
+        elif items:
+            items[-1].append(line)
+    return [_workflow_step(item) for item in items]
 
 
 def _find_pi_package_root(pi_binary_resolved: Path) -> Path | None:

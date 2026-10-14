@@ -18,6 +18,12 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
 ]
 
+# PEP 753 well-known labels (CR-MDB-058 §S3). `master` holds the released copy; the
+# default branch is `develop`. No Homepage.
+[project.urls]
+Changelog = "https://github.com/anthill-tec/model-b/blob/master/CHANGELOG.md"
+"Release Notes" = "https://github.com/anthill-tec/model-b/releases"
+
 [project.scripts]
 modelb-axi = "modelb_axi.cli:main"
 

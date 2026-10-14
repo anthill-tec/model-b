@@ -32,6 +32,13 @@ Orchestrator rulings (2026-09-24, cycle 106) these tests pin:
   mutation done by hand at RED time (not a committed test) — an sdist
   built without ``hooks-src`` failed it. §S1 assertions are deliberately
   NOT folded into it.
+- R5 (the PyPI links): MIGRATED at CR-MDB-058 C2 RED (§S3; was: no
+  ``Project-URL`` and no ``Home-page`` while the repository is private). The
+  wheel built from the sdist carries exactly two ``Project-URL`` lines, the
+  PEP 753 well-known labels ``Changelog`` (the ``CHANGELOG.md`` on ``master``,
+  which holds the released copy) and ``Release Notes`` (the GitHub releases
+  page), and still no ``Home-page``. ``PyprojectUrlsTest`` reads the same
+  table from ``pyproject.toml`` without a build.
 
 Sandbox: every ``modelb-axi`` run passes ``--modelb-home`` and
 ``--target-root`` into a temp dir, with ``MODELB_HOME``, ``XDG_DATA_HOME``,
@@ -82,6 +89,12 @@ PYTHON_3_CLASSIFIER = "Programming Language :: Python :: 3"
 PYTHON_3_ONLY_CLASSIFIER = "Programming Language :: Python :: 3 :: Only"
 PYTHON_314_CLASSIFIER = "Programming Language :: Python :: 3.14"
 CONSOLE_CLASSIFIER = "Environment :: Console"
+#: CR-MDB-058 §S3 — ``[project.urls]``, and the two ``Project-URL`` lines the wheel carries.
+PROJECT_URLS = {
+    "Changelog": "https://github.com/anthill-tec/model-b/blob/master/CHANGELOG.md",
+    "Release Notes": "https://github.com/anthill-tec/model-b/releases",
+}
+PROJECT_URL_LINES = [f"{label}, {url}" for label, url in PROJECT_URLS.items()]
 _PYTHON_VERSION_CLASSIFIER = re.compile(
     r"Programming Language :: Python :: (\d+)(?:\.(\d+))?"
 )
@@ -250,8 +263,11 @@ def artifacts() -> tuple[Path, Path]:
 
 
 def tearDownModule():
+    global _ARTIFACTS
     if _BUILD_ROOT is not None:
         shutil.rmtree(_BUILD_ROOT, ignore_errors=True)
+    # CR-MDB-058 C2 (orchestrator-approved): drop the cache too, so a later module's artifacts() rebuilds instead of reading the deleted build.
+    _ARTIFACTS = None
 
 
 def sdist_members(sdist: Path) -> dict[str, tarfile.TarInfo]:
@@ -347,16 +363,19 @@ class WheelMetadataTest(unittest.TestCase):
         # MIGRATED at CR-MDB-064 C1 RED (§S1): the 3.14 floor's classifiers.
         self.assertEqual(classifier_faults(self.meta.get_all("Classifier") or []), [])
 
-    def test_requires_python_is_3_14_and_no_project_url_is_published(self):
-        # MIGRATED at CR-MDB-064 C1 RED (§S1; was `>=3.11`). The URL half is a
-        # pin guarding the "no repository URL while private" rule against a
-        # metadata edit adding [project.urls].
+    def test_requires_python_is_3_14_and_only_the_changelog_and_release_notes_urls_are_published(self):
+        # MIGRATED at CR-MDB-064 C1 RED (§S1; was `>=3.11`). MIGRATED at
+        # CR-MDB-058 C2 RED (§S3): renamed from
+        # test_requires_python_is_3_14_and_no_project_url_is_published; its URL
+        # half moves from "no Project-URL while private" to §S3's two lines.
         self.assertEqual(self.meta.get_all("Requires-Python"), [REQUIRES_PYTHON],
                          "§S1: the built wheel must publish `Requires-Python: >=3.14`")
-        self.assertEqual(self.meta.get_all("Project-URL"), None,
-                         "§S1: no Project-URL while the repository is private")
+        project_urls = self.meta.get_all("Project-URL") or []
+        self.assertCountEqual(project_urls, PROJECT_URL_LINES,
+                              f"CR-MDB-058 §S3: the wheel carries exactly {PROJECT_URL_LINES}; "
+                              f"got {project_urls!r}")
         self.assertEqual(self.meta.get_all("Home-page"), None,
-                         "§S1: no Home-page URL while the repository is private")
+                         "CR-MDB-058 §S3: Home-page stays absent")
 
     def test_description_body_is_the_install_guide_as_markdown(self):
         self.assertEqual(
@@ -387,6 +406,16 @@ class PyprojectPythonFloorTest(unittest.TestCase):
             python, [PYTHON_3_CLASSIFIER, PYTHON_3_ONLY_CLASSIFIER, PYTHON_314_CLASSIFIER],
             "§S1: the version classifiers are `… :: 3`, `… :: 3 :: Only` and `… :: 3.14`",
         )
+
+
+class PyprojectUrlsTest(unittest.TestCase):
+    """CR-MDB-058 §S3 — ``pyproject.toml`` declares the two PEP 753 well-known links, read
+    without a build."""
+
+    def test_project_urls_are_exactly_changelog_on_master_and_release_notes(self):
+        urls = _pyproject().get("project", {}).get("urls")
+        self.assertEqual(urls, PROJECT_URLS,
+                         f"§S3: [project.urls] must be exactly {PROJECT_URLS}; got {urls!r}")
 
 
 # ---------------------------------------------------------------------------

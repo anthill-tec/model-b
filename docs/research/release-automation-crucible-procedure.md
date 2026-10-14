@@ -11,6 +11,9 @@ A git-flow release pushes the tag from a workstation. A GitHub Actions workflow,
    re-run does not fail, with `GH_TOKEN: ${{ secrets.RELEASE_PAT }}`.
 2. **`publish-pypi`** and **`publish-npm`** — gated on `github.event_name == 'release'`.
 
+**Note (2026-10-14, CR-MDB-058):** Model B's `create-release` now passes the tag's `CHANGELOG.md` section
+with `--notes-file` instead of `--generate-notes`; the record above is Crucible's, as sourced.
+
 **Why `RELEASE_PAT` and not the default `GITHUB_TOKEN`:** a Release created with the default token does
 not fire `on: release` workflows, so the publish jobs never run — silently, with no error. That is the
 secret's only purpose; it is not used for tagging, protected-branch pushes or publishing.
@@ -126,8 +129,8 @@ adopted for 1.0.0 and split by the 13-point cap:
 
 ## What this means for Model B
 
-Model B has **no** `release.yml`. CR-MDB-038 and CR-MDB-029 wrote the release steps as **manual**
-uploads with credentials the user supplies at publish time. Adopting Crucible's shape replaces those
-steps with a workflow (`create-release` → `publish-pypi` via Trusted Publishing, `publish-npm` via a
-one-time `NPM_TOKEN` then Trusted Publishing), plus the `RELEASE_PAT` repository secret, the three
-environments, and the pending PyPI publisher — a CR of its own.
+Model B runs Crucible's shape in its own `release.yml` since 2026-09-24: `create-release` →
+`publish-pypi` via Trusted Publishing, `publish-npm` via a one-time `NPM_TOKEN` then Trusted
+Publishing, with the `RELEASE_PAT` repository secret and the three environments. It replaced the
+**manual** uploads CR-MDB-038 and CR-MDB-029 wrote, with credentials the user supplies at publish
+time. Since CR-MDB-058 its release body is the tag's `CHANGELOG.md` section (`--notes-file`).
