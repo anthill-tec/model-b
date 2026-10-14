@@ -122,7 +122,8 @@ branch.
 **Pushing the release.** After `git flow release finish X.Y.Z`, push `master`, `develop` and the
 tags in one `git push origin master develop --tags`: the `master` push runs the tests and creates
 the release, and the release event publishes. If the `master` run reports no version tag at
-`HEAD`, dispatch the workflow on `master`.
+`HEAD`, dispatch the workflow on `master`. When the `master` run or the release run fails its
+tests, nothing publishes: re-run the failed jobs, and fix a real failure on a hotfix branch.
 
 ### Release notes (`CHANGELOG.md`)
 
@@ -138,7 +139,8 @@ branch is first published:
 
 The release job publishes the tag's section as the release body. It runs on the `master` push,
 needs the test job, and checks out with full history; it takes the tag from the `X.Y.Z` tag at
-`HEAD`, and when there is none it exits cleanly with nothing to release. It matches the
+`HEAD`, and when there is none it exits cleanly with nothing to release; when there is more
+than one it fails, naming them. It matches the
 section's heading literally, so `1.0.1` never matches `1.0.10`, and it fails on a missing section
 and on an empty section (one holding only `###` headings counts as empty):
 
@@ -148,15 +150,17 @@ create-release:
   if: github.ref == 'refs/heads/master'
   runs-on: ubuntu-latest
   steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v4 # pin to a full commit SHA
       with:
         fetch-depth: 0
     - name: Create the release
       env:
         GH_TOKEN: ${{ secrets.RELEASE_PAT }}
       run: |
-        tag=$(git tag --points-at HEAD | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' || true)
-        [ -n "$tag" ] || { echo "no version tag at HEAD, nothing to release"; exit 0; }
+        tags=$(git tag --points-at HEAD | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' || true)
+        [ -n "$tags" ] || { echo "no version tag at HEAD, nothing to release"; exit 0; }
+        [ "$(printf '%s\n' "$tags" | wc -l)" -eq 1 ] || { echo "more than one version tag at HEAD:" $tags >&2; exit 1; }
+        tag=$tags
         awk -v head="## [$tag] - " '
           index($0, head) == 1 { found = 1; next }
           found && (/^## / || /^\[[^]]+\]: /) { exit }
@@ -239,8 +243,9 @@ After building: switch back to develop for continued work. Bump develop to the n
 2. **Rehearse on TestPyPI** — each release-branch push (and each hotfix-branch push) uploads the
    stamped dev version to TestPyPI through Trusted Publishing, before anything reaches the real
    index.
-3. **Publish to PyPI** — after `git flow release finish`, the tag's release job builds from the
-   tagged commit and uploads to PyPI through Trusted Publishing, with no token anywhere.
+3. **Publish to PyPI** — after `git flow release finish`, the release event's publish job builds
+   from the tagged commit and uploads to PyPI after the tests and the ref guard, through Trusted
+   Publishing, with no token anywhere.
 4. **Post-release maintenance** — on the maintainer's machine: install the released version from
    PyPI; replace the prior installation with
    `--reinstall --target-root ~ --harnesses <harnesses> --stacks <stacks>`; remove workflow
@@ -249,9 +254,9 @@ After building: switch back to develop for continued work. Bump develop to the n
 
 ### Pi package releases (npm)
 
-1. **Publish** — after the version is set, the tag's release job publishes the Pi package with
-   `npm publish` (a scoped package with `npm publish --access public`) through Trusted
-   Publishing. The first publish of a new package uses a one-time granular token kept as a
+1. **Publish** — after the version is set, the release event's publish job publishes the Pi
+   package with `npm publish` (a scoped package with `npm publish --access public`) after the tests and
+   the ref guard, through Trusted Publishing. The first publish of a new package uses a one-time granular token kept as a
    repository secret; then the trusted publisher is added, 2FA is required and the token
    deleted.
 2. **Verify the published version** — install the published version with `pi install` into an
