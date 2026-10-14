@@ -1,6 +1,6 @@
 # CR-MDB-058 — Release notes: `CHANGELOG.md` as a release task, in every project
 
-**Status:** PENDING (filed 2026-10-10; gap analysis and pre-review 2026-10-14) — **locked**
+**Status:** COMPLETED (filed 2026-10-10; gap analysis and pre-review 2026-10-14)
 **Type:** feature (release workflow, packaging metadata, scaffold, git-workflow skill, install guide)
 **Priority:** P1 — release 1.0.0, wave 2.
 **Depends on:** none (board-authoritative: read `queue`)
