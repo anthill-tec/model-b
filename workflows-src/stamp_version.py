@@ -17,8 +17,10 @@ A target is ``pypi:<dir>`` or ``npm:<dir>``. Its version source:
 
 - ``pypi:<dir>`` -- ``<dir>/pyproject.toml``'s ``[project] version``; or, with ``version`` in
   ``[project] dynamic`` under hatchling, the file named by ``[tool.hatch.version] path`` (relative
-  to ``<dir>``), its ``__version__ = "..."`` line.
+  to ``<dir>``), its ``__version__ = "..."`` line, a trailing ``# comment`` kept.
 - ``npm:<dir>`` -- ``<dir>/package.json``'s top-level ``"version"``, at a two-space indent.
+
+A source's line endings, LF or CRLF, are kept byte for byte.
 
 Every refusal exits 1 with one line on stderr naming the ref, the run number or the file, prints
 nothing on stdout and writes nothing: a missing or unreadable file, another dynamic-version
@@ -39,11 +41,12 @@ from pathlib import Path
 _NUMBER = r"(?:0|[1-9][0-9]*)"
 _REF = re.compile(rf"(?:release|hotfix)/({_NUMBER}\.{_NUMBER}\.{_NUMBER})")
 _RUN = re.compile(r"[1-9][0-9]*")
-_INIT_VERSION = re.compile(r'^(__version__ = ")([^"]*)(")$', re.M)
+# The value may be followed by a comment; a line may end in CRLF (``$`` alone stops before LF).
+_INIT_VERSION = re.compile(r'^(__version__ = ")([^"\r\n]*)(")[ \t]*(?:#[^\r\n]*)?\r?$', re.M)
 # package.json is two-space indented: the anchored indent matches its top-level "version" key
 # only, never a nested one on its own line.
 _PACKAGE_VERSION = re.compile(r'^(  "version":\s*")([^"]*)(")', re.M)
-_PROJECT_TABLE = re.compile(r"^\[project\][ \t]*(?:#.*)?$", re.M)
+_PROJECT_TABLE = re.compile(r"^\[project\][ \t]*(?:#[^\r\n]*)?\r?$", re.M)
 _NEXT_TABLE = re.compile(r"^\[", re.M)
 _PROJECT_VERSION = re.compile(r'^(version\s*=\s*")([^"]*)(")', re.M)
 _HATCH = "hatchling.build"
