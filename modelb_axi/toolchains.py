@@ -15,11 +15,13 @@
   (the CLI's explicit-yes seam, ``None`` under ``--yes``), at most once per
   run per installer — ``python3``'s ``uv python install --default`` once
   for every stack it covers, each re-probed after it ran. A probe with no
-  ``install`` argv is never offered; its ``no_install`` reason (CR-MDB-063
-  §S2) shapes its warning: ``elevated`` carries :data:`_ELEVATED_NOTE`,
-  ``per-project`` (``xmlrunner``, ``coverage``) says the PATH ``python3``
-  cannot run the tests and names the project ``.venv`` route.
-  Declining is recorded as a warning.
+  ``install`` argv is never offered. A warning's effect clause follows the
+  probe's kind: a ``module`` probe (``xmlrunner``, ``coverage``) is judged
+  in the PATH ``python3``, so its warning says the PATH ``python3`` cannot
+  run the stack's tests. The ``no_install`` reason (CR-MDB-063 §S2)
+  decides the elevated note: ``elevated`` carries :data:`_ELEVATED_NOTE`;
+  ``per-project`` carries none, and records that the route runs in each
+  project. Declining is recorded as a warning.
 
 Verdicts: ``detected`` / ``absent`` / ``unknown``, and ``installed`` when a
 provider installer the user confirmed exits 0 AND a re-probe of that one
