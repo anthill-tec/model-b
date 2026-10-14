@@ -165,8 +165,11 @@ class WorkflowReadersProofTest(unittest.TestCase):
         self.assertEqual(step["name"], "Publish")
 
     def test_the_step_reader_still_returns_the_keys_existing_callers_read(self):
+        # MIGRATED at CR-MDB-067 C2 RED (§S3): the step reader also returns ``env`` for §S3's
+        # sandbox variables; the five keys existing callers read are unchanged.
         for step in workflow_steps(workflow_job(SAMPLE_WORKFLOW, "first")):
-            self.assertEqual(set(step), {"name", "run", "working-directory", "uses", "with"})
+            self.assertEqual(set(step),
+                             {"name", "run", "working-directory", "uses", "with", "env"})
 
     def test_a_job_key_reads_one_line_scalars_without_comment_or_quotes(self):
         first = workflow_job(SAMPLE_WORKFLOW, "first")

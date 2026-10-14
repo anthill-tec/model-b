@@ -658,8 +658,9 @@ def changelog_form_faults(text: str) -> list[str]:
 # ------------------------------------------------------------------ GitHub workflow text ----
 # A release workflow is read as TEXT, stdlib only (no YAML parser): CR-MDB-058 §S2 reads
 # `create-release`, §S4 reads `publish-npm`; CR-MDB-067 §S2 reads `rehearse`, the job keys and the
-# `on.push` triggers. These readers understand the block layout the
-# repository's `.github/workflows/release.yml` uses — two-space jobs under `jobs:`, a `steps:`
+# `on.push` triggers; CR-MDB-067 §S3 reads `ci.yml`'s top-level `name:` and `permissions:`, its
+# job names and a step's `env:`. These readers understand the block layout the
+# repository's `.github/workflows/*.yml` use — two-space jobs under `jobs:`, a `steps:`
 # list of `- ` items, `run:` inline or as a `|` block — and nothing more.
 
 def _indent_of(line: str) -> int:
@@ -749,12 +750,15 @@ def _workflow_step(item: list[str]) -> dict:
     """One ``- `` step item as ``{"name", "run", "working-directory", "uses", "with"}``; ``run``
     is the list of its command lines, dedented (``[]`` for a ``uses:`` step); ``uses`` is the
     action reference without its trailing comment (``None`` for a ``run`` step); ``with`` is the
-    step's ``with:`` scalars as a dict (``{}`` when it has none) — CR-MDB-067 §S6."""
+    step's ``with:`` scalars as a dict (``{}`` when it has none) — CR-MDB-067 §S6; ``env`` is the
+    step's own ``env:`` scalars as a dict, read the same way (``{}`` when it has none) —
+    CR-MDB-067 §S3."""
     first = item[0]
     at = _indent_of(first)
     lines = [first[:at] + "  " + first[at + 2:], *item[1:]]
     key_indent = at + 2
-    step = {"name": None, "run": [], "working-directory": None, "uses": None, "with": {}}
+    step = {"name": None, "run": [], "working-directory": None, "uses": None, "with": {},
+            "env": {}}
     i = 0
     while i < len(lines):
         line = lines[i]
@@ -765,10 +769,10 @@ def _workflow_step(item: list[str]) -> dict:
         if match is None:
             continue
         key, value = match.groups()
-        if key == "with" and not _strip_comment(value):
+        if key in ("with", "env") and not _strip_comment(value):
             body = _nested_lines(lines, i, key_indent)
             i += len(body)
-            step["with"] = _scalar_mapping(body)
+            step[key] = _scalar_mapping(body)
         elif key == "uses":
             step["uses"] = _scalar(value)
         elif key == "run" and value in ("|", "|-"):
@@ -809,15 +813,21 @@ def workflow_job_key(job: list[str], key: str) -> str | None:
     lines and a ``>``/``>-`` block fold into one space-joined line, a ``|``/``|-`` block keeps
     its newlines; the comment and the quotes go. ``""`` for a key whose value is a nested block
     (``defaults:``), ``None`` when the job declares no such key."""
-    base = _indent_of(job[0]) + 2
-    for i, line in enumerate(job[1:], start=1):
+    return _key_at(job, 1, _indent_of(job[0]) + 2, key)
+
+
+def _key_at(lines: list[str], first: int, base: int, key: str) -> str | None:
+    """``key``'s scalar among ``lines[first:]`` at indent ``base`` exactly, read as
+    :func:`workflow_job_key` describes; ``None`` when no such key sits there."""
+    for i in range(first, len(lines)):
+        line = lines[i]
         if not line.strip() or _indent_of(line) != base:
             continue
         match = re.match(r"\s*([\w-]+):(?:\s+(.*?))?\s*$", line)
         if match is None or match.group(1) != key:
             continue
         value = _strip_comment(match.group(2) or "")
-        body = [ln.strip() for ln in _nested_lines(job, i + 1, base)]
+        body = [ln.strip() for ln in _nested_lines(lines, i + 1, base)]
         if value in ("|", "|-"):
             return "\n".join(ln for ln in body if ln)
         if value in (">", ">-"):
@@ -828,11 +838,24 @@ def workflow_job_key(job: list[str], key: str) -> str | None:
     return None
 
 
+def workflow_key(text: str, key: str) -> str | None:
+    """A top-level scalar key of the workflow (``name`` …), read at column 0 only, never a
+    job's or a step's key of the same name; read as :func:`workflow_job_key` reads a job's
+    (CR-MDB-067 §S3)."""
+    return _key_at(text.splitlines(), 0, 0, key)
+
+
 def workflow_job_permissions(job: list[str]) -> dict | str | None:
     """The job's ``permissions:`` — a dict of scope to access for the mapping form, the string
     for the scalar form (``read-all``), ``None`` when the job declares none (CR-MDB-067 §S6)."""
-    base = _indent_of(job[0]) + 2
-    for i, line in enumerate(job[1:], start=1):
+    return _permissions_at(job, 1, _indent_of(job[0]) + 2)
+
+
+def _permissions_at(lines: list[str], first: int, base: int) -> dict | str | None:
+    """The ``permissions:`` among ``lines[first:]`` at indent ``base`` exactly, read as
+    :func:`workflow_job_permissions` describes; ``None`` when none sits there."""
+    for i in range(first, len(lines)):
+        line = lines[i]
         if not line.strip() or _indent_of(line) != base:
             continue
         match = re.match(r"\s*permissions:(?:\s+(.*?))?\s*$", line)
@@ -841,8 +864,36 @@ def workflow_job_permissions(job: list[str]) -> dict | str | None:
         value = _scalar(match.group(1) or "")
         if value:
             return value
-        return _scalar_mapping(_nested_lines(job, i + 1, base))
+        return _scalar_mapping(_nested_lines(lines, i + 1, base))
     return None
+
+
+def workflow_permissions(text: str) -> dict | str | None:
+    """The workflow-level ``permissions:`` (column 0), read as :func:`workflow_job_permissions`
+    reads a job's; ``None`` when the workflow declares none, whatever its jobs declare
+    (CR-MDB-067 §S3)."""
+    return _permissions_at(text.splitlines(), 0, 0)
+
+
+def workflow_job_names(text: str) -> list[str]:
+    """The keys under the top-level ``jobs:``, in order (CR-MDB-067 §S3); a workflow with no
+    ``jobs:`` raises."""
+    lines = text.splitlines()
+    start = next((i for i, line in enumerate(lines) if re.match(r"jobs:\s*(?:#.*)?$", line)),
+                 None)
+    if start is None:
+        raise AssertionError("the workflow has no top-level jobs: key")
+    keyed = [line for line in _nested_lines(lines, start + 1, 0)
+             if line.strip() and not line.strip().startswith("#")]
+    if not keyed:
+        return []
+    indent = min(_indent_of(line) for line in keyed)
+    names = []
+    for line in keyed:
+        match = re.match(r"\s*([\w-]+):", line)
+        if match and _indent_of(line) == indent:
+            names.append(match.group(1))
+    return names
 
 
 def _flow_or_block_list(inline: str, nested: list[str]) -> list[str]:
