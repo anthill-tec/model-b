@@ -35,7 +35,7 @@ import subprocess
 import sys
 import tomllib
 import unicodedata
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 
 from modelb_axi import agents, permission_policy, project_trust, requirements, workflows
 from modelb_axi._fsutil import atomic_write
@@ -455,43 +455,19 @@ def _check_kebab_id(value: str) -> str:
 
 
 #: The release targets ``RELEASE_TARGETS`` may name, in canonical order
-#: (CR-MDB-068 §S1).
-RELEASE_TARGETS: tuple[str, ...] = ("pypi", "npm", "github-assets")
-#: The release targets that take a ``:<dir>`` (CR-MDB-068 §S1).
-_DIR_TARGETS = frozenset({"pypi", "npm"})
-
-
-def _release_target(item: str) -> tuple[str, str]:
-    """``(name, dir)`` of one ``name`` or ``name:dir`` target, ``dir``
-    normalised as a :class:`PurePosixPath` (``.`` for none); raises
-    ``ValueError`` naming the bad part (CR-MDB-068 §S1)."""
-    name, sep, raw = item.partition(":")
-    if name not in RELEASE_TARGETS:
-        raise ValueError(f"names an unknown release target {name!r}; "
-                         f"supported: {', '.join(RELEASE_TARGETS)}")
-    if not sep:
-        return name, "."
-    if name not in _DIR_TARGETS:
-        raise ValueError(f"gives a dir to {name}, which takes none")
-    if not raw.strip():
-        raise ValueError(f"gives {name} an empty dir")
-    path = PurePosixPath(raw.strip())
-    if path.is_absolute() or ".." in path.parts:
-        raise ValueError(f"gives {name} the dir {raw.strip()!r}, which must be relative "
-                         "and hold no `..`")
-    return name, str(path)
+#: (CR-MDB-068 §S1): ``workflows`` owns the one definition.
+RELEASE_TARGETS = workflows.RELEASE_TARGETS
 
 
 def _check_release_targets_csv(value: str) -> str:
     """Validate rule: a ``RELEASE_TARGETS`` CSV of ``name`` or
     ``name:dir`` targets (CR-MDB-068 §S1), returned canonical: the order of
     :data:`RELEASE_TARGETS`, each ``dir`` normalised and a ``.`` dir
-    omitted, no whitespace; empty for no target. Refuses an unknown name, a
-    duplicate name, an empty or blank ``dir``, an absolute ``dir`` or one
-    holding ``..``, and a ``dir`` on ``github-assets``."""
+    omitted, no whitespace; empty for no target. Refuses a duplicate name, and
+    every refusal of :func:`workflows.parse_target`, which parses each item."""
     found: dict[str, str] = {}
     for item in (part.strip() for part in value.split(",")) if value.strip() else ():
-        name, directory = _release_target(item)
+        name, directory = workflows.parse_target(item)
         if name in found:
             raise ValueError(f"names the release target {name} twice (a duplicate)")
         found[name] = directory

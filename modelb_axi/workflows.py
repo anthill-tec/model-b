@@ -15,7 +15,8 @@ replaced inline; ``@@USES:<owner>/<repo>@@`` is the action's pinned reference fr
 Stdlib only.
 """
 
-from pathlib import Path
+import re
+from pathlib import Path, PurePosixPath
 
 from modelb_axi import agents
 
@@ -45,9 +46,13 @@ _SCRIPTS = {STAMP_SCRIPT: "stamp_version.py", SECTION_SCRIPT: "changelog_section
 #: Each stack's test-job part and the job id it renders (§S4's table).
 _TEST_PARTS = {"python": "test-python", "bun": "test-bun", "rust": "test-rust",
                "quarkus": "test-maven", "java": "test-maven", "arduino": "test-arduino"}
-#: The release targets, in canonical order (CR-MDB-068 §S1).
-_TARGETS = ("pypi", "npm", "github-assets")
+#: The release targets ``RELEASE_TARGETS`` may name, in canonical order (CR-MDB-068 §S1): the
+#: one definition, which ``scaffold`` imports.
+RELEASE_TARGETS: tuple[str, ...] = ("pypi", "npm", "github-assets")
+#: The release targets that take a ``:<dir>`` and carry a version source (CR-MDB-068 §S1).
 _VERSIONED = ("pypi", "npm")
+#: A target ``dir`` the rendered workflow may write unquoted into a shell line (VERIFY F1).
+_SAFE_DIR = re.compile(r"[A-Za-z0-9._/-]+")
 
 
 def _read(source_dir: Path, name: str) -> str:
@@ -71,15 +76,45 @@ def _fill(text: str, values: dict[str, str]) -> str:
     return text
 
 
-def _parse_targets(targets: list[str]) -> list[tuple[str, str]]:
-    """``(name, dir)`` of each canonical target, in canonical order; ``dir`` ``.`` for none."""
-    parsed = {}
+def parse_target(item: str) -> tuple[str, str]:
+    """``(name, dir)`` of one ``name`` or ``name:dir`` release target, ``dir`` normalised as a
+    :class:`PurePosixPath` (``.`` for none): the one target parser, called by ``scaffold``'s
+    ``release_targets_csv`` rule and by :func:`render` (CR-MDB-068 §S1). Raises ``ValueError``
+    naming the bad part: an unknown name (listing the supported ones), a ``dir`` on a target that
+    takes none, an empty or blank ``dir``, a ``dir`` holding a character outside
+    ``[A-Za-z0-9._/-]`` (the workflow writes it unquoted into a shell line), and an absolute
+    ``dir`` or one holding ``..``."""
+    name, sep, raw = item.partition(":")
+    if name not in RELEASE_TARGETS:
+        raise ValueError(f"names an unknown release target {name!r}; "
+                         f"supported: {', '.join(RELEASE_TARGETS)}")
+    if not sep:
+        return name, "."
+    if name not in _VERSIONED:
+        raise ValueError(f"gives a dir to {name}, which takes none")
+    directory = raw.strip()
+    if not directory:
+        raise ValueError(f"gives {name} an empty dir")
+    if not _SAFE_DIR.fullmatch(directory):
+        raise ValueError(f"gives {name} the dir {directory!r}, which may hold only the "
+                         "characters [A-Za-z0-9._/-]")
+    path = PurePosixPath(directory)
+    if path.is_absolute() or ".." in path.parts:
+        raise ValueError(f"gives {name} the dir {directory!r}, which must be relative "
+                         "and hold no `..`")
+    return name, str(path)
+
+
+def _parsed_targets(targets: list[str]) -> list[tuple[str, str]]:
+    """``(name, dir)`` of each target, each parsed once by :func:`parse_target`, in canonical
+    order; raises ``ValueError`` naming a duplicate."""
+    parsed: dict[str, str] = {}
     for target in targets:
-        name, _sep, directory = target.partition(":")
-        if name not in _TARGETS or name in parsed:
-            raise ValueError(f"release target {target!r} is unknown or repeated")
-        parsed[name] = directory or "."
-    return [(name, parsed[name]) for name in _TARGETS if name in parsed]
+        name, directory = parse_target(target)
+        if name in parsed:
+            raise ValueError(f"names the release target {name} twice (a duplicate)")
+        parsed[name] = directory
+    return [(name, parsed[name]) for name in RELEASE_TARGETS if name in parsed]
 
 
 def _workdir(directory: str, indent: int = 8) -> str:
@@ -135,7 +170,7 @@ def _publish_jobs(source_dir: Path, parsed: list[tuple[str, str]], needs: str,
 
 
 def _release_yml(stacks: list[str], targets: list[str], source_dir: Path) -> str:
-    parsed = _parse_targets(targets)
+    parsed = _parsed_targets(targets)
     names = [name for name, _directory in parsed]
     needs = ", ".join(f"test-{stack}" for stack in stacks)
     versioned = "".join(f" {name}:{directory}" for name, directory in parsed
