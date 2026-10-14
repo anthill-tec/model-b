@@ -27,7 +27,9 @@ _NUMBER = r"(?:0|[1-9][0-9]*)"
 _REF = re.compile(rf"(?:release|hotfix)/({_NUMBER}\.{_NUMBER}\.{_NUMBER})")
 _RUN = re.compile(r"[1-9][0-9]*")
 _INIT_VERSION = re.compile(r'^(__version__ = ")([^"]*)(")$', re.M)
-_PACKAGE_VERSION = re.compile(r'^(\s*"version":\s*")([^"]*)(")', re.M)
+# package.json is two-space indented: the anchored indent matches its top-level "version" key
+# only, never a nested one on its own line.
+_PACKAGE_VERSION = re.compile(r'^(  "version":\s*")([^"]*)(")', re.M)
 
 
 def _read(path: str) -> str:
