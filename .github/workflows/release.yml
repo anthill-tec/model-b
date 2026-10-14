@@ -16,7 +16,8 @@
 # 3. publish-npm: publishes `@anthill-tec/modelb-pi` with provenance
 #    through npm Trusted Publishing. The very first publish of the
 #    package uses the one-time NPM_TOKEN secret instead, because npm
-#    cannot bootstrap a trusted publisher.
+#    cannot bootstrap a trusted publisher. The package ships the
+#    root CHANGELOG.md, copied into pi-package/ at publish time.
 #
 # A manual run (workflow_dispatch) rehearses the Python upload on
 # TestPyPI.
@@ -116,6 +117,8 @@ jobs:
           registry-url: https://registry.npmjs.org
       - name: npm new enough for Trusted Publishing
         run: npm install -g npm@latest
+      - name: Ship the root CHANGELOG.md in the package
+        run: cp ../CHANGELOG.md .
       - name: Publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

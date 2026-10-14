@@ -8,3 +8,5 @@ test-reports/
 .coverage
 .lean-ctx/
 .worktrees/
+# The npm package's CHANGELOG.md: copied from the root at publish time, never committed.
+pi-package/CHANGELOG.md
