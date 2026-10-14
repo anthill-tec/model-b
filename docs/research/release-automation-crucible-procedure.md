@@ -182,6 +182,28 @@ separate `ci.yml` ran on every `develop` push and pull request and gated no publ
   `origin/master`, beside `needs:` on the tests.
 - **Per-stack workflow templates (CR-MDB-068) take this shape.**
 
+## Release workflow templates (user rulings, 2026-10-14, at CR-MDB-068's gap analysis)
+
+- **A project's publish targets are a registry key, asked at `init`** (`RELEASE_TARGETS`), not
+  inferred from its stacks: a stack decides the test job; the targets decide the rehearsal and publish
+  jobs. An app, a service or firmware may publish to no registry, so no target means tests and
+  `create-release` only.
+- **A verb re-renders the workflow in an existing project,** as `modelb-axi agents` re-renders the
+  agent definitions, under the same ownership rules; `init` and `migrate` (CR-MDB-055) call the same
+  renderer, and Model B renders its own in 1.0.0.
+- **Version stamping and the notes extraction are shipped scripts,** stdlib Python written into each
+  project and owned by hash, not inline shell: tested once, in Model B, whose own scripts become them.
+- **The split:** CR-MDB-068 carries the key, the templates and renderer, `init` and the verb, the
+  scripts, a test job per stack, the targets `pypi`, `npm` and `github-assets`, and Model B rendering
+  its own; CR-MDB-071 carries the `crates` and `maven-central` targets and the release-readiness check.
+  Both are in 1.0.0.
+- **Measured at gap analysis:** the Arduino stack is firmware, which ships built files, not through the
+  Arduino Library Manager (libraries only); crates.io has trusted publishing
+  (`rust-lang/crates-io-auth-action`) but a crate's first publish needs an API token; Maven Central has
+  no OIDC (a Portal user token and GPG signing; the plugin can validate a deployment and drop it, a
+  rehearsal); npm caps write tokens at 90 days and removes direct publishing with bypass-2FA tokens in
+  January 2027, so trusted publishing is the durable path.
+
 ## A test-hygiene CR in every release (user ruling, 2026-10-14)
 
 Every release carries a test-hygiene CR, sequenced last in the release's final wave, so the suite is

@@ -1,70 +1,196 @@
-# CR-MDB-068 — Release and CI workflow templates for every stack
+# CR-MDB-068 — Release workflow templates: `init` and a new verb render each project's `release.yml`
 
-**Status:** PENDING — **SEED, not the finished spec.** Gap analysis, the spec and its pre-review
-happen in order when this CR starts.
-**Type:** feature (scaffold, workflow templates, git-workflow skill)
-**Priority:** P1 — release 1.0.0, wave 2; after CR-MDB-067.
+**Status:** PENDING — spec (gap analysis 2026-10-14).
+**Type:** feature (scaffold, CLI, release workflow templates, git-workflow skill)
+**Priority:** P1 — release 1.0.0, wave 2; after CR-MDB-070.
 **Depends on:** CR-MDB-070 (board-authoritative: read `queue`)
 **Labels:** release, ci, scaffold
-**Design reference:** `docs/research/release-automation-crucible-procedure.md`; CR-MDB-058 (release
-notes, the release-job snippet, the packaging entries); CR-MDB-067 (the rehearsal on every release or
-hotfix push, the dev-version stamp, the CI test workflow).
+**Design reference:** `docs/research/release-automation-crucible-procedure.md` § "Release workflow
+templates (user rulings, 2026-10-14, at CR-MDB-068's gap analysis)" and § "… at CR-MDB-070's gap
+analysis"; CR-MDB-058 (release notes), CR-MDB-067 (the rehearsal, the dev-version stamp), CR-MDB-070
+(one workflow; the tests gate every publish); CR-MDB-025 §S6 (ownership by marker hash).
 
 ## Context
 
-Release notes reach every stack: `init` writes a `CHANGELOG.md` skeleton, and the `git-workflow`
-skill carries a stack-neutral create-release snippet. Release automation does not. Only Model B's own
-`.github/workflows/release.yml` tests and publishes, for PyPI and npm, written by hand.
-A scaffolded project gets no workflow file, and the skill names no publish path for crates.io, Maven
-Central or the Arduino Library Manager. Each project writes its own release and CI jobs, so nothing
-checks that a project is set up for a release or hotfix run.
+- **Only Model B has a release workflow, written by hand.** `.github/workflows/release.yml` (CR-MDB-070)
+  tests on release, hotfix and `master` pushes, rehearses, creates the release from the `master` push and
+  publishes on the release event. `init` writes no workflow file, and nothing renders one for an
+  existing project.
+- **A stack does not say where a project publishes.** The `arduino` stack is firmware; a Quarkus
+  service, or a Python or Bun app, may publish to no registry.
+- **`init` runs on an empty directory:** no manifest (`pyproject.toml`, `package.json`, …) exists yet.
+- **The scripts are Model B's own.** `.github/scripts/stamp_version.py` knows exactly
+  `modelb_axi/__init__.py` and `pi-package/package.json`; `.github/scripts/changelog_section.py` is
+  generic already.
+- **Model B's `.env` is gitignored,** so a workflow cannot read registry keys at run time.
+- **Ownership by marker hash exists:** `agents.place_owned` (agent definitions, the permission policy)
+  rewrites an intact file, skips a hand-modified one (reported; `--force-managed` overwrites), and leaves a
+  file without a marker alone (reported unmanaged).
+- **`modelb-axi agents`** re-renders the agent definitions of the project in the current directory from
+  its `.env` — the precedent for a re-render verb.
+- **The raw-runner guard** covers `generator/templates/` and `generator/stacks/`; a workflow template
+  shows each stack's test command.
 
-## Scope (seed)
+## Scope
 
-1. **Workflow templates per stack.** `init` renders into `.github/workflows/` one release workflow per
-   project, in CR-MDB-070's shape:
-   - a test job per stack, with no event condition, runs the stack's suite on the floor toolchain, in a
-     clean home, with full history, in every run: pushes to `release/**`, `hotfix/**` and `master`, and
-     the published release (never `develop` or pull requests);
-   - every publish job needs the test jobs; the release is created from the `master` push for the
-     `X.Y.Z` tag at `HEAD`, with the tag's `CHANGELOG.md` section as its body (CR-MDB-058); every
-     `release/**` or `hotfix/**` push rehearses with the stack's dev version and the notes check
-     (CR-MDB-067); the registry publishes run on the release event, guarded to a bare `X.Y.Z` tag on
-     `master`:
+### §S1 — The `RELEASE_TARGETS` registry key
 
-     | Stack | Registry | Rehearsal | Publish |
-     |---|---|---|---|
-     | `python` | PyPI | TestPyPI upload | Trusted Publishing |
-     | `bun` | npm | `npm publish --dry-run` with a dist-tag | Trusted Publishing; a one-time token for a new package |
-     | `rust` | crates.io | `cargo publish --dry-run` | to measure |
-     | `quarkus`, `java` | Maven Central | a validated, unpublished deployment | to measure (signing and credentials) |
-     | `arduino` | Arduino Library Manager | the library linter | the tag (the index reads tags) |
+`modelb_axi/project_schema.toml` gains, after `PROJECT_STACKS`:
 
-   Multi-stack and monorepo shapes get one workflow with a test job per stack, not one workflow per
-   stack.
-2. **Ownership.** Rendered workflow files are tracked by hash like `init`'s other emitted files: a
-   re-run rewrites an unchanged file, leaves a hand-edited one alone and reports it. The renderer is
-   one function `init` calls and `migrate` (CR-MDB-055) calls for an existing project, so every Model B
-   project gets the same workflow.
-3. **Model B renders its own workflows** from the `python` and `bun` templates, replacing the
-   hand-written `release.yml`.
-4. **A release-readiness check** reports, read-only, what a project lacks for a release or hotfix
-   run: the workflow files, the environments, the repository secrets and the trusted publishers each
-   publish job names.
-5. **The `git-workflow` skill** names the templates, the per-stack dev-version forms and the
-   readiness check in its release flow.
+- `name = "RELEASE_TARGETS"`, `required = false`, `file = ".env"`, `scope = "root"`, `source = "ask"`,
+  `flag = "--release-targets"`, a new validate rule `release_targets_csv`, readers `modelb-axi init` and
+  the §S5 verb.
+- **Value:** comma-separated targets, each `name` or `name:dir` (a project-relative directory, default
+  `.`): `pypi`, `npm`, `github-assets`. Empty means no publish target.
+- **Validation** refuses an unknown name (listing the supported ones), a duplicate name, an absolute
+  `dir` or one holding `..`, and `dir` on `github-assets`.
 
-## To measure at gap analysis
+### §S2 — The templates and the renderer
 
-- Each registry's current publishing path: crates.io trusted publishing and its action, the Maven
-  Central Portal's upload and validation API, the GPG signing step, the Arduino Library Manager's
-  registration and linter.
-- Each stack's dev-version form and its ordering against `X.Y.Z` (Maven's qualifier ordering in
-  particular).
-- Where the templates live: the raw-runner guard covers `generator/templates/` and `skills-src/`, and
-  a CI template shows the suite command.
-- How a template is proved without a project of that stack: text checks, a workflow linter, a local
-  runner.
-- How the readiness check reads GitHub state (`gh`, read-only) and what it does without `gh`.
-- The 13-point cap: the split (templates and rendering, the per-registry publish jobs, the readiness
-  check).
+- **A new asset root, `workflows-src/`,** force-included into the wheel as
+  `modelb_axi/_assets/workflows-src/` and resolved like the agent templates (`install.toml`
+  `asset_root`, then the packaged root, then the repo checkout). It holds the workflow's parts and the
+  two scripts of §S3. It is not in the raw-runner guard's roots.
+- **`modelb_axi/workflows.py`:** `render(stacks, targets) -> dict[str, str]`, pure, returning exactly
+  `.github/workflows/release.yml`, `.github/scripts/stamp_version.py` and
+  `.github/scripts/changelog_section.py`. Each text's first line is the ownership marker
+  `# generated by modelb-axi (Model B release workflow); sha256 <hex>`, the hex being the sha256 of the
+  rest.
+- **The workflow it renders** has CR-MDB-070's shape — `name: release`; triggers `push` to `master`,
+  `release/**`, `hotfix/**`, `release: [published]`, `workflow_dispatch`; `permissions: contents: read`;
+  the header (the never-scope warning, the branch/event map, both recoveries, the one-time setup per
+  target) — with:
+  - **one test job per stack**, `test-<stack>`, none with an `if:`:
+
+    | Stack | Setup | Test command |
+    |---|---|---|
+    | `python` | `actions/setup-python` `"3.14"`, `astral-sh/setup-uv` | `python -m unittest discover -s tests -t .` |
+    | `bun` | `oven-sh/setup-bun` | `bun install --frozen-lockfile`, then `bun test` |
+    | `rust` | the runner's toolchain | `cargo test --workspace --locked` |
+    | `quarkus`, `java` | `actions/setup-java` (`temurin`, `"21"`) | `./mvnw -B verify` |
+    | `arduino` | — | `.github/scripts/ci-test` (the project's own script; the job fails naming it when absent) |
+
+    each checking out with `fetch-depth: 0`;
+  - **`create-release`** exactly as CR-MDB-070's (the `master` `if:`, the `id: tag` step, the release
+    step), its version check replaced by `python3 .github/scripts/stamp_version.py check "$TAG"
+    <target args>`, and absent when no target has a version source;
+  - **per target**, every job with `needs:` on every test job:
+
+    | Target | Rehearsal (release/hotfix push or dispatch) | Publish (release event, after the CR-MDB-070 ref guard) |
+    |---|---|---|
+    | `pypi:<dir>` | stamp, notes check, `uv build` in `<dir>`, TestPyPI upload (`skip-existing`), environment `testpypi` | `uv build` in `<dir>`, PyPI upload, environment `pypi` |
+    | `npm:<dir>` | stamp, notes check, copy the root `CHANGELOG.md` into `<dir>` when it is not `.`, `npm publish --dry-run --access public --tag dev` in `<dir>` | the copy, `npm publish --provenance --access public` in `<dir>` with `NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}`, environment `npm` |
+    | `github-assets` | notes check, `.github/scripts/build-assets` writing `dist-assets/`, uploaded as a workflow artifact | the build, `gh release upload "$tag" dist-assets/*` with `contents: write` |
+
+    The stamp and notes check run once in a `rehearse` job; each target's steps follow in it. With no
+    target, the workflow has the test jobs and `create-release` only.
+  - Every action pinned to a 40-hex SHA with a `# vX.Y.Z` comment, from one pin table in the renderer.
+- **Multi-stack** renders one workflow with one test job per stack; a monorepo's sub-projects are not
+  read (the jobs run at the repository root).
+
+### §S3 — The shipped scripts
+
+- **`stamp_version.py`,** stdlib only, no syntax newer than Python 3.12, called as
+  `stamp_version.py stamp <ref> <run-number> <target>...` or `stamp_version.py check <tag> <target>...`,
+  each `<target>` being `pypi:<dir>` or `npm:<dir>` (the renderer writes them in):
+  - **version sources:** `pypi:<dir>` — `<dir>/pyproject.toml`'s `[project] version`; or, with `version`
+    in `[project] dynamic`, the file named by `[tool.hatch.version] path`, its `__version__`; any other
+    dynamic source is refused, naming the file. `npm:<dir>` — `<dir>/package.json`'s top-level `version`
+    (two-space indent);
+  - **`stamp`:** CR-MDB-067 §S1's rules generalised — the ref grammar, the run-number grammar, every
+    source equal to `X.Y.Z` or a refusal naming the file, the found and `X.Y.Z`; then `X.Y.Z.devN`
+    (PEP 440) or `X.Y.Z-dev.N` (npm) written, only those values changed; prints `X.Y.Z`;
+  - **`check`:** exits 1 naming each source whose version is not `<tag>`.
+- **`changelog_section.py`** is today's script, unchanged apart from its marker line.
+
+### §S4 — `init` renders it
+
+- `init` gains `--release-targets`; `plan_files` and the emission add the §S2 files, written through
+  `place_owned` (a fresh target writes all three).
+- `.github/scripts/ci-test` (arduino) and `.github/scripts/build-assets` (`github-assets`) are not
+  rendered: the project writes them; `init`'s envelope and the `AGENTS.md` Setup section name them as
+  setup tasks when the stack or target needs them.
+
+### §S5 — A verb re-renders it in an existing project
+
+`modelb-axi release-workflow`, beside `modelb-axi agents` and shaped like it:
+- reads `PROJECT_STACKS` and `RELEASE_TARGETS` from the `.env` of the project in the current directory
+  through the schema reader; `--release-targets <csv>` replaces the set and records it in `.env`;
+  `--stacks` likewise for the stacks;
+- renders in memory before the first write, then writes through `place_owned` (`--force-managed`
+  overwrites a hand-modified file);
+- emits one AXI envelope (verb `release-workflow`) listing `written`, `unchanged`, `skipped` and
+  `unmanaged`, with a warning per skipped or unmanaged file; exit 2 on a refusal (no `.env`, an invalid
+  value), 3 on an I/O error;
+- the renderer is one function that `init`, this verb and CR-MDB-055's `migrate` call.
+
+### §S6 — Model B renders its own
+
+- Model B's `.env` records `RELEASE_TARGETS=pypi,npm:pi-package` (the user's local registry; its
+  `PROJECT_STACKS` is `python`).
+- Model B's `.github/workflows/release.yml`, `.github/scripts/stamp_version.py` and
+  `.github/scripts/changelog_section.py` are the renderer's output for `(["python"],
+  ["pypi", "npm:pi-package"])`, byte for byte; a test renders and compares, so the files cannot drift.
+- The rendered test job carries no sandbox variables: a runner is disposable (CR-MDB-070's
+  `MODELB_HOME`/`XDG_DATA_HOME`/`PI_CODING_AGENT_DIR` pins move with it), and the orchestrator measures
+  the hosted-runner image without them.
+- The tests that read Model B's workflow and scripts (`test_release_rehearsal`, `test_ci_workflow`,
+  `test_changelog_release_body`, `test_pi_package`) keep passing, migrated where the rendered shape
+  differs (marker lines, job names `test-python` and `rehearse`, the generalised stamp CLI).
+
+### §S7 — The skill and the docs
+
+- **`skills-src/git-workflow/SKILL.md` § Releases:** `init` renders the release workflow from the
+  project's stacks and `RELEASE_TARGETS`; `modelb-axi release-workflow` re-renders it; the targets
+  table (target → rehearsal → publish → environment); the hand-written release-job snippet is replaced
+  by that pointer, its rules (literal match, missing-or-empty, `--notes-file`, tag at `HEAD`, needs the
+  tests, `master` push, recovery) stated as what the rendered workflow does.
+- **`AGENTS.md`:** the workflow is rendered (`modelb-axi release-workflow`), not hand-written.
+- **The install guide** names `--release-targets` with `init`'s flags (inside its marked regions, so
+  `pi-package/README.md` is regenerated).
+
+## Acceptance criteria
+
+- [ ] **§S1.** The schema entry; the validate rule proved on each accepted and refused form; `init`
+      without the flag records an empty value.
+- [ ] **§S2.** `render` is pure and deterministic; for `python`, `bun`, `rust`, `quarkus`, `java`,
+      `arduino`, a multi-stack set, and the targets none / `pypi` / `npm:<dir>` / `github-assets` /
+      `pypi,npm:<dir>`, tests read the rendered workflow (the stdlib readers of `tests/_helpers.py`)
+      and assert: the triggers, the test job per stack with its steps, `needs:` on every test job for
+      every publish job and on none for a test job, `create-release` (present only with a versioned
+      target), each target's rehearsal and publish steps and environment, the guard, the header, the
+      SHA pins. Each marker matches its text. The asset root ships in the wheel built from the sdist.
+- [ ] **§S3.** The script, loaded by path and as a CLI in temp trees: `stamp` and `check` for a static
+      pyproject version, a hatch-dynamic one, a refused dynamic source, a `package.json`, both at once,
+      `.` and a sub-directory; every CR-MDB-067 refusal; byte preservation; 3.12 syntax; stdlib
+      imports; in neither the sdist nor the wheel as a top-level module.
+- [ ] **§S4.** `init` (solo, `multi:2`, `monorepo:a,b`; with and without targets; arduino and
+      `github-assets`) through the real `run_init` in a sandbox: the files planned and emitted, each
+      intact under its marker; the setup tasks named.
+- [ ] **§S5.** The verb in a sandbox project: first render, re-render unchanged, a hand-modified file
+      skipped then forced, an unmanaged file left, `--release-targets` recorded, each refusal and its
+      exit code, the envelope fields.
+- [ ] **§S6.** Model B's three files equal `render(["python"], ["pypi", "npm:pi-package"])`; the
+      migrated Model B workflow tests pass; the orchestrator's hosted-runner measurement of the rendered
+      test job: 0 failures.
+- [ ] **§S7.** The skill's new text pinned (proved both ways), the replaced snippet's gates migrated, the
+      raw-runner guard and the project-name gate passing, the skill loading in Pi with no diagnostics;
+      `AGENTS.md` and the install guide pinned; `pi-package/README.md` regenerated.
+- [ ] **Runs.** Every commit leaves the suite green through the client with a real `HOME` and an empty
+      one (temp home empty afterwards), beyond RED's own failures; `generator/build.py --check` clean;
+      the `AGENTS.md` counts and baselines match.
+
+## Non-goals
+
+- **The `crates` and `maven-central` targets and the release-readiness check** are CR-MDB-071.
+- **`migrate`** (CR-MDB-055) calls the renderer for an existing project.
+- **Monorepo sub-project test jobs,** and any stack-specific test layout beyond the table.
+- **Rendering `ci-test` or `build-assets`:** they are the project's.
+
+## Cycle plan
+
+1. **C1 — The key, the scripts and the renderer (§S1–§S3).** Red-green.
+2. **C2 — `init`, the verb and Model B's own (§S4–§S6).** Red-green; the orchestrator measures the
+   hosted-runner image.
+3. **C3 — The skill and the docs (§S7).** Red-green; it re-measures the baselines.
+4. **C4 — Verify.**
