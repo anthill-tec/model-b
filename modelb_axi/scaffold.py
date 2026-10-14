@@ -1414,10 +1414,14 @@ def _emit_plan(
 
     def write_changelog() -> None:
         """CR-MDB-058 §S5: the root ``CHANGELOG.md`` skeleton
-        (:data:`CHANGELOG_TEXT`). An existing one is the project's own — left
-        byte for byte and reported as unmanaged, as ``.envrc`` is."""
+        (:data:`CHANGELOG_TEXT`). One already byte-identical to it is left as
+        it is, reported nowhere, as an identical ``.envrc`` is; any other
+        existing one is the project's own — left byte for byte and reported
+        as unmanaged, as ``.envrc`` is."""
         path = target / CHANGELOG_NAME
         if path.exists() or path.is_symlink():
+            if path.is_file() and path.read_bytes() == CHANGELOG_TEXT.encode("utf-8"):
+                return
             if ownership is not None:
                 ownership.setdefault("unmanaged", []).append(CHANGELOG_NAME)
             return
