@@ -6,7 +6,11 @@
 #
 # 1. create-release: creates the GitHub Release with RELEASE_PAT.
 #    A Release made with the default GITHUB_TOKEN does not fire
-#    `on: release` workflows, so nothing would publish.
+#    `on: release` workflows, so nothing would publish. The
+#    release body is the tag's CHANGELOG.md section, printed by
+#    .github/scripts/changelog_section.py; a tag with no section,
+#    or an empty one, fails the job. An existing release is left
+#    as it is.
 # 2. publish-pypi: builds and uploads `modelb-axi` through PyPI
 #    Trusted Publishing (no token).
 # 3. publish-npm: publishes `@anthill-tec/modelb-pi` with provenance
@@ -63,8 +67,9 @@ jobs:
           GH_TOKEN: ${{ secrets.RELEASE_PAT }}
           TAG: ${{ github.ref_name }}
         run: |
+          python3 .github/scripts/changelog_section.py CHANGELOG.md "$TAG" > "$RUNNER_TEMP/notes.md"
           if ! gh release view "$TAG" >/dev/null 2>&1; then
-            gh release create "$TAG" --generate-notes --verify-tag
+            gh release create "$TAG" --notes-file "$RUNNER_TEMP/notes.md" --verify-tag
           fi
 
   publish-pypi:
