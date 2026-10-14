@@ -204,6 +204,18 @@ separate `ci.yml` ran on every `develop` push and pull request and gated no publ
   rehearsal); npm caps write tokens at 90 days and removes direct publishing with bypass-2FA tokens in
   January 2027, so trusted publishing is the durable path.
 
+## The crates and Maven Central targets and the readiness check (user rulings, 2026-10-15, at CR-MDB-071's gap analysis)
+
+- **The Maven Central rehearsal bundles, signs and uploads nothing** (`central-publishing-maven-plugin`'s
+  `skipUpload`, Sonatype's own plugin): it proves the build, the POM's requirements and the signing key
+  without a Portal deployment left behind and without a dev version, which Maven would order after the
+  release (an unknown qualifier sorts after the release).
+- **A crate's first publish uses a one-time `CARGO_REGISTRY_TOKEN` repository secret,** as npm's does:
+  crates.io trusted publishing cannot publish a crate's first version; the token is deleted once the
+  trusted publisher exists.
+- **The release-readiness check reports and gates:** each item ready, missing or unknown; exit 1 when
+  anything is missing, so it can stand before `git flow release start`.
+
 ## A test-hygiene CR in every release (user ruling, 2026-10-14)
 
 Every release carries a test-hygiene CR, sequenced last in the release's final wave, so the suite is
