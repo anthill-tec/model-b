@@ -87,17 +87,22 @@ the trusted-publisher configurations exactly.
 ### Setup status (user, 2026-09-24)
 
 - [x] `anthill-tec/model-b` public (verified: `visibility: public`, license detected as MIT)
-- [x] Pending Trusted Publishers for `modelb-axi` on pypi.org and test.pypi.org
+- [x] Pending Trusted Publishers for `modelb-axi` on pypi.org and test.pypi.org (re-checked by the
+      user 2026-10-14: owner `anthill-tec`, repository `model-b`, workflow `release.yml`,
+      environment `pypi` / `testpypi`)
 - [x] npm account in the `anthill-tec` organisation
 - [x] Repository secret `RELEASE_PAT` (verified by name, 2026-09-24). User ruling: one fine-grained
       token owned by `antojk` (owner of `anthill-tec`) is reused across the anthill-tec projects;
       its **Repository access must include `model-b`** (Contents read/write), or `create-release`
-      fails at the first tag
-- [ ] Environments `pypi`, `testpypi`, `npm` (required reviewers now available)
-- [ ] The `testpypi` environment admits `release/**` and `hotfix/**` and carries no required
-      reviewers (CR-MDB-067)
+      fails at the first tag. Expires 2027-09-25 (user, 2026-10-14)
+- [x] Environments `pypi`, `testpypi`, `npm` (verified 2026-10-14): `pypi` and `npm` admit tags
+      `*.*.*` only, required reviewer `antojk`, self-review allowed
+- [x] The `testpypi` environment admits `release/**` and `hotfix/**` and carries no required
+      reviewers (CR-MDB-067; verified 2026-10-14)
 - [x] One-time `NPM_TOKEN` (granular, `@anthill-tec` scope, read/write, 2FA bypass) stored as a
-      repository secret (verified by name, 2026-09-24)
+      repository secret (verified by name, 2026-09-24). Expires 2026-10-24 (user, 2026-10-14):
+      renew it, same scope and 2FA bypass, and update the repository secret, if it expires before
+      the first npm publish
 - [ ] After the first publish: the npm trusted publisher (`model-b`, `release.yml`, environment
       `npm`), "require 2FA and disallow tokens", then delete `NPM_TOKEN` from npm and the repository
 
