@@ -416,6 +416,41 @@ class InitToolsEnvelopeTest(_InitSandboxCase):
         self.assertEqual(axi.get("tools"), expected, f"stdout={result.stdout!r}")
 
 
+class StackPython3KeyReadTest(unittest.TestCase):
+    """CR-MDB-063 §S1: every selected stack records ``<stack>.python3``, so a
+    project scaffolded from an install that predates the change — its rust
+    keys recorded without ``rust.python3`` — reads that key as unrecorded,
+    as any unrecorded key reads today: the ``toolchain`` row is unrecorded and
+    ``unknown``. Read by the real ``read_tool_verdicts``."""
+
+    _RUST_KEYS_BEFORE = ("rust.client", "rust.cargo", "rust.cargo-nextest",
+                         "rust.cargo-llvm-cov")
+
+    def _install(self, extra: dict) -> dict:
+        keys: tuple[str, ...] = TIER1_IDS + ALWAYS_TIER2_IDS + self._RUST_KEYS_BEFORE
+        capabilities: dict[str, str] = dict.fromkeys(keys, "detected")
+        capabilities.update(extra)
+        return {"install": {"stacks": ["rust"]}, "capabilities": capabilities,
+                "deps": {"uv": "detected", "sandesh": "detected", "crucible": "detected"}}
+
+    def test_an_install_without_rust_python3_reads_the_toolchain_unrecorded(self):
+        tools, unrecorded = scaffold.read_tool_verdicts(self._install({}), ["rust"])
+        self.assertEqual(unrecorded, ["toolchain"],
+                         "§S1: rust.python3 is a key the rust toolchain row reads")
+        self.assertEqual(tools.get("toolchain"), UNKNOWN, tools)
+
+    def test_an_install_recording_rust_python3_reads_the_toolchain_present(self):
+        tools, unrecorded = scaffold.read_tool_verdicts(
+            self._install({"rust.python3": "detected"}), ["rust"])
+        self.assertEqual(unrecorded, [], tools)
+        self.assertEqual(tools.get("toolchain"), PRESENT, tools)
+
+    def test_an_absent_rust_python3_reads_the_toolchain_absent(self):
+        tools, _unrecorded = scaffold.read_tool_verdicts(
+            self._install({"rust.python3": "absent"}), ["rust"])
+        self.assertEqual(tools.get("toolchain"), ABSENT, tools)
+
+
 class InitNeverProbesTest(_InitSandboxCase):
     """§S2 AC "runs no probe": every verdict below CONTRADICTS the sandboxed
     machine — the agent dir lists no extension, the home has no Crucible

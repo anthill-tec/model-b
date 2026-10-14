@@ -1,6 +1,6 @@
 # CR-MDB-063 — Test interpreters: the project `.venv`, `python3` for every client, a bootstrap check
 
-**Status:** PENDING (filed 2026-10-08; gap analysis and pre-review 2026-10-14) — **locked**
+**Status:** COMPLETED (filed 2026-10-08; gap analysis and pre-review 2026-10-14)
 **Type:** feature (installer preflight, scaffold, bootstrap skill, install guide)
 **Priority:** P1 — release 1.0.0, wave 2.
 **Depends on:** CR-MDB-064 (merged; board-authoritative: read `queue`)

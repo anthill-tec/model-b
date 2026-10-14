@@ -714,7 +714,7 @@ def _remediation_first(tools: dict, rid: str, label: str) -> str:
 
 
 def _render_setup_section(mode: str, sandesh_project: str, tools: dict | None = None,
-                          label: str = "") -> str:
+                          label: str = "", stacks: tuple[str, ...] | list[str] = ()) -> str:
     """The root ``AGENTS.md``'s ``## Setup`` section (CR-MDB-048 §S2): the
     setup tasks the retired queue README carried, as they stood — the dated
     scaffold line, the manual Crucible registration (registrations are
@@ -729,7 +729,13 @@ def _render_setup_section(mode: str, sandesh_project: str, tools: dict | None = 
     register the orchestrator ``label`` (:func:`_orchestrator_label`) as
     ``ORCHESTRATOR``, then mirror the root ``.env``'s keys but
     ``CRUCIBLE_PROJECT_KEY`` with ``project-meta --set``, re-run whenever
-    ``.env`` changes; Crucible's remediation first when it is absent."""
+    ``.env`` changes; Crucible's remediation first when it is absent.
+
+    CR-MDB-063 §S4: when ``stacks`` include ``python``, one unchecked task
+    to create the python test interpreter, after the ``project-meta`` task
+    and the Sandesh task (multi mode), before the ``REPO_OWNER`` check. Its
+    commands are :data:`modelb_axi.requirements.PYTHON_VENV_ROUTE`, read at
+    call time (never a copied string); no python stack, no task."""
     today = datetime.date.today().isoformat()
     tools = tools or {}
     project_meta_task = (
@@ -751,6 +757,14 @@ def _render_setup_section(mode: str, sandesh_project: str, tools: dict | None = 
         f'launch a Track with `env SANDESH_ADDRESS="Track <N> - {sandesh_project}" pi`\n'
         if mode != "solo" else ""
     )
+    python_task = ""
+    if "python" in stacks:
+        commands = ", then ".join(f"`{command}`" for command in requirements.PYTHON_VENV_ROUTE)
+        python_task = (
+            "- [ ] Create the python test interpreter: from the project root, run "
+            f"{commands} — the python client runs the tests under `.venv/bin/python` when "
+            "it exists; `coverage` is needed for `regression --coverage`\n"
+        )
     return (
         "## Setup\n"
         "Pre-wave tasks — not a wave; a wave is a grouping of CRs.\n"
@@ -762,6 +776,7 @@ def _render_setup_section(mode: str, sandesh_project: str, tools: dict | None = 
         "(registrations are manual in scaffold v1)\n"
         f"{project_meta_task}"
         f"{sandesh_task}"
+        f"{python_task}"
         "- [ ] Confirm the remote owner matches `REPO_OWNER` in `.env` "
         "before the first wave-boundary gate\n"
     )
@@ -788,7 +803,14 @@ def _render_capability_contract(
     present. A toolchain probe of the same name as an always-scoped row
     (``python3``) is merged into that row's line, which takes the worse of
     their states: each tool appears once. Unselected stacks are not
-    mentioned."""
+    mentioned.
+
+    CR-MDB-063 §S3: the merged ``python3`` line is labelled
+    ``<policy>; <stacks> toolchain`` with every selected stack carrying the
+    probe, in selection order. It names the probe's remediation (``uv python
+    install --default``) when a stack's ``<stack>.python3`` state is
+    non-present and ranks at least as bad as the row's own (ties included),
+    else the row's."""
     states = states or {}
     lines: list[str] = []
 
@@ -799,28 +821,34 @@ def _render_capability_contract(
     def worst(found: list[str]) -> str:
         return max(found, key=_TOOL_RANK.__getitem__)
 
-    probes: dict[str, tuple[str, dict, list[str]]] = {}
+    # name -> (the selected stacks carrying it, its first probe, their states)
+    probes: dict[str, tuple[list[str], dict, list[str]]] = {}
     for stack in stacks:
         for probe in requirements.STACK_TOOLCHAINS.get(stack, ()):
-            first = probes.setdefault(probe["name"], (stack, probe, []))
+            first = probes.setdefault(probe["name"], ([], probe, []))
+            first[0].append(stack)
             first[2].append(states.get(f"{stack}.{probe['name']}", TOOL_UNKNOWN))
     for row in requirements.REQUIREMENTS:
         if row["scope"] == "always":
             remediation = (f"`{row['remediation']}`" if row["tier"] == 1
                            else row["remediation"])
-            label, found = row["policy"], [states.get(row["id"], TOOL_UNKNOWN)]
+            own = states.get(row["id"], TOOL_UNKNOWN)
+            label, found = row["policy"], [own]
             merged = probes.pop(row["id"], None)
             if merged is not None:
-                label = f"{label}; {merged[0]} toolchain"
+                label = f"{label}; {', '.join(merged[0])} toolchain"
                 found += merged[2]
+                if any(s != TOOL_PRESENT and _TOOL_RANK[s] >= _TOOL_RANK[own]
+                       for s in merged[2]):
+                    remediation = merged[1]["remediation"]
             line(row["id"], label, worst(found), remediation)
         elif row["id"] == "crucible-client":
             for stack in (s for s in stacks if s in row["scope"]):
                 line(row["id"], f"{stack} client, {row['policy']}",
                      states.get(f"{stack}.client", TOOL_UNKNOWN), row["remediation"])
         elif row["id"] == "toolchain":
-            for name, (stack, probe, found) in probes.items():
-                line(name, f"{stack} toolchain", worst(found), probe["remediation"])
+            for name, (carriers, probe, found) in probes.items():
+                line(name, f"{carriers[0]} toolchain", worst(found), probe["remediation"])
     if "pi" in harnesses:
         # CR-MDB-037 §S4: Pi loads .pi/extensions only in a trusted project.
         lines.append(
@@ -919,7 +947,7 @@ def _render_agents_md(
         "- Registrations are manual in scaffold v1 — complete them from "
         "the Setup section below.\n"
         "\n"
-        + _render_setup_section(mode, sandesh_project or "", tools, label)
+        + _render_setup_section(mode, sandesh_project or "", tools, label, stacks)
         + "\n"
         f"## Skill freeze (derived from --stacks: {', '.join(stacks)})\n"
         f"{stack_lines}\n"

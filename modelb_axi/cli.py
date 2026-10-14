@@ -634,7 +634,15 @@ def _freshness_fields(home: Path, warnings: list[str]) -> dict:
     ``kept`` lists, judged against the recorded ``[install].stacks``.
     Without one (an older, or unreadable, ``install.toml``): ``freshness:
     unknown`` and a warning naming the re-run \u2014 no location is guessed and no deployed
-    file is read. Findings never change ok or the exit code."""
+    file is read. Findings never change ok or the exit code.
+
+    CR-MDB-063 §S5: with a recorded ``target_root`` and a recorded
+    interpreter that ``interpreter_rejection`` rejects, ``freshness`` is
+    ``outdated`` whatever the lists hold and the fields carry
+    ``interpreter`` = ``{"path": <recorded>, "reason": <rejection>}`` beside
+    the CR-MDB-064 §S3 warning. An accepted interpreter, or none recorded,
+    adds no ``interpreter`` field; without a ``target_root`` the interpreter
+    is not judged."""
     try:
         data = load_install_toml(home)
     except (OSError, tomllib.TOMLDecodeError) as exc:
@@ -677,19 +685,22 @@ def _freshness_fields(home: Path, warnings: list[str]) -> dict:
     if found["kept"]:
         _say(f"    kept: no longer deployed, and left because it was edited \u2014 restore or "
              f"delete it, then re-run `{rerun}`")
-    if python is not None:
-        rejection = interpreter_rejection(python)
-        if rejection is not None:
-            # CR-MDB-064 §S3: the deployed scripts' shebangs name it, so a
-            # missing or below-floor interpreter breaks them until re-installed.
-            _warn(
-                f"the recorded interpreter {python} {rejection} — the deployed "
-                f"scripts run on it; install one with `{PYTHON_REMEDIATION}`, then "
-                f"re-run `{rerun}` to record it",
-                warnings,
-            )
-    freshness = "current" if not any(found.values()) else "outdated"
-    return {"freshness": freshness, **found}
+    rejection = interpreter_rejection(python) if python is not None else None
+    if rejection is not None:
+        # CR-MDB-064 §S3: the deployed scripts' shebangs name it, so a
+        # missing or below-floor interpreter breaks them until re-installed.
+        _warn(
+            f"the recorded interpreter {python} {rejection} — the deployed "
+            f"scripts run on it; install one with `{PYTHON_REMEDIATION}`, then "
+            f"re-run `{rerun}` to record it",
+            warnings,
+        )
+    # CR-MDB-063 §S5: a rejected recorded interpreter alone makes it outdated.
+    outdated = any(found.values()) or rejection is not None
+    fields = {"freshness": "outdated" if outdated else "current", **found}
+    if rejection is not None:
+        fields["interpreter"] = {"path": python, "reason": rejection}
+    return fields
 
 
 def _record_target_root_command(home: Path, install) -> str:

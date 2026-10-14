@@ -1631,6 +1631,9 @@ NOT_REGISTRY_KEYS = {
     "CRUCIBLE_COVERAGE_PROFILE": "Crucible mvn client config (JaCoCo profile), Crucible's contract",
     "MVN_CRUCIBLE_PROJECT_DIR": "Crucible mvn client --project-dir env override",
     "RUST_CRUCIBLE_PROJECT_DIR": "Crucible rust client --project-dir env override",
+    # CR-MDB-063 §S6: the bootstrap step resolves the test interpreter as the python client does
+    "PY_CRUCIBLE_PROJECT_DIR": "Crucible python client --project-dir env override (bootstrap)",
+    "PY_CRUCIBLE_PYTHON": "Crucible python client --python env override (bootstrap)",
     # third-party tool environment
     "CARGO_BUILD_JOBS": "cargo's parallelism env var (rust memory template)",
     "DOCKER_HOST": "Docker/Podman socket env var (java testing template)",

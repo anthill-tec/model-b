@@ -251,10 +251,29 @@ _BUN_INSTALLER = "curl -fsSL https://bun.sh/install | bash"
 _ARDUINO_CLI_INSTALLER = (
     "curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | sh"
 )
-#: The Crucible python client's modules; ``xmlrunner`` ships in the
-#: ``unittest-xml-reporting`` package (orchestrator ruling, C2).
-_PIP_INSTALL = "python3 -m pip install unittest-xml-reporting coverage"
-_PIP_HOW = "install the Crucible python client's modules with pip"
+#: CR-MDB-063 §S2: the project ``.venv`` route for the Crucible python
+#: client's modules (``xmlrunner`` ships in ``unittest-xml-reporting``),
+#: declared once, in order — the module probes' remediation and ``init``'s
+#: Setup task are built from it. It runs in each python project, so it is
+#: never offered.
+PYTHON_VENV_ROUTE: tuple[str, ...] = (
+    "uv venv --python 3.14",
+    "uv pip install unittest-xml-reporting coverage",
+)
+_VENV_ROUTE_HOW = (
+    "a python project's tests run under its own .venv: in the project, run "
+    + ", then ".join(f"`{command}`" for command in PYTHON_VENV_ROUTE)
+)
+#: CR-MDB-063 §S1: uv's ``--default`` install is what puts a ``python3``
+#: on PATH, in uv's executable directory.
+_PYTHON3_INSTALL: tuple[str, ...] = ("uv", "python", "install", "--default", "3.14")
+_PYTHON3_EXPECTED = (
+    "in uv's executable directory (~/.local/bin, unless UV_PYTHON_BIN_DIR or "
+    "XDG_BIN_HOME names another), which must be on PATH"
+)
+#: CR-MDB-063 §S2: why a probe has no install argv, its ``no_install``.
+ELEVATED = "elevated"
+PER_PROJECT = "per-project"
 _CARGO_BIN = "in ~/.cargo/bin, which must be on PATH"
 _LOCAL_BIN = "~/.local/bin"
 
@@ -268,44 +287,61 @@ def install_display(install: tuple[str, ...]) -> str:
 def _probe(
     name: str, how: str, install: tuple[str, ...] | None, kind: str = "binary",
     *, expected: str | None = None, env_dirs: dict[str, str] | None = None,
+    no_install: str | None = None,
 ) -> dict:
     """One toolchain probe. Its ``remediation`` is ``how`` \u2014 prose \u2014 and,
     when the provider's installer can be run, that command set apart in
     backticks: ``<how>: `<command>` `` (the command never carries prose).
     ``expected`` names where a re-probe looks for the tool after its
     installer ran; ``env_dirs`` are environment variables the installer is
-    run with, each naming a directory (``~`` expanded) created if missing."""
+    run with, each naming a directory (``~`` expanded) created if missing.
+    A probe without ``install`` declares why as ``no_install``
+    (CR-MDB-063 §S2): :data:`ELEVATED` or :data:`PER_PROJECT`."""
+    if (install is None) != (no_install in (ELEVATED, PER_PROJECT)):
+        raise ValueError(f"probe {name!r}: needs exactly one of install or a no_install reason")
     remediation = f"{how}: `{install_display(install)}`" if install else how
     if expected is None:
         expected = "importable by the PATH python3" if kind == "module" else "on PATH"
     return {
         "name": name, "kind": kind, "remediation": remediation, "install": install,
-        "expected": expected, "env_dirs": dict(env_dirs or {}),
+        "no_install": no_install, "expected": expected, "env_dirs": dict(env_dirs or {}),
     }
 
 
+#: CR-MDB-063 §S1: the ``python3`` PATH probe every stack's group leads with.
+_PYTHON3_PROBE = _probe("python3", "put python3 on PATH with uv", _PYTHON3_INSTALL,
+                        expected=_PYTHON3_EXPECTED)
+
 _JVM_PROBES: tuple[dict, ...] = (
+    _PYTHON3_PROBE,
     _probe("mvn", "install Maven from a JDK/Maven source (a distro package or "
-                  "https://maven.apache.org)", None),
+                  "https://maven.apache.org)", None, no_install=ELEVATED),
     _probe("java", "install a JDK from a JDK/Maven source (a distro package or "
-                   "https://adoptium.net)", None),
+                   "https://adoptium.net)", None, no_install=ELEVATED),
 )
 
 #: Stack -> its toolchain probes, in §S8 table order. ``kind`` is
 #: ``binary`` (resolved by ``shutil.which``, never executed) or ``module``
-#: (imported by the PATH ``python3``). ``remediation`` is always named;
-#: ``install`` is the provider's own installer as an argv — offered only on
-#: an explicit interactive yes, its ``[0]`` resolved on PATH first — or
-#: ``None`` when it needs elevated privileges. ``remediation`` states the
-#: remediation only (the scaffold writes it into AGENTS.md); what the
-#: installer does about it is the installer's wording, not data.
+#: (imported by the PATH ``python3``). Every stack's group begins with the
+#: ``python3`` PATH probe (CR-MDB-063 §S1): each stack's Crucible client is a
+#: python script run as ``python3 <client>``. ``remediation`` is always
+#: named; ``install`` is the provider's own installer as an argv — offered
+#: only on an explicit interactive yes, its ``[0]`` resolved on PATH first —
+#: or ``None``, and then ``no_install`` states why (CR-MDB-063 §S2):
+#: ``elevated`` — it needs elevated privileges, so it is named, never run
+#: (``mvn``, ``java``, ``node``, ``g++``) — or ``per-project`` — its route
+#: runs in each project, :data:`PYTHON_VENV_ROUTE` (``xmlrunner``,
+#: ``coverage``). ``remediation`` states the remediation only (the scaffold
+#: writes it into AGENTS.md); what the installer does about it is the
+#: installer's wording, not data.
 STACK_TOOLCHAINS: dict[str, tuple[dict, ...]] = {
     "python": (
-        _probe("python3", "install python3 with the OS package manager", None),
-        _probe("xmlrunner", _PIP_HOW, tuple(_PIP_INSTALL.split()), kind="module"),
-        _probe("coverage", _PIP_HOW, tuple(_PIP_INSTALL.split()), kind="module"),
+        _PYTHON3_PROBE,
+        _probe("xmlrunner", _VENV_ROUTE_HOW, None, kind="module", no_install=PER_PROJECT),
+        _probe("coverage", _VENV_ROUTE_HOW, None, kind="module", no_install=PER_PROJECT),
     ),
     "rust": (
+        _PYTHON3_PROBE,
         _probe("cargo", "install Rust with rustup", ("sh", "-c", _RUSTUP_INSTALLER),
                expected=_CARGO_BIN),
         _probe("cargo-nextest", "install it with cargo",
@@ -316,19 +352,21 @@ STACK_TOOLCHAINS: dict[str, tuple[dict, ...]] = {
     "quarkus": _JVM_PROBES,
     "java": _JVM_PROBES,
     "bun": (
+        _PYTHON3_PROBE,
         _probe("bun", "install bun with bun's installer", ("sh", "-c", _BUN_INSTALLER),
                expected="in ~/.bun/bin, which must be on PATH"),
         _probe("node", "install Node.js from https://nodejs.org or the OS package "
-                       "manager", None),
+                       "manager", None, no_install=ELEVATED),
     ),
     "arduino": (
+        _PYTHON3_PROBE,
         # The installer drops the binary in $BINDIR (default ./bin, the
         # cwd): pin it to ~/.local/bin (finding 2).
         _probe("arduino-cli", "install arduino-cli with its installer",
                ("sh", "-c", _ARDUINO_CLI_INSTALLER),
                expected="in ~/.local/bin (the installer's BINDIR), which must be on PATH",
                env_dirs={"BINDIR": _LOCAL_BIN}),
-        _probe("g++", "install g++ with the OS package manager", None),
+        _probe("g++", "install g++ with the OS package manager", None, no_install=ELEVATED),
     ),
 }
 

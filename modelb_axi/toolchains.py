@@ -2,17 +2,26 @@
 ``toolchain`` requirement (CR-MDB-036 §S8).
 
 - **Only selected stacks are probed**, each tool at most once per run
-  (quarkus and java share ``mvn``/``java``; python's ``python3`` shares the
-  tier-2 PATH probe) through a caller-owned resolution cache.
+  (quarkus and java share ``mvn``/``java``; every stack's ``python3`` probe
+  — its Crucible client runs on the PATH ``python3``, CR-MDB-063 §S1 — is
+  resolved once, through the same cache as the §D22 interpreter probe)
+  through a caller-owned resolution cache.
 - **Resolution, never execution**: a binary is judged by
   ``shutil.which``. The one exception is python's ``xmlrunner`` and
   ``coverage``, imported by the PATH ``python3`` (``python3 -c "import …"``)
   — the installer's own interpreter is not the one the Crucible client uses.
 - An absent toolchain WARNs, naming the provider's installer, and the
   install continues. The installer is **offered** only through ``offer``
-  (the CLI's explicit-yes seam, ``None`` under ``--yes``); one that needs
-  elevated privileges has no ``install`` argv and is never offered.
-  Declining is recorded as a warning.
+  (the CLI's explicit-yes seam, ``None`` under ``--yes``), at most once per
+  run per installer — ``python3``'s ``uv python install --default`` once
+  for every stack it covers, each re-probed after it ran. A probe with no
+  ``install`` argv is never offered. A warning's effect clause follows the
+  probe's kind: a ``module`` probe (``xmlrunner``, ``coverage``) is judged
+  in the PATH ``python3``, so its warning says the PATH ``python3`` cannot
+  run the stack's tests. The ``no_install`` reason (CR-MDB-063 §S2)
+  decides the elevated note: ``elevated`` carries :data:`_ELEVATED_NOTE`;
+  ``per-project`` carries none, and records that the route runs in each
+  project. Declining is recorded as a warning.
 
 Verdicts: ``detected`` / ``absent`` / ``unknown``, and ``installed`` when a
 provider installer the user confirmed exits 0 AND a re-probe of that one
@@ -28,12 +37,13 @@ from collections.abc import Callable, Iterable
 from pathlib import Path
 
 from modelb_axi.capabilities import ABSENT, DETECTED, UNKNOWN
-from modelb_axi.requirements import STACK_TOOLCHAINS, install_display
+from modelb_axi.requirements import ELEVATED, STACK_TOOLCHAINS, install_display
 
 INSTALLED = "installed"
 
 #: Appended to the warning for a tool whose installer needs elevated
-#: privileges (``install`` is ``None``): the installer names it, never runs it.
+#: privileges (``no_install`` is ``elevated``): the installer names it, never
+#: runs it.
 _ELEVATED_NOTE = " (needs elevated privileges — named, never run by modelb-axi)"
 
 #: Upper bound on one ``python3 -c "import …"`` check.
@@ -192,11 +202,14 @@ def remediate_toolchains(
             install = probe["install"]
             # The remediation is prose with any command set apart in
             # backticks by the data (``requirements._probe``); the
-            # elevated-privilege note is installer wording, never data.
+            # elevated-privilege note and the effect are installer wording,
+            # never data. A module is judged in the PATH python3, which is
+            # what cannot run the tests (CR-MDB-063 §S2).
+            effect = (f"the PATH python3 cannot run {stack} tests" if probe["kind"] == "module"
+                      else f"{stack} tests cannot run on this machine")
             warn(
-                f"stack {stack}: {name}={row[name]} — {stack} tests cannot run on "
-                f"this machine; {probe['remediation']}"
-                + (_ELEVATED_NOTE if install is None else "")
+                f"stack {stack}: {name}={row[name]} — {effect}; {probe['remediation']}"
+                + (_ELEVATED_NOTE if probe.get("no_install") == ELEVATED else "")
             )
             if install is None or offer is None:
                 continue

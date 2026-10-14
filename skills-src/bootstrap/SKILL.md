@@ -129,6 +129,30 @@ Without `KNOWLEDGE_CATEGORY`, this step is skipped and never asked about — not
 
 ---
 
+## Step 0.7 — Check the python test interpreter (BOTH roles, only where `PROJECT_STACKS` includes `python`)
+
+Check the interpreter the python tests will run under, so a missing module shows here rather
+than as a failed run. A project without the python stack skips this step.
+
+1. **The project root** is `$PY_CRUCIBLE_PROJECT_DIR`, else the git repo containing the working
+   directory.
+2. **Resolve the interpreter as the client does:**
+   - `$PY_CRUCIBLE_PYTHON` when set, even if it does not exist (a missing path is reported,
+     never fallen through);
+   - else `<root>/.venv/bin/python` when it exists;
+   - else the `python3` on `PATH`.
+3. **Check it** with `<interpreter> -c "import xmlrunner, coverage"`.
+4. **Fold the result into the role's report:**
+   - Mainline's Step 3A report to the user;
+   - a Track's Step 3B status to Mainline.
+
+   A missing interpreter or module is reported with the route: in the project root, run
+   `uv venv --python 3.14`, then `uv pip install unittest-xml-reporting coverage`.
+
+The client's `--help` is the authority for the resolution order.
+
+---
+
 ## Step 1 — Bring up the wake (BOTH roles) — CHECK before setup/register
 
 Setup and registration are **persistent** — do NOT re-run them blindly each run. The
@@ -228,7 +252,9 @@ you reload it — both roles reload.
    - queue state: IN_PROGRESS CRs, what's READY (deps clear) vs BLOCKED/HELD;
    - the live Track roster (who's online);
    - any in-flight Mainline cycle reloaded from the board in Step 2;
-   - any pending Track requests in the inbox.
+   - any pending Track requests in the inbox;
+   - the python test interpreter result from Step 0.7, where `PROJECT_STACKS` includes
+     `python`.
 5. **Do NOT auto-dispatch, auto-schedule, or merge.** Mainline surfaces the board and
    waits for the user's go. Sandesh's wake watcher keeps itself running: after a fetch,
    nothing is restarted.
@@ -257,6 +283,8 @@ you reload it — both roles reload.
      *"Track N online; resuming CR-XXX, active cycle <label>,
      awaiting confirmation to continue."*
    - If **no carried work** (idle): *"Track N online, idle, awaiting assignment."*
+   - In either case, the python test interpreter result from Step 0.7, where
+     `PROJECT_STACKS` includes `python`.
 4. **Then HOLD** — idle on the Sandesh watcher, **zero LLM turns, never self-poll**.
    Mainline disposes and sends a `directive` that wakes you. Do not poll any board
    (`<client> next` included) in a loop; do not self-schedule.

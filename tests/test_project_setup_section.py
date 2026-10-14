@@ -47,6 +47,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from modelb_axi import requirements as requirements_data
 from modelb_axi import scaffold
 from modelb_axi.requirements import REQUIREMENTS
 from tests import test_init_tool_verdicts as _verdicts
@@ -462,6 +463,96 @@ class RootSetupProjectMetaTaskTest(_Case):
         for sub in SUBS:
             with self.subTest(sub=sub):
                 self.assertNotIn("project-meta", self.text(f"{sub}/AGENTS.md"))
+
+
+# ------------------------------------------------------------------ the python task ----
+
+def python_interpreter_task() -> str:
+    """CR-MDB-063 §S4's Setup task, its commands read from the requirements route data
+    (``requirements.PYTHON_VENV_ROUTE``, §S2) at call time — never a copied string."""
+    commands = ", then ".join(f"`{command}`" for command in requirements_data.PYTHON_VENV_ROUTE)
+    return (
+        "- [ ] Create the python test interpreter: from the project root, run "
+        f"{commands} — the python client runs the tests under `.venv/bin/python` when it "
+        "exists; `coverage` is needed for `regression --coverage`"
+    )
+
+
+#: The task's lead, as §S4 words it — what a project without the python stack never carries.
+PYTHON_TASK_LEAD = "Create the python test interpreter"
+
+
+class RootSetupPythonInterpreterTaskTest(_Case):
+    """CR-MDB-063 §S4/AC, through the real ``run_init`` in the CR-MDB-045 sandbox: when the
+    project's stacks include ``python``, the ``## Setup`` section carries ONE unchecked task —
+    §S4's exact line, its two commands the requirements route data — after the ``project-meta``
+    task and the Sandesh task (when present), before the ``REPO_OWNER`` check. A project
+    without the python stack carries no such task."""
+
+    def setup_tasks(self, **fields) -> list[str]:
+        """The Setup section's task lines (``- [``) of an ``init`` run with ``fields``."""
+        self.init_ok(**fields)
+        body = setup_body(self.text("AGENTS.md"))
+        self.assertTrue(body, "the root AGENTS.md carries a ## Setup section")
+        return [ln for ln in body.splitlines() if ln.startswith("- [")]
+
+    def index_of(self, tasks: list[str], needle: str, what: str) -> int:
+        hits = [i for i, ln in enumerate(tasks) if needle in ln]
+        self.assertEqual(len(hits), 1, f"fixture: one {what} task; tasks={tasks!r}")
+        return hits[0]
+
+    def assert_placed_task(self, tasks: list[str], *, multi: bool) -> None:
+        expected = python_interpreter_task()
+        hits = [i for i, ln in enumerate(tasks) if ln == expected]
+        self.assertEqual(len(hits), 1,
+                         f"§S4: exactly one task reads {expected!r}; tasks={tasks!r}")
+        self.assertEqual([ln for ln in tasks if PYTHON_TASK_LEAD in ln], [expected],
+                         f"§S4: one python interpreter task, no second variant; tasks={tasks!r}")
+        at = hits[0]
+        meta = self.index_of(tasks, "project-meta", "project-meta")
+        owner = self.index_of(tasks, "REPO_OWNER", "REPO_OWNER")
+        self.assertLess(meta, at, f"§S4: after the project-meta task; tasks={tasks!r}")
+        self.assertLess(at, owner, f"§S4: before the REPO_OWNER check; tasks={tasks!r}")
+        if multi:
+            sandesh = self.index_of(tasks, f"Mainline - {PROJECT}", "Sandesh")
+            self.assertLess(sandesh, at, f"§S4: after the Sandesh task; tasks={tasks!r}")
+
+    def test_a_solo_python_project_carries_the_task_after_project_meta_before_the_owner_check(self):
+        self.assert_placed_task(self.setup_tasks(stacks="python"), multi=False)
+
+    def test_a_multi_python_project_carries_the_task_after_the_sandesh_task(self):
+        self.assert_placed_task(self.setup_tasks(stacks="python", mode=MULTI), multi=True)
+
+    def test_a_selection_including_python_carries_the_task(self):
+        self.assert_placed_task(self.setup_tasks(stacks="python,rust"), multi=False)
+
+    def test_a_multi_selection_with_python_second_carries_the_task(self):
+        self.assert_placed_task(self.setup_tasks(stacks="rust,python", mode=MULTI), multi=True)
+
+    def test_the_task_commands_are_the_requirements_route_data(self):
+        tasks = self.setup_tasks(stacks="python")
+        hits = [ln for ln in tasks if PYTHON_TASK_LEAD in ln]
+        self.assertEqual(len(hits), 1, f"§S4: one python interpreter task; tasks={tasks!r}")
+        commands = re.findall(r"`([^`]+)`", hits[0].split(" — ", 1)[0])
+        self.assertEqual(tuple(commands), tuple(requirements_data.PYTHON_VENV_ROUTE),
+                         f"§S4: the task's commands are §S2's route data, in order; "
+                         f"task={hits[0]!r}")
+
+    def test_a_rust_project_carries_no_python_interpreter_task(self):
+        for mode in ("solo", MULTI):
+            with self.subTest(mode=mode):
+                self.target = self.root / f"proj-rust-{mode.replace(':', '')}"
+                self.init_ok(stacks="rust", mode=mode)
+                body = setup_body(self.text("AGENTS.md"))
+                self.assertTrue(body, "the root AGENTS.md carries a ## Setup section")
+                self.assertNotIn(PYTHON_TASK_LEAD, body, f"§S4: no python task; Setup={body!r}")
+                for command in requirements_data.PYTHON_VENV_ROUTE:
+                    self.assertNotIn(command, body,
+                                     f"§S4: a rust project's Setup names no route command; "
+                                     f"Setup={body!r}")
+                # The rest of the section is untouched: the owner check is still the last task.
+                tasks = [ln for ln in body.splitlines() if ln.startswith("- [")]
+                self.assertIn("REPO_OWNER", tasks[-1], f"tasks={tasks!r}")
 
 
 # ------------------------------------------------------------------ header lines ----
