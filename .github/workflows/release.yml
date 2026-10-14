@@ -48,6 +48,10 @@
 # Recovery: when the master run finds no version tag at HEAD, dispatch
 # the workflow on master.
 #
+# A red run: when the master run or the release run fails its tests,
+# nothing publishes. Re-run the failed jobs; a real failure is fixed on
+# a hotfix branch.
+#
 # One-time setup by the maintainer:
 # - repository secret RELEASE_PAT: fine-grained, owner anthill-tec,
 #   this repository only, Contents read/write;
