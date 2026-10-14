@@ -4,9 +4,12 @@ Contract: ``docs/changes/CR-MDB-064-python-floor-3-14.md``. §S1 (the published 
 gated in ``tests/test_package_publishing.py``; §S5's install-guide half in
 ``tests/test_install_guide.py`` (``InstallGuidePythonInterpreterTest``). This module holds:
 
-- ``AgentsMdPythonFloorTest`` — §S5: ``AGENTS.md`` states Python ≥ 3.14 under Runtime/Tooling,
-  has a sentence that the pre-merge gate runs one interpreter, the floor, and its skip list's
-  "interpreter without the ``build`` frontend" example names no ``python3.11``.
+- ``AgentsMdPythonFloorTest`` — §S5: ``AGENTS.md`` states Python ≥ 3.14 under Runtime/Tooling
+  and has a sentence that the pre-merge gate runs one interpreter, the floor. MIGRATED at
+  CR-MDB-069 C1 RED (§S3; CR-MDB-069 §S3 retires CR-MDB-064 §S5's example rule; was: the skip
+  list's "interpreter without the ``build`` frontend" example must exist and name no
+  ``python3.11``): the skip list names NO interpreter without the ``build`` frontend, because the
+  built-wheel checks build in isolation and never skip; any line holding the example is a fault.
 - ``TomllibFallbackRemovedTest`` — §S6: no ``tomli`` fallback in ``scripts/skill-release-gate.py``;
   no ``tomllib = None`` fallback, and no branch on it, in ``scripts/rust-crate-map.py`` and
   ``scripts/rust-dead-scan.py``. Proved two ways: the source carries no fallback shape
@@ -35,6 +38,7 @@ from tests._helpers import md_section
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 AGENTS_MD = REPO_ROOT / "AGENTS.md"
+CR_064 = REPO_ROOT / "docs" / "changes" / "CR-MDB-064-python-floor-3-14.md"
 SCRIPTS = REPO_ROOT / "scripts"
 SUITE_HYGIENE = REPO_ROOT / "tests" / "test_suite_hygiene.py"
 
@@ -47,7 +51,6 @@ FLOOR_COMMENT_FILES = ("hooks-src/scripts/ambient-board-status",
                        "tests/test_ambient_manifest_discovery.py")
 
 _FLOOR_STATEMENT = re.compile(r"Python\s*(?:≥|>=)\s*3\.(\d+)")
-_INTERPRETER_NAME = re.compile(r"python3\.(\d+)")
 #: A ``3.<minor>`` version token (not part of a longer dotted number such as ``0.3.12`` or a
 #: three-part version such as a contract's ``3.0.0``).
 _VERSION_TOKEN = re.compile(r"(?<![\d.])3\.(\d{1,2})(?!\d|\.\d)")
@@ -72,12 +75,10 @@ def agents_md_floor_faults(text: str) -> list[str]:
     if not any("pre-merge gate" in s.lower() and "one interpreter" in s.lower()
                and ("floor" in s.lower() or "3.14" in s) for s in _sentences(text)):
         out.append("no sentence says the pre-merge gate runs one interpreter, the floor")
-    skip_lines = [line for line in text.splitlines() if _BUILD_FRONTEND_EXAMPLE in line]
-    if not skip_lines:
-        out.append("the skip list names no interpreter without the `build` frontend")
-    for line in skip_lines:
-        out += [f"the skip list's `build`-frontend example names python3.{m}, below the floor"
-                for m in _INTERPRETER_NAME.findall(line) if int(m) < PYTHON_FLOOR_MINOR]
+    # MIGRATED at CR-MDB-069 C1 RED (§S3): was a fault when no line held the example, and one
+    # per python3.<11..13> on a line holding it. The example is retired: any line holding it bites.
+    out += ["the skip list still names an interpreter without the `build` frontend"
+            for line in text.splitlines() if _BUILD_FRONTEND_EXAMPLE in line]
     return out
 
 
@@ -87,9 +88,9 @@ _CONFORMING_AGENTS_MD = (
     "- **Python ≥ 3.14** (`tomllib`). Package manager: **uv**.\n\n"
     "## Testing & QA\n\n"
     "- The pre-merge gate runs one interpreter, the 3.14 floor.\n"
-    "- **Every skip is an absent `pi` CLI or an interpreter without the `build` frontend.** "
-    "An interpreter without the `build` frontend (e.g. a `python3.14` with only the stdlib) "
-    "skips the built-wheel checks.\n"
+    # MIGRATED at CR-MDB-069 C1 RED (§S3): the `build`-frontend skip example is gone.
+    "- **Every skip is an absent `pi` CLI or a shallow clone.** "
+    "A shallow clone skips the real-map row check.\n"
 )
 
 
@@ -122,17 +123,27 @@ class AgentsMdFloorCheckerProofTest(unittest.TestCase):
                 self.assertEqual(agents_md_floor_faults(text), [
                     "no sentence says the pre-merge gate runs one interpreter, the floor"])
 
-    def test_bites_on_python3_11_in_the_skip_example(self):
-        text = _CONFORMING_AGENTS_MD.replace("a `python3.14`", "`python3.11`")
+    # MIGRATED at CR-MDB-069 C1 RED (§S3): test_bites_on_python3_11_in_the_skip_example is
+    # retired with its rule, and test_bites_when_the_skip_example_is_gone is inverted to this.
+    def test_re_adding_the_skip_example_bites_exactly_once(self):
+        text = _CONFORMING_AGENTS_MD.replace(
+            "A shallow clone skips the real-map row check.",
+            "A shallow clone skips the real-map row check. An interpreter without the `build` "
+            "frontend (e.g. a `python3.14` with only the stdlib) skips the built-wheel checks.")
+        self.assertNotEqual(text, _CONFORMING_AGENTS_MD)
         self.assertEqual(agents_md_floor_faults(text), [
-            "the skip list's `build`-frontend example names python3.11, below the floor"])
+            "the skip list still names an interpreter without the `build` frontend"])
 
-    def test_bites_when_the_skip_example_is_gone(self):
-        text = _CONFORMING_AGENTS_MD.replace(" or an interpreter without the `build` frontend", "")
-        text = text.replace("An interpreter without the `build` frontend (e.g. a `python3.14` with "
-                            "only the stdlib) skips the built-wheel checks.", "")
+    def test_the_example_bites_once_per_line_and_names_no_interpreter(self):
+        # Both places AGENTS.md held it (the bolded list and its sentence), each on its own line;
+        # a python3.11 in the example is no extra fault now the example itself is the fault.
+        text = _CONFORMING_AGENTS_MD + (
+            "- or an interpreter without the `build` frontend.\n"
+            "- An interpreter without the `build` frontend (e.g. `python3.11`) skips (1 each).\n")
         self.assertEqual(agents_md_floor_faults(text), [
-            "the skip list names no interpreter without the `build` frontend"])
+            "the skip list still names an interpreter without the `build` frontend",
+            "the skip list still names an interpreter without the `build` frontend",
+        ])
 
 
 class AgentsMdPythonFloorTest(unittest.TestCase):
@@ -140,8 +151,21 @@ class AgentsMdPythonFloorTest(unittest.TestCase):
 
     maxDiff = None
 
-    def test_agents_md_states_the_3_14_floor_the_one_interpreter_gate_and_no_python3_11(self):
+    # MIGRATED at CR-MDB-069 C1 RED (§S3): was ..._the_one_interpreter_gate_and_no_python3_11.
+    def test_agents_md_states_the_3_14_floor_the_one_interpreter_gate_and_no_build_frontend_skip(self):
         self.assertEqual(agents_md_floor_faults(AGENTS_MD.read_text(encoding="utf-8")), [])
+
+
+class Cr064ExampleRuleRetiredNoteTest(unittest.TestCase):
+    """CR-MDB-069 §S4 — CR-MDB-064's §S5 carries the dated line retiring its `build`-frontend
+    example rule."""
+
+    def test_cr_mdb_064_s5_records_the_example_rule_retired_by_cr_mdb_069(self):
+        section = md_section(CR_064.read_text(encoding="utf-8"), "### §S5", stop_prefix="#")
+        self.assertIn(_BUILD_FRONTEND_EXAMPLE, section)
+        self.assertIn("retired by CR-MDB-069 §S3, 2026-10-14", section,
+                      "CR-MDB-069 §S4: CR-MDB-064 §S5's example rule carries no dated "
+                      "retirement line")
 
 
 # ------------------------------------------------------------- §S6 import fallbacks ----

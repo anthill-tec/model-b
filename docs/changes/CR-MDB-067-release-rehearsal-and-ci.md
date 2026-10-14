@@ -105,6 +105,7 @@ stdlib only and uses no syntax newer than Python 3.12, the hosted runner's defau
   2. `actions/setup-python` with `python-version: "3.14"`;
   3. `setup-uv` (`uv` on `PATH`: the build and isolated-install checks fail without it, by design);
   4. `python -m pip install build`, so the built-wheel checks run;
+     Step 4 was retired by CR-MDB-069 §S2, 2026-10-14.
   5. the suite, run directly (DN §D21: CI runs outside any agent session):
      `python -m unittest discover -s tests -t .`, with `MODELB_HOME`, `XDG_DATA_HOME` and
      `PI_CODING_AGENT_DIR` set under `${{ runner.temp }}`.

@@ -40,6 +40,14 @@ Orchestrator rulings (2026-09-24, cycle 106) these tests pin:
   page), and still no ``Home-page``. ``PyprojectUrlsTest`` reads the same
   table from ``pyproject.toml`` without a build.
 
+CR-MDB-069 §S1: ``IsolatedWheelBuildGateTest`` reads the source of
+``tests/test_tooling_detachment.py`` and ``tests/test_project_registry_schema.py``
+and fails if either names a non-isolated build (``NON_ISOLATED_BUILD_MARKERS``),
+if either does not import ``build_wheel`` from here by name, or if either
+built-wheel check does not call ``build_wheel`` or calls ``skipTest``;
+``IsolatedWheelBuildCheckerProofTest`` proves its checker on sample source
+both ways.
+
 Sandbox: every ``modelb-axi`` run passes ``--modelb-home`` and
 ``--target-root`` into a temp dir, with ``MODELB_HOME``, ``XDG_DATA_HOME``,
 ``HOME`` and ``PI_CODING_AGENT_DIR`` pointed at temp paths; the install uses
@@ -48,6 +56,7 @@ an isolated ``UV_TOOL_DIR``/``UV_TOOL_BIN_DIR``.
 Stdlib only.
 """
 
+import ast
 import email.parser
 import email.policy
 import json
@@ -678,6 +687,173 @@ class PackageMetadataCheckerProofTest(unittest.TestCase):
         for label, (classifiers, expected) in cases.items():
             with self.subTest(case=label):
                 self.assertEqual(classifier_faults(classifiers), [expected])
+
+
+# ---------------------------------------------------------------------------
+# CR-MDB-069 §S1: every built-wheel check builds through build_wheel, isolated
+# ---------------------------------------------------------------------------
+
+#: The two built-wheel checks outside this module that once built without isolation, each
+#: ``(module, check)``.
+ISOLATED_WHEEL_CHECKS = (
+    ("tests/test_tooling_detachment.py", "test_s7_built_wheel_carries_all_eight_tool_assets"),
+    ("tests/test_project_registry_schema.py",
+     "test_built_wheel_ships_the_schema_with_the_registry_keys"),
+)
+#: What names a build outside an isolated environment, or a skip on the `build` frontend.
+NON_ISOLATED_BUILD_MARKERS = ("--no-isolation", 'find_spec("build")', '"-m", "build"')
+
+
+def _callee(call: ast.Call) -> str | None:
+    func = call.func
+    if isinstance(func, ast.Name):
+        return func.id
+    if isinstance(func, ast.Attribute):
+        return func.attr
+    return None
+
+
+def isolated_wheel_build_faults(source: str, check: str) -> list[str]:
+    """CR-MDB-069 §S1 — the module ``source`` names no non-isolated build marker, imports
+    ``build_wheel`` by name from ``tests.test_package_publishing`` and defines none of its own,
+    and its test method ``check`` calls ``build_wheel`` and never ``skipTest`` (empty =
+    conforming)."""
+    out = [f"the module names {marker}" for marker in NON_ISOLATED_BUILD_MARKERS
+           if marker in source]
+    tree = ast.parse(source)
+    if not any(isinstance(node, ast.ImportFrom) and node.module == "tests.test_package_publishing"
+               and any(alias.name == "build_wheel" for alias in node.names)
+               for node in tree.body):
+        out.append("the module does not import build_wheel from tests.test_package_publishing")
+    if any(isinstance(node, ast.FunctionDef) and node.name == "build_wheel"
+           for node in ast.walk(tree)):
+        out.append("the module defines its own build_wheel")
+    defs = [node for node in ast.walk(tree)
+            if isinstance(node, ast.FunctionDef) and node.name == check]
+    if len(defs) != 1:
+        return out + [f"{check} is defined {len(defs)} times, not once"]
+    callees = [_callee(node) for node in ast.walk(defs[0]) if isinstance(node, ast.Call)]
+    if "build_wheel" not in callees:
+        out.append(f"{check} does not call build_wheel")
+    if "skipTest" in callees:
+        out.append(f"{check} calls skipTest")
+    return out
+
+
+_SAMPLE_CHECK = "test_the_wheel_ships_the_asset"
+
+#: A module whose built-wheel check conforms to §S1; another check in it may skip.
+_CONFORMING_CHECK_SOURCE = f'''\
+import tempfile
+import unittest
+import zipfile
+from pathlib import Path
+
+from tests.test_package_publishing import build_wheel
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
+class WheelTest(unittest.TestCase):
+
+    def {_SAMPLE_CHECK}(self):
+        with tempfile.TemporaryDirectory() as outdir:
+            wheel = build_wheel(REPO_ROOT, Path(outdir))
+            with zipfile.ZipFile(wheel) as archive:
+                self.assertIn("asset", archive.namelist())
+
+    def test_another_check(self):
+        self.skipTest("another check may skip")
+'''
+
+_INSIDE_THE_CHECK = "        with tempfile.TemporaryDirectory() as outdir:\n"
+
+#: ``(label, old, new, fault)``: replacing ``old`` by ``new`` in the conforming source makes
+#: :func:`isolated_wheel_build_faults` report exactly ``[fault]``.
+_CHECK_MUTATIONS = (
+    ("--no-isolation", _INSIDE_THE_CHECK,
+     '        argv = ["--no-isolation"]\n' + _INSIDE_THE_CHECK,
+     "the module names --no-isolation"),
+    ("a find_spec skip", _INSIDE_THE_CHECK,
+     '        spec = importlib.util.find_spec("build")\n' + _INSIDE_THE_CHECK,
+     'the module names find_spec("build")'),
+    ("the build frontend", _INSIDE_THE_CHECK,
+     '        argv = [sys.executable, "-m", "build", "--wheel"]\n' + _INSIDE_THE_CHECK,
+     'the module names "-m", "build"'),
+    ("no build_wheel call", "wheel = build_wheel(REPO_ROOT, Path(outdir))",
+     "wheel = sorted(Path(outdir).glob('*.whl'))[0]",
+     f"{_SAMPLE_CHECK} does not call build_wheel"),
+    ("a skipTest in the check", _INSIDE_THE_CHECK,
+     '        self.skipTest("no uv")\n' + _INSIDE_THE_CHECK,
+     f"{_SAMPLE_CHECK} calls skipTest"),
+    ("no import of build_wheel", "from tests.test_package_publishing import build_wheel\n", "",
+     "the module does not import build_wheel from tests.test_package_publishing"),
+    ("a star import", "import build_wheel\n", "import *\n",
+     "the module does not import build_wheel from tests.test_package_publishing"),
+    ("a duplicated helper body", "\nclass WheelTest",
+     "\ndef build_wheel(source, out_dir):\n    return out_dir\n\n\nclass WheelTest",
+     "the module defines its own build_wheel"),
+)
+
+
+class IsolatedWheelBuildCheckerProofTest(unittest.TestCase):
+    """CR-MDB-069 §S1 — the structural gate's checker, proved on sample source both ways."""
+
+    def test_conforming_source_passes(self):
+        self.assertEqual(isolated_wheel_build_faults(_CONFORMING_CHECK_SOURCE, _SAMPLE_CHECK), [])
+
+    def test_each_fault_bites_exactly_once(self):
+        for label, old, new, fault in _CHECK_MUTATIONS:
+            with self.subTest(mutation=label):
+                self.assertEqual(_CONFORMING_CHECK_SOURCE.count(old), 1, f"{old!r} must occur once")
+                source = _CONFORMING_CHECK_SOURCE.replace(old, new)
+                self.assertEqual(isolated_wheel_build_faults(source, _SAMPLE_CHECK), [fault])
+
+    def test_a_skip_in_another_check_does_not_count(self):
+        source = _CONFORMING_CHECK_SOURCE.replace(
+            '        self.skipTest("another check may skip")\n',
+            '        self.skipTest("another check may skip")\n        self.skipTest("twice")\n')
+        self.assertEqual(isolated_wheel_build_faults(source, _SAMPLE_CHECK), [])
+
+    def test_a_missing_check_is_a_fault_not_a_pass(self):
+        self.assertEqual(
+            isolated_wheel_build_faults(_CONFORMING_CHECK_SOURCE, "test_no_such_check"),
+            ["test_no_such_check is defined 0 times, not once"])
+
+    def test_the_old_non_isolated_check_bites_on_every_rule(self):
+        source = _CONFORMING_CHECK_SOURCE.replace(
+            "from tests.test_package_publishing import build_wheel\n",
+            "import importlib.util\nimport subprocess\nimport sys\n",
+        ).replace(
+            "            wheel = build_wheel(REPO_ROOT, Path(outdir))\n",
+            '            if importlib.util.find_spec("build") is None:\n'
+            '                self.skipTest("the `build` frontend is unavailable")\n'
+            '            subprocess.run([sys.executable, "-m", "build", "--wheel", "--no-isolation",\n'
+            '                            "--outdir", outdir, str(REPO_ROOT)])\n'
+            "            wheel = sorted(Path(outdir).glob('*.whl'))[0]\n",
+        )
+        self.assertEqual(isolated_wheel_build_faults(source, _SAMPLE_CHECK), [
+            "the module names --no-isolation",
+            'the module names find_spec("build")',
+            'the module names "-m", "build"',
+            "the module does not import build_wheel from tests.test_package_publishing",
+            f"{_SAMPLE_CHECK} does not call build_wheel",
+            f"{_SAMPLE_CHECK} calls skipTest",
+        ])
+
+
+class IsolatedWheelBuildGateTest(unittest.TestCase):
+    """CR-MDB-069 §S1 — the two built-wheel checks build through the shared isolated
+    ``build_wheel`` (``uv build``), never with the `build` frontend, and never skip."""
+
+    maxDiff = None
+
+    def test_the_two_built_wheel_checks_build_through_the_shared_isolated_helper(self):
+        for rel, check in ISOLATED_WHEEL_CHECKS:
+            with self.subTest(module=rel):
+                source = (REPO_ROOT / rel).read_text(encoding="utf-8")
+                self.assertEqual(isolated_wheel_build_faults(source, check), [],
+                                 f"CR-MDB-069 §S1: {rel}'s {check}")
 
 
 if __name__ == "__main__":
