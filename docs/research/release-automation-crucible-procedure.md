@@ -78,6 +78,8 @@ the trusted-publisher configurations exactly.
   Publishers on pypi.org and test.pypi.org (owner `anthill-tec`, repository `model-b`, workflow
   `release.yml`); `NPM_TOKEN` for the first npm publish, then the npm trusted publisher, then delete
   `NPM_TOKEN`.
+- **Note (2026-10-14, CR-MDB-067):** the manual `rehearse-testpypi` became the `rehearse` job,
+  run on every release or hotfix push.
 
 ### Setup status (user, 2026-09-24)
 
@@ -89,6 +91,8 @@ the trusted-publisher configurations exactly.
       its **Repository access must include `model-b`** (Contents read/write), or `create-release`
       fails at the first tag
 - [ ] Environments `pypi`, `testpypi`, `npm` (required reviewers now available)
+- [ ] The `testpypi` environment admits `release/**` and `hotfix/**` and carries no required
+      reviewers (CR-MDB-067)
 - [x] One-time `NPM_TOKEN` (granular, `@anthill-tec` scope, read/write, 2FA bypass) stored as a
       repository secret (verified by name, 2026-09-24)
 - [ ] After the first publish: the npm trusted publisher (`model-b`, `release.yml`, environment
