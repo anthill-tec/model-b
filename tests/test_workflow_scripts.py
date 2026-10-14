@@ -15,7 +15,9 @@ Class map:
   prints ``X.Y.Z``, writing nothing; every CR-MDB-067 ref and run-number refusal.
 - ``StampTargetsTest`` — ``stamp`` with ``pypi:.`` (static and hatch-dynamic), ``pypi:<sub>``,
   ``npm:.``, ``npm:<sub>`` and both: ``X.Y.Z.devN`` / ``X.Y.Z-dev.N`` written, only those values
-  changed, ``X.Y.Z`` printed.
+  changed, ``X.Y.Z`` printed. CR-MDB-068 C5 RED (VERIFY F2/F3): CRLF sources and a
+  ``__version__`` line with a trailing comment are stamped (and checked), each ``\r\n`` and the
+  comment kept byte for byte.
 - ``CheckTargetsTest`` — ``check <tag> <target>...`` passes, and fails naming each source whose
   version is not ``<tag>``, writing nothing.
 - ``VersionSourceRefusalsTest`` — every §S3 refusal: exit 1, one stderr line naming the file,
@@ -166,6 +168,15 @@ def package_json(version: str, indent: str = "  ") -> str:
             "}\n")
 
 
+def crlf(text: str) -> str:
+    """``text`` with every line ending CRLF (CR-MDB-068 C5 RED, VERIFY F2)."""
+    return text.replace("\n", "\r\n")
+
+
+#: CR-MDB-068 C5 RED (VERIFY F3) - a ``__version__`` line carrying a trailing comment.
+COMMENTED_VERSION = '__version__ = "1.2.3"  # the release version, kept by the stamp'
+
+
 def with_version(text: str, old_line: str, new_line: str) -> str:
     """``text`` with its one ``old_line`` replaced: the only bytes a stamp may change."""
     if text.count(old_line) != 1:
@@ -292,6 +303,42 @@ class StampTargetsTest(_TreeCase):
             "pkg/package.json": with_version(npm, '  "version": "1.2.3",',
                                              '  "version": "1.2.3-dev.7",')})
 
+    # CR-MDB-068 C5 RED (VERIFY F2/F3): CRLF sources and a commented __version__ line are
+    # stamped, every other byte - each \r\n and the comment included - unchanged.
+
+    def test_pypi_dot_with_a_crlf_static_project_version_keeps_every_crlf(self):
+        text = crlf(pyproject_static("1.2.3"))
+        self.assert_stamps({"pyproject.toml": text}, ["pypi:."], {"pyproject.toml": with_version(
+            text, 'name = "fixture"\r\nversion = "1.2.3"\r\n',
+            'name = "fixture"\r\nversion = "1.2.3.dev7"\r\n')})
+
+    def test_pypi_dot_with_a_crlf_hatch_dynamic_version_keeps_every_crlf(self):
+        init = crlf(init_py('__version__ = "1.2.3"'))
+        files = {"pyproject.toml": crlf(pyproject_hatch()), HATCH_PATH: init}
+        self.assert_stamps(files, ["pypi:."], dict(files, **{HATCH_PATH: with_version(
+            init, '__version__ = "1.2.3"\r\n', '__version__ = "1.2.3.dev7"\r\n')}))
+
+    def test_both_targets_with_crlf_sources(self):
+        py, npm = crlf(pyproject_static("1.2.3")), crlf(package_json("1.2.3"))
+        self.assert_stamps({"pyproject.toml": py, "pkg/package.json": npm}, ["pypi:.", "npm:pkg"], {
+            "pyproject.toml": with_version(py, 'version = "1.2.3"\r\ndependencies',
+                                           'version = "1.2.3.dev7"\r\ndependencies'),
+            "pkg/package.json": with_version(npm, '  "version": "1.2.3",\r\n',
+                                             '  "version": "1.2.3-dev.7",\r\n')})
+
+    def test_a_commented_dunder_version_is_stamped_keeping_the_comment(self):
+        init = init_py(COMMENTED_VERSION)
+        files = {"pyproject.toml": pyproject_hatch(), HATCH_PATH: init}
+        self.assert_stamps(files, ["pypi:."], dict(files, **{HATCH_PATH: with_version(
+            init, COMMENTED_VERSION, COMMENTED_VERSION.replace('"1.2.3"', '"1.2.3.dev7"'))}))
+
+    def test_a_commented_crlf_dunder_version_is_stamped_keeping_the_comment_and_crlf(self):
+        init = crlf(init_py(COMMENTED_VERSION))
+        files = {"pyproject.toml": crlf(pyproject_hatch()), HATCH_PATH: init}
+        self.assert_stamps(files, ["pypi:."], dict(files, **{HATCH_PATH: with_version(
+            init, COMMENTED_VERSION + "\r\n",
+            COMMENTED_VERSION.replace('"1.2.3"', '"1.2.3.dev7"') + "\r\n")}))
+
     def test_a_later_targets_refusal_leaves_the_earlier_target_unwritten(self):
         files = {"pyproject.toml": pyproject_static("1.2.3"),
                  "pkg/package.json": package_json("1.2.2")}
@@ -353,6 +400,41 @@ class CheckTargetsTest(_TreeCase):
     def test_a_missing_source_is_refused_by_check_too(self):
         self.assert_refused({}, ["check", "1.2.3", "npm:pkg"], "pkg/package.json")
 
+    # CR-MDB-068 C5 RED (VERIFY F2/F3): check reads CRLF sources and a commented __version__.
+
+    def assert_check_passes(self, files: dict[str, str], argv: list[str]):
+        for label, tree, (code, _out, err) in self.run_both(files, argv):
+            with self.subTest(runner=label, argv=argv):
+                self.assertEqual(code, 0, f"stderr={err!r}")
+                self.assertEqual(snapshot(tree), snapshot(self.tree(files)), "check writes nothing")
+
+    def assert_check_names(self, files: dict[str, str], argv: list[str], *named: str):
+        for label, tree, (code, out, err) in self.run_both(files, argv):
+            with self.subTest(runner=label, argv=argv):
+                self.assertEqual(code, 1, f"stdout={out!r} stderr={err!r}")
+                for name in (*named, "is not the tag"):
+                    self.assertIn(name, err)
+                self.assertEqual(snapshot(tree), snapshot(self.tree(files)))
+
+    def test_crlf_sources_at_the_tag_pass_and_keep_their_bytes(self):
+        self.assert_check_passes({"pyproject.toml": crlf(pyproject_static("1.2.3")),
+                                  "pkg/package.json": crlf(package_json("1.2.3"))},
+                                 ["check", "1.2.3", "pypi:.", "npm:pkg"])
+
+    def test_a_crlf_hatch_source_at_the_tag_passes(self):
+        self.assert_check_passes({"pyproject.toml": crlf(pyproject_hatch()),
+                                  HATCH_PATH: crlf(init_py('__version__ = "2.0.0"'))},
+                                 ["check", "2.0.0", "pypi:."])
+
+    def test_a_crlf_source_off_the_tag_fails_naming_its_version(self):
+        self.assert_check_names({"pyproject.toml": crlf(pyproject_static("1.2.2"))},
+                                ["check", "1.2.3", "pypi:."], "pyproject.toml", "1.2.2")
+
+    def test_a_commented_dunder_version_at_the_tag_passes_and_off_it_is_named(self):
+        files = {"pyproject.toml": pyproject_hatch(), HATCH_PATH: init_py(COMMENTED_VERSION)}
+        self.assert_check_passes(files, ["check", "1.2.3", "pypi:."])
+        self.assert_check_names(files, ["check", "1.2.4", "pypi:."], HATCH_PATH, "1.2.3")
+
 
 class VersionSourceRefusalsTest(_TreeCase):
     """§S3 — each refusal: exit 1, one stderr line naming the file, nothing written."""
@@ -395,6 +477,12 @@ class VersionSourceRefusalsTest(_TreeCase):
         for line in ("VERSION = \"1.2.3\"", "__version__ = '1.2.3'"):
             files = {"pyproject.toml": pyproject_hatch(), HATCH_PATH: init_py(line)}
             self.assert_refused(files, [*self.ARGV, "pypi:."], HATCH_PATH)
+
+    def test_a_single_quoted_dunder_version_with_a_comment_is_still_refused(self):
+        # CR-MDB-068 C5 RED (VERIFY F3): a trailing comment does not admit a single-quoted value.
+        files = {"pyproject.toml": pyproject_hatch(),
+                 HATCH_PATH: init_py("__version__ = '1.2.3'  # a comment")}
+        self.assert_refused(files, [*self.ARGV, "pypi:."], HATCH_PATH)
 
     def test_a_package_json_without_a_two_space_top_level_version_is_refused_naming_it(self):
         for text in (package_json("1.2.3", indent="    "), package_json("1.2.3", indent="\t"),

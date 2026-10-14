@@ -16,6 +16,10 @@ Class map:
 - ``ReleaseTargetsCsvRefusalsTest`` — each refusal: an unknown name (listing the supported ones), a
   duplicate name, an empty or blank ``dir``, an absolute ``dir`` or one holding ``..``, a ``dir`` on
   ``github-assets``.
+- ``ReleaseTargetsCsvUnsafeDirTest`` — CR-MDB-068 C5 RED (VERIFY F1): a ``dir`` holding any
+  character outside ``[A-Za-z0-9._/-]`` (a space, ``;``, ``$``, ``(``, a quote, a backtick, a tab, a
+  non-ASCII letter) is refused, naming the target and the ``dir`` as its ``repr``; the safe characters
+  are still accepted. The renderer refuses the same dirs (``tests.test_workflow_render``).
 - ``ReleaseTargetsThroughTheRegistryTest`` — the rule wired through ``scaffold.resolve_registry``
   over the packaged schema: the canonical value recorded, a refusal naming the key and its flag.
 - ``InitWithoutReleaseTargetsTest`` — a sandboxed ``modelb-axi --yes init`` with no
@@ -79,6 +83,26 @@ REFUSED = (
     ("github-assets:dist", "github-assets"),
 )
 
+
+#: CR-MDB-068 C5 RED (VERIFY F1) — ``(value, its dir)``: each ``dir`` holds one character outside
+#: ``[A-Za-z0-9._/-]``, which the rendered workflow would write unquoted into a shell line.
+UNSAFE_DIRS = (
+    ("npm:a b", "a b"),
+    ("pypi:a;b", "a;b"),
+    ("npm:a$b", "a$b"),
+    ("npm:a(b", "a(b"),
+    ("pypi:a'b", "a'b"),
+    ('npm:a"b', 'a"b'),
+    ("npm:a`b", "a`b"),
+    ("npm:a\tb", "a\tb"),
+    ("pypi:pkg/sub dir", "pkg/sub dir"),
+    ("npm:pkgé", "pkgé"),
+)
+#: CR-MDB-068 C5 RED (VERIFY F1) — dirs using only ``[A-Za-z0-9._/-]``, with their canonical form.
+SAFE_DIRS = (
+    ("npm:pkg-1/sub_dir.v2", "npm:pkg-1/sub_dir.v2"),
+    ("pypi:A.b/C_d-9", "pypi:A.b/C_d-9"),
+)
 
 def _rule():
     """The §S1 rule, looked up as ``load_schema`` looks it up: ``scaffold.VALIDATE_RULES``."""
@@ -163,6 +187,39 @@ class ReleaseTargetsCsvRefusalsTest(unittest.TestCase):
             with self.subTest(value=value):
                 self.assertIn("duplicate", self._refusal(value).lower())
 
+
+class ReleaseTargetsCsvUnsafeDirTest(unittest.TestCase):
+    """CR-MDB-068 C5 RED (VERIFY F1) — a ``dir`` is refused when it holds any character outside
+    ``[A-Za-z0-9._/-]``; the refusal names the target and the ``dir`` (as its ``repr``)."""
+
+    def test_a_dir_holding_a_character_outside_the_safe_set_is_refused_naming_it(self):
+        for value, directory in UNSAFE_DIRS:
+            name = value.partition(":")[0]
+            with self.subTest(value=value):
+                with self.assertRaises(ValueError) as caught:
+                    _rule()(value)
+                message = str(caught.exception)
+                self.assertIn(repr(directory), message, "F1: the refusal names the bad dir")
+                self.assertIn(name, message, "F1: the refusal names the target")
+
+    def test_an_unsafe_dir_beside_a_valid_target_is_still_refused(self):
+        with self.assertRaises(ValueError) as caught:
+            _rule()("pypi,npm:a b")
+        self.assertIn(repr("a b"), str(caught.exception))
+
+    def test_a_dir_of_safe_characters_is_accepted_in_canonical_form(self):
+        for value, canonical in SAFE_DIRS:
+            with self.subTest(value=value):
+                self.assertEqual(_rule()(value), canonical)
+
+    def test_an_unsafe_dir_through_the_registry_names_the_key_and_its_flag(self):
+        with self.assertRaises(scaffold.ScaffoldError) as caught:
+            scaffold.resolve_registry(scaffold.load_schema(SCHEMA_PATH),
+                                      {**ReleaseTargetsThroughTheRegistryTest.INPUTS,
+                                       "release_targets": "npm:a;b"})
+        message = str(caught.exception)
+        self.assertIn(f"{KEY} (--release-targets)", message)
+        self.assertIn(repr("a;b"), message)
 
 class ReleaseTargetsThroughTheRegistryTest(unittest.TestCase):
     """§S1 — the packaged schema's entry validates through ``resolve_registry``."""

@@ -146,7 +146,7 @@ from modelb_axi.scaffold import KNOWN_STACKS
 from modelb_axi.scaffold import RELEASE_TARGETS as SUPPORTED_RELEASE_TARGETS
 from tests._helpers import requirements_rows as _requirements
 from tests._helpers import write_interpreter_fixture
-from tests.test_board_holds_the_queue import _CLAUSE_SPLIT, NEGATION, norm_units
+from tests.test_board_holds_the_queue import _CLAUSE_SPLIT, NEGATION, norm_units, units
 from tests.test_bootstrap_shutdown_registry import normalise
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -315,14 +315,20 @@ TARGET_COLUMNS = {
          (r"\bupload\w*\b", r"\btest index\b|\btestpypi\b")),
         ("publish", "PyPI through Trusted Publishing",
          (r"(?<![\w-])pypi(?![\w-])", r"\btrusted publishing\b")),
-        ("environment/secret", "the environment pypi", (r"(?<![\w-])pypi(?![\w-])",)),
+        # MIGRATED at CR-MDB-068 C5 RED (VERIFY F4): the cell names both environments, pypi and
+        # testpypi (was: "the environment pypi", (pypi,)).
+        ("environment/secret", "the environments pypi and testpypi",
+         (r"(?<![\w-])pypi(?![\w-])", r"(?<![\w-])testpypi(?![\w-])")),
     ),
     "npm": (
         ("rehearsal", "the dry-run publish", (r"\bdry-run\b",)),
         ("publish", "the npm registry, with provenance or through Trusted Publishing",
          (r"(?<![\w-])npm(?![\w-])|\bregistry\b", r"\bprovenance\b|\btrusted publishing\b")),
-        ("environment/secret", "the environment npm and the secret NPM_TOKEN",
-         (r"(?<![\w-])npm(?![\w-])", r"(?<![\w-])npm_token(?![\w-])")),
+        # MIGRATED at CR-MDB-068 C5 RED (VERIFY F6): NPM_TOKEN is a repository secret (was: "the
+        # environment npm and the secret NPM_TOKEN", without \brepository secret\b).
+        ("environment/secret", "the environment npm and the repository secret NPM_TOKEN",
+         (r"(?<![\w-])npm(?![\w-])", r"\brepository secret\b",
+          r"(?<![\w-])npm_token(?![\w-])")),
     ),
     "github-assets": (
         ("rehearsal", "the project's build-assets script, its output checked non-empty",
@@ -496,8 +502,10 @@ REHEARSAL_AND_CI_PHRASES = (
     # every run, which every publish job needs (was the one step "CI rule: a CI workflow runs the
     # suite on every push to develop, release and hotfix branches and on pull requests"). That
     # develop and pull requests run no CI is the negation-aware excluded_ref_faults, not a step.
-    (REHEARSAL_AND_CI, "CI rule: the release workflow's test job runs the suite in every run",
-     (r"\brelease workflow\b", r"\btest job\b", r"\bsuite\b", r"\bevery run\b")),
+    # MIGRATED at CR-MDB-068 C5 RED (VERIFY F5): the test jobs, plural (was: "the release
+    # workflow's test job runs the suite in every run", \btest job\b).
+    (REHEARSAL_AND_CI, "CI rule: the release workflow's test jobs run the suite in every run",
+     (r"\brelease workflow\b", r"\btest jobs run the suite\b", r"\bevery run\b")),
     (REHEARSAL_AND_CI, "CI rule: each push to a release or hotfix branch",
      (r"\b(?:each|every)\b", r"\bpush(?:es)?\b", r"\brelease (?:or|and) hotfix\b")),
     (REHEARSAL_AND_CI, "CI rule: each push to master",
@@ -505,16 +513,20 @@ REHEARSAL_AND_CI_PHRASES = (
     (REHEARSAL_AND_CI, "CI rule: each published release",
      (r"\b(?:each|every) published release\b",)),
     (REHEARSAL_AND_CI, "CI rule: on the stack's floor interpreter", (r"\bfloor interpreter\b",)),
-    (REHEARSAL_AND_CI, "CI rule: in a clean home", (r"\bclean home\b",)),
+    # MIGRATED at CR-MDB-068 C5 RED (VERIFY F5): a fresh runner (was: "CI rule: in a clean home",
+    # \bclean home\b; "a clean home" joins RETIRED_RELEASE_PHRASES).
+    (REHEARSAL_AND_CI, "CI rule: on a fresh runner", (r"\bfresh runner\b",)),
     (REHEARSAL_AND_CI, "CI rule: with full history", (r"\bfull history\b",)),
     (REHEARSAL_AND_CI, "CI rule: it runs outside any agent session",
      (r"\boutside (?:of )?(?:any |an |every )?agent sessions?\b",)),
     (REHEARSAL_AND_CI, "CI rule: the one place the suite runs without the stack's Crucible "
      "client",
      (r"\bsuite\b", r"\bwithout\b", r"\bcrucible client\b")),
-    (REHEARSAL_AND_CI, "CI rule: every publish job, the rehearsal included, needs the test job",
-     (r"\b(?:every|each|all) publish(?:es|ing)? jobs?\b", r"\brehearsal\b", r"\bneeds?\b",
-      r"\btest(?:s| job)\b")),
+    # MIGRATED at CR-MDB-068 C5 RED (VERIFY F5): it needs the test jobs, plural (was: "... needs
+    # the test job", \btest(?:s| job)\b).
+    (REHEARSAL_AND_CI, "CI rule: every publish job, the rehearsal included, needs the test jobs",
+     (r"\b(?:every|each|all) publish(?:es|ing)? jobs?\b", r"\brehearsal\b",
+      r"\bneeds? the test jobs\b")),
     (REHEARSAL_AND_CI, "CI rule: because a dependency gates only within one run",
      (r"\bdependenc(?:y|ies)\b", r"\bgat(?:e|es|ed|ing)\b",
       r"\bwithin (?:one|a single|the same) run\b")),
@@ -529,7 +541,8 @@ CI_EXCLUDED_REFS = (
     ("pull requests", re.compile(r"\bpull requests?\b")),
 )
 NO_CI_ON_DEVELOP_OR_PRS = "CI rule: no CI on develop or pull requests"
-_CI_WORD = re.compile(r"(?<![\w-])ci(?![\w-])|\bsuite\b|\btest job\b")
+# MIGRATED at CR-MDB-068 C5 RED (VERIFY F5): the test jobs, plural, name CI too (was \btest job\b).
+_CI_WORD = re.compile(r"(?<![\w-])ci(?![\w-])|\bsuite\b|\btest jobs?\b")
 #: §S5 — the subsection names neither the Python steps' anchors nor the Pi step's, so each
 #: checker's first-occurrence order is unchanged.
 SUBSECTION_FORBIDDEN_ANCHORS = (
@@ -544,6 +557,8 @@ RETIRED_RELEASE_PHRASES = (
     "isolated tool directory", "uv_tool_dir", "test.pypi.org/simple", "token the user supplies",
     "user-supplied token", "credentials the user supplies", "user-supplied credentials",
     "the tag's release job",
+    # MIGRATED at CR-MDB-068 C5 RED (VERIFY F5): the runner is a fresh runner, never "a clean home".
+    "a clean home",
 )
 
 # (G) — where the installer comes from (VERIFY cycle 100 findings 2/6), and
@@ -1056,6 +1071,23 @@ def check_release_workflow_verb(text: str) -> list[str]:
     return out
 
 
+#: CR-MDB-068 C5 RED (VERIFY F8) - the forms the guide's ``--release-targets`` sentence names, one
+#: per target the renderer renders (``pypi`` and ``npm`` take an optional ``:<dir>``).
+RELEASE_TARGET_FORMS = ("pypi[:<dir>]", "npm[:<dir>]", "github-assets")
+
+
+def check_release_targets_forms(text: str) -> list[str]:
+    """CR-MDB-068 C5 RED (VERIFY F8): the prose units of ``text`` naming ``--release-targets`` in a
+    code span name, between them, every form of :data:`RELEASE_TARGET_FORMS` in a code span. One
+    fault when no unit names the flag; otherwise one per form none of them names."""
+    flag = "--release-targets"
+    naming = [unit for unit in units(text) if has_code_token(unit, flag)]
+    if not naming:
+        return [f"no sentence names `{flag}` in a code span"]
+    return [f"the `{flag}` sentence does not name `{form}`" for form in RELEASE_TARGET_FORMS
+            if not any(has_code_token(unit, form) for unit in naming)]
+
+
 #: The PyPI project page shows the whole guide as the package readme
 #: (orchestrator ruling R3, 2026-09-24, cycle 106: prose, not a table).
 PYPI_PAGE = "PyPI project page"
@@ -1392,13 +1424,18 @@ def check_python_release_steps(text: str) -> list[str]:
     if not sec:
         return ["no '## Releases' section"]
     flat = " ".join(sec.lower().split())
+    # MIGRATED at CR-MDB-068 C5 RED (VERIFY F4): the step order is read with the section's table
+    # rows left out - the targets table's pypi cell names testpypi, which is not the rehearse step
+    # (was: the anchors' first occurrence in the whole flattened section).
+    prose = " ".join(" ".join(line for line in sec.splitlines()
+                               if not line.lstrip().startswith("|")).lower().split())
     out: list[str] = []
     anchors: list[tuple[int, str]] = []
     for label, anchor, terms in PYTHON_RELEASE_STEPS:
-        found = [flat.find(a) for a in anchor if a in flat]
+        found = [prose.find(a) for a in anchor if a in prose]
         if found:
             anchors.append((min(found), label))
-        else:
+        elif not any(a in flat for a in anchor):
             out.append(f"## Releases: {label}: missing {anchor[0]!r}")
         for alts in terms:
             if not any(a in flat for a in alts):
@@ -1696,10 +1733,12 @@ CONFORMING_RELEASES_BODY = (
     "\n"
     "| Target | Rehearsal | Publish | Environment / secret |\n"
     "|---|---|---|---|\n"
+    # MIGRATED at CR-MDB-068 C5 RED (VERIFY F4/F6): the pypi cell names both environments, the
+    # npm cell the repository secret (was: "environment `pypi`", "secret `NPM_TOKEN`").
     "| `pypi` | uploads the dev version to the test index | to PyPI through Trusted Publishing | "
-    "environment `pypi` |\n"
+    "environments `pypi` and `testpypi` |\n"
     "| `npm` | a dry-run publish | to the npm registry with provenance | environment `npm`, "
-    "secret `NPM_TOKEN` |\n"
+    "repository secret `NPM_TOKEN` |\n"
     "| `github-assets` | the project's `build-assets` script, its output checked non-empty | "
     "uploaded to the release | no environment, no secret |\n"
     "\n"
@@ -1737,11 +1776,13 @@ CONFORMING_REHEARSAL_AND_CI = (
     "not empty |\n"
     "| no target | — | the notes check only |\n"
     "\n"
-    "The release workflow's test job runs the suite in every run: each push to a release or hotfix\n"
-    "branch, each push to `master`, each published release. It runs on the stack's floor\n"
-    "interpreter, in a clean home, with full history. It runs outside any agent session, the one\n"
+    # MIGRATED at CR-MDB-068 C5 RED (VERIFY F5): the test jobs, plural, on a fresh runner (was:
+    # "test job runs", "in a clean home", "needs the test job").
+    "The release workflow's test jobs run the suite in every run: each push to a release or hotfix\n"
+    "branch, each push to `master`, each published release. They run on the stack's floor\n"
+    "interpreter, on a fresh runner, with full history. They run outside any agent session, the one\n"
     "place the suite runs without the stack's Crucible client. Every publish job (the rehearsal\n"
-    "included) needs the test job, because a dependency gates only within one run. No CI on\n"
+    "included) needs the test jobs, because a dependency gates only within one run. No CI on\n"
     "`develop` or pull requests.\n"
 )
 # MIGRATED at CR-MDB-067 C3 RED (§S5): the Pi heading and the Rehearsal and CI subsection
@@ -1997,6 +2038,48 @@ class InstallGuideReleaseWorkflowTest(unittest.TestCase):
 
     def test_the_guides_adding_stacks_later_region_shows_the_release_workflow_verb(self):
         self.assertEqual(check_release_workflow_verb(_read(GUIDE)), [])
+
+    # CR-MDB-068 C5 RED (VERIFY F8) - the --release-targets sentence names every form.
+
+    FORMS_SENTENCE = ("`--release-targets` names where a release publishes (`pypi[:<dir>]`, "
+                      "`npm[:<dir>]`, `github-assets`, or none).\n")
+
+    def test_the_guides_release_targets_sentence_names_every_target_form(self):
+        self.assertEqual(check_release_targets_forms(_read(GUIDE)), [])
+
+    def test_the_forms_are_one_per_target_the_renderer_renders(self):
+        self.assertEqual(tuple(form.partition("[")[0] for form in RELEASE_TARGET_FORMS),
+                         SUPPORTED_RELEASE_TARGETS)
+
+    def test_release_targets_forms_checker_both_ways(self):
+        good = self.SAMPLE + "\n" + self.FORMS_SENTENCE
+        self.assertEqual(check_release_targets_forms(good), [])
+        fault = "the `--release-targets` sentence does not name `{}`"
+        for old, new, form in (("`pypi[:<dir>]`", "`pypi`", "pypi[:<dir>]"),
+                               ("`npm[:<dir>]`", "`npm:<dir>`", "npm[:<dir>]"),
+                               ("`github-assets`, ", "", "github-assets")):
+            with self.subTest(form=form):
+                self.assertEqual(good.count(old), 1, old)
+                self.assertEqual(check_release_targets_forms(good.replace(old, new)),
+                                 [fault.format(form)])
+        today = good.replace(self.FORMS_SENTENCE, "`--release-targets` names where a release "
+                             "publishes (`pypi`, `npm:<dir>`, `github-assets`, or none).\n")
+        self.assertEqual(check_release_targets_forms(today),
+                         [fault.format("pypi[:<dir>]"), fault.format("npm[:<dir>]")])
+        prose = good.replace("(`pypi[:<dir>]`, `npm[:<dir>]`, `github-assets`, or none)",
+                             "(pypi[:<dir>], npm[:<dir>], github-assets, or none)")
+        self.assertEqual(check_release_targets_forms(prose),
+                         [fault.format(form) for form in RELEASE_TARGET_FORMS],
+                         "a form outside a code span is not named")
+        apart = good.replace(self.FORMS_SENTENCE, "`--release-targets` names where a release "
+                             "publishes.\n\nThe targets are `pypi[:<dir>]`, `npm[:<dir>]` and "
+                             "`github-assets`.\n")
+        self.assertEqual(check_release_targets_forms(apart),
+                         [fault.format(form) for form in RELEASE_TARGET_FORMS],
+                         "the forms count only in a sentence naming the flag")
+        self.assertEqual(check_release_targets_forms(self.SAMPLE),
+                         ["no sentence names `--release-targets` in a code span"],
+                         "the flag inside a fenced command is not the sentence")
 
     def test_the_flags_and_the_verb_are_the_parsers(self):
         self.assertEqual(subcommand_flag("init", "--release-targets"), "--release-targets")
@@ -2465,6 +2548,32 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
         self.assertEqual(check_cr029_s1(cr.replace("marked regions", "text")),
                          ["§S1: missing 'marked region'"])
 
+    # CR-MDB-068 C5 RED (VERIFY F4): a table row naming testpypi is not the rehearse step.
+    def test_python_release_steps_order_skips_table_rows_but_not_prose(self):
+        steps = ("1. Set the version in its single source, then `uv build`.\n"
+                 "2. Each release-branch push uploads the stamped dev version to TestPyPI "
+                 "through Trusted Publishing.\n"
+                 "3. After git flow release finish, upload to PyPI with no token anywhere.\n"
+                 "4. Install from PyPI with `--reinstall`; drop global permission config "
+                 "entries for per-project policies; a trusted project runs without a "
+                 "permission prompt.\n")
+        good = "## Releases\n\n" + steps + "\n## Next\n"
+        self.assertEqual(check_python_release_steps(good), [])
+        table = ("| Target | Environment / secret |\n|---|---|\n"
+                 "| `pypi` | environments `pypi` and `testpypi` |\n\n")
+        self.assertEqual(check_python_release_steps(good.replace("## Releases\n\n",
+                                                                 "## Releases\n\n" + table)), [],
+                         "a table row before the steps moves no anchor")
+        prose = "Rehearse on TestPyPI first.\n\n"
+        self.assertEqual(check_python_release_steps(good.replace("## Releases\n\n",
+                                                                 "## Releases\n\n" + prose)),
+                         ["## Releases: python release steps out of order"],
+                         "prose naming testpypi before the build step still reorders")
+        only_table = good.replace("TestPyPI", "the test index").replace("## Releases\n\n",
+                                                                         "## Releases\n\n" + table)
+        self.assertEqual(check_python_release_steps(only_table), [],
+                         "an anchor named only in a table is still named")
+
     # MIGRATED at CR-MDB-067 C3 RED (§S5): the rehearse step is each release-branch push uploading
     # the stamped dev version to TestPyPI through Trusted Publishing, and the upload step names no
     # token anywhere (was: "Rehearse: upload to TestPyPI and install into an isolated tool
@@ -2825,11 +2934,12 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
                           "'### Pi package releases'",
                           f"## Releases: {REHEARSAL_AND_CI}: names CI on develop"])
         python_only = "## Releases\n\n" + docs + python
+        # MIGRATED at CR-MDB-068 C5 RED (VERIFY F6): the docs body's targets table names the
+        # repository secret, so it is no longer missing (was: "... missing 'repository secret'").
         self.assertEqual(check_pi_package_release_steps(python_only), [
             "## Releases: npm publish: missing 'npm publish'",
             "## Releases: npm publish: missing 'pi package'",
             "## Releases: npm publish: missing 'version is set'",
-            "## Releases: npm publish: missing 'repository secret'",
             "## Releases: npm publish: missing '2fa'",
             "## Releases: npm publish: missing '--access public'",
             "## Releases: isolated pi install: missing 'pi_coding_agent_dir'",
@@ -2919,16 +3029,19 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
             ("| no target |", "| other |"),
             # MIGRATED at CR-MDB-070 C2 RED (§S6): the CI rule's steps are the test job's (was
             # (" and on\npull requests", "") for the develop/release/hotfix/pull-request step).
-            ("runs the suite in every run:", "runs the suite:"),
+            # MIGRATED at CR-MDB-068 C5 RED (VERIFY F5): the test jobs, plural, on a fresh runner
+            # (was: "runs the suite in every run:", "in a clean home, ", "It runs outside ..." and
+            # "... needs the test job, because").
+            ("run the suite in every run:", "run the suite:"),
             (" to a release or hotfix\nbranch", " to a branch"),
             (", each push to `master`", ""),
             (", each published release", ""),
             ("on the stack's floor\ninterpreter, ", ""),
-            ("in a clean home, ", ""),
+            ("on a fresh runner, ", ""),
             (", with full history", ""),
-            ("It runs outside any agent session, the one", "It is the one"),
+            ("They run outside any agent session, the one", "They are the one"),
             (" without the stack's Crucible client", ""),
-            ("Every publish job (the rehearsal\nincluded) needs the test job, because", "Because"),
+            ("Every publish job (the rehearsal\nincluded) needs the test jobs, because", "Because"),
             (", because a dependency gates only within one run", ""),
         ]
         self.assertEqual(len(edits), len(labels), "one case per step")
@@ -2944,12 +3057,13 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
                                  [f"## Releases: {REHEARSAL_AND_CI}: {label}"])
         # MIGRATED at CR-MDB-070 C2 RED (§S6): the moved rule is the test-job rule, and moving it
         # also loses the no-CI-on-develop-or-pull-requests statement (was the develop/PR CI rule).
-        ci_rule = ("The release workflow's test job runs the suite in every run: each push to a "
-                   "release or hotfix\nbranch, each push to `master`, each published release. It "
-                   "runs on the stack's floor\ninterpreter, in a clean home, with full history. It "
-                   "runs outside any agent session, the one\nplace the suite runs without the "
+        # MIGRATED at CR-MDB-068 C5 RED (VERIFY F5): the rule as CONFORMING_REHEARSAL_AND_CI words it.
+        ci_rule = ("The release workflow's test jobs run the suite in every run: each push to a "
+                   "release or hotfix\nbranch, each push to `master`, each published release. They "
+                   "run on the stack's floor\ninterpreter, on a fresh runner, with full history. They "
+                   "run outside any agent session, the one\nplace the suite runs without the "
                    "stack's Crucible client. Every publish job (the rehearsal\nincluded) needs the "
-                   "test job, because a dependency gates only within one run. No CI on\n`develop` "
+                   "test jobs, because a dependency gates only within one run. No CI on\n`develop` "
                    "or pull requests.\n")
         self.assertIn(ci_rule, good)
         moved = good.replace(ci_rule, "").replace("### Release notes", ci_rule + "\n### Release notes")
@@ -2957,6 +3071,30 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
                          [f"## Releases: {REHEARSAL_AND_CI}: {label}" for label in labels[8:]]
                          + [f"## Releases: {REHEARSAL_AND_CI}: {NO_CI_ON_DEVELOP_OR_PRS}"],
                          "a step counts only inside the ### Rehearsal and CI subsection")
+
+    # CR-MDB-068 C5 RED (VERIFY F5) — the CI rule says the test jobs (plural) and a fresh runner.
+
+    def test_the_ci_rule_names_the_test_jobs_plural_and_a_fresh_runner_never_a_clean_home(self):
+        good = CONFORMING_RELEASES
+        self.assertEqual(release_step_faults(good, REHEARSAL_AND_CI), [])
+        prefix = f"## Releases: {REHEARSAL_AND_CI}: "
+        singular_runs = good.replace("test jobs run the suite", "test job runs the suite")
+        self.assertNotEqual(singular_runs, good)
+        self.assertEqual(check_release_steps(singular_runs), [
+            prefix + "CI rule: the release workflow's test jobs run the suite in every run"])
+        singular_needs = good.replace("needs the test jobs, because", "needs the test job, because")
+        self.assertNotEqual(singular_needs, good)
+        self.assertEqual(check_release_steps(singular_needs), [
+            prefix + "CI rule: every publish job, the rehearsal included, needs the test jobs"])
+        clean_home = good.replace("on a fresh runner, ", "in a clean home, ")
+        self.assertNotEqual(clean_home, good)
+        self.assertCountEqual(check_release_steps(clean_home), [
+            prefix + "CI rule: on a fresh runner",
+            f"## Releases: {RETIRED_PHRASES}: names 'a clean home'"])
+        both = good.replace("on a fresh runner, ", "on a fresh runner (never a clean home), ")
+        self.assertEqual(check_release_steps(both),
+                         [f"## Releases: {RETIRED_PHRASES}: names 'a clean home'"],
+                         "a clean home is retired even beside a fresh runner")
 
     # CR-MDB-070 §S6 — the CI rule's develop and pull-request terms, inverted and negation-aware.
 
@@ -3111,14 +3249,17 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
                 ("uploads the dev version to the test index", "builds the sdist"),
             "pypi: the publish cell does not say PyPI through Trusted Publishing":
                 ("to PyPI through Trusted Publishing", "to PyPI with a token"),
-            "pypi: the environment/secret cell does not say the environment pypi":
-                ("environment `pypi` |", "a token |"),
+            # MIGRATED at CR-MDB-068 C5 RED (VERIFY F4/F6): the pypi cell names both environments,
+            # the npm cell the repository secret (was: "the environment pypi" / "environment `pypi`
+            # |"; "the secret NPM_TOKEN").
+            "pypi: the environment/secret cell does not say the environments pypi and testpypi":
+                ("environments `pypi` and `testpypi` |", "a token |"),
             "npm: the rehearsal cell does not say the dry-run publish":
                 ("| a dry-run publish |", "| a pack |"),
             "npm: the publish cell does not say the npm registry, with provenance or through "
             "Trusted Publishing": ("to the npm registry with provenance", "to the npm registry"),
-            "npm: the environment/secret cell does not say the environment npm and the secret "
-            "NPM_TOKEN": (", secret `NPM_TOKEN`", ""),
+            "npm: the environment/secret cell does not say the environment npm and the repository "
+            "secret NPM_TOKEN": (", repository secret `NPM_TOKEN`", ""),
             "github-assets: the rehearsal cell does not say the project's build-assets script, "
             "its output checked non-empty": (", its output checked non-empty", ""),
             "github-assets: the publish cell does not say an upload to the release":
@@ -3132,6 +3273,19 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
                 self.assertEqual(check_release_steps(good.replace(old, new)), [prefix + fault])
         self.assertEqual(check_release_steps(good.replace(
             "| no environment, no secret |", "| — |")), [], "a dash cell says none")
+        # CR-MDB-068 C5 RED (VERIFY F4/F6): each half of the settled wording bites on its own.
+        self.assertEqual(check_release_steps(good.replace(
+            "environments `pypi` and `testpypi` |", "environment `pypi` |")),
+            [prefix + "pypi: the environment/secret cell does not say the environments pypi and "
+             "testpypi"], "F4: the pypi cell names testpypi too")
+        self.assertEqual(check_release_steps(good.replace(
+            "repository secret `NPM_TOKEN`", "secret `NPM_TOKEN`")),
+            [prefix + "npm: the environment/secret cell does not say the environment npm and the "
+             "repository secret NPM_TOKEN"], "F6: a bare secret is not the repository secret")
+        self.assertEqual(check_release_steps(good.replace(
+            "repository secret `NPM_TOKEN`", "environment secret `NPM_TOKEN`")),
+            [prefix + "npm: the environment/secret cell does not say the environment npm and the "
+             "repository secret NPM_TOKEN"], "F6: an environment secret is not the repository secret")
         for target in SUPPORTED_RELEASE_TARGETS:
             with self.subTest(dropped=target):
                 row = next(line for line in good.splitlines()
@@ -3297,7 +3451,9 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
         self.assertEqual(RETIRED_RELEASE_PHRASES, (
             "isolated tool directory", "uv_tool_dir", "test.pypi.org/simple",
             "token the user supplies", "user-supplied token", "credentials the user supplies",
-            "user-supplied credentials", "the tag's release job"))
+            "user-supplied credentials", "the tag's release job",
+            # MIGRATED at CR-MDB-068 C5 RED (VERIFY F5): "a clean home" joins the tuple.
+            "a clean home"))
         good = CONFORMING_RELEASES
         self.assertEqual(release_step_faults(good, RETIRED_PHRASES), [])
         for phrase in RETIRED_RELEASE_PHRASES:

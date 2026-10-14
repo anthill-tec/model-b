@@ -18,6 +18,11 @@ proof that a renderer written to the spec can pass what the real render must. Th
 classes that need the new ``stamp_version.py`` (``RehearseStampExecutionTest``,
 ``CreateReleaseCheckExecutionTest``) have no sample proof: the script does not exist yet.
 
+CR-MDB-068 C5 RED (VERIFY F6/F7) adds the setup-wording classes: ``SetupWordingCheckerProofTest``
+(:func:`npm_token_faults`, :func:`tag_admission_faults` and :func:`setup_items` proved both ways
+on sample text), ``NpmSetupTaskTest`` (``init``'s npm setup task) and ``RenderedHeaderSetupTest``
+(the rendered header's setup items).
+
 Stdlib only.
 """
 
@@ -30,6 +35,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from modelb_axi import scaffold
 from tests._helpers import (
     workflow_job,
     workflow_job_key,
@@ -42,6 +48,7 @@ from tests._helpers import (
     workflow_steps,
     write_executable,
 )
+from tests.test_bootstrap_shutdown_registry import normalise
 from tests.test_release_rehearsal import (
     CHANGELOG_GOOD,
     CHANGELOG_MISSING,
@@ -1328,6 +1335,229 @@ class SampleBiteProofTest(_ExecutionCase):
         end = SAMPLE_FULL.index("\n  publish-pypi:")
         self._fails(RehearseTargetStepsExecutionTest, "test_a_build_leaving_dist_assets_empty_fails",
                     SAMPLE_FULL[:cut] + SAMPLE_FULL[end + 1:])
+
+
+# ------------------------------------------------------------------ the setup wording ----
+# CR-MDB-068 C5 RED (VERIFY F6/F7): NPM_TOKEN is a repository secret, given in order (the
+# token for the first publish, then the trusted publisher added and the token deleted) by
+# init's npm setup task and the rendered header's npm setup item; the header's pypi and npm
+# setup items say their environment admits the version tags, because the release event's
+# ref is the tag. (The git-workflow skill's targets table: tests.test_install_guide.)
+
+#: F6 - each fault :func:`npm_token_faults` reports.
+NO_NPM_TOKEN = " ".join(("names", "no", 'NPM_TOKEN'))
+NOT_A_REPOSITORY_SECRET = " ".join(("does not call", 'NPM_TOKEN', "a repository", "secret"))
+AN_ENVIRONMENT_SECRET = " ".join(("calls", 'NPM_TOKEN', "an environment", "secret"))
+NO_ORDER = ("does not give the order: the token for the first publish, then the trusted "
+            "publisher added and the token deleted")
+
+_NPM_TOKEN = re.compile(r"(?<![\w-])npm_token(?![\w-])")
+_REPOSITORY_SECRET = re.compile(r"\brepository secrets?\b")
+_ENVIRONMENT_SECRET = re.compile(
+    r"\benvironment secrets?\b|\benvironment\b[^.;]{0,60}\bwith the npm_token\b")
+_FIRST_PUBLISH = re.compile(r"\bfirst publish\b")
+_TRUSTED_PUBLISHER = re.compile(r"\btrusted publishers?\b")
+_DELETED = re.compile(r"\bdelet(?:e|es|ed|ing)\b")
+
+
+def npm_token_faults(text: str) -> list[str]:
+    """F6: the faults of ``text`` (an npm setup task or setup item), normalised: it names
+    ``NPM_TOKEN``, calls it a repository secret and never an environment secret, and says, in
+    this order, the first publish, the trusted publisher (added) and the token deleted."""
+    flat = normalise(text)
+    if not _NPM_TOKEN.search(flat):
+        return [NO_NPM_TOKEN]
+    out = []
+    if not _REPOSITORY_SECRET.search(flat):
+        out.append(NOT_A_REPOSITORY_SECRET)
+    if _ENVIRONMENT_SECRET.search(flat):
+        out.append(AN_ENVIRONMENT_SECRET)
+    first = _FIRST_PUBLISH.search(flat)
+    added = _TRUSTED_PUBLISHER.search(flat, first.end()) if first else None
+    if (_DELETED.search(flat, added.end()) if added else None) is None:
+        out.append(NO_ORDER)
+    return out
+
+
+#: F7 - the release event's ref is the tag: why the publish environments admit the tags.
+TAG_REF_REASON = re.compile(r"\brelease event'?s ref is the (?:version )?tag\b")
+_ADMITS = r"(?:admits (?:the )?version tags|carries no branch rule|has no branch rule)"
+
+
+def tag_admission_faults(item: str, environment: str) -> list[str]:
+    """F7: ``the <environment> environment admits the version tags`` (or ``carries no branch
+    rule``) in one clause (no ``;``) of the normalised setup ``item``; ``environment
+    <environment>`` naming it works too. ``testpypi`` is never ``pypi``."""
+    flat = normalise(item)
+    env = re.escape(environment)
+    pattern = (rf"(?<![\w.-]){env} environment\b[^;]*?\b{_ADMITS}"
+               rf"|\benvironment {env}(?![\w.-])[^;]*?\b{_ADMITS}")
+    if re.search(pattern, flat):
+        return []
+    return [f"the {environment} setup item does not say the {environment} environment admits "
+            "the version tags"]
+
+
+def setup_items(text: str) -> dict[str, str]:
+    """The rendered header's one-time setup items, keyed by the text before each item's first
+    ``:`` (``pypi``, ``npm``, ...): every ``# - `` line after ``# One-time setup:`` with its
+    ``#   `` continuation lines, up to the first line that is not a comment. Raw text, joined."""
+    items: dict[str, list[str]] = {}
+    current: list[str] | None = None
+    in_setup = False
+    for line in text.splitlines():
+        if not line.startswith("#"):
+            if in_setup:
+                break
+            continue
+        body = line[1:].strip()
+        if not in_setup:
+            in_setup = body.lower().startswith("one-time setup")
+            continue
+        if body.startswith("- "):
+            current = items.setdefault(body[2:].split(":", 1)[0].strip(), [])
+            current.append(body[2:])
+        elif current is not None and body:
+            current.append(body)
+    return {key: " ".join(lines) for key, lines in items.items()}
+
+
+def setup_text(text: str) -> str:
+    """Every setup item of ``text``, joined: where :data:`TAG_REF_REASON` is looked for."""
+    return " ".join(setup_items(text).values())
+
+
+#: Conforming samples: the wording F6/F7 settle, as a renderer or ``init`` may give it.
+SAMPLE_NPM_TASK = ("Create the `npm` environment in the repository settings and add the "
+                   "`NPM_TOKEN` repository secret for the first publish; then add `release.yml` "
+                   "as the package's trusted publisher on npm (environment `npm`) and delete the "
+                   "token")
+SAMPLE_SETUP_HEADER = """\
+# One-time setup:
+# - repository secret RELEASE_PAT: fine-grained, this repository only,
+#   Contents read/write;
+# - pypi: environments `pypi` and `testpypi`; the `pypi` environment
+#   admits the version tags, because the release event's ref is the tag;
+#   the `testpypi` environment admits the `release/**` and `hotfix/**`
+#   branches and carries no required reviewers; pending trusted
+#   publishers on pypi.org and test.pypi.org for this workflow;
+# - npm: environment `npm`, which admits the version tags; the
+#   repository secret NPM_TOKEN for the first publish, then add the npm
+#   trusted publisher and delete the token;
+# - github-assets: an executable .github/scripts/build-assets.
+
+name: release
+"""
+
+
+class SetupWordingCheckerProofTest(unittest.TestCase):
+    """The three readers proved both ways on sample text."""
+
+    def test_the_sample_task_and_header_pass(self):
+        self.assertEqual(npm_token_faults(SAMPLE_NPM_TASK), [])
+        items = setup_items(SAMPLE_SETUP_HEADER)
+        self.assertEqual(list(items), ["repository secret RELEASE_PAT", "pypi", "npm",
+                                       "github-assets"])
+        self.assertEqual(npm_token_faults(items["npm"]), [])
+        self.assertEqual(tag_admission_faults(items["pypi"], "pypi"), [])
+        self.assertEqual(tag_admission_faults(items["npm"], "npm"), [])
+        self.assertRegex(normalise(setup_text(SAMPLE_SETUP_HEADER)), TAG_REF_REASON)
+
+    def test_npm_token_faults_bite_on_todays_wording(self):
+        today_task = ("Create the `npm` environment in the repository settings with the "
+                      "`NPM_TOKEN` secret, and add `release.yml` as the package's trusted "
+                      "publisher on npm (environment `npm`)")
+        self.assertEqual(npm_token_faults(today_task),
+                         [NOT_A_REPOSITORY_SECRET, AN_ENVIRONMENT_SECRET, NO_ORDER])
+        today_item = ("npm: environment `npm`; the NPM_TOKEN secret for the first publish, "
+                      "deleted once the npm trusted publisher exists;")
+        self.assertEqual(npm_token_faults(today_item), [NOT_A_REPOSITORY_SECRET, NO_ORDER],
+                         "deleted before the publisher is added is the wrong order")
+
+    def test_npm_token_faults_bite_once_per_defect(self):
+        good = SAMPLE_NPM_TASK
+        cases = (
+            ("`NPM_TOKEN` repository secret", "`NPM_TOKEN` secret", [NOT_A_REPOSITORY_SECRET]),
+            ("repository secret", "environment secret",
+             [NOT_A_REPOSITORY_SECRET, AN_ENVIRONMENT_SECRET]),
+            (" for the first publish", "", [NO_ORDER]),
+            (" and delete the token", "", [NO_ORDER]),
+            ("`NPM_TOKEN`", "a token", [NO_NPM_TOKEN]),
+        )
+        for old, new, faults in cases:
+            with self.subTest(old=old, new=new):
+                self.assertEqual(good.count(old), 1, old)
+                self.assertEqual(npm_token_faults(good.replace(old, new)), faults)
+        swapped = ("Add the `NPM_TOKEN` repository secret for the first publish; delete the "
+                   "token, then add the trusted publisher")
+        self.assertEqual(npm_token_faults(swapped), [NO_ORDER], "delete comes after the publisher")
+
+    def test_tag_admission_faults_bite(self):
+        items = setup_items(SAMPLE_SETUP_HEADER)
+        pypi_fault = ["the pypi setup item does not say the pypi environment admits the version "
+                      "tags"]
+        self.assertEqual(tag_admission_faults(items["pypi"].replace(
+            "the `pypi` environment admits the version tags, because the release event's ref "
+            "is the tag; ", ""), "pypi"), pypi_fault,
+            "testpypi admitting the branches is not pypi admitting the tags")
+        self.assertEqual(tag_admission_faults(items["pypi"].replace(
+            "the `pypi` environment admits the version tags", "the `pypi` environment admits "
+            "the `master` branch"), "pypi"), pypi_fault)
+        self.assertEqual(tag_admission_faults(
+            "pypi: the `pypi` environment carries no branch rule;", "pypi"), [])
+        self.assertEqual(tag_admission_faults(items["npm"].replace(
+            ", which admits the version tags", ""), "npm"),
+            ["the npm setup item does not say the npm environment admits the version tags"])
+        self.assertNotRegex(normalise(setup_text(SAMPLE_SETUP_HEADER).replace(
+            ", because the release event's ref is the tag", "")), TAG_REF_REASON)
+
+    def test_setup_items_read_only_the_setup_block(self):
+        text = "# - npm: before the setup;\n" + SAMPLE_SETUP_HEADER + "# - npm: after the comment;\n"
+        self.assertNotIn("before the setup", setup_items(text).get("npm", ""))
+        self.assertNotIn("after the comment", setup_items(text).get("npm", ""))
+        self.assertEqual(setup_items("name: release\n"), {})
+
+
+class NpmSetupTaskTest(unittest.TestCase):
+    """F6 - ``init``'s npm setup task calls ``NPM_TOKEN`` a repository secret and gives the order."""
+
+    def test_the_npm_setup_task_meets_f6(self):
+        tasks = [task for task in scaffold.release_setup_tasks(["python"], ["npm:pkg"])
+                 if "NPM_TOKEN" in task]
+        self.assertEqual(len(tasks), 1, f"one npm task; got {tasks!r}")
+        self.assertEqual(npm_token_faults(tasks[0]), [], tasks[0])
+
+
+#: The target sets the header is read for: each holding ``pypi`` or ``npm``.
+SETUP_TARGET_SETS = (("pypi",), ("npm:pkg",), ("pypi", "npm:pkg", "github-assets"))
+
+
+class RenderedHeaderSetupTest(unittest.TestCase):
+    """F6/F7 - the rendered header's setup items."""
+
+    def each(self):
+        for targets in SETUP_TARGET_SETS:
+            text = render_files(["python"], list(targets))[RELEASE_YML]
+            yield targets, {target.partition(":")[0] for target in targets}, text
+
+    def test_the_npm_setup_item_calls_npm_token_a_repository_secret_in_order(self):
+        for targets, names, text in self.each():
+            if "npm" in names:
+                with self.subTest(targets=targets):
+                    self.assertEqual(npm_token_faults(setup_items(text).get("npm", "")), [])
+
+    def test_each_publish_environment_admits_the_version_tags(self):
+        for targets, names, text in self.each():
+            items = setup_items(text)
+            for name in sorted(names & {"pypi", "npm"}):
+                with self.subTest(targets=targets, environment=name):
+                    self.assertEqual(tag_admission_faults(items.get(name, ""), name), [])
+
+    def test_the_setup_says_the_release_events_ref_is_the_tag(self):
+        for targets, _names, text in self.each():
+            with self.subTest(targets=targets):
+                self.assertRegex(normalise(setup_text(text)), TAG_REF_REASON)
+
 
 
 if __name__ == "__main__":

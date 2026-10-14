@@ -19,6 +19,12 @@ Class map:
   hand-modified and unmanaged text, and ``place_owned`` applies it.
 - ``PermissionPolicyUsesFirstLineOwnershipTest`` — the permission policy classifies through it, and
   ``_sha256_text`` (and ``first_line_ownership``) is defined once, in ``modelb_axi/agents.py``.
+- ``RenderRefusesAnUnsafeTargetDirTest`` - CR-MDB-068 C5 RED (VERIFY F1): ``render`` refuses a
+  target whose ``dir`` holds a character outside ``[A-Za-z0-9._/-]``, naming the ``dir``.
+- ``ReleaseTargetsDefinedOnceTest`` - CR-MDB-068 C5 RED (VERIFY F9): the canonical target order
+  (``workflows.RELEASE_TARGETS``) and the one target parser (``workflows.parse_target``) live in
+  ``modelb_axi/workflows.py`` only; ``scaffold`` imports the order and its validate rule and the
+  renderer both parse through the one parser.
 
 Stdlib only.
 """
@@ -38,6 +44,7 @@ from modelb_axi import agents, deploy, permission_policy, scaffold
 from tests import test_package_publishing as publishing
 from tests.test_project_permission_policy import sha256_text as _sha256
 from tests.test_raw_runner_guard import GUARDED_ROOTS
+from tests.test_release_targets import UNSAFE_DIRS
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SOURCE = REPO_ROOT / "workflows-src"
@@ -383,6 +390,96 @@ class PermissionPolicyUsesFirstLineOwnershipTest(unittest.TestCase):
                     found[node.name].append(path.name)
         self.assertEqual(found, {"_sha256_text": ["agents.py"],
                                  "first_line_ownership": ["agents.py"]})
+
+
+class RenderRefusesAnUnsafeTargetDirTest(unittest.TestCase):
+    """CR-MDB-068 C5 RED (VERIFY F1) - the renderer's own guard: a ``dir`` holding a character
+    outside ``[A-Za-z0-9._/-]`` would be written unquoted into a shell line, so ``render`` refuses
+    it with ``ValueError`` naming the ``dir`` (as its ``repr``), whatever its caller validated."""
+
+    def test_render_refuses_a_target_whose_dir_holds_an_unsafe_character(self):
+        for value, directory in UNSAFE_DIRS:
+            with self.subTest(target=value):
+                with self.assertRaises(ValueError) as caught:
+                    render_files(STACKS, [value])
+                self.assertIn(repr(directory), str(caught.exception))
+
+    def test_render_still_renders_a_dir_of_safe_characters(self):
+        text = render_files(STACKS, ["npm:pkg-1/sub_dir.v2"])[RELEASE_YML]
+        self.assertIn(" npm:pkg-1/sub_dir.v2)", text, "the stamp line carries the target")
+
+
+#: CR-MDB-068 C5 RED (VERIFY F9) - the canonical target order, written once.
+RELEASE_TARGET_ORDER = ("pypi", "npm", "github-assets")
+
+
+def _parsed_items(spy, real) -> list[str]:
+    """The ``item`` each call of ``spy`` (wrapping ``real``) received, in call order."""
+    return [inspect.signature(real).bind(*call.args, **call.kwargs).arguments["item"]
+            for call in spy.call_args_list]
+
+
+class ReleaseTargetsDefinedOnceTest(unittest.TestCase):
+    """CR-MDB-068 C5 RED (VERIFY F9) - one definition of the target order and one target parser,
+    both owned by ``modelb_axi/workflows.py``; ``scaffold`` imports them."""
+
+    def test_the_order_is_written_once_in_the_package_in_workflows(self):
+        found = []
+        for path in sorted((REPO_ROOT / "modelb_axi").glob("*.py")):
+            for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+                if not isinstance(node, (ast.Tuple, ast.List)):
+                    continue
+                values = tuple(elt.value for elt in node.elts if isinstance(elt, ast.Constant))
+                if len(values) == len(node.elts) and values == RELEASE_TARGET_ORDER:
+                    found.append(path.name)
+        self.assertEqual(found, ["workflows.py"], "F9: the order is defined once, in workflows")
+        self.assertEqual(workflows_module().RELEASE_TARGETS, RELEASE_TARGET_ORDER)
+
+    def test_scaffold_takes_the_order_from_workflows(self):
+        self.assertIs(scaffold.RELEASE_TARGETS, workflows_module().RELEASE_TARGETS,
+                      "F9: scaffold imports the order, it does not define its own")
+
+    def test_one_parser_is_defined_and_no_duplicate_remains(self):
+        names = ("parse_target", "_release_target", "_parse_targets")
+        found: dict[str, list[str]] = {name: [] for name in names}
+        for path in sorted((REPO_ROOT / "modelb_axi").glob("*.py")):
+            for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+                if isinstance(node, ast.FunctionDef) and node.name in found:
+                    found[node.name].append(path.name)
+        self.assertEqual(found, {"parse_target": ["workflows.py"], "_release_target": [],
+                                 "_parse_targets": []})
+
+    def test_parse_target_returns_the_name_and_the_normalised_dir(self):
+        parse = workflows_module().parse_target
+        for item, expected in (("pypi", ("pypi", ".")), ("github-assets", ("github-assets", ".")),
+                               ("npm:./pkg/", ("npm", "pkg")), ("pypi:py/./src", ("pypi", "py/src"))):
+            with self.subTest(item=item):
+                self.assertEqual(parse(item), expected)
+
+    def test_parse_target_refuses_naming_the_bad_part(self):
+        parse = workflows_module().parse_target
+        for item, named in (("crates", "crates"), ("github-assets:dist", "github-assets"),
+                            ("npm:", "npm"), ("npm:../pkg", "../pkg"), ("npm:/abs", "/abs"),
+                            ("npm:a b", repr("a b"))):
+            with self.subTest(item=item):
+                with self.assertRaises(ValueError) as caught:
+                    parse(item)
+                self.assertIn(named, str(caught.exception))
+
+    def test_the_validate_rule_parses_each_item_through_the_one_parser(self):
+        module = workflows_module()
+        real = module.parse_target
+        with mock.patch.object(module, "parse_target", wraps=real) as spy:
+            value = scaffold.VALIDATE_RULES["release_targets_csv"]("github-assets,npm:./pkg/")
+        self.assertEqual(value, "npm:pkg,github-assets")
+        self.assertEqual(sorted(_parsed_items(spy, real)), ["github-assets", "npm:./pkg/"])
+
+    def test_render_parses_each_target_once_through_the_one_parser(self):
+        module = workflows_module()
+        real = module.parse_target
+        with mock.patch.object(module, "parse_target", wraps=real) as spy:
+            render_files(STACKS, ["pypi", "npm:pkg"])
+        self.assertEqual(sorted(_parsed_items(spy, real)), ["npm:pkg", "pypi"])
 
 
 if __name__ == "__main__":
