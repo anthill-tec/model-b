@@ -91,9 +91,10 @@ For each stack you choose, the installer:
 A stack does not install its toolchain: a missing tool is reported, and where the tool's own
 installer can run without elevated privileges the installer offers to run it — nothing more.
 For a missing `python3`, which every stack's client runs on, it offers
-`uv python install --default 3.14`. It does not install Crucible's clients either. The hook scripts, the workflow scripts and every
-other skill but `code-health` are deployed whatever stacks you choose, and a project's own
-stacks are chosen separately, when you create it with `modelb-axi init --stacks`.
+`uv python install --default 3.14`. It does not install Crucible's clients either. The hook
+scripts, the workflow scripts and every other skill but `code-health` are deployed whatever
+stacks you choose, and a project's own stacks are chosen separately, when you create it with
+`modelb-axi init --stacks`.
 
 The python stack's `xmlrunner` and `coverage` are never offered: their route runs in each python
 project, whose tests run under its own `.venv`. In the project, run `uv venv --python 3.14`,
