@@ -1,0 +1,3 @@
+      - name: Ship the root CHANGELOG.md in the package
+        working-directory: @@DIR@@
+        run: cp "$GITHUB_WORKSPACE/CHANGELOG.md" .

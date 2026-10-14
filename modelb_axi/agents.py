@@ -273,6 +273,19 @@ def ownership_state(text: str) -> str:
             return OWNED_INTACT if _sha256_text(rest) == recorded else OWNED_HAND_MODIFIED
     return NOT_OWNED
 
+def first_line_ownership(text: str, prefix: str) -> str:
+    """Classify a file owned by a first-line marker (CR-MDB-068 §S2): ``intact``
+    when its first line is ``prefix`` plus the sha256 of everything after the
+    first newline; ``hand_modified`` when the prefix is there and the digest
+    does not match; ``unmanaged`` otherwise. The permission policy and the
+    release-workflow files classify through it."""
+    first, _, rest = text.partition("\n")
+    first = first.rstrip("\r")
+    if not first.startswith(prefix):
+        return NOT_OWNED
+    recorded = first[len(prefix):].strip()
+    return OWNED_INTACT if recorded == _sha256_text(rest) else OWNED_HAND_MODIFIED
+
 def render_definitions(
     stacks: list[str],
     harnesses: list[str],

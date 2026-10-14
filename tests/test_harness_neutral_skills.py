@@ -49,12 +49,13 @@ import unittest
 from pathlib import Path
 
 from tests import test_deployed_asset_freshness as freshness
-from tests._helpers import REPO_ROOT, at_line, parse_env_file
+from tests._helpers import REPO_ROOT, at_line
 from tests.test_client_path_anchoring import (
     TOOL_BASELINE,
     _ratchet_violations,
     _tool_occurrences,
 )
+from tests.test_model_b_release_files import MODEL_B_STACKS
 from tests.test_pi_agent_definitions import (
     _copy_c3_asset_root,
     _run_module_c3,
@@ -72,16 +73,19 @@ BUILD_PY = REPO_ROOT / "generator" / "build.py"
 
 #: The shipped surfaces of the ``~/.claude`` gate (AC 9), as the AC lists them (other modules
 #: import this tuple and extend it themselves).
+#: MIGRATED at CR-MDB-068 C3 RED (§S8): ``workflows-src/`` ships (the rendered release
+#: workflow's parts and scripts), so every surface tuple below gains it (was without it).
 CLAUDE_HOME_SURFACES = (
     "skills-src", "generator", "hooks-src", "scripts", "modelb_axi", ".pi/agents",
-    "AGENTS.md", "docs/install-guide.md",
+    "AGENTS.md", "docs/install-guide.md", "workflows-src",
 )
 #: What the ``~/.claude`` and wrapper gates scan: AC 9's surfaces plus ``contracts/`` (C3's rewrite).
 HOME_GATE_SURFACES = CLAUDE_HOME_SURFACES + ("contracts",)
 #: The tool-name gate's surfaces (AC 10), exactly as the spec lists them.
-TOOL_SURFACES = ("skills-src", "generator", "hooks-src", "scripts")
+TOOL_SURFACES = ("skills-src", "generator", "hooks-src", "scripts", "workflows-src")
 #: The ``CLAUDE.md`` gate's surfaces (AC 11), exactly as the spec lists them.
-CLAUDE_MD_SURFACES = ("skills-src", "generator", "hooks-src", "scripts", "modelb_axi", ".pi/agents")
+CLAUDE_MD_SURFACES = ("skills-src", "generator", "hooks-src", "scripts", "modelb_axi", ".pi/agents",
+                      "workflows-src")
 
 #: AC 9's exemptions, as MEASURED at C2 RED (develop-line ``82305e2``): prose that names
 #: ``~/.claude`` as the tree Model B never writes. Matched on (file, exact line text) so a rewrite
@@ -507,7 +511,9 @@ class RegenerationCleanTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, f"§S2: build.py --check drift:\n{result.stdout}\n{result.stderr}")
 
     def test_pi_agents_equal_a_fresh_sandboxed_agents_render(self):
-        stacks = parse_env_file(REPO_ROOT / ".env").get("PROJECT_STACKS") or "python"
+        # MIGRATED at CR-MDB-068 C2 RED (§S7): no test reads Model B's gitignored .env (a fresh
+        # clone has none); Model B's stacks are written once, in tests.test_model_b_release_files.
+        stacks = ",".join(MODEL_B_STACKS)
         with tempfile.TemporaryDirectory(prefix="mdb-031-c2-render-") as tmp:
             sandbox = Path(tmp)
             home, assets, project, user_home = (sandbox / n for n in ("mh", "assets", "proj", "home"))
@@ -585,6 +591,38 @@ class TargetedTextFixesTest(unittest.TestCase):
                 if "-nai/memory" in ln]
         self.assertEqual(hits, [], "§S2: the NAI project-memory examples are removed")
 
+
+# ------------------------------------------------------------------ CR-MDB-068 §S8 ----
+
+
+class WorkflowsSrcHarnessNeutralTest(unittest.TestCase):
+    """CR-MDB-068 §S8: ``workflows-src/`` is a shipped, harness-neutral surface — every scan
+    gate reads it, and each bites on a fixture file under it."""
+
+    def test_every_surface_tuple_includes_workflows_src(self):
+        for name, surfaces in (("HOME_GATE_SURFACES", HOME_GATE_SURFACES),
+                               ("TOOL_SURFACES", TOOL_SURFACES),
+                               ("CLAUDE_MD_SURFACES", CLAUDE_MD_SURFACES)):
+            with self.subTest(surfaces=name):
+                self.assertIn("workflows-src", surfaces)
+                self.assertTrue((REPO_ROOT / "workflows-src").is_dir())
+
+    def test_each_gate_bites_on_a_workflows_src_part_and_spares_a_clean_one(self):
+        rel = "workflows-src/release/x.yml"
+        cases = (
+            (HOME_GATE_SURFACES, CLAUDE_HOME_RE, "run: cat ~/.claude/settings.json\n"),
+            (TOOL_SURFACES, HARNESS_TOOL_RE, "# use EnterWorktree first\n"),
+            (CLAUDE_MD_SURFACES, CLAUDE_MD_RE, "# read CLAUDE.md\n"),
+            (HOME_GATE_SURFACES, TMP_CLAUDE_RE, "run: ls /tmp/claude-1000\n"),
+            (HOME_GATE_SURFACES, CRUCIBLE_WRAPPER_RE, "# the per-project wrapper runs it\n"),
+        )
+        for surfaces, pattern, line in cases:
+            with self.subTest(pattern=pattern.pattern[:40]):
+                tmp, root = _fixture_root({rel: "name: release\n" + line,
+                                           "workflows-src/release/clean.yml": "name: release\n"})
+                with tmp:
+                    hits = _gate_hits(root, surfaces, pattern)
+                self.assertEqual([h.split(": ", 1)[0] for h in hits], [at_line(rel, 2)])
 
 if __name__ == "__main__":
     unittest.main()

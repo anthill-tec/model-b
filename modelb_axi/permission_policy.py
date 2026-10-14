@@ -18,7 +18,6 @@ The installer no longer reads or reports the user's GLOBAL config
 Stdlib only.
 """
 
-import hashlib
 import json
 import shutil
 from pathlib import Path
@@ -73,10 +72,6 @@ def _harness_code_reads() -> list[str]:
     return []
 
 
-def _sha256_text(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
-
-
 def render_policy(*, lean_ctx: bool = True) -> str:
     """The project policy text: marker line, then the JSON body. Maps put
     ``"*"`` first — the package's last matching pattern wins. ``lean_ctx``
@@ -89,21 +84,16 @@ def render_policy(*, lean_ctx: bool = True) -> str:
     permission["external_directory_read"] = reads
     permission["external_directory_write"] = {"*": "ask", _TMP: "allow"}
     body = json.dumps({"permission": permission}, indent=2) + "\n"
-    return f"{MARKER_PREFIX}{_sha256_text(body)}\n{body}"
+    return f"{MARKER_PREFIX}{agents._sha256_text(body)}\n{body}"
 
 
 def ownership_state(text: str) -> str:
     """Classify an existing policy file: ``intact`` when its first line is
     the marker and the digest matches the rest; ``hand_modified`` when the
-    marker is there but the digest does not match; ``unmanaged`` otherwise."""
-    first, _, rest = text.partition("\n")
-    first = first.rstrip("\r")
-    if not first.startswith(MARKER_PREFIX):
-        return agents.NOT_OWNED
-    recorded = first[len(MARKER_PREFIX):].strip()
-    if recorded == _sha256_text(rest):
-        return agents.OWNED_INTACT
-    return agents.OWNED_HAND_MODIFIED
+    marker is there but the digest does not match; ``unmanaged`` otherwise.
+    Delegates to :func:`modelb_axi.agents.first_line_ownership`, looked up on
+    ``agents`` at call time (CR-MDB-068 §S2)."""
+    return agents.first_line_ownership(text, MARKER_PREFIX)
 
 
 def place_project_policy(

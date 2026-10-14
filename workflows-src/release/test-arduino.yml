@@ -1,0 +1,13 @@
+  test-arduino:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: @@USES:actions/checkout@@
+        with:
+          fetch-depth: 0
+      - name: Run the project's CI test script
+        run: |
+          if ! test -x .github/scripts/ci-test; then
+            echo "::error::.github/scripts/ci-test is missing or not executable"
+            exit 1
+          fi
+          .github/scripts/ci-test

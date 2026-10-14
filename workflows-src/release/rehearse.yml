@@ -1,0 +1,18 @@
+  rehearse:
+    needs: [@@NEEDS@@]
+    if: >-
+      (startsWith(github.ref, 'refs/heads/release/') ||
+       startsWith(github.ref, 'refs/heads/hotfix/')) &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+@@ENVIRONMENT@@
+    permissions:
+      contents: read
+@@ID_TOKEN@@
+    steps:
+      - uses: @@USES:actions/checkout@@
+      - name: Stamp the dev version and check the release notes
+        run: |
+          version=$(python3 .github/scripts/stamp_version.py stamp "$GITHUB_REF_NAME" "$GITHUB_RUN_NUMBER"@@VERSIONED@@)
+          python3 .github/scripts/changelog_section.py CHANGELOG.md "$version" > /dev/null
+@@TARGET_STEPS@@

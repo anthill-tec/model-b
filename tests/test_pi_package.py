@@ -481,6 +481,8 @@ _SAMPLE_ROOT_CHANGELOG = (
     "# Changelog\n\n## [Unreleased]\n\n### Fixed\n\n- The root copy — its dash survives.\n"
 )
 _NPM_PUBLISH = re.compile(r"npm publish\b")
+#: CR-MDB-068 §S4 — the rendered copy of the root CHANGELOG.md into a package directory.
+NPM_CHANGELOG_COPY = 'cp "$GITHUB_WORKSPACE/CHANGELOG.md" .'
 
 
 def _copy_line_faults(line: str, working_directory: str) -> list[str]:
@@ -563,6 +565,17 @@ class PiPackageChangelogTest(unittest.TestCase):
 
     def test_publish_npm_copies_the_root_changelog_into_the_package_before_npm_publish(self):
         self.assertEqual(npm_changelog_copy_faults(RELEASE_YML.read_text(encoding="utf-8")), [])
+
+    # MIGRATED at CR-MDB-068 C2 RED (§S7): Model B's publish-npm is rendered for ``npm:pi-package``
+    # (CR-MDB-068 §S4): it runs from ``pi-package`` by default and copies the root CHANGELOG.md
+    # through $GITHUB_WORKSPACE (was ``cp ../CHANGELOG.md .``).
+    def test_publish_npm_runs_from_pi_package_and_copies_through_the_workspace(self):
+        job = workflow_job(RELEASE_YML.read_text(encoding="utf-8"), "publish-npm")
+        self.assertEqual(workflow_job_working_directory(job), "pi-package")
+        copies = [(step["working-directory"], [line.strip() for line in step["run"]])
+                  for step in workflow_steps(job)
+                  if any("CHANGELOG.md" in line for line in step["run"])]
+        self.assertEqual(copies, [(None, [NPM_CHANGELOG_COPY])])
 
     def test_gitignore_lists_the_copied_package_changelog(self):
         lines = [line.strip() for line in GITIGNORE.read_text(encoding="utf-8").splitlines()]

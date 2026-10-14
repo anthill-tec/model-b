@@ -1,0 +1,5 @@
+      - name: The tag matches every version source
+        if: steps.tag.outputs.tag != ''
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: python3 .github/scripts/stamp_version.py check "$TAG"@@VERSIONED@@

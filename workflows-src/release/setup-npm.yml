@@ -1,0 +1,4 @@
+# - npm: environment `npm`, which admits the version tags, because the
+#   release event's ref is the tag; the repository secret NPM_TOKEN for
+#   the first publish, then add the npm trusted publisher and delete the
+#   token;

@@ -1,0 +1,4 @@
+      - name: Build the release assets
+        run: |
+          test -x .github/scripts/build-assets
+          .github/scripts/build-assets

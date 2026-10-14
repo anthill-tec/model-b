@@ -48,10 +48,11 @@ Key invariants:
 | `generator/` | `build.py` renders `templates/{red,green,verify,fix}.md.tmpl` × `stacks/{arduino,bun,python,quarkus}.toml` → `agents/<stack>-<role>-agent.md` (16 files) |
 | `hooks-src/` | `schema.md` (neutral schema v1) + `scripts/` (8 executable stdin/exit protocol scripts, no file extension) |
 | `scripts/` | The tool-script asset class (7 adopted + 1 generated): `worktree-flow.py`, `schedule_db.py` (TRANSITIONAL), `skill-release-gate.py`, `rust-code-health.py`, `rust-crate-map.py`, `rust-dead-scan.py`, `gate-lock.sh`, and `toon.py` generated from `modelb_axi/toon.py`. Deployed to `~/.agents/scripts/` (`deploy.TOOL_SCRIPTS_STORE_RELDIR`) — the ONLY path a Model B surface names; never a `~/.claude` path (not Model B-owned) |
+| `workflows-src/` | The release workflow's parts (`release/*.yml`) and its two scripts (`stamp_version.py`, `changelog_section.py`), rendered into a project's `.github/` by `modelb_axi/workflows.py` — at `init` and by `modelb-axi release-workflow` |
 | `contracts/` | Interface contracts: `crucible-envelope.md`, `gate-lock.md`, `sandesh-cli.md`, `lean-ctx.md` (cross-project), `worktree-layout.md` (the `.worktrees/<cr>` string and its six consumers). Repo-only — not shipped in the wheel |
 | `docs/research/` | `PRD-model-b-rationalization.md` (D1–D10) + `DN-*.md` design notes |
 | `docs/changes/` | `CR-MDB-NNN-*.md` specs; `README.md` is read-only history frozen at CR-MDB-048's merge — the Crucible board holds the queue and the execution state |
-| `tests/` | 89 `unittest` modules; mostly structural/contract gates |
+| `tests/` | 96 `unittest` modules; mostly structural/contract gates |
 | `archive/` | Read-only history: `BASELINE.md` (the wave-0 baseline), `wave1..3/` and `contracts/` (archived files), and `mapping.md` — the living map from every relocated path to where it lives now, gated by `tests/test_archive_mapping.py` (a CR that moves a mapped path updates its row) |
 | `audits/` | Dated evidence files backing PRD decisions |
 
@@ -81,7 +82,8 @@ There is **no** Makefile/justfile and **no** linter/formatter/type-checker confi
 - its test job runs the suite on every release, hotfix and `master` push and every published release, on a clean runner, outside any agent session;
 - it rehearses the release on release and hotfix pushes (the stamped dev version to TestPyPI, the npm dry-run publish, the notes check);
 - it creates the release from the `master` push (recovery: dispatch the workflow on `master`);
-- it publishes to PyPI and npm on the release event, every publish gated on the tests.
+- it publishes to PyPI and npm on the release event, every publish gated on the tests;
+- the workflow is rendered from `workflows-src/`, never hand-edited: `modelb-axi release-workflow` renders it again.
 
 A brief that may run `modelb-axi` pins `--modelb-home` / `--target-root` and exports `MODELB_HOME`, `XDG_DATA_HOME`, `HOME` and `PI_CODING_AGENT_DIR` to sandbox dirs, so no run touches the real installation.
 
@@ -101,7 +103,7 @@ A brief that may run `modelb-axi` pins `--modelb-home` / `--target-root` and exp
 ## Important Files
 
 - `modelb_axi/cli.py` — entry point (`[project.scripts] modelb-axi = "modelb_axi.cli:main"`), also runnable as `python3 -m modelb_axi`.
-- `pyproject.toml` — hatchling; `force-include` maps `skills-src`, `generator`, `scripts`, `hooks-src` into `modelb_axi/_assets/` (`contracts/` is repo-only: no runtime consumer, not in the wheel or the sdist). **Any new asset root must be added there or it will not ship in the wheel.**
+- `pyproject.toml` — hatchling; `force-include` maps `skills-src`, `generator`, `scripts`, `hooks-src`, `workflows-src` into `modelb_axi/_assets/` (`contracts/` is repo-only: no runtime consumer, not in the wheel or the sdist). **Any new asset root must be added there or it will not ship in the wheel.**
 - `.env` — static naming registry (gitignored; must exist locally): `PROJECT_NAME`, `PROJECT_TOKEN=modelb`, `PROJECT_ACRONYM=MDB`, `ORCHESTRATOR_LABEL=vidushi-mdb`, `REPO_OWNER=antojk`, `CRUCIBLE_PROJECT_KEY`.
 - `hooks-src/schema.md` — the neutral hook schema v1; the compiler in `hooks.py` is its only consumer.
 - `skills-src/CRUCIBLE-HANDOVER.md` — provenance + maintenance contract for the 6 imported bundles. Model B owns their content/bundling/deploy; the Crucible repo owns the client code. Keep imported bundles byte-faithful unless a doc-sync is explicitly in scope.
@@ -121,7 +123,7 @@ A brief that may run `modelb-axi` pins `--modelb-home` / `--target-root` and exp
 
 ## Testing & QA
 
-Pure **`unittest`** — no pytest, no `conftest.py`, no fixtures/markers. 89 modules in `tests/` (`tests/test_*.py`), each file ending in `if __name__ == "__main__": unittest.main()`. Naming as practised: the wave-1/2 modules use `<Topic><Section>Test` classes (e.g. `ContractsS2Test`) with `test_s<n>_<assertion>` methods; later modules use `<Feature>Test` classes (e.g. `BlockDirectCargoTestScriptTest`) with descriptive method names. A helper more than one module needs lives once in `tests/_helpers.py` and is imported (CR-MDB-032 §S3 gates a module-level helper body defined in two modules).
+Pure **`unittest`** — no pytest, no `conftest.py`, no fixtures/markers. 96 modules in `tests/` (`tests/test_*.py`), each file ending in `if __name__ == "__main__": unittest.main()`. Naming as practised: the wave-1/2 modules use `<Topic><Section>Test` classes (e.g. `ContractsS2Test`) with `test_s<n>_<assertion>` methods; later modules use `<Feature>Test` classes (e.g. `BlockDirectCargoTestScriptTest`) with descriptive method names. A helper more than one module needs lives once in `tests/_helpers.py` and is imported (CR-MDB-032 §S3 gates a module-level helper body defined in two modules).
 
 Every test run goes through the Crucible client, which runs the suite and ingests the result — never a test runner invoked directly. A runner the client cannot drive is a client gap, raised with Crucible.
 
@@ -139,9 +141,9 @@ python3 ~/.crucible/clients/python-crucible.py regression --coverage \
 - JUnit XML lands in `test-reports/<agent>/` — the client's per-agent reports directory for `test --agent <agent>` — as `TEST-<module>.<Class>-<YYYYMMDDHHMMSS>.xml` (gitignored; the client wipes it before each run).
 - **Most tests are structural gates, so ordinary edits break them.** They assert repo layout, the state a sandboxed install deploys, SKILL.md frontmatter, byte-identity of imported bundles, reference-router parity, and grep-gates for retired terms (e.g. zero `WORKFLOW_CYCLE_ID`). Renaming a skill, doc, or reference file requires updating its gate.
 - Tests import `modelb_axi` directly — run them from the repo root.
-- **The suite is expected to be GREEN, and hermetic** — no test writes to or depends on the real home, except to read Crucible's installed clients (CR-MDB-032 §S1/§S2) and one installed Pi package's released source — the pi-subagents service key, under `$PI_CODING_AGENT_DIR`, else `~/.pi/agent` (CR-MDB-039). Baselines for the full suite through the client (`python-crucible.py test`), measured 2026-10-14 at CR-MDB-070 C4 FIX through the Crucible client, with `MODELB_HOME`/`XDG_DATA_HOME` pointed at temp dirs:
-  - real `HOME` (Crucible clients installed): **2924 tests, 0 failures, 0 errors, 1 skip** with `PI_CODING_AGENT_DIR` also pointed at a temp dir — the pi-subagents service-key check, its package absent there (with it unset and pi-subagents installed, that check runs: 0 skips).
-  - empty `HOME` (a fresh temp dir; `PYTHONUSERBASE` keeps user site-packages; `PI_CODING_AGENT_DIR` at a temp dir): **2924 tests, 0 failures, 0 errors, 12 skips**; the temp dir is still empty afterwards.
+- **The suite is expected to be GREEN, and hermetic** — no test writes to or depends on the real home, except to read Crucible's installed clients (CR-MDB-032 §S1/§S2) and one installed Pi package's released source — the pi-subagents service key, under `$PI_CODING_AGENT_DIR`, else `~/.pi/agent` (CR-MDB-039). Baselines for the full suite through the client (`python-crucible.py test`), measured 2026-10-14 at CR-MDB-068 C5 FIX through the Crucible client, with `MODELB_HOME`/`XDG_DATA_HOME` pointed at temp dirs:
+  - real `HOME` (Crucible clients installed): **3193 tests, 0 failures, 0 errors, 1 skip** with `PI_CODING_AGENT_DIR` also pointed at a temp dir — the pi-subagents service-key check, its package absent there (with it unset and pi-subagents installed, that check runs: 0 skips).
+  - empty `HOME` (a fresh temp dir; `PYTHONUSERBASE` keeps user site-packages; `PI_CODING_AGENT_DIR` at a temp dir): **3193 tests, 0 failures, 0 errors, 12 skips**; the temp dir is still empty afterwards.
 - **Every skip is an absent installed Crucible client, an absent `pi` CLI, an absent `sandesh` CLI, an absent installed pi-subagents, or a shallow clone.** A test that reads Crucible's released surface resolves it through `~/.crucible/crucible-clients.json` and skips, naming that manifest, when the manifest, its entry or the file is missing — the toon conformance oracle (2), the gate-lock read (1), the present-manifest half of `ManifestResolvedOracleS1Test` (1), the scaffolded-key resolution in `test_project_registry_schema` (1), the installed clients' `--help` flag check in `test_skill_bundle_guards` and its bite proof (2) — and `ClientContractS3Test` skips its four checks when the released client files under `~/.crucible/clients/` are absent. The `pi` CLI (with `node` and the jiti it ships) must be on `PATH`: without it the loader-driven classes skip in `setUpClass`, seven in `test_pi_hook_runtime`, four in `test_pi_worktree_isolation` and three in `test_skill_frontmatter` (its Pi skill-loader class, plus the two missing-export proofs that need a real `node`; one with `node` present). Without an installed pi-subagents, `test_pi_worktree_isolation`'s service-key contract check (1) skips, naming the path it looked for (`npm/node_modules/@gotgenes/pi-subagents/src/service/service.ts` under `$PI_CODING_AGENT_DIR`, else `~/.pi/agent`). Without `sandesh` on `PATH`, `test_sandesh_cli_forms`'s `--help` conformance class skips its three checks in `setUpClass`. A shallow clone or an absent `git` skips `test_archive_mapping`'s real-map row check (1) after every other row rule has run, because its Moved-by shas cannot be resolved. Nothing else skips. **A failure is a regression, not a known-bad** — investigate it; `audits/2026-09-21-codebase-review-tests.md` diagnoses the pre-CR-MDB-021 state.
 - The pre-merge gate runs one interpreter, the 3.14 floor: the suite is not run across a matrix of Python versions.
 - TDD is mandatory: RED before GREEN, never commit failing tests, clean build before every commit.

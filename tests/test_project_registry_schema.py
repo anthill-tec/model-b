@@ -52,7 +52,7 @@ from unittest import mock
 from modelb_axi import agents as _agents
 from modelb_axi import cli as _cli
 from modelb_axi import permission_policy as _permission_policy
-from modelb_axi import scaffold
+from modelb_axi import scaffold, workflows
 from modelb_axi.hooks import compile_wiring
 from tests._helpers import at_line, decode_axi, installed_crucible_file, md_section, parse_env_file
 from tests._helpers import run_module, write_install_toml
@@ -69,12 +69,15 @@ SCHEMA_WHEEL_MEMBER = "modelb_axi/project_schema.toml"
 
 #: The keys the schema declares — exactly these: §S1's eight, plus CR-MDB-045
 #: §S4's lean-ctx ``KNOWLEDGE_CATEGORY`` (MIGRATED at CR-MDB-045 C2 RED), plus
-#: CR-MDB-047 §S2's ``SANDESH_ADDRESS`` (MIGRATED at CR-MDB-047 C1 RED).
+#: CR-MDB-047 §S2's ``SANDESH_ADDRESS`` (MIGRATED at CR-MDB-047 C1 RED), plus
+#: CR-MDB-068 §S1's ``RELEASE_TARGETS`` (MIGRATED at CR-MDB-068 C1 RED (§S1)).
 SCHEMA_KEYS = frozenset({
     "PROJECT_NAME", "PROJECT_TOKEN", "PROJECT_ACRONYM", "ORCHESTRATOR_LABEL",
     "REPO_OWNER", "PROJECT_STACKS", "CRUCIBLE_PROJECT_KEY", "SANDESH_PROJECT",
-    "KNOWLEDGE_CATEGORY", "SANDESH_ADDRESS",
+    "KNOWLEDGE_CATEGORY", "SANDESH_ADDRESS", "RELEASE_TARGETS",
 })
+# MIGRATED at CR-MDB-068 C3 RED (§S8): SKILL_LISTED_KEYS (SCHEMA_KEYS minus RELEASE_TARGETS,
+# the C1 RED stopgap) is retired — the model-b skill's §4.1 list names every schema key.
 
 #: Every §S1 field; nothing else may appear in an entry (no value, no default:
 #: "it carries rules only, never a project's value"). ``when`` is CR-MDB-045
@@ -95,6 +98,8 @@ ASK_FLAGS = {
     "PROJECT_ACRONYM": "--acronym",
     "REPO_OWNER": "--owner",
     "PROJECT_STACKS": "--stacks",
+    # MIGRATED at CR-MDB-068 C1 RED (§S1): the optional ask key RELEASE_TARGETS.
+    "RELEASE_TARGETS": "--release-targets",
 }
 
 #: `init` flags that set no registry key (plan inputs, run switches, globals).
@@ -249,7 +254,9 @@ def _golden_env(label: str, *, with_stacks: bool) -> str:
         f"ORCHESTRATOR_LABEL={label}\n"
         f"REPO_OWNER={OWNER}\n"
     )
-    return text + (f"PROJECT_STACKS={STACKS}\n" if with_stacks else "")
+    # MIGRATED at CR-MDB-068 C1 RED (§S1): the root .env records RELEASE_TARGETS, empty without
+    # --release-targets, right after PROJECT_STACKS; a sub-project's never (scope root).
+    return text + (f"PROJECT_STACKS={STACKS}\nRELEASE_TARGETS=\n" if with_stacks else "")
 
 
 #: Today's `.gitignore` description of `.env.local` — the one `.gitignore` line
@@ -408,8 +415,9 @@ def _reference_other_files(home: Path, mode: str, scratch: Path) -> dict:
     """Today's bytes for every emitted file init renders WITHOUT any registry
     value — hook instances + compiled wiring + compiler report, agent
     definitions, the permission policy, memory templates, the research
-    placeholder — produced by the modules that own them (none in this CR's
-    scope), into ``scratch``."""
+    placeholder, and (MIGRATED at CR-MDB-068 C2 RED, §S5) the release workflow
+    and its two scripts — produced by the modules that own them (none in this
+    CR's scope), into ``scratch``."""
     stacks, harnesses = [STACKS], ["pi"]
     files: dict = {"docs/research/.gitkeep": b""}
     instances = scaffold._hook_instances(stacks, mode)
@@ -430,6 +438,10 @@ def _reference_other_files(home: Path, mode: str, scratch: Path) -> dict:
     for template in scaffold._select_memory_templates(
             scaffold._memory_templates_dir(home), stacks):
         files[f"docs/memory/{template.name}"] = template.read_bytes()
+    # MIGRATED at CR-MDB-068 C2 RED (§S5): init renders the release workflow and its two scripts
+    # (no --release-targets: no target), from the workflow sources its home resolves.
+    for rel, text in workflows.render(stacks, [], scaffold._workflow_sources(home)).items():
+        files[rel] = text.encode("utf-8")
     return files
 
 
@@ -964,6 +976,8 @@ class _Shared:
                 # MIGRATED at CR-MDB-058 C3 RED (§S5): one `CHANGELOG.md`, at the root only.
                 "CHANGELOG.md",
             }
+            # MIGRATED at CR-MDB-068 C2 RED (§S5): the reference now holds the three release files
+            # (`.github/workflows/release.yml` and its two scripts), at the root only.
             for sub in self.SUBS:
                 expected |= {f"{sub}/.env", f"{sub}/AGENTS.md", f"{sub}/.envrc"}
             self.assertEqual(_emitted_files(self._target), expected)
@@ -1525,6 +1539,8 @@ class SchemaReadersAndSkillKeyListTest(unittest.TestCase):
         section = text.split("## 4. ", 1)[1].split("\n## ", 1)[0]
         item = next(line for line in section.splitlines()
                     if line.startswith("1. **Naming registry"))
+        # MIGRATED at CR-MDB-068 C3 RED (§S8): every schema key, RELEASE_TARGETS included
+        # (was SKILL_LISTED_KEYS).
         self.assertEqual(sorted(k for k in SCHEMA_KEYS if f"`{k}`" not in item), [],
                          "§4.1 names every key the schema declares")
 
@@ -1575,7 +1591,9 @@ class AgentsVerbReadsScaffoldedStacksTest(unittest.TestCase):
 # of scope. Crucible's imported bundles are exempt from both gates: their keys
 # and examples are Crucible's contract (skills-src/CRUCIBLE-HANDOVER.md).
 
-GATE_ROOTS = ("skills-src", "generator/templates", "hooks-src")
+# MIGRATED at CR-MDB-068 C3 RED (§S8): the rendered release workflow's parts and scripts
+# ship too (was the three roots without workflows-src).
+GATE_ROOTS = ("skills-src", "generator/templates", "hooks-src", "workflows-src")
 HANDOVER_MD = REPO_ROOT / "skills-src" / "CRUCIBLE-HANDOVER.md"
 
 #: A registry key's shape.
@@ -1649,7 +1667,26 @@ NOT_REGISTRY_KEYS = {
     "WF_WORKTREE_ROOT": "the dispatch worktree root exported to block-write-outside-worktree",
     "MODELB_HOME": "the Model B installation home (installer env), read by ambient-board-status",
     "MODELB_STATUS_CMD": "ambient-board-status's feed-command override (env)",
+    # MIGRATED at CR-MDB-068 C3 RED (§S8): the runner's and the rendered workflow's runtime
+    # names in workflows-src/ (GATE_ROOTS gained it) — none is a project-registry key.
+    # GH_TOKEN and NODE_AUTH_TOKEN, which the spec also lists, are NOT entered: workflows-src
+    # sets them only as YAML ``env:`` keys (``GH_TOKEN: ${{ … }}``), a form no detector of
+    # _registry_names_named matches, so no shipped text names them and the stale-name rule
+    # (test_the_allowlist_holds_no_schema_key_and_no_stale_name) would refuse them.
+    "GITHUB_OUTPUT": "GitHub Actions step-output file (rendered create-release tag step)",
+    "GITHUB_REF": "GitHub Actions pushed ref (rendered publish guard)",
+    "GITHUB_REF_NAME": "GitHub Actions ref name (rendered rehearse stamp step)",
+    "GITHUB_RUN_NUMBER": "GitHub Actions run number (rendered rehearse stamp step)",
+    "GITHUB_SHA": "GitHub Actions commit sha (rendered publish guard)",
+    "GITHUB_WORKSPACE": "GitHub Actions checkout dir (rendered CHANGELOG.md copy step)",
+    "RUNNER_TEMP": "GitHub Actions runner temp dir (rendered create-release step)",
+    "TAG": "the version tag a rendered step reads from its env (create-release)",
 }
+#: CR-MDB-068 §S8 — the names :data:`NOT_REGISTRY_KEYS` gained for ``workflows-src/``.
+WORKFLOW_RUNTIME_NAMES = frozenset({
+    "GITHUB_OUTPUT", "GITHUB_REF", "GITHUB_REF_NAME", "GITHUB_RUN_NUMBER", "GITHUB_SHA",
+    "GITHUB_WORKSPACE", "RUNNER_TEMP", "TAG",
+})
 
 #: Real projects, derived from this repo's own records (docs/, audits/,
 #: archive/, AGENTS.md; proved by RealProjectSetIsDerivedFromTheRecordsTest):
@@ -1944,6 +1981,26 @@ class RegistryKeysDeclaredGateTest(unittest.TestCase):
         for name, reason in NOT_REGISTRY_KEYS.items():
             self.assertRegex(name, r"^" + _KEY_SHAPE + r"$")
             self.assertTrue(reason.strip(), f"{name} carries no reason")
+
+    def test_workflows_src_is_scanned_and_needs_exactly_its_runtime_names(self):
+        # CR-MDB-068 §S8: GATE_ROOTS reaches workflows-src, and the names NOT_REGISTRY_KEYS gained
+        # for it are exactly the ones its text names (proved by taking them back out).
+        workflows = [(p, t) for p, t in self.files if p.startswith("workflows-src/")]
+        paths = [p for p, _ in workflows]
+        self.assertIn("workflows-src/release/create-release.yml", paths)
+        self.assertIn("workflows-src/stamp_version.py", paths)
+        before = {k: v for k, v in NOT_REGISTRY_KEYS.items() if k not in WORKFLOW_RUNTIME_NAMES}
+        named = {line.rsplit(" ", 1)[1]
+                 for line in _undeclared_registry_names(workflows, self.declared, before)}
+        self.assertEqual(sorted(named), sorted(WORKFLOW_RUNTIME_NAMES),
+                         "without the additions the gate names exactly them in workflows-src")
+        self.assertEqual(_undeclared_registry_names(workflows, self.declared, NOT_REGISTRY_KEYS), [])
+        self.assertLessEqual(WORKFLOW_RUNTIME_NAMES, set(NOT_REGISTRY_KEYS))
+        self.assertEqual(_undeclared_registry_names(
+            [("workflows-src/release/x.yml", 'run: echo "$TEAM_LEAD" "$GITHUB_SHA"\n')],
+            self.declared, NOT_REGISTRY_KEYS),
+            [at_line("workflows-src/release/x.yml", 1) + " TEAM_LEAD"],
+            "a YAML part is code throughout: an undeclared key is caught, a runtime name is not")
 
 
 class ProjectValueDetectorTest(unittest.TestCase):

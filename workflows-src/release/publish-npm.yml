@@ -1,0 +1,22 @@
+  publish-npm:
+    needs: [@@NEEDS@@]
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+@@DEFAULTS@@
+    steps:
+@@GUARD@@
+      - uses: @@USES:actions/setup-node@@
+        with:
+          node-version: "22"
+          registry-url: https://registry.npmjs.org
+      - name: npm new enough for Trusted Publishing
+        run: npm install -g npm@latest
+@@COPY@@
+      - name: Publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --provenance --access public

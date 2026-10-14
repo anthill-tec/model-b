@@ -92,6 +92,20 @@ Design (proposed at RED, approved by the orchestrator):
     paragraph says a red ``master`` or release run publishes nothing, to
     re-run the failed jobs, and that a real failure is fixed on a hotfix
     branch (:data:`RED_RUN_RECOVERY_PHRASES`).
+    MIGRATED at CR-MDB-068 C3 RED (§S8): the hand-written release-job snippet is retired. The
+    section says ``init`` renders the release workflow from the stacks and ``RELEASE_TARGETS``
+    and ``modelb-axi release-workflow`` re-renders it, and states the snippet's rules as what the
+    rendered workflow does (:data:`RENDERED_WORKFLOW_PHRASES`); a fenced ``gh release create`` is
+    a fault; a targets table (target, rehearsal, publish, environment/secret) has one row per
+    target the renderer renders (:func:`targets_table_faults`); shell variables are lower-case;
+    ``### Rehearsal and CI``'s table is per target, never per stack; the skill shows no stack's
+    test command (:func:`skill_test_command_faults`); the project-name checks spare the two
+    release-workflow commands (:func:`named_project_faults`). Retired: ``SNIPPET_TERMS``,
+    ``SNIPPET_ELEMENTS``, ``release_job_snippet()``, ``checkout_pin_faults()``.
+(H) CR-MDB-068 §S8 — the guide: a ``modelb-axi init`` command in a marked region passes
+    ``--release-targets`` (:func:`check_init_release_targets`), and the ``adding-stacks-later``
+    region shows ``modelb-axi release-workflow`` and says it re-renders the release workflow
+    (:func:`check_release_workflow_verb`).
 
 Orchestrator rulings (2026-09-24, on the RED design):
 
@@ -128,9 +142,11 @@ from modelb_axi.requirements import (
     install_display,
 )
 from modelb_axi.requirements import requirement as _requirement
+from modelb_axi.scaffold import KNOWN_STACKS
+from modelb_axi.scaffold import RELEASE_TARGETS as SUPPORTED_RELEASE_TARGETS
 from tests._helpers import requirements_rows as _requirements
 from tests._helpers import write_interpreter_fixture
-from tests.test_board_holds_the_queue import _CLAUSE_SPLIT, NEGATION, norm_units
+from tests.test_board_holds_the_queue import _CLAUSE_SPLIT, NEGATION, norm_units, units
 from tests.test_bootstrap_shutdown_registry import normalise
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -196,7 +212,10 @@ INSTALLER_COMMAND_PREFIXES = ("modelb-axi", "uv tool install", "pip install", "p
 #: "marked region", "verbatim", "release notes", "documentation review").
 DOCUMENTATION_STEPS = "documentation steps"
 RELEASE_NOTES_STEP = "release-notes step"
-RELEASE_JOB_SNIPPET = "release-job snippet"
+# MIGRATED at CR-MDB-068 C3 RED (§S8): the hand-written release-job snippet is retired; its rules
+# are stated as what the rendered workflow does (was: RELEASE_JOB_SNIPPET = "release-job snippet").
+RENDERED_WORKFLOW = "rendered workflow"
+TARGETS_TABLE = "targets table"
 PACKAGING_ENTRIES = "packaging entries"
 RETIRED_COPY_STEP = "retired copy step"
 #: A failure word, for the snippet's missing and empty sections.
@@ -220,12 +239,8 @@ RELEASE_STEP_PHRASES = (
     (RELEASE_NOTES_STEP, "commit",
      (r"\bcommit(?:s|ted|ting)?\b",
       r"changelog|\bsection\b|\bcompare links?\b|\[unreleased\]|\brelease notes\b")),
-    (RELEASE_JOB_SNIPPET, "the tag's section is matched literally",
-     (r"\bliteral(?:ly)?\b|\bexact(?:ly)?\b", r"\bmatch\w*\b", r"\b(?:section|tag|heading|label)\b")),
-    (RELEASE_JOB_SNIPPET, "it fails on a missing section",
-     (_FAILS, r"\bmissing\b|\babsent\b", r"\b(?:section|tag)\b")),
-    (RELEASE_JOB_SNIPPET, "it fails on an empty section",
-     (_FAILS, r"\bempty\b", r"\bsection\b")),
+    # MIGRATED at CR-MDB-068 C3 RED (§S8): the snippet's three steps (literal match, missing and
+    # empty section) move to RENDERED_WORKFLOW_PHRASES.
     (PACKAGING_ENTRIES, "python: [project.urls] Changelog and Release Notes",
      (r"(?<![\w-])python(?![\w-])", r"\[project\.urls\]", r"\bchangelog\b",
       r"\brelease notes\b")),
@@ -243,36 +258,87 @@ RELEASE_STEP_PHRASES = (
 RETIRED_COPY_STEP_RE = re.compile(
     r"\binstall text from its single source\b"
     r"|(?<!never )(?<!not )\bcop(?:y|ies)\b[^.;]{0,120}\binto (?:the |its )?release notes\b")
-#: §S6 — the snippet's fenced block: a create-release step passing the section as a file.
-SNIPPET_TERMS = ("gh release create", "--notes-file", "changelog.md")
-#: CR-MDB-070 §S6 — what the snippet's block (the first fenced block of ``## Releases`` holding
-#: every :data:`SNIPPET_TERMS`) must also carry, each ``(fault, regexes)``: every regex matches the
-#: block, lower-cased, line-anchored (``re.M``). The job may be the block's own YAML keys (``needs:
-#: test``, ``github.ref == 'refs/heads/master'``) or a comment naming them. Checked only when a
-#: block holds every :data:`SNIPPET_TERMS`; otherwise the one "no fenced create-release step" fault
-#: stands alone.
-SNIPPET_ELEMENTS = (
-    ("does not check out with full history (fetch-depth: 0)", (r"fetch-depth:\s*0\b",)),
-    ("does not take the tag from git tag --points-at HEAD filtered to X.Y.Z",
-     (r"\bgit tag --points-at head\b", r"\[0-9\]\+\\\.\[0-9\]\+\\\.\[0-9\]\+")),
-    ("does not exit 0 with nothing to release when no version tag is at HEAD",
-     (r"\bexit 0\b", r"\bnothing to release\b")),
-    ("does not sit in a job that needs the test job",
-     (r"^\s*needs:\s*\[?\s*test\b|\bneeds the test job\b",)),
-    ("does not run on the master push",
-     (r"refs/heads/master\b|\bmaster push\b|\bpush(?:es)? to master\b",)),
-    # MIGRATED at CR-MDB-070 C4 RED (VERIFY F1): the snippet counts the tags at HEAD and refuses
-    # more than one, naming them (was: two tags made ``tag`` multi-line and the step failed with
-    # a misleading "no CHANGELOG.md section for 1.0.0\n1.0.1").
-    ("does not refuse more than one version tag at HEAD",
-     (r"\bmore than one version tag\b",)),
+# MIGRATED at CR-MDB-068 C3 RED (§S8): the hand-written release-job snippet is retired — `init`
+# renders the release workflow and `modelb-axi release-workflow` re-renders it. Retired with it:
+# SNIPPET_TERMS (the fenced create-release step passing --notes-file), SNIPPET_ELEMENTS (full
+# history, the --points-at tag, exit 0 with nothing to release, needs the test job, the master
+# push, more than one version tag refused), CHECKOUT_USES_RE / CHECKOUT_PIN_TERMS /
+# CHECKOUT_PIN_FAULT (the checkout's pin comment — every rendered ``uses:`` is pinned by
+# ``tests.test_rendered_release_workflow.ActionPinTableTest``) and the --generate-notes fence
+# check (a fenced ``gh release create`` is now itself the fault). What the rules said is now one
+# statement each of RENDERED_WORKFLOW_PHRASES; the rendered workflow's own behaviour (two tags
+# fail naming both, none is nothing to release) is EXECUTED by
+# ``tests.test_release_rehearsal.CreateReleaseTagStepExecutionTest`` and
+# ``tests.test_rendered_release_workflow.CreateReleaseExecutionTest``.
+#: CR-MDB-068 §S8 — what the rendered workflow does, each statement matched in ONE normalised unit
+#: of ``## Releases`` (as :data:`RELEASE_STEP_PHRASES`). The ``master`` push and both recoveries
+#: are :data:`RELEASE_FLOW_PHRASES` and :data:`RED_RUN_RECOVERY_PHRASES`.
+_CREATES_THE_RELEASE = r"\bcreate-release\b|\bcreates? the release\b|\brelease job\b"
+RENDERED_WORKFLOW_PHRASES = (
+    (RENDERED_WORKFLOW, "init renders the release workflow from the stacks and RELEASE_TARGETS",
+     (r"(?<![\w-])init(?![\w-])", r"\brenders?\b", r"\brelease workflow\b", r"\bstacks\b",
+      r"(?<![\w-])release_targets(?![\w-])")),
+    (RENDERED_WORKFLOW, "modelb-axi release-workflow re-renders it",
+     (r"(?<![\w-])modelb-axi release-workflow(?![\w-])", r"\bre-render\w*\b")),
+    (RENDERED_WORKFLOW, "the tag's section is matched literally",
+     (r"\bliteral(?:ly)?\b|\bexact(?:ly)?\b", r"\bmatch\w*\b", r"\b(?:section|tag|heading|label)\b")),
+    (RENDERED_WORKFLOW, "it fails on a missing section",
+     (_FAILS, r"\bmissing\b|\babsent\b", r"\b(?:section|tag)\b")),
+    (RENDERED_WORKFLOW, "it fails on an empty section",
+     (_FAILS, r"\bempty\b", r"\bsection\b")),
+    (RENDERED_WORKFLOW, "the tag's section is passed as --notes-file",
+     (r"(?<![\w-])--notes-file(?![\w-])", r"\bsection\b")),
+    (RENDERED_WORKFLOW, "it takes the X.Y.Z tag at HEAD",
+     (r"\btak(?:e|es|ing)\b", r"\bx\.y\.z\b", r"\btag at head\b")),
+    (RENDERED_WORKFLOW, "more than one version tag at HEAD fails, naming them",
+     (r"\bmore than one\b", r"\btags?\b", _FAILS, r"\bnam(?:e|es|ed|ing)\b")),
+    (RENDERED_WORKFLOW, "the release is created after the tests (it needs the test jobs)",
+     (_CREATES_THE_RELEASE, r"\bneeds?\b", r"\btest(?:s| jobs?)\b")),
 )
-#: CR-MDB-070 C4 RED (VERIFY F2) — the snippet's ``uses: actions/checkout@…`` line, or a comment
-#: line directly above or below it, says to pin the action to a full commit SHA: both regexes match
-#: that line and its adjacent comment lines, lower-cased.
-CHECKOUT_USES_RE = re.compile(r"^\s*(?:-\s+)?uses:\s*actions/checkout@")
-CHECKOUT_PIN_TERMS = (r"\bpin", r"\bsha\b")
-CHECKOUT_PIN_FAULT = "the snippet's checkout does not say to pin it to a full commit SHA"
+#: CR-MDB-068 §S8 — a fenced block of ``## Releases`` running this is a hand-written release job.
+HAND_WRITTEN_RELEASE_STEP = "gh release create"
+HAND_WRITTEN_RELEASE_FAULT = (f"## Releases: {RENDERED_WORKFLOW}: a fenced block still carries a "
+                              f"hand-written release job ({HAND_WRITTEN_RELEASE_STEP})")
+#: CR-MDB-068 §S8 — ``## Releases`` names shell variables in lower case only: an upper-case
+#: ``$NAME`` / ``${NAME}`` (never a ``${{ … }}`` expression) is a fault.
+UPPER_SHELL_VARIABLE_RE = re.compile(r"\$\{?([A-Z][A-Z0-9_]*)(?![A-Za-z0-9_])")
+#: CR-MDB-068 §S8 — the targets table: a table of ``## Releases`` whose header row is exactly four
+#: cells, target → rehearsal → publish → environment/secret (each regex matches its normalised
+#: cell), with one row per target the renderer renders (``modelb_axi.scaffold.RELEASE_TARGETS``) and
+#: no other. Each target's cells, in column order, each ``(column, what it must say, regexes)``.
+TARGETS_TABLE_HEADER = (r"^targets?$", r"\brehears\w*", r"\bpublish\w*",
+                        r"\benvironments?\b.*\bsecrets?\b|\bsecrets?\b.*\benvironments?\b")
+_NONE_CELL = r"^(?:—|-|none)$"
+TARGET_COLUMNS = {
+    "pypi": (
+        ("rehearsal", "the upload to the test index",
+         (r"\bupload\w*\b", r"\btest index\b|\btestpypi\b")),
+        ("publish", "PyPI through Trusted Publishing",
+         (r"(?<![\w-])pypi(?![\w-])", r"\btrusted publishing\b")),
+        # MIGRATED at CR-MDB-068 C5 RED (VERIFY F4): the cell names both environments, pypi and
+        # testpypi (was: "the environment pypi", (pypi,)).
+        ("environment/secret", "the environments pypi and testpypi",
+         (r"(?<![\w-])pypi(?![\w-])", r"(?<![\w-])testpypi(?![\w-])")),
+    ),
+    "npm": (
+        ("rehearsal", "the dry-run publish", (r"\bdry-run\b",)),
+        ("publish", "the npm registry, with provenance or through Trusted Publishing",
+         (r"(?<![\w-])npm(?![\w-])|\bregistry\b", r"\bprovenance\b|\btrusted publishing\b")),
+        # MIGRATED at CR-MDB-068 C5 RED (VERIFY F6): NPM_TOKEN is a repository secret (was: "the
+        # environment npm and the secret NPM_TOKEN", without \brepository secret\b).
+        ("environment/secret", "the environment npm and the repository secret NPM_TOKEN",
+         (r"(?<![\w-])npm(?![\w-])", r"\brepository secret\b",
+          r"(?<![\w-])npm_token(?![\w-])")),
+    ),
+    "github-assets": (
+        ("rehearsal", "the project's build-assets script, its output checked non-empty",
+         (r"(?<![\w-])build-assets(?![\w-])", r"\bnon-empty\b|\bnot empty\b")),
+        ("publish", "an upload to the release", (r"\bupload\w*\b", r"\brelease\b")),
+        ("environment/secret", "no environment and no secret",
+         (rf"\bno environment\b|{_NONE_CELL}",
+          rf"\bno secret\b|\bgithub\.token\b|\bdefault token\b|{_NONE_CELL}")),
+    ),
+}
 #: CR-MDB-070 C4 RED (VERIFY F6) — recovery from a red or flaky run, in the push paragraph (the
 #: unit holding ``git push origin master develop --tags``): when the ``master`` run or the release
 #: run fails its tests, nothing publishes; re-run the failed jobs, and a real failure is fixed on a
@@ -336,6 +402,10 @@ PYTHON_RELEASE_STEPS = (
 )
 #: The skill is used across projects: its release steps name no one project.
 PROJECT_SPECIFIC_NAMES = ("modelb", "model b", "model-b")
+#: MIGRATED at CR-MDB-068 C3 RED (§S8): the two commands that render a project's release workflow
+#: are the CLI's, not a project's name — the project-name checks spare exactly these (was: every
+#: ``modelb`` counted, ``modelb-axi`` included).
+RELEASE_WORKFLOW_COMMANDS_RE = re.compile(r"(?<![\w-])modelb-axi (?:release-workflow|init)(?![\w-])")
 #: CR-MDB-029 §S4 — the Pi package release step, same shape as
 #: PYTHON_RELEASE_STEPS: after the version is set, npm publish with credentials
 #: the user supplies at publish time; then install the published version into
@@ -397,8 +467,10 @@ NOTES_BEFORE_PUBLISH_PHRASE = (
 #: §S5 — the subsection's exact heading title, and the heading it must follow.
 REHEARSAL_AND_CI_HEADING = "Rehearsal and CI"
 PI_PACKAGE_HEADING = "Pi package releases"
-#: §S5's forms table — the stacks whose rehearsal is the notes check only.
-NOTES_CHECK_ONLY_STACKS = ("arduino", "quarkus", "java", "rust")
+# MIGRATED at CR-MDB-068 C3 RED (§S8): the forms table is per target, not per stack (was:
+# NOTES_CHECK_ONLY_STACKS = ("arduino", "quarkus", "java", "rust"), the stacks whose rehearsal is
+# the notes check only). A row of the subsection's tables keyed on a stack is a fault.
+REHEARSAL_TABLE_STACK_ROW = "the rehearsal table keys a row on the stack"
 #: §S5 — the rehearsal rule, the forms table and the CI rule, each step matched in one unit of
 #: the ``### Rehearsal and CI`` subsection.
 REHEARSAL_AND_CI_PHRASES = (
@@ -413,22 +485,27 @@ REHEARSAL_AND_CI_PHRASES = (
      (r"\brefus\w*\b", r"\bcommitted version\b", r"\bother than\b")),
     (REHEARSAL_AND_CI, "rehearsal rule: fails on a missing or empty notes section",
      (r"\bfail\w*\b", r"\bmissing\b", r"\bempty\b", r"\bnotes\b")),
-    (REHEARSAL_AND_CI, "forms table: python, X.Y.Z.devN, the upload to the test index",
-     (r"(?<![\w-])python(?![\w-])", r"(?<![\w.])x\.y\.z\.devn\b", r"\bupload\b",
+    (REHEARSAL_AND_CI, "forms table: pypi, X.Y.Z.devN, the upload to the test index",
+     (r"(?<![\w-])pypi(?![\w-])", r"(?<![\w.])x\.y\.z\.devn\b", r"\bupload\b",
       r"\btest index\b")),
-    (REHEARSAL_AND_CI, "forms table: bun, X.Y.Z-dev.N, the package manager's dry-run publish "
+    (REHEARSAL_AND_CI, "forms table: npm, X.Y.Z-dev.N, the package manager's dry-run publish "
      "with a dist-tag",
-     (r"(?<![\w-])bun(?![\w-])", r"(?<![\w.])x\.y\.z-dev\.n\b", r"\bdry-run\b",
+     (r"(?<![\w-])npm(?![\w-])", r"(?<![\w.])x\.y\.z-dev\.n\b", r"\bdry-run\b",
       r"\bpublish\b", r"\bdist-tag\b")),
-    *((REHEARSAL_AND_CI, f"forms table: {stack}, the notes check only",
-       (rf"(?<![\w-]){stack}(?![\w-])", r"\bnotes check only\b"))
-      for stack in NOTES_CHECK_ONLY_STACKS),
+    (REHEARSAL_AND_CI, "forms table: github-assets, the project's build-assets script, "
+     "dist-assets/ not empty",
+     (r"(?<![\w-])github-assets(?![\w-])", r"(?<![\w-])build-assets(?![\w-])",
+      r"(?<![\w-])dist-assets\b", r"\bnon-empty\b|\bnot empty\b")),
+    (REHEARSAL_AND_CI, "forms table: no target, the notes check only",
+     (r"\bno (?:publish )?targets?\b", r"\bnotes check only\b")),
     # MIGRATED at CR-MDB-070 C2 RED (§S6): the CI rule is the release workflow's test job, run in
     # every run, which every publish job needs (was the one step "CI rule: a CI workflow runs the
     # suite on every push to develop, release and hotfix branches and on pull requests"). That
     # develop and pull requests run no CI is the negation-aware excluded_ref_faults, not a step.
-    (REHEARSAL_AND_CI, "CI rule: the release workflow's test job runs the suite in every run",
-     (r"\brelease workflow\b", r"\btest job\b", r"\bsuite\b", r"\bevery run\b")),
+    # MIGRATED at CR-MDB-068 C5 RED (VERIFY F5): the test jobs, plural (was: "the release
+    # workflow's test job runs the suite in every run", \btest job\b).
+    (REHEARSAL_AND_CI, "CI rule: the release workflow's test jobs run the suite in every run",
+     (r"\brelease workflow\b", r"\btest jobs run the suite\b", r"\bevery run\b")),
     (REHEARSAL_AND_CI, "CI rule: each push to a release or hotfix branch",
      (r"\b(?:each|every)\b", r"\bpush(?:es)?\b", r"\brelease (?:or|and) hotfix\b")),
     (REHEARSAL_AND_CI, "CI rule: each push to master",
@@ -436,16 +513,20 @@ REHEARSAL_AND_CI_PHRASES = (
     (REHEARSAL_AND_CI, "CI rule: each published release",
      (r"\b(?:each|every) published release\b",)),
     (REHEARSAL_AND_CI, "CI rule: on the stack's floor interpreter", (r"\bfloor interpreter\b",)),
-    (REHEARSAL_AND_CI, "CI rule: in a clean home", (r"\bclean home\b",)),
+    # MIGRATED at CR-MDB-068 C5 RED (VERIFY F5): a fresh runner (was: "CI rule: in a clean home",
+    # \bclean home\b; "a clean home" joins RETIRED_RELEASE_PHRASES).
+    (REHEARSAL_AND_CI, "CI rule: on a fresh runner", (r"\bfresh runner\b",)),
     (REHEARSAL_AND_CI, "CI rule: with full history", (r"\bfull history\b",)),
     (REHEARSAL_AND_CI, "CI rule: it runs outside any agent session",
      (r"\boutside (?:of )?(?:any |an |every )?agent sessions?\b",)),
     (REHEARSAL_AND_CI, "CI rule: the one place the suite runs without the stack's Crucible "
      "client",
      (r"\bsuite\b", r"\bwithout\b", r"\bcrucible client\b")),
-    (REHEARSAL_AND_CI, "CI rule: every publish job, the rehearsal included, needs the test job",
-     (r"\b(?:every|each|all) publish(?:es|ing)? jobs?\b", r"\brehearsal\b", r"\bneeds?\b",
-      r"\btest(?:s| job)\b")),
+    # MIGRATED at CR-MDB-068 C5 RED (VERIFY F5): it needs the test jobs, plural (was: "... needs
+    # the test job", \btest(?:s| job)\b).
+    (REHEARSAL_AND_CI, "CI rule: every publish job, the rehearsal included, needs the test jobs",
+     (r"\b(?:every|each|all) publish(?:es|ing)? jobs?\b", r"\brehearsal\b",
+      r"\bneeds? the test jobs\b")),
     (REHEARSAL_AND_CI, "CI rule: because a dependency gates only within one run",
      (r"\bdependenc(?:y|ies)\b", r"\bgat(?:e|es|ed|ing)\b",
       r"\bwithin (?:one|a single|the same) run\b")),
@@ -460,7 +541,8 @@ CI_EXCLUDED_REFS = (
     ("pull requests", re.compile(r"\bpull requests?\b")),
 )
 NO_CI_ON_DEVELOP_OR_PRS = "CI rule: no CI on develop or pull requests"
-_CI_WORD = re.compile(r"(?<![\w-])ci(?![\w-])|\bsuite\b|\btest job\b")
+# MIGRATED at CR-MDB-068 C5 RED (VERIFY F5): the test jobs, plural, name CI too (was \btest job\b).
+_CI_WORD = re.compile(r"(?<![\w-])ci(?![\w-])|\bsuite\b|\btest jobs?\b")
 #: §S5 — the subsection names neither the Python steps' anchors nor the Pi step's, so each
 #: checker's first-occurrence order is unchanged.
 SUBSECTION_FORBIDDEN_ANCHORS = (
@@ -475,6 +557,8 @@ RETIRED_RELEASE_PHRASES = (
     "isolated tool directory", "uv_tool_dir", "test.pypi.org/simple", "token the user supplies",
     "user-supplied token", "credentials the user supplies", "user-supplied credentials",
     "the tag's release job",
+    # MIGRATED at CR-MDB-068 C5 RED (VERIFY F5): the runner is a fresh runner, never "a clean home".
+    "a clean home",
 )
 
 # (G) — where the installer comes from (VERIFY cycle 100 findings 2/6), and
@@ -910,6 +994,100 @@ def check_marked_regions(text: str) -> list[str]:
     return out
 
 
+#: CR-MDB-068 §S8 (H) — the region that shows the re-render verb, and the command that takes
+#: ``--release-targets``.
+RELEASE_WORKFLOW_REGION = "adding-stacks-later"
+INIT_COMMAND = "modelb-axi init"
+RELEASE_WORKFLOW_VERB = "release-workflow"
+
+
+def subcommand_flag(command: str, flag: str) -> str:
+    """``flag`` if the installer's ``command`` subcommand declares it, else AssertionError — the
+    gate follows the code (CR-MDB-068 §S8)."""
+    from modelb_axi.cli import _build_parser
+    sub = next(a for a in _build_parser()._actions  # stdlib argparse: the declared actions
+               if isinstance(a, argparse._SubParsersAction))
+    if command not in sub.choices:
+        raise AssertionError(f"the installer parser no longer declares the {command!r} "
+                             f"subcommand (declared: {sorted(sub.choices)})")
+    flags = {o for action in sub.choices[command]._actions for o in action.option_strings}
+    if flag not in flags:
+        raise AssertionError(f"`modelb-axi {command}` no longer declares {flag} "
+                             f"(declared: {sorted(flags)})")
+    return flag
+
+
+def region_texts(text: str) -> dict[str, str]:
+    """Each marked region's name -> its lines between the two markers (the first region of a
+    name wins), as :func:`parse_marked_regions` finds them."""
+    lines = text.splitlines()
+    out: dict[str, str] = {}
+    for name, start, stop in parse_marked_regions(text)[0]:
+        out.setdefault(name, "\n".join(lines[start + 1:stop]))
+    return out
+
+
+def _commands(body: str) -> list[str]:
+    """Each code text of ``body`` (:func:`code_texts`), stripped, with a fenced line ending in
+    ``\\`` joined to the next one."""
+    out: list[str] = []
+    pending = ""
+    for code in code_texts(body):
+        line = code.strip()
+        if line.endswith("\\"):
+            pending += line[:-1].rstrip() + " "
+            continue
+        out.append(pending + line)
+        pending = ""
+    return out + ([pending.strip()] if pending else [])
+
+
+def check_init_release_targets(text: str) -> list[str]:
+    """CR-MDB-068 §S8: a ``modelb-axi init`` command inside a marked region (a fenced line, its
+    continuations joined, or a code span) passes ``--release-targets``."""
+    flag = subcommand_flag("init", "--release-targets")
+    token = _token_re(flag)
+    if any(command.startswith(INIT_COMMAND + " ") and token.search(command)
+           for body in region_texts(text).values() for command in _commands(body)):
+        return []
+    return [f"no `{INIT_COMMAND}` command in a marked region passes `{flag}`"]
+
+
+def check_release_workflow_verb(text: str) -> list[str]:
+    """CR-MDB-068 §S8: the ``adding-stacks-later`` region shows ``modelb-axi release-workflow``
+    in code and, in one unit, says it re-renders the release workflow."""
+    subcommand_flag(RELEASE_WORKFLOW_VERB, "--release-targets")
+    verb = f"modelb-axi {RELEASE_WORKFLOW_VERB}"
+    regions = region_texts(text)
+    if RELEASE_WORKFLOW_REGION not in regions:
+        return [f"no {RELEASE_WORKFLOW_REGION!r} region"]
+    body = regions[RELEASE_WORKFLOW_REGION]
+    out = []
+    if not has_code_token(body, verb):
+        out.append(f"{RELEASE_WORKFLOW_REGION}: no `{verb}` in code")
+    if not any(re.search(r"\bre-render\w*\b", u) and re.search(r"\brelease workflow\b", u)
+               for u in norm_units(body)):
+        out.append(f"{RELEASE_WORKFLOW_REGION}: no unit says it re-renders the release workflow")
+    return out
+
+
+#: CR-MDB-068 C5 RED (VERIFY F8) - the forms the guide's ``--release-targets`` sentence names, one
+#: per target the renderer renders (``pypi`` and ``npm`` take an optional ``:<dir>``).
+RELEASE_TARGET_FORMS = ("pypi[:<dir>]", "npm[:<dir>]", "github-assets")
+
+
+def check_release_targets_forms(text: str) -> list[str]:
+    """CR-MDB-068 C5 RED (VERIFY F8): the prose units of ``text`` naming ``--release-targets`` in a
+    code span name, between them, every form of :data:`RELEASE_TARGET_FORMS` in a code span. One
+    fault when no unit names the flag; otherwise one per form none of them names."""
+    flag = "--release-targets"
+    naming = [unit for unit in units(text) if has_code_token(unit, flag)]
+    if not naming:
+        return [f"no sentence names `{flag}` in a code span"]
+    return [f"the `{flag}` sentence does not name `{form}`" for form in RELEASE_TARGET_FORMS
+            if not any(has_code_token(unit, form) for unit in naming)]
+
+
 #: The PyPI project page shows the whole guide as the package readme
 #: (orchestrator ruling R3, 2026-09-24, cycle 106: prose, not a table).
 PYPI_PAGE = "PyPI project page"
@@ -1007,25 +1185,19 @@ def check_release_steps(text: str) -> list[str]:
     if not sec:
         return ["no '## Releases' section"]
     found = norm_units(sec)
-    out = [f"## Releases: {group}: {label}" for group, label, regexes in RELEASE_STEP_PHRASES
-           if not any(all(re.search(rx, u) for rx in regexes) for u in found)]
-    blocks = _fenced_blocks(sec)
-    snippet = release_job_snippet(text)
-    if snippet is None:
-        out.append(f"## Releases: {RELEASE_JOB_SNIPPET}: no fenced create-release step passing "
-                   "the CHANGELOG.md section as --notes-file")
-    else:
-        # MIGRATED at CR-MDB-070 C2 RED (§S6): the snippet also carries SNIPPET_ELEMENTS.
-        out += [f"## Releases: {RELEASE_JOB_SNIPPET}: the snippet {fault}"
-                for fault, regexes in SNIPPET_ELEMENTS
-                if not all(re.search(rx, snippet.lower(), re.M) for rx in regexes)]
-        # CR-MDB-070 C4 RED (VERIFY F2): the checkout says to pin it to a full commit SHA.
-        out += checkout_pin_faults(snippet)
+    out = _missing_steps(RELEASE_STEP_PHRASES, found)
+    # MIGRATED at CR-MDB-068 C3 RED (§S8): the hand-written release-job snippet is retired — its
+    # rules are RENDERED_WORKFLOW_PHRASES, a fenced `gh release create` is a fault, the targets
+    # table is required, and shell variables are lower-case (was: the snippet block, its
+    # SNIPPET_ELEMENTS, its checkout pin comment and the --generate-notes fence check).
+    out += _missing_steps(RENDERED_WORKFLOW_PHRASES, found)
+    if any(HAND_WRITTEN_RELEASE_STEP in block.lower() for block in _fenced_blocks(sec)):
+        out.append(HAND_WRITTEN_RELEASE_FAULT)
     if REF_NAME_RE.search(sec.lower()):
-        out.append(f"## Releases: {RELEASE_JOB_SNIPPET}: names github.ref_name")
-    if any("--generate-notes" in block for block in blocks):
-        out.append(f"## Releases: {RELEASE_JOB_SNIPPET}: a fenced step still uses "
-                   "--generate-notes")
+        out.append(f"## Releases: {RENDERED_WORKFLOW}: names github.ref_name")
+    out += [f"## Releases: {RENDERED_WORKFLOW}: names the upper-case shell variable ${name}"
+            for name in dict.fromkeys(m.group(1) for m in UPPER_SHELL_VARIABLE_RE.finditer(sec))]
+    out += targets_table_faults(sec)
     if RETIRED_COPY_STEP_RE.search(normalise(sec)):
         out.append(f"## Releases: {RETIRED_COPY_STEP}: still says to copy the marked regions "
                    "into the release notes")
@@ -1036,32 +1208,79 @@ def check_release_steps(text: str) -> list[str]:
     return out
 
 
-def release_job_snippet(text: str) -> str | None:
-    """The release-job snippet: the first fenced block of ``## Releases`` holding every
-    :data:`SNIPPET_TERMS` (lower-cased); ``None`` when there is none (CR-MDB-070 C4 RED)."""
-    sec = next((body for head, body in sections(text).items()
-                if head.startswith("Releases")), "")
-    return next((block for block in _fenced_blocks(sec)
-                 if all(term in block.lower() for term in SNIPPET_TERMS)), None)
+# MIGRATED at CR-MDB-068 C3 RED (§S8): release_job_snippet() and checkout_pin_faults() are retired
+# with the hand-written snippet they read (see RENDERED_WORKFLOW_PHRASES).
 
 
-def checkout_pin_faults(snippet: str) -> list[str]:
-    """CR-MDB-070 C4 RED (VERIFY F2): ``[]`` when a ``uses: actions/checkout@…`` line of
-    ``snippet``, with the comment lines directly above and below it, matches every
-    :data:`CHECKOUT_PIN_TERMS` regex; otherwise the one :data:`CHECKOUT_PIN_FAULT`."""
-    lines = snippet.splitlines()
-    for i, line in enumerate(lines):
-        if not CHECKOUT_USES_RE.match(line):
+def _tables(section: str) -> list[list[list[str]]]:
+    """Every markdown table of ``section`` outside fences, in order: its rows, each a list of
+    normalised cells (``tests.test_bootstrap_shutdown_registry.normalise``), the ``|---|``
+    separator row dropped. A table is a run of consecutive lines starting with ``|``."""
+    lines = section.splitlines()
+    tables: list[list[list[str]]] = []
+    current: list[list[str]] | None = None
+    for line, fenced in zip(lines, _fence_mask(lines), strict=True):
+        stripped = line.strip()
+        if fenced or not stripped.startswith("|"):
+            current = None
             continue
-        beside = [line]
-        for step in (-1, 1):
-            j = i + step
-            while 0 <= j < len(lines) and lines[j].strip().startswith("#"):
-                beside.append(lines[j])
-                j += step
-        if all(re.search(rx, " ".join(beside).lower()) for rx in CHECKOUT_PIN_TERMS):
-            return []
-    return [f"## Releases: {RELEASE_JOB_SNIPPET}: {CHECKOUT_PIN_FAULT}"]
+        cells = [normalise(cell) for cell in stripped.strip("|").split("|")]
+        if current is None:
+            current = []
+            tables.append(current)
+        if not all(re.fullmatch(r":?-{3,}:?", cell) for cell in cells):
+            current.append(cells)
+    return tables
+
+
+def targets_table_faults(sec: str) -> list[str]:
+    """CR-MDB-068 §S8: the faults of the targets table of one ``## Releases`` body ``sec`` —
+    the first table whose header row matches :data:`TARGETS_TABLE_HEADER` cell for cell. One fault
+    when there is none; otherwise one per target of :data:`TARGET_COLUMNS` with no row, one per row
+    naming another target, and one per cell that does not say what its column must."""
+    prefix = f"## Releases: {TARGETS_TABLE}: "
+    table = next((t for t in _tables(sec)
+                  if len(t[0]) == len(TARGETS_TABLE_HEADER)
+                  and all(re.search(rx, cell) for rx, cell in zip(TARGETS_TABLE_HEADER, t[0],
+                                                                    strict=True))), None)
+    if table is None:
+        return [prefix + "no table of target, rehearsal, publish and environment/secret"]
+    rows: dict[str, list[str]] = {}
+    out: list[str] = []
+    for row in table[1:]:
+        if row[0] in TARGET_COLUMNS:
+            rows.setdefault(row[0], row)
+        else:
+            out.append(prefix + f"a row for {row[0]!r}, a target the renderer does not render")
+    for target, columns in TARGET_COLUMNS.items():
+        row = rows.get(target)
+        if row is None:
+            out.append(prefix + f"no row for {target}")
+            continue
+        cells = row[1:] + [""] * len(columns)
+        out += [prefix + f"{target}: the {column} cell does not say {what}"
+                for (column, what, regexes), cell in zip(columns, cells, strict=False)
+                if not all(re.search(rx, cell) for rx in regexes)]
+    return out
+
+
+#: CR-MDB-068 §S8 — where the rendered workflow's per-stack test jobs come from.
+WORKFLOW_PARTS = REPO_ROOT / "workflows-src" / "release"
+_RUN_THE_TESTS = re.compile(r"^\s*- name: Run the tests\n\s*run: (\S[^\n]*)$", re.M)
+
+
+def stack_test_commands() -> list[str]:
+    """Each stack's one-line test command, as the renderer's ``test-*.yml`` parts run it (the
+    ``run:`` of their ``Run the tests`` step) — derived, never hand-copied (CR-MDB-068 §S8)."""
+    return [m.group(1).strip() for path in sorted(WORKFLOW_PARTS.glob("test-*.yml"))
+            for m in _RUN_THE_TESTS.finditer(path.read_text(encoding="utf-8"))]
+
+
+def skill_test_command_faults(text: str) -> list[str]:
+    """CR-MDB-068 §S8: the skill shows no stack's test command anywhere (whitespace collapsed):
+    ``names the test command <cmd>`` once per :func:`stack_test_commands` entry ``text`` holds."""
+    flat = " ".join(text.split())
+    return [f"names the test command {cmd!r}" for cmd in stack_test_commands() if cmd in flat]
 
 
 def publish_job_faults(text: str) -> list[str]:
@@ -1126,6 +1345,12 @@ def _publish_and_rehearsal_faults(sec: str, found: list[str]) -> list[str]:
             out.append(f"## Releases: {REHEARSAL_AND_CI}: '### {REHEARSAL_AND_CI_HEADING}' is not "
                        f"after '### {PI_PACKAGE_HEADING}'")
         out += _missing_steps(REHEARSAL_AND_CI_PHRASES, norm_units(body))
+        # MIGRATED at CR-MDB-068 C3 RED (§S8): the rehearsal table is per target; a row keyed on a
+        # stack is a fault (was: rows keyed on python, bun and the four notes-check-only stacks).
+        out += [f"## Releases: {REHEARSAL_AND_CI}: {REHEARSAL_TABLE_STACK_ROW} {stack}"
+                for table in _tables(body) for row in table[1:]
+                for stack in (part.strip() for part in row[0].split(","))
+                if stack in KNOWN_STACKS]
         out += excluded_ref_faults(norm_units(body))
         flat = " ".join(body.lower().split())
         out += [f"## Releases: {REHEARSAL_AND_CI}: names the {kind} anchor {anchor!r}"
@@ -1183,6 +1408,14 @@ def _fenced_blocks(text: str) -> list[str]:
     return ["\n".join(b) for b in blocks]
 
 
+def named_project_faults(flat: str, names) -> list[str]:
+    """``## Releases: names project <name>`` for each of ``names`` the flattened, lower-cased
+    ``flat`` holds once :data:`RELEASE_WORKFLOW_COMMANDS_RE`'s commands are taken out
+    (MIGRATED at CR-MDB-068 C3 RED, §S8; was an inline ``n in flat`` in both release checkers)."""
+    spared = RELEASE_WORKFLOW_COMMANDS_RE.sub(" ", flat)
+    return [f"## Releases: names project {n!r}" for n in names if n in spared]
+
+
 def check_python_release_steps(text: str) -> list[str]:
     """CR-MDB-038 \u00a7S5: ``## Releases`` names the four Python release
     steps, in order, without naming any one project."""
@@ -1191,20 +1424,25 @@ def check_python_release_steps(text: str) -> list[str]:
     if not sec:
         return ["no '## Releases' section"]
     flat = " ".join(sec.lower().split())
+    # MIGRATED at CR-MDB-068 C5 RED (VERIFY F4): the step order is read with the section's table
+    # rows left out - the targets table's pypi cell names testpypi, which is not the rehearse step
+    # (was: the anchors' first occurrence in the whole flattened section).
+    prose = " ".join(" ".join(line for line in sec.splitlines()
+                               if not line.lstrip().startswith("|")).lower().split())
     out: list[str] = []
     anchors: list[tuple[int, str]] = []
     for label, anchor, terms in PYTHON_RELEASE_STEPS:
-        found = [flat.find(a) for a in anchor if a in flat]
+        found = [prose.find(a) for a in anchor if a in prose]
         if found:
             anchors.append((min(found), label))
-        else:
+        elif not any(a in flat for a in anchor):
             out.append(f"## Releases: {label}: missing {anchor[0]!r}")
         for alts in terms:
             if not any(a in flat for a in alts):
                 out.append(f"## Releases: {label}: missing {alts[0]!r}")
     if [lbl for _, lbl in sorted(anchors)] != [lbl for _, lbl in anchors]:
         out.append("## Releases: python release steps out of order")
-    out += [f"## Releases: names project {n!r}" for n in PROJECT_SPECIFIC_NAMES if n in flat]
+    out += named_project_faults(flat, PROJECT_SPECIFIC_NAMES)
     return out
 
 
@@ -1234,7 +1472,7 @@ def check_pi_package_release_steps(text: str) -> list[str]:
         out.append(f"## Releases: live check: names a {PI_PACKAGE_RETIRED_TERM}")
     if [lbl for _, lbl in sorted(anchors)] != [lbl for _, lbl in anchors]:
         out.append("## Releases: pi package steps out of order")
-    out += [f"## Releases: names project {n!r}" for n in PI_PROJECT_SPECIFIC_NAMES if n in flat]
+    out += named_project_faults(flat, PI_PROJECT_SPECIFIC_NAMES)
     return out
 
 
@@ -1476,28 +1714,33 @@ CONFORMING_RELEASES_BODY = (
     "4. Update the compare links at the foot of the file.\n"
     "5. Commit the `CHANGELOG.md` section.\n"
     "\n"
-    "The release job publishes the tag's section as the release body:\n"
+    # MIGRATED at CR-MDB-068 C3 RED (§S8): the hand-written snippet gives way to what the rendered
+    # workflow does, one unit per statement, and the targets table (was: the fenced create-release
+    # job carrying the snippet's rules as YAML keys and comments).
+    "`init` renders the release workflow from the project's stacks and `RELEASE_TARGETS`.\n"
     "\n"
-    "```yaml\n"
-    "create-release:\n"
-    "  needs: test\n"
-    "  if: github.ref == 'refs/heads/master'\n"
-    "  steps:\n"
-    "    - uses: actions/checkout@v4 # pin to a full commit SHA\n"
-    "      with:\n"
-    "        fetch-depth: 0\n"
-    "    - name: Create the release\n"
-    "      run: |\n"
-    "        tag=$(git tag --points-at HEAD | grep -E '^[0-9]+\\.[0-9]+\\.[0-9]+$' || true)\n"
-    "        [ -n \"$tag\" ] || { echo \"no version tag at HEAD, nothing to release\"; exit 0; }\n"
-    "        [ \"$(printf '%s\\n' \"$tag\" | wc -l)\" -eq 1 ] || { echo \"more than one version tag "
-    "at HEAD: $tag\" >&2; exit 1; }\n"
-    "        # the tag's section, matched literally: 1.0.1 never matches 1.0.10\n"
-    "        # fails when the section is missing\n"
-    "        # fails when the section is empty\n"
-    "        extract-section CHANGELOG.md \"$tag\" > notes.md\n"
-    "        gh release create \"$tag\" --notes-file notes.md --verify-tag\n"
-    "```\n"
+    "`modelb-axi release-workflow` re-renders it when either changes.\n"
+    "\n"
+    "What the rendered workflow does:\n"
+    "\n"
+    "- its `create-release` job needs the test jobs;\n"
+    "- it takes the `X.Y.Z` tag at `HEAD`; with none there is nothing to release;\n"
+    "- it fails when more than one version tag is at `HEAD`, naming them;\n"
+    "- it matches the section's heading literally, so 1.0.1 never matches 1.0.10;\n"
+    "- it fails when the section is missing;\n"
+    "- it fails when the section is empty;\n"
+    "- it creates the release with the tag's section passed as `--notes-file`.\n"
+    "\n"
+    "| Target | Rehearsal | Publish | Environment / secret |\n"
+    "|---|---|---|---|\n"
+    # MIGRATED at CR-MDB-068 C5 RED (VERIFY F4/F6): the pypi cell names both environments, the
+    # npm cell the repository secret (was: "environment `pypi`", "secret `NPM_TOKEN`").
+    "| `pypi` | uploads the dev version to the test index | to PyPI through Trusted Publishing | "
+    "environments `pypi` and `testpypi` |\n"
+    "| `npm` | a dry-run publish | to the npm registry with provenance | environment `npm`, "
+    "repository secret `NPM_TOKEN` |\n"
+    "| `github-assets` | the project's `build-assets` script, its output checked non-empty | "
+    "uploaded to the release | no environment, no secret |\n"
     "\n"
     "| Stack | Packaging entry |\n"
     "|---|---|\n"
@@ -1520,20 +1763,26 @@ CONFORMING_REHEARSAL_AND_CI = (
     "### Rehearsal and CI\n"
     "\n"
     "Each push to `release/X.Y.Z` or `hotfix/X.Y.Z` builds `X.Y.Z` with a dev marker and the CI run\n"
-    "number in the stack's own form, refuses a committed version other than `X.Y.Z`, and fails when\n"
+    "number in the target's own form, refuses a committed version other than `X.Y.Z`, and fails when\n"
     "the release's notes are missing or empty.\n"
     "\n"
-    "| Stack | Dev version | Rehearsal |\n"
+    # MIGRATED at CR-MDB-068 C3 RED (§S8): the rehearsal table is per target (was per stack:
+    # python, bun, and arduino/quarkus/java/rust with the notes check only).
+    "| Target | Dev version | Rehearsal |\n"
     "|---|---|---|\n"
-    "| `python` | `X.Y.Z.devN` | the upload to the test index |\n"
-    "| `bun` | `X.Y.Z-dev.N` | the package manager's dry-run publish with a dist-tag |\n"
-    "| `arduino`, `quarkus`, `java`, `rust` | — | the notes check only |\n"
+    "| `pypi` | `X.Y.Z.devN` | the upload to the test index |\n"
+    "| `npm` | `X.Y.Z-dev.N` | the package manager's dry-run publish with a dist-tag |\n"
+    "| `github-assets` | — | the project's `build-assets` script and checks `dist-assets/` is "
+    "not empty |\n"
+    "| no target | — | the notes check only |\n"
     "\n"
-    "The release workflow's test job runs the suite in every run: each push to a release or hotfix\n"
-    "branch, each push to `master`, each published release. It runs on the stack's floor\n"
-    "interpreter, in a clean home, with full history. It runs outside any agent session, the one\n"
+    # MIGRATED at CR-MDB-068 C5 RED (VERIFY F5): the test jobs, plural, on a fresh runner (was:
+    # "test job runs", "in a clean home", "needs the test job").
+    "The release workflow's test jobs run the suite in every run: each push to a release or hotfix\n"
+    "branch, each push to `master`, each published release. They run on the stack's floor\n"
+    "interpreter, on a fresh runner, with full history. They run outside any agent session, the one\n"
     "place the suite runs without the stack's Crucible client. Every publish job (the rehearsal\n"
-    "included) needs the test job, because a dependency gates only within one run. No CI on\n"
+    "included) needs the test jobs, because a dependency gates only within one run. No CI on\n"
     "`develop` or pull requests.\n"
 )
 # MIGRATED at CR-MDB-067 C3 RED (§S5): the Pi heading and the Rehearsal and CI subsection
@@ -1758,6 +2007,145 @@ class InstallGuidePypiSurfaceTest(unittest.TestCase):
         self.assertEqual(check_pypi_surface(_read(GUIDE)), [])
 
 
+class InstallGuideReleaseWorkflowTest(unittest.TestCase):
+    """CR-MDB-068 §S8 (H) — ``--release-targets`` sits with ``init``'s flags and
+    ``modelb-axi release-workflow`` sits in the ``adding-stacks-later`` region: the real guide,
+    and both checkers proved both ways on :data:`SAMPLE`."""
+
+    SAMPLE = (
+        "# Installing\n\n"
+        "<!-- install-guide:begin adding-stacks-later -->\n"
+        "## Adding stacks later\n\n"
+        "```sh\nmodelb-axi agents --stacks python,rust\n```\n\n"
+        "The release workflow is rendered from the same list, so re-render it too:\n\n"
+        "```sh\nmodelb-axi release-workflow\n```\n"
+        "<!-- install-guide:end adding-stacks-later -->\n\n"
+        "<!-- install-guide:begin project-trust -->\n"
+        "## Project trust\n\n"
+        "```sh\nmodelb-axi init --name \"My Project\" --stacks python --release-targets pypi "
+        "--target ~/code/myproject\n```\n"
+        "<!-- install-guide:end project-trust -->\n\n"
+        "## Marked regions\n\nNothing here.\n"
+    )
+    INIT_LINE = ("modelb-axi init --name \"My Project\" --stacks python --release-targets pypi "
+                 "--target ~/code/myproject")
+    INIT_FAULT = "no `modelb-axi init` command in a marked region passes `--release-targets`"
+    NO_VERB = "adding-stacks-later: no `modelb-axi release-workflow` in code"
+    NO_RERENDER = "adding-stacks-later: no unit says it re-renders the release workflow"
+
+    def test_the_guide_passes_release_targets_with_inits_flags(self):
+        self.assertEqual(check_init_release_targets(_read(GUIDE)), [])
+
+    def test_the_guides_adding_stacks_later_region_shows_the_release_workflow_verb(self):
+        self.assertEqual(check_release_workflow_verb(_read(GUIDE)), [])
+
+    # CR-MDB-068 C5 RED (VERIFY F8) - the --release-targets sentence names every form.
+
+    FORMS_SENTENCE = ("`--release-targets` names where a release publishes (`pypi[:<dir>]`, "
+                      "`npm[:<dir>]`, `github-assets`, or none).\n")
+
+    def test_the_guides_release_targets_sentence_names_every_target_form(self):
+        self.assertEqual(check_release_targets_forms(_read(GUIDE)), [])
+
+    def test_the_forms_are_one_per_target_the_renderer_renders(self):
+        self.assertEqual(tuple(form.partition("[")[0] for form in RELEASE_TARGET_FORMS),
+                         SUPPORTED_RELEASE_TARGETS)
+
+    def test_release_targets_forms_checker_both_ways(self):
+        good = self.SAMPLE + "\n" + self.FORMS_SENTENCE
+        self.assertEqual(check_release_targets_forms(good), [])
+        fault = "the `--release-targets` sentence does not name `{}`"
+        for old, new, form in (("`pypi[:<dir>]`", "`pypi`", "pypi[:<dir>]"),
+                               ("`npm[:<dir>]`", "`npm:<dir>`", "npm[:<dir>]"),
+                               ("`github-assets`, ", "", "github-assets")):
+            with self.subTest(form=form):
+                self.assertEqual(good.count(old), 1, old)
+                self.assertEqual(check_release_targets_forms(good.replace(old, new)),
+                                 [fault.format(form)])
+        today = good.replace(self.FORMS_SENTENCE, "`--release-targets` names where a release "
+                             "publishes (`pypi`, `npm:<dir>`, `github-assets`, or none).\n")
+        self.assertEqual(check_release_targets_forms(today),
+                         [fault.format("pypi[:<dir>]"), fault.format("npm[:<dir>]")])
+        prose = good.replace("(`pypi[:<dir>]`, `npm[:<dir>]`, `github-assets`, or none)",
+                             "(pypi[:<dir>], npm[:<dir>], github-assets, or none)")
+        self.assertEqual(check_release_targets_forms(prose),
+                         [fault.format(form) for form in RELEASE_TARGET_FORMS],
+                         "a form outside a code span is not named")
+        apart = good.replace(self.FORMS_SENTENCE, "`--release-targets` names where a release "
+                             "publishes.\n\nThe targets are `pypi[:<dir>]`, `npm[:<dir>]` and "
+                             "`github-assets`.\n")
+        self.assertEqual(check_release_targets_forms(apart),
+                         [fault.format(form) for form in RELEASE_TARGET_FORMS],
+                         "the forms count only in a sentence naming the flag")
+        self.assertEqual(check_release_targets_forms(self.SAMPLE),
+                         ["no sentence names `--release-targets` in a code span"],
+                         "the flag inside a fenced command is not the sentence")
+
+    def test_the_flags_and_the_verb_are_the_parsers(self):
+        self.assertEqual(subcommand_flag("init", "--release-targets"), "--release-targets")
+        self.assertEqual(subcommand_flag(RELEASE_WORKFLOW_VERB, "--release-targets"),
+                         "--release-targets")
+        with self.assertRaises(AssertionError) as ctx:
+            subcommand_flag("init", "--release-target")
+        self.assertIn("no longer declares --release-target", str(ctx.exception))
+        with self.assertRaises(AssertionError) as ctx:
+            subcommand_flag("release-workflows", "--release-targets")
+        self.assertIn("'release-workflows' subcommand", str(ctx.exception))
+
+    def test_init_release_targets_checker_both_ways(self):
+        good = self.SAMPLE
+        self.assertEqual(check_init_release_targets(good), [])
+        self.assertEqual(check_init_release_targets(good.replace(" --release-targets pypi", "")),
+                         [self.INIT_FAULT])
+        self.assertEqual(check_init_release_targets(good.replace("--release-targets pypi",
+                                                                 "--release-targets-x pypi")),
+                         [self.INIT_FAULT], "a longer flag is not the flag")
+        on_agents = good.replace(" --release-targets pypi", "").replace(
+            "modelb-axi agents --stacks python,rust",
+            "modelb-axi agents --stacks python,rust --release-targets pypi")
+        self.assertEqual(check_init_release_targets(on_agents), [self.INIT_FAULT],
+                         "the flag on another command is not init's")
+        continued = good.replace("--stacks python --release-targets",
+                                 "--stacks python \\\n  --release-targets")
+        self.assertNotEqual(continued, good)
+        self.assertEqual(check_init_release_targets(continued), [],
+                         "a continuation line belongs to its command")
+        span = good.replace("```sh\n" + self.INIT_LINE + "\n```\n",
+                            "Run `modelb-axi init --stacks python --release-targets \"\"`.\n")
+        self.assertEqual(check_init_release_targets(span), [], "a code span counts")
+        prose = good.replace("```sh\n" + self.INIT_LINE + "\n```\n",
+                             "Run modelb-axi init with --release-targets.\n")
+        self.assertEqual(check_init_release_targets(prose), [self.INIT_FAULT],
+                         "prose is not a command")
+        outside = good.replace("```sh\n" + self.INIT_LINE + "\n```\n", "").replace(
+            "Nothing here.\n", "```sh\n" + self.INIT_LINE + "\n```\n")
+        self.assertEqual(check_init_release_targets(outside), [self.INIT_FAULT],
+                         "outside every marked region it does not reach the package README")
+
+    def test_release_workflow_verb_checker_both_ways(self):
+        good = self.SAMPLE
+        self.assertEqual(check_release_workflow_verb(good), [])
+        self.assertEqual(check_release_workflow_verb(
+            good.replace("```sh\nmodelb-axi release-workflow\n```\n", "")), [self.NO_VERB])
+        self.assertEqual(check_release_workflow_verb(good.replace(
+            "```sh\nmodelb-axi release-workflow\n```\n", "Run modelb-axi release-workflow.\n")),
+            [self.NO_VERB], "the verb in prose is not shown")
+        self.assertEqual(check_release_workflow_verb(good.replace(
+            "re-render it too", "run it too")), [self.NO_RERENDER])
+        self.assertEqual(check_release_workflow_verb(good.replace(
+            "The release workflow is rendered", "The agent definitions are rendered")),
+            [self.NO_RERENDER], "re-render what: the release workflow")
+        moved = good.replace("```sh\nmodelb-axi release-workflow\n```\n", "").replace(
+            "--target ~/code/myproject\n```\n",
+            "--target ~/code/myproject\nmodelb-axi release-workflow\n```\n")
+        self.assertEqual(check_release_workflow_verb(moved), [self.NO_VERB],
+                         "the verb counts only in the adding-stacks-later region")
+        self.assertEqual(check_release_workflow_verb(good.replace(
+            "begin adding-stacks-later", "begin widening").replace(
+            "end adding-stacks-later", "end widening")),
+            ["no 'adding-stacks-later' region"])
+
+
 class InstallGuideVocabularyTest(unittest.TestCase):
 
     def test_guide_carries_no_section_refs_cr_ids_or_internal_vocabulary(self):
@@ -1788,8 +2176,17 @@ class ReleaseDocsTest(unittest.TestCase):
     def test_git_workflow_releases_names_the_release_notes_step_and_its_four_parts(self):
         self.assertEqual(release_step_faults(_read(GIT_WORKFLOW_SKILL), RELEASE_NOTES_STEP), [])
 
-    def test_git_workflow_releases_names_the_release_job_snippet_passing_notes_file(self):
-        self.assertEqual(release_step_faults(_read(GIT_WORKFLOW_SKILL), RELEASE_JOB_SNIPPET), [])
+    # MIGRATED at CR-MDB-068 C3 RED (§S8; was
+    # test_git_workflow_releases_names_the_release_job_snippet_passing_notes_file): the snippet is
+    # retired; the section says what the rendered workflow does and carries the targets table.
+    def test_git_workflow_releases_states_what_the_rendered_workflow_does(self):
+        self.assertEqual(release_step_faults(_read(GIT_WORKFLOW_SKILL), RENDERED_WORKFLOW), [])
+
+    def test_git_workflow_releases_carries_the_targets_table(self):
+        self.assertEqual(release_step_faults(_read(GIT_WORKFLOW_SKILL), TARGETS_TABLE), [])
+
+    def test_git_workflow_skill_shows_no_stack_test_command(self):
+        self.assertEqual(skill_test_command_faults(_read(GIT_WORKFLOW_SKILL)), [])
 
     def test_git_workflow_releases_names_the_packaging_entries_of_the_six_stacks(self):
         self.assertEqual(release_step_faults(_read(GIT_WORKFLOW_SKILL), PACKAGING_ENTRIES), [])
@@ -1823,16 +2220,11 @@ class ReleaseDocsTest(unittest.TestCase):
 
     # CR-MDB-070 C4 RED (VERIFY F1/F2/F3/F6) — the texts of the release job, the publish steps and the
     # recovery from a red run, one test per finding.
-    def test_git_workflow_releases_snippet_refuses_more_than_one_version_tag_at_head(self):
-        fault = (f"## Releases: {RELEASE_JOB_SNIPPET}: the snippet does not refuse more than one "
-                 "version tag at HEAD")
-        self.assertNotIn(fault, check_release_steps(_read(GIT_WORKFLOW_SKILL)))
-
-    def test_git_workflow_releases_snippet_checkout_says_to_pin_it_to_a_full_commit_sha(self):
-        snippet = release_job_snippet(_read(GIT_WORKFLOW_SKILL))
-        self.assertIsNotNone(snippet, "## Releases carries the release-job snippet")
-        self.assertEqual(checkout_pin_faults(snippet or ""), [])
-
+    # MIGRATED at CR-MDB-068 C3 RED (§S8): the snippet's tag-count test is a statement of
+    # RENDERED_WORKFLOW_PHRASES ("more than one version tag at HEAD fails, naming them"), proved by
+    # test_git_workflow_releases_states_what_the_rendered_workflow_does; its checkout-pin test is
+    # retired with the snippet (was test_git_workflow_releases_snippet_refuses_more_than_one_version_
+    # tag_at_head and test_git_workflow_releases_snippet_checkout_says_to_pin_it_to_a_full_commit_sha).
     def test_git_workflow_releases_never_says_the_tags_release_job(self):
         self.assertNotIn(f"## Releases: {RETIRED_PHRASES}: names \"the tag's release job\"",
                          check_release_steps(_read(GIT_WORKFLOW_SKILL)))
@@ -2156,6 +2548,32 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
         self.assertEqual(check_cr029_s1(cr.replace("marked regions", "text")),
                          ["§S1: missing 'marked region'"])
 
+    # CR-MDB-068 C5 RED (VERIFY F4): a table row naming testpypi is not the rehearse step.
+    def test_python_release_steps_order_skips_table_rows_but_not_prose(self):
+        steps = ("1. Set the version in its single source, then `uv build`.\n"
+                 "2. Each release-branch push uploads the stamped dev version to TestPyPI "
+                 "through Trusted Publishing.\n"
+                 "3. After git flow release finish, upload to PyPI with no token anywhere.\n"
+                 "4. Install from PyPI with `--reinstall`; drop global permission config "
+                 "entries for per-project policies; a trusted project runs without a "
+                 "permission prompt.\n")
+        good = "## Releases\n\n" + steps + "\n## Next\n"
+        self.assertEqual(check_python_release_steps(good), [])
+        table = ("| Target | Environment / secret |\n|---|---|\n"
+                 "| `pypi` | environments `pypi` and `testpypi` |\n\n")
+        self.assertEqual(check_python_release_steps(good.replace("## Releases\n\n",
+                                                                 "## Releases\n\n" + table)), [],
+                         "a table row before the steps moves no anchor")
+        prose = "Rehearse on TestPyPI first.\n\n"
+        self.assertEqual(check_python_release_steps(good.replace("## Releases\n\n",
+                                                                 "## Releases\n\n" + prose)),
+                         ["## Releases: python release steps out of order"],
+                         "prose naming testpypi before the build step still reorders")
+        only_table = good.replace("TestPyPI", "the test index").replace("## Releases\n\n",
+                                                                         "## Releases\n\n" + table)
+        self.assertEqual(check_python_release_steps(only_table), [],
+                         "an anchor named only in a table is still named")
+
     # MIGRATED at CR-MDB-067 C3 RED (§S5): the rehearse step is each release-branch push uploading
     # the stamped dev version to TestPyPI through Trusted Publishing, and the upload step names no
     # token anywhere (was: "Rehearse: upload to TestPyPI and install into an isolated tool
@@ -2331,8 +2749,9 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
         conforming section is reported alone, by its own group and label."""
         good = CONFORMING_RELEASES
         self.assertEqual(check_release_steps(good), [])
-        docs, notes, snippet, packaging = (DOCUMENTATION_STEPS, RELEASE_NOTES_STEP,
-                                           RELEASE_JOB_SNIPPET, PACKAGING_ENTRIES)
+        # MIGRATED at CR-MDB-068 C3 RED (§S8): the snippet's three cases (literal match, missing
+        # and empty section) move to the rendered-workflow statements' own test.
+        docs, notes, packaging = DOCUMENTATION_STEPS, RELEASE_NOTES_STEP, PACKAGING_ENTRIES
         cases = {
             (docs, "release notes link to the install guide"):
                 ("link to the install guide", "are written by hand"),
@@ -2348,12 +2767,6 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
             (notes, "update the compare links"):
                 ("4. Update the compare links at the foot of the file.\n", ""),
             (notes, "commit"): ("5. Commit the `CHANGELOG.md` section.\n", ""),
-            (snippet, "the tag's section is matched literally"):
-                ("matched literally: 1.0.1 never matches 1.0.10", "taken as it is"),
-            (snippet, "it fails on a missing section"):
-                ("    # fails when the section is missing\n", ""),
-            (snippet, "it fails on an empty section"):
-                ("    # fails when the section is empty\n", ""),
             (PACKAGING_ENTRIES, "python: [project.urls] Changelog and Release Notes"):
                 ("`[project.urls]` `Changelog`", "`Changelog`"),
             (packaging, "bun: CHANGELOG.md in package.json files, copied into the package "
@@ -2417,31 +2830,32 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
                 self.assertEqual(
                     check_release_steps(CONFORMING_RELEASES.replace(anchor, anchor + forbidden)), [])
 
-    def test_release_job_snippet_must_be_a_fenced_step_passing_notes_file(self):
-        """CR-MDB-058 §S6: the snippet is fenced, runs ``gh release create`` with the
-        ``CHANGELOG.md`` section as ``--notes-file``, and no fenced step uses
-        ``--generate-notes``."""
-        missing = (f"## Releases: {RELEASE_JOB_SNIPPET}: no fenced create-release step passing "
-                   "the CHANGELOG.md section as --notes-file")
-        generated = f"## Releases: {RELEASE_JOB_SNIPPET}: a fenced step still uses --generate-notes"
+    # MIGRATED at CR-MDB-068 C3 RED (§S8; was test_release_job_snippet_must_be_a_fenced_step_
+    # passing_notes_file): the fenced snippet was REQUIRED; now a fenced `gh release create` in
+    # ## Releases is the fault, and --notes-file is a statement of what the rendered workflow does.
+    def test_a_hand_written_release_job_in_a_fence_is_a_fault(self):
         good = CONFORMING_RELEASES
+        self.assertEqual(check_release_steps(good), [])
+        job = ("```yaml\ncreate-release:\n  steps:\n    - run: |\n"
+               "        gh release create \"$tag\" --notes-file notes.md --verify-tag\n```\n")
+        self.assertEqual(check_release_steps(good.replace("\n## Next\n", "\n" + job + "\n## Next\n")),
+                         [HAND_WRITTEN_RELEASE_FAULT])
+        tilde = job.replace("```yaml", "~~~yaml").replace("```\n", "~~~\n")
+        self.assertEqual(check_release_steps(good.replace("\n## Next\n", "\n" + tilde + "\n## Next\n")),
+                         [HAND_WRITTEN_RELEASE_FAULT], "a tilde fence counts too")
+        generated = "```bash\ngh release create \"$tag\" --generate-notes\n```\n"
         self.assertEqual(check_release_steps(
-            good.replace("--notes-file notes.md", "--notes notes.md")), [missing])
-        self.assertEqual(check_release_steps(
-            good.replace("--notes-file notes.md", "--generate-notes")), [missing, generated])
-        self.assertEqual(check_release_steps(
-            good.replace("extract-section CHANGELOG.md", "extract-section NOTES.txt")), [missing])
+            good.replace("\n## Next\n", "\n" + generated + "\n## Next\n")),
+            [HAND_WRITTEN_RELEASE_FAULT], "a --generate-notes job is a hand-written job too")
         self.assertEqual(check_release_steps(good.replace(
-            "\n## Next\n", "\n```bash\ngh release create \"$TAG\" --generate-notes\n```\n\n## Next\n")),
-            [generated])
-        self.assertEqual(check_release_steps(
-            good + "\n```bash\ngh release create \"$TAG\" --generate-notes\n```\n"), [],
-            "a fenced step outside ## Releases is not the snippet")
-        unfenced = good.replace("```yaml\n", "").replace("--verify-tag\n```\n", "--verify-tag\n")
-        self.assertIn(missing, check_release_steps(unfenced),
-                      "the snippet counts only as a fenced block")
-        self.assertEqual(check_release_steps(good.replace("```yaml", "~~~yaml").replace(
-            "--verify-tag\n```", "--verify-tag\n~~~")), [], "a tilde fence counts too")
+            "\n## Next\n", "\nThe workflow, not you, runs `gh release create`.\n\n## Next\n")), [],
+            "the command named in prose is not a hand-written job")
+        self.assertEqual(check_release_steps(good + "\n" + job), [],
+                         "a fenced job outside ## Releases is not gated")
+        self.assertEqual(release_step_faults(good.replace(
+            "with the tag's section passed as `--notes-file`", "with the tag's section"),
+            RENDERED_WORKFLOW),
+            [f"## Releases: {RENDERED_WORKFLOW}: the tag's section is passed as --notes-file"])
 
     def test_marked_regions_use_checker_both_ways(self):
         """CR-MDB-058 §S7: the ``Marked regions`` statement, proved on the conforming guide."""
@@ -2520,11 +2934,12 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
                           "'### Pi package releases'",
                           f"## Releases: {REHEARSAL_AND_CI}: names CI on develop"])
         python_only = "## Releases\n\n" + docs + python
+        # MIGRATED at CR-MDB-068 C5 RED (VERIFY F6): the docs body's targets table names the
+        # repository secret, so it is no longer missing (was: "... missing 'repository secret'").
         self.assertEqual(check_pi_package_release_steps(python_only), [
             "## Releases: npm publish: missing 'npm publish'",
             "## Releases: npm publish: missing 'pi package'",
             "## Releases: npm publish: missing 'version is set'",
-            "## Releases: npm publish: missing 'repository secret'",
             "## Releases: npm publish: missing '2fa'",
             "## Releases: npm publish: missing '--access public'",
             "## Releases: isolated pi install: missing 'pi_coding_agent_dir'",
@@ -2606,29 +3021,35 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
             ("with a dev marker and the CI run", "with the CI run"),
             ("refuses a committed version other than `X.Y.Z`, and ", ""),
             (", and fails when\nthe release's notes are missing or empty.", "."),
+            # MIGRATED at CR-MDB-068 C3 RED (§S8): the forms table is per target (was the python and
+            # bun rows and the four notes-check-only stacks).
             ("the upload to the test index", "a build"),
             (" with a dist-tag", ""),
-            ("`arduino`, ", ""),
-            ("`quarkus`, ", ""),
-            ("`java`, ", ""),
-            (", `rust`", ""),
+            (" and checks `dist-assets/` is not empty", ""),
+            ("| no target |", "| other |"),
             # MIGRATED at CR-MDB-070 C2 RED (§S6): the CI rule's steps are the test job's (was
             # (" and on\npull requests", "") for the develop/release/hotfix/pull-request step).
-            ("runs the suite in every run:", "runs the suite:"),
+            # MIGRATED at CR-MDB-068 C5 RED (VERIFY F5): the test jobs, plural, on a fresh runner
+            # (was: "runs the suite in every run:", "in a clean home, ", "It runs outside ..." and
+            # "... needs the test job, because").
+            ("run the suite in every run:", "run the suite:"),
             (" to a release or hotfix\nbranch", " to a branch"),
             (", each push to `master`", ""),
             (", each published release", ""),
             ("on the stack's floor\ninterpreter, ", ""),
-            ("in a clean home, ", ""),
+            ("on a fresh runner, ", ""),
             (", with full history", ""),
-            ("It runs outside any agent session, the one", "It is the one"),
+            ("They run outside any agent session, the one", "They are the one"),
             (" without the stack's Crucible client", ""),
-            ("Every publish job (the rehearsal\nincluded) needs the test job, because", "Because"),
+            ("Every publish job (the rehearsal\nincluded) needs the test jobs, because", "Because"),
             (", because a dependency gates only within one run", ""),
         ]
         self.assertEqual(len(edits), len(labels), "one case per step")
-        self.assertEqual(labels[6:10], [f"forms table: {s}, the notes check only"
-                                        for s in ("arduino", "quarkus", "java", "rust")])
+        self.assertEqual(labels[4:8], [
+            "forms table: pypi, X.Y.Z.devN, the upload to the test index",
+            "forms table: npm, X.Y.Z-dev.N, the package manager's dry-run publish with a dist-tag",
+            "forms table: github-assets, the project's build-assets script, dist-assets/ not empty",
+            "forms table: no target, the notes check only"])
         for label, (old, new) in zip(labels, edits, strict=True):
             with self.subTest(step=label):
                 self.assertEqual(good.count(old), 1, old)
@@ -2636,19 +3057,44 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
                                  [f"## Releases: {REHEARSAL_AND_CI}: {label}"])
         # MIGRATED at CR-MDB-070 C2 RED (§S6): the moved rule is the test-job rule, and moving it
         # also loses the no-CI-on-develop-or-pull-requests statement (was the develop/PR CI rule).
-        ci_rule = ("The release workflow's test job runs the suite in every run: each push to a "
-                   "release or hotfix\nbranch, each push to `master`, each published release. It "
-                   "runs on the stack's floor\ninterpreter, in a clean home, with full history. It "
-                   "runs outside any agent session, the one\nplace the suite runs without the "
+        # MIGRATED at CR-MDB-068 C5 RED (VERIFY F5): the rule as CONFORMING_REHEARSAL_AND_CI words it.
+        ci_rule = ("The release workflow's test jobs run the suite in every run: each push to a "
+                   "release or hotfix\nbranch, each push to `master`, each published release. They "
+                   "run on the stack's floor\ninterpreter, on a fresh runner, with full history. They "
+                   "run outside any agent session, the one\nplace the suite runs without the "
                    "stack's Crucible client. Every publish job (the rehearsal\nincluded) needs the "
-                   "test job, because a dependency gates only within one run. No CI on\n`develop` "
+                   "test jobs, because a dependency gates only within one run. No CI on\n`develop` "
                    "or pull requests.\n")
         self.assertIn(ci_rule, good)
         moved = good.replace(ci_rule, "").replace("### Release notes", ci_rule + "\n### Release notes")
         self.assertEqual(check_release_steps(moved),
-                         [f"## Releases: {REHEARSAL_AND_CI}: {label}" for label in labels[10:]]
+                         [f"## Releases: {REHEARSAL_AND_CI}: {label}" for label in labels[8:]]
                          + [f"## Releases: {REHEARSAL_AND_CI}: {NO_CI_ON_DEVELOP_OR_PRS}"],
                          "a step counts only inside the ### Rehearsal and CI subsection")
+
+    # CR-MDB-068 C5 RED (VERIFY F5) — the CI rule says the test jobs (plural) and a fresh runner.
+
+    def test_the_ci_rule_names_the_test_jobs_plural_and_a_fresh_runner_never_a_clean_home(self):
+        good = CONFORMING_RELEASES
+        self.assertEqual(release_step_faults(good, REHEARSAL_AND_CI), [])
+        prefix = f"## Releases: {REHEARSAL_AND_CI}: "
+        singular_runs = good.replace("test jobs run the suite", "test job runs the suite")
+        self.assertNotEqual(singular_runs, good)
+        self.assertEqual(check_release_steps(singular_runs), [
+            prefix + "CI rule: the release workflow's test jobs run the suite in every run"])
+        singular_needs = good.replace("needs the test jobs, because", "needs the test job, because")
+        self.assertNotEqual(singular_needs, good)
+        self.assertEqual(check_release_steps(singular_needs), [
+            prefix + "CI rule: every publish job, the rehearsal included, needs the test jobs"])
+        clean_home = good.replace("on a fresh runner, ", "in a clean home, ")
+        self.assertNotEqual(clean_home, good)
+        self.assertCountEqual(check_release_steps(clean_home), [
+            prefix + "CI rule: on a fresh runner",
+            f"## Releases: {RETIRED_PHRASES}: names 'a clean home'"])
+        both = good.replace("on a fresh runner, ", "on a fresh runner (never a clean home), ")
+        self.assertEqual(check_release_steps(both),
+                         [f"## Releases: {RETIRED_PHRASES}: names 'a clean home'"],
+                         "a clean home is retired even beside a fresh runner")
 
     # CR-MDB-070 §S6 — the CI rule's develop and pull-request terms, inverted and negation-aware.
 
@@ -2711,68 +3157,216 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
             ["ci runs on develop-branch builds; no ci on develop or pull requests."]), [],
             "develop-branch is not the develop ref")
 
-    # CR-MDB-070 §S6 — the snippet: full history, the --points-at tag, after the tests, on master.
+    # CR-MDB-068 §S8 — what the rendered workflow does, the targets table, lower-case shell
+    # variables, no test command and the project-name exemption, each proved both ways.
+    # MIGRATED at CR-MDB-068 C3 RED (§S8; was test_release_job_snippet_takes_the_points_at_tag_
+    # after_the_tests_on_the_master_push, test_snippet_more_than_one_version_tag_gate_both_ways and
+    # test_snippet_checkout_pin_gate_both_ways): the snippet's elements are statements now; the pin
+    # comment is retired with the snippet.
 
-    def test_release_job_snippet_takes_the_points_at_tag_after_the_tests_on_the_master_push(self):
+    def test_rendered_workflow_statements_pass_and_bite_once_per_statement(self):
         good = CONFORMING_RELEASES
-        self.assertEqual(release_step_faults(good, RELEASE_JOB_SNIPPET), [])
-        faults = [f"## Releases: {RELEASE_JOB_SNIPPET}: the snippet {fault}"
-                  for fault, _ in SNIPPET_ELEMENTS]
+        self.assertEqual(release_step_faults(good, RENDERED_WORKFLOW), [])
+        labels = [label for _, label, _ in RENDERED_WORKFLOW_PHRASES]
         edits = [
-            ("      with:\n        fetch-depth: 0\n", ""),
-            ("git tag --points-at HEAD | ", "git describe --tags | "),
-            ("exit 0; }", "exit 1; }"),
-            ("  needs: test\n", ""),
-            ("  if: github.ref == 'refs/heads/master'\n", ""),
-            # MIGRATED at CR-MDB-070 C4 RED (VERIFY F1): the sixth element, the count of tags.
-            ("more than one version tag", "two version tags"),
+            ("`init` renders the release workflow", "`init` writes the project"),
+            ("`modelb-axi release-workflow` re-renders it", "`modelb-axi release-workflow` runs"),
+            ("heading literally, so", "heading, so"),
+            ("- it fails when the section is missing;\n", ""),
+            ("- it fails when the section is empty;\n", ""),
+            (" passed as `--notes-file`", ""),
+            ("it takes the `X.Y.Z` tag at `HEAD`", "it reads the latest tag"),
+            ("fails when more than one version tag is at `HEAD`, naming them",
+             "warns when more than one version tag is at `HEAD`"),
+            ("job needs the test jobs", "job runs alone"),
         ]
-        self.assertEqual(len(edits), len(SNIPPET_ELEMENTS), "one case per element")
-        for fault, (old, new) in zip(faults, edits, strict=True):
-            with self.subTest(fault=fault):
+        self.assertEqual(len(edits), len(labels), "one case per statement")
+        for label, (old, new) in zip(labels, edits, strict=True):
+            with self.subTest(statement=label):
                 self.assertEqual(good.count(old), 1, old)
-                self.assertEqual(check_release_steps(good.replace(old, new)), [fault])
-        filter_lost = good.replace(" | grep -E '^[0-9]+\\.[0-9]+\\.[0-9]+$'", "")
-        self.assertNotEqual(filter_lost, good)
-        self.assertEqual(check_release_steps(filter_lost), [faults[1]],
-                         "the tag at HEAD is filtered to X.Y.Z")
-        self.assertEqual(check_release_steps(good.replace("nothing to release", "done")),
-                         [faults[2]], "no tag means nothing to release")
-        self.assertEqual(check_release_steps(good.replace("  needs: test\n", "  needs: build\n")),
-                         [faults[3]], "the job the snippet sits in needs the test job")
-        self.assertEqual(check_release_steps(good.replace("'refs/heads/master'", "'refs/heads/main'")),
-                         [faults[4]])
-        named = (good.replace("  needs: test\n", "")
-                 .replace("  if: github.ref == 'refs/heads/master'\n", "")
-                 .replace("    - name: Create the release\n",
-                          "    # in a job that needs the test job and runs on the master push\n"
-                          "    - name: Create the release\n"))
-        self.assertEqual(check_release_steps(named), [], "a comment naming the job counts")
+                self.assertEqual(check_release_steps(good.replace(old, new)),
+                                 [f"## Releases: {RENDERED_WORKFLOW}: {label}"])
         self.assertEqual(check_release_steps(good.replace(
-            "\n## Next\n", "\n```yaml\nneeds: test\nfetch-depth: 0\n```\n\n## Next\n")), [],
-            "another fenced block is not the snippet")
-        loose = good.replace("  needs: test\n", "").replace(
-            "\n## Next\n", "\n```yaml\nneeds: test\n```\n\n## Next\n")
-        self.assertEqual(check_release_steps(loose), [faults[3]],
-                         "an element counts only inside the snippet's own block")
-        self.assertEqual(check_release_steps(good.replace("--notes-file notes.md", "--notes x")),
-                         [f"## Releases: {RELEASE_JOB_SNIPPET}: no fenced create-release step "
-                          "passing the CHANGELOG.md section as --notes-file"],
-                         "without a snippet block its elements are not reported")
+            "from the project's stacks and `RELEASE_TARGETS`", "from the project's stacks")),
+            [f"## Releases: {RENDERED_WORKFLOW}: {labels[0]}"], "init renders from RELEASE_TARGETS too")
+        self.assertEqual(check_release_steps(good.replace(
+            "`modelb-axi release-workflow` re-renders", "`modelb-axi agents` re-renders")),
+            [f"## Releases: {RENDERED_WORKFLOW}: {labels[1]}"], "the verb is release-workflow")
+        split = good.replace("- it fails when more than one version tag is at `HEAD`, naming them;\n",
+                             "- it fails when more than one version tag is at `HEAD`;\n\n"
+                             "Their names are printed.\n\n")
+        self.assertEqual(check_release_steps(split),
+                         [f"## Releases: {RENDERED_WORKFLOW}: {labels[7]}"],
+                         "a statement's words split across two units do not count")
+        statement = "- its `create-release` job needs the test jobs;\n"
+        outside = good.replace(statement, "").replace("\n## Next\n", "\n## Next\n\n" + statement)
+        self.assertEqual(release_step_faults(outside, RENDERED_WORKFLOW),
+                         [f"## Releases: {RENDERED_WORKFLOW}: {labels[8]}"],
+                         "a statement counts only inside ## Releases")
 
     def test_the_release_section_names_github_ref_name_nowhere(self):
-        fault = f"## Releases: {RELEASE_JOB_SNIPPET}: names github.ref_name"
+        # MIGRATED at CR-MDB-068 C3 RED (§S8): the fault is the rendered-workflow group's, and the
+        # samples are prose (was the snippet's tag line and its job condition).
+        fault = f"## Releases: {RENDERED_WORKFLOW}: names github.ref_name"
         good = CONFORMING_RELEASES
         self.assertEqual(check_release_steps(good.replace(
-            "        tag=$(git tag --points-at HEAD",
-            "        tag=${{ github.ref_name }}\n        x=$(git tag --points-at HEAD")), [fault])
+            "\n## Next\n", "\nThe tag is never `github.ref_name`.\n\n## Next\n")), [fault])
         self.assertEqual(check_release_steps(good.replace(
             "\n## Next\n", "\nThe tag is never `GITHUB_REF_NAME`.\n\n## Next\n")), [fault],
             "named in prose, in any case, it is still named")
         self.assertEqual(check_release_steps(good + "\n`github.ref_name`\n"), [],
                          "outside ## Releases it is not gated")
-        self.assertEqual(check_release_steps(good.replace("github.ref ==", "github.ref_name ==")),
-                         [fault], "in the job's condition it is named too")
+
+    def test_upper_case_shell_variables_are_a_fault_and_lower_case_ones_pass(self):
+        good = CONFORMING_RELEASES
+        prefix = f"## Releases: {RENDERED_WORKFLOW}: names the upper-case shell variable "
+        cases = {
+            "a bare reference": ("Pass `$TAG` on.", ["$TAG"]),
+            "a braced reference": ("Pass `${TAG}` on.", ["$TAG"]),
+            "two names, each once": ("`$TAG`, `$RUN_ID` and `$TAG` again.", ["$TAG", "$RUN_ID"]),
+        }
+        for label, (line, names) in cases.items():
+            with self.subTest(case=label):
+                self.assertEqual(check_release_steps(good.replace(
+                    "\n## Next\n", f"\n{line}\n\n## Next\n")), [prefix + n for n in names])
+        for line in ("Pass `$tag` on.", "Pass `${tag}` on.",
+                     "The secret is `${{ secrets.RELEASE_PAT }}`.", "It costs $5.",
+                     "The `RELEASE_PAT` secret, never a variable."):
+            with self.subTest(passes=line):
+                self.assertEqual(check_release_steps(good.replace(
+                    "\n## Next\n", f"\n{line}\n\n## Next\n")), [])
+        self.assertEqual(check_release_steps(good + "\nPass `$TAG` on.\n"), [],
+                         "outside ## Releases it is not gated")
+
+    def test_targets_table_gate_passes_and_bites_once_per_cell(self):
+        self.assertEqual(tuple(TARGET_COLUMNS), SUPPORTED_RELEASE_TARGETS,
+                         "one row per target the renderer renders, in canonical order")
+        good = CONFORMING_RELEASES
+        prefix = f"## Releases: {TARGETS_TABLE}: "
+        self.assertEqual(release_step_faults(good, TARGETS_TABLE), [])
+        cells = {
+            "pypi: the rehearsal cell does not say the upload to the test index":
+                ("uploads the dev version to the test index", "builds the sdist"),
+            "pypi: the publish cell does not say PyPI through Trusted Publishing":
+                ("to PyPI through Trusted Publishing", "to PyPI with a token"),
+            # MIGRATED at CR-MDB-068 C5 RED (VERIFY F4/F6): the pypi cell names both environments,
+            # the npm cell the repository secret (was: "the environment pypi" / "environment `pypi`
+            # |"; "the secret NPM_TOKEN").
+            "pypi: the environment/secret cell does not say the environments pypi and testpypi":
+                ("environments `pypi` and `testpypi` |", "a token |"),
+            "npm: the rehearsal cell does not say the dry-run publish":
+                ("| a dry-run publish |", "| a pack |"),
+            "npm: the publish cell does not say the npm registry, with provenance or through "
+            "Trusted Publishing": ("to the npm registry with provenance", "to the npm registry"),
+            "npm: the environment/secret cell does not say the environment npm and the repository "
+            "secret NPM_TOKEN": (", repository secret `NPM_TOKEN`", ""),
+            "github-assets: the rehearsal cell does not say the project's build-assets script, "
+            "its output checked non-empty": (", its output checked non-empty", ""),
+            "github-assets: the publish cell does not say an upload to the release":
+                ("| uploaded to the release |", "| attached |"),
+            "github-assets: the environment/secret cell does not say no environment and no "
+            "secret": ("| no environment, no secret |", "| environment `assets`, no secret |"),
+        }
+        for fault, (old, new) in cells.items():
+            with self.subTest(fault=fault):
+                self.assertEqual(good.count(old), 1, old)
+                self.assertEqual(check_release_steps(good.replace(old, new)), [prefix + fault])
+        self.assertEqual(check_release_steps(good.replace(
+            "| no environment, no secret |", "| — |")), [], "a dash cell says none")
+        # CR-MDB-068 C5 RED (VERIFY F4/F6): each half of the settled wording bites on its own.
+        self.assertEqual(check_release_steps(good.replace(
+            "environments `pypi` and `testpypi` |", "environment `pypi` |")),
+            [prefix + "pypi: the environment/secret cell does not say the environments pypi and "
+             "testpypi"], "F4: the pypi cell names testpypi too")
+        self.assertEqual(check_release_steps(good.replace(
+            "repository secret `NPM_TOKEN`", "secret `NPM_TOKEN`")),
+            [prefix + "npm: the environment/secret cell does not say the environment npm and the "
+             "repository secret NPM_TOKEN"], "F6: a bare secret is not the repository secret")
+        self.assertEqual(check_release_steps(good.replace(
+            "repository secret `NPM_TOKEN`", "environment secret `NPM_TOKEN`")),
+            [prefix + "npm: the environment/secret cell does not say the environment npm and the "
+             "repository secret NPM_TOKEN"], "F6: an environment secret is not the repository secret")
+        for target in SUPPORTED_RELEASE_TARGETS:
+            with self.subTest(dropped=target):
+                row = next(line for line in good.splitlines()
+                           if line.startswith(f"| `{target}` | ") and line.count("|") == 5)
+                self.assertEqual(check_release_steps(good.replace(row + "\n", "")),
+                                 [prefix + f"no row for {target}"])
+        crates = good.replace("| `github-assets` | the project's",
+                              "| `crates` | a dry run | crates.io | secret |\n"
+                              "| `github-assets` | the project's")
+        self.assertEqual(check_release_steps(crates),
+                         [prefix + "a row for 'crates', a target the renderer does not render"])
+        header = "| Target | Rehearsal | Publish | Environment / secret |\n"
+        self.assertEqual(check_release_steps(good.replace(header, "| Target | Rehearsal | Publish |\n")),
+                         [prefix + "no table of target, rehearsal, publish and environment/secret"])
+        self.assertEqual(check_release_steps(good.replace(header, header.replace("Target", "Stack"))),
+                         [prefix + "no table of target, rehearsal, publish and environment/secret"])
+        fenced = good.replace(header, "```text\n" + header + "```\n")
+        self.assertIn(prefix + "no table of target, rehearsal, publish and environment/secret",
+                      check_release_steps(fenced), "a table inside a fence is no table")
+        table_start = good.index(header)
+        table_end = good.index("\n\n", table_start) + 1
+        table = good[table_start:table_end]
+        outside = good.replace(table, "").replace("\n## Next\n", "\n## Next\n\n" + table)
+        self.assertEqual(release_step_faults(outside, TARGETS_TABLE),
+                         [prefix + "no table of target, rehearsal, publish and environment/secret"],
+                         "the table counts only inside ## Releases")
+
+    def test_the_rehearsal_table_keys_no_row_on_a_stack(self):
+        good = CONFORMING_RELEASES
+        prefix = f"## Releases: {REHEARSAL_AND_CI}: "
+        self.assertEqual(check_release_steps(good.replace("| `pypi` | `X.Y.Z.devN` |",
+                                                          "| `python` | `X.Y.Z.devN` |")),
+                         [prefix + "forms table: pypi, X.Y.Z.devN, the upload to the test index",
+                          prefix + f"{REHEARSAL_TABLE_STACK_ROW} python"])
+        stacks = good.replace("| no target | — | the notes check only |\n",
+                              "| no target | — | the notes check only |\n"
+                              "| `arduino`, `rust` | — | the notes check only |\n")
+        self.assertEqual(check_release_steps(stacks),
+                         [prefix + f"{REHEARSAL_TABLE_STACK_ROW} arduino",
+                          prefix + f"{REHEARSAL_TABLE_STACK_ROW} rust"])
+        self.assertEqual(check_release_steps(good.replace(
+            "\n## Next\n", "\n| `rust` | the release body only |\n\n## Next\n")), [],
+            "a stack row outside ### Rehearsal and CI is not the rehearsal table's")
+
+    def test_skill_test_command_gate_both_ways(self):
+        commands = stack_test_commands()
+        self.assertEqual(len(commands), 4, f"one per test-*.yml Run the tests step: {commands}")
+        self.assertIn("cargo test --workspace --locked", commands)
+        clean = CONFORMING_RELEASES
+        self.assertEqual(skill_test_command_faults(clean), [])
+        for command in commands:
+            with self.subTest(command=command):
+                named = clean + f"\nThe job runs `{command}`.\n"
+                self.assertEqual(skill_test_command_faults(named),
+                                 [f"names the test command {command!r}"])
+        wrapped = clean + "\nIt runs `cargo test\n--workspace --locked`.\n"
+        self.assertEqual(skill_test_command_faults(wrapped),
+                         ["names the test command 'cargo test --workspace --locked'"],
+                         "a command wrapped across lines is still shown")
+        self.assertEqual(skill_test_command_faults(clean + "\nThe `cargo` toolchain.\n"), [])
+
+    def test_the_project_name_gate_spares_the_release_workflow_commands_only(self):
+        body = ("## Releases\n\n1. Set the version in its single source, then `uv build`.\n"
+                "2. Each release-branch push uploads the stamped dev version to TestPyPI through "
+                "Trusted Publishing.\n3. After git flow release finish, it uploads with no token "
+                "anywhere.\n4. Install from PyPI with `--reinstall`; drop global permission config "
+                "entries for per-project policies; a trusted project runs without a permission "
+                "prompt.\n\n")
+        self.assertEqual(check_python_release_steps(body), [])
+        for spared in ("`modelb-axi release-workflow` re-renders it.",
+                       "`modelb-axi init --release-targets pypi` renders it."):
+            with self.subTest(spared=spared):
+                self.assertEqual(check_python_release_steps(body + spared + "\n"), [])
+                self.assertEqual(
+                    [f for f in check_pi_package_release_steps(body + spared + "\n")
+                     if "names project" in f], [])
+        for named in ("`modelb-axi agents` re-renders it.", "`modelb-axi release-workflows`.",
+                      "the modelb project"):
+            with self.subTest(named=named):
+                self.assertEqual(check_python_release_steps(body + named + "\n"),
+                                 ["## Releases: names project 'modelb'"])
 
     # CR-MDB-070 §S6 — the release flow: one push, the master push releases, the event publishes.
 
@@ -2842,7 +3436,8 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
                                  [f"## Releases: {REHEARSAL_AND_CI}: names the {kind} anchor {anchor!r}"])
         self.assertEqual(check_release_steps(good.replace("the upload to the test index",
                                                           "the upload to TestPyPI")),
-                         [f"## Releases: {REHEARSAL_AND_CI}: forms table: python, X.Y.Z.devN, the "
+                         # MIGRATED at CR-MDB-068 C3 RED (§S8): the row is pypi's (was python's).
+                         [f"## Releases: {REHEARSAL_AND_CI}: forms table: pypi, X.Y.Z.devN, the "
                           "upload to the test index",
                           f"## Releases: {REHEARSAL_AND_CI}: names the python step anchor 'testpypi'"])
         self.assertEqual(check_release_steps(good.replace(
@@ -2856,7 +3451,9 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
         self.assertEqual(RETIRED_RELEASE_PHRASES, (
             "isolated tool directory", "uv_tool_dir", "test.pypi.org/simple",
             "token the user supplies", "user-supplied token", "credentials the user supplies",
-            "user-supplied credentials", "the tag's release job"))
+            "user-supplied credentials", "the tag's release job",
+            # MIGRATED at CR-MDB-068 C5 RED (VERIFY F5): "a clean home" joins the tuple.
+            "a clean home"))
         good = CONFORMING_RELEASES
         self.assertEqual(release_step_faults(good, RETIRED_PHRASES), [])
         for phrase in RETIRED_RELEASE_PHRASES:
@@ -2880,60 +3477,6 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
                          "a phrase outside ## Releases is not gated")
 
     # CR-MDB-070 C4 RED (VERIFY F1/F2/F3/F6) — their gates proved both ways on sample text.
-
-    SNIPPET_COUNT_LINE = ("        [ \"$(printf '%s\\n' \"$tag\" | wc -l)\" -eq 1 ] || { echo \"more than "
-                          "one version tag at HEAD: $tag\" >&2; exit 1; }\n")
-
-    def test_snippet_more_than_one_version_tag_gate_both_ways(self):
-        fault = (f"## Releases: {RELEASE_JOB_SNIPPET}: the snippet does not refuse more than one "
-                 "version tag at HEAD")
-        good = CONFORMING_RELEASES
-        self.assertEqual(good.count(self.SNIPPET_COUNT_LINE), 1)
-        self.assertEqual(check_release_steps(good), [])
-        dropped = good.replace(self.SNIPPET_COUNT_LINE, "")
-        self.assertEqual(check_release_steps(dropped), [fault])
-        in_prose = dropped.replace("\n## Next\n",
-                                   "\nThe job refuses more than one version tag.\n\n## Next\n")
-        self.assertEqual(check_release_steps(in_prose), [fault],
-                         "the refusal counts only inside the snippet's own block")
-
-    def test_snippet_checkout_pin_gate_both_ways(self):
-        fault = f"## Releases: {RELEASE_JOB_SNIPPET}: {CHECKOUT_PIN_FAULT}"
-        good = CONFORMING_RELEASES
-        line = "    - uses: actions/checkout@v4 # pin to a full commit SHA\n"
-        self.assertEqual(good.count(line), 1)
-        self.assertEqual(checkout_pin_faults(release_job_snippet(good) or ""), [])
-        bare = "    - uses: actions/checkout@v4\n"
-        passing = {
-            "the comment line above": bare.replace("    - uses", "    # pin to a full commit SHA\n    - uses"),
-            "two comment lines above": ("    # pin this action to a full\n    # commit SHA\n" + bare),
-            "the comment line below": bare + "      # pinned to a full commit sha\n",
-        }
-        for label, new in passing.items():
-            with self.subTest(passes=label):
-                self.assertEqual(check_release_steps(good.replace(line, new)), [])
-        failing = {
-            "no comment": bare,
-            "pin without sha": "    - uses: actions/checkout@v4 # pin it\n",
-            "sha without pin": "    - uses: actions/checkout@v4 # a full commit SHA\n",
-            "a comment not beside it": ("    # pin to a full commit SHA\n    - name: Check out\n"
-                                        "      uses: actions/checkout@v4\n"),
-        }
-        for label, new in failing.items():
-            with self.subTest(fails=label):
-                self.assertEqual(check_release_steps(good.replace(line, new)), [fault])
-        other = good.replace(line, bare).replace(
-            "    - name: Create the release\n",
-            "    - uses: astral-sh/setup-uv@v6 # pin to a full commit SHA\n"
-            "    - name: Create the release\n")
-        self.assertEqual(check_release_steps(other), [fault],
-                         "the pin comment of another action is not the checkout's")
-        self.assertEqual(checkout_pin_faults("steps:\n  - run: true\n"), [fault],
-                         "a snippet with no checkout line is a fault")
-        prose = good.replace(line, bare).replace(
-            "\n## Next\n", "\nPin the checkout to a full commit SHA.\n\n## Next\n")
-        self.assertEqual(check_release_steps(prose), [fault],
-                         "prose outside the snippet's block is not the comment beside it")
 
     PUBLISH_JOB_SAMPLE = (
         "## Releases (NON-NEGOTIABLE)\n\n"

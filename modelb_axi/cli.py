@@ -52,6 +52,7 @@ from modelb_axi.scaffold import (
     reject_recorded_harnesses,
     run_agents,
     run_init,
+    run_release_workflow,
 )
 
 INSTALL_TOML_NAME = "install.toml"
@@ -159,6 +160,7 @@ def _build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", metavar="COMMAND")
     _add_init_parser(subparsers)
     _add_agents_parser(subparsers)
+    _add_release_workflow_parser(subparsers)
     return parser
 
 def _add_agents_parser(subparsers) -> None:
@@ -189,6 +191,39 @@ def _add_agents_parser(subparsers) -> None:
         help="overwrite hand-modified rendered files (never an unmarked one)",
     )
     agents_cmd.add_argument(
+        "--modelb-home", metavar="DIR", default=argparse.SUPPRESS,
+        help="override $MODELB_HOME (default: ${XDG_DATA_HOME:-~/.local/share}/modelb)",
+    )
+
+
+def _add_release_workflow_parser(subparsers) -> None:
+    """The `release-workflow` subcommand — re-render the project's release
+    workflow and its two scripts (CR-MDB-068 §S6). No --stacks: the
+    stacks are the ones `agents --stacks` records."""
+    cmd = subparsers.add_parser(
+        "release-workflow",
+        help="re-render the release workflow of the project in the current directory",
+        description=(
+            "Re-render .github/workflows/release.yml and its two scripts of the "
+            "project in the current directory from its .env PROJECT_STACKS and "
+            "RELEASE_TARGETS. Files are owned by marker: hand-modified files are "
+            "skipped unless --force-managed; files without a marker are never written."
+        ),
+    )
+    cmd.add_argument(
+        "--release-targets", metavar="CSV", default=None,
+        help=(
+            "replace the release targets (each `name` or `name:dir` of pypi, npm, "
+            "github-assets; \"\" for none) and record them as RELEASE_TARGETS"
+        ),
+    )
+    # Global flags accepted after the subcommand too; SUPPRESS keeps a
+    # pre-subcommand value from being clobbered by a subparser default.
+    cmd.add_argument(
+        "--force-managed", action="store_true", default=argparse.SUPPRESS,
+        help="overwrite hand-modified rendered release files (never an unmarked one)",
+    )
+    cmd.add_argument(
         "--modelb-home", metavar="DIR", default=argparse.SUPPRESS,
         help="override $MODELB_HOME (default: ${XDG_DATA_HOME:-~/.local/share}/modelb)",
     )
@@ -228,6 +263,13 @@ def _add_init_parser(subparsers) -> None:
     )
     init.add_argument("--owner", metavar="OWNER", help="REPO_OWNER registry value")
     init.add_argument(
+        "--release-targets", metavar="CSV",
+        help=(
+            "RELEASE_TARGETS registry value: where a release publishes, each "
+            "`name` or `name:dir` of pypi, npm, github-assets (default: none)"
+        ),
+    )
+    init.add_argument(
         "--sandesh-project", metavar="ID",
         help=(
             "SANDESH_PROJECT registry value, the Sandesh project id exactly "
@@ -263,7 +305,10 @@ def _add_init_parser(subparsers) -> None:
     )
     init.add_argument(
         "--force-managed", action="store_true", default=argparse.SUPPRESS,
-        help="overwrite a hand-modified rendered permission policy (never an unmarked one)",
+        help=(
+            "overwrite a hand-modified rendered permission policy or release "
+            "workflow file (never an unmarked one)"
+        ),
     )
     init.add_argument(
         "--modelb-home", metavar="DIR", default=argparse.SUPPRESS,
@@ -751,6 +796,8 @@ def main(argv: list[str] | None = None) -> int:
         return run_init(args, home)
     if getattr(args, "command", None) == "agents":
         return run_agents(args, home)
+    if getattr(args, "command", None) == "release-workflow":
+        return run_release_workflow(args, home)
     harnesses = parse_harnesses(args.harnesses)
     target_root = resolve_target_root(args.target_root)
     interactive = not args.yes and sys.stdin.isatty()

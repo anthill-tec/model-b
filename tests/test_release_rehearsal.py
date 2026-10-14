@@ -40,12 +40,11 @@ Class map:
   and that a real failure is fixed on a hotfix branch (:func:`header_red_run_faults`).
 - ``HeaderRedRunCheckerProofTest`` — CR-MDB-070 C4 RED (VERIFY F6): :func:`header_red_run_faults`
   proved both ways on sample text.
-- ``SkillReleaseSnippetExecutionTest`` — CR-MDB-070 C4 RED (VERIFY F1): the git-workflow skill's
-  release-job snippet's release step EXECUTED under ``bash -e`` in a temp git repository with a
-  ``gh`` shim first on ``PATH``: two version tags at ``HEAD`` fail naming both, one with its
-  section reaches ``gh release create``, none exits 0 with nothing to release; its
-  ``SkillReleaseSnippetConformingSampleProofTest`` runs it on :data:`CONFORMING_SKILL_SNIPPET`
-  and ``SkillReleaseSnippetBiteProofTest`` shows it bites without the count.
+- MIGRATED at CR-MDB-068 C3 RED (§S8): ``SkillReleaseSnippetExecutionTest`` and its two proofs
+  (CR-MDB-070 C4 RED, VERIFY F1 — the git-workflow skill's release-job snippet EXECUTED) are
+  retired with the snippet: the skill now points at the rendered workflow, whose tag step is
+  executed by ``CreateReleaseTagStepExecutionTest`` below and by
+  ``tests.test_rendered_release_workflow.CreateReleaseExecutionTest``.
 - ``RehearseStampStepExecutionTest`` — §S2: step 2's command lines EXECUTED under ``bash -e`` in a
   temp tree with ``GITHUB_REF_NAME`` and ``GITHUB_RUN_NUMBER`` set.
 - ``CreateReleaseTagStepExecutionTest`` — CR-MDB-070 §S2: the ``id: tag`` step EXECUTED under
@@ -54,6 +53,18 @@ Class map:
   ``TAG`` while ``GITHUB_REF_NAME`` is ``master``.
 - ``PublishGuardExecutionTest`` — CR-MDB-070 §S4: each publish job's guard EXECUTED under
   ``bash -e`` in a clone of a bare ``origin``.
+
+MIGRATED at CR-MDB-068 C2 RED (§S7): Model B's ``release.yml`` and both scripts are rendered —
+``workflows.render(["python"], ["pypi", "npm:pi-package"], workflows-src)`` (CR-MDB-068 §S4/§S7).
+The stamp is ``stamp_version.py stamp <ref> <run> pypi:. npm:pi-package`` (:data:`MODEL_B_VERSIONED`;
+the temp trees carry a copy of ``pyproject.toml``, ``pypi:.``'s version source naming
+``modelb_axi/__init__.py``); :data:`STAMP_LINE` and the version check (:data:`CHECK_LINE`) carry the
+versioned targets; every job needs :data:`TEST_JOB`, ``test-python``; the CHANGELOG.md copy is
+``cp "$GITHUB_WORKSPACE/CHANGELOG.md" .`` (:data:`PUBLISH_NPM_TODAY`, the rehearsal's tail); the
+header is project-neutral (:data:`HEADER_PHRASES` in the plural, :data:`HEADER_PROJECT_WORDS`
+absent), read after the marker line; :data:`CONFORMING_RELEASE` is the rendered shape. What every
+render must be is proved by ``tests.test_rendered_release_workflow``; these classes stay
+retargeted at Model B's own file.
 
 Stdlib only.
 """
@@ -81,8 +92,8 @@ from tests._helpers import (
     workflow_steps,
 )
 from tests.test_board_holds_the_queue import norm_units
-from tests.test_install_guide import GIT_WORKFLOW_SKILL, release_job_snippet
 from tests.test_pi_package import npm_semver
+from tests.test_workflow_render import MARKER_PREFIX
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 STAMP_REL = ".github/scripts/stamp_version.py"
@@ -92,6 +103,14 @@ SECTION = REPO_ROOT / ".github" / "scripts" / "changelog_section.py"
 RELEASE_YML = REPO_ROOT / ".github" / "workflows" / "release.yml"
 INIT_REL = "modelb_axi/__init__.py"
 PACKAGE_JSON_REL = "pi-package/package.json"
+#: MIGRATED at CR-MDB-068 C2 RED (§S7): ``pypi:.``'s version source names ``INIT_REL`` through
+#: ``[tool.hatch.version] path``; the temp trees carry a copy.
+PYPROJECT_REL = "pyproject.toml"
+#: MIGRATED at CR-MDB-068 C2 RED (§S7): the versioned targets the renderer writes into Model B's
+#: stamp and check lines (CR-MDB-068 §S4), for ``RELEASE_TARGETS=pypi,npm:pi-package``.
+MODEL_B_VERSIONED = ("pypi:.", "npm:pi-package")
+#: MIGRATED at CR-MDB-068 C2 RED (§S7): Model B's rendered test job (CR-MDB-068 §S4); was ``test``.
+TEST_JOB = "test-python"
 
 _INIT_VERSION = re.compile(r'^__version__ = "[^"]*"$', re.M)
 _PACKAGE_VERSION = re.compile(r'^(\s*"version":\s*)"[^"]*"', re.M)
@@ -457,13 +476,17 @@ def _stamped(init: str, package: str, release: str, run: str) -> tuple[bytes, by
 
 
 def _tree(test: unittest.TestCase, init: str, package: str, changelog: str | None = None) -> Path:
-    """A temp repository tree holding the two version files, a copy of each script that exists,
-    and ``CHANGELOG.md`` when given."""
+    """A temp repository tree holding the two version files, a copy of ``pyproject.toml``, a copy
+    of each script that exists, and ``CHANGELOG.md`` when given.
+
+    MIGRATED at CR-MDB-068 C2 RED (§S7): the copy of ``pyproject.toml`` — ``pypi:.``'s version
+    source, whose ``[tool.hatch.version] path`` names ``modelb_axi/__init__.py``."""
     tree = Path(tempfile.mkdtemp(prefix="stamp-version-"))
     test.addCleanup(shutil.rmtree, tree, True)
     (tree / "modelb_axi").mkdir()
     (tree / "pi-package").mkdir()
     (tree / ".github" / "scripts").mkdir(parents=True)
+    shutil.copy2(REPO_ROOT / PYPROJECT_REL, tree / PYPROJECT_REL)
     (tree / INIT_REL).write_bytes(init.encode("utf-8"))
     (tree / PACKAGE_JSON_REL).write_bytes(package.encode("utf-8"))
     for script, rel in ((STAMP, STAMP_REL), (SECTION, SECTION_REL)):
@@ -499,8 +522,11 @@ def _nested_version_first(package: str, nested: str) -> str:
 
 def run_stamp_by_path(tree: Path, ref: str, run: str) -> tuple[int, str, str]:
     """Load the tree's copy of the script by path and run it as ``__main__`` from the tree's root
-    with ``argv = [script, ref, run]``. ``(exit code, stdout, stderr)`` as the interpreter would
-    give them: ``SystemExit(None)`` is 0, an int is itself, anything else goes to stderr and is 1."""
+    with ``argv = [script, "stamp", ref, run, *MODEL_B_VERSIONED]``. ``(exit code, stdout,
+    stderr)`` as the interpreter would give them: ``SystemExit(None)`` is 0, an int is itself,
+    anything else goes to stderr and is 1.
+
+    MIGRATED at CR-MDB-068 C2 RED (§S7): was ``argv = [script, ref, run]``."""
     _require_stamp()
     script = tree / STAMP_REL
     spec = importlib.util.spec_from_file_location("__main__", script)
@@ -512,7 +538,7 @@ def run_stamp_by_path(tree: Path, ref: str, run: str) -> tuple[int, str, str]:
     out = io.TextIOWrapper(out_bytes, encoding="utf-8", newline="")
     err = io.TextIOWrapper(err_bytes, encoding="utf-8", newline="")
     saved_argv, saved_cwd = sys.argv, os.getcwd()
-    sys.argv = [str(script), ref, run]
+    sys.argv = [str(script), "stamp", ref, run, *MODEL_B_VERSIONED]
     code = 0
     try:
         os.chdir(tree)
@@ -536,11 +562,13 @@ def run_stamp_by_path(tree: Path, ref: str, run: str) -> tuple[int, str, str]:
 
 
 def run_stamp_cli(tree: Path, ref: str, run: str) -> tuple[int, str, str]:
-    """``python3 .github/scripts/stamp_version.py <ref> <run-number>`` from the tree's root — §S1's
-    calling form."""
+    """``python3 .github/scripts/stamp_version.py stamp <ref> <run-number> pypi:. npm:pi-package``
+    from the tree's root — the calling form Model B's rehearsal renders.
+
+    MIGRATED at CR-MDB-068 C2 RED (§S7): was ``stamp_version.py <ref> <run-number>``."""
     _require_stamp()
     result = subprocess.run(
-        [sys.executable, STAMP_REL, ref, run], cwd=tree,
+        [sys.executable, STAMP_REL, "stamp", ref, run, *MODEL_B_VERSIONED], cwd=tree,
         capture_output=True, text=True, encoding="utf-8", timeout=30, stdin=subprocess.DEVNULL,
     )
     return result.returncode, result.stdout, result.stderr
@@ -696,16 +724,21 @@ def tearDownModule():
 
 
 class StampVersionScriptNotShippedTest(unittest.TestCase):
-    """§S1 — a repo-only script: neither the sdist nor the wheel carries it."""
+    """§S1 — the ``.github/`` copy is in neither the sdist nor the wheel; CR-MDB-068 §S2's
+    ``workflows-src/`` copy is the only one shipped, under ``modelb_axi/_assets/`` in the wheel."""
 
-    def test_neither_the_sdist_nor_the_wheel_carries_the_script(self):
+    # MIGRATED at CR-MDB-068 C1 RED (§S2): was test_neither_the_sdist_nor_the_wheel_carries_the_
+    # script (no stamp_version.py anywhere); the workflows-src/ copy now ships as package data.
+    def test_only_the_workflows_src_copy_ships_and_never_under_github(self):
         _require_stamp()  # otherwise "not shipped" would hold of nothing
         sdist, wheel = publishing.artifacts()
-        offenders = [f"sdist:{rel}" for rel in publishing.sdist_members(sdist)
-                     if rel.startswith(".github/") or rel.endswith("stamp_version.py")]
-        offenders += [f"wheel:{name}" for name in publishing.wheel_names(wheel)
-                      if ".github" in name.split("/") or name.endswith("stamp_version.py")]
-        self.assertEqual(offenders, [])
+        members, names = publishing.sdist_members(sdist), publishing.wheel_names(wheel)
+        self.assertEqual([rel for rel in members if rel.startswith(".github/")], [])
+        self.assertEqual([name for name in names if ".github" in name.split("/")], [])
+        self.assertEqual(sorted(rel for rel in members if rel.endswith("stamp_version.py")),
+                         ["workflows-src/stamp_version.py"])
+        self.assertEqual(sorted(name for name in names if name.endswith("stamp_version.py")),
+                         ["modelb_axi/_assets/workflows-src/stamp_version.py"])
 
 
 # ------------------------------------------------------------------ §S2 the workflow ----
@@ -729,8 +762,13 @@ TAG_STEP_IF = "steps.tag.outputs.tag != ''"
 TAG_FROM_STEP = "${{ steps.tag.outputs.tag }}"
 #: CR-MDB-070 §S2 — the ``id: tag`` step's line when ``HEAD`` carries no ``X.Y.Z`` tag.
 NO_TAG_NOTICE = "::notice::no version tag at HEAD — nothing to release"
-STAMP_LINE = ('version=$(python3 .github/scripts/stamp_version.py "$GITHUB_REF_NAME" '
-              '"$GITHUB_RUN_NUMBER")')
+#: MIGRATED at CR-MDB-068 C2 RED (§S7): the stamp takes its subcommand and Model B's versioned
+#: targets (CR-MDB-068 §S3/§S4); was ``stamp_version.py "$GITHUB_REF_NAME" "$GITHUB_RUN_NUMBER"``.
+STAMP_LINE = ('version=$(python3 .github/scripts/stamp_version.py stamp "$GITHUB_REF_NAME" '
+              '"$GITHUB_RUN_NUMBER" pypi:. npm:pi-package)')
+#: MIGRATED at CR-MDB-068 C2 RED (§S7): create-release's version check runs the stamp script's
+#: ``check`` over every version source (CR-MDB-068 §S4); was an inline tag == ``__version__`` check.
+CHECK_LINE = 'python3 .github/scripts/stamp_version.py check "$TAG" pypi:. npm:pi-package'
 _NOTES_CHECK = re.compile(
     r'python3 \.github/scripts/changelog_section\.py CHANGELOG\.md "\$version" *1?> */dev/null')
 NPM_DRY_RUN = "npm publish --dry-run --access public --tag dev"
@@ -800,11 +838,13 @@ PUBLISH_NPM_TODAY: str = """\
       - name: npm new enough for Trusted Publishing
         run: npm install -g npm@latest
       - name: Ship the root CHANGELOG.md in the package
-        run: cp ../CHANGELOG.md .
+        run: cp "$GITHUB_WORKSPACE/CHANGELOG.md" .
       - name: Publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: npm publish --provenance --access public"""
+# MIGRATED at CR-MDB-068 C2 RED (§S7): the copy reads the root CHANGELOG.md through
+# $GITHUB_WORKSPACE (CR-MDB-068 §S4); was ``cp ../CHANGELOG.md .``.
 
 #: CR-MDB-070 §S4 — each publish job's expected job-level shape beside its baseline.
 PUBLISH_SHAPES = {
@@ -816,17 +856,24 @@ PUBLISH_SHAPES = {
 
 #: CR-MDB-070 §S5 — the header's phrases (lower-cased, whitespace collapsed): the never-scope
 #: warning, the branch/event map, every publish gated on the tests, and the recovery.
+#: MIGRATED at CR-MDB-068 C2 RED (§S7): the rendered header speaks of the test jobs in the plural
+#: and of the guarded publishes, project-neutral (CR-MDB-068 §S4); was "the test job runs in every
+#: run", "the test job carries no if:" and "… the guarded registry publishes".
 HEADER_PHRASES = (
-    "the test job runs in every run",
-    "the test job carries no if:",
+    "the test jobs run in every run",
+    "carry no `if:`",
     "must never be scoped",
     "a publish that needs a skipped job is itself skipped",
     "a release or hotfix push runs the tests and the rehearsal",
     "a master push runs the tests and create-release",
-    "a published release runs the tests and the guarded registry publishes",
+    "a published release runs the tests and the guarded publishes",
     "every publish needs the tests",
     "dispatch the workflow on master",
 )
+#: CR-MDB-068 §S7 — Model B's header loses its project-specific lines: no account, package name or
+#: Model B document is named (lower-cased, as :func:`_header` reads it).
+HEADER_PROJECT_WORDS = ("anthill", "modelb", "model b", "pi-package", "crucible", "docs/",
+                        "release-automation")
 #: CR-MDB-070 §S5 — what the header no longer says: the tag push and the second workflow are gone.
 HEADER_RETIRED = ("when a release tag is pushed", "ci.yml")
 #: CR-MDB-070 C4 RED (VERIFY F6) — recovery from a red or flaky run: when the ``master`` run or the
@@ -843,9 +890,14 @@ def _release_text() -> str:
 
 
 def _header(text: str) -> str:
-    """The leading comment block, as one lower-cased line with whitespace collapsed."""
+    """The leading comment block, as one lower-cased line with whitespace collapsed.
+
+    MIGRATED at CR-MDB-068 C2 RED (§S7): the ownership marker line (CR-MDB-068 §S2) is not the
+    header's."""
     words = []
-    for line in text.splitlines():
+    for number, line in enumerate(text.splitlines()):
+        if number == 0 and line.startswith(MARKER_PREFIX):
+            continue
         if not line.strip():
             continue
         if not line.startswith("#"):
@@ -929,17 +981,21 @@ def step_shape(step: dict) -> dict:
 #: CR-MDB-070 — a ``release.yml`` meeting every §S1–§S5 item (``@PIN`` stands for a pinned ref).
 #: Every release-file class below also runs against it (the ``*ConformingSampleProofTest``
 #: subclasses), proving that a workflow written to the spec passes what the real file must.
-CONFORMING_RELEASE = r"""# Release workflow: the one workflow of this repository. Its test job
-# runs the unittest suite, and every publish job needs it.
+#: MIGRATED at CR-MDB-068 C2 RED (§S7): the shape CR-MDB-068 §S4 renders for Model B's stack and
+#: targets (``python``; ``pypi``, ``npm:pi-package``), its marker line aside: the project-neutral
+#: header, the ``test-python`` job without sandbox variables, ``needs: [test-python]``, the version
+#: check and the stamp through ``stamp_version.py`` with the versioned targets, the CHANGELOG.md copy
+#: from ``$GITHUB_WORKSPACE``.
+CONFORMING_RELEASE = r"""# Release workflow: the project's test jobs gate every publish.
 #
-# The test job runs in every run. The test job carries no if: and must
-# never be scoped: `needs:` orders jobs only within one run, and a
-# publish that needs a skipped job is itself skipped, silently.
+# The test jobs run in every run. They carry no `if:` and must never be
+# scoped: `needs:` orders jobs only within one run, and a publish that
+# needs a skipped job is itself skipped, silently.
 #
 # - A release or hotfix push runs the tests and the rehearsal.
 # - A master push runs the tests and create-release, which releases the
 #   version tag at HEAD.
-# - A published release runs the tests and the guarded registry publishes.
+# - A published release runs the tests and the guarded publishes.
 # Every publish needs the tests.
 #
 # Recovery: when the master run finds no version tag at HEAD, dispatch
@@ -949,11 +1005,15 @@ CONFORMING_RELEASE = r"""# Release workflow: the one workflow of this repository
 # nothing publishes. Re-run the failed jobs; a real failure is fixed on
 # a hotfix branch.
 #
-# One-time setup by the maintainer:
-# - repository secret RELEASE_PAT;
-# - environments `pypi`, `testpypi` and `npm`; the `testpypi`
-#   environment admits the `release/**` and `hotfix/**` branches and
-#   carries no required reviewers.
+# One-time setup:
+# - repository secret RELEASE_PAT: fine-grained, this repository only,
+#   Contents read/write;
+# - pypi: environments `pypi` and `testpypi`; the `testpypi` environment
+#   admits the `release/**` and `hotfix/**` branches and carries no
+#   required reviewers; pending trusted publishers on pypi.org and
+#   test.pypi.org for this workflow;
+# - npm: environment `npm`; the NPM_TOKEN secret for the first publish,
+#   deleted once the npm trusted publisher exists.
 
 name: release
 
@@ -968,7 +1028,7 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  test-python:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@PIN # v4.4.0
@@ -978,15 +1038,11 @@ jobs:
         with:
           python-version: "3.14"
       - uses: astral-sh/setup-uv@PIN # v6.8.0
-      - name: Run the suite
-        env:
-          MODELB_HOME: ${{ runner.temp }}/modelb-home
-          XDG_DATA_HOME: ${{ runner.temp }}/xdg-data
-          PI_CODING_AGENT_DIR: ${{ runner.temp }}/pi-agent
+      - name: Run the tests
         run: python -m unittest discover -s tests -t .
 
   create-release:
-    needs: test
+    needs: [test-python]
     if: >-
       github.ref == 'refs/heads/master' &&
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
@@ -1010,19 +1066,11 @@ jobs:
             echo "::notice::no version tag at HEAD — nothing to release"
           fi
           echo "tag=$tags" >> "$GITHUB_OUTPUT"
-      - name: Tag matches the package version
+      - name: The tag matches every version source
         if: steps.tag.outputs.tag != ''
         env:
           TAG: ${{ steps.tag.outputs.tag }}
-        run: |
-          python3 - <<'PY'
-          import os, pathlib, re, sys
-          text = pathlib.Path("modelb_axi/__init__.py").read_text()
-          version = re.search(r'__version__\s*=\s*"([^"]+)"', text)[1]
-          tag = os.environ["TAG"]
-          if version != tag:
-              sys.exit(f"tag {tag} != __version__ {version}")
-          PY
+        run: python3 .github/scripts/stamp_version.py check "$TAG" pypi:. npm:pi-package
       - name: Create the GitHub Release
         if: steps.tag.outputs.tag != ''
         env:
@@ -1034,8 +1082,43 @@ jobs:
             gh release create "$TAG" --notes-file "$RUNNER_TEMP/notes.md" --verify-tag
           fi
 
+  rehearse:
+    needs: [test-python]
+    if: >-
+      (startsWith(github.ref, 'refs/heads/release/') ||
+       startsWith(github.ref, 'refs/heads/hotfix/')) &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    environment: testpypi
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@PIN # v4.4.0
+      - name: Stamp the dev version and check the release notes
+        run: |
+          version=$(python3 .github/scripts/stamp_version.py stamp "$GITHUB_REF_NAME" "$GITHUB_RUN_NUMBER" pypi:. npm:pi-package)
+          python3 .github/scripts/changelog_section.py CHANGELOG.md "$version" > /dev/null
+      - uses: astral-sh/setup-uv@PIN # v6.8.0
+      - run: uv build
+      - uses: pypa/gh-action-pypi-publish@PIN # v1.14.2
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          skip-existing: true
+      - uses: actions/setup-node@PIN # v4.4.0
+        with:
+          node-version: "22"
+      - name: npm new enough for the dry-run publish
+        run: npm install -g npm@latest
+      - name: Ship the root CHANGELOG.md in the package
+        working-directory: pi-package
+        run: cp "$GITHUB_WORKSPACE/CHANGELOG.md" .
+      - name: Dry-run the npm publish
+        working-directory: pi-package
+        run: npm publish --dry-run --access public --tag dev
+
   publish-pypi:
-    needs: test
+    needs: [test-python]
     if: github.event_name == 'release'
     runs-on: ubuntu-latest
     environment: pypi
@@ -1061,43 +1144,8 @@ jobs:
       - run: uv build
       - uses: pypa/gh-action-pypi-publish@PIN # v1.14.2
 
-  rehearse:
-    needs: test
-    if: >-
-      (startsWith(github.ref, 'refs/heads/release/') ||
-       startsWith(github.ref, 'refs/heads/hotfix/')) &&
-      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-    runs-on: ubuntu-latest
-    environment: testpypi
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - uses: actions/checkout@PIN # v4.4.0
-      - name: Stamp the dev version and check the release notes
-        run: |
-          version=$(python3 .github/scripts/stamp_version.py "$GITHUB_REF_NAME" "$GITHUB_RUN_NUMBER")
-          python3 .github/scripts/changelog_section.py CHANGELOG.md "$version" > /dev/null
-      - uses: astral-sh/setup-uv@PIN # v6.8.0
-      - run: uv build
-      - uses: pypa/gh-action-pypi-publish@PIN # v1.14.2
-        with:
-          repository-url: https://test.pypi.org/legacy/
-          skip-existing: true
-      - uses: actions/setup-node@PIN # v4.4.0
-        with:
-          node-version: "22"
-      - name: npm new enough for the dry-run publish
-        run: npm install -g npm@latest
-      - name: Ship the root CHANGELOG.md in the package
-        working-directory: pi-package
-        run: cp ../CHANGELOG.md .
-      - name: Dry-run the npm publish
-        working-directory: pi-package
-        run: npm publish --dry-run --access public --tag dev
-
   publish-npm:
-    needs: test
+    needs: [test-python]
     if: github.event_name == 'release'
     runs-on: ubuntu-latest
     environment: npm
@@ -1129,7 +1177,7 @@ jobs:
       - name: npm new enough for Trusted Publishing
         run: npm install -g npm@latest
       - name: Ship the root CHANGELOG.md in the package
-        run: cp ../CHANGELOG.md .
+        run: cp "$GITHUB_WORKSPACE/CHANGELOG.md" .
       - name: Publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -1186,8 +1234,9 @@ class CreateReleaseJobTest(_ReleaseSource, unittest.TestCase):
 
     # MIGRATED at CR-MDB-070 C1 RED (§S2): test_create_release_is_otherwise_unchanged, split into
     # the job's keys, its runner and permissions, and its four steps.
+    # MIGRATED at CR-MDB-068 C2 RED (§S7): needs [test-python], was needs: test.
     def test_create_release_needs_the_tests_and_keeps_its_runner_and_write_permission(self):
-        self.assertEqual(job_needs(self.job), ["test"], "§S2: needs: test")
+        self.assertEqual(job_needs(self.job), [TEST_JOB], "§S2: needs the test job")
         self.assertEqual(workflow_job_key(self.job, "runs-on"), "ubuntu-latest")
         self.assertEqual(workflow_job_permissions(self.job), {"contents": "write"})
         self.assertEqual(sorted(job_keys(self.job)),
@@ -1215,11 +1264,14 @@ class CreateReleaseJobTest(_ReleaseSource, unittest.TestCase):
         self.assertFalse(any("gh release create" in line for line in step["run"]),
                          "§S2: the tag step holds no gh release create")
 
-    def test_step_3_checks_the_version_against_tag_when_there_is_one(self):
+    # MIGRATED at CR-MDB-068 C2 RED (§S7): was test_step_3_checks_the_version_against_tag_when_
+    # there_is_one (an inline tag == __version__ check); the check is the stamp script's, over
+    # every version source (CR-MDB-068 §S4).
+    def test_step_3_checks_every_version_source_against_the_tag_when_there_is_one(self):
         step = self.steps[2]
         self.assertIsNone(step["uses"])
-        self.assertTrue(any("__version__" in line for line in step["run"]),
-                        "§S2: the third step is the tag == __version__ check")
+        self.assertEqual([line.strip() for line in step["run"]], [CHECK_LINE],
+                         "§S2: the third step checks the tag against every version source")
         self.assertEqual(step["if"], TAG_STEP_IF)
         self.assertEqual(step["env"], {"TAG": TAG_FROM_STEP})
         self.assertFalse(any("GITHUB_REF_NAME" in line for line in step["run"]),
@@ -1248,7 +1300,8 @@ class PublishJobsGuardTest(_ReleaseSource, unittest.TestCase):
         for name, (today, permissions, keys) in PUBLISH_SHAPES.items():
             with self.subTest(job=name):
                 job, base = self._job(name), today.splitlines()
-                self.assertEqual(job_needs(job), ["test"], "§S4: needs: test")
+                # MIGRATED at CR-MDB-068 C2 RED (§S7): needs [test-python], was needs: test.
+                self.assertEqual(job_needs(job), [TEST_JOB], "§S4: needs the test job")
                 self.assertEqual(normalised_if(workflow_job_key(job, "if")), PUBLISH_IF)
                 self.assertEqual(workflow_job_permissions(job), permissions)
                 for key in ("runs-on", "environment"):
@@ -1308,8 +1361,9 @@ class RehearseJobTest(_ReleaseSource, unittest.TestCase):
     def test_rehearse_runs_on_a_push_or_dispatch_on_a_release_or_hotfix_ref(self):
         self.assertEqual(normalised_if(workflow_job_key(self._job(), "if")), REHEARSE_IF)
 
+    # MIGRATED at CR-MDB-068 C2 RED (§S7): needs [test-python], was needs: test.
     def test_rehearse_needs_the_tests(self):
-        self.assertEqual(job_needs(self._job()), ["test"], "§S3: needs: test")
+        self.assertEqual(job_needs(self._job()), [TEST_JOB], "§S3: needs the test job")
 
     def test_rehearse_runs_on_ubuntu_latest_in_the_testpypi_environment(self):
         job = self._job()
@@ -1361,7 +1415,9 @@ class RehearseJobTest(_ReleaseSource, unittest.TestCase):
         tail = [(step["working-directory"], line.strip())
                 for step in self._steps()[7:] for line in step["run"]
                 if line.strip() and not line.strip().startswith("#")]
-        self.assertEqual(tail, [("pi-package", "cp ../CHANGELOG.md ."),
+        # MIGRATED at CR-MDB-068 C2 RED (§S7): the copy reads $GITHUB_WORKSPACE (CR-MDB-068 §S4);
+        # was cp ../CHANGELOG.md .
+        self.assertEqual(tail, [("pi-package", 'cp "$GITHUB_WORKSPACE/CHANGELOG.md" .'),
                                 ("pi-package", NPM_DRY_RUN)])
         self.assertTrue(all(step["uses"] is None for step in self._steps()[7:]),
                         "§S2: nothing follows the dry-run publish")
@@ -1392,6 +1448,11 @@ class ReleaseWorkflowPinsAndHeaderTest(_ReleaseSource, unittest.TestCase):
     def test_the_header_no_longer_names_the_tag_push_or_ci_yml(self):
         header = _header(self.release_text())
         self.assertEqual([phrase for phrase in HEADER_RETIRED if phrase in header], [])
+
+    # CR-MDB-068 C2 RED (§S7) — Model B's header is the rendered, project-neutral one.
+    def test_the_header_names_no_account_package_or_model_b_document(self):
+        header = _header(self.release_text())
+        self.assertEqual([word for word in HEADER_PROJECT_WORDS if word in header], [])
 
     # CR-MDB-070 C4 RED (VERIFY F6) — recovery from a red or flaky run.
     def test_the_header_says_a_red_run_publishes_nothing_re_run_the_failed_jobs_or_hotfix(self):
@@ -1625,18 +1686,24 @@ class CreateReleaseTagStepExecutionTest(_ReleaseSource, unittest.TestCase):
 
 
 class CreateReleaseVersionCheckExecutionTest(_ReleaseSource, unittest.TestCase):
-    """CR-MDB-070 §S2 — the tag == ``__version__`` check reads ``TAG`` (the ``id: tag`` step's
-    output), not ``GITHUB_REF_NAME`` (``master`` on the master push): run under ``bash -e``."""
+    """CR-MDB-070 §S2 — the version check reads ``TAG`` (the ``id: tag`` step's output), not
+    ``GITHUB_REF_NAME`` (``master`` on the master push): run under ``bash -e``.
+
+    MIGRATED at CR-MDB-068 C2 RED (§S7): the check is ``stamp_version.py check "$TAG" pypi:.
+    npm:pi-package`` (was an inline tag == ``__version__`` check), run in a temp tree holding both
+    version sources, ``pyproject.toml`` and a copy of Model B's script."""
 
     def _execute(self, tag: str) -> subprocess.CompletedProcess:
         steps = workflow_steps(workflow_job(self.release_text(), "create-release"))
-        hits = [step for step in steps if any("__version__" in line for line in step["run"])]
-        self.assertEqual(len(hits), 1, f"§S2: one step checks __version__; found {len(hits)}")
+        hits = [step for step in steps if any("stamp_version.py check" in line
+                                              for line in step["run"])]
+        self.assertEqual(len(hits), 1, f"§S2: one step checks the version; found {len(hits)}")
+        _require_stamp()
+        tree = _tree(self, *_version_files("1.2.3", "1.2.3"))
         work, env = _workdir(self, "create-release-check-")
-        (work / "modelb_axi").mkdir()
-        (work / INIT_REL).write_text(_version_files("1.2.3", "1.2.3")[0], encoding="utf-8")
-        return bash_e(hits[0]["run"], work, dict(env, TAG=tag, GITHUB_REF_NAME="master",
-                                                  GITHUB_REF="refs/heads/master"))
+        return bash_e(hits[0]["run"], tree, dict(env, TAG=tag, GITHUB_REF_NAME="master",
+                                                  GITHUB_REF="refs/heads/master",
+                                                  GITHUB_WORKSPACE=str(tree)))
 
     def test_a_tag_equal_to_the_version_passes_on_the_master_push(self):
         result = self._execute("1.2.3")
@@ -1647,6 +1714,9 @@ class CreateReleaseVersionCheckExecutionTest(_ReleaseSource, unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("1.2.4", result.stderr, "§S2: the failure names the tag it read from TAG")
         self.assertIn("1.2.3", result.stderr)
+        # CR-MDB-068 C2 RED (§S7) — every version source is checked and named.
+        self.assertIn(INIT_REL, result.stderr)
+        self.assertIn(PACKAGE_JSON_REL, result.stderr)
 
 
 class PublishGuardExecutionTest(_ReleaseSource, unittest.TestCase):
@@ -1782,161 +1852,16 @@ class PublishGuardConformingSampleProofTest(PublishGuardExecutionTest):
 
 # ---------------------------------------------- CR-MDB-070 C4 RED (VERIFY F1) — the skill snippet ----
 
-#: VERIFY F1 — a CHANGELOG.md with sections for both 1.0.0 and 1.0.1, so a refusal of two tags at HEAD is the count's,
-#: never a missing section's.
-CHANGELOG_TWO_TAGS = CHANGELOG_PREAMBLE + (
-    "## [1.0.1] - 2026-10-14\n\n### Fixed\n\n- The second tag's notes.\n\n"
-    "## [1.0.0] - 2026-10-13\n\n### Added\n\n- The first tag's notes.\n"
-)
-#: A ``gh`` stand-in first on ``PATH``: it records each call's arguments, one line each, in
-#: ``$GH_SHIM_LOG``; ``release view`` exits 1 (no such release yet), every other call exits 0.
-GH_SHIM = ('#!/bin/sh\n'
-           'printf \'%s\\n\' "$*" >> "$GH_SHIM_LOG"\n'
-           '[ "$1 $2" != "release view" ]\n')
-#: VERIFY F1 — a skill ``## Releases`` whose release-job snippet meets the finding: it counts the
-#: version tags at HEAD and refuses more than one, naming them.
-CONFORMING_SKILL_SNIPPET = r"""## Releases (NON-NEGOTIABLE)
-
-```yaml
-create-release:
-  needs: test
-  if: github.ref == 'refs/heads/master'
-  runs-on: ubuntu-latest
-  steps:
-    - uses: actions/checkout@v4 # pin to a full commit SHA
-      with:
-        fetch-depth: 0
-    - name: Create the release
-      env:
-        GH_TOKEN: ${{ secrets.RELEASE_PAT }}
-      run: |
-        tags=$(git tag --points-at HEAD | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' || true)
-        [ -n "$tags" ] || { echo "no version tag at HEAD, nothing to release"; exit 0; }
-        [ "$(printf '%s\n' "$tags" | wc -l)" -eq 1 ] || { echo "more than one version tag at HEAD:" $tags >&2; exit 1; }
-        tag=$tags
-        awk -v head="## [$tag] - " '
-          index($0, head) == 1 { found = 1; next }
-          found && (/^## / || /^\[[^]]+\]: /) { exit }
-          found { print }
-          END { if (!found) exit 1 }
-        ' CHANGELOG.md > release-notes.md || { echo "no CHANGELOG.md section for $tag" >&2; exit 1; }
-        grep -Eqv -e '^###([[:space:]]|$)' -e '^[[:space:]]*$' release-notes.md || { echo "empty section for $tag" >&2; exit 1; }
-        gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --notes-file release-notes.md --verify-tag
-```
-
-## Next
-"""
-#: The line of :data:`CONFORMING_SKILL_SNIPPET` that counts the tags (the bite proof drops it).
-SNIPPET_COUNT_LINE = ('[ "$(printf \'%s\\n\' "$tags" | wc -l)" -eq 1 ] || { echo "more than one '
-                      'version tag at HEAD:" $tags >&2; exit 1; }')
-
-
-def run_skill_snippet(test: unittest.TestCase, lines: list[str], head_tags: tuple,
-                      changelog: str) -> tuple[subprocess.CompletedProcess, list[str], Path]:
-    """Run the skill snippet's ``lines`` under ``bash -e`` in a temp repository on ``master``: an
-    earlier commit tagged ``0.9.0``, ``HEAD`` carrying ``head_tags`` (annotated, as git flow
-    tags), ``changelog`` as ``CHANGELOG.md``, and :data:`GH_SHIM` first on ``PATH`` so nothing
-    calls GitHub. ``(the run, the gh calls in order, the repository)`` (VERIFY F1)."""
-    work, env = _workdir(test, "skill-release-snippet-")
-    repo = work / "repo"
-    _git(work, env, "init", "-q", "-b", "master", str(repo))
-    _git(repo, env, "commit", "-q", "--allow-empty", "-m", "earlier")
-    _git(repo, env, "tag", "-a", "0.9.0", "-m", "0.9.0")
-    _git(repo, env, "commit", "-q", "--allow-empty", "-m", "head")
-    for tag in head_tags:
-        _git(repo, env, "tag", "-a", tag, "-m", tag)
-    (repo / "CHANGELOG.md").write_text(changelog, encoding="utf-8")
-    shim_dir = work / "bin"
-    shim_dir.mkdir()
-    (shim_dir / "gh").write_text(GH_SHIM, encoding="utf-8")
-    (shim_dir / "gh").chmod(0o755)
-    log = work / "gh-calls"
-    result = bash_e(lines, repo, dict(env, PATH=f"{shim_dir}{os.pathsep}{env.get('PATH', os.defpath)}",
-                                      GH_SHIM_LOG=str(log)))
-    calls = log.read_text(encoding="utf-8").splitlines() if log.exists() else []
-    return result, calls, repo
-
-
-class SkillReleaseSnippetExecutionTest(unittest.TestCase):
-    """CR-MDB-070 C4 RED (VERIFY F1) — the git-workflow skill's release-job snippet (``## Releases``,
-    the fenced ``create-release`` block): its release step's ``run:`` lines EXECUTED under
-    ``bash -e`` with a ``gh`` shim. Two version tags at ``HEAD`` fail naming both, before any
-    ``gh`` call; one tag with its section reaches ``gh release create``; none exits 0 with nothing
-    to release."""
-
-    SKILL: str | None = None
-
-    def _lines(self) -> list[str]:
-        text = self.SKILL if self.SKILL is not None else GIT_WORKFLOW_SKILL.read_text(encoding="utf-8")
-        snippet = release_job_snippet(text)
-        self.assertIsNotNone(snippet, "## Releases carries the release-job snippet")
-        steps = workflow_steps((snippet or "").splitlines())
-        hits = [step for step in steps if any("gh release create" in line for line in step["run"])]
-        self.assertEqual(len(hits), 1, f"one snippet step creates the release; found {len(hits)}")
-        return hits[0]["run"]
-
-    def test_two_version_tags_at_head_fail_naming_both_before_any_gh_call(self):
-        result, calls, _repo = run_skill_snippet(self, self._lines(), ("1.0.0", "1.0.1"),
-                                                 CHANGELOG_TWO_TAGS)
-        output = result.stdout + result.stderr
-        self.assertNotEqual(result.returncode, 0, f"two tags fail the step; output={output!r}")
-        self.assertIn("more than one version tag", output, f"output={output!r}")
-        self.assertIn("1.0.0", output)
-        self.assertIn("1.0.1", output)
-        self.assertNotIn("no CHANGELOG.md section", output, "not the misleading missing-section error")
-        self.assertEqual(calls, [], "nothing reaches gh")
-
-    def test_one_version_tag_with_its_section_reaches_gh_release_create_with_the_notes(self):
-        for head_tags in (("1.2.3",), ("v1.2.3", "1.2.3", "1.2.3-rc.1")):
-            with self.subTest(head_tags=head_tags):
-                result, calls, repo = run_skill_snippet(self, self._lines(), head_tags,
-                                                        CHANGELOG_GOOD)
-                self.assertEqual(result.returncode, 0,
-                                 f"stdout={result.stdout!r} stderr={result.stderr!r}")
-                self.assertEqual(len(calls), 2, f"gh view then gh create; calls={calls!r}")
-                self.assertEqual(calls[0].split()[:3], ["release", "view", "1.2.3"])
-                created = calls[1].split()
-                self.assertEqual(created[:3], ["release", "create", "1.2.3"])
-                self.assertIn("--verify-tag", created)
-                self.assertIn("--notes-file", created)
-                notes = (repo / created[created.index("--notes-file") + 1]).read_text(encoding="utf-8")
-                self.assertIn("The rehearsed release — its notes body.", notes)
-                self.assertNotIn("An earlier fix.", notes)
-
-    def test_no_version_tag_at_head_exits_0_with_nothing_to_release_and_no_gh_call(self):
-        for head_tags in ((), ("v1.2.3",)):
-            with self.subTest(head_tags=head_tags):
-                result, calls, _repo = run_skill_snippet(self, self._lines(), head_tags,
-                                                         CHANGELOG_GOOD)
-                self.assertEqual(result.returncode, 0,
-                                 f"stdout={result.stdout!r} stderr={result.stderr!r}")
-                self.assertIn("nothing to release", result.stdout + result.stderr)
-                self.assertEqual(calls, [], "nothing reaches gh")
-
-
-class SkillReleaseSnippetConformingSampleProofTest(SkillReleaseSnippetExecutionTest):
-    """VERIFY F1 — a snippet written to the finding passes what the skill's must."""
-
-    SKILL = CONFORMING_SKILL_SNIPPET
-
-
-class SkillReleaseSnippetBiteProofTest(unittest.TestCase):
-    """VERIFY F1 — the execution test bites: without its count line the conforming snippet takes
-    two tags as one multi-line tag and fails on the misleading missing-section message."""
-
-    def test_a_snippet_without_the_count_fails_two_tags_on_the_wrong_message(self):
-        self.assertEqual(CONFORMING_SKILL_SNIPPET.count(SNIPPET_COUNT_LINE), 1)
-        broken = CONFORMING_SKILL_SNIPPET.replace(SNIPPET_COUNT_LINE + "\n", "")
-        steps = workflow_steps((release_job_snippet(broken) or "").splitlines())
-        lines = next(step["run"] for step in steps
-                     if any("gh release create" in line for line in step["run"]))
-        result, calls, _repo = run_skill_snippet(self, lines, ("1.0.0", "1.0.1"),
-                                                 CHANGELOG_TWO_TAGS)
-        output = result.stdout + result.stderr
-        self.assertNotEqual(result.returncode, 0)
-        self.assertNotIn("more than one version tag", output)
-        self.assertIn("no CHANGELOG.md section for 1.0.0", output, f"output={output!r}")
-        self.assertEqual(calls, [])
+# MIGRATED at CR-MDB-068 C3 RED (§S8): the git-workflow skill carries no hand-written release-job
+# snippet any more — `init` renders the release workflow and `modelb-axi release-workflow`
+# re-renders it — so SkillReleaseSnippetExecutionTest, SkillReleaseSnippetConformingSampleProofTest
+# and SkillReleaseSnippetBiteProofTest are retired with CHANGELOG_TWO_TAGS, GH_SHIM,
+# CONFORMING_SKILL_SNIPPET, SNIPPET_COUNT_LINE and run_skill_snippet(). What they executed is now
+# executed on the rendered workflow: two version tags at HEAD fail naming both, none exits 0 with
+# nothing to release (CreateReleaseTagStepExecutionTest, on Model B's rendered release.yml, and
+# tests.test_rendered_release_workflow.CreateReleaseExecutionTest, on every render). The skill's
+# statements of that behaviour are gated by tests.test_install_guide (RENDERED_WORKFLOW_PHRASES),
+# and a fenced `gh release create` in its ## Releases is a fault there.
 
 
 # ------------------------------------------------------------- CR-MDB-070 C4 RED (VERIFY F6) ----

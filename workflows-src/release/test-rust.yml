@@ -1,0 +1,8 @@
+  test-rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: @@USES:actions/checkout@@
+        with:
+          fetch-depth: 0
+      - name: Run the tests
+        run: cargo test --workspace --locked

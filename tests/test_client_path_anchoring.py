@@ -86,6 +86,8 @@ REFERENCE_CLIENTS = {
 # ----------------------------------------------------------------- §S2 scope ----
 
 #: §S2 — the gated trees, exactly as the spec lists them.
+#: MIGRATED at CR-MDB-068 C3 RED (§S8): ``workflows-src/`` ships (the rendered release
+#: workflow's parts and scripts) and is gated with the other asset roots (was without it).
 GATED_TREES = (
     "skills-src",
     "generator",
@@ -93,6 +95,7 @@ GATED_TREES = (
     "contracts",
     "modelb_axi",
     "scripts",
+    "workflows-src",
     "docs/research",
     "docs/install-guide.md",
     "README.md",
@@ -846,10 +849,22 @@ class ClientPathAnchoringS2Test(unittest.TestCase):
     def test_s2_gated_tree_list_is_exact(self):
         self.assertEqual(GATED_TREES, (
             "skills-src", "generator", "hooks-src", "contracts", "modelb_axi", "scripts",
-            "docs/research", "docs/install-guide.md", "README.md", "AGENTS.md", "tests",
+            "workflows-src", "docs/research", "docs/install-guide.md", "README.md", "AGENTS.md",
+            "tests",
         ))
         absent = [t for t in GATED_TREES if not (REPO_ROOT / t).exists()]
         self.assertEqual(absent, [], f"§S2: gated trees missing from the repo: {absent}")
+
+    def test_s2_gate_reads_workflows_src(self):
+        # CR-MDB-068 §S8: a client path in a workflows-src part is a hit; a clean part is not.
+        rel = "workflows-src/release/x.yml"
+        tmp, root = _fixture_tree({
+            rel: f"name: release\nrun: python3 clients/{_RUST_CLIENT} test\n",
+            "workflows-src/release/clean.yml": "run: python3 ~/.crucible/clients/python-crucible.py test\n",
+        })
+        with tmp:
+            hits = _anchoring_hits(root)
+        self.assertEqual([(r, n, k) for r, n, k, _ in hits], [(rel, 2, "unrooted")])
 
     def test_s2_exemption_list_is_exact(self):
         self.assertEqual(EXEMPT_PREFIXES, ("archive/", "audits/", "docs/changes/"))

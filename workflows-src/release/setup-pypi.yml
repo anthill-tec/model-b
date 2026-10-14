@@ -1,0 +1,5 @@
+# - pypi: environments `pypi` and `testpypi`; the `pypi` environment
+#   admits the version tags, because the release event's ref is the tag;
+#   the `testpypi` environment admits the `release/**` and `hotfix/**`
+#   branches and carries no required reviewers; pending trusted
+#   publishers on pypi.org and test.pypi.org for this workflow;

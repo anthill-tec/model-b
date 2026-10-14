@@ -74,6 +74,7 @@ import re
 import sys
 import tempfile
 import tokenize
+import tomllib
 import unittest
 from pathlib import Path
 
@@ -838,7 +839,13 @@ AGENTS_NO_CREATE_RELEASE_UNIT = ("AGENTS.md: no unit names the release created f
 AGENTS_NO_PUBLISH_UNIT = "AGENTS.md: no unit names publishing on the release event"
 AGENTS_NO_GATED_UNIT = "AGENTS.md: no unit names every publish gated on the tests"
 AGENTS_NAMES_CI_YML = "AGENTS.md: names ci.yml"
+#: CR-MDB-068 §S8 — the workflow is rendered: one unit says it is rendered and names
+#: ``modelb-axi release-workflow`` (a ``re-rendered`` alone does not say it is rendered).
+AGENTS_RENDERED = (r"(?<![\w-])rendered\b", r"(?<![\w-])modelb-axi release-workflow(?![\w-])")
+AGENTS_NO_RENDERED_UNIT = ("AGENTS.md: no unit names the workflow rendered, re-rendered by "
+                           "modelb-axi release-workflow")
 #: The statements in report order, each (regexes, its finding).
+#: MIGRATED at CR-MDB-068 C3 RED (§S8): the rendered-workflow statement joins them, last.
 AGENTS_CI_STATEMENTS = (
     (AGENTS_ONE_WORKFLOW, AGENTS_NO_ONE_WORKFLOW_UNIT),
     (AGENTS_TEST_JOB, AGENTS_NO_TEST_JOB_UNIT),
@@ -846,6 +853,7 @@ AGENTS_CI_STATEMENTS = (
     (AGENTS_CREATE_RELEASE, AGENTS_NO_CREATE_RELEASE_UNIT),
     (AGENTS_PUBLISH, AGENTS_NO_PUBLISH_UNIT),
     (AGENTS_GATED, AGENTS_NO_GATED_UNIT),
+    (AGENTS_RENDERED, AGENTS_NO_RENDERED_UNIT),
 )
 
 
@@ -876,9 +884,12 @@ class AgentsMdCiWorkflowsDetectorTest(unittest.TestCase):
     REHEARSAL = "- it rehearses the release on release and hotfix pushes;\n"
     CREATE = ("- it creates the release from the `master` push (recovery: dispatch the workflow on "
               "`master`);\n")
-    PUBLISH = "- it publishes to PyPI and npm on the release event, every publish gated on the tests.\n"
+    PUBLISH = "- it publishes to PyPI and npm on the release event, every publish gated on the tests;\n"
+    # MIGRATED at CR-MDB-068 C3 RED (§S8): the rendered-workflow statement joins GOOD; PUBLISH
+    # ends in `;` now that a list item follows it.
+    RENDERED = "- the workflow is rendered: `modelb-axi release-workflow` re-renders it.\n"
     GOOD = ("## Development Commands\n\nThere is **no** Makefile and **no** linter.\n\n"
-            + WORKFLOW + TEST_JOB + REHEARSAL + CREATE + PUBLISH + "\n## Next\n")
+            + WORKFLOW + TEST_JOB + REHEARSAL + CREATE + PUBLISH + RENDERED + "\n## Next\n")
     #: CR-MDB-067's text, as AGENTS.md carries it today.
     TWO_WORKFLOWS = (
         "## Development Commands\n\nThere is **no** Makefile/justfile and **no** linter. Two "
@@ -899,7 +910,8 @@ class AgentsMdCiWorkflowsDetectorTest(unittest.TestCase):
     def test_the_two_workflow_text_is_reported_for_each_missing_statement_and_ci_yml(self):
         self.assertEqual(agents_md_ci_findings(self.TWO_WORKFLOWS), [
             AGENTS_NO_ONE_WORKFLOW_UNIT, AGENTS_NO_TEST_JOB_UNIT, AGENTS_NO_CREATE_RELEASE_UNIT,
-            AGENTS_NO_PUBLISH_UNIT, AGENTS_NO_GATED_UNIT, AGENTS_NAMES_CI_YML])
+            AGENTS_NO_PUBLISH_UNIT, AGENTS_NO_GATED_UNIT, AGENTS_NO_RENDERED_UNIT,
+            AGENTS_NAMES_CI_YML])
 
     def test_ci_yml_is_named_nowhere_even_negated(self):
         for named in ("\nThe old `.github/workflows/ci.yml` is deleted.\n",
@@ -914,7 +926,7 @@ class AgentsMdCiWorkflowsDetectorTest(unittest.TestCase):
         self.assertEqual([label for label, _ in AGENTS_RETIRED_CI], ["no ci test workflow"])
         self.assertEqual(agents_md_ci_findings(self.OLD), [
             AGENTS_NO_TEST_JOB_UNIT, AGENTS_NO_REHEARSAL_UNIT, AGENTS_NO_CREATE_RELEASE_UNIT,
-            AGENTS_NO_PUBLISH_UNIT, AGENTS_NO_GATED_UNIT,
+            AGENTS_NO_PUBLISH_UNIT, AGENTS_NO_GATED_UNIT, AGENTS_NO_RENDERED_UNIT,
             "AGENTS.md: still says 'no ci test workflow'"])
         self.assertEqual(agents_md_ci_findings(self.GOOD + "\n" + self.OLD),
                          ["AGENTS.md: still says 'no ci test workflow'"],
@@ -947,6 +959,12 @@ class AgentsMdCiWorkflowsDetectorTest(unittest.TestCase):
             (AGENTS_NO_GATED_UNIT, ((", every publish gated on the tests", ""),
                                     ("every publish gated", "it is gated"),
                                     ("gated on the tests", "after the build"))),
+            (AGENTS_NO_RENDERED_UNIT, (("workflow is rendered:", "workflow is hand-written:"),
+                                       ("`modelb-axi release-workflow` re-renders it",
+                                        "`modelb-axi agents` re-renders it"),
+                                       ("is rendered: `modelb-axi release-workflow` re-renders",
+                                        "is re-rendered by `modelb-axi release-workflow`, which "
+                                        "re-renders"))),
         )
         good = self.GOOD
         for finding, edits in cases:
@@ -981,6 +999,106 @@ class AgentsMdCiWorkflowsTest(unittest.TestCase):
     def test_agents_md_names_one_release_workflow_gating_every_publish_and_no_ci_yml(self):
         self.assertEqual(agents_md_ci_findings(AGENTS_MD.read_text(encoding="utf-8")), [])
 
+
+# ------------------------------------------------ CR-MDB-068 §S8 AGENTS.md asset roots ----
+
+PYPROJECT = REPO_ROOT / "pyproject.toml"
+#: A table row of ``## Key Directories``: its first cell, backticks dropped.
+_FIRST_CELL = re.compile(r"^\|\s*([^|]*?)\s*\|")
+
+
+def force_include_roots() -> list[str]:
+    """The asset roots ``pyproject.toml`` force-includes into the wheel, in file order — derived,
+    never hand-copied (CR-MDB-068 §S8)."""
+    with PYPROJECT.open("rb") as fh:
+        return list(tomllib.load(fh)["tool"]["hatch"]["build"]["targets"]["wheel"]["force-include"])
+
+
+def _names_root(unit: str, root: str) -> bool:
+    """``root`` as a whole path token of ``unit`` (``root`` or ``root/``, never ``x/root``)."""
+    return re.search(r"(?<![\w/-])" + re.escape(root) + r"(?![\w-])", unit) is not None
+
+
+def agents_md_asset_root_findings(text: str, roots) -> list[str]:
+    """CR-MDB-068 §S8: what ``text`` (an ``AGENTS.md``) lacks of the asset ``roots``. The
+    force-include list — each unit naming ``force-include`` and at least one root — names
+    every root (one finding per root a list misses; one when no unit is a list); the
+    ``## Key Directories`` table has a row whose first cell is the root (``root`` or ``root/``)."""
+    units = [u for u in norm_units(text) if "force-include" in u
+             and any(_names_root(u, root) for root in roots)]
+    out = [] if units else ["AGENTS.md: no unit lists the force-include roots"]
+    out += [f"AGENTS.md: the force-include list does not name {root}"
+            for root in roots if any(not _names_root(u, root) for u in units)]
+    cells = {m.group(1).replace("`", "").rstrip("/")
+             for line in md_section(text, "## Key Directories").splitlines()
+             if (m := _FIRST_CELL.match(line.strip()))}
+    out += [f"AGENTS.md: the Key Directories table has no row for {root}/"
+            for root in roots if root not in cells]
+    return out
+
+
+class AgentsMdAssetRootsDetectorTest(unittest.TestCase):
+    """CR-MDB-068 §S8 — :func:`agents_md_asset_root_findings`, both ways on synthetic text."""
+
+    ROOTS = ("skills-src", "generator", "scripts", "hooks-src", "workflows-src")
+    GOOD = (
+        "## Key Directories\n\n| Path | Purpose |\n|---|---|\n"
+        "| `skills-src/` | skill bundles |\n| `generator/` | agent definitions |\n"
+        "| `hooks-src/` | hook scripts |\n| `scripts/` | tool scripts |\n"
+        "| `workflows-src/` | the release workflow's parts and scripts |\n"
+        "| `tests/` | the suite |\n\n"
+        "## Important Files\n\n"
+        "- `pyproject.toml` — hatchling; `force-include` maps `skills-src`, `generator`, `scripts`, "
+        "`hooks-src`, `workflows-src` into `modelb_axi/_assets/`.\n"
+        "- `deploy.default_asset_root()` prefers the packaged assets (wheel force-include).\n\n"
+        "## Next\n")
+
+    def test_the_derived_roots_are_pyprojects_five(self):
+        self.assertEqual(force_include_roots(), list(self.ROOTS))
+
+    def test_the_conforming_text_passes(self):
+        self.assertEqual(agents_md_asset_root_findings(self.GOOD, self.ROOTS), [])
+
+    def test_a_root_missing_from_the_force_include_list_is_a_finding(self):
+        dropped = self.GOOD.replace("`hooks-src`, `workflows-src` into", "`hooks-src` into")
+        self.assertEqual(agents_md_asset_root_findings(dropped, self.ROOTS),
+                         ["AGENTS.md: the force-include list does not name workflows-src"])
+        nested = self.GOOD.replace("`hooks-src`, `workflows-src` into",
+                                   "`hooks-src`, `hooks-src/workflows-src` into")
+        self.assertEqual(agents_md_asset_root_findings(nested, self.ROOTS),
+                         ["AGENTS.md: the force-include list does not name workflows-src"],
+                         "a path under another root is not the root")
+        self.assertEqual(agents_md_asset_root_findings(
+            self.GOOD.replace("`force-include` maps", "the wheel maps"), self.ROOTS),
+            ["AGENTS.md: no unit lists the force-include roots"],
+            "a unit naming force-include and no root is not the list")
+
+    def test_a_root_missing_from_the_key_directories_table_is_a_finding(self):
+        dropped = self.GOOD.replace("| `workflows-src/` | the release workflow's parts and scripts |\n",
+                                    "")
+        self.assertEqual(agents_md_asset_root_findings(dropped, self.ROOTS),
+                         ["AGENTS.md: the Key Directories table has no row for workflows-src/"])
+        self.assertEqual(agents_md_asset_root_findings(
+            dropped.replace("| `tests/` | the suite |",
+                            "| `tests/` | the suite, and `workflows-src/` |"), self.ROOTS),
+            ["AGENTS.md: the Key Directories table has no row for workflows-src/"],
+            "a root named in another row's purpose is not its row")
+        moved = dropped.replace("## Next\n", "| `workflows-src/` | parts |\n\n## Next\n")
+        self.assertEqual(agents_md_asset_root_findings(moved, self.ROOTS),
+                         ["AGENTS.md: the Key Directories table has no row for workflows-src/"],
+                         "a row outside ## Key Directories does not count")
+        self.assertEqual(agents_md_asset_root_findings(
+            self.GOOD.replace("| `workflows-src/` |", "| `workflows-src` |"), self.ROOTS), [],
+            "the row may omit the trailing slash")
+
+
+class AgentsMdAssetRootsTest(unittest.TestCase):
+    """CR-MDB-068 §S8 — the real ``AGENTS.md`` names every force-included asset root,
+    ``workflows-src/`` included, in its force-include list and its Key Directories table."""
+
+    def test_agents_md_names_every_force_included_root_in_the_list_and_the_table(self):
+        self.assertEqual(agents_md_asset_root_findings(AGENTS_MD.read_text(encoding="utf-8"),
+                                                       force_include_roots()), [])
 
 if __name__ == "__main__":
     unittest.main()

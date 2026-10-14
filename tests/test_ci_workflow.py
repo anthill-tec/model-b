@@ -41,6 +41,15 @@ replaced by a re-added ``python -m pip install build`` step and a ``pip install 
 ``test_the_four_steps_run_in_order`` and ``test_no_build_frontend_or_backend_is_installed``
 replace the five-step and build-frontend tests.
 
+MIGRATED at CR-MDB-068 C2 RED (§S7): Model B's ``release.yml`` is rendered
+(``workflows.render(["python"], ["pypi", "npm:pi-package"], workflows-src)``, CR-MDB-068 §S4/§S7):
+the test job is :data:`TEST_JOB`, ``test-python``; every publish job needs ``[test-python]``; and
+the rendered test job carries no sandbox variables (a hosted runner is disposable), so
+``sandbox_faults`` is inverted — a fault when the suite step sets any environment variable.
+:data:`CONFORMING_CI`, :data:`MUTATIONS` and ``CiWorkflowTest`` follow. What any render's test job
+must be is proved by ``tests.test_rendered_release_workflow``; these checks stay retargeted at
+Model B's own file.
+
 Stdlib only.
 """
 
@@ -58,9 +67,11 @@ from tests._helpers import (
     workflow_push_triggers,
     workflow_steps,
 )
+# MIGRATED at CR-MDB-068 C2 RED (§S7): TEST_JOB, the rendered python test job, defined once there.
 from tests.test_release_rehearsal import (
     CONFORMING_RELEASE,
     PUBLISH_JOBS,
+    TEST_JOB,
     _action,
     action_pin_faults,
     job_needs,
@@ -85,11 +96,12 @@ SETUP_UV = "astral-sh/setup-uv"
 #: MIGRATED at CR-MDB-069 C1 RED (§S2): the step CR-MDB-069 §S2 retired; a mutation re-adds it.
 BUILD_LINE = "python -m pip install build"
 SUITE_LINE = "python -m unittest discover -s tests -t ."
+#: The variables the test job once set; a mutation re-adds one. MIGRATED at CR-MDB-068 C2 RED
+#: (§S7): the rendered test job sets none of them.
 SANDBOX_VARS = ("MODELB_HOME", "XDG_DATA_HOME", "PI_CODING_AGENT_DIR")
 # MIGRATED at CR-MDB-069 C1 RED (§S2): was five steps, with BUILD_LINE fourth.
 STEP_ORDER = [CHECKOUT, SETUP_PYTHON, SETUP_UV, SUITE_LINE]
 
-_UNDER_RUNNER_TEMP = re.compile(r"\$\{\{\s*runner\.temp\s*\}\}/\S+")
 _QUOTED_PYTHON_VERSION = re.compile(r"""\s*python-version:\s*(["'])3\.14\1\s*(?:#.*)?""")
 _BUILD_TOOL = re.compile(r"\b(?:build|hatchling)\b")
 
@@ -97,7 +109,7 @@ _BUILD_TOOL = re.compile(r"\b(?:build|hatchling)\b")
 # ------------------------------------------------------------------ the checks ----
 
 def _test_steps(text: str) -> list[dict]:
-    return workflow_steps(workflow_job(text, "test"))
+    return workflow_steps(workflow_job(text, TEST_JOB))
 
 
 # MIGRATED at CR-MDB-070 C4 RED (VERIFY F5): ``_action`` is test_release_rehearsal's, defined once
@@ -149,14 +161,15 @@ def permission_faults(text: str) -> list[str]:
 
 
 def job_faults(text: str) -> list[str]:
-    """CR-MDB-070 §S1 — a ``test`` job among the jobs, on ``ubuntu-latest``, with no ``if:`` (it
-    exists in every run) and no ``needs``.
+    """CR-MDB-070 §S1 — a :data:`TEST_JOB` job among the jobs, on ``ubuntu-latest``, with no
+    ``if:`` (it exists in every run) and no ``needs``.
 
-    MIGRATED at CR-MDB-070 C1 RED (§S1): was one job, ``test``, and nothing else."""
+    MIGRATED at CR-MDB-070 C1 RED (§S1): was one job, ``test``, and nothing else.
+    MIGRATED at CR-MDB-068 C2 RED (§S7): the job is ``test-python``, was ``test``."""
     names = workflow_job_names(text)
-    if "test" not in names:
-        return [f"the jobs {names!r} hold no 'test' job"]
-    job = workflow_job(text, "test")
+    if TEST_JOB not in names:
+        return [f"the jobs {names!r} hold no {TEST_JOB!r} job"]
+    job = workflow_job(text, TEST_JOB)
     faults = []
     runs_on = workflow_job_key(job, "runs-on")
     if runs_on != "ubuntu-latest":
@@ -172,7 +185,9 @@ def job_faults(text: str) -> list[str]:
 
 def needs_faults(text: str) -> list[str]:
     """CR-MDB-070 §S1 — every publish job (``rehearse``, ``create-release``, ``publish-pypi``,
-    ``publish-npm``) exists and ``needs: test``, exactly."""
+    ``publish-npm``) exists and needs the test job, exactly.
+
+    MIGRATED at CR-MDB-068 C2 RED (§S7): ``needs: [test-python]``, was ``needs: test``."""
     names = workflow_job_names(text)
     faults = []
     for name in PUBLISH_JOBS:
@@ -180,8 +195,8 @@ def needs_faults(text: str) -> list[str]:
             faults.append(f"there is no {name} job")
             continue
         needs = job_needs(workflow_job(text, name))
-        if needs != ["test"]:
-            faults.append(f"{name} needs {needs!r}, not ['test']")
+        if needs != [TEST_JOB]:
+            faults.append(f"{name} needs {needs!r}, not {[TEST_JOB]!r}")
     return faults
 
 
@@ -209,7 +224,7 @@ def python_faults(text: str) -> list[str]:
     version = steps[0]["with"].get("python-version")
     if version != "3.14":
         return [f"python-version is {version!r}, not '3.14'"]
-    if not any(_QUOTED_PYTHON_VERSION.fullmatch(line) for line in workflow_job(text, "test")):
+    if not any(_QUOTED_PYTHON_VERSION.fullmatch(line) for line in workflow_job(text, TEST_JOB)):
         return ['python-version must be the quoted string "3.14", not a YAML number']
     return []
 
@@ -244,16 +259,16 @@ def suite_faults(text: str) -> list[str]:
 
 
 def sandbox_faults(text: str) -> list[str]:
-    """§S3 step 5 — the suite step's ``env:`` is exactly the three sandbox variables, each under
-    ``${{ runner.temp }}``."""
+    """CR-MDB-068 §S7 — the suite step sets no environment variable: the rendered test job carries
+    no sandbox variables (a hosted runner is disposable).
+
+    MIGRATED at CR-MDB-068 C2 RED (§S7): was "the suite step's ``env:`` is exactly the three
+    sandbox variables, each under ``${{ runner.temp }}``" (CR-MDB-067 §S3 step 5)."""
     steps = _steps_running(text, SUITE_LINE)
     if len(steps) != 1:
-        return [f"no single suite step to read the sandbox variables from; found {len(steps)}"]
+        return [f"no single suite step to read the environment from; found {len(steps)}"]
     env = steps[0]["env"]
-    if sorted(env) != sorted(SANDBOX_VARS):
-        return [f"the suite step's env is {sorted(env)!r}, not {sorted(SANDBOX_VARS)!r}"]
-    outside = sorted(var for var in SANDBOX_VARS if not _UNDER_RUNNER_TEMP.fullmatch(env[var]))
-    return [] if not outside else [f"{outside!r} are not set under ${{{{ runner.temp }}}}"]
+    return [] if not env else [f"the suite step sets {sorted(env)!r}; it sets no variable"]
 
 
 def pin_faults(text: str) -> list[str]:
@@ -288,6 +303,8 @@ _SHA = "08c6903cd8c0fde910a37f88322edcfb5dd907a8"
 
 #: A release workflow meeting every CR-MDB-070 §S1 item (``@PIN`` stands for a pinned ref).
 #: MIGRATED at CR-MDB-070 C1 RED (§S1): was a ``ci.yml`` with one ``test`` job.
+#: MIGRATED at CR-MDB-068 C2 RED (§S7): the job is ``test-python``, its suite step sets no
+#: variable, and every publish job needs ``test-python``.
 CONFORMING_CI = """\
 # The release workflow: the tests gate every publish.
 name: release
@@ -303,7 +320,7 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  test-python:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@PIN # v5.0.0
@@ -314,41 +331,37 @@ jobs:
           python-version: "3.14"
       - uses: astral-sh/setup-uv@PIN # v7.1.0
       - name: The suite
-        env:
-          MODELB_HOME: ${{ runner.temp }}/modelb-home
-          XDG_DATA_HOME: ${{ runner.temp }}/xdg-data
-          PI_CODING_AGENT_DIR: "${{ runner.temp }}/pi-agent"
         run: python -m unittest discover -s tests -t .
 
   rehearse:
-    needs: test
+    needs: test-python
     runs-on: ubuntu-latest
     steps:
       - run: echo rehearse
 
   create-release:
-    needs: [test]
+    needs: [test-python]
     runs-on: ubuntu-latest
     steps:
       - run: echo create
 
   publish-pypi:
-    needs: test
+    needs: "test-python"
     runs-on: ubuntu-latest
     steps:
       - run: echo pypi
 
   publish-npm:
     needs:
-      - test
+      - test-python
     runs-on: ubuntu-latest
     steps:
       - run: echo npm
 """.replace("@PIN", "@" + _SHA)
 
 _EXTRA_JOB = "  lint:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo lint\n"
-_REHEARSE = "  rehearse:\n    needs: test\n"
-_PUBLISH_NPM = "  publish-npm:\n    needs:\n      - test\n"
+_REHEARSE = "  rehearse:\n    needs: test-python\n"
+_PUBLISH_NPM = "  publish-npm:\n    needs:\n      - test-python\n"
 
 #: ``(label, old, new, check)``: replacing ``old`` by ``new`` in :data:`CONFORMING_CI` must make
 #: ``CHECKS[check]`` report exactly one fault.
@@ -368,16 +381,22 @@ MUTATIONS = (
     ("no workflow_dispatch", "  workflow_dispatch:\n", "", "triggers"),
     ("write permission", "  contents: read\n\njobs", "  contents: write\n\njobs", "permissions"),
     ("no workflow permissions", "permissions:\n  contents: read\n\n", "", "permissions"),
-    ("another runner", "  test:\n    runs-on: ubuntu-latest", "  test:\n    runs-on: ubuntu-22.04",
-     "job"),
-    ("the job renamed", "  test:\n", "  tests:\n", "job"),
-    ("the test job scoped", "  test:\n", "  test:\n    if: github.event_name == 'push'\n", "job"),
-    ("the test job needs another", "  test:\n", "  test:\n    needs: lint\n", "job"),
+    # MIGRATED at CR-MDB-068 C2 RED (§S7): the job is test-python; "the job renamed" renames it
+    # back to test, and a publish job needing the old test job bites.
+    ("another runner", "  test-python:\n    runs-on: ubuntu-latest",
+     "  test-python:\n    runs-on: ubuntu-22.04", "job"),
+    ("the job renamed", "  test-python:\n", "  test:\n", "job"),
+    ("the test job scoped", "  test-python:\n",
+     "  test-python:\n    if: github.event_name == 'push'\n", "job"),
+    ("the test job needs another", "  test-python:\n", "  test-python:\n    needs: lint\n", "job"),
     ("rehearse needs nothing", _REHEARSE, "  rehearse:\n", "needs"),
-    ("create-release needs another job", "    needs: [test]\n", "    needs: [lint]\n", "needs"),
-    ("publish-pypi needs a second job", "  publish-pypi:\n    needs: test\n",
-     "  publish-pypi:\n    needs: [test, lint]\n", "needs"),
-    ("publish-npm renamed", _PUBLISH_NPM, "  publish-node:\n    needs:\n      - test\n", "needs"),
+    ("create-release needs another job", "    needs: [test-python]\n", "    needs: [lint]\n",
+     "needs"),
+    ("publish-pypi needs a second job", '  publish-pypi:\n    needs: "test-python"\n',
+     "  publish-pypi:\n    needs: [test-python, lint]\n", "needs"),
+    ("rehearse needs the retired test job", _REHEARSE, "  rehearse:\n    needs: test\n", "needs"),
+    ("publish-npm renamed", _PUBLISH_NPM, "  publish-node:\n    needs:\n      - test-python\n",
+     "needs"),
     ("setup-uv before setup-python",
      "      - uses: actions/setup-python@" + _SHA + " # v6.0.0\n        with:\n"
      '          python-version: "3.14"\n      - uses: astral-sh/setup-uv@' + _SHA + " # v7.1.0\n",
@@ -400,14 +419,14 @@ MUTATIONS = (
     ("python3", "run: python -m unittest", "run: python3 -m unittest", "suite"),
     ("a working directory", "      - name: The suite\n",
      "      - name: The suite\n        working-directory: tests\n", "suite"),
-    ("a fixed path", "MODELB_HOME: ${{ runner.temp }}/modelb-home", "MODELB_HOME: /tmp/mh",
+    # MIGRATED at CR-MDB-068 C2 RED (§S7): the suite step sets no variable; each mutation
+    # re-adds an env block (was: a fixed path, a missing, an extra and a bare-runner.temp variable).
+    ("the sandbox variables re-added", "      - name: The suite\n",
+     "      - name: The suite\n        env:\n"
+     + "".join(f"          {var}: ${{{{ runner.temp }}}}/{var.lower()}\n" for var in SANDBOX_VARS),
      "sandbox"),
-    ("a missing variable", '          PI_CODING_AGENT_DIR: "${{ runner.temp }}/pi-agent"\n', "",
-     "sandbox"),
-    ("an extra variable", "        env:\n",
-     "        env:\n          HOME: ${{ runner.temp }}/home\n", "sandbox"),
-    ("a bare runner.temp", "XDG_DATA_HOME: ${{ runner.temp }}/xdg-data",
-     "XDG_DATA_HOME: ${{ runner.temp }}", "sandbox"),
+    ("one variable set", "      - name: The suite\n",
+     "      - name: The suite\n        env:\n          HOME: /tmp/home\n", "sandbox"),
     ("a tag ref", "actions/checkout@" + _SHA + " # v5.0.0", "actions/checkout@v5", "pins"),
     ("no version comment", "astral-sh/setup-uv@" + _SHA + " # v7.1.0",
      "astral-sh/setup-uv@" + _SHA, "pins"),
@@ -641,7 +660,9 @@ class CiWorkflowTest(unittest.TestCase):
     def test_the_suite_runs_directly_with_unittest_discover(self):
         self.assertEqual(suite_faults(_ci_text()), [])
 
-    def test_the_three_sandbox_variables_are_set_under_runner_temp(self):
+    # MIGRATED at CR-MDB-068 C2 RED (§S7): was
+    # test_the_three_sandbox_variables_are_set_under_runner_temp.
+    def test_the_suite_step_sets_no_sandbox_variable(self):
         self.assertEqual(sandbox_faults(_ci_text()), [])
 
     def test_every_action_is_pinned_to_a_sha_with_a_version_comment(self):

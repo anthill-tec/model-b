@@ -45,6 +45,7 @@ packages = ["modelb_axi"]
 "generator" = "modelb_axi/_assets/generator"
 "scripts" = "modelb_axi/_assets/scripts"
 "hooks-src" = "modelb_axi/_assets/hooks-src"
+"workflows-src" = "modelb_axi/_assets/workflows-src"
 
 # uv caches a local-directory build and, by default, rebuilds it only when
 # pyproject.toml/setup.py/setup.cfg change -- so `uv tool install .` after a
@@ -61,6 +62,7 @@ cache-keys = [
     { file = "generator/**" },
     { file = "scripts/**" },
     { file = "hooks-src/**" },
+    { file = "workflows-src/**" },
 ]
 
 [tool.hatch.build.targets.sdist]
@@ -73,4 +75,5 @@ only-include = [
     "generator",
     "scripts",
     "hooks-src",
+    "workflows-src",
 ]
