@@ -347,6 +347,25 @@ def _files(tree: Path) -> tuple[bytes, bytes]:
     return (tree / INIT_REL).read_bytes(), (tree / PACKAGE_JSON_REL).read_bytes()
 
 
+# CR-MDB-067 C5 RED (VERIFY F1)
+def _nested_version_first(package: str, nested: str) -> str:
+    """``package`` with an ``engines`` object, whose ``"version": "<nested>"`` sits on its own
+    line, inserted after the ``name`` line, so it precedes the top-level ``version`` line. §S1's
+    ``version`` is ``package.json``'s top-level key; a nested key on its own line must not be the
+    one checked or stamped."""
+    lines = package.splitlines(keepends=True)
+    name = next((i for i, line in enumerate(lines) if line.startswith('  "name":')), None)
+    top = next((i for i, line in enumerate(lines) if line.startswith('  "version":')), None)
+    if name is None or top is None or name > top:
+        raise AssertionError(f"{PACKAGE_JSON_REL} must hold a name line before its version line")
+    block = ['  "engines": {\n', f'    "version": "{nested}"\n', '  },\n']
+    sample = "".join(lines[:name + 1] + block + lines[name + 1:])
+    first = re.search(r'^\s*"version":\s*"([^"]*)"', sample, re.M)
+    if first is None or first.group(1) != nested:
+        raise AssertionError("the nested version line must be the first version line")
+    return sample
+
+
 def run_stamp_by_path(tree: Path, ref: str, run: str) -> tuple[int, str, str]:
     """Load the tree's copy of the script by path and run it as ``__main__`` from the tree's root
     with ``argv = [script, ref, run]``. ``(exit code, stdout, stderr)`` as the interpreter would
@@ -494,6 +513,28 @@ class StampVersionScriptTest(unittest.TestCase):
         for found in ("1.2.2", "1.2.3-dev.0"):
             init, package = _version_files("1.2.3", found)
             self._assert_refuses("hotfix/1.2.3", "7", init, package, PACKAGE_JSON_REL, found,
+                                 "1.2.3")
+
+    # CR-MDB-067 C5 RED (VERIFY F1) — §S1: the checked and stamped ``version`` is package.json's
+    # top-level key, never a nested ``"version"`` that starts a line above it.
+    def test_a_nested_version_on_its_own_line_above_the_top_level_one_is_left_unstamped(self):
+        init, package = _version_files("1.2.3", "1.2.3")
+        package = _nested_version_first(package, "9.9.9")
+        self._assert_stamps("release/1.2.3", "1.2.3", "7", init, package)
+        tree = _tree(self, init, package)
+        code, _out, err = run_stamp_cli(tree, "release/1.2.3", "7")
+        self.assertEqual(code, 0, f"§S1: the top-level version is checked; stderr={err!r}")
+        stamped = (tree / PACKAGE_JSON_REL).read_text(encoding="utf-8")
+        self.assertIn('  "engines": {\n    "version": "9.9.9"\n  },\n  "version": "1.2.3-dev.7",\n',
+                      stamped, "§S1: the nested 9.9.9 stays; the top-level version is stamped")
+        self.assertEqual(stamped.count("-dev.7"), 1, "§S1: exactly one value is stamped")
+
+    # CR-MDB-067 C5 RED (VERIFY F1) — §S1: a nested ``X.Y.Z`` never satisfies the check.
+    def test_a_nested_matching_version_does_not_satisfy_a_mismatched_top_level_one(self):
+        for found in ("1.2.2", "1.2.3-dev.0"):
+            init, package = _version_files("1.2.3", found)
+            package = _nested_version_first(package, "1.2.3")
+            self._assert_refuses("release/1.2.3", "7", init, package, PACKAGE_JSON_REL, found,
                                  "1.2.3")
 
 
