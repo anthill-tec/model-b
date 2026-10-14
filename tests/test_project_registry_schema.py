@@ -970,6 +970,8 @@ class _Shared:
             expected = set(self._reference) | {
                 ".env", ".env.local", ".gitignore", "AGENTS.md",
                 "docs/changes/.gitkeep", "docs/memory/INDEX.md", ".envrc", "crucible.toml",
+                # MIGRATED at CR-MDB-058 C3 RED (§S5): one `CHANGELOG.md`, at the root only.
+                "CHANGELOG.md",
             }
             for sub in self.SUBS:
                 expected |= {f"{sub}/.env", f"{sub}/AGENTS.md", f"{sub}/.envrc"}
