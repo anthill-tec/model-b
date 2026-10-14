@@ -127,6 +127,31 @@ adopted for 1.0.0 and split by the 13-point cap:
   Keep a Changelog section from the CRs it landed is requested from Crucible (it owns its clients);
   until it ships, the section is written from `history` and `landings`.
 
+## What Model B adopted (2026-10-14, user rulings at CR-MDB-067's gap analysis)
+
+- **A missing or empty notes section fails the rehearsal**, exactly as it fails `create-release`.
+  The release flow therefore writes the version bump and the `CHANGELOG.md` section before the
+  release branch is first pushed (`git flow release publish`); every later push re-rehearses.
+- **The version stamp is a repository script** (`.github/scripts/stamp_version.py`), tested like
+  `changelog_section.py`. It refuses a ref that is not `release/X.Y.Z` or `hotfix/X.Y.Z`, and refuses
+  when the committed `__version__` or `pi-package/package.json` version is not `X.Y.Z`, so a forgotten
+  bump fails on the first push instead of at the tag.
+- **The skill carries the CI rule in plain words.** The raw-runner guard keeps test-runner commands
+  out of `skills-src/` and `AGENTS.md`; the concrete CI workflow lives only in Model B's own
+  `.github/workflows/ci.yml`. No per-stack CI snippet.
+- **The skill's Python and npm release steps describe the CI path only:** the rehearsal is the
+  release-branch push (TestPyPI upload, `npm publish --dry-run`, the notes check) and publishing is
+  the tag's release jobs through Trusted Publishing (a one-time token for a new npm package). The
+  manual install from TestPyPI is dropped: the suite proves a built wheel installs in isolation, and
+  the upload proves the index accepts it.
+- **Release and CI workflow templates for every stack are CR-MDB-068**, in release 1.0.0 after
+  CR-MDB-067. It reverses CR-MDB-058's "no workflow file is written into a project": `init` renders a
+  CI and a release workflow per stack (PyPI, npm, crates.io, Maven Central, the Arduino Library
+  Manager), Model B renders its own from the templates, and a read-only check reports what a project
+  lacks for a release or hotfix run.
+- **Setup note:** the `testpypi` environment carries no required reviewers, or every release push
+  waits for an approval before it rehearses.
+
 ## What this means for Model B
 
 Model B runs Crucible's shape in its own `release.yml` since 2026-09-24: `create-release` →
