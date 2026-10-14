@@ -69,12 +69,16 @@ SCHEMA_WHEEL_MEMBER = "modelb_axi/project_schema.toml"
 
 #: The keys the schema declares — exactly these: §S1's eight, plus CR-MDB-045
 #: §S4's lean-ctx ``KNOWLEDGE_CATEGORY`` (MIGRATED at CR-MDB-045 C2 RED), plus
-#: CR-MDB-047 §S2's ``SANDESH_ADDRESS`` (MIGRATED at CR-MDB-047 C1 RED).
+#: CR-MDB-047 §S2's ``SANDESH_ADDRESS`` (MIGRATED at CR-MDB-047 C1 RED), plus
+#: CR-MDB-068 §S1's ``RELEASE_TARGETS`` (MIGRATED at CR-MDB-068 C1 RED (§S1)).
 SCHEMA_KEYS = frozenset({
     "PROJECT_NAME", "PROJECT_TOKEN", "PROJECT_ACRONYM", "ORCHESTRATOR_LABEL",
     "REPO_OWNER", "PROJECT_STACKS", "CRUCIBLE_PROJECT_KEY", "SANDESH_PROJECT",
-    "KNOWLEDGE_CATEGORY", "SANDESH_ADDRESS",
+    "KNOWLEDGE_CATEGORY", "SANDESH_ADDRESS", "RELEASE_TARGETS",
 })
+#: The keys the model-b skill's §4.1 list names. MIGRATED at CR-MDB-068 C1 RED (§S1): the skill
+#: text moves in C3 (§S8), which adds ``RELEASE_TARGETS`` and drops this subtraction.
+SKILL_LISTED_KEYS = SCHEMA_KEYS - {"RELEASE_TARGETS"}
 
 #: Every §S1 field; nothing else may appear in an entry (no value, no default:
 #: "it carries rules only, never a project's value"). ``when`` is CR-MDB-045
@@ -95,6 +99,8 @@ ASK_FLAGS = {
     "PROJECT_ACRONYM": "--acronym",
     "REPO_OWNER": "--owner",
     "PROJECT_STACKS": "--stacks",
+    # MIGRATED at CR-MDB-068 C1 RED (§S1): the optional ask key RELEASE_TARGETS.
+    "RELEASE_TARGETS": "--release-targets",
 }
 
 #: `init` flags that set no registry key (plan inputs, run switches, globals).
@@ -249,7 +255,9 @@ def _golden_env(label: str, *, with_stacks: bool) -> str:
         f"ORCHESTRATOR_LABEL={label}\n"
         f"REPO_OWNER={OWNER}\n"
     )
-    return text + (f"PROJECT_STACKS={STACKS}\n" if with_stacks else "")
+    # MIGRATED at CR-MDB-068 C1 RED (§S1): the root .env records RELEASE_TARGETS, empty without
+    # --release-targets, right after PROJECT_STACKS; a sub-project's never (scope root).
+    return text + (f"PROJECT_STACKS={STACKS}\nRELEASE_TARGETS=\n" if with_stacks else "")
 
 
 #: Today's `.gitignore` description of `.env.local` — the one `.gitignore` line
@@ -1525,7 +1533,7 @@ class SchemaReadersAndSkillKeyListTest(unittest.TestCase):
         section = text.split("## 4. ", 1)[1].split("\n## ", 1)[0]
         item = next(line for line in section.splitlines()
                     if line.startswith("1. **Naming registry"))
-        self.assertEqual(sorted(k for k in SCHEMA_KEYS if f"`{k}`" not in item), [],
+        self.assertEqual(sorted(k for k in SKILL_LISTED_KEYS if f"`{k}`" not in item), [],
                          "§4.1 names every key the schema declares")
 
 

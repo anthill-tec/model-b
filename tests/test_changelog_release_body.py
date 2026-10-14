@@ -515,16 +515,21 @@ def tearDownModule():
 
 
 class ChangelogSectionScriptNotShippedTest(unittest.TestCase):
-    """§S2 — a repo-only script: neither the sdist nor the wheel carries it."""
+    """§S2 — the ``.github/`` copy is in neither the sdist nor the wheel; CR-MDB-068 §S2's
+    ``workflows-src/`` copy is the only one shipped, under ``modelb_axi/_assets/`` in the wheel."""
 
-    def test_neither_the_sdist_nor_the_wheel_carries_the_script(self):
+    # MIGRATED at CR-MDB-068 C1 RED (§S2): was test_neither_the_sdist_nor_the_wheel_carries_the_
+    # script (no changelog_section.py anywhere); the workflows-src/ copy now ships as package data.
+    def test_only_the_workflows_src_copy_ships_and_never_under_github(self):
         _require_script()  # otherwise "not shipped" would hold of nothing
         sdist, wheel = publishing.artifacts()
-        offenders = [f"sdist:{rel}" for rel in publishing.sdist_members(sdist)
-                     if rel.startswith(".github/") or rel.endswith("changelog_section.py")]
-        offenders += [f"wheel:{name}" for name in publishing.wheel_names(wheel)
-                      if ".github" in name.split("/") or name.endswith("changelog_section.py")]
-        self.assertEqual(offenders, [])
+        members, names = publishing.sdist_members(sdist), publishing.wheel_names(wheel)
+        self.assertEqual([rel for rel in members if rel.startswith(".github/")], [])
+        self.assertEqual([name for name in names if ".github" in name.split("/")], [])
+        self.assertEqual(sorted(rel for rel in members if rel.endswith("changelog_section.py")),
+                         ["workflows-src/changelog_section.py"])
+        self.assertEqual(sorted(name for name in names if name.endswith("changelog_section.py")),
+                         ["modelb_axi/_assets/workflows-src/changelog_section.py"])
 
 
 # ------------------------------------------------------------------ §S2 the workflow ----

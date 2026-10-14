@@ -504,10 +504,12 @@ class ArtifactContentsTest(unittest.TestCase):
         # Pin — true at RED; guards the sdist -> wheel path losing an asset.
         force_include = (_pyproject().get("tool", {}).get("hatch", {}).get("build", {})
                          .get("targets", {}).get("wheel", {}).get("force-include", {}))
+        # MIGRATED at CR-MDB-068 C1 RED (§S2): four roots -> five; workflows-src joins them.
         self.assertEqual(
             sorted(force_include),
-            ["generator", "hooks-src", "scripts", "skills-src"],
-            "precondition: the four force-include asset roots (CR-MDB-031 \u00a7S4 dropped contracts)",
+            ["generator", "hooks-src", "scripts", "skills-src", "workflows-src"],
+            "precondition: the five force-include asset roots (CR-MDB-031 §S4 dropped "
+            "contracts; CR-MDB-068 §S2 added workflows-src)",
         )
         names = set(wheel_names(self.wheel))
         for src, dest in force_include.items():

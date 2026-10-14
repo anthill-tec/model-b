@@ -563,11 +563,14 @@ class ContractsNotPackagedTest(unittest.TestCase):
     """AC — ``pyproject.toml`` force-includes no ``contracts`` (no runtime consumer), and a built
     wheel carries no ``modelb_axi/_assets/contracts/``."""
 
-    def test_pyproject_force_include_drops_contracts_and_keeps_the_four_asset_roots(self):
+    # MIGRATED at CR-MDB-068 C1 RED (§S2): was ..._keeps_the_four_asset_roots; workflows-src is
+    # the fifth.
+    def test_pyproject_force_include_drops_contracts_and_keeps_the_five_asset_roots(self):
         force_include = (_pyproject().get("tool", {}).get("hatch", {}).get("build", {})
                          .get("targets", {}).get("wheel", {}).get("force-include", {}))
-        self.assertEqual(sorted(force_include), ["generator", "hooks-src", "scripts", "skills-src"],
-                         f"§S4: force-include must drop `contracts` and keep the four asset roots; "
+        self.assertEqual(sorted(force_include),
+                         ["generator", "hooks-src", "scripts", "skills-src", "workflows-src"],
+                         f"§S4: force-include must drop `contracts` and keep the five asset roots; "
                          f"got {force_include}")
         self.assertEqual([d for d in force_include.values() if "_assets/contracts" in d], [])
 
