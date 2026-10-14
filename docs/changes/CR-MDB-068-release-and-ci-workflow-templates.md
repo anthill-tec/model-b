@@ -1,6 +1,6 @@
 # CR-MDB-068 — Release workflow templates: `init` and a new verb render each project's `release.yml`
 
-**Status:** PENDING — spec (gap analysis and pre-review 2026-10-14).
+**Status:** COMPLETED (filed 2026-10-10; gap analysis and pre-review 2026-10-14)
 **Type:** feature (scaffold, CLI, release workflow templates, git-workflow skill)
 **Priority:** P1 — release 1.0.0, wave 2; after CR-MDB-070.
 **Depends on:** CR-MDB-070 (board-authoritative: read `queue`)
