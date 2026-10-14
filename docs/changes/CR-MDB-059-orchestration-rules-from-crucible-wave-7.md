@@ -39,6 +39,15 @@ largely match existing rules; B4, B7 and B8 conflict with current text; B9 is Cr
 9. **B12 — the gate's intent line forbids stopping servers it did not start** ("do not stop any
    server you did not start"); the enforcement inside no-mistakes is no-mistakes' own.
 
+10. **Every AXI envelope is read whole** (Crucible #1451; widens B2). No agent, orchestrators
+    included, greps, heads, tails, filters, narrows with `jq`, redirects away (`>/dev/null`,
+    `2>&1 …`) or summarises by pattern the output of an AXI call: the Crucible clients, `sandesh`,
+    `modelb-axi`, `gh-axi` and any other. The whole envelope is read every time, because its
+    `warnings[]`, `help[]` and `error` carry the guidance. A long run writes its output to a file,
+    and that file's envelope is read whole. The rule reaches the skills, the agent templates and
+    stack files, the orchestration references and the dispatch-brief procedure, and the scaffold's
+    templates.
+
 Not adopted: **B9** (restart the dev board after every `src/` commit) is Crucible-specific; gap
 analysis decides whether a generic form ("restart any service the project itself runs") is worth a
 line.
@@ -49,5 +58,8 @@ line.
   common/mainline/track, sub-agent procedure), `cr-authoring`, `gap-analysis`, `git-workflow`,
   `crucible`, the agent templates, `AGENTS.md` and the scaffolded `AGENTS.md` template, and the
   structural gates asserting the cycle-label shape and the gate order.
+- Every surface that shows an AXI call piped, filtered or redirected (item 10), and whether a gate
+  can detect the forms mechanically, as the raw-runner guard does for runner commands.
+- The size: item 10 may take the CR past 13 points; split if it does.
 - Boundary with CR-MDB-057 (0.3.0 doc-sync) and CR-MDB-054 (Sandesh lessons): shared files are
   sequenced, not edited twice in conflict.
