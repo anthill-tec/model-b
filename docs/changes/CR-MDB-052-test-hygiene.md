@@ -27,7 +27,10 @@ regression); CR-MDB-032 (suite relocation and hermeticity)
    `-m build`, an `async def`, an assignment or a shadowing import).
 6. **Analyzer findings in the test tree:** `tests/test_package_publishing.py`'s import block is unsorted
    under `ruff --isolated` (I001); `tests/test_tooling_detachment.py` carries Optional-typing faults at
-   its home-resolution lines (~820–834) and an insecure temp-file call (~189).
+   its home-resolution lines (~820–834) and an insecure temp-file call (~189). Production modules
+   carry the same kinds of finding: unsorted import blocks in `modelb_axi/agents.py`, `scaffold.py` and
+   `cli.py` (I001) and an unguarded call near `scaffold.py`'s hook-scripts check; each is fixed here or
+   named for CR-MDB-053 (tool-script and module lint).
 7. **A sweep of the suite's own health** at gap analysis: every analyzer finding in `tests/`, slow or
    network-bound tests, skip reasons, and helpers defined in more than one module, each fixed or
    recorded with a reason.
