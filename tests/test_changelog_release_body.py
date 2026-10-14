@@ -214,6 +214,39 @@ SAMPLE_EMPTY = PREAMBLE + (
     "[1.0.0]: https://example.invalid/releases/tag/1.0.0\n"
 )
 
+#: §S2's empty rule is "nothing but whitespace and ``###`` headings": a group heading is a line
+#: matching ``^###(\s|$)`` — a bare ``###`` and a ``###`` followed by spaces only are headings, so a
+#: body of them is empty; a ``#### Deep`` line is a level-4 heading, not a group heading, so it is
+#: content and its section is printed.
+SAMPLE_BARE_HEADINGS = PREAMBLE + (
+    "## [Unreleased]\n"
+    "\n"
+    "## [2.2.0] - 2026-12-30\n"
+    "\n"
+    "###\n"
+    "\n"
+    "## [2.1.0] - 2026-12-25\n"
+    "\n"
+    "###   \n"
+    "\n"
+    "### Fixed\n"
+    "\n"
+    "## [2.0.1] - 2026-12-22\n"
+    "\n"
+    "### Added\n"
+    "\n"
+    "###\n"
+    "\n"
+    "## [2.0.0] - 2026-12-20\n"
+    "\n"
+    "### Added\n"
+    "\n"
+    "#### Deep\n"
+    "\n"
+    "[Unreleased]: https://example.invalid/compare/2.2.0...HEAD\n"
+    "[2.0.0]: https://example.invalid/releases/tag/2.0.0\n"
+)
+
 #: (case, sample, tag, expected body) — the script prints the body and exits 0.
 FOUND_CASES = (
     ("a middle section", SAMPLE_WITH_LINKS, "1.0.0",
@@ -233,6 +266,8 @@ FOUND_CASES = (
      "### Fixed\n\n- The first patch."),
     ("a good section between empty ones", SAMPLE_EMPTY, "1.1.0",
      "### Changed\n\n- A real entry."),
+    ("a #### line is content, not a ### group heading", SAMPLE_BARE_HEADINGS, "2.0.0",
+     "### Added\n\n#### Deep"),
 )
 
 #: (case, sample, tag) — the script exits 1 naming the tag on stderr.
@@ -243,6 +278,10 @@ REFUSED_CASES = (
     ("an empty section", SAMPLE_EMPTY, "1.3.0"),
     ("a section holding only ### headings", SAMPLE_EMPTY, "1.2.0"),
     ("an empty last section before the compare links", SAMPLE_EMPTY, "1.0.0"),
+    ("a section holding only a bare ### line", SAMPLE_BARE_HEADINGS, "2.2.0"),
+    ("a section holding a ### line with trailing spaces only and a ### heading",
+     SAMPLE_BARE_HEADINGS, "2.1.0"),
+    ("a section holding a ### heading then a bare ### line", SAMPLE_BARE_HEADINGS, "2.0.1"),
 )
 
 
@@ -429,6 +468,15 @@ class ChangelogSectionScriptTest(unittest.TestCase):
                     code, out, err = run(changelog, tag)
                     self.assertEqual(code, 1, f"stdout={out!r} stderr={err!r}")
                     self.assertIn(tag, err)
+
+    def test_a_missing_changelog_exits_1_naming_the_path_and_the_tag_without_a_traceback(self):
+        missing = self.tmp / "absent" / "CHANGELOG.md"
+        code, out, err = run_section_script_cli(missing, "1.0.0")
+        self.assertEqual(code, 1, f"stdout={out!r} stderr={err!r}")
+        self.assertEqual(out, "", "nothing is printed for a missing changelog")
+        self.assertNotIn("Traceback", err, "a missing changelog is reported, not raised")
+        self.assertIn(str(missing), err, "stderr names the changelog path")
+        self.assertIn("1.0.0", err, "stderr names the tag")
 
     def test_a_section_body_never_carries_the_next_heading_or_a_compare_link(self):
         changelog = self._write(SAMPLE_WITH_LINKS)

@@ -18,7 +18,9 @@ Class map:
 - ``ExistingChangelogTest`` — a target already holding a ``CHANGELOG.md`` keeps it byte for byte;
   the envelope reports it in ``unmanaged`` (the field ``.envrc`` uses, CR-MDB-047 §S2), never in
   ``emitted`` or ``skipped``, with one ``unmanaged:`` warning naming it; the rest of the scaffold
-  is still written.
+  is still written. A ``CHANGELOG.md`` byte-identical to the skeleton ``init`` writes is left as
+  it is and reported nowhere — not ``unmanaged``, not ``emitted``, no warning — as an
+  ``.envrc`` already reading as ``init`` writes it is.
 
 Isolation (NON-NEGOTIABLE): every ``init`` runs in process in the sandbox of
 ``tests.test_init_tool_verdicts`` (via ``tests.test_project_setup_section``'s case). No test
@@ -156,6 +158,26 @@ class ExistingChangelogTest(_setup._Case):
                          f"one `unmanaged:` warning names it; warnings={axi.get('warnings')!r}")
         self.assertTrue((self.target / ".env").is_file(), "the rest of the scaffold is written")
         self.assertTrue((self.target / "AGENTS.md").is_file(), "the rest of the scaffold is written")
+
+    def test_a_changelog_identical_to_the_skeleton_is_left_silently_as_envrc_is(self):
+        # The skeleton is what the real init writes into a fresh target.
+        project_target = self.target
+        self.target = self.root / "skeleton-source"
+        self.init_ok()
+        skeleton = (self.target / CHANGELOG).read_bytes()
+        self.target = project_target
+        self.target.mkdir()
+        (self.target / CHANGELOG).write_bytes(skeleton)
+        axi, _err = self.init_ok()
+        self.assertEqual((self.target / CHANGELOG).read_bytes(), skeleton,
+                         "the identical CHANGELOG.md is left as it is")
+        # Mirrors write_envrc's identical case: left as it is, reported nowhere.
+        self.assertNotIn(CHANGELOG, axi.get("unmanaged", []),
+                         f"init's own skeleton is not unmanaged; axi={axi!r}")
+        self.assertNotIn(CHANGELOG, axi.get("emitted", []), "an untouched file is not emitted")
+        self.assertNotIn(CHANGELOG, axi.get("skipped", []), "an untouched file is not skipped")
+        warned = [w for w in axi.get("warnings", []) if CHANGELOG in w]
+        self.assertEqual(warned, [], "no warning names init's own skeleton")
 
 
 if __name__ == "__main__":
