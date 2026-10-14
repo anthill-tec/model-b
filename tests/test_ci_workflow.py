@@ -28,7 +28,9 @@ applied to the real file:
   sample text, both ways.
 - ``CiWorkflowChecksProofTest`` — every check passes :data:`CONFORMING_CI`, and each
   mutation in :data:`MUTATIONS` makes its check report exactly one fault.
-- ``CiWorkflowTest`` — every check applied to the real ``ci.yml``.
+- ``CiWorkflowTest`` — every check applied to the real ``release.yml``, and ``ci.yml`` asserted
+  absent. MIGRATED at CR-MDB-070 C4 RED (VERIFY F4): was "every check applied to the real
+  ``ci.yml``".
 
 CR-MDB-069 §S2 amends CR-MDB-067 §S3: the ``python -m pip install build`` step (once step 4)
 is gone, because every built-wheel check builds in isolation through ``uv build``. MIGRATED at
@@ -59,6 +61,7 @@ from tests._helpers import (
 from tests.test_release_rehearsal import (
     CONFORMING_RELEASE,
     PUBLISH_JOBS,
+    _action,
     action_pin_faults,
     job_needs,
 )
@@ -97,13 +100,10 @@ def _test_steps(text: str) -> list[dict]:
     return workflow_steps(workflow_job(text, "test"))
 
 
-def _action(step: dict) -> str | None:
-    """A ``uses:`` step's action without its ``@ref``; ``None`` for a ``run`` step."""
-    return step["uses"].split("@", 1)[0] if step["uses"] else None
-
-
+# MIGRATED at CR-MDB-070 C4 RED (VERIFY F5): ``_action`` is test_release_rehearsal's, defined once
+# (was a second ``_action(step)`` here); each caller passes the step's ``uses``.
 def _steps_using(text: str, action: str) -> list[dict]:
-    return [step for step in _test_steps(text) if _action(step) == action]
+    return [step for step in _test_steps(text) if _action(step["uses"]) == action]
 
 
 def _steps_running(text: str, line: str) -> list[dict]:
@@ -187,7 +187,7 @@ def needs_faults(text: str) -> list[str]:
 
 def step_order_faults(text: str) -> list[str]:
     """§S3 as amended by CR-MDB-069 §S2 — the four steps, in order, and nothing else."""
-    found = [_action(step) or " / ".join(ln.strip() for ln in step["run"])
+    found = [_action(step["uses"]) or " / ".join(ln.strip() for ln in step["run"])
              for step in _test_steps(text)]
     return [] if found == STEP_ORDER else [f"the steps are {found!r}, not {STEP_ORDER!r}"]
 
