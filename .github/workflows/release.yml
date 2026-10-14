@@ -1,4 +1,5 @@
-# Release workflow: publishes Model B when a release tag is pushed.
+# Release workflow: publishes Model B when a release tag is pushed,
+# and rehearses the release on every release or hotfix push.
 #
 # A git-flow release pushes an unprefixed version tag
 # (`git flow release finish X.Y.Z`, then
@@ -19,13 +20,22 @@
 #    cannot bootstrap a trusted publisher. The package ships the
 #    root CHANGELOG.md, copied into pi-package/ at publish time.
 #
-# A manual run (workflow_dispatch) rehearses the Python upload on
-# TestPyPI.
+# 4. rehearse: every release or hotfix push (`release/X.Y.Z`,
+#    `hotfix/X.Y.Z`) rehearses the release. It stamps the dev version
+#    X.Y.Z.devN (npm: X.Y.Z-dev.N, N the run number) with
+#    .github/scripts/stamp_version.py, which refuses a committed
+#    version other than X.Y.Z; checks the release's CHANGELOG.md
+#    section; uploads the build to TestPyPI; and dry-runs the npm
+#    publish under the `dev` dist-tag. A manual run
+#    (workflow_dispatch) re-runs the rehearsal on a release or hotfix
+#    ref, and fails on any other.
 #
 # One-time setup by the maintainer:
 # - repository secret RELEASE_PAT: fine-grained, owner anthill-tec,
 #   this repository only, Contents read/write;
-# - environments `pypi`, `testpypi` and `npm`;
+# - environments `pypi`, `testpypi` and `npm`; the `testpypi`
+#   environment admits the `release/**` and `hotfix/**` branches and
+#   carries no required reviewers;
 # - pending Trusted Publishers on pypi.org and test.pypi.org for this
 #   workflow;
 # - NPM_TOKEN for the first npm publish, deleted once the npm trusted
@@ -38,6 +48,7 @@ on:
   push:
     tags:
       - "[0-9]+.[0-9]+.[0-9]+"
+    branches: ["release/**", "hotfix/**"]
   release:
     types: [published]
   workflow_dispatch:
@@ -47,7 +58,7 @@ permissions:
 
 jobs:
   create-release:
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -83,21 +94,40 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
       - run: uv build
-      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
 
-  rehearse-testpypi:
-    if: github.event_name == 'workflow_dispatch'
+  rehearse:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/'))
     runs-on: ubuntu-latest
     environment: testpypi
     permissions:
+      contents: read
       id-token: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Stamp the dev version and check the release notes
+        run: |
+          version=$(python3 .github/scripts/stamp_version.py "$GITHUB_REF_NAME" "$GITHUB_RUN_NUMBER")
+          python3 .github/scripts/changelog_section.py CHANGELOG.md "$version" > /dev/null
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
       - run: uv build
-      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
         with:
           repository-url: https://test.pypi.org/legacy/
+          skip-existing: true
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+      - name: npm new enough for the dry-run publish
+        run: npm install -g npm@latest
+      - name: Ship the root CHANGELOG.md in the package
+        working-directory: pi-package
+        run: cp ../CHANGELOG.md .
+      - name: Dry-run the npm publish
+        working-directory: pi-package
+        run: npm publish --dry-run --access public --tag dev
 
   publish-npm:
     if: github.event_name == 'release'
