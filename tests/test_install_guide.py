@@ -80,6 +80,18 @@ Design (proposed at RED, approved by the orchestrator):
     release, the release event publishes, and a ``master`` run reporting no
     version tag at ``HEAD`` is recovered by dispatching the workflow on
     ``master`` (:data:`RELEASE_FLOW_PHRASES`).
+    MIGRATED at CR-MDB-070 C4 RED (VERIFY F1/F2/F3/F6): the snippet refuses
+    more than one version tag at ``HEAD``, naming them (a
+    :data:`SNIPPET_ELEMENTS` entry; its ``run:`` lines are EXECUTED by
+    ``tests.test_release_rehearsal.SkillReleaseSnippetExecutionTest``); its
+    ``actions/checkout`` line, or the comment beside it, says to pin it to a
+    full commit SHA (:func:`checkout_pin_faults`); ``## Releases`` no longer
+    says "the tag's release job" (:data:`RETIRED_RELEASE_PHRASES`), and the
+    Python and Pi publish steps say the release event's publish job publishes
+    after the tests and the ref guard (:func:`publish_job_faults`); the push
+    paragraph says a red ``master`` or release run publishes nothing, to
+    re-run the failed jobs, and that a real failure is fixed on a hotfix
+    branch (:data:`RED_RUN_RECOVERY_PHRASES`).
 
 Orchestrator rulings (2026-09-24, on the RED design):
 
@@ -249,6 +261,38 @@ SNIPPET_ELEMENTS = (
      (r"^\s*needs:\s*\[?\s*test\b|\bneeds the test job\b",)),
     ("does not run on the master push",
      (r"refs/heads/master\b|\bmaster push\b|\bpush(?:es)? to master\b",)),
+    # MIGRATED at CR-MDB-070 C4 RED (VERIFY F1): the snippet counts the tags at HEAD and refuses
+    # more than one, naming them (was: two tags made ``tag`` multi-line and the step failed with
+    # a misleading "no CHANGELOG.md section for 1.0.0\n1.0.1").
+    ("does not refuse more than one version tag at HEAD",
+     (r"\bmore than one version tag\b",)),
+)
+#: CR-MDB-070 C4 RED (VERIFY F2) — the snippet's ``uses: actions/checkout@…`` line, or a comment
+#: line directly above or below it, says to pin the action to a full commit SHA: both regexes match
+#: that line and its adjacent comment lines, lower-cased.
+CHECKOUT_USES_RE = re.compile(r"^\s*(?:-\s+)?uses:\s*actions/checkout@")
+CHECKOUT_PIN_TERMS = (r"\bpin", r"\bsha\b")
+CHECKOUT_PIN_FAULT = "the snippet's checkout does not say to pin it to a full commit SHA"
+#: CR-MDB-070 C4 RED (VERIFY F6) — recovery from a red or flaky run, in the push paragraph (the
+#: unit holding ``git push origin master develop --tags``): when the ``master`` run or the release
+#: run fails its tests, nothing publishes; re-run the failed jobs, and a real failure is fixed on a
+#: hotfix branch. Matched as :data:`RELEASE_STEP_PHRASES` (one normalised unit).
+RED_RUN_RECOVERY = "red run recovery"
+RED_RUN_RECOVERY_PHRASES = (
+    (RED_RUN_RECOVERY, "the push paragraph says a red master or release run publishes nothing: "
+     "re-run the failed jobs, fix a real failure on a hotfix branch",
+     (r"\bgit push origin master develop --tags\b", r"\bnothing publishes\b",
+      r"\bre-run the failed jobs\b", r"(?<![\w-])hotfix(?![\w-])")),
+)
+#: CR-MDB-070 C4 RED (VERIFY F3) — the Python and Pi publish steps: the unit holding the step's
+#: anchor (``no token anywhere``, ``npm publish``) says the release event's publish job publishes,
+#: after the tests and the ref guard, and keeps the step's existing terms. Each
+#: ``(label, anchor, terms)``; substrings of the normalised unit.
+PUBLISH_JOB_TERMS = ("release event", "ref guard", "after the tests")
+PUBLISH_JOB_STEPS = (
+    ("pypi upload", "no token anywhere",
+     ("trusted publishing", "git flow release finish", *PUBLISH_JOB_TERMS)),
+    ("npm publish", "npm publish", ("trusted publishing", *PUBLISH_JOB_TERMS)),
 )
 #: CR-MDB-070 §S6 — the tag never comes from the pushed ref: neither ``github.ref_name`` nor
 #: ``GITHUB_REF_NAME`` anywhere in ``## Releases`` (lower-cased).
@@ -425,9 +469,12 @@ SUBSECTION_FORBIDDEN_ANCHORS = (
 )
 #: §S6's C3 gate content — none of these anywhere in ``## Releases`` (normalised: backticks
 #: and ``*`` dropped, whitespace collapsed, lower-cased).
+# MIGRATED at CR-MDB-070 C4 RED (VERIFY F3): "the tag's release job" is retired — the release
+# event's publish job publishes (was: the seven phrases before it).
 RETIRED_RELEASE_PHRASES = (
     "isolated tool directory", "uv_tool_dir", "test.pypi.org/simple", "token the user supplies",
     "user-supplied token", "credentials the user supplies", "user-supplied credentials",
+    "the tag's release job",
 )
 
 # (G) — where the installer comes from (VERIFY cycle 100 findings 2/6), and
@@ -963,16 +1010,17 @@ def check_release_steps(text: str) -> list[str]:
     out = [f"## Releases: {group}: {label}" for group, label, regexes in RELEASE_STEP_PHRASES
            if not any(all(re.search(rx, u) for rx in regexes) for u in found)]
     blocks = _fenced_blocks(sec)
-    snippets = [block for block in blocks
-                if all(term in block.lower() for term in SNIPPET_TERMS)]
-    if not snippets:
+    snippet = release_job_snippet(text)
+    if snippet is None:
         out.append(f"## Releases: {RELEASE_JOB_SNIPPET}: no fenced create-release step passing "
                    "the CHANGELOG.md section as --notes-file")
     else:
         # MIGRATED at CR-MDB-070 C2 RED (§S6): the snippet also carries SNIPPET_ELEMENTS.
         out += [f"## Releases: {RELEASE_JOB_SNIPPET}: the snippet {fault}"
                 for fault, regexes in SNIPPET_ELEMENTS
-                if not all(re.search(rx, snippets[0].lower(), re.M) for rx in regexes)]
+                if not all(re.search(rx, snippet.lower(), re.M) for rx in regexes)]
+        # CR-MDB-070 C4 RED (VERIFY F2): the checkout says to pin it to a full commit SHA.
+        out += checkout_pin_faults(snippet)
     if REF_NAME_RE.search(sec.lower()):
         out.append(f"## Releases: {RELEASE_JOB_SNIPPET}: names github.ref_name")
     if any("--generate-notes" in block for block in blocks):
@@ -983,6 +1031,57 @@ def check_release_steps(text: str) -> list[str]:
                    "into the release notes")
     out += _publish_and_rehearsal_faults(sec, found)
     out += _missing_steps(RELEASE_FLOW_PHRASES, found)
+    # CR-MDB-070 C4 RED (VERIFY F6): recovery from a red or flaky run.
+    out += _missing_steps(RED_RUN_RECOVERY_PHRASES, found)
+    return out
+
+
+def release_job_snippet(text: str) -> str | None:
+    """The release-job snippet: the first fenced block of ``## Releases`` holding every
+    :data:`SNIPPET_TERMS` (lower-cased); ``None`` when there is none (CR-MDB-070 C4 RED)."""
+    sec = next((body for head, body in sections(text).items()
+                if head.startswith("Releases")), "")
+    return next((block for block in _fenced_blocks(sec)
+                 if all(term in block.lower() for term in SNIPPET_TERMS)), None)
+
+
+def checkout_pin_faults(snippet: str) -> list[str]:
+    """CR-MDB-070 C4 RED (VERIFY F2): ``[]`` when a ``uses: actions/checkout@…`` line of
+    ``snippet``, with the comment lines directly above and below it, matches every
+    :data:`CHECKOUT_PIN_TERMS` regex; otherwise the one :data:`CHECKOUT_PIN_FAULT`."""
+    lines = snippet.splitlines()
+    for i, line in enumerate(lines):
+        if not CHECKOUT_USES_RE.match(line):
+            continue
+        beside = [line]
+        for step in (-1, 1):
+            j = i + step
+            while 0 <= j < len(lines) and lines[j].strip().startswith("#"):
+                beside.append(lines[j])
+                j += step
+        if all(re.search(rx, " ".join(beside).lower()) for rx in CHECKOUT_PIN_TERMS):
+            return []
+    return [f"## Releases: {RELEASE_JOB_SNIPPET}: {CHECKOUT_PIN_FAULT}"]
+
+
+def publish_job_faults(text: str) -> list[str]:
+    """CR-MDB-070 C4 RED (VERIFY F3): for each step of :data:`PUBLISH_JOB_STEPS`, one fault per
+    term no unit of ``## Releases`` holding the step's anchor carries — ``## Releases: <label>:
+    the step holding <anchor> does not say <term>`` — or ``## Releases: <label>: no unit holds
+    <anchor>`` when none holds it."""
+    sec = next((body for head, body in sections(text).items()
+                if head.startswith("Releases")), "")
+    if not sec:
+        return ["no '## Releases' section"]
+    units = norm_units(sec)
+    out = []
+    for label, anchor, terms in PUBLISH_JOB_STEPS:
+        holding = [unit for unit in units if anchor in unit]
+        if not holding:
+            out.append(f"## Releases: {label}: no unit holds {anchor!r}")
+            continue
+        out += [f"## Releases: {label}: the step holding {anchor!r} does not say {term!r}"
+                for term in terms if not any(term in unit for unit in holding)]
     return out
 
 
@@ -1363,6 +1462,8 @@ CONFORMING_RELEASES_BODY = (
     "Then push `master`, `develop` and the tags in one `git push origin master develop --tags`:\n"
     "the `master` push runs the tests and creates the release, and the release event publishes.\n"
     "If the `master` run reports no version tag at `HEAD`, dispatch the workflow on `master`.\n"
+    "When the `master` run or the release run fails its tests, nothing publishes: re-run the failed\n"
+    "jobs, and fix a real failure on a hotfix branch.\n"
     "\n"
     "### Release notes (`CHANGELOG.md`)\n"
     "\n"
@@ -1382,13 +1483,15 @@ CONFORMING_RELEASES_BODY = (
     "  needs: test\n"
     "  if: github.ref == 'refs/heads/master'\n"
     "  steps:\n"
-    "    - uses: actions/checkout@v4\n"
+    "    - uses: actions/checkout@v4 # pin to a full commit SHA\n"
     "      with:\n"
     "        fetch-depth: 0\n"
     "    - name: Create the release\n"
     "      run: |\n"
     "        tag=$(git tag --points-at HEAD | grep -E '^[0-9]+\\.[0-9]+\\.[0-9]+$' || true)\n"
     "        [ -n \"$tag\" ] || { echo \"no version tag at HEAD, nothing to release\"; exit 0; }\n"
+    "        [ \"$(printf '%s\\n' \"$tag\" | wc -l)\" -eq 1 ] || { echo \"more than one version tag "
+    "at HEAD: $tag\" >&2; exit 1; }\n"
     "        # the tag's section, matched literally: 1.0.1 never matches 1.0.10\n"
     "        # fails when the section is missing\n"
     "        # fails when the section is empty\n"
@@ -1717,6 +1820,29 @@ class ReleaseDocsTest(unittest.TestCase):
     # CR-MDB-070 §S6 — the one-push release flow and its recovery by dispatch on master.
     def test_git_workflow_releases_pushes_once_releases_from_master_and_recovers_by_dispatch(self):
         self.assertEqual(release_step_faults(_read(GIT_WORKFLOW_SKILL), RELEASE_FLOW), [])
+
+    # CR-MDB-070 C4 RED (VERIFY F1/F2/F3/F6) — the texts of the release job, the publish steps and the
+    # recovery from a red run, one test per finding.
+    def test_git_workflow_releases_snippet_refuses_more_than_one_version_tag_at_head(self):
+        fault = (f"## Releases: {RELEASE_JOB_SNIPPET}: the snippet does not refuse more than one "
+                 "version tag at HEAD")
+        self.assertNotIn(fault, check_release_steps(_read(GIT_WORKFLOW_SKILL)))
+
+    def test_git_workflow_releases_snippet_checkout_says_to_pin_it_to_a_full_commit_sha(self):
+        snippet = release_job_snippet(_read(GIT_WORKFLOW_SKILL))
+        self.assertIsNotNone(snippet, "## Releases carries the release-job snippet")
+        self.assertEqual(checkout_pin_faults(snippet or ""), [])
+
+    def test_git_workflow_releases_never_says_the_tags_release_job(self):
+        self.assertNotIn(f"## Releases: {RETIRED_PHRASES}: names \"the tag's release job\"",
+                         check_release_steps(_read(GIT_WORKFLOW_SKILL)))
+
+    def test_git_workflow_releases_publish_steps_publish_on_the_release_event_after_tests_and_guard(
+            self):
+        self.assertEqual(publish_job_faults(_read(GIT_WORKFLOW_SKILL)), [])
+
+    def test_git_workflow_releases_push_paragraph_says_a_red_run_publishes_nothing_and_recovers(self):
+        self.assertEqual(release_step_faults(_read(GIT_WORKFLOW_SKILL), RED_RUN_RECOVERY), [])
 
     def test_pi_package_cr_s1_names_guide_marked_regions_as_readme_source(self):
         self.assertEqual(check_cr029_s1(_read(CR_029)), [])
@@ -2598,6 +2724,8 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
             ("exit 0; }", "exit 1; }"),
             ("  needs: test\n", ""),
             ("  if: github.ref == 'refs/heads/master'\n", ""),
+            # MIGRATED at CR-MDB-070 C4 RED (VERIFY F1): the sixth element, the count of tags.
+            ("more than one version tag", "two version tags"),
         ]
         self.assertEqual(len(edits), len(SNIPPET_ELEMENTS), "one case per element")
         for fault, (old, new) in zip(faults, edits, strict=True):
@@ -2724,10 +2852,11 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
                          "an anchor outside ## Releases is not the subsection's")
 
     def test_retired_release_phrases_gate_both_ways(self):
+        # MIGRATED at CR-MDB-070 C4 RED (VERIFY F3): "the tag's release job" joins the tuple.
         self.assertEqual(RETIRED_RELEASE_PHRASES, (
             "isolated tool directory", "uv_tool_dir", "test.pypi.org/simple",
             "token the user supplies", "user-supplied token", "credentials the user supplies",
-            "user-supplied credentials"))
+            "user-supplied credentials", "the tag's release job"))
         good = CONFORMING_RELEASES
         self.assertEqual(release_step_faults(good, RETIRED_PHRASES), [])
         for phrase in RETIRED_RELEASE_PHRASES:
@@ -2749,6 +2878,140 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
         self.assertEqual(check_release_steps(good + "\nInstall into an isolated tool directory with a "
                                                     "token the user supplies.\n"), [],
                          "a phrase outside ## Releases is not gated")
+
+    # CR-MDB-070 C4 RED (VERIFY F1/F2/F3/F6) — their gates proved both ways on sample text.
+
+    SNIPPET_COUNT_LINE = ("        [ \"$(printf '%s\\n' \"$tag\" | wc -l)\" -eq 1 ] || { echo \"more than "
+                          "one version tag at HEAD: $tag\" >&2; exit 1; }\n")
+
+    def test_snippet_more_than_one_version_tag_gate_both_ways(self):
+        fault = (f"## Releases: {RELEASE_JOB_SNIPPET}: the snippet does not refuse more than one "
+                 "version tag at HEAD")
+        good = CONFORMING_RELEASES
+        self.assertEqual(good.count(self.SNIPPET_COUNT_LINE), 1)
+        self.assertEqual(check_release_steps(good), [])
+        dropped = good.replace(self.SNIPPET_COUNT_LINE, "")
+        self.assertEqual(check_release_steps(dropped), [fault])
+        in_prose = dropped.replace("\n## Next\n",
+                                   "\nThe job refuses more than one version tag.\n\n## Next\n")
+        self.assertEqual(check_release_steps(in_prose), [fault],
+                         "the refusal counts only inside the snippet's own block")
+
+    def test_snippet_checkout_pin_gate_both_ways(self):
+        fault = f"## Releases: {RELEASE_JOB_SNIPPET}: {CHECKOUT_PIN_FAULT}"
+        good = CONFORMING_RELEASES
+        line = "    - uses: actions/checkout@v4 # pin to a full commit SHA\n"
+        self.assertEqual(good.count(line), 1)
+        self.assertEqual(checkout_pin_faults(release_job_snippet(good) or ""), [])
+        bare = "    - uses: actions/checkout@v4\n"
+        passing = {
+            "the comment line above": bare.replace("    - uses", "    # pin to a full commit SHA\n    - uses"),
+            "two comment lines above": ("    # pin this action to a full\n    # commit SHA\n" + bare),
+            "the comment line below": bare + "      # pinned to a full commit sha\n",
+        }
+        for label, new in passing.items():
+            with self.subTest(passes=label):
+                self.assertEqual(check_release_steps(good.replace(line, new)), [])
+        failing = {
+            "no comment": bare,
+            "pin without sha": "    - uses: actions/checkout@v4 # pin it\n",
+            "sha without pin": "    - uses: actions/checkout@v4 # a full commit SHA\n",
+            "a comment not beside it": ("    # pin to a full commit SHA\n    - name: Check out\n"
+                                        "      uses: actions/checkout@v4\n"),
+        }
+        for label, new in failing.items():
+            with self.subTest(fails=label):
+                self.assertEqual(check_release_steps(good.replace(line, new)), [fault])
+        other = good.replace(line, bare).replace(
+            "    - name: Create the release\n",
+            "    - uses: astral-sh/setup-uv@v6 # pin to a full commit SHA\n"
+            "    - name: Create the release\n")
+        self.assertEqual(check_release_steps(other), [fault],
+                         "the pin comment of another action is not the checkout's")
+        self.assertEqual(checkout_pin_faults("steps:\n  - run: true\n"), [fault],
+                         "a snippet with no checkout line is a fault")
+        prose = good.replace(line, bare).replace(
+            "\n## Next\n", "\nPin the checkout to a full commit SHA.\n\n## Next\n")
+        self.assertEqual(check_release_steps(prose), [fault],
+                         "prose outside the snippet's block is not the comment beside it")
+
+    PUBLISH_JOB_SAMPLE = (
+        "## Releases (NON-NEGOTIABLE)\n\n"
+        "### Python package releases\n\n"
+        "3. **Publish to PyPI** — after `git flow release finish`, the release event's publish job\n"
+        "   builds and uploads to PyPI through Trusted Publishing after the tests and the ref guard,\n"
+        "   with no token anywhere.\n\n"
+        "### Pi package releases\n\n"
+        "1. **Publish** — on the release event, the publish job runs `npm publish --access public`\n"
+        "   through Trusted Publishing, after the tests, behind the ref guard.\n\n"
+        "## Next\n\nrelease event, ref guard, after the tests, trusted publishing\n")
+
+    def test_publish_job_gate_both_ways(self):
+        good = self.PUBLISH_JOB_SAMPLE
+        self.assertEqual(publish_job_faults(good), [])
+        self.assertEqual(publish_job_faults(good.replace("through Trusted Publishing after",
+                                                         "through Trusted\n   Publishing after")),
+                         [], "a term wrapped across lines counts")
+
+        def missing(label, anchor, term):
+            return f"## Releases: {label}: the step holding {anchor!r} does not say {term!r}"
+
+        py, pi = ("pypi upload", "no token anywhere"), ("npm publish", "npm publish")
+        cases = {
+            missing(*py, "release event"): ("the release event's publish job\n", "the publish job\n"),
+            missing(*py, "ref guard"): (" and the ref guard,\n", ",\n"),
+            missing(*py, "after the tests"): ("Publishing after the tests and the ref guard",
+                                             "Publishing behind the ref guard"),
+            missing(*py, "trusted publishing"): ("PyPI through Trusted Publishing",
+                                                "PyPI with a stored token"),
+            missing(*py, "git flow release finish"): ("after `git flow release finish`, ", ""),
+            missing(*pi, "release event"): ("on the release event, the publish job",
+                                           "the publish job"),
+            missing(*pi, "ref guard"): (", behind the ref guard.\n", ".\n"),
+            missing(*pi, "after the tests"): (", after the tests, behind", ", behind"),
+            missing(*pi, "trusted publishing"): ("   through Trusted Publishing, after",
+                                                "   with the stored token, after"),
+        }
+        for fault, (old, new) in cases.items():
+            with self.subTest(fault=fault):
+                self.assertEqual(good.count(old), 1, old)
+                self.assertEqual(publish_job_faults(good.replace(old, new)), [fault])
+        split = good.replace(" after the tests and the ref guard,\n   with no token anywhere.\n",
+                             ",\n   with no token anywhere.\n\nIt runs after the tests and the ref guard.\n")
+        self.assertNotEqual(split, good)
+        self.assertEqual(publish_job_faults(split), [missing(*py, "ref guard"),
+                                                     missing(*py, "after the tests")],
+                         "a term in another unit than the step's does not count")
+        self.assertEqual(publish_job_faults(good.replace(",\n   with no token anywhere.", ".")),
+                         ["## Releases: pypi upload: no unit holds 'no token anywhere'"])
+        self.assertEqual(publish_job_faults("## Other\n\nnpm publish\n"),
+                         ["no '## Releases' section"])
+
+    def test_red_run_recovery_gate_both_ways(self):
+        good = CONFORMING_RELEASES
+        fault = [f"## Releases: {RED_RUN_RECOVERY}: {label}"
+                 for _, label, _ in RED_RUN_RECOVERY_PHRASES]
+        self.assertEqual(len(fault), 1)
+        self.assertEqual(release_step_faults(good, RED_RUN_RECOVERY), [])
+        cases = {
+            "nothing publishes unsaid": ("nothing publishes: ", "the run stops: "),
+            "no re-run of the failed jobs": ("re-run the failed\njobs, and ", "push again, and "),
+            "a whole re-run is not the failed jobs": ("re-run the failed\njobs, and ",
+                                                      "re-run the workflow, and "),
+            "no hotfix": ("on a hotfix branch.", "on a new branch."),
+            "not the push paragraph": ("on `master`.\nWhen the `master` run",
+                                       "on `master`.\n\nWhen the `master` run"),
+        }
+        for label, (old, new) in cases.items():
+            with self.subTest(case=label):
+                self.assertEqual(good.count(old), 1, old)
+                self.assertEqual(check_release_steps(good.replace(old, new)), fault)
+        sentence = ("When the `master` run or the release run fails its tests, nothing publishes: "
+                    "re-run the failed\njobs, and fix a real failure on a hotfix branch.\n")
+        self.assertIn(sentence, good)
+        outside = good.replace(sentence, "").replace("\n## Next\n", "\n## Next\n\n" + sentence)
+        self.assertEqual(release_step_faults(outside, RED_RUN_RECOVERY), fault,
+                         "the recovery counts only inside ## Releases")
 
 
 # ---------------------------------------------------------------------------

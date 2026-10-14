@@ -35,7 +35,17 @@ Class map:
   §S3: release and hotfix refs only), ``needs: test``, runner, environment, permissions, no
   ``defaults.run``, no ``shell:``, and its steps in order.
 - ``ReleaseWorkflowPinsAndHeaderTest`` — §S2: every action pinned to a SHA with a version
-  comment; the header comment (CR-MDB-070 §S5's phrases).
+  comment; the header comment (CR-MDB-070 §S5's phrases). CR-MDB-070 C4 RED (VERIFY F6): one
+  header unit says a red ``master`` or release run publishes nothing, to re-run the failed jobs,
+  and that a real failure is fixed on a hotfix branch (:func:`header_red_run_faults`).
+- ``HeaderRedRunCheckerProofTest`` — CR-MDB-070 C4 RED (VERIFY F6): :func:`header_red_run_faults`
+  proved both ways on sample text.
+- ``SkillReleaseSnippetExecutionTest`` — CR-MDB-070 C4 RED (VERIFY F1): the git-workflow skill's
+  release-job snippet's release step EXECUTED under ``bash -e`` in a temp git repository with a
+  ``gh`` shim first on ``PATH``: two version tags at ``HEAD`` fail naming both, one with its
+  section reaches ``gh release create``, none exits 0 with nothing to release; its
+  ``SkillReleaseSnippetConformingSampleProofTest`` runs it on :data:`CONFORMING_SKILL_SNIPPET`
+  and ``SkillReleaseSnippetBiteProofTest`` shows it bites without the count.
 - ``RehearseStampStepExecutionTest`` — §S2: step 2's command lines EXECUTED under ``bash -e`` in a
   temp tree with ``GITHUB_REF_NAME`` and ``GITHUB_RUN_NUMBER`` set.
 - ``CreateReleaseTagStepExecutionTest`` — CR-MDB-070 §S2: the ``id: tag`` step EXECUTED under
@@ -70,6 +80,8 @@ from tests._helpers import (
     workflow_push_triggers,
     workflow_steps,
 )
+from tests.test_board_holds_the_queue import norm_units
+from tests.test_install_guide import GIT_WORKFLOW_SKILL, release_job_snippet
 from tests.test_pi_package import npm_semver
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -817,6 +829,13 @@ HEADER_PHRASES = (
 )
 #: CR-MDB-070 §S5 — what the header no longer says: the tag push and the second workflow are gone.
 HEADER_RETIRED = ("when a release tag is pushed", "ci.yml")
+#: CR-MDB-070 C4 RED (VERIFY F6) — recovery from a red or flaky run: when the ``master`` run or the
+#: release run fails its tests, nothing publishes; re-run the failed jobs, and a real failure is
+#: fixed on a hotfix branch. Every regex matches ONE unit of :func:`header_units`.
+HEADER_RED_RUN_RECOVERY = (r"\bnothing publishes\b", r"\bre-run the failed jobs\b",
+                           r"(?<![\w-])hotfix(?![\w-])")
+HEADER_RED_RUN_FAULT = ("the header does not say, in one unit, that a red run publishes nothing: "
+                        "re-run the failed jobs, fix a real failure on a hotfix branch")
 
 
 def _release_text() -> str:
@@ -833,6 +852,27 @@ def _header(text: str) -> str:
             break
         words.append(line[1:].strip())
     return " ".join(" ".join(words).split()).lower()
+
+
+def header_units(text: str) -> list[str]:
+    """The leading comment block with its ``#`` markers dropped, split into normalised units as
+    ``tests.test_board_holds_the_queue.norm_units`` splits Markdown: one per paragraph and one per
+    bullet (with its continuation lines) — CR-MDB-070 C4 RED (VERIFY F6)."""
+    body = []
+    for line in text.splitlines():
+        if line.strip() and not line.startswith("#"):
+            break
+        body.append(line[2:] if line.startswith("# ") else line[1:])
+    return norm_units("\n".join(body))
+
+
+def header_red_run_faults(text: str) -> list[str]:
+    """``[HEADER_RED_RUN_FAULT]`` unless one header unit matches every
+    :data:`HEADER_RED_RUN_RECOVERY` regex; ``[]`` when one does (CR-MDB-070 C4 RED, VERIFY F6)."""
+    if any(all(re.search(rx, unit) for rx in HEADER_RED_RUN_RECOVERY)
+           for unit in header_units(text)):
+        return []
+    return [HEADER_RED_RUN_FAULT]
 
 
 def normalised_if(value: str | None) -> str:
@@ -904,6 +944,10 @@ CONFORMING_RELEASE = r"""# Release workflow: the one workflow of this repository
 #
 # Recovery: when the master run finds no version tag at HEAD, dispatch
 # the workflow on master.
+#
+# A red run: when the master run or the release run fails its tests,
+# nothing publishes. Re-run the failed jobs; a real failure is fixed on
+# a hotfix branch.
 #
 # One-time setup by the maintainer:
 # - repository secret RELEASE_PAT;
@@ -1349,6 +1393,10 @@ class ReleaseWorkflowPinsAndHeaderTest(_ReleaseSource, unittest.TestCase):
         header = _header(self.release_text())
         self.assertEqual([phrase for phrase in HEADER_RETIRED if phrase in header], [])
 
+    # CR-MDB-070 C4 RED (VERIFY F6) — recovery from a red or flaky run.
+    def test_the_header_says_a_red_run_publishes_nothing_re_run_the_failed_jobs_or_hotfix(self):
+        self.assertEqual(header_red_run_faults(self.release_text()), [])
+
     def test_the_setup_list_says_testpypi_admits_release_and_hotfix_with_no_reviewers(self):
         header = _header(self.release_text())
         self.assertIn("one-time setup", header)
@@ -1730,6 +1778,222 @@ class CreateReleaseVersionCheckConformingSampleProofTest(CreateReleaseVersionChe
 
 class PublishGuardConformingSampleProofTest(PublishGuardExecutionTest):
     SOURCE = CONFORMING_RELEASE
+
+
+# ---------------------------------------------- CR-MDB-070 C4 RED (VERIFY F1) — the skill snippet ----
+
+#: VERIFY F1 — a CHANGELOG.md with sections for both 1.0.0 and 1.0.1, so a refusal of two tags at HEAD is the count's,
+#: never a missing section's.
+CHANGELOG_TWO_TAGS = CHANGELOG_PREAMBLE + (
+    "## [1.0.1] - 2026-10-14\n\n### Fixed\n\n- The second tag's notes.\n\n"
+    "## [1.0.0] - 2026-10-13\n\n### Added\n\n- The first tag's notes.\n"
+)
+#: A ``gh`` stand-in first on ``PATH``: it records each call's arguments, one line each, in
+#: ``$GH_SHIM_LOG``; ``release view`` exits 1 (no such release yet), every other call exits 0.
+GH_SHIM = ('#!/bin/sh\n'
+           'printf \'%s\\n\' "$*" >> "$GH_SHIM_LOG"\n'
+           '[ "$1 $2" != "release view" ]\n')
+#: VERIFY F1 — a skill ``## Releases`` whose release-job snippet meets the finding: it counts the
+#: version tags at HEAD and refuses more than one, naming them.
+CONFORMING_SKILL_SNIPPET = r"""## Releases (NON-NEGOTIABLE)
+
+```yaml
+create-release:
+  needs: test
+  if: github.ref == 'refs/heads/master'
+  runs-on: ubuntu-latest
+  steps:
+    - uses: actions/checkout@v4 # pin to a full commit SHA
+      with:
+        fetch-depth: 0
+    - name: Create the release
+      env:
+        GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+      run: |
+        tags=$(git tag --points-at HEAD | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' || true)
+        [ -n "$tags" ] || { echo "no version tag at HEAD, nothing to release"; exit 0; }
+        [ "$(printf '%s\n' "$tags" | wc -l)" -eq 1 ] || { echo "more than one version tag at HEAD:" $tags >&2; exit 1; }
+        tag=$tags
+        awk -v head="## [$tag] - " '
+          index($0, head) == 1 { found = 1; next }
+          found && (/^## / || /^\[[^]]+\]: /) { exit }
+          found { print }
+          END { if (!found) exit 1 }
+        ' CHANGELOG.md > release-notes.md || { echo "no CHANGELOG.md section for $tag" >&2; exit 1; }
+        grep -Eqv -e '^###([[:space:]]|$)' -e '^[[:space:]]*$' release-notes.md || { echo "empty section for $tag" >&2; exit 1; }
+        gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --notes-file release-notes.md --verify-tag
+```
+
+## Next
+"""
+#: The line of :data:`CONFORMING_SKILL_SNIPPET` that counts the tags (the bite proof drops it).
+SNIPPET_COUNT_LINE = ('[ "$(printf \'%s\\n\' "$tags" | wc -l)" -eq 1 ] || { echo "more than one '
+                      'version tag at HEAD:" $tags >&2; exit 1; }')
+
+
+def run_skill_snippet(test: unittest.TestCase, lines: list[str], head_tags: tuple,
+                      changelog: str) -> tuple[subprocess.CompletedProcess, list[str], Path]:
+    """Run the skill snippet's ``lines`` under ``bash -e`` in a temp repository on ``master``: an
+    earlier commit tagged ``0.9.0``, ``HEAD`` carrying ``head_tags`` (annotated, as git flow
+    tags), ``changelog`` as ``CHANGELOG.md``, and :data:`GH_SHIM` first on ``PATH`` so nothing
+    calls GitHub. ``(the run, the gh calls in order, the repository)`` (VERIFY F1)."""
+    work, env = _workdir(test, "skill-release-snippet-")
+    repo = work / "repo"
+    _git(work, env, "init", "-q", "-b", "master", str(repo))
+    _git(repo, env, "commit", "-q", "--allow-empty", "-m", "earlier")
+    _git(repo, env, "tag", "-a", "0.9.0", "-m", "0.9.0")
+    _git(repo, env, "commit", "-q", "--allow-empty", "-m", "head")
+    for tag in head_tags:
+        _git(repo, env, "tag", "-a", tag, "-m", tag)
+    (repo / "CHANGELOG.md").write_text(changelog, encoding="utf-8")
+    shim_dir = work / "bin"
+    shim_dir.mkdir()
+    (shim_dir / "gh").write_text(GH_SHIM, encoding="utf-8")
+    (shim_dir / "gh").chmod(0o755)
+    log = work / "gh-calls"
+    result = bash_e(lines, repo, dict(env, PATH=f"{shim_dir}{os.pathsep}{env.get('PATH', os.defpath)}",
+                                      GH_SHIM_LOG=str(log)))
+    calls = log.read_text(encoding="utf-8").splitlines() if log.exists() else []
+    return result, calls, repo
+
+
+class SkillReleaseSnippetExecutionTest(unittest.TestCase):
+    """CR-MDB-070 C4 RED (VERIFY F1) — the git-workflow skill's release-job snippet (``## Releases``,
+    the fenced ``create-release`` block): its release step's ``run:`` lines EXECUTED under
+    ``bash -e`` with a ``gh`` shim. Two version tags at ``HEAD`` fail naming both, before any
+    ``gh`` call; one tag with its section reaches ``gh release create``; none exits 0 with nothing
+    to release."""
+
+    SKILL: str | None = None
+
+    def _lines(self) -> list[str]:
+        text = self.SKILL if self.SKILL is not None else GIT_WORKFLOW_SKILL.read_text(encoding="utf-8")
+        snippet = release_job_snippet(text)
+        self.assertIsNotNone(snippet, "## Releases carries the release-job snippet")
+        steps = workflow_steps((snippet or "").splitlines())
+        hits = [step for step in steps if any("gh release create" in line for line in step["run"])]
+        self.assertEqual(len(hits), 1, f"one snippet step creates the release; found {len(hits)}")
+        return hits[0]["run"]
+
+    def test_two_version_tags_at_head_fail_naming_both_before_any_gh_call(self):
+        result, calls, _repo = run_skill_snippet(self, self._lines(), ("1.0.0", "1.0.1"),
+                                                 CHANGELOG_TWO_TAGS)
+        output = result.stdout + result.stderr
+        self.assertNotEqual(result.returncode, 0, f"two tags fail the step; output={output!r}")
+        self.assertIn("more than one version tag", output, f"output={output!r}")
+        self.assertIn("1.0.0", output)
+        self.assertIn("1.0.1", output)
+        self.assertNotIn("no CHANGELOG.md section", output, "not the misleading missing-section error")
+        self.assertEqual(calls, [], "nothing reaches gh")
+
+    def test_one_version_tag_with_its_section_reaches_gh_release_create_with_the_notes(self):
+        for head_tags in (("1.2.3",), ("v1.2.3", "1.2.3", "1.2.3-rc.1")):
+            with self.subTest(head_tags=head_tags):
+                result, calls, repo = run_skill_snippet(self, self._lines(), head_tags,
+                                                        CHANGELOG_GOOD)
+                self.assertEqual(result.returncode, 0,
+                                 f"stdout={result.stdout!r} stderr={result.stderr!r}")
+                self.assertEqual(len(calls), 2, f"gh view then gh create; calls={calls!r}")
+                self.assertEqual(calls[0].split()[:3], ["release", "view", "1.2.3"])
+                created = calls[1].split()
+                self.assertEqual(created[:3], ["release", "create", "1.2.3"])
+                self.assertIn("--verify-tag", created)
+                self.assertIn("--notes-file", created)
+                notes = (repo / created[created.index("--notes-file") + 1]).read_text(encoding="utf-8")
+                self.assertIn("The rehearsed release — its notes body.", notes)
+                self.assertNotIn("An earlier fix.", notes)
+
+    def test_no_version_tag_at_head_exits_0_with_nothing_to_release_and_no_gh_call(self):
+        for head_tags in ((), ("v1.2.3",)):
+            with self.subTest(head_tags=head_tags):
+                result, calls, _repo = run_skill_snippet(self, self._lines(), head_tags,
+                                                         CHANGELOG_GOOD)
+                self.assertEqual(result.returncode, 0,
+                                 f"stdout={result.stdout!r} stderr={result.stderr!r}")
+                self.assertIn("nothing to release", result.stdout + result.stderr)
+                self.assertEqual(calls, [], "nothing reaches gh")
+
+
+class SkillReleaseSnippetConformingSampleProofTest(SkillReleaseSnippetExecutionTest):
+    """VERIFY F1 — a snippet written to the finding passes what the skill's must."""
+
+    SKILL = CONFORMING_SKILL_SNIPPET
+
+
+class SkillReleaseSnippetBiteProofTest(unittest.TestCase):
+    """VERIFY F1 — the execution test bites: without its count line the conforming snippet takes
+    two tags as one multi-line tag and fails on the misleading missing-section message."""
+
+    def test_a_snippet_without_the_count_fails_two_tags_on_the_wrong_message(self):
+        self.assertEqual(CONFORMING_SKILL_SNIPPET.count(SNIPPET_COUNT_LINE), 1)
+        broken = CONFORMING_SKILL_SNIPPET.replace(SNIPPET_COUNT_LINE + "\n", "")
+        steps = workflow_steps((release_job_snippet(broken) or "").splitlines())
+        lines = next(step["run"] for step in steps
+                     if any("gh release create" in line for line in step["run"]))
+        result, calls, _repo = run_skill_snippet(self, lines, ("1.0.0", "1.0.1"),
+                                                 CHANGELOG_TWO_TAGS)
+        output = result.stdout + result.stderr
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn("more than one version tag", output)
+        self.assertIn("no CHANGELOG.md section for 1.0.0", output, f"output={output!r}")
+        self.assertEqual(calls, [])
+
+
+# ------------------------------------------------------------- CR-MDB-070 C4 RED (VERIFY F6) ----
+
+class HeaderRedRunCheckerProofTest(unittest.TestCase):
+    """VERIFY F6 — the header says, in one unit, that a red ``master`` or release run publishes
+    nothing, to re-run the failed jobs, and that a real failure is fixed on a hotfix branch:
+    :func:`header_red_run_faults` proved both ways on :data:`CONFORMING_RELEASE`."""
+
+    PARAGRAPH = ("# A red run: when the master run or the release run fails its tests,\n"
+                 "# nothing publishes. Re-run the failed jobs; a real failure is fixed on\n"
+                 "# a hotfix branch.\n")
+
+    def test_the_conforming_header_passes(self):
+        self.assertIn(self.PARAGRAPH, CONFORMING_RELEASE)
+        self.assertEqual(header_red_run_faults(CONFORMING_RELEASE), [])
+
+    def test_each_phrase_taken_out_of_the_unit_is_a_fault(self):
+        cases = {
+            "the paragraph gone": (self.PARAGRAPH + "#\n", ""),
+            "no re-run": ("Re-run the failed jobs;", "Push again;"),
+            "a whole re-run is not the failed jobs": ("Re-run the failed jobs;",
+                                                      "Re-run the workflow;"),
+            "no hotfix": ("on\n# a hotfix branch.", "on\n# a new release branch."),
+            "nothing publishes unsaid": ("# nothing publishes. ", "# the run stops. "),
+        }
+        for label, (old, new) in cases.items():
+            with self.subTest(case=label):
+                self.assertEqual(CONFORMING_RELEASE.count(old), 1, old)
+                self.assertEqual(header_red_run_faults(CONFORMING_RELEASE.replace(old, new)),
+                                 [HEADER_RED_RUN_FAULT])
+
+    def test_the_phrases_split_across_two_units_do_not_count(self):
+        split = CONFORMING_RELEASE.replace(
+            "Re-run the failed jobs; a real failure is fixed on\n# a hotfix branch.\n",
+            "Re-run the failed jobs.\n#\n# A real failure is fixed on a hotfix branch.\n")
+        self.assertNotEqual(split, CONFORMING_RELEASE)
+        self.assertEqual(header_red_run_faults(split), [HEADER_RED_RUN_FAULT])
+        no_hotfix = CONFORMING_RELEASE.replace("on\n# a hotfix branch.", "on\n# a new branch.")
+        self.assertIn("a release or hotfix push", _header(no_hotfix),
+                      "another unit of the header still names hotfix")
+        self.assertEqual(header_red_run_faults(no_hotfix), [HEADER_RED_RUN_FAULT],
+                         "the hotfix of another unit does not count")
+
+    def test_a_paragraph_after_the_header_is_not_the_headers(self):
+        moved = CONFORMING_RELEASE.replace(self.PARAGRAPH + "#\n", "").replace(
+            "\nname: release\n", "\nname: release\n" + self.PARAGRAPH)
+        self.assertNotEqual(moved, CONFORMING_RELEASE)
+        self.assertEqual(header_red_run_faults(moved), [HEADER_RED_RUN_FAULT])
+
+    def test_a_rewrapped_paragraph_still_counts(self):
+        rewrapped = CONFORMING_RELEASE.replace(
+            self.PARAGRAPH,
+            "# A red run: when the master run or the release run fails its tests, nothing\n"
+            "# publishes. Re-run the failed\n# jobs; a real failure is fixed on a hotfix branch.\n")
+        self.assertNotEqual(rewrapped, CONFORMING_RELEASE)
+        self.assertEqual(header_red_run_faults(rewrapped), [])
 
 
 if __name__ == "__main__":
