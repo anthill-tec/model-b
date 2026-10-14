@@ -63,6 +63,23 @@ Design (proposed at RED, approved by the orchestrator):
     (:data:`REHEARSAL_AND_CI_PHRASES`) and names none of the Python or Pi
     steps' anchors; and no phrase of :data:`RETIRED_RELEASE_PHRASES` appears
     anywhere in ``## Releases``.
+    MIGRATED at CR-MDB-070 C2 RED (§S6): the CI rule is the release
+    workflow's test job, run in every run (each release or hotfix push, each
+    ``master`` push, each published release), which every publish job, the
+    rehearsal included, needs because a dependency gates only within one run
+    (was: "a CI workflow runs the suite on every push to develop, release and
+    hotfix branches and on pull requests"); in ``### Rehearsal and CI`` every
+    clause naming ``develop`` or pull requests is negated, and one unit says
+    there is no CI on them (:func:`excluded_ref_faults`). The release-job
+    snippet checks out with full history, takes the tag from ``git tag
+    --points-at HEAD`` filtered to ``X.Y.Z`` (none: exit 0, nothing to
+    release), sits in a job that needs the test job and runs on the ``master``
+    push, and ``github.ref_name`` is named nowhere in ``## Releases``
+    (:data:`SNIPPET_ELEMENTS`). The release flow is one ``git push origin
+    master develop --tags``: the ``master`` push runs the tests and creates the
+    release, the release event publishes, and a ``master`` run reporting no
+    version tag at ``HEAD`` is recovered by dispatching the workflow on
+    ``master`` (:data:`RELEASE_FLOW_PHRASES`).
 
 Orchestrator rulings (2026-09-24, on the RED design):
 
@@ -101,7 +118,7 @@ from modelb_axi.requirements import (
 from modelb_axi.requirements import requirement as _requirement
 from tests._helpers import requirements_rows as _requirements
 from tests._helpers import write_interpreter_fixture
-from tests.test_board_holds_the_queue import NEGATION, norm_units
+from tests.test_board_holds_the_queue import _CLAUSE_SPLIT, NEGATION, norm_units
 from tests.test_bootstrap_shutdown_registry import normalise
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -216,6 +233,42 @@ RETIRED_COPY_STEP_RE = re.compile(
     r"|(?<!never )(?<!not )\bcop(?:y|ies)\b[^.;]{0,120}\binto (?:the |its )?release notes\b")
 #: §S6 — the snippet's fenced block: a create-release step passing the section as a file.
 SNIPPET_TERMS = ("gh release create", "--notes-file", "changelog.md")
+#: CR-MDB-070 §S6 — what the snippet's block (the first fenced block of ``## Releases`` holding
+#: every :data:`SNIPPET_TERMS`) must also carry, each ``(fault, regexes)``: every regex matches the
+#: block, lower-cased, line-anchored (``re.M``). The job may be the block's own YAML keys (``needs:
+#: test``, ``github.ref == 'refs/heads/master'``) or a comment naming them. Checked only when a
+#: block holds every :data:`SNIPPET_TERMS`; otherwise the one "no fenced create-release step" fault
+#: stands alone.
+SNIPPET_ELEMENTS = (
+    ("does not check out with full history (fetch-depth: 0)", (r"fetch-depth:\s*0\b",)),
+    ("does not take the tag from git tag --points-at HEAD filtered to X.Y.Z",
+     (r"\bgit tag --points-at head\b", r"\[0-9\]\+\\\.\[0-9\]\+\\\.\[0-9\]\+")),
+    ("does not exit 0 with nothing to release when no version tag is at HEAD",
+     (r"\bexit 0\b", r"\bnothing to release\b")),
+    ("does not sit in a job that needs the test job",
+     (r"^\s*needs:\s*\[?\s*test\b|\bneeds the test job\b",)),
+    ("does not run on the master push",
+     (r"refs/heads/master\b|\bmaster push\b|\bpush(?:es)? to master\b",)),
+)
+#: CR-MDB-070 §S6 — the tag never comes from the pushed ref: neither ``github.ref_name`` nor
+#: ``GITHUB_REF_NAME`` anywhere in ``## Releases`` (lower-cased).
+REF_NAME_RE = re.compile(r"github[._]ref_name")
+#: CR-MDB-070 §S6 — the release flow, each step matched in ONE normalised unit of ``## Releases``
+#: (as :data:`RELEASE_STEP_PHRASES`).
+RELEASE_FLOW = "release flow"
+RELEASE_FLOW_PHRASES = (
+    (RELEASE_FLOW, "one git push origin master develop --tags",
+     (r"\b(?:one|a single)\b[^.;]{0,20}\bgit push origin master develop --tags\b",)),
+    (RELEASE_FLOW, "the master push runs the tests and creates the release",
+     (r"\bmaster push\b|\bpush(?:es)? (?:to|of) master\b", r"\btests?\b",
+      r"\bcreates? the release\b")),
+    (RELEASE_FLOW, "the release event publishes",
+     (r"\brelease event\b", r"\bpublish(?:es)?\b")),
+    (RELEASE_FLOW, "if the master run reports no version tag at HEAD, dispatch the workflow on "
+     "master",
+     (r"\bmaster run\b", r"\bno version tag\b", r"(?<![\w-])head(?![\w-])", r"\bdispatch\w*\b",
+      r"\bon master\b")),
+)
 CR_029_S1_TERMS = ("install-guide.md", "marked region", "README")
 #: CR-MDB-038 §S5 — the four Python release steps, in ritual order. Each
 #: step is (label, anchor alternatives, further required terms); a term is an
@@ -326,10 +379,18 @@ REHEARSAL_AND_CI_PHRASES = (
     *((REHEARSAL_AND_CI, f"forms table: {stack}, the notes check only",
        (rf"(?<![\w-]){stack}(?![\w-])", r"\bnotes check only\b"))
       for stack in NOTES_CHECK_ONLY_STACKS),
-    (REHEARSAL_AND_CI, "CI rule: a CI workflow runs the suite on every push to develop, release "
-     "and hotfix branches and on pull requests",
-     (r"(?<![\w-])ci(?![\w-])", r"\bsuite\b", r"(?<![\w-])develop(?![\w-])", r"\brelease\b",
-      r"\bhotfix\b", r"\bpull requests?\b")),
+    # MIGRATED at CR-MDB-070 C2 RED (§S6): the CI rule is the release workflow's test job, run in
+    # every run, which every publish job needs (was the one step "CI rule: a CI workflow runs the
+    # suite on every push to develop, release and hotfix branches and on pull requests"). That
+    # develop and pull requests run no CI is the negation-aware excluded_ref_faults, not a step.
+    (REHEARSAL_AND_CI, "CI rule: the release workflow's test job runs the suite in every run",
+     (r"\brelease workflow\b", r"\btest job\b", r"\bsuite\b", r"\bevery run\b")),
+    (REHEARSAL_AND_CI, "CI rule: each push to a release or hotfix branch",
+     (r"\b(?:each|every)\b", r"\bpush(?:es)?\b", r"\brelease (?:or|and) hotfix\b")),
+    (REHEARSAL_AND_CI, "CI rule: each push to master",
+     (r"\b(?:each|every) push(?:es)? to master\b|\b(?:each|every) master push(?:es)?\b",)),
+    (REHEARSAL_AND_CI, "CI rule: each published release",
+     (r"\b(?:each|every) published release\b",)),
     (REHEARSAL_AND_CI, "CI rule: on the stack's floor interpreter", (r"\bfloor interpreter\b",)),
     (REHEARSAL_AND_CI, "CI rule: in a clean home", (r"\bclean home\b",)),
     (REHEARSAL_AND_CI, "CI rule: with full history", (r"\bfull history\b",)),
@@ -338,7 +399,24 @@ REHEARSAL_AND_CI_PHRASES = (
     (REHEARSAL_AND_CI, "CI rule: the one place the suite runs without the stack's Crucible "
      "client",
      (r"\bsuite\b", r"\bwithout\b", r"\bcrucible client\b")),
+    (REHEARSAL_AND_CI, "CI rule: every publish job, the rehearsal included, needs the test job",
+     (r"\b(?:every|each|all) publish(?:es|ing)? jobs?\b", r"\brehearsal\b", r"\bneeds?\b",
+      r"\btest(?:s| job)\b")),
+    (REHEARSAL_AND_CI, "CI rule: because a dependency gates only within one run",
+     (r"\bdependenc(?:y|ies)\b", r"\bgat(?:e|es|ed|ing)\b",
+      r"\bwithin (?:one|a single|the same) run\b")),
 )
+#: CR-MDB-070 §S6 — the refs the CI rule excludes. In ``### Rehearsal and CI`` every clause
+#: (``tests.test_board_holds_the_queue._CLAUSE_SPLIT``: sentence ends, ``,:;()``, the em dash,
+#: `` and ``/`` but ``/`` then ``) naming one carries a negation
+#: (``tests.test_board_holds_the_queue.NEGATION``), and one unit naming CI, the suite or the test
+#: job negates both: "no CI on `develop` or pull requests".
+CI_EXCLUDED_REFS = (
+    ("develop", re.compile(r"(?<![\w-])develop(?![\w-])")),
+    ("pull requests", re.compile(r"\bpull requests?\b")),
+)
+NO_CI_ON_DEVELOP_OR_PRS = "CI rule: no CI on develop or pull requests"
+_CI_WORD = re.compile(r"(?<![\w-])ci(?![\w-])|\bsuite\b|\btest job\b")
 #: §S5 — the subsection names neither the Python steps' anchors nor the Pi step's, so each
 #: checker's first-occurrence order is unchanged.
 SUBSECTION_FORBIDDEN_ANCHORS = (
@@ -885,9 +963,18 @@ def check_release_steps(text: str) -> list[str]:
     out = [f"## Releases: {group}: {label}" for group, label, regexes in RELEASE_STEP_PHRASES
            if not any(all(re.search(rx, u) for rx in regexes) for u in found)]
     blocks = _fenced_blocks(sec)
-    if not any(all(term in block.lower() for term in SNIPPET_TERMS) for block in blocks):
+    snippets = [block for block in blocks
+                if all(term in block.lower() for term in SNIPPET_TERMS)]
+    if not snippets:
         out.append(f"## Releases: {RELEASE_JOB_SNIPPET}: no fenced create-release step passing "
                    "the CHANGELOG.md section as --notes-file")
+    else:
+        # MIGRATED at CR-MDB-070 C2 RED (§S6): the snippet also carries SNIPPET_ELEMENTS.
+        out += [f"## Releases: {RELEASE_JOB_SNIPPET}: the snippet {fault}"
+                for fault, regexes in SNIPPET_ELEMENTS
+                if not all(re.search(rx, snippets[0].lower(), re.M) for rx in regexes)]
+    if REF_NAME_RE.search(sec.lower()):
+        out.append(f"## Releases: {RELEASE_JOB_SNIPPET}: names github.ref_name")
     if any("--generate-notes" in block for block in blocks):
         out.append(f"## Releases: {RELEASE_JOB_SNIPPET}: a fenced step still uses "
                    "--generate-notes")
@@ -895,6 +982,7 @@ def check_release_steps(text: str) -> list[str]:
         out.append(f"## Releases: {RETIRED_COPY_STEP}: still says to copy the marked regions "
                    "into the release notes")
     out += _publish_and_rehearsal_faults(sec, found)
+    out += _missing_steps(RELEASE_FLOW_PHRASES, found)
     return out
 
 
@@ -939,6 +1027,7 @@ def _publish_and_rehearsal_faults(sec: str, found: list[str]) -> list[str]:
             out.append(f"## Releases: {REHEARSAL_AND_CI}: '### {REHEARSAL_AND_CI_HEADING}' is not "
                        f"after '### {PI_PACKAGE_HEADING}'")
         out += _missing_steps(REHEARSAL_AND_CI_PHRASES, norm_units(body))
+        out += excluded_ref_faults(norm_units(body))
         flat = " ".join(body.lower().split())
         out += [f"## Releases: {REHEARSAL_AND_CI}: names the {kind} anchor {anchor!r}"
                 for kind, anchor in SUBSECTION_FORBIDDEN_ANCHORS if anchor in flat]
@@ -946,6 +1035,30 @@ def _publish_and_rehearsal_faults(sec: str, found: list[str]) -> list[str]:
     out += [f"## Releases: {RETIRED_PHRASES}: names {phrase!r}"
             for phrase in RETIRED_RELEASE_PHRASES if phrase in plain]
     return out
+
+
+def excluded_ref_faults(units: list[str]) -> list[str]:
+    """CR-MDB-070 §S6, negation-aware: the faults of the ``### Rehearsal and CI`` units
+    ``units`` (normalised) against :data:`CI_EXCLUDED_REFS`. ``no CI on develop or pull
+    requests`` when no unit naming CI, the suite or the test job negates both refs, each in a
+    negated clause; ``names CI on <ref>`` once per ref some clause names WITHOUT a negation."""
+    positive: list[str] = []
+    stated = False
+    for unit in units:
+        negated = set()
+        for clause in _CLAUSE_SPLIT.split(unit):
+            for name, rx in CI_EXCLUDED_REFS:
+                if not rx.search(clause):
+                    continue
+                if NEGATION.search(clause):
+                    negated.add(name)
+                elif name not in positive:
+                    positive.append(name)
+        if _CI_WORD.search(unit) and len(negated) == len(CI_EXCLUDED_REFS):
+            stated = True
+    out = [] if stated else [f"## Releases: {REHEARSAL_AND_CI}: {NO_CI_ON_DEVELOP_OR_PRS}"]
+    return out + [f"## Releases: {REHEARSAL_AND_CI}: names CI on {name}"
+                  for name, _ in CI_EXCLUDED_REFS if name in positive]
 
 
 def release_step_faults(text: str, group: str) -> list[str]:
@@ -1247,6 +1360,10 @@ CONFORMING_RELEASES_BODY = (
     "`git flow hotfix publish X.Y.Z` for a hotfix). Every push of the branch is the rehearsal;\n"
     "`finish` deletes the remote branch.\n"
     "\n"
+    "Then push `master`, `develop` and the tags in one `git push origin master develop --tags`:\n"
+    "the `master` push runs the tests and creates the release, and the release event publishes.\n"
+    "If the `master` run reports no version tag at `HEAD`, dispatch the workflow on `master`.\n"
+    "\n"
     "### Release notes (`CHANGELOG.md`)\n"
     "\n"
     "On the release branch, before the branch is first published:\n"
@@ -1261,13 +1378,22 @@ CONFORMING_RELEASES_BODY = (
     "The release job publishes the tag's section as the release body:\n"
     "\n"
     "```yaml\n"
-    "- name: Create the release\n"
-    "  run: |\n"
-    "    # the tag's section, matched literally: 1.0.1 never matches 1.0.10\n"
-    "    # fails when the section is missing\n"
-    "    # fails when the section is empty\n"
-    "    extract-section CHANGELOG.md \"$TAG\" > notes.md\n"
-    "    gh release create \"$TAG\" --notes-file notes.md --verify-tag\n"
+    "create-release:\n"
+    "  needs: test\n"
+    "  if: github.ref == 'refs/heads/master'\n"
+    "  steps:\n"
+    "    - uses: actions/checkout@v4\n"
+    "      with:\n"
+    "        fetch-depth: 0\n"
+    "    - name: Create the release\n"
+    "      run: |\n"
+    "        tag=$(git tag --points-at HEAD | grep -E '^[0-9]+\\.[0-9]+\\.[0-9]+$' || true)\n"
+    "        [ -n \"$tag\" ] || { echo \"no version tag at HEAD, nothing to release\"; exit 0; }\n"
+    "        # the tag's section, matched literally: 1.0.1 never matches 1.0.10\n"
+    "        # fails when the section is missing\n"
+    "        # fails when the section is empty\n"
+    "        extract-section CHANGELOG.md \"$tag\" > notes.md\n"
+    "        gh release create \"$tag\" --notes-file notes.md --verify-tag\n"
     "```\n"
     "\n"
     "| Stack | Packaging entry |\n"
@@ -1300,9 +1426,12 @@ CONFORMING_REHEARSAL_AND_CI = (
     "| `bun` | `X.Y.Z-dev.N` | the package manager's dry-run publish with a dist-tag |\n"
     "| `arduino`, `quarkus`, `java`, `rust` | — | the notes check only |\n"
     "\n"
-    "A CI workflow runs the suite on every push to `develop`, release and hotfix branches and on\n"
-    "pull requests, on the stack's floor interpreter, in a clean home, with full history. It runs\n"
-    "outside any agent session, the one place the suite runs without the stack's Crucible client.\n"
+    "The release workflow's test job runs the suite in every run: each push to a release or hotfix\n"
+    "branch, each push to `master`, each published release. It runs on the stack's floor\n"
+    "interpreter, in a clean home, with full history. It runs outside any agent session, the one\n"
+    "place the suite runs without the stack's Crucible client. Every publish job (the rehearsal\n"
+    "included) needs the test job, because a dependency gates only within one run. No CI on\n"
+    "`develop` or pull requests.\n"
 )
 # MIGRATED at CR-MDB-067 C3 RED (§S5): the Pi heading and the Rehearsal and CI subsection
 # follow the body (was: the body alone).
@@ -1584,6 +1713,10 @@ class ReleaseDocsTest(unittest.TestCase):
 
     def test_git_workflow_releases_names_none_of_the_retired_rehearsal_and_credential_phrases(self):
         self.assertEqual(release_step_faults(_read(GIT_WORKFLOW_SKILL), RETIRED_PHRASES), [])
+
+    # CR-MDB-070 §S6 — the one-push release flow and its recovery by dispatch on master.
+    def test_git_workflow_releases_pushes_once_releases_from_master_and_recovers_by_dispatch(self):
+        self.assertEqual(release_step_faults(_read(GIT_WORKFLOW_SKILL), RELEASE_FLOW), [])
 
     def test_pi_package_cr_s1_names_guide_marked_regions_as_readme_source(self):
         self.assertEqual(check_cr029_s1(_read(CR_029)), [])
@@ -2253,9 +2386,13 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
                             + pi_section)
         self.assertEqual(check_python_release_steps(subsection_first), [])
         self.assertEqual(check_pi_package_release_steps(subsection_first), [])
+        # MIGRATED at CR-MDB-070 C2 RED (§S6): put first, the subsection runs on into the body's
+        # release-flow paragraph, whose `git push origin master develop --tags` names develop without
+        # a negation (was: the placement fault alone).
         self.assertEqual(check_release_steps(subsection_first),
                          [f"## Releases: {REHEARSAL_AND_CI}: '### Rehearsal and CI' is not after "
-                          "'### Pi package releases'"])
+                          "'### Pi package releases'",
+                          f"## Releases: {REHEARSAL_AND_CI}: names CI on develop"])
         python_only = "## Releases\n\n" + docs + python
         self.assertEqual(check_pi_package_release_steps(python_only), [
             "## Releases: npm publish: missing 'npm publish'",
@@ -2349,12 +2486,19 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
             ("`quarkus`, ", ""),
             ("`java`, ", ""),
             (", `rust`", ""),
-            (" and on\npull requests", ""),
-            ("on the stack's floor interpreter, ", ""),
+            # MIGRATED at CR-MDB-070 C2 RED (§S6): the CI rule's steps are the test job's (was
+            # (" and on\npull requests", "") for the develop/release/hotfix/pull-request step).
+            ("runs the suite in every run:", "runs the suite:"),
+            (" to a release or hotfix\nbranch", " to a branch"),
+            (", each push to `master`", ""),
+            (", each published release", ""),
+            ("on the stack's floor\ninterpreter, ", ""),
             ("in a clean home, ", ""),
             (", with full history", ""),
-            ("It runs\noutside any agent session, the", "It is the"),
+            ("It runs outside any agent session, the one", "It is the one"),
             (" without the stack's Crucible client", ""),
+            ("Every publish job (the rehearsal\nincluded) needs the test job, because", "Because"),
+            (", because a dependency gates only within one run", ""),
         ]
         self.assertEqual(len(edits), len(labels), "one case per step")
         self.assertEqual(labels[6:10], [f"forms table: {s}, the notes check only"
@@ -2364,15 +2508,181 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
                 self.assertEqual(good.count(old), 1, old)
                 self.assertEqual(check_release_steps(good.replace(old, new)),
                                  [f"## Releases: {REHEARSAL_AND_CI}: {label}"])
-        ci_rule = ("A CI workflow runs the suite on every push to `develop`, release and hotfix "
-                   "branches and on\npull requests, on the stack's floor interpreter, in a clean "
-                   "home, with full history. It runs\noutside any agent session, the one place the "
-                   "suite runs without the stack's Crucible client.\n")
+        # MIGRATED at CR-MDB-070 C2 RED (§S6): the moved rule is the test-job rule, and moving it
+        # also loses the no-CI-on-develop-or-pull-requests statement (was the develop/PR CI rule).
+        ci_rule = ("The release workflow's test job runs the suite in every run: each push to a "
+                   "release or hotfix\nbranch, each push to `master`, each published release. It "
+                   "runs on the stack's floor\ninterpreter, in a clean home, with full history. It "
+                   "runs outside any agent session, the one\nplace the suite runs without the "
+                   "stack's Crucible client. Every publish job (the rehearsal\nincluded) needs the "
+                   "test job, because a dependency gates only within one run. No CI on\n`develop` "
+                   "or pull requests.\n")
         self.assertIn(ci_rule, good)
         moved = good.replace(ci_rule, "").replace("### Release notes", ci_rule + "\n### Release notes")
         self.assertEqual(check_release_steps(moved),
-                         [f"## Releases: {REHEARSAL_AND_CI}: {label}" for label in labels[10:]],
+                         [f"## Releases: {REHEARSAL_AND_CI}: {label}" for label in labels[10:]]
+                         + [f"## Releases: {REHEARSAL_AND_CI}: {NO_CI_ON_DEVELOP_OR_PRS}"],
                          "a step counts only inside the ### Rehearsal and CI subsection")
+
+    # CR-MDB-070 §S6 — the CI rule's develop and pull-request terms, inverted and negation-aware.
+
+    def test_ci_on_develop_or_pull_requests_is_a_fault_and_no_ci_on_them_passes(self):
+        good = CONFORMING_RELEASES
+        no_ci = "No CI on\n`develop` or pull requests.\n"
+        self.assertEqual(good.count(no_ci), 1)
+        stated = f"## Releases: {REHEARSAL_AND_CI}: {NO_CI_ON_DEVELOP_OR_PRS}"
+        on_develop = f"## Releases: {REHEARSAL_AND_CI}: names CI on develop"
+        on_prs = f"## Releases: {REHEARSAL_AND_CI}: names CI on pull requests"
+        self.assertEqual(excluded_ref_faults(norm_units(no_ci)), [])
+        self.assertEqual(check_release_steps(good), [])
+        self.assertEqual(check_release_steps(good.replace(no_ci, "")), [stated],
+                         "the statement is required, not merely a positive mention forbidden")
+        todays = ("A CI workflow runs the suite on every push to `develop`, release and hotfix "
+                  "branches and on\npull requests, on the stack's floor interpreter.\n")
+        self.assertEqual(check_release_steps(good.replace(no_ci, todays)),
+                         [stated, on_develop, on_prs], "today's CI rule is the fault, both terms")
+        self.assertEqual(check_release_steps(good.replace(
+            no_ci, "CI runs on every push to `develop`.\n")), [stated, on_develop])
+        self.assertEqual(check_release_steps(good.replace(
+            no_ci, "The suite also runs on pull requests.\n")), [stated, on_prs])
+        self.assertEqual(check_release_steps(good.replace(
+            no_ci, no_ci + "\nThe suite also runs on every push to `develop`.\n")), [on_develop],
+            "a negated statement does not excuse a positive mention beside it")
+        self.assertEqual(check_release_steps(good.replace(
+            no_ci, "No CI on `develop`, but CI on pull requests.\n")), [stated, on_prs],
+            "a negation reaches only its own clause")
+        for negated in ("CI never runs on `develop` or pull requests.\n",
+                        "Not on `develop`, not on pull requests: no CI there.\n",
+                        "The test job does not run on\n`develop` or on pull requests.\n"):
+            with self.subTest(negated=negated):
+                self.assertEqual(check_release_steps(good.replace(no_ci, negated)), [])
+        self.assertEqual(check_release_steps(good.replace(
+            no_ci, "Not on `develop` or pull requests.\n")), [],
+            "the unit names CI elsewhere in its paragraph")
+        alone = good.replace(no_ci, "").replace(
+            "\n## Next\n", "\n\nNever on `develop` or pull requests.\n\n## Next\n")
+        self.assertEqual(check_release_steps(alone), [stated],
+                         "a negated unit naming no CI, suite or test job is not the statement")
+        outside = good.replace(no_ci, "").replace(
+            "### Release notes", "No CI on `develop` or pull requests.\n\n### Release notes")
+        self.assertEqual(check_release_steps(outside), [stated],
+                         "the statement counts only inside ### Rehearsal and CI")
+        self.assertEqual(check_release_steps(good.replace(
+            "### Release notes", "Pushes to `develop` merge features.\n\n### Release notes")), [],
+            "a positive develop mention outside the subsection is not a CI rule")
+
+    def test_excluded_ref_faults_reads_each_clause_on_its_own(self):
+        self.assertEqual(excluded_ref_faults([]), [
+            f"## Releases: {REHEARSAL_AND_CI}: {NO_CI_ON_DEVELOP_OR_PRS}"])
+        self.assertEqual(excluded_ref_faults(
+            ["no ci on develop or pull requests.", "ci runs on develop."]),
+            [f"## Releases: {REHEARSAL_AND_CI}: names CI on develop"])
+        self.assertEqual(excluded_ref_faults(
+            ["the suite runs on pull requests and never on develop."]),
+            [f"## Releases: {REHEARSAL_AND_CI}: {NO_CI_ON_DEVELOP_OR_PRS}",
+             f"## Releases: {REHEARSAL_AND_CI}: names CI on pull requests"])
+        self.assertEqual(excluded_ref_faults(
+            ["ci runs on develop-branch builds; no ci on develop or pull requests."]), [],
+            "develop-branch is not the develop ref")
+
+    # CR-MDB-070 §S6 — the snippet: full history, the --points-at tag, after the tests, on master.
+
+    def test_release_job_snippet_takes_the_points_at_tag_after_the_tests_on_the_master_push(self):
+        good = CONFORMING_RELEASES
+        self.assertEqual(release_step_faults(good, RELEASE_JOB_SNIPPET), [])
+        faults = [f"## Releases: {RELEASE_JOB_SNIPPET}: the snippet {fault}"
+                  for fault, _ in SNIPPET_ELEMENTS]
+        edits = [
+            ("      with:\n        fetch-depth: 0\n", ""),
+            ("git tag --points-at HEAD | ", "git describe --tags | "),
+            ("exit 0; }", "exit 1; }"),
+            ("  needs: test\n", ""),
+            ("  if: github.ref == 'refs/heads/master'\n", ""),
+        ]
+        self.assertEqual(len(edits), len(SNIPPET_ELEMENTS), "one case per element")
+        for fault, (old, new) in zip(faults, edits, strict=True):
+            with self.subTest(fault=fault):
+                self.assertEqual(good.count(old), 1, old)
+                self.assertEqual(check_release_steps(good.replace(old, new)), [fault])
+        filter_lost = good.replace(" | grep -E '^[0-9]+\\.[0-9]+\\.[0-9]+$'", "")
+        self.assertNotEqual(filter_lost, good)
+        self.assertEqual(check_release_steps(filter_lost), [faults[1]],
+                         "the tag at HEAD is filtered to X.Y.Z")
+        self.assertEqual(check_release_steps(good.replace("nothing to release", "done")),
+                         [faults[2]], "no tag means nothing to release")
+        self.assertEqual(check_release_steps(good.replace("  needs: test\n", "  needs: build\n")),
+                         [faults[3]], "the job the snippet sits in needs the test job")
+        self.assertEqual(check_release_steps(good.replace("'refs/heads/master'", "'refs/heads/main'")),
+                         [faults[4]])
+        named = (good.replace("  needs: test\n", "")
+                 .replace("  if: github.ref == 'refs/heads/master'\n", "")
+                 .replace("    - name: Create the release\n",
+                          "    # in a job that needs the test job and runs on the master push\n"
+                          "    - name: Create the release\n"))
+        self.assertEqual(check_release_steps(named), [], "a comment naming the job counts")
+        self.assertEqual(check_release_steps(good.replace(
+            "\n## Next\n", "\n```yaml\nneeds: test\nfetch-depth: 0\n```\n\n## Next\n")), [],
+            "another fenced block is not the snippet")
+        loose = good.replace("  needs: test\n", "").replace(
+            "\n## Next\n", "\n```yaml\nneeds: test\n```\n\n## Next\n")
+        self.assertEqual(check_release_steps(loose), [faults[3]],
+                         "an element counts only inside the snippet's own block")
+        self.assertEqual(check_release_steps(good.replace("--notes-file notes.md", "--notes x")),
+                         [f"## Releases: {RELEASE_JOB_SNIPPET}: no fenced create-release step "
+                          "passing the CHANGELOG.md section as --notes-file"],
+                         "without a snippet block its elements are not reported")
+
+    def test_the_release_section_names_github_ref_name_nowhere(self):
+        fault = f"## Releases: {RELEASE_JOB_SNIPPET}: names github.ref_name"
+        good = CONFORMING_RELEASES
+        self.assertEqual(check_release_steps(good.replace(
+            "        tag=$(git tag --points-at HEAD",
+            "        tag=${{ github.ref_name }}\n        x=$(git tag --points-at HEAD")), [fault])
+        self.assertEqual(check_release_steps(good.replace(
+            "\n## Next\n", "\nThe tag is never `GITHUB_REF_NAME`.\n\n## Next\n")), [fault],
+            "named in prose, in any case, it is still named")
+        self.assertEqual(check_release_steps(good + "\n`github.ref_name`\n"), [],
+                         "outside ## Releases it is not gated")
+        self.assertEqual(check_release_steps(good.replace("github.ref ==", "github.ref_name ==")),
+                         [fault], "in the job's condition it is named too")
+
+    # CR-MDB-070 §S6 — the release flow: one push, the master push releases, the event publishes.
+
+    def test_release_flow_gate_passes_the_conforming_section_and_bites_once_per_step(self):
+        good = CONFORMING_RELEASES
+        self.assertEqual(release_step_faults(good, RELEASE_FLOW), [])
+        labels = [label for _, label, _ in RELEASE_FLOW_PHRASES]
+        edits = [
+            (" in one `git push", " with `git push"),
+            ("push runs the tests and creates the release", "push runs the tests"),
+            (", and the release event publishes", ""),
+            ("dispatch the workflow on `master`", "start again"),
+        ]
+        self.assertEqual(len(edits), len(labels), "one case per step")
+        for label, (old, new) in zip(labels, edits, strict=True):
+            with self.subTest(step=label):
+                self.assertEqual(good.count(old), 1, old)
+                self.assertEqual(check_release_steps(good.replace(old, new)),
+                                 [f"## Releases: {RELEASE_FLOW}: {label}"])
+        self.assertEqual(check_release_steps(good.replace(
+            "the `master` push runs the tests", "the tag push runs the tests")),
+            [f"## Releases: {RELEASE_FLOW}: {labels[1]}"], "the master push creates the release")
+        self.assertEqual(check_release_steps(good.replace(
+            "reports no version tag at `HEAD`", "fails")),
+            [f"## Releases: {RELEASE_FLOW}: {labels[3]}"], "the recovery names its condition")
+        flow = ("Then push `master`, `develop` and the tags in one `git push origin master develop "
+                "--tags`:\nthe `master` push runs the tests and creates the release, and the release "
+                "event publishes.\nIf the `master` run reports no version tag at `HEAD`, dispatch "
+                "the workflow on `master`.\n")
+        self.assertIn(flow, good)
+        outside = good.replace(flow, "").replace("\n## Next\n", "\n## Next\n\n" + flow)
+        self.assertEqual(release_step_faults(outside, RELEASE_FLOW),
+                         [f"## Releases: {RELEASE_FLOW}: {label}" for label in labels],
+                         "the flow counts only inside ## Releases")
+        fenced_only = good.replace(flow, "```bash\ngit push origin master develop --tags\n```\n")
+        self.assertEqual(release_step_faults(fenced_only, RELEASE_FLOW),
+                         [f"## Releases: {RELEASE_FLOW}: {label}" for label in labels],
+                         "the bare command (today's Java step) is not the one-push flow")
 
     def test_rehearsal_and_ci_subsection_must_exist_and_follow_the_pi_package_releases(self):
         good = CONFORMING_RELEASES
