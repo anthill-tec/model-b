@@ -1,12 +1,23 @@
-"""The CI test workflow, ``.github/workflows/ci.yml`` (CR-MDB-067 §S3 as amended by CR-MDB-069
-§S2, and CR-MDB-067 §S6's readers).
+"""The test job of the one release workflow, ``.github/workflows/release.yml`` (CR-MDB-070 §S1,
+§S7), once the CI workflow ``ci.yml`` (CR-MDB-067 §S3 as amended by CR-MDB-069 §S2, and
+CR-MDB-067 §S6's readers).
 
-Contract: ``docs/changes/CR-MDB-067-release-rehearsal-and-ci.md`` §S3: ``name: ci``, workflow
-``permissions: contents: read``, one job ``test`` on ``ubuntu-latest``, pushes to ``develop``,
-``release/**`` and ``hotfix/**`` plus ``pull_request`` and ``workflow_dispatch``, and four steps in
-order — checkout with ``fetch-depth: 0``, ``actions/setup-python`` with ``python-version: "3.14"``,
+Contract: ``docs/changes/CR-MDB-070-one-workflow-tests-gate-every-publish.md`` §S1: ``name:
+release``, workflow ``permissions: contents: read``, pushes to ``master``, ``release/**`` and
+``hotfix/**`` plus ``release: types: [published]`` and ``workflow_dispatch`` (no tag pattern, no
+``develop``, no ``pull_request``); a ``test`` job on ``ubuntu-latest`` among the jobs, with no
+``if:`` and no ``needs``, whose four steps are CR-MDB-067 §S3's as amended by CR-MDB-069 §S2 —
+checkout with ``fetch-depth: 0``, ``actions/setup-python`` with ``python-version: "3.14"``,
 ``setup-uv``, and the suite run directly with the three sandbox variables under
-``${{ runner.temp }}`` — every action pinned as §S2 pins them.
+``${{ runner.temp }}``; every publish job (``rehearse``, ``create-release``, ``publish-pypi``,
+``publish-npm``) ``needs: test``; ``ci.yml`` no longer exists.
+
+MIGRATED at CR-MDB-070 C1 RED (§S1/§S7): the checks read ``release.yml``, not ``ci.yml``;
+``name_faults`` wants ``release``; ``trigger_faults`` the master/release/hotfix pushes, the
+published release and dispatch, and no ``develop`` or ``pull_request``; ``job_faults`` a ``test``
+job among the jobs with no ``if:`` and no ``needs`` (no longer the one job); ``needs_faults`` is
+new; ``permission_faults`` is unchanged; :data:`CONFORMING_CI` and :data:`MUTATIONS` take the
+release workflow's shape; ``CiWorkflowTest`` asserts ``ci.yml`` is absent.
 
 Each §S3 item is one check, a pure function of the workflow text returning its faults (``[]``
 when the item holds). The checks are proved on sample text in both directions before they are
@@ -17,7 +28,9 @@ applied to the real file:
   sample text, both ways.
 - ``CiWorkflowChecksProofTest`` — every check passes :data:`CONFORMING_CI`, and each
   mutation in :data:`MUTATIONS` makes its check report exactly one fault.
-- ``CiWorkflowTest`` — every check applied to the real ``ci.yml``.
+- ``CiWorkflowTest`` — every check applied to the real ``release.yml``, and ``ci.yml`` asserted
+  absent. MIGRATED at CR-MDB-070 C4 RED (VERIFY F4): was "every check applied to the real
+  ``ci.yml``".
 
 CR-MDB-069 §S2 amends CR-MDB-067 §S3: the ``python -m pip install build`` step (once step 4)
 is gone, because every built-wheel check builds in isolation through ``uv build``. MIGRATED at
@@ -45,15 +58,27 @@ from tests._helpers import (
     workflow_push_triggers,
     workflow_steps,
 )
-from tests.test_release_rehearsal import action_pin_faults
+from tests.test_release_rehearsal import (
+    CONFORMING_RELEASE,
+    PUBLISH_JOBS,
+    _action,
+    action_pin_faults,
+    job_needs,
+)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-CI_REL = ".github/workflows/ci.yml"
-CI_YML = REPO_ROOT / ".github" / "workflows" / "ci.yml"
+# MIGRATED at CR-MDB-070 C1 RED (§S1): the checks read release.yml; ci.yml must be absent.
+CI_REL = ".github/workflows/release.yml"
+CI_YML = REPO_ROOT / ".github" / "workflows" / "release.yml"
+RETIRED_CI_REL = ".github/workflows/ci.yml"
+RETIRED_CI_YML = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 CR_067 = REPO_ROOT / "docs" / "changes" / "CR-MDB-067-release-rehearsal-and-ci.md"
 
 #: §S3's values.
-CI_BRANCHES = ("develop", "release/**", "hotfix/**")
+# MIGRATED at CR-MDB-070 C1 RED (§S1): was develop, release/** and hotfix/**.
+CI_BRANCHES = ("master", "release/**", "hotfix/**")
+#: CR-MDB-070 §S1 — the release event's types.
+RELEASE_TYPES = ["published"]
 CHECKOUT = "actions/checkout"
 SETUP_PYTHON = "actions/setup-python"
 SETUP_UV = "astral-sh/setup-uv"
@@ -75,13 +100,10 @@ def _test_steps(text: str) -> list[dict]:
     return workflow_steps(workflow_job(text, "test"))
 
 
-def _action(step: dict) -> str | None:
-    """A ``uses:`` step's action without its ``@ref``; ``None`` for a ``run`` step."""
-    return step["uses"].split("@", 1)[0] if step["uses"] else None
-
-
+# MIGRATED at CR-MDB-070 C4 RED (VERIFY F5): ``_action`` is test_release_rehearsal's, defined once
+# (was a second ``_action(step)`` here); each caller passes the step's ``uses``.
 def _steps_using(text: str, action: str) -> list[dict]:
-    return [step for step in _test_steps(text) if _action(step) == action]
+    return [step for step in _test_steps(text) if _action(step["uses"]) == action]
 
 
 def _steps_running(text: str, line: str) -> list[dict]:
@@ -89,23 +111,32 @@ def _steps_running(text: str, line: str) -> list[dict]:
 
 
 def name_faults(text: str) -> list[str]:
-    """§S3 — the workflow is ``name: ci``."""
+    """CR-MDB-070 §S1 — the workflow is ``name: release``.
+
+    MIGRATED at CR-MDB-070 C1 RED (§S1): was ``name: ci``."""
     name = workflow_key(text, "name")
-    return [] if name == "ci" else [f"the workflow name is {name!r}, not 'ci'"]
+    return [] if name == "release" else [f"the workflow name is {name!r}, not 'release'"]
 
 
 def trigger_faults(text: str) -> list[str]:
-    """§S3 — pushes to exactly ``develop``, ``release/**`` and ``hotfix/**`` (no tag push);
-    ``pull_request``; ``workflow_dispatch``."""
+    """CR-MDB-070 §S1 — pushes to exactly ``master``, ``release/**`` and ``hotfix/**`` (no tag
+    push, no ``develop``); ``release: types: [published]``; ``workflow_dispatch``; no
+    ``pull_request``.
+
+    MIGRATED at CR-MDB-070 C1 RED (§S1): was ``develop``/``release/**``/``hotfix/**`` pushes,
+    ``pull_request`` and ``workflow_dispatch``."""
     triggers = workflow_push_triggers(text)
     faults = []
     if sorted(triggers["branches"]) != sorted(CI_BRANCHES):
         faults.append(f"on.push.branches are {triggers['branches']!r}, not {list(CI_BRANCHES)!r}")
     if triggers["tags"]:
         faults.append(f"on.push also runs on tags {triggers['tags']!r}")
-    for event in ("pull_request", "workflow_dispatch"):
-        if not triggers[event]:
-            faults.append(f"on: has no {event}")
+    if triggers["release"] != RELEASE_TYPES:
+        faults.append(f"on.release.types are {triggers['release']!r}, not {RELEASE_TYPES!r}")
+    if not triggers["workflow_dispatch"]:
+        faults.append("on: has no workflow_dispatch")
+    if triggers["pull_request"]:
+        faults.append("on: runs on pull_request")
     return faults
 
 
@@ -118,17 +149,45 @@ def permission_faults(text: str) -> list[str]:
 
 
 def job_faults(text: str) -> list[str]:
-    """§S3 — one job, ``test``, on ``ubuntu-latest``."""
+    """CR-MDB-070 §S1 — a ``test`` job among the jobs, on ``ubuntu-latest``, with no ``if:`` (it
+    exists in every run) and no ``needs``.
+
+    MIGRATED at CR-MDB-070 C1 RED (§S1): was one job, ``test``, and nothing else."""
     names = workflow_job_names(text)
-    if names != ["test"]:
-        return [f"the jobs are {names!r}, not ['test']"]
-    runs_on = workflow_job_key(workflow_job(text, "test"), "runs-on")
-    return [] if runs_on == "ubuntu-latest" else [f"test runs on {runs_on!r}, not ubuntu-latest"]
+    if "test" not in names:
+        return [f"the jobs {names!r} hold no 'test' job"]
+    job = workflow_job(text, "test")
+    faults = []
+    runs_on = workflow_job_key(job, "runs-on")
+    if runs_on != "ubuntu-latest":
+        faults.append(f"test runs on {runs_on!r}, not ubuntu-latest")
+    condition = workflow_job_key(job, "if")
+    if condition is not None:
+        faults.append(f"the test job carries an if: ({condition!r}); it must exist in every run")
+    needs = workflow_job_key(job, "needs")
+    if needs is not None:
+        faults.append(f"the test job needs {needs!r}; it needs nothing")
+    return faults
+
+
+def needs_faults(text: str) -> list[str]:
+    """CR-MDB-070 §S1 — every publish job (``rehearse``, ``create-release``, ``publish-pypi``,
+    ``publish-npm``) exists and ``needs: test``, exactly."""
+    names = workflow_job_names(text)
+    faults = []
+    for name in PUBLISH_JOBS:
+        if name not in names:
+            faults.append(f"there is no {name} job")
+            continue
+        needs = job_needs(workflow_job(text, name))
+        if needs != ["test"]:
+            faults.append(f"{name} needs {needs!r}, not ['test']")
+    return faults
 
 
 def step_order_faults(text: str) -> list[str]:
     """§S3 as amended by CR-MDB-069 §S2 — the four steps, in order, and nothing else."""
-    found = [_action(step) or " / ".join(ln.strip() for ln in step["run"])
+    found = [_action(step["uses"]) or " / ".join(ln.strip() for ln in step["run"])
              for step in _test_steps(text)]
     return [] if found == STEP_ORDER else [f"the steps are {found!r}, not {STEP_ORDER!r}"]
 
@@ -211,6 +270,7 @@ CHECKS = {
     "triggers": trigger_faults,
     "permissions": permission_faults,
     "job": job_faults,
+    "needs": needs_faults,
     "step order": step_order_faults,
     "checkout": checkout_faults,
     "python": python_faults,
@@ -226,15 +286,17 @@ CHECKS = {
 
 _SHA = "08c6903cd8c0fde910a37f88322edcfb5dd907a8"
 
-#: A ``ci.yml`` meeting every §S3 item (``@PIN`` stands for a pinned ref).
+#: A release workflow meeting every CR-MDB-070 §S1 item (``@PIN`` stands for a pinned ref).
+#: MIGRATED at CR-MDB-070 C1 RED (§S1): was a ``ci.yml`` with one ``test`` job.
 CONFORMING_CI = """\
-# CI: the unittest suite on a clean runner, outside any agent session.
-name: ci
+# The release workflow: the tests gate every publish.
+name: release
 
 on:
   push:
-    branches: [develop, "release/**", "hotfix/**"]
-  pull_request:
+    branches: [master, "release/**", "hotfix/**"]
+  release:
+    types: [published]
   workflow_dispatch:
 
 permissions:
@@ -257,25 +319,65 @@ jobs:
           XDG_DATA_HOME: ${{ runner.temp }}/xdg-data
           PI_CODING_AGENT_DIR: "${{ runner.temp }}/pi-agent"
         run: python -m unittest discover -s tests -t .
+
+  rehearse:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo rehearse
+
+  create-release:
+    needs: [test]
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo create
+
+  publish-pypi:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo pypi
+
+  publish-npm:
+    needs:
+      - test
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo npm
 """.replace("@PIN", "@" + _SHA)
 
 _EXTRA_JOB = "  lint:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo lint\n"
+_REHEARSE = "  rehearse:\n    needs: test\n"
+_PUBLISH_NPM = "  publish-npm:\n    needs:\n      - test\n"
 
 #: ``(label, old, new, check)``: replacing ``old`` by ``new`` in :data:`CONFORMING_CI` must make
 #: ``CHECKS[check]`` report exactly one fault.
 MUTATIONS = (
-    ("another workflow name", "name: ci\n", "name: tests\n", "name"),
-    ("no workflow name", "name: ci\n", "", "name"),
-    ("develop dropped", "[develop, ", "[", "triggers"),
-    ("an extra branch", "[develop, ", "[develop, main, ", "triggers"),
+    # MIGRATED at CR-MDB-070 C1 RED (§S1/§S7): the name, trigger and job mutations take the
+    # release workflow's shape; "a second job" no longer bites (the test job is among the jobs).
+    ("another workflow name", "name: release\n", "name: ci\n", "name"),
+    ("no workflow name", "name: release\n", "", "name"),
+    ("master dropped", "[master, ", "[", "triggers"),
+    ("develop added", "[master, ", "[develop, master, ", "triggers"),
+    ("an extra branch", "[master, ", "[master, main, ", "triggers"),
     ("a tag push", "  push:\n", '  push:\n    tags: ["*"]\n', "triggers"),
-    ("no pull_request", "  pull_request:\n", "", "triggers"),
+    ("a pull_request", "  workflow_dispatch:\n", "  pull_request:\n  workflow_dispatch:\n",
+     "triggers"),
+    ("no release event", "  release:\n    types: [published]\n", "", "triggers"),
+    ("another release type", "types: [published]", "types: [created]", "triggers"),
     ("no workflow_dispatch", "  workflow_dispatch:\n", "", "triggers"),
     ("write permission", "  contents: read\n\njobs", "  contents: write\n\njobs", "permissions"),
     ("no workflow permissions", "permissions:\n  contents: read\n\n", "", "permissions"),
-    ("another runner", "runs-on: ubuntu-latest", "runs-on: ubuntu-22.04", "job"),
-    ("a second job", "", _EXTRA_JOB, "job"),
+    ("another runner", "  test:\n    runs-on: ubuntu-latest", "  test:\n    runs-on: ubuntu-22.04",
+     "job"),
     ("the job renamed", "  test:\n", "  tests:\n", "job"),
+    ("the test job scoped", "  test:\n", "  test:\n    if: github.event_name == 'push'\n", "job"),
+    ("the test job needs another", "  test:\n", "  test:\n    needs: lint\n", "job"),
+    ("rehearse needs nothing", _REHEARSE, "  rehearse:\n", "needs"),
+    ("create-release needs another job", "    needs: [test]\n", "    needs: [lint]\n", "needs"),
+    ("publish-pypi needs a second job", "  publish-pypi:\n    needs: test\n",
+     "  publish-pypi:\n    needs: [test, lint]\n", "needs"),
+    ("publish-npm renamed", _PUBLISH_NPM, "  publish-node:\n    needs:\n      - test\n", "needs"),
     ("setup-uv before setup-python",
      "      - uses: actions/setup-python@" + _SHA + " # v6.0.0\n        with:\n"
      '          python-version: "3.14"\n      - uses: astral-sh/setup-uv@' + _SHA + " # v7.1.0\n",
@@ -411,9 +513,10 @@ class CiWorkflowReadersProofTest(unittest.TestCase):
         self.assertEqual(steps[0]["with"], {"fetch-depth": "0"}, "with never leaks into env")
 
     def test_the_step_reader_keeps_every_key_existing_callers_read(self):
+        # MIGRATED at CR-MDB-070 C1 RED (§S7): the step reader also returns ``id`` and ``if``.
         for step in workflow_steps(workflow_job(SAMPLE_READERS, "test")):
-            self.assertEqual(set(step),
-                             {"name", "run", "working-directory", "uses", "with", "env"})
+            self.assertEqual(set(step), {"name", "run", "working-directory", "uses", "with",
+                                         "env", "id", "if"})
 
 
 # ------------------------------------------------------------------ the checks, proved ----
@@ -425,6 +528,13 @@ class CiWorkflowChecksProofTest(unittest.TestCase):
         for label, check in CHECKS.items():
             with self.subTest(check=label):
                 self.assertEqual(check(CONFORMING_CI), [])
+
+    # CR-MDB-070 C1 RED (§S1) — the full conforming release.yml sample of
+    # tests.test_release_rehearsal passes every check, too.
+    def test_every_check_passes_the_full_conforming_release_sample(self):
+        for label, check in CHECKS.items():
+            with self.subTest(check=label):
+                self.assertEqual(check(CONFORMING_RELEASE), [])
 
     def test_each_mutation_makes_its_check_report_exactly_one_fault(self):
         for label, old, new, check in MUTATIONS:
@@ -440,6 +550,11 @@ class CiWorkflowChecksProofTest(unittest.TestCase):
 
     def test_every_check_has_a_mutation_that_bites_it(self):
         self.assertEqual(sorted({check for *_rest, check in MUTATIONS}), sorted(CHECKS))
+
+    # CR-MDB-070 C1 RED (§S1) — the test job is among the jobs: another job beside it is no fault.
+    def test_another_job_beside_the_test_job_is_no_job_fault(self):
+        self.assertEqual(job_faults(CONFORMING_CI + _EXTRA_JOB), [])
+        self.assertEqual(workflow_job_names(CONFORMING_CI + _EXTRA_JOB)[-1], "lint")
 
     def test_the_suite_command_is_read_from_the_workflow_text(self):
         self.assertEqual(_steps_running(CONFORMING_CI, SUITE_LINE)[0]["run"], [SUITE_LINE])
@@ -470,28 +585,41 @@ class CiWorkflowChecksProofTest(unittest.TestCase):
         ])
 
 
-# ------------------------------------------------------------------ §S3 the real file ----
+# ------------------------------------------------------------------ §S1 the real file ----
 
 def _ci_text() -> str:
     if not CI_YML.is_file():
-        raise AssertionError(f"§S3: {CI_REL} does not exist")
+        raise AssertionError(f"§S1: {CI_REL} does not exist")
     return CI_YML.read_text(encoding="utf-8")
 
 
 class CiWorkflowTest(unittest.TestCase):
-    """§S3 — every check applied to the real ``.github/workflows/ci.yml``."""
+    """CR-MDB-070 §S1 — every check applied to the real ``.github/workflows/release.yml``; the
+    CI workflow ``ci.yml`` is gone.
 
-    def test_the_workflow_is_named_ci(self):
+    MIGRATED at CR-MDB-070 C1 RED (§S1): was every check applied to ``ci.yml``."""
+
+    def test_ci_yml_no_longer_exists(self):
+        self.assertFalse(RETIRED_CI_YML.exists(), f"§S1: {RETIRED_CI_REL} is deleted")
+
+    # MIGRATED at CR-MDB-070 C1 RED (§S1): was test_the_workflow_is_named_ci.
+    def test_the_workflow_is_named_release(self):
         self.assertEqual(name_faults(_ci_text()), [])
 
-    def test_it_runs_on_develop_release_and_hotfix_pushes_pull_requests_and_dispatch(self):
+    # MIGRATED at CR-MDB-070 C1 RED (§S1): was
+    # test_it_runs_on_develop_release_and_hotfix_pushes_pull_requests_and_dispatch.
+    def test_it_runs_on_master_release_and_hotfix_pushes_the_published_release_and_dispatch(self):
         self.assertEqual(trigger_faults(_ci_text()), [])
 
     def test_the_workflow_permissions_are_contents_read(self):
         self.assertEqual(permission_faults(_ci_text()), [])
 
-    def test_its_one_job_test_runs_on_ubuntu_latest(self):
+    # MIGRATED at CR-MDB-070 C1 RED (§S1): was test_its_one_job_test_runs_on_ubuntu_latest.
+    def test_its_test_job_runs_on_ubuntu_latest_with_no_if_and_no_needs(self):
         self.assertEqual(job_faults(_ci_text()), [])
+
+    def test_every_publish_job_needs_the_test_job(self):
+        self.assertEqual(needs_faults(_ci_text()), [])
 
     # MIGRATED at CR-MDB-069 C1 RED (§S2): was test_the_five_steps_run_in_order.
     def test_the_four_steps_run_in_order(self):

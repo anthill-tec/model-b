@@ -27,11 +27,15 @@ Class map:
 - ``NoUnicodeEscapeInCommentsTest`` — CR-MDB-047 (VERIFY F11): no comment the CR wrote carries a
   literal unicode escape — every comment of :data:`CR047_FILES`, and elsewhere each comment block
   naming CR-MDB-047; its detector bites on synthetic text first.
-- ``AgentsMdCiWorkflowsDetectorTest`` / ``AgentsMdCiWorkflowsTest`` — CR-MDB-067 §S6: ``AGENTS.md``
-  names ``ci.yml`` (the suite on ``develop``, release and hotfix pushes and pull requests, on a
-  clean runner, outside agent sessions) and ``release.yml``'s rehearsal on every release or hotfix
-  push, and no longer says Model B has no CI test workflow; proved on synthetic text first. That it
-  shows no runner in a code span is the raw-runner guard's, not repeated here.
+- ``AgentsMdCiWorkflowsDetectorTest`` / ``AgentsMdCiWorkflowsTest`` — CR-MDB-067 §S6, MIGRATED at
+  CR-MDB-070 C2 RED (§S6): ``AGENTS.md`` names one workflow, ``release.yml`` — its test job runs the
+  suite on every release, hotfix and ``master`` push and every published release, outside agent
+  sessions; it rehearses on release and hotfix pushes, creates the release from the ``master`` push
+  (recovered by a dispatch on ``master``) and publishes on the release event, every publish gated on
+  the tests — names ``ci.yml`` nowhere, and no longer says Model B has no CI test workflow; proved on
+  synthetic text first (was: ``ci.yml`` running the suite on ``develop``, release and hotfix pushes
+  and pull requests beside ``release.yml``'s rehearsal). That it shows no runner in a code span is
+  the raw-runner guard's, not repeated here.
 
 §S3 rule (``_duplicate_module_functions``). For every ``tests/*.py`` file, every MODULE-LEVEL
 ``def``/``async def`` (a direct child of the module body) is keyed by ``ast.dump`` of its body with
@@ -782,58 +786,109 @@ class AgentsMdClientCommandDetectorTest(unittest.TestCase):
         self.assertEqual(len([c for c in runs if re.search(r"\s--python\s+\S", c)]), 1)
 
 
-# ------------------------------------------------------------------ CR-MDB-067 §S6 AGENTS.md ----
+# ------------------------------------------------------- CR-MDB-067/070 §S6 AGENTS.md ----
 
-#: CR-MDB-067 §S6 — ``AGENTS.md`` names ``ci.yml``: the suite on ``develop``, release and hotfix
-#: pushes and pull requests, on a clean runner, outside agent sessions. Every regex matches ONE
-#: normalised unit (``tests.test_board_holds_the_queue.norm_units``: backticks and ``*`` dropped,
-#: lower-cased).
-AGENTS_CI_WORKFLOW = (
-    r"(?<![\w-])ci\.yml\b", r"\bsuite\b", r"(?<![\w-])develop(?![\w-])", r"\brelease\b",
-    r"\bhotfix\b", r"\bpull requests?\b", r"\bclean\b[^.;]{0,30}\brunner\b",
-    r"\boutside (?:of )?(?:any |an |every )?agent sessions?\b",
+# MIGRATED at CR-MDB-070 C2 RED (§S6): AGENTS.md names one workflow, release.yml, and no ci.yml
+# (was AGENTS_CI_WORKFLOW: "ci.yml runs the suite on develop, release and hotfix pushes and pull
+# requests, on a clean runner, outside agent sessions"). Every regex of a statement matches ONE
+# normalised unit (``tests.test_board_holds_the_queue.norm_units``: backticks and ``*`` dropped,
+# lower-cased); the statements may share a unit or take one each.
+_EVERY_PUBLISHED_RELEASE = r"\b(?:every|each) published release\b"
+_MASTER_PUSH = r"\bmaster push(?:es)?\b|\bpush(?:es)? (?:to|of) master\b"
+_RELEASE_OR_HOTFIX_PUSH = (r"\brelease (?:or|and) hotfix (?:branch )?push(?:es)?\b"
+                           r"|\bpush(?:es)? (?:to|of) (?:a |every |each )?release (?:or|and) hotfix "
+                           r"branch(?:es)?\b")
+#: CR-MDB-070 §S6 — one workflow, ``release.yml``.
+AGENTS_ONE_WORKFLOW = (r"\b(?:one|a single|the only) workflow\b", r"(?<![\w-])release\.yml\b")
+#: …its test job runs the suite on every release, hotfix and ``master`` push and every published
+#: release, outside agent sessions.
+AGENTS_TEST_JOB = (
+    r"\btest job\b", r"\bsuite\b",
+    r"\b(?:every|each) release,? hotfix,? (?:and|or) master push(?:es)?\b"
+    r"|\b(?:every|each) push(?:es)? (?:to|of) (?:a )?release, hotfix,? (?:and|or) master "
+    r"branch(?:es)?\b",
+    _EVERY_PUBLISHED_RELEASE, r"\boutside (?:of )?(?:any |an |every )?agent sessions?\b",
 )
-#: …and ``release.yml``'s rehearsal on every release or hotfix push, in one unit.
-AGENTS_REHEARSAL = (
-    r"(?<![\w-])release\.yml\b", r"\brehears\w*\b", r"\b(?:every|each)\b",
-    r"\brelease (?:or|and) hotfix (?:branch )?push(?:es)?\b"
-    r"|\bpush(?:es)? (?:to|of) (?:a |every |each )?release (?:or|and) hotfix branch(?:es)?\b",
-)
-#: The sentence CR-MDB-067 §S6 retires: "**no** CI test workflow (the only workflow is
-#: ``.github/workflows/release.yml`` …)".
+#: MIGRATED at CR-MDB-070 C2 RED (§S6): it rehearses on release and hotfix pushes (was also
+#: ``release.yml`` and "every" in the same unit — the one-workflow unit names the file now).
+AGENTS_REHEARSAL = (r"\brehears\w*\b", _RELEASE_OR_HOTFIX_PUSH)
+#: …it creates the release from the ``master`` push, recovered by a dispatch on ``master``.
+AGENTS_CREATE_RELEASE = (r"\bcreates? the release\b", _MASTER_PUSH, r"\bdispatch\w*\b",
+                         r"\bon master\b")
+#: …it publishes on the release event.
+AGENTS_PUBLISH = (r"\bpublish(?:es)?\b", r"\b(?:on|from) the release event\b")
+#: …every publish gated on the tests.
+AGENTS_GATED = (r"\b(?:every|each|all) publish(?:es|ing)?\b(?! release)", r"\bgated\b|\bneeds?\b",
+                r"\btests?\b|\btest job\b")
+#: CR-MDB-070 §S6 — ``ci.yml`` is named nowhere, in any unit, negated or not.
+AGENTS_CI_YML = re.compile(r"(?<![\w-])ci\.yml\b")
+#: The sentence CR-MDB-067 §S6 retires: "**no** CI test workflow".
+#: MIGRATED at CR-MDB-070 C2 RED (§S6): "the only workflow" is dropped — release.yml is again the
+#: only workflow (was: ("the only workflow", r"\bthe only workflow\b") beside it).
 AGENTS_RETIRED_CI = (
     ("no ci test workflow", re.compile(r"\bno ci (?:test )?workflows?\b")),
-    ("the only workflow", re.compile(r"\bthe only workflow\b")),
 )
-AGENTS_NO_CI_UNIT = ("AGENTS.md: no unit names ci.yml running the suite on develop, release and "
-                     "hotfix pushes and pull requests, on a clean runner, outside agent sessions")
-AGENTS_NO_REHEARSAL_UNIT = ("AGENTS.md: no unit names release.yml's rehearsal on every release or "
-                            "hotfix push")
+AGENTS_NO_ONE_WORKFLOW_UNIT = "AGENTS.md: no unit names one workflow, release.yml"
+AGENTS_NO_TEST_JOB_UNIT = ("AGENTS.md: no unit names its test job running the suite on every "
+                           "release, hotfix and master push and every published release, outside "
+                           "agent sessions")
+AGENTS_NO_REHEARSAL_UNIT = "AGENTS.md: no unit names the rehearsal on release and hotfix pushes"
+AGENTS_NO_CREATE_RELEASE_UNIT = ("AGENTS.md: no unit names the release created from the master "
+                                 "push, recovered by a dispatch on master")
+AGENTS_NO_PUBLISH_UNIT = "AGENTS.md: no unit names publishing on the release event"
+AGENTS_NO_GATED_UNIT = "AGENTS.md: no unit names every publish gated on the tests"
+AGENTS_NAMES_CI_YML = "AGENTS.md: names ci.yml"
+#: The statements in report order, each (regexes, its finding).
+AGENTS_CI_STATEMENTS = (
+    (AGENTS_ONE_WORKFLOW, AGENTS_NO_ONE_WORKFLOW_UNIT),
+    (AGENTS_TEST_JOB, AGENTS_NO_TEST_JOB_UNIT),
+    (AGENTS_REHEARSAL, AGENTS_NO_REHEARSAL_UNIT),
+    (AGENTS_CREATE_RELEASE, AGENTS_NO_CREATE_RELEASE_UNIT),
+    (AGENTS_PUBLISH, AGENTS_NO_PUBLISH_UNIT),
+    (AGENTS_GATED, AGENTS_NO_GATED_UNIT),
+)
 
 
 def agents_md_ci_findings(text: str) -> list[str]:
-    """What ``text`` (an ``AGENTS.md``) lacks of CR-MDB-067 §S6, and the retired sentence it
-    still carries; ``[]`` when it conforms."""
+    """What ``text`` (an ``AGENTS.md``) lacks of CR-MDB-070 §S6 (one workflow, ``release.yml``),
+    whether it names ``ci.yml``, and the retired sentence it still carries; ``[]`` when it
+    conforms. MIGRATED at CR-MDB-070 C2 RED (§S6): was CR-MDB-067 §S6's ``ci.yml`` unit and
+    ``release.yml`` rehearsal unit."""
     units = norm_units(text)
-    out = []
-    if not any(all(re.search(rx, u) for rx in AGENTS_CI_WORKFLOW) for u in units):
-        out.append(AGENTS_NO_CI_UNIT)
-    if not any(all(re.search(rx, u) for rx in AGENTS_REHEARSAL) for u in units):
-        out.append(AGENTS_NO_REHEARSAL_UNIT)
+    out = [finding for regexes, finding in AGENTS_CI_STATEMENTS
+           if not any(all(re.search(rx, u) for rx in regexes) for u in units)]
+    if any(AGENTS_CI_YML.search(u) for u in units):
+        out.append(AGENTS_NAMES_CI_YML)
     out += [f"AGENTS.md: still says {label!r}" for label, rx in AGENTS_RETIRED_CI
             if any(rx.search(u) for u in units)]
     return out
 
 
 class AgentsMdCiWorkflowsDetectorTest(unittest.TestCase):
-    """CR-MDB-067 §S6 — :func:`agents_md_ci_findings`, both ways on synthetic text."""
+    """CR-MDB-070 §S6 — :func:`agents_md_ci_findings`, both ways on synthetic text.
 
-    CI = ("- `.github/workflows/ci.yml` runs the suite on every push to `develop`, release and hotfix "
-          "branches and on pull requests, on a clean runner, outside any agent session.\n")
-    REHEARSAL = ("- `.github/workflows/release.yml` rehearses the release on every release or hotfix "
-                 "push, and publishes a pushed tag.\n")
+    MIGRATED at CR-MDB-070 C2 RED (§S6): GOOD is one workflow, ``release.yml``, and CR-MDB-067's
+    two-workflow text is the departure (was: GOOD named ``ci.yml`` and ``release.yml``)."""
+
+    WORKFLOW = "One workflow runs on GitHub, `.github/workflows/release.yml`:\n\n"
+    TEST_JOB = ("- its test job runs the suite on every release, hotfix and `master` push and every "
+                "published release, outside any agent session;\n")
+    REHEARSAL = "- it rehearses the release on release and hotfix pushes;\n"
+    CREATE = ("- it creates the release from the `master` push (recovery: dispatch the workflow on "
+              "`master`);\n")
+    PUBLISH = "- it publishes to PyPI and npm on the release event, every publish gated on the tests.\n"
     GOOD = ("## Development Commands\n\nThere is **no** Makefile and **no** linter.\n\n"
-            + CI + REHEARSAL + "\n## Next\n")
+            + WORKFLOW + TEST_JOB + REHEARSAL + CREATE + PUBLISH + "\n## Next\n")
+    #: CR-MDB-067's text, as AGENTS.md carries it today.
+    TWO_WORKFLOWS = (
+        "## Development Commands\n\nThere is **no** Makefile/justfile and **no** linter. Two "
+        "workflows run on GitHub:\n\n"
+        "- `.github/workflows/ci.yml` runs the unittest suite on every push to `develop`, release "
+        "and hotfix branches and on pull requests, on a clean runner, outside any agent session.\n"
+        "- `.github/workflows/release.yml` rehearses the release on every release or hotfix push "
+        "(the stamped dev version to TestPyPI, the npm dry-run publish, the notes check), and "
+        "publishes a pushed release tag to PyPI and npm.\n")
+    #: The sentence CR-MDB-067 retired.
     OLD = ("## Development Commands\n\nThere is **no** Makefile/justfile, **no** CI test workflow (the "
            "only workflow is `.github/workflows/release.yml`, which publishes a pushed release tag "
            "to PyPI and npm), and **no** linter.\n")
@@ -841,49 +896,89 @@ class AgentsMdCiWorkflowsDetectorTest(unittest.TestCase):
     def test_the_conforming_text_passes(self):
         self.assertEqual(agents_md_ci_findings(self.GOOD), [])
 
-    def test_todays_sentence_is_reported_as_both_gaps_and_both_retired_phrases(self):
+    def test_the_two_workflow_text_is_reported_for_each_missing_statement_and_ci_yml(self):
+        self.assertEqual(agents_md_ci_findings(self.TWO_WORKFLOWS), [
+            AGENTS_NO_ONE_WORKFLOW_UNIT, AGENTS_NO_TEST_JOB_UNIT, AGENTS_NO_CREATE_RELEASE_UNIT,
+            AGENTS_NO_PUBLISH_UNIT, AGENTS_NO_GATED_UNIT, AGENTS_NAMES_CI_YML])
+
+    def test_ci_yml_is_named_nowhere_even_negated(self):
+        for named in ("\nThe old `.github/workflows/ci.yml` is deleted.\n",
+                      "\nThere is no `ci.yml`.\n"):
+            with self.subTest(named=named):
+                self.assertEqual(agents_md_ci_findings(self.GOOD + named), [AGENTS_NAMES_CI_YML])
+        self.assertEqual(agents_md_ci_findings(self.GOOD + "\nThe `pci.yml` file is other.\n"), [],
+                         "a longer name is not ci.yml")
+
+    def test_no_ci_test_workflow_stays_retired_and_the_only_workflow_is_allowed_again(self):
+        self.assertEqual(AGENTS_RETIRED_CI[0][0], "no ci test workflow")
+        self.assertEqual([label for label, _ in AGENTS_RETIRED_CI], ["no ci test workflow"])
         self.assertEqual(agents_md_ci_findings(self.OLD), [
-            AGENTS_NO_CI_UNIT, AGENTS_NO_REHEARSAL_UNIT,
-            "AGENTS.md: still says 'no ci test workflow'",
-            "AGENTS.md: still says 'the only workflow'"])
-        self.assertEqual(agents_md_ci_findings(self.GOOD + "\n" + self.OLD), [
-            "AGENTS.md: still says 'no ci test workflow'",
-            "AGENTS.md: still says 'the only workflow'"],
-            "the new text beside the retired sentence does not excuse it")
-
-    def test_each_element_of_the_ci_unit_bites_alone(self):
-        for old, new in (("ci.yml", "tests.yml"), ("the suite", "a lint"), ("`develop`, ", ""),
-                         ("release and hotfix", "hotfix"), ("and hotfix ", ""),
-                         (" and on pull requests", ""), ("on a clean runner, ", ""),
-                         (", outside any agent session", "")):
-            with self.subTest(removed=old):
-                self.assertEqual(self.GOOD.count(old), 1, old)
-                self.assertEqual(agents_md_ci_findings(self.GOOD.replace(old, new)),
-                                 [AGENTS_NO_CI_UNIT])
-
-    def test_each_element_of_the_rehearsal_unit_bites_alone(self):
-        for old, new in (("release.yml", "publish.yml"), ("rehearses the release", "builds the release"),
-                         ("on every release or hotfix push", "on a tag push"),
-                         ("every release or hotfix", "a release or hotfix")):
-            with self.subTest(removed=old):
-                self.assertEqual(self.GOOD.count(old), 1, old)
-                self.assertEqual(agents_md_ci_findings(self.GOOD.replace(old, new)),
-                                 [AGENTS_NO_REHEARSAL_UNIT])
+            AGENTS_NO_TEST_JOB_UNIT, AGENTS_NO_REHEARSAL_UNIT, AGENTS_NO_CREATE_RELEASE_UNIT,
+            AGENTS_NO_PUBLISH_UNIT, AGENTS_NO_GATED_UNIT,
+            "AGENTS.md: still says 'no ci test workflow'"])
+        self.assertEqual(agents_md_ci_findings(self.GOOD + "\n" + self.OLD),
+                         ["AGENTS.md: still says 'no ci test workflow'"],
+                         "the new text beside the retired sentence does not excuse it")
         self.assertEqual(agents_md_ci_findings(self.GOOD.replace(
-            "on every release or hotfix push", "on every push to a release or hotfix branch")), [],
+            "One workflow runs on GitHub,", "The only workflow is")), [],
+            "'the only workflow' is no longer a finding")
+
+    def test_each_element_of_each_statement_bites_alone(self):
+        cases = (
+            (AGENTS_NO_ONE_WORKFLOW_UNIT, (("One workflow runs", "Workflows run"),
+                                           ("workflows/release.yml", "workflows/publish.yml"))),
+            (AGENTS_NO_TEST_JOB_UNIT, (("its test job runs", "it runs"),
+                                       ("runs the suite on", "runs a lint on"),
+                                       ("on every release, hotfix", "on a release, hotfix"),
+                                       ("every release, hotfix and", "every hotfix and"),
+                                       ("release, hotfix and `master`", "release and `master`"),
+                                       (" and `master` push and", " push and"),
+                                       (" and every published release", ""),
+                                       (", outside any agent session", ""))),
+            (AGENTS_NO_REHEARSAL_UNIT, (("rehearses the release", "builds the release"),
+                                        ("on release and hotfix pushes", "on a tag push"))),
+            (AGENTS_NO_CREATE_RELEASE_UNIT, (("creates the release", "drafts the notes"),
+                                             ("from the `master` push", "from the tag push"),
+                                             ("recovery: dispatch the workflow on `master`",
+                                              "recovery: a re-run"),
+                                             ("dispatch the workflow on `master`",
+                                              "dispatch the workflow"))),
+            (AGENTS_NO_PUBLISH_UNIT, (("on the release event", "on a tag push"),)),
+            (AGENTS_NO_GATED_UNIT, ((", every publish gated on the tests", ""),
+                                    ("every publish gated", "it is gated"),
+                                    ("gated on the tests", "after the build"))),
+        )
+        good = self.GOOD
+        for finding, edits in cases:
+            for old, new in edits:
+                with self.subTest(finding=finding, removed=old):
+                    self.assertEqual(good.count(old), 1, old)
+                    self.assertEqual(agents_md_ci_findings(good.replace(old, new)), [finding])
+        self.assertEqual(agents_md_ci_findings(self.GOOD.replace(
+            "on release and hotfix pushes", "on every push to a release or hotfix branch")), [],
             "'every push to a release or hotfix branch' reads the same")
+        self.assertEqual(agents_md_ci_findings(self.GOOD.replace(
+            "from the `master` push", "from each push to `master`")), [],
+            "'push to master' reads the same as 'master push'")
 
     def test_elements_split_across_two_units_do_not_count(self):
-        split = self.GOOD.replace(", on a clean runner, outside any agent session.\n",
-                                  ".\n\nIt uses a clean runner, outside any agent session.\n\n")
-        self.assertEqual(agents_md_ci_findings(split), [AGENTS_NO_CI_UNIT])
+        split = self.GOOD.replace(", outside any agent session;\n",
+                                  ";\n- it runs outside any agent session;\n")
+        self.assertEqual(agents_md_ci_findings(split), [AGENTS_NO_TEST_JOB_UNIT])
+        recovery = self.GOOD.replace(" (recovery: dispatch the workflow on `master`);\n",
+                                     ";\n- recovery: dispatch the workflow on `master`;\n")
+        self.assertEqual(agents_md_ci_findings(recovery), [AGENTS_NO_CREATE_RELEASE_UNIT])
 
 
 class AgentsMdCiWorkflowsTest(unittest.TestCase):
-    """CR-MDB-067 §S6 — the real ``AGENTS.md`` names ``ci.yml`` and the rehearsal, and no longer
-    says Model B has no CI test workflow."""
+    """CR-MDB-070 §S6 — the real ``AGENTS.md`` names one workflow, ``release.yml``, its test job,
+    rehearsal, release from the ``master`` push and publish on the release event, every publish
+    gated on the tests; names ``ci.yml`` nowhere; and does not say Model B has no CI test
+    workflow."""
 
-    def test_agents_md_names_ci_yml_and_the_release_rehearsal_and_not_no_ci(self):
+    # MIGRATED at CR-MDB-070 C2 RED (§S6): was
+    # test_agents_md_names_ci_yml_and_the_release_rehearsal_and_not_no_ci.
+    def test_agents_md_names_one_release_workflow_gating_every_publish_and_no_ci_yml(self):
         self.assertEqual(agents_md_ci_findings(AGENTS_MD.read_text(encoding="utf-8")), [])
 
 

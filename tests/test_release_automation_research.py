@@ -20,6 +20,17 @@ A light text pin: each statement is checked in ONE normalised unit (a paragraph,
 its continuation lines, a table row), as ``tests.test_board_holds_the_queue.norm_units`` splits
 them; the checker is proved both ways on sample text.
 
+CR-MDB-070 §S6 adds (:func:`cr070_research_findings`, :func:`cr067_superseded_findings`):
+
+- the CR-MDB-070 rulings section (written at its gap analysis) is pinned, each ruling one unit;
+- "What Model B adopted (2026-09-24)" carries a dated "superseded by CR-MDB-070, 2026-10-14"
+  note that ``create-release`` moved to the ``master`` push;
+- the CR-MDB-067 bullet saying the concrete CI workflow lives in ``ci.yml`` carries the same
+  dated note, in that bullet's own unit;
+- ``docs/changes/CR-MDB-067-release-rehearsal-and-ci.md`` §S2 and §S3 each carry the line
+  "superseded by CR-MDB-070, 2026-10-14" exactly once (``CiWorkflowAmendmentNoteTest`` in
+  ``tests/test_ci_workflow.py`` is the precedent).
+
 Stdlib only.
 """
 
@@ -29,6 +40,7 @@ from pathlib import Path
 
 from tests._helpers import md_section
 from tests.test_board_holds_the_queue import norm_units
+from tests.test_bootstrap_shutdown_registry import normalise
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 RESEARCH_DOC = REPO_ROOT / "docs" / "research" / "release-automation-crucible-procedure.md"
@@ -272,6 +284,251 @@ class RehearsalNoteTest(unittest.TestCase):
 
     def test_the_research_doc_records_the_rehearse_job_and_the_testpypi_environment(self):
         self.assertEqual(rehearsal_note_findings(RESEARCH_DOC.read_text(encoding="utf-8")), [])
+
+
+# ------------------------------------------------------------------ CR-MDB-070 §S6 ----
+
+#: CR-MDB-070 §S6 — the dated note's exact words, matched in a normalised unit (lower-cased,
+#: whitespace collapsed, backticks and ``*`` dropped).
+SUPERSEDED_BY_070 = re.compile(r"\bsuperseded by cr-mdb-070, 2026-10-14\b")
+#: The 2026-09-24 section's note: superseded, and create-release moved to the master push — one unit.
+CREATE_RELEASE_MOVED = (
+    r"(?<![\w-])create-release(?![\w-])", r"\bmaster push\b|\bpush(?:es)? (?:to|of) master\b",
+)
+#: The CR-MDB-067 gap-analysis section, and its bullet naming ``ci.yml`` as the CI workflow's home.
+ADOPTED_067 = "## What Model B adopted (2026-10-14, user rulings at CR-MDB-067's gap analysis"
+CI_YML = r"(?<![\w-])ci\.yml\b"
+#: The CR-MDB-070 rulings section (recorded at its gap analysis), each ruling one unit.
+ADOPTED_070 = "## What Model B adopted (2026-10-14, user rulings at CR-MDB-070's gap analysis"
+CR070_RULINGS = (
+    ("one workflow, every publish needs the tests, ci.yml retired",
+     (r"\bone workflow\b", r"(?<![\w-])release\.yml\b", r"\bneeds:?", r"\bonly within one run\b",
+      CI_YML, r"\bretired\b")),
+    ("CI only on release/**, hotfix/** and master pushes and the published release, not on "
+     "develop, not on pull requests",
+     (r"(?<![\w-])release/(?!\w)", r"(?<![\w-])hotfix/(?!\w)", r"(?<![\w-])master\b",
+      r"\bpublished release\b", r"\bnot on develop\b", r"\bnot on pull requests\b")),
+    ("the release is created from the master push, the tag-push trigger dropped",
+     (r"\brelease is created from the master push\b", r"\bnothing to\s+release\b",
+      r"\btag-push trigger is dropped\b")),
+    ("the registry publishes guard their ref",
+     (r"\bregistry publishes guard their ref\b", r"\bancestor of origin/master\b")),
+)
+NO_070_SECTION = f"no '{ADOPTED_070})' section"
+NO_0924_NOTE = (f"{ADOPTED_0924}): no dated note (superseded by CR-MDB-070, 2026-10-14) that "
+                "create-release moved to the master push")
+NO_067_CI_YML_NOTE = (f"{ADOPTED_067}): its ci.yml bullet carries no dated note (superseded by "
+                      "CR-MDB-070, 2026-10-14)")
+
+
+def cr070_research_findings(text: str) -> list[str]:
+    """What ``text`` (the research note) lacks of CR-MDB-070 §S6: the CR-MDB-070 rulings
+    section, each ruling in one unit; the dated "superseded by CR-MDB-070, 2026-10-14" note in
+    the 2026-09-24 section saying ``create-release`` moved to the ``master`` push; and the same
+    dated note on the CR-MDB-067 bullet naming ``ci.yml`` (in that bullet's own unit)."""
+    out = []
+    rulings = md_section(text, ADOPTED_070)
+    if not rulings:
+        out.append(NO_070_SECTION)
+    else:
+        units = norm_units(rulings)
+        out += [f"{ADOPTED_070}): no ruling: {label}" for label, regexes in CR070_RULINGS
+                if not any(all(re.search(rx, u) for rx in regexes) for u in units)]
+    adopted = norm_units(md_section(text, ADOPTED_0924))
+    if not any(SUPERSEDED_BY_070.search(u) and all(re.search(rx, u) for rx in CREATE_RELEASE_MOVED)
+               for u in adopted):
+        out.append(NO_0924_NOTE)
+    ci_bullets = [u for u in norm_units(md_section(text, ADOPTED_067)) if re.search(CI_YML, u)]
+    if not ci_bullets or not all(SUPERSEDED_BY_070.search(u) for u in ci_bullets):
+        out.append(NO_067_CI_YML_NOTE)
+    return out
+
+
+#: CR-MDB-070 §S6 — a research note in the edited form.
+CR070_GOOD = (
+    "# Release automation\n"
+    "\n"
+    "## What Model B adopted (2026-09-24, user rulings)\n"
+    "\n"
+    "- **Automate like Crucible:** `release.yml` runs `create-release` on a tag push.\n"
+    "- **Note (superseded by CR-MDB-070, 2026-10-14):** `create-release` moved to the `master`\n"
+    "  push.\n"
+    "\n"
+    "### Setup status (user, 2026-09-24)\n"
+    "\n"
+    "- [x] Environments\n"
+    "\n"
+    "## What Model B adopted (2026-10-14, user rulings at CR-MDB-067's gap analysis)\n"
+    "\n"
+    "- **The skill carries the CI rule in plain words.** The concrete CI workflow lives only in\n"
+    "  `.github/workflows/ci.yml` (superseded by CR-MDB-070, 2026-10-14: the tests are a job of\n"
+    "  `release.yml`). No per-stack CI snippet.\n"
+    "\n"
+    "## What Model B adopted (2026-10-14, user rulings at CR-MDB-070's gap analysis)\n"
+    "\n"
+    "- **One workflow.** The tests are a job inside `release.yml`, and every publish job `needs:`\n"
+    "  them. `needs:` orders jobs only within one run, so a separate CI workflow cannot gate a\n"
+    "  publish. `ci.yml` is retired.\n"
+    "- **CI runs only on release candidates and production:** pushes to `release/**`, `hotfix/**`\n"
+    "  and `master`, and the published release. Not on `develop`, not on pull requests.\n"
+    "- **The release is created from the `master` push** for the `X.Y.Z` tag at `HEAD` (none →\n"
+    "  nothing to release); the tag-push trigger is dropped.\n"
+    "- **The registry publishes guard their ref:** a bare `X.Y.Z` tag whose commit is an ancestor\n"
+    "  of `origin/master`.\n"
+    "\n"
+    "## What this means for Model B\n"
+    "\n"
+    "Text.\n"
+)
+NOTE_0924_TEXT = ("- **Note (superseded by CR-MDB-070, 2026-10-14):** `create-release` moved to the "
+                  "`master`\n  push.\n")
+NOTE_067_TEXT = (" (superseded by CR-MDB-070, 2026-10-14: the tests are a job of\n"
+                 "  `release.yml`)")
+
+
+class Cr070ResearchCheckerProofTest(unittest.TestCase):
+    """CR-MDB-070 §S6 — :func:`cr070_research_findings`, both ways on sample text."""
+
+    def test_the_conforming_note_passes(self):
+        self.assertIn(NOTE_0924_TEXT, CR070_GOOD)
+        self.assertIn(NOTE_067_TEXT, CR070_GOOD)
+        self.assertEqual(cr070_research_findings(CR070_GOOD), [])
+
+    def test_todays_text_without_the_two_notes_is_reported_for_both(self):
+        today = CR070_GOOD.replace(NOTE_0924_TEXT, "").replace(NOTE_067_TEXT, "")
+        self.assertEqual(cr070_research_findings(today), [NO_0924_NOTE, NO_067_CI_YML_NOTE])
+
+    def test_each_element_of_the_0924_note_bites_alone(self):
+        for old, new in (("superseded by CR-MDB-070, 2026-10-14", "superseded"),
+                         ("(superseded by CR-MDB-070, 2026-10-14):** `create",
+                          "(superseded by CR-MDB-070, 2026-10-15):** `create"),
+                         ("`create-release` moved to", "the release job moved to"),
+                         ("moved to the `master`\n  push", "moved to a dispatch")):
+            with self.subTest(removed=old):
+                self.assertEqual(NOTE_0924_TEXT.count(old), 1, old)
+                self.assertEqual(cr070_research_findings(CR070_GOOD.replace(
+                    NOTE_0924_TEXT, NOTE_0924_TEXT.replace(old, new))), [NO_0924_NOTE])
+        self.assertEqual(cr070_research_findings(CR070_GOOD.replace(
+            NOTE_0924_TEXT, NOTE_0924_TEXT.replace("Superseded", "superseded").replace(
+                "(superseded", "(Superseded"))), [], "the note's case does not matter")
+
+    def test_the_0924_note_counts_only_in_the_2026_09_24_section(self):
+        moved = CR070_GOOD.replace(NOTE_0924_TEXT, "").replace(
+            "## What this means for Model B\n\nText.\n",
+            "## What this means for Model B\n\nText.\n\n" + NOTE_0924_TEXT)
+        self.assertEqual(cr070_research_findings(moved), [NO_0924_NOTE])
+
+    def test_the_067_note_sits_on_the_ci_yml_bullet_itself(self):
+        undated = CR070_GOOD.replace(NOTE_067_TEXT, " (superseded by CR-MDB-070)")
+        self.assertEqual(cr070_research_findings(undated), [NO_067_CI_YML_NOTE])
+        beside = CR070_GOOD.replace(NOTE_067_TEXT, "").replace(
+            " No per-stack CI snippet.\n",
+            " No per-stack CI snippet.\n- Note: superseded by CR-MDB-070, 2026-10-14.\n")
+        self.assertEqual(cr070_research_findings(beside), [NO_067_CI_YML_NOTE],
+                         "a note in another bullet does not mark the ci.yml bullet")
+        second = CR070_GOOD.replace(
+            "No per-stack CI snippet.\n",
+            "No per-stack CI snippet.\n- A second bullet also names `ci.yml`.\n")
+        self.assertEqual(cr070_research_findings(second), [NO_067_CI_YML_NOTE],
+                         "every bullet naming ci.yml carries the note")
+        gone = CR070_GOOD.replace(
+            "## What Model B adopted (2026-10-14, user rulings at CR-MDB-067's gap analysis)\n", "")
+        self.assertIn(NO_067_CI_YML_NOTE, cr070_research_findings(gone))
+
+    def test_each_cr070_ruling_bites_alone_and_a_missing_section_is_reported(self):
+        labels = [label for label, _ in CR070_RULINGS]
+        edits = (("`ci.yml` is retired.", "`ci.yml` stays."),
+                 (" Not on `develop`, not on pull requests.", ""),
+                 ("the tag-push trigger is dropped", "the tag push still releases"),
+                 ("an ancestor\n  of `origin/master`", "a tag"))
+        for label, (old, new) in zip(labels, edits, strict=True):
+            with self.subTest(ruling=label):
+                self.assertEqual(CR070_GOOD.count(old), 1, old)
+                self.assertEqual(cr070_research_findings(CR070_GOOD.replace(old, new)),
+                                 [f"{ADOPTED_070}): no ruling: {label}"])
+        self.assertEqual(cr070_research_findings(CR070_GOOD.replace(
+            "## What Model B adopted (2026-10-14, user rulings at CR-MDB-070's gap analysis)\n",
+            "## Later\n")), [NO_070_SECTION])
+
+
+class Cr070ResearchNoteTest(unittest.TestCase):
+    """CR-MDB-070 §S6 — the real research note carries the CR-MDB-070 rulings and the two dated
+    "superseded by CR-MDB-070, 2026-10-14" notes."""
+
+    def test_the_research_doc_records_the_cr070_rulings_and_supersedes_the_older_entries(self):
+        self.assertEqual(cr070_research_findings(RESEARCH_DOC.read_text(encoding="utf-8")), [])
+
+
+#: CR-MDB-070 §S6 — CR-MDB-067's spec, whose §S2 and §S3 each carry one dated line.
+CR_067 = REPO_ROOT / "docs" / "changes" / "CR-MDB-067-release-rehearsal-and-ci.md"
+CR_067_SUPERSEDED_SECTIONS = ("### §S2", "### §S3")
+
+
+def cr067_superseded_findings(text: str) -> list[str]:
+    """Each of :data:`CR_067_SUPERSEDED_SECTIONS` of ``text`` (CR-MDB-067's spec) not carrying
+    "superseded by CR-MDB-070, 2026-10-14" exactly once (case-insensitive, however wrapped)."""
+    out = []
+    for heading in CR_067_SUPERSEDED_SECTIONS:
+        section = md_section(text, heading, stop_prefix="#")
+        count = len(SUPERSEDED_BY_070.findall(normalise(section))) if section else 0
+        if count != 1:
+            out.append(f"{heading}: carries 'superseded by CR-MDB-070, 2026-10-14' {count} times, "
+                       "not once")
+    return out
+
+
+CR067_GOOD = (
+    "# CR-MDB-067\n"
+    "\n"
+    "### §S1 — The version stamp\n"
+    "\n"
+    "Text.\n"
+    "\n"
+    "### §S2 — The rehearsal job\n"
+    "\n"
+    "Superseded by CR-MDB-070, 2026-10-14.\n"
+    "\n"
+    "- **Triggers.** text\n"
+    "\n"
+    "### §S3 — The CI test workflow\n"
+    "\n"
+    "Superseded by CR-MDB-070,\n2026-10-14.\n"
+    "\n"
+    "### §S4 — The suite\n"
+)
+
+
+class Cr067SupersededLinesProofTest(unittest.TestCase):
+    """CR-MDB-070 §S6 — :func:`cr067_superseded_findings`, both ways on sample text."""
+
+    def test_the_conforming_spec_passes(self):
+        self.assertEqual(cr067_superseded_findings(CR067_GOOD), [])
+
+    def test_a_missing_or_doubled_line_is_reported_per_section(self):
+        s2_fault = "### §S2: carries 'superseded by CR-MDB-070, 2026-10-14' 0 times, not once"
+        s3_fault = "### §S3: carries 'superseded by CR-MDB-070, 2026-10-14' 0 times, not once"
+        self.assertEqual(cr067_superseded_findings(CR067_GOOD.replace(
+            "Superseded by CR-MDB-070, 2026-10-14.\n", "")), [s2_fault])
+        self.assertEqual(cr067_superseded_findings(CR067_GOOD.replace(
+            "Superseded by CR-MDB-070,\n2026-10-14.\n", "Superseded by CR-MDB-070.\n")), [s3_fault])
+        self.assertEqual(cr067_superseded_findings(CR067_GOOD.replace(
+            "- **Triggers.** text\n",
+            "- **Triggers.** text\n\nsuperseded by CR-MDB-070, 2026-10-14.\n")),
+            ["### §S2: carries 'superseded by CR-MDB-070, 2026-10-14' 2 times, not once"])
+        moved = CR067_GOOD.replace("Superseded by CR-MDB-070, 2026-10-14.\n", "").replace(
+            "Text.\n", "Text.\n\nSuperseded by CR-MDB-070, 2026-10-14.\n")
+        self.assertEqual(cr067_superseded_findings(moved), [s2_fault],
+                         "a line in §S1 is not §S2's")
+        self.assertEqual(cr067_superseded_findings("# Other\n"), [s2_fault, s3_fault])
+
+
+class Cr067SupersededLinesTest(unittest.TestCase):
+    """CR-MDB-070 §S6 — CR-MDB-067's §S2 and §S3 each carry one dated line, "superseded by
+    CR-MDB-070, 2026-10-14" (``CiWorkflowAmendmentNoteTest`` is the precedent)."""
+
+    def test_cr_mdb_067_s2_and_s3_each_record_their_supersession_by_cr_mdb_070(self):
+        self.assertTrue(CR_067.is_file(), f"{CR_067} must exist")
+        self.assertEqual(cr067_superseded_findings(CR_067.read_text(encoding="utf-8")), [])
 
 
 if __name__ == "__main__":

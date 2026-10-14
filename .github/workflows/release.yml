@@ -1,25 +1,40 @@
-# Release workflow: publishes Model B when a release tag is pushed,
-# and rehearses the release on every release or hotfix push.
+# Release workflow: the one workflow of this repository. Its test job
+# runs the unittest suite, and every publish job needs it.
 #
-# A git-flow release pushes an unprefixed version tag
-# (`git flow release finish X.Y.Z`, then
-# `git push origin master develop --tags`). This workflow then:
+# The test job runs in every run. The test job carries no if: and must
+# never be scoped: `needs:` orders jobs only within one run, and a
+# publish that needs a skipped job is itself skipped, silently. It runs
+# the suite directly, not through a Crucible client, because it runs
+# outside any agent session (DN-multi-harness-deploy-model §D21); the
+# suite needs `uv` on PATH and the full git history.
 #
-# 1. create-release: creates the GitHub Release with RELEASE_PAT.
-#    A Release made with the default GITHUB_TOKEN does not fire
-#    `on: release` workflows, so nothing would publish. The
-#    release body is the tag's CHANGELOG.md section, printed by
-#    .github/scripts/changelog_section.py; a tag with no section,
-#    or an empty one, fails the job. An existing release is left
-#    as it is.
-# 2. publish-pypi: builds and uploads `modelb-axi` through PyPI
-#    Trusted Publishing (no token).
-# 3. publish-npm: publishes `@anthill-tec/modelb-pi` with provenance
-#    through npm Trusted Publishing. The very first publish of the
-#    package uses the one-time NPM_TOKEN secret instead, because npm
-#    cannot bootstrap a trusted publisher. The package ships the
-#    root CHANGELOG.md, copied into pi-package/ at publish time.
+# - A release or hotfix push runs the tests and the rehearsal.
+# - A master push runs the tests and create-release, which releases the
+#   version tag at HEAD.
+# - A published release runs the tests and the guarded registry publishes.
+# Every publish needs the tests.
 #
+# A git-flow release pushes master, develop and the unprefixed version
+# tag in one push (`git flow release finish X.Y.Z`, then
+# `git push origin master develop --tags`). The jobs:
+#
+# 1. create-release: on the master push, creates the GitHub Release
+#    for the X.Y.Z tag at HEAD with RELEASE_PAT. A Release made with
+#    the default GITHUB_TOKEN does not fire `on: release` workflows,
+#    so nothing would publish. The release body is the tag's
+#    CHANGELOG.md section, printed by .github/scripts/changelog_section.py;
+#    a tag with no section, or an empty one, fails the job. An existing
+#    release is left as it is. No version tag at HEAD: nothing to
+#    release; two: the job fails.
+# 2. publish-pypi: on the release event, guards the ref (an X.Y.Z tag
+#    on master's history), then builds and uploads `modelb-axi` through
+#    PyPI Trusted Publishing (no token).
+# 3. publish-npm: on the release event, the same guard, then publishes
+#    `@anthill-tec/modelb-pi` with provenance through npm Trusted
+#    Publishing. The very first publish of the package uses the
+#    one-time NPM_TOKEN secret instead, because npm cannot bootstrap a
+#    trusted publisher. The package ships the root CHANGELOG.md, copied
+#    into pi-package/ at publish time.
 # 4. rehearse: every release or hotfix push (`release/X.Y.Z`,
 #    `hotfix/X.Y.Z`) rehearses the release. It stamps the dev version
 #    X.Y.Z.devN (npm: X.Y.Z-dev.N, N the run number) with
@@ -27,8 +42,15 @@
 #    version other than X.Y.Z; checks the release's CHANGELOG.md
 #    section; uploads the build to TestPyPI; and dry-runs the npm
 #    publish under the `dev` dist-tag. A manual run
-#    (workflow_dispatch) re-runs the rehearsal on a release or hotfix
-#    ref, and fails on any other.
+#    (workflow_dispatch) on a release or hotfix ref re-runs the
+#    rehearsal; on any other ref it skips it.
+#
+# Recovery: when the master run finds no version tag at HEAD, dispatch
+# the workflow on master.
+#
+# A red run: when the master run or the release run fails its tests,
+# nothing publishes. Re-run the failed jobs; a real failure is fixed on
+# a hotfix branch.
 #
 # One-time setup by the maintainer:
 # - repository secret RELEASE_PAT: fine-grained, owner anthill-tec,
@@ -46,9 +68,7 @@ name: release
 
 on:
   push:
-    tags:
-      - "[0-9]+.[0-9]+.[0-9]+"
-    branches: ["release/**", "hotfix/**"]
+    branches: [master, "release/**", "hotfix/**"]
   release:
     types: [published]
   workflow_dispatch:
@@ -57,27 +77,66 @@ permissions:
   contents: read
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+      - name: Run the suite
+        env:
+          MODELB_HOME: ${{ runner.temp }}/modelb-home
+          XDG_DATA_HOME: ${{ runner.temp }}/xdg-data
+          PI_CODING_AGENT_DIR: ${{ runner.temp }}/pi-agent
+        run: python -m unittest discover -s tests -t .
+
   create-release:
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    needs: test
+    if: >-
+      github.ref == 'refs/heads/master' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+      - name: The version tag at HEAD
+        id: tag
+        run: |
+          tags=$(git tag --points-at HEAD | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' || true)
+          count=$(printf '%s' "$tags" | grep -c . || true)
+          if [ "$count" -gt 1 ]; then
+            echo "::error::more than one version tag at HEAD: $(echo $tags)"
+            exit 1
+          fi
+          if [ -z "$tags" ]; then
+            echo "::notice::no version tag at HEAD — nothing to release"
+          fi
+          echo "tag=$tags" >> "$GITHUB_OUTPUT"
       - name: Tag matches the package version
+        if: steps.tag.outputs.tag != ''
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
         run: |
           python3 - <<'PY'
           import os, pathlib, re, sys
           text = pathlib.Path("modelb_axi/__init__.py").read_text()
           version = re.search(r'__version__\s*=\s*"([^"]+)"', text)[1]
-          tag = os.environ["GITHUB_REF_NAME"]
+          tag = os.environ["TAG"]
           if version != tag:
               sys.exit(f"tag {tag} != __version__ {version}")
           PY
       - name: Create the GitHub Release
+        if: steps.tag.outputs.tag != ''
         env:
           GH_TOKEN: ${{ secrets.RELEASE_PAT }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ steps.tag.outputs.tag }}
         run: |
           python3 .github/scripts/changelog_section.py CHANGELOG.md "$TAG" > "$RUNNER_TEMP/notes.md"
           if ! gh release view "$TAG" >/dev/null 2>&1; then
@@ -85,21 +144,38 @@ jobs:
           fi
 
   publish-pypi:
+    needs: test
     if: github.event_name == 'release'
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
+      contents: read
       id-token: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+      - name: Guard - a version tag on master's history
+        run: |
+          if ! [[ "$GITHUB_REF" =~ ^refs/tags/[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::refusing to publish: $GITHUB_REF is not an X.Y.Z tag ref"
+            exit 1
+          fi
+          git fetch --no-tags origin master
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/master; then
+            echo "::error::refusing to publish: $GITHUB_SHA is not on origin/master"
+            exit 1
+          fi
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
       - run: uv build
       - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
 
   rehearse:
+    needs: test
     if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/'))
+      (startsWith(github.ref, 'refs/heads/release/') ||
+       startsWith(github.ref, 'refs/heads/hotfix/')) &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     environment: testpypi
     permissions:
@@ -130,6 +206,7 @@ jobs:
         run: npm publish --dry-run --access public --tag dev
 
   publish-npm:
+    needs: test
     if: github.event_name == 'release'
     runs-on: ubuntu-latest
     environment: npm
@@ -141,6 +218,19 @@ jobs:
         working-directory: pi-package
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+      - name: Guard - a version tag on master's history
+        run: |
+          if ! [[ "$GITHUB_REF" =~ ^refs/tags/[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::refusing to publish: $GITHUB_REF is not an X.Y.Z tag ref"
+            exit 1
+          fi
+          git fetch --no-tags origin master
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/master; then
+            echo "::error::refusing to publish: $GITHUB_SHA is not on origin/master"
+            exit 1
+          fi
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "22"

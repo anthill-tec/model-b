@@ -81,6 +81,8 @@ the trusted-publisher configurations exactly.
   `NPM_TOKEN`.
 - **Note (2026-10-14, CR-MDB-067):** the manual `rehearse-testpypi` became the `rehearse` job,
   run on every release or hotfix push.
+- **Note (superseded by CR-MDB-070, 2026-10-14):** `create-release` moved to the `master` push:
+  it releases the `X.Y.Z` tag at `HEAD` after the test job, and the tag-push trigger is dropped.
 
 ### Setup status (user, 2026-09-24)
 
@@ -143,7 +145,8 @@ adopted for 1.0.0 and split by the 13-point cap:
   bump fails on the first push instead of at the tag.
 - **The skill carries the CI rule in plain words.** The raw-runner guard keeps test-runner commands
   out of `skills-src/` and `AGENTS.md`; the concrete CI workflow lives only in Model B's own
-  `.github/workflows/ci.yml`. No per-stack CI snippet.
+  `.github/workflows/ci.yml` (superseded by CR-MDB-070, 2026-10-14: the tests are a job of
+  `release.yml`). No per-stack CI snippet.
 - **The skill's Python and npm release steps describe the CI path only:** the rehearsal is the
   release-branch push (TestPyPI upload, `npm publish --dry-run`, the notes check) and publishing is
   the tag's release jobs through Trusted Publishing (a one-time token for a new npm package). The

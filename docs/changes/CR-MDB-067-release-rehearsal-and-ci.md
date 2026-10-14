@@ -62,6 +62,8 @@ stdlib only and uses no syntax newer than Python 3.12, the hosted runner's defau
 
 ### §S2 — The rehearsal job
 
+Superseded by CR-MDB-070, 2026-10-14.
+
 `.github/workflows/release.yml`:
 
 - **Triggers.** `on.push` keeps the tag pattern and gains `branches: ["release/**", "hotfix/**"]`;
@@ -95,6 +97,8 @@ stdlib only and uses no syntax newer than Python 3.12, the hosted runner's defau
   the `testpypi` environment admits `release/**` and `hotfix/**` and carries no required reviewers.
 
 ### §S3 — The CI test workflow
+
+Superseded by CR-MDB-070, 2026-10-14.
 
 `.github/workflows/ci.yml`, `name: ci`, workflow `permissions: contents: read`, one job `test` with
 `runs-on: ubuntu-latest`:
