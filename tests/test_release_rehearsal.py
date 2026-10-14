@@ -40,12 +40,11 @@ Class map:
   and that a real failure is fixed on a hotfix branch (:func:`header_red_run_faults`).
 - ``HeaderRedRunCheckerProofTest`` — CR-MDB-070 C4 RED (VERIFY F6): :func:`header_red_run_faults`
   proved both ways on sample text.
-- ``SkillReleaseSnippetExecutionTest`` — CR-MDB-070 C4 RED (VERIFY F1): the git-workflow skill's
-  release-job snippet's release step EXECUTED under ``bash -e`` in a temp git repository with a
-  ``gh`` shim first on ``PATH``: two version tags at ``HEAD`` fail naming both, one with its
-  section reaches ``gh release create``, none exits 0 with nothing to release; its
-  ``SkillReleaseSnippetConformingSampleProofTest`` runs it on :data:`CONFORMING_SKILL_SNIPPET`
-  and ``SkillReleaseSnippetBiteProofTest`` shows it bites without the count.
+- MIGRATED at CR-MDB-068 C3 RED (§S8): ``SkillReleaseSnippetExecutionTest`` and its two proofs
+  (CR-MDB-070 C4 RED, VERIFY F1 — the git-workflow skill's release-job snippet EXECUTED) are
+  retired with the snippet: the skill now points at the rendered workflow, whose tag step is
+  executed by ``CreateReleaseTagStepExecutionTest`` below and by
+  ``tests.test_rendered_release_workflow.CreateReleaseExecutionTest``.
 - ``RehearseStampStepExecutionTest`` — §S2: step 2's command lines EXECUTED under ``bash -e`` in a
   temp tree with ``GITHUB_REF_NAME`` and ``GITHUB_RUN_NUMBER`` set.
 - ``CreateReleaseTagStepExecutionTest`` — CR-MDB-070 §S2: the ``id: tag`` step EXECUTED under
@@ -93,7 +92,6 @@ from tests._helpers import (
     workflow_steps,
 )
 from tests.test_board_holds_the_queue import norm_units
-from tests.test_install_guide import GIT_WORKFLOW_SKILL, release_job_snippet
 from tests.test_pi_package import npm_semver
 from tests.test_workflow_render import MARKER_PREFIX
 
@@ -1854,161 +1852,16 @@ class PublishGuardConformingSampleProofTest(PublishGuardExecutionTest):
 
 # ---------------------------------------------- CR-MDB-070 C4 RED (VERIFY F1) — the skill snippet ----
 
-#: VERIFY F1 — a CHANGELOG.md with sections for both 1.0.0 and 1.0.1, so a refusal of two tags at HEAD is the count's,
-#: never a missing section's.
-CHANGELOG_TWO_TAGS = CHANGELOG_PREAMBLE + (
-    "## [1.0.1] - 2026-10-14\n\n### Fixed\n\n- The second tag's notes.\n\n"
-    "## [1.0.0] - 2026-10-13\n\n### Added\n\n- The first tag's notes.\n"
-)
-#: A ``gh`` stand-in first on ``PATH``: it records each call's arguments, one line each, in
-#: ``$GH_SHIM_LOG``; ``release view`` exits 1 (no such release yet), every other call exits 0.
-GH_SHIM = ('#!/bin/sh\n'
-           'printf \'%s\\n\' "$*" >> "$GH_SHIM_LOG"\n'
-           '[ "$1 $2" != "release view" ]\n')
-#: VERIFY F1 — a skill ``## Releases`` whose release-job snippet meets the finding: it counts the
-#: version tags at HEAD and refuses more than one, naming them.
-CONFORMING_SKILL_SNIPPET = r"""## Releases (NON-NEGOTIABLE)
-
-```yaml
-create-release:
-  needs: test
-  if: github.ref == 'refs/heads/master'
-  runs-on: ubuntu-latest
-  steps:
-    - uses: actions/checkout@v4 # pin to a full commit SHA
-      with:
-        fetch-depth: 0
-    - name: Create the release
-      env:
-        GH_TOKEN: ${{ secrets.RELEASE_PAT }}
-      run: |
-        tags=$(git tag --points-at HEAD | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' || true)
-        [ -n "$tags" ] || { echo "no version tag at HEAD, nothing to release"; exit 0; }
-        [ "$(printf '%s\n' "$tags" | wc -l)" -eq 1 ] || { echo "more than one version tag at HEAD:" $tags >&2; exit 1; }
-        tag=$tags
-        awk -v head="## [$tag] - " '
-          index($0, head) == 1 { found = 1; next }
-          found && (/^## / || /^\[[^]]+\]: /) { exit }
-          found { print }
-          END { if (!found) exit 1 }
-        ' CHANGELOG.md > release-notes.md || { echo "no CHANGELOG.md section for $tag" >&2; exit 1; }
-        grep -Eqv -e '^###([[:space:]]|$)' -e '^[[:space:]]*$' release-notes.md || { echo "empty section for $tag" >&2; exit 1; }
-        gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --notes-file release-notes.md --verify-tag
-```
-
-## Next
-"""
-#: The line of :data:`CONFORMING_SKILL_SNIPPET` that counts the tags (the bite proof drops it).
-SNIPPET_COUNT_LINE = ('[ "$(printf \'%s\\n\' "$tags" | wc -l)" -eq 1 ] || { echo "more than one '
-                      'version tag at HEAD:" $tags >&2; exit 1; }')
-
-
-def run_skill_snippet(test: unittest.TestCase, lines: list[str], head_tags: tuple,
-                      changelog: str) -> tuple[subprocess.CompletedProcess, list[str], Path]:
-    """Run the skill snippet's ``lines`` under ``bash -e`` in a temp repository on ``master``: an
-    earlier commit tagged ``0.9.0``, ``HEAD`` carrying ``head_tags`` (annotated, as git flow
-    tags), ``changelog`` as ``CHANGELOG.md``, and :data:`GH_SHIM` first on ``PATH`` so nothing
-    calls GitHub. ``(the run, the gh calls in order, the repository)`` (VERIFY F1)."""
-    work, env = _workdir(test, "skill-release-snippet-")
-    repo = work / "repo"
-    _git(work, env, "init", "-q", "-b", "master", str(repo))
-    _git(repo, env, "commit", "-q", "--allow-empty", "-m", "earlier")
-    _git(repo, env, "tag", "-a", "0.9.0", "-m", "0.9.0")
-    _git(repo, env, "commit", "-q", "--allow-empty", "-m", "head")
-    for tag in head_tags:
-        _git(repo, env, "tag", "-a", tag, "-m", tag)
-    (repo / "CHANGELOG.md").write_text(changelog, encoding="utf-8")
-    shim_dir = work / "bin"
-    shim_dir.mkdir()
-    (shim_dir / "gh").write_text(GH_SHIM, encoding="utf-8")
-    (shim_dir / "gh").chmod(0o755)
-    log = work / "gh-calls"
-    result = bash_e(lines, repo, dict(env, PATH=f"{shim_dir}{os.pathsep}{env.get('PATH', os.defpath)}",
-                                      GH_SHIM_LOG=str(log)))
-    calls = log.read_text(encoding="utf-8").splitlines() if log.exists() else []
-    return result, calls, repo
-
-
-class SkillReleaseSnippetExecutionTest(unittest.TestCase):
-    """CR-MDB-070 C4 RED (VERIFY F1) — the git-workflow skill's release-job snippet (``## Releases``,
-    the fenced ``create-release`` block): its release step's ``run:`` lines EXECUTED under
-    ``bash -e`` with a ``gh`` shim. Two version tags at ``HEAD`` fail naming both, before any
-    ``gh`` call; one tag with its section reaches ``gh release create``; none exits 0 with nothing
-    to release."""
-
-    SKILL: str | None = None
-
-    def _lines(self) -> list[str]:
-        text = self.SKILL if self.SKILL is not None else GIT_WORKFLOW_SKILL.read_text(encoding="utf-8")
-        snippet = release_job_snippet(text)
-        self.assertIsNotNone(snippet, "## Releases carries the release-job snippet")
-        steps = workflow_steps((snippet or "").splitlines())
-        hits = [step for step in steps if any("gh release create" in line for line in step["run"])]
-        self.assertEqual(len(hits), 1, f"one snippet step creates the release; found {len(hits)}")
-        return hits[0]["run"]
-
-    def test_two_version_tags_at_head_fail_naming_both_before_any_gh_call(self):
-        result, calls, _repo = run_skill_snippet(self, self._lines(), ("1.0.0", "1.0.1"),
-                                                 CHANGELOG_TWO_TAGS)
-        output = result.stdout + result.stderr
-        self.assertNotEqual(result.returncode, 0, f"two tags fail the step; output={output!r}")
-        self.assertIn("more than one version tag", output, f"output={output!r}")
-        self.assertIn("1.0.0", output)
-        self.assertIn("1.0.1", output)
-        self.assertNotIn("no CHANGELOG.md section", output, "not the misleading missing-section error")
-        self.assertEqual(calls, [], "nothing reaches gh")
-
-    def test_one_version_tag_with_its_section_reaches_gh_release_create_with_the_notes(self):
-        for head_tags in (("1.2.3",), ("v1.2.3", "1.2.3", "1.2.3-rc.1")):
-            with self.subTest(head_tags=head_tags):
-                result, calls, repo = run_skill_snippet(self, self._lines(), head_tags,
-                                                        CHANGELOG_GOOD)
-                self.assertEqual(result.returncode, 0,
-                                 f"stdout={result.stdout!r} stderr={result.stderr!r}")
-                self.assertEqual(len(calls), 2, f"gh view then gh create; calls={calls!r}")
-                self.assertEqual(calls[0].split()[:3], ["release", "view", "1.2.3"])
-                created = calls[1].split()
-                self.assertEqual(created[:3], ["release", "create", "1.2.3"])
-                self.assertIn("--verify-tag", created)
-                self.assertIn("--notes-file", created)
-                notes = (repo / created[created.index("--notes-file") + 1]).read_text(encoding="utf-8")
-                self.assertIn("The rehearsed release — its notes body.", notes)
-                self.assertNotIn("An earlier fix.", notes)
-
-    def test_no_version_tag_at_head_exits_0_with_nothing_to_release_and_no_gh_call(self):
-        for head_tags in ((), ("v1.2.3",)):
-            with self.subTest(head_tags=head_tags):
-                result, calls, _repo = run_skill_snippet(self, self._lines(), head_tags,
-                                                         CHANGELOG_GOOD)
-                self.assertEqual(result.returncode, 0,
-                                 f"stdout={result.stdout!r} stderr={result.stderr!r}")
-                self.assertIn("nothing to release", result.stdout + result.stderr)
-                self.assertEqual(calls, [], "nothing reaches gh")
-
-
-class SkillReleaseSnippetConformingSampleProofTest(SkillReleaseSnippetExecutionTest):
-    """VERIFY F1 — a snippet written to the finding passes what the skill's must."""
-
-    SKILL = CONFORMING_SKILL_SNIPPET
-
-
-class SkillReleaseSnippetBiteProofTest(unittest.TestCase):
-    """VERIFY F1 — the execution test bites: without its count line the conforming snippet takes
-    two tags as one multi-line tag and fails on the misleading missing-section message."""
-
-    def test_a_snippet_without_the_count_fails_two_tags_on_the_wrong_message(self):
-        self.assertEqual(CONFORMING_SKILL_SNIPPET.count(SNIPPET_COUNT_LINE), 1)
-        broken = CONFORMING_SKILL_SNIPPET.replace(SNIPPET_COUNT_LINE + "\n", "")
-        steps = workflow_steps((release_job_snippet(broken) or "").splitlines())
-        lines = next(step["run"] for step in steps
-                     if any("gh release create" in line for line in step["run"]))
-        result, calls, _repo = run_skill_snippet(self, lines, ("1.0.0", "1.0.1"),
-                                                 CHANGELOG_TWO_TAGS)
-        output = result.stdout + result.stderr
-        self.assertNotEqual(result.returncode, 0)
-        self.assertNotIn("more than one version tag", output)
-        self.assertIn("no CHANGELOG.md section for 1.0.0", output, f"output={output!r}")
-        self.assertEqual(calls, [])
+# MIGRATED at CR-MDB-068 C3 RED (§S8): the git-workflow skill carries no hand-written release-job
+# snippet any more — `init` renders the release workflow and `modelb-axi release-workflow`
+# re-renders it — so SkillReleaseSnippetExecutionTest, SkillReleaseSnippetConformingSampleProofTest
+# and SkillReleaseSnippetBiteProofTest are retired with CHANGELOG_TWO_TAGS, GH_SHIM,
+# CONFORMING_SKILL_SNIPPET, SNIPPET_COUNT_LINE and run_skill_snippet(). What they executed is now
+# executed on the rendered workflow: two version tags at HEAD fail naming both, none exits 0 with
+# nothing to release (CreateReleaseTagStepExecutionTest, on Model B's rendered release.yml, and
+# tests.test_rendered_release_workflow.CreateReleaseExecutionTest, on every render). The skill's
+# statements of that behaviour are gated by tests.test_install_guide (RENDERED_WORKFLOW_PHRASES),
+# and a fenced `gh release create` in its ## Releases is a fault there.
 
 
 # ------------------------------------------------------------- CR-MDB-070 C4 RED (VERIFY F6) ----
