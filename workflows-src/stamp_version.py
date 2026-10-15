@@ -193,6 +193,8 @@ def _maven_source(directory: Path) -> _Source:
         project = ElementTree.fromstring(text.encode("utf-8"))  # noqa: S314 - no DTD, above
     except ElementTree.ParseError as error:
         raise _Refusal(f"{name}: cannot be parsed: {error}") from None
+    if project.tag.rpartition("}")[2] != "project":
+        raise _Refusal(f"{name}: the root element is <{project.tag}>, not <project>")
     own = [(child.text or "").strip() for child in project
            if child.tag == "version" or child.tag.endswith("}version")]
     version = own[0] if own else ""
