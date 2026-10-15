@@ -91,14 +91,14 @@ readers = ["modelb-axi agents", "bootstrap/shutdown skills (the stack whose Cruc
 
 [[key]]
 name = "RELEASE_TARGETS"
-description = "Where a release publishes, comma-separated: `pypi`, `npm`, `github-assets`, each `name` or `name:dir`; empty for no publish target. The release workflow is rendered from it."
+description = "Where a release publishes, comma-separated: `pypi`, `npm`, `crates`, `maven-central`, `github-assets`, each `name` or `name:dir`; empty for no publish target. The release workflow is rendered from it."
 required = false
 file = ".env"
 scope = "root"
 source = "ask"
 flag = "--release-targets"
 validate = "release_targets_csv"
-readers = ["modelb-axi init (renders the release workflow)", "modelb-axi release-workflow (re-renders it)"]
+readers = ["modelb-axi init (renders the release workflow)", "modelb-axi release-workflow (re-renders it)", "modelb-axi release-check (reads each target's readiness)"]
 
 [[key]]
 name = "CRUCIBLE_PROJECT_KEY"

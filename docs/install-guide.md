@@ -404,6 +404,16 @@ modelb-axi release-workflow
 This re-renders the release workflow under `.github/` for the project's stacks and release
 targets. Add `--release-targets` to change the targets too. Files you have edited are left
 alone.
+
+Before a release, check what the project still lacks. From the project's root, run:
+
+```sh
+modelb-axi release-check
+```
+
+This reports the release readiness: each item is `ready`, `missing` or `unknown`. It reads the
+rendered workflow, the version sources and, through `gh`, the repository's environments and
+secrets. It writes nothing, and exits non-zero while anything is missing.
 <!-- install-guide:end adding-stacks-later -->
 
 <!-- install-guide:begin project-trust -->
@@ -451,7 +461,8 @@ modelb-axi init --name "My Project" --token myproject --acronym MYP --mode solo 
 ```
 
 `--release-targets` names where a release publishes (`pypi[:<dir>]`, `npm[:<dir>]`,
-`github-assets`, or none); `init` builds the project's release workflow from it and the stacks.
+`crates[:<dir>]`, `maven-central[:<dir>]`, `github-assets`, or none); `init` builds the
+project's release workflow from it and the stacks.
 
 Add `--dry-run` to see what would be written without writing anything.
 <!-- install-guide:end project-trust -->

@@ -23,6 +23,10 @@ Class map:
 - ``VersionSourceRefusalsTest`` — every §S3 refusal: exit 1, one stderr line naming the file,
   nothing written.
 - ``ChangelogSectionScriptTest`` — today's behaviour on every CR-MDB-058 sample case.
+- CR-MDB-071 §S1/§S2: ``CratesVersionSourceTest``, ``MavenVersionSourceTest``,
+  ``CratesMavenStampTest``, ``CratesMavenCheckTest``, ``CratesMavenRefusalsTest``,
+  ``ReadSubcommandTest`` and ``StampVersionTargetSurfacesTest`` — the ``crates`` and
+  ``maven-central`` version sources under ``stamp``, ``check`` and the new ``read``.
 - ``WorkflowScriptsSourceTest`` — both: Python 3.12 syntax, stdlib imports, and docstrings saying
   the script is rendered into a project by ``modelb-axi`` and is not part of the ``modelb_axi``
   package.
@@ -602,6 +606,428 @@ class WorkflowScriptsSourceTest(unittest.TestCase):
         for name, source in self._sources():
             with self.subTest(script=name):
                 self.assertEqual(docstring_faults(source), [])
+
+
+# ================================================================== CR-MDB-071 ====
+# The ``crates`` and ``maven-central`` version sources and the ``read`` subcommand (CR-MDB-071
+# §S2), plus the script's version-source forms (§S1). AC: ``stamp``, ``check`` and ``read`` in temp
+# trees; ``crates`` with a package version, ``crates:.`` as both workspace and package,
+# ``version = { workspace = true }``, a sub-directory, CRLF, ``Cargo.lock`` absent;
+# ``maven-central`` with an own version beside a ``<parent>`` version; refused: no ``[package]``,
+# a workspace version without ``[workspace.package] version``, a ``<parent>``-only pom,
+# ``${revision}``; ``stamp`` leaves both unchanged and refuses a version other than ``X.Y.Z``;
+# ``read`` prints each version or exits 1; one stderr line per refusal; nothing written. No tree
+# holds a ``Cargo.lock``.
+
+#: §S1/§S2 — the four targets with a version source, as ``stamp_version.py`` takes them.
+VERSION_SOURCE_FORMS = ("pypi:<dir>", "npm:<dir>", "crates:<dir>", "maven-central:<dir>")
+
+# ------------------------------------------------------------------ fixtures ----
+
+
+def cargo_package(version_line: str = 'version = "1.2.3"', name: str = "fixture") -> str:
+    """A crate's ``Cargo.toml``: ``[package]`` carrying ``version_line``; a dependency pinned to
+    ``1.2.3`` and a dependency table with its own ``version`` follow it."""
+    return ("[package]\n"
+            f'name = "{name}"\n'
+            f"{version_line}\n"
+            'edition = "2021"\n'
+            "\n"
+            "[dependencies]\n"
+            'serde = { version = "1.2.3" }\n'
+            "\n"
+            "[dependencies.extra]\n"
+            'version = "9.9.9"\n')
+
+
+def cargo_workspace(version: str | None = "1.2.3", package_line: str | None = None) -> str:
+    """A workspace root ``Cargo.toml``: ``[workspace]``, then ``[workspace.package]`` with
+    ``version`` (none when ``None``), a workspace dependency pinned to ``9.9.9``; with
+    ``package_line``, also a root ``[package]`` carrying it (the root is both)."""
+    text = ("[workspace]\n"
+            'members = ["crates/core"]\n'
+            "\n"
+            "[workspace.package]\n"
+            + (f'version = "{version}"\n' if version is not None else "")
+            + 'edition = "2021"\n'
+            "\n"
+            "[workspace.dependencies]\n"
+            'serde = { version = "9.9.9" }\n')
+    if package_line is not None:
+        text += f'\n[package]\nname = "fixture"\n{package_line}\n'
+    return text
+
+
+def pom(own_version: str | None = "1.2.3", parent: bool = True) -> str:
+    """A ``pom.xml``: the XML declaration (``version="1.0"``), a ``<parent>`` at ``9.9.9`` (when
+    ``parent``), the project's own ``<version>`` (none when ``None``), a dependency at ``1.2.2``."""
+    text = ('<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<project xmlns="http://maven.apache.org/POM/4.0.0">\n'
+            "  <modelVersion>4.0.0</modelVersion>\n")
+    if parent:
+        text += ("  <parent>\n"
+                 "    <groupId>org.example</groupId>\n"
+                 "    <artifactId>parent</artifactId>\n"
+                 "    <version>9.9.9</version>\n"
+                 "  </parent>\n")
+    text += "  <groupId>org.example</groupId>\n  <artifactId>fixture</artifactId>\n"
+    if own_version is not None:
+        text += f"  <version>{own_version}</version>\n"
+    text += ("  <dependencies>\n"
+             "    <dependency>\n"
+             "      <groupId>org.example</groupId>\n"
+             "      <artifactId>dep</artifactId>\n"
+             "      <version>1.2.2</version>\n"
+             "    </dependency>\n"
+             "  </dependencies>\n"
+             "</project>\n")
+    return text
+
+
+POM_NAMESPACE = "http://maven.apache.org/POM/4.0.0"
+
+
+def pom_rooted(open_tag: str, close_tag: str | None = None) -> str:
+    """VERIFY F5: :func:`pom` at ``1.2.3`` with its root element ``<open_tag>`` ...
+    ``</close_tag>`` (``close_tag`` defaults to ``open_tag``) in place of the namespaced
+    ``<project>``."""
+    return (pom("1.2.3")
+            .replace(f'<project xmlns="{POM_NAMESPACE}">\n', f"<{open_tag}>\n")
+            .replace("</project>\n", f"</{close_tag or open_tag}>\n"))
+
+
+def pom_with_internal_dtd() -> str:
+    """VERIFY F1: :func:`pom` whose own ``<version>`` is the entity ``&v;``, defined as ``1.2.3``
+    in an internal DTD after the XML declaration."""
+    declaration, rest = pom("&v;").split("\n", 1)
+    return f'{declaration}\n<!DOCTYPE project [\n  <!ENTITY v "1.2.3">\n]>\n{rest}'
+
+
+#: A crate under ``crates/core`` whose version is the workspace's, in the inline-table form.
+CORE_INLINE = cargo_package("version = { workspace = true }", name="core")
+#: The same in the dotted-key form.
+CORE_DOTTED = cargo_package("version.workspace = true", name="core")
+#: A ``[package] version`` line carrying a trailing comment.
+COMMENTED_PACKAGE_VERSION = 'version = "1.2.3"  # the crate version, kept by every subcommand'
+
+
+class _SourceCase(_TreeCase):
+    """``read`` and ``check`` expectations over both runners."""
+
+    def assert_reads(self, files: dict[str, str], targets: list[str], versions: list[str]):
+        """``read`` prints exactly ``target<TAB>version`` per target, in order; exit 0; no stderr;
+        nothing written."""
+        expected = "".join(f"{target}\t{version}\n" for target, version in zip(targets, versions, strict=True))
+        for label, tree, (code, out, err) in self.run_both(files, ["read", *targets]):
+            with self.subTest(runner=label, targets=targets):
+                self.assertEqual((code, err), (0, ""), f"§S2: read exits 0; stderr={err!r}")
+                self.assertEqual(out, expected, "§S2: read prints target<TAB>version per target")
+                self.assertEqual(snapshot(tree), snapshot(self.tree(files)),
+                                 "§S2: read writes nothing")
+
+    def assert_checks(self, files: dict[str, str], tag: str, targets: list[str]):
+        """``check <tag>`` passes and writes nothing."""
+        for label, tree, (code, _out, err) in self.run_both(files, ["check", tag, *targets]):
+            with self.subTest(runner=label, targets=targets):
+                self.assertEqual(code, 0, f"§S2: check passes at the tag; stderr={err!r}")
+                self.assertEqual(snapshot(tree), snapshot(self.tree(files)))
+
+    def assert_check_names(self, files: dict[str, str], tag: str, targets: list[str],
+                           *named: str, unnamed: tuple[str, ...] = ()):
+        for label, tree, (code, out, err) in self.run_both(files, ["check", tag, *targets]):
+            with self.subTest(runner=label, targets=targets):
+                self.assertEqual(code, 1, f"stdout={out!r} stderr={err!r}")
+                self.assertNotIn("Traceback", err)
+                for name in (*named, "is not the tag"):
+                    self.assertIn(name, err)
+                for name in unnamed:
+                    self.assertNotIn(name, err, "§S2: names only the sources off the tag")
+                self.assertEqual(snapshot(tree), snapshot(self.tree(files)))
+
+
+# ------------------------------------------------------------------ crates ----
+
+class CratesVersionSourceTest(_SourceCase):
+    """§S2 — ``crates:<dir>``: ``<dir>/Cargo.toml``'s ``[package] version``, or the root
+    ``Cargo.toml``'s ``[workspace.package] version`` when the package takes the workspace's."""
+
+    def test_a_package_version_is_read_and_checked(self):
+        files = {"Cargo.toml": cargo_package('version = "1.2.3"')}
+        self.assert_reads(files, ["crates:."], ["1.2.3"])
+        self.assert_checks(files, "1.2.3", ["crates:."])
+
+    def test_a_package_version_with_a_trailing_comment_is_read(self):
+        files = {"Cargo.toml": cargo_package(COMMENTED_PACKAGE_VERSION)}
+        self.assert_reads(files, ["crates:."], ["1.2.3"])
+        self.assert_checks(files, "1.2.3", ["crates:."])
+
+    def test_the_root_as_both_workspace_and_package_reads_the_workspace_version(self):
+        for line in ("version.workspace = true", "version = { workspace = true }"):
+            with self.subTest(form=line):
+                files = {"Cargo.toml": cargo_workspace("2.0.1", package_line=line)}
+                self.assert_reads(files, ["crates:."], ["2.0.1"])
+                self.assert_checks(files, "2.0.1", ["crates:."])
+
+    def test_a_member_taking_the_workspace_version_inline_reads_the_root(self):
+        files = {"Cargo.toml": cargo_workspace("3.4.5"), "crates/core/Cargo.toml": CORE_INLINE}
+        self.assert_reads(files, ["crates:crates/core"], ["3.4.5"])
+        self.assert_checks(files, "3.4.5", ["crates:crates/core"])
+
+    def test_a_member_taking_the_workspace_version_dotted_reads_the_root(self):
+        files = {"Cargo.toml": cargo_workspace("3.4.5"), "crates/core/Cargo.toml": CORE_DOTTED}
+        self.assert_reads(files, ["crates:crates/core"], ["3.4.5"])
+
+    def test_a_sub_directory_with_its_own_version_reads_it_not_the_roots(self):
+        files = {"Cargo.toml": cargo_workspace("0.0.1"),
+                 "crates/core/Cargo.toml": cargo_package('version = "1.2.3"', name="core")}
+        self.assert_reads(files, ["crates:crates/core"], ["1.2.3"])
+        self.assert_check_names(files, "0.0.1", ["crates:crates/core"], "crates/core/Cargo.toml",
+                                "1.2.3")
+
+    def test_crlf_cargo_files_are_read_and_checked(self):
+        package = {"Cargo.toml": crlf(cargo_package(COMMENTED_PACKAGE_VERSION))}
+        self.assert_reads(package, ["crates:."], ["1.2.3"])
+        self.assert_checks(package, "1.2.3", ["crates:."])
+        workspace = {"Cargo.toml": crlf(cargo_workspace("3.4.5")),
+                     "crates/core/Cargo.toml": crlf(CORE_INLINE)}
+        self.assert_reads(workspace, ["crates:crates/core"], ["3.4.5"])
+
+    def test_no_cargo_lock_is_needed_by_any_subcommand(self):
+        files = {"Cargo.toml": cargo_package('version = "1.2.3"')}
+        self.assertNotIn("Cargo.lock", files)
+        self.assert_reads(files, ["crates:."], ["1.2.3"])
+        self.assert_checks(files, "1.2.3", ["crates:."])
+        for label, tree, (code, out, err) in self.run_both(
+                files, ["stamp", "release/1.2.3", "7", "crates:."]):
+            with self.subTest(runner=label):
+                self.assertEqual(code, 0, f"stderr={err!r}")
+                self.assert_prints(out, "1.2.3")
+                self.assertFalse((tree / "Cargo.lock").exists(), "no Cargo.lock is created")
+
+
+# ------------------------------------------------------------------ maven-central ----
+
+class MavenVersionSourceTest(_SourceCase):
+    """§S2 — ``maven-central:<dir>``: ``<dir>/pom.xml``'s own ``<version>``, the child of
+    ``<project>``, never the ``<parent>``'s."""
+
+    def test_the_own_version_beside_a_parent_version_is_read_and_checked(self):
+        files = {"pom.xml": pom("1.2.3")}
+        self.assert_reads(files, ["maven-central:."], ["1.2.3"])
+        self.assert_checks(files, "1.2.3", ["maven-central:."])
+        self.assert_check_names(files, "9.9.9", ["maven-central:."], "pom.xml", "1.2.3")
+
+    def test_a_pom_without_a_parent_is_read(self):
+        self.assert_reads({"pom.xml": pom("4.5.6", parent=False)}, ["maven-central:."], ["4.5.6"])
+
+    def test_a_sub_directory_pom_is_read_not_the_roots(self):
+        files = {"pom.xml": pom("0.0.1"), "lib/pom.xml": pom("1.2.3")}
+        self.assert_reads(files, ["maven-central:lib"], ["1.2.3"])
+        self.assert_check_names(files, "0.0.1", ["maven-central:lib"], "lib/pom.xml", "1.2.3")
+
+    def test_a_pom_whose_root_is_a_plain_project_is_read(self):
+        # VERIFY F5: the root check admits `project` without a namespace, as well as `{...}project`.
+        files = {"pom.xml": pom_rooted("project")}
+        self.assert_reads(files, ["maven-central:."], ["1.2.3"])
+        self.assert_checks(files, "1.2.3", ["maven-central:."])
+
+    def test_a_crlf_pom_is_read_and_checked(self):
+        files = {"pom.xml": crlf(pom("1.2.3"))}
+        self.assert_reads(files, ["maven-central:."], ["1.2.3"])
+        self.assert_checks(files, "1.2.3", ["maven-central:."])
+
+
+# ------------------------------------------------------------------ stamp ----
+
+class CratesMavenStampTest(_TreeCase):
+    """§S2 — neither is stamped: ``stamp`` leaves both unchanged, prints ``X.Y.Z``, and refuses a
+    version other than the ref's ``X.Y.Z``."""
+
+    def assert_stamps(self, files: dict[str, str], targets: list[str], expected: dict[str, str]):
+        for label, tree, (code, out, err) in self.run_both(
+                files, ["stamp", "release/1.2.3", "7", *targets]):
+            with self.subTest(runner=label, targets=targets):
+                self.assertEqual(code, 0, f"stderr={err!r}")
+                self.assert_prints(out, "1.2.3")
+                self.assertEqual(snapshot(tree), snapshot(self.tree(expected)))
+
+    def test_crates_and_maven_sources_at_the_refs_version_are_left_byte_for_byte(self):
+        files = {"Cargo.toml": cargo_workspace("1.2.3"), "crates/core/Cargo.toml": CORE_INLINE,
+                 "lib/pom.xml": pom("1.2.3")}
+        self.assert_stamps(files, ["crates:crates/core", "maven-central:lib"], files)
+
+    def test_crlf_sources_are_left_byte_for_byte(self):
+        files = {"Cargo.toml": crlf(cargo_package(COMMENTED_PACKAGE_VERSION)),
+                 "pom.xml": crlf(pom("1.2.3"))}
+        self.assert_stamps(files, ["crates:.", "maven-central:."], files)
+
+    def test_a_pypi_target_beside_them_is_still_stamped(self):
+        py = pyproject_static("1.2.3")
+        files = {"pyproject.toml": py, "rs/Cargo.toml": cargo_package('version = "1.2.3"'),
+                 "java/pom.xml": pom("1.2.3")}
+        expected = dict(files, **{"pyproject.toml": with_version(
+            py, 'version = "1.2.3"\ndependencies', 'version = "1.2.3.dev7"\ndependencies')})
+        self.assert_stamps(files, ["pypi:.", "crates:rs", "maven-central:java"], expected)
+
+    def test_a_crates_version_other_than_the_refs_is_refused_writing_nothing(self):
+        for version in ("1.2.2", "1.2.3-dev.7", "1.2.4"):
+            with self.subTest(version=version):
+                files = {"pyproject.toml": pyproject_static("1.2.3"),
+                         "Cargo.toml": cargo_package(f'version = "{version}"')}
+                self.assert_refused(files, ["stamp", "release/1.2.3", "7", "pypi:.", "crates:."],
+                                    "Cargo.toml", version, "1.2.3")
+
+    def test_a_maven_version_other_than_the_refs_is_refused_writing_nothing(self):
+        for version in ("1.2.3-SNAPSHOT", "1.2.3-dev.7", "1.2.2"):
+            with self.subTest(version=version):
+                files = {"pkg/package.json": package_json("1.2.3"), "pom.xml": pom(version)}
+                self.assert_refused(
+                    files, ["stamp", "hotfix/1.2.3", "7", "npm:pkg", "maven-central:."],
+                    "pom.xml", version, "1.2.3")
+
+    def test_a_workspace_version_other_than_the_refs_is_refused_naming_the_root(self):
+        files = {"Cargo.toml": cargo_workspace("1.2.2"), "crates/core/Cargo.toml": CORE_DOTTED}
+        self.assert_refused(files, ["stamp", "release/1.2.3", "7", "crates:crates/core"],
+                            "Cargo.toml", "1.2.2", "1.2.3")
+
+
+# ------------------------------------------------------------------ check ----
+
+class CratesMavenCheckTest(_SourceCase):
+    """§S2 — ``check`` compares both to the tag."""
+
+    FILES = {"Cargo.toml": cargo_package('version = "1.2.3"'), "lib/pom.xml": pom("1.2.3"),
+             "pyproject.toml": pyproject_static("1.2.3")}
+
+    def test_every_source_at_the_tag_passes(self):
+        self.assert_checks(self.FILES, "1.2.3", ["pypi:.", "crates:.", "maven-central:lib"])
+
+    def test_a_crates_source_off_the_tag_is_named_alone(self):
+        files = dict(self.FILES, **{"Cargo.toml": cargo_package('version = "1.2.2"')})
+        self.assert_check_names(files, "1.2.3", ["pypi:.", "crates:.", "maven-central:lib"],
+                                "Cargo.toml", "1.2.2", unnamed=("pom.xml", "pyproject.toml"))
+
+    def test_both_sources_off_the_tag_are_named(self):
+        files = dict(self.FILES, **{"Cargo.toml": cargo_package('version = "1.2.2"'),
+                                    "lib/pom.xml": pom("1.2.1")})
+        self.assert_check_names(files, "1.2.3", ["crates:.", "maven-central:lib"],
+                                "Cargo.toml", "1.2.2", "lib/pom.xml", "1.2.1")
+
+
+# ------------------------------------------------------------------ refusals ----
+
+#: §S2 — each refusal: ``(case, files, target, the file its line names)``.
+REFUSALS = (
+    ("no [package] table", {"Cargo.toml": cargo_workspace("1.2.3")}, "crates:.", "Cargo.toml"),
+    ("no [package] version line",
+     {"Cargo.toml": cargo_package('rust-version = "1.80"')}, "crates:.", "Cargo.toml"),
+    ("a workspace version with no [workspace.package] version",
+     {"Cargo.toml": cargo_workspace(None), "crates/core/Cargo.toml": CORE_INLINE},
+     "crates:crates/core", "Cargo.toml"),
+    ("the root as both, with no [workspace.package] version",
+     {"Cargo.toml": cargo_workspace(None, package_line="version.workspace = true")},
+     "crates:.", "Cargo.toml"),
+    ("a missing Cargo.toml", {}, "crates:rs", "rs/Cargo.toml"),
+    ("a <parent>-only pom", {"pom.xml": pom(None)}, "maven-central:.", "pom.xml"),
+    ("a property reference", {"lib/pom.xml": pom("${revision}")}, "maven-central:lib",
+     "lib/pom.xml"),
+    ("a missing pom.xml", {}, "maven-central:lib", "lib/pom.xml"),
+    # VERIFY F1: a DOCTYPE or ENTITY declaration is refused (the internal DTD defines the version).
+    ("an internal DTD", {"pom.xml": pom_with_internal_dtd()}, "maven-central:.", "pom.xml"),
+    # VERIFY F5: the root element is `project`, plain or `{...}project`; anything else is refused.
+    ("a root other than <project>", {"pom.xml": pom_rooted("settings")}, "maven-central:.",
+     "pom.xml"),
+    ("a namespaced root other than <project>",
+     {"lib/pom.xml": pom_rooted(f'settings xmlns="{POM_NAMESPACE}"', "settings")},
+     "maven-central:lib", "lib/pom.xml"),
+    ("a namespaced root ending in project",
+     {"pom.xml": pom_rooted(f'parentproject xmlns="{POM_NAMESPACE}"', "parentproject")},
+     "maven-central:.", "pom.xml"),
+)
+
+
+class CratesMavenRefusalsTest(_TreeCase):
+    """§S2 — every refusal under each subcommand: exit 1, one stderr line naming the file, no
+    stdout, nothing written."""
+
+    def test_each_refusal_under_stamp_check_and_read(self):
+        for case, files, target, named in REFUSALS:
+            for argv in (["stamp", "release/1.2.3", "7", target], ["check", "1.2.3", target],
+                         ["read", target]):
+                with self.subTest(case=case, subcommand=argv[0]):
+                    self.assert_refused(files, argv, named)
+
+    def test_a_property_reference_is_refused_even_when_the_parent_carries_the_tag(self):
+        # ${revision} is never resolved from elsewhere in the pom, the parent's 9.9.9 included.
+        self.assert_refused({"pom.xml": pom("${revision}")}, ["check", "9.9.9", "maven-central:."],
+                            "pom.xml")
+
+    def test_a_parent_only_pom_is_refused_even_when_the_parents_version_is_the_tag(self):
+        self.assert_refused({"pom.xml": pom(None)}, ["check", "9.9.9", "maven-central:."],
+                            "pom.xml")
+
+
+# ------------------------------------------------------------------ read ----
+
+class ReadSubcommandTest(_SourceCase):
+    """§S2 — ``read <target>...``: the one reader of version sources."""
+
+    def test_read_prints_every_version_source_in_argv_order(self):
+        files = {"pyproject.toml": pyproject_hatch(), HATCH_PATH: init_py('__version__ = "1.0.0"'),
+                 "pkg/package.json": package_json("2.0.0"),
+                 "Cargo.toml": cargo_workspace("3.0.0"), "crates/core/Cargo.toml": CORE_INLINE,
+                 "lib/pom.xml": pom("4.0.0")}
+        targets = ["pypi:.", "npm:pkg", "crates:crates/core", "maven-central:lib"]
+        self.assert_reads(files, targets, ["1.0.0", "2.0.0", "3.0.0", "4.0.0"])
+        self.assert_reads(files, list(reversed(targets)), ["4.0.0", "3.0.0", "2.0.0", "1.0.0"])
+
+    def test_read_prints_a_dev_version_as_it_is_without_refusing(self):
+        # read compares nothing: it reports what the source holds.
+        files = {"pyproject.toml": pyproject_static("1.2.3.dev4"),
+                 "Cargo.toml": cargo_package('version = "0.9.0"')}
+        self.assert_reads(files, ["pypi:.", "crates:."], ["1.2.3.dev4", "0.9.0"])
+
+    def test_read_exits_1_with_one_line_per_refusal(self):
+        files = {"Cargo.toml": cargo_workspace("1.2.3"), "lib/pom.xml": pom(None),
+                 "pkg/package.json": package_json("1.2.3")}
+        for label, tree, (code, _out, err) in self.run_both(
+                files, ["read", "crates:.", "npm:pkg", "maven-central:lib"]):
+            with self.subTest(runner=label):
+                self.assertEqual(code, 1, f"§S2: read exits 1 on a refusal; stderr={err!r}")
+                self.assertNotIn("Traceback", err)
+                lines = err.splitlines()
+                self.assertEqual(len(lines), 2, f"§S2: one stderr line per refusal; got {err!r}")
+                self.assertIn("Cargo.toml", lines[0], f"the crates refusal first; {lines!r}")
+                self.assertIn("lib/pom.xml", lines[1], f"the Maven refusal second; {lines!r}")
+                self.assertNotIn("package.json", err, "the readable source is no refusal")
+                self.assertEqual(snapshot(tree), snapshot(self.tree(files)))
+
+    def test_a_readable_source_is_never_refused_by_read(self):
+        files = {"pom.xml": pom("1.2.3")}
+        for label, _tree, (code, out, err) in self.run_both(files, ["read", "maven-central:."]):
+            with self.subTest(runner=label):
+                self.assertEqual((code, out, err), (0, "maven-central:.\t1.2.3\n", ""))
+
+
+# ------------------------------------------------------------------ §S1 surfaces ----
+
+class StampVersionTargetSurfacesTest(_TreeCase):
+    """§S1 — the script's refusal of a target with no version source, and its docstring, name the
+    version-source targets ``pypi``, ``npm``, ``crates`` and ``maven-central``."""
+
+    def test_a_target_without_a_version_source_is_refused_naming_every_form(self):
+        for target in ("github-assets", "cargo:.", "maven:lib"):
+            for argv in (["stamp", "release/1.2.3", "7", target], ["check", "1.2.3", target],
+                         ["read", target]):
+                with self.subTest(target=target, subcommand=argv[0]):
+                    self.assert_refused({}, argv, target, *VERSION_SOURCE_FORMS)
+
+    def test_the_docstring_names_the_four_forms_and_the_read_subcommand(self):
+        doc = ast.get_docstring(ast.parse(STAMP.read_text(encoding="utf-8"))) or ""
+        for needle in (*VERSION_SOURCE_FORMS, "read <target>...", "Cargo.toml", "pom.xml",
+                       "[workspace.package]", "<parent>"):
+            with self.subTest(needle=needle):
+                self.assertIn(needle, doc)
 
 
 if __name__ == "__main__":

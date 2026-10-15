@@ -100,7 +100,10 @@ that empties is a signal, not a decision.
   the roadmap declares — as release verification instead of a cycle's runs, and never beside
   `--cycle`.
 
-**Read release readiness from the live CI config and `gh`** (workflows, environments, secrets), never from an old queue note.
+**Read release readiness with `modelb-axi release-check`**: run it from the project root before
+`git flow release start`, and fix what it reports missing. It reads the rendered workflow, the
+version sources and, through `gh`, the repository's environments and secrets; it writes nothing.
+An `unknown` item names what to check by hand.
 
 **ALL releases MUST use `git flow release` commands.** Never manually tag, never bump version directly on develop/main. **Ask before releasing** — version bumps and releases require human approval.
 
@@ -137,6 +140,8 @@ What each release target adds to the rendered workflow:
 |---|---|---|---|
 | `pypi` | the upload of the stamped dev version to the test index | PyPI through Trusted Publishing | the environments `pypi` and `testpypi`; no secret |
 | `npm` | the package manager's dry-run publish with a dist-tag | npm, with provenance | the environment `npm` and the repository secret `NPM_TOKEN` |
+| `crates` | the dry-run publish of the crate | crates.io through Trusted Publishing | the environment `crates` and the repository secret `CARGO_REGISTRY_TOKEN` |
+| `maven-central` | the signed Central bundle, uploading nothing | Maven Central through the Central Portal | the environment `maven-central` and the repository secrets `MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_PASSWORD`, `MAVEN_GPG_PRIVATE_KEY` and `MAVEN_GPG_PASSPHRASE` |
 | `github-assets` | the project's `build-assets` script, its `dist-assets/` output checked non-empty | an upload of `dist-assets/` to the release | no environment, no secret |
 
 ### Release notes (`CHANGELOG.md`)
@@ -194,7 +199,7 @@ git add pom.xml && git commit -m "chore: bump version to X.X.X"
 # 5. Finish release (merges to master, tags X.X.X, back-merges to develop, deletes branch)
 git flow release finish X.X.X
 
-# 6. Build from master (CRITICAL — releases build ONLY from master)
+# 6. Build from master (CRITICAL — a local install builds ONLY from master)
 git checkout master && ./mvnw clean install
 
 # 7. Push everything
@@ -222,9 +227,13 @@ git checkout master
 ### Maven install/deploy — master only
 
 ```bash
-git checkout master && ./mvnw clean install   # ✅ the only correct branch
-# NEVER ./mvnw clean install from develop or release/* — artifact version must match the git tag
+git checkout master && ./mvnw clean install   # ✅ a local install, from master only
+# NEVER ./mvnw clean install locally from develop or release/* — artifact version must match the git tag
 ```
+
+A project with the `maven-central` target is published by the release event's publish job, never
+from a local machine. The rehearsal's `deploy` uploads nothing: it runs on `release/*` in CI, not
+as a local install.
 
 After building: switch back to develop for continued work. Bump develop to the next `-SNAPSHOT` after a release, and update consumer `pom.xml`s that depend on the released library.
 
@@ -260,14 +269,17 @@ After building: switch back to develop for continued work. Bump develop to the n
 
 ### Rehearsal and CI
 
-Each push to `release/X.Y.Z` or `hotfix/X.Y.Z` builds `X.Y.Z` with a dev marker and the CI run
-number in each target's own form, refuses a committed version other than `X.Y.Z`, and fails when
-the release's notes section is missing or empty.
+Each push to `release/X.Y.Z` or `hotfix/X.Y.Z` builds `X.Y.Z`, refuses a committed version other
+than `X.Y.Z`, and fails when the release's notes section is missing or empty. `pypi` and `npm`
+stamp a dev marker and the CI run number in each target's own form; `crates` and `maven-central`
+upload nothing and keep `X.Y.Z`.
 
-| Target | Dev version | Rehearsal |
+| Target | Version | Rehearsal |
 |---|---|---|
 | `pypi` | `X.Y.Z.devN` | the upload to the test index |
 | `npm` | `X.Y.Z-dev.N` | the package manager's dry-run publish with a dist-tag |
+| `crates` | `X.Y.Z` | the crate's dry-run publish |
+| `maven-central` | `X.Y.Z` | the signed Central bundle, which uploads nothing |
 | `github-assets` | — | the project's `build-assets` script, its `dist-assets/` output checked not empty |
 | no target | — | the notes check only |
 

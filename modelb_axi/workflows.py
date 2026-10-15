@@ -34,6 +34,8 @@ ACTION_PINS: dict[str, tuple[str, str]] = {
     "actions/setup-node": ("49933ea5288caeca8642d1e84afbd3f7d6820020", "v4.4.0"),
     "oven-sh/setup-bun": ("0c5077e51419868618aeaa5fe8019c62421857d6", "v2.2.0"),
     "actions/setup-java": ("de7274f081f381c8f8158605e0321c36c376e2e6", "v6.0.1"),
+    # CR-MDB-071 §S3, measured 2026-10-15 (a lightweight tag: the ref is the commit).
+    "rust-lang/crates-io-auth-action": ("c6f97d42243bad5fab37ca0427f495c86d5b1a18", "v1.0.5"),
 }
 
 #: The rendered files, by project-relative path.
@@ -48,9 +50,10 @@ _TEST_PARTS = {"python": "test-python", "bun": "test-bun", "rust": "test-rust",
                "quarkus": "test-maven", "java": "test-maven", "arduino": "test-arduino"}
 #: The release targets ``RELEASE_TARGETS`` may name, in canonical order (CR-MDB-068 §S1): the
 #: one definition, which ``scaffold`` imports.
-RELEASE_TARGETS: tuple[str, ...] = ("pypi", "npm", "github-assets")
-#: The release targets that take a ``:<dir>`` and carry a version source (CR-MDB-068 §S1).
-_VERSIONED = ("pypi", "npm")
+RELEASE_TARGETS: tuple[str, ...] = ("pypi", "npm", "crates", "maven-central", "github-assets")
+#: The release targets that take a ``:<dir>`` and carry a version source (CR-MDB-068 §S1;
+#: ``crates`` and ``maven-central`` join at CR-MDB-071 §S1).
+_VERSIONED = ("pypi", "npm", "crates", "maven-central")
 #: A target ``dir`` the rendered workflow may write unquoted into a shell line (VERIFY F1).
 _SAFE_DIR = re.compile(r"[A-Za-z0-9._/-]+")
 
@@ -143,7 +146,7 @@ def _test_jobs(source_dir: Path, stacks: list[str]) -> list[str]:
 def _rehearse_steps(source_dir: Path, parsed: list[tuple[str, str]], build: str) -> str:
     steps = []
     for name, directory in parsed:
-        values = {"WORKDIR": _workdir(directory), "BUILD_ASSETS": build,
+        values = {"WORKDIR": _workdir(directory), "BUILD_ASSETS": build, "DIR": directory,
                   "PACKAGES_DIR": ("" if directory == "."
                                    else f"          packages-dir: {directory}/dist\n"),
                   "COPY": ("" if directory == "." else _fill(
@@ -158,7 +161,7 @@ def _publish_jobs(source_dir: Path, parsed: list[tuple[str, str]], needs: str,
     jobs = []
     for name, directory in parsed:
         values = {"NEEDS": needs, "GUARD": guard, "BUILD_ASSETS": build,
-                  "WORKDIR": _workdir(directory),
+                  "WORKDIR": _workdir(directory), "DIR": directory,
                   "PACKAGES_DIR": ("" if directory == "." else
                                    f"        with:\n          packages-dir: {directory}/dist\n"),
                   "DEFAULTS": ("" if directory == "." else

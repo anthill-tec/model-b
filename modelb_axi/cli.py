@@ -52,6 +52,7 @@ from modelb_axi.scaffold import (
     reject_recorded_harnesses,
     run_agents,
     run_init,
+    run_release_check,
     run_release_workflow,
 )
 
@@ -161,6 +162,7 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_init_parser(subparsers)
     _add_agents_parser(subparsers)
     _add_release_workflow_parser(subparsers)
+    _add_release_check_parser(subparsers)
     return parser
 
 def _add_agents_parser(subparsers) -> None:
@@ -214,7 +216,8 @@ def _add_release_workflow_parser(subparsers) -> None:
         "--release-targets", metavar="CSV", default=None,
         help=(
             "replace the release targets (each `name` or `name:dir` of pypi, npm, "
-            "github-assets; \"\" for none) and record them as RELEASE_TARGETS"
+            "crates, maven-central, github-assets; \"\" for none) and record them as "
+            "RELEASE_TARGETS"
         ),
     )
     # Global flags accepted after the subcommand too; SUPPRESS keeps a
@@ -223,6 +226,29 @@ def _add_release_workflow_parser(subparsers) -> None:
         "--force-managed", action="store_true", default=argparse.SUPPRESS,
         help="overwrite hand-modified rendered release files (never an unmarked one)",
     )
+    cmd.add_argument(
+        "--modelb-home", metavar="DIR", default=argparse.SUPPRESS,
+        help="override $MODELB_HOME (default: ${XDG_DATA_HOME:-~/.local/share}/modelb)",
+    )
+
+
+def _add_release_check_parser(subparsers) -> None:
+    """The `release-check` subcommand — report the project's release
+    readiness (CR-MDB-071 §S5). Read-only: it writes nothing."""
+    cmd = subparsers.add_parser(
+        "release-check",
+        help="report the release readiness of the project in the current directory",
+        description=(
+            "Report the release readiness of the project in the current directory "
+            "(the directory holding .env): the rendered release files, each target's "
+            "version and prerequisites and CHANGELOG.md; the GitHub environments and "
+            "repository secrets, read with `gh api --method GET`; and a checklist of each "
+            "registry's publisher. Writes nothing. Exit 0 when nothing is missing, 1 when "
+            "anything is, 2 on a refusal."
+        ),
+    )
+    # A global flag accepted after the subcommand too; SUPPRESS keeps a
+    # pre-subcommand value from being clobbered by a subparser default.
     cmd.add_argument(
         "--modelb-home", metavar="DIR", default=argparse.SUPPRESS,
         help="override $MODELB_HOME (default: ${XDG_DATA_HOME:-~/.local/share}/modelb)",
@@ -266,7 +292,8 @@ def _add_init_parser(subparsers) -> None:
         "--release-targets", metavar="CSV",
         help=(
             "RELEASE_TARGETS registry value: where a release publishes, each "
-            "`name` or `name:dir` of pypi, npm, github-assets (default: none)"
+            "`name` or `name:dir` of pypi, npm, crates, maven-central, github-assets "
+            "(default: none)"
         ),
     )
     init.add_argument(
@@ -798,6 +825,8 @@ def main(argv: list[str] | None = None) -> int:
         return run_agents(args, home)
     if getattr(args, "command", None) == "release-workflow":
         return run_release_workflow(args, home)
+    if getattr(args, "command", None) == "release-check":
+        return run_release_check(args, home)
     harnesses = parse_harnesses(args.harnesses)
     target_root = resolve_target_root(args.target_root)
     interactive = not args.yes and sys.stdin.isatty()

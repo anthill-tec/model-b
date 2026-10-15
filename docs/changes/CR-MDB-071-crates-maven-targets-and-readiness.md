@@ -1,6 +1,6 @@
 # CR-MDB-071 — Release targets crates.io and Maven Central, and the release-readiness check
 
-**Status:** PENDING — spec (gap analysis and pre-review 2026-10-15).
+**Status:** COMPLETED (filed 2026-10-14; gap analysis and pre-review 2026-10-15)
 **Type:** feature (release workflow templates, CLI)
 **Priority:** P1 — release 1.0.0, wave 2; after CR-MDB-068.
 **Depends on:** CR-MDB-068 (board-authoritative: read `queue`)
@@ -57,7 +57,8 @@ CRLF and trailing comments kept):
   `[workspace.package] version = "…"` (the same file when `<dir>` is `.`). Refused: no `[package]` table,
   no version line, a workspace version with no `[workspace.package] version`.
 - **`maven-central:<dir>`** — `<dir>/pom.xml`'s own `<version>` (the child of `<project>`, never the
-  `<parent>`'s). Refused: no own `<version>` (an inherited one), a property reference (`${…}`).
+  `<parent>`'s). Refused: a root element other than `project` (plain or namespaced), a `DOCTYPE` or
+  `ENTITY` declaration, no own `<version>` (an inherited one), a property reference (`${…}`).
 - **Neither is stamped.** Their rehearsals upload nothing (a dev version would break a Cargo workspace and
   sort after the release in Maven): `stamp` leaves both unchanged but refuses a version other than
   `X.Y.Z`; `check` compares both to the tag.
@@ -75,7 +76,8 @@ Each new target adds, in canonical order:
     `./mvnw -B -ntp -f <dir>/pom.xml deploy -DskipTests -DskipUpload=true` from the repository root with
     `MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}` (no Portal credentials); then a check that
     `<dir>/target/central-publishing/central-bundle.zip` holds an `.asc` signature for every artifact, a
-    `-sources.jar` and a `-javadoc.jar`.
+    `-sources.jar` and a `-javadoc.jar` — each name read whole (never word-split or glob-expanded), and
+    each shortfall failing with an `::error::` line naming the bundle and what is missing.
 - **Publish jobs** on the release event, `needs:` every test job, checkout with `fetch-depth: 0` and the ref
   guard first:
   - `publish-crates` — environment `crates`, `contents: read` + `id-token: write`; job `env`
@@ -148,7 +150,7 @@ A read-only verb: `_add_release_check_parser` and its `main` dispatch in `cli.py
   the counts `ready`, `missing`, `unknown`.
 - **Exit codes:** 0 when nothing is missing; 1 when anything is; 2 on a refusal.
 - **It never writes.** Its only subprocesses are `git remote get-url origin`, `gh api --method GET …` and
-  `python3 .github/scripts/stamp_version.py read …`.
+  `.github/scripts/stamp_version.py read …` run by the current Python interpreter.
 
 ### §S6 — Model B, the skill and the docs
 
@@ -194,7 +196,8 @@ A read-only verb: `_add_release_check_parser` and its `main` dispatch in `cli.py
 - [ ] **§S2.** `stamp`, `check` and `read` in temp trees: `crates` with a package version, `crates:.` as both
       workspace and package, `version = { workspace = true }`, a sub-directory, CRLF, `Cargo.lock` absent;
       `maven-central` with an own version beside a `<parent>` version; refused: no `[package]`, a
-      workspace version without `[workspace.package] version`, a `<parent>`-only pom, `${revision}`;
+      workspace version without `[workspace.package] version`, a `<parent>`-only pom, `${revision}`, a
+      root other than `project`, an internal DTD;
       `stamp` leaves both unchanged and refuses a version other than `X.Y.Z`; `read` prints each version or
       exits 1; one stderr line per refusal; nothing written.
 - [ ] **§S3.** For the target sets `crates`, `maven-central`, `crates:a,maven-central:b` and all five,
@@ -205,13 +208,14 @@ A read-only verb: `_add_release_check_parser` and its `main` dispatch in `cli.py
       - the check step's targets, the header's lines, the pins.
 
       A test runs the bundle-check step's lines under `bash -e` on sample zips (complete, missing `.asc`,
-      missing sources or javadoc). Model B's byte-equality test passes after the C1 re-render.
+      missing sources or javadoc, names holding a space or a glob character), each failure asserting its
+      `::error::` line. Model B's byte-equality test passes after the C1 re-render.
 - [ ] **§S4.** `init` with each new target: the tasks in `release_setup` and the Setup section, once each.
 - [ ] **§S5.** In sandbox projects, with a stub `gh` on `PATH` (never the real `gh`) and a stub origin:
       - every local item ready and missing (including the stale render and a target with no test job);
       - the three URL forms parsed, and a non-GitHub remote and no remote both `unknown`;
       - each GitHub item ready and missing, and `unknown` for: no `gh`, `gh` exit 1 (unauthenticated), a 403
-        on the secrets list, and unparseable output;
+        on the secrets list, and unparseable output; lists split across `--paginate` pages;
       - the policy semantics: null, `protected_branches`, a tag policy;
       - the registry checklist;
       - the envelope fields and counts;

@@ -1,0 +1,3 @@
+      - name: Dry-run the crate publish
+@@WORKDIR@@
+        run: cargo publish --dry-run --allow-dirty

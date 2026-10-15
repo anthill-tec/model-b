@@ -1,0 +1,5 @@
+# - crates: environment `crates`, which admits the version tags, because
+#   the release event's ref is the tag; the repository secret
+#   CARGO_REGISTRY_TOKEN for the first publish, then add the crates.io
+#   trusted publisher (this repository, release.yml, environment
+#   `crates`) and delete the token;

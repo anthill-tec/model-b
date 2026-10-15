@@ -1681,11 +1681,18 @@ NOT_REGISTRY_KEYS = {
     "GITHUB_WORKSPACE": "GitHub Actions checkout dir (rendered CHANGELOG.md copy step)",
     "RUNNER_TEMP": "GitHub Actions runner temp dir (rendered create-release step)",
     "TAG": "the version tag a rendered step reads from its env (create-release)",
+    # MIGRATED at CR-MDB-071 (§S3): publish-crates's first-publish token, named on lines the
+    # detector reads as about the registry through "REGISTRY" in the secret's own name. No
+    # MAVEN_* name is entered: no line naming one mentions a .env, the registry or project
+    # settings, so the detector never matches one (and the stale-name rule would refuse it).
+    "CARGO_FIRST_TOKEN": "publish-crates's job env: the first-publish token, empty once trusted",
+    "CARGO_REGISTRY_TOKEN": "the crates first-publish repository secret (publish-crates, setup)",
 }
 #: CR-MDB-068 §S8 — the names :data:`NOT_REGISTRY_KEYS` gained for ``workflows-src/``.
+# MIGRATED at CR-MDB-071 (§S3): CARGO_FIRST_TOKEN and CARGO_REGISTRY_TOKEN join.
 WORKFLOW_RUNTIME_NAMES = frozenset({
     "GITHUB_OUTPUT", "GITHUB_REF", "GITHUB_REF_NAME", "GITHUB_RUN_NUMBER", "GITHUB_SHA",
-    "GITHUB_WORKSPACE", "RUNNER_TEMP", "TAG",
+    "GITHUB_WORKSPACE", "RUNNER_TEMP", "TAG", "CARGO_FIRST_TOKEN", "CARGO_REGISTRY_TOKEN",
 })
 
 #: Real projects, derived from this repo's own records (docs/, audits/,

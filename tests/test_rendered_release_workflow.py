@@ -23,6 +23,14 @@ CR-MDB-068 C5 RED (VERIFY F6/F7) adds the setup-wording classes: ``SetupWordingC
 on sample text), ``NpmSetupTaskTest`` (``init``'s npm setup task) and ``RenderedHeaderSetupTest``
 (the rendered header's setup items).
 
+CR-MDB-071 (§S1-§S4) extends the matrix with the target sets ``crates``, ``maven-central``,
+``crates:a,maven-central:b`` and all five (:data:`FULL_TARGETS`, which :data:`SAMPLE_FULL` now
+meets): the crates and maven-central rehearsal steps (``RenderedRehearseTest._consume``), the
+``publish-crates`` and ``publish-maven-central`` jobs, their setup items, the crates.io auth
+action's pin (``CratesAuthActionPinTest``), the bundle check run under ``bash -e`` on sample zips
+(``MavenBundleCheckExecutionTest``), and ``init``'s crates task (``CratesSetupTaskTest``). The
+first-publish reader takes the token (:func:`first_publish_token_faults`).
+
 Stdlib only.
 """
 
@@ -33,11 +41,13 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 
 from modelb_axi import scaffold
 from tests._helpers import (
     workflow_job,
+    workflow_job_env,
     workflow_job_key,
     workflow_job_names,
     workflow_job_permissions,
@@ -80,13 +90,20 @@ from tests.test_workflow_render import (
     render_files,
     workflows_module,
 )
+from tests.test_workflow_scripts import cargo_package, pom
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 ALL_STACKS = ("python", "bun", "rust", "quarkus", "java", "arduino")
 STACK_SETS = tuple((stack,) for stack in ALL_STACKS) + (ALL_STACKS,)
-FULL_TARGETS = ("pypi", "npm:pkg", "github-assets")
-TARGET_SETS = ((), ("pypi",), ("npm:pkg",), ("github-assets",), FULL_TARGETS)
+# MIGRATED at CR-MDB-071 (§S3): all five targets (was: ("pypi", "npm:pkg", "github-assets")),
+# and the target sets gain crates, maven-central and both in sub-directories (was: none, pypi,
+# npm:pkg, github-assets and the full set).
+FULL_TARGETS = ("pypi", "npm:pkg", "crates", "maven-central", "github-assets")
+#: CR-MDB-071 §S3 AC — crates and maven-central each in a sub-directory.
+CRATES_MAVEN_DIRS = ("crates:a", "maven-central:b")
+TARGET_SETS = ((), ("pypi",), ("npm:pkg",), ("crates",), ("maven-central",), CRATES_MAVEN_DIRS,
+               ("github-assets",), FULL_TARGETS)
 #: §S4 AC's matrix, plus a ``pypi`` sub-directory.
 MATRIX = tuple(itertools.product(STACK_SETS, TARGET_SETS)) + ((("python",), ("pypi:py",)),)
 
@@ -95,9 +112,13 @@ FULL = (("python",), FULL_TARGETS)
 ALL_STACKS_NO_TARGET = (ALL_STACKS, ())
 
 #: §S2 — every action a rendered workflow uses.
+# MIGRATED at CR-MDB-071 (§S3): rust-lang/crates-io-auth-action joins (publish-crates).
 ACTIONS = frozenset({"actions/checkout", "actions/setup-python", "astral-sh/setup-uv",
                      "pypa/gh-action-pypi-publish", "actions/setup-node", "oven-sh/setup-bun",
-                     "actions/setup-java"})
+                     "actions/setup-java", "rust-lang/crates-io-auth-action"})
+#: CR-MDB-071 §S3 — the crates.io auth action and its measured pin (a lightweight tag).
+CRATES_AUTH = "rust-lang/crates-io-auth-action"
+CRATES_AUTH_PIN = ("c6f97d42243bad5fab37ca0427f495c86d5b1a18", "v1.0.5")
 _USES = re.compile(r"^\s*(?:-\s+)?uses:\s*([\w.-]+/[\w./-]+)@([0-9a-f]{40})\s+#\s+(v\d+\.\d+\.\d+)\s*$")
 
 #: §S4 — the step lines pinned exactly.
@@ -112,6 +133,37 @@ NPM_INSTALL = "npm install -g npm@latest"
 NPM_PUBLISH = "npm publish --provenance --access public"
 UPLOAD = 'gh release upload "$TAG" dist-assets/* --clobber'
 TESTPYPI = {"repository-url": "https://test.pypi.org/legacy/", "skip-existing": "true"}
+
+#: CR-MDB-071 §S3 — the crates and maven-central steps pinned exactly.
+CARGO_DRY_RUN = "cargo publish --dry-run --allow-dirty"
+CARGO_PUBLISH = "cargo publish"
+#: publish-crates: the job env naming the first-publish token, the auth step's if, the publish env.
+CARGO_JOB_ENV = {"CARGO_FIRST_TOKEN": "${{ secrets.CARGO_REGISTRY_TOKEN }}"}
+CARGO_AUTH_IF = "env.CARGO_FIRST_TOKEN == ''"
+CARGO_PUBLISH_ENV = {
+    "CARGO_REGISTRY_TOKEN": "${{ steps.auth.outputs.token || secrets.CARGO_REGISTRY_TOKEN }}"}
+#: actions/setup-java's inputs: the rehearsal's (temurin 21 and the GPG key), the publish's (those
+#: and the Central server credentials, by env-var name).
+JAVA_GPG = {"distribution": "temurin", "java-version": "21",
+            "gpg-private-key": "${{ secrets.MAVEN_GPG_PRIVATE_KEY }}",
+            "gpg-passphrase-env-var": "MAVEN_GPG_PASSPHRASE"}
+JAVA_CENTRAL = {**JAVA_GPG, "server-id": "central",
+                "server-username-env-var": "MAVEN_CENTRAL_USERNAME",
+                "server-password-env-var": "MAVEN_CENTRAL_PASSWORD"}
+MAVEN_REHEARSE_ENV = {"MAVEN_GPG_PASSPHRASE": "${{ secrets.MAVEN_GPG_PASSPHRASE }}"}
+#: The four MAVEN_* names, each from the repository secret of the same name.
+MAVEN_SECRETS = ("MAVEN_CENTRAL_USERNAME", "MAVEN_CENTRAL_PASSWORD", "MAVEN_GPG_PRIVATE_KEY",
+                 "MAVEN_GPG_PASSPHRASE")
+MAVEN_PUBLISH_ENV = {name: f"${{{{ secrets.{name} }}}}" for name in MAVEN_SECRETS}
+
+
+def maven_deploy(directory: str, flags: str) -> str:
+    """The Maven deploy line, run from the repository root against ``<dir>/pom.xml``."""
+    return f"./mvnw -B -ntp -f {directory}/pom.xml deploy -DskipTests {flags}"
+
+
+MAVEN_REHEARSE_FLAGS = "-DskipUpload=true"
+MAVEN_PUBLISH_FLAGS = "-DautoPublish=true -DwaitUntil=PUBLISHED"
 
 #: §S4 — the header's phrases (lower-cased, whitespace collapsed, backticks dropped).
 HEADER_PHRASES = (
@@ -138,10 +190,16 @@ def parse_target(target: str) -> tuple[str, str]:
     return name, directory or "."
 
 
+#: The targets carrying a version source (CR-MDB-071 §S1 adds crates and maven-central).
+VERSIONED_NAMES = ("pypi", "npm", "crates", "maven-central")
+
+
 def versioned(targets) -> list[str]:
-    """The ``pypi:<dir>``/``npm:<dir>`` arguments the renderer writes for ``stamp_version.py``."""
+    """The ``<name>:<dir>`` arguments the renderer writes for ``stamp_version.py``."""
+    # MIGRATED at CR-MDB-071 (§S1/§S3): crates and maven-central carry a version source too
+    # (was: pypi and npm only).
     return [f"{name}:{directory}" for name, directory in map(parse_target, targets)
-            if name in ("pypi", "npm")]
+            if name in VERSIONED_NAMES]
 
 
 def stamp_line(targets) -> str:
@@ -199,6 +257,8 @@ _PP = "pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1
 _SN = "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0"
 _SB = "oven-sh/setup-bun@" + "b" * 40 + " # v2.0.2"
 _SJ = "actions/setup-java@" + "c" * 40 + " # v5.0.0"
+#: CR-MDB-071 §S3 — an invented pin for the crates.io auth action (the sample's table only).
+_CA = "rust-lang/crates-io-auth-action@" + "a" * 40 + " # v1.0.0"
 
 
 def _pin(uses: str) -> tuple[str, tuple[str, str]]:
@@ -209,7 +269,7 @@ def _pin(uses: str) -> tuple[str, tuple[str, str]]:
 
 
 #: The sample proofs' pin table: Model B's pins today, and invented ones for the two new actions.
-SAMPLE_PINS = dict(map(_pin, (_CO, _SP, _UV, _PP, _SN, _SB, _SJ)))
+SAMPLE_PINS = dict(map(_pin, (_CO, _SP, _UV, _PP, _SN, _SB, _SJ, _CA)))
 
 _GUARD = """\
       - name: Guard - a version tag on master's history
@@ -272,7 +332,49 @@ _SETUP_FULL = """\
 #   test.pypi.org for this workflow;
 # - npm: environment `npm`; the NPM_TOKEN secret for the first publish,
 #   deleted once the npm trusted publisher exists;
+# - crates: environment `crates`, which admits the version tags; the
+#   repository secret CARGO_REGISTRY_TOKEN for the first publish, then
+#   add the crates.io trusted publisher (this repository, release.yml,
+#   environment `crates`) and delete the token;
+# - maven-central: environment `maven-central`, which admits the version
+#   tags; the namespace verified on the Central Portal; the repository
+#   secrets MAVEN_CENTRAL_USERNAME and MAVEN_CENTRAL_PASSWORD (a Portal
+#   user token), MAVEN_GPG_PRIVATE_KEY and MAVEN_GPG_PASSPHRASE; the POM
+#   carrying central-publishing-maven-plugin with
+#   <extensions>true</extensions>, the sources and javadoc jars, and
+#   maven-gpg-plugin 3.2.0 or newer; one mvnw at the repository root;
 # - github-assets: an executable .github/scripts/build-assets.
+"""
+
+#: CR-MDB-071 §S3 — a conforming bundle check (``unzip -Z1`` lists the bundle): every
+#: ``.jar``/``.pom`` has its ``.asc``; a ``-sources.jar`` and a ``-javadoc.jar`` are there; each
+#: failure is an ``::error::`` line naming the bundle and what is missing.
+# MIGRATED at CR-MDB-071 (§S3, VERIFY F3): the entries are read line by line (was: a `for` over
+# an unquoted `$(...)`, which word-splits and glob-expands each name), and a missing
+# `-sources.jar` or `-javadoc.jar` is an `::error::` line (was: a silent `grep -q`).
+_BUNDLE_CHECK = """\
+      - name: The Central bundle holds the signatures, sources and javadoc
+        run: |
+          bundle={dir}/target/central-publishing/central-bundle.zip
+          files=$(unzip -Z1 "$bundle")
+          while IFS= read -r f; do
+            case "$f" in
+              *.jar|*.pom)
+                if ! printf '%s\\n' "$files" | grep -qxF -- "$f.asc"; then
+                  echo "::error::$bundle: $f has no .asc signature"
+                  exit 1
+                fi
+                ;;
+            esac
+          done <<< "$files"
+          if ! printf '%s\\n' "$files" | grep -q -- '-sources\\.jar$'; then
+            echo "::error::$bundle: no -sources.jar"
+            exit 1
+          fi
+          if ! printf '%s\\n' "$files" | grep -q -- '-javadoc\\.jar$'; then
+            echo "::error::$bundle: no -javadoc.jar"
+            exit 1
+          fi
 """
 
 _CREATE_RELEASE = """\
@@ -330,6 +432,75 @@ _REHEARSE_HEAD = """\
           python3 .github/scripts/changelog_section.py CHANGELOG.md "$version" > /dev/null
 """
 
+#: CR-MDB-071 §S3 — the sample's crates and maven-central rehearsal steps (both at the root).
+_REHEARSE_CRATES_MAVEN = f"""\
+      - name: Dry-run the crate publish
+        run: cargo publish --dry-run --allow-dirty
+      - uses: {_SJ}
+        with:
+          distribution: temurin
+          java-version: "21"
+          gpg-private-key: ${{{{ secrets.MAVEN_GPG_PRIVATE_KEY }}}}
+          gpg-passphrase-env-var: MAVEN_GPG_PASSPHRASE
+      - name: Bundle and sign for Maven Central, uploading nothing
+        env:
+          MAVEN_GPG_PASSPHRASE: ${{{{ secrets.MAVEN_GPG_PASSPHRASE }}}}
+        run: ./mvnw -B -ntp -f ./pom.xml deploy -DskipTests -DskipUpload=true
+""" + _BUNDLE_CHECK.format(dir=".")
+
+#: CR-MDB-071 §S3 — the sample's publish-crates and publish-maven-central jobs.
+_PUBLISH_CRATES_MAVEN = f"""\
+  publish-crates:
+    needs: [test-python]
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    environment: crates
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      CARGO_FIRST_TOKEN: ${{{{ secrets.CARGO_REGISTRY_TOKEN }}}}
+    steps:
+      - uses: {_CO}
+        with:
+          fetch-depth: 0
+{_GUARD}      - uses: {_CA}
+        id: auth
+        if: env.CARGO_FIRST_TOKEN == ''
+      - name: Publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{{{ steps.auth.outputs.token || secrets.CARGO_REGISTRY_TOKEN }}}}
+        run: cargo publish
+
+  publish-maven-central:
+    needs: [test-python]
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    environment: maven-central
+    permissions:
+      contents: read
+    steps:
+      - uses: {_CO}
+        with:
+          fetch-depth: 0
+{_GUARD}      - uses: {_SJ}
+        with:
+          distribution: temurin
+          java-version: "21"
+          server-id: central
+          server-username-env-var: MAVEN_CENTRAL_USERNAME
+          server-password-env-var: MAVEN_CENTRAL_PASSWORD
+          gpg-private-key: ${{{{ secrets.MAVEN_GPG_PRIVATE_KEY }}}}
+          gpg-passphrase-env-var: MAVEN_GPG_PASSPHRASE
+      - name: Publish
+        env:
+          MAVEN_CENTRAL_USERNAME: ${{{{ secrets.MAVEN_CENTRAL_USERNAME }}}}
+          MAVEN_CENTRAL_PASSWORD: ${{{{ secrets.MAVEN_CENTRAL_PASSWORD }}}}
+          MAVEN_GPG_PRIVATE_KEY: ${{{{ secrets.MAVEN_GPG_PRIVATE_KEY }}}}
+          MAVEN_GPG_PASSPHRASE: ${{{{ secrets.MAVEN_GPG_PASSPHRASE }}}}
+        run: ./mvnw -B -ntp -f ./pom.xml deploy -DskipTests -DautoPublish=true -DwaitUntil=PUBLISHED
+"""
+
 _SAMPLE_FULL_JOBS = f"""\
   test-python:
     runs-on: ubuntu-latest
@@ -349,7 +520,7 @@ _SAMPLE_FULL_JOBS = f"""\
         if: steps.tag.outputs.tag != ''
         env:
           TAG: ${{ steps.tag.outputs.tag }}
-        run: python3 .github/scripts/stamp_version.py check "$TAG" pypi:. npm:pkg
+        run: python3 .github/scripts/stamp_version.py check "$TAG" pypi:. npm:pkg crates:. maven-central:.
 """) + _REHEARSE_HEAD.format(
     needs="test-python", co=_CO, stamp=stamp_line(FULL_TARGETS),
     permissions="    environment: testpypi\n    permissions:\n      contents: read\n"
@@ -371,7 +542,7 @@ _SAMPLE_FULL_JOBS = f"""\
       - name: Dry-run the npm publish
         working-directory: pkg
         run: npm publish --dry-run --access public --tag dev
-      - name: Build the release assets
+{_REHEARSE_CRATES_MAVEN}      - name: Build the release assets
         run: |
           test -x .github/scripts/build-assets
           .github/scripts/build-assets
@@ -426,6 +597,7 @@ _SAMPLE_FULL_JOBS = f"""\
           NODE_AUTH_TOKEN: ${{{{ secrets.NPM_TOKEN }}}}
         run: npm publish --provenance --access public
 
+{_PUBLISH_CRATES_MAVEN}
   publish-github-assets:
     needs: [test-python]
     if: github.event_name == 'release'
@@ -790,7 +962,28 @@ class RenderedRehearseTest(_RenderSource, unittest.TestCase):
                 self.assertEqual((dry["uses"], run_lines([dry]), dry["working-directory"]),
                                  (None, [NPM_DRY_RUN], where), target)
                 at += 1
-            else:
+            # MIGRATED at CR-MDB-071 (§S3): crates and maven-central steps (the last branch was
+            # every other name; now github-assets alone, and an unknown name fails).
+            elif name == "crates":
+                dry = steps[at]
+                self.assertEqual((dry["uses"], run_lines([dry]), dry["working-directory"],
+                                  dry["env"]), (None, [CARGO_DRY_RUN], where, {}),
+                                 f"CR-MDB-071 §S3: the crate's dry-run publish in {directory}")
+                at += 1
+            elif name == "maven-central":
+                setup, deploy, check = steps[at:at + 3]
+                self.assertEqual((action(setup), setup["with"]), ("actions/setup-java", JAVA_GPG),
+                                 "CR-MDB-071 §S3: temurin 21 with the GPG key")
+                self.assertEqual((deploy["uses"], run_lines([deploy]), deploy["working-directory"],
+                                  deploy["env"]),
+                                 (None, [maven_deploy(directory, MAVEN_REHEARSE_FLAGS)], None,
+                                  MAVEN_REHEARSE_ENV),
+                                 "CR-MDB-071 §S3: deploy from the root, uploading nothing")
+                self.assertEqual((check["uses"], check["working-directory"]), (None, None),
+                                 "CR-MDB-071 §S3: the bundle check runs from the root")
+                self.assertTrue(run_lines([check]), "CR-MDB-071 §S3: the bundle check runs")
+                at += 3
+            elif name == "github-assets":
                 rest = steps[at:]
                 self.assertTrue(rest and all(step["uses"] is None for step in rest), rest)
                 lines = run_lines(rest)
@@ -800,6 +993,8 @@ class RenderedRehearseTest(_RenderSource, unittest.TestCase):
                 self.assertTrue(any("dist-assets" in line for line in
                                     lines[lines.index(BUILD_ASSETS):]), lines)
                 at = len(steps)
+            else:
+                self.fail(f"no rehearsal model for the target {target!r}")
         return at
 
 
@@ -855,6 +1050,44 @@ class RenderedPublishJobsTest(_RenderSource, unittest.TestCase):
                                   {"NODE_AUTH_TOKEN": "${{ secrets.NPM_TOKEN }}"}))
                 self.assertEqual({s["working-directory"] for s in rest}, {None},
                                  "§S4: the job's defaults.run carry the directory")
+
+    def test_publish_crates(self):
+        # CR-MDB-071 §S3: environment crates, OIDC, the first-publish token in the job env, the auth
+        # step only without it, then `cargo publish` in the crate's directory.
+        for stacks, targets, directory in target_dirs(self, self.combos(), "crates"):
+            with self.subTest(stacks=stacks, targets=targets):
+                job = self.job(stacks, targets, "publish-crates")
+                where = None if directory == "." else directory
+                defaults = workflow_job_working_directory(job)
+                keys = ["needs", "if", "runs-on", "environment", "permissions", "env", "steps"]
+                rest = self._head(job, keys + (["defaults"] if defaults is not None else []),
+                                  {"contents": "read", "id-token": "write"}, "crates")
+                self.assertEqual(workflow_job_env(job), CARGO_JOB_ENV)
+                self.assertEqual(len(rest), 2, [s["run"] or s["uses"] for s in rest])
+                auth, publish = rest
+                self.assertEqual((action(auth), auth["id"], auth["if"], auth["with"], auth["run"]),
+                                 (CRATES_AUTH, "auth", CARGO_AUTH_IF, {}, []))
+                self.assertEqual((publish["uses"], run_lines([publish]), publish["env"]),
+                                 (None, [CARGO_PUBLISH], CARGO_PUBLISH_ENV))
+                self.assertEqual(publish["working-directory"] or defaults, where,
+                                 "§S3: cargo publish runs in the crate's directory")
+
+    def test_publish_maven_central(self):
+        # CR-MDB-071 §S3: environment maven-central, contents read only; setup-java with the
+        # Central server credentials and the GPG inputs; deploy from the root with the four MAVEN_*.
+        for stacks, targets, directory in target_dirs(self, self.combos(), "maven-central"):
+            with self.subTest(stacks=stacks, targets=targets):
+                job = self.job(stacks, targets, "publish-maven-central")
+                rest = self._head(job, ["needs", "if", "runs-on", "environment", "permissions",
+                                        "steps"], {"contents": "read"}, "maven-central")
+                self.assertIsNone(workflow_job_working_directory(job))
+                self.assertEqual(len(rest), 2, [s["run"] or s["uses"] for s in rest])
+                setup, deploy = rest
+                self.assertEqual((action(setup), setup["with"]), ("actions/setup-java", JAVA_CENTRAL))
+                self.assertEqual((deploy["uses"], run_lines([deploy]), deploy["working-directory"],
+                                  deploy["env"]),
+                                 (None, [maven_deploy(directory, MAVEN_PUBLISH_FLAGS)], None,
+                                  MAVEN_PUBLISH_ENV))
 
     def test_publish_github_assets(self):
         for stacks, targets, _directory in target_dirs(self, self.combos(), "github-assets"):
@@ -913,6 +1146,54 @@ class RenderedHeaderTest(_RenderSource, unittest.TestCase):
                         self.assertIn(needle, setup, needle)
                 else:
                     self.assertNotIn("npm_token", header, "§S4: only the rendered targets")
+
+    def test_the_setup_items_are_release_pat_then_each_target_in_canonical_order(self):
+        # CR-MDB-071 §S3: one item per rendered target, in the targets' canonical order.
+        for stacks, targets, text in self.each():
+            names = [parse_target(t)[0] for t in targets]
+            with self.subTest(stacks=stacks, targets=targets):
+                self.assertEqual(list(setup_items(text)),
+                                 ["repository secret RELEASE_PAT", *names])
+
+    def test_the_crates_setup_item(self):
+        # CR-MDB-071 §S3: the environment crates admitting the version tags; the repository
+        # secret CARGO_REGISTRY_TOKEN for the first publish, then the crates.io trusted publisher
+        # (repository, release.yml, environment crates) added and the token deleted.
+        for stacks, targets, text in self.each():
+            names = {parse_target(t)[0] for t in targets}
+            with self.subTest(stacks=stacks, targets=targets):
+                if "crates" not in names:
+                    self.assertNotIn("cargo_registry_token", header_text(text),
+                                     "§S3: only the rendered targets")
+                    continue
+                item = setup_items(text).get("crates", "")
+                self.assertEqual(tag_admission_faults(item, "crates"), [], item)
+                self.assertEqual(first_publish_token_faults(item, CARGO_SECRET_NAME), [], item)
+                for needle in ("crates.io", "release.yml"):
+                    self.assertIn(needle, normalise(item), needle)
+
+    def test_the_maven_central_setup_item(self):
+        # CR-MDB-071 §S3: the environment maven-central admitting the version tags; the verified
+        # namespace; the four repository secrets; the POM's plugins and jars; one root mvnw.
+        for stacks, targets, text in self.each():
+            names = {parse_target(t)[0] for t in targets}
+            with self.subTest(stacks=stacks, targets=targets):
+                if "maven-central" not in names:
+                    self.assertNotIn("maven_central_username", header_text(text),
+                                     "§S3: only the rendered targets")
+                    continue
+                item = setup_items(text).get("maven-central", "")
+                self.assertEqual(tag_admission_faults(item, "maven-central"), [], item)
+                flat = normalise(item)
+                for needle in MAVEN_SETUP_NEEDLES:
+                    self.assertIn(needle, flat, needle)
+
+
+class CratesAuthActionPinTest(unittest.TestCase):
+    """CR-MDB-071 §S3 — ``ACTION_PINS`` gains the crates.io auth action at its measured pin."""
+
+    def test_the_crates_io_auth_action_is_pinned_to_v1_0_5(self):
+        self.assertEqual(workflows_module().ACTION_PINS.get(CRATES_AUTH), CRATES_AUTH_PIN)
 
 
 class ActionPinTableTest(_RenderSource, unittest.TestCase):
@@ -1063,12 +1344,15 @@ class RehearseTargetStepsExecutionTest(_ExecutionCase):
                          CHANGELOG_GOOD)
 
     def _assets(self, build: str | None) -> subprocess.CompletedProcess:
+        # MIGRATED at CR-MDB-071 (§S3): the github-assets steps start at the build step (was: every
+        # step after the npm dry run, which the crates and maven-central steps now follow).
         job, steps = self._job_and_steps()
-        dry = next(i for i, step in enumerate(steps) if NPM_DRY_RUN in step["run"])
+        start = next(i for i, step in enumerate(steps)
+                     if any(f"test -x {BUILD_ASSETS}" in line for line in step["run"]))
         repo = self.repo({})
         if build is not None:
             _executable(repo, BUILD_ASSETS, build)
-        return self.run_steps(job, steps[dry + 1:], repo, self.env(repo))
+        return self.run_steps(job, steps[start:], repo, self.env(repo))
 
     def test_built_assets_pass(self):
         result = self._assets("#!/bin/sh\nmkdir -p dist-assets\necho fw > dist-assets/fw.bin\n")
@@ -1084,11 +1368,150 @@ class RehearseTargetStepsExecutionTest(_ExecutionCase):
         self.assertNotEqual(self._assets("#!/bin/sh\nexit 3\n").returncode, 0)
 
 
+#: CR-MDB-071 §S3 — the Central bundle the maven-central rehearsal builds, under ``<dir>``.
+CENTRAL_BUNDLE = "target/central-publishing/central-bundle.zip"
+_COORDINATES = "org/example/fixture/1.2.3/fixture-1.2.3"
+SOURCES_JAR = f"{_COORDINATES}-sources.jar"
+JAVADOC_JAR = f"{_COORDINATES}-javadoc.jar"
+#: The bundle's artifacts: each ships with its ``.asc`` and its checksums (not artifacts).
+BUNDLE_ARTIFACTS = (f"{_COORDINATES}.pom", f"{_COORDINATES}.jar", SOURCES_JAR, JAVADOC_JAR)
+
+
+def bundle_entries(drop: tuple[str, ...] = (), without: str | None = None) -> list[str]:
+    """A bundle's entry names: each artifact with its ``.asc``, ``.md5`` and ``.sha1``; minus the
+    names in ``drop`` and every entry of the artifact ``without``."""
+    return [artifact + suffix for artifact in BUNDLE_ARTIFACTS if artifact != without
+            for suffix in ("", ".asc", ".md5", ".sha1") if artifact + suffix not in drop]
+
+
+#: CR-MDB-071 §S3 (VERIFY F3) — artifacts whose names a shell would split or expand: one holding a
+#: space, one holding a glob character. :data:`GLOB_DECOY` is a file in the working directory that
+#: the glob name matches, so a loop that glob-expands names checks the decoy instead.
+SPACED_ARTIFACT = f"{_COORDINATES} extra.jar"
+GLOB_ARTIFACT = f"{_COORDINATES}-*.jar"
+GLOB_DECOY = f"{_COORDINATES}-shaded.jar"
+ODD_ARTIFACTS = (SPACED_ARTIFACT, GLOB_ARTIFACT)
+
+
+def error_lines(result: subprocess.CompletedProcess) -> list[str]:
+    """The ``::error::`` workflow-command lines a step printed."""
+    return [line for line in (result.stdout + result.stderr).splitlines()
+            if line.startswith("::error::")]
+
+
+def write_central_bundle(path: Path, entries: list[str]) -> None:
+    """A zip at ``path`` holding ``entries`` (each a line of fixture text)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(path, "w") as bundle:
+        for name in entries:
+            bundle.writestr(name, f"fixture {name}\n")
+
+
+class MavenBundleCheckExecutionTest(_ExecutionCase):
+    """CR-MDB-071 §S3 — the maven-central rehearsal's bundle check, run under ``bash -e`` from
+    the repository root on sample ``<dir>/target/central-publishing/central-bundle.zip`` files:
+    complete passes; an artifact without its ``.asc``, no ``-sources.jar``, no ``-javadoc.jar`` or
+    no bundle fails. One case per ``maven-central`` dir the combinations render."""
+
+    def _checks(self):
+        """``(dir, rehearse job, bundle-check step)`` per rendered maven-central dir: the check is
+        the step after the deploy that uploads nothing."""
+        cases: dict[str, tuple] = {}
+        for stacks, targets, directory in target_dirs(self, self.combos(), "maven-central"):
+            cases.setdefault(directory, (stacks, targets))
+        for directory, (stacks, targets) in cases.items():
+            job = self.job(stacks, targets, "rehearse")
+            steps = workflow_steps(job)
+            deploy = next(i for i, step in enumerate(steps)
+                          if any(MAVEN_REHEARSE_FLAGS in line for line in step["run"]))
+            yield directory, job, steps[deploy + 1]
+
+    def _run(self, directory: str, job, check, entries,
+             files: dict[str, str] | None = None) -> subprocess.CompletedProcess:
+        repo = self.repo(files or {})
+        if entries is not None:
+            write_central_bundle(repo / directory / CENTRAL_BUNDLE, entries)
+        return self.run_steps(job, [check], repo, self.env(repo))
+
+    def assert_error(self, result: subprocess.CompletedProcess, directory: str, *named: str):
+        """VERIFY F3: the step fails with exactly one ``::error::`` line, naming the bundle and
+        each of ``named``."""
+        output = result.stdout + result.stderr
+        self.assertNotEqual(result.returncode, 0, output)
+        errors = error_lines(result)
+        self.assertEqual(len(errors), 1, f"one ::error:: line; got {output!r}")
+        for name in (f"{directory}/{CENTRAL_BUNDLE}", *named):
+            self.assertIn(name, errors[0], f"the ::error:: line names {name!r}")
+
+    @staticmethod
+    def odd_entries(odd: str, signed: bool) -> list[str]:
+        """A complete bundle plus the artifact ``odd``, with its ``.asc`` when ``signed``."""
+        return bundle_entries() + [odd] + ([odd + ".asc"] if signed else [])
+
+    def test_a_complete_bundle_passes(self):
+        for directory, job, check in self._checks():
+            with self.subTest(dir=directory):
+                result = self._run(directory, job, check, bundle_entries())
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual(error_lines(result), [])
+
+    # MIGRATED at CR-MDB-071 (§S3, VERIFY F3): the failure is its ::error:: line naming the bundle
+    # and the unsigned artifact (was: any non-zero exit, which a missing tool also gives).
+    def test_an_artifact_without_its_signature_fails(self):
+        for directory, job, check in self._checks():
+            for artifact in BUNDLE_ARTIFACTS:
+                with self.subTest(dir=directory, unsigned=artifact):
+                    result = self._run(directory, job, check,
+                                       bundle_entries(drop=(artifact + ".asc",)))
+                    self.assert_error(result, directory, artifact, ".asc")
+
+    # MIGRATED at CR-MDB-071 (§S3, VERIFY F3): the failure is its ::error:: line naming the bundle
+    # and the missing jar (was: any non-zero exit, from a silent `grep -q`).
+    def test_a_bundle_without_sources_or_javadoc_fails(self):
+        for directory, job, check in self._checks():
+            for jar, kind in ((SOURCES_JAR, "-sources.jar"), (JAVADOC_JAR, "-javadoc.jar")):
+                with self.subTest(dir=directory, missing=jar):
+                    result = self._run(directory, job, check, bundle_entries(without=jar))
+                    self.assert_error(result, directory, kind)
+
+    # MIGRATED at CR-MDB-071 (§S3, VERIFY F3): the failure names the bundle (was: any non-zero
+    # exit, which a missing `unzip` also gives).
+    def test_no_bundle_fails(self):
+        for directory, job, check in self._checks():
+            with self.subTest(dir=directory):
+                result = self._run(directory, job, check, None)
+                output = result.stdout + result.stderr
+                self.assertNotEqual(result.returncode, 0, output)
+                self.assertIn(f"{directory}/{CENTRAL_BUNDLE}", output)
+
+    def test_names_holding_a_space_or_a_glob_character_are_checked_whole(self):
+        # VERIFY F3: each entry name is one artifact — never word-split, never glob-expanded
+        # (the decoy on disk is what a glob-expanding loop would check instead).
+        for directory, job, check in self._checks():
+            for odd in ODD_ARTIFACTS:
+                with self.subTest(dir=directory, signed=odd):
+                    result = self._run(directory, job, check, self.odd_entries(odd, True),
+                                       {GLOB_DECOY: "decoy\n"})
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assertEqual(error_lines(result), [])
+
+    def test_an_unsigned_name_holding_a_space_or_a_glob_character_fails_naming_it(self):
+        for directory, job, check in self._checks():
+            for odd in ODD_ARTIFACTS:
+                with self.subTest(dir=directory, unsigned=odd):
+                    result = self._run(directory, job, check, self.odd_entries(odd, False),
+                                       {GLOB_DECOY: "decoy\n"})
+                    self.assert_error(result, directory, odd, ".asc")
+
+
 class PublishExecutionTest(_ExecutionCase):
     """§S4 — each publish job's guard, ``publish-npm``'s copy, and ``publish-github-assets``'s
     build and upload, under ``bash -e``."""
 
-    PUBLISH_JOBS = ("publish-pypi", "publish-npm", "publish-github-assets")
+    # MIGRATED at CR-MDB-071 (§S3): publish-crates and publish-maven-central carry the guard
+    # second too (was: the pypi, npm and github-assets jobs).
+    PUBLISH_JOBS = ("publish-pypi", "publish-npm", "publish-crates", "publish-maven-central",
+                    "publish-github-assets")
 
     def test_each_guard_passes_a_tag_on_master_and_refuses_the_rest(self):
         fixture = guard_fixture(self)
@@ -1161,10 +1584,15 @@ class ArduinoTestJobExecutionTest(_ExecutionCase):
 # ------------------------------------------------------------------ the new script, executed ----
 
 def _version_sources(version: str) -> dict[str, str]:
+    # MIGRATED at CR-MDB-071 (§S3): FULL renders crates:. and maven-central:. too, so the
+    # tree carries a root Cargo.toml and pom.xml at the version (was: pyproject.toml and
+    # pkg/package.json only).
     return {"pyproject.toml": ('[project]\nname = "fixture"\n'
                                f'version = "{version}"\n'),
             "pkg/package.json": ('{\n  "name": "fixture",\n'
-                                 f'  "version": "{version}"\n' + "}\n")}
+                                 f'  "version": "{version}"\n' + "}\n"),
+            "Cargo.toml": cargo_package(f'version = "{version}"'),
+            "pom.xml": pom(version)}
 
 
 class RehearseStampExecutionTest(_ExecutionCase):
@@ -1189,6 +1617,23 @@ class RehearseStampExecutionTest(_ExecutionCase):
         self.assertIn('version = "1.2.3.dev7"', (repo / "pyproject.toml").read_text(encoding="utf-8"))
         self.assertIn('"version": "1.2.3-dev.7"',
                       (repo / "pkg/package.json").read_text(encoding="utf-8"))
+        # CR-MDB-071 §S2/§S3: crates and maven-central are passed to the stamp and left unchanged.
+        self.assertEqual((repo / "Cargo.toml").read_text(encoding="utf-8"),
+                         _version_sources("1.2.3")["Cargo.toml"])
+        self.assertEqual((repo / "pom.xml").read_text(encoding="utf-8"),
+                         _version_sources("1.2.3")["pom.xml"])
+
+    def test_a_crates_or_maven_version_off_the_ref_fails_the_stamp_writing_nothing(self):
+        # CR-MDB-071 §S2: the stamp refuses a crates or Maven version other than the ref's X.Y.Z.
+        for source, off in (("Cargo.toml", cargo_package('version = "1.2.2"')),
+                            ("pom.xml", pom("1.2.3-SNAPSHOT"))):
+            with self.subTest(source=source):
+                sources = dict(_version_sources("1.2.3"), **{source: off})
+                result, repo = self._run(FULL_TARGETS, "release/1.2.3", CHANGELOG_GOOD, sources)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(source, result.stderr)
+                self.assertEqual((repo / "pyproject.toml").read_text(encoding="utf-8"),
+                                 sources["pyproject.toml"], "nothing is stamped")
 
     def test_no_target_needs_no_version_source(self):
         result, _repo = self._run((), "hotfix/1.2.3", CHANGELOG_GOOD, {})
@@ -1272,6 +1717,10 @@ class PublishExecutionConformingSampleProofTest(PublishExecutionTest):
     SAMPLES = SAMPLES
 
 
+class MavenBundleCheckExecutionConformingSampleProofTest(MavenBundleCheckExecutionTest):
+    SAMPLES = SAMPLES
+
+
 class ArduinoTestJobExecutionConformingSampleProofTest(ArduinoTestJobExecutionTest):
     SAMPLES = SAMPLES
 
@@ -1298,10 +1747,81 @@ class SampleBiteProofTest(_ExecutionCase):
                     SAMPLE_FULL.replace("  publish-pypi:\n    needs: [test-python]\n",
                                         "  publish-pypi:\n"))
 
+    # MIGRATED at CR-MDB-071 (§S3): the full check line names crates and maven-central too.
     def test_a_check_step_without_the_npm_target_bites(self):
         self._fails(RenderedCreateReleaseTest,
                     "test_the_check_step_is_there_exactly_with_a_versioned_target",
-                    SAMPLE_FULL.replace('check "$TAG" pypi:. npm:pkg', 'check "$TAG" pypi:.'))
+                    SAMPLE_FULL.replace('check "$TAG" pypi:. npm:pkg crates:. maven-central:.',
+                                        'check "$TAG" pypi:. crates:. maven-central:.'))
+
+    def test_a_check_step_without_the_maven_target_bites(self):
+        self._fails(RenderedCreateReleaseTest,
+                    "test_the_check_step_is_there_exactly_with_a_versioned_target",
+                    SAMPLE_FULL.replace(' crates:. maven-central:.\n', ' crates:.\n'))
+
+    def test_an_auth_step_running_always_bites(self):
+        self._fails(RenderedPublishJobsTest, "test_publish_crates",
+                    SAMPLE_FULL.replace("        if: env.CARGO_FIRST_TOKEN == ''\n", ""))
+
+    def test_a_maven_publish_without_its_gpg_inputs_bites(self):
+        self._fails(RenderedPublishJobsTest, "test_publish_maven_central",
+                    SAMPLE_FULL.replace("          server-password-env-var: MAVEN_CENTRAL_PASSWORD\n"
+                                        "          gpg-private-key",
+                                        "          server-password-env-var: MAVEN_CENTRAL_PASSWORD\n"
+                                        "          no-gpg-private-key"))
+
+    def test_a_maven_rehearsal_that_uploads_bites(self):
+        self._fails(RenderedRehearseTest,
+                    "test_each_targets_steps_follow_in_canonical_order_and_nothing_else",
+                    SAMPLE_FULL.replace(" -DskipUpload=true\n", "\n"))
+
+    # MIGRATED at CR-MDB-071 (§S3, VERIFY F3): the javadoc check is an if-block (was: a line).
+    def test_a_bundle_check_without_the_javadoc_check_bites(self):
+        self._fails(MavenBundleCheckExecutionTest, "test_a_bundle_without_sources_or_javadoc_fails",
+                    SAMPLE_FULL.replace(
+                        "          if ! printf '%s\\n' \"$files\" | grep -q -- '-javadoc\\.jar$'; then\n"
+                        "            echo \"::error::$bundle: no -javadoc.jar\"\n"
+                        "            exit 1\n"
+                        "          fi\n", ""))
+
+    # MIGRATED at CR-MDB-071 (§S3, VERIFY F3): the signature check sits in the read loop's case.
+    def test_a_bundle_check_ignoring_signatures_bites(self):
+        self._fails(MavenBundleCheckExecutionTest, "test_an_artifact_without_its_signature_fails",
+                    SAMPLE_FULL.replace("                  exit 1\n                fi\n                ;;\n",
+                                        "                fi\n                ;;\n"))
+
+    def test_a_silent_sources_check_bites(self):
+        # VERIFY F3: a bare `grep -q` fails the step with no ::error:: line.
+        self._fails(MavenBundleCheckExecutionTest, "test_a_bundle_without_sources_or_javadoc_fails",
+                    SAMPLE_FULL.replace(
+                        "          if ! printf '%s\\n' \"$files\" | grep -q -- '-sources\\.jar$'; then\n"
+                        "            echo \"::error::$bundle: no -sources.jar\"\n"
+                        "            exit 1\n"
+                        "          fi\n",
+                        "          printf '%s\\n' \"$files\" | grep -q -- '-sources\\.jar$'\n"))
+
+    def test_a_word_splitting_signature_loop_bites(self):
+        # VERIFY F3: a `for` over an unquoted `$(...)` splits the spaced name and expands the glob.
+        loop = SAMPLE_FULL.index("          while IFS= read -r f; do\n")
+        end = SAMPLE_FULL.index("          done <<< \"$files\"\n") + len("          done <<< \"$files\"\n")
+        split = ("          for f in $(printf '%s\\n' \"$files\" | grep -E '\\.(jar|pom)$'); do\n"
+                 "            if ! printf '%s\\n' \"$files\" | grep -qxF \"$f.asc\"; then\n"
+                 "              echo \"::error::$bundle: $f has no .asc signature\"\n"
+                 "              exit 1\n"
+                 "            fi\n"
+                 "          done\n")
+        self._fails(MavenBundleCheckExecutionTest,
+                    "test_names_holding_a_space_or_a_glob_character_are_checked_whole",
+                    SAMPLE_FULL[:loop] + split + SAMPLE_FULL[end:])
+
+    def test_a_crates_setup_item_without_the_order_bites(self):
+        self._fails(RenderedHeaderTest, "test_the_crates_setup_item",
+                    SAMPLE_FULL.replace("environment `crates`) and delete the token;",
+                                        "environment `crates`);"))
+
+    def test_a_maven_setup_item_without_the_gpg_plugin_bites(self):
+        self._fails(RenderedHeaderTest, "test_the_maven_central_setup_item",
+                    SAMPLE_FULL.replace("maven-gpg-plugin 3.2.0 or newer", "a signing plugin"))
 
     def test_targets_out_of_canonical_order_bite(self):
         pypi = SAMPLE_FULL.index(f"      - uses: {_UV}\n      - run: uv build\n      - uses: {_PP}\n"
@@ -1351,32 +1871,51 @@ AN_ENVIRONMENT_SECRET = " ".join(("calls", 'NPM_TOKEN', "an environment", "secre
 NO_ORDER = ("does not give the order: the token for the first publish, then the trusted "
             "publisher added and the token deleted")
 
-_NPM_TOKEN = re.compile(r"(?<![\w-])npm_token(?![\w-])")
 _REPOSITORY_SECRET = re.compile(r"\brepository secrets?\b")
-_ENVIRONMENT_SECRET = re.compile(
-    r"\benvironment secrets?\b|\benvironment\b[^.;]{0,60}\bwith the npm_token\b")
 _FIRST_PUBLISH = re.compile(r"\bfirst publish\b")
 _TRUSTED_PUBLISHER = re.compile(r"\btrusted publishers?\b")
 _DELETED = re.compile(r"\bdelet(?:e|es|ed|ing)\b")
+#: CR-MDB-071 §S3/§S4 — the crates first-publish token.
+CARGO_SECRET_NAME = "_".join(("CARGO", "REGISTRY", "TOKEN"))
 
 
-def npm_token_faults(text: str) -> list[str]:
-    """F6: the faults of ``text`` (an npm setup task or setup item), normalised: it names
-    ``NPM_TOKEN``, calls it a repository secret and never an environment secret, and says, in
-    this order, the first publish, the trusted publisher (added) and the token deleted."""
+def first_publish_token_faults(text: str, token: str) -> list[str]:
+    """F6: the faults of ``text`` (a setup task or setup item), normalised: it names ``token``,
+    calls it a repository secret and never an environment secret, and says, in this order, the
+    first publish, the trusted publisher (added) and the token deleted."""
+    # MIGRATED at CR-MDB-071 (§S3/§S4): the reader takes the token, so the crates item and
+    # task are read for CARGO_REGISTRY_TOKEN as npm's are for NPM_TOKEN (was npm_token_faults,
+    # NPM_TOKEN only; npm_token_faults now delegates here).
     flat = normalise(text)
-    if not _NPM_TOKEN.search(flat):
-        return [NO_NPM_TOKEN]
+    name = re.escape(token.lower())
+    if not re.search(rf"(?<![\w-]){name}(?![\w-])", flat):
+        return [" ".join(("names", "no", token))]
     out = []
     if not _REPOSITORY_SECRET.search(flat):
-        out.append(NOT_A_REPOSITORY_SECRET)
-    if _ENVIRONMENT_SECRET.search(flat):
-        out.append(AN_ENVIRONMENT_SECRET)
+        out.append(" ".join(("does not call", token, "a repository", "secret")))
+    if re.search(rf"\benvironment secrets?\b|\benvironment\b[^.;]{{0,60}}\bwith the {name}\b",
+                 flat):
+        out.append(" ".join(("calls", token, "an environment", "secret")))
     first = _FIRST_PUBLISH.search(flat)
     added = _TRUSTED_PUBLISHER.search(flat, first.end()) if first else None
     if (_DELETED.search(flat, added.end()) if added else None) is None:
         out.append(NO_ORDER)
     return out
+
+
+def npm_token_faults(text: str) -> list[str]:
+    """F6: :func:`first_publish_token_faults` for ``NPM_TOKEN``."""
+    return first_publish_token_faults(text, "NPM_TOKEN")
+
+
+#: CR-MDB-071 §S3 — what the maven-central setup item names (normalised: lower-cased,
+#: backticks dropped).
+MAVEN_SETUP_NEEDLES = (
+    "namespace", "central portal", "repository secret", "maven_central_username",
+    "maven_central_password", "user token", "maven_gpg_private_key", "maven_gpg_passphrase",
+    "central-publishing-maven-plugin", "<extensions>true</extensions>", "sources", "javadoc",
+    "maven-gpg-plugin", "3.2.0", "mvnw", "repository root",
+)
 
 
 #: F7 - the release event's ref is the tag: why the publish environments admit the tags.
@@ -1528,8 +2067,26 @@ class NpmSetupTaskTest(unittest.TestCase):
         self.assertEqual(npm_token_faults(tasks[0]), [], tasks[0])
 
 
-#: The target sets the header is read for: each holding ``pypi`` or ``npm``.
-SETUP_TARGET_SETS = (("pypi",), ("npm:pkg",), ("pypi", "npm:pkg", "github-assets"))
+class CratesSetupTaskTest(unittest.TestCase):
+    """CR-MDB-071 §S4 - ``init``'s crates setup task, in the npm task's form: the
+    ``CARGO_REGISTRY_TOKEN`` repository secret for the first publish, then the crates.io trusted
+    publisher added and the token deleted."""
+
+    def test_the_crates_setup_task_meets_f6(self):
+        tasks = [task for task in scaffold.release_setup_tasks(["rust"], ["crates"])
+                 if CARGO_SECRET_NAME in task]
+        self.assertEqual(len(tasks), 1, f"one crates task; got {tasks!r}")
+        self.assertEqual(first_publish_token_faults(tasks[0], CARGO_SECRET_NAME), [], tasks[0])
+        self.assertIn("crates.io", tasks[0])
+
+
+#: The target sets the header is read for: each holding a target with a publish environment.
+# MIGRATED at CR-MDB-071 (§S3): the crates and maven-central sets join (was: pypi, npm:pkg and
+# pypi,npm:pkg,github-assets).
+SETUP_TARGET_SETS = (("pypi",), ("npm:pkg",), ("pypi", "npm:pkg", "github-assets"), ("crates",),
+                     ("maven-central",), CRATES_MAVEN_DIRS, FULL_TARGETS)
+#: The publish environments whose setup item must admit the version tags.
+TAG_ENVIRONMENTS = {"pypi", "npm", "crates", "maven-central"}
 
 
 class RenderedHeaderSetupTest(unittest.TestCase):
@@ -1546,10 +2103,20 @@ class RenderedHeaderSetupTest(unittest.TestCase):
                 with self.subTest(targets=targets):
                     self.assertEqual(npm_token_faults(setup_items(text).get("npm", "")), [])
 
+    def test_the_crates_setup_item_calls_the_cargo_token_a_repository_secret_in_order(self):
+        # CR-MDB-071 §S3: the first-publish reader, extended to the crates item.
+        for targets, names, text in self.each():
+            if "crates" in names:
+                with self.subTest(targets=targets):
+                    self.assertEqual(first_publish_token_faults(
+                        setup_items(text).get("crates", ""), CARGO_SECRET_NAME), [])
+
+    # MIGRATED at CR-MDB-071 (§S3): the tag-admission reader runs over crates and maven-central
+    # too (was: pypi and npm).
     def test_each_publish_environment_admits_the_version_tags(self):
         for targets, names, text in self.each():
             items = setup_items(text)
-            for name in sorted(names & {"pypi", "npm"}):
+            for name in sorted(names & TAG_ENVIRONMENTS):
                 with self.subTest(targets=targets, environment=name):
                     self.assertEqual(tag_admission_faults(items.get(name, ""), name), [])
 

@@ -330,6 +330,33 @@ TARGET_COLUMNS = {
          (r"(?<![\w-])npm(?![\w-])", r"\brepository secret\b",
           r"(?<![\w-])npm_token(?![\w-])")),
     ),
+    # MIGRATED at CR-MDB-071 (§S1/§S6): a row per new target, between npm and github-assets: the
+    # crate's dry-run publish, crates.io, the environment crates and its first-publish repository
+    # secret; the signed Central bundle that uploads nothing, Maven Central, the environment
+    # maven-central and its four repository secrets.
+    "crates": (
+        ("rehearsal", "the dry-run publish", (r"\bdry-run\b",)),
+        ("publish", "crates.io through Trusted Publishing",
+         (r"\bcrates\.io\b", r"\btrusted publishing\b")),
+        ("environment/secret", "the environment crates and the repository secret "
+         "CARGO_REGISTRY_TOKEN",
+         (r"(?<![\w-])crates(?![\w.-])", r"\brepository secret\b",
+          r"(?<![\w-])cargo_registry_token(?![\w-])")),
+    ),
+    "maven-central": (
+        ("rehearsal", "the signed bundle, uploading nothing",
+         (r"\bbundle\b", r"\bsign\w*\b", r"\buploads? nothing\b|\buploading nothing\b")),
+        ("publish", "Maven Central through the Central Portal",
+         (r"\bmaven central\b", r"\bcentral portal\b")),
+        ("environment/secret", "the environment maven-central and the repository secrets "
+         "MAVEN_CENTRAL_USERNAME, MAVEN_CENTRAL_PASSWORD, MAVEN_GPG_PRIVATE_KEY and "
+         "MAVEN_GPG_PASSPHRASE",
+         (r"(?<![\w-])maven-central(?![\w-])", r"\brepository secrets\b",
+          r"(?<![\w-])maven_central_username(?![\w-])",
+          r"(?<![\w-])maven_central_password(?![\w-])",
+          r"(?<![\w-])maven_gpg_private_key(?![\w-])",
+          r"(?<![\w-])maven_gpg_passphrase(?![\w-])")),
+    ),
     "github-assets": (
         ("rehearsal", "the project's build-assets script, its output checked non-empty",
          (r"(?<![\w-])build-assets(?![\w-])", r"\bnon-empty\b|\bnot empty\b")),
@@ -379,6 +406,23 @@ RELEASE_FLOW_PHRASES = (
      (r"\bmaster run\b", r"\bno version tag\b", r"(?<![\w-])head(?![\w-])", r"\bdispatch\w*\b",
       r"\bon master\b")),
 )
+#: CR-MDB-071 §S6 — the release-readiness check: the release flow runs ``modelb-axi release-check``
+#: before ``git flow release start`` and fixes what it reports missing, and the release readiness
+#: is read with it. Each step matched in ONE normalised unit of ``## Releases`` (as
+#: :data:`RELEASE_STEP_PHRASES`); a unit naming release readiness without the command is a fault
+#: (:data:`READINESS_WITHOUT_CHECK`), so the old "from the live CI config and gh" sentence cannot
+#: stand beside the new one.
+READINESS_CHECK = "readiness check"
+RELEASE_CHECK_COMMAND = r"(?<![\w-])modelb-axi release-check(?![\w-])"
+READINESS_CHECK_PHRASES = (
+    (READINESS_CHECK, "the release flow runs modelb-axi release-check before git flow release start",
+     (RELEASE_CHECK_COMMAND, r"\bbefore\b[^.;]{0,60}\bgit flow release start\b")),
+    (READINESS_CHECK, "it fixes what modelb-axi release-check reports missing",
+     (RELEASE_CHECK_COMMAND, r"\bfix(?:es|ed|ing)?\b", r"\bmissing\b")),
+    (READINESS_CHECK, "release readiness is read with modelb-axi release-check",
+     (r"\breadiness\b", RELEASE_CHECK_COMMAND)),
+)
+READINESS_WITHOUT_CHECK = "a unit names release readiness without modelb-axi release-check"
 CR_029_S1_TERMS = ("install-guide.md", "marked region", "README")
 #: CR-MDB-038 §S5 — the four Python release steps, in ritual order. Each
 #: step is (label, anchor alternatives, further required terms); a term is an
@@ -405,7 +449,10 @@ PROJECT_SPECIFIC_NAMES = ("modelb", "model b", "model-b")
 #: MIGRATED at CR-MDB-068 C3 RED (§S8): the two commands that render a project's release workflow
 #: are the CLI's, not a project's name — the project-name checks spare exactly these (was: every
 #: ``modelb`` counted, ``modelb-axi`` included).
-RELEASE_WORKFLOW_COMMANDS_RE = re.compile(r"(?<![\w-])modelb-axi (?:release-workflow|init)(?![\w-])")
+# MIGRATED at CR-MDB-071 (§S6): `modelb-axi release-check`, the release-readiness verb the flow
+# runs, is the CLI's too and is spared (was: release-workflow and init only).
+RELEASE_WORKFLOW_COMMANDS_RE = re.compile(
+    r"(?<![\w-])modelb-axi (?:release-workflow|release-check|init)(?![\w-])")
 #: CR-MDB-029 §S4 — the Pi package release step, same shape as
 #: PYTHON_RELEASE_STEPS: after the version is set, npm publish with credentials
 #: the user supplies at publish time; then install the published version into
@@ -471,16 +518,25 @@ PI_PACKAGE_HEADING = "Pi package releases"
 # NOTES_CHECK_ONLY_STACKS = ("arduino", "quarkus", "java", "rust"), the stacks whose rehearsal is
 # the notes check only). A row of the subsection's tables keyed on a stack is a fault.
 REHEARSAL_TABLE_STACK_ROW = "the rehearsal table keys a row on the stack"
+#: CR-MDB-071 §S6 — a rehearsal that uploads nothing (normalised).
+_UPLOADS_NOTHING = r"\buploads? nothing\b|\buploading nothing\b"
 #: §S5 — the rehearsal rule, the forms table and the CI rule, each step matched in one unit of
 #: the ``### Rehearsal and CI`` subsection.
 REHEARSAL_AND_CI_PHRASES = (
     (REHEARSAL_AND_CI, "rehearsal rule: each push to release/X.Y.Z or hotfix/X.Y.Z",
      (r"\b(?:each|every)\b", r"\bpush(?:es)?\b", r"(?<![\w-])release/x\.y\.z\b",
       r"(?<![\w-])hotfix/x\.y\.z\b")),
-    (REHEARSAL_AND_CI, "rehearsal rule: builds X.Y.Z with a dev marker and the CI run number in "
-     "the stack's form",
-     (r"\bbuild\w*\b", r"\bdev marker\b", r"(?<![\w-])ci(?![\w-])", r"\brun number\b",
+    # MIGRATED at CR-MDB-071 (§S6): the dev marker is pypi's and npm's alone, and crates and
+    # maven-central upload nothing and keep X.Y.Z (was the one step "rehearsal rule: builds X.Y.Z
+    # with a dev marker and the CI run number in the stack's form", said of every target).
+    (REHEARSAL_AND_CI, "rehearsal rule: pypi and npm stamp X.Y.Z with a dev marker and the CI run "
+     "number in the target's own form",
+     (r"(?<![\w-])pypi(?![\w-])", r"(?<![\w-])npm(?![\w-])", r"\b(?:build|stamp)\w*\b",
+      r"\bdev (?:marker|version)\b", r"(?<![\w-])ci(?![\w-])", r"\brun number\b",
       r"\bforms?\b")),
+    (REHEARSAL_AND_CI, "rehearsal rule: crates and maven-central upload nothing and keep X.Y.Z",
+     (r"(?<![\w-])crates(?![\w.-])", r"(?<![\w-])maven-central(?![\w-])", _UPLOADS_NOTHING,
+      r"\bkeep(?:s|ing)?\b[^.;]{0,40}(?<![\w.-])x\.y\.z(?![\w-])(?!\.\w)")),
     (REHEARSAL_AND_CI, "rehearsal rule: refuses a committed version other than X.Y.Z",
      (r"\brefus\w*\b", r"\bcommitted version\b", r"\bother than\b")),
     (REHEARSAL_AND_CI, "rehearsal rule: fails on a missing or empty notes section",
@@ -492,6 +548,13 @@ REHEARSAL_AND_CI_PHRASES = (
      "with a dist-tag",
      (r"(?<![\w-])npm(?![\w-])", r"(?<![\w.])x\.y\.z-dev\.n\b", r"\bdry-run\b",
       r"\bpublish\b", r"\bdist-tag\b")),
+    # MIGRATED at CR-MDB-071 (§S6): the crates and maven-central rows, each a table row whose
+    # version cell is X.Y.Z itself (no dev form) and whose rehearsal uploads nothing.
+    (REHEARSAL_AND_CI, "forms table: crates, X.Y.Z, the crate's dry-run publish",
+     (r"^\| crates \| x\.y\.z(?![\w.-])[^|]*\|", r"\bdry-run\b")),
+    (REHEARSAL_AND_CI, "forms table: maven-central, X.Y.Z, the signed bundle, uploading nothing",
+     (r"^\| maven-central \| x\.y\.z(?![\w.-])[^|]*\|", r"\bbundle\b", r"\bsign\w*\b",
+      _UPLOADS_NOTHING)),
     (REHEARSAL_AND_CI, "forms table: github-assets, the project's build-assets script, "
      "dist-assets/ not empty",
      (r"(?<![\w-])github-assets(?![\w-])", r"(?<![\w-])build-assets(?![\w-])",
@@ -559,6 +622,36 @@ RETIRED_RELEASE_PHRASES = (
     "the tag's release job",
     # MIGRATED at CR-MDB-068 C5 RED (VERIFY F5): the runner is a fresh runner, never "a clean home".
     "a clean home",
+)
+#: CR-MDB-071 §S6 — the Maven sections reconciled with the maven-central target. The two
+#: subsections keep the manual ``git checkout master && ./mvnw clean install`` in a fence (the Java
+#: flow's step and the master-only install); every ``### `` subsection of ``## Releases`` whose
+#: title names Maven is one place, and each step of :data:`MAVEN_RECONCILIATION_PHRASES` is matched
+#: in ONE normalised unit of those subsections (as :data:`RELEASE_STEP_PHRASES`): the manual install
+#: from ``master`` is a local install, the never-from-``release/*`` rule is a local install's, a
+#: project with the ``maven-central`` target is published by the release event's job, and the
+#: rehearsal's ``deploy`` uploads nothing and runs on ``release/*`` in CI. Normalising drops ``*``,
+#: so ``release/*`` reads ``release/``.
+MAVEN_RECONCILIATION = "maven reconciliation"
+JAVA_FLOW_HEADING = "The 10-step git flow release"
+MAVEN_INSTALL_HEADING = "Maven install/deploy"
+MAVEN_MASTER_INSTALL = "git checkout master && ./mvnw clean install"
+MAVEN_SUBSECTION_RE = re.compile(r"\bmaven\b", re.I)
+_MVNW_CLEAN_INSTALL = r"(?<![\w-])\./mvnw clean install\b"
+_RELEASE_WILDCARD = r"(?<![\w-])release/(?:x\.y\.z\b|(?!\w))"
+MAVEN_RECONCILIATION_PHRASES = (
+    (MAVEN_RECONCILIATION, "the manual ./mvnw clean install from master is a local install",
+     (_MVNW_CLEAN_INSTALL, r"(?<![\w-])master(?![\w-])", r"\blocal\b")),
+    (MAVEN_RECONCILIATION, "never ./mvnw clean install from release/* is said of a local install",
+     (r"\bnever\b|\bnot\b", _MVNW_CLEAN_INSTALL, _RELEASE_WILDCARD, r"\blocal(?:ly)?\b")),
+    (MAVEN_RECONCILIATION, "a project with the maven-central target is published by the release "
+     "event's job",
+     (r"(?<![\w-])maven-central(?![\w-])", r"\bpublish\w*\b", r"\brelease event\b", r"\bjobs?\b")),
+    (MAVEN_RECONCILIATION, "the rehearsal's deploy uploads nothing",
+     (r"\brehears\w*\b", r"(?<![\w-])deploy(?![\w-])", _UPLOADS_NOTHING)),
+    (MAVEN_RECONCILIATION, "the rehearsal's deploy runs on release/* in CI",
+     (r"\brehears\w*\b", r"(?<![\w-])deploy(?![\w-])", _RELEASE_WILDCARD,
+      r"(?<![\w-])ci(?![\w-])")),
 )
 
 # (G) — where the installer comes from (VERIFY cycle 100 findings 2/6), and
@@ -1071,9 +1164,40 @@ def check_release_workflow_verb(text: str) -> list[str]:
     return out
 
 
+#: CR-MDB-071 §S6 — the readiness verb the guide shows beside ``release-workflow``.
+RELEASE_CHECK_VERB = "release-check"
+#: A unit saying what ``release-check`` reports: the release readiness, or what a release lacks.
+_READINESS_WORDS = r"\breadiness\b|\bready\b|\bmissing\b|\black(?:s|ing)?\b"
+
+
+def check_release_check_verb(text: str) -> list[str]:
+    """CR-MDB-071 §S6: every marked region showing ``modelb-axi release-workflow`` in code also
+    shows ``modelb-axi release-check`` in code and, in one unit, says it reports the release
+    readiness (:data:`_READINESS_WORDS` beside ``release``) — the verb sits beside
+    ``release-workflow``, so it reaches the package README with it."""
+    subcommand_flag(RELEASE_CHECK_VERB, "--modelb-home")
+    workflow = f"modelb-axi {RELEASE_WORKFLOW_VERB}"
+    verb = f"modelb-axi {RELEASE_CHECK_VERB}"
+    beside = {name: body for name, body in region_texts(text).items()
+              if has_code_token(body, workflow)}
+    if not beside:
+        return [f"no marked region shows `{workflow}` in code"]
+    out = []
+    for name, body in beside.items():
+        if not has_code_token(body, verb):
+            out.append(f"{name}: no `{verb}` in code beside `{workflow}`")
+        if not any(re.search(_READINESS_WORDS, u) and re.search(r"\brelease\b", u)
+                   for u in norm_units(body)):
+            out.append(f"{name}: no unit says {RELEASE_CHECK_VERB} reports the release readiness")
+    return out
+
+
 #: CR-MDB-068 C5 RED (VERIFY F8) - the forms the guide's ``--release-targets`` sentence names, one
 #: per target the renderer renders (``pypi`` and ``npm`` take an optional ``:<dir>``).
-RELEASE_TARGET_FORMS = ("pypi[:<dir>]", "npm[:<dir>]", "github-assets")
+# MIGRATED at CR-MDB-071 (§S1/§S6): crates and maven-central, each with an optional dir, join
+# (was: ("pypi[:<dir>]", "npm[:<dir>]", "github-assets")).
+RELEASE_TARGET_FORMS = ("pypi[:<dir>]", "npm[:<dir>]", "crates[:<dir>]", "maven-central[:<dir>]",
+                        "github-assets")
 
 
 def check_release_targets_forms(text: str) -> list[str]:
@@ -1179,7 +1303,10 @@ def check_release_steps(text: str) -> list[str]:
     (:data:`PUBLISH_STEP_PHRASES`), the release-notes step written before the branch is first
     published (in the ``### Release notes`` subsection), the ``### Rehearsal and CI``
     subsection after ``### Pi package releases`` (:data:`REHEARSAL_AND_CI_PHRASES`, naming none
-    of :data:`SUBSECTION_FORBIDDEN_ANCHORS`), and no :data:`RETIRED_RELEASE_PHRASES`."""
+    of :data:`SUBSECTION_FORBIDDEN_ANCHORS`), and no :data:`RETIRED_RELEASE_PHRASES`.
+
+    CR-MDB-071 §S6: it also checks the release-readiness check (:func:`readiness_check_faults`)
+    and the Maven sections' reconciliation (:func:`maven_reconciliation_faults`)."""
     sec = next((body for head, body in sections(text).items()
                 if head.startswith("Releases")), "")
     if not sec:
@@ -1205,7 +1332,40 @@ def check_release_steps(text: str) -> list[str]:
     out += _missing_steps(RELEASE_FLOW_PHRASES, found)
     # CR-MDB-070 C4 RED (VERIFY F6): recovery from a red or flaky run.
     out += _missing_steps(RED_RUN_RECOVERY_PHRASES, found)
+    # CR-MDB-071 §S6: the readiness check before the release starts; the Maven sections.
+    out += readiness_check_faults(found)
+    out += maven_reconciliation_faults(sec)
     return out
+
+
+def readiness_check_faults(units: list[str]) -> list[str]:
+    """CR-MDB-071 §S6: the faults of the ``## Releases`` units ``units`` (normalised) against
+    :data:`READINESS_CHECK_PHRASES`, and :data:`READINESS_WITHOUT_CHECK` once when some unit names
+    release readiness without ``modelb-axi release-check``."""
+    out = _missing_steps(READINESS_CHECK_PHRASES, units)
+    if any(re.search(r"\breadiness\b", u) and not re.search(RELEASE_CHECK_COMMAND, u)
+           for u in units):
+        out.append(f"## Releases: {READINESS_CHECK}: {READINESS_WITHOUT_CHECK}")
+    return out
+
+
+def maven_reconciliation_faults(sec: str) -> list[str]:
+    """CR-MDB-071 §S6: the faults of one ``## Releases`` body ``sec`` against the Maven
+    reconciliation — per subsection of :data:`JAVA_FLOW_HEADING` and
+    :data:`MAVEN_INSTALL_HEADING`, ``no '### <heading>' subsection`` or ``'### <heading>' no longer
+    shows <MAVEN_MASTER_INSTALL>`` (in a fence); then each step of
+    :data:`MAVEN_RECONCILIATION_PHRASES` no unit of the Maven subsections carries whole."""
+    prefix = f"## Releases: {MAVEN_RECONCILIATION}: "
+    out: list[str] = []
+    for heading in (JAVA_FLOW_HEADING, MAVEN_INSTALL_HEADING):
+        found = _subsection(sec, lambda title, h=heading: title.startswith(h))
+        if found is None:
+            out.append(prefix + f"no '### {heading}' subsection")
+        elif not any(MAVEN_MASTER_INSTALL in " ".join(block.split())
+                     for block in _fenced_blocks(found[1])):
+            out.append(prefix + f"'### {heading}' no longer shows {MAVEN_MASTER_INSTALL}")
+    bodies = [body for _, body in _subsections(sec, lambda title: MAVEN_SUBSECTION_RE.search(title))]
+    return out + _missing_steps(MAVEN_RECONCILIATION_PHRASES, norm_units("\n\n".join(bodies)))
 
 
 # MIGRATED at CR-MDB-068 C3 RED (§S8): release_job_snippet() and checkout_pin_faults() are retired
@@ -1307,20 +1467,32 @@ def publish_job_faults(text: str) -> list[str]:
 _SUBHEADING_RE = re.compile(r"^(#{2,3}) (.*?)\s*$")
 
 
-def _subsection(section: str, matches) -> tuple[int, str] | None:
-    """The first ``### `` subsection of ``section`` whose heading title satisfies ``matches``:
-    ``(the heading's line index, its body up to the next ``## ``/``### `` heading)``. A line
-    inside a fence is never a heading. ``None`` when there is none."""
+def _subsections(section: str, matches) -> list[tuple[int, str]]:
+    """Every ``### `` subsection of ``section`` whose heading title satisfies ``matches``, in
+    order: ``(the heading's line index, its body up to the next ``## ``/``### `` heading)``. A
+    line inside a fence is never a heading. MIGRATED at CR-MDB-071 (§S6): the Maven
+    reconciliation reads every Maven subsection (was: :func:`_subsection`'s body, first match only)."""
     lines = section.splitlines()
+    out: list[tuple[int, str]] = []
     start = None
     for i, (line, fenced) in enumerate(zip(lines, _fence_mask(lines), strict=True)):
         heading = None if fenced else _SUBHEADING_RE.match(line)
-        if start is None:
-            if heading and heading.group(1) == "###" and matches(heading.group(2)):
-                start = i
-        elif heading:
-            return start, "\n".join(lines[start + 1:i])
-    return None if start is None else (start, "\n".join(lines[start + 1:]))
+        if heading is None:
+            continue
+        if start is not None:
+            out.append((start, "\n".join(lines[start + 1:i])))
+            start = None
+        if heading.group(1) == "###" and matches(heading.group(2)):
+            start = i
+    if start is not None:
+        out.append((start, "\n".join(lines[start + 1:])))
+    return out
+
+
+def _subsection(section: str, matches) -> tuple[int, str] | None:
+    """The first of :func:`_subsections`; ``None`` when there is none."""
+    found = _subsections(section, matches)
+    return found[0] if found else None
 
 
 def _missing_steps(phrases, units: list[str]) -> list[str]:
@@ -1693,6 +1865,10 @@ CONFORMING_RELEASES_BODY = (
     "\n"
     "The guide's marked regions still feed generated surfaces, such as a package README.\n"
     "\n"
+    # MIGRATED at CR-MDB-071 (§S6): the readiness check runs before the release starts.
+    "Read release readiness with `modelb-axi release-check`: run it before `git flow release start`, and\n"
+    "fix what it reports missing.\n"
+    "\n"
     "With the version bump in place, publish the branch (`git flow release publish X.Y.Z`, or\n"
     "`git flow hotfix publish X.Y.Z` for a hotfix). Every push of the branch is the rehearsal;\n"
     "`finish` deletes the remote branch.\n"
@@ -1739,6 +1915,13 @@ CONFORMING_RELEASES_BODY = (
     "environments `pypi` and `testpypi` |\n"
     "| `npm` | a dry-run publish | to the npm registry with provenance | environment `npm`, "
     "repository secret `NPM_TOKEN` |\n"
+    # MIGRATED at CR-MDB-071 (§S6): the crates and maven-central rows.
+    "| `crates` | a dry-run publish of the crate | to crates.io through Trusted Publishing | "
+    "environment `crates`, repository secret `CARGO_REGISTRY_TOKEN` |\n"
+    "| `maven-central` | builds and signs the bundle, uploading nothing | to Maven Central "
+    "through the Central Portal | environment `maven-central`, repository secrets "
+    "`MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_PASSWORD`, `MAVEN_GPG_PRIVATE_KEY` and "
+    "`MAVEN_GPG_PASSPHRASE` |\n"
     "| `github-assets` | the project's `build-assets` script, its output checked non-empty | "
     "uploaded to the release | no environment, no secret |\n"
     "\n"
@@ -1751,6 +1934,25 @@ CONFORMING_RELEASES_BODY = (
     "| `quarkus` | the release body only |\n"
     "| `java` | the release body only |\n"
     "| `rust` | the release body only |\n"
+    # MIGRATED at CR-MDB-071 (§S6): the two Maven subsections, reconciled with the
+    # maven-central target.
+    "\n"
+    "### The 10-step git flow release (Java Maven projects)\n"
+    "\n"
+    "```bash\n"
+    "# 6. Build from master\n"
+    "git checkout master && ./mvnw clean install\n"
+    "```\n"
+    "\n"
+    "### Maven install/deploy — master only\n"
+    "\n"
+    "```bash\n"
+    "git checkout master && ./mvnw clean install   # a local install, from master only\n"
+    "# never ./mvnw clean install locally from develop or release/* — the version must match the tag\n"
+    "```\n"
+    "\n"
+    "A project with the `maven-central` target is published by the release event's job.\n"
+    "The rehearsal's `deploy` uploads nothing: it runs on `release/*` in CI, not as a local install.\n"
 )
 #: CR-MDB-067 §S5 — the ``### Pi package releases`` heading the new subsection follows; its body
 #: is a placeholder naming none of the Pi step's anchors.
@@ -1762,9 +1964,13 @@ CONFORMING_PI_PACKAGE_HEADING = "### Pi package releases\n\nThe Pi package's own
 CONFORMING_REHEARSAL_AND_CI = (
     "### Rehearsal and CI\n"
     "\n"
-    "Each push to `release/X.Y.Z` or `hotfix/X.Y.Z` builds `X.Y.Z` with a dev marker and the CI run\n"
-    "number in the target's own form, refuses a committed version other than `X.Y.Z`, and fails when\n"
-    "the release's notes are missing or empty.\n"
+    # MIGRATED at CR-MDB-071 (§S6): pypi and npm stamp the dev marker; crates and maven-central
+    # upload nothing and keep X.Y.Z (was: every target "builds `X.Y.Z` with a dev marker and the CI
+    # run number in the target's own form").
+    "Each push to `release/X.Y.Z` or `hotfix/X.Y.Z` builds `X.Y.Z`, refuses a committed version other than\n"
+    "`X.Y.Z`, and fails when the release's notes are missing or empty. `pypi` and `npm` stamp a dev marker\n"
+    "and the CI run number in the target's own form; `crates` and `maven-central` upload nothing and keep\n"
+    "`X.Y.Z`.\n"
     "\n"
     # MIGRATED at CR-MDB-068 C3 RED (§S8): the rehearsal table is per target (was per stack:
     # python, bun, and arduino/quarkus/java/rust with the notes check only).
@@ -1772,6 +1978,9 @@ CONFORMING_REHEARSAL_AND_CI = (
     "|---|---|---|\n"
     "| `pypi` | `X.Y.Z.devN` | the upload to the test index |\n"
     "| `npm` | `X.Y.Z-dev.N` | the package manager's dry-run publish with a dist-tag |\n"
+    # MIGRATED at CR-MDB-071 (§S6): the crates and maven-central rows keep X.Y.Z.
+    "| `crates` | `X.Y.Z` | the crate's dry-run publish |\n"
+    "| `maven-central` | `X.Y.Z` | the signed Central bundle, which uploads nothing |\n"
     "| `github-assets` | — | the project's `build-assets` script and checks `dist-assets/` is "
     "not empty |\n"
     "| no target | — | the notes check only |\n"
@@ -2041,8 +2250,11 @@ class InstallGuideReleaseWorkflowTest(unittest.TestCase):
 
     # CR-MDB-068 C5 RED (VERIFY F8) - the --release-targets sentence names every form.
 
+    # MIGRATED at CR-MDB-071 (§S6): the sentence names all five forms (was: pypi, npm and
+    # github-assets).
     FORMS_SENTENCE = ("`--release-targets` names where a release publishes (`pypi[:<dir>]`, "
-                      "`npm[:<dir>]`, `github-assets`, or none).\n")
+                      "`npm[:<dir>]`, `crates[:<dir>]`, `maven-central[:<dir>]`, `github-assets`, "
+                      "or none).\n")
 
     def test_the_guides_release_targets_sentence_names_every_target_form(self):
         self.assertEqual(check_release_targets_forms(_read(GUIDE)), [])
@@ -2057,6 +2269,9 @@ class InstallGuideReleaseWorkflowTest(unittest.TestCase):
         fault = "the `--release-targets` sentence does not name `{}`"
         for old, new, form in (("`pypi[:<dir>]`", "`pypi`", "pypi[:<dir>]"),
                                ("`npm[:<dir>]`", "`npm:<dir>`", "npm[:<dir>]"),
+                               ("`crates[:<dir>]`, ", "", "crates[:<dir>]"),
+                               ("`maven-central[:<dir>]`", "`maven-central`",
+                                "maven-central[:<dir>]"),
                                ("`github-assets`, ", "", "github-assets")):
             with self.subTest(form=form):
                 self.assertEqual(good.count(old), 1, old)
@@ -2064,10 +2279,15 @@ class InstallGuideReleaseWorkflowTest(unittest.TestCase):
                                  [fault.format(form)])
         today = good.replace(self.FORMS_SENTENCE, "`--release-targets` names where a release "
                              "publishes (`pypi`, `npm:<dir>`, `github-assets`, or none).\n")
+        # MIGRATED at CR-MDB-071 (§S6): CR-MDB-068's three-target sentence now misses the crates
+        # and maven-central forms too (was: the pypi and npm forms only).
         self.assertEqual(check_release_targets_forms(today),
-                         [fault.format("pypi[:<dir>]"), fault.format("npm[:<dir>]")])
-        prose = good.replace("(`pypi[:<dir>]`, `npm[:<dir>]`, `github-assets`, or none)",
-                             "(pypi[:<dir>], npm[:<dir>], github-assets, or none)")
+                         [fault.format("pypi[:<dir>]"), fault.format("npm[:<dir>]"),
+                          fault.format("crates[:<dir>]"), fault.format("maven-central[:<dir>]")])
+        prose = good.replace("(`pypi[:<dir>]`, `npm[:<dir>]`, `crates[:<dir>]`, "
+                             "`maven-central[:<dir>]`, `github-assets`, or none)",
+                             "(pypi[:<dir>], npm[:<dir>], crates[:<dir>], maven-central[:<dir>], "
+                             "github-assets, or none)")
         self.assertEqual(check_release_targets_forms(prose),
                          [fault.format(form) for form in RELEASE_TARGET_FORMS],
                          "a form outside a code span is not named")
@@ -2121,6 +2341,47 @@ class InstallGuideReleaseWorkflowTest(unittest.TestCase):
             "Nothing here.\n", "```sh\n" + self.INIT_LINE + "\n```\n")
         self.assertEqual(check_init_release_targets(outside), [self.INIT_FAULT],
                          "outside every marked region it does not reach the package README")
+
+    # CR-MDB-071 §S6 — `modelb-axi release-check` beside `release-workflow`.
+    CHECK_BLOCK = ("Before a release, check what the project still lacks:\n\n"
+                   "```sh\nmodelb-axi release-check\n```\n")
+
+    def test_the_guide_shows_release_check_beside_release_workflow(self):
+        self.assertEqual(check_release_check_verb(_read(GUIDE)), [])
+
+    def test_release_check_verb_checker_both_ways(self):
+        anchor = "<!-- install-guide:end adding-stacks-later -->"
+        good = self.SAMPLE.replace(anchor, "\n" + self.CHECK_BLOCK + anchor)
+        region = RELEASE_WORKFLOW_REGION
+        no_verb = f"{region}: no `modelb-axi release-check` in code beside `modelb-axi release-workflow`"
+        no_unit = f"{region}: no unit says release-check reports the release readiness"
+        self.assertEqual(check_release_check_verb(good), [])
+        self.assertEqual(check_release_check_verb(self.SAMPLE), [no_verb, no_unit],
+                         "today's region shows release-workflow alone")
+        self.assertEqual(check_release_check_verb(good.replace(
+            "```sh\nmodelb-axi release-check\n```\n", "Run modelb-axi release-check.\n")), [no_verb],
+            "the verb in prose is not shown")
+        self.assertEqual(check_release_check_verb(good.replace(
+            "modelb-axi release-check\n", "modelb-axi release-checks\n")), [no_verb],
+            "a longer verb is not release-check")
+        self.assertEqual(check_release_check_verb(good.replace(
+            "Before a release, check what the project still lacks:", "Run this next:")), [no_unit],
+            "the region says what it reports")
+        elsewhere = self.SAMPLE.replace("Nothing here.\n", "Nothing here.\n\n" + self.CHECK_BLOCK)
+        self.assertEqual(check_release_check_verb(elsewhere), [no_verb, no_unit],
+                         "outside the region showing release-workflow it is not beside it")
+        other_region = good.replace("```sh\nmodelb-axi release-workflow\n```\n", "").replace(
+            "--target ~/code/myproject\n```\n", "--target ~/code/myproject\nmodelb-axi release-workflow\n```\n")
+        self.assertEqual(check_release_check_verb(other_region), [
+            "project-trust: no `modelb-axi release-check` in code beside `modelb-axi release-workflow`",
+            "project-trust: no unit says release-check reports the release readiness"],
+            "the verb follows release-workflow into its region")
+        self.assertEqual(check_release_check_verb(good.replace(
+            "```sh\nmodelb-axi release-workflow\n```\n", "")),
+            ["no marked region shows `modelb-axi release-workflow` in code"])
+        with self.assertRaises(AssertionError) as ctx:
+            subcommand_flag("release-checks", "--modelb-home")
+        self.assertIn("'release-checks' subcommand", str(ctx.exception))
 
     def test_release_workflow_verb_checker_both_ways(self):
         good = self.SAMPLE
@@ -2213,6 +2474,14 @@ class ReleaseDocsTest(unittest.TestCase):
 
     def test_git_workflow_releases_names_none_of_the_retired_rehearsal_and_credential_phrases(self):
         self.assertEqual(release_step_faults(_read(GIT_WORKFLOW_SKILL), RETIRED_PHRASES), [])
+
+    # CR-MDB-071 §S6 — the readiness check before the release starts, and the Maven sections
+    # reconciled with the maven-central target.
+    def test_git_workflow_releases_runs_release_check_before_the_release_starts(self):
+        self.assertEqual(release_step_faults(_read(GIT_WORKFLOW_SKILL), READINESS_CHECK), [])
+
+    def test_git_workflow_releases_reconciles_the_maven_sections_with_maven_central(self):
+        self.assertEqual(release_step_faults(_read(GIT_WORKFLOW_SKILL), MAVEN_RECONCILIATION), [])
 
     # CR-MDB-070 §S6 — the one-push release flow and its recovery by dispatch on master.
     def test_git_workflow_releases_pushes_once_releases_from_master_and_recovers_by_dispatch(self):
@@ -3018,13 +3287,21 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
         labels = [label for _, label, _ in REHEARSAL_AND_CI_PHRASES]
         edits = [
             (" or `hotfix/X.Y.Z`", ""),
-            ("with a dev marker and the CI run", "with the CI run"),
-            ("refuses a committed version other than `X.Y.Z`, and ", ""),
-            (", and fails when\nthe release's notes are missing or empty.", "."),
+            # MIGRATED at CR-MDB-071 (§S6): the dev marker is pypi's and npm's, crates and
+            # maven-central keep X.Y.Z (was: ("with a dev marker and the CI run", "with the CI run")),
+            # and the paragraph is rewrapped (was: ("refuses a committed version other than `X.Y.Z`,
+            # and ", "") and (", and fails when\nthe release's notes are missing or empty.", ".")).
+            ("stamp a dev marker\nand the CI run number", "stamp the CI run number"),
+            (" and keep\n`X.Y.Z`", ""),
+            (", refuses a committed version other than\n`X.Y.Z`, and fails", ", and fails"),
+            (", and fails when the release's notes are missing or empty.", "."),
             # MIGRATED at CR-MDB-068 C3 RED (§S8): the forms table is per target (was the python and
             # bun rows and the four notes-check-only stacks).
             ("the upload to the test index", "a build"),
             (" with a dist-tag", ""),
+            # MIGRATED at CR-MDB-071 (§S6): the crates and maven-central rows.
+            ("| `crates` | `X.Y.Z` |", "| `crates` | `X.Y.Z-dev.N` |"),
+            (", which uploads nothing", ""),
             (" and checks `dist-assets/` is not empty", ""),
             ("| no target |", "| other |"),
             # MIGRATED at CR-MDB-070 C2 RED (§S6): the CI rule's steps are the test job's (was
@@ -3045,9 +3322,17 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
             (", because a dependency gates only within one run", ""),
         ]
         self.assertEqual(len(edits), len(labels), "one case per step")
-        self.assertEqual(labels[4:8], [
+        # MIGRATED at CR-MDB-071 (§S6): the rule has five steps and the table six rows (was
+        # labels[4:8], four rows).
+        self.assertEqual(labels[1:3], [
+            "rehearsal rule: pypi and npm stamp X.Y.Z with a dev marker and the CI run number in the "
+            "target's own form",
+            "rehearsal rule: crates and maven-central upload nothing and keep X.Y.Z"])
+        self.assertEqual(labels[5:11], [
             "forms table: pypi, X.Y.Z.devN, the upload to the test index",
             "forms table: npm, X.Y.Z-dev.N, the package manager's dry-run publish with a dist-tag",
+            "forms table: crates, X.Y.Z, the crate's dry-run publish",
+            "forms table: maven-central, X.Y.Z, the signed bundle, uploading nothing",
             "forms table: github-assets, the project's build-assets script, dist-assets/ not empty",
             "forms table: no target, the notes check only"])
         for label, (old, new) in zip(labels, edits, strict=True):
@@ -3068,9 +3353,160 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
         self.assertIn(ci_rule, good)
         moved = good.replace(ci_rule, "").replace("### Release notes", ci_rule + "\n### Release notes")
         self.assertEqual(check_release_steps(moved),
-                         [f"## Releases: {REHEARSAL_AND_CI}: {label}" for label in labels[8:]]
+                         # MIGRATED at CR-MDB-071 (§S6): the CI rule starts at labels[11]
+                         # (was labels[8:]).
+                         [f"## Releases: {REHEARSAL_AND_CI}: {label}" for label in labels[11:]]
                          + [f"## Releases: {REHEARSAL_AND_CI}: {NO_CI_ON_DEVELOP_OR_PRS}"],
                          "a step counts only inside the ### Rehearsal and CI subsection")
+
+    # CR-MDB-071 §S6 — the dev-marker rule, the readiness check and the Maven reconciliation,
+    # each proved both ways.
+
+    def test_the_dev_marker_rule_is_pypis_and_npms_and_crates_and_maven_central_keep_x_y_z(self):
+        good = CONFORMING_RELEASES
+        prefix = f"## Releases: {REHEARSAL_AND_CI}: "
+        stamped = prefix + ("rehearsal rule: pypi and npm stamp X.Y.Z with a dev marker and the CI "
+                            "run number in the target's own form")
+        kept = prefix + "rehearsal rule: crates and maven-central upload nothing and keep X.Y.Z"
+        self.assertEqual(release_step_faults(good, REHEARSAL_AND_CI), [])
+        rule = ("Each push to `release/X.Y.Z` or `hotfix/X.Y.Z` builds `X.Y.Z`, refuses a committed "
+                "version other than\n`X.Y.Z`, and fails when the release's notes are missing or "
+                "empty. `pypi` and `npm` stamp a dev marker\nand the CI run number in the target's own "
+                "form; `crates` and `maven-central` upload nothing and keep\n`X.Y.Z`.\n")
+        self.assertIn(rule, good)
+        todays = ("Each push to `release/X.Y.Z` or `hotfix/X.Y.Z` builds `X.Y.Z` with a dev marker "
+                  "and the CI run\nnumber in each target's own form, refuses a committed version "
+                  "other than `X.Y.Z`, and fails when\nthe release's notes are missing or empty.\n")
+        self.assertEqual(check_release_steps(good.replace(rule, todays)), [stamped, kept],
+                         "the dev marker said of every target is the old rule")
+        self.assertEqual(check_release_steps(good.replace("`pypi` and `npm` stamp", "Every target "
+                                                          "stamps")), [stamped],
+                         "the dev marker is named for pypi and npm")
+        self.assertEqual(check_release_steps(good.replace("`crates` and `maven-central` upload",
+                                                          "`crates` and `maven` upload")), [kept],
+                         "both crates and maven-central keep X.Y.Z")
+        self.assertEqual(check_release_steps(good.replace("upload nothing and keep\n`X.Y.Z`",
+                                                          "upload a dev version")), [kept],
+                         "uploading nothing is part of the rule")
+        self.assertEqual(check_release_steps(good.replace("and keep\n`X.Y.Z`",
+                                                          "and keep\n`X.Y.Z-dev.N`")), [kept],
+                         "a dev form is not X.Y.Z kept")
+        maven_dev = good.replace("| `maven-central` | `X.Y.Z` |", "| `maven-central` | `X.Y.Z.devN` |")
+        self.assertEqual(check_release_steps(maven_dev), [
+            prefix + "forms table: maven-central, X.Y.Z, the signed bundle, uploading nothing"],
+            "the maven-central row's version cell is X.Y.Z itself")
+        self.assertEqual(check_release_steps(good.replace("| the crate's dry-run publish |",
+                                                          "| the crate's package |")),
+                         [prefix + "forms table: crates, X.Y.Z, the crate's dry-run publish"])
+        self.assertEqual(check_release_steps(good.replace("| the signed Central bundle,",
+                                                          "| the Central bundle,")),
+                         [prefix + "forms table: maven-central, X.Y.Z, the signed bundle, uploading "
+                          "nothing"])
+        moved = good.replace(rule, "").replace("### Release notes", rule + "\n### Release notes")
+        self.assertEqual(check_release_steps(moved),
+                         [prefix + label for _, label, _ in REHEARSAL_AND_CI_PHRASES[:5]],
+                         "the rule counts only inside the ### Rehearsal and CI subsection")
+
+    def test_readiness_check_gate_passes_and_bites_once_per_step(self):
+        good = CONFORMING_RELEASES
+        prefix = f"## Releases: {READINESS_CHECK}: "
+        labels = [label for _, label, _ in READINESS_CHECK_PHRASES]
+        self.assertEqual(release_step_faults(good, READINESS_CHECK), [])
+        edits = [
+            ("before `git flow release start`", "after `git flow release start`"),
+            (", and\nfix what it reports missing", ""),
+            ("Read release readiness with `modelb-axi release-check`: run it", "Run `modelb-axi release-check`"),
+        ]
+        self.assertEqual(len(edits), len(labels), "one case per step")
+        for label, (old, new) in zip(labels, edits, strict=True):
+            with self.subTest(step=label):
+                self.assertEqual(good.count(old), 1, old)
+                self.assertEqual(check_release_steps(good.replace(old, new)), [prefix + label])
+        todays = "Read release readiness from the live CI config and `gh`, never from an old queue note.\n"
+        self.assertEqual(check_release_steps(good.replace("\n## Next\n", "\n## Next\n\n" + todays)),
+                         [], "outside ## Releases the old sentence is not gated")
+        beside = good.replace("With the version bump in place,", todays + "\nWith the version bump in place,")
+        self.assertEqual(check_release_steps(beside), [prefix + READINESS_WITHOUT_CHECK],
+                         "the old readiness sentence cannot stand beside the new one")
+        flow = ("Read release readiness with `modelb-axi release-check`: run it before `git flow release "
+                "start`, and\nfix what it reports missing.\n")
+        self.assertIn(flow, good)
+        self.assertEqual(check_release_steps(good.replace(flow, todays)),
+                         [prefix + label for label in labels] + [prefix + READINESS_WITHOUT_CHECK],
+                         "today's sentence is every fault")
+        self.assertEqual(check_release_steps(good.replace("`modelb-axi release-check`",
+                                                          "`modelb-axi release-checks`")),
+                         [prefix + label for label in labels] + [prefix + READINESS_WITHOUT_CHECK],
+                         "a longer verb is not release-check")
+        self.assertEqual(check_release_steps(good.replace(
+            "run it before `git flow release start`, and\nfix",
+            "run it.\n\nThen `git flow release start`, before which you fix")),
+            [prefix + labels[0], prefix + labels[1]], "a step's words split across two units do not count")
+        outside = good.replace(flow, "").replace("\n## Next\n", "\n## Next\n\n" + flow)
+        self.assertEqual(release_step_faults(outside, READINESS_CHECK), [prefix + label for label in labels],
+                         "the step counts only inside ## Releases")
+
+    def test_maven_reconciliation_gate_passes_and_bites_once_per_step(self):
+        good = CONFORMING_RELEASES
+        prefix = f"## Releases: {MAVEN_RECONCILIATION}: "
+        labels = [label for _, label, _ in MAVEN_RECONCILIATION_PHRASES]
+        self.assertEqual(release_step_faults(good, MAVEN_RECONCILIATION), [])
+        self.assertEqual(maven_reconciliation_faults(good), [])
+        edits = [
+            ("   # a local install, from master only", "   # from master only"),
+            (" locally from develop", " from develop"),
+            (" is published by the release event's job", " is published by hand"),
+            ("`deploy` uploads nothing:", "`deploy` signs the bundle:"),
+            (" on `release/*` in CI,", " on `release/*`,"),
+        ]
+        self.assertEqual(len(edits), len(labels), "one case per step")
+        for label, (old, new) in zip(labels, edits, strict=True):
+            with self.subTest(step=label):
+                self.assertEqual(good.count(old), 1, old)
+                self.assertEqual(check_release_steps(good.replace(old, new)), [prefix + label])
+        java_install = "# 6. Build from master\ngit checkout master && ./mvnw clean install\n"
+        self.assertEqual(good.count(java_install), 1)
+        self.assertEqual(check_release_steps(good.replace(java_install, "# 6. Build from master\n")),
+                         [prefix + f"'### {JAVA_FLOW_HEADING}' no longer shows {MAVEN_MASTER_INSTALL}"],
+                         "the Java flow keeps its manual install from master")
+        self.assertEqual(check_release_steps(good.replace(
+            "git checkout master && ./mvnw clean install   # a local",
+            "git checkout develop && ./mvnw clean install   # a local")),
+            [prefix + f"'### {MAVEN_INSTALL_HEADING}' no longer shows {MAVEN_MASTER_INSTALL}"],
+            "the master-only install stays")
+        self.assertEqual(check_release_steps(good.replace(
+            "\ngit checkout master && ./mvnw clean install\n```",
+            "\n```\n\nRun `git checkout master && ./mvnw clean install`.")),
+            [prefix + f"'### {JAVA_FLOW_HEADING}' no longer shows {MAVEN_MASTER_INSTALL}"],
+            "the install counts only in a fence")
+        install_heading = "### Maven install/deploy — master only\n"
+        self.assertEqual(check_release_steps(good.replace(install_heading, "")),
+                         [prefix + f"no '### {MAVEN_INSTALL_HEADING}' subsection"],
+                         "the master-only subsection stays")
+        self.assertEqual(check_release_steps(good.replace(
+            "### The 10-step git flow release (Java Maven projects)\n", "")),
+            [prefix + f"no '### {JAVA_FLOW_HEADING}' subsection"], "the Java flow stays")
+        prose = ("A project with the `maven-central` target is published by the release event's job.\n"
+                 "The rehearsal's `deploy` uploads nothing: it runs on `release/*` in CI, not as a local "
+                 "install.\n")
+        self.assertIn(prose, good)
+        outside = good.replace(prose, "").replace("### Release notes", prose + "\n### Release notes")
+        self.assertEqual(check_release_steps(outside), [prefix + label for label in labels[2:]],
+                         "a step counts only inside a Maven subsection")
+        under_pi = good.replace(prose, "").replace("The Pi package's own steps.\n",
+                                                   "The Pi package's own steps.\n\n" + prose)
+        self.assertEqual(check_release_steps(under_pi), [prefix + label for label in labels[2:]],
+                         "another subsection is not a Maven one")
+        renamed = good.replace("### Maven install/deploy — master only\n",
+                               "### Maven install/deploy — local, master only\n")
+        self.assertEqual(check_release_steps(renamed), [], "the heading is read by its prefix")
+        colliding = good.replace(" locally from develop", " from develop").replace(
+            ", not as a local install", "")
+        self.assertEqual(check_release_steps(colliding), [prefix + labels[1]],
+                         "never from release/* unscoped collides with the rehearsal on release/*")
+        self.assertEqual(check_release_steps(good.replace("release/* — the version",
+                                                          "release/x — the version")),
+                         [prefix + labels[1]], "release/x is not the release branch wildcard")
 
     # CR-MDB-068 C5 RED (VERIFY F5) — the CI rule says the test jobs (plural) and a fresh runner.
 
@@ -3266,6 +3702,22 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
                 ("| uploaded to the release |", "| attached |"),
             "github-assets: the environment/secret cell does not say no environment and no "
             "secret": ("| no environment, no secret |", "| environment `assets`, no secret |"),
+            # CR-MDB-071 §S6: each new cell bites on its own.
+            "crates: the rehearsal cell does not say the dry-run publish":
+                ("| a dry-run publish of the crate |", "| a package of the crate |"),
+            "crates: the publish cell does not say crates.io through Trusted Publishing":
+                ("to crates.io through Trusted Publishing", "to crates.io with a token"),
+            "crates: the environment/secret cell does not say the environment crates and the "
+            "repository secret CARGO_REGISTRY_TOKEN":
+                ("repository secret `CARGO_REGISTRY_TOKEN`", "secret `CARGO_REGISTRY_TOKEN`"),
+            "maven-central: the rehearsal cell does not say the signed bundle, uploading "
+            "nothing": (", uploading nothing |", ", uploading it |"),
+            "maven-central: the publish cell does not say Maven Central through the Central "
+            "Portal": ("through the Central Portal", "through OSSRH"),
+            "maven-central: the environment/secret cell does not say the environment "
+            "maven-central and the repository secrets MAVEN_CENTRAL_USERNAME, "
+            "MAVEN_CENTRAL_PASSWORD, MAVEN_GPG_PRIVATE_KEY and MAVEN_GPG_PASSPHRASE":
+                (", `MAVEN_GPG_PRIVATE_KEY` and", " and"),
         }
         for fault, (old, new) in cells.items():
             with self.subTest(fault=fault):
@@ -3292,11 +3744,12 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
                            if line.startswith(f"| `{target}` | ") and line.count("|") == 5)
                 self.assertEqual(check_release_steps(good.replace(row + "\n", "")),
                                  [prefix + f"no row for {target}"])
-        crates = good.replace("| `github-assets` | the project's",
-                              "| `crates` | a dry run | crates.io | secret |\n"
-                              "| `github-assets` | the project's")
-        self.assertEqual(check_release_steps(crates),
-                         [prefix + "a row for 'crates', a target the renderer does not render"])
+        # MIGRATED at CR-MDB-071 (§S6): the unrendered target is cargo (was: crates, now a target).
+        cargo = good.replace("| `github-assets` | the project's",
+                             "| `cargo` | a dry run | crates.io | secret |\n"
+                             "| `github-assets` | the project's")
+        self.assertEqual(check_release_steps(cargo),
+                         [prefix + "a row for 'cargo', a target the renderer does not render"])
         header = "| Target | Rehearsal | Publish | Environment / secret |\n"
         self.assertEqual(check_release_steps(good.replace(header, "| Target | Rehearsal | Publish |\n")),
                          [prefix + "no table of target, rehearsal, publish and environment/secret"])
@@ -3355,15 +3808,18 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
                 "entries for per-project policies; a trusted project runs without a permission "
                 "prompt.\n\n")
         self.assertEqual(check_python_release_steps(body), [])
+        # MIGRATED at CR-MDB-071 (§S6): `modelb-axi release-check` is spared too, and a
+        # longer verb is still a project name (was: the two release-workflow commands only).
         for spared in ("`modelb-axi release-workflow` re-renders it.",
-                       "`modelb-axi init --release-targets pypi` renders it."):
+                       "`modelb-axi init --release-targets pypi` renders it.",
+                       "Run `modelb-axi release-check` before `git flow release start`."):
             with self.subTest(spared=spared):
                 self.assertEqual(check_python_release_steps(body + spared + "\n"), [])
                 self.assertEqual(
                     [f for f in check_pi_package_release_steps(body + spared + "\n")
                      if "names project" in f], [])
         for named in ("`modelb-axi agents` re-renders it.", "`modelb-axi release-workflows`.",
-                      "the modelb project"):
+                      "`modelb-axi release-checks`.", "the modelb project"):
             with self.subTest(named=named):
                 self.assertEqual(check_python_release_steps(body + named + "\n"),
                                  ["## Releases: names project 'modelb'"])
