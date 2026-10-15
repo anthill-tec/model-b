@@ -90,9 +90,10 @@ The `~/.claude` user space grew organically into 24 memory files, ~50 skills, 29
   - **Story points.** Every CR is scored when filed, and its gap analysis re-scores it; 13 is the cap, and a CR scoring more is split.
   - **Briefs add no proof steps.** A brief states the scope, the approved spec (the spec wins) and the definition's standard procedure; the orchestrator adds no extra proof steps, because VERIFY and the gate catch drift.
   - **Cycle labels carry no numbering**, and a TDD-role agent id carries the cycle's server id: `CR-<ACRONYM>-NNN-<cycle id>-<ROLE>` (see D3.4).
+  - **`worktree-flow.py status` drops its `cycle` field,** which parsed `C<n>` from commit subjects; the board holds a CR's cycles.
   - **The pre-merge gate runs while the plan's last cycle is still active,** its runs filed under that cycle by the orchestrator's own id; the cycle is closed after the gate, and the orchestrator then unregisters and registers again to clear its binding.
   - **A test leak is fixed at its source,** never in the tests it breaks.
-  - **A fix found during a release goes directly on the release branch,** never on a separate bugfix branch, and reaches develop at `finish`.
+  - **A fix found during a release is a CR filed into that release,** planned and cycle-bound like any CR; it commits directly on the release branch, never on a separate bugfix branch, and reaches develop at `finish`. The release's own verification runs stay `--release` runs from an unbound id; "running a CR during a release is highly discouraged" now means new, unplanned work.
   - **The wave-boundary gate's intent says not to stop any server it did not start.**
   - **Every release carries a test-hygiene CR,** sequenced last in its final wave; the release does not start while it is open.
   - **Not adopted:** restarting a dev server after every source commit (Crucible-specific).

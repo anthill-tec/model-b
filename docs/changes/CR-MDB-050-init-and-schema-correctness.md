@@ -32,3 +32,6 @@ schema-driven registry, `modelb_axi/project_schema.toml`)
    `init` seeds into every project's `docs/memory/`, is a Docker/MongoDB/Redis/Quarkus command sheet;
    Model B's own `docs/memory/` (seeded 2026-10-03 for the python stack) shows it is noise outside the
    Java stack. Decide whether it is a Java-family template or gets stack-neutral content.
+7. **The scaffolded `AGENTS.md`'s run-context note is stale.** `_render_agents_md` says workflow cycle
+   context "is attached by the tooling at ingest time" — the retired auto-attach model. Runs carry
+   `--cycle` (or a cycle-bound registration); the note must say so, or go.
