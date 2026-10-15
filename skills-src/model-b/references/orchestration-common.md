@@ -165,6 +165,8 @@ Every other orchestrator run stays unbound:
 - the post-merge develop gate;
 - the release's own verification gate, which runs under `--release` (`git-workflow` § Releases).
 
+The rest of the close-out:
+
 - Steps 6 and 8 bracket the merge: before the merge, the spec's `**Status:**` flip; after it, `cr-close --commit <merge sha> --agent <id>`, which transitions the CR's tracking state to COMPLETED on the Crucible board and posts `cr-merged` (it takes the merge's sha, so it waits for the merge commit). Do NOT hand-edit anything else for it: the README is RELEASE-branch only (version + CI badges) per the project's rules, NEVER a per-CR delivery entry in develop, and NEVER a track's job (parallel tracks editing the shared README collide). Never a `## Close-out` section in the CR spec. Run the stack's `check-cr-close` gate where the stack ships one.
 - **Read the Crucible plan before `cycle-done`, proposing a merge, `finish` or `cr-close`** — every cycle, VERIFY included, must be done.
 - **The close-out's `**Status:**` flip is the LAST commit on the feature branch** — after the merge, touch zero docs for the shipped CR (`cr-close` is a board write, not a doc edit). Run a post-merge develop gate only when develop moved since the branch point (or several CRs land together); never re-run a gate after a docs-only sync.
