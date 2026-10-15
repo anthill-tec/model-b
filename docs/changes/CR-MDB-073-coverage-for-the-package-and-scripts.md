@@ -5,7 +5,8 @@ Gap analysis, the spec and its pre-review happen in order when this CR starts.
 **Type:** feature (test configuration, the pre-merge gate, `AGENTS.md`)
 **Priority:** P1 — release 1.0.0, wave 2; before the release's test-hygiene CR (CR-MDB-052).
 **Depends on:** CR-MDB-059, which defines the pre-merge gate's order (board-authoritative: read
-`queue`); and two Crucible client changes (requested in Sandesh #1454, 2026-10-15; see Context).
+`queue`); and Crucible 0.4.0 installed, for CR-CRU-192 (Sandesh #1454/#1455). Model B 1.0.0 waits
+for it (user ruling 2026-10-15).
 **Labels:** tests, coverage, gate
 **Design reference:** PRD D5 (the pre-merge gate, AMENDED 2026-10-15).
 
@@ -38,14 +39,14 @@ Measured 2026-10-15:
     forces parallel data files (coverage 7.16.2), so with it on, the client would find no data and
     drop coverage.
   - It sends the board only a total (lines and functions), never per-file figures.
-- **Asked of Crucible (#1454):**
-  1. a project-declared source: omit `--source` unless `--cov-source` is given, or read it from
-     `crucible.toml`;
-  2. `coverage combine` before `lcov`;
-  3. optionally, per-file coverage on the board.
+- **Adopted by Crucible for 0.4.0 (#1455):**
+  - CR-CRU-192: with no `--cov-source` the python client passes no `--source`, so the project's
+    `[tool.coverage.run]` decides what is measured (a given `--cov-source` still wins); it runs
+    `coverage combine` before `lcov` whenever the run left parallel data files.
+  - CR-CRU-193: per-file coverage on the board (design not settled).
 
-  Until 1 and 2 ship, a run with `--cov-source` measures only code the tests import in-process.
-  Model B does not work around the missing combine.
+  Until 0.4.0 is installed, a run with `--cov-source` measures only code the tests import
+  in-process. Model B does not work around the missing combine.
 
 ## Scope (seed)
 
@@ -56,11 +57,11 @@ Measured 2026-10-15:
    - Excluded: `__pycache__`, generated code (`modelb_axi/toon.py`'s generated twin
      `scripts/toon.py`; decide which one counts) and the packaged `_assets` copy.
 2. **The pre-merge gate measures coverage.**
-   - Its full-suite run is `pre-merge-gate --cov-source <the sources>`, or the project-declared
-     source once Crucible ships it, filed under the last cycle (CR-MDB-059 §S5).
+   - Its full-suite run is `pre-merge-gate`, with the project's `[tool.coverage.run]` source
+     (CR-CRU-192), filed under the last cycle (CR-MDB-059 §S5).
    - The empty-`HOME` and clean-runner runs stay as they are.
-   - The board shows the run's total. Per-file figures come from the run's own lcov file, unless
-     Crucible adds them to the board.
+   - The board shows the run's total. Per-file figures come from the run's own lcov file until
+     CR-CRU-193 puts them on the board.
 3. **What the gate requires: decide at gap analysis.** Report-only, or a floor. A floor needs a
    measured baseline first, and the subprocess tests must actually be traced, so the figure is real.
 4. **The non-Python script.** `gate-lock.sh` is outside coverage.py; it is listed as unmeasured,
@@ -77,6 +78,6 @@ Measured 2026-10-15:
   gate.
 - Whether the client ingests per-file coverage for paths outside a package (the scripts
   directories).
-- Crucible's answer to #1454: which release ships the project-declared source and the combine. This
-  CR starts after both are installed; if they are not, its scope shrinks to the in-process sources.
+- The installed Crucible 0.4.0 client's actual coverage surface (`--help`, the release notes), and
+  whether CR-CRU-193 shipped.
 - The re-score.
