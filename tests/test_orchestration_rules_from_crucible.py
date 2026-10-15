@@ -172,32 +172,41 @@ def model_b_item_5(text: str) -> str:
 def agents_workflow_rules(text: str) -> str:
     return section_matching(text, r"^workflow rules\b")
 
+
 def _item_unit(sec: str, n: int) -> str:
     """The raw unit of numbered item ``n`` (``n.`` at line start) in ``sec``, its wrapped lines
     kept; ``""`` when there is none."""
     hit = [u for u in units(sec) if re.match(rf"^\s*{n}\.\s", u)]
     return hit[0] if hit else ""
 
+
 def model_b_item_1(text: str) -> str:
     return _item_unit(section_matching(text, r"^4\. universal conventions"), 1)
+
 
 def model_b_item_3(text: str) -> str:
     return _item_unit(section_matching(text, r"^4\. universal conventions"), 3)
 
+
 def crucible_identity(text: str) -> str:
     return section_matching(text, r"^identity\b")
+
 
 def crucible_workflow_classification(text: str) -> str:
     return section_matching(text, r"^workflow classification\b")
 
+
 def common_parallel_agents(text: str) -> str:
     return section(text, "Parallel agents in one tree")
+
 
 def contract_agent_naming(text: str) -> str:
     return section_matching(text, r"^agent-naming header\b")
 
+
 def contract_plan_verbs(text: str) -> str:
     return section_matching(text, r"^universal plan verbs\b")
+
 
 def agents_testing(text: str) -> str:
     return section_matching(text, r"^testing\b")
@@ -292,6 +301,7 @@ def unexcepted_always_findings(text: str) -> list[str]:
     ``except`` in the same unit."""
     return [u for u in norm_units(text)
             if ALWAYS_FINISHES.search(u) and not re.search(r"\bexcept\b", u)]
+
 
 # ------------------------------------------------------------------ §S4 detectors ----
 
