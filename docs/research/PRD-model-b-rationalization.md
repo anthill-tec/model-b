@@ -55,7 +55,7 @@ The `~/.claude` user space grew organically into 24 memory files, ~50 skills, 29
        6. *Model B's own README* is frozen as it stands, with a header pointing to the board; its Notes stop at CR-MDB-048's merge.
   3. *Wave:* a grouping of CRs marking an execution boundary — redesign point (solo) / sync boundary (multi). Setup tasks and releases are NOT waves. A release is a boundary event, not a CR (user ruling 2026-09-21; the earlier "RELEASE CR bundles the final gates" is superseded).
   3a. *Wave-boundary gate (user rule 2026-07-20):* the no-mistakes gate runs at every wave boundary and ingests as gate evidence. It requires a REMOTE — when the project has none, the ORCHESTRATOR ESCALATES to the user for permission to set one up, **explicitly asking WHICH owner to create it under (candidate set includes the user's personal account, work account, and the `anthill-tec` ORGANIZATION — never assume the owner)**; a LOCAL substitute gate (full regression + grep gates, ingested via `gate-run`) is used ONLY on the user's explicit denial. *Precedence with the registry (§1):* the gate reads `REPO_OWNER` from the project's `.env` registry; the explicit owner-ask happens at scaffold init (or whenever the registry lacks the key), and the escalation-with-owner-question applies ONLY when no registry value exists — NEVER re-ask at gate time when one does.
-  4. *Plan/cycle idiom:* full plan filed at CR start (`plan-file --cr <id> --title <t> --cycle "C1 <label>" --cycle-kind red-green --cycle "C2 <label>" --cycle-kind verify --wave <n> --agent <registered-id>`, the registered agent id BEING the plan's orchestrator); server-assigned cycle ids only; labels `C<n> <label> (§S…)`; kinds `red-green|verify|fix` declared once per cycle; a cycle closes only on orchestrator confirm; every ingest carries `WORKFLOW_*` context (`WORKFLOW_ROLE` = `track-<n>`, ABSENT in solo).
+  4. *Plan/cycle idiom:* full plan filed at CR start (`plan-file --cr <id> --title <t> --cycle "C1 <label>" --cycle-kind red-green --cycle "C2 <label>" --cycle-kind verify --wave <n> --agent <registered-id>`, the registered agent id BEING the plan's orchestrator); server-assigned cycle ids only; labels `C<n> <label> (§S…)` — **AMENDED 2026-10-15 (D5): labels carry no numbering, and a TDD-role agent id is `CR-<ACRONYM>-NNN-<cycle id>-<ROLE>`, the cycle's server id**; kinds `red-green|verify|fix` declared once per cycle; a cycle closes only on orchestrator confirm; every ingest carries `WORKFLOW_*` context (`WORKFLOW_ROLE` = `track-<n>`, ABSENT in solo).
   5. *Docs model:* `docs/changes/` + `docs/research/` everywhere; no ad-hoc folders (`plans/` etc.).
   Source ontology: `docs/research/DN-model-b-language.md` (LOCKED; frozen import of Crucible's, origin `a9a8f57`, imported 2026-09-21) — the skill cites it, never forks it.
 
@@ -83,6 +83,20 @@ The `~/.claude` user space grew organically into 24 memory files, ~50 skills, 29
   - **Per project:** context that `init` prunes to the project's needs from its stacks and mode. This is the agent definitions rendered for its stacks, the stack memory templates in `docs/memory/`, and its own `AGENTS.md` and `.env`.
 
   **Execution knowledge** is what an orchestrator picks up while running a project, before the repo tracks it (the GC principle). It is not an instruction tier. Where lean-ctx is installed, it lives in lean-ctx's project-scoped knowledge store (CR-MDB-045).
+
+  **AMENDED 2026-10-15 (user rulings, CR-MDB-059's gap analysis, on Crucible's wave-7 proposals #1433 §B): orchestration rules adopted.**
+  - **Fix cycles.** A VERIFY finding approved for fixing goes into a `fix` cycle appended after the VERIFY cycle closes with its findings; there is no re-verify and no insert before the VERIFY cycle. Scope found mid-CR is a patch CR (unchanged).
+  - **The board through verbs only.** The orchestrator reads and writes the Crucible board only through client verbs, never the HTTP API; where no verb fits, it says so and proposes one to Crucible.
+  - **Story points.** Every CR is scored when filed, and its gap analysis re-scores it; 13 is the cap, and a CR scoring more is split.
+  - **Briefs add no proof steps.** A brief states the scope, the approved spec (the spec wins) and the definition's standard procedure; the orchestrator adds no extra proof steps, because VERIFY and the gate catch drift.
+  - **Cycle labels carry no numbering**, and a TDD-role agent id carries the cycle's server id: `CR-<ACRONYM>-NNN-<cycle id>-<ROLE>` (see D3.4).
+  - **The pre-merge gate runs while the plan's last cycle is still active,** its runs filed under that cycle by the orchestrator's own id; the cycle is closed after the gate, and the orchestrator then unregisters and registers again to clear its binding.
+  - **A test leak is fixed at its source,** never in the tests it breaks.
+  - **A fix found during a release goes directly on the release branch,** never on a separate bugfix branch, and reaches develop at `finish`.
+  - **The wave-boundary gate's intent says not to stop any server it did not start.**
+  - **Every release carries a test-hygiene CR,** sequenced last in its final wave; the release does not start while it is open.
+  - **Not adopted:** restarting a dev server after every source commit (Crucible-specific).
+  - **Every AXI envelope is read whole** — adopted, and carried by its own CR with a guard over the shipped text (split from CR-MDB-059 for size).
 
 ### D6 — Generated per-stack agents
 - Role templates (`red/green/verify/fix`) + per-stack parameter files generate the arduino/bun/python/quarkus/rust agent set (20 files). SE principles are written once — in the templates.
