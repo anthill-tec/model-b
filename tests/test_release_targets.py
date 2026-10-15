@@ -169,11 +169,13 @@ class ReleaseTargetsSchemaEntryTest(unittest.TestCase):
                          "§S1: an ask key carries no rule, inputs, step, override or when")
         self.assertTrue(str(entry.get("description", "")).strip(), "§S1: a description")
 
-    def test_the_readers_are_init_and_the_release_workflow_verb(self):
+    # MIGRATED at CR-MDB-071 (§S5): the readers gain `modelb-axi release-check` (was two).
+    def test_the_readers_are_init_the_release_workflow_verb_and_release_check(self):
         readers = _entries_by_name().get(KEY, {}).get("readers", [])
-        self.assertEqual(len(readers), 2, f"§S1: two readers; got {readers!r}")
+        self.assertEqual(len(readers), 3, f"CR-MDB-071 §S1/§S5: three readers; got {readers!r}")
         self.assertTrue(readers[0].startswith("modelb-axi init"), readers)
         self.assertTrue(readers[1].startswith("modelb-axi release-workflow"), readers)
+        self.assertTrue(readers[2].startswith("modelb-axi release-check"), readers)
 
 
 class ReleaseTargetsCsvAcceptedFormsTest(unittest.TestCase):

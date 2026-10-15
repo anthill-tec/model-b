@@ -4,7 +4,7 @@ Contract: ``docs/changes/CR-MDB-068-release-and-ci-workflow-templates.md`` §S6 
 criterion: the verb in a sandbox project — first render, re-render unchanged, a hand-modified file
 skipped then forced, an unmanaged file left, ``--release-targets`` recorded and ``""`` recorded
 empty, the absent key refused, each exit code (2 and 3), the envelope fields; ``agents --stacks``
-warns; ``workflows.render`` has exactly two callers.
+warns; ``workflows.render`` has exactly two callers (three since CR-MDB-071 §S5).
 
 Class map:
 
@@ -30,7 +30,8 @@ Class map:
   ``release.yml`` or with an unmanaged one.
 - ``RenderCallersProofTest`` / ``RenderCallersTest`` — :func:`render_callers` proved on synthetic
   sources both ways, then applied to ``modelb_axi/``: ``workflows.render`` is called from exactly
-  two functions, ``scaffold.run_init`` and the function ``cli.main`` dispatches the verb to.
+  three functions, ``scaffold.run_init`` and the functions ``cli.main`` dispatches the two verbs
+  to, ``release-workflow`` and ``release-check`` (MIGRATED at CR-MDB-071 (§S5): was two).
 
 The I/O-error seam: a regular FILE at ``<project>/.github/workflows`` — creating
 ``release.yml`` beneath it fails with an ``OSError`` (no mock; any implementation writing the file
@@ -196,17 +197,23 @@ class RenderCallersProofTest(unittest.TestCase):
 
 
 class RenderCallersTest(unittest.TestCase):
-    """§S6 — ``workflows.render`` is called by ``run_init`` and the verb only."""
+    """§S6 — ``workflows.render`` is called by ``run_init`` and the two verbs only
+    (``release-workflow``, and ``release-check`` since CR-MDB-071 §S5)."""
 
-    def test_render_has_exactly_two_callers_run_init_and_the_verb(self):
+    # MIGRATED at CR-MDB-071 (§S5): a third caller, `scaffold.run_release_check` (was two).
+    def test_render_has_exactly_three_callers_run_init_and_the_two_verbs(self):
         sources = {path.stem: path.read_text(encoding="utf-8")
                    for path in sorted((REPO_ROOT / "modelb_axi").glob("*.py"))}
         callers = render_callers(sources)
-        self.assertEqual(len(callers), 2, f"§S6: exactly two callers; got {callers!r}")
+        self.assertEqual(len(callers), 3,
+                         f"CR-MDB-071 §S5: exactly three callers; got {callers!r}")
         self.assertIn(("scaffold", "run_init"), callers, "§S5/§S6: run_init renders the files")
-        (_module, verb_function), = [c for c in callers if c != ("scaffold", "run_init")]
-        self.assertIn(verb_function, called_names(sources["cli"], "main"),
-                      f"§S6: the second caller, {verb_function}, is what cli.main dispatches to")
+        self.assertIn(("scaffold", "run_release_check"), callers,
+                      "CR-MDB-071 §S5: release-check compares the files with the render")
+        dispatched = called_names(sources["cli"], "main")
+        for _module, verb_function in (c for c in callers if c != ("scaffold", "run_init")):
+            self.assertIn(verb_function, dispatched,
+                          f"§S6: the caller {verb_function} is what cli.main dispatches to")
 
 
 # ------------------------------------------------------------------ the sandbox ----
