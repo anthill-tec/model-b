@@ -31,6 +31,10 @@ CHROME_DEVTOOLS_AXI_AUTO_CONNECT=1 CHROME_DEVTOOLS_AXI_SESSION=<PROJECT_TOKEN> n
 
 It never launches a browser and never uses `open`. Navigation is `newpage` only.
 
+`<PROJECT_TOKEN>`, `<dev-url>` and `<id>` are values to substitute, never typed literally.
+
+`pages` prints its tabs as `pages[N]{id,url,selected}`, one row per tab.
+
 Read `PROJECT_TOKEN` from the project's `.env` before the first call.
 
 When `PROJECT_TOKEN` is absent, not of the form `[A-Za-z0-9._-]{1,64}`, or `default`:
@@ -47,6 +51,10 @@ The caller gives three lists:
 - the URL patterns the project's tabs match;
 - the protected patterns: tabs never selected, evaluated or closed, such as a production install's
   port.
+
+**URLs are compared by pattern.** Chrome normalises the URLs it shows (a trailing slash, a
+redirect). So a tab "shows" a URL to open when its URL matches the project pattern the caller gives
+for that URL, never by exact string.
 
 **Protected wins everywhere.** A protected tab is never counted as already open, never chosen and
 never closed. A URL to open that matches a protected pattern is a caller error: it is reported and
@@ -72,7 +80,8 @@ skipped.
    - Every URL opened shows among the new ids.
    - Every "before" id is still there.
    - Otherwise, stop and report.
-   - The new ids are the skill's own tabs for this bridge. It keeps that record for the session.
+   - The new tabs are the skill's own for this bridge. It keeps that record as **(id, URL) pairs**,
+     held in the caller's working context; a restarted agent session has no record.
 4. **A `newpage` that timed out still made its tab.** Confirm it among the new ids; never retry,
    since a retry duplicates it.
 5. **Rendered text** is confirmed with `selectpage <id>` and `eval document.body.innerText.length`
@@ -85,8 +94,11 @@ skipped.
 
 ## Close
 
-1. **`pages`, fresh.** The tabs to close are those in the skill's record that still show, and are
-   not protected.
+1. **`pages`, fresh.** The tabs to close are those in the skill's record whose id still shows with
+   its recorded URL, and are not protected.
+   - If any recorded id shows with a different URL, or is gone while its URL shows on another id, the
+     bridge has restarted silently (the tool never reports a respawn): close nothing, and report the
+     tabs on the project's URLs for the user to close.
 2. **`closepage`** each of them.
 
    ```bash
@@ -107,10 +119,11 @@ skipped.
 
 ## When the bridge cannot attach
 
-The browser is detected at run time. An envelope whose `error` code is `BRIDGE_NOT_READY` means:
+The browser is detected at run time. An envelope carrying `code: BRIDGE_NOT_READY` means:
 
 - the skill's browser steps are skipped;
-- the skill reports the envelope's message and suggestions in full;
+- the skill reports the envelope's `error` line and every `help` line in full; the suggestions are
+  reported, never run (one of them suggests `open`);
 - a skipped browser never fails bootstrap or shutdown.
 
 The causes the tool reports, each with its fix:
@@ -121,6 +134,8 @@ The causes the tool reports, each with its fix:
 - **Chrome's connection prompt not accepted within the start-up timeout:** ask the user to accept
   the prompt, then run the step again.
 - **A port collision** ("code 48"): set `CHROME_DEVTOOLS_AXI_PORT` for this session only.
+- **`npx` failing to fetch `chrome-devtools-mcp`** on a cold start: report the tool's own message and
+  fix.
 
 ## Reading the output
 
