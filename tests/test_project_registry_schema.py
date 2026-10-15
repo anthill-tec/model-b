@@ -1687,6 +1687,15 @@ NOT_REGISTRY_KEYS = {
     # settings, so the detector never matches one (and the stale-name rule would refuse it).
     "CARGO_FIRST_TOKEN": "publish-crates's job env: the first-publish token, empty once trusted",
     "CARGO_REGISTRY_TOKEN": "the crates first-publish repository secret (publish-crates, setup)",
+    # MIGRATED at CR-MDB-061 (§S8): the chrome-devtools-axi tool environment the
+    # chrome-ui-relay skill sets on every call (`CHROME_DEVTOOLS_AXI_SESSION=<PROJECT_TOKEN>`,
+    # a line naming the registry's `.env`). CHROME_DEVTOOLS_AXI_PORT is NOT entered: the skill
+    # never assigns it, so the detector never matches it (and the stale-name rule would refuse it).
+    "CHROME_DEVTOOLS_AXI_AUTO_CONNECT": "chrome-devtools-axi tool env: attach to the running "
+                                        "Chrome (chrome-ui-relay skill)",
+    # MIGRATED at CR-MDB-061 (§S8)
+    "CHROME_DEVTOOLS_AXI_SESSION": "chrome-devtools-axi tool env: the per-project bridge "
+                                   "session name (chrome-ui-relay skill)",
 }
 #: CR-MDB-068 §S8 — the names :data:`NOT_REGISTRY_KEYS` gained for ``workflows-src/``.
 # MIGRATED at CR-MDB-071 (§S3): CARGO_FIRST_TOKEN and CARGO_REGISTRY_TOKEN join.
