@@ -12,11 +12,21 @@
         run: |
           bundle=@@DIR@@/target/central-publishing/central-bundle.zip
           files=$(unzip -Z1 "$bundle")
-          for f in $(printf '%s\n' "$files" | grep -E '\.(jar|pom)$'); do
-            if ! printf '%s\n' "$files" | grep -qxF "$f.asc"; then
-              echo "::error::$bundle: $f has no .asc signature"
-              exit 1
-            fi
-          done
-          printf '%s\n' "$files" | grep -q -- '-sources\.jar$'
-          printf '%s\n' "$files" | grep -q -- '-javadoc\.jar$'
+          while IFS= read -r f; do
+            case "$f" in
+              *.jar|*.pom)
+                if ! printf '%s\n' "$files" | grep -qxF -- "$f.asc"; then
+                  echo "::error::$bundle: $f has no .asc signature"
+                  exit 1
+                fi
+                ;;
+            esac
+          done <<< "$files"
+          if ! printf '%s\n' "$files" | grep -q -- '-sources\.jar$'; then
+            echo "::error::$bundle: no -sources.jar"
+            exit 1
+          fi
+          if ! printf '%s\n' "$files" | grep -q -- '-javadoc\.jar$'; then
+            echo "::error::$bundle: no -javadoc.jar"
+            exit 1
+          fi
