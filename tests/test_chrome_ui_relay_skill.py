@@ -14,11 +14,13 @@ Class map:
 - ``ChromeUiRelayPhraseRulesTest`` — §S1 (the not-the-omp-relay statement) and §S2–§S7: one
   phrase gate per acceptance rule, one test method per rule, each generated from ``PHRASE_RULES``.
 - ``ChromeUiRelayPhraseDetectorProofTest`` — every detector kind proved both ways on
-  ``CONFORMING_SAMPLE``, a spec-worded sample skill: the sample passes every gate, and each rule's
-  cut of the sample bites that rule.
+  ``CONFORMING_SAMPLE``, a spec-worded sample skill: the sample passes every gate, each rule's
+  cut of the sample bites that rule, and each anchored rule's reversed wording (``REVERSALS``)
+  bites it too.
 - ``OpenStepGateTest`` — negative gate 1: no ``chrome-devtools-axi open`` shown as a step.
-- ``PipedOutputGateTest`` — negative gate 2: no ``chrome-devtools-axi`` output shown piped
-  through grep, head, tail or ``jq``, or redirected away.
+- ``PipedOutputGateTest`` — negative gate 2: no ``chrome-devtools-axi`` output shown piped (any
+  single ``|`` after the tool, never ``||``), captured with ``$(…)``, or redirected, with or
+  without a space before the redirect (``2>&1`` keeps it).
 
 **A phrase rule** is a set of patterns that must all match inside ONE unit of the skill's body
 (``units``): a paragraph, a list item together with its nested items, a heading, a table row or a
@@ -27,8 +29,9 @@ Each unit is normalised (``normalise``) — backticks and ``*`` dropped, curly q
 whitespace collapsed, lower-cased — so a phrase matches however the line is wrapped or marked up.
 
 **The negative gates** read the skill as the raw-runner guard does (``_blocks``, ``_code_spans``,
-``_QUOTE`` imported from ``tests/test_raw_runner_guard.py``): a fenced line is judged alone, a code
-span against the masked prose before it. A form is exempt when a prohibition governs it — the
+``_QUOTE`` imported from ``tests/test_raw_runner_guard.py``): a fenced line is judged alone, once
+the lines it continues with a trailing backslash are joined to it; a code span is judged against the
+masked prose before it. A form is exempt when a prohibition governs it — the
 guard's ``_governed`` (a ``PROHIBITION`` in the clause ``_CLAUSE_END`` ends), imported, never copied.
 
 Existing gates over every bundle cover the rest of §S1 and are not repeated here: Pi's loader
@@ -141,10 +144,15 @@ def rule_findings(text: str, patterns: tuple[str, ...]) -> list[str]:
 
 #: Negative gate 1: ``open`` shown as a ``chrome-devtools-axi`` step.
 OPEN_STEP = re.compile(r"chrome-devtools-axi\s+open\b")
-#: Negative gate 2: ``chrome-devtools-axi`` output piped through grep, head, tail or ``jq``, or
-#: redirected away (``>``, ``>>``, ``N>``, ``&>``; ``2>&1`` keeps it).
+#: The text after the tool, a ``<placeholder>`` taken whole so its ``>`` is never a redirect.
+_AFTER_TOOL = r"chrome-devtools-axi\b(?:<[\w.-]+>|<(?![\w.-]+>)|[^<])*?"
+# MIGRATED at CR-MDB-061 (§S7): any single ``|`` (not ``||``), a ``$(…)`` capture, any redirect.
+#: Negative gate 2: ``chrome-devtools-axi`` output piped (any single ``|`` after the tool, never
+#: ``||``), captured with ``$(…)``, or redirected (``>``, ``>>``, ``N>``, ``&>``, with or without a
+#: space before it; ``N>&M`` such as ``2>&1`` keeps it).
 PIPED_OUTPUT = re.compile(
-    r"chrome-devtools-axi\b.*?(?:\|\s*(?:grep|head|tail|jq)\b|(?:^|\s)(?:\d?>{1,2}|&>)\s*(?!&\d)\S)")
+    r"\$\([^()]*\bchrome-devtools-axi\b"
+    r"|" + _AFTER_TOOL + r"(?:(?<!\|)\|(?!\|)|(?:&>>?|\d*>>?)(?!&))")
 #: §S1: grep, head and tail are plain words, never a code span.
 PLAIN_WORD_SPAN = re.compile(r"(?:grep|head|tail)\b")
 #: §S1: a host with a port — ``localhost``, a dotted quad or a dotted name, then ``:`` and digits.
@@ -153,14 +161,32 @@ HOST_PORT = re.compile(
     r":\d{2,5}\b", re.IGNORECASE)
 
 
+def _join_continued(parts: list[str]) -> str:
+    """Fenced lines continued with a trailing ``\\``, joined into the one line the shell reads."""
+    return " ".join(part[:-1].rstrip() if part.endswith("\\") else part for part in parts)
+
+
+# MIGRATED at CR-MDB-061 (§S2, §S7): fenced lines continued with ``\`` are joined first.
 def shown(text: str):
     """Yield ``(line_number, content, governing_prefix)`` for each code span and each fenced line
     of ``text``, read as the raw-runner guard reads a file. ``governing_prefix`` is the masked
-    prose before a span, or ``None`` for a fenced line (judged alone, on its own text)."""
+    prose before a span, or ``None`` for a fenced line (judged alone, on its own text). A fenced
+    line ending in ``\\`` is joined with the fenced lines it continues, and the joined line is
+    yielded once, at its first line's number."""
     lines = [_QUOTE.sub("", line) for line in text.splitlines()]
+    pending: list[str] = []
+    pending_first = 0
     for first, block in _blocks(lines):
+        if pending and (block is not None or first != pending_first + len(pending)):
+            yield pending_first + 1, _join_continued(pending), None
+            pending = []
         if block is None:
-            yield first + 1, lines[first].strip(), None
+            if not pending:
+                pending_first = first
+            pending.append(lines[first].strip())
+            if not pending[-1].endswith("\\"):
+                yield pending_first + 1, _join_continued(pending), None
+                pending = []
             continue
         joined = "\n".join(block)
         spans = list(_code_spans(joined))
@@ -170,6 +196,8 @@ def shown(text: str):
         masked = "".join(masked)
         for start, _end, content in spans:
             yield first + joined.count("\n", 0, start) + 1, content, masked[:start]
+    if pending:
+        yield pending_first + 1, _join_continued(pending), None
 
 
 def shown_form_findings(text: str, form: re.Pattern) -> list[tuple[int, str]]:
@@ -251,6 +279,13 @@ PHRASE_RULES = (
     ("s2_never_falls_back_to_the_default_session", "§S2",
      (r"\b(?:never|not|no)\b[^.;]{0,20}\bfalls?\s*back\b[^.;]{0,20}\bdefault session\b",),
      (("it never falls back to the default session", "it uses the default session"),)),
+    ("s2_project_token_dev_url_and_id_are_values_to_substitute_never_typed_literally", "§S2",
+     (re.escape("<project_token>"), re.escape("<dev-url>"), re.escape("<id>"),
+      r"\bare values to substitute\b", r"\bnever typed literally\b"),
+     (("are values to substitute, never typed literally", "are written as shown"),)),
+    ("s2_pages_prints_its_tabs_as_pages_n_id_url_selected_one_row_per_tab", "§S2",
+     (r"\bpages prints\b", re.escape("pages[n]{id,url,selected}"), r"\bone row per tab\b"),
+     (("`pages[N]{id,url,selected}`", "a list"),)),
     # §S3
     ("s3_the_caller_gives_three_lists_urls_project_patterns_and_protected_patterns", "§S3",
      (r"\bthree\b", r"\burls to open\b", r"\burl patterns\b", r"\bprotected patterns\b",
@@ -264,6 +299,10 @@ PHRASE_RULES = (
      (r"\burl to open\b", r"\bprotected pattern\b", r"\bcaller error\b", r"\breported\b",
       r"\bskipped\b"),
      (("is a caller error: it is reported and skipped", "is opened"),)),
+    ("s3_urls_are_compared_by_the_callers_project_pattern_never_by_exact_string", "§S3",
+     (r"\burls are compared by pattern\b", r"\bmatches the project pattern the caller gives\b",
+      r"\bnever by exact string\b"),
+     ((", never by exact string", ", by exact string"),)),
     # §S4
     ("s4_open_keeps_the_pages_id_set_as_before", "§S4",
      (r"\bpages\b", r'\bid set as "?before"?'),
@@ -281,9 +320,17 @@ PHRASE_RULES = (
     ("s4_every_url_opened_shows_and_every_before_id_stays_or_it_stops_and_reports", "§S4",
      (r"\bevery url opened\b", r'\bevery "?before"? id is still there\b', r"\bstop and report\b"),
      (('   - Every "before" id is still there.\n', ""),)),
-    ("s4_the_new_ids_are_the_skills_own_tabs_kept_as_its_record_for_the_session", "§S4",
-     (r"\bown tabs\b", r"\brecord\b", r"\bsession\b"),
-     ((" It keeps that record for the session.", ""),)),
+    # MIGRATED at CR-MDB-061 (§S4): anchored on "keeps that record", so "no record is kept" fails.
+    ("s4_the_new_tabs_are_the_skills_own_for_this_bridge_and_it_keeps_that_record", "§S4",
+     (r"\bthe skill's own\b", r"\bfor this bridge\b", r"\bit keeps (?:that|the|its) record\b"),
+     (("It keeps that record as", "It lists them as"),)),
+    ("s4_the_record_is_kept_as_id_and_url_pairs", "§S4",
+     (r"\bkeeps (?:that|the|its) record as \(id, url\) pairs\b",),
+     ((" as **(id, URL) pairs**", ""),)),
+    ("s4_the_record_is_held_in_the_callers_working_context_a_restarted_session_has_none", "§S4",
+     (r"\brecord\b[^.;]{0,40}\bheld in the caller's working context\b",
+      r"\ba restarted agent session has no record\b"),
+     (("held in the caller's working context", "held for the session"),)),
     ("s4_a_timed_out_newpage_is_confirmed_among_the_new_ids_never_retried", "§S4",
      (r"\btimed out\b", r"\bstill made its tab\b", _NEVER_RETRIED, r"\bduplicat"),
      (("; never retry, since a retry duplicates it", "; retry it"),)),
@@ -292,10 +339,21 @@ PHRASE_RULES = (
       r"\b(?:never|not) (?:on |by |from )?the load event\b"),
      ((", never the load event", ""),)),
     # §S5
+    # MIGRATED at CR-MDB-061 (§S5): anchored on "those in the skill's record", so "those not in the
+    # skill's record" fails.
     ("s5_close_takes_a_fresh_pages_and_closes_recorded_tabs_still_shown_not_protected", "§S5",
-     (r"\bpages\b[^.]{0,5}\bfresh\b|\bfresh pages\b", r"\brecord\b", r"\bstill show",
-      r"\bnot protected\b"),
+     (r"\bpages\b[^.]{0,5}\bfresh\b|\bfresh pages\b", r"\bthose in (?:the skill's|its) record\b",
+      r"\bstill shows?\b", r"\bnot protected\b"),
      ((", and are not protected", ""),)),
+    ("s5_close_picks_only_recorded_ids_still_showing_with_their_recorded_url", "§S5",
+     (r"\bthose in (?:the skill's|its) record\b",
+      r"\bwhose id still shows with (?:its|the) recorded url\b"),
+     (("whose id still shows with its recorded URL", "that still show"),)),
+    ("s5_an_id_or_url_mismatch_is_a_silent_restart_that_closes_nothing_and_reports", "§S5",
+     (r"\brecorded id shows with a different url\b",
+      r"\bgone while its url shows on another id\b", r"\brestarted silently\b",
+      r"\bclose nothing\b", r"\breport the tabs on the project's urls\b"),
+     ((", or is gone while its URL shows on another id", ""),)),
     ("s5_pages_again_verifies_and_a_last_tab_no_op_shows_as_still_open", "§S5",
      (r"\bpages again\b", r"\bverify\b", r"\blast.tab\b", r"\bstill open\b"),
      ((" A last-tab no-op shows here as a tab still open.", ""),)),
@@ -313,12 +371,18 @@ PHRASE_RULES = (
       r"\bstarts no bridge\b|\bnever starts a bridge\b|\bno bridge\b"),
      ((" and starts no bridge", ""),)),
     # §S6
-    ("s6_a_bridge_not_ready_error_skips_the_browser_steps", "§S6",
-     (r"\bbridge_not_ready\b", r"\bbrowser steps are skipped\b"),
-     (("`BRIDGE_NOT_READY`", "`FAILED`"),)),
-    ("s6_reports_the_envelopes_message_and_suggestions_in_full", "§S6",
-     (r"\bmessage\b", r"\bsuggestions\b", r"\bin full\b"),
+    # MIGRATED at CR-MDB-061 (§S6): keyed on the envelope's "code: BRIDGE_NOT_READY" field.
+    ("s6_an_envelope_carrying_code_bridge_not_ready_skips_the_browser_steps", "§S6",
+     (r"\bcode: bridge_not_ready\b", r"\bbrowser steps are skipped\b"),
+     (("`code: BRIDGE_NOT_READY`", "`code: FAILED`"),)),
+    # MIGRATED at CR-MDB-061 (§S6): the error line and every help line, anchored on "the skill
+    # reports", so "the skill never reports ... in full" fails.
+    ("s6_reports_the_envelopes_error_line_and_every_help_line_in_full", "§S6",
+     (r"\b(?:the skill|it) reports (?:the envelope's )?error line and every help line in full\b",),
      ((" in full", ""),)),
+    ("s6_the_suggestions_are_reported_never_run", "§S6",
+     (r"\bsuggestions are reported, never run\b",),
+     ((", never run", ""),)),
     ("s6_a_skipped_browser_never_fails_bootstrap_or_shutdown", "§S6",
      (r"\b(?:never|not) fails? bootstrap or shutdown\b",),
      (("never fails bootstrap", "fails bootstrap"),)),
@@ -336,6 +400,10 @@ PHRASE_RULES = (
      (r"\bport collision\b", r"\bcode 48\b", r"\bchrome_devtools_axi_port\b",
       r"\bthis session only\b"),
      ((" for this session only", ""),)),
+    ("s6_npx_failing_to_fetch_chrome_devtools_mcp_on_a_cold_start_reports_the_tools_message", "§S6",
+     (r"\bnpx failing to fetch chrome-devtools-mcp\b", r"\bcold start\b",
+      r"\breport the tool's own message and fix\b"),
+     ((" on a cold start", ""),)),
     # §S7
     ("s7_every_envelope_is_read_whole_never_piped_narrowed_or_redirected", "§S7",
      (r"\bread whole\b", r"\bnever piped\b", r"\bgrep\b", r"\bhead\b", r"\btail\b", r"\bjq\b",
@@ -343,6 +411,7 @@ PHRASE_RULES = (
      ((", narrowed with `jq`,", ","),)),
 )
 
+# MIGRATED at CR-MDB-061 (§S2–§S6): worded as the spec at its VERIFY F1–F9 contracts.
 #: A spec-worded skill every gate passes — the "conforming" half of each both-ways proof.
 CONFORMING_SAMPLE = """---
 name: chrome-ui-relay
@@ -362,7 +431,7 @@ Every call is `npx -y chrome-devtools-axi <verb>` with:
 
 Each project has its own bridge, and its `stop` ends only its own.
 
-It never launches a browser and never uses `open`.
+It never launches a browser and never uses `open`. `<PROJECT_TOKEN>`, `<dev-url>` and `<id>` are values to substitute, never typed literally. `pages` prints its tabs as `pages[N]{id,url,selected}`, one row per tab.
 
 Navigation is `newpage` only: never run `npx -y chrome-devtools-axi open <dev-url>`.
 
@@ -380,6 +449,8 @@ The caller gives three lists:
 - the URL patterns the project's tabs match;
 - the protected patterns: tabs never selected, evaluated or closed.
 
+**URLs are compared by pattern.** Chrome normalises the URLs it shows (a trailing slash, a redirect), so a tab "shows" a URL to open when its URL matches the project pattern the caller gives for that URL, never by exact string.
+
 **Protected wins everywhere.** A protected tab is never counted as already open, never chosen and never closed. A URL to open that matches a protected pattern is a caller error: it is reported and skipped.
 
 ## Open
@@ -392,13 +463,14 @@ The caller gives three lists:
    - Every URL opened shows among the new ids.
    - Every "before" id is still there.
    - Otherwise, stop and report.
-   - The new ids are the skill's own tabs for this bridge. It keeps that record for the session.
+   - The new tabs are the skill's own for this bridge. It keeps that record as **(id, URL) pairs**, held in the caller's working context; a restarted agent session has no record.
 4. **A `newpage` that timed out still made its tab.** Confirm it among the new ids; never retry, since a retry duplicates it.
 5. **Rendered text** is confirmed with `selectpage <id>` and `eval document.body.innerText.length` on the skill's own tabs only, never the load event.
 
 ## Close
 
-1. **`pages`, fresh.** The tabs to close are those in the skill's record that still show, and are not protected.
+1. **`pages`, fresh.** The tabs to close are those in the skill's record whose id still shows with its recorded URL, and are not protected.
+   - If any recorded id shows with a different URL, or is gone while its URL shows on another id, the bridge has restarted silently (the tool never reports a respawn): close nothing, and report the tabs on the project's URLs for the user to close.
 2. **`closepage`** each of them.
 3. **`pages` again,** to verify. A last-tab no-op shows here as a tab still open.
 4. **`stop`.** It disconnects the project's bridge and never closes Chrome.
@@ -409,10 +481,10 @@ The caller gives three lists:
 
 ## When the bridge cannot attach
 
-An envelope whose `error` code is `BRIDGE_NOT_READY` means:
+The browser is detected at run time. An envelope carrying `code: BRIDGE_NOT_READY` means:
 
 - the skill's browser steps are skipped;
-- the skill reports the envelope's message and suggestions in full;
+- the skill reports the envelope's `error` line and every `help` line in full; the suggestions are reported, never run (one of them suggests `open`);
 - a skipped browser never fails bootstrap or shutdown.
 
 The causes the tool reports, each with its fix:
@@ -421,11 +493,25 @@ The causes the tool reports, each with its fix:
 - **Chromium or another channel running instead of Chrome stable.**
 - **Chrome's connection prompt not accepted within the start-up timeout.**
 - **A port collision** ("code 48"): set `CHROME_DEVTOOLS_AXI_PORT` for this session only.
+- **`npx` failing to fetch `chrome-devtools-mcp`** on a cold start: report the tool's own message and fix.
 
 ## Reading the output
 
 Every `chrome-devtools-axi` envelope is read whole. It is never piped through grep, head or tail, narrowed with `jq`, or redirected away.
 """
+
+
+#: The anchored rules' reversed wordings (CR-MDB-061 VERIFY F5): ``(rule_name, (old, new))``. Each
+#: reversal keeps the rule's words but turns its meaning around, and must bite its rule.
+REVERSALS = (
+    ("s5_close_takes_a_fresh_pages_and_closes_recorded_tabs_still_shown_not_protected",
+     (("those in the skill's record", "those not in the skill's record"),)),
+    ("s6_reports_the_envelopes_error_line_and_every_help_line_in_full",
+     (("the skill reports the envelope's", "the skill never reports the envelope's"),)),
+    ("s4_the_new_tabs_are_the_skills_own_for_this_bridge_and_it_keeps_that_record",
+     (("It keeps that record as **(id, URL) pairs**, held in the caller's working context; "
+       "a restarted agent session has no record.", "No record is kept for the session."),)),
+)
 
 
 def _cut(text: str, replacements) -> str:
@@ -509,6 +595,17 @@ class ChromeUiRelayPhraseDetectorProofTest(unittest.TestCase):
                       if rule_findings(_cut(CONFORMING_SAMPLE, cut), patterns) == []]
         self.assertEqual(not_biting, [])
 
+    def test_reversal_names_are_phrase_rules(self):
+        names = {rule[0] for rule in PHRASE_RULES}
+        self.assertEqual([name for name, _r in REVERSALS if name not in names], [])
+        self.assertEqual(len(REVERSALS), 3)
+
+    def test_each_reversed_wording_of_an_anchored_rule_bites_it(self):
+        patterns = {name: rule_patterns for name, _s, rule_patterns, _c in PHRASE_RULES}
+        not_biting = [name for name, reversal in REVERSALS
+                      if rule_findings(_cut(CONFORMING_SAMPLE, reversal), patterns[name]) == []]
+        self.assertEqual(not_biting, [])
+
     def test_conforming_sample_passes_the_bundle_text_gates(self):
         self.assertEqual(frontmatter_violations(CONFORMING_SAMPLE, BUNDLE), [])
         self.assertEqual(frontmatter_value(CONFORMING_SAMPLE, "name"), BUNDLE)
@@ -578,6 +675,20 @@ class OpenStepGateTest(_RealSkillCase):
             with self.subTest(good=good):
                 self.assertEqual(shown_form_findings(good, OPEN_STEP), [])
 
+    def test_detector_joins_backslash_continued_fenced_lines_and_bites_on_a_continued_open(self):
+        text = ("Navigate:\n\n```bash\nCHROME_DEVTOOLS_AXI_SESSION=<PROJECT_TOKEN> \\\n"
+                "  npx -y chrome-devtools-axi \\\n  open <dev-url>\n```\n")
+        self.assertEqual(shown_form_findings(text, OPEN_STEP),
+                         [(4, "CHROME_DEVTOOLS_AXI_SESSION=<PROJECT_TOKEN> "
+                              "npx -y chrome-devtools-axi open <dev-url>")])
+
+    def test_detector_spares_a_continued_open_a_prohibition_governs_and_unjoined_lines(self):
+        for good in ("```\n# never run npx -y chrome-devtools-axi \\\n  open <dev-url>\n```\n",
+                     "```\nnpx -y chrome-devtools-axi pages\nopen <dev-url>\n```\n",
+                     "```\nnpx -y chrome-devtools-axi pages \\\n```\n\n```\nopen <dev-url>\n```\n"):
+            with self.subTest(good=good):
+                self.assertEqual(shown_form_findings(good, OPEN_STEP), [])
+
 
 class PipedOutputGateTest(_RealSkillCase):
     """Negative gate 2 (§S7, AC): no ``chrome-devtools-axi`` output shown piped through grep,
@@ -601,11 +712,51 @@ class PipedOutputGateTest(_RealSkillCase):
             with self.subTest(bad=bad):
                 self.assertEqual(len(shown_form_findings(bad, PIPED_OUTPUT)), 1)
 
+    def test_detector_bites_on_any_single_pipe_after_the_tool(self):
+        for bad in ("Run `npx -y chrome-devtools-axi pages | sed -n 1p`.\n",
+                    "Run `npx -y chrome-devtools-axi snapshot | awk '{print $1}'`.\n",
+                    "```\nnpx -y chrome-devtools-axi pages | wc -l\n```\n",
+                    "Run `npx -y chrome-devtools-axi pages|less`.\n",
+                    "Run `npx -y chrome-devtools-axi closepage <id> | cat`.\n"):
+            with self.subTest(bad=bad):
+                self.assertEqual(len(shown_form_findings(bad, PIPED_OUTPUT)), 1)
+
+    def test_detector_bites_on_a_dollar_paren_capture_of_the_tool(self):
+        for bad in ("Run `tabs=$(npx -y chrome-devtools-axi pages)`.\n",
+                    "```\necho \"$(CHROME_DEVTOOLS_AXI_SESSION=<PROJECT_TOKEN> npx -y "
+                    "chrome-devtools-axi pages)\"\n```\n"):
+            with self.subTest(bad=bad):
+                self.assertEqual(len(shown_form_findings(bad, PIPED_OUTPUT)), 1)
+
+    def test_detector_bites_on_a_redirect_with_no_space_before_it(self):
+        for bad in ("Run `npx -y chrome-devtools-axi pages>/dev/null`.\n",
+                    "Run `npx -y chrome-devtools-axi pages>>log`.\n",
+                    "Run `npx -y chrome-devtools-axi pages&>/dev/null`.\n",
+                    "```\nnpx -y chrome-devtools-axi newpage <dev-url>>/tmp/out\n```\n"):
+            with self.subTest(bad=bad):
+                self.assertEqual(len(shown_form_findings(bad, PIPED_OUTPUT)), 1)
+
+    def test_detector_bites_on_a_backslash_continued_pipe(self):
+        text = "```bash\nnpx -y chrome-devtools-axi pages \\\n  | sed -n 1p\n```\n"
+        self.assertEqual(shown_form_findings(text, PIPED_OUTPUT),
+                         [(2, "npx -y chrome-devtools-axi pages | sed -n 1p")])
+
     def test_detector_spares_kept_output_and_governed_examples(self):
         for good in ("Run `npx -y chrome-devtools-axi pages 2>&1`.\n",
                      "Run `npx -y chrome-devtools-axi newpage <dev-url>`.\n",
                      "It is never piped: never `npx -y chrome-devtools-axi pages | grep x`.\n",
                      "Read `grep x file | wc -l` elsewhere.\n"):
+            with self.subTest(good=good):
+                self.assertEqual(shown_form_findings(good, PIPED_OUTPUT), [])
+
+    def test_detector_spares_or_or_placeholders_and_the_skills_own_call_forms(self):
+        for good in ("Run `npx -y chrome-devtools-axi stop || true`.\n",
+                     "Run `npx -y chrome-devtools-axi closepage <id>`.\n",
+                     "```\nCHROME_DEVTOOLS_AXI_SESSION=<PROJECT_TOKEN> npx -y chrome-devtools-axi "
+                     "newpage <dev-url>\n```\n",
+                     "Every call is `npx -y chrome-devtools-axi <verb>`.\n",
+                     "```\nnpx -y chrome-devtools-axi selectpage <id> \\\n  2>&1\n```\n",
+                     "```\n# never run npx -y chrome-devtools-axi pages \\\n  | sed -n 1p\n```\n"):
             with self.subTest(good=good):
                 self.assertEqual(shown_form_findings(good, PIPED_OUTPUT), [])
 
