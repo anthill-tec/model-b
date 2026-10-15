@@ -420,6 +420,7 @@ modelb-axi init --name "My Project" --token myproject --acronym MYP --mode solo 
 ```
 
 `--release-targets` names where a release publishes (`pypi[:<dir>]`, `npm[:<dir>]`,
-`github-assets`, or none); `init` builds the project's release workflow from it and the stacks.
+`crates[:<dir>]`, `maven-central[:<dir>]`, `github-assets`, or none); `init` builds the
+project's release workflow from it and the stacks.
 
 Add `--dry-run` to see what would be written without writing anything.

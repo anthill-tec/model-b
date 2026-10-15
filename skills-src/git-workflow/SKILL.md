@@ -137,6 +137,8 @@ What each release target adds to the rendered workflow:
 |---|---|---|---|
 | `pypi` | the upload of the stamped dev version to the test index | PyPI through Trusted Publishing | the environments `pypi` and `testpypi`; no secret |
 | `npm` | the package manager's dry-run publish with a dist-tag | npm, with provenance | the environment `npm` and the repository secret `NPM_TOKEN` |
+| `crates` | the dry-run publish of the crate | crates.io through Trusted Publishing | the environment `crates` and the repository secret `CARGO_REGISTRY_TOKEN` |
+| `maven-central` | the signed Central bundle, uploading nothing | Maven Central through the Central Portal | the environment `maven-central` and the repository secrets `MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_PASSWORD`, `MAVEN_GPG_PRIVATE_KEY` and `MAVEN_GPG_PASSPHRASE` |
 | `github-assets` | the project's `build-assets` script, its `dist-assets/` output checked non-empty | an upload of `dist-assets/` to the release | no environment, no secret |
 
 ### Release notes (`CHANGELOG.md`)
