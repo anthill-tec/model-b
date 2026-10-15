@@ -1,9 +1,9 @@
 # CR-MDB-053 — Tool-script lint and stale references
 
-**Status:** PENDING — **SEED, not the finished spec** (filed 2026-10-02 into release 1.1.0, wave 3).
+**Status:** PENDING — **SEED, not the finished spec** (filed 2026-10-02; moved 2026-10-16 into release 1.0.0, wave 2).
 Every item below is re-measured at gap analysis; the spec is written then.
 **Type:** refactor (tool scripts)
-**Priority:** P3 — release 1.1.0, wave 3.
+**Priority:** P2 — release 1.0.0, wave 2; before the release's test-hygiene CR (CR-MDB-052).
 **Depends on:** none (board-authoritative: read `queue`, not this line)
 **Labels:** scripts, lint, hygiene
 **Design reference:** AGENTS.md § Key Directories (`scripts/`, deployed to `~/.agents/scripts/`);
