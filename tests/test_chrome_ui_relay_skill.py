@@ -29,7 +29,7 @@ whitespace collapsed, lower-cased — so a phrase matches however the line is wr
 **The negative gates** read the skill as the raw-runner guard does (``_blocks``, ``_code_spans``,
 ``_QUOTE`` imported from ``tests/test_raw_runner_guard.py``): a fenced line is judged alone, a code
 span against the masked prose before it. A form is exempt when a prohibition governs it — the
-guard's ``PROHIBITION`` in the clause the guard's ``_CLAUSE_END`` ends, both imported, never copied.
+guard's ``_governed`` (a ``PROHIBITION`` in the clause ``_CLAUSE_END`` ends), imported, never copied.
 
 Existing gates over every bundle cover the rest of §S1 and are not repeated here: Pi's loader
 (``PiSkillLoaderOracleTest``), the frontmatter tree (``FrontmatterTreeTest``), the tool-name
@@ -45,7 +45,7 @@ import unittest
 from modelb_axi import deploy
 from tests._helpers import REPO_ROOT, read_text, split_frontmatter
 from tests.test_installer_stack_selection import ALL_STACKS
-from tests.test_raw_runner_guard import _CLAUSE_END, PROHIBITION, _blocks, _code_spans, _QUOTE
+from tests.test_raw_runner_guard import _blocks, _code_spans, _governed, _QUOTE
 from tests.test_skill_frontmatter import frontmatter_violations
 
 BUNDLE = "chrome-ui-relay"
@@ -153,12 +153,6 @@ HOST_PORT = re.compile(
     r":\d{2,5}\b", re.IGNORECASE)
 
 
-def _prohibited(masked_prefix: str) -> bool:
-    """True when the guard's ``PROHIBITION`` appears in the clause ``masked_prefix`` ends in
-    (clauses end where the guard's ``_CLAUSE_END`` matches)."""
-    return bool(PROHIBITION.search(_CLAUSE_END.split(masked_prefix)[-1]))
-
-
 def shown(text: str):
     """Yield ``(line_number, content, governing_prefix)`` for each code span and each fenced line
     of ``text``, read as the raw-runner guard reads a file. ``governing_prefix`` is the masked
@@ -187,7 +181,7 @@ def shown_form_findings(text: str, form: re.Pattern) -> list[tuple[int, str]]:
         if not match:
             continue
         before = content[:match.start()] if prefix is None else prefix
-        if not _prohibited(before):
+        if not _governed(before):
             findings.append((number, content))
     return findings
 

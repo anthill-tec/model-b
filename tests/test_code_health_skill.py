@@ -799,7 +799,7 @@ class AgentsMdBundleRosterS4Test(unittest.TestCase):
     def test_s4_agents_md_states_fifteen_skill_bundles(self):
         counts = re.findall(r"\b(\d+) skill bundles\b", self.text)
         self.assertEqual(counts, ["15"],
-                         f"\u00a7S4: AGENTS.md must state '15 skill bundles' (and no other "
+                         f"§S4: AGENTS.md must state '15 skill bundles' (and no other "
                          f"count); found counts {counts}")
 
     def test_s4_agents_md_lists_code_health_as_model_b_owned(self):
