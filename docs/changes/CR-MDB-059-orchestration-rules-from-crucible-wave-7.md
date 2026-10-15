@@ -1,6 +1,6 @@
 # CR-MDB-059 — Orchestration rules from Crucible's wave 7
 
-**Status:** PENDING — spec (gap analysis and pre-review 2026-10-15).
+**Status:** COMPLETED (filed 2026-10-10; gap analysis and pre-review 2026-10-15)
 **Type:** refactor (skills, references, contracts, `AGENTS.md`, `worktree-flow.py`)
 **Priority:** P1 — release 1.0.0, wave 2.
 **Depends on:** none (board-authoritative: read `queue`)
