@@ -44,7 +44,7 @@ Worker-orchestrator-only rules. Read COMMON + TRACK. (Coordinator rules → MAIN
 - This applies to your OWN isolated worktree. **EXCEPTION — run FOREGROUND** for: writes to a shared live tree, and delete-heavy / large cross-file cycles (a background agent can leak for minutes before the post-run check fires).
 
 ## HOLD the merge for Mainline's relayed approval
-- The ONE user-facing gate is the MERGE. Present VERIFY to Mainline for merge approval and HOLD; Mainline carries it to the user and relays the sign-off. Never merge on your own authority.
+- The ONE user-facing gate is the MERGE. The sign-off follows close-out steps 1–4 (`orchestration-common.md` § Close-out); present VERIFY to Mainline for merge approval and HOLD; Mainline carries it to the user and relays the sign-off. Never merge on your own authority.
 - At sign-off present: the VERIFY verdict (APPROVE / FIX_REQUIRED / REWORK), the production-caller grep counts, and the NAMED integration test proving the call path.
 
 ## Re-pin on Mainline's dispositions
