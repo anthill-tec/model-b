@@ -990,6 +990,18 @@ Implemented by CR-MDB-064.
 - **Placement:** the global skill in release 1.0.0 (CR-MDB-061); the project type and the generator
   in release 1.1.0 (CR-MDB-074), beside `init` (CR-MDB-050) and `migrate` (CR-MDB-055).
 
+**User rulings 2026-10-16, at CR-MDB-061's gap analysis:**
+
+- **The skill is `chrome-ui-relay`** (display title Chrome-UI-Relay). It is not the omp-era CDP relay,
+  which must still never run under Pi.
+- **One `chrome-devtools-axi` session per project:** `CHROME_DEVTOOLS_AXI_SESSION` is the project's
+  `PROJECT_TOKEN`, so each project gets its own bridge, port and state, and one project's `stop` never
+  ends another's bridge.
+- **The browser is detected at run time only.** The installer gains no Chrome requirement row. The
+  skill treats a bridge that cannot attach (no browser, remote debugging off, a held port) as its
+  browser steps skipped, naming the cause and the fix. This supersedes the 2026-10-10 ruling that the
+  installer detects the browser.
+
 ## Consequences per CR
 
 | CR | What this DN changes |
