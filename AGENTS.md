@@ -44,7 +44,7 @@ Key invariants:
 | Path | Purpose |
 |---|---|
 | `modelb_axi/` | The CLI package. `cli.py` (argparse shell), `scaffold.py` (init/emit), `deploy.py` (manifest deploy), `hooks.py` (schema + per-harness compiler), `config.py` (install.toml r/w), `harness.py` (roster/detect), `preflight.py` (dep probes), `axi.py` (envelope codec) |
-| `skills-src/` | 14 skill bundles. Model-B-owned: `model-b`, `crucible`, `cr-authoring`, `git-workflow`, `gap-analysis`, `bootstrap`, `shutdown`, `code-health` (deployed with the rust stack). Imported from Crucible (byte-identical, see `CRUCIBLE-HANDOVER.md`): `crucible-register`, `crucible-report-{arduino,bun,java,python,rust}`. Plus `memory-templates/` |
+| `skills-src/` | 15 skill bundles. Model-B-owned: `model-b`, `crucible`, `cr-authoring`, `git-workflow`, `gap-analysis`, `bootstrap`, `shutdown`, `chrome-ui-relay`, `code-health` (deployed with the rust stack). Imported from Crucible (byte-identical, see `CRUCIBLE-HANDOVER.md`): `crucible-register`, `crucible-report-{arduino,bun,java,python,rust}`. Plus `memory-templates/` |
 | `generator/` | `build.py` renders `templates/{red,green,verify,fix}.md.tmpl` × `stacks/{arduino,bun,python,quarkus}.toml` → `agents/<stack>-<role>-agent.md` (16 files) |
 | `hooks-src/` | `schema.md` (neutral schema v1) + `scripts/` (8 executable stdin/exit protocol scripts, no file extension) |
 | `scripts/` | The tool-script asset class (7 adopted + 1 generated): `worktree-flow.py`, `schedule_db.py` (TRANSITIONAL), `skill-release-gate.py`, `rust-code-health.py`, `rust-crate-map.py`, `rust-dead-scan.py`, `gate-lock.sh`, and `toon.py` generated from `modelb_axi/toon.py`. Deployed to `~/.agents/scripts/` (`deploy.TOOL_SCRIPTS_STORE_RELDIR`) — the ONLY path a Model B surface names; never a `~/.claude` path (not Model B-owned) |
@@ -52,7 +52,7 @@ Key invariants:
 | `contracts/` | Interface contracts: `crucible-envelope.md`, `gate-lock.md`, `sandesh-cli.md`, `lean-ctx.md` (cross-project), `worktree-layout.md` (the `.worktrees/<cr>` string and its six consumers). Repo-only — not shipped in the wheel |
 | `docs/research/` | `PRD-model-b-rationalization.md` (D1–D10) + `DN-*.md` design notes |
 | `docs/changes/` | `CR-MDB-NNN-*.md` specs; `README.md` is read-only history frozen at CR-MDB-048's merge — the Crucible board holds the queue and the execution state |
-| `tests/` | 98 `unittest` modules; mostly structural/contract gates |
+| `tests/` | 99 `unittest` modules; mostly structural/contract gates |
 | `archive/` | Read-only history: `BASELINE.md` (the wave-0 baseline), `wave1..3/` and `contracts/` (archived files), and `mapping.md` — the living map from every relocated path to where it lives now, gated by `tests/test_archive_mapping.py` (a CR that moves a mapped path updates its row) |
 | `audits/` | Dated evidence files backing PRD decisions |
 
@@ -123,7 +123,7 @@ A brief that may run `modelb-axi` pins `--modelb-home` / `--target-root` and exp
 
 ## Testing & QA
 
-Pure **`unittest`** — no pytest, no `conftest.py`, no fixtures/markers. 98 modules in `tests/` (`tests/test_*.py`), each file ending in `if __name__ == "__main__": unittest.main()`. Naming as practised: the wave-1/2 modules use `<Topic><Section>Test` classes (e.g. `ContractsS2Test`) with `test_s<n>_<assertion>` methods; later modules use `<Feature>Test` classes (e.g. `BlockDirectCargoTestScriptTest`) with descriptive method names. A helper more than one module needs lives once in `tests/_helpers.py` and is imported (CR-MDB-032 §S3 gates a module-level helper body defined in two modules).
+Pure **`unittest`** — no pytest, no `conftest.py`, no fixtures/markers. 99 modules in `tests/` (`tests/test_*.py`), each file ending in `if __name__ == "__main__": unittest.main()`. Naming as practised: the wave-1/2 modules use `<Topic><Section>Test` classes (e.g. `ContractsS2Test`) with `test_s<n>_<assertion>` methods; later modules use `<Feature>Test` classes (e.g. `BlockDirectCargoTestScriptTest`) with descriptive method names. A helper more than one module needs lives once in `tests/_helpers.py` and is imported (CR-MDB-032 §S3 gates a module-level helper body defined in two modules).
 
 Every test run goes through the Crucible client, which runs the suite and ingests the result — never a test runner invoked directly. A runner the client cannot drive is a client gap, raised with Crucible.
 
