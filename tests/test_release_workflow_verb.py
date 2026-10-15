@@ -431,6 +431,26 @@ class ReleaseWorkflowTargetsTest(_VerbCase):
                          ["RELEASE_TARGETS=github-assets,pypi\n"],
                          "§S6: without the flag the recorded line is not rewritten")
 
+    def test_the_flag_records_and_renders_crates_and_maven_central(self):
+        # CR-MDB-071 §S1/§S3 wiring: the verb records the new targets canonically and renders
+        # their publish jobs.
+        self.set_env_key("PROJECT_STACKS", "rust,java")
+        axi = self.verb_ok("--release-targets", "maven-central:./java/,crates,pypi")
+        self.assertEqual(self.key_lines("RELEASE_TARGETS"),
+                         ["RELEASE_TARGETS=pypi,crates,maven-central:java\n"])
+        self.assertEqual(axi.get("targets"), ["pypi", "crates", "maven-central:java"])
+        self.assert_files(["rust", "java"], ["pypi", "crates", "maven-central:java"])
+        text = (self.target / RELEASE_YML).read_text(encoding="utf-8")
+        for job in ("publish-crates", "publish-maven-central"):
+            self.assertEqual(text.count(f"\n  {job}:\n"), 1, f"§S3: the {job} job, once")
+
+    def test_a_recorded_crates_value_is_rendered_without_the_flag(self):
+        self.set_env_key("RELEASE_TARGETS", "crates:core")
+        self.set_env_key("PROJECT_STACKS", "rust")
+        axi = self.verb_ok()
+        self.assertEqual(axi.get("targets"), ["crates:core"])
+        self.assert_files(["rust"], ["crates:core"])
+
     def test_the_flag_records_the_key_when_it_was_absent(self):
         self.set_env_key("RELEASE_TARGETS", None)
         axi = self.verb_ok("--release-targets", "npm")
@@ -456,16 +476,19 @@ class ReleaseWorkflowRefusalsTest(_VerbCase):
         self.assert_refused(*self.verb(), "--release-targets")
         self.assertEqual(self.snapshot(), before, "§S6: nothing is written")
 
+    # MIGRATED at CR-MDB-071 (§S1): the invalid value is the unknown name cargo (was: crates).
     def test_an_invalid_flag_value_is_refused(self):
         before = self.snapshot()
-        self.assert_refused(*self.verb("--release-targets", "crates"), "crates")
+        self.assert_refused(*self.verb("--release-targets", "cargo"), "cargo")
         self.assertEqual(self.snapshot(), before, "§S6: nothing is written, .env included")
 
+    # MIGRATED at CR-MDB-071 (§S1): the invalid value names the unknown maven (was:
+    # maven-central, now a target).
     def test_an_invalid_recorded_value_is_refused(self):
-        self.set_env_key("RELEASE_TARGETS", "pypi,maven-central")
+        self.set_env_key("RELEASE_TARGETS", "pypi,maven")
         self.drop_github()
         before = self.snapshot()
-        self.assert_refused(*self.verb(), "maven-central")
+        self.assert_refused(*self.verb(), "maven")
         self.assertEqual(self.snapshot(), before, "§S6: nothing is written")
 
     def test_an_io_error_exits_3(self):

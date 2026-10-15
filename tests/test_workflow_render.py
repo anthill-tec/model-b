@@ -410,7 +410,9 @@ class RenderRefusesAnUnsafeTargetDirTest(unittest.TestCase):
 
 
 #: CR-MDB-068 C5 RED (VERIFY F9) - the canonical target order, written once.
-RELEASE_TARGET_ORDER = ("pypi", "npm", "github-assets")
+# MIGRATED at CR-MDB-071 (§S1): crates and maven-central between npm and github-assets (was:
+# ("pypi", "npm", "github-assets")).
+RELEASE_TARGET_ORDER = ("pypi", "npm", "crates", "maven-central", "github-assets")
 
 
 def _parsed_items(spy, real) -> list[str]:
@@ -452,15 +454,24 @@ class ReleaseTargetsDefinedOnceTest(unittest.TestCase):
     def test_parse_target_returns_the_name_and_the_normalised_dir(self):
         parse = workflows_module().parse_target
         for item, expected in (("pypi", ("pypi", ".")), ("github-assets", ("github-assets", ".")),
-                               ("npm:./pkg/", ("npm", "pkg")), ("pypi:py/./src", ("pypi", "py/src"))):
+                               ("npm:./pkg/", ("npm", "pkg")), ("pypi:py/./src", ("pypi", "py/src")),
+                               # CR-MDB-071 §S1: the new targets, each with an optional dir.
+                               ("crates", ("crates", ".")), ("maven-central", ("maven-central", ".")),
+                               ("crates:./crates/core/", ("crates", "crates/core")),
+                               ("maven-central:java//lib", ("maven-central", "java/lib"))):
             with self.subTest(item=item):
                 self.assertEqual(parse(item), expected)
 
     def test_parse_target_refuses_naming_the_bad_part(self):
         parse = workflows_module().parse_target
-        for item, named in (("crates", "crates"), ("github-assets:dist", "github-assets"),
+        # MIGRATED at CR-MDB-071 (§S1): the unknown name is cargo (was: crates, now a target); the
+        # new targets' dir refusals join.
+        for item, named in (("cargo", "cargo"), ("maven", "maven"),
+                            ("github-assets:dist", "github-assets"),
                             ("npm:", "npm"), ("npm:../pkg", "../pkg"), ("npm:/abs", "/abs"),
-                            ("npm:a b", repr("a b"))):
+                            ("npm:a b", repr("a b")), ("crates:", "crates"),
+                            ("maven-central:../java", "../java"), ("crates:/abs", "/abs"),
+                            ("maven-central:a;b", repr("a;b"))):
             with self.subTest(item=item):
                 with self.assertRaises(ValueError) as caught:
                     parse(item)

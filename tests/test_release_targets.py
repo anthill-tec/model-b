@@ -25,16 +25,23 @@ Class map:
 - ``InitWithoutReleaseTargetsTest`` — a sandboxed ``modelb-axi --yes init`` with no
   ``--release-targets`` records ``RELEASE_TARGETS=`` (empty) in the root ``.env``, after
   ``PROJECT_STACKS``, and never in a monorepo sub-project's ``.env``.
+- ``ReleaseTargetsSurfacesTest`` — CR-MDB-071 §S1: the ``--release-targets`` help of ``init`` and
+  ``release-workflow`` and the schema entry's description name all five targets.
+
+CR-MDB-071 §S1 adds ``crates`` and ``maven-central`` (each taking an optional ``dir``) between ``npm``
+and ``github-assets``; the unknown names the refusals use are ``cargo`` and ``maven``.
 
 Stdlib only.
 """
 
+import argparse
+import re
 import shutil
 import tempfile
 import unittest
 from pathlib import Path
 
-from modelb_axi import scaffold
+from modelb_axi import cli, scaffold
 from tests.test_project_registry_schema import (
     SCHEMA_PATH,
     _entries_by_name,
@@ -45,7 +52,11 @@ from tests.test_project_registry_schema import (
 KEY = "RELEASE_TARGETS"
 RULE = "release_targets_csv"
 #: §S1 — the supported target names, in canonical order.
-SUPPORTED = ("pypi", "npm", "github-assets")
+# MIGRATED at CR-MDB-071 (§S1): crates and maven-central join, between npm and github-assets
+# (was: ("pypi", "npm", "github-assets")).
+SUPPORTED = ("pypi", "npm", "crates", "maven-central", "github-assets")
+#: CR-MDB-071 §S1 — names no target answers to (an unknown name must still be refused).
+UNKNOWN_NAMES = ("cargo", "maven")
 
 #: (value given, canonical form returned) — §S1's accepted forms.
 ACCEPTED = (
@@ -64,12 +75,33 @@ ACCEPTED = (
     ("npm:pi-package,pypi", "pypi,npm:pi-package"),
     ("github-assets,pypi", "pypi,github-assets"),
     (" pypi , npm:pkg ", "pypi,npm:pkg"),
+    # CR-MDB-071 §S1: crates and maven-central, each with an optional dir, in canonical order.
+    ("crates", "crates"),
+    ("maven-central", "maven-central"),
+    ("crates:.", "crates"),
+    ("maven-central:./", "maven-central"),
+    ("crates:./crates/core/", "crates:crates/core"),
+    ("maven-central:lib//api/", "maven-central:lib/api"),
+    ("github-assets,maven-central:b,crates:a", "crates:a,maven-central:b,github-assets"),
+    ("maven-central,crates,npm:pkg,github-assets,pypi",
+     "pypi,npm:pkg,crates,maven-central,github-assets"),
+    (" maven-central:java , crates:rs ", "crates:rs,maven-central:java"),
 )
 
 #: (value, what the refusal names) — §S1's refusals.
+# MIGRATED at CR-MDB-071 (§S1): the unknown names are cargo and maven (was: crates and
+# maven-central, now targets); crates and maven-central refused under every existing rule.
 REFUSED = (
-    ("crates", "crates"),
-    ("pypi,maven-central", "maven-central"),
+    ("cargo", "cargo"),
+    ("pypi,maven", "maven"),
+    ("Crates", "Crates"),
+    ("crates,crates:core", "crates"),
+    ("maven-central:a,maven-central:b", "maven-central"),
+    ("crates:", "crates"),
+    ("maven-central: ", "maven-central"),
+    ("crates:/abs/rs", "/abs/rs"),
+    ("maven-central:../java", "../java"),
+    ("crates:rs/../other", "rs/../other"),
     ("PyPI", "PyPI"),
     ("pypi,pypi", "pypi"),
     ("pypi,pypi:sub", "pypi"),
@@ -96,12 +128,19 @@ UNSAFE_DIRS = (
     ("npm:a`b", "a`b"),
     ("npm:a\tb", "a\tb"),
     ("pypi:pkg/sub dir", "pkg/sub dir"),
+    # CR-MDB-071 §S1: the new targets' dirs are written into shell lines too.
+    ("crates:a b", "a b"),
+    ("crates:rs;x", "rs;x"),
+    ("maven-central:a$b", "a$b"),
+    ("maven-central:java`x", "java`x"),
     ("npm:pkgé", "pkgé"),
 )
 #: CR-MDB-068 C5 RED (VERIFY F1) — dirs using only ``[A-Za-z0-9._/-]``, with their canonical form.
 SAFE_DIRS = (
     ("npm:pkg-1/sub_dir.v2", "npm:pkg-1/sub_dir.v2"),
     ("pypi:A.b/C_d-9", "pypi:A.b/C_d-9"),
+    ("crates:crates/core-1.x", "crates:crates/core-1.x"),
+    ("maven-central:java/lib_2", "maven-central:java/lib_2"),
 )
 
 def _rule():
@@ -175,17 +214,30 @@ class ReleaseTargetsCsvRefusalsTest(unittest.TestCase):
             with self.subTest(value=value):
                 self.assertIn(named, self._refusal(value))
 
+    # MIGRATED at CR-MDB-071 (§S1): the unknown names are cargo and maven (was: crates and
+    # pypi,maven-central), and the refusal lists all five targets.
     def test_an_unknown_name_lists_the_supported_ones(self):
-        for value in ("crates", "pypi,maven-central"):
+        for value in (*UNKNOWN_NAMES, "pypi,maven"):
             with self.subTest(value=value):
                 message = self._refusal(value)
                 for name in SUPPORTED:
                     self.assertIn(name, message, f"§S1: the refusal lists {name}")
 
     def test_a_duplicate_name_says_duplicate(self):
-        for value in ("pypi,pypi", "npm:a,npm:b"):
+        for value in ("pypi,pypi", "npm:a,npm:b", "crates,crates:core",
+                      "maven-central:a,maven-central:b"):
             with self.subTest(value=value):
                 self.assertIn("duplicate", self._refusal(value).lower())
+
+    def test_crates_and_maven_central_dir_refusals_name_the_target(self):
+        # CR-MDB-071 §S1: each existing dir rule applies to the new targets, the target named.
+        for value, named in (("crates:", "crates"), ("maven-central: ", "maven-central"),
+                             ("crates:/abs/rs", "/abs/rs"), ("maven-central:../java", "../java")):
+            with self.subTest(value=value):
+                message = self._refusal(value)
+                self.assertIn(named, message)
+                self.assertIn(value.partition(":")[0], message)
+                self.assertNotIn("unknown", message, "§S1: a known target, refused for its dir")
 
 
 class ReleaseTargetsCsvUnsafeDirTest(unittest.TestCase):
@@ -239,10 +291,56 @@ class ReleaseTargetsThroughTheRegistryTest(unittest.TestCase):
         self.assertIn(KEY, registry, f"§S1: {KEY} is resolved; got {sorted(registry)}")
         self.assertEqual(registry[KEY], "")
 
+    # MIGRATED at CR-MDB-071 (§S1): the refused value is the unknown name cargo (was: crates).
     def test_a_refused_value_names_the_key_and_its_flag(self):
         with self.assertRaises(scaffold.ScaffoldError) as caught:
-            self._resolve(release_targets="crates")
+            self._resolve(release_targets="cargo")
         self.assertIn(f"{KEY} (--release-targets)", str(caught.exception))
+        self.assertIn("cargo", str(caught.exception))
+
+    def test_crates_and_maven_central_are_recorded_in_canonical_form(self):
+        # CR-MDB-071 §S1: the new targets pass the registry, ordered between npm and github-assets.
+        self.assertEqual(self._resolve(
+            release_targets="github-assets,maven-central:./java/,crates,pypi").get(KEY),
+            "pypi,crates,maven-central:java,github-assets")
+
+
+#: CR-MDB-071 §S1 — the surfaces naming the supported targets: each names all five.
+TARGET_SURFACE_COMMANDS = ("init", "release-workflow")
+
+
+class ReleaseTargetsSurfacesTest(unittest.TestCase):
+    """CR-MDB-071 §S1 — the ``--release-targets`` help of ``init`` and ``release-workflow`` and the
+    schema entry's description name every supported target."""
+
+    def _help(self, command: str) -> str:
+        parser = cli._build_parser()
+        sub = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
+        action = next(a for a in sub.choices[command]._actions
+                      if "--release-targets" in a.option_strings)
+        return " ".join((action.help or "").split())
+
+    def test_each_release_targets_help_names_all_five_targets(self):
+        for command in TARGET_SURFACE_COMMANDS:
+            help_text = self._help(command)
+            for name in SUPPORTED:
+                with self.subTest(command=command, target=name):
+                    self.assertRegex(help_text, rf"(?<![\w-]){re.escape(name)}(?![\w-])",
+                                     f"§S1: `{command} --release-targets` names {name}")
+
+    def test_the_schema_description_names_all_five_targets_as_code(self):
+        description = str(_entries_by_name().get(KEY, {}).get("description", ""))
+        for name in SUPPORTED:
+            with self.subTest(target=name):
+                self.assertIn(f"`{name}`", description, f"§S1: the description names {name}")
+
+    def test_the_surfaces_name_no_unknown_target(self):
+        texts = [self._help(command) for command in TARGET_SURFACE_COMMANDS]
+        texts.append(str(_entries_by_name().get(KEY, {}).get("description", "")))
+        for text in texts:
+            for name in UNKNOWN_NAMES:
+                with self.subTest(text=text[:60], name=name):
+                    self.assertNotRegex(text, rf"(?<![\w-]){name}(?![\w-])")
 
 
 class InitWithoutReleaseTargetsTest(unittest.TestCase):

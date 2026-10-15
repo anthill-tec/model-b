@@ -38,6 +38,10 @@ Isolation: every ``init`` runs in process in the sandbox of ``tests.test_project
 ``install.toml`` asset root ``<home>/no-asset-root-here`` holds nothing, so the workflow sources
 resolve to the repository's ``workflows-src/``).
 
+CR-MDB-071 (§S1/§S3/§S4) adds ``crates`` and ``maven-central`` to the target sets, their setup
+tasks (attributed by ``CARGO_REGISTRY_TOKEN`` and ``MAVEN_CENTRAL_USERNAME``, in canonical order)
+and the wiring case ``test_crates_and_maven_central_render_their_publish_jobs``.
+
 Stdlib only.
 """
 
@@ -67,6 +71,13 @@ TARGET_VALUES = (
     ("npm:pkg", ["npm:pkg"]),
     ("github-assets", ["github-assets"]),
     ("github-assets,npm:./pkg/,pypi", ["pypi", "npm:pkg", "github-assets"]),
+    # MIGRATED at CR-MDB-071 (§S4): the crates and maven-central targets, alone, in
+    # sub-directories and with every other target.
+    ("crates", ["crates"]),
+    ("maven-central", ["maven-central"]),
+    ("maven-central:./b/,crates:a", ["crates:a", "maven-central:b"]),
+    ("github-assets,maven-central,crates,npm:pkg,pypi",
+     ["pypi", "npm:pkg", "crates", "maven-central", "github-assets"]),
 )
 #: §S5 — the file each stack's release task names (the attribution key of its task).
 STACK_TOKENS = {
@@ -79,12 +90,26 @@ STACK_TOKENS = {
 }
 #: §S5 — the token that attributes a task to each target, then what that task must name: its
 #: environment(s), secret and publisher, or its executable script.
-TARGET_TOKENS = {"pypi": "testpypi", "npm": "NPM_TOKEN", "github-assets": "build-assets"}
+# MIGRATED at CR-MDB-071 (§S4): crates and maven-central join, each attributed by a secret
+# only its task names, and each needing the header's items as its task.
+TARGET_TOKENS = {"pypi": "testpypi", "npm": "NPM_TOKEN", "crates": "CARGO_REGISTRY_TOKEN",
+                 "maven-central": "MAVEN_CENTRAL_USERNAME", "github-assets": "build-assets"}
 TARGET_NEEDS = {
     "pypi": (r"(?<![\w.-])pypi(?![\w.-])", r"(?<![\w.-])testpypi(?![\w.-])", r"\benvironments?\b",
              r"(?i)\btrusted publishers?\b"),
     "npm": (r"(?<![\w.-])npm(?![\w.-])", r"\benvironment\b", r"\bNPM_TOKEN\b",
             r"(?i)\btrusted publisher\b"),
+    "crates": (r"(?<![\w.-])crates(?![\w.-])", r"\benvironment\b", r"\bCARGO_REGISTRY_TOKEN\b",
+               r"(?i)\brepository secret\b", r"(?i)\bfirst publish\b", r"(?i)\btrusted publisher\b",
+               r"\bcrates\.io\b", r"(?i)\bdelete\b"),
+    "maven-central": (r"(?<![\w.-])maven-central(?![\w.-])", r"\benvironment\b",
+                      r"(?i)\bnamespace\b", r"(?i)\bcentral portal\b", r"(?i)\brepository secrets?\b",
+                      r"\bMAVEN_CENTRAL_USERNAME\b", r"\bMAVEN_CENTRAL_PASSWORD\b",
+                      r"(?i)\buser token\b", r"\bMAVEN_GPG_PRIVATE_KEY\b",
+                      r"\bMAVEN_GPG_PASSPHRASE\b", r"\bcentral-publishing-maven-plugin\b",
+                      re.escape("<extensions>true</extensions>"), r"(?i)\bsources\b",
+                      r"(?i)\bjavadoc\b", r"\bmaven-gpg-plugin\b", re.escape("3.2.0"),
+                      r"\bmvnw\b", r"(?i)\brepository root\b"),
     "github-assets": (re.escape(".github/scripts/build-assets"), r"(?i)\bexecutable\b"),
 }
 #: The one task allowed beyond the stacks' and the targets': the repository secret every
@@ -173,6 +198,19 @@ class InitRendersReleaseFilesTest(_ReleaseInitCase):
         self.assertIn("\n  publish-github-assets:\n", text, "§S5: the github-assets publish job")
         self.assertNotIn("\n  test-python:\n", text, "§S5: only the project's stacks get a job")
 
+    def test_crates_and_maven_central_render_their_publish_jobs(self):
+        # CR-MDB-071 §S1/§S3 wiring: init renders the new targets beside their stacks' tests.
+        axi = self.init_with("proj-crates-maven", release_targets="maven-central:b,crates:a",
+                             stacks="rust,java")
+        self.assertEqual((axi.get("registry") or {}).get("RELEASE_TARGETS"),
+                         "crates:a,maven-central:b", "§S1: the canonical value recorded")
+        self.assert_rendered(axi, ["rust", "java"], ["crates:a", "maven-central:b"])
+        text = (self.target / RENDERED_FILES[0]).read_text(encoding="utf-8")
+        for job in ("test-rust", "test-java", "publish-crates", "publish-maven-central"):
+            self.assertEqual(text.count(f"\n  {job}:\n"), 1, f"§S3: the {job} job, once")
+        self.assertIn('check "$TAG" crates:a maven-central:b', text,
+                      "§S3: create-release checks both version sources")
+
     def test_a_multi_stack_project_renders_one_workflow_for_its_stacks(self):
         axi = self.init_with("proj-multi-stack", release_targets="pypi", stacks="python,bun")
         self.assert_rendered(axi, ["python", "bun"], ["pypi"])
@@ -203,10 +241,11 @@ class InitPrerendersReleaseFilesTest(_ReleaseInitCase):
     def test_an_invalid_release_targets_value_writes_nothing(self):
         # Regression pin: the registry already validates the value before any write (§S1); it
         # fails the moment init writes the project before validating --release-targets.
+        # MIGRATED at CR-MDB-071 (§S1): the invalid value is the unknown name cargo (was: crates).
         target = self.root / "proj-invalid"
-        rc, axi, err = self.run_init(target, release_targets="crates")
+        rc, axi, err = self.run_init(target, release_targets="cargo")
         self.assertEqual((rc, axi.get("ok")), (2, False), f"stderr={err!r}")
-        self.assertTrue([w for w in axi.get("warnings") or [] if "crates" in w], axi)
+        self.assertTrue([w for w in axi.get("warnings") or [] if "cargo" in w], axi)
         self.assertFalse(target.exists(), "§S5: nothing is written")
 
 
@@ -227,8 +266,25 @@ class InitReleaseSetupTasksTest(_ReleaseInitCase):
                      targets: list[str]) -> None:
         names = target_names(targets)
         attributed: set[int] = set()
-        for stack, token in STACK_TOKENS.items():
+        # MIGRATED at CR-MDB-071 (§S4): the targets' tasks are attributed first, then each
+        # stack's among the rest, since the maven-central task names `mvnw` as the Maven stacks'
+        # task does (was: the stacks first, over every task); the target tasks follow in
+        # canonical order.
+        order = []
+        for name, token in TARGET_TOKENS.items():
             hits = [i for i, task in enumerate(tasks) if token in task]
+            if name in names:
+                self.assertEqual(len(hits), 1,
+                                 f"§S5: one task for the {name} target; tasks={tasks!r}")
+                attributed.update(hits)
+                order.append(hits[0])
+                for need in TARGET_NEEDS[name]:
+                    self.assertRegex(tasks[hits[0]], need, f"§S5: the {name} task names it")
+            else:
+                self.assertEqual(hits, [], f"§S5: no {name} task; tasks={tasks!r}")
+        self.assertEqual(order, sorted(order), f"the target tasks in canonical order; {tasks!r}")
+        for stack, token in STACK_TOKENS.items():
+            hits = [i for i, task in enumerate(tasks) if token in task and i not in attributed]
             if stack in stacks:
                 self.assertEqual(len(hits), 1,
                                  f"§S5: one task names {token!r} for {stack}; tasks={tasks!r}")
@@ -238,16 +294,6 @@ class InitReleaseSetupTasksTest(_ReleaseInitCase):
                                      "§S5: an executable .github/scripts/ci-test")
             elif not any(token == STACK_TOKENS[s] for s in stacks):
                 self.assertEqual(hits, [], f"§S5: no {stack} task; tasks={tasks!r}")
-        for name, token in TARGET_TOKENS.items():
-            hits = [i for i, task in enumerate(tasks) if token in task]
-            if name in names:
-                self.assertEqual(len(hits), 1,
-                                 f"§S5: one task for the {name} target; tasks={tasks!r}")
-                attributed.update(hits)
-                for need in TARGET_NEEDS[name]:
-                    self.assertRegex(tasks[hits[0]], need, f"§S5: the {name} task names it")
-            else:
-                self.assertEqual(hits, [], f"§S5: no {name} task; tasks={tasks!r}")
         rest = [task for i, task in enumerate(tasks) if i not in attributed]
         self.assertLessEqual(len(rest), 1, f"§S5: nothing else but a RELEASE_PAT task; {rest!r}")
         for task in rest:

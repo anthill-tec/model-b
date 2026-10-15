@@ -330,6 +330,33 @@ TARGET_COLUMNS = {
          (r"(?<![\w-])npm(?![\w-])", r"\brepository secret\b",
           r"(?<![\w-])npm_token(?![\w-])")),
     ),
+    # MIGRATED at CR-MDB-071 (§S1/§S6): a row per new target, between npm and github-assets: the
+    # crate's dry-run publish, crates.io, the environment crates and its first-publish repository
+    # secret; the signed Central bundle that uploads nothing, Maven Central, the environment
+    # maven-central and its four repository secrets.
+    "crates": (
+        ("rehearsal", "the dry-run publish", (r"\bdry-run\b",)),
+        ("publish", "crates.io through Trusted Publishing",
+         (r"\bcrates\.io\b", r"\btrusted publishing\b")),
+        ("environment/secret", "the environment crates and the repository secret "
+         "CARGO_REGISTRY_TOKEN",
+         (r"(?<![\w-])crates(?![\w.-])", r"\brepository secret\b",
+          r"(?<![\w-])cargo_registry_token(?![\w-])")),
+    ),
+    "maven-central": (
+        ("rehearsal", "the signed bundle, uploading nothing",
+         (r"\bbundle\b", r"\bsign\w*\b", r"\buploads? nothing\b|\buploading nothing\b")),
+        ("publish", "Maven Central through the Central Portal",
+         (r"\bmaven central\b", r"\bcentral portal\b")),
+        ("environment/secret", "the environment maven-central and the repository secrets "
+         "MAVEN_CENTRAL_USERNAME, MAVEN_CENTRAL_PASSWORD, MAVEN_GPG_PRIVATE_KEY and "
+         "MAVEN_GPG_PASSPHRASE",
+         (r"(?<![\w-])maven-central(?![\w-])", r"\brepository secrets\b",
+          r"(?<![\w-])maven_central_username(?![\w-])",
+          r"(?<![\w-])maven_central_password(?![\w-])",
+          r"(?<![\w-])maven_gpg_private_key(?![\w-])",
+          r"(?<![\w-])maven_gpg_passphrase(?![\w-])")),
+    ),
     "github-assets": (
         ("rehearsal", "the project's build-assets script, its output checked non-empty",
          (r"(?<![\w-])build-assets(?![\w-])", r"\bnon-empty\b|\bnot empty\b")),
@@ -1073,7 +1100,10 @@ def check_release_workflow_verb(text: str) -> list[str]:
 
 #: CR-MDB-068 C5 RED (VERIFY F8) - the forms the guide's ``--release-targets`` sentence names, one
 #: per target the renderer renders (``pypi`` and ``npm`` take an optional ``:<dir>``).
-RELEASE_TARGET_FORMS = ("pypi[:<dir>]", "npm[:<dir>]", "github-assets")
+# MIGRATED at CR-MDB-071 (§S1/§S6): crates and maven-central, each with an optional dir, join
+# (was: ("pypi[:<dir>]", "npm[:<dir>]", "github-assets")).
+RELEASE_TARGET_FORMS = ("pypi[:<dir>]", "npm[:<dir>]", "crates[:<dir>]", "maven-central[:<dir>]",
+                        "github-assets")
 
 
 def check_release_targets_forms(text: str) -> list[str]:
@@ -1739,6 +1769,13 @@ CONFORMING_RELEASES_BODY = (
     "environments `pypi` and `testpypi` |\n"
     "| `npm` | a dry-run publish | to the npm registry with provenance | environment `npm`, "
     "repository secret `NPM_TOKEN` |\n"
+    # MIGRATED at CR-MDB-071 (§S6): the crates and maven-central rows.
+    "| `crates` | a dry-run publish of the crate | to crates.io through Trusted Publishing | "
+    "environment `crates`, repository secret `CARGO_REGISTRY_TOKEN` |\n"
+    "| `maven-central` | builds and signs the bundle, uploading nothing | to Maven Central "
+    "through the Central Portal | environment `maven-central`, repository secrets "
+    "`MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_PASSWORD`, `MAVEN_GPG_PRIVATE_KEY` and "
+    "`MAVEN_GPG_PASSPHRASE` |\n"
     "| `github-assets` | the project's `build-assets` script, its output checked non-empty | "
     "uploaded to the release | no environment, no secret |\n"
     "\n"
@@ -2041,8 +2078,11 @@ class InstallGuideReleaseWorkflowTest(unittest.TestCase):
 
     # CR-MDB-068 C5 RED (VERIFY F8) - the --release-targets sentence names every form.
 
+    # MIGRATED at CR-MDB-071 (§S6): the sentence names all five forms (was: pypi, npm and
+    # github-assets).
     FORMS_SENTENCE = ("`--release-targets` names where a release publishes (`pypi[:<dir>]`, "
-                      "`npm[:<dir>]`, `github-assets`, or none).\n")
+                      "`npm[:<dir>]`, `crates[:<dir>]`, `maven-central[:<dir>]`, `github-assets`, "
+                      "or none).\n")
 
     def test_the_guides_release_targets_sentence_names_every_target_form(self):
         self.assertEqual(check_release_targets_forms(_read(GUIDE)), [])
@@ -2057,6 +2097,9 @@ class InstallGuideReleaseWorkflowTest(unittest.TestCase):
         fault = "the `--release-targets` sentence does not name `{}`"
         for old, new, form in (("`pypi[:<dir>]`", "`pypi`", "pypi[:<dir>]"),
                                ("`npm[:<dir>]`", "`npm:<dir>`", "npm[:<dir>]"),
+                               ("`crates[:<dir>]`, ", "", "crates[:<dir>]"),
+                               ("`maven-central[:<dir>]`", "`maven-central`",
+                                "maven-central[:<dir>]"),
                                ("`github-assets`, ", "", "github-assets")):
             with self.subTest(form=form):
                 self.assertEqual(good.count(old), 1, old)
@@ -2064,10 +2107,15 @@ class InstallGuideReleaseWorkflowTest(unittest.TestCase):
                                  [fault.format(form)])
         today = good.replace(self.FORMS_SENTENCE, "`--release-targets` names where a release "
                              "publishes (`pypi`, `npm:<dir>`, `github-assets`, or none).\n")
+        # MIGRATED at CR-MDB-071 (§S6): CR-MDB-068's three-target sentence now misses the crates
+        # and maven-central forms too (was: the pypi and npm forms only).
         self.assertEqual(check_release_targets_forms(today),
-                         [fault.format("pypi[:<dir>]"), fault.format("npm[:<dir>]")])
-        prose = good.replace("(`pypi[:<dir>]`, `npm[:<dir>]`, `github-assets`, or none)",
-                             "(pypi[:<dir>], npm[:<dir>], github-assets, or none)")
+                         [fault.format("pypi[:<dir>]"), fault.format("npm[:<dir>]"),
+                          fault.format("crates[:<dir>]"), fault.format("maven-central[:<dir>]")])
+        prose = good.replace("(`pypi[:<dir>]`, `npm[:<dir>]`, `crates[:<dir>]`, "
+                             "`maven-central[:<dir>]`, `github-assets`, or none)",
+                             "(pypi[:<dir>], npm[:<dir>], crates[:<dir>], maven-central[:<dir>], "
+                             "github-assets, or none)")
         self.assertEqual(check_release_targets_forms(prose),
                          [fault.format(form) for form in RELEASE_TARGET_FORMS],
                          "a form outside a code span is not named")
@@ -3266,6 +3314,22 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
                 ("| uploaded to the release |", "| attached |"),
             "github-assets: the environment/secret cell does not say no environment and no "
             "secret": ("| no environment, no secret |", "| environment `assets`, no secret |"),
+            # CR-MDB-071 §S6: each new cell bites on its own.
+            "crates: the rehearsal cell does not say the dry-run publish":
+                ("| a dry-run publish of the crate |", "| a package of the crate |"),
+            "crates: the publish cell does not say crates.io through Trusted Publishing":
+                ("to crates.io through Trusted Publishing", "to crates.io with a token"),
+            "crates: the environment/secret cell does not say the environment crates and the "
+            "repository secret CARGO_REGISTRY_TOKEN":
+                ("repository secret `CARGO_REGISTRY_TOKEN`", "secret `CARGO_REGISTRY_TOKEN`"),
+            "maven-central: the rehearsal cell does not say the signed bundle, uploading "
+            "nothing": (", uploading nothing |", ", uploading it |"),
+            "maven-central: the publish cell does not say Maven Central through the Central "
+            "Portal": ("through the Central Portal", "through OSSRH"),
+            "maven-central: the environment/secret cell does not say the environment "
+            "maven-central and the repository secrets MAVEN_CENTRAL_USERNAME, "
+            "MAVEN_CENTRAL_PASSWORD, MAVEN_GPG_PRIVATE_KEY and MAVEN_GPG_PASSPHRASE":
+                (", `MAVEN_GPG_PRIVATE_KEY` and", " and"),
         }
         for fault, (old, new) in cells.items():
             with self.subTest(fault=fault):
@@ -3292,11 +3356,12 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
                            if line.startswith(f"| `{target}` | ") and line.count("|") == 5)
                 self.assertEqual(check_release_steps(good.replace(row + "\n", "")),
                                  [prefix + f"no row for {target}"])
-        crates = good.replace("| `github-assets` | the project's",
-                              "| `crates` | a dry run | crates.io | secret |\n"
-                              "| `github-assets` | the project's")
-        self.assertEqual(check_release_steps(crates),
-                         [prefix + "a row for 'crates', a target the renderer does not render"])
+        # MIGRATED at CR-MDB-071 (§S6): the unrendered target is cargo (was: crates, now a target).
+        cargo = good.replace("| `github-assets` | the project's",
+                             "| `cargo` | a dry run | crates.io | secret |\n"
+                             "| `github-assets` | the project's")
+        self.assertEqual(check_release_steps(cargo),
+                         [prefix + "a row for 'cargo', a target the renderer does not render"])
         header = "| Target | Rehearsal | Publish | Environment / secret |\n"
         self.assertEqual(check_release_steps(good.replace(header, "| Target | Rehearsal | Publish |\n")),
                          [prefix + "no table of target, rehearsal, publish and environment/secret"])

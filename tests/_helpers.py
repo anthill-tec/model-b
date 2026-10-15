@@ -686,6 +686,16 @@ def workflow_job(text: str, name: str) -> list[str]:
     return lines[start:end]
 
 
+def workflow_job_env(job: list[str]) -> dict:
+    """The job's own ``env:`` scalars as a dict, read at the job's key indent only (never a
+    step's ``env:``); ``{}`` when the job declares none (CR-MDB-071 §S3)."""
+    base = _indent_of(job[0]) + 2
+    for i, line in enumerate(job[1:], start=1):
+        if line.strip() and _indent_of(line) == base and re.match(r"\s*env:\s*(?:#.*)?$", line):
+            return _scalar_mapping(_nested_lines(job, i + 1, base))
+    return {}
+
+
 def workflow_job_working_directory(job: list[str]) -> str | None:
     """The job's ``defaults.run.working-directory``, or ``None`` when it declares none."""
     for i, line in enumerate(job):
