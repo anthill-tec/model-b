@@ -19,3 +19,7 @@ Every item below is re-measured at gap analysis; the spec is written then.
    BLE001, F401, PIE810, PLW1510, RUF059, SIM102 (one each).
 4. **PIE810 repeated `startswith`/`endswith`** — re-sweep `scripts/` and `tests/` (the earlier
    `test_toon_codec` and `test_watcher_launch_supervision` sites measured clean on 2026-10-02).
+5. **Measured again 2026-10-16** (`ruff --isolated`, unchanged by CR-MDB-059): `scripts/worktree-flow.py`
+   also carries SIM105 (`try`-`except FileNotFoundError`-`pass`), and `modelb_axi/cli.py` an I001 import
+   order (`tomllib` placement) that the project's own config accepts but the default profile flags.
+   Decide which profile the lint gate uses before fixing.
