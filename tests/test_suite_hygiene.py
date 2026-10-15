@@ -1100,5 +1100,84 @@ class AgentsMdAssetRootsTest(unittest.TestCase):
         self.assertEqual(agents_md_asset_root_findings(AGENTS_MD.read_text(encoding="utf-8"),
                                                        force_include_roots()), [])
 
+
+# ------------------------------------------------- CR-MDB-071 §S6 AGENTS.md release-check ----
+
+#: CR-MDB-071 §S6 — the sections where ``AGENTS.md`` describes the CLI and its verbs.
+AGENTS_CLI_SECTIONS = ("## Project Overview", "## Architecture & Data Flow", "## Key Directories",
+                       "## Development Commands")
+#: ONE normalised unit of those sections names ``modelb-axi release-check`` and the release
+#: readiness it reports.
+AGENTS_RELEASE_CHECK = (r"(?<![\w-])modelb-axi release-check(?![\w-])", r"\breadiness\b|\bready\b")
+AGENTS_NO_RELEASE_CHECK_UNIT = ("AGENTS.md: no unit where it describes the CLI names modelb-axi "
+                                "release-check and the release readiness it reports")
+
+
+def agents_md_release_check_findings(text: str) -> list[str]:
+    """CR-MDB-071 §S6: ``[AGENTS_NO_RELEASE_CHECK_UNIT]`` unless one unit of the
+    :data:`AGENTS_CLI_SECTIONS` of ``text`` (an ``AGENTS.md``) matches every regex of
+    :data:`AGENTS_RELEASE_CHECK`; ``[]`` when one does."""
+    units = [u for heading in AGENTS_CLI_SECTIONS for u in norm_units(md_section(text, heading))]
+    if any(all(re.search(rx, u) for rx in AGENTS_RELEASE_CHECK) for u in units):
+        return []
+    return [AGENTS_NO_RELEASE_CHECK_UNIT]
+
+
+class AgentsMdReleaseCheckDetectorTest(unittest.TestCase):
+    """CR-MDB-071 §S6 — :func:`agents_md_release_check_findings`, both ways on synthetic
+    text."""
+
+    OVERVIEW = ("- **`modelb_axi`** — the `modelb-axi` CLI: universal installer + project scaffolder "
+                "(`init`), and `modelb-axi release-check`, which reports a project's release "
+                "readiness.\n")
+    GOOD = ("# Repository Guidelines\n\n## Project Overview\n\n" + OVERVIEW + "\n"
+            "## Development Commands\n\n```bash\nmodelb-axi --version\n```\n\n"
+            "## Testing & QA\n\nPure unittest.\n")
+
+    def test_the_conforming_text_passes(self):
+        self.assertEqual(agents_md_release_check_findings(self.GOOD), [])
+
+    def test_todays_text_without_the_verb_is_a_finding(self):
+        todays = self.GOOD.replace(self.OVERVIEW, "- **`modelb_axi`** — the `modelb-axi` CLI: "
+                                   "universal installer + project scaffolder (`init`).\n")
+        self.assertEqual(agents_md_release_check_findings(todays), [AGENTS_NO_RELEASE_CHECK_UNIT])
+
+    def test_each_element_bites_alone(self):
+        for old, new, why in (
+                ("`modelb-axi release-check`", "`modelb-axi release-checks`", "a longer verb"),
+                ("`modelb-axi release-check`", "`release-check`", "the bare verb is not the command"),
+                ("which reports a project's release readiness", "which writes nothing",
+                 "what it reports")):
+            with self.subTest(why=why):
+                self.assertEqual(self.GOOD.count(old), 1, old)
+                self.assertEqual(agents_md_release_check_findings(self.GOOD.replace(old, new)),
+                                 [AGENTS_NO_RELEASE_CHECK_UNIT])
+
+    def test_the_verb_counts_only_where_agents_md_describes_the_cli(self):
+        bare = ("- **`modelb_axi`** — the `modelb-axi` CLI: universal installer + project scaffolder "
+                "(`init`).\n")
+        moved = self.GOOD.replace(self.OVERVIEW, bare).replace("Pure unittest.\n",
+                                                               "Pure unittest.\n\n" + self.OVERVIEW)
+        self.assertEqual(agents_md_release_check_findings(moved), [AGENTS_NO_RELEASE_CHECK_UNIT],
+                         "Testing & QA does not describe the CLI")
+        fenced = self.GOOD.replace(self.OVERVIEW, bare).replace(
+            "modelb-axi --version\n",
+            "modelb-axi --version\nmodelb-axi release-check   # read-only: the release readiness\n")
+        self.assertEqual(agents_md_release_check_findings(fenced), [],
+                         "a Development Commands line with its comment counts")
+        split = self.GOOD.replace(", which reports a project's release readiness.\n",
+                                  ".\n- It reports a project's release readiness.\n")
+        self.assertEqual(agents_md_release_check_findings(split), [AGENTS_NO_RELEASE_CHECK_UNIT],
+                         "the verb and what it reports split across two units do not count")
+
+
+class AgentsMdReleaseCheckTest(unittest.TestCase):
+    """CR-MDB-071 §S6 — the real ``AGENTS.md`` names ``modelb-axi release-check`` where it
+    describes the CLI and its verbs."""
+
+    def test_agents_md_names_modelb_axi_release_check_where_it_describes_the_cli(self):
+        self.assertEqual(agents_md_release_check_findings(AGENTS_MD.read_text(encoding="utf-8")), [])
+
+
 if __name__ == "__main__":
     unittest.main()
