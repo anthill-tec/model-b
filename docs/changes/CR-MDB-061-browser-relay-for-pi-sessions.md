@@ -75,7 +75,9 @@ Every call is `npx -y chrome-devtools-axi <verb>` with:
 - `CHROME_DEVTOOLS_AXI_SESSION=<PROJECT_TOKEN>`, the value from the project's `.env`. Each project has
   its own bridge, and its `stop` ends only its own.
 
-It never launches a browser and never uses `open`.
+It never launches a browser and never uses `open`. `<PROJECT_TOKEN>`, `<dev-url>` and `<id>` are
+values to substitute, never typed literally. `pages` prints its tabs as `pages[N]{id,url,selected}`,
+one row per tab.
 
 When `PROJECT_TOKEN` is absent, not of the form `[A-Za-z0-9._-]{1,64}`, or `default`:
 
@@ -92,6 +94,10 @@ The caller gives three lists:
 - the protected patterns: tabs never selected, evaluated or closed, such as a production install's
   port.
 
+**URLs are compared by pattern.** Chrome normalises the URLs it shows (a trailing slash, a
+redirect), so a tab "shows" a URL to open when its URL matches the project pattern the caller gives
+for that URL, never by exact string.
+
 **Protected wins everywhere.** A protected tab is never counted as already open, never chosen and
 never closed. A URL to open that matches a protected pattern is a caller error: it is reported and
 skipped.
@@ -106,7 +112,8 @@ skipped.
    - Every URL opened shows among the new ids.
    - Every "before" id is still there.
    - Otherwise, stop and report.
-   - The new ids are the skill's own tabs for this bridge. It keeps that record for the session.
+   - The new tabs are the skill's own for this bridge. It keeps that record as **(id, URL) pairs**,
+     held in the caller's working context; a restarted agent session has no record.
 4. **A `newpage` that timed out still made its tab.** Confirm it among the new ids; never retry,
    since a retry duplicates it.
 5. **Rendered text** is confirmed with `selectpage <id>` and `eval document.body.innerText.length` on
@@ -114,8 +121,11 @@ skipped.
 
 ### §S5 — Close
 
-1. **`pages`, fresh.** The tabs to close are those in the skill's record that still show, and are
-   not protected.
+1. **`pages`, fresh.** The tabs to close are those in the skill's record whose id still shows with
+   its recorded URL, and are not protected.
+   - If any recorded id shows with a different URL, or is gone while its URL shows on another id, the
+     bridge has restarted silently (the tool never reports a respawn): close nothing, and report the
+     tabs on the project's URLs for the user to close.
 2. **`closepage`** each of them.
 3. **`pages` again,** to verify. A last-tab no-op shows here as a tab still open.
 4. **`stop`.** It disconnects the project's bridge and never closes Chrome.
@@ -127,10 +137,11 @@ skipped.
 
 ### §S6 — When the bridge cannot attach
 
-The browser is detected at run time. An envelope whose `error` code is `BRIDGE_NOT_READY` means:
+The browser is detected at run time. An envelope carrying `code: BRIDGE_NOT_READY` means:
 
 - the skill's browser steps are skipped;
-- the skill reports the envelope's message and suggestions in full;
+- the skill reports the envelope's `error` line and every `help` line in full; the suggestions are
+  reported, never run (one of them suggests `open`);
 - a skipped browser never fails bootstrap or shutdown.
 
 The skill names the causes the tool reports, each with its fix:
@@ -140,6 +151,8 @@ The skill names the causes the tool reports, each with its fix:
 - **Chromium or another channel running instead of Chrome stable.**
 - **Chrome's connection prompt not accepted within the start-up timeout.**
 - **A port collision** ("code 48"): set `CHROME_DEVTOOLS_AXI_PORT` for this session only.
+- **`npx` failing to fetch `chrome-devtools-mcp`** on a cold start: report the tool's own message and
+  fix.
 
 ### §S7 — Reading the output
 
@@ -193,11 +206,20 @@ narrowed with `jq`, or redirected away.
         shutdown; the four causes and fixes.
       - **§S7:** the whole-envelope rule.
 
+      The fix cycle adds rules for: the (id, URL) record and its home; close on an id+URL match
+      only; any mismatch closes nothing and reports; URLs compared by pattern; reading ids from
+      `pages`; placeholders substituted; `code: BRIDGE_NOT_READY`, the `error` and `help` lines in
+      full, suggestions never run; the `npx` fetch cause. Phrases are anchored so a reversed
+      wording ("not in the record", "never reports … in full") fails.
+
       Each detector kind is proved both ways. Two negative gates:
       - **no `open` shown as a step:** a code span or fenced line matching
         `chrome-devtools-axi\s+open\b` outside a prohibition clause, using `PROHIBITION` and
         `_CLAUSE_END` from `tests/test_raw_runner_guard.py`;
-      - **no `chrome-devtools-axi` output shown piped or redirected.**
+      - **no `chrome-devtools-axi` output shown piped or redirected:** any single `|` after the
+        tool (not `||`), a `$(…)` capture, and any redirect, with or without a space before it;
+        fenced lines continued with `\` are joined before they are judged. The same joining
+        applies to the `open` gate.
 - [ ] **§S8.** The `AGENTS.md` row and every pin above are migrated, each marked
       `# MIGRATED at CR-MDB-061 (§S8)`, and `generator/build.py --check` is clean.
 - [ ] **Runs.**
