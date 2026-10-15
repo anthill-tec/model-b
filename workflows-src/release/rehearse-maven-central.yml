@@ -12,7 +12,8 @@
         run: |
           bundle=@@DIR@@/target/central-publishing/central-bundle.zip
           files=$(unzip -Z1 "$bundle")
-          while IFS= read -r f; do
+          mapfile -t names <<< "$files"
+          for f in "${names[@]}"; do
             case "$f" in
               *.jar|*.pom)
                 if ! printf '%s\n' "$files" | grep -qxF -- "$f.asc"; then
@@ -21,7 +22,7 @@
                 fi
                 ;;
             esac
-          done <<< "$files"
+          done
           if ! printf '%s\n' "$files" | grep -q -- '-sources\.jar$'; then
             echo "::error::$bundle: no -sources.jar"
             exit 1
