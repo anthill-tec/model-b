@@ -71,8 +71,10 @@ says so and proposes one to Crucible.
 ## Identity — ONE agent id for the whole session
 
 - Orchestrators: `<agent-type>-<project>` (e.g. `vidushi-<acronym>`, `mainline-<ACRONYM>`).
-- TDD-role agents: `CR-<ACRONYM>-NNN-<cycle>-<ROLE>` (e.g.
-  `CR-MDB-003-C1-GREEN`) — the CR id + cycle + role IS the identity.
+- TDD-role agents: `CR-<ACRONYM>-NNN-<cycle id>-<ROLE>` (e.g.
+  `CR-MDB-059-237-RED`), the cycle's server id — the CR id + cycle id + role IS
+  the identity. The role is declared with `--role`; the suffix is a readability
+  habit, never parsed.
 - Spec pre-review: `CR-<ACRONYM>-NNN-SPEC-REVIEW`, the acronym from the nearest
   registry. A VERIFY agent reviewing a drafted spec before approval registers
   as `--role report` with no cycle — none exists before `plan-file`.
@@ -171,7 +173,7 @@ Display/classification context survives as env vars:
 
 - **Plan verbs (universal — fleet-wide on all five clients), every one posting
   under a registered `--agent` id:**
-  `plan-file --cr <id> --title <t> --cycle "C1 <label>" --cycle-kind red-green --cycle "C2 <label>" --cycle-kind verify --wave <w> --agent <id>`,
+  `plan-file --cr <id> --title <t> --cycle "<label>" --cycle-kind red-green --cycle "<label>" --cycle-kind verify --wave <w> --agent <id>`,
   `cycle-activate <cycle-id> --agent <id>` / `cycle-done <cycle-id> --agent <id>`
   (legal transitions planned → active → done),
   `cr-close --commit <sha> --agent <id>`, `milestone --type <t> --agent <id>`,

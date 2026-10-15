@@ -72,7 +72,7 @@ Universal rules for ANY orchestrator, ANY project/stack. Verbose detail + failur
 - **The work is split by file, never within a file**, and each brief lists that agent's files.
 - **Each agent commits only its own files**, staged by path — it never stages everything, stashes, resets or restores: each of those reaches into another agent's work.
 - **Each agent's test runs use a private reports directory** where its stack's client takes one (`--reports`); a stack whose client does not runs its agents' tests one at a time.
-- **Agent ids are suffixed `-1` … `-N`** on the phase's id (e.g. `CR-MDB-NNN-C1-GREEN-2`).
+- **Agent ids are suffixed `-1` … `-N`** on the phase's id (e.g. `CR-MDB-059-237-GREEN-2`).
 - **The split is sized to the harness's concurrency cap** — Pi's pi-subagents `maxConcurrent`, default 4.
 - **No agent's output is verified on its own**; the CR's VERIFY cycle covers the combined result.
 - **A follow-up to an agent whose session expired goes to a fresh agent under the same id.**
