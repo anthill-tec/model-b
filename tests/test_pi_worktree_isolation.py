@@ -461,6 +461,17 @@ class WorktreeRoutingTest(WorktreeExtensionTestCase):
         out = self.drive([self.prepare("CR-FOO-001-C1-RED: write the failing tests")])
         self.assert_prepared_to(out["steps"][0], self.wt_foo, "CR-FOO-001 has .worktrees/CR-FOO-001")
 
+    def test_a_dispatch_opening_with_a_cycle_id_agent_id_goes_to_its_crs_worktree(self):
+        # CR-MDB-059 §S4: a TDD-role id carries the cycle's server id, CR-<ACRONYM>-NNN-<cycle id>-<ROLE>.
+        out = self.drive([
+            self.prepare("CR-BAR-002-237-GREEN: implement", "a1"),
+            self.prepare("CR-FOO-001-241-RED: write the failing tests", "a2"),
+        ])
+        self.assert_prepared_to(out["steps"][0], self.wt_bar,
+                                "CR-BAR-002-237-GREEN routes by its CR id, not its cycle id")
+        self.assert_prepared_to(out["steps"][1], self.wt_foo,
+                                "CR-FOO-001-241-RED routes to its own CR's worktree")
+
     def test_the_repository_is_the_one_containing_base_cwd(self):
         out = self.drive([self.prepare("CR-BAR-002 verify", base_cwd=self.repo / "src")])
         self.assert_prepared_to(out["steps"][0], self.wt_bar, "baseCwd is a subdirectory of the repo")

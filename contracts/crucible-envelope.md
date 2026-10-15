@@ -231,7 +231,7 @@ never passed a cycle id. Under the current one the orchestrator still drives
 ### Universal plan verbs (fleet-wide)
 Filed by the orchestrator, on ALL stack clients:
 
-- `plan-file --cr <id> --title <t> --cycle "C1 <label>" --cycle-kind red-green --cycle "C2 <label>" --cycle-kind verify --wave <w> --agent <id>`
+- `plan-file --cr <id> --title <t> --cycle "<label>" --cycle-kind red-green --cycle "<label>" --cycle-kind verify --wave <w> --agent <id>`
   — wave resolves `--wave` > `$WORKFLOW_WAVE`; track from `$WORKFLOW_ROLE`. Cycle ids are
   SERVER-ASSIGNED.
 - `--cycle` is repeatable and each occurrence REQUIRES its own `--cycle-kind`
@@ -264,7 +264,7 @@ Filed by the orchestrator, on ALL stack clients:
   (exempt from pruning until that release records) — omit it unless the gate really gates a release.
 
 ### Agent-naming header (bundled agent-naming skill)
-- TDD-ROLE agents: `CR-<PROJ>-NNN-<cycle>-<ROLE>` (e.g. `CR-MDB-009-C1-GREEN`) — a
+- TDD-ROLE agents: `CR-<PROJ>-NNN-<cycle id>-<ROLE>` (e.g. `CR-MDB-059-237-GREEN`) — a
   readability habit, never a parsed key. The role itself is declared with `--role` at
   registration and is never inferred from the id (see *Register surface*).
 - Orchestrator ops: `<agent-type>-<project>` (Model B solo: `vidushi-mdb`).

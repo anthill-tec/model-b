@@ -32,6 +32,7 @@ Universal rules for ANY orchestrator, ANY project/stack. Verbose detail + failur
 
 ## Cycle discipline
 - **The Crucible board IS the task list — there is no separate todo list.** The plan is filed complete in Crucible at feature start; its cycles are the resume spine, and a session resumes by reading the board (`plans`, `next`, the active cycle).
+- **The orchestrator reads and writes the board only through client verbs, never the HTTP API.** Where no verb fits, it says so and proposes one to Crucible.
 - **A cycle = ONE RED→GREEN unit** (never split RED and GREEN into two cycles).
 - The plan holds IMPLEMENTATION cycles + VERIFY + FIX cycles — NOT design/admin work.
 - **A VERIFY finding the user approves for fixing is fixed in its own FIX cycle** (`cycle-add --kind fix`), never inside the VERIFY cycle.
@@ -52,6 +53,7 @@ Universal rules for ANY orchestrator, ANY project/stack. Verbose detail + failur
 - **After approval the FIRST action is the RED dispatch** — no orchestrator pre-flight build or clean; agents own build and test.
 - **The brief is the orchestrator's paramount duty** — it is the accuracy lever, and it never compromises the workflow rules or the CR spec. It guides and does not over-specify: no dictated mechanisms, test names or code.
 - **The brief names the spec and the cycle's scope, points to the rules that bind the phase, and states the phase's boundaries** (plus the measured baseline and agent id / role / cycle); the agent definition carries the how.
+- **A brief states the scope, the approved spec (the spec wins) and the definition's standard procedure.** The orchestrator adds no extra proof steps, because VERIFY and the gate catch drift.
 - **Every brief opens with an Identity block pinning the agent id** (without it agents self-name and vanish from the board), and its step 1 is the exact register command — confirm the registration early in the agent's transcript. Register only the assigned id: no probe or scratch agents on the live board.
 - **Agents commit the code they write.** The orchestrator never resets and recommits an agent's commits — the agent's commit range is the phase's record.
 - **A phase is accepted from the agent's report, its ingested run on the board, and the phase's commit range** (`<base>..<head>`; a RED commit is test-only). No suite is re-run and no work re-checked between phases — only at gates or after a crash.
@@ -70,7 +72,7 @@ Universal rules for ANY orchestrator, ANY project/stack. Verbose detail + failur
 - **The work is split by file, never within a file**, and each brief lists that agent's files.
 - **Each agent commits only its own files**, staged by path — it never stages everything, stashes, resets or restores: each of those reaches into another agent's work.
 - **Each agent's test runs use a private reports directory** where its stack's client takes one (`--reports`); a stack whose client does not runs its agents' tests one at a time.
-- **Agent ids are suffixed `-1` … `-N`** on the phase's id (e.g. `CR-MDB-NNN-C1-GREEN-2`).
+- **Agent ids are suffixed `-1` … `-N`** on the phase's id (e.g. `CR-MDB-059-237-GREEN-2`).
 - **The split is sized to the harness's concurrency cap** — Pi's pi-subagents `maxConcurrent`, default 4.
 - **No agent's output is verified on its own**; the CR's VERIFY cycle covers the combined result.
 - **A follow-up to an agent whose session expired goes to a fresh agent under the same id.**
@@ -117,6 +119,7 @@ Universal rules for ANY orchestrator, ANY project/stack. Verbose detail + failur
 - Never skip RED — even for chores/lint (RED = a real failing test; a compile failure IS a RED). A refactor or an extraction still has a real RED — the test or harness change, and tests for the extracted code's consumption contract — captured and reported.
 - Never merge without explicit approval — present VERIFY findings and WAIT.
 - **Never close or merge until the FULL pre-merge gate is green**, workspace-wide obligations included — a red outside your module is still yours.
+- **A test leak** — state one test leaves for another: an environment variable, a stub, a global — is fixed at its source, never in the tests it breaks.
 - **Every regression report lists each ignored/skipped test with its reason**, then categorises them (env-gated / blocked on a future CR / structural); a bare skipped count is insufficient.
 - **A gate whose output you will read runs in the foreground** with a long timeout — never background it and spawn a waiter. When something needs cleanup, confirm the process is gone, not just that the stop reported success.
 - **Verify a gate from its ingested results on the board**, never from stdout counts.
@@ -133,8 +136,40 @@ Universal rules for ANY orchestrator, ANY project/stack. Verbose detail + failur
 - A project's `AGENTS.md` describes what the code does; CR numbers and shipped-when status belong on the board, never in its prose.
 
 ## Close-out
-- Close-out is two steps: before the merge, the spec's `**Status:**` flip; after it, `cr-close --commit <merge sha> --agent <id>`, which transitions the CR's tracking state to COMPLETED on the Crucible board and posts `cr-merged` (it takes the merge's sha, so it waits for the merge commit). Do NOT hand-edit anything else for it: the README is RELEASE-branch only (version + CI badges) per the project's rules, NEVER a per-CR delivery entry in develop, and NEVER a track's job (parallel tracks editing the shared README collide). Never a `## Close-out` section in the CR spec. Run the stack's `check-cr-close` gate where the stack ships one.
-- **Read the Crucible plan before `cycle-done`, proposing a merge, `finish` or `cr-close`** — every cycle, VERIFY included, must be done.
+The CR's close-out order:
+
+1. Merge `develop` into the feature branch until behind=0.
+2. Run the pre-merge gate while the plan's last cycle is still active. That cycle is the VERIFY
+   cycle, or the last `fix` cycle appended after it. The gate runs under the orchestrator's own
+   id, bound to that cycle:
+   - pass `--cycle <last cycle>` on the gate's first run;
+   - where that verb takes no `--cycle`, first `register --role ORCHESTRATOR --cycle <last>`;
+   - later runs inherit the binding.
+3. `cycle-done`.
+4. `unregister`, then `register`, of the orchestrator, which clears the binding.
+5. The merge sign-off.
+6. The spec's `**Status:**` flip, a docs-only commit and still the last commit on the branch.
+7. The merge.
+8. `cr-close`.
+
+Two loops back into a fix cycle:
+
+- **A red gate** is ingested, then `cycle-done` closes the cycle with it, and `unregister` then
+  `register` clears the orchestrator's binding. A `fix` cycle is appended
+  (`cycle-add --kind fix`), and the gate runs again inside that new last cycle.
+- **A sign-off that sends changes back** after `cycle-done` follows the same path.
+
+Every other orchestrator run stays unbound:
+
+- baselines;
+- the post-merge develop gate;
+- the release's own verification gate, which runs under `--release` (`git-workflow` § Releases).
+
+The rest of the close-out:
+
+- Steps 6 and 8 bracket the merge: before the merge, the spec's `**Status:**` flip; after it, `cr-close --commit <merge sha> --agent <id>`, which transitions the CR's tracking state to COMPLETED on the Crucible board and posts `cr-merged` (it takes the merge's sha, so it waits for the merge commit). Do NOT hand-edit anything else for it: the README is RELEASE-branch only (version + CI badges) per the project's rules, NEVER a per-CR delivery entry in develop, and NEVER a track's job (parallel tracks editing the shared README collide). Never a `## Close-out` section in the CR spec. Run the stack's `check-cr-close` gate where the stack ships one.
+- **Read the Crucible plan before the last cycle's `cycle-done`** (every earlier cycle done), **and before proposing a merge, `finish` or `cr-close`** (every cycle, VERIFY included, done).
+- **A release-fix CR** follows steps 2–5 and 8: it has no feature branch to sync or merge, and its `cr-close` takes its last commit on the release branch (`git-workflow` § Releases).
 - **The close-out's `**Status:**` flip is the LAST commit on the feature branch** — after the merge, touch zero docs for the shipped CR (`cr-close` is a board write, not a doc edit). Run a post-merge develop gate only when develop moved since the branch point (or several CRs land together); never re-run a gate after a docs-only sync.
 
 ## Investigation discipline

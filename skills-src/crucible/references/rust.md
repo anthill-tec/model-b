@@ -11,5 +11,5 @@ Model B deltas only:
 - Client: `~/.crucible/clients/rust-crucible.py` — Crucible's installed
   client, listed in `~/.crucible/crucible-clients.json`; never a checkout of
   the Crucible project (see the `crucible` skill for why).
-- Agent naming: `CR-<ACRONYM>-NNN-<cycle>-<PHASE>` for TDD-phase agents;
+- Agent naming: `CR-<ACRONYM>-NNN-<cycle id>-<ROLE>` for TDD-role agents;
   `<agent-type>-<project>` for orchestrators. Pass `--agent` explicitly.

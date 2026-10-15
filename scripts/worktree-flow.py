@@ -97,7 +97,6 @@ Examples:
 import argparse
 import json
 import os
-import re
 import shutil
 import subprocess
 import sys
@@ -286,7 +285,8 @@ _PHASE_TOKENS = (
 def _phase_from_log(repo, base, branch):
     """Infer a CR branch's latest *committed* Crucible phase from its commit-message
     convention. Read-only + git-derived — no stored state (honours the no-sidecar
-    invariant). Returns (phase, cycle, commits_ahead, latest_subject).
+    invariant). Returns (phase, commits_ahead, latest_subject); the board holds a CR's
+    cycles (CR-MDB-059 §S4).
 
     Phase is the latest COMMITTED RED/GREEN/RED-fix/close-out. VERIFY is read-only and
     usually leaves no commit, so a GREEN tip often means 'GREEN done, VERIFY next'.
@@ -294,7 +294,7 @@ def _phase_from_log(repo, base, branch):
     out = _git_out(["log", f"{base}..{branch}", "--format=%s"], repo)
     subjects = [s for s in out.splitlines() if s.strip()]
     if not subjects:
-        return ("started — RED pending", None, 0, "")
+        return ("started — RED pending", 0, "")
     latest = subjects[0]
     # Scan only the segment after the first ':' so scope names don't false-match.
     seg = latest.split(":", 1)[1].lower() if ":" in latest else latest.lower()
@@ -310,9 +310,7 @@ def _phase_from_log(repo, base, branch):
             phase = "RED"
         elif latest.startswith(("docs(", "chore(")):
             phase = "docs/chore"
-    m = re.search(r"\bC(\d+)\b", latest)
-    cycle = f"C{m.group(1)}" if m else None
-    return (phase, cycle, len(subjects), latest)
+    return (phase, len(subjects), latest)
 
 
 def _is_clean(worktree_path):
@@ -582,7 +580,7 @@ def cmd_status(args):
         b = "" if behind is None else str(behind)
         print(f"{role:<12}{branch:<48}{head:<10}{a:>6}{b:>7}  {state}", file=sys.stderr)
         cr_id = track = None
-        phase = cycle = subject = None
+        phase = subject = None
         commits_ahead = None
         if not is_main:
             cr_id = os.path.basename(wt["path"].rstrip("/"))
@@ -591,18 +589,17 @@ def cmd_status(args):
                 print(f"             track: {track}", file=sys.stderr)
             print(f"             path: {wt['path']}", file=sys.stderr)
             if wt["branch"]:
-                phase, cycle, commits_ahead, subject = _phase_from_log(main_wt, develop, wt["branch"])
-                cyc = f" {cycle}" if cycle else ""
+                phase, commits_ahead, subject = _phase_from_log(main_wt, develop, wt["branch"])
                 tail = ""
                 if subject:
                     subj = subject if len(subject) <= 76 else subject[:75] + "…"
                     tail = f'  last: "{subj}"'
-                print(f"             phase: {phase}{cyc}  ({commits_ahead} commit(s) ahead){tail}",
+                print(f"             phase: {phase}  ({commits_ahead} commit(s) ahead){tail}",
                       file=sys.stderr)
         wt_rows.append({
             "role": role, "branch": branch, "head": head, "ahead": ahead,
             "behind": behind, "state": state, "cr": cr_id, "track": track,
-            "path": wt["path"], "phase": phase, "cycle": cycle,
+            "path": wt["path"], "phase": phase,
             "commits_ahead": commits_ahead, "last_subject": subject,
         })
     _render_request_board(main_wt)

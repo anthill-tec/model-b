@@ -8,7 +8,7 @@
  * Every child session loads pi-subagents too and republishes, then deletes,
  * the global service entry, so a `globalThis` lookup inside `prepare` would
  * miss. `prepare` sends a child to the registered git worktree `.worktrees/<CR>`
- * of the CR id that OPENS the dispatch description (`CR-MDB-039 C1 RED`; a CR
+ * of the CR id that OPENS the dispatch description (`CR-MDB-039-237-RED`; a CR
  * id elsewhere does not route); otherwise to the entered root; otherwise
  * nowhere (the child keeps the parent's cwd). A spec pre-review is the
  * exception (CR-MDB-046 §S4): a dispatch whose description opens with its id

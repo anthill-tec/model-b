@@ -57,6 +57,7 @@
 - Clean build before commit; GREEN before commit — never commit in RED.
 - Conventional commits (`type(scope): desc`); no AI attribution.
 - No empty catch blocks, no unjustified suppressed warnings, no dead/commented-out code.
+- **A test leak** — state one test leaves for another: an environment variable, a stub, a global — is fixed at its source, never in the tests it breaks.
 - Language-specific rules → your stack standards file.
 
 ## Consequences

@@ -89,16 +89,32 @@ that empties is a signal, not a decision.
 - **CRs are not release gates.** A CR describes work; a release describes a boundary. Expressing
   "the wave must finish" as dependency edges on a release CR duplicates what the draining queue
   already says, and it hands a decision that is the human's to a row on a board.
-- **Running a CR during a release is possible and HIGHLY DISCOURAGED.** The release branch exists
-  to be verified and tagged; putting unreviewed work on it defeats that. Every dependency lands
-  before the release starts. Taking the exception needs explicit approval and a recorded reason.
+- **Running a CR during a release is possible and HIGHLY DISCOURAGED** for new, unplanned work.
+  The release branch exists to be verified and tagged; putting unreviewed work on it defeats
+  that. Every dependency lands before the release starts. Taking that exception needs explicit
+  approval and a recorded reason. A release fix is the rule, and needs no extra approval.
+- **A release fix is a CR.** A failure the release's own verification finds (the rehearsal, the
+  regression, the gate) is fixed by a CR filed into that release, with a plan and cycle-bound
+  agents. It commits directly on the release branch, never on a separate bugfix branch, and
+  reaches develop at `finish`.
+  - Its runs are cycle runs.
+  - Its `cr-close` takes the fix's last commit on the release branch.
+- **The test-hygiene CR.** Every release carries a test-hygiene CR, sequenced last in the
+  release's final wave. It sweeps:
+  - the suite's analyzer findings;
+  - its flaky, slow or network-bound tests;
+  - its skip reasons and duplicated helpers;
+  - the hygiene notes the release's CRs deferred.
+
+  Because it is last, the wave has not drained while it is open, so the release does not start.
+  No dependency edge is added; CRs stay non-gates.
 - **The record comes after the fact**, never before: the release is proposed (a label and a
   target), approved by a human, executed, and only then recorded — a milestone is a record, not
   an event.
-- **The release's verification runs are filed under the release.** The `regression` and the
-  `pre-merge-gate` run on the release branch are filed with `--release <label>` — the release
-  the roadmap declares — as release verification instead of a cycle's runs, and never beside
-  `--cycle`.
+- **The release's verification runs are filed under the release.** The release's own
+  `regression` and `pre-merge-gate` on the release branch stay `--release` runs from an unbound
+  id: filed with `--release <label>` — the release the roadmap declares — as release
+  verification instead of a cycle's runs, and never beside `--cycle`.
 
 **Read release readiness with `modelb-axi release-check`**: run it from the project root before
 `git flow release start`, and fix what it reports missing. It reads the rendered workflow, the

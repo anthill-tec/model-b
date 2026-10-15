@@ -10,7 +10,9 @@ dashboard — the board. The LIFECYCLE is universal — register first, ingest
 every run, unregister last — but the VERB SURFACE differs per stack: read your
 stack's reference file before running anything. The client runs the tests AND
 ingests in one call under your agent id. Never hand-roll `curl`; the client is
-the interface, and every stack has one.
+the interface, and every stack has one. The orchestrator reads and writes the
+board only through client verbs, never the HTTP API. Where no verb fits, it
+says so and proposes one to Crucible.
 
 ## Connection — the board is project configuration
 
@@ -69,8 +71,10 @@ the interface, and every stack has one.
 ## Identity — ONE agent id for the whole session
 
 - Orchestrators: `<agent-type>-<project>` (e.g. `vidushi-<acronym>`, `mainline-<ACRONYM>`).
-- TDD-role agents: `CR-<ACRONYM>-NNN-<cycle>-<ROLE>` (e.g.
-  `CR-MDB-003-C1-GREEN`) — the CR id + cycle + role IS the identity.
+- TDD-role agents: `CR-<ACRONYM>-NNN-<cycle id>-<ROLE>` (e.g.
+  `CR-MDB-059-237-RED`), the cycle's server id — the CR id + cycle id + role IS
+  the identity. The role is declared with `--role`; the suffix is a readability
+  habit, never parsed.
 - Spec pre-review: `CR-<ACRONYM>-NNN-SPEC-REVIEW`, the acronym from the nearest
   registry. A VERIFY agent reviewing a drafted spec before approval registers
   as `--role report` with no cycle — none exists before `plan-file`.
@@ -155,10 +159,9 @@ Still true either way: no env var carries a cycle id.
   to the cycle it belongs to. Order is: run → ingest → `cycle-done`.
 - **A stale cycle binding survives re-registration.** Re-running `register` for an
   id already bound to a finished cycle does NOT rebind it; every workflow verb then
-  fails 409. Clear it with `unregister` THEN `register` — two calls, not one. An
-  ORCHESTRATOR/`report` id that never binds avoids this entirely, which is why a
-  long-running orchestrator should register unbound and let its dispatched agents
-  carry the cycle bindings.
+  fails 409. Clear it with `unregister` THEN `register` — two calls, not one. The
+  pre-merge gate is the orchestrator's one bound run, cleared after `cycle-done` by
+  `unregister` THEN `register`; its dispatched agents carry every other cycle binding.
 
 Display/classification context survives as env vars:
 
@@ -170,7 +173,7 @@ Display/classification context survives as env vars:
 
 - **Plan verbs (universal — fleet-wide on all five clients), every one posting
   under a registered `--agent` id:**
-  `plan-file --cr <id> --title <t> --cycle "C1 <label>" --cycle-kind red-green --cycle "C2 <label>" --cycle-kind verify --wave <w> --agent <id>`,
+  `plan-file --cr <id> --title <t> --cycle "<label>" --cycle-kind red-green --cycle "<label>" --cycle-kind verify --wave <w> --agent <id>`,
   `cycle-activate <cycle-id> --agent <id>` / `cycle-done <cycle-id> --agent <id>`
   (legal transitions planned → active → done),
   `cr-close --commit <sha> --agent <id>`, `milestone --type <t> --agent <id>`,
@@ -189,7 +192,8 @@ Display/classification context survives as env vars:
   in the same call (which makes `--wave` and `--title` required); omitted, the plan
   is filed and nothing is claimed on the roadmap.
 - **Gate verb — `gate-run`, which replaces the legacy `gate-report`.**
-  `gate-run --intent <goal> --agent <id>` STREAMS the no-mistakes pipeline; the
+  `gate-run --intent <goal> --agent <id>` STREAMS the no-mistakes pipeline. The
+  intent tells the gate not to stop any server it did not start. The
   retired one-shot `gate-report` still answers but emits a `prefer-gate-run`
   discouragement warning (Crucible #1369). The steps a project never runs are
   declared in its `crucible.toml` as `[gate] skip` (a Model B project declares
@@ -221,8 +225,8 @@ place in it changes.
   narrow the answer.
 - **Write verbs are the orchestrator's only** (Mainline in multi mode), and each posts under a
   registered `--agent` id like every other workflow verb:
-  - `cr-plan --cr <id> --title <t> --release <label> --wave <w> --agent <id>` records the
-    CR's title, release and wave.
+  - `cr-plan --cr <id> --title <t> --release <label> --wave <w> --points <n> --agent <id>`
+    records the CR's title, release, wave and story points.
   - `cr-depends --cr <id> --on <cr,cr> --agent <id>` declares what the CR depends on
     (`--on ""` declares that it depends on nothing).
   - `wave-sequence --release <label> --wave <w> --crs <cr,cr> --agent <id>` orders a wave;
@@ -294,9 +298,9 @@ emits exactly one TOON envelope on stdout — `{axi:{verb, ok, …result fields�
 context, warnings[]}}` — through the shared `_crucible_axi.py`. The human
 line AND the test output go to stderr; `warnings[]` is always present (empty
 when clean); `pre-merge-gate` STREAMS its progress. Parse stdout as the
-machine channel. GETs also serve compact TOON (`?fmt=toon` /
-`Accept: text/toon`), and JSON replies carry `help` hints — read them; they
-name the next step.
+machine channel. The board answers the clients in compact TOON, with `help`
+hints naming the next step: that is what the clients receive, and the envelope
+carries it to you.
 
 ## Who runs what (roles — the boundary the output can't tell you)
 
@@ -309,10 +313,9 @@ name the next step.
   - Its spec pre-review (design phase, before `plan-file`) is also a VERIFY-agent
     duty, with no runs and no ingest: it registers `report`, reads, reports
     findings, unregisters.
-- **ORCHESTRATOR** — runs the close-out gate itself: `regression` (with
-  coverage) PLUS the e2e suite, under its OWN identity, with the verify cycle
-  activated (`cycle-activate`) so the gate attaches as that cycle's LAST
-  linked run — then the user-gated merge. (sub-agent procedure —
+- **ORCHESTRATOR** — runs the pre-merge gate itself: `regression` (with
+  coverage) PLUS the e2e suite, under its OWN identity, in the plan's last cycle,
+  bound with `--cycle` — then the user-gated merge. (sub-agent procedure —
   `~/.agents/skills/model-b/references/sub-agent-procedure.md` — TDD step 6:
   the full suite is orchestrator-owned.)
 - **The ORCHESTRATOR's own runs** — a baseline, the pre-merge gate's
