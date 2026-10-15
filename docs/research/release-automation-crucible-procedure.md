@@ -223,6 +223,15 @@ swept before the release steps begin: analyzer findings in the test tree, flaky,
 tests, skip reasons, duplicated helpers, and the hygiene notes its CRs deferred. For 1.0.0 that CR is
 CR-MDB-052 (moved from 1.1.0). The rule reaches the skills through CR-MDB-059.
 
+## Release 1.0.0 waits for Crucible 0.4.0 (user ruling, 2026-10-15)
+
+CR-MDB-073 (coverage for the package and every script) needs Crucible's CR-CRU-192, which ships in
+Crucible 0.4.0: with no `--cov-source` the python client passes no `--source`, so the project's own
+coverage config decides, and it combines parallel data files before reporting. Without it the scripts
+the tests run as subprocesses cannot be measured. CR-MDB-073 stays whole in release 1.0.0, so 1.0.0
+waits until Crucible 0.4.0 is released and installed. The 0.4.0 client changes therefore reach Model B
+before 1.0.0, through a doc-sync CR filed into 1.0.0 when 0.4.0's release notes arrive.
+
 ## What this means for Model B
 
 Model B runs Crucible's shape in its own `release.yml` since 2026-09-24: `create-release` →

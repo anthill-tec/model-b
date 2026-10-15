@@ -6,7 +6,7 @@ Gap analysis, the spec and its pre-review happen in order when this CR starts.
 **Priority:** P1 — release 1.0.0, wave 2; before the release's test-hygiene CR (CR-MDB-052).
 **Depends on:** CR-MDB-059, which defines the pre-merge gate's order (board-authoritative: read
 `queue`); and Crucible 0.4.0 installed, for CR-CRU-192 (Sandesh #1454/#1455). Model B 1.0.0 waits
-for it (user ruling 2026-10-15).
+for it (`docs/research/release-automation-crucible-procedure.md`).
 **Labels:** tests, coverage, gate
 **Design reference:** PRD D5 (the pre-merge gate, AMENDED 2026-10-15).
 
