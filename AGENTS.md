@@ -9,7 +9,7 @@ Project-level contract for every agent/session in this repo. `CLAUDE.md` is a sy
 - **Skill bundles** (`skills-src/`) — Markdown instruction packs consumed by agent harnesses.
 - **Generated sub-agent definitions** (`generator/`) — 16 stack×role TDD agents rendered from templates.
 - **Portable lifecycle hooks** (`hooks-src/`) — one neutral schema compiled into per-harness wiring.
-- **`modelb_axi`** — the `modelb-axi` CLI: universal installer (deploys the above into a user's harness dirs) + project scaffolder (`init`).
+- **`modelb_axi`** — the `modelb-axi` CLI: universal installer (deploys the above into a user's harness dirs) + project scaffolder (`init`), and `modelb-axi release-check`, a read-only verb that reports a project's release readiness (its rendered workflow, version sources, prerequisites and, through `gh`, its environments and secrets).
 
 Design contract: `docs/research/PRD-model-b-rationalization.md` (decisions **D1–D10**). Evidence base: `audits/2026-07-20-*.md` + `docs/research/DN-rationalization-plan-review.md`. Ontology: `docs/research/DN-model-b-language.md` (LOCKED, see Workflow Rules). Everything is authored repo-locally and reaches a user's machine only through the installer (D9/D10), which writes under `~/.agents`.
 

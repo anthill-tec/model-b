@@ -376,6 +376,16 @@ This re-renders the release workflow under `.github/` for the project's stacks a
 targets. Add `--release-targets` to change the targets too. Files you have edited are left
 alone.
 
+Before a release, check what the project still lacks. From the project's root, run:
+
+```sh
+modelb-axi release-check
+```
+
+This reports the release readiness: each item is `ready`, `missing` or `unknown`. It reads the
+rendered workflow, the version sources and, through `gh`, the repository's environments and
+secrets. It writes nothing, and exits non-zero while anything is missing.
+
 ## Project trust
 
 Pi loads a project's own settings, extensions, skills, prompts and themes (`.pi/settings.json`,
