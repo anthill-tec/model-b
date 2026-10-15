@@ -219,7 +219,7 @@ without the phrase) once per detector kind. The gates may share one table-driven
         - `generator/templates/*.tmpl` and `generator/stacks/*.toml`;
         - `AGENTS.md`;
         - `contracts/crucible-envelope.md`.
-      - **It fails on** `\bC<n>\b`, `--cycle\s+"C\d+`, `\bC\d+ <label>`,
+      - **It fails on** `\bC<n>`, `--cycle\s+"C\d+`, `\bC\d+ <label>`,
         ``CR-[^\s`]*-[CF]\d+-(?:RED|GREEN|VERIFY|FIX)\b``, and, in `AGENTS.md` only,
         `\bC\d+ (?:RED|GREEN|VERIFY|FIX)\b`.
       - **It is proved both ways.**
