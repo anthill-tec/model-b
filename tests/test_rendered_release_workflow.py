@@ -347,20 +347,34 @@ _SETUP_FULL = """\
 """
 
 #: CR-MDB-071 §S3 — a conforming bundle check (``unzip -Z1`` lists the bundle): every
-#: ``.jar``/``.pom`` has its ``.asc``; a ``-sources.jar`` and a ``-javadoc.jar`` are there.
+#: ``.jar``/``.pom`` has its ``.asc``; a ``-sources.jar`` and a ``-javadoc.jar`` are there; each
+#: failure is an ``::error::`` line naming the bundle and what is missing.
+# MIGRATED at CR-MDB-071 (§S3, VERIFY F3): the entries are read line by line (was: a `for` over
+# an unquoted `$(...)`, which word-splits and glob-expands each name), and a missing
+# `-sources.jar` or `-javadoc.jar` is an `::error::` line (was: a silent `grep -q`).
 _BUNDLE_CHECK = """\
       - name: The Central bundle holds the signatures, sources and javadoc
         run: |
           bundle={dir}/target/central-publishing/central-bundle.zip
           files=$(unzip -Z1 "$bundle")
-          for f in $(printf '%s\\n' "$files" | grep -E '\\.(jar|pom)$'); do
-            if ! printf '%s\\n' "$files" | grep -qxF "$f.asc"; then
-              echo "::error::$bundle: $f has no .asc signature"
-              exit 1
-            fi
-          done
-          printf '%s\\n' "$files" | grep -q -- '-sources\\.jar$'
-          printf '%s\\n' "$files" | grep -q -- '-javadoc\\.jar$'
+          while IFS= read -r f; do
+            case "$f" in
+              *.jar|*.pom)
+                if ! printf '%s\\n' "$files" | grep -qxF -- "$f.asc"; then
+                  echo "::error::$bundle: $f has no .asc signature"
+                  exit 1
+                fi
+                ;;
+            esac
+          done <<< "$files"
+          if ! printf '%s\\n' "$files" | grep -q -- '-sources\\.jar$'; then
+            echo "::error::$bundle: no -sources.jar"
+            exit 1
+          fi
+          if ! printf '%s\\n' "$files" | grep -q -- '-javadoc\\.jar$'; then
+            echo "::error::$bundle: no -javadoc.jar"
+            exit 1
+          fi
 """
 
 _CREATE_RELEASE = """\
@@ -1370,6 +1384,21 @@ def bundle_entries(drop: tuple[str, ...] = (), without: str | None = None) -> li
             for suffix in ("", ".asc", ".md5", ".sha1") if artifact + suffix not in drop]
 
 
+#: CR-MDB-071 §S3 (VERIFY F3) — artifacts whose names a shell would split or expand: one holding a
+#: space, one holding a glob character. :data:`GLOB_DECOY` is a file in the working directory that
+#: the glob name matches, so a loop that glob-expands names checks the decoy instead.
+SPACED_ARTIFACT = f"{_COORDINATES} extra.jar"
+GLOB_ARTIFACT = f"{_COORDINATES}-*.jar"
+GLOB_DECOY = f"{_COORDINATES}-shaded.jar"
+ODD_ARTIFACTS = (SPACED_ARTIFACT, GLOB_ARTIFACT)
+
+
+def error_lines(result: subprocess.CompletedProcess) -> list[str]:
+    """The ``::error::`` workflow-command lines a step printed."""
+    return [line for line in (result.stdout + result.stderr).splitlines()
+            if line.startswith("::error::")]
+
+
 def write_central_bundle(path: Path, entries: list[str]) -> None:
     """A zip at ``path`` holding ``entries`` (each a line of fixture text)."""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -1397,37 +1426,82 @@ class MavenBundleCheckExecutionTest(_ExecutionCase):
                           if any(MAVEN_REHEARSE_FLAGS in line for line in step["run"]))
             yield directory, job, steps[deploy + 1]
 
-    def _run(self, directory: str, job, check, entries) -> subprocess.CompletedProcess:
-        repo = self.repo({})
+    def _run(self, directory: str, job, check, entries,
+             files: dict[str, str] | None = None) -> subprocess.CompletedProcess:
+        repo = self.repo(files or {})
         if entries is not None:
             write_central_bundle(repo / directory / CENTRAL_BUNDLE, entries)
         return self.run_steps(job, [check], repo, self.env(repo))
+
+    def assert_error(self, result: subprocess.CompletedProcess, directory: str, *named: str):
+        """VERIFY F3: the step fails with exactly one ``::error::`` line, naming the bundle and
+        each of ``named``."""
+        output = result.stdout + result.stderr
+        self.assertNotEqual(result.returncode, 0, output)
+        errors = error_lines(result)
+        self.assertEqual(len(errors), 1, f"one ::error:: line; got {output!r}")
+        for name in (f"{directory}/{CENTRAL_BUNDLE}", *named):
+            self.assertIn(name, errors[0], f"the ::error:: line names {name!r}")
+
+    @staticmethod
+    def odd_entries(odd: str, signed: bool) -> list[str]:
+        """A complete bundle plus the artifact ``odd``, with its ``.asc`` when ``signed``."""
+        return bundle_entries() + [odd] + ([odd + ".asc"] if signed else [])
 
     def test_a_complete_bundle_passes(self):
         for directory, job, check in self._checks():
             with self.subTest(dir=directory):
                 result = self._run(directory, job, check, bundle_entries())
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual(error_lines(result), [])
 
+    # MIGRATED at CR-MDB-071 (§S3, VERIFY F3): the failure is its ::error:: line naming the bundle
+    # and the unsigned artifact (was: any non-zero exit, which a missing tool also gives).
     def test_an_artifact_without_its_signature_fails(self):
         for directory, job, check in self._checks():
             for artifact in BUNDLE_ARTIFACTS:
                 with self.subTest(dir=directory, unsigned=artifact):
                     result = self._run(directory, job, check,
                                        bundle_entries(drop=(artifact + ".asc",)))
-                    self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assert_error(result, directory, artifact, ".asc")
 
+    # MIGRATED at CR-MDB-071 (§S3, VERIFY F3): the failure is its ::error:: line naming the bundle
+    # and the missing jar (was: any non-zero exit, from a silent `grep -q`).
     def test_a_bundle_without_sources_or_javadoc_fails(self):
         for directory, job, check in self._checks():
-            for jar in (SOURCES_JAR, JAVADOC_JAR):
+            for jar, kind in ((SOURCES_JAR, "-sources.jar"), (JAVADOC_JAR, "-javadoc.jar")):
                 with self.subTest(dir=directory, missing=jar):
                     result = self._run(directory, job, check, bundle_entries(without=jar))
-                    self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assert_error(result, directory, kind)
 
+    # MIGRATED at CR-MDB-071 (§S3, VERIFY F3): the failure names the bundle (was: any non-zero
+    # exit, which a missing `unzip` also gives).
     def test_no_bundle_fails(self):
         for directory, job, check in self._checks():
             with self.subTest(dir=directory):
-                self.assertNotEqual(self._run(directory, job, check, None).returncode, 0)
+                result = self._run(directory, job, check, None)
+                output = result.stdout + result.stderr
+                self.assertNotEqual(result.returncode, 0, output)
+                self.assertIn(f"{directory}/{CENTRAL_BUNDLE}", output)
+
+    def test_names_holding_a_space_or_a_glob_character_are_checked_whole(self):
+        # VERIFY F3: each entry name is one artifact — never word-split, never glob-expanded
+        # (the decoy on disk is what a glob-expanding loop would check instead).
+        for directory, job, check in self._checks():
+            for odd in ODD_ARTIFACTS:
+                with self.subTest(dir=directory, signed=odd):
+                    result = self._run(directory, job, check, self.odd_entries(odd, True),
+                                       {GLOB_DECOY: "decoy\n"})
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assertEqual(error_lines(result), [])
+
+    def test_an_unsigned_name_holding_a_space_or_a_glob_character_fails_naming_it(self):
+        for directory, job, check in self._checks():
+            for odd in ODD_ARTIFACTS:
+                with self.subTest(dir=directory, unsigned=odd):
+                    result = self._run(directory, job, check, self.odd_entries(odd, False),
+                                       {GLOB_DECOY: "decoy\n"})
+                    self.assert_error(result, directory, odd, ".asc")
 
 
 class PublishExecutionTest(_ExecutionCase):
@@ -1701,15 +1775,44 @@ class SampleBiteProofTest(_ExecutionCase):
                     "test_each_targets_steps_follow_in_canonical_order_and_nothing_else",
                     SAMPLE_FULL.replace(" -DskipUpload=true\n", "\n"))
 
-    def test_a_bundle_check_without_the_javadoc_line_bites(self):
+    # MIGRATED at CR-MDB-071 (§S3, VERIFY F3): the javadoc check is an if-block (was: a line).
+    def test_a_bundle_check_without_the_javadoc_check_bites(self):
         self._fails(MavenBundleCheckExecutionTest, "test_a_bundle_without_sources_or_javadoc_fails",
-                    SAMPLE_FULL.replace("          printf '%s\\n' \"$files\" | grep -q -- "
-                                        "'-javadoc\\.jar$'\n", ""))
+                    SAMPLE_FULL.replace(
+                        "          if ! printf '%s\\n' \"$files\" | grep -q -- '-javadoc\\.jar$'; then\n"
+                        "            echo \"::error::$bundle: no -javadoc.jar\"\n"
+                        "            exit 1\n"
+                        "          fi\n", ""))
 
+    # MIGRATED at CR-MDB-071 (§S3, VERIFY F3): the signature check sits in the read loop's case.
     def test_a_bundle_check_ignoring_signatures_bites(self):
         self._fails(MavenBundleCheckExecutionTest, "test_an_artifact_without_its_signature_fails",
-                    SAMPLE_FULL.replace("              exit 1\n            fi\n          done\n",
-                                        "            fi\n          done\n"))
+                    SAMPLE_FULL.replace("                  exit 1\n                fi\n                ;;\n",
+                                        "                fi\n                ;;\n"))
+
+    def test_a_silent_sources_check_bites(self):
+        # VERIFY F3: a bare `grep -q` fails the step with no ::error:: line.
+        self._fails(MavenBundleCheckExecutionTest, "test_a_bundle_without_sources_or_javadoc_fails",
+                    SAMPLE_FULL.replace(
+                        "          if ! printf '%s\\n' \"$files\" | grep -q -- '-sources\\.jar$'; then\n"
+                        "            echo \"::error::$bundle: no -sources.jar\"\n"
+                        "            exit 1\n"
+                        "          fi\n",
+                        "          printf '%s\\n' \"$files\" | grep -q -- '-sources\\.jar$'\n"))
+
+    def test_a_word_splitting_signature_loop_bites(self):
+        # VERIFY F3: a `for` over an unquoted `$(...)` splits the spaced name and expands the glob.
+        loop = SAMPLE_FULL.index("          while IFS= read -r f; do\n")
+        end = SAMPLE_FULL.index("          done <<< \"$files\"\n") + len("          done <<< \"$files\"\n")
+        split = ("          for f in $(printf '%s\\n' \"$files\" | grep -E '\\.(jar|pom)$'); do\n"
+                 "            if ! printf '%s\\n' \"$files\" | grep -qxF \"$f.asc\"; then\n"
+                 "              echo \"::error::$bundle: $f has no .asc signature\"\n"
+                 "              exit 1\n"
+                 "            fi\n"
+                 "          done\n")
+        self._fails(MavenBundleCheckExecutionTest,
+                    "test_names_holding_a_space_or_a_glob_character_are_checked_whole",
+                    SAMPLE_FULL[:loop] + split + SAMPLE_FULL[end:])
 
     def test_a_crates_setup_item_without_the_order_bites(self):
         self._fails(RenderedHeaderTest, "test_the_crates_setup_item",

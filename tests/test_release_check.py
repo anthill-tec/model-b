@@ -823,6 +823,64 @@ class ReleaseCheckGhTest(_CheckCase):
         self.assertEqual({i["state"] for i in secrets}, {"ready"},
                          f"§S5: the secrets are still read; got {secrets!r}")
 
+def two_pages(reply: dict, key: str, at: int, second: dict | None = None) -> dict:
+    """VERIFY F2: ``reply`` (a one-page answer listing ``key``) as ``gh api --paginate`` prints
+    two pages, two JSON documents one after the other: the entries before ``at``, then the rest
+    (or ``second``, a document of another shape)."""
+    page = json.loads(reply["stdout"])
+    first = dict(page, **{key: page[key][:at]})
+    last = second if second is not None else dict(page, **{key: page[key][at:]})
+    return answer(json.dumps(first) + "\n" + json.dumps(last))
+
+#: VERIFY F2 — a second page of another shape.
+OTHER_SHAPE = {"x": 1}
+
+class ReleaseCheckPaginatedTest(_CheckCase):
+    """§S5 (VERIFY F2) — ``gh api --paginate`` prints one JSON document per page: every page
+    is read; a page of another shape makes the items it covers ``unknown``, saying unparseable."""
+
+    def run_paged(self, path: str, key: str, second: dict | None = None) -> Run:
+        self.make_project(FULL_STACKS, FULL_TARGETS)
+        answers = github_answers()
+        answers[path] = two_pages(answers[path], key, 2, second)
+        self.set_github(answers)
+        return self.check()
+
+    def by_name(self, run: Run, names) -> dict:
+        """Each of ``names``' one GitHub item."""
+        found = {name: self.named(run, "github", name) for name in names}
+        for name, items in found.items():
+            self.assertEqual(len(items), 1, f"§S5: one item for {name}; got {self.items(run)!r}")
+        return {name: items[0] for name, items in found.items()}
+
+    def assert_states(self, items: dict, state: str, detail: str | None = None) -> None:
+        for name, item in items.items():
+            self.assertEqual(item["state"], state, f"{name}: got {item!r}")
+            if detail is not None:
+                self.assertIn(detail, item["detail"], f"{name}: got {item!r}")
+
+    def test_secrets_split_across_two_pages_are_every_one_ready(self):
+        run = self.run_paged(f"{REPOS}/actions/secrets", "secrets")
+        self.assert_ready(run)
+        self.assert_states(self.by_name(run, ALL_SECRETS), "ready")
+
+    def test_a_second_secrets_page_of_another_shape_makes_the_secrets_unknown(self):
+        run = self.run_paged(f"{REPOS}/actions/secrets", "secrets", OTHER_SHAPE)
+        self.assert_ready(run)
+        self.assert_states(self.by_name(run, ALL_SECRETS), "unknown", "unparseable")
+        self.assert_states(self.by_name(run, ALL_ENVIRONMENTS), "ready")
+
+    def test_environments_split_across_two_pages_are_every_one_ready(self):
+        run = self.run_paged(f"{REPOS}/environments", "environments")
+        self.assert_ready(run)
+        self.assert_states(self.by_name(run, ALL_ENVIRONMENTS), "ready")
+
+    def test_a_second_environments_page_of_another_shape_makes_the_environments_unknown(self):
+        run = self.run_paged(f"{REPOS}/environments", "environments", OTHER_SHAPE)
+        self.assert_ready(run)
+        self.assert_states(self.by_name(run, ALL_ENVIRONMENTS), "unknown", "unparseable")
+        self.assert_states(self.by_name(run, ALL_SECRETS), "ready")
+
 class ReleaseCheckEnvironmentPolicyTest(_CheckCase):
     """§S5 — each target's environment and its deployment-branch policy."""
 

@@ -684,6 +684,25 @@ def pom(own_version: str | None = "1.2.3", parent: bool = True) -> str:
     return text
 
 
+POM_NAMESPACE = "http://maven.apache.org/POM/4.0.0"
+
+
+def pom_rooted(open_tag: str, close_tag: str | None = None) -> str:
+    """VERIFY F5: :func:`pom` at ``1.2.3`` with its root element ``<open_tag>`` ...
+    ``</close_tag>`` (``close_tag`` defaults to ``open_tag``) in place of the namespaced
+    ``<project>``."""
+    return (pom("1.2.3")
+            .replace(f'<project xmlns="{POM_NAMESPACE}">\n', f"<{open_tag}>\n")
+            .replace("</project>\n", f"</{close_tag or open_tag}>\n"))
+
+
+def pom_with_internal_dtd() -> str:
+    """VERIFY F1: :func:`pom` whose own ``<version>`` is the entity ``&v;``, defined as ``1.2.3``
+    in an internal DTD after the XML declaration."""
+    declaration, rest = pom("&v;").split("\n", 1)
+    return f'{declaration}\n<!DOCTYPE project [\n  <!ENTITY v "1.2.3">\n]>\n{rest}'
+
+
 #: A crate under ``crates/core`` whose version is the workspace's, in the inline-table form.
 CORE_INLINE = cargo_package("version = { workspace = true }", name="core")
 #: The same in the dotted-key form.
@@ -806,6 +825,12 @@ class MavenVersionSourceTest(_SourceCase):
         self.assert_reads(files, ["maven-central:lib"], ["1.2.3"])
         self.assert_check_names(files, "0.0.1", ["maven-central:lib"], "lib/pom.xml", "1.2.3")
 
+    def test_a_pom_whose_root_is_a_plain_project_is_read(self):
+        # VERIFY F5: the root check admits `project` without a namespace, as well as `{...}project`.
+        files = {"pom.xml": pom_rooted("project")}
+        self.assert_reads(files, ["maven-central:."], ["1.2.3"])
+        self.assert_checks(files, "1.2.3", ["maven-central:."])
+
     def test_a_crlf_pom_is_read_and_checked(self):
         files = {"pom.xml": crlf(pom("1.2.3"))}
         self.assert_reads(files, ["maven-central:."], ["1.2.3"])
@@ -907,6 +932,17 @@ REFUSALS = (
     ("a property reference", {"lib/pom.xml": pom("${revision}")}, "maven-central:lib",
      "lib/pom.xml"),
     ("a missing pom.xml", {}, "maven-central:lib", "lib/pom.xml"),
+    # VERIFY F1: a DOCTYPE or ENTITY declaration is refused (the internal DTD defines the version).
+    ("an internal DTD", {"pom.xml": pom_with_internal_dtd()}, "maven-central:.", "pom.xml"),
+    # VERIFY F5: the root element is `project`, plain or `{...}project`; anything else is refused.
+    ("a root other than <project>", {"pom.xml": pom_rooted("settings")}, "maven-central:.",
+     "pom.xml"),
+    ("a namespaced root other than <project>",
+     {"lib/pom.xml": pom_rooted(f'settings xmlns="{POM_NAMESPACE}"', "settings")},
+     "maven-central:lib", "lib/pom.xml"),
+    ("a namespaced root ending in project",
+     {"pom.xml": pom_rooted(f'parentproject xmlns="{POM_NAMESPACE}"', "parentproject")},
+     "maven-central:.", "pom.xml"),
 )
 
 
