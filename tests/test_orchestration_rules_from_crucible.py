@@ -462,10 +462,6 @@ def surface_findings(key: str, text: str | None = None) -> list[str]:
     return rule_findings(region, rules)
 
 
-def _shipped(rel: str) -> str:
-    return read_text(REPO_ROOT / rel)
-
-
 # ------------------------------------------------------------------ shipped surfaces ----
 
 class BoardThroughClientVerbsTest(unittest.TestCase):
@@ -480,7 +476,7 @@ class BoardThroughClientVerbsTest(unittest.TestCase):
         self.assertEqual(surface_findings("S1 crucible envelope"), [])
 
     def test_the_crucible_skill_never_invites_reading_the_board_over_http(self):
-        self.assertEqual(http_read_invitations(_shipped(CRUCIBLE)), [])
+        self.assertEqual(http_read_invitations(read_text(REPO_ROOT / CRUCIBLE)), [])
 
     def test_orchestration_common_states_the_client_verbs_rule(self):
         self.assertEqual(surface_findings("S1 orchestration-common"), [])
@@ -501,7 +497,7 @@ class StoryPointsTest(unittest.TestCase):
         self.assertEqual(surface_findings("S2 orchestration-mainline"), [])
 
     def test_the_crucible_skill_cr_plan_example_carries_points(self):
-        region = crucible_queue_verbs(_shipped(CRUCIBLE))
+        region = crucible_queue_verbs(read_text(REPO_ROOT / CRUCIBLE))
         self.assertTrue(region.strip(), "precondition: the crucible skill has a queue-verbs section")
         self.assertEqual(cr_plan_points_findings(region), [])
 
@@ -521,7 +517,7 @@ class PreMergeGateInsideTheLastCycleTest(unittest.TestCase):
     maxDiff = None
 
     def test_orchestration_common_close_out_states_the_eight_step_order(self):
-        region = common_close_out(_shipped(COMMON))
+        region = common_close_out(read_text(REPO_ROOT / COMMON))
         self.assertTrue(region.strip(), "precondition: orchestration-common has § Close-out")
         self.assertEqual(order_findings(region, CLOSE_OUT_ORDER), [])
 
@@ -532,16 +528,16 @@ class PreMergeGateInsideTheLastCycleTest(unittest.TestCase):
         self.assertEqual(surface_findings("S5 crucible who runs what"), [])
 
     def test_the_crucible_skill_no_longer_says_verify_cycle_activated_or_last_linked_run(self):
-        self.assertEqual(absence_findings(_shipped(CRUCIBLE), S5_CRUCIBLE_RETIRED), [])
+        self.assertEqual(absence_findings(read_text(REPO_ROOT / CRUCIBLE), S5_CRUCIBLE_RETIRED), [])
 
     def test_the_shutdown_graceful_mode_keeps_the_last_cycle_awaiting_the_pre_merge_gate(self):
         self.assertEqual(surface_findings("S5 shutdown"), [])
 
     def test_no_shutdown_unit_says_always_finishes_the_active_cycle_without_the_exception(self):
-        self.assertEqual(unexcepted_always_findings(_shipped(SHUTDOWN)), [])
+        self.assertEqual(unexcepted_always_findings(read_text(REPO_ROOT / SHUTDOWN)), [])
 
     def test_agents_md_workflow_rules_state_the_close_out_order(self):
-        region = agents_workflow_rules(_shipped(AGENTS))
+        region = agents_workflow_rules(read_text(REPO_ROOT / AGENTS))
         self.assertTrue(region.strip(), "precondition: AGENTS.md has § Workflow Rules")
         self.assertEqual(order_findings(region, CLOSE_OUT_ORDER), [])
 
@@ -558,8 +554,8 @@ class TestLeakRuleTest(unittest.TestCase):
         self.assertEqual(surface_findings("S6 orchestration-common"), [])
 
     def test_the_test_leak_rule_never_says_a_bare_leak(self):
-        found = (bare_leak_findings(procedure_code_quality(_shipped(PROCEDURE)))
-                 + bare_leak_findings(_shipped(COMMON)))
+        found = (bare_leak_findings(procedure_code_quality(read_text(REPO_ROOT / PROCEDURE)))
+                 + bare_leak_findings(read_text(REPO_ROOT / COMMON)))
         self.assertEqual(found, [])
 
 
@@ -574,7 +570,7 @@ class ReleasesAndTheGateTest(unittest.TestCase):
     def test_git_workflow_releases_keeps_the_hotfix_sentence(self):
         rules = [r for r in S7_GIT_RELEASES if r[0].startswith("unchanged:")]
         self.assertEqual(len(rules), 1)
-        self.assertEqual(rule_findings(git_releases(_shipped(GIT_WORKFLOW)), rules), [])
+        self.assertEqual(rule_findings(git_releases(read_text(REPO_ROOT / GIT_WORKFLOW)), rules), [])
 
     def test_model_b_section_4_5_states_the_hygiene_cr_as_the_drain(self):
         self.assertEqual(surface_findings("S7 model-b 4.5"), [])
