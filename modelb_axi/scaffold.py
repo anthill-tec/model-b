@@ -28,9 +28,11 @@ Each file is itself written atomically (§S2). Stdlib only.
 
 import argparse
 import datetime
+import json
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 import tomllib
@@ -2064,6 +2066,35 @@ def run_agents(args: argparse.Namespace, home: Path, project_root: Path | None =
     return 0
 
 
+def _release_registry(root: Path, requested: str | None,
+                      targets_hint: str) -> tuple[list[str], str]:
+    """``(stacks, canonical RELEASE_TARGETS value)`` of the project at ``root``, read from its
+    ``.env`` through the schema reader and validated as ``init`` validates them — shared by the
+    ``release-workflow`` and ``release-check`` verbs (CR-MDB-068 §S6, CR-MDB-071 §S5).
+    ``requested`` (a ``--release-targets`` value) replaces the recorded targets; ``targets_hint``
+    ends the refusal of an absent ``RELEASE_TARGETS``. Raises :class:`ScaffoldError`."""
+    env_path = root / ".env"
+    schema = load_schema(PROJECT_SCHEMA_PATH)
+    recorded_stacks = read_registry_value(root, schema, PROJECT_STACKS_KEY)
+    if not recorded_stacks:
+        raise ScaffoldError(
+            f"{env_path} records no {PROJECT_STACKS_KEY}; set the project's stacks "
+            "with `modelb-axi agents --stacks <csv>`"
+        )
+    stacks = parse_stacks(recorded_stacks)
+    value = requested
+    if value is None:
+        value = read_registry_value(root, schema, RELEASE_TARGETS_KEY)
+        if value is None:
+            raise ScaffoldError(f"{env_path} records no {RELEASE_TARGETS_KEY}; {targets_hint}")
+    try:
+        value = _check_release_targets_csv(value)
+    except ValueError as exc:
+        raise ScaffoldError(
+            f"{RELEASE_TARGETS_KEY} (--release-targets): value {value!r} {exc}") from exc
+    return stacks, value
+
+
 def run_release_workflow(args: argparse.Namespace, home: Path,
                          project_root: Path | None = None) -> int:
     """Entry for the ``release-workflow`` subcommand (CR-MDB-068 §S6): re-render
@@ -2085,28 +2116,10 @@ def run_release_workflow(args: argparse.Namespace, home: Path,
                 f"no .env in {root}; run `modelb-axi release-workflow` from the root "
                 "of a project scaffolded by `modelb-axi init`"
             )
-        schema = load_schema(PROJECT_SCHEMA_PATH)
-        recorded_stacks = read_registry_value(root, schema, PROJECT_STACKS_KEY)
-        if not recorded_stacks:
-            raise ScaffoldError(
-                f"{env_path} records no {PROJECT_STACKS_KEY}; set the project's stacks "
-                "with `modelb-axi agents --stacks <csv>`"
-            )
-        stacks = parse_stacks(recorded_stacks)
-        value = requested
-        if value is None:
-            value = read_registry_value(root, schema, RELEASE_TARGETS_KEY)
-            if value is None:
-                raise ScaffoldError(
-                    f"{env_path} records no {RELEASE_TARGETS_KEY}; pass "
-                    "--release-targets <csv> (or \"\" for no target) to render and "
-                    "record where a release publishes"
-                )
-        try:
-            value = _check_release_targets_csv(value)
-        except ValueError as exc:
-            raise ScaffoldError(
-                f"{RELEASE_TARGETS_KEY} (--release-targets): value {value!r} {exc}") from exc
+        stacks, value = _release_registry(
+            root, requested,
+            "pass --release-targets <csv> (or \"\" for no target) to render and "
+            "record where a release publishes")
         targets = _release_targets(value)
         try:
             texts = workflows.render(stacks, targets, _workflow_sources(home))
@@ -2144,3 +2157,395 @@ def run_release_workflow(args: argparse.Namespace, home: Path,
         **report,
     ))
     return 0
+
+
+# ------------------------------------------------------------ release-check (CR-MDB-071 §S5) ----
+
+#: The three areas and three states of a ``release-check`` item.
+_AREA_LOCAL, _AREA_GITHUB, _AREA_REGISTRY = "local", "github", "registry"
+_READY, _MISSING, _UNKNOWN = "ready", "missing", "unknown"
+#: What a stale or absent rendered file's detail tells the user to run.
+_RERENDER = "run `modelb-axi release-workflow`"
+#: Each stack's release prerequisite and each target's: ``(project-relative path, kind)``, the
+#: kind ``dir``, ``file`` or ``exec`` (an executable file). Two owners of one path check it once.
+_STACK_PREREQUISITES: dict[str, tuple[str, str]] = {
+    "python": ("tests/", "dir"), "bun": ("bun.lock", "file"), "rust": ("Cargo.lock", "file"),
+    "quarkus": ("mvnw", "exec"), "java": ("mvnw", "exec"),
+    "arduino": (".github/scripts/ci-test", "exec"),
+}
+_TARGET_PREREQUISITES: dict[str, tuple[str, str]] = {
+    "maven-central": ("mvnw", "exec"),
+    "github-assets": (".github/scripts/build-assets", "exec"),
+}
+#: The stacks whose test job builds a target; a target not listed needs no particular stack.
+_TARGET_BUILDERS: dict[str, tuple[str, ...]] = {
+    "crates": ("rust",), "maven-central": ("java", "quarkus"),
+}
+#: Each target's GitHub environments, as its rendered jobs name them.
+_TARGET_ENVIRONMENTS: dict[str, tuple[str, ...]] = {
+    "pypi": ("pypi", "testpypi"), "npm": ("npm",), "crates": ("crates",),
+    "maven-central": ("maven-central",),
+}
+#: The rehearsal's environment and the branch patterns it must admit (compared, never evaluated).
+_REHEARSAL_ENVIRONMENT = "testpypi"
+_REHEARSAL_BRANCHES = ("release/**", "hotfix/**")
+#: The secret every rendered workflow's ``create-release`` job needs.
+_RELEASE_PAT = "RELEASE_PAT"
+#: First-publish tokens: absent, they are unknown (a trusted publisher replaces them).
+_FIRST_PUBLISH_TOKENS = frozenset({"NPM_TOKEN", "CARGO_REGISTRY_TOKEN"})
+_SECRET_REF = re.compile(r"secrets\.([A-Z][A-Z0-9_]*)")
+_SECRETS_SCOPE = "organisation and environment secrets are not read"
+#: The three GitHub origin forms, each with or without ``.git``: the one origin-URL parser.
+_GITHUB_ORIGIN = re.compile(
+    r"(?:https://github\.com/|git@github\.com:|ssh://git@github\.com/)"
+    r"([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+?)(?:\.git)?/?")
+_UNRELEASED = re.compile(r"^##[ \t]*\[Unreleased\]", re.M)
+_SUBPROCESS_TIMEOUT = 60
+
+
+def _check_item(area: str, item: str, state: str, detail: str) -> dict:
+    return {"area": area, "item": item, "state": state, "detail": detail}
+
+
+def _no_env_refusal(root: Path, verb: str) -> str:
+    """The refusal of a directory holding no ``.env``, naming where to run ``verb`` from: the
+    nearest enclosing directory holding one, when there is one."""
+    holder = next((p for p in root.parents if (p / ".env").is_file()), None)
+    where = (f"run it from {holder}" if holder is not None
+             else "run it from the project's root, the directory holding .env")
+    return f"no .env in {root}; `modelb-axi {verb}` reads the project's .env: {where}"
+
+
+def _github_repository(url: str) -> tuple[str, str] | None:
+    """``(owner, repository)`` of a GitHub origin URL in one of the three forms
+    (``https://github.com/o/r``, ``git@github.com:o/r``, ``ssh://git@github.com/o/r``, each with
+    or without ``.git``); None for any other URL (CR-MDB-071 §S5)."""
+    match = _GITHUB_ORIGIN.fullmatch(url.strip())
+    return (match.group(1), match.group(2)) if match else None
+
+
+def _origin_repository(root: Path) -> tuple[tuple[str, str] | None, str]:
+    """``(repository or None, why not)`` from ``git remote get-url origin`` in ``root``."""
+    try:
+        result = subprocess.run(
+            ["git", "remote", "get-url", "origin"], cwd=str(root), capture_output=True,
+            text=True, timeout=_SUBPROCESS_TIMEOUT, stdin=subprocess.DEVNULL)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return None, f"`git remote get-url origin` failed ({exc}); GitHub not read"
+    if result.returncode != 0:
+        return None, "no origin remote; GitHub not read"
+    repository = _github_repository(result.stdout)
+    if repository is None:
+        return None, "the origin remote is not on github.com; GitHub not read"
+    return repository, ""
+
+
+def _json_documents(text: str) -> list:
+    """Every JSON document in ``text`` (``gh api --paginate`` prints one per page). Raises
+    ``ValueError`` when there is none or one does not parse."""
+    decoder, documents, index = json.JSONDecoder(), [], 0
+    while True:
+        while index < len(text) and text[index].isspace():
+            index += 1
+        if index == len(text):
+            break
+        document, index = decoder.raw_decode(text, index)
+        documents.append(document)
+    if not documents:
+        raise ValueError("no JSON document")
+    return documents
+
+
+def _listed(documents: list, key: str) -> list[dict]:
+    """The ``key`` list of every page, joined. Raises ``ValueError`` on another shape."""
+    entries: list[dict] = []
+    for document in documents:
+        page = document.get(key) if isinstance(document, dict) else None
+        if not isinstance(page, list) or not all(isinstance(e, dict) for e in page):
+            raise ValueError(f"no {key!r} list")
+        entries.extend(page)
+    return entries
+
+
+def _gh_list(gh: str | None, path: str, key: str, root: Path) -> tuple[list[dict] | None, str]:
+    """``(entries, "")`` of ``gh api --method GET --paginate <path>``'s ``key`` list, or
+    ``(None, error)``: no ``gh``, a failed run (its stderr) or unparseable output."""
+    if gh is None:
+        return None, "gh is not on PATH: install GitHub CLI and run `gh auth login`"
+    try:
+        result = subprocess.run(
+            [gh, "api", "--method", "GET", "--paginate", path], cwd=str(root),
+            capture_output=True, text=True, timeout=_SUBPROCESS_TIMEOUT,
+            stdin=subprocess.DEVNULL)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return None, f"gh api {path}: {exc}"
+    if result.returncode != 0:
+        error = " ".join(result.stderr.split()) or f"exit {result.returncode}"
+        return None, f"gh api {path} failed: {error}"
+    try:
+        return _listed(_json_documents(result.stdout), key), ""
+    except ValueError as exc:
+        return None, f"gh api {path}: unparseable output ({exc})"
+
+
+def _environment_item(gh: str | None, base: str, name: str, environment: dict | None,
+                      root: Path) -> dict:
+    """One environment's item: present, and admitting the version tags (a publish environment)
+    or the release and hotfix branches (the rehearsal's). Patterns are compared, not evaluated."""
+    item = f"environment {name}"
+    if environment is None:
+        return _check_item(_AREA_GITHUB, item, _MISSING,
+                           f"create the {name} environment in the repository settings")
+    rehearsal = name == _REHEARSAL_ENVIRONMENT
+    admits = ("the release and hotfix branches" if rehearsal else "the version tags")
+    policy = environment.get("deployment_branch_policy")
+    if policy is None:
+        return _check_item(_AREA_GITHUB, item, _READY,
+                           "no deployment-branch policy: every branch and tag is admitted")
+    if not isinstance(policy, dict):
+        return _check_item(_AREA_GITHUB, item, _UNKNOWN,
+                           f"unparseable deployment_branch_policy: {policy!r}")
+    if policy.get("protected_branches"):
+        return _check_item(_AREA_GITHUB, item, _MISSING,
+                           f"admits protected branches only, not {admits}")
+    path = f"{base}/environments/{name}/deployment-branch-policies"
+    policies, error = _gh_list(gh, path, "branch_policies", root)
+    if policies is None:
+        return _check_item(_AREA_GITHUB, item, _UNKNOWN, error)
+    patterns = [(str(p.get("type") or "branch"), str(p.get("name", ""))) for p in policies]
+    if rehearsal:
+        branches = {pattern for kind, pattern in patterns if kind == "branch"}
+        absent = [b for b in _REHEARSAL_BRANCHES if b not in branches]
+        if absent:
+            return _check_item(_AREA_GITHUB, item, _MISSING,
+                               f"add the branch policies {', '.join(absent)} so it admits "
+                               f"{admits} (patterns compared, not evaluated)")
+        return _check_item(_AREA_GITHUB, item, _READY,
+                           f"branch policies {', '.join(_REHEARSAL_BRANCHES)} admit {admits}")
+    tags = [pattern for kind, pattern in patterns if kind == "tag"]
+    if not tags:
+        return _check_item(_AREA_GITHUB, item, _MISSING,
+                           f"no tag policy: add one admitting {admits}")
+    return _check_item(_AREA_GITHUB, item, _READY,
+                       f"tag policies (not evaluated): {', '.join(tags)}")
+
+
+def _github_check_items(root: Path, names: list[str], secrets: list[str],
+                        repository: tuple[str, str] | None, why: str) -> list[dict]:
+    """Each target's environment and each repository secret the rendered jobs name."""
+    environments = [env for name in names for env in _TARGET_ENVIRONMENTS.get(name, ())]
+    if repository is None:
+        return ([_check_item(_AREA_GITHUB, f"environment {env}", _UNKNOWN, why)
+                 for env in environments]
+                + [_check_item(_AREA_GITHUB, f"secret {secret}", _UNKNOWN,
+                               f"{why}; {_SECRETS_SCOPE}") for secret in secrets])
+    base = f"repos/{repository[0]}/{repository[1]}"
+    gh = shutil.which("gh")
+    items: list[dict] = []
+    if environments:
+        listed, error = _gh_list(gh, f"{base}/environments", "environments", root)
+        by_name = ({str(e.get("name")): e for e in listed} if listed is not None else None)
+        for env in environments:
+            items.append(_check_item(_AREA_GITHUB, f"environment {env}", _UNKNOWN, error)
+                         if by_name is None
+                         else _environment_item(gh, base, env, by_name.get(env), root))
+    listed, error = _gh_list(gh, f"{base}/actions/secrets", "secrets", root)
+    present = {str(s.get("name")) for s in listed} if listed is not None else None
+    for secret in secrets:
+        item = f"secret {secret}"
+        if present is None:
+            items.append(_check_item(_AREA_GITHUB, item, _UNKNOWN, f"{error}; {_SECRETS_SCOPE}"))
+        elif secret in present:
+            items.append(_check_item(_AREA_GITHUB, item, _READY,
+                                     f"a repository secret; {_SECRETS_SCOPE}"))
+        elif secret in _FIRST_PUBLISH_TOKENS:
+            items.append(_check_item(
+                _AREA_GITHUB, item, _UNKNOWN,
+                "not a repository secret: needed only for the first publish, not once the "
+                f"trusted publisher exists; {_SECRETS_SCOPE}"))
+        else:
+            items.append(_check_item(_AREA_GITHUB, item, _MISSING,
+                                     f"add the repository secret {secret}; {_SECRETS_SCOPE}"))
+    return items
+
+
+def _registry_check_items(names: list[str], repository: tuple[str, str] | None) -> list[dict]:
+    """Each target's registry publisher: never read, so ``unknown``, naming the fields to check."""
+    where = (f"owner {repository[0]}, repository {repository[1]}" if repository is not None
+             else "this repository's owner and name")
+
+    def publisher(registry: str, environment: str) -> str:
+        return (f"not read; check on {registry}: {where}, workflow release.yml, "
+                f"environment {environment}")
+    publishers: dict[str, list[tuple[str, str]]] = {
+        "pypi": [("PyPI trusted publisher", publisher("PyPI", "pypi")),
+                 ("TestPyPI trusted publisher", publisher("TestPyPI", "testpypi"))],
+        "npm": [("npm trusted publisher", publisher("npmjs.com (the package's settings)",
+                                                    "npm"))],
+        "crates": [("crates.io trusted publisher",
+                    publisher("crates.io (the crate's settings)", "crates"))],
+        "maven-central": [("Central Portal namespace", (
+            "not read; check on the Central Portal: the namespace (the POM's groupId) is "
+            "verified, the user token behind MAVEN_CENTRAL_USERNAME and MAVEN_CENTRAL_PASSWORD "
+            "is live, and the public key of MAVEN_GPG_PRIVATE_KEY is on a public keyserver"))],
+    }
+    return [_check_item(_AREA_REGISTRY, item, _UNKNOWN, detail)
+            for name in names for item, detail in publishers.get(name, [])]
+
+
+def _rendered_file_item(root: Path, rel: str, text: str) -> dict:
+    """A rendered file against the render for the current ``.env``."""
+    path = root / rel
+    if not path.is_file():
+        return _check_item(_AREA_LOCAL, rel, _MISSING, f"absent; {_RERENDER}")
+    current = path.read_bytes().decode("utf-8", errors="replace")
+    if current == text:
+        return _check_item(_AREA_LOCAL, rel, _READY, "equals the render for the current .env")
+    state = workflows.ownership_state(current)
+    if state == agents.OWNED_HAND_MODIFIED:
+        return _check_item(_AREA_LOCAL, rel, _READY,
+                           "note: hand-modified (its marker digest does not match), so not "
+                           "compared with the render; `modelb-axi release-workflow` skips it "
+                           "unless --force-managed")
+    if state == agents.NOT_OWNED:
+        return _check_item(_AREA_LOCAL, rel, _MISSING,
+                           f"carries no Model B marker; move it aside and {_RERENDER}")
+    return _check_item(_AREA_LOCAL, rel, _MISSING,
+                       f"differs from the render for the current .env; {_RERENDER}")
+
+
+def _version_item(root: Path, target: str) -> dict:
+    """A versioned target's version, read by the project's own rendered ``stamp_version.py``."""
+    item = f"version {target}"
+    if not (root / workflows.STAMP_SCRIPT).is_file():
+        return _check_item(_AREA_LOCAL, item, _UNKNOWN,
+                           f"{workflows.STAMP_SCRIPT} is absent; {_RERENDER}")
+    environment = dict(os.environ)
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    try:
+        result = subprocess.run(
+            [sys.executable or "python3", workflows.STAMP_SCRIPT, "read", target],
+            cwd=str(root), env=environment, capture_output=True, text=True,
+            timeout=_SUBPROCESS_TIMEOUT, stdin=subprocess.DEVNULL)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return _check_item(_AREA_LOCAL, item, _UNKNOWN, f"{workflows.STAMP_SCRIPT}: {exc}")
+    if result.returncode != 0:
+        return _check_item(_AREA_LOCAL, item, _MISSING,
+                           result.stderr.strip() or f"exit {result.returncode}")
+    version = result.stdout.strip().rpartition("\t")[2]
+    return _check_item(_AREA_LOCAL, item, _READY,
+                       f"{version} (read by {workflows.STAMP_SCRIPT})")
+
+
+def _prerequisite_items(root: Path, stacks: list[str], names: list[str]) -> list[dict]:
+    """Each stack's and target's prerequisite, each path once."""
+    owners: dict[str, tuple[str, list[str]]] = {}
+    for owner, (rel, kind) in ([(f"the {s} stack", _STACK_PREREQUISITES[s])
+                                for s in stacks if s in _STACK_PREREQUISITES]
+                               + [(f"the {n} target", _TARGET_PREREQUISITES[n])
+                                  for n in names if n in _TARGET_PREREQUISITES]):
+        owners.setdefault(rel, (kind, []))[1].append(owner)
+    items = []
+    for rel, (kind, needers) in owners.items():
+        path, needed = root / rel, f"needed by {' and '.join(needers)}"
+        if kind == "dir":
+            present = path.is_dir()
+        else:
+            present = path.is_file()
+        if not present:
+            items.append(_check_item(_AREA_LOCAL, f"prerequisite {rel}", _MISSING,
+                                     f"absent; {needed}"))
+        elif kind == "exec" and not os.access(path, os.X_OK):
+            items.append(_check_item(_AREA_LOCAL, f"prerequisite {rel}", _MISSING,
+                                     f"not executable (chmod +x); {needed}"))
+        else:
+            items.append(_check_item(_AREA_LOCAL, f"prerequisite {rel}", _READY, needed))
+    return items
+
+
+def _local_check_items(root: Path, stacks: list[str], parsed: list[tuple[str, str]],
+                       texts: dict[str, str]) -> list[dict]:
+    """The rendered files, the versions, the prerequisites, the test jobs and the changelog."""
+    names = [name for name, _directory in parsed]
+    items = [_rendered_file_item(root, rel, text) for rel, text in texts.items()]
+    items += [_version_item(root, f"{name}:{directory}") for name, directory in parsed
+              if name in workflows._VERSIONED]
+    items += _prerequisite_items(root, stacks, names)
+    for name in names:
+        builders = _TARGET_BUILDERS.get(name)
+        if builders is None:
+            continue
+        building = [stack for stack in stacks if stack in builders]
+        items.append(
+            _check_item(_AREA_LOCAL, f"test job for {name}", _READY,
+                        f"built by the {building[0]} stack's test job") if building
+            else _check_item(_AREA_LOCAL, f"test job for {name}", _MISSING,
+                             f"no test job builds {name}: add the {' or '.join(builders)} "
+                             "stack (`modelb-axi agents --stacks <csv>`, then "
+                             "`modelb-axi release-workflow`)"))
+    changelog = root / CHANGELOG_NAME
+    if not changelog.is_file():
+        items.append(_check_item(_AREA_LOCAL, CHANGELOG_NAME, _MISSING,
+                                 "absent; add it with a `## [Unreleased]` section"))
+    elif _UNRELEASED.search(changelog.read_bytes().decode("utf-8", errors="replace")):
+        items.append(_check_item(_AREA_LOCAL, CHANGELOG_NAME, _READY,
+                                 "has an [Unreleased] section"))
+    else:
+        items.append(_check_item(_AREA_LOCAL, CHANGELOG_NAME, _READY,
+                                 "note: no [Unreleased] section to release from"))
+    return items
+
+
+def run_release_check(args: argparse.Namespace, home: Path,
+                      project_root: Path | None = None) -> int:
+    """Entry for the ``release-check`` subcommand (CR-MDB-071 §S5): report the release readiness
+    of the project in the current directory — its local items, its GitHub environments and
+    secrets (``gh api --method GET``) and its registry checklist — as one AXI envelope (verb
+    ``release-check``) with ``items`` and the counts ``ready``, ``missing`` and ``unknown``.
+    Read-only: it writes nothing. Exit 0 when nothing is missing, 1 when anything is, 2 on a
+    refusal."""
+    print("modelb-axi: release-check — report the project's release readiness",
+          file=sys.stderr)
+    root = project_root if project_root is not None else Path.cwd()
+    try:
+        if not (root / ".env").is_file():
+            raise ScaffoldError(_no_env_refusal(root, "release-check"))
+        stacks, value = _release_registry(
+            root, None,
+            "record the targets with `modelb-axi release-workflow --release-targets <csv>` "
+            "(\"\" for no target)")
+        targets = _release_targets(value)
+        try:
+            texts = workflows.render(stacks, targets, _workflow_sources(home))
+        except (OSError, ValueError) as exc:
+            raise ScaffoldError(f"the release workflow cannot be rendered: {exc}") from exc
+    except ScaffoldError as exc:
+        print(f"modelb-axi: error: {exc}", file=sys.stderr)
+        print(envelope("release-check", False, warnings=[str(exc)], project=str(root)))
+        return 2
+
+    parsed = [workflows.parse_target(target) for target in targets]
+    names = [name for name, _directory in parsed]
+    # GITHUB_TOKEN is the run's own token, never a repository secret.
+    secrets = sorted((set(_SECRET_REF.findall(texts[workflows.RELEASE_YML])) - {"GITHUB_TOKEN"})
+                     | {_RELEASE_PAT})
+    repository, why = _origin_repository(root)
+    items = (_local_check_items(root, stacks, parsed, texts)
+             + _github_check_items(root, names, secrets, repository, why)
+             + _registry_check_items(names, repository))
+    counts = {state: sum(1 for i in items if i["state"] == state)
+              for state in (_READY, _MISSING, _UNKNOWN)}
+    for i in items:
+        print(f"  {i['state']:<7} {i['area']}: {i['item']} — {i['detail']}", file=sys.stderr)
+    print(f"  {counts[_READY]} ready, {counts[_MISSING]} missing, {counts[_UNKNOWN]} unknown",
+          file=sys.stderr)
+    print(envelope(
+        "release-check", True,
+        warnings=[],
+        project=str(root),
+        stacks=stacks,
+        targets=targets,
+        items=items,
+        **counts,
+    ))
+    return 1 if counts[_MISSING] else 0

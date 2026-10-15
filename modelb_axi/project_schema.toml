@@ -98,7 +98,7 @@ scope = "root"
 source = "ask"
 flag = "--release-targets"
 validate = "release_targets_csv"
-readers = ["modelb-axi init (renders the release workflow)", "modelb-axi release-workflow (re-renders it)"]
+readers = ["modelb-axi init (renders the release workflow)", "modelb-axi release-workflow (re-renders it)", "modelb-axi release-check (reads each target's readiness)"]
 
 [[key]]
 name = "CRUCIBLE_PROJECT_KEY"
