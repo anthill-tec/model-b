@@ -20,8 +20,14 @@ Detector kinds, each proved both ways on synthetic text in ``DetectorsOnSyntheti
 
 - ``rule_findings`` — the phrase gates of ``SURFACES``. Every surface's synthetic sample passes,
   and one cut per rule reports that rule alone; a rule moved out of its region is reported.
-- ``order_findings`` — §S5's eight-step close-out order, searched step after step through the
-  region, in ``orchestration-common.md`` § Close-out and in ``AGENTS.md`` § Workflow Rules.
+- ``order_findings`` — §S5's eight-step close-out order, searched step after step: in
+  ``orchestration-common.md`` § Close-out through its numbered steps only (``numbered_steps``), so
+  the bullets after the list never supply a step; in ``AGENTS.md`` § Workflow Rules through the
+  section.
+- ``unbound_list_findings`` — §S5: the unbound list ends after its three items, and a non-list
+  line comes before the rest of § Close-out's bullets.
+- ``plan_file_points_spans`` — §S2: no ``plan-file`` code span of ``cr-authoring`` carries
+  ``--points``.
 - ``absence_findings`` — §S5: the ``crucible`` skill no longer says "verify cycle activated" or
   "LAST linked run".
 - ``http_read_invitations`` — §S1: no sentence of the ``crucible`` skill invites reading the board
@@ -31,8 +37,13 @@ Detector kinds, each proved both ways on synthetic text in ``DetectorsOnSyntheti
   example carries ``--points <n>``.
 - ``bare_leak_findings`` — §S6: a unit stating the test-leak rule says "test leak", never a bare
   "leak" (which already means a write outside the worktree).
-- ``unexcepted_always_findings`` — §S5: wherever the ``shutdown`` skill says a shutdown ALWAYS
-  finishes the plan's active cycle, the same unit carries the exception.
+- ``unexcepted_finish_findings`` — §S5: wherever the body of the ``shutdown`` skill (its
+  frontmatter excluded) or ``orchestration-track.md`` says to finish the (plan's) active cycle, in
+  any form, the same unit carries the pre-merge-gate exception; the emergency path's "do not
+  finish" is not such a line.
+- ``exception_site_findings`` — §S5: each named site (the ``shutdown`` skill's introduction, its
+  Track paragraph, Step 1A, Step 2A and the guardrails; ``orchestration-track.md``'s graceful
+  line) states the exception.
 
 §S4's detectors, each proved both ways in ``CycleIdDetectorsOnSyntheticTextTest``:
 
@@ -85,6 +96,7 @@ from tests.test_worktree_layout_and_bundles import _git_c3 as _git
 CRUCIBLE = "skills-src/crucible/SKILL.md"
 COMMON = "skills-src/model-b/references/orchestration-common.md"
 MAINLINE = "skills-src/model-b/references/orchestration-mainline.md"
+TRACK = "skills-src/model-b/references/orchestration-track.md"
 PROCEDURE = "skills-src/model-b/references/sub-agent-procedure.md"
 MODEL_B = "skills-src/model-b/SKILL.md"
 CR_AUTHORING = "skills-src/cr-authoring/SKILL.md"
@@ -98,6 +110,9 @@ SHUTDOWN_GRACEFUL_HEADING = "Step 1A — GRACEFUL (default)"
 
 _HEADING_LINE = re.compile(r"^#{1,6}\s")
 _LIST_ITEM = re.compile(r"^(\s*)(?:[-*+]|\d+[.)])\s+")
+#: A numbered step at column 0 (§S5, F1): ``<n>.`` opens the unit.
+_NUMBERED_STEP = re.compile(r"^\d+\.\s")
+_FRONTMATTER = re.compile(r"\A---\n.*?\n---\n", re.S)
 
 #: A wave that has not drained (§S7: the hygiene CR keeps the wave from draining).
 DRAIN = r"\b(?:has not|hasn't|not|never|does not|doesn't) (?:yet )?drain(?:ed)?\b"
@@ -155,6 +170,25 @@ def cr_authoring_queue(text: str) -> str:
 
 def shutdown_graceful(text: str) -> str:
     return section(text, SHUTDOWN_GRACEFUL_HEADING)
+
+
+def shutdown_step_2a(text: str) -> str:
+    return section_matching(text, r"^step 2a\b")
+
+
+def shutdown_guardrails(text: str) -> str:
+    return section_matching(text, r"^guardrails\b")
+
+
+def body(text: str) -> str:
+    """``text`` without its leading ``---`` frontmatter block, when it has one."""
+    return _FRONTMATTER.sub("", text, count=1)
+
+
+def numbered_steps(region: str) -> list[str]:
+    """The raw units of ``region`` that open with a numbered step at column 0, wrapped lines
+    kept: the steps of a numbered list, and never the bullets after it (§S5, F1)."""
+    return [u for u in units(region) if _NUMBERED_STEP.match(u)]
 
 
 def procedure_code_quality(text: str) -> str:
@@ -293,14 +327,71 @@ def bare_leak_findings(region: str) -> list[str]:
     return [u for u in norm_units(region) if "test leak" in u and BARE_LEAK.search(u)]
 
 
-ALWAYS_FINISHES = re.compile(r"\balways finishes the plan'?s active cycle\b")
+#: §S5 — a unit saying to finish the (plan's) active cycle, in any of its forms (F5).
+FINISH_ACTIVE_CYCLE = re.compile(
+    r"\bfinish\w* (?:the |its )?(?:plan'?s )?active cycle\b"
+    r"|\bactive cycle (?:is |was )?finished\b")
+#: The words just before a match that make it the emergency path's NOT finishing.
+_NOT_FINISHING = re.compile(r"\b(?:skip|not|no|never|without)\s+$")
+#: §S5 — the exception: a last cycle awaiting the pre-merge gate.
+PRE_MERGE_EXCEPTION = re.compile(r"\b(?:except|unless)\b[^.]{0,100}\bpre-merge gate\b")
 
 
-def unexcepted_always_findings(text: str) -> list[str]:
-    """Each normalised unit saying a shutdown ALWAYS finishes the plan's active cycle with no
-    ``except`` in the same unit."""
-    return [u for u in norm_units(text)
-            if ALWAYS_FINISHES.search(u) and not re.search(r"\bexcept\b", u)]
+def says_finish_active_cycle(unit: str) -> bool:
+    """Whether the normalised ``unit`` says to finish the active cycle, a negated form
+    ("skip finishing", "do not finish") aside."""
+    return any(not _NOT_FINISHING.search(unit[max(0, m.start() - 12):m.start()])
+               for m in FINISH_ACTIVE_CYCLE.finditer(unit))
+
+
+def unexcepted_finish_findings(text: str) -> list[str]:
+    """Each normalised unit of ``text``'s body (its frontmatter excluded) saying to finish the
+    active cycle with no pre-merge-gate exception in the same unit."""
+    return [u for u in norm_units(body(text))
+            if says_finish_active_cycle(u) and not PRE_MERGE_EXCEPTION.search(u)]
+
+
+def exception_site_findings(text: str, sites) -> list[str]:
+    """The name of each ``(name, region, lead)`` site whose region holds no unit (opening with
+    ``lead``, when given) that says to finish the active cycle and carries the exception."""
+    return [name for name, region_of, lead in sites
+            if not any((lead is None or re.match(lead, u)) and says_finish_active_cycle(u)
+                       and PRE_MERGE_EXCEPTION.search(u)
+                       for u in norm_units(region_of(text)))]
+
+
+UNBOUND_LEAD = re.compile(r"^every other orchestrator run stays unbound:")
+#: §S5 — the unbound list: baselines, the post-merge develop gate, the release's own gate.
+UNBOUND_ITEMS = 3
+
+
+def unbound_list_findings(region: str) -> list[str]:
+    """``[]`` when ``region``'s one unbound-list lead is followed by its three items and then a
+    non-list line, so no later bullet renders as an item of that list (F6)."""
+    raw = units(region)
+    leads = [i for i, u in enumerate(raw) if UNBOUND_LEAD.match(normalise(u))]
+    if len(leads) != 1:
+        return [f"{len(leads)} unbound-list leads, not one"]
+    items = []
+    for nxt in raw[leads[0] + 1:]:
+        if not _LIST_ITEM.match(nxt):
+            break
+        items.append(nxt)
+    if len(items) != UNBOUND_ITEMS:
+        return [f"the unbound list runs to {len(items)} items, not {UNBOUND_ITEMS}: no non-list "
+                "line ends it before the next bullets"]
+    return []
+
+
+_PLAN_FILE_SPAN = re.compile(r"(?:^|[\s>])plan-file(?![\w-])")
+_POINTS_FLAG = re.compile(r"(?<![\w-])--points(?![\w-])")
+
+
+def plan_file_points_spans(text: str) -> list[str]:
+    """Each code span of ``text`` (read per unit, so a wrapped span counts) that invokes
+    ``plan-file`` and carries ``--points`` — which ``plan-file`` does not take (§S2, F2)."""
+    return [span for u in units(text) for span in code_spans(" ".join(u.split()))
+            if _PLAN_FILE_SPAN.search(span) and _POINTS_FLAG.search(span)]
 
 
 # ------------------------------------------------------------------ §S4 detectors ----
@@ -453,9 +544,13 @@ S1_COMMON = (
 
 #: §S2 — ``cr-authoring``'s filing rules (its queue section).
 S2_CR_AUTHORING = (
-    ("every CR is scored when filed, with cr-plan --points or plan-file --release … --points",
-     (r"\bevery cr\b[^.;]{0,10}\bscored when (?:it is )?filed\b", r"cr-plan --points\b",
-      r"plan-file --release\b[^.;()]{0,20}--points\b")),
+    # MIGRATED at CR-MDB-059 (§S2): the retired "plan-file --release … --points" pin becomes
+    # the cr-plan score, and plan-file taking no --points (F2).
+    ("every CR is scored when filed, with cr-plan --points",
+     (r"\bevery cr\b[^.;]{0,10}\bscored when (?:it is )?filed\b", r"cr-plan --points\b")),
+    ("a CR filed by plan-file --release is scored the same way, since plan-file takes no --points",
+     (r"plan-file --release\b[^.;]{0,20}\bscored\b",
+      r"\bplan-file\b[^.;]{0,15}\btakes no --points\b")),
     ("the scale is 1, 2, 3, 5, 8, 13",
      (r"\bscale\b", r"\b1,\s?2,\s?3,\s?5,\s?8,\s?13\b")),
     ("13 is the cap, and a CR scoring more is split before it is filed",
@@ -510,6 +605,10 @@ S5_COMMON_CLOSE_OUT = (
      (r"\blater runs inherit the binding\b",)),
     ("a red gate is ingested, then cycle-done closes the cycle with it",
      (r"\bred gate\b", r"\bingested\b", r"(?<![\w-])cycle-done closes the cycle\b")),
+    ("a red gate: unregister then register clears the orchestrator's binding before the fix "
+     "cycle is appended",
+     (r"\bred gate\b", r"\bclears the orchestrator'?s binding\b",
+      r"(?<![\w-])unregister,? then,? register(?![\w-]).*\bfix cycle is appended\b")),
     ("a fix cycle is appended with cycle-add --kind fix, and the gate runs again inside that new "
      "last cycle",
      (r"cycle-add --kind fix\b", r"\bgate runs again\b", r"\bnew last cycle\b")),
@@ -520,6 +619,15 @@ S5_COMMON_CLOSE_OUT = (
      (r"\bevery other orchestrator run stays unbound\b", r"\bbaselines\b",
       r"\bpost-merge develop gate\b", r"\brelease'?s own verification gate\b",
       r"(?<![\w-])--release(?![\w-])")),
+    ("read the plan before the last cycle's cycle-done (every earlier cycle done), and before "
+     "proposing a merge, finish or cr-close (every cycle, VERIFY included, done)",
+     (r"\bread the (?:crucible )?plan before the last cycle'?s cycle-done\b",
+      r"\bevery earlier cycle\b", r"\bbefore proposing a merge,? finish,? or cr-close\b",
+      r"\bevery cycle, verify included\b")),
+    ("a release-fix CR follows steps 2–5 and 8, with no feature branch to sync or merge, and its "
+     "cr-close takes its last commit on the release branch",
+     (r"\brelease-fix cr\b", r"\bsteps 2[–-]5 and 8\b", r"\bno feature branch\b",
+      r"(?<![\w-])cr-close\b[^.;]{0,20}\blast commit on the release branch\b")),
 )
 #: §S5 — the close-out order, step after step (normalised text).
 CLOSE_OUT_ORDER = (
@@ -544,6 +652,25 @@ S5_CRUCIBLE_WHO = (
 S5_CRUCIBLE_RETIRED = (
     ("'verify cycle activated'", r"\bverify cycle activated\b"),
     ("'LAST linked run'", r"\blast linked run\b"),
+)
+#: §S5 — ``orchestration-track.md``'s sign-off path points at close-out steps 1–4 (F7).
+S5_TRACK_SIGN_OFF = (
+    ("the sign-off follows close-out steps 1–4 (orchestration-common.md § Close-out)",
+     (r"\bsign-off\b[^.;]{0,40}\bfollows\b[^.;]{0,20}\bclose-out steps 1[–-]4\b",
+      r"orchestration-common(?:\.md)?[^.;]{0,6}§ ?close-out\b")),
+)
+#: §S5 — every site of the ``shutdown`` skill's body that says to finish the active cycle and
+#: must carry the exception: ``(name, region, lead)`` (F5).
+SHUTDOWN_EXCEPTION_SITES = (
+    ("the introduction's graceful bullet", intro, r"^- graceful \(default\)"),
+    ("the introduction's Track paragraph", intro, r"^- track\b"),
+    ("Step 1A", shutdown_graceful, None),
+    ("Step 2A", shutdown_step_2a, None),
+    ("the guardrails", shutdown_guardrails, None),
+)
+#: §S5 — ``orchestration-track.md``'s graceful-shutdown line carries the same exception (F5).
+TRACK_EXCEPTION_SITES = (
+    ("the graceful-shutdown line", whole, r"^- graceful \(default\):"),
 )
 #: §S5 — the ``shutdown`` skill's graceful-mode exception.
 S5_SHUTDOWN = (
@@ -679,6 +806,7 @@ SURFACES = {
     "S5 orchestration-common close-out": (COMMON, common_close_out, S5_COMMON_CLOSE_OUT),
     "S5 crucible who runs what": (CRUCIBLE, crucible_who_runs_what, S5_CRUCIBLE_WHO),
     "S5 shutdown": (SHUTDOWN, shutdown_graceful, S5_SHUTDOWN),
+    "S5 orchestration-track sign-off": (TRACK, whole, S5_TRACK_SIGN_OFF),
     "S6 sub-agent-procedure": (PROCEDURE, procedure_code_quality, S6_TEST_LEAK),
     "S6 orchestration-common": (COMMON, whole, S6_TEST_LEAK),
     "S7 git-workflow": (GIT_WORKFLOW, git_releases, S7_GIT_RELEASES),
@@ -750,6 +878,9 @@ class StoryPointsTest(unittest.TestCase):
     def test_orchestration_mainline_filing_order_names_the_score_in_cr_plan(self):
         self.assertEqual(surface_findings("S2 orchestration-mainline"), [])
 
+    def test_no_cr_authoring_plan_file_example_carries_points(self):
+        self.assertEqual(plan_file_points_spans(read_text(REPO_ROOT / CR_AUTHORING)), [])
+
     def test_the_crucible_skill_cr_plan_example_carries_points(self):
         region = crucible_queue_verbs(read_text(REPO_ROOT / CRUCIBLE))
         self.assertTrue(region.strip(), "precondition: the crucible skill has a queue-verbs section")
@@ -773,7 +904,18 @@ class PreMergeGateInsideTheLastCycleTest(unittest.TestCase):
     def test_orchestration_common_close_out_states_the_eight_step_order(self):
         region = common_close_out(read_text(REPO_ROOT / COMMON))
         self.assertTrue(region.strip(), "precondition: orchestration-common has § Close-out")
-        self.assertEqual(order_findings(region, CLOSE_OUT_ORDER), [])
+        # MIGRATED at CR-MDB-059 (§S5): the order is read from the numbered steps only, so the
+        # bullets after the list never supply a step (F1).
+        steps = numbered_steps(region)
+        self.assertEqual(len(steps), 8, steps)
+        self.assertEqual(order_findings("\n".join(steps), CLOSE_OUT_ORDER), [])
+
+    def test_orchestration_common_close_out_ends_the_unbound_list_before_the_rest(self):
+        region = common_close_out(read_text(REPO_ROOT / COMMON))
+        self.assertEqual(unbound_list_findings(region), [])
+
+    def test_orchestration_track_sign_off_follows_close_out_steps_1_to_4(self):
+        self.assertEqual(surface_findings("S5 orchestration-track sign-off"), [])
 
     def test_orchestration_common_close_out_states_binding_loops_and_the_unbound_list(self):
         self.assertEqual(surface_findings("S5 orchestration-common close-out"), [])
@@ -787,8 +929,20 @@ class PreMergeGateInsideTheLastCycleTest(unittest.TestCase):
     def test_the_shutdown_graceful_mode_keeps_the_last_cycle_awaiting_the_pre_merge_gate(self):
         self.assertEqual(surface_findings("S5 shutdown"), [])
 
-    def test_no_shutdown_unit_says_always_finishes_the_active_cycle_without_the_exception(self):
-        self.assertEqual(unexcepted_always_findings(read_text(REPO_ROOT / SHUTDOWN)), [])
+    # MIGRATED at CR-MDB-059 (§S5): the "always finishes" detector widens to every form of
+    # finishing the active cycle, in the shutdown skill's body and orchestration-track.md (F5).
+    def test_no_shutdown_or_track_line_finishes_the_active_cycle_without_the_exception(self):
+        for rel in (SHUTDOWN, TRACK):
+            with self.subTest(file=rel):
+                self.assertEqual(unexcepted_finish_findings(read_text(REPO_ROOT / rel)), [])
+
+    def test_every_shutdown_site_that_finishes_the_active_cycle_states_the_exception(self):
+        self.assertEqual(exception_site_findings(read_text(REPO_ROOT / SHUTDOWN),
+                                                 SHUTDOWN_EXCEPTION_SITES), [])
+
+    def test_the_track_graceful_shutdown_line_states_the_exception(self):
+        self.assertEqual(exception_site_findings(read_text(REPO_ROOT / TRACK),
+                                                 TRACK_EXCEPTION_SITES), [])
 
     def test_agents_md_workflow_rules_state_the_close_out_order(self):
         region = agents_workflow_rules(read_text(REPO_ROOT / AGENTS))
@@ -1020,7 +1174,9 @@ The CR's close-out order:
 
 Two loops back into a fix cycle:
 
-- **A red gate** is ingested, then `cycle-done` closes the cycle with it. A `fix` cycle is appended (`cycle-add --kind fix`), and the gate runs again inside that new last cycle.
+- **A red gate** is ingested, then `cycle-done` closes the cycle with it, and `unregister` then
+  `register` clears the orchestrator's binding. A `fix` cycle is appended (`cycle-add --kind fix`),
+  and the gate runs again inside that new last cycle.
 - **A sign-off that sends changes back** after `cycle-done` follows the same path.
 
 Every other orchestrator run stays unbound:
@@ -1028,6 +1184,13 @@ Every other orchestrator run stays unbound:
 - baselines;
 - the post-merge develop gate;
 - the release's own verification gate, which runs under `--release`.
+
+The rest of the close-out:
+
+- Steps 6 and 8 bracket the merge: before the merge, the spec's `**Status:**` flip; after it, `cr-close --commit <merge sha> --agent <id>`, which posts `cr-merged`.
+- **Read the Crucible plan before the last cycle's `cycle-done`** (every earlier cycle done), **and before proposing a merge, `finish` or `cr-close`** (every cycle, VERIFY included, done).
+- **A release-fix CR** follows steps 2–5 and 8: it has no feature branch to sync or merge, and its `cr-close` takes its last commit on the release branch.
+- **The close-out's `**Status:**` flip is the LAST commit on the feature branch** — after the merge, touch zero docs for the shipped CR.
 
 ## Investigation discipline
 - Read the actual errors first.
@@ -1042,7 +1205,7 @@ GOOD_MAINLINE = """# Orchestration — MAINLINE
 GOOD_CR_AUTHORING = """# CR / PRD / DN Authoring
 
 ## The CR queue — structure only (queue idiom, 2026-07-20)
-- **Scoring:** every CR is scored when filed (`cr-plan --points`, or `plan-file --release … --points`), on the scale 1, 2, 3, 5, 8, 13. 13 is the cap; a CR scoring more is split before it is filed.
+- **Scoring:** every CR is scored when filed, with `cr-plan --points <n> --agent <id>`; a CR filed by `plan-file --release` is scored the same way, since `plan-file` takes no `--points`. The scale is 1, 2, 3, 5, 8, 13. 13 is the cap; a CR scoring more is split before it is filed.
 - **A release is NOT a CR.** A release is a boundary event: the wave carrying it drains its queue on the board. Work the release genuinely needs is an ordinary CR in the wave, among it every release's test-hygiene CR, sequenced last in the final wave, so the wave has not drained while it is open.
 - **A project scaffolded before the board held the queue**: only those CRs are filed, with `cr-plan`, each scored with `--points`.
 
@@ -1056,16 +1219,60 @@ GOOD_GAP_ANALYSIS = """# Gap Analysis
 23. **Re-score the CR** — the analysis re-scores the CR with `cr-plan --points`, re-sending its current title, release and wave. A CR the analysis finds above 13 is split before the pre-review. In multi mode a Track raises the re-score or split to Mainline, which runs `cr-plan` and files the split CRs.
 """
 
-GOOD_SHUTDOWN = """# Shutdown
+GOOD_SHUTDOWN = """---
+name: shutdown
+description: End-of-run teardown — finishes its active step, finishes its plan's active cycle on the Crucible board, acks.
+---
+
+# Shutdown — end-of-run orchestrator teardown
+
+**Two modes, chosen by the `emergency` flag:**
+- **Graceful (default)** — finish the active step, finish the plan's active cycle (except a last
+  cycle awaiting the pre-merge gate, which stays active), commit so nothing dangles, ack, then
+  stop the watcher.
+- **Emergency** — close only the active write, **fast-abort** the rest
+  (skip finishing the active cycle, no merge), best-effort ack, then stop the watcher.
+
+**Role asymmetry is the point of this skill:**
+- **Track** is normally shut down by **MAINLINE**.
+  A Track never tears down before its active cycle is finished (except a last cycle awaiting the
+  pre-merge gate) and its worktree committed, unless told to emergency-stop.
+
+## Step 1 — Classify the shutdown (BOTH roles)
 
 ### Step 1A — GRACEFUL (default)
 Nothing is abandoned. A graceful shutdown finishes the plan's active cycle, except when that cycle is the last one and its pre-merge gate has not run: that cycle stays active and is reported as "awaiting the pre-merge gate".
 
 ### Step 1B — EMERGENCY (`emergency` flag set)
-- Fast-abort the rest.
+- **Fast-abort** the rest — do NOT finish the active cycle, do NOT attempt a CR merge.
+
+## Step 2A — TRACK shutdown
+
+**Graceful (1A):**
+1. **Finish the active step** (Step 1).
+2. **Mid-CR with an active cycle on the plan? ESCALATE first.** *"Track N got a shutdown; mid
+   CR-XXX. Non-emergency → I'll finish the active cycle (unless it is the last one, awaiting the
+   pre-merge gate), commit the worktree and ack."*
+   - **Non-emergency (default):** keep working — finish the plan's active cycle, except a last
+     cycle awaiting the pre-merge gate.
+
+**Emergency (1B):**
+2. Fast-abort — no finishing of the active cycle, no merge.
 
 ## Guardrails
-- A normal shutdown ALWAYS finishes the plan's active cycle, except a last cycle awaiting the pre-merge gate, and commits a clean tree.
+- **Fast-abort (skip finishing the active cycle + CR merge) is permitted ONLY under the `emergency` flag.**
+  A normal shutdown ALWAYS finishes the plan's active cycle, except a last cycle awaiting the
+  pre-merge gate, and commits a clean tree.
+"""
+
+GOOD_TRACK = """# Orchestration — TRACK
+
+## HOLD the merge for Mainline's relayed approval
+- The ONE user-facing gate is the MERGE. The sign-off follows close-out steps 1–4 (`orchestration-common.md` § Close-out); present VERIFY to Mainline and HOLD.
+
+## On a shutdown directive — invoke the `/shutdown` skill
+- **Graceful (default):** finish the active step; if mid-CR with an active cycle on the plan, **ESCALATE to Mainline** (mid-cycle, will finish the active cycle then ack); finish the plan's active cycle, except a last cycle awaiting the pre-merge gate; leave a clean worktree.
+- **`emergency` flag:** close only the active write, fast-abort (no drain/merge), best-effort ack.
 """
 
 GOOD_PROCEDURE = """# AGENTS
@@ -1194,6 +1401,13 @@ GOOD_S4_WORKTREE_TS = """/**
 const CR_ID_RE = /^CR-[A-Z][A-Z0-9]*-[0-9]+/;
 """
 
+#: §S5 — four of the numbered close-out steps of ``GOOD_COMMON``, for the order proofs (F1).
+STEP_5 = "5. The merge sign-off.\n"
+STEP_6 = ("6. The spec's `**Status:**` flip, a docs-only commit and still the last commit on the "
+          "branch.\n")
+STEP_7 = "7. The merge.\n"
+STEP_8 = "8. `cr-close`.\n"
+
 #: Each surface's synthetic file, and for each of its rules the one cut that removes that rule.
 GOOD_SURFACES = {
     "S1 crucible intro": (GOOD_CRUCIBLE, {
@@ -1209,9 +1423,10 @@ GOOD_SURFACES = {
     }),
     "S2 cr-authoring": (GOOD_CR_AUTHORING, {
         S2_CR_AUTHORING[0][0]: "is scored when filed",
-        S2_CR_AUTHORING[1][0]: "1, 2, 3, 5, 8, 13",
-        S2_CR_AUTHORING[2][0]: "13 is the cap; ",
-        S2_CR_AUTHORING[3][0]: ", each scored with `--points`",
+        S2_CR_AUTHORING[1][0]: ", since `plan-file` takes no `--points`",
+        S2_CR_AUTHORING[2][0]: "1, 2, 3, 5, 8, 13",
+        S2_CR_AUTHORING[3][0]: "13 is the cap; ",
+        S2_CR_AUTHORING[4][0]: ", each scored with `--points`",
     }),
     "S2 gap-analysis": (GOOD_GAP_ANALYSIS, {
         S2_GAP_ANALYSIS[0][0]: ", re-sending its current title, release and wave",
@@ -1233,9 +1448,18 @@ GOOD_SURFACES = {
         S5_COMMON_CLOSE_OUT[3][0]: "first `register --role ORCHESTRATOR --cycle <last>`",
         S5_COMMON_CLOSE_OUT[4][0]: "later runs inherit the binding",
         S5_COMMON_CLOSE_OUT[5][0]: "then `cycle-done` closes the cycle with it",
-        S5_COMMON_CLOSE_OUT[6][0]: " inside that new last cycle",
-        S5_COMMON_CLOSE_OUT[7][0]: " follows the same path",
-        S5_COMMON_CLOSE_OUT[8][0]: "the post-merge develop gate;",
+        S5_COMMON_CLOSE_OUT[6][0]: (", and `unregister` then\n  `register` clears the orchestrator's "
+                                    "binding"),
+        S5_COMMON_CLOSE_OUT[7][0]: " inside that new last cycle",
+        S5_COMMON_CLOSE_OUT[8][0]: " follows the same path",
+        S5_COMMON_CLOSE_OUT[9][0]: "the post-merge develop gate;",
+        S5_COMMON_CLOSE_OUT[10][0]: " (every earlier cycle done)",
+        S5_COMMON_CLOSE_OUT[11][0]: (", and its `cr-close` takes its last commit on the release "
+                                     "branch"),
+    }),
+    "S5 orchestration-track sign-off": (GOOD_TRACK, {
+        S5_TRACK_SIGN_OFF[0][0]: ("The sign-off follows close-out steps 1–4 "
+                                  "(`orchestration-common.md` § Close-out); "),
     }),
     "S5 crucible who runs what": (GOOD_CRUCIBLE, {
         S5_CRUCIBLE_WHO[0][0]: " in the plan's last cycle,",
@@ -1348,22 +1572,52 @@ class DetectorsOnSyntheticTextTest(unittest.TestCase):
         nested = "- Lead:\n  - one;\n  - two.\n- Sibling.\n"
         self.assertEqual(led_lists(nested), ["- lead: - one; - two."])
 
-    def test_the_order_detector_both_ways(self):
+    def test_the_order_detector_reads_the_numbered_steps_only(self):
+        """F1: proved with the bullets after the list present — the whole region lets them
+        supply a step (the defect), the numbered steps alone bite."""
         good = common_close_out(GOOD_COMMON)
-        self.assertEqual(order_findings(good, CLOSE_OUT_ORDER), [])
+        self.assertIn("Steps 6 and 8 bracket the merge", good, "the trailing bullets are kept")
+        self.assertEqual(len(numbered_steps(good)), 8, numbered_steps(good))
+        self.assertEqual(order_findings("\n".join(numbered_steps(good)), CLOSE_OUT_ORDER), [])
+        cases = {
+            "swap 6/7": (good.replace(STEP_6 + STEP_7, STEP_7.replace("7.", "6.")
+                                      + STEP_6.replace("6.", "7.")),
+                         "step 7 (the merge) is missing or out of order"),
+            "swap 7/8": (good.replace(STEP_7 + STEP_8, STEP_8.replace("8.", "7.")
+                                      + STEP_7.replace("7.", "8.")),
+                         "step 8 (cr-close) is missing or out of order"),
+            "delete 5": (good.replace(STEP_5, ""),
+                         "step 5 (the merge sign-off) is missing or out of order"),
+        }
+        for name, (text, finding) in cases.items():
+            with self.subTest(case=name):
+                self.assertNotEqual(text, good, "the case must change the sample")
+                self.assertEqual(order_findings(text, CLOSE_OUT_ORDER), [],
+                                 "the whole region lets the trailing bullets supply the step")
+                self.assertEqual(
+                    order_findings("\n".join(numbered_steps(text)), CLOSE_OUT_ORDER), [finding])
+
+    # MIGRATED at CR-MDB-059 (§S5): the close-out sample now keeps the bullets after the list, so
+    # its order is read from the numbered steps, as the shipped gate reads it (F1).
+    def test_the_order_detector_both_ways(self):
+        def steps(region: str) -> str:
+            return "\n".join(numbered_steps(region))
+
+        good = common_close_out(GOOD_COMMON)
+        self.assertEqual(order_findings(steps(good), CLOSE_OUT_ORDER), [])
         self.assertEqual(order_findings(common_close_out(GOOD_AGENTS.replace(
             "## Workflow Rules (Model B, solo)", "## Close-out")), CLOSE_OUT_ORDER), [])
         swapped = good.replace("3. `cycle-done`.", "3. Hold.").replace(
             "5. The merge sign-off.", "5. `cycle-done`, then the merge sign-off.")
-        self.assertEqual(order_findings(swapped, CLOSE_OUT_ORDER),
+        self.assertEqual(order_findings(steps(swapped), CLOSE_OUT_ORDER),
                          ["step 4 (unregister, then register) is missing or out of order"])
         dropped = good.replace("1. Merge `develop` into the feature branch until behind=0.",
                                "1. Rebase.")
-        self.assertEqual(order_findings(dropped, CLOSE_OUT_ORDER),
+        self.assertEqual(order_findings(steps(dropped), CLOSE_OUT_ORDER),
                          ["step 1 (merge develop into the feature branch until behind=0) is "
                           "missing or out of order"])
         last = good.replace("8. `cr-close`.", "8. Done.")
-        self.assertEqual(order_findings(last, CLOSE_OUT_ORDER),
+        self.assertEqual(order_findings(steps(last), CLOSE_OUT_ORDER),
                          ["step 8 (cr-close) is missing or out of order"])
 
     def test_the_absence_detector_both_ways(self):
@@ -1407,12 +1661,98 @@ class DetectorsOnSyntheticTextTest(unittest.TestCase):
         self.assertEqual(bare_leak_findings(worktree), [],
                          "a worktree leak outside the test-leak rule is not this gate's")
 
-    def test_the_always_finishes_detector_both_ways(self):
-        self.assertEqual(unexcepted_always_findings(GOOD_SHUTDOWN), [])
-        old = GOOD_SHUTDOWN.replace(", except a last cycle awaiting the pre-merge gate,", "")
-        found = unexcepted_always_findings(old)
+    # MIGRATED at CR-MDB-059 (§S5): the "always finishes" proof widens to every form (F5).
+    def test_the_unexcepted_finish_detector_both_ways(self):
+        for good in (GOOD_SHUTDOWN, GOOD_TRACK):
+            with self.subTest(sample=good.splitlines()[0]):
+                self.assertEqual(unexcepted_finish_findings(good), [])
+        self.assertIn("finishes its plan's active cycle", GOOD_SHUTDOWN,
+                      "precondition: the frontmatter description says it, with no exception")
+        cuts = {
+            "intro graceful bullet": (" (except a last\n  cycle awaiting the pre-merge gate, "
+                                      "which stays active)", "- graceful (default)"),
+            "Track paragraph": (" (except a last cycle awaiting the\n  pre-merge gate)",
+                                "- track is normally"),
+            "Step 1A": (", except when that cycle is the last one and its pre-merge gate has "
+                        "not run", "nothing is abandoned"),
+            "Step 2A quote": (" (unless it is the last one, awaiting the\n   pre-merge gate)",
+                              "2. mid-cr"),
+            "Step 2A bullet": (", except a last\n     cycle awaiting the pre-merge gate",
+                               "- non-emergency (default)"),
+            "guardrails": (", except a last cycle awaiting the\n  pre-merge gate", "- fast-abort"),
+        }
+        for name, (cut, opens) in cuts.items():
+            with self.subTest(site=name):
+                self.assertIn(cut, GOOD_SHUTDOWN)
+                found = unexcepted_finish_findings(GOOD_SHUTDOWN.replace(cut, ""))
+                self.assertEqual(len(found), 1, found)
+                self.assertTrue(found[0].startswith(opens), found)
+        track_cut = ", except a last cycle awaiting the pre-merge gate"
+        self.assertIn(track_cut, GOOD_TRACK)
+        found = unexcepted_finish_findings(GOOD_TRACK.replace(track_cut, ""))
         self.assertEqual(len(found), 1, found)
-        self.assertIn("always finishes the plan's active cycle", found[0])
+        self.assertTrue(found[0].startswith("- graceful (default):"), found)
+
+    def test_the_unexcepted_finish_detector_leaves_the_emergency_not_finishing_alone(self):
+        for line in ("- Fast-abort — do NOT finish the active cycle.\n",
+                     "- Emergency — (skip finishing the active cycle, no merge).\n",
+                     "2. Fast-abort — no finishing of the active cycle, no merge.\n"):
+            with self.subTest(line=line):
+                self.assertEqual(unexcepted_finish_findings(line), [])
+        self.assertEqual(len(unexcepted_finish_findings(
+            "- Graceful: finish the active cycle, unless told to emergency-stop.\n")), 1,
+            "an exception that is not the pre-merge gate's does not count")
+
+    def test_the_exception_site_detector_both_ways(self):
+        self.assertEqual(exception_site_findings(GOOD_SHUTDOWN, SHUTDOWN_EXCEPTION_SITES), [])
+        self.assertEqual(exception_site_findings(GOOD_TRACK, TRACK_EXCEPTION_SITES), [])
+        cuts = {
+            "the introduction's graceful bullet": (" (except a last\n  cycle awaiting the "
+                                                   "pre-merge gate, which stays active)"),
+            "the introduction's Track paragraph": (" (except a last cycle awaiting the\n  "
+                                                   "pre-merge gate)"),
+            "Step 1A": (", except when that cycle is the last one and its pre-merge gate has "
+                        "not run"),
+            "the guardrails": ", except a last cycle awaiting the\n  pre-merge gate",
+        }
+        self.assertEqual(sorted([*cuts, "Step 2A"]),
+                         sorted(n for n, _r, _l in SHUTDOWN_EXCEPTION_SITES))
+        for name, cut in cuts.items():
+            with self.subTest(site=name):
+                self.assertIn(cut, GOOD_SHUTDOWN)
+                self.assertEqual(exception_site_findings(GOOD_SHUTDOWN.replace(cut, ""),
+                                                         SHUTDOWN_EXCEPTION_SITES), [name])
+        both_2a = GOOD_SHUTDOWN.replace(
+            " (unless it is the last one, awaiting the\n   pre-merge gate)", "").replace(
+            ", except a last\n     cycle awaiting the pre-merge gate", "")
+        self.assertEqual(exception_site_findings(both_2a, SHUTDOWN_EXCEPTION_SITES),
+                         ["Step 2A"])
+        self.assertEqual(exception_site_findings(
+            GOOD_TRACK.replace(", except a last cycle awaiting the pre-merge gate", ""),
+            TRACK_EXCEPTION_SITES), ["the graceful-shutdown line"])
+
+    def test_the_unbound_list_detector_both_ways(self):
+        good = common_close_out(GOOD_COMMON)
+        self.assertEqual(unbound_list_findings(good), [])
+        run_on = good.replace("The rest of the close-out:\n\n", "")
+        self.assertNotEqual(run_on, good)
+        self.assertEqual(unbound_list_findings(run_on), [
+            "the unbound list runs to 7 items, not 3: no non-list line ends it before the next "
+            "bullets"])
+        self.assertEqual(unbound_list_findings("- baselines;\n"), ["0 unbound-list leads, not one"])
+
+    def test_the_plan_file_points_detector_both_ways(self):
+        self.assertEqual(plan_file_points_spans(GOOD_CR_AUTHORING), [])
+        retired = GOOD_CR_AUTHORING.replace(
+            "with `cr-plan --points <n> --agent <id>`; a CR filed by `plan-file --release` is "
+            "scored the same way, since `plan-file` takes no `--points`.",
+            "(`cr-plan --points`, or `plan-file --release … --points`).")
+        self.assertNotEqual(retired, GOOD_CR_AUTHORING)
+        self.assertEqual(plan_file_points_spans(retired), ["plan-file --release … --points"])
+        wrapped = "- File it with `plan-file --cr <id>\n  --points 3`.\n"
+        self.assertEqual(plan_file_points_spans(wrapped), ["plan-file --cr <id> --points 3"],
+                         "a span wrapped across lines still counts")
+        self.assertEqual(plan_file_points_spans("- `cr-plan --points <n>`; `plan-file`.\n"), [])
 
 
 class CycleIdDetectorsOnSyntheticTextTest(unittest.TestCase):
