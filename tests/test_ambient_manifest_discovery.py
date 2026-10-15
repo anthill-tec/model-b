@@ -705,8 +705,21 @@ _LIFECYCLE_ELEMENTS = (
      r"stale\s+cycle\s+binding\s+survives\s+re-?registration"),
     ("binding-rule:unregister-then-register",
      r"`?unregister`?\s+then\s+`?register`?"),
-    ("binding-rule:unbound-orchestrator-avoids-it",
-     r"orchestrator\b[^.]*\b(never\s+binds|unbound)\b[^.]*\bavoid"),
+    # MIGRATED at CR-MDB-059 (§S5): the bullet is rewritten in place. Was:
+    # "binding-rule:unbound-orchestrator-avoids-it" -- a long-running orchestrator registers
+    # unbound. Now: the pre-merge gate is the orchestrator's one bound run, cleared after
+    # `cycle-done` by `unregister` then `register`.
+    ("binding-rule:pre-merge-gate-is-the-one-bound-run",
+     r"pre-merge\s+gate\b[^.]*\bone\s+bound\s+run"),
+    ("binding-rule:cleared-after-cycle-done",
+     r"\bclear\w*\b[^.]*\bafter\s+`?cycle-done`?[^.]*\bunregister`?\s+then\s+`?register"),
+)
+
+#: MIGRATED at CR-MDB-059 (§S5): the advice the rewritten bullet retires -- an orchestrator
+#: that never binds, or registers unbound, to avoid the stale binding.
+_RETIRED_UNBOUND_ADVICE = (
+    r"orchestrator\b[^.]*\b(never\s+binds|unbound)\b[^.]*\bavoid"
+    r"|long-running\s+orchestrator\s+should\s+register\s+unbound"
 )
 
 
@@ -743,8 +756,12 @@ _BINDING_BULLET = "- **A stale cycle binding survives re-registration"
 
 class CrucibleLifecycleRulesS5Test(unittest.TestCase):
     """§S5: ``skills-src/crucible/SKILL.md`` states both client lifecycle
-    rules in substance. The text already exists at RED — this gate passes by
-    design and exists to catch a later rewrite; the detectors prove it bites."""
+    rules in substance; the detectors prove it bites.
+
+    MIGRATED at CR-MDB-059 (§S5): the stale-binding bullet is rewritten in
+    place -- the pre-merge gate is the orchestrator's one bound run, cleared
+    after ``cycle-done`` by ``unregister`` then ``register`` -- and no longer
+    tells a long-running orchestrator to stay unbound."""
 
     def setUp(self):
         self.text = CRUCIBLE_SKILL.read_text(encoding="utf-8")
@@ -766,11 +783,34 @@ class CrucibleLifecycleRulesS5Test(unittest.TestCase):
         self.assertIn(_BINDING_BULLET, self.text, "precondition: the binding bullet exists")
         stripped = _remove_bullet(self.text, _BINDING_BULLET)
         findings = _lifecycle_rule_findings(stripped)
+        # MIGRATED at CR-MDB-059 (§S5): the binding bullet's elements, rewritten in place.
         self.assertEqual(findings, [
             "binding-rule:stale-binding-survives-reregistration",
             "binding-rule:unregister-then-register",
-            "binding-rule:unbound-orchestrator-avoids-it",
+            "binding-rule:pre-merge-gate-is-the-one-bound-run",
+            "binding-rule:cleared-after-cycle-done",
         ])
+
+    def test_s5_binding_rule_no_longer_keeps_the_orchestrator_unbound(self):
+        # MIGRATED at CR-MDB-059 (§S5): the retired advice is gone from the skill.
+        self.assertIsNone(re.search(_RETIRED_UNBOUND_ADVICE, _normalise(self.text)))
+
+    def test_s5_binding_detectors_both_ways_on_synthetic_text(self):
+        # MIGRATED at CR-MDB-059 (§S5): the rewritten bullet's shape passes; the old one bites.
+        new = ("- **A stale cycle binding survives re-registration.** Re-running `register` "
+               "does NOT rebind it. The pre-merge gate is the orchestrator's one bound run, "
+               "cleared after `cycle-done` by `unregister` THEN `register`.\n")
+        binding = [f for f in _lifecycle_rule_findings(new) if f.startswith("binding-rule:")]
+        self.assertEqual(binding, [])
+        self.assertIsNone(re.search(_RETIRED_UNBOUND_ADVICE, _normalise(new)))
+        old = ("- **A stale cycle binding survives re-registration.** Clear it with "
+               "`unregister` THEN `register`. An ORCHESTRATOR id that never binds avoids this "
+               "entirely, which is why a long-running orchestrator should register unbound.\n")
+        self.assertEqual(
+            [f for f in _lifecycle_rule_findings(old) if f.startswith("binding-rule:")],
+            ["binding-rule:pre-merge-gate-is-the-one-bound-run",
+             "binding-rule:cleared-after-cycle-done"])
+        self.assertIsNotNone(re.search(_RETIRED_UNBOUND_ADVICE, _normalise(old)))
 
     def test_s5_detector_bites_on_a_weakened_single_element(self):
         weakened = self.text.replace("nothing backfills it", "it may be re-sent later")
