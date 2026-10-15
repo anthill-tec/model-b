@@ -11,9 +11,10 @@ work), tells the rest of the team it is safe to stop, and — as the **final** a
 stops Sandesh's wake watcher it owns, then unregisters its address.
 
 **Two modes, chosen by the `emergency` flag:**
-- **Graceful (default)** — finish the active step, finish the plan's active cycle, commit so
-  nothing dangles (a Track merges its CR back only on Mainline's user-approved sign-off, otherwise
-  the CR stays open), ack, then stop the watcher. Nothing is abandoned.
+- **Graceful (default)** — finish the active step, finish the plan's active cycle (except a last
+  cycle awaiting the pre-merge gate, which stays active), commit so nothing dangles (a Track
+  merges its CR back only on Mainline's user-approved sign-off, otherwise the CR stays open),
+  ack, then stop the watcher. Nothing is abandoned.
 - **Emergency** (`emergency` in the command/directive — power failure, host going down) —
   close only the active write so nothing is left half-written, **fast-abort** the rest
   (skip finishing the active cycle, no merge), best-effort ack, then stop the watcher. Fast-abort is
@@ -25,8 +26,8 @@ stops Sandesh's wake watcher it owns, then unregisters its address.
   LAST orchestrator to go.
 - **Track** is normally shut down by **MAINLINE** (a Sandesh `directive`) and **acks back to
   MAINLINE** that it is safe to stop (or to the USER if the command came on its own session).
-  A Track never tears down before its active cycle is finished and its worktree committed, unless
-  told to emergency-stop.
+  A Track never tears down before its active cycle is finished (except a last cycle awaiting the
+  pre-merge gate) and its worktree committed, unless told to emergency-stop.
 
 **The one overridden rule:** during a session Sandesh's wake watcher stays up — the
 harness's Sandesh extension supervises it, and you only ever start it again once after exit 1
@@ -141,12 +142,13 @@ Host is going down (power failure, forced stop). After closing the active write:
    you are mid-cycle —
    `sandesh send --project <Project> --from "<your address>" --to "Mainline - <Project>" --kind request --subject "…" --body "…"`:
    *"Track N got a shutdown; mid CR-XXX, active cycle <label>. Non-emergency → I'll
-   finish the active cycle, commit the worktree and ack; the CR stays open unless you relay the
-   merge sign-off. Say `emergency` if you need an immediate stop."*
-   - **Non-emergency (default):** keep working — finish the plan's active cycle. You never
-     finish a CR on your own: its merge needs Mainline's user-approved sign-off
-     (`orchestration-track.md`). Without it, a graceful shutdown mid-CR commits the worktree,
-     reports its state, and leaves the CR open.
+   finish the active cycle (unless it is the last one, awaiting the pre-merge gate), commit the
+   worktree and ack; the CR stays open unless you relay the merge sign-off. Say `emergency` if
+   you need an immediate stop."*
+   - **Non-emergency (default):** keep working — finish the plan's active cycle, except a last
+     cycle awaiting the pre-merge gate. You never finish a CR on your own: its merge needs
+     Mainline's user-approved sign-off (`orchestration-track.md`). Without it, a graceful
+     shutdown mid-CR commits the worktree, reports its state, and leaves the CR open.
    - **Where Mainline relays an approved finish:** bring the worktree up to develop
      (`git -C .worktrees/<cr> merge develop --no-edit`, to behind=0), then, from the main tree,
      `~/.agents/scripts/worktree-flow.py finish --cr <CR>` (merge-not-rebase), then
