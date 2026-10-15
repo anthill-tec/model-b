@@ -969,9 +969,10 @@ class ModelBCommonTextNeutralTest(unittest.TestCase):
             self.assertIn(path.relative_to(REPO_ROOT).as_posix(), rels)
         bundles = {rel.split("/")[1] for rel in rels if rel.count("/") > 1}
         # MIGRATED PIN (CR-MDB-041 \u00a7S4): bootstrap/ and shutdown/ are no longer exempt.
-        self.assertEqual(bundles, {"bootstrap", "code-health", "cr-authoring", "crucible",
-                                   "gap-analysis", "git-workflow", "memory-templates", "model-b",
-                                   "shutdown"})
+        # MIGRATED at CR-MDB-061 (§S8): the chrome-ui-relay bundle is Model B-owned.
+        self.assertEqual(bundles, {"bootstrap", "chrome-ui-relay", "code-health", "cr-authoring",
+                                   "crucible", "gap-analysis", "git-workflow", "memory-templates",
+                                   "model-b", "shutdown"})
         self.assertIn("skills-src/memory-templates/rust-orchestration.md", rels)
 
     def test_model_b_owned_text_names_no_project_or_orchestrator_note(self):

@@ -26,7 +26,7 @@ Class map (one per C3 acceptance criterion or part of one):
 - ``ChezmoiBundleRetiredTest`` — ``skills-src/chezmoi/`` is gone, the deploy engine discovers no
   ``chezmoi`` bundle, and ``chezmoi`` appears nowhere in ``skills-src/``, ``generator/``,
   ``contracts/`` or ``modelb_axi/``.
-- ``AgentsMdBundleListTest`` — ``AGENTS.md``'s ``skills-src/`` row states 14 bundles, lists 8
+- ``AgentsMdBundleListTest`` — ``AGENTS.md``'s ``skills-src/`` row states 15 bundles, lists 9
   Model-B-owned and 6 imported, matches what the deploy engine discovers, and nothing in
   ``AGENTS.md`` names ``chezmoi`` as a bundle or skill.
 - ``MailAxiArchivedTest`` — ``mail-axi.md`` exists only at ``archive/contracts/mail-axi.md``
@@ -125,12 +125,15 @@ CHEZMOI_AS_BUNDLE_RE = re.compile(
 AGENTS_MD = REPO_ROOT / "AGENTS.md"
 #: The ``skills-src/`` row of AGENTS.md's Key Directories table.
 BUNDLE_ROW_RE = re.compile(r"^\| `skills-src/` \| (\d+) skill bundles\. (.*)$", re.MULTILINE)
-#: The AC's figures: 14 bundles (8 Model B-owned, 6 imported from Crucible). The owned figure is
-#: DERIVED (14 - 6), never a literal: CR-MDB-023 keeps the owned set size-free
+#: The AC's figures: 15 bundles (9 Model B-owned, 6 imported from Crucible). The owned figure is
+#: DERIVED (15 - 6), never a literal: CR-MDB-023 keeps the owned set size-free
 #: (``test_code_health_skill.ModelBOwnedTestSetS4Test``), so the total and the imported set carry
 #: the pin.
-EXPECTED_BUNDLE_COUNT, EXPECTED_IMPORTED = 14, 6
+# MIGRATED at CR-MDB-061 (§S8): 14 -> 15 bundles (9 owned), chrome-ui-relay adopted.
+EXPECTED_BUNDLE_COUNT, EXPECTED_IMPORTED = 15, 6
 EXPECTED_OWNED = EXPECTED_BUNDLE_COUNT - EXPECTED_IMPORTED
+#: The owned bundle CR-MDB-061 adds to the row's Model-B-owned list.
+CHROME_UI_RELAY_BUNDLE = "chrome-ui-relay"
 
 #: Where this RED pins the archived contract (an addition to ``archive/``, §S4).
 MAIL_AXI_ARCHIVED_REL = "archive/contracts/mail-axi.md"
@@ -435,7 +438,8 @@ class ChezmoiBundleRetiredTest(unittest.TestCase):
         ])
 
 class AgentsMdBundleListTest(unittest.TestCase):
-    """AC — ``AGENTS.md`` lists 14 bundles (8 owned, 6 imported) and names no ``chezmoi`` bundle."""
+    """AC — ``AGENTS.md`` lists 15 bundles (9 owned, ``chrome-ui-relay`` among them; 6 imported) and
+    names no ``chezmoi`` bundle."""
 
     def _row(self):
         row = _agents_md_bundle_row(AGENTS_MD.read_text(encoding="utf-8"))
@@ -444,9 +448,13 @@ class AgentsMdBundleListTest(unittest.TestCase):
         assert row is not None  # narrowed for the type checker; the assert above reports
         return row
 
-    def test_bundle_row_states_14_bundles_8_owned_6_imported_and_no_chezmoi(self):
+    # MIGRATED at CR-MDB-061 (§S8): 14 -> 15 bundles, 8 -> 9 owned, chrome-ui-relay among them.
+    def test_bundle_row_states_15_bundles_9_owned_with_chrome_ui_relay_6_imported_no_chezmoi(self):
         count, owned, imported = self._row()
         self.assertNotIn("chezmoi", owned + imported, f"§S4: AGENTS.md still lists chezmoi: owned={owned}")
+        # MIGRATED at CR-MDB-061 (§S8): the owned names include chrome-ui-relay.
+        self.assertIn(CHROME_UI_RELAY_BUNDLE, owned,
+                      f"CR-MDB-061 §S8: AGENTS.md's Model-B-owned list lacks chrome-ui-relay: {owned}")
         self.assertEqual((count, len(owned), len(imported)),
                          (EXPECTED_BUNDLE_COUNT, EXPECTED_OWNED, EXPECTED_IMPORTED),
                          f"§S4: AGENTS.md must state {EXPECTED_BUNDLE_COUNT} bundles, {EXPECTED_OWNED} owned by Model B, "
