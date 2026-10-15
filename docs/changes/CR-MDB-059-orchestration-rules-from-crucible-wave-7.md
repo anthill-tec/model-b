@@ -67,9 +67,9 @@ never fork).
 ### §S2 — Story points
 
 - **`cr-authoring`.**
-  - Its filing rules: every CR is scored when filed, with `cr-plan --points` (a CR filed by
-    `plan-file --release` is scored with `cr-plan --points`; `plan-file` takes no `--points`), on the
-    scale 1, 2, 3, 5, 8, 13. 13 is the cap; a CR scoring more is split before
+  - Its filing rules: every CR is scored when filed, with `cr-plan --points <n> --agent <id>`; a
+    CR filed by `plan-file --release` is scored the same way, since `plan-file` takes no
+    `--points`. The scale is 1, 2, 3, 5, 8, 13. 13 is the cap; a CR scoring more is split before
     it is filed.
   - The legacy-filing path (a project scaffolded before the board held the queue) scores each CR
     it files.
@@ -135,8 +135,9 @@ The CR's close-out order:
 
 Two loops back into a fix cycle:
 
-- **A red gate** is ingested, then `cycle-done` closes the cycle with it. A `fix` cycle is
-  appended (`cycle-add --kind fix`), and the gate runs again inside that new last cycle.
+- **A red gate** is ingested, then `cycle-done` closes the cycle with it, and `unregister` then
+  `register` clears the orchestrator's binding. A `fix` cycle is appended (`cycle-add --kind fix`),
+  and the gate runs again inside that new last cycle.
 - **A sign-off that sends changes back** after `cycle-done` follows the same path.
 
 Every other orchestrator run stays unbound:
@@ -144,6 +145,14 @@ Every other orchestrator run stays unbound:
 - baselines;
 - the post-merge develop gate;
 - the release's own verification gate, which runs under `--release` (`git-workflow` § Releases).
+
+**The rest of § Close-out** follows under its own lead line, apart from the unbound list:
+
+- "Read the Crucible plan before `cycle-done` … every cycle must be done" becomes: read the plan
+  before the last cycle's `cycle-done` (every earlier cycle done), and before proposing a merge,
+  `finish` or `cr-close` (every cycle, VERIFY included, done).
+- A release-fix CR (§S7) follows steps 2–5 and 8; it has no feature branch to sync or merge, and
+  its `cr-close` takes its last commit on the release branch.
 
 **The `crucible` skill.**
 
@@ -154,7 +163,13 @@ Every other orchestrator run stays unbound:
 
 **The `shutdown` skill.** A graceful shutdown finishes the plan's active cycle, except when that
 cycle is the last one and its pre-merge gate has not run. That cycle stays active and is reported
-as "awaiting the pre-merge gate".
+as "awaiting the pre-merge gate". The exception is stated wherever the skill's body says to finish
+the active cycle: its introduction, Step 1A, the Track paragraph, Step 2A and the guardrails. Its
+frontmatter description is unchanged.
+
+**`orchestration-track.md`.** Its graceful-shutdown line carries the same exception, and its
+sign-off path says the sign-off follows close-out steps 1–4 (`orchestration-common.md`
+§ Close-out).
 
 **Model B's `AGENTS.md`** states the order.
 
@@ -206,7 +221,8 @@ without the phrase) once per detector kind. The gates may share one table-driven
       - the absence of an unqualified invitation to read the board over HTTP;
       - `orchestration-common.md`'s rule.
 - [ ] **§S2.** One gate per surface, each pinning what §S2 assigns it:
-      - `cr-authoring`: scored at filing; the 1–13 scale; the 13 cap and the split; the
+      - `cr-authoring`: scored at filing with `cr-plan --points`; `plan-file` takes no `--points`
+        (and no `plan-file` code span carries it); the 1–13 scale; the 13 cap and the split; the
         legacy-filing path scoring;
       - `gap-analysis`: the re-score re-sending title, release and wave; the split before the
         pre-review; the Track raising it to Mainline;
@@ -236,10 +252,17 @@ without the phrase) once per detector kind. The gates may share one table-driven
         - the unbound list, including the release gate.
       - **The `crucible` skill** gates pin the rewritten ORCHESTRATOR bullet, and the absence of
         "verify cycle activated" and "LAST linked run".
+      - **The order gate reads the numbered steps only,** so bullets after the list never supply a
+        step; it is proved with those bullets present.
+      - **The red-gate loop** names the re-register before the `fix` cycle.
+      - **The "read the plan" bullet** names the last cycle's `cycle-done`, and the release-fix
+        variant is stated.
       - **The stale-binding bullet** is rewritten in place.
         `test_ambient_manifest_discovery.CrucibleLifecycleRulesS5Test` and its bite test migrate
         with it.
-      - **The `shutdown` skill's** exception is pinned.
+      - **The `shutdown` exception** is pinned in every body line that says to finish the active
+        cycle, and in `orchestration-track.md`'s graceful line; no such line in either file lacks
+        it. The Track sign-off pointer is pinned.
       - **`AGENTS.md`'s** order is pinned.
 - [ ] **§S6.** Gates pin the test-leak rule in `sub-agent-procedure.md` § Code quality and in
       `orchestration-common.md`.
