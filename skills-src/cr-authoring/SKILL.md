@@ -84,6 +84,10 @@ skill's queue-verbs section) — never in a table in a file.
 - **Filing a CR:** write the spec and commit it, then `cr-plan` (its title, release and wave),
   `cr-depends` (its whole dependency set), and `wave-sequence` with the wave's full order — the
   new CR placed among the CRs already in the wave, since each call replaces the whole set.
+- **Scoring:** every CR is scored when filed, with `cr-plan --points <n> --agent <id>`; a CR
+  filed by `plan-file`
+  `--release` is scored with `--points` on `cr-plan`. The scale is 1, 2, 3, 5, 8, 13. 13 is the
+  cap; a CR scoring more is split before it is filed.
 - **Allocating an id:** the next free number is allocated from the board's `queue` and the spec
   files in `docs/changes/` together — a number either one holds is taken.
 - **Titles stay in parity:** a spec's H1 and its board title agree. When a spec's H1 changes,
@@ -100,7 +104,7 @@ skill's queue-verbs section) — never in a table in a file.
 - **Header slots:** Design contract, Evidence base and Ontology are lines of the project's
   `AGENTS.md`; the target release lives on the board, as the release's proposal.
 - **Wave** = a **grouping of CRs** marking an execution boundary (solo: a redesign point between groups); its order is its `wave-sequence` on the board. Setup tasks and the release are NOT waves.
-- **A release is NOT a CR** (user ruling 2026-09-21, correcting the earlier "release CR bundles the final gates" model). A release is a **boundary event**: the wave carrying it drains its queue on the board, a human approves starting it, it is executed per the `git-workflow` skill, and only then recorded. **Never author a release CR, never express "the wave must finish" as dependency edges on one, and never put the release procedure in a spec** — the procedure lives in `git-workflow` §Releases and is loaded at release time. Work the release genuinely needs (an archive mapping, a doc sweep) is an ordinary CR in the wave, named for what it builds.
+- **A release is NOT a CR** (user ruling 2026-09-21, correcting the earlier "release CR bundles the final gates" model). A release is a **boundary event**: the wave carrying it drains its queue on the board, a human approves starting it, it is executed per the `git-workflow` skill, and only then recorded. **Never author a release CR, never express "the wave must finish" as dependency edges on one, and never put the release procedure in a spec** — the procedure lives in `git-workflow` §Releases and is loaded at release time. Work the release genuinely needs (an archive mapping, a doc sweep) is an ordinary CR in the wave, named for what it builds. Among it is every release's test-hygiene CR, sequenced last in the final wave, so the wave has not drained while it is open (`git-workflow` §Releases).
 - **Crucible absent:** filing is the spec file alone, with the id allocated from the spec files;
   the board steps are skipped, never imitated in a file.
 - **Unregistered** (an empty `CRUCIBLE_PROJECT_KEY` in `.env`): do the Setup section of the root
@@ -109,7 +113,8 @@ skill's queue-verbs section) — never in a table in a file.
 - **A project scaffolded before the board held the queue** (its `docs/changes/` still carries a
   README table): the trigger is the board's `queue` missing a CR whose spec exists in
   `docs/changes/` with no merge recorded (no `cr-close`, the spec's `**Status:**` not
-  `COMPLETED`). Only those CRs are filed, with `cr-plan`, `cr-depends` and `wave-sequence`; a CR
+  `COMPLETED`). Only those CRs are filed, with `cr-plan` (each scored with `--points`),
+  `cr-depends` and `wave-sequence`; a CR
   `queue` already lists is never re-filed, and a wave's order is re-sent in full. The release is
   the user's call, with the README's Target release slot proposed as the default. The README then
   stays as history.

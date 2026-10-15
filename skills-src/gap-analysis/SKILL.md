@@ -314,3 +314,7 @@ Any path that could break one gets an AC.
     - **Id:** `CR-<ACRONYM>-NNN-SPEC-REVIEW`, the acronym taken from the nearest registry.
     - **Reviewer:** the VERIFY agent of a stack in that registry's `PROJECT_STACKS`.
     - **Where it runs:** read-only in the main tree.
+23. **Re-score the CR** — the analysis re-scores the CR with `cr-plan --points <n> --agent <id>`,
+    re-sending its current title, release and wave. A CR the analysis finds above 13 is split before the
+    pre-review. In multi mode a Track raises the re-score or split to Mainline, which runs
+    `cr-plan` and files the split CRs.

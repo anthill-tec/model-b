@@ -117,8 +117,10 @@ The active-step rule applies to **both** modes and comes first, always:
 Then branch:
 
 ### Step 1A — GRACEFUL (default)
-Nothing is abandoned. You will finish the plan's active cycle, settle the repo, ack, and only then stop the
-watcher. Proceed to your role branch (2A Track / 2B Mainline).
+Nothing is abandoned. A graceful shutdown finishes the plan's active cycle, except when that
+cycle is the last one and its pre-merge gate has not run: that cycle stays active and is reported
+as "awaiting the pre-merge gate". Then you settle the repo, ack, and only then stop the watcher.
+Proceed to your role branch (2A Track / 2B Mainline).
 
 ### Step 1B — EMERGENCY (`emergency` flag set)
 Host is going down (power failure, forced stop). After closing the active write:
@@ -237,7 +239,8 @@ watcher up, and it applies ONLY here, at a confirmed shutdown's last step.
 
 - **Never tear down mid-write.** Close the active step first — graceful AND emergency.
 - **Fast-abort (skip finishing the active cycle + CR merge) is permitted ONLY under the `emergency` flag.**
-  A normal shutdown ALWAYS finishes the plan's active cycle and commits a clean tree; a Track merges
+  A normal shutdown ALWAYS finishes the plan's active cycle, except a last cycle awaiting the
+  pre-merge gate, and commits a clean tree; a Track merges
   its CR back only on Mainline's user-approved sign-off, and otherwise leaves the CR open.
 - **No dangling work at shutdown** — a clean tree (a Track's is its worktree); an approved CR merged;
   WIP committed (or, emergency-only, stashed/preserved).

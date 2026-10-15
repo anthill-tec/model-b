@@ -38,7 +38,7 @@ Coordinator-only rules. Read COMMON + MAINLINE. (Worker rules → TRACK; sub-age
 - **Verify track reports INDEPENDENTLY** — don't trust agent-claimed pass counts; read the `passed=/failed=` summary, confirm the board close-out (before the merge, the spec's `**Status:**` flipped; after it, `cr-close --commit <merge sha> --agent <id>` posted, which posts the `cr-merged` milestone — `cr-close` takes the merge's sha, so it waits for the merge commit), confirm the integration-test evidence.
 
 ## Filing/assigning a CR — COMMIT docs FIRST, schedule write LAST
-- Order: write the spec → `git commit` to `develop` → THEN file it on the board (`cr-plan`, `cr-depends`, `wave-sequence`) and assign the lane → inbox housekeeping.
+- Order: write the spec → `git commit` to `develop` → THEN file it on the board (`cr-plan --points <n> --agent <id>`, with its story-point score, `cr-depends`, `wave-sequence`) and assign the lane → inbox housekeeping.
 - A worktree branches off COMMITTED `develop` HEAD — an uncommitted spec never reaches it. Committing after the schedule write is the bug.
 - A CR introducing a new PRD design concept: update the PRD section first (commit promptly), then the CR cites it.
 - A new CR that must run before an already-sequenced CR → re-send the wave order (`wave-sequence`); `cr-depends` alone does not reorder.
