@@ -1001,6 +1001,13 @@ Implemented by CR-MDB-064.
   skill treats a bridge that cannot attach (no browser, remote debugging off, a held port) as its
   browser steps skipped, naming the cause and the fix. This supersedes the 2026-10-10 ruling that the
   installer detects the browser.
+- **No valid session name, no browser steps.** With `PROJECT_TOKEN` absent, invalid for the tool
+  (`[A-Za-z0-9._-]{1,64}`) or `default`, the skill skips its browser steps and asks for the token. It
+  never falls back to the shared default session.
+- **A tab is the skill's only if it opened it through the current bridge,** recorded from the ids its
+  before/after `pages` lists show as new. Tab ids reset with every bridge, so after a restart a tab on
+  a project URL is not opened again and is never selected or closed; shutdown reports it for the user
+  to close. The user's tabs are never touched, whatever their URL.
 
 ## Consequences per CR
 
