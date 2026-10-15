@@ -67,8 +67,9 @@ never fork).
 ### §S2 — Story points
 
 - **`cr-authoring`.**
-  - Its filing rules: every CR is scored when filed (`cr-plan --points`, or `plan-file --release
-    … --points`), on the scale 1, 2, 3, 5, 8, 13. 13 is the cap; a CR scoring more is split before
+  - Its filing rules: every CR is scored when filed, with `cr-plan --points` (a CR filed by
+    `plan-file --release` is scored with `cr-plan --points`; `plan-file` takes no `--points`), on the
+    scale 1, 2, 3, 5, 8, 13. 13 is the cap; a CR scoring more is split before
     it is filed.
   - The legacy-filing path (a project scaffolded before the board held the queue) scores each CR
     it files.
