@@ -154,8 +154,9 @@ The CR's close-out order:
 
 Two loops back into a fix cycle:
 
-- **A red gate** is ingested, then `cycle-done` closes the cycle with it. A `fix` cycle is
-  appended (`cycle-add --kind fix`), and the gate runs again inside that new last cycle.
+- **A red gate** is ingested, then `cycle-done` closes the cycle with it, and `unregister` then
+  `register` clears the orchestrator's binding. A `fix` cycle is appended
+  (`cycle-add --kind fix`), and the gate runs again inside that new last cycle.
 - **A sign-off that sends changes back** after `cycle-done` follows the same path.
 
 Every other orchestrator run stays unbound:
