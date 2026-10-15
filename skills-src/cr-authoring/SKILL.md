@@ -85,9 +85,9 @@ skill's queue-verbs section) — never in a table in a file.
   `cr-depends` (its whole dependency set), and `wave-sequence` with the wave's full order — the
   new CR placed among the CRs already in the wave, since each call replaces the whole set.
 - **Scoring:** every CR is scored when filed, with `cr-plan --points <n> --agent <id>`; a CR
-  filed by `plan-file`
-  `--release` is scored with `--points` on `cr-plan`. The scale is 1, 2, 3, 5, 8, 13. 13 is the
-  cap; a CR scoring more is split before it is filed.
+  filed by `plan-file` `--release` is scored the same way, since `plan-file` takes no
+  `--points`. The scale is 1, 2, 3, 5, 8, 13. 13 is the cap; a CR scoring more is split before
+  it is filed.
 - **Allocating an id:** the next free number is allocated from the board's `queue` and the spec
   files in `docs/changes/` together — a number either one holds is taken.
 - **Titles stay in parity:** a spec's H1 and its board title agree. When a spec's H1 changes,
