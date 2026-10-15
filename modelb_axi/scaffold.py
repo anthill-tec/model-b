@@ -1348,6 +1348,19 @@ _RELEASE_TARGET_TASKS: dict[str, str] = {
     "npm": ("Create the `npm` environment in the repository settings and add the "
             "`NPM_TOKEN` repository secret for the first publish; then add `release.yml` as "
             "the package's trusted publisher on npm (environment `npm`) and delete the token"),
+    # CR-MDB-071 §S4: the header's crates and maven-central items, as tasks.
+    "crates": ("Create the `crates` environment in the repository settings, admitting the "
+               "version tags, and add the `CARGO_REGISTRY_TOKEN` repository secret for the "
+               "first publish; then add the crates.io trusted publisher (this repository, "
+               "`release.yml`, environment `crates`) and delete the token"),
+    "maven-central": ("Create the `maven-central` environment in the repository settings, "
+                      "admitting the version tags; verify the namespace on the Central Portal; "
+                      "add the repository secrets `MAVEN_CENTRAL_USERNAME` and "
+                      "`MAVEN_CENTRAL_PASSWORD` (a Portal user token), `MAVEN_GPG_PRIVATE_KEY` "
+                      "and `MAVEN_GPG_PASSPHRASE`; make the POM carry "
+                      "`central-publishing-maven-plugin` with `<extensions>true</extensions>`, "
+                      "the sources and javadoc jars, and `maven-gpg-plugin` 3.2.0 or newer; "
+                      "commit one `mvnw` at the repository root"),
     "github-assets": ("Add an executable `.github/scripts/build-assets` that fills "
                       "`dist-assets/` — the release workflow's rehearsal and its "
                       "`publish-github-assets` job run it"),

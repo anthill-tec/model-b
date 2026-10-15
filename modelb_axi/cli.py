@@ -214,7 +214,8 @@ def _add_release_workflow_parser(subparsers) -> None:
         "--release-targets", metavar="CSV", default=None,
         help=(
             "replace the release targets (each `name` or `name:dir` of pypi, npm, "
-            "github-assets; \"\" for none) and record them as RELEASE_TARGETS"
+            "crates, maven-central, github-assets; \"\" for none) and record them as "
+            "RELEASE_TARGETS"
         ),
     )
     # Global flags accepted after the subcommand too; SUPPRESS keeps a
@@ -266,7 +267,8 @@ def _add_init_parser(subparsers) -> None:
         "--release-targets", metavar="CSV",
         help=(
             "RELEASE_TARGETS registry value: where a release publishes, each "
-            "`name` or `name:dir` of pypi, npm, github-assets (default: none)"
+            "`name` or `name:dir` of pypi, npm, crates, maven-central, github-assets "
+            "(default: none)"
         ),
     )
     init.add_argument(

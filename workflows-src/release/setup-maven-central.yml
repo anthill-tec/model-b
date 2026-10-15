@@ -1,0 +1,8 @@
+# - maven-central: environment `maven-central`, which admits the version
+#   tags, because the release event's ref is the tag; the namespace
+#   verified on the Central Portal; the repository secrets
+#   MAVEN_CENTRAL_USERNAME and MAVEN_CENTRAL_PASSWORD (a Portal user
+#   token), MAVEN_GPG_PRIVATE_KEY and MAVEN_GPG_PASSPHRASE; the POM
+#   carrying central-publishing-maven-plugin with
+#   <extensions>true</extensions>, the sources and javadoc jars, and
+#   maven-gpg-plugin 3.2.0 or newer; one mvnw at the repository root;
