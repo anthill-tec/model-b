@@ -1,11 +1,12 @@
 """The orchestration rules adopted from Crucible's wave 7: the board through client verbs only,
-story points, a brief that adds no proof steps, the pre-merge gate inside the last cycle, test
-leaks, and release fixes, the test-hygiene CR and the gate's intent (CR-MDB-059 §S1–§S3,
-§S5–§S7; PRD D5, AMENDED 2026-10-15).
+story points, a brief that adds no proof steps, unnumbered cycle labels and cycle-id agent ids,
+the pre-merge gate inside the last cycle, test leaks, and release fixes, the test-hygiene CR and
+the gate's intent (CR-MDB-059 §S1–§S7; PRD D5, AMENDED 2026-10-15).
 
 Contract: ``docs/changes/CR-MDB-059-orchestration-rules-from-crucible-wave-7.md`` and its
-acceptance criteria. §S4 (cycle labels, agent ids, the ``worktree-flow`` cycle field) is not
-gated here.
+acceptance criteria. §S4 (cycle labels, agent ids, the ``worktree-flow`` cycle field) is gated
+here too, except its routing check, which lives with the other routing checks in
+``tests.test_pi_worktree_isolation.WorktreeRoutingTest``.
 
 The module is table-driven: ``SURFACES`` maps each shipped surface — a file and the region of it a
 rule must sit in (a section, the intro, a numbered item, or the whole file) — to the rules §S
@@ -33,21 +34,43 @@ Detector kinds, each proved both ways on synthetic text in ``DetectorsOnSyntheti
 - ``unexcepted_always_findings`` — §S5: wherever the ``shutdown`` skill says a shutdown ALWAYS
   finishes the plan's active cycle, the same unit carries the exception.
 
+§S4's detectors, each proved both ways in ``CycleIdDetectorsOnSyntheticTextTest``:
+
+- ``label_gate_files`` and ``old_cycle_form_hits`` — the negative label gate: over its file set
+  (``skills-src/**/*.md`` minus the imported bundles, the generator's templates and stacks,
+  ``AGENTS.md``, ``contracts/crucible-envelope.md``), no line carries a numbered label or a
+  positional agent-id tag (``OLD_CYCLE_FORMS``; ``AGENTS_ONLY_OLD_FORMS`` in ``AGENTS.md`` only).
+- ``plan_file_label_findings`` — every ``plan-file`` example's ``--cycle`` is ``"<label>"``.
+- ``reference_id_form_findings`` — the five ``crucible/references/<stack>.md`` give one TDD form,
+  ``CR-<ACRONYM>-NNN-<cycle id>-<ROLE>``, and none says ``<PHASE>``.
+- ``agents_test_command_findings`` — ``AGENTS.md``'s ``--tests`` client runs use a cycle-id id.
+- ``baseline_citation_findings`` — ``AGENTS.md`` cites its baselines "at CR-MDB-NNN's
+  ``<cycle label>`` cycle".
+- ``docstring_id_findings`` — ``pi-package/extensions/worktree.ts``'s leading comment gives its
+  agent-id example in the cycle-id form, and no numbered tag.
+
+§S4's ``worktree-flow.py status`` check drives the real script on a throwaway git repo.
+
 The ``crucible`` skill's stale-binding bullet (§S5) is gated where it always was,
 ``tests.test_ambient_manifest_discovery.CrucibleLifecycleRulesS5Test`` (migrated there).
 
-Hermetic: reads repo files only. Stdlib only.
+Hermetic: reads repo files, and writes only temp dirs (the ``worktree-flow`` fixture repo and the
+negative gate's fixture tree). Stdlib only.
 """
 
 import re
+import shutil
+import tempfile
 import unittest
+from pathlib import Path
 
-from tests._helpers import REPO_ROOT, read_text
+from tests._helpers import REPO_ROOT, build_tree, decode_envelope, read_text
 from tests.test_board_holds_the_queue import (
     CR_AUTHORING_QUEUE_HEADING,
     CR_CLOSE,
     MAINLINE_FILING_HEADING,
     _numbered_item,
+    code_spans,
     invocation_lines,
     norm_units,
     section,
@@ -55,6 +78,9 @@ from tests.test_board_holds_the_queue import (
     units,
 )
 from tests.test_bootstrap_shutdown_registry import normalise
+from tests.test_suite_hygiene import _client_runs
+from tests.test_worktree_flow_dbless import _run_wf
+from tests.test_worktree_layout_and_bundles import _git_c3 as _git
 
 CRUCIBLE = "skills-src/crucible/SKILL.md"
 COMMON = "skills-src/model-b/references/orchestration-common.md"
@@ -146,6 +172,36 @@ def model_b_item_5(text: str) -> str:
 def agents_workflow_rules(text: str) -> str:
     return section_matching(text, r"^workflow rules\b")
 
+def _item_unit(sec: str, n: int) -> str:
+    """The raw unit of numbered item ``n`` (``n.`` at line start) in ``sec``, its wrapped lines
+    kept; ``""`` when there is none."""
+    hit = [u for u in units(sec) if re.match(rf"^\s*{n}\.\s", u)]
+    return hit[0] if hit else ""
+
+def model_b_item_1(text: str) -> str:
+    return _item_unit(section_matching(text, r"^4\. universal conventions"), 1)
+
+def model_b_item_3(text: str) -> str:
+    return _item_unit(section_matching(text, r"^4\. universal conventions"), 3)
+
+def crucible_identity(text: str) -> str:
+    return section_matching(text, r"^identity\b")
+
+def crucible_workflow_classification(text: str) -> str:
+    return section_matching(text, r"^workflow classification\b")
+
+def common_parallel_agents(text: str) -> str:
+    return section(text, "Parallel agents in one tree")
+
+def contract_agent_naming(text: str) -> str:
+    return section_matching(text, r"^agent-naming header\b")
+
+def contract_plan_verbs(text: str) -> str:
+    return section_matching(text, r"^universal plan verbs\b")
+
+def agents_testing(text: str) -> str:
+    return section_matching(text, r"^testing\b")
+
 
 # ------------------------------------------------------------------ detectors ----
 
@@ -236,6 +292,129 @@ def unexcepted_always_findings(text: str) -> list[str]:
     ``except`` in the same unit."""
     return [u for u in norm_units(text)
             if ALWAYS_FINISHES.search(u) and not re.search(r"\bexcept\b", u)]
+
+# ------------------------------------------------------------------ §S4 detectors ----
+
+CONTRACT = "contracts/crucible-envelope.md"
+WORKTREE_TS = "pi-package/extensions/worktree.ts"
+REFERENCE_STACKS = ("arduino", "bun", "java", "python", "rust")
+#: §S4: the TDD-role agent-id form, exactly as the five stack references give it.
+TDD_ID_FORM = "CR-<ACRONYM>-NNN-<cycle id>-<ROLE>"
+
+#: The imported bundles the negative label gate leaves out (§S4 AC; non-goal: they stay
+#: byte-identical, and their generic ``<cycle>`` slot admits a cycle id).
+IMPORTED_BUNDLE = re.compile(r"^(?:crucible-report-[^/]+|crucible-register)$")
+
+#: §S4 AC — the retired forms, on every file of the gate. The AC writes the first as
+#: ``\bC<n>\b``; a trailing ``\b`` after ``>`` holds only before a word character, so taken
+#: literally it never fires on ``C<n> <label>``, the very form it retires. The token alone is
+#: the gate (interpretation, raised as an ESCALATION in the RED report).
+OLD_CYCLE_FORMS = (
+    ("numbered-label placeholder C<n>", re.compile(r"\bC<n>")),
+    ('a --cycle "C<digits> example', re.compile(r'--cycle\s+"C\d+')),
+    ("a numbered label C<digits> <label>", re.compile(r"\bC\d+ <label>")),
+    ("a positional agent-id tag", re.compile(r"CR-[^\s`]*-[CF]\d+-(?:RED|GREEN|VERIFY|FIX)\b")),
+)
+#: §S4 AC — in ``AGENTS.md`` only.
+AGENTS_ONLY_OLD_FORMS = (
+    ("a numbered cycle with a role C<digits> <ROLE>",
+     re.compile(r"\bC\d+ (?:RED|GREEN|VERIFY|FIX)\b")),
+)
+
+
+def label_gate_files(root: Path = REPO_ROOT) -> list[str]:
+    """The negative label gate's file set under ``root``, repo-relative: ``skills-src/**/*.md``
+    minus the imported bundles, ``generator/templates/*.tmpl``, ``generator/stacks/*.toml``,
+    ``AGENTS.md`` and ``contracts/crucible-envelope.md``."""
+    root = Path(root)
+    skills = root / "skills-src"
+    rels = [p.relative_to(root).as_posix() for p in sorted(skills.rglob("*.md"))
+            if not IMPORTED_BUNDLE.match(p.relative_to(skills).parts[0])]
+    rels += [p.relative_to(root).as_posix()
+             for pattern in ("generator/templates/*.tmpl", "generator/stacks/*.toml")
+             for p in sorted(root.glob(pattern))]
+    rels += [rel for rel in (AGENTS, CONTRACT) if (root / rel).is_file()]
+    return rels
+
+
+def old_cycle_form_hits(rel: str, text: str) -> list[str]:
+    """``rel:line: form: match`` for each retired form on each line of ``text`` (the file
+    ``rel``); the ``AGENTS.md``-only form counts in ``AGENTS.md`` alone."""
+    forms = OLD_CYCLE_FORMS + (AGENTS_ONLY_OLD_FORMS if rel == AGENTS else ())
+    return [f"{rel}:{n}: {name}: {m.group(0)}"
+            for n, line in enumerate(text.splitlines(), 1)
+            for name, rx in forms for m in rx.finditer(line)]
+
+
+def plan_file_label_findings(region: str) -> list[str]:
+    """``[]`` when ``region`` shows a ``plan-file`` example (one code span) with ``--cycle``
+    and every such ``--cycle`` is ``"<label>"``; otherwise what is wrong."""
+    spans = [span for _line, span in invocation_lines(region, "plan-file")
+             if re.search(r'--cycle\s+"', span)]
+    if not spans:
+        return ["no plan-file example shows --cycle"]
+    return [f'--cycle "{label}" in: {span}' for span in spans
+            for label in re.findall(r'--cycle\s+"([^"]*)"', span) if label != "<label>"]
+
+
+def reference_id_form_findings(texts: dict) -> list[str]:
+    """What keeps the stack references (``stack -> text``) from giving, each in ONE
+    ``Agent naming:`` bullet, the one TDD form ``TDD_ID_FORM``, with no ``<PHASE>`` anywhere."""
+    findings = []
+    for stack, text in texts.items():
+        if "<PHASE>" in text:
+            findings.append(f"{stack}: still writes <PHASE>")
+        naming = [u for u in units(text) if re.match(r"^\s*[-*]\s+Agent naming:", u)]
+        if len(naming) != 1:
+            findings.append(f"{stack}: {len(naming)} 'Agent naming:' bullets, not one")
+            continue
+        tdd = [s for s in code_spans(" ".join(naming[0].split())) if s.startswith("CR-")]
+        if tdd != [TDD_ID_FORM]:
+            findings.append(f"{stack}: the TDD form is {tdd}, not [{TDD_ID_FORM!r}]")
+    return findings
+
+
+#: A ``--agent`` TDD id in the cycle-id form, placeholder or concrete.
+CYCLE_ID_AGENT = re.compile(
+    r"--agent\s+CR-MDB-(?:NNN|\d{3})-(?:<cycle id>|\d+)-(?:RED|GREEN|VERIFY|FIX)(?![\w-])")
+
+
+def agents_test_command_findings(region: str) -> list[str]:
+    """Each ``--tests`` client run of ``region``'s fenced blocks whose ``--agent`` is not a
+    cycle-id TDD id; one finding when there is no such run at all."""
+    runs = [c for c in _client_runs(region) if "--tests" in c]
+    if not runs:
+        return ["no --tests client run"]
+    return [c for c in runs if not CYCLE_ID_AGENT.search(c)]
+
+
+#: §S4: "at CR-MDB-NNN's `<cycle label>` cycle" — a real or placeholder number, a
+#: back-quoted label.
+BASELINE_CITATION = re.compile(r"\bat\s+CR-MDB-(?:\d{3}|NNN)['’]s\s+`[^`]+`\s+cycle\b")
+
+
+def baseline_citation_findings(region: str) -> list[str]:
+    """``[]`` when a unit of ``region`` stating the Baselines cites them at a CR's
+    back-quoted cycle label."""
+    if any(re.search(r"\bBaselines\b", u) and BASELINE_CITATION.search(u) for u in units(region)):
+        return []
+    return ["the baselines are not cited at CR-MDB-NNN's `<cycle label>` cycle"]
+
+
+def leading_block_comment(text: str) -> str:
+    """The body of the ``/** … */`` comment opening ``text``; ``""`` when it opens with none."""
+    match = re.match(r"\s*/\*\*(.*?)\*/", text, re.S)
+    return match.group(1) if match else ""
+
+
+def docstring_id_findings(doc: str) -> list[str]:
+    """What keeps ``doc`` from giving its agent-id example in the cycle-id form only."""
+    findings = []
+    if not re.search(r"\bCR-[A-Z]+-\d{3}-(?:\d+|<cycle id>)-(?:RED|GREEN|VERIFY|FIX)\b", doc):
+        findings.append("no agent-id example in the cycle-id form")
+    findings += [f"numbered tag: {m.group(0)}" for m in re.finditer(
+        r"\bCR-[A-Z]+-\d{3}[ -][CF]\d+[ -](?:RED|GREEN|VERIFY|FIX)\b", doc)]
+    return findings
 
 
 # ------------------------------------------------------------------ rules ----
@@ -430,6 +609,54 @@ S7_AGENTS_GATE = (
      (r"^- wave-boundary gate:", GATE_INTENT)),
 )
 
+#: §S4 — a TDD-role id placeholder and a concrete cycle-id example (normalised text).
+ID_FORM_ACRONYM = r"cr-<acronym>-nnn-<cycle id>-<role>"
+CONCRETE_CYCLE_ID = r"\bcr-[a-z]+-\d{3}-\d+-(?:red|green|verify|fix)\b"
+#: §S4 — a cycle label is ``<label> (§S…)``, with no number before it.
+LABEL_FORM = r"\blabels?(?::| is| are)? <label> \(§s"
+
+#: §S4 — ``model-b`` SKILL §4.1: the TDD form beside the orchestrator form, the role by ``--role``.
+S4_MODEL_B_41 = (
+    ("§4.1 gives the TDD form CR-<ACRONYM>-NNN-<cycle id>-<ROLE> beside the orchestrator form",
+     (r"<agent-type>-<project>", ID_FORM_ACRONYM)),
+    ("§4.1: the role is declared with --role; the suffix is a readability habit, never parsed",
+     (r"--role\b", r"\breadability habit\b", r"\bnever parsed\b")),
+)
+#: §S4 — ``model-b`` SKILL §4.3: the label carries no number.
+S4_MODEL_B_43 = (
+    ("§4.3: a cycle label is <label> (§S…)", (LABEL_FORM,)),
+)
+#: §S4 — the ``crucible`` skill's Identity section.
+S4_CRUCIBLE_IDENTITY = (
+    ("TDD-role agents are CR-<ACRONYM>-NNN-<cycle id>-<ROLE>, with a concrete cycle-id example",
+     (r"\btdd-role agents?\b", ID_FORM_ACRONYM, CONCRETE_CYCLE_ID)),
+)
+#: §S4 — ``orchestration-common.md``'s parallel-agents suffix example keeps ``-1`` … ``-N``.
+S4_COMMON_PARALLEL = (
+    ("ids are suffixed -1 … -N, the example a cycle-id id",
+     (r"(?<![\w-])-1\b[^.;]{0,12}(?<![\w-])-n\b",
+      r"\bcr-[a-z]+-(?:nnn|\d{3})-(?:<cycle id>|\d+)-(?:red|green|verify|fix)-\d+\b")),
+)
+#: §S4 — ``contracts/crucible-envelope.md``'s agent-naming header (the ``<PHASE>`` supersession
+#: line stays, pinned by ``tests.test_contracts``).
+S4_CONTRACT = (
+    ("TDD-ROLE agents are CR-<PROJ>-NNN-<cycle id>-<ROLE>, with a concrete cycle-id example",
+     (r"\btdd-role agents\b", r"cr-<(?:proj|acronym)>-nnn-<cycle id>-<role>", CONCRETE_CYCLE_ID)),
+)
+#: §S4 — Model B's ``AGENTS.md`` agent-ids line; the pre-review and orchestrator ids unchanged.
+S4_AGENTS_IDS = (
+    ("the agent-ids line gives CR-MDB-NNN-<cycle id>-<ROLE> with a concrete cycle-id example, "
+     "CR-MDB-NNN-SPEC-REVIEW and vidushi-mdb",
+     (r"^- agent ids:", r"cr-mdb-nnn-<cycle id>-<role>", CONCRETE_CYCLE_ID,
+      r"cr-mdb-nnn-spec-review", r"\bvidushi-mdb\b")),
+)
+#: §S4 — Model B's ``AGENTS.md`` workflow rules: the stage-flip label and the label form.
+S4_AGENTS_WORKFLOW = (
+    ("the stage-flip milestone label is \"<CR> <cycle label> done\"",
+     (r'--type stage-flip --label "<cr> <cycle label> done"',)),
+    ("a cycle label is <label> (§S…)", (LABEL_FORM,)),
+)
+
 #: Every phrase gate: ``key -> (file, region, rules)``.
 SURFACES = {
     "S1 crucible intro": (CRUCIBLE, intro, S1_CRUCIBLE_INTRO),
@@ -449,6 +676,23 @@ SURFACES = {
     "S7 cr-authoring": (CR_AUTHORING, cr_authoring_queue, S7_CR_AUTHORING),
     "S7 crucible gate-run": (CRUCIBLE, whole, S7_CRUCIBLE_GATE),
     "S7 AGENTS.md": (AGENTS, agents_workflow_rules, S7_AGENTS_GATE),
+    "S4 model-b 4.1": (MODEL_B, model_b_item_1, S4_MODEL_B_41),
+    "S4 model-b 4.3": (MODEL_B, model_b_item_3, S4_MODEL_B_43),
+    "S4 crucible identity": (CRUCIBLE, crucible_identity, S4_CRUCIBLE_IDENTITY),
+    "S4 orchestration-common parallel agents": (COMMON, common_parallel_agents,
+                                                 S4_COMMON_PARALLEL),
+    "S4 contracts agent-naming": (CONTRACT, contract_agent_naming, S4_CONTRACT),
+    "S4 AGENTS.md agent ids": (AGENTS, agents_testing, S4_AGENTS_IDS),
+    "S4 AGENTS.md workflow rules": (AGENTS, agents_workflow_rules, S4_AGENTS_WORKFLOW),
+}
+
+#: §S4 — the surfaces whose ``plan-file`` examples must show ``--cycle "<label>"``:
+#: ``key -> (file, region)``.
+PLAN_FILE_SURFACES = {
+    "model-b 4.3": (MODEL_B, model_b_item_3),
+    "crucible plan verbs": (CRUCIBLE, crucible_workflow_classification),
+    "contracts plan verbs": (CONTRACT, contract_plan_verbs),
+    "AGENTS.md workflow rules": (AGENTS, agents_workflow_rules),
 }
 
 
@@ -583,6 +827,132 @@ class ReleasesAndTheGateTest(unittest.TestCase):
 
     def test_agents_md_wave_gate_line_says_the_intent_spares_servers_it_did_not_start(self):
         self.assertEqual(surface_findings("S7 AGENTS.md"), [])
+
+
+class CycleLabelsAndAgentIdsTest(unittest.TestCase):
+    """§S4 — cycle labels carry no number; a TDD-role agent id carries the cycle's server id."""
+
+    maxDiff = None
+
+    def test_no_gated_file_carries_a_numbered_label_or_a_positional_agent_id_tag(self):
+        files = label_gate_files()
+        hits = [hit for rel in files
+                for hit in old_cycle_form_hits(rel, read_text(REPO_ROOT / rel))]
+        self.assertEqual(hits, [])
+
+    def test_the_label_gate_reads_every_surface_of_its_file_set_and_no_imported_bundle(self):
+        files = label_gate_files()
+        for rel in (AGENTS, CONTRACT, MODEL_B, CRUCIBLE, COMMON,
+                    "skills-src/crucible/references/python.md",
+                    "generator/templates/red.md.tmpl", "generator/stacks/python.toml"):
+            with self.subTest(rel=rel):
+                self.assertIn(rel, files)
+        self.assertEqual([r for r in files if "/crucible-report-" in r
+                          or r.startswith("skills-src/crucible-register/")], [])
+        self.assertEqual([r for r in files if r.startswith(("tests/", "docs/"))], [])
+
+    def test_model_b_section_4_1_gives_the_tdd_form_beside_the_orchestrator_form(self):
+        self.assertEqual(surface_findings("S4 model-b 4.1"), [])
+
+    def test_model_b_section_4_1_stays_on_its_single_line(self):
+        item = model_b_item_1(read_text(REPO_ROOT / MODEL_B))
+        self.assertTrue(item.strip(), "§4.1 is missing")
+        self.assertNotIn("\n", item.strip())
+
+    def test_model_b_section_4_3_labels_carry_no_number(self):
+        self.assertEqual(surface_findings("S4 model-b 4.3"), [])
+
+    def test_every_plan_file_example_shows_an_unnumbered_cycle_label(self):
+        for key, (rel, region_of) in PLAN_FILE_SURFACES.items():
+            with self.subTest(surface=key):
+                self.assertEqual(
+                    plan_file_label_findings(region_of(read_text(REPO_ROOT / rel))), [])
+
+    def test_the_crucible_identity_section_gives_the_cycle_id_form(self):
+        self.assertEqual(surface_findings("S4 crucible identity"), [])
+
+    def test_the_five_stack_references_give_the_cycle_id_form_in_parity(self):
+        texts = {stack: read_text(REPO_ROOT / f"skills-src/crucible/references/{stack}.md")
+                 for stack in REFERENCE_STACKS}
+        self.assertEqual(reference_id_form_findings(texts), [])
+
+    def test_orchestration_common_parallel_agents_example_keeps_the_suffix(self):
+        self.assertEqual(surface_findings("S4 orchestration-common parallel agents"), [])
+
+    def test_the_envelope_contract_example_id_carries_a_cycle_id(self):
+        self.assertEqual(surface_findings("S4 contracts agent-naming"), [])
+
+    def test_the_worktree_extension_docstring_example_carries_a_cycle_id(self):
+        doc = leading_block_comment(read_text(REPO_ROOT / WORKTREE_TS))
+        self.assertTrue(doc.strip(), f"{WORKTREE_TS} opens with no /** … */ comment")
+        self.assertEqual(docstring_id_findings(doc), [])
+
+    def test_agents_md_agent_ids_line_gives_the_cycle_id_form(self):
+        self.assertEqual(surface_findings("S4 AGENTS.md agent ids"), [])
+
+    def test_agents_md_test_command_examples_use_a_cycle_id_agent_id(self):
+        self.assertEqual(
+            agents_test_command_findings(agents_testing(read_text(REPO_ROOT / AGENTS))), [])
+
+    def test_agents_md_stage_flip_label_and_cycle_label_form(self):
+        self.assertEqual(surface_findings("S4 AGENTS.md workflow rules"), [])
+
+    def test_agents_md_cites_its_baselines_at_a_cycle_label(self):
+        self.assertEqual(
+            baseline_citation_findings(agents_testing(read_text(REPO_ROOT / AGENTS))), [])
+
+
+class WorktreeFlowStatusCycleFieldTest(unittest.TestCase):
+    """§S4 — ``worktree-flow.py status`` no longer parses ``C<n>`` from a commit subject: no
+    ``cycle`` field in the envelope, no cycle on the human board. Drives the real script on a
+    throwaway repo with one CR worktree whose latest commit subject holds ``C1``."""
+
+    SUBJECT = "test(CR-FOO-001 C1): RED — write the failing tests"
+
+    def setUp(self):
+        base = Path(tempfile.mkdtemp(prefix="modelb-wf-cycle-")).resolve()
+        self.addCleanup(shutil.rmtree, base, ignore_errors=True)
+        self.repo = base / "repo"
+        self.repo.mkdir()
+        self.worktree = self.repo / ".worktrees" / "CR-FOO-001"
+        for cwd, argv in (
+                (self.repo, ("init", "-q", "-b", "develop", ".")),
+                (self.repo, ("-c", "commit.gpgsign=false", "commit", "-q", "--allow-empty",
+                             "-m", "init")),
+                (self.repo, ("worktree", "add", "-q", "-b", "feature/CR-FOO-001-labels",
+                             str(self.worktree))),
+                (self.worktree, ("-c", "commit.gpgsign=false", "commit", "-q", "--allow-empty",
+                                 "-m", self.SUBJECT))):
+            proc = _git(cwd, *argv)
+            self.assertEqual(proc.returncode, 0, f"fixture git {argv}: {proc.stderr}")
+        self.result = _run_wf("status", "--project-dir", str(self.repo))
+        self.assertEqual(self.result.returncode, 0, self.result.stderr)
+
+    def _row(self) -> dict:
+        axi = decode_envelope(self.result.stdout)["axi"]
+        rows = [r for r in axi["worktrees"] if r.get("cr") == "CR-FOO-001"]
+        self.assertEqual(len(rows), 1, axi["worktrees"])
+        return rows[0]
+
+    def test_the_status_envelope_row_carries_no_cycle_field(self):
+        row = self._row()
+        self.assertEqual(row["last_subject"], self.SUBJECT, "the board still reads the branch")
+        self.assertEqual(row["phase"], "RED", "the phase parse is not §S4's to remove")
+        self.assertNotIn("cycle", row)
+
+    def test_no_status_envelope_row_carries_a_cycle_field(self):
+        axi = decode_envelope(self.result.stdout)["axi"]
+        self.assertEqual(len(axi["worktrees"]), 2, axi["worktrees"])
+        self.assertEqual([sorted(r) for r in axi["worktrees"] if "cycle" in r], [])
+
+    def test_the_human_board_phase_line_names_no_cycle(self):
+        phase_lines = [line.strip() for line in self.result.stderr.splitlines()
+                       if line.strip().startswith("phase:")]
+        self.assertEqual(len(phase_lines), 1, self.result.stderr)
+        before_subject = phase_lines[0].split("last:", 1)[0]
+        self.assertIn("RED", before_subject)
+        self.assertNotRegex(before_subject, r"\bC1\b")
+        self.assertIn(self.SUBJECT, phase_lines[0], "the last subject is still shown whole")
 
 
 # ------------------------------------------------------------------ synthetic proofs ----
@@ -738,6 +1108,82 @@ GOOD_AGENTS = """# Repository Guidelines
 - Wave-boundary gate: no-mistakes via `gate-run --intent <goal> --agent vidushi-mdb`, ingested as gate evidence; the intent tells the gate not to stop any server it did not start.
 """
 
+GOOD_S4_MODEL_B = """# Model B
+
+## 4. Universal conventions (PRD §D3 — every project instantiates these)
+
+1. **Naming registry + static init:** CR ids `CR-<ACRONYM>-NNN`, Crucible agentId `<agent-type>-<project>` for an orchestrator and `CR-<ACRONYM>-NNN-<cycle id>-<ROLE>` for a TDD-role agent (e.g. `CR-MDB-059-237-RED`); the role is declared with `--role`, and the role suffix is a readability habit, never parsed.
+2. **Queue idiom:** the board holds the queue.
+3. **Plan/cycle idiom:** `plan-file --cr <id> --title <t> --cycle "<label>" --cycle-kind red-green --cycle "<label>" --cycle-kind verify --wave <n> --agent <registered-id>`; server-assigned cycle ids only; cycle labels `<label> (§S…)`.
+
+## 5. Role routing
+"""
+
+GOOD_S4_CRUCIBLE = """# Crucible
+
+## Identity — ONE agent id for the whole session
+
+- Orchestrators: `<agent-type>-<project>`.
+- TDD-role agents: `CR-<ACRONYM>-NNN-<cycle id>-<ROLE>` (e.g. `CR-MDB-059-237-RED`), the cycle's server id.
+
+## Workflow classification — cycle attach + display context
+
+- **Plan verbs:** `plan-file --cr <id> --title <t> --cycle "<label>" --cycle-kind red-green --cycle "<label>" --cycle-kind verify --wave <w> --agent <id>`.
+"""
+
+GOOD_S4_COMMON = """# Orchestration — COMMON
+
+## Parallel agents in one tree
+- **Agent ids are suffixed `-1` … `-N`** on the phase's id (e.g. `CR-MDB-059-237-GREEN-2`).
+
+## Integration
+- x
+"""
+
+GOOD_S4_CONTRACT = """# Crucible envelope
+
+### Universal plan verbs (fleet-wide)
+- `plan-file --cr <id> --title <t> --cycle "<label>" --cycle-kind red-green --cycle "<label>" --cycle-kind verify --wave <w> --agent <id>`
+
+### Agent-naming header (bundled agent-naming skill)
+- TDD-ROLE agents: `CR-<PROJ>-NNN-<cycle id>-<ROLE>` (e.g. `CR-MDB-059-237-GREEN`) — a
+  readability habit, never a parsed key.
+- The older spelling of the same habit, `CR-<PROJ>-NNN-<cycle>-<PHASE>`, is superseded.
+
+## Filed requests / gaps
+"""
+
+GOOD_S4_AGENTS = """# Repository Guidelines
+
+## Testing & QA
+
+```bash
+python3 ~/.crucible/clients/python-crucible.py test --tests tests.test_hooks --agent CR-MDB-NNN-<cycle id>-RED  # one module
+python3 ~/.crucible/clients/python-crucible.py test --tests tests.test_contracts.ContractsS2Test --agent CR-MDB-059-237-RED  # one class
+python3 ~/.crucible/clients/python-crucible.py test --agent vidushi-mdb --log /tmp/full.log  # full suite
+```
+
+- **Agent ids:** free-form — TDD-role agents by convention `CR-MDB-NNN-<cycle id>-<ROLE>` (e.g. `CR-MDB-059-237-RED`), the spec pre-review `CR-MDB-NNN-SPEC-REVIEW`, orchestrator ops `vidushi-mdb`.
+- **The suite is expected to be GREEN.** Baselines for the full suite, measured 2026-10-16 at CR-MDB-059's `Cycle labels, agent ids and the worktree-flow cycle field (§S4)` cycle:
+  - real `HOME`: **3400 tests, 0 failures, 0 errors, 1 skip**.
+
+## Workflow Rules (Model B, solo)
+
+- Plans are filed via the client: `plan-file --cr <id> --title <t> --cycle "<label>" --cycle-kind red-green --cycle "<label>" --cycle-kind verify --wave <n> --agent vidushi-mdb`. Cycle labels: `<label> (§S…)`.
+- Post a `milestone` at every workflow moment: `--type stage-flip --label "<CR> <cycle label> done"` at each cycle-done.
+"""
+
+GOOD_S4_WORKTREE_TS = """/**
+ * Worktree isolation (CR-MDB-039 §S1).
+ *
+ * `prepare` sends a child to the registered git worktree `.worktrees/<CR>`
+ * of the CR id that OPENS the dispatch description (`CR-MDB-039-237-RED`; a CR
+ * id elsewhere does not route).
+ */
+
+const CR_ID_RE = /^CR-[A-Z][A-Z0-9]*-[0-9]+/;
+"""
+
 #: Each surface's synthetic file, and for each of its rules the one cut that removes that rule.
 GOOD_SURFACES = {
     "S1 crucible intro": (GOOD_CRUCIBLE, {
@@ -821,6 +1267,29 @@ GOOD_SURFACES = {
     }),
     "S7 AGENTS.md": (GOOD_AGENTS, {
         S7_AGENTS_GATE[0][0]: "; the intent tells the gate not to stop any server it did not start",
+    }),
+    "S4 model-b 4.1": (GOOD_S4_MODEL_B, {
+        S4_MODEL_B_41[0][0]: " and `CR-<ACRONYM>-NNN-<cycle id>-<ROLE>` for a TDD-role agent",
+        S4_MODEL_B_41[1][0]: ", never parsed",
+    }),
+    "S4 model-b 4.3": (GOOD_S4_MODEL_B, {
+        S4_MODEL_B_43[0][0]: "; cycle labels `<label> (§S…)`",
+    }),
+    "S4 crucible identity": (GOOD_S4_CRUCIBLE, {
+        S4_CRUCIBLE_IDENTITY[0][0]: " (e.g. `CR-MDB-059-237-RED`)",
+    }),
+    "S4 orchestration-common parallel agents": (GOOD_S4_COMMON, {
+        S4_COMMON_PARALLEL[0][0]: "`CR-MDB-059-237-GREEN-2`",
+    }),
+    "S4 contracts agent-naming": (GOOD_S4_CONTRACT, {
+        S4_CONTRACT[0][0]: "`CR-<PROJ>-NNN-<cycle id>-<ROLE>` ",
+    }),
+    "S4 AGENTS.md agent ids": (GOOD_S4_AGENTS, {
+        S4_AGENTS_IDS[0][0]: "`CR-MDB-NNN-<cycle id>-<ROLE>` ",
+    }),
+    "S4 AGENTS.md workflow rules": (GOOD_S4_AGENTS, {
+        S4_AGENTS_WORKFLOW[0][0]: " --label \"<CR> <cycle label> done\"",
+        S4_AGENTS_WORKFLOW[1][0]: " Cycle labels: `<label> (§S…)`.",
     }),
 }
 
@@ -934,6 +1403,121 @@ class DetectorsOnSyntheticTextTest(unittest.TestCase):
         found = unexcepted_always_findings(old)
         self.assertEqual(len(found), 1, found)
         self.assertIn("always finishes the plan's active cycle", found[0])
+
+
+class CycleIdDetectorsOnSyntheticTextTest(unittest.TestCase):
+    """§S4's detectors proved both ways: the new forms pass, today's retired forms bite."""
+
+    maxDiff = None
+
+    def test_the_label_gate_file_set_both_ways(self):
+        tmp = tempfile.TemporaryDirectory(prefix="modelb-label-gate-")
+        with tmp:
+            root = build_tree(tmp.name, (
+                "skills-src/model-b/SKILL.md", "skills-src/model-b/references/deep/x.md",
+                "skills-src/CRUCIBLE-HANDOVER.md", "skills-src/crucible/references/rust.md",
+                "skills-src/crucible-report-python/SKILL.md", "skills-src/crucible-register/SKILL.md",
+                "skills-src/model-b/notes.txt", "generator/templates/red.md.tmpl",
+                "generator/stacks/python.toml", "generator/agents/python-red-agent.md",
+                "AGENTS.md", "contracts/crucible-envelope.md", "contracts/gate-lock.md",
+                "docs/changes/CR-X.md", "README.md"))
+            self.assertEqual(label_gate_files(root), [
+                "skills-src/CRUCIBLE-HANDOVER.md", "skills-src/crucible/references/rust.md",
+                "skills-src/model-b/SKILL.md", "skills-src/model-b/references/deep/x.md",
+                "generator/templates/red.md.tmpl", "generator/stacks/python.toml",
+                "AGENTS.md", "contracts/crucible-envelope.md"])
+
+    def test_the_label_gate_bites_on_each_retired_form(self):
+        lines = {
+            "numbered-label placeholder C<n>": "cycle labels `C<n> <label> (§S…)`",
+            'a --cycle "C<digits> example': 'plan-file --cycle "C2 x" --cycle-kind verify',
+            "a numbered label C<digits> <label>": "a label like C3 <label>",
+            "a positional agent-id tag": "(e.g. `CR-MDB-017-F1-FIX`)",
+        }
+        for name, line in lines.items():
+            with self.subTest(form=name):
+                hits = old_cycle_form_hits(MODEL_B, f"ok\n{line}\n")
+                self.assertEqual(len(hits), 1, hits)
+                self.assertTrue(hits[0].startswith(f"{MODEL_B}:2: {name}: "), hits)
+
+    def test_the_agents_only_form_bites_in_agents_md_alone(self):
+        line = "measured 2026-10-15 at CR-MDB-071 C5 FIX through the client\n"
+        self.assertEqual(old_cycle_form_hits(AGENTS, line),
+                         [f"{AGENTS}:1: a numbered cycle with a role C<digits> <ROLE>: C5 FIX"])
+        self.assertEqual(old_cycle_form_hits(MODEL_B, line), [])
+
+    def test_the_label_gate_passes_the_new_forms(self):
+        for good in (GOOD_S4_MODEL_B, GOOD_S4_CRUCIBLE, GOOD_S4_COMMON, GOOD_S4_CONTRACT,
+                     GOOD_S4_AGENTS):
+            with self.subTest(sample=good.splitlines()[0]):
+                self.assertEqual(old_cycle_form_hits(AGENTS, good), [])
+
+    def test_the_ac_literal_c_n_pattern_misses_the_form_it_retires(self):
+        """Why ``OLD_CYCLE_FORMS`` drops the AC's trailing ``\\b``: taken literally it never
+        fires on ``C<n> <label>``."""
+        line = "cycle labels `C<n> <label> (§S…)`"
+        self.assertIsNone(re.search(r"\bC<n>\b", line))
+        self.assertEqual(len(old_cycle_form_hits(MODEL_B, line)), 1)
+
+    def test_the_section_4_1_single_line_check_both_ways(self):
+        self.assertNotIn("\n", model_b_item_1(GOOD_S4_MODEL_B).strip())
+        wrapped = GOOD_S4_MODEL_B.replace("; the role is declared", ";\n   the role is declared")
+        self.assertIn("\n", model_b_item_1(wrapped).strip())
+
+    def test_the_plan_file_label_detector_both_ways(self):
+        for region_of, good in ((model_b_item_3, GOOD_S4_MODEL_B),
+                                (crucible_workflow_classification, GOOD_S4_CRUCIBLE),
+                                (contract_plan_verbs, GOOD_S4_CONTRACT),
+                                (agents_workflow_rules, GOOD_S4_AGENTS)):
+            with self.subTest(region=region_of.__name__):
+                self.assertEqual(plan_file_label_findings(region_of(good)), [])
+                old = good.replace('--cycle "<label>" --cycle-kind red-green',
+                                   '--cycle "C1 <label>" --cycle-kind red-green')
+                self.assertEqual(len(plan_file_label_findings(region_of(old))), 1)
+        self.assertEqual(plan_file_label_findings("- `plan-file --cr <id> --agent <id>`\n"),
+                         ["no plan-file example shows --cycle"])
+
+    def test_the_reference_id_form_detector_both_ways(self):
+        good = ("# Python\n\n- Agent naming: `CR-<ACRONYM>-NNN-<cycle id>-<ROLE>` for TDD-role "
+                "agents;\n  `<agent-type>-<project>` for orchestrators.\n")
+        self.assertEqual(reference_id_form_findings(dict.fromkeys(REFERENCE_STACKS, good)), [])
+        old = good.replace("<cycle id>-<ROLE>", "<cycle>-<PHASE>")
+        self.assertEqual(reference_id_form_findings({"python": good, "rust": old}), [
+            "rust: still writes <PHASE>",
+            "rust: the TDD form is ['CR-<ACRONYM>-NNN-<cycle>-<PHASE>'], not "
+            "['CR-<ACRONYM>-NNN-<cycle id>-<ROLE>']"])
+        drifted = good.replace("<cycle id>-<ROLE>", "<cycle>-<ROLE>")
+        self.assertEqual(len(reference_id_form_findings({"java": drifted})), 1,
+                         "parity: every reference gives the one form")
+        self.assertEqual(reference_id_form_findings({"bun": "# Bun\n"}),
+                         ["bun: 0 'Agent naming:' bullets, not one"])
+
+    def test_the_agents_test_command_detector_both_ways(self):
+        good = agents_testing(GOOD_S4_AGENTS)
+        self.assertEqual(agents_test_command_findings(good), [])
+        old = good.replace("--agent CR-MDB-059-237-RED", "--agent CR-MDB-NNN-C1-RED")
+        found = agents_test_command_findings(old)
+        self.assertEqual(len(found), 1, found)
+        self.assertIn("CR-MDB-NNN-C1-RED", found[0])
+        self.assertEqual(agents_test_command_findings("```bash\nls\n```\n"),
+                         ["no --tests client run"])
+
+    def test_the_baseline_citation_detector_both_ways(self):
+        good = agents_testing(GOOD_S4_AGENTS)
+        self.assertEqual(baseline_citation_findings(good), [])
+        old = re.sub(r"at CR-MDB-059's `[^`]+` cycle", "at CR-MDB-071 C5 FIX", good)
+        self.assertNotEqual(old, good)
+        self.assertEqual(len(baseline_citation_findings(old)), 1)
+
+    def test_the_docstring_id_detector_both_ways(self):
+        doc = leading_block_comment(GOOD_S4_WORKTREE_TS)
+        self.assertIn("OPENS the dispatch description", doc)
+        self.assertNotIn("CR_ID_RE", doc, "only the leading comment is read")
+        self.assertEqual(docstring_id_findings(doc), [])
+        old = doc.replace("`CR-MDB-039-237-RED`", "`CR-MDB-039 C1 RED`")
+        self.assertEqual(docstring_id_findings(old), [
+            "no agent-id example in the cycle-id form", "numbered tag: CR-MDB-039 C1 RED"])
+        self.assertEqual(leading_block_comment("const x = 1;\n"), "")
 
 
 if __name__ == "__main__":
