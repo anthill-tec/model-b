@@ -34,7 +34,6 @@ Stdlib only.
 
 import argparse
 import contextlib
-import hashlib
 import io
 import json
 import os
@@ -54,6 +53,7 @@ from tests._helpers import (
     SANDESH_PI_TOOLS,
     decode_axi,
     deploy_hook_scripts,
+    sha256_text,
     write_interpreter_fixture,
 )
 from tests.pi_capability_sandbox import (
@@ -116,10 +116,6 @@ def split_marker(text: str) -> tuple[str, str]:
     """``(first line, rest of the file)`` — ruling P4's marker layout."""
     first, sep, rest = text.partition("\n")
     return first, rest if sep else ""
-
-
-def sha256_text(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def write_install_toml(modelb_home: Path, harnesses=("pi",), lean_ctx: str = "detected") -> None:

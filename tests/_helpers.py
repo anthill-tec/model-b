@@ -15,6 +15,7 @@ Stdlib only.
 """
 
 import ast
+import hashlib
 import json
 import os
 import re
@@ -71,6 +72,11 @@ def read_text_lenient(path: Path) -> str:
     """``path`` as UTF-8 text with undecodable bytes replaced (never raises on encoding)."""
     return path.read_text(encoding="utf-8", errors="replace")
 
+
+def sha256_text(text: str) -> str:
+    """The hex sha256 of ``text`` encoded as UTF-8 -- computed test-side, never through
+    production's own hashing helper."""
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 def files_under(dir_path: Path):
     """Yield all regular files under dir_path (recursive). Empty if dir absent."""

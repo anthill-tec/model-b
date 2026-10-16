@@ -33,7 +33,6 @@ Stdlib only.
 """
 
 import argparse
-import hashlib
 import json
 import os
 import re
@@ -48,6 +47,7 @@ from unittest import mock
 from modelb_axi import agents, permission_policy
 from modelb_axi.cli import _build_parser
 from tests._helpers import SANDESH_ALLOWED_TOOLS, decode_axi
+from tests._helpers import sha256_text as _sha256
 from tests.pi_capability_sandbox import AGENT_DIR_ENV, make_agent_dir, make_home
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -67,10 +67,6 @@ _CTX_TOOL_RE = re.compile(r"\bctx_\w+")
 
 UNMARKED_POLICY = '{\n  "permission": {\n    "*": "ask"\n  }\n}\n'
 UNMARKED_AGENT = "# the project's own agent\n\nNo marker here.\n"
-
-
-def _sha256(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def _permission(text: str) -> dict:
