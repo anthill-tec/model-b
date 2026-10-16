@@ -65,6 +65,17 @@ cache-keys = [
     { file = "workflows-src/**" },
 ]
 
+# Coverage (CR-MDB-073 §S1): the areas the pre-merge gate measures and tools/coverage-check.py
+# reports; AGENTS.md's --cov-source is `source`, comma-joined, in this order. The subprocess patch
+# traces the scripts and hooks the tests run as subprocesses. scripts/toon.py is generated from
+# modelb_axi/toon.py, so the report omits the twin (a [run] omit misses subprocess data).
+[tool.coverage.run]
+source = ["modelb_axi", "scripts", "hooks-src/scripts", "workflows-src", "tools"]
+patch = ["subprocess"]
+
+[tool.coverage.report]
+omit = ["scripts/toon.py"]
+
 [tool.hatch.build.targets.sdist]
 only-include = [
     "modelb_axi",

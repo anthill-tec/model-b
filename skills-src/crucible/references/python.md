@@ -15,3 +15,13 @@ Model B deltas only:
 - Agent naming: `CR-<ACRONYM>-NNN-<cycle id>-<ROLE>` for TDD-role agents;
   `<agent-type>-<project>` for orchestrators. Pass `--agent` and
   `--project-dir` explicitly.
+- Coverage: pass `--cov-source` to `regression --coverage` and
+  `pre-merge-gate`, naming the project's own packages and directories, because
+  the client's default names Crucible's own (`crucible_axi,clients`).
+- Subprocesses: scripts the tests run as subprocesses are measured only with
+  coverage.py 7.10 or later and `patch = ["subprocess"]` in the project's
+  coverage config, and only in a child whose interpreter has coverage.py and
+  inherits the environment.
+- Stale data: remove the reports directory's `.coverage` and every
+  `.coverage.*` before a coverage run, because a stale data file is merged into
+  the next run's figures.

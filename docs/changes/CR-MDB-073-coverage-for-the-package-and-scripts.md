@@ -1,6 +1,6 @@
 # CR-MDB-073 — The pre-merge gate measures coverage of the package and every script
 
-**Status:** PENDING — spec (gap analysis and pre-review 2026-10-17).
+**Status:** COMPLETED (filed 2026-10-15, gap analysis and pre-review 2026-10-17).
 **Type:** feature (coverage config, the pre-merge gate, a check tool, `AGENTS.md`, the `crucible`
 skill's python reference)
 **Priority:** P1 — release 1.0.0, wave 2.
