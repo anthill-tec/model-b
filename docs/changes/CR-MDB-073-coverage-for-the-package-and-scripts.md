@@ -1,93 +1,180 @@
-# CR-MDB-073 — Coverage for the package and every script
+# CR-MDB-073 — The pre-merge gate measures coverage of the package and every script
 
-**Status:** PENDING — **SEED, not the finished spec** (filed 2026-10-15 into release 1.0.0, wave 2).
-Gap analysis, the spec and its pre-review happen in order when this CR starts.
-**Type:** feature (test configuration, the pre-merge gate, `AGENTS.md`)
-**Priority:** P1 — release 1.0.0, wave 2; before the release's test-hygiene CR (CR-MDB-052).
+**Status:** PENDING — spec (gap analysis 2026-10-17).
+**Type:** feature (coverage config, the pre-merge gate, a check tool, `AGENTS.md`, the `crucible`
+skill)
+**Priority:** P1 — release 1.0.0, wave 2.
 **Depends on:** CR-MDB-059, which defines the pre-merge gate's order (board-authoritative: read
-`queue`). It runs on the installed Crucible 0.3.0 client, passing `--cov-source` explicitly
-(`docs/research/release-automation-crucible-procedure.md`).
+`queue`).
 **Labels:** tests, coverage, gate
-**Design reference:** PRD D5 (the pre-merge gate, AMENDED 2026-10-15).
+**Design reference:** PRD D5 (the pre-merge gate, and its 2026-10-17 ruling on coverage);
+`docs/research/release-automation-crucible-procedure.md` (release 1.0.0 no longer waits for
+Crucible 0.4.0).
 
 ## Context
 
-Measured 2026-10-15:
+Measured 2026-10-17, on develop, with the installed Crucible 0.3.0 python client and coverage.py
+7.16.2:
 
-- **No gate measures coverage.** Every gate Model B runs is `python-crucible.py test`, with a real
-  `HOME`, with an empty `HOME`, and on the clean runner. `regression --coverage` appears only as an
-  example command in `AGENTS.md`. The only coverage data on disk is a gitignored `.coverage` from
-  2026-10-13 that measured 18 files, all in `modelb_axi/`.
+- **No gate measures coverage.** Model B's gate runs are `python-crucible.py test`, with a real
+  `HOME`, with an empty `HOME`, and on the clean runner. `AGENTS.md` shows a
+  `regression --coverage` example without `--cov-source`.
 - **The client's default source is Crucible's own.** `regression` and `pre-merge-gate` default
-  `--cov-source` to `crucible_axi,clients`, so a bare `--coverage` run on Model B measures nothing
-  of Model B.
+  `--cov-source` to `crucible_axi,clients`, which measures nothing of Model B. The client always
+  passes `--source`, so a project's own `source` setting is overridden.
 - **No coverage config.** Model B has no `[tool.coverage]` and no `.coveragerc`.
-- **The scripts have never been measured:**
-  - `scripts/`: seven Python tool scripts, plus `gate-lock.sh`;
-  - `hooks-src/scripts/`: eight extensionless Python hooks with a `/usr/bin/python3` shebang;
-  - `workflows-src/`: `stamp_version.py` and `changelog_section.py`.
-- **Most script tests run the scripts as subprocesses** (38 modules exercise the scripts). coverage.py
-  traces only the process it started, unless subprocess measurement is on (coverage 7.10+
-  `[run] patch = ["subprocess"]`; 7.16.2 is installed). About ten modules load a script
-  in-process.
-- **What the Crucible python client does today** (installed 0.3.0):
-  - `pre-merge-gate` already measures coverage. It is the client's only coverage path: a
-    `py_compile` check, then `regression --coverage`.
-  - It always passes `--source <cov_source>` to `coverage run`, which overrides a project's own
-    `[tool.coverage.run] source`.
-  - It runs `coverage lcov` with no separate `coverage combine`. Subprocess measurement forces
-    parallel data files, but coverage.py 7.14 and later combine them in every reporting command,
-    `lcov` included (Crucible's probe on 7.16.2: "Combined 2 files", subprocess script counted).
-  - The "coverage lcov unavailable" seen earlier came from the default source: `--source
-    crucible_axi,clients` measures nothing of Model B, so `lcov` found no data and exited 1.
-  - It sends the board only a total (lines and functions), never per-file figures.
-- **Adopted by Crucible for 0.4.0 (#1455):**
-  - CR-CRU-192 (corrected in #1476): with no `--cov-source` the python client reads the project's
-    effective coverage config and passes no `--source`, so the project decides what is measured (a
-    given `--cov-source` still wins). A project that declares nothing gets `--source <project root>`
-    and a `coverage-source-undeclared` warning. Stale parallel data files are erased before each
-    run. It adds no combine step; subprocess coverage needs coverage.py 7.14 or later.
-  - CR-CRU-193: per-file coverage on the board (design not settled).
+- **Subprocess measurement works on 0.3.0.**
+  - Setup: `--cov-source modelb_axi,scripts,hooks-src/scripts,workflows-src`, plus a config with
+    `[run] patch = subprocess`.
+  - The scripts the tests run as subprocesses are traced, the extensionless `/usr/bin/python3`
+    hooks included. Without the patch the hooks are absent: 28 files measured instead of 36.
+  - coverage.py combines the parallel data when it writes the lcov, and leaves no `.coverage.*`
+    file behind.
+- **The full suite under coverage, with the patch:**
+  - `regression --coverage`: 3630 tests, 0 failed, 1 skip, in 392 s. The plain `test` run takes
+    about 200 s.
+  - `pre-merge-gate` (a `py_compile` check, then `regression --coverage`): the same counts, in
+    385 s.
+  - The output lands in `test-reports/<agent>/coverage.lcov`.
+- **The figures:**
 
-  Until 0.4.0 is installed, Model B passes `--cov-source` explicitly.
+  | Area | Lines |
+  |---|---|
+  | `modelb_axi` | 2668/2803, 95.2% |
+  | `workflows-src` | 205/217, 94.5% |
+  | `hooks-src/scripts` | 913/1030, 88.6% |
+  | `scripts` | 478/2257, 21.2% |
+  | Total | 4264/6307, 67.6% |
 
-## Scope (seed)
+  `scripts/toon.py` (76/186) is generated from `modelb_axi/toon.py` (`generator/build.py`), so it
+  counts the same code twice.
+- **What the board gets.** The client posts the run's total coverage with the run. It enforces no
+  floor and reports nothing per file.
+- **The non-Python script.** `scripts/gate-lock.sh` is outside coverage.py.
 
-1. **A coverage config in `pyproject.toml`.**
-   - Sources: `modelb_axi`, `scripts`, `hooks-src/scripts` and `workflows-src`.
-   - Subprocess measurement (coverage.py 7.14 or later combines the parallel data when it
-     reports).
-   - The extensionless hooks included by path.
-   - Excluded: `__pycache__`, generated code (`modelb_axi/toon.py`'s generated twin
-     `scripts/toon.py`; decide which one counts) and the packaged `_assets` copy.
-2. **The pre-merge gate measures coverage.**
-   - Its full-suite run is `pre-merge-gate`, with the project's `[tool.coverage.run]` source
-     (CR-CRU-192), filed under the last cycle (CR-MDB-059 §S5).
-   - The empty-`HOME` and clean-runner runs stay as they are.
-   - The board shows the run's total. Per-file figures come from the run's own lcov file until
-     CR-CRU-193 puts them on the board.
-3. **What the gate requires: decide at gap analysis.** Report-only, or a floor. A floor needs a
-   measured baseline first, and the subprocess tests must actually be traced, so the figure is real.
-4. **The non-Python script.** `gate-lock.sh` is outside coverage.py; it is listed as unmeasured,
-   never silently dropped.
-5. **`AGENTS.md` and the `crucible` skill** name the coverage run, and that `--cov-source` is passed
-   explicitly, because the client's default fits only Crucible.
+## Scope
 
-## To measure at gap analysis
+### §S1 — The coverage config
 
-- **Whether Crucible 0.3.0 already suffices.** With `--cov-source` passed explicitly and the
-  project's `[run] patch = ["subprocess"]`, does a `regression --coverage` run trace the scripts the
-  tests run as subprocesses (does the command-line `--source` reach the children), and do stale
-  parallel files from an earlier run leak into the next? If 0.3.0 suffices, the user decides whether
-  release 1.0.0 still waits for Crucible 0.4.0.
+`pyproject.toml` gains `[tool.coverage.run]`:
 
-- Whether the subprocess patch reaches the hooks (`/usr/bin/python3` must import coverage in the
-  child) and the tests that run scripts through `sys.executable`. Measure it in a `/tmp` sandbox
-  first.
-- The run's cost: time and disk for the parallel data files. A full coverage regression is a heavy
-  gate.
-- Whether the client ingests per-file coverage for paths outside a package (the scripts
-  directories).
-- The installed Crucible 0.4.0 client's actual coverage surface (`--help`, the release notes), and
-  whether CR-CRU-193 shipped.
-- The re-score.
+- `source`: `modelb_axi`, `scripts`, `hooks-src/scripts`, `workflows-src` and `tools`;
+- `patch = ["subprocess"]`;
+- `omit`: `scripts/toon.py`, the generated twin of `modelb_axi/toon.py`.
+
+The `--cov-source` that Model B passes names exactly the `source` list, comma-joined. A test pins
+the two as equal, so they cannot drift apart.
+
+### §S2 — The coverage check tool
+
+`tools/coverage-check.py`, a stdlib-only Python script:
+
+- **Input:** an lcov file (`coverage.lcov`) and a baseline file (an `AGENTS.md`).
+- **Output:** a table of lines covered (hit/found and percent) for each area and the total:
+  - the areas are the top-level `source` entries, with `hooks-src/scripts` as one area;
+  - a final line names each source file the lcov lacks, and `scripts/gate-lock.sh` as unmeasured.
+- **The baseline:** read from the `AGENTS.md` line that starts `Coverage baseline:`, which carries a
+  total as `<hit>/<found>`.
+- **Exit codes:**
+  - 0 when the measured total's ratio is at least the baseline's;
+  - 1 when it is lower, naming both figures;
+  - 2 on an unreadable lcov or a missing baseline line, with the reason.
+
+It writes nothing. It is not a deployed tool script (`scripts/`): it serves this repository's gate
+only.
+
+### §S3 — The pre-merge gate measures coverage
+
+`AGENTS.md`'s Testing & QA states Model B's pre-merge gate:
+
+1. **The real-`HOME` run** is
+   `python3 ~/.crucible/clients/python-crucible.py pre-merge-gate --cov-source <the §S1 list> --agent vidushi-mdb --cycle <last cycle> --log <file>`.
+   It is sandboxed as the other runs are.
+2. **The empty-`HOME` and clean-runner runs** stay `test` runs.
+3. **After the real-`HOME` run,** `tools/coverage-check.py test-reports/vidushi-mdb/coverage.lcov`
+   runs against develop's `AGENTS.md` (the last merged baseline). Its table goes into the merge
+   sign-off.
+4. **A drop** (exit 1) needs the user's explicit approval at sign-off.
+5. **A changed total** is recorded on the `Coverage baseline:` line by the close-out's docs-only
+   status-flip commit. That includes a drop the user approved.
+
+Also:
+
+- The `Coverage baseline:` line is added with the first figure measured under §S1's config.
+- The example coverage command passes `--cov-source`.
+- The note that a run killed mid-way can leave `.coverage.*` files is stated, with its remedy:
+  remove them before the next coverage run.
+
+### §S4 — The `crucible` skill
+
+In the python row's guidance, the skill states that a project measuring coverage passes
+`--cov-source` naming its own packages and directories, because the client's default names
+Crucible's own. It also states that scripts run as subprocesses are measured only with coverage.py's
+`patch = ["subprocess"]` in the project's config.
+
+### §S5 — `AGENTS.md`'s map
+
+- Key Directories gains `tools/`.
+- Development Commands gains the check tool's invocation.
+- Important Files names `[tool.coverage.run]` in `pyproject.toml`.
+
+## Acceptance criteria
+
+- [ ] **§S1.** `pyproject.toml` parses (`tomllib`) and its `[tool.coverage.run]` has exactly the
+      `source`, `patch` and `omit` values of §S1. A test pins `AGENTS.md`'s `--cov-source`
+      argument, split on `,`, as equal to `source`. The wheel and sdist checks stay green.
+- [ ] **§S2, the tool.** Tests drive `tools/coverage-check.py` as a subprocess on synthetic lcov and
+      `AGENTS.md` files in a temp dir, and pin:
+      - the per-area hit/found and percent for a known lcov, including an extensionless
+        `hooks-src/scripts/<name>` record;
+      - the missing-file line, and `scripts/gate-lock.sh` named as unmeasured;
+      - exit 0 for an equal total and a higher one;
+      - exit 1 for a lower total, naming both figures;
+      - exit 2 for a missing lcov, an lcov with no records, and an `AGENTS.md` with no
+        `Coverage baseline:` line;
+      - that the tool writes nothing: the temp dir's file list is unchanged.
+- [ ] **§S2, stdlib.** The tool imports only the standard library, and its first line is
+      `#!/usr/bin/env python3`.
+- [ ] **§S3.** Gates pin in `AGENTS.md`'s Testing & QA:
+      - the gate's real-`HOME` command, with `pre-merge-gate`, `--cov-source` and `--cycle`;
+      - the check tool's invocation against develop's `AGENTS.md`;
+      - "a drop needs the user's explicit approval";
+      - the baseline recorded by the status-flip commit;
+      - the `.coverage.*` remedy;
+      - a `Coverage baseline:` line whose `<hit>/<found>` the tool parses;
+      - the empty-`HOME` and clean-runner runs still named as `test` runs.
+- [ ] **§S3, the first figure.** The `Coverage baseline:` line carries the total of a
+      `pre-merge-gate` run measured on the branch under §S1's config (the twin omitted), from
+      `tools/coverage-check.py`'s table. VERIFY re-measures it.
+- [ ] **§S4.** A gate pins, in the `crucible` skill, `--cov-source` naming the project's own sources
+      beside the client's default being Crucible's, and `patch = ["subprocess"]` for subprocess
+      scripts. The skill's frontmatter is unchanged, and the skills load in Pi with no diagnostics.
+- [ ] **§S5.** `AGENTS.md`'s Key Directories names `tools/`, and its Development Commands show the
+      check tool. The structural gates on `AGENTS.md` stay green, migrated where they pin a list.
+- [ ] **The guards stay green.** The raw-runner guard, the AXI-envelope guard and the registry-key
+      detector stay green on the new text. A `KEY=` or `$NAME` it adds in code is listed in
+      `NOT_REGISTRY_KEYS` as a RED migration.
+- [ ] **Runs.**
+      - The suite is green through the client with a real `HOME`, an empty one (which stays empty)
+        and on the clean runner.
+      - The pre-merge gate runs as §S3 states, and its check-tool table is in the sign-off.
+      - New tests use a literal `§`, never `\u00a7`.
+      - `AGENTS.md`'s module count and test baselines match the measured suite.
+
+## Non-goals
+
+- **Raising the scripts' coverage.** Tests for `rust-code-health.py`, `rust-crate-map.py`,
+  `rust-dead-scan.py` and `skill-release-gate.py` are CR-MDB-078. `schedule_db.py` stays measured
+  and gets no new tests.
+- **A fixed floor per area.** The gate is a no-drop ratchet on the total.
+- **Per-file figures on the board** (Crucible's CR-CRU-193), and the project-declared source of
+  Crucible 0.4.0 (CR-CRU-192). Model B passes `--cov-source` until a later doc-sync.
+- **Coverage for other projects' gates,** and `init`'s scaffolded config. This CR changes Model B's
+  own gate. The `crucible` skill's guidance (§S4) is all a project gets.
+- **`scripts/gate-lock.sh`.** It is named as unmeasured and never silently dropped.
+
+## Cycle plan
+
+1. **The config, the check tool and the gate (§S1–§S3, §S5).** Red-green.
+2. **The `crucible` skill (§S4).** Red-green.
+3. **Verify.**
