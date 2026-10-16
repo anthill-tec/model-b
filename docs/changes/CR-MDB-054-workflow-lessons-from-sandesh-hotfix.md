@@ -17,7 +17,7 @@ Sandesh's project memory. Each item below is measured against Model B's own text
 analysis, and the ones that conflict with an existing Model B rule are brought to the user as rulings
 before the spec derives from them.
 
-## Scope (seed — the seven lessons)
+## Scope (seed — the eight lessons)
 
 1. **CI and release work is not entirely a chore** (user ruling 2026-10-10, superseding Sandesh's
    "chore, never a CR"). The no-mistakes gate is comprehensive, and fixes and changes may be made
@@ -51,3 +51,9 @@ before the spec derives from them.
    `~/.crucible/clients`) unless `LEAN_CTX_EXTRA_ROOTS` covers them; agent definitions that require
    lean-ctx state it. Candidate homes: the agent templates, `contracts/lean-ctx.md`. Model B never
    writes the user's lean-ctx config.
+8. **A release's expected date is at least the next day.** `release-propose --target` is set to at
+   least the day after the proposal, never the same day, even for a hotfix or a one-CR patch: the
+   board's burn-down projection needs a day ahead to project against. Re-running `release-propose`
+   with a new `--target` updates the stored date. Candidate homes: `cr-authoring` (first filing
+   proposes the release), the `crucible` skill's `release-propose` entry, `git-workflow` § Releases
+   (a hotfix's proposal). Source: Sandesh #1470.

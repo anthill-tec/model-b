@@ -232,6 +232,13 @@ the tests run as subprocesses cannot be measured. CR-MDB-073 stays whole in rele
 waits until Crucible 0.4.0 is released and installed. The 0.4.0 client changes therefore reach Model B
 before 1.0.0, through a doc-sync CR filed into 1.0.0 when 0.4.0's release notes arrive.
 
+## A release's expected date is at least the next day (user ruling, 2026-10-16)
+
+On Sandesh's 0.4.3 hotfix the user ruled that a release's expected date (`release-propose --target`)
+is set to at least the day after the proposal, never the same day, even for a same-day hotfix:
+Crucible's burn-down projection needs a day ahead to project against (Sandesh #1470). Model B adopts
+it; it reaches the skills through CR-MDB-054 (item 8).
+
 ## What this means for Model B
 
 Model B runs Crucible's shape in its own `release.yml` since 2026-09-24: `create-release` →
