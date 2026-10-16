@@ -1980,9 +1980,12 @@ def run_agents(args: argparse.Namespace, home: Path, project_root: Path | None =
     agent definitions of the project in the current directory from its
     ``PROJECT_STACKS``; ``--stacks`` changes the set and rewrites
     ``PROJECT_STACKS``. Emits one AXI envelope (verb ``agents``) on stdout
-    listing written, unchanged, skipped and unmanaged files. Returns the
-    process exit code."""
-    print("modelb-axi: agents — re-render project agent definitions", file=sys.stderr)
+    listing written, unchanged, skipped and unmanaged files. For a Pi
+    project the permission policy is placed after the agents, under the same
+    ownership rules and recorded lean-ctx verdict (CR-MDB-077 §S3). Returns
+    the process exit code."""
+    print("modelb-axi: agents — re-render project agent definitions and the "
+          "permission policy", file=sys.stderr)
     root = project_root if project_root is not None else Path.cwd()
     env_path = root / ".env"
     requested = getattr(args, "stacks", None)
@@ -2026,6 +2029,13 @@ def run_agents(args: argparse.Namespace, home: Path, project_root: Path | None =
             force_managed=force_managed, report=report,
             lean_ctx=tools.get("lean-ctx") == TOOL_PRESENT, rendered=agent_texts,
         )
+        # CR-MDB-077 §S3: the permission policy, for a Pi project, as
+        # `init` places it; reported beside the agent files.
+        if "pi" in harnesses:
+            permission_policy.place_project_policy(
+                root, force_managed=force_managed, report=report,
+                lean_ctx=tools.get("lean-ctx") == TOOL_PRESENT,
+            )
         if requested:
             _set_env_value(env_path, PROJECT_STACKS_KEY, ",".join(stacks))
     except OSError as exc:
