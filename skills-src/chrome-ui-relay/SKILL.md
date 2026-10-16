@@ -16,8 +16,9 @@ navigates with `open`, and it never narrows the output.
 
 ## Before the first call
 
-Before the first call of every bootstrap and of every shutdown, the skill warns the user, and a
-services skill relays the warning:
+Before the first call of every bootstrap, and of every shutdown that runs a call other than `stop`
+(`stop` never connects, so no prompt comes), the skill warns the user, and a services skill relays
+the warning:
 
 - Chrome will ask them to accept the connection;
 - they accept within about a minute, and if Chrome asks again, they accept again;
@@ -134,11 +135,14 @@ skipped.
    ```
 
 - **When control fails,** retry once; the single retry never applies to a `BRIDGE_NOT_READY`
-  envelope: that envelope skips. Otherwise report the tabs left open, naming their URLs.
+  envelope: that envelope skips. The single retry never repeats `stop`. Otherwise report the tabs
+  left open, naming their URLs.
 - **When there is no record,** because the bridge restarted or bootstrap never opened a tab,
   nothing is closed. Tabs on the project's URLs are reported for the user to close.
-- **When bootstrap skipped its browser steps,** shutdown skips its own: it runs one `stop` and
-  nothing else, and starts no bridge.
+- **When bootstrap skipped on a `BRIDGE_NOT_READY`,** shutdown skips its browser steps: it runs one
+  `stop` and nothing else, and starts no bridge. When bootstrap skipped for no valid session name,
+  shutdown runs no call at all: with no valid session, a `stop` would reach the shared default
+  session's bridge.
 
 ## When the bridge cannot attach
 
