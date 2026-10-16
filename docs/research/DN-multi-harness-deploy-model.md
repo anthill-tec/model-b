@@ -1008,6 +1008,13 @@ Implemented by CR-MDB-064.
   before/after `pages` lists show as new. Tab ids reset with every bridge, so after a restart a tab on
   a project URL is not opened again and is never selected or closed; shutdown reports it for the user
   to close. The user's tabs are never touched, whatever their URL.
+- **Waiting for Chrome's connection prompt (user ruling 2026-10-16, Crucible #1467).** Chrome asks
+  the user to accept each new remote-debugging connection. `chrome-devtools-axi` waits for its bridge
+  to attach for `CHROME_DEVTOOLS_AXI_BRIDGE_TIMEOUT_MS` (30 s by default), then answers
+  `BRIDGE_NOT_READY` ("the attached CDP target appears to have gone away"); the next call kills that
+  bridge and opens a new connection, which raises a new prompt. So the skill never retries: it warns
+  the user before the first call and runs every call with a 2-minute bridge wait, one connection and
+  one prompt. A call that still fails skips the browser steps, as before.
 
 ## Consequences per CR
 
