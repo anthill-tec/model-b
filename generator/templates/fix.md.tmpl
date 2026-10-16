@@ -47,7 +47,7 @@ If a test mock can't observe production behaviour cleanly, make the MOCK match p
 
 ## Tool Usage (lean-ctx — protects context)
 
-Prefer lean-ctx for >20-line output (crucible client via `ctx_shell` is the short-command exception). Docs via `ctx_read`+`ctx_search`. New files: `write`; targeted edits with known old/new strings: `edit`; analyze: `ctx_read` (not `read`); search: `ctx_search`. Verify third-party APIs against the REAL upstream source (this stack's sources are in "Stack mechanics") — never assume from memory. Output discipline: every run goes through the stack crucible client, which prints counts + failing names + assertion lines; never `| tail`. Standard tools: **read** (a file you'll `edit`), **find**, **ctx_shell** (crucible client + git).
+Prefer lean-ctx for >20-line output (crucible client via `ctx_shell` is the short-command exception). Docs via `ctx_read`+`ctx_search`. New files: `write`; targeted edits with known old/new strings: `edit`; analyze: `ctx_read` (not `read`); search: `ctx_search`. Verify third-party APIs against the REAL upstream source (this stack's sources are in "Stack mechanics") — never assume from memory. Output discipline: every run goes through the stack crucible client, which prints counts + failing names + assertion lines; the client's envelope is read whole and is never piped, filtered or redirected away. Standard tools: **read** (a file you'll `edit`), **find**, **ctx_shell** (crucible client + git).
 
 ## Test runs go through the client (NON-NEGOTIABLE)
 

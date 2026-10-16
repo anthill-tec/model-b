@@ -99,9 +99,12 @@ VERB_SURFACE_STATEMENTS = (
       + _word("--release") + r"|\bwithout " + _word("--release"))),
     ("after an elapsed wait, check status and reattach with gate-run --intent <goal>",
      (r"\breattach", r"gate-run --intent\b", _word("status"))),
-    ("client output goes to a file: --log where the verb takes it, a redirect otherwise, never "
-     "through | head",
-     (_word("--log"), r"\bredirect", r"\b(?:never|not)\b[^.;]{0,60}\|\s?head\b")),
+    # MIGRATED at CR-MDB-072 (§S2): "never through | head" widens to the rule — the client's
+    # envelope, in the file or on stdout, is read whole, never filtered.
+    ("client output goes to a file: --log where the verb takes it, a redirect otherwise; the "
+     "client's envelope, in the file or on stdout, is read whole, never filtered",
+     (_word("--log"), r"\bredirect", r"\benvelope\b", r"\bstdout\b",
+      r"\bread(?: \S+){0,3} whole\b", r"\b(?:never|not)\b[^.;]{0,40}\bfilter")),
     ("--log is absent on rust regression and on pre-merge-gate for arduino, mvn and rust",
      (_word("--log"), r"\b(?:no|not|absent|lacks?|without)\b",
       r"\brust\b[^.;]{0,60}" + _word("regression"), _word("pre-merge-gate"), r"\barduino\b",
@@ -129,6 +132,7 @@ def verb_surface_findings(text: str) -> list[str]:
 
 
 #: A synthetic skill making every statement once, one bullet each — the passing shape.
+# MIGRATED at CR-MDB-072 (§S2): the client-output bullet reads the envelope whole, never filtered.
 GOOD_SKILL = """# Crucible
 
 ## Verbs on all five clients
@@ -155,7 +159,7 @@ GOOD_SKILL = """# Crucible
   is recorded even when the wait elapses. It has no `--release`.
 - After a wait that elapsed mid-step, check `status` and reattach with `gate-run --intent <goal>`.
 - Client output goes to a file — `--log <path>` where the verb takes it, a redirect otherwise —
-  never through `| head`.
+  and the client's envelope, in the file or on stdout, is read whole, never filtered.
 - `--log` is absent on rust `regression`, and on `pre-merge-gate` for the arduino, mvn and rust
   clients.
 - `history`, `landings`, `project-meta`, `cycle-skip` and `gate-respond` are on all five clients.
@@ -178,6 +182,7 @@ GOOD_SKILL_CUTS = (
     ("`<caller>·gate·<run>`, ", "gate-run gives each run"),
     (" It has no `--release`.", "gate-respond answers"),
     ("reattach with", "reattach"),
+    # MIGRATED at CR-MDB-072 (§S2): "a redirect otherwise" survives the widened bullet.
     ("a redirect otherwise", "client output goes to a file"),
     ("on `pre-merge-gate` for the arduino, mvn and rust\n  clients", "--log is absent"),
     ("are on all five clients", "on all five clients"),

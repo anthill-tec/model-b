@@ -50,7 +50,7 @@ Prefer lean-ctx for anything printing >20 lines (crucible client via `ctx_shell`
 - Docs: `ctx_read` once → `ctx_search("<pattern>", "<dir>")`. NEVER `read` the full spec; no `grep`/`cat` on `docs/**.md`.
 - Shell: `ctx_shell("<command>")`. New files: `write`. Targeted edits: `edit`. Analyze a file: `ctx_read` (not `read`). Search: `ctx_search` (not repeated `grep`).
 - **Third-party APIs — NEVER assume from memory:** read the real dependency source at the pinned version (this stack's sources are in "Stack mechanics") before adding/using any dependency or unfamiliar API.
-- **Output discipline:** every test run goes through the stack crucible client, which prints only the summary (counts + failing names + assertion lines). Never `| tail`.
+- **Output discipline:** every test run goes through the stack crucible client, which prints only the summary (counts + failing names + assertion lines); the client's envelope is read whole and is never piped, filtered or redirected away.
 - The only standard tools to reach for directly: **read** (a file you'll `edit`), **find**, **ctx_shell** (crucible client + git).
 
 ## Test runs go through the client (NON-NEGOTIABLE)

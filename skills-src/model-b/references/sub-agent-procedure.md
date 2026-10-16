@@ -28,6 +28,14 @@
 - **The escape hatch:** a blocking hook's `ALLOW_RAW_<RUNNER>=1` is used only with the orchestrator's approval.
 - **Two client gaps are known:** the python client drives unittest only (a pytest project), and `bun-crucible.py test` takes no test-name filter (a one-test bun run). Meeting either is a client gap: raise it with the orchestrator.
 
+## Every AXI envelope is read whole (NON-NEGOTIABLE)
+- **It covers the output of an AXI command:** the Crucible clients (`<stack>-crucible.py`), `sandesh`, `modelb-axi`, `worktree-flow.py`, `gh-axi`, `chrome-devtools-axi` and `lavish-axi`.
+- **Every envelope is read whole, every time:** its `warnings[]`, `help[]` and `error` carry what you need next.
+- **Its output is never grepped, headed, tailed or otherwise filtered,** never narrowed with `jq`, and never summarised by pattern.
+- **Its output is never redirected away:** neither its stdout nor its stderr goes to `/dev/null`.
+- **A long run writes its output to a file,** and that file's envelope is read whole.
+- **A runner log a client writes with `--log` is not an envelope:** searching it for a failure stays allowed.
+
 ## TDD — exact procedure, no shortcuts
 1. Write ONLY the test (no production code, not even the target type).
 2. Run → MUST fail (RED). Ingest the RED run. **A compile failure IS a RED** — ingest it as a compile error, never skip.

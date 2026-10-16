@@ -39,6 +39,7 @@ Only exit `0` means mail arrived — never read a non-zero exit as mail. Report 
 - `sandesh send --project <Project> --from "<your address>" --to "<address>" --kind request --subject … --body …` — a track raises a question/blocker/approval to Mainline. `--kind directive` — Mainline assigns/unblocks a track. `sandesh reply --project <Project> --from "<your address>" --to-msg <id> --body …` — answers a request; **reply = the requested work is DONE** ("you're unblocked, proceed").
 - **`--to` WAKES** the recipient; **`--cc` is SILENT** (awareness only, no wake — saves turns); `--to all-tracks` broadcasts to every active address minus the sender.
 - Lifecycle has no status field: `fetch` = received/being-acted-on (the waiting sender can observe read-state); `reply` = done.
+- **Every `sandesh` envelope is read whole** — its output is never piped, filtered or redirected away: its `warnings[]`, `help[]` and `error` carry what you do next.
 
 ## Roster / liveness — READ it, never guess
 `sandesh addressbook --project <Project> --format toon --fields address,status,listening` lists every registered address with its `status` and `listening`. **How many tracks exist + whether they're alive comes from the addressbook, never assumption** ("N tracks" is not a given). Dispatch a `--to` directive ONLY to a listening address; if a needed track isn't alive, surface it (the human must launch that session) — don't dispatch into the void.
