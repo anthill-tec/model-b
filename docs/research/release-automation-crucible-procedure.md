@@ -234,6 +234,14 @@ does, the user decides whether this wait still stands. CR-MDB-073 stays whole in
 waits until Crucible 0.4.0 is released and installed. The 0.4.0 client changes therefore reach Model B
 before 1.0.0, through a doc-sync CR filed into 1.0.0 when 0.4.0's release notes arrive.
 
+**Lifted (user ruling, 2026-10-17).** Measured at CR-MDB-073's gap analysis: the installed 0.3.0
+python client, given `--cov-source` explicitly and run with subprocess measurement on
+(`[run] patch = ["subprocess"]`), traces the scripts the tests run as subprocesses. The hook scripts
+were measured at 106–166 lines each, and are absent without the patch. coverage.py 7.16.2 combined
+the parallel data when it reported, and left no data files behind. Release 1.0.0 no longer waits for
+Crucible 0.4.0. Its client changes reach Model B through a doc-sync CR in the release after the one
+that is current when 0.4.0 is installed.
+
 ## A release's expected date is at least the next day (user ruling, 2026-10-16)
 
 On Sandesh's 0.4.3 hotfix the user ruled that a release's expected date (`release-propose --target`)
