@@ -7,8 +7,11 @@
   package's loader strips comments; a marker KEY would make the file invalid
   and clamp the project to ``ask``). ``"*": "ask"`` is the explicit fallback;
   ``allow`` goes by exact tool name to :func:`workflow_tools` — the
-  ``dispatch`` and ``lean-ctx`` names read from
-  :data:`modelb_axi.requirements.REQUIREMENTS` at call time, never restated.
+  ``dispatch``, ``lean-ctx`` and ``sandesh-pi`` names read from
+  :data:`modelb_axi.requirements.REQUIREMENTS` at call time, never restated,
+  less the ask-set :data:`ASK_TOOLS` (``sandesh_archive`` and
+  ``sandesh_unarchive``), which stays at the ``ask`` fallback whichever row
+  supplies it (CR-MDB-077 §S2).
 - :func:`place_project_policy` writes it under the §S6 ownership rules
   (:func:`modelb_axi.agents.place_owned`).
 
@@ -38,7 +41,10 @@ FIXED_WORKFLOW_TOOLS: tuple[str, ...] = (
     "todo", "ask_user_question", "notify_parent", "ask_parent",
 )
 #: The requirement rows whose ``tools`` the policy allows.
-_TOOL_REQUIREMENTS: tuple[str, ...] = ("dispatch", "lean-ctx")
+_TOOL_REQUIREMENTS: tuple[str, ...] = ("dispatch", "lean-ctx", "sandesh-pi")
+#: The ask-set: names left out of the allow-set whichever row supplies them,
+#: so they resolve to ``"*": "ask"`` (CR-MDB-077 §S2).
+ASK_TOOLS: tuple[str, ...] = ("sandesh_archive", "sandesh_unarchive")
 
 #: External-directory reads allowed for every project (the installed
 #: harness's own code is added by :func:`_harness_code_reads`).
@@ -49,7 +55,8 @@ _TMP = "/tmp/*"  # noqa: S108 -- the spec's pattern, not a temp file
 def workflow_tools(*, lean_ctx: bool = True) -> list[str]:
     """The §S3 allow-set, sorted, derived from ``REQUIREMENTS`` now. With
     ``lean_ctx`` false — lean-ctx not present — its tools leave the set and
-    Pi's built-in shell, ``bash``, joins it (CR-MDB-045 §S8)."""
+    Pi's built-in shell, ``bash``, joins it (CR-MDB-045 §S8). The ask-set's
+    names are left out, whichever row supplies them (CR-MDB-077 §S2)."""
     tools: set[str] = set(BUILTIN_FILE_TOOLS) | set(FIXED_WORKFLOW_TOOLS)
     for requirement_id in _TOOL_REQUIREMENTS:
         if requirement_id == "lean-ctx" and not lean_ctx:
@@ -57,7 +64,7 @@ def workflow_tools(*, lean_ctx: bool = True) -> list[str]:
         tools |= set(requirements.requirement(requirement_id)["tools"])
     if not lean_ctx:
         tools.add(agents.BUILTIN_SHELL)
-    return sorted(tools)
+    return sorted(tools - set(ASK_TOOLS))
 
 
 def _harness_code_reads() -> list[str]:

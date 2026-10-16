@@ -119,7 +119,15 @@ REQUIREMENTS: tuple[dict, ...] = (
         "probe": "pi-package",
         "asset_families": ("bootstrap and shutdown skills",),
         "remediation": "pi install npm:@anthill-tec/sandesh-pi",
-        "tools": (),
+        # CR-MDB-077 §S1: the tools sandesh-pi 0.4.3 registers.
+        "tools": (
+            "sandesh_setup", "sandesh_register", "sandesh_unregister",
+            "sandesh_send", "sandesh_reply",
+            "sandesh_addressbook", "sandesh_fetch", "sandesh_inbox", "sandesh_thread",
+            "sandesh_search", "sandesh_status",
+            "sandesh_notify_start", "sandesh_notify_stop", "sandesh_notify_status",
+            "sandesh_archive", "sandesh_unarchive",
+        ),
     },
     {
         "id": "uv",
