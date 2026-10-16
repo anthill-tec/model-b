@@ -1,6 +1,6 @@
 # CR-MDB-076 — Chrome-UI-Relay waits for the user to accept Chrome's connection prompt
 
-**Status:** PENDING — spec (gap analysis and pre-review 2026-10-16). The file name's "retries" slug
+**Status:** COMPLETED (filed, gap analysis and pre-review 2026-10-16). The file name's "retries" slug
 predates the no-retry ruling and is kept so references stay stable.
 **Type:** fix (a skill bundle) — patch CR to CR-MDB-061
 **Priority:** P1 — release 1.0.0, wave 2.
@@ -50,7 +50,8 @@ Chrome's connection prompt); Crucible #1467, #1469.
 
 ### §S1 — The warning
 
-The skill tells the user before the first call of every bootstrap and of every shutdown:
+The skill tells the user before the first call of every bootstrap, and of every shutdown that runs
+a call other than `stop` (`stop` never connects, so no prompt comes):
 
 - Chrome will ask them to accept the connection.
 - They should accept within about a minute; if Chrome asks again, they accept again.
@@ -72,7 +73,10 @@ A services skill relays the warning.
   - skips the browser steps, as CR-MDB-061 §S6 says;
   - runs `stop` once (it never starts a bridge), so the call's stray bridge raises no late prompt.
 
-  A shutdown whose bootstrap skipped runs that one `stop` and nothing else.
+  A shutdown whose bootstrap skipped on a `BRIDGE_NOT_READY` runs that one `stop` and nothing else.
+  A shutdown whose bootstrap skipped for no valid session name runs no call at all: with no valid
+  session, a `stop` would reach the shared default session's bridge.
+- **Close's single retry never repeats `stop`.**
 - **The cost is stated:** with no browser to attach to, the first call takes the full two minutes
   before the skip.
 
@@ -111,16 +115,18 @@ command.
 
 ## Acceptance criteria
 
-- [ ] **§S1.** A gate pins the warning: before the first call of every bootstrap and shutdown; "accept
-      within about a minute"; "accept again"; a restart raises a new prompt; a services skill relays
-      it.
+- [ ] **§S1.** A gate pins the warning: before the first call of every bootstrap and of every shutdown
+      that runs a call other than `stop`; "accept within about a minute"; "accept again"; a restart
+      raises a new prompt; a services skill relays it.
 - [ ] **§S2.** Gates pin:
       - the exact `CHROME_DEVTOOLS_AXI_BRIDGE_TIMEOUT_MS=120000`;
       - the 150 s shell timeout, and a killed call counting as `BRIDGE_NOT_READY`;
       - "never retries", with its reason;
       - Close's retry not applying to `BRIDGE_NOT_READY`;
       - the skip and the single `stop`;
-      - the skipped shutdown's single `stop`;
+      - the single `stop` only after a `BRIDGE_NOT_READY` skip, and no call at all after a skip for no
+        valid session name;
+      - Close's retry never repeating `stop`;
       - the full-two-minutes cost.
 
       The new text names no harness tool ("shell timeout", never a tool's name).
@@ -130,7 +136,12 @@ command.
       - `CHROME_DEVTOOLS_AXI_SESSION=<PROJECT_TOKEN>`
       - `CHROME_DEVTOOLS_AXI_BRIDGE_TIMEOUT_MS=120000`
 
-      It is proved both ways, including a wrong value (`=60000`) and a backslash-continued line.
+      The tokens must be env assignments before the `chrome-devtools-axi` word of each command
+      segment: a line is split on `&&`, `||`, `;` and `|`, and a trailing ` #…` comment is stripped.
+      It is proved both ways, including a wrong value (`=60000`), a backslash-continued line, tokens
+      after the verb, tokens in a trailing comment, and a chained second call without them. The
+      skill's fenced calls are counted: all 7 (`pages` twice, `newpage`, `selectpage`, `eval`,
+      `closepage`, `stop`) are checked.
 - [ ] **§S3.** Gates pin:
       - the shared message;
       - its three causes reported together;

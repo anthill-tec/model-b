@@ -62,6 +62,8 @@ from tests.test_package_publishing import build_wheel
 # The sibling grep gate's provenance exemption (imported as a module so its
 # TestCase classes are not re-collected here).
 from tests import test_crucible_skill as _crucible_skill_gates
+# CR-MDB-076 §S4: the chrome-ui-relay skill's spec-worded sample (a module import, as above).
+from tests import test_chrome_ui_relay_skill as _chrome_ui_relay
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCHEMA_PATH = REPO_ROOT / "modelb_axi" / "project_schema.toml"
@@ -1696,7 +1698,13 @@ NOT_REGISTRY_KEYS = {
     # MIGRATED at CR-MDB-061 (§S8)
     "CHROME_DEVTOOLS_AXI_SESSION": "chrome-devtools-axi tool env: the per-project bridge "
                                    "session name (chrome-ui-relay skill)",
+    # MIGRATED at CR-MDB-076 (§S4): the bridge wait the chrome-ui-relay skill sets on every call
+    # (`CHROME_DEVTOOLS_AXI_BRIDGE_TIMEOUT_MS=120000`, in its code spans and fenced calls).
+    "CHROME_DEVTOOLS_AXI_BRIDGE_TIMEOUT_MS": "chrome-devtools-axi tool env: the bridge start-up "
+                                             "wait, 120000 ms (chrome-ui-relay skill)",
 }
+#: CR-MDB-076 §S4: the one name :data:`NOT_REGISTRY_KEYS` gained for the chrome-ui-relay skill.
+CHROME_UI_RELAY_BRIDGE_WAIT_NAME = "CHROME_DEVTOOLS_AXI_BRIDGE_TIMEOUT_MS"
 #: CR-MDB-068 §S8 — the names :data:`NOT_REGISTRY_KEYS` gained for ``workflows-src/``.
 # MIGRATED at CR-MDB-071 (§S3): CARGO_FIRST_TOKEN and CARGO_REGISTRY_TOKEN join.
 WORKFLOW_RUNTIME_NAMES = frozenset({
@@ -2017,6 +2025,45 @@ class RegistryKeysDeclaredGateTest(unittest.TestCase):
             self.declared, NOT_REGISTRY_KEYS),
             [at_line("workflows-src/release/x.yml", 1) + " TEAM_LEAD"],
             "a YAML part is code throughout: an undeclared key is caught, a runtime name is not")
+
+
+class ChromeUiRelayBridgeWaitNameTest(unittest.TestCase):
+    """CR-MDB-076 §S4: :data:`NOT_REGISTRY_KEYS` gains exactly one entry, the bridge wait the
+    chrome-ui-relay skill sets on every call, and the registry-key detector flags it in the skill's
+    code spans and fenced calls — the only name the skill adds beyond the prior allowlist."""
+
+    PATH = "skills-src/chrome-ui-relay/SKILL.md"
+
+    @staticmethod
+    def _flagged(text: str, allowlist) -> list[str]:
+        return sorted({line.rsplit(" ", 1)[1] for line in _undeclared_registry_names(
+            [(ChromeUiRelayBridgeWaitNameTest.PATH, text)], SCHEMA_KEYS, allowlist)})
+
+    @staticmethod
+    def _before() -> dict:
+        return {k: v for k, v in NOT_REGISTRY_KEYS.items() if k != CHROME_UI_RELAY_BRIDGE_WAIT_NAME}
+
+    def test_the_allowlist_gained_exactly_the_bridge_wait_among_the_tools_names(self):
+        self.assertEqual(sorted(k for k in NOT_REGISTRY_KEYS if k.startswith("CHROME_DEVTOOLS_AXI_")),
+                         ["CHROME_DEVTOOLS_AXI_AUTO_CONNECT", CHROME_UI_RELAY_BRIDGE_WAIT_NAME,
+                          "CHROME_DEVTOOLS_AXI_SESSION"])
+        self.assertTrue(NOT_REGISTRY_KEYS[CHROME_UI_RELAY_BRIDGE_WAIT_NAME].strip())
+
+    def test_the_detector_flags_only_the_bridge_wait_in_the_spec_worded_sample(self):
+        sample = _chrome_ui_relay.CONFORMING_SAMPLE
+        self.assertEqual(self._flagged(sample, self._before()), [CHROME_UI_RELAY_BRIDGE_WAIT_NAME])
+        self.assertEqual(self._flagged(sample, NOT_REGISTRY_KEYS), [])
+
+    def test_the_detector_flags_the_bridge_wait_on_a_fenced_call(self):
+        call = ("```bash\nCHROME_DEVTOOLS_AXI_AUTO_CONNECT=1 CHROME_DEVTOOLS_AXI_SESSION=<PROJECT_TOKEN> "
+                "CHROME_DEVTOOLS_AXI_BRIDGE_TIMEOUT_MS=120000 npx -y chrome-devtools-axi pages\n```\n")
+        self.assertEqual(self._flagged(call, self._before()), [CHROME_UI_RELAY_BRIDGE_WAIT_NAME])
+        self.assertEqual(self._flagged(call, NOT_REGISTRY_KEYS), [])
+
+    def test_the_skill_names_the_bridge_wait_its_only_name_beyond_the_prior_allowlist(self):
+        text = (REPO_ROOT / self.PATH).read_text(encoding="utf-8")
+        self.assertEqual(self._flagged(text, self._before()), [CHROME_UI_RELAY_BRIDGE_WAIT_NAME],
+                         "CR-MDB-076 §S2: the skill sets the bridge wait on every call")
 
 
 class ProjectValueDetectorTest(unittest.TestCase):

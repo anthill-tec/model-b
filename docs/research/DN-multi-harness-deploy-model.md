@@ -1020,6 +1020,9 @@ Implemented by CR-MDB-064.
   to accept again if Chrome asks again; and after a `BRIDGE_NOT_READY` skip, and at a shutdown whose
   bootstrap skipped, the skill runs `stop` once (it never starts a bridge), so no stray bridge raises
   a late prompt.
+  At CR-MDB-076's VERIFY (2026-10-16): the shutdown `stop` follows only a `BRIDGE_NOT_READY` skip —
+  with no valid session name shutdown runs no call, since a `stop` would reach the shared default
+  session's bridge; and the warning goes before a shutdown only when it runs a call other than `stop`.
 
 ### D24 — The Sandesh extension's tools are allowed in the generated permission policy
 
