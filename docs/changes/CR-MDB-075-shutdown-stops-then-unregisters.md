@@ -1,6 +1,6 @@
 # CR-MDB-075 — A shutdown stops the watcher, then unregisters: never together
 
-**Status:** PENDING — spec (gap analysis and pre-review 2026-10-16).
+**Status:** COMPLETED (filed, gap analysis and pre-review 2026-10-16)
 **Type:** fix (skills, references)
 **Priority:** P1 — release 1.0.0, wave 2; next in the queue.
 **Depends on:** none (board-authoritative: read `queue`)
