@@ -239,13 +239,16 @@ keeping the watcher up, and it applies ONLY here, at a confirmed shutdown's last
 2. **Confirm with `sandesh addressbook --project <Project> --format toon --fields address,status,listening`**
    that your address no longer shows `listening` true.
    - If it still does, read it again after a few seconds, a bounded number of times, for no longer
-     than about a minute (Sandesh's heartbeat staleness). Never use an open-ended sleep loop.
+     than about a minute (Sandesh's heartbeat staleness): at most 6 re-reads, each its own call (a
+     short `sleep`, then one addressbook read). Never a shell loop, open-ended or bounded.
    - If it is still listening after that, a watcher this session does not own holds the address.
      Check `/sandesh-watcher status`, report the address's state to the user, and do not unregister.
 3. **Only then run `sandesh unregister --project <Project> --address "<your address>" --as "<your address>"`,**
-   with a time bound, and confirm the address now shows `status` inactive.
+   with a 30-second time bound (for example `timeout 30`, or the tool's own timeout), and confirm the
+   address now shows `status` inactive.
    - An unregister that answers with a tombstone (exit 3) has not unregistered: a watcher was still
-     live. Go back to step 2, and run it again once the address reads offline.
+     live. Go back to step 2 once, and run it again once the address reads offline. A second
+     tombstone is reported to the user, never retried again.
    - An unregister that has not returned within its time bound, or that leaves the address `active`,
      is reported to the user with the address's state. The next `/bootstrap` finds the address
      active and skips registering it.
