@@ -1,6 +1,6 @@
 # CR-MDB-077 — The generated permission policy allows the Sandesh tools
 
-**Status:** PENDING — spec (gap analysis 2026-10-16).
+**Status:** COMPLETED (filed, gap analysis and pre-review 2026-10-16).
 **Type:** fix (`modelb_axi`: the requirements table, the per-project policy, the `agents` verb)
 **Priority:** P1 — release 1.0.0, wave 2.
 **Depends on:** none (board-authoritative: read `queue`)

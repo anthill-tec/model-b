@@ -428,7 +428,8 @@ A project created with `modelb-axi init` depends on two things under `.pi/extens
 - its hooks, the `.ts` files that run Model B's checks at points in a Pi session;
 - its permission policy, `.pi/extensions/pi-permission-system/config.json`, read by the
   `pi-permission-system` package: anything not listed is asked about (`"*": "ask"`); the
-  workflow's tools and skills are allowed; reads of `~/.agents/*`, `~/.crucible/*`,
+  workflow's tools and skills are allowed; the Sandesh extension's tools are allowed, except
+  archiving and unarchiving a project, which ask; reads of `~/.agents/*`, `~/.crucible/*`,
   `~/.pi/agent/*` and `/tmp/*` are allowed, and so are reads of `~/.bun/install/*` when the
   `pi` on your `PATH` was installed with bun (Pi's own code); writes outside the project are
   allowed only under `/tmp/*`.
@@ -453,6 +454,10 @@ session. Model B never changes `trust.json` — trusting a project is always you
 **Where workflow permissions come from.** Workflow permissions come from each project's policy,
 loaded once you run `/trust` in the project. The installer does not read or report your global
 policy, and Model B never writes it.
+
+**Updating an existing project's policy.** Run `modelb-axi agents` from the project's root to
+re-render its agent definitions and its policy, for example after upgrading Model B. A policy
+you have edited is left alone unless you pass `--force-managed`.
 
 **Creating a project.** For example:
 

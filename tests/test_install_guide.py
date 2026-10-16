@@ -451,8 +451,11 @@ PROJECT_SPECIFIC_NAMES = ("modelb", "model b", "model-b")
 #: ``modelb`` counted, ``modelb-axi`` included).
 # MIGRATED at CR-MDB-071 (§S6): `modelb-axi release-check`, the release-readiness verb the flow
 # runs, is the CLI's too and is spared (was: release-workflow and init only).
+# MIGRATED at CR-MDB-077 (§S4): the post-release maintenance step runs `modelb-axi agents` in each existing
+# project to re-render its policy — the CLI's verb, spared too (was: release-workflow,
+# release-check and init).
 RELEASE_WORKFLOW_COMMANDS_RE = re.compile(
-    r"(?<![\w-])modelb-axi (?:release-workflow|release-check|init)(?![\w-])")
+    r"(?<![\w-])modelb-axi (?:release-workflow|release-check|init|agents)(?![\w-])")
 #: CR-MDB-029 §S4 — the Pi package release step, same shape as
 #: PYTHON_RELEASE_STEPS: after the version is set, npm publish with credentials
 #: the user supplies at publish time; then install the published version into
@@ -1723,6 +1726,118 @@ def check_permission_source(text: str) -> list[str]:
     return out
 
 
+# CR-MDB-077 §S4 — the guide's ``project-trust`` region. The gates read the ``## Project trust``
+# section: it sits wholly inside one marked region (:func:`check_marked_regions`), and in the
+# guide that region is ``project-trust``, holding the section and nothing else.
+
+#: The verb that re-renders an existing project's policy.
+AGENTS_COMMAND = "modelb-axi agents"
+#: A Sandesh extension tool's name (``sandesh_status``, ``sandesh_archive``, ...): the guide and
+#: the git-workflow step name none (DN §D18).
+_SANDESH_TOOL_RE = re.compile(r"(?<![\w-])sandesh_[a-z0-9_]*[a-z0-9]")
+#: Sentence ends, ``;`` included, on normalised text.
+_SENTENCE_END_RE = re.compile(r"(?<=[.;!?])\s+")
+
+
+def policy_path() -> str:
+    """The policy's project-relative path, ``.pi/extensions/pi-permission-system/config.json``."""
+    from modelb_axi.permission_policy import PROJECT_POLICY_RELPATH
+    return str(PROJECT_POLICY_RELPATH)
+
+
+def _sentences(block: str) -> list[str]:
+    """``block`` normalised (:func:`normalise`) and split into sentences at ``.;!?``."""
+    return [s for s in _SENTENCE_END_RE.split(normalise(block)) if s]
+
+
+def sandesh_tool_faults(text: str, where: str) -> list[str]:
+    """One fault per Sandesh tool name in ``text``, in code or in prose."""
+    return [f"{where}: names the Sandesh tool `{m.group(0)}`"
+            for m in _SANDESH_TOOL_RE.finditer(text)]
+
+
+def check_no_sandesh_tool(text: str) -> list[str]:
+    """CR-MDB-077 §S4: the guide names no ``sandesh_*`` tool."""
+    return sandesh_tool_faults(text, "guide")
+
+
+def check_trust_sandesh_policy(text: str) -> list[str]:
+    """CR-MDB-077 §S4: the ``Project trust`` list item naming the policy file in code says, in
+    one sentence, that the Sandesh extension's tools are allowed, and one of its sentences names
+    archiving and unarchiving a project as asking."""
+    path = policy_path()
+    items = [b for b in _prose_blocks(_section(text, TRUST))
+             if b.lstrip().startswith(("- ", "* ")) and has_code_token(b, path)]
+    if not items:
+        return [f"{TRUST}: no list item names `{path}` in code"]
+    sentences = [s for item in items for s in _sentences(item)]
+    out = []
+    if not any(re.search(r"\bsandesh\b", s) and re.search(r"\btools\b", s)
+               and re.search(r"\ballowed\b", s)
+               and not re.search(r"\b(?:not|never|no longer)\s+allowed\b", s)
+               for s in sentences):
+        out.append(f"{TRUST}: the policy item does not say the Sandesh extension's tools "
+                   "are allowed")
+    if not any(re.search(r"\barchiving\b", s) and re.search(r"\bunarchiving\b", s)
+               and re.search(r"\bprojects?\b", s) and re.search(r"\bask(?:s|ed)?\b", s)
+               for s in sentences):
+        out.append(f"{TRUST}: no sentence of the policy item says archiving and unarchiving "
+                   "a project ask")
+    return out
+
+
+def check_trust_policy_rerender(text: str) -> list[str]:
+    """CR-MDB-077 §S4: a paragraph (or list item) of ``Project trust`` names
+    ``modelb-axi agents`` in code, with ``re-render``, ``policy`` and ``--force-managed`` (the
+    verb's own flag) in the same paragraph."""
+    flag = subcommand_flag("agents", "--force-managed")
+    naming = [b for b in _prose_blocks(_section(text, TRUST)) if has_code_token(b, AGENTS_COMMAND)]
+    if not naming:
+        return [f"{TRUST}: no paragraph names `{AGENTS_COMMAND}` in code"]
+    if any(re.search(r"\bre-render\w*", normalise(b)) and re.search(r"\bpolicy\b", normalise(b))
+           and _token_re(flag).search(b) for b in naming):
+        return []
+    return [f"{TRUST}: the `{AGENTS_COMMAND}` paragraph does not say it re-renders the policy, "
+            f"left alone unless `{flag}`"]
+
+
+#: CR-MDB-077 §S4 — the git-workflow skill's post-release maintenance step, by its label.
+POST_RELEASE_MAINTENANCE = "**Post-release maintenance**"
+POST_RELEASE_WHERE = "## Releases: post-release maintenance"
+
+
+def post_release_maintenance_step(text: str) -> str:
+    """The ``## Releases`` unit (:func:`units`: a numbered item with its continuation lines)
+    labelled :data:`POST_RELEASE_MAINTENANCE`; ``""`` when there is none."""
+    sec = next((body for head, body in sections(text).items() if head.startswith("Releases")), "")
+    return next((u for u in units(sec) if POST_RELEASE_MAINTENANCE in u), "")
+
+
+def check_post_release_policy_rerender(text: str) -> list[str]:
+    """CR-MDB-077 §S4: the post-release maintenance step runs ``modelb-axi agents`` (in code)
+    in each existing project to re-render its policy, in one sentence, after the reinstall
+    (``--reinstall``); and it names no ``sandesh_*`` tool."""
+    step = post_release_maintenance_step(text)
+    if not step:
+        return ["## Releases: no post-release maintenance step"]
+    out = []
+    verb = _token_re(AGENTS_COMMAND)
+    if not has_code_token(step, AGENTS_COMMAND):
+        out.append(f"{POST_RELEASE_WHERE}: no `{AGENTS_COMMAND}` in code")
+    else:
+        if not any(verb.search(s) and re.search(r"\b(?:each|every) existing project\b", s)
+                   and re.search(r"\bre-render\w*", s) and re.search(r"\bpolicy\b", s)
+                   for s in _sentences(step)):
+            out.append(f"{POST_RELEASE_WHERE}: `{AGENTS_COMMAND}` is not run in each existing "
+                       "project to re-render its policy")
+        flat = normalise(step)
+        reinstall = _token_re("--reinstall").search(flat)
+        if reinstall is None or verb.search(flat).start() < reinstall.start():
+            out.append(f"{POST_RELEASE_WHERE}: `{AGENTS_COMMAND}` does not come after the "
+                       "reinstall")
+    return out + sandesh_tool_faults(step, POST_RELEASE_WHERE)
+
+
 def check_cr029_acceptance(text: str) -> list[str]:
     """CR-MDB-029's acceptance criteria take the package README from the
     guide's marked regions, and no longer own the guide's install step."""
@@ -1801,6 +1916,16 @@ _CONFORMING_PERMISSION_SOURCE = (
 )
 
 
+#: CR-MDB-077 §S4 — the conforming guide's policy list item and its re-render paragraph.
+CONFORMING_POLICY_ITEM = (
+    "- its permission policy, `.pi/extensions/pi-permission-system/config.json`: anything not "
+    "listed asks; the Sandesh extension's tools are allowed, except archiving and unarchiving "
+    "a project, which ask.")
+CONFORMING_POLICY_RERENDER = (
+    "Run `modelb-axi agents` from an existing project's root to re-render its policy, for "
+    "example after upgrading. A policy you have edited is left alone unless `--force-managed`.")
+
+
 #: CR-MDB-058 §S7 — the conforming guide's statement of what the marked regions are for.
 CONFORMING_MARKED_REGIONS_USE = (
     "Release notes link to this guide. The regions feed the generated package README.")
@@ -1834,8 +1959,12 @@ def conforming_guide() -> str:
         WARNINGS: warnings, OFFERS: offers, MISSING: missing, OUTCOMES: outcomes,
         REAL_HOME: ["Pass `--target-root ~` explicitly."],
         WIDENING: ["Re-run with `--reinstall --stacks python,rust`."],
+        # MIGRATED at CR-MDB-077 (§S4): the policy item allows the Sandesh tools except
+        # archiving and unarchiving, and a paragraph names the verb that re-renders the policy
+        # (was: the load line and the permission source only).
         TRUST: [f"`.pi/extensions` and `{policy_dir_name()}` load once you run `/trust`.",
-                "", _CONFORMING_PERMISSION_SOURCE],
+                "", _CONFORMING_PERMISSION_SOURCE, "", CONFORMING_POLICY_ITEM, "",
+                CONFORMING_POLICY_RERENDER],
     }
     out = ["# Installing", "", "<!-- install-guide:begin install -->", ""]
     for heading in INSTALL_TOPICS:
@@ -2206,6 +2335,141 @@ class InstallGuidePermissionSourceTest(unittest.TestCase):
         self.assertEqual(check_permission_source(_read(GUIDE)), [])
 
 
+class InstallGuideProjectTrustPolicyTest(unittest.TestCase):
+    """CR-MDB-077 §S4 — the guide's ``project-trust`` region: the policy item allows the Sandesh
+    extension's tools except archiving and unarchiving a project, which ask; a paragraph names
+    ``modelb-axi agents`` re-rendering an existing project's policy, left alone unless
+    ``--force-managed``; and the guide names no ``sandesh_*`` tool. The real guide, then each
+    gate proved both ways on the conforming fixture."""
+
+    NO_ALLOW = f"{TRUST}: the policy item does not say the Sandesh extension's tools are allowed"
+    NO_ASK = f"{TRUST}: no sentence of the policy item says archiving and unarchiving a project ask"
+    NO_PARAGRAPH = f"{TRUST}: no paragraph names `{AGENTS_COMMAND}` in code"
+    NO_RERENDER = (f"{TRUST}: the `{AGENTS_COMMAND}` paragraph does not say it re-renders the "
+                   "policy, left alone unless `--force-managed`")
+
+    def setUp(self):
+        self.guide = conforming_guide()
+
+    def test_the_guides_policy_item_allows_the_sandesh_tools_except_archive_and_unarchive(self):
+        self.assertEqual(check_trust_sandesh_policy(_read(GUIDE)), [])
+
+    def test_the_guides_project_trust_paragraph_re_renders_the_policy_with_the_agents_verb(self):
+        self.assertEqual(check_trust_policy_rerender(_read(GUIDE)), [])
+
+    def test_the_guide_names_no_sandesh_tool(self):
+        self.assertEqual(check_no_sandesh_tool(_read(GUIDE)), [])
+
+    def test_the_guides_project_trust_region_holds_the_project_trust_section(self):
+        """The gates read the section: it is the ``project-trust`` region's content."""
+        region = region_texts(_read(GUIDE)).get("project-trust", "")
+        self.assertTrue(region.startswith(f"## {TRUST}\n"), "the region opens on the heading")
+        self.assertEqual(_section(_read(GUIDE), TRUST).strip(),
+                         (region + "\n<!-- install-guide:end project-trust -->").strip(),
+                         "the section is the region and its end marker, nothing else")
+
+    def test_the_sandesh_policy_checker_both_ways(self):
+        self.assertEqual(check_trust_sandesh_policy(self.guide), [])
+        item = CONFORMING_POLICY_ITEM
+        cases = {
+            "no item names the policy": (
+                self.guide.replace(item, item.replace("`.pi/extensions/pi-permission-system/"
+                                                      "config.json`", "the policy file")),
+                [f"{TRUST}: no list item names `{policy_path()}` in code"]),
+            "the path in prose": (
+                self.guide.replace("`.pi/extensions/pi-permission-system/config.json`:",
+                                   ".pi/extensions/pi-permission-system/config.json:"),
+                [f"{TRUST}: no list item names `{policy_path()}` in code"]),
+            "a paragraph, not a list item": (
+                self.guide.replace(item, item[2:]),
+                [f"{TRUST}: no list item names `{policy_path()}` in code"]),
+            "Sandesh unnamed": (
+                self.guide.replace("the Sandesh extension's tools are allowed",
+                                   "the workflow's tools are allowed"), [self.NO_ALLOW]),
+            "not allowed": (
+                self.guide.replace("tools are allowed", "tools are not allowed"), [self.NO_ALLOW]),
+            "unarchiving unnamed": (
+                self.guide.replace("archiving and unarchiving a project", "archiving a project"),
+                [self.NO_ASK]),
+            "archiving unnamed": (
+                self.guide.replace("archiving and unarchiving a project",
+                                   "unarchiving a project"), [self.NO_ASK]),
+            "not asking": (
+                self.guide.replace("a project, which ask.", "a project, which are logged."),
+                [self.NO_ASK]),
+            "the ask in another item": (
+                self.guide.replace(", except archiving and unarchiving a project, which ask.",
+                                   ".").replace("## Marked regions",
+                                                "Archiving and unarchiving a project ask.\n\n"
+                                                "## Marked regions"),
+                [self.NO_ASK]),
+            "outside Project trust": (
+                self.guide.replace(item, "").replace(f"## {WIDENING}\n",
+                                                     f"## {WIDENING}\n\n{item}\n"),
+                [f"{TRUST}: no list item names `{policy_path()}` in code"]),
+        }
+        for label, (text, expected) in cases.items():
+            with self.subTest(case=label):
+                self.assertNotEqual(text, self.guide, "the case changes the fixture")
+                self.assertEqual(check_trust_sandesh_policy(text), expected)
+        wrapped = self.guide.replace("the Sandesh extension's tools are allowed",
+                                     "the Sandesh\n  extension's tools are allowed")
+        self.assertEqual(check_trust_sandesh_policy(wrapped), [],
+                         "a sentence wrapped across lines still counts")
+        self.assertEqual(check_trust_sandesh_policy(
+            self.guide.replace("anything not listed asks; ", "")), [],
+            "the statement needs no other sentence")
+
+    def test_the_policy_rerender_checker_both_ways(self):
+        self.assertEqual(check_trust_policy_rerender(self.guide), [])
+        para = CONFORMING_POLICY_RERENDER
+        cases = {
+            "no verb": (self.guide.replace(para, "Re-render the policy unless `--force-managed`."),
+                        [self.NO_PARAGRAPH]),
+            "the verb in prose": (self.guide.replace("`modelb-axi agents`", "modelb-axi agents"),
+                                  [self.NO_PARAGRAPH]),
+            "a longer verb": (self.guide.replace("`modelb-axi agents`", "`modelb-axi agentsx`"),
+                              [self.NO_PARAGRAPH]),
+            "no re-render": (self.guide.replace("to re-render its policy", "to refresh its policy"),
+                             [self.NO_RERENDER]),
+            "no policy": (self.guide.replace("re-render its policy", "re-render its agents").replace(
+                "A policy you have edited", "A file you have edited"), [self.NO_RERENDER]),
+            "no flag": (self.guide.replace(" unless `--force-managed`", ""), [self.NO_RERENDER]),
+            "a longer flag": (self.guide.replace("`--force-managed`.", "`--force-managed-x`."),
+                              [self.NO_RERENDER]),
+            "split across paragraphs": (
+                self.guide.replace("after upgrading. A policy", "after upgrading.\n\nA policy"),
+                [self.NO_RERENDER]),
+            "outside Project trust": (
+                self.guide.replace(para, "").replace(f"## {WIDENING}\n",
+                                                     f"## {WIDENING}\n\n{para}\n"),
+                [self.NO_PARAGRAPH]),
+        }
+        for label, (text, expected) in cases.items():
+            with self.subTest(case=label):
+                self.assertNotEqual(text, self.guide, "the case changes the fixture")
+                self.assertEqual(check_trust_policy_rerender(text), expected)
+        self.assertEqual(subcommand_flag("agents", "--force-managed"), "--force-managed",
+                         "the flag is the verb's own")
+
+    def test_the_no_sandesh_tool_checker_both_ways(self):
+        self.assertEqual(check_no_sandesh_tool(self.guide), [])
+        for injected, tool in (("Run `sandesh_status` first.", "sandesh_status"),
+                               ("It calls sandesh_archive in prose.", "sandesh_archive"),
+                               ("```\nsandesh_notify_start\n```", "sandesh_notify_start")):
+            with self.subTest(tool=tool):
+                self.assertEqual(check_no_sandesh_tool(self.guide + "\n" + injected + "\n"),
+                                 [f"guide: names the Sandesh tool `{tool}`"])
+        two = self.guide + "\n`sandesh_send` and `sandesh_reply`.\n"
+        self.assertEqual(check_no_sandesh_tool(two),
+                         ["guide: names the Sandesh tool `sandesh_send`",
+                          "guide: names the Sandesh tool `sandesh_reply`"])
+        for clean in ("The `sandesh` CLI and the `sandesh-pi` extension.",
+                      "The Sandesh extension's tools.", "`SANDESH_ID` and `mysandesh_x`."):
+            with self.subTest(clean=clean):
+                self.assertEqual(check_no_sandesh_tool(self.guide + "\n" + clean + "\n"), [])
+
+
 class InstallGuidePypiSurfaceTest(unittest.TestCase):
     """The PyPI project page is a surface derived from the guide (the whole
     guide, as the package readme); the guide says so outside every region
@@ -2509,6 +2773,107 @@ class ReleaseDocsTest(unittest.TestCase):
         self.assertEqual(check_cr029_s1(_read(CR_029)), [])
 
 
+class GitWorkflowPostReleasePolicyTest(unittest.TestCase):
+    """CR-MDB-077 §S4 — the git-workflow skill's post-release maintenance step runs
+    ``modelb-axi agents`` in each existing project to re-render its policy, after the reinstall,
+    and names no ``sandesh_*`` tool: the real skill, then the gate proved both ways on
+    :data:`SAMPLE`."""
+
+    STEP = (
+        "4. **Post-release maintenance** — on the maintainer's machine: install the released "
+        "version from\n"
+        "   PyPI; replace the prior installation with\n"
+        "   `--reinstall --target-root ~ --harnesses <harnesses> --stacks <stacks>`; then run\n"
+        "   `modelb-axi agents` in each existing project to re-render its policy; and confirm a\n"
+        "   dispatched agent in a trusted project runs without a permission prompt.\n"
+    )
+    SAMPLE = (
+        "## Releases (NON-NEGOTIABLE)\n\n"
+        "### Python package releases (PyPI)\n\n"
+        "1. **Build** — `uv build`.\n"
+        + STEP +
+        "\n### Pi package releases (npm)\n\n"
+        "3. **Post-release live check** — as part of the post-release maintenance, confirm Pi "
+        "loads.\n\n"
+        "## Next\n"
+    )
+    WHERE = POST_RELEASE_WHERE
+    NOT_RUN = (f"{POST_RELEASE_WHERE}: `{AGENTS_COMMAND}` is not run in each existing project "
+               "to re-render its policy")
+    NOT_AFTER = f"{POST_RELEASE_WHERE}: `{AGENTS_COMMAND}` does not come after the reinstall"
+
+    def test_git_workflow_post_release_maintenance_re_renders_each_projects_policy(self):
+        self.assertEqual(check_post_release_policy_rerender(_read(GIT_WORKFLOW_SKILL)), [])
+
+    def test_git_workflow_post_release_maintenance_names_no_sandesh_tool(self):
+        step = post_release_maintenance_step(_read(GIT_WORKFLOW_SKILL))
+        self.assertIn("--reinstall", step, "fixture precondition: the step is found")
+        self.assertEqual(sandesh_tool_faults(step, POST_RELEASE_WHERE), [])
+
+    def test_the_step_is_the_labelled_item_with_its_continuation_lines(self):
+        step = post_release_maintenance_step(self.SAMPLE)
+        self.assertEqual(step, self.STEP.rstrip("\n"))
+        self.assertEqual(post_release_maintenance_step("## Releases\n\n1. **Build**.\n"), "")
+        self.assertEqual(post_release_maintenance_step("## Next\n\n" + self.STEP), "",
+                         "the step counts only inside ## Releases")
+
+    def test_the_post_release_policy_checker_both_ways(self):
+        good = self.SAMPLE
+        self.assertEqual(check_post_release_policy_rerender(good), [])
+        verb_line = "   `modelb-axi agents` in each existing project to re-render its policy; and confirm a\n"
+        cases = {
+            "no step": (good.replace("**Post-release maintenance**", "**Maintenance**"),
+                        ["## Releases: no post-release maintenance step"]),
+            "no verb": (good.replace("; then run\n" + verb_line, "; and confirm a\n"),
+                        [f"{self.WHERE}: no `{AGENTS_COMMAND}` in code"]),
+            "the verb in prose": (good.replace("`modelb-axi agents`", "modelb-axi agents"),
+                                  [f"{self.WHERE}: no `{AGENTS_COMMAND}` in code"]),
+            "a longer verb": (good.replace("`modelb-axi agents`", "`modelb-axi agentsx`"),
+                              [f"{self.WHERE}: no `{AGENTS_COMMAND}` in code"]),
+            "not each existing project": (good.replace("in each existing project", "once"),
+                                          [self.NOT_RUN]),
+            "no re-render": (good.replace("to re-render its policy", "to refresh its policy"),
+                             [self.NOT_RUN]),
+            "no policy": (good.replace("re-render its policy", "re-render its agents"),
+                          [self.NOT_RUN]),
+            "split across sentences": (
+                good.replace("in each existing project to re-render its policy;",
+                             "in each existing project. It re-renders the policy;"),
+                [self.NOT_RUN]),
+            "before the reinstall": (
+                good.replace("replace the prior installation with\n"
+                             "   `--reinstall --target-root ~ --harnesses <harnesses> --stacks "
+                             "<stacks>`; then run\n" + verb_line,
+                             "run `modelb-axi agents` in each existing project to re-render its "
+                             "policy;\n   replace the prior installation with\n"
+                             "   `--reinstall --target-root ~ --harnesses <harnesses> --stacks "
+                             "<stacks>`; and confirm a\n"),
+                [self.NOT_AFTER]),
+            "no reinstall": (
+                good.replace("`--reinstall --target-root ~ --harnesses <harnesses> --stacks "
+                             "<stacks>`", "the new version"), [self.NOT_AFTER]),
+            "a sandesh tool": (
+                good.replace("runs without a permission prompt",
+                             "runs `sandesh_status` without a permission prompt"),
+                [f"{self.WHERE}: names the Sandesh tool `sandesh_status`"]),
+            "the verb in another step": (
+                good.replace("; then run\n" + verb_line, "; and confirm a\n").replace(
+                    "1. **Build** — `uv build`.\n",
+                    "1. **Build** — `uv build`; run `modelb-axi agents` in each existing "
+                    "project to re-render its policy.\n"),
+                [f"{self.WHERE}: no `{AGENTS_COMMAND}` in code"]),
+        }
+        for label, (text, expected) in cases.items():
+            with self.subTest(case=label):
+                self.assertNotEqual(text, good, "the case changes the sample")
+                self.assertEqual(check_post_release_policy_rerender(text), expected)
+        self.assertEqual(check_post_release_policy_rerender(
+            good.replace("each existing project", "every existing project")), [],
+            "every existing project says the same")
+        self.assertEqual([f for f in check_python_release_steps(good) if "names project" in f], [],
+                         "the verb is the CLI's, not a project's name")
+
+
 # ---------------------------------------------------------------------------
 # Checker proofs — a conforming guide passes; each violation is caught
 # ---------------------------------------------------------------------------
@@ -2532,6 +2897,10 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
         self.assertEqual(check_pypi_surface(self.guide), [])
         self.assertEqual(check_permission_source(self.guide), [])
         self.assertEqual(check_marked_regions_use(self.guide), [])
+        # CR-MDB-077 §S4: the three gates on the project-trust region.
+        self.assertEqual(check_trust_sandesh_policy(self.guide), [])
+        self.assertEqual(check_trust_policy_rerender(self.guide), [])
+        self.assertEqual(check_no_sandesh_tool(self.guide), [])
 
     def test_permission_source_faults_are_reported(self):
         stated = _CONFORMING_PERMISSION_SOURCE
@@ -3810,15 +4179,19 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
         self.assertEqual(check_python_release_steps(body), [])
         # MIGRATED at CR-MDB-071 (§S6): `modelb-axi release-check` is spared too, and a
         # longer verb is still a project name (was: the two release-workflow commands only).
+        # MIGRATED at CR-MDB-077 (§S4): `modelb-axi agents` is spared, the verb the post-release
+        # maintenance step runs in each existing project (was: named, a project name), and a
+        # longer verb is still a project name.
         for spared in ("`modelb-axi release-workflow` re-renders it.",
                        "`modelb-axi init --release-targets pypi` renders it.",
-                       "Run `modelb-axi release-check` before `git flow release start`."):
+                       "Run `modelb-axi release-check` before `git flow release start`.",
+                       "Run `modelb-axi agents` in each existing project."):
             with self.subTest(spared=spared):
                 self.assertEqual(check_python_release_steps(body + spared + "\n"), [])
                 self.assertEqual(
                     [f for f in check_pi_package_release_steps(body + spared + "\n")
                      if "names project" in f], [])
-        for named in ("`modelb-axi agents` re-renders it.", "`modelb-axi release-workflows`.",
+        for named in ("`modelb-axi agentsx` re-renders it.", "`modelb-axi release-workflows`.",
                       "`modelb-axi release-checks`.", "the modelb project"):
             with self.subTest(named=named):
                 self.assertEqual(check_python_release_steps(body + named + "\n"),

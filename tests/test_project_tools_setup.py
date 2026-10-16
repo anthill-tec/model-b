@@ -781,10 +781,14 @@ class AgentsVerbRendersForItsToolsTest(_AgentsCase):
         result = self._agents_verb(target)
         self.assertEqual(result.returncode, 0, result.stderr)
         axi = decode_axi(result.stdout)
+        # MIGRATED at CR-MDB-077 (§S3): the verb re-renders the permission policy beside the
+        # agents, so the policy init wrote for lean-ctx present is rewritten for absent and
+        # `written` gains its path (was: the four definitions only).
         self.assertEqual(
             sorted(axi.get("written", [])),
-            sorted(str(PI_AGENTS_RELDIR / _agent_name(STACK, r)) for r in ROLES),
-            f"every definition is re-rendered; stdout={result.stdout!r}")
+            sorted([*(str(PI_AGENTS_RELDIR / _agent_name(STACK, r)) for r in ROLES),
+                    str(POLICY_REL)]),
+            f"every definition and the policy are re-rendered; stdout={result.stdout!r}")
         self.assert_builtin_form(agents_dir, stacks=(STACK,))
 
         self.write_install(self.verdicts())

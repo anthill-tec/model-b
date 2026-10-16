@@ -265,7 +265,8 @@ After building: switch back to develop for continued work. Bump develop to the n
    Publishing, with no token anywhere.
 4. **Post-release maintenance** — on the maintainer's machine: install the released version from
    PyPI; replace the prior installation with
-   `--reinstall --target-root ~ --harnesses <harnesses> --stacks <stacks>`; remove workflow
+   `--reinstall --target-root ~ --harnesses <harnesses> --stacks <stacks>`; then run
+   `modelb-axi agents` in each existing project to re-render its policy; remove workflow
    entries from any global permission config in favour of per-project policies; and confirm a
    dispatched agent in a trusted project runs without a permission prompt.
 

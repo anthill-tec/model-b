@@ -167,14 +167,18 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def _add_agents_parser(subparsers) -> None:
     """The `agents` subcommand — re-render the project's agent definitions
-    (CR-MDB-025 §S6)."""
+    (CR-MDB-025 §S6) and its permission policy (CR-MDB-077 §S3)."""
     agents_cmd = subparsers.add_parser(
         "agents",
-        help="re-render the agent definitions of the project in the current directory",
+        help=(
+            "re-render the agent definitions and the permission policy of the "
+            "project in the current directory"
+        ),
         description=(
             "Re-render the agent definitions of the project in the current "
             "directory from its .env PROJECT_STACKS, into each installed "
-            "harness's project agent directory. Files are owned by marker: "
+            "harness's project agent directory, and, for Pi, the project's "
+            "permission policy. Files are owned by marker: "
             "hand-modified files are skipped unless --force-managed; files "
             "without a marker are never written."
         ),
