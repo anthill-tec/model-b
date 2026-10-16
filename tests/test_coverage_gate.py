@@ -63,6 +63,7 @@ import unittest
 from pathlib import Path
 
 from tests._helpers import REPO_ROOT, files_under, md_section, split_frontmatter
+from tests._helpers import sha256_bytes as _sha256_bytes
 from tests.test_axi_envelope_read_whole import axi_findings
 from tests.test_board_holds_the_queue import norm_units, section_matching, units
 from tests.test_bootstrap_shutdown_registry import normalise
@@ -1103,10 +1104,6 @@ GOOD_PYTHON_REFERENCE = TODAYS_PYTHON_REFERENCE + GOOD_DELTA_BULLETS
 
 
 # ------------------------------------------------- crucible-report-python drift ----
-
-def _sha256_bytes(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
-
 
 def live_digests(root: Path, rel_dir: str) -> dict[str, str]:
     """``{path: sha256}`` of every file under ``root/rel_dir`` (``__pycache__`` aside), each path

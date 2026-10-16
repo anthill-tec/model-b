@@ -78,6 +78,12 @@ def sha256_text(text: str) -> str:
     production's own hashing helper."""
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
+
+def sha256_bytes(data: bytes) -> str:
+    """The hex sha256 of the raw ``data`` -- computed test-side, never through production's own
+    hashing helper. Distinct from :func:`sha256_text`, which encodes a ``str`` first."""
+    return hashlib.sha256(data).hexdigest()
+
 def files_under(dir_path: Path):
     """Yield all regular files under dir_path (recursive). Empty if dir absent."""
     if not dir_path.is_dir():

@@ -17,7 +17,6 @@ installer produced.
 Stdlib only.
 """
 
-import hashlib
 import json
 import os
 import stat
@@ -36,6 +35,7 @@ from tests._helpers import (
 )
 from tests._helpers import decode_axi as _decode
 from tests._helpers import render_script as render
+from tests._helpers import sha256_bytes as _sha256
 from tests._helpers import write_executable as _write_exe
 from tests.test_deployed_asset_freshness import _InstalledMachineCase
 
@@ -52,10 +52,6 @@ CARGO_HOOK = f"{HOOKS_STORE}/block-direct-cargo-test"
 WORKTREE_FLOW = f"{TOOLS_STORE}/worktree-flow.py"
 #: The python and bun runner hooks CR-MDB-062 adds (§S2), deployed like every hook script.
 RUNNER_HOOKS = (f"{HOOKS_STORE}/block-direct-python-test", f"{HOOKS_STORE}/block-direct-bun-test")
-
-
-def _sha256(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
 
 
 class ScriptSetPreconditionTest(unittest.TestCase):
