@@ -1,6 +1,6 @@
 # CR-MDB-072 — Every AXI envelope is read whole
 
-**Status:** PENDING — spec (gap analysis 2026-10-16).
+**Status:** COMPLETED (filed 2026-10-15, gap analysis and pre-review 2026-10-16).
 **Type:** refactor (skills, references, agent templates, a stack file) + a guard test
 **Priority:** P1 — release 1.0.0, wave 2.
 **Depends on:** CR-MDB-059 (board-authoritative: read `queue`)
