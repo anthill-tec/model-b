@@ -1166,8 +1166,10 @@ STOP_WATCHER_RE = re.compile(r"\bstop\w*[^.;]{0,60}\bwatcher|\bwatcher[^.;]{0,60
 UNREGISTER_RE = re.compile(r"\bunregister", re.IGNORECASE)
 CONFIRM_RE = re.compile(r"\bconfirm", re.IGNORECASE)
 #: CR-MDB-075 negative gate — the phrases that keep a stop-and-unregister unit apart.
+#: MIGRATED at CR-MDB-075 (VERIFY F2): a bare ``confirm`` is no longer one of them — only a
+#: ``confirm`` after the stop, in the same unit, spares it (:func:`_never_together_violations`).
 NEVER_TOGETHER_PHRASES = (
-    "never issued together", "never together", "never issued with it", "only then", "confirmed stop", "confirm",
+    "never issued together", "never together", "never issued with it", "only then", "confirmed stop",
 )
 #: CR-MDB-075 §S1/§S2 — the never-together wording itself.
 NEVER_TOGETHER_RE = re.compile(r"\bnever (?:issued )?together\b|\bnever issued with it\b", re.IGNORECASE)
@@ -1177,32 +1179,47 @@ FINAL_STEP_POINTER_RE = re.compile(r"§ ?the common final step\b", re.IGNORECASE
 CLI_UNREGISTER_FULL = 'sandesh unregister --project <Project> --address "<your address>" --as "<your address>"'
 #: CR-MDB-075 §S3 — the two phrases each reference bullet carries.
 S3_PHRASES = ("unregister follows a confirmed stop", "never issued with it")
+#: CR-MDB-075 §S1 — three rule labels of :func:`_final_step_findings`, each defined once.
+#: MIGRATED at CR-MDB-075 (VERIFY F3): was "… about a minute, never open-ended".
+RE_READ_RULE = ("step 2 re-reads after a few seconds, a bounded number of times, about a minute: at most "
+                "6 re-reads, each its own call, never a shell loop")
+#: MIGRATED at CR-MDB-075 (VERIFY F5): was "… — back to step 2".
+TOMBSTONE_RULE = ("step 3: a tombstone (exit 3) has not unregistered — back to step 2 once; a second "
+                  "tombstone is reported to the user")
+#: MIGRATED at CR-MDB-075 (VERIFY F4): was "… runs with a time bound; …".
+TIME_BOUND_RULE = ("step 3: the unregister runs with a 30-second time bound; one that does not return or "
+                   "leaves the address active is reported")
 
 TOP_STEP_RE = re.compile(r"^(\d+)[.)]\s+")
 
 
-def _numbered_steps(text: str) -> dict:
-    """``{number: flat_text}`` — each top-level (unindented) numbered step with its continuation
-    lines and nested items, up to the next top-level step, an unindented line or a heading. A
-    repeated number keeps its first step."""
-    steps, order, current = {}, [], None
-    for raw in text.splitlines():
+def _numbered_step_units(text: str) -> list:
+    """``[(first_line, number, flat_text)]`` — EVERY top-level (unindented) numbered step with its
+    continuation lines and nested items, up to the next top-level step, an unindented line or a
+    heading (MIGRATED at CR-MDB-075, VERIFY F1: the negative gate judges each of them)."""
+    units, current = [], None
+    for lineno, raw in enumerate(text.splitlines(), start=1):
         top = TOP_STEP_RE.match(raw)
         if top:
-            current = top.group(1)
-            if current in steps:
-                current = None
-                continue
-            steps[current] = [raw[top.end():]]
-            order.append(current)
+            current = [lineno, top.group(1), [raw[top.end():]]]
+            units.append(current)
             continue
         if current is None:
             continue
         if raw.strip() and not raw[0].isspace():
             current = None
             continue
-        steps[current].append(raw.strip())
-    return {n: _flat(" ".join(steps[n])) for n in order}
+        current[2].append(raw.strip())
+    return [(lineno, number, _flat(" ".join(parts))) for lineno, number, parts in units]
+
+
+def _numbered_steps(text: str) -> dict:
+    """``{number: flat_text}`` — each top-level numbered step of :func:`_numbered_step_units`. A
+    repeated number keeps its first step."""
+    steps = {}
+    for _, number, flat in _numbered_step_units(text):
+        steps.setdefault(number, flat)
+    return steps
 
 
 def _blocks_within(section: str, step_text: str, *patterns) -> list:
@@ -1229,9 +1246,11 @@ def _final_step_findings(section: str) -> list:
         ("step 2 confirms with the toon addressbook that the address no longer shows listening",
          bool(re.search(r"^confirm\b", two, re.IGNORECASE)) and TOON_ADDRESSBOOK in two
          and bool(re.search(r"no longer shows listening", two, re.IGNORECASE))),
-        ("step 2 re-reads after a few seconds, a bounded number of times, about a minute, never open-ended",
+        # MIGRATED at CR-MDB-075 (VERIFY F3): at most 6 re-reads, each its own call, never a shell loop.
+        (RE_READ_RULE,
          all(re.search(p, two, re.IGNORECASE) for p in (
              r"\ba few seconds\b", r"\bbounded number of times\b", r"\babout a minute\b",
+             r"\bat most 6 re-reads\b", r"\beach its own call\b", r"\bnever a shell loop\b",
              r"\bnever\b[^.]{0,30}\bopen-ended\b"))),
         ("step 2: still listening after that, a watcher this session does not own — report, never unregister",
          bool(_blocks_within(section, two, re.compile(r"\bstill listening\b", re.IGNORECASE),
@@ -1240,13 +1259,15 @@ def _final_step_findings(section: str) -> list:
                              re.compile(r"\b(?:do not|never) unregister", re.IGNORECASE)))),
         ("step 3: only then the unregister",
          bool(re.search(r"^only then\b", three, re.IGNORECASE)) and CLI_UNREGISTER_FULL in three),
-        ("step 3: a tombstone (exit 3) has not unregistered — back to step 2",
+        # MIGRATED at CR-MDB-075 (VERIFY F5): back to step 2 once; a second tombstone is reported.
+        (TOMBSTONE_RULE,
          bool(_blocks_within(section, three, re.compile(r"\btombstone\b", re.IGNORECASE),
                              re.compile(r"\bexit 3\b", re.IGNORECASE),
-                             re.compile(r"\bback to step 2\b", re.IGNORECASE)))),
-        ("step 3: the unregister runs with a time bound; one that does not return or leaves the "
-         "address active is reported",
-         bool(re.search(r"\bwith a time bound\b", three, re.IGNORECASE))
+                             re.compile(r"\bback to step 2 once\b", re.IGNORECASE),
+                             re.compile(r"\bsecond tombstone is reported to the user\b", re.IGNORECASE)))),
+        # MIGRATED at CR-MDB-075 (VERIFY F4): the time bound is 30 seconds.
+        (TIME_BOUND_RULE,
+         bool(re.search(r"\bwith a 30-second time bound\b", three, re.IGNORECASE))
          and bool(_blocks_within(section, three,
                                  re.compile(r"\b(?:has not|hasn't|does not|doesn't) return", re.IGNORECASE),
                                  re.compile(r"\btime bound\b", re.IGNORECASE),
@@ -1286,11 +1307,24 @@ def _reference_bullet_findings(unit: str) -> list:
 
 def _never_together_violations(text: str) -> list:
     """CR-MDB-075 negative gate — ``[(line, unit)]`` for every unit (a heading line, a bullet with
-    its continuation lines, a numbered step, a paragraph) that stops the watcher and unregisters
-    but carries none of :data:`NEVER_TOGETHER_PHRASES`."""
-    return [(lineno, unit) for lineno, unit in _blocks(text, keep_headings=True)
-            if STOP_WATCHER_RE.search(unit) and UNREGISTER_RE.search(unit)
-            and not any(phrase in unit.lower() for phrase in NEVER_TOGETHER_PHRASES)]
+    its continuation lines, a numbered step together with its nested items, a paragraph) that
+    stops the watcher and unregisters but carries none of :data:`NEVER_TOGETHER_PHRASES` and no
+    ``confirm`` after the stop.
+
+    MIGRATED at CR-MDB-075 (VERIFY F1): a numbered step is judged as one unit with its nested
+    items; it stands in for the block of its first line. (VERIFY F2): only a ``confirm`` after
+    the stop match spares the unit."""
+    steps = {lineno: flat for lineno, _, flat in _numbered_step_units(text)}
+    units = [(lineno, steps.get(lineno, unit)) for lineno, unit in _blocks(text, keep_headings=True)]
+    units += [(lineno, flat) for lineno, flat in steps.items() if lineno not in {n for n, _ in units}]
+    violations = []
+    for lineno, unit in sorted(units, key=lambda u: u[0]):
+        stop = STOP_WATCHER_RE.search(unit)
+        if (stop and UNREGISTER_RE.search(unit)
+                and not any(phrase in unit.lower() for phrase in NEVER_TOGETHER_PHRASES)
+                and not CONFIRM_RE.search(unit, stop.end())):
+            violations.append((lineno, unit))
+    return violations
 
 
 def _split_at(text: str, marker: str) -> tuple:
@@ -1325,15 +1359,19 @@ GOOD_FINAL_STEP = (
     "   `/sandesh-watcher stop <your address>`.\n"
     "2. **Confirm with `sandesh addressbook --project <Project> --format toon --fields address,status,listening`**\n"
     "   that your address no longer shows `listening` true.\n"
+    # MIGRATED at CR-MDB-075 (VERIFY F3/F4/F5): the spec's text at 7364922.
     "   - If it still does, read it again after a few seconds, a bounded number of times, for no longer\n"
-    "     than about a minute (Sandesh's heartbeat staleness). Never use an open-ended sleep loop.\n"
+    "     than about a minute (Sandesh's heartbeat staleness): at most 6 re-reads, each its own call (a\n"
+    "     short `sleep`, then one addressbook read). Never a shell loop, open-ended or bounded.\n"
     "   - If it is still listening after that, a watcher this session does not own holds the address.\n"
     "     Check `/sandesh-watcher status`, report the address's state to the user, and do not unregister.\n"
     "3. **Only then run `sandesh unregister --project <Project> --address \"<your address>\" "
     "--as \"<your address>\"`,**\n"
-    "   with a time bound, and confirm the address now shows `status` inactive.\n"
+    "   with a 30-second time bound (for example `timeout 30`, or the tool's own timeout), and confirm the\n"
+    "   address now shows `status` inactive.\n"
     "   - An unregister that answers with a tombstone (exit 3) has not unregistered: a watcher was still\n"
-    "     live. Go back to step 2, and run it again once the address reads offline.\n"
+    "     live. Go back to step 2 once, and run it again once the address reads offline. A second\n"
+    "     tombstone is reported to the user, never retried again.\n"
     "   - An unregister that has not returned within its time bound, or that leaves the address `active`,\n"
     "     is reported to the user with the address's state. The next `/bootstrap` finds the address\n"
     "     active and skips registering it.\n"
@@ -1359,27 +1397,30 @@ FINAL_STEP_CUTS = (
     ("step 2 confirms with the toon addressbook that the address no longer shows listening",
      "`sandesh addressbook --project <Project> --format toon --fields address,status,listening`",
      "`sandesh addressbook --project <Project>`"),
-    ("step 2 re-reads after a few seconds, a bounded number of times, about a minute, never open-ended",
-     "than about a minute", "than it takes"),
-    ("step 2 re-reads after a few seconds, a bounded number of times, about a minute, never open-ended",
-     "Never use an open-ended sleep loop.", "Then sleep and read it again."),
-    ("step 2 re-reads after a few seconds, a bounded number of times, about a minute, never open-ended",
-     "a bounded number of times", "as many times as needed"),
+    # MIGRATED at CR-MDB-075 (VERIFY F3): the re-read cuts carry RE_READ_RULE; three new cuts follow.
+    (RE_READ_RULE, "than about a minute", "than it takes"),
+    (RE_READ_RULE, "Never a shell loop, open-ended or bounded.", "Then sleep and read it again."),
+    (RE_READ_RULE, "a bounded number of times", "as many times as needed"),
+    (RE_READ_RULE, "at most 6 re-reads", "as many re-reads as it takes"),
+    (RE_READ_RULE, "each its own call", "all in one call"),
+    (RE_READ_RULE, "Never a shell loop, open-ended or bounded.", "Never an open-ended loop."),
     ("step 2: still listening after that, a watcher this session does not own — report, never unregister",
      "and do not unregister.", "and then unregister."),
     ("step 2: still listening after that, a watcher this session does not own — report, never unregister",
      "report the address's state to the user, and", "and"),
     ("step 3: only then the unregister", "3. **Only then run", "3. **Run"),
-    ("step 3: a tombstone (exit 3) has not unregistered — back to step 2",
-     "Go back to step 2, and run it again", "Run it again"),
-    ("step 3: a tombstone (exit 3) has not unregistered — back to step 2",
-     "a tombstone (exit 3)", "a tombstone"),
-    ("step 3: the unregister runs with a time bound; one that does not return or leaves the "
-     "address active is reported",
-     "   with a time bound, and confirm", "   and confirm"),
-    ("step 3: the unregister runs with a time bound; one that does not return or leaves the "
-     "address active is reported",
-     "     is reported to the user with the address's state.", "     is run again."),
+    # MIGRATED at CR-MDB-075 (VERIFY F4/F5): the tombstone and time-bound cuts carry their new
+    # labels; the F5 cuts (once, the second tombstone) and the F4 cuts (30 seconds) are new.
+    (TOMBSTONE_RULE, "Go back to step 2 once, and run it again", "Run it again"),
+    (TOMBSTONE_RULE, "a tombstone (exit 3)", "a tombstone"),
+    (TOMBSTONE_RULE, "Go back to step 2 once,", "Go back to step 2,"),
+    (TOMBSTONE_RULE, "A second\n     tombstone is reported to the user, never retried again.",
+     "Retry it until\n     it clears."),
+    (TIME_BOUND_RULE, "   with a 30-second time bound (for example `timeout 30`, or the tool's own timeout), and "
+     "confirm", "   and confirm"),
+    (TIME_BOUND_RULE, "with a 30-second time bound (for example `timeout 30`, or the tool's own timeout),",
+     "with a time bound,"),
+    (TIME_BOUND_RULE, "     is reported to the user with the address's state.", "     is run again."),
     ("step 3 confirms the address now shows status inactive",
      "now shows `status` inactive.", "now shows no `listening`."),
     ("the separate-calls rule: never together, not in one parallel batch, not in one shell command",
@@ -1415,9 +1456,9 @@ class CommonFinalStepRuleTest(unittest.TestCase):
     def test_step_2_confirms_on_the_toon_addressbook_that_listening_is_gone(self):
         self._assert_rule("step 2 confirms with the toon addressbook that the address no longer shows listening")
 
-    def test_step_2_re_read_is_bounded_to_about_a_minute_never_open_ended(self):
-        self._assert_rule("step 2 re-reads after a few seconds, a bounded number of times, about a minute, "
-                          "never open-ended")
+    # MIGRATED at CR-MDB-075 (VERIFY F3): was test_step_2_re_read_is_bounded_to_about_a_minute_never_open_ended.
+    def test_step_2_re_read_is_at_most_6_calls_in_about_a_minute_never_a_shell_loop(self):
+        self._assert_rule(RE_READ_RULE)
 
     def test_step_2_still_listening_reports_and_never_unregisters(self):
         self._assert_rule("step 2: still listening after that, a watcher this session does not own — report, "
@@ -1426,12 +1467,14 @@ class CommonFinalStepRuleTest(unittest.TestCase):
     def test_step_3_only_then_runs_the_unregister(self):
         self._assert_rule("step 3: only then the unregister")
 
-    def test_step_3_tombstone_exit_3_goes_back_to_step_2(self):
-        self._assert_rule("step 3: a tombstone (exit 3) has not unregistered — back to step 2")
+    # MIGRATED at CR-MDB-075 (VERIFY F5): was test_step_3_tombstone_exit_3_goes_back_to_step_2.
+    def test_step_3_tombstone_goes_back_to_step_2_once_and_a_second_is_reported(self):
+        self._assert_rule(TOMBSTONE_RULE)
 
-    def test_step_3_unregister_is_time_bounded_and_a_hang_or_active_address_is_reported(self):
-        self._assert_rule("step 3: the unregister runs with a time bound; one that does not return or leaves the "
-                          "address active is reported")
+    # MIGRATED at CR-MDB-075 (VERIFY F4): was
+    # test_step_3_unregister_is_time_bounded_and_a_hang_or_active_address_is_reported.
+    def test_step_3_unregister_is_bounded_to_30_seconds_and_a_hang_or_active_address_is_reported(self):
+        self._assert_rule(TIME_BOUND_RULE)
 
     def test_step_3_confirms_status_inactive(self):
         self._assert_rule("step 3 confirms the address now shows status inactive")
@@ -1601,9 +1644,46 @@ class NeverTogetherNegativeGateTest(unittest.TestCase):
             ("a numbered step", "5. **LAST — stop your own watcher, then unregister** (see the final step).\n"),
             ("a paragraph", "Then stop the watcher\nand unregister the address.\n"),
             ("the reverse order", "The watcher is stopped by address, then the address is unregistered.\n"),
+            # MIGRATED at CR-MDB-075 (VERIFY F1): a numbered step is one unit together with its nested
+            # items, so a stop in the step and an unregister in its nested item are one violation.
+            ("a numbered step with its nested item",
+             "5. **LAST — stop your own watcher**\n   - then unregister your address.\n"),
+            # MIGRATED at CR-MDB-075 (VERIFY F1): a bullet is its continuation lines only — its nested
+            # item is a unit of its own, so the confirm in it neither joins nor spares the bullet.
+            ("a bullet with a nested item",
+             "- Stop your own watcher,\n  then unregister your address.\n  - Confirm the stop first.\n"),
         ):
             with self.subTest(kind=kind):
                 self.assertEqual(len(_never_together_violations(text)), 1, text)
+
+    def test_a_numbered_step_is_judged_as_one_unit_with_its_nested_items(self):
+        """VERIFY F1 — the violation is reported once, at the step's line, as the whole step."""
+        text = "Intro.\n\n5. **LAST — stop your own watcher**\n   - then unregister your address.\n"
+        self.assertEqual(_never_together_violations(text),
+                         [(3, _flat("**LAST — stop your own watcher** - then unregister your address."))])
+
+    def test_a_phrase_in_a_numbered_steps_nested_item_spares_the_step(self):
+        """VERIFY F1 — the nested item is part of the step's unit, so its phrase spares the step."""
+        text = "5. **LAST — stop your own watcher**\n   - then unregister your address, never together.\n"
+        self.assertEqual(_never_together_violations(text), [], text)
+
+    def test_a_confirm_before_the_stop_does_not_spare_the_unit(self):
+        """VERIFY F2 — a bare ``confirm`` that does not come after the stop spares nothing."""
+        for text in (
+            "- Confirm the CR merged, stop the watcher and unregister together.\n",
+            "Confirm the merge. Then stop the watcher and unregister the address.\n",
+        ):
+            with self.subTest(text=text):
+                self.assertEqual(len(_never_together_violations(text)), 1, text)
+
+    def test_a_confirm_after_the_stop_spares_the_unit(self):
+        """VERIFY F2 — a ``confirm`` after the stop, in the same unit, spares it."""
+        for text in (
+            "- Stop the watcher, confirm it has stopped, then unregister.\n",
+            "- The watcher is stopped by address; confirm it, then unregister.\n",
+        ):
+            with self.subTest(text=text):
+                self.assertEqual(_never_together_violations(text), [], text)
 
     def test_each_never_together_phrase_spares_the_unit(self):
         for phrase in NEVER_TOGETHER_PHRASES:
