@@ -154,22 +154,25 @@ class SkillsSrcBundleCensusS3Test(unittest.TestCase):
     gap-analysis for 14) and
     CRUCIBLE-HANDOVER.md documents 6 imported ones."""
 
-    def test_skills_src_carries_exactly_fourteen_skill_md_bundles(self):
+    # MIGRATED at CR-MDB-061 (§S8): 14 -> 15, the chrome-ui-relay bundle adopted.
+    def test_skills_src_carries_exactly_fifteen_skill_md_bundles(self):
         bundles = sorted(
             p.name for p in SKILLS_SRC_DIR.iterdir()
             if p.is_dir() and (p / "SKILL.md").is_file()
         )
         # POSITIVE/EXACT -- 13 after the retired IDE bundle was deleted;
         # 14 once CR-MDB-023 \u00a7S4 adopts code-health; 13 once CR-MDB-031
-        # \u00a7S4 retires chezmoi; 14 once CR-MDB-042 \u00a7S4 adopts gap-analysis.
+        # §S4 retires chezmoi; 14 once CR-MDB-042 §S4 adopts gap-analysis;
+        # 15 once CR-MDB-061 §S8 adopts chrome-ui-relay.
         self.assertEqual(
-            len(bundles), 14,
-            f"skills-src/ must carry exactly 14 SKILL.md bundles (the "
+            len(bundles), 15,
+            f"skills-src/ must carry exactly 15 SKILL.md bundles (the "
             f"retired IDE-stack bundle deleted, code-health adopted, "
-            f"chezmoi retired, gap-analysis adopted); found "
+            f"chezmoi retired, gap-analysis and chrome-ui-relay adopted); found "
             f"{len(bundles)}: {bundles}",
         )
         self.assertIn("gap-analysis", bundles)
+        self.assertIn("chrome-ui-relay", bundles)
         self.assertNotIn(
             "crucible-report-" + "vscode", bundles,
             "the retired IDE-stack crucible-report bundle must not exist "
@@ -239,15 +242,17 @@ class AgentsMdBundleEnumerationS3Test(unittest.TestCase):
     """\u00a7S3 AC \u2014 AGENTS.md's crucible-report-* enumeration and bundle count
     are corrected."""
 
-    def test_agents_md_states_fourteen_bundles_and_zero_vscode(self):
+    # MIGRATED at CR-MDB-061 (§S8): 14 -> 15, the chrome-ui-relay bundle adopted.
+    def test_agents_md_states_fifteen_bundles_and_zero_vscode(self):
         self.assertTrue(AGENTS_MD.is_file(), f"{AGENTS_MD} must exist")
         content = _read(AGENTS_MD)
         self.assertIn(
-            "14 skill bundles", content,
-            "AGENTS.md's skills-src/ row must state '14 skill bundles' "
+            "15 skill bundles", content,
+            "AGENTS.md's skills-src/ row must state '15 skill bundles' "
             "(the retired IDE-stack bundle dropped out; CR-MDB-023 \u00a7S4 "
             "adopted code-health; CR-MDB-031 \u00a7S4 retired chezmoi; "
-            "CR-MDB-042 \u00a7S4 adopted gap-analysis)",
+            "CR-MDB-042 §S4 adopted gap-analysis; CR-MDB-061 §S8 "
+            "adopted chrome-ui-relay)",
         )
         self.assertNotIn(
             "vsc" + "ode", content.lower(),

@@ -109,8 +109,12 @@ CODE_HEALTH_BUNDLE_NAME = "code-health"
 # CR-MDB-042 §S4 -- the adopted gap-analysis bundle is Model B-owned, with
 # no stack scope (it deploys for every --stacks selection).
 GAP_ANALYSIS_BUNDLE_NAME = "gap-analysis"
+# MIGRATED at CR-MDB-061 (§S8): the chrome-ui-relay bundle is Model B-owned,
+# with no stack scope (deployed with every Model B skill).
+CHROME_UI_RELAY_BUNDLE_NAME = "chrome-ui-relay"
 MODELB_OWNED_BUNDLE_NAMES = frozenset(IMPORTED_BUNDLE_NAMES) | {
     CRUCIBLE_BUNDLE_NAME, CODE_HEALTH_BUNDLE_NAME, GAP_ANALYSIS_BUNDLE_NAME,
+    CHROME_UI_RELAY_BUNDLE_NAME,
 }
 
 # CR-MDB-024 \u00a7S2 -- rust joined the generator as a fifth stack (16 -> 20).
