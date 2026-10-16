@@ -8,7 +8,8 @@ description: End-of-run teardown for a Model-B orchestrator session (Mainline or
 A run (or a day) is ending. This skill brings ONE orchestrator session down **cleanly**:
 it finishes whatever it is mid-doing, settles its working folder (no dangling/uncommitted
 work), tells the rest of the team it is safe to stop, and — as the **final** act —
-stops Sandesh's wake watcher it owns, then unregisters its address.
+stops Sandesh's wake watcher it owns, confirms it has stopped, and only then unregisters its
+address — never together (see § The common final step).
 
 **Two modes, chosen by the `emergency` flag:**
 - **Graceful (default)** — finish the active step, finish the plan's active cycle (except a last
@@ -167,14 +168,16 @@ Host is going down (power failure, forced stop). After closing the active write:
    *"Track N safe to shut down — CR-XXX open at <sha>, active cycle <label>, worktree committed
    (or: CR-XXX merged @ <HEAD> on the relayed sign-off / no carried work)."* The ack IS the
    shutdown indicator.
-5. **LAST — stop your own watcher, then unregister** (see § The common final step).
+5. **LAST — stop your own watcher, confirm it has stopped, then unregister — never together**
+   (see § The common final step).
 
 **Emergency (1B):**
 1. Close the active write only.
 2. Fast-abort — leave the worktree as-is or `git -C .worktrees/<cr> stash`; no finishing of the active cycle, no merge.
 3. Best-effort ack to Mainline: *"Track N EMERGENCY-stopped — CR-XXX left at <state>, worktree
    preserved/stashed for resume."*
-4. **LAST — stop your own watcher, then unregister.**
+4. **LAST — stop your own watcher, confirm it has stopped, then unregister — never together**
+   (see § The common final step).
 
 ---
 
@@ -207,33 +210,52 @@ and goes **last**.
    only true power-failure justifies skipping.)
 4. **Report to the USER** — all tracks confirmed down (ack + active-state), develop HEAD +
    ahead/behind, and what is queued/locked for the next run.
-5. **LAST — stop Mainline's OWN watcher, then unregister** (see § The common final step).
+5. **LAST — stop Mainline's OWN watcher, confirm it has stopped, then unregister — never
+   together** (see § The common final step).
    Mainline is the final orchestrator down.
 
 **Emergency (Mainline):** dispatch the emergency directive to all tracks immediately;
 collect best-effort acks / confirm via active-state within a short bound rather than waiting
-on a full graceful drain; commit develop if safe (else fast-abort); then stop the watcher.
+on a full graceful drain; commit develop if safe (else fast-abort); then stop the watcher,
+confirm it has stopped, and only then unregister — never together (see § The common final step).
 
 ---
 
-## The common final step — stop your watcher LAST, then unregister
+## The common final step — stop, confirm, then unregister
 
-For **every** orchestrator, the final action is stopping Sandesh's wake watcher it owns and
-unregistering its address. The stop is this step's documented exception to keeping the
-watcher up, and it applies ONLY here, at a confirmed shutdown's last step.
+For **every** orchestrator, the final action is to stop Sandesh's wake watcher it owns, confirm it
+has stopped, and only then unregister its address. The stop is this step's documented exception to
+keeping the watcher up, and it applies ONLY here, at a confirmed shutdown's last step.
 
 - **Why last:** you need the watcher alive throughout the teardown — a Track to receive a
   late emergency-stop, Mainline to receive every track's ack. Stop it only when everything
   else (drain, merge, commit, ack/report) is done.
-- **How:** stop your own watcher, by your own address, through Sandesh's extension — or with
-  its command, `/sandesh-watcher stop <your address>`. Always name your address: a stop
-  without one would reach another identity's watcher.
-  - **Never** a machine-wide or broad process kill — it would take down OTHER orchestrators'
-    watchers. Stop only the one you own.
-  - Then `sandesh unregister --project <Project> --address "<your address>" --as "<your address>"` for a clean
-    addressbook (`status` no longer `active`), so the roster reflects you are down.
-- Next run, `/bootstrap` brings you back (it registers you and starts the watcher again).
-  Shutdown stops; bootstrap revives.
+- **Never** a machine-wide or broad process kill — it would take down OTHER orchestrators'
+  watchers. Stop only the one you own.
+
+1. **Stop your own watcher, by your own address,** through Sandesh's extension — or with its command,
+   `/sandesh-watcher stop <your address>`. Always name your address: a stop without one would
+   reach another identity's watcher.
+2. **Confirm with `sandesh addressbook --project <Project> --format toon --fields address,status,listening`**
+   that your address no longer shows `listening` true.
+   - If it still does, read it again after a few seconds, a bounded number of times, for no longer
+     than about a minute (Sandesh's heartbeat staleness). Never use an open-ended sleep loop.
+   - If it is still listening after that, a watcher this session does not own holds the address.
+     Check `/sandesh-watcher status`, report the address's state to the user, and do not unregister.
+3. **Only then run `sandesh unregister --project <Project> --address "<your address>" --as "<your address>"`,**
+   with a time bound, and confirm the address now shows `status` inactive.
+   - An unregister that answers with a tombstone (exit 3) has not unregistered: a watcher was still
+     live. Go back to step 2, and run it again once the address reads offline.
+   - An unregister that has not returned within its time bound, or that leaves the address `active`,
+     is reported to the user with the address's state. The next `/bootstrap` finds the address
+     active and skips registering it.
+
+**The two are separate calls, one after the other.** Each waits for the previous one's result. They
+are never issued together: not as tool calls in one parallel batch, and not in one shell command
+(the latter guards against a future `sandesh` stop verb).
+
+Next run, `/bootstrap` brings you back (it registers you and starts the watcher again).
+Shutdown stops; bootstrap revives.
 
 ---
 
@@ -250,7 +272,8 @@ watcher up, and it applies ONLY here, at a confirmed shutdown's last step.
   session); Mainline reports the USER. Do not cross these.
 - **Mainline goes last** — it shuts down ONLY after every active Track has acked / shows down.
   Never abandon a track mid-cycle in a non-emergency.
-- **Stop ONLY your own watcher**, by address, as the LAST step, then unregister. This is the
+- **Stop ONLY your own watcher**, by address, as the LAST step; confirm it has stopped, and only
+  then unregister — never together (see § The common final step). This is the
   sole place the watcher is stopped on purpose — everywhere else, a stopped watcher is a bug.
 - A **Solo** orchestrator (no tracks) follows the MAINLINE branch with the Track-dispatch +
   wait-for-acks steps inert: settle develop, report to the user, stop its watcher.
