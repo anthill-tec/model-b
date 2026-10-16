@@ -58,6 +58,7 @@ from pathlib import Path
 from unittest import mock
 
 from tests._helpers import (
+    SANDESH_PI_TOOLS,
     decode_axi,
     deploy_hook_scripts,
     write_executable,
@@ -132,6 +133,62 @@ class SandeshPiRequiredRowTest(unittest.TestCase):
 
     def test_sandesh_pi_remediation_stays_its_pi_install_command(self):
         self.assertEqual(_row("sandesh-pi")["remediation"], SANDESH_PI_REMEDIATION)
+
+
+#: CR-MDB-077 §S1: every other row's ``tools``, as it stood before the change —
+#: the rows that declare one, by id. A row absent here declares no ``tools``.
+_OTHER_ROWS_TOOLS: dict[str, tuple[str, ...]] = {
+    "dispatch": ("subagent", "get_subagent_result", "steer_subagent"),
+    "lean-ctx": (
+        "lean_ctx",
+        "ctx_call", "ctx_callgraph", "ctx_compose", "ctx_delta", "ctx_edit",
+        "ctx_execute", "ctx_expand", "ctx_explore", "ctx_find", "ctx_glob",
+        "ctx_graph", "ctx_grep", "ctx_knowledge", "ctx_ls", "ctx_overview",
+        "ctx_patch", "ctx_read", "ctx_search", "ctx_session", "ctx_shell",
+        "ctx_tree", "ctx_url_read",
+    ),
+    "permissions": (),
+    "worktree": ("modelb_worktree_enter", "modelb_worktree_exit"),
+}
+
+
+class SandeshPiRowToolsTest(unittest.TestCase):
+    """CR-MDB-077 §S1: the ``sandesh-pi`` row's ``tools`` equals the set of the
+    sixteen names sandesh-pi 0.4.3 registers; every other row's ``tools`` is
+    unchanged."""
+
+    def test_the_sandesh_pi_row_names_exactly_the_sixteen_extension_tools(self):
+        tools = tuple(_row("sandesh-pi")["tools"])
+        self.assertEqual(
+            sorted(set(tools)), sorted(SANDESH_PI_TOOLS),
+            "CR-MDB-077 §S1: the sandesh-pi row's tools are the sixteen names the "
+            f"extension registers; got {tools!r}",
+        )
+        # NEGATIVE / bound — sixteen entries, none repeated.
+        self.assertEqual(len(tools), 16, f"exactly sixteen names, none repeated; {tools!r}")
+
+    def test_every_other_row_keeps_its_tools_unchanged(self):
+        rows = _requirements()
+        declaring = sorted(r["id"] for r in rows if "tools" in r)
+        self.assertEqual(
+            declaring, sorted([*_OTHER_ROWS_TOOLS, "sandesh-pi"]),
+            "CR-MDB-077 §S1: no row gains or loses a `tools` field",
+        )
+        for requirement_id, expected in _OTHER_ROWS_TOOLS.items():
+            with self.subTest(row=requirement_id):
+                self.assertEqual(
+                    tuple(_row(requirement_id)["tools"]), expected,
+                    f"CR-MDB-077 §S1: the `{requirement_id}` row's tools are unchanged",
+                )
+
+    def test_no_other_row_names_a_sandesh_tool(self):
+        """The Sandesh names live in the sandesh-pi row alone — none moved into
+        ``dispatch``, ``lean-ctx`` or any other row."""
+        elsewhere = sorted(
+            (r["id"], tool) for r in _requirements() if r["id"] != "sandesh-pi"
+            for tool in r.get("tools", ()) if tool in SANDESH_PI_TOOLS
+        )
+        self.assertEqual(elsewhere, [], "CR-MDB-077 §S1: only the sandesh-pi row names them")
 
 
 class SandeshCliRequiredRowTest(unittest.TestCase):

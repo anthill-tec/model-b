@@ -549,6 +549,28 @@ def requirements_rows():
     return list(REQUIREMENTS)
 
 
+# ------------------------------------------------------------- sandesh-pi tools ----
+
+#: The tools sandesh-pi 0.4.3 registers, as CR-MDB-077's Context lists them: the
+#: names its §S1 puts in the ``sandesh-pi`` row's ``tools``. Restated here, never read
+#: from ``REQUIREMENTS``, so a test pinning them bites while the row is still empty.
+SANDESH_PI_TOOLS: tuple[str, ...] = (
+    "sandesh_setup", "sandesh_register", "sandesh_unregister",
+    "sandesh_send", "sandesh_reply",
+    "sandesh_addressbook", "sandesh_fetch", "sandesh_inbox", "sandesh_thread",
+    "sandesh_search", "sandesh_status",
+    "sandesh_notify_start", "sandesh_notify_stop", "sandesh_notify_status",
+    "sandesh_archive", "sandesh_unarchive",
+)
+#: CR-MDB-077 §S2: the ask-set — the policy leaves these out of its allow-set,
+#: whichever requirement row supplies them, so they resolve to ``"*": "ask"``.
+SANDESH_ASK_TOOLS: tuple[str, ...] = ("sandesh_archive", "sandesh_unarchive")
+#: CR-MDB-077 §S2: the Sandesh tools the policy allows — the sixteen minus the ask-set.
+SANDESH_ALLOWED_TOOLS: tuple[str, ...] = tuple(
+    t for t in SANDESH_PI_TOOLS if t not in SANDESH_ASK_TOOLS
+)
+
+
 # ------------------------------------------------------------------ register flag ----
 
 #: The register flag Crucible retired fleet-wide in their 0.1.0 clean break (no alias).

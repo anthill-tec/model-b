@@ -48,7 +48,14 @@ from pathlib import Path
 from unittest import mock
 
 from modelb_axi import requirements as _requirements
-from tests._helpers import decode_axi, deploy_hook_scripts, write_interpreter_fixture
+from tests._helpers import (
+    SANDESH_ALLOWED_TOOLS,
+    SANDESH_ASK_TOOLS,
+    SANDESH_PI_TOOLS,
+    decode_axi,
+    deploy_hook_scripts,
+    write_interpreter_fixture,
+)
 from tests.pi_capability_sandbox import (
     AGENT_DIR_ENV,
     make_home,
@@ -87,10 +94,14 @@ _SHA256_TAIL = re.compile(r"([0-9a-f]{64})\s*$")
 
 
 def expected_allow_tools() -> set[str]:
-    """The §S3 allow-set, with the dispatch and lean-ctx names read from
-    ``REQUIREMENTS`` at call time (never restated)."""
+    """The §S3 allow-set, with the dispatch, lean-ctx and sandesh-pi names read
+    from ``REQUIREMENTS`` at call time (never restated), minus the ask-set."""
     tools = set(_requirements.requirement("dispatch")["tools"])
     tools |= set(_requirements.requirement("lean-ctx")["tools"])
+    # MIGRATED at CR-MDB-077 (§S2): the sandesh-pi row's tools join the allow-set,
+    # less the ask-set (sandesh_archive, sandesh_unarchive), which stays at ask.
+    tools |= set(_requirements.requirement("sandesh-pi")["tools"])
+    tools -= set(SANDESH_ASK_TOOLS)
     return tools | set(BUILTIN_FILE_TOOLS) | set(FIXED_WORKFLOW_TOOLS)
 
 
@@ -111,7 +122,7 @@ def sha256_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def write_install_toml(modelb_home: Path, harnesses=("pi",)) -> None:
+def write_install_toml(modelb_home: Path, harnesses=("pi",), lean_ctx: str = "detected") -> None:
     """install.toml fixture the scaffold reads (mirrors test_scaffold's
     ``_write_install_toml``), its hooks_scripts_dir inside the sandbox.
 
@@ -122,7 +133,10 @@ def write_install_toml(modelb_home: Path, harnesses=("pi",)) -> None:
     tests.test_project_tools_setup.
 
     MIGRATED (CR-MDB-062 C4 RED, §S8): deploys every hook script into the store
-    (``deploy_hook_scripts``), so init's script check finds each one it wires."""
+    (``deploy_hook_scripts``), so init's script check finds each one it wires.
+
+    CR-MDB-077 §S2: ``lean_ctx`` is the recorded lean-ctx verdict, ``detected``
+    unless a test pins the lean-ctx-absent render."""
     hooks_scripts_dir = deploy_hook_scripts(modelb_home / ".agents" / "hooks" / "scripts")
     harnesses_toml = ", ".join(f'"{h}"' for h in harnesses)
     modelb_home.mkdir(parents=True, exist_ok=True)
@@ -132,7 +146,7 @@ def write_install_toml(modelb_home: Path, harnesses=("pi",)) -> None:
         f"harnesses = [{harnesses_toml}]\n"
         'asset_root = "/tmp/does-not-matter-for-this-test"\n'
         f'hooks_scripts_dir = "{hooks_scripts_dir}"\n'
-        "\n[deps]\nuv = \"present\"\n\n[capabilities]\n\"lean-ctx\" = \"detected\"\n\n[files]\n",
+        f"\n[deps]\nuv = \"present\"\n\n[capabilities]\n\"lean-ctx\" = \"{lean_ctx}\"\n\n[files]\n",
         encoding="utf-8",
     )
 
@@ -148,6 +162,8 @@ class _InitSandbox(unittest.TestCase):
     """Per-test sandbox: HOME, PI_CODING_AGENT_DIR, MODELB_HOME, targets."""
 
     harnesses = ("pi",)
+    #: The recorded lean-ctx verdict (CR-MDB-077 §S2 adds the ``absent`` render).
+    lean_ctx = "detected"
 
     def setUp(self):
         self.root = Path(tempfile.mkdtemp(prefix="modelb-cr037-policy-")).resolve()
@@ -155,7 +171,7 @@ class _InitSandbox(unittest.TestCase):
         self.home = make_home(self.root / "home", crucible_manifest=False)
         self.agent_dir = make_provisioned_agent_dir(self.root / "agent")
         self.modelb_home = self.root / "modelb-home"
-        write_install_toml(self.modelb_home, harnesses=self.harnesses)
+        write_install_toml(self.modelb_home, harnesses=self.harnesses, lean_ctx=self.lean_ctx)
         self.work = self.root / "work"
         self.work.mkdir()
 
@@ -348,6 +364,99 @@ class PermissionPolicyContentTest(_InitSandbox):
 
 
 # ---------------------------------------------------------------------------
+# CR-MDB-077 §S2 — the Sandesh tools are allowed, except archive and unarchive
+# ---------------------------------------------------------------------------
+
+def _allowed_tools(permission: dict) -> set[str]:
+    """The names the policy allows by exact name, ``skill`` aside."""
+    return {s for s, r in permission.items() if r == "allow" and s != "skill"}
+
+
+def _sandesh_names(permission: dict) -> list[str]:
+    """Every ``sandesh_*`` key the ``permission`` map names, sorted."""
+    return sorted(key for key in permission if key.startswith("sandesh_"))
+
+
+class SandeshToolsPolicyTest(_InitSandbox):
+    """CR-MDB-077 §S2 — the policy ``init`` renders for Pi (lean-ctx
+    recorded ``detected``) allows the fourteen Sandesh tools by exact name and
+    leaves ``sandesh_archive`` and ``sandesh_unarchive`` out of its
+    ``permission`` map, so both resolve to ``"*": "ask"``."""
+
+    def setUp(self):
+        super().setUp()
+        self.text, _ = self.render()
+        self.permission = _parsed_policy(self, self.text)["permission"]
+
+    def test_the_fourteen_sandesh_tools_are_allowed_by_exact_name(self):
+        self.assertEqual(len(SANDESH_ALLOWED_TOOLS), 14, "precondition: sixteen less two")
+        for tool in SANDESH_ALLOWED_TOOLS:
+            with self.subTest(tool=tool):
+                self.assertEqual(
+                    self.permission.get(tool), "allow",
+                    f"CR-MDB-077 §S2: {tool!r} is allowed by exact name; got "
+                    f"{self.permission.get(tool)!r}",
+                )
+
+    def test_archive_and_unarchive_are_absent_from_the_permission_map_so_they_ask(self):
+        self.assertEqual(
+            _sandesh_names(self.permission), sorted(SANDESH_ALLOWED_TOOLS),
+            "CR-MDB-077 §S2: the map names exactly the fourteen allowed Sandesh tools "
+            "— the ask-set's two are absent from it",
+        )
+        for tool in SANDESH_ASK_TOOLS:
+            with self.subTest(tool=tool):
+                self.assertNotIn(
+                    tool, self.permission,
+                    f"CR-MDB-077 §S2: {tool!r} is not in the permission map, so it "
+                    "resolves to the `*` fallback",
+                )
+        self.assertEqual(self.permission.get("*"), "ask", "the fallback both resolve to")
+
+
+class SandeshToolsPolicyWithoutLeanCtxTest(_InitSandbox):
+    """CR-MDB-077 §S2 — with lean-ctx recorded ``absent`` the policy still
+    allows the fourteen Sandesh tools, alongside Pi's built-in ``bash``, names
+    no lean-ctx tool, and leaves the ask-set out."""
+
+    lean_ctx = "absent"
+
+    def setUp(self):
+        super().setUp()
+        self.text, _ = self.render("no-lean-ctx")
+        self.permission = _parsed_policy(self, self.text)["permission"]
+
+    def test_the_sandesh_tools_are_allowed_alongside_bash(self):
+        self.assertEqual(self.permission.get("bash"), "allow",
+                         "CR-MDB-045 §S8 precondition: lean-ctx absent allows bash")
+        for tool in SANDESH_ALLOWED_TOOLS:
+            with self.subTest(tool=tool):
+                self.assertEqual(
+                    self.permission.get(tool), "allow",
+                    f"CR-MDB-077 §S2: {tool!r} is allowed with lean-ctx absent; got "
+                    f"{self.permission.get(tool)!r}",
+                )
+
+    def test_the_allow_set_is_the_lean_ctx_absent_set_with_the_fourteen(self):
+        expected = (
+            set(BUILTIN_FILE_TOOLS) | set(FIXED_WORKFLOW_TOOLS)
+            | set(_requirements.requirement("dispatch")["tools"])
+            | set(SANDESH_ALLOWED_TOOLS) | {"bash"}
+        )
+        self.assertEqual(
+            sorted(_allowed_tools(self.permission)), sorted(expected),
+            "CR-MDB-077 §S2: the file tools, the fixed workflow tools, the dispatch "
+            "tools, the fourteen Sandesh tools and bash — nothing else",
+        )
+        self.assertEqual(_sandesh_names(self.permission), sorted(SANDESH_ALLOWED_TOOLS),
+                         "CR-MDB-077 §S2: the ask-set stays out with lean-ctx absent too")
+        self.assertEqual(
+            [key for key in self.permission if key.startswith("ctx_") or key == "lean_ctx"],
+            [], "CR-MDB-045 §S8: no lean-ctx tool with lean-ctx absent",
+        )
+
+
+# ---------------------------------------------------------------------------
 # §S3 — the installed harness's own code (VERIFY finding 5)
 # ---------------------------------------------------------------------------
 
@@ -413,7 +522,8 @@ class PermissionPolicyReadsRequirementsDataTest(unittest.TestCase):
     in-process changes the rendered allow-set, and the replaced names
     disappear. In-process ``scaffold.run_init`` (the only way to alter the
     data mid-run); rows are patched IN PLACE so the patch lands whatever
-    import style the scaffold uses."""
+    import style the scaffold uses. CR-MDB-077 §S2 adds the ``sandesh-pi`` row,
+    and the ask-set no row's names can bring into the allow-set."""
 
     _DISPATCH_SENTINEL = ("sentinel_dispatch_tool_037",)
     _LEAN_CTX_SENTINEL = ("sentinel_lean_ctx_tool_037", "ctx_sentinel_second_037")
@@ -428,36 +538,50 @@ class PermissionPolicyReadsRequirementsDataTest(unittest.TestCase):
         self.target = self.root / "target"
         self.target.mkdir()
 
-    def test_allow_set_follows_the_requirements_rows_not_a_copy(self):
+    def _init_with(self, rows: dict[str, tuple[str, ...]]) -> dict:
+        """In-process ``init`` into ``self.target`` with each named row's
+        ``tools`` replaced IN PLACE; returns the rendered ``permission`` map."""
         from modelb_axi import scaffold
 
-        original = (
-            set(_requirements.requirement("dispatch")["tools"])
-            | set(_requirements.requirement("lean-ctx")["tools"])
-        )
         args = argparse.Namespace(
             name="X", token="xproj", acronym="XP", mode="solo",  # noqa: S106 -- project token
             repo_shape="standalone", stacks="python", owner="tester",
             target=str(self.target), dry_run=False, no_commit=True,
             register=False, harnesses=None, force_managed=False,
         )
-        with mock.patch.dict(
-            _requirements.requirement("dispatch"), {"tools": self._DISPATCH_SENTINEL},
-        ), mock.patch.dict(
-            _requirements.requirement("lean-ctx"), {"tools": self._LEAN_CTX_SENTINEL},
-        ), mock.patch.dict(
-            os.environ, {"HOME": str(self.home), AGENT_DIR_ENV: str(self.agent_dir)},
-        ), contextlib.redirect_stdout(io.StringIO()), \
-                contextlib.redirect_stderr(io.StringIO()) as err:
+        with contextlib.ExitStack() as stack:
+            for requirement_id, tools in rows.items():
+                stack.enter_context(mock.patch.dict(
+                    _requirements.requirement(requirement_id), {"tools": tools}))
+            stack.enter_context(mock.patch.dict(
+                os.environ, {"HOME": str(self.home), AGENT_DIR_ENV: str(self.agent_dir)}))
+            stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
+            err = stack.enter_context(contextlib.redirect_stderr(io.StringIO()))
             exit_code = scaffold.run_init(args, self.modelb_home)
         self.assertEqual(exit_code, 0, f"precondition: init must succeed; {err.getvalue()!r}")
         policy = self.target / POLICY_REL
         self.assertTrue(policy.is_file(), f"§S3: {POLICY_REL} must be written")
-        permission = _parsed_policy(self, policy.read_text(encoding="utf-8"))["permission"]
-        allowed = {s for s, r in permission.items() if r == "allow" and s != "skill"}
+        return _parsed_policy(self, policy.read_text(encoding="utf-8"))["permission"]
+
+    @staticmethod
+    def _allowed(permission: dict) -> set[str]:
+        return {s for s, r in permission.items() if r == "allow" and s != "skill"}
+
+    def test_allow_set_follows_the_requirements_rows_not_a_copy(self):
+        original = (
+            set(_requirements.requirement("dispatch")["tools"])
+            | set(_requirements.requirement("lean-ctx")["tools"])
+        )
+        permission = self._init_with({
+            "dispatch": self._DISPATCH_SENTINEL, "lean-ctx": self._LEAN_CTX_SENTINEL,
+        })
+        allowed = self._allowed(permission)
+        # MIGRATED at CR-MDB-077 (§S2): the unpatched sandesh-pi row's tools are allowed
+        # too, less the ask-set — the fourteen names CR-MDB-077's Context lists.
         expected = (
             set(self._DISPATCH_SENTINEL) | set(self._LEAN_CTX_SENTINEL)
             | set(BUILTIN_FILE_TOOLS) | set(FIXED_WORKFLOW_TOOLS)
+            | set(SANDESH_ALLOWED_TOOLS)
         )
         self.assertEqual(
             sorted(allowed), sorted(expected),
@@ -466,6 +590,54 @@ class PermissionPolicyReadsRequirementsDataTest(unittest.TestCase):
         )
         leaked = sorted((original - set(BUILTIN_FILE_TOOLS)) & set(permission))
         self.assertEqual(leaked, [], f"§S3: replaced tool names must be gone; found {leaked!r}")
+
+    def test_sandesh_pi_sentinels_replace_its_allows_and_an_archive_sentinel_is_left_out(self):
+        """CR-MDB-077 §S2, data-derived: replacing the ``sandesh-pi`` row's
+        ``tools`` with sentinels changes the allow-set to match, the replaced
+        names disappear, and a ``sandesh_archive`` among the sentinels is left
+        out — the ask-set wins whichever row supplies the name."""
+        sentinels = ("sentinel_sandesh_tool_077", "sentinel_sandesh_second_077",
+                     "sandesh_archive")
+        permission = self._init_with({"sandesh-pi": sentinels})
+        expected = (
+            set(_requirements.requirement("dispatch")["tools"])
+            | set(_requirements.requirement("lean-ctx")["tools"])
+            | set(BUILTIN_FILE_TOOLS) | set(FIXED_WORKFLOW_TOOLS)
+            | {"sentinel_sandesh_tool_077", "sentinel_sandesh_second_077"}
+        )
+        self.assertEqual(
+            sorted(self._allowed(permission)), sorted(expected),
+            "CR-MDB-077 §S2: the sandesh-pi allows are read from REQUIREMENTS at render "
+            "time, less the ask-set",
+        )
+        self.assertNotIn("sandesh_archive", permission,
+                         "CR-MDB-077 §S2: an ask-set name from the sandesh-pi row is left out")
+        leaked = sorted(set(SANDESH_PI_TOOLS) & set(permission))
+        self.assertEqual(leaked, [], f"CR-MDB-077 §S2: replaced names must be gone; {leaked!r}")
+
+    def test_an_archive_sentinel_in_the_dispatch_row_is_left_out(self):
+        """CR-MDB-077 §S2, data-derived: a ``sandesh_archive`` among the
+        ``dispatch`` row's sentinels is left out too — the ask-set applies to
+        every row's names, not only the sandesh-pi row's."""
+        permission = self._init_with({
+            "dispatch": ("sentinel_dispatch_tool_077", "sandesh_archive"),
+            "sandesh-pi": ("sentinel_sandesh_tool_077",),
+        })
+        self.assertNotIn(
+            "sandesh_archive", permission,
+            "CR-MDB-077 §S2: an ask-set name from the dispatch row is left out, so it "
+            f"resolves to the ask fallback; got {permission.get('sandesh_archive')!r}",
+        )
+        expected = (
+            {"sentinel_dispatch_tool_077", "sentinel_sandesh_tool_077"}
+            | set(_requirements.requirement("lean-ctx")["tools"])
+            | set(BUILTIN_FILE_TOOLS) | set(FIXED_WORKFLOW_TOOLS)
+        )
+        self.assertEqual(
+            sorted(self._allowed(permission)), sorted(expected),
+            "CR-MDB-077 §S2: the dispatch sentinel stays allowed beside the sandesh-pi one",
+        )
+        self.assertEqual(permission.get("*"), "ask", "the fallback the ask-set resolves to")
 
 
 # ---------------------------------------------------------------------------
