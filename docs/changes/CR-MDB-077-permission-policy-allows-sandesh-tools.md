@@ -26,7 +26,7 @@
     `sandesh_status`;
   - `sandesh_notify_start`, `sandesh_notify_stop`, `sandesh_notify_status`;
   - `sandesh_archive`, `sandesh_unarchive`.
-- **Only `init` writes the policy.** `scaffold.run_init` calls
+- **Only `init` writes the policy.** `scaffold.run_init`, through `_emit_plan`, calls
   `permission_policy.place_project_policy` for a Pi project. `modelb-axi agents` re-renders a
   project's agent definitions and never the policy. `init` must not be re-run on an existing
   project, so an existing project has no way to get a changed policy.
@@ -47,7 +47,6 @@
 - `permission_policy.py` declares an ask-set: `sandesh_archive` and `sandesh_unarchive`.
   `workflow_tools` leaves the ask-set's names out, whichever row supplies them.
 - The Sandesh tools are allowed whether lean-ctx is present or not.
-- The module's docstring names the three rows and the ask-set.
 
 ### §S3 — `modelb-axi agents` re-renders the policy
 
@@ -61,7 +60,11 @@ policy after its agent definitions:
   `unmanaged` list, beside the agent files;
 - a skipped or unmanaged policy gets the same warning a skipped or unmanaged agent file gets;
 - `--stacks` changes nothing in the policy;
-- without `pi` among the harnesses, no policy is written.
+- the policy is placed only when `pi` is among the resolved harnesses, as `init` does. The roster is
+  Pi alone (CR-MDB-031 §S1), so no `agents` run reaches the no-Pi case, and no test drives it;
+- the policy is placed inside the same I/O-error handling as the agent definitions: an `OSError`
+  exits 3 with an `ok: false` envelope naming the error and listing the files already written;
+- a run refused in validation (exit 2) writes no policy.
 
 The verb's help, its description and its stderr progress line name the permission policy.
 
@@ -77,6 +80,9 @@ The verb's help, its description and its stderr progress line name the permissio
   The guide names no `sandesh_*` tool (DN §D18).
 - **The generated package README** (`pi-package/README.md`) is re-rendered from the guide's regions
   with `generator/build.py build`.
+- **The git-workflow skill's post-release maintenance step** adds, after the reinstall: run
+  `modelb-axi agents` in each existing project to re-render its policy. It names no `sandesh_*`
+  tool.
 
 ### §S5 — This repository's own policy
 
@@ -95,40 +101,58 @@ policy, for lean-ctx present, through `place_project_policy`.
         resolve to `"*": "ask"`;
       - with lean-ctx absent, still allows the fourteen Sandesh tools, alongside `bash`.
 - [ ] **§S2, data-derived.** In-process, replacing the `sandesh-pi` row's `tools` with sentinel names
-      changes the rendered allow-set to match, and the replaced names disappear. A sentinel set that
-      includes `sandesh_archive` renders without it.
-- [ ] **§S3, the wired path.** `python3 -m modelb_axi agents`, run in a sandbox project whose
-      installation records the `pi` harness:
+      changes the rendered allow-set to match, and the replaced names disappear. A `sandesh_archive`
+      among the `sandesh-pi` sentinels, and one among the `dispatch` sentinels, are both left out.
+- [ ] **§S3, the wired path.** `python3 -m modelb_axi agents`, run in a seeded sandbox project (a
+      `.env` recording `PROJECT_STACKS`, and a sandbox `install.toml` recording the `pi` harness and
+      a lean-ctx verdict):
       - writes the policy when it is absent, and reports it in `written`;
       - reports an identical policy in `unchanged`;
       - rewrites a policy from an older render that still carries its intact marker, and reports it
         in `written`;
       - skips a hand-modified policy and reports it in `skipped` with the ownership warning, and
         rewrites it under `--force-managed`;
-      - never writes an unmarked policy, and reports it in `unmanaged` with the warning.
+      - never writes an unmarked policy, and reports it in `unmanaged` with the warning;
+      - with the recorded lean-ctx verdict switched from `detected` to `absent`, rewrites the policy
+        to the lean-ctx-absent render, which allows `bash` and names no `ctx_*` tool;
+      - under `--stacks`, leaves an intact, current policy byte-identical and reports it in
+        `unchanged`.
 
-      Each case's written file equals `render_policy` for the recorded lean-ctx verdict.
-- [ ] **§S3, no Pi.** With no `pi` among the resolved harnesses, `agents` writes no policy and lists
-      none.
+      A written policy equals `render_policy(lean_ctx=<the recorded verdict>)` computed under the
+      subprocess's `HOME` and `PATH`. A skipped or unmanaged policy is byte-identical to its seed.
+- [ ] **§S3, failure paths.**
+      - A policy path that cannot be written (for example, `.pi/extensions` is a file) exits 3 with
+        `ok: false` and a warning naming the error.
+      - A run without a `.env` exits 2 and creates no policy.
 - [ ] **§S3, text.** The `agents` subparser's help and description, and its stderr progress line,
       name the permission policy.
-- [ ] **§S4.** Gates pin, in the install guide's `project-trust` region:
-      - the Sandesh-tools sentence, with archive and unarchive asking;
-      - `modelb-axi agents` named as the way to re-render an existing project's policy, with the
-        edited-file rule.
+- [ ] **§S4, the guide.** Gates pin, in the install guide's `project-trust` region:
+      - the list item naming `.pi/extensions/pi-permission-system/config.json` says the Sandesh
+        extension's tools are allowed, and one of its sentences names archiving and unarchiving a
+        project as asking;
+      - a paragraph names `modelb-axi agents` in code, with `re-render`, `policy` and
+        `--force-managed` in the same paragraph.
 
-      The guide names no `sandesh_*` tool. `generator/build.py --check` is clean.
+      A gate finds no `sandesh_*` tool name in the guide; it is proved both ways on synthetic text,
+      and the guide's conforming fixture is extended to match. `generator/build.py --check` is clean.
+- [ ] **§S4, git-workflow.** A gate pins, in the post-release maintenance step, `modelb-axi agents`
+      run in each existing project to re-render its policy, after the reinstall. The step names no
+      `sandesh_*` tool. The skill's frontmatter is unchanged, and the skills load in Pi with no
+      diagnostics.
 - [ ] **§S5.** This repository's committed policy equals `render_policy(lean_ctx=True)` on the branch,
       with its marker intact. VERIFY checks this; no test pins it, because the render depends on
       where `pi` is installed.
-- [ ] **Migrations (RED).** The pins that restate the allow-set move with it, each marked
-      `# MIGRATED at CR-MDB-077 (§S2)`:
-      - `tests/test_project_permission_policy.py`'s `expected_allow_tools`;
-      - `PermissionPolicyReadsRequirementsDataTest`'s expected set.
-- [ ] **Live check, before the merge.** With this repository's re-rendered policy on the branch, the
-      user runs `/reload` in the orchestrator's Pi session. Then the session's first call to
-      `sandesh_status` runs with no permission prompt, and pi-permission-system's review log shows
-      no `permission_request` for it.
+- [ ] **Migrations (RED).** The pins on the allow-set and on the `agents` verb's output move with
+      them, each marked `# MIGRATED at CR-MDB-077 (§S…)`:
+      - `tests/test_project_permission_policy.py`'s `expected_allow_tools` (§S2);
+      - `PermissionPolicyReadsRequirementsDataTest`'s expected set (§S2);
+      - `tests/test_project_tools_setup.py`'s `test_the_verb_follows_the_recorded_verdict_both_ways`:
+        `written` gains the policy path (§S3).
+- [ ] **Live check, before the merge.** The CR's feature branch is checked out in the main tree, the
+      orchestrator's working directory, with this repository's policy re-rendered on it. The user
+      runs `/reload` in the orchestrator's Pi session. The session's first call to `sandesh_status`
+      then runs with no permission prompt, and pi-permission-system's review log records no
+      `permission_request` for it.
 - [ ] **Runs.**
       - The suite is green through the client, with a real `HOME` and an empty one; the empty
         `HOME` stays empty.
@@ -148,6 +172,12 @@ policy, for lean-ctx present, through `place_project_policy`.
   - the rendered `AGENTS.md` stack lines;
   - the guide's `adding-stacks-later` region.
 - **Sub-agent definitions.** Their `tools:` and `permission:` frontmatter are unchanged.
+- **The `worktree` row's tools** (`modelb_worktree_enter`, `modelb_worktree_exit`) stay outside
+  the allow-set: the ruling covers the Sandesh extension only. CR-MDB-049 reviews the extension tools
+  the workflow needs.
+- **A parity check against the installed sandesh-pi.** It would read the real home, which the suite's
+  hermetic rule allows only for Crucible's clients and pi-subagents. A sandesh-pi upgrade that adds
+  a tool is caught at the next gap analysis that touches the row.
 
 ## Cycle plan
 
