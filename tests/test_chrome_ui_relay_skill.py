@@ -25,9 +25,10 @@ Class map:
 - ``PipedOutputGateTest`` — negative gate 2: no ``chrome-devtools-axi`` output shown piped (any
   single ``|`` after the tool, never ``||``), captured with ``$(…)``, or redirected, with or
   without a space before the redirect (``2>&1`` keeps it).
-- ``BridgeWaitTokensGateTest`` — negative gate 3 (CR-MDB-076 AC): every fenced line running
-  ``chrome-devtools-axi`` carries the three exact tokens of ``CALL_TOKENS`` — the auto-connect, the
-  project session and the two-minute bridge wait.
+- ``BridgeWaitTokensGateTest`` — negative gate 3 (CR-MDB-076 AC): every command segment of a fenced
+  line that runs ``chrome-devtools-axi`` carries the three exact tokens of ``CALL_TOKENS`` as env
+  assignments before the tool's word — the auto-connect, the project session and the two-minute
+  bridge wait — and the skill's seven fenced calls (``EXPECTED_FENCED_VERBS``) are all checked.
 
 **A phrase rule** is a set of patterns that must all match inside ONE unit of the skill's body
 (``units``): a paragraph, a list item together with its nested items, a heading, a table row or a
@@ -231,21 +232,70 @@ CALL_TOKENS = (
 )
 #: A line that runs the tool: its name as a word of its own.
 _RUNS_TOOL = re.compile(r"(?<![\w-])chrome-devtools-axi(?![\w-])")
+#: CR-MDB-076 AC: a fenced line's command separators — ``&&``, ``||``, ``;`` and ``|``.
+_SEGMENT_SEPARATOR = re.compile(r"&&|\|\||;|\|")
+#: CR-MDB-076 AC: a trailing `` #…`` comment, stripped before the line is split.
+_TRAILING_COMMENT = re.compile(r"\s#.*$")
+#: A shell env assignment word, ``NAME=value``.
+_ENV_ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=\S*$")
+#: CR-MDB-076 AC: the verbs of the skill's seven fenced calls, every one of them checked.
+EXPECTED_FENCED_VERBS = ("pages", "pages", "newpage", "selectpage", "eval", "closepage", "stop")
 
 
-def missing_call_token_findings(text: str) -> list[tuple[int, str, tuple[str, ...]]]:
-    """``(line_number, line, missing_tokens)`` for every fenced line of ``text`` that runs
-    ``chrome-devtools-axi`` without every one of ``CALL_TOKENS`` as a whole word. A line continued
-    with ``\\`` is judged once joined (``shown``); a code span is never a call, and a ``#`` comment
-    line runs nothing."""
-    findings = []
+def fenced_tool_calls(text: str) -> list[tuple[int, str]]:
+    """``(line_number, segment)`` for every command segment of a fenced line of ``text`` that runs
+    ``chrome-devtools-axi``. A line continued with ``\\`` is judged once joined (``shown``); a code
+    span is never a call and a ``#`` comment line runs nothing; a trailing `` #…`` comment is
+    stripped, then the line is split on ``&&``, ``||``, ``;`` and ``|``."""
+    calls = []
     for number, content, prefix in shown(text):
-        if prefix is not None or content.lstrip().startswith("#") or not _RUNS_TOOL.search(content):
+        if prefix is not None or content.lstrip().startswith("#"):
             continue
-        words = content.split()
-        missing = tuple(token for token in CALL_TOKENS if token not in words)
+        command = _TRAILING_COMMENT.sub("", content)
+        for segment in _SEGMENT_SEPARATOR.split(command):
+            if _RUNS_TOOL.search(segment):
+                calls.append((number, segment.strip()))
+    return calls
+
+
+def _tool_word_index(words: list[str]) -> int:
+    return next(i for i, word in enumerate(words) if _RUNS_TOOL.search(word))
+
+
+def call_verb(segment: str) -> str:
+    """The word after ``chrome-devtools-axi`` in ``segment``, or ``""`` when none follows."""
+    words = segment.split()
+    index = _tool_word_index(words)
+    return words[index + 1] if index + 1 < len(words) else ""
+
+
+def env_assignments(segment: str) -> list[str]:
+    """The env assignments ``segment`` sets for its command: the leading ``NAME=value`` words
+    (after an optional ``env``), all before the ``chrome-devtools-axi`` word."""
+    words = segment.split()
+    before = words[:_tool_word_index(words)]
+    if before[:1] == ["env"]:
+        before = before[1:]
+    assignments = []
+    for word in before:
+        if not _ENV_ASSIGNMENT.match(word):
+            break
+        assignments.append(word)
+    return assignments
+
+
+# MIGRATED at CR-MDB-076 (§S2): judged per command segment, the tokens as env assignments before
+# the tool's word, a trailing comment stripped (VERIFY F2).
+def missing_call_token_findings(text: str) -> list[tuple[int, str, tuple[str, ...]]]:
+    """``(line_number, segment, missing_tokens)`` for every command segment of a fenced line of
+    ``text`` (``fenced_tool_calls``) that runs ``chrome-devtools-axi`` without every one of
+    ``CALL_TOKENS`` as an env assignment before the tool's word."""
+    findings = []
+    for number, segment in fenced_tool_calls(text):
+        assigned = env_assignments(segment)
+        missing = tuple(token for token in CALL_TOKENS if token not in assigned)
         if missing:
-            findings.append((number, content, missing))
+            findings.append((number, segment, missing))
     return findings
 
 
@@ -284,8 +334,16 @@ GONE_AWAY = re.escape("the attached cdp target appears to have gone away")
 _RETRY_NEVER_APPLIES = r"\bretry never applies to a bridge_not_ready envelope\b"
 #: CR-MDB-076 §S2: a ``BRIDGE_NOT_READY`` skip runs ``stop`` once.
 _RUNS_STOP_ONCE = r"\bruns stop once\b"
-#: CR-MDB-076 §S2: a shutdown whose bootstrap skipped runs one ``stop`` and nothing else.
-_ONE_STOP_NOTHING_ELSE = r"\bruns (?:that |the )?one stop and nothing else\b"
+# MIGRATED at CR-MDB-076 (§S2): the single ``stop`` follows only a ``BRIDGE_NOT_READY`` skip.
+#: CR-MDB-076 §S2: a shutdown whose bootstrap skipped on a ``BRIDGE_NOT_READY`` runs one ``stop``
+#: and nothing else.
+_ONE_STOP_NOTHING_ELSE = (r"\bbootstrap skipped on a bridge_not_ready\b[^.]{0,80}"
+                          r"\bruns (?:that |the )?one stop and nothing else\b")
+#: CR-MDB-076 §S2: a shutdown whose bootstrap skipped for no valid session name runs no call.
+_NO_CALL_WITHOUT_A_SESSION = (r"\bbootstrap skipped for no valid session name\b[^.]{0,80}"
+                              r"\bruns no call at all\b")
+#: CR-MDB-076 §S2: why — with no valid session, ``stop`` reaches the default session's bridge.
+_STOP_WOULD_REACH_DEFAULT = r"\ba stop would reach the shared default session's bridge\b"
 
 #: One phrase gate per acceptance rule: ``(test_name, section, patterns, cut)``. ``patterns`` must
 #: all match inside one unit; ``cut`` is the ``(old, new)`` replacements of
@@ -415,9 +473,12 @@ PHRASE_RULES = (
      (r"\bno record\b", r"\bnothing is closed\b|\bcloses? nothing\b", r"\bfor the user to close\b"),
      (("nothing is closed", "they are closed"),)),
     # MIGRATED at CR-MDB-076 (§S2, §S4): the skipped shutdown runs its single `stop`.
+    # MIGRATED at CR-MDB-076 (§S2): the single `stop` only after a BRIDGE_NOT_READY skip, and no
+    # call at all after a skip for no valid session name (VERIFY F1).
     ("s5_a_skipped_bootstrap_means_shutdown_skips_and_starts_no_bridge", "§S5",
      (r"\bbootstrap skipped\b", r"\bshutdown skips\b",
-      r"\bstarts no bridge\b|\bnever starts a bridge\b|\bno bridge\b", _ONE_STOP_NOTHING_ELSE),
+      r"\bstarts no bridge\b|\bnever starts a bridge\b|\bno bridge\b", _ONE_STOP_NOTHING_ELSE,
+      _NO_CALL_WITHOUT_A_SESSION),
      ((" and starts no bridge", ""),)),
     # §S6
     # MIGRATED at CR-MDB-061 (§S6): keyed on the envelope's "code: BRIDGE_NOT_READY" field.
@@ -466,9 +527,12 @@ PHRASE_RULES = (
      ((", narrowed with `jq`,", ","),)),
     # ---- CR-MDB-076: the warning, the two-minute bridge wait, no retry, the single `stop` ----
     # CR-MDB-076 §S1
+    # MIGRATED at CR-MDB-076 (§S1): before a shutdown only when it runs a call other than `stop`
+    # (VERIFY F4).
     ("s1_warns_before_the_first_call_of_every_bootstrap_and_shutdown_relayed_by_a_services_skill",
      "§S1",
-     (r"\bbefore the first call of every bootstrap and (?:of )?every shutdown\b",
+     (r"\bbefore the first call of every bootstrap,? and (?:of )?every shutdown "
+      r"that runs a call other than stop\b",
       r"\bchrome will ask\b[^.;]{0,20}\baccept the connection\b",
       r"\baccept within about a minute\b", r"\bif chrome asks again\b[^.;]{0,20}\baccept again\b",
       r"\bany call may restart the bridge\b", r"\ba restart raises a new prompt\b",
@@ -498,9 +562,18 @@ PHRASE_RULES = (
      (r"\bcode: bridge_not_ready\b", r"\bbrowser steps are skipped\b", _RUNS_STOP_ONCE,
       r"\bnever starts a bridge\b", r"\bstray bridge raises no late prompt\b"),
      ((", so the call's stray bridge raises no late prompt", ""),)),
-    ("s2_a_shutdown_whose_bootstrap_skipped_runs_one_stop_and_nothing_else", "§S2",
-     (r"\bbootstrap skipped\b", r"\bshutdown\b", _ONE_STOP_NOTHING_ELSE),
+    # MIGRATED at CR-MDB-076 (§S2): was s2_a_shutdown_whose_bootstrap_skipped_runs_one_stop_and_
+    # nothing_else; the single `stop` follows only a BRIDGE_NOT_READY skip (VERIFY F1).
+    ("s2_a_shutdown_whose_bootstrap_skipped_on_a_bridge_not_ready_runs_one_stop_and_nothing_else",
+     "§S2",
+     (r"\bshutdown\b", _ONE_STOP_NOTHING_ELSE),
      ((" and nothing else", ", then closes its tabs"),)),
+    ("s2_a_shutdown_whose_bootstrap_skipped_for_no_valid_session_name_runs_no_call_at_all", "§S2",
+     (r"\bshutdown\b", _NO_CALL_WITHOUT_A_SESSION, _STOP_WOULD_REACH_DEFAULT),
+     (("shutdown runs no call at all", "shutdown runs one `stop`"),)),
+    ("s2_closes_single_retry_never_repeats_stop", "§S2",
+     (r"\bsingle retry never repeats (?:a |the )?stop\b",),
+     ((" The single retry never repeats `stop`.", ""),)),
     ("s2_with_no_browser_the_first_call_takes_the_full_two_minutes_before_the_skip", "§S2",
      (r"\bno browser to attach to\b", r"\bfirst call takes the full two minutes before the skip\b"),
      (("the full two minutes", "a moment"),)),
@@ -543,7 +616,7 @@ This skill is not the omp-era CDP relay; that relay must never run under Pi.
 
 ## Before the first call
 
-Before the first call of every bootstrap and of every shutdown, the skill warns the user, and a services skill relays the warning:
+Before the first call of every bootstrap, and of every shutdown that runs a call other than `stop` (`stop` never connects, so no prompt comes), the skill warns the user, and a services skill relays the warning:
 
 - Chrome will ask them to accept the connection;
 - they accept within about a minute, and if Chrome asks again, they accept again;
@@ -611,9 +684,9 @@ The caller gives three lists:
 3. **`pages` again,** to verify. A last-tab no-op shows here as a tab still open.
 4. **`stop`.** It disconnects the project's bridge and never closes Chrome.
 
-- **When control fails,** retry once; the single retry never applies to a `BRIDGE_NOT_READY` envelope: that envelope skips. Otherwise report the tabs left open, naming their URLs.
+- **When control fails,** retry once; the single retry never applies to a `BRIDGE_NOT_READY` envelope: that envelope skips. The single retry never repeats `stop`. Otherwise report the tabs left open, naming their URLs.
 - **When there is no record,** nothing is closed. Tabs on the project's URLs are reported for the user to close.
-- **When bootstrap skipped its browser steps,** shutdown skips its own: it runs one `stop` and nothing else, and starts no bridge.
+- **When bootstrap skipped on a `BRIDGE_NOT_READY`,** shutdown skips its browser steps: it runs one `stop` and nothing else, and starts no bridge. When bootstrap skipped for no valid session name, shutdown runs no call at all: with no valid session, a `stop` would reach the shared default session's bridge.
 
 ## When the bridge cannot attach
 
@@ -664,6 +737,15 @@ REVERSALS = (
     # CR-MDB-076 §S3
     ("s3_the_skill_never_re_runs_the_browser_steps_on_its_own",
      (("The skill never re-runs them on its own.", "The skill re-runs them on its own."),)),
+    # CR-MDB-076 §S2 (VERIFY F1): the no-valid-session clause dropped, the `stop` after any skip —
+    # the pre-VERIFY wording.
+    ("s5_a_skipped_bootstrap_means_shutdown_skips_and_starts_no_bridge",
+     (("**When bootstrap skipped on a `BRIDGE_NOT_READY`,** shutdown skips its browser steps: it "
+       "runs one `stop` and nothing else, and starts no bridge. When bootstrap skipped for no valid "
+       "session name, shutdown runs no call at all: with no valid session, a `stop` would reach "
+       "the shared default session's bridge.",
+       "**When bootstrap skipped its browser steps,** shutdown skips its own: it runs one `stop` "
+       "and nothing else, and starts no bridge."),)),
 )
 
 #: CR-MDB-076's phrase rules: one per AC bullet of its §S1–§S3, and the renamed prompt-cause rule.
@@ -675,7 +757,11 @@ CR_MDB_076_RULES = frozenset({
     "s2_never_retries_a_bridge_not_ready_call_since_a_retry_kills_the_bridge_and_raises_a_prompt",
     "s2_closes_single_retry_never_applies_to_a_bridge_not_ready_envelope_which_skips",
     "s2_a_bridge_not_ready_skip_runs_stop_once_which_starts_no_bridge_so_no_late_prompt",
-    "s2_a_shutdown_whose_bootstrap_skipped_runs_one_stop_and_nothing_else",
+    # MIGRATED at CR-MDB-076 (§S2): the skipped-shutdown rule split in two, and Close's retry never
+    # repeating `stop` added (VERIFY F1, F5).
+    "s2_a_shutdown_whose_bootstrap_skipped_on_a_bridge_not_ready_runs_one_stop_and_nothing_else",
+    "s2_a_shutdown_whose_bootstrap_skipped_for_no_valid_session_name_runs_no_call_at_all",
+    "s2_closes_single_retry_never_repeats_stop",
     "s2_with_no_browser_the_first_call_takes_the_full_two_minutes_before_the_skip",
     "s3_the_gone_away_message_comes_after_the_two_minute_wait_and_is_shared_by_three_causes",
     "s3_its_three_causes_are_reported_together",
@@ -695,6 +781,15 @@ MIGRATED_PATTERN_CUTS = (
      (("the single retry never applies to", "the single retry also applies to"),)),
     ("s5_a_skipped_bootstrap_means_shutdown_skips_and_starts_no_bridge",
      (("it runs one `stop` and nothing else", "it runs `pages` and `stop`"),)),
+    # CR-MDB-076 §S2 (VERIFY F1): the BRIDGE_NOT_READY qualifier and the no-call clause.
+    ("s5_a_skipped_bootstrap_means_shutdown_skips_and_starts_no_bridge",
+     (("skipped on a `BRIDGE_NOT_READY`", "skipped its browser steps"),)),
+    ("s5_a_skipped_bootstrap_means_shutdown_skips_and_starts_no_bridge",
+     (("shutdown runs no call at all", "shutdown runs one `stop`"),)),
+    # CR-MDB-076 §S1 (VERIFY F4): the warning precedes a shutdown only when it runs a call other
+    # than `stop`.
+    ("s1_warns_before_the_first_call_of_every_bootstrap_and_shutdown_relayed_by_a_services_skill",
+     ((" that runs a call other than `stop`", ""),)),
     ("s6_an_envelope_carrying_code_bridge_not_ready_skips_the_browser_steps",
      (("the skill runs `stop` once", "the skill runs `stop` after every call"),)),
     ("s6_the_connection_prompt_not_accepted_within_the_two_minute_wait_shares_the_gone_away_message",
@@ -789,7 +884,8 @@ class ChromeUiRelayPhraseDetectorProofTest(unittest.TestCase):
         names = {rule[0] for rule in PHRASE_RULES}
         self.assertEqual([name for name, _r in REVERSALS if name not in names], [])
         # MIGRATED at CR-MDB-076 (§S2, §S3): was 3; CR-MDB-076 adds four anchored rules' reversals.
-        self.assertEqual(len(REVERSALS), 7)
+        # MIGRATED at CR-MDB-076 (§S2): was 7; VERIFY F1 adds the dropped no-valid-session clause.
+        self.assertEqual(len(REVERSALS), 8)
 
     def test_each_reversed_wording_of_an_anchored_rule_bites_it(self):
         patterns = {name: rule_patterns for name, _s, rule_patterns, _c in PHRASE_RULES}
@@ -809,6 +905,8 @@ class ChromeUiRelayPhraseDetectorProofTest(unittest.TestCase):
         # CR-MDB-076 §S1–§S3: one rule per AC bullet, plus the renamed prompt-cause rule (§S4).
         names = {rule[0] for rule in PHRASE_RULES}
         self.assertNotIn("s6_the_connection_prompt_not_accepted_within_the_start_up_timeout", names)
+        # MIGRATED at CR-MDB-076 (§S2): the unqualified skipped-shutdown rule is gone (VERIFY F1).
+        self.assertNotIn("s2_a_shutdown_whose_bootstrap_skipped_runs_one_stop_and_nothing_else", names)
         self.assertEqual(sorted(CR_MDB_076_RULES - names), [])
 
     def test_conforming_sample_names_no_harness_tool(self):
@@ -987,12 +1085,73 @@ class BridgeWaitTokensGateTest(_RealSkillCase):
     ``CHROME_DEVTOOLS_AXI_SESSION=<PROJECT_TOKEN>`` and ``CHROME_DEVTOOLS_AXI_BRIDGE_TIMEOUT_MS=120000``,
     each exactly."""
 
+    # MIGRATED at CR-MDB-076 (§S2): "at least one fenced call" became the count of all 7 (VERIFY F3).
     def test_every_fenced_call_in_the_skill_carries_the_three_exact_tokens(self):
         text = self.real_text()
-        self.assertTrue([n for n, content, prefix in shown(text)
-                         if prefix is None and _RUNS_TOOL.search(content)],
-                        "CR-MDB-076 §S3: the skill shows its calls as fenced commands")
+        verbs = sorted(call_verb(segment) for _number, segment in fenced_tool_calls(text))
+        self.assertEqual(verbs, sorted(EXPECTED_FENCED_VERBS),
+                         "CR-MDB-076 AC: all 7 fenced calls are checked")
         self.assertEqual(missing_call_token_findings(text), [])
+
+    def test_the_expected_fenced_calls_are_the_seven_the_spec_names(self):
+        self.assertEqual(len(EXPECTED_FENCED_VERBS), 7)
+        self.assertEqual(sorted(EXPECTED_FENCED_VERBS),
+                         ["closepage", "eval", "newpage", "pages", "pages", "selectpage", "stop"])
+
+    def test_call_counter_counts_each_segment_running_the_tool_and_nothing_else(self):
+        text = _fenced(_FULL_CALL + " && npx -y chrome-devtools-axi stop  # then newpage",
+                       "# npx -y chrome-devtools-axi closepage <id>",
+                       "echo done | npx -y chrome-devtools-axi eval document.title")
+        text += "Prose: `npx -y chrome-devtools-axi selectpage <id>`.\n"
+        self.assertEqual(fenced_tool_calls(text),
+                         [(4, _FULL_CALL), (4, "npx -y chrome-devtools-axi stop"),
+                          (6, "npx -y chrome-devtools-axi eval document.title")])
+        self.assertEqual([call_verb(s) for _n, s in fenced_tool_calls(text)],
+                         ["pages", "stop", "eval"])
+
+    def test_call_count_bites_when_a_fenced_call_is_missing_or_extra(self):
+        def verbs(chosen):
+            text = _fenced(*(_FULL_CALL.replace(" pages", f" {verb}") for verb in chosen))
+            return sorted(call_verb(s) for _n, s in fenced_tool_calls(text))
+        self.assertEqual(verbs(EXPECTED_FENCED_VERBS), sorted(EXPECTED_FENCED_VERBS))
+        self.assertNotEqual(verbs(EXPECTED_FENCED_VERBS[1:]), sorted(EXPECTED_FENCED_VERBS))
+        self.assertNotEqual(verbs(EXPECTED_FENCED_VERBS + ("stop",)), sorted(EXPECTED_FENCED_VERBS))
+
+    def test_detector_bites_on_tokens_after_the_verb(self):
+        line = ("npx -y chrome-devtools-axi pages CHROME_DEVTOOLS_AXI_AUTO_CONNECT=1 "
+                "CHROME_DEVTOOLS_AXI_SESSION=<PROJECT_TOKEN> CHROME_DEVTOOLS_AXI_BRIDGE_TIMEOUT_MS=120000")
+        self.assertEqual(missing_call_token_findings(_fenced(line)), [(4, line, CALL_TOKENS)])
+        moved = ("CHROME_DEVTOOLS_AXI_AUTO_CONNECT=1 CHROME_DEVTOOLS_AXI_SESSION=<PROJECT_TOKEN> "
+                 "npx -y chrome-devtools-axi pages CHROME_DEVTOOLS_AXI_BRIDGE_TIMEOUT_MS=120000")
+        self.assertEqual(missing_call_token_findings(_fenced(moved)),
+                         [(4, moved, ("CHROME_DEVTOOLS_AXI_BRIDGE_TIMEOUT_MS=120000",))])
+
+    def test_detector_bites_on_tokens_in_a_trailing_comment(self):
+        call = "npx -y chrome-devtools-axi pages"
+        line = (call + "  # CHROME_DEVTOOLS_AXI_AUTO_CONNECT=1 "
+                "CHROME_DEVTOOLS_AXI_SESSION=<PROJECT_TOKEN> CHROME_DEVTOOLS_AXI_BRIDGE_TIMEOUT_MS=120000")
+        self.assertEqual(missing_call_token_findings(_fenced(line)), [(4, call, CALL_TOKENS)])
+        partial = ("CHROME_DEVTOOLS_AXI_AUTO_CONNECT=1 CHROME_DEVTOOLS_AXI_SESSION=<PROJECT_TOKEN> "
+                   "npx -y chrome-devtools-axi pages")
+        commented = partial + " # CHROME_DEVTOOLS_AXI_BRIDGE_TIMEOUT_MS=120000"
+        self.assertEqual(missing_call_token_findings(_fenced(commented)),
+                         [(4, partial, ("CHROME_DEVTOOLS_AXI_BRIDGE_TIMEOUT_MS=120000",))])
+
+    def test_detector_bites_on_a_chained_second_call_without_the_tokens(self):
+        bare = "npx -y chrome-devtools-axi stop"
+        for separator in ("&&", "||", ";", "|"):
+            with self.subTest(separator=separator):
+                line = f"{_FULL_CALL} {separator} {bare}"
+                self.assertEqual(missing_call_token_findings(_fenced(line)), [(4, bare, CALL_TOKENS)])
+
+    def test_detector_spares_chained_full_calls_a_trailing_comment_and_a_non_tool_segment(self):
+        for good in (_fenced(f"{_FULL_CALL} && {_FULL_CALL}"),
+                     _fenced(f"{_FULL_CALL}; {_FULL_CALL}"),
+                     _fenced(f"{_FULL_CALL} || true"),
+                     _fenced(f"{_FULL_CALL}  # the first call; then stop"),
+                     _fenced(f"env {_FULL_CALL}")):
+            with self.subTest(good=good):
+                self.assertEqual(missing_call_token_findings(good), [])
 
     def test_the_tokens_are_the_three_the_spec_names(self):
         self.assertEqual(CALL_TOKENS, ("CHROME_DEVTOOLS_AXI_AUTO_CONNECT=1",
