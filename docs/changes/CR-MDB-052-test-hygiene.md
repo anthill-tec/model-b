@@ -40,3 +40,9 @@ regression); CR-MDB-032 (suite relocation and hermeticity)
 9. **`AGENTS.md`'s stale agent and stack counts.** It says "16 stack×role agents" and names four stack
    files (`stacks/{arduino,bun,python,quarkus}`), but `generator/agents` holds 20 definitions,
    rust included.
+10. **No gate pins the plain-word rule for head and tail** (CR-MDB-072 VERIFY F1). The AXI-envelope
+    rule states grep, head and tail as plain words, never code spans; `test_client_path_anchoring`
+    catches only a `grep` span. Add a check over the rule's places in
+    `tests/test_axi_envelope_read_whole.py`. Its detector also spares a no-space pipe
+    (`status|head`) and masks `< file > /dev/null` as a placeholder; both are accepted blind spots,
+    worth a comment.
