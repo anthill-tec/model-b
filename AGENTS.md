@@ -142,7 +142,7 @@ python3 ~/.crucible/clients/python-crucible.py regression --coverage --cov-sourc
   --agent vidushi-mdb --project-dir "$PWD"
 ```
 
-Coverage baseline: 4188/6121 lines (68.4%), the total measured under `pyproject.toml`'s `[tool.coverage]` config (the report omitting `scripts/toon.py`) by CR-MDB-073's spec pre-review on develop `8099a79`.
+Coverage baseline: 4324/6269 lines (69.0%), the total measured under `pyproject.toml`'s `[tool.coverage]` config (the report omitting `scripts/toon.py`) by CR-MDB-073's pre-merge gate, 2026-10-17.
 
 Model B's pre-merge gate measures the coverage of the package and every script (CR-MDB-073 §S3), in order:
 
