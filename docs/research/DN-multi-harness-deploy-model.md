@@ -1015,6 +1015,11 @@ Implemented by CR-MDB-064.
   bridge and opens a new connection, which raises a new prompt. So the skill never retries: it warns
   the user before the first call and runs every call with a 2-minute bridge wait, one connection and
   one prompt. A call that still fails skips the browser steps, as before.
+  Rulings at CR-MDB-076's pre-review (2026-10-16): `chrome-devtools-mcp` abandons a pending connection
+  after 60 s and opens a new one, so the warning asks the user to accept within about a minute, and
+  to accept again if Chrome asks again; and after a `BRIDGE_NOT_READY` skip, and at a shutdown whose
+  bootstrap skipped, the skill runs `stop` once (it never starts a bridge), so no stray bridge raises
+  a late prompt.
 
 ## Consequences per CR
 
