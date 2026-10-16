@@ -1,6 +1,6 @@
 # CR-MDB-075 — A shutdown stops the watcher, then unregisters: never together
 
-**Status:** PENDING — spec (gap analysis and pre-review 2026-10-16).
+**Status:** COMPLETED (filed, gap analysis and pre-review 2026-10-16)
 **Type:** fix (skills, references)
 **Priority:** P1 — release 1.0.0, wave 2; next in the queue.
 **Depends on:** none (board-authoritative: read `queue`)
@@ -53,13 +53,16 @@ revives* text, and reads:
 2. **Confirm with `sandesh addressbook --project <Project> --format toon --fields address,status,listening`**
    that your address no longer shows `listening` true.
    - If it still does, read it again after a few seconds, a bounded number of times, for no longer
-     than about a minute (Sandesh's heartbeat staleness). Never use an open-ended sleep loop.
+     than about a minute (Sandesh's heartbeat staleness): at most 6 re-reads, each its own call (a
+     short `sleep`, then one addressbook read). Never a shell loop, open-ended or bounded.
    - If it is still listening after that, a watcher this session does not own holds the address.
      Check `/sandesh-watcher status`, report the address's state to the user, and do not unregister.
 3. **Only then run `sandesh unregister --project <Project> --address "<your address>" --as "<your address>"`,**
-   with a time bound, and confirm the address now shows `status` inactive.
+   with a 30-second time bound (for example `timeout 30`, or the tool's own timeout), and confirm the
+   address now shows `status` inactive.
    - An unregister that answers with a tombstone (exit 3) has not unregistered: a watcher was still
-     live. Go back to step 2, and run it again once the address reads offline.
+     live. Go back to step 2 once, and run it again once the address reads offline. A second
+     tombstone is reported to the user, never retried again.
    - An unregister that has not returned within its time bound, or that leaves the address `active`,
      is reported to the user with the address's state. The next `/bootstrap` finds the address
      active and skips registering it.
@@ -98,11 +101,12 @@ with it:
       - the retitled heading, still carrying "final step";
       - the three numbered steps, in order;
       - the slash-command form of the stop;
-      - the bounded re-read (about a minute, never open-ended);
+      - the bounded re-read (about a minute, at most 6 re-reads, each its own call, never a shell
+        loop);
       - "report, never unregister" when the address stays listening;
-      - the tombstone (exit 3) path back to step 2;
-      - the time-bounded unregister, and the report when it doesn't return or leaves the address
-        active;
+      - the tombstone (exit 3) path back to step 2, once, and the report on a second tombstone;
+      - the 30-second time-bounded unregister, and the report when it doesn't return or leaves the
+        address active;
       - the `status` inactive check;
       - the separate-calls rule, naming both a parallel batch and one shell command.
 
@@ -119,7 +123,9 @@ with it:
       - **Violation:** a unit in the three files that matches `\bstop\w*[^.;]{0,60}\bwatcher` (or the
         reverse order) and also `\bunregister`, but carries none of the never-together phrases:
         `never issued together`, `never together`, `never issued with it`, `only then`,
-        `confirmed stop`, or `confirm`.
+        `confirmed stop`, or a `confirm` that comes after the stop in the same unit (a bare
+        `confirm` elsewhere in the unit does not spare it).
+      - A numbered step is one unit together with its nested items.
       - It is proved both ways.
 - [ ] **Runs.**
       - The suite is green through the client, with a real `HOME` and an empty one; the empty
