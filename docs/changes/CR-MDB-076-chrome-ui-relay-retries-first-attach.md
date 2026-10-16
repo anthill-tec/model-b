@@ -1,6 +1,6 @@
 # CR-MDB-076 — Chrome-UI-Relay waits for the user to accept Chrome's connection prompt
 
-**Status:** PENDING — spec (gap analysis and pre-review 2026-10-16). The file name's "retries" slug
+**Status:** COMPLETED (filed, gap analysis and pre-review 2026-10-16). The file name's "retries" slug
 predates the no-retry ruling and is kept so references stay stable.
 **Type:** fix (a skill bundle) — patch CR to CR-MDB-061
 **Priority:** P1 — release 1.0.0, wave 2.
