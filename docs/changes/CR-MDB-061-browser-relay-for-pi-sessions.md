@@ -1,6 +1,6 @@
 # CR-MDB-061 — Chrome-UI-Relay: a global skill for a frontend project's browser tabs
 
-**Status:** PENDING — spec (gap analysis and pre-review 2026-10-16).
+**Status:** COMPLETED (filed 2026-10-10; re-scoped 2026-10-15; gap analysis and pre-review 2026-10-16)
 **Type:** feature (a skill bundle)
 **Priority:** P1 — release 1.0.0, wave 2.
 **Depends on:** none (board-authoritative: read `queue`)
