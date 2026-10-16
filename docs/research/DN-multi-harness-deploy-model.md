@@ -1029,10 +1029,21 @@ Implemented by CR-MDB-064.
 **User ruling 2026-10-16, after a shutdown hung.** The generated per-project policy
 (`modelb_axi/permission_policy.py`) allowed no Sandesh tool, so each first use per session raised a
 permission prompt (`"*": "ask"`). An unattended shutdown waited on the prompt for `sandesh_notify_stop`
-until the session was force-quit (pi-permission-system log, 2026-10-16 00:13:28 → 00:28:11 UTC; Sandesh
-#1472). The policy allows the Sandesh extension's tools by exact name, derived from the `sandesh-pi`
+until the session was force-quit (pi-permission-system log, 2026-10-16 00:13:28 → 00:28:11 UTC;
+Sandesh #1472). The policy allows the Sandesh extension's tools by exact name, derived from the `sandesh-pi`
 requirement row as `dispatch` and `lean-ctx` already are; `sandesh_archive` and `sandesh_unarchive`
 keep asking. Implemented by CR-MDB-077.
+
+**User rulings 2026-10-16, at CR-MDB-077's gap analysis:**
+
+- **The row lists what the extension supplies.** The `sandesh-pi` row's `tools` names all sixteen
+  tools the extension registers, archive and unarchive included, because the field means "the tool
+  names the provider supplies". The policy allows the row's tools minus an explicit ask-set that
+  `modelb_axi/permission_policy.py` names.
+- **`modelb-axi agents` re-renders the policy.** An existing project gets a changed policy from the
+  verb that already re-renders its Pi agent definitions, under the same ownership rules; `init`
+  must never be re-run on an existing project. Without it, only new projects would get a policy
+  change.
 
 ## Consequences per CR
 

@@ -31,4 +31,6 @@ absent). A shell tool allowed by name allows every command it can run.
   Measure it through lean-ctx's published interface before choosing where the command list lives.
 - What does `@gotgenes/pi-permission-system` 36.2.1 accept for a command-scoped shell rule (its
   README and installed source)?
-- Interim state to retire: the `sandesh_*` allows in the user's global Pi policy (a release step).
+- The Sandesh extension's tools are already declared in the `sandesh-pi` row and allowed, except
+  archive and unarchive, through an ask-set in `permission_policy.py` (CR-MDB-077): keep that
+  derivation when the policy is reworked.
