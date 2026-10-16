@@ -2,8 +2,7 @@
 tool and the gate's text.
 
 Contract: ``docs/changes/CR-MDB-073-coverage-for-the-package-and-scripts.md`` (design record:
-PRD D5's 2026-10-17 ruling). This module holds §S1, §S2, §S3 and §S5; §S4 (the ``crucible``
-skill's python reference) is not here.
+PRD D5's 2026-10-17 ruling). This module holds §S1, §S2, §S3, §S4 and §S5.
 
 Class map:
 
@@ -29,6 +28,19 @@ Class map:
 - ``AgentsMdMapDetectorTest`` / ``AgentsMdMapTest`` — §S5: the ``tools/`` row, the check tool in
   Development Commands, the two coverage tables in Important Files, and the force-include sentence
   unchanged.
+- ``PythonReferenceDeltasDetectorTest`` / ``PythonReferenceDeltasTest`` — §S4: the ``crucible``
+  skill's ``references/python.md`` "Model B deltas" states, for a project measuring coverage
+  through the python client, ``--cov-source`` naming the project's own sources beside the client's
+  default being Crucible's; coverage.py 7.10 or later with ``patch = ["subprocess"]``, in a child
+  whose interpreter has coverage.py and inherits the environment; and removing ``.coverage`` and
+  ``.coverage.*`` before a coverage run (:data:`DELTA_CHECKS`). Proved on synthetic text first,
+  each element alone; the conforming sample also passes the skill guards (raw runner, AXI
+  envelope, client-path anchoring, registry key, manual run), so the contract is satisfiable.
+- ``TreeDriftDetectorTest`` / ``CrucibleReportPythonUnchangedTest`` — §S4: the byte-faithful
+  ``skills-src/crucible-report-python/`` is byte-identical to its committed state on the
+  merge-base with develop, and the ``crucible`` skill's frontmatter is unchanged; the drift reader
+  is proved on a temp git repository first. (The skills loading in Pi with no diagnostics is the
+  existing Pi skill-loader gate in ``tests/test_skill_frontmatter.py``, not repeated here.)
 
 The §S2 tests assert the observable contract only: a table line per area and one for the total
 (the area or ``total``, ``<hit>/<found>`` and the one-decimal percent as whole tokens), the
@@ -50,10 +62,20 @@ import tomllib
 import unittest
 from pathlib import Path
 
-from tests._helpers import REPO_ROOT, md_section
+from tests._helpers import REPO_ROOT, files_under, md_section, split_frontmatter
+from tests.test_axi_envelope_read_whole import axi_findings
 from tests.test_board_holds_the_queue import norm_units, section_matching, units
 from tests.test_bootstrap_shutdown_registry import normalise
+from tests.test_client_path_anchoring import _anchoring_hits, _fixture_tree
+from tests.test_client_run_rule import manual_run_findings
+from tests.test_installer_assets import (
+    _DevelopRefUnresolvable,
+    _git_committed_blob_sha256,
+    _git_merge_base_with_develop,
+)
 from tests.test_orchestration_rules_from_crucible import CLOSE_OUT_ORDER, order_findings
+from tests.test_project_registry_schema import _registry_names_named
+from tests.test_raw_runner_guard import runner_findings
 from tests.test_suite_hygiene import _fenced_commands, _full_suite_runs
 
 AGENTS_MD = REPO_ROOT / "AGENTS.md"
@@ -975,6 +997,337 @@ class AgentsMdMapTest(unittest.TestCase):
 
     def test_the_force_include_sentence_is_unchanged(self):
         self.assertNotIn(FORCE_INCLUDE, self.findings)
+
+
+# ----------------------------------------------------------------- "Model B deltas" ----
+
+PYTHON_REFERENCE = REPO_ROOT / "skills-src" / "crucible" / "references" / "python.md"
+PYTHON_REFERENCE_REL = "skills-src/crucible/references/python.md"
+REPORT_PYTHON_BUNDLE = "skills-src/crucible-report-python"
+CRUCIBLE_SKILL_REL = "skills-src/crucible/SKILL.md"
+
+DELTA_COV_SOURCE = ("--cov-source names the project's own sources, beside the client's default "
+                    "being Crucible's")
+DELTA_SUBPROCESS = ('coverage.py 7.10 or later with patch = ["subprocess"], in a child whose '
+                    "interpreter has coverage.py and inherits the environment")
+DELTA_STALE_DATA = "remove .coverage and .coverage.* before a coverage run"
+
+#: Where "Model B deltas" opens: its lead-in line, or a heading of that name.
+_DELTAS_START = re.compile(r"^(?:#{1,6}\s+)?Model B deltas\b")
+_FENCE_LINE = re.compile(r"^\s*(?:```|~~~)")
+
+
+def model_b_deltas(text: str) -> str:
+    """The "Model B deltas" section of a ``crucible`` reference: from its lead-in line (or a
+    heading of that name) to the next heading outside a fence, or the end; ``""`` when absent."""
+    lines = text.splitlines()
+    start = next((i for i, line in enumerate(lines) if _DELTAS_START.match(line)), None)
+    if start is None:
+        return ""
+    fenced, end = False, len(lines)
+    for i in range(start + 1, len(lines)):
+        if _FENCE_LINE.match(lines[i]):
+            fenced = not fenced
+        elif not fenced and lines[i].startswith("#"):
+            end = i
+            break
+    return "\n".join(lines[start:end])
+
+
+def _delta_unit(unit: str) -> str:
+    """A unit read for the §S4 checks: :func:`_flat` (``*`` kept) with curly quotes straightened."""
+    return _flat(unit).replace("’", "'").replace("‘", "'")
+
+
+#: §S4 — each element of "Model B deltas" as ``(name, regexes)``; ONE unit (a bullet with its
+#: continuation lines, or a paragraph) of the section must match every regex of an element.
+DELTA_CHECKS = (
+    (DELTA_COV_SOURCE, (
+        r"(?<![\w-])--cov-source(?![\w-])",
+        r"\b(?:the project'?s|its) own (?:packages?|directories|sources?|source directories|code)\b",
+        r"\bdefault[^.;]{0,80}(?:\bcrucible'?s\b|crucible_axi)"
+        r"|(?:\bcrucible'?s\b|crucible_axi)[^.;]{0,80}\bdefault",
+    )),
+    (DELTA_SUBPROCESS, (
+        r"\bcoverage\.py (?:(?:>=|≥) ?7\.10(?![\d.])|7\.10(?![\d.])(?:\+| or (?:later|newer)\b))",
+        r"\bpatch\s*=\s*\[\s*[\"']subprocess[\"']\s*\]",
+        r"\bchild\b",
+        r"\binterpreter\b[^.;]{0,60}\bcoverage\.py\b"
+        r"|\bcoverage\.py\b[^.;]{0,20}\binstalled\b[^.;]{0,40}\binterpreter\b",
+        r"\binherit\w*\b[^.;]{0,30}\benvironment\b",
+    )),
+    (DELTA_STALE_DATA, (
+        r"(?<![\w.])\.coverage(?![\w.*])",
+        r"\.coverage\.\*",
+        REMOVAL[2].pattern,
+        r"\bbefore\b[^.;]{0,40}\bcoverage run\b",
+    )),
+)
+
+
+def deltas_findings(text: str) -> list[str]:
+    """§S4: the name of every :data:`DELTA_CHECKS` element the "Model B deltas" of ``text`` (the
+    python reference) does not state in one unit, in order."""
+    found = [_delta_unit(u) for u in units(model_b_deltas(text))]
+    return [name for name, rxs in DELTA_CHECKS
+            if not any(all(re.search(rx, u) for rx in rxs) for u in found)]
+
+
+#: The python reference as it stands before §S4 (the shape §S4 adds to).
+TODAYS_PYTHON_REFERENCE = (
+    "# Crucible — Python stack (thin router)\n\n"
+    "**Authority:** the Model-B-owned bundled skill `crucible-report-python`\n"
+    "(`skills-src/crucible-report-python/`, deployed by the modelb-axi installer)\n"
+    "— the full verb surface (`test --tests <dotted.path>`, `regression\n"
+    "[--coverage]`, `check`, `auto-ingest` (recovery only), gates), endpoint routing,\n"
+    "venv/interpreter rules, and report locations live THERE. Read it before\n"
+    "running anything.\n\n"
+    "Model B deltas only:\n\n"
+    "- Client: `~/.crucible/clients/python-crucible.py` — Crucible's installed\n"
+    "  client, listed in `~/.crucible/crucible-clients.json`; never a checkout of\n"
+    "  the Crucible project (see the `crucible` skill for why).\n"
+    "- Agent naming: `CR-<ACRONYM>-NNN-<cycle id>-<ROLE>` for TDD-role agents;\n"
+    "  `<agent-type>-<project>` for orchestrators. Pass `--agent` and\n"
+    "  `--project-dir` explicitly.\n")
+#: The three §S4 bullets, one line each so a cut names exactly what it removes.
+GOOD_DELTA_BULLETS = (
+    "- Coverage: pass `--cov-source` to `regression --coverage` and `pre-merge-gate`, naming the "
+    "project's own packages and directories, because the client's default names Crucible's own "
+    "(`crucible_axi,clients`).\n"
+    "- Subprocesses: scripts the tests run as subprocesses are measured only with coverage.py 7.10 "
+    "or later and `patch = [\"subprocess\"]` in the project's coverage config, and only in a child "
+    "whose interpreter has coverage.py and inherits the environment.\n"
+    "- Stale data: remove the reports directory's `.coverage` and every `.coverage.*` before a "
+    "coverage run, because a stale data file is merged into the next run's figures.\n")
+GOOD_PYTHON_REFERENCE = TODAYS_PYTHON_REFERENCE + GOOD_DELTA_BULLETS
+
+
+# ------------------------------------------------- crucible-report-python drift ----
+
+def _sha256_bytes(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def live_digests(root: Path, rel_dir: str) -> dict[str, str]:
+    """``{path: sha256}`` of every file under ``root/rel_dir`` (``__pycache__`` aside), each path
+    relative to ``root``, POSIX-spelled."""
+    return {p.relative_to(root).as_posix(): _sha256_bytes(p.read_bytes())
+            for p in files_under(root / rel_dir) if "__pycache__" not in p.parts}
+
+
+def committed_digests(root: Path, commit: str, rel_dir: str) -> dict[str, str]:
+    """``{path: sha256}`` of every file under ``rel_dir`` as committed at ``commit`` in the git
+    repository ``root`` (``git ls-tree``, then each blob through ``git show``)."""
+    listed = subprocess.run(["git", "ls-tree", "-r", "--name-only", commit, "--", rel_dir],
+                            cwd=str(root), capture_output=True, text=True, timeout=30)
+    if listed.returncode != 0:
+        raise RuntimeError(f"git ls-tree {commit} -- {rel_dir} failed: {listed.stderr.strip()}")
+    return {rel: _git_committed_blob_sha256(commit, rel, root)
+            for rel in listed.stdout.splitlines() if rel.strip()}
+
+
+def committed_text(root: Path, commit: str, rel: str) -> str:
+    """``rel`` as committed at ``commit`` in the git repository ``root``, as UTF-8 text."""
+    shown = subprocess.run(["git", "show", f"{commit}:{rel}"], cwd=str(root),
+                           capture_output=True, timeout=30)
+    if shown.returncode != 0:
+        raise RuntimeError(f"git show {commit}:{rel} failed: "
+                           f"{shown.stderr.decode('utf-8', errors='replace').strip()}")
+    return shown.stdout.decode("utf-8")
+
+
+def tree_drift(committed: dict[str, str], live: dict[str, str]) -> list[str]:
+    """How ``live`` differs from ``committed`` (both ``{path: sha256}``): ``changed: <path>``,
+    ``removed: <path>`` and ``added: <path>``, each sorted."""
+    return ([f"changed: {p}" for p in sorted(committed.keys() & live.keys())
+             if committed[p] != live[p]]
+            + [f"removed: {p}" for p in sorted(committed.keys() - live.keys())]
+            + [f"added: {p}" for p in sorted(live.keys() - committed.keys())])
+
+
+# ------------------------------------------------------------------- §S4 ----
+
+class PythonReferenceDeltasDetectorTest(unittest.TestCase):
+    """§S4 — :func:`deltas_findings`, both ways on synthetic text, each element alone."""
+
+    def test_the_conforming_text_passes(self):
+        self.assertEqual(deltas_findings(GOOD_PYTHON_REFERENCE), [])
+
+    def test_todays_python_reference_lacks_every_element(self):
+        self.assertEqual(deltas_findings(TODAYS_PYTHON_REFERENCE),
+                         [DELTA_COV_SOURCE, DELTA_SUBPROCESS, DELTA_STALE_DATA])
+
+    def test_each_element_bites_alone(self):
+        cases = (
+            (DELTA_COV_SOURCE, "pass `--cov-source` to", "pass a source list to"),
+            (DELTA_COV_SOURCE, ", naming the project's own packages and directories,", ","),
+            (DELTA_COV_SOURCE,
+             "because the client's default names Crucible's own (`crucible_axi,clients`)",
+             "because it is required"),
+            (DELTA_SUBPROCESS, "coverage.py 7.10 or later and", "coverage.py 7.1 or later and"),
+            (DELTA_SUBPROCESS, "coverage.py 7.10 or later and", "coverage.py 7.10 and"),
+            (DELTA_SUBPROCESS, "coverage.py 7.10 or later and", "coverage.py and"),
+            (DELTA_SUBPROCESS, '`patch = ["subprocess"]`', '`patch = ["thread"]`'),
+            (DELTA_SUBPROCESS, '`patch = ["subprocess"]`', "the patch"),
+            (DELTA_SUBPROCESS,
+             "in a child whose interpreter has coverage.py and inherits the environment",
+             "in a child that inherits the environment"),
+            (DELTA_SUBPROCESS,
+             "in a child whose interpreter has coverage.py and inherits the environment",
+             "in a child whose interpreter has coverage.py"),
+            (DELTA_SUBPROCESS, "only in a child whose", "only in a process whose"),
+            (DELTA_STALE_DATA, "and every `.coverage.*` before", "and the lcov before"),
+            (DELTA_STALE_DATA, "the reports directory's `.coverage` and every `.coverage.*`",
+             "every `.coverage.*`"),
+            (DELTA_STALE_DATA, "Stale data: remove the reports", "Stale data: keep the reports"),
+            (DELTA_STALE_DATA, "before a coverage run", "after a coverage run"),
+        )
+        for name, old, new in cases:
+            with self.subTest(element=name, old=old, new=new):
+                self.assertEqual(GOOD_PYTHON_REFERENCE.count(old), 1, old)
+                self.assertEqual(deltas_findings(GOOD_PYTHON_REFERENCE.replace(old, new)), [name])
+
+    def test_each_element_counts_only_within_one_unit(self):
+        split = GOOD_PYTHON_REFERENCE.replace(
+            " because the client's default names Crucible's own",
+            "\n\nThe client's default names Crucible's own")
+        self.assertNotEqual(split, GOOD_PYTHON_REFERENCE)
+        self.assertEqual(deltas_findings(split), [DELTA_COV_SOURCE])
+
+    def test_the_elements_count_only_inside_model_b_deltas(self):
+        before = TODAYS_PYTHON_REFERENCE.replace(
+            "Model B deltas only:\n", GOOD_DELTA_BULLETS + "\nModel B deltas only:\n")
+        after = TODAYS_PYTHON_REFERENCE + "\n## Elsewhere\n\n" + GOOD_DELTA_BULLETS
+        for where, text in (("before the lead-in", before), ("under a later heading", after)):
+            with self.subTest(where=where):
+                self.assertEqual(text.count("--cov-source"), 1, "precondition")
+                self.assertEqual(deltas_findings(text),
+                                 [DELTA_COV_SOURCE, DELTA_SUBPROCESS, DELTA_STALE_DATA])
+
+    def test_a_model_b_deltas_heading_and_a_fenced_comment_keep_the_section(self):
+        heading = GOOD_PYTHON_REFERENCE.replace("Model B deltas only:", "## Model B deltas")
+        fenced = GOOD_PYTHON_REFERENCE.replace(
+            "- Coverage:", "```bash\n# a comment, not a heading\n```\n\n- Coverage:")
+        for shape, text in (("heading", heading), ("fence", fenced)):
+            with self.subTest(shape=shape):
+                self.assertNotEqual(text, GOOD_PYTHON_REFERENCE)
+                self.assertEqual(deltas_findings(text), [])
+
+    def test_a_missing_model_b_deltas_section_lacks_every_element(self):
+        text = GOOD_PYTHON_REFERENCE.replace("Model B deltas only:", "Notes:")
+        self.assertEqual(deltas_findings(text),
+                         [DELTA_COV_SOURCE, DELTA_SUBPROCESS, DELTA_STALE_DATA])
+
+    def test_the_conforming_text_passes_the_skill_guards(self):
+        """The contract is satisfiable: the conforming sample trips none of the guards over
+        ``skills-src/`` that §S4's new text must keep green."""
+        text = GOOD_PYTHON_REFERENCE
+        self.assertEqual(runner_findings(text), [], "the raw-runner guard")
+        self.assertEqual(axi_findings(text), [], "the AXI-envelope guard")
+        self.assertEqual(_registry_names_named(PYTHON_REFERENCE_REL, text), [],
+                         "the registry-key detector")
+        self.assertEqual(manual_run_findings(text), [], "the client-run rule's manual-run phrases")
+        self.assertIn("~/.crucible/clients/python-crucible.py", text, "the installed client")
+        tmp, root = _fixture_tree({PYTHON_REFERENCE_REL: text})
+        with tmp:
+            hits = _anchoring_hits(root, ("skills-src",))
+        self.assertEqual(hits, [], "the client-path anchoring gate")
+
+
+class PythonReferenceDeltasTest(unittest.TestCase):
+    """§S4 — the real ``skills-src/crucible/references/python.md``'s "Model B deltas"."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.findings = deltas_findings(PYTHON_REFERENCE.read_text(encoding="utf-8"))
+
+    def test_cov_source_names_the_projects_own_sources_beside_the_clients_crucible_default(self):
+        self.assertNotIn(DELTA_COV_SOURCE, self.findings)
+
+    def test_subprocesses_need_coverage_7_10_the_subprocess_patch_and_a_child_with_coverage(self):
+        self.assertNotIn(DELTA_SUBPROCESS, self.findings)
+
+    def test_the_stale_coverage_data_is_removed_before_a_coverage_run(self):
+        self.assertNotIn(DELTA_STALE_DATA, self.findings)
+
+
+class TreeDriftDetectorTest(unittest.TestCase):
+    """§S4 — :func:`tree_drift` over :func:`committed_digests` and :func:`live_digests`, both
+    ways on a temp git repository."""
+
+    BUNDLE = "skills-src/bundle"
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory(prefix="mdb-drift-")
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(tmp.name)
+        (self.root / self.BUNDLE).mkdir(parents=True)
+        (self.root / self.BUNDLE / "SKILL.md").write_bytes(b"---\nname: bundle\n---\nbody\n")
+        (self.root / "elsewhere.md").write_bytes(b"outside the bundle\n")
+        for args in (["init", "-q"], ["add", "-A"],
+                     ["-c", "user.name=t", "-c", "user.email=t@example.invalid",
+                      "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null",
+                      "commit", "-q", "-m", "base"]):
+            done = subprocess.run(["git", *args], cwd=str(self.root), capture_output=True,
+                                  text=True, timeout=30)
+            self.assertEqual(done.returncode, 0, done.stderr)
+
+    def drift(self) -> list[str]:
+        return tree_drift(committed_digests(self.root, "HEAD", self.BUNDLE),
+                          live_digests(self.root, self.BUNDLE))
+
+    def test_an_untouched_bundle_has_no_drift_and_the_reader_sees_only_the_bundle(self):
+        self.assertEqual(committed_digests(self.root, "HEAD", self.BUNDLE).keys(),
+                         {f"{self.BUNDLE}/SKILL.md"})
+        self.assertEqual(self.drift(), [])
+
+    def test_a_one_byte_change_is_drift(self):
+        (self.root / self.BUNDLE / "SKILL.md").write_bytes(b"---\nname: bundle\n---\nbody \n")
+        self.assertEqual(self.drift(), [f"changed: {self.BUNDLE}/SKILL.md"])
+
+    def test_an_added_file_is_drift(self):
+        (self.root / self.BUNDLE / "references").mkdir()
+        (self.root / self.BUNDLE / "references" / "new.md").write_bytes(b"new\n")
+        self.assertEqual(self.drift(), [f"added: {self.BUNDLE}/references/new.md"])
+
+    def test_a_removed_file_is_drift(self):
+        (self.root / self.BUNDLE / "SKILL.md").unlink()
+        self.assertEqual(self.drift(), [f"removed: {self.BUNDLE}/SKILL.md"])
+
+    def test_a_change_outside_the_bundle_is_not_drift(self):
+        (self.root / "elsewhere.md").write_bytes(b"changed\n")
+        self.assertEqual(self.drift(), [])
+
+    def test_the_committed_text_reads_the_commit_not_the_working_tree(self):
+        (self.root / self.BUNDLE / "SKILL.md").write_bytes(b"---\nname: other\n---\nbody\n")
+        committed = committed_text(self.root, "HEAD", f"{self.BUNDLE}/SKILL.md")
+        self.assertEqual(split_frontmatter(committed)[0], "name: bundle")
+
+
+class CrucibleReportPythonUnchangedTest(unittest.TestCase):
+    """§S4 — ``crucible-report-python`` is a byte-faithful import and is not changed: it is
+    byte-identical to its committed state on the merge-base with develop; the ``crucible`` skill's
+    frontmatter is unchanged too."""
+
+    def merge_base(self) -> str:
+        try:
+            return _git_merge_base_with_develop(REPO_ROOT)
+        except _DevelopRefUnresolvable as exc:
+            self.skipTest(f"cannot resolve 'develop' or 'origin/develop' in this clone: {exc}")
+
+    def test_crucible_report_python_is_byte_identical_to_the_merge_base_with_develop(self):
+        base = self.merge_base()
+        committed = committed_digests(REPO_ROOT, base, REPORT_PYTHON_BUNDLE)
+        self.assertIn(f"{REPORT_PYTHON_BUNDLE}/SKILL.md", committed, "precondition: the bundle")
+        self.assertEqual(tree_drift(committed, live_digests(REPO_ROOT, REPORT_PYTHON_BUNDLE)), [],
+                         "§S4: crucible-report-python is a byte-faithful import, not changed")
+
+    def test_the_crucible_skills_frontmatter_is_unchanged(self):
+        base = self.merge_base()
+        committed = split_frontmatter(committed_text(REPO_ROOT, base, CRUCIBLE_SKILL_REL))[0]
+        self.assertIn("name: crucible", committed, "precondition: the committed frontmatter")
+        live = split_frontmatter((REPO_ROOT / CRUCIBLE_SKILL_REL).read_text(encoding="utf-8"))[0]
+        self.assertEqual(live, committed, "§S4: the crucible skill's frontmatter is unchanged")
 
 
 if __name__ == "__main__":
