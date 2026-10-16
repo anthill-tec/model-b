@@ -98,6 +98,7 @@ The `~/.claude` user space grew organically into 24 memory files, ~50 skills, 29
   - **Every release carries a test-hygiene CR,** sequenced last in its final wave; the release does not start while it is open.
   - **Not adopted:** restarting a dev server after every source commit (Crucible-specific).
   - **Every AXI envelope is read whole** — adopted, and carried by its own CR with a guard over the shipped text (split from CR-MDB-059 for size).
+    **Ruled 2026-10-16 (user, at CR-MDB-072's gap analysis):** the guard is a lean dedicated detector — an AXI command shown in a code span or a fenced line, followed by a pipe or a redirect to `/dev/null`, is a finding. A redirect to a file and `--log` stay allowed, since a long run's output goes to a file whose envelope is then read whole. No prohibition exemption: the rule's own text states it in prose, never as code. The heavier option, reusing the raw-runner guard's full shell parser, was not taken.
 
   **AMENDED 2026-10-16 (user ruling, after a shutdown hung):** a shutdown's last two acts are strictly sequential — stop the wake watcher by address, confirm from the addressbook that the address no longer shows `listening`, and only then unregister it. They are never issued together (one parallel batch or one command). Model B 1.0.0's shutdown skill, which every installation deploys, carries the rule. The hang itself was reported to the Sandesh project (Sandesh #1464).
 
