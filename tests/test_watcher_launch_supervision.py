@@ -80,6 +80,23 @@ and a seven-row relaunch table. §S3 removes all three, so:
 - KEPT unchanged: ``NoRelaunchAfterTerminalExitS1Test``'s gate and its two
   detectors; the Sandesh data-directory gate and its detector.
 
+Extended at CR-MDB-075 (a shutdown stops the watcher, then unregisters: never together;
+PRD D5 as amended 2026-10-16). No existing pin here contradicts it, so nothing is migrated;
+:func:`_blocks` gains ``keep_headings`` so a heading line is a unit of its own.
+
+- §S1 — ``## The common final step — stop, confirm, then unregister``: three numbered steps
+  (stop by address, with the slash command; confirm on the toon addressbook, re-read for about a
+  minute and never open-ended, report and never unregister while still listening; only then a
+  time-bounded unregister, a tombstone (exit 3) back to step 2, a report when it does not return
+  or leaves the address active, a ``status`` inactive check) and the separate-calls rule.
+- §S2 — the six places that name the final step state the order, never together, and point to
+  § The common final step.
+- §S3 — the three reference bullets: the unregister follows a confirmed stop and is never
+  issued with it.
+- The negative gate — no unit (heading line, bullet with its continuation lines, numbered step,
+  paragraph) of the three files stops the watcher and unregisters without a never-together
+  phrase.
+
 Stdlib only; reads the repo tree only.
 """
 
@@ -209,11 +226,12 @@ def _flat(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
-def _blocks(text: str) -> list:
+def _blocks(text: str, keep_headings: bool = False) -> list:
     """``[(first_line, flat_text)]`` — one entry per list item (its continuation lines
     and any fenced lines inside it included, its marker dropped), per prose paragraph,
     and per table row. Headings and blank lines end a block; a nested list item starts
-    its own."""
+    its own. With ``keep_headings`` each heading line is a block too (its ``#`` marks
+    dropped)."""
     blocks, current, first, fenced = [], [], 0, False
     for lineno, raw in enumerate(text.splitlines(), start=1):
         line = raw.strip()
@@ -231,6 +249,8 @@ def _blocks(text: str) -> list:
         if boundary and current:
             blocks.append((first, _flat(" ".join(current))))
             current = []
+        if keep_headings and line.startswith("#"):
+            blocks.append((lineno, _flat(line.lstrip("#"))))
         if not line or line.startswith("#"):
             continue
         if line.startswith("|"):
@@ -1128,6 +1148,488 @@ class BlockSplitterTest(unittest.TestCase):
         self.assertEqual(_blocks_in_order("\n\n".join((register, start, confirm)), *stages), [0, 1, 2])
         self.assertEqual(_blocks_in_order("\n\n".join((start, register, confirm)), *stages), [1])
         self.assertEqual(_blocks_in_order("\n\n".join((confirm, register, start)), *stages), [1, 2])
+
+    def test_blocks_keep_a_heading_line_as_its_own_block_only_when_asked(self):
+        text = "## Stop the watcher\nA paragraph.\n"
+        self.assertEqual([b for _, b in _blocks(text)], ["A paragraph."])
+        self.assertEqual([b for _, b in _blocks(text, keep_headings=True)], ["Stop the watcher", "A paragraph."])
+
+
+# ---------------------------------------------------------------------------
+# CR-MDB-075 — stop, confirm, then unregister: never together
+# ---------------------------------------------------------------------------
+
+#: CR-MDB-075 §S1 — the retitled heading of the shutdown skill's final step.
+FINAL_STEP_HEADING = "## The common final step — stop, confirm, then unregister"
+#: CR-MDB-075 negative gate — a stop of the watcher, in either order, inside one clause.
+STOP_WATCHER_RE = re.compile(r"\bstop\w*[^.;]{0,60}\bwatcher|\bwatcher[^.;]{0,60}\bstop", re.IGNORECASE)
+UNREGISTER_RE = re.compile(r"\bunregister", re.IGNORECASE)
+CONFIRM_RE = re.compile(r"\bconfirm", re.IGNORECASE)
+#: CR-MDB-075 negative gate — the phrases that keep a stop-and-unregister unit apart.
+NEVER_TOGETHER_PHRASES = (
+    "never issued together", "never together", "never issued with it", "only then", "confirmed stop", "confirm",
+)
+#: CR-MDB-075 §S1/§S2 — the never-together wording itself.
+NEVER_TOGETHER_RE = re.compile(r"\bnever (?:issued )?together\b|\bnever issued with it\b", re.IGNORECASE)
+#: CR-MDB-075 §S2 — the pointer to the full form.
+FINAL_STEP_POINTER_RE = re.compile(r"§ ?the common final step\b", re.IGNORECASE)
+#: CR-MDB-075 §S1 step 3 — the unregister form, verbatim from the spec.
+CLI_UNREGISTER_FULL = 'sandesh unregister --project <Project> --address "<your address>" --as "<your address>"'
+#: CR-MDB-075 §S3 — the two phrases each reference bullet carries.
+S3_PHRASES = ("unregister follows a confirmed stop", "never issued with it")
+
+TOP_STEP_RE = re.compile(r"^(\d+)[.)]\s+")
+
+
+def _numbered_steps(text: str) -> dict:
+    """``{number: flat_text}`` — each top-level (unindented) numbered step with its continuation
+    lines and nested items, up to the next top-level step, an unindented line or a heading. A
+    repeated number keeps its first step."""
+    steps, order, current = {}, [], None
+    for raw in text.splitlines():
+        top = TOP_STEP_RE.match(raw)
+        if top:
+            current = top.group(1)
+            if current in steps:
+                current = None
+                continue
+            steps[current] = [raw[top.end():]]
+            order.append(current)
+            continue
+        if current is None:
+            continue
+        if raw.strip() and not raw[0].isspace():
+            current = None
+            continue
+        steps[current].append(raw.strip())
+    return {n: _flat(" ".join(steps[n])) for n in order}
+
+
+def _blocks_within(section: str, step_text: str, *patterns) -> list:
+    """The flat blocks of ``section`` that lie inside ``step_text`` and match every pattern."""
+    return [b for b in _matching_blocks(section, *patterns) if step_text and b in step_text]
+
+
+def _final_step_findings(section: str) -> list:
+    """CR-MDB-075 §S1 — the labels of the rules ``section`` (from its ``## `` heading line to the
+    next) fails, in the order the AC lists them."""
+    lines = section.splitlines()
+    heading = lines[0].strip() if lines else ""
+    steps = _numbered_steps(section)
+    one, two, three = steps.get("1", ""), steps.get("2", ""), steps.get("3", "")
+    rules = (
+        ("the retitled heading, still carrying 'final step'", heading == FINAL_STEP_HEADING),
+        ("exactly three numbered steps, 1 to 3", list(steps) == ["1", "2", "3"]),
+        ("step 1 stops your own watcher by your own address, through Sandesh's extension or "
+         "/sandesh-watcher stop <your address>",
+         bool(re.search(r"\bstop your own watcher\b", one, re.IGNORECASE))
+         and "by your own address" in one
+         and bool(re.search(r"sandesh's extension", one, re.IGNORECASE))
+         and "/sandesh-watcher stop <your address>" in one),
+        ("step 2 confirms with the toon addressbook that the address no longer shows listening",
+         bool(re.search(r"^confirm\b", two, re.IGNORECASE)) and TOON_ADDRESSBOOK in two
+         and bool(re.search(r"no longer shows listening", two, re.IGNORECASE))),
+        ("step 2 re-reads after a few seconds, a bounded number of times, about a minute, never open-ended",
+         all(re.search(p, two, re.IGNORECASE) for p in (
+             r"\ba few seconds\b", r"\bbounded number of times\b", r"\babout a minute\b",
+             r"\bnever\b[^.]{0,30}\bopen-ended\b"))),
+        ("step 2: still listening after that, a watcher this session does not own — report, never unregister",
+         bool(_blocks_within(section, two, re.compile(r"\bstill listening\b", re.IGNORECASE),
+                             re.compile(r"\bdoes not own\b", re.IGNORECASE), "/sandesh-watcher status",
+                             re.compile(r"\breport", re.IGNORECASE),
+                             re.compile(r"\b(?:do not|never) unregister", re.IGNORECASE)))),
+        ("step 3: only then the unregister",
+         bool(re.search(r"^only then\b", three, re.IGNORECASE)) and CLI_UNREGISTER_FULL in three),
+        ("step 3: a tombstone (exit 3) has not unregistered — back to step 2",
+         bool(_blocks_within(section, three, re.compile(r"\btombstone\b", re.IGNORECASE),
+                             re.compile(r"\bexit 3\b", re.IGNORECASE),
+                             re.compile(r"\bback to step 2\b", re.IGNORECASE)))),
+        ("step 3: the unregister runs with a time bound; one that does not return or leaves the "
+         "address active is reported",
+         bool(re.search(r"\bwith a time bound\b", three, re.IGNORECASE))
+         and bool(_blocks_within(section, three,
+                                 re.compile(r"\b(?:has not|hasn't|does not|doesn't) return", re.IGNORECASE),
+                                 re.compile(r"\btime bound\b", re.IGNORECASE),
+                                 re.compile(r"\bactive\b", re.IGNORECASE),
+                                 re.compile(r"\breported\b", re.IGNORECASE)))),
+        ("step 3 confirms the address now shows status inactive",
+         bool(re.search(r"\bconfirm\b[^.]{0,60}\bstatus inactive\b", three, re.IGNORECASE))),
+        ("the separate-calls rule: never together, not in one parallel batch, not in one shell command",
+         bool(_matching_blocks(section, re.compile(r"\bseparate calls\b", re.IGNORECASE), NEVER_TOGETHER_RE,
+                               re.compile(r"\bparallel batch\b", re.IGNORECASE),
+                               re.compile(r"\bone shell command\b", re.IGNORECASE)))),
+    )
+    return [label for label, ok in rules if not ok]
+
+
+def _final_step_order_findings(unit: str) -> list:
+    """CR-MDB-075 §S2 — what one place that names the final step leaves out: the order (a stop
+    of the watcher, then a confirm, then the unregister), the never-together wording, the
+    pointer to § The common final step."""
+    findings = []
+    stop = STOP_WATCHER_RE.search(unit)
+    confirm = CONFIRM_RE.search(unit, stop.end()) if stop else None
+    unregister = UNREGISTER_RE.search(unit, confirm.end()) if confirm else None
+    if unregister is None:
+        findings.append("the order: stop the watcher, confirm, then unregister")
+    if not NEVER_TOGETHER_RE.search(unit):
+        findings.append("never together")
+    if not FINAL_STEP_POINTER_RE.search(unit):
+        findings.append("the pointer to § The common final step")
+    return findings
+
+
+def _reference_bullet_findings(unit: str) -> list:
+    """CR-MDB-075 §S3 — the :data:`S3_PHRASES` one reference bullet does not carry."""
+    return [phrase for phrase in S3_PHRASES if phrase not in unit.lower()]
+
+
+def _never_together_violations(text: str) -> list:
+    """CR-MDB-075 negative gate — ``[(line, unit)]`` for every unit (a heading line, a bullet with
+    its continuation lines, a numbered step, a paragraph) that stops the watcher and unregisters
+    but carries none of :data:`NEVER_TOGETHER_PHRASES`."""
+    return [(lineno, unit) for lineno, unit in _blocks(text, keep_headings=True)
+            if STOP_WATCHER_RE.search(unit) and UNREGISTER_RE.search(unit)
+            and not any(phrase in unit.lower() for phrase in NEVER_TOGETHER_PHRASES)]
+
+
+def _split_at(text: str, marker: str) -> tuple:
+    """``(before, from_marker)`` — ``text`` split at the first line carrying ``marker``; with no
+    such line, ``(text, "")``."""
+    lines = text.splitlines()
+    for idx, line in enumerate(lines):
+        if marker in line:
+            return "\n".join(lines[:idx]), "\n".join(lines[idx:])
+    return text, ""
+
+
+def _shutdown_introduction() -> str:
+    """The shutdown skill's text under its ``# `` title, up to its first ``## `` heading."""
+    lines = _read(SHUTDOWN_SKILL).splitlines()
+    start = next((i for i, line in enumerate(lines) if line.startswith("# ")), len(lines))
+    end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith("## ")), len(lines))
+    return "\n".join(lines[start + 1:end])
+
+
+def _blocks_starting(text: str, lead: str) -> list:
+    """The flat blocks of ``text`` that start with ``lead`` (case-insensitive)."""
+    return [b for _, b in _blocks(text) if b.lower().startswith(lead.lower())]
+
+
+#: CR-MDB-075 §S1 — the spec's own final step: every rule passes, and no unit of it trips the
+#: negative gate.
+GOOD_FINAL_STEP = (
+    "## The common final step — stop, confirm, then unregister\n"
+    "\n"
+    "1. **Stop your own watcher, by your own address,** through Sandesh's extension — or with its command,\n"
+    "   `/sandesh-watcher stop <your address>`.\n"
+    "2. **Confirm with `sandesh addressbook --project <Project> --format toon --fields address,status,listening`**\n"
+    "   that your address no longer shows `listening` true.\n"
+    "   - If it still does, read it again after a few seconds, a bounded number of times, for no longer\n"
+    "     than about a minute (Sandesh's heartbeat staleness). Never use an open-ended sleep loop.\n"
+    "   - If it is still listening after that, a watcher this session does not own holds the address.\n"
+    "     Check `/sandesh-watcher status`, report the address's state to the user, and do not unregister.\n"
+    "3. **Only then run `sandesh unregister --project <Project> --address \"<your address>\" "
+    "--as \"<your address>\"`,**\n"
+    "   with a time bound, and confirm the address now shows `status` inactive.\n"
+    "   - An unregister that answers with a tombstone (exit 3) has not unregistered: a watcher was still\n"
+    "     live. Go back to step 2, and run it again once the address reads offline.\n"
+    "   - An unregister that has not returned within its time bound, or that leaves the address `active`,\n"
+    "     is reported to the user with the address's state. The next `/bootstrap` finds the address\n"
+    "     active and skips registering it.\n"
+    "\n"
+    "**The two are separate calls, one after the other.** Each waits for the previous one's result. They\n"
+    "are never issued together: not as tool calls in one parallel batch, and not in one shell command\n"
+    "(the latter guards against a future `sandesh` stop verb).\n"
+)
+
+#: CR-MDB-075 §S1 — ``(label, old, new)``: each cut of :data:`GOOD_FINAL_STEP` fails exactly its rule.
+FINAL_STEP_CUTS = (
+    ("the retitled heading, still carrying 'final step'",
+     "## The common final step — stop, confirm, then unregister",
+     "## The common final step — stop your watcher LAST, then unregister"),
+    ("exactly three numbered steps, 1 to 3",
+     "active and skips registering it.\n", "active and skips registering it.\n4. Report the address's state.\n"),
+    ("step 1 stops your own watcher by your own address, through Sandesh's extension or "
+     "/sandesh-watcher stop <your address>",
+     "`/sandesh-watcher stop <your address>`.", "its stop command."),
+    ("step 1 stops your own watcher by your own address, through Sandesh's extension or "
+     "/sandesh-watcher stop <your address>",
+     "through Sandesh's extension — or with its command,", "with its command,"),
+    ("step 2 confirms with the toon addressbook that the address no longer shows listening",
+     "`sandesh addressbook --project <Project> --format toon --fields address,status,listening`",
+     "`sandesh addressbook --project <Project>`"),
+    ("step 2 re-reads after a few seconds, a bounded number of times, about a minute, never open-ended",
+     "than about a minute", "than it takes"),
+    ("step 2 re-reads after a few seconds, a bounded number of times, about a minute, never open-ended",
+     "Never use an open-ended sleep loop.", "Then sleep and read it again."),
+    ("step 2 re-reads after a few seconds, a bounded number of times, about a minute, never open-ended",
+     "a bounded number of times", "as many times as needed"),
+    ("step 2: still listening after that, a watcher this session does not own — report, never unregister",
+     "and do not unregister.", "and then unregister."),
+    ("step 2: still listening after that, a watcher this session does not own — report, never unregister",
+     "report the address's state to the user, and", "and"),
+    ("step 3: only then the unregister", "3. **Only then run", "3. **Run"),
+    ("step 3: a tombstone (exit 3) has not unregistered — back to step 2",
+     "Go back to step 2, and run it again", "Run it again"),
+    ("step 3: a tombstone (exit 3) has not unregistered — back to step 2",
+     "a tombstone (exit 3)", "a tombstone"),
+    ("step 3: the unregister runs with a time bound; one that does not return or leaves the "
+     "address active is reported",
+     "   with a time bound, and confirm", "   and confirm"),
+    ("step 3: the unregister runs with a time bound; one that does not return or leaves the "
+     "address active is reported",
+     "     is reported to the user with the address's state.", "     is run again."),
+    ("step 3 confirms the address now shows status inactive",
+     "now shows `status` inactive.", "now shows no `listening`."),
+    ("the separate-calls rule: never together, not in one parallel batch, not in one shell command",
+     "not as tool calls in one parallel batch, and ", ""),
+    ("the separate-calls rule: never together, not in one parallel batch, not in one shell command",
+     ", and not in one shell command", ""),
+    ("the separate-calls rule: never together, not in one parallel batch, not in one shell command",
+     "are never issued together:", "are issued in turn:"),
+)
+
+
+class CommonFinalStepRuleTest(unittest.TestCase):
+    """CR-MDB-075 §S1 — § The common final step is three steps, in order: stop, confirm, then
+    unregister, as separate calls never issued together."""
+
+    def setUp(self):
+        self.final = _section(self, SHUTDOWN_SKILL, SHUTDOWN_FINAL_HEADING)
+        self.findings = _final_step_findings(self.final)
+
+    def _assert_rule(self, label: str):
+        self.assertNotIn(label, self.findings, f"§ The common final step: {label}")
+
+    def test_heading_is_retitled_stop_confirm_then_unregister(self):
+        self._assert_rule("the retitled heading, still carrying 'final step'")
+
+    def test_section_is_exactly_three_numbered_steps(self):
+        self._assert_rule("exactly three numbered steps, 1 to 3")
+
+    def test_step_1_stops_your_own_watcher_by_address_with_the_slash_command(self):
+        self._assert_rule("step 1 stops your own watcher by your own address, through Sandesh's extension or "
+                          "/sandesh-watcher stop <your address>")
+
+    def test_step_2_confirms_on_the_toon_addressbook_that_listening_is_gone(self):
+        self._assert_rule("step 2 confirms with the toon addressbook that the address no longer shows listening")
+
+    def test_step_2_re_read_is_bounded_to_about_a_minute_never_open_ended(self):
+        self._assert_rule("step 2 re-reads after a few seconds, a bounded number of times, about a minute, "
+                          "never open-ended")
+
+    def test_step_2_still_listening_reports_and_never_unregisters(self):
+        self._assert_rule("step 2: still listening after that, a watcher this session does not own — report, "
+                          "never unregister")
+
+    def test_step_3_only_then_runs_the_unregister(self):
+        self._assert_rule("step 3: only then the unregister")
+
+    def test_step_3_tombstone_exit_3_goes_back_to_step_2(self):
+        self._assert_rule("step 3: a tombstone (exit 3) has not unregistered — back to step 2")
+
+    def test_step_3_unregister_is_time_bounded_and_a_hang_or_active_address_is_reported(self):
+        self._assert_rule("step 3: the unregister runs with a time bound; one that does not return or leaves the "
+                          "address active is reported")
+
+    def test_step_3_confirms_status_inactive(self):
+        self._assert_rule("step 3 confirms the address now shows status inactive")
+
+    def test_separate_calls_never_in_one_parallel_batch_nor_one_shell_command(self):
+        self._assert_rule("the separate-calls rule: never together, not in one parallel batch, not in one "
+                          "shell command")
+
+
+class CommonFinalStepDetectorTest(unittest.TestCase):
+    """CR-MDB-075 §S1 — :func:`_final_step_findings` passes the spec's own text and each cut
+    fails exactly its rule; :func:`_numbered_steps` keeps a step's nested items."""
+
+    def test_the_specs_final_step_passes_every_rule(self):
+        self.assertEqual(_final_step_findings(GOOD_FINAL_STEP), [])
+
+    def test_the_specs_final_step_trips_no_never_together_violation(self):
+        self.assertEqual(_never_together_violations(GOOD_FINAL_STEP), [])
+
+    def test_each_cut_fails_exactly_its_rule(self):
+        for label, old, new in FINAL_STEP_CUTS:
+            with self.subTest(cut=old):
+                self.assertIn(old, GOOD_FINAL_STEP, "the cut must apply to the sample")
+                self.assertEqual(_final_step_findings(GOOD_FINAL_STEP.replace(old, new, 1)), [label])
+
+    def test_todays_heading_and_unconfirmed_text_fail(self):
+        today = ("## The common final step — stop your watcher LAST, then unregister\n\n"
+                 "- **How:** stop your own watcher, by your own address, through Sandesh's extension — or with\n"
+                 "  its command, `/sandesh-watcher stop <your address>`.\n"
+                 '  - Then `sandesh unregister --project <Project> --address "<your address>" '
+                 '--as "<your address>"`.\n')
+        findings = _final_step_findings(today)
+        self.assertIn("the retitled heading, still carrying 'final step'", findings)
+        self.assertIn("exactly three numbered steps, 1 to 3", findings)
+        self.assertEqual(len(findings), 11, findings)
+
+    def test_numbered_steps_keep_nested_items_and_stop_at_an_unindented_line(self):
+        text = "1. one\n   - nested\n     wrapped\n2. two\nA paragraph.\n3. three\n1. again\n"
+        self.assertEqual(_numbered_steps(text), {"1": "one - nested wrapped", "2": "two", "3": "three"})
+
+
+#: CR-MDB-075 §S2 — a conforming place, and ``(label, cut)`` each failing exactly one finding.
+GOOD_PLACE = ("**LAST — stop your own watcher, confirm it has stopped, then unregister — never together** "
+              "(see § The common final step).")
+PLACE_CUTS = (
+    ("the order: stop the watcher, confirm, then unregister",
+     "LAST — stop your own watcher, then unregister — never together (see § The common final step)."),
+    ("the order: stop the watcher, confirm, then unregister",
+     "LAST — unregister, then stop your own watcher and confirm it — never together "
+     "(see § The common final step)."),
+    ("never together",
+     "LAST — stop your own watcher, confirm it has stopped, then unregister (see § The common final step)."),
+    ("the pointer to § The common final step",
+     "LAST — stop your own watcher, confirm it has stopped, then unregister — never together."),
+    ("the pointer to § The common final step",
+     "LAST — stop your own watcher, confirm it has stopped, then unregister — never together "
+     "(see the final step below)."),
+)
+
+
+class FinalStepPlacesTest(unittest.TestCase):
+    """CR-MDB-075 §S2 — the six places of the shutdown skill that name the final step each state
+    the order (stop, confirm, then unregister), never together, and point to § The common final
+    step."""
+
+    def _assert_place(self, name: str, units: list):
+        self.assertTrue(units, f"shutdown: {name} — not found")
+        for unit in units:
+            self.assertEqual(_final_step_order_findings(_flat(unit)), [], f"shutdown, {name}: {unit}")
+
+    def test_introduction_states_the_order_never_together_with_the_pointer(self):
+        intro = _shutdown_introduction()
+        units = [b for _, b in _blocks(intro) if STOP_WATCHER_RE.search(b) and UNREGISTER_RE.search(b)]
+        self._assert_place("the introduction", units)
+
+    def test_step_2a_graceful_step_5_states_the_order_never_together_with_the_pointer(self):
+        graceful, _ = _split_at(_section(self, SHUTDOWN_SKILL, "Step 2A"), "**Emergency (1B):**")
+        step = _numbered_steps(graceful).get("5")
+        self._assert_place("Step 2A graceful step 5", [step] if step else [])
+
+    def test_step_2a_emergency_step_4_states_the_order_never_together_with_the_pointer(self):
+        _, emergency = _split_at(_section(self, SHUTDOWN_SKILL, "Step 2A"), "**Emergency (1B):**")
+        step = _numbered_steps(emergency).get("4")
+        self._assert_place("Step 2A emergency step 4", [step] if step else [])
+
+    def test_step_2b_step_5_states_the_order_never_together_with_the_pointer(self):
+        graceful, _ = _split_at(_section(self, SHUTDOWN_SKILL, "Step 2B"), "**Emergency (Mainline):**")
+        step = _numbered_steps(graceful).get("5")
+        self._assert_place("Step 2B step 5", [step] if step else [])
+
+    def test_emergency_mainline_paragraph_states_the_order_never_together_with_the_pointer(self):
+        _, emergency = _split_at(_section(self, SHUTDOWN_SKILL, "Step 2B"), "**Emergency (Mainline):**")
+        self._assert_place("the Emergency (Mainline) paragraph", _blocks_starting(emergency, "Emergency (Mainline):"))
+
+    def test_stop_only_your_own_watcher_guardrail_states_the_order_never_together_with_the_pointer(self):
+        guardrails = _section(self, SHUTDOWN_SKILL, GUARDRAILS_HEADING)
+        self._assert_place("the 'Stop ONLY your own watcher' guardrail",
+                           _blocks_starting(guardrails, "Stop ONLY your own watcher"))
+
+    def test_place_detector_passes_a_conforming_place(self):
+        self.assertEqual(_final_step_order_findings(_flat(GOOD_PLACE)), [])
+
+    def test_place_detector_bites_on_each_cut(self):
+        for label, cut in PLACE_CUTS:
+            with self.subTest(cut=cut):
+                self.assertEqual(_final_step_order_findings(cut), [label])
+
+
+#: CR-MDB-075 §S3 — a conforming reference bullet, and ``(label, cut)`` each missing one phrase.
+GOOD_REFERENCE = ("then, LAST, stop your watcher by your own address and unregister your address: the "
+                  "unregister follows a confirmed stop and is never issued with it.")
+REFERENCE_CUTS = (
+    ("unregister follows a confirmed stop",
+     "then stop your watcher and unregister: the unregister follows the stop and is never issued with it."),
+    ("never issued with it",
+     "then stop your watcher and unregister: the unregister follows a confirmed stop."),
+)
+
+
+class ReferenceBulletsTest(unittest.TestCase):
+    """CR-MDB-075 §S3 — the reference bullets say the unregister follows a confirmed stop and is
+    never issued with it."""
+
+    def _assert_bullet(self, name: str, units: list):
+        self.assertEqual(len(units), 1, f"{name}: expected exactly one bullet, found {units}")
+        self.assertEqual(_reference_bullet_findings(units[0]), [], f"{name}: {units[0]}")
+
+    def test_common_session_bracket_bullet(self):
+        self._assert_bullet("orchestration-common's session-bracket bullet",
+                            _matching_blocks(_read(COMMON_REF), "/bootstrap <role>", "/shutdown"))
+
+    def test_common_single_exception_bullet(self):
+        self._assert_bullet("orchestration-common's 'SINGLE exception' bullet",
+                            _blocks_starting(_read(COMMON_REF), "Stopping the watcher at shutdown is the SINGLE exception"))
+
+    def test_track_graceful_shutdown_bullet(self):
+        section = _section(self, TRACK_REF, "shutdown directive")
+        self._assert_bullet("orchestration-track's graceful shutdown bullet",
+                            _blocks_starting(section, "Graceful (default):"))
+
+    def test_track_emergency_shutdown_bullet(self):
+        section = _section(self, TRACK_REF, "shutdown directive")
+        self._assert_bullet("orchestration-track's emergency shutdown bullet",
+                            _blocks_starting(section, "emergency flag:"))
+
+    def test_reference_detector_passes_a_conforming_bullet_and_bites_on_each_cut(self):
+        self.assertEqual(_reference_bullet_findings(GOOD_REFERENCE), [])
+        for label, cut in REFERENCE_CUTS:
+            with self.subTest(cut=cut):
+                self.assertEqual(_reference_bullet_findings(cut), [label])
+
+
+class NeverTogetherNegativeGateTest(unittest.TestCase):
+    """CR-MDB-075 negative gate — no unit of the shutdown skill, ``orchestration-common.md`` or
+    ``orchestration-track.md`` stops the watcher and unregisters without a never-together phrase."""
+
+    def test_no_unit_of_the_three_files_stops_and_unregisters_without_a_never_together_phrase(self):
+        offending = [f"{_rel(path)}:{lineno}: {unit}" for path in (SHUTDOWN_SKILL, COMMON_REF, TRACK_REF)
+                     for lineno, unit in _never_together_violations(_read(path))]
+        self.assertEqual(offending, [], "stop-and-unregister without a never-together phrase:\n  "
+                         + "\n  ".join(offending))
+
+    def test_each_unit_kind_bites(self):
+        for kind, text in (
+            ("a heading line", "## Stop the watcher, then unregister\n"),
+            ("a bullet with its continuation lines", "- stop your own\n  watcher, then\n  unregister.\n"),
+            ("a numbered step", "5. **LAST — stop your own watcher, then unregister** (see the final step).\n"),
+            ("a paragraph", "Then stop the watcher\nand unregister the address.\n"),
+            ("the reverse order", "The watcher is stopped by address, then the address is unregistered.\n"),
+        ):
+            with self.subTest(kind=kind):
+                self.assertEqual(len(_never_together_violations(text)), 1, text)
+
+    def test_each_never_together_phrase_spares_the_unit(self):
+        for phrase in NEVER_TOGETHER_PHRASES:
+            text = f"- Stop the watcher, then unregister — {phrase}.\n"
+            with self.subTest(phrase=phrase):
+                self.assertEqual(_never_together_violations(text), [], text)
+
+    def test_a_phrase_in_another_unit_does_not_spare_it(self):
+        for text in (
+            "- stop the watcher, then unregister\n  - never together\n",
+            "Stop the watcher, then unregister.\n\nNever together.\n",
+            "## Stop the watcher, then unregister\nNever issued together.\n",
+        ):
+            with self.subTest(text=text):
+                self.assertEqual(len(_never_together_violations(text)), 1, text)
+
+    def test_units_outside_the_violation_are_spared(self):
+        for text in (
+            "Unregister the address once the session ends.\n",
+            "Stop the watcher by your own address.\n",
+            "Stop it. The watcher is gone; unregister the address.\n",
+            "Stop everything else first, drain, merge, commit, ack and report to the user, and only the "
+            "watcher stays up; unregister.\n",
+        ):
+            with self.subTest(text=text):
+                self.assertEqual(_never_together_violations(text), [], text)
 
 
 if __name__ == "__main__":
