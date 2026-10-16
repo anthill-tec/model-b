@@ -35,24 +35,28 @@ Measured 2026-10-15:
     `py_compile` check, then `regression --coverage`.
   - It always passes `--source <cov_source>` to `coverage run`, which overrides a project's own
     `[tool.coverage.run] source`.
-  - It runs `coverage lcov` on one data file with no `coverage combine`. Subprocess measurement
-    forces parallel data files (coverage 7.16.2), so with it on, the client would find no data and
-    drop coverage.
+  - It runs `coverage lcov` with no separate `coverage combine`. Subprocess measurement forces
+    parallel data files, but coverage.py 7.14 and later combine them in every reporting command,
+    `lcov` included (Crucible's probe on 7.16.2: "Combined 2 files", subprocess script counted).
+  - The "coverage lcov unavailable" seen earlier came from the default source: `--source
+    crucible_axi,clients` measures nothing of Model B, so `lcov` found no data and exited 1.
   - It sends the board only a total (lines and functions), never per-file figures.
 - **Adopted by Crucible for 0.4.0 (#1455):**
-  - CR-CRU-192: with no `--cov-source` the python client passes no `--source`, so the project's
-    `[tool.coverage.run]` decides what is measured (a given `--cov-source` still wins); it runs
-    `coverage combine` before `lcov` whenever the run left parallel data files.
+  - CR-CRU-192 (corrected in #1476): with no `--cov-source` the python client reads the project's
+    effective coverage config and passes no `--source`, so the project decides what is measured (a
+    given `--cov-source` still wins). A project that declares nothing gets `--source <project root>`
+    and a `coverage-source-undeclared` warning. Stale parallel data files are erased before each
+    run. It adds no combine step; subprocess coverage needs coverage.py 7.14 or later.
   - CR-CRU-193: per-file coverage on the board (design not settled).
 
-  Until 0.4.0 is installed, a run with `--cov-source` measures only code the tests import
-  in-process. Model B does not work around the missing combine.
+  Until 0.4.0 is installed, Model B passes `--cov-source` explicitly.
 
 ## Scope (seed)
 
 1. **A coverage config in `pyproject.toml`.**
    - Sources: `modelb_axi`, `scripts`, `hooks-src/scripts` and `workflows-src`.
-   - Subprocess measurement, and parallel data files combined after the run.
+   - Subprocess measurement (coverage.py 7.14 or later combines the parallel data when it
+     reports).
    - The extensionless hooks included by path.
    - Excluded: `__pycache__`, generated code (`modelb_axi/toon.py`'s generated twin
      `scripts/toon.py`; decide which one counts) and the packaged `_assets` copy.
@@ -70,6 +74,12 @@ Measured 2026-10-15:
    explicitly, because the client's default fits only Crucible.
 
 ## To measure at gap analysis
+
+- **Whether Crucible 0.3.0 already suffices.** With `--cov-source` passed explicitly and the
+  project's `[run] patch = ["subprocess"]`, does a `regression --coverage` run trace the scripts the
+  tests run as subprocesses (does the command-line `--source` reach the children), and do stale
+  parallel files from an earlier run leak into the next? If 0.3.0 suffices, the user decides whether
+  release 1.0.0 still waits for Crucible 0.4.0.
 
 - Whether the subprocess patch reaches the hooks (`/usr/bin/python3` must import coverage in the
   child) and the tests that run scripts through `sys.executable`. Measure it in a `/tmp` sandbox
