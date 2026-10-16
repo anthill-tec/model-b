@@ -99,6 +99,8 @@ The `~/.claude` user space grew organically into 24 memory files, ~50 skills, 29
   - **Not adopted:** restarting a dev server after every source commit (Crucible-specific).
   - **Every AXI envelope is read whole** — adopted, and carried by its own CR with a guard over the shipped text (split from CR-MDB-059 for size).
 
+  **AMENDED 2026-10-16 (user ruling, after a shutdown hung):** a shutdown's last two acts are strictly sequential — stop the wake watcher by address, confirm from the addressbook that the address no longer shows `listening`, and only then unregister it. They are never issued together (one parallel batch or one command). Model B 1.0.0's shutdown skill, which every installation deploys, carries the rule. The hang itself was reported to the Sandesh project (Sandesh #1464).
+
 ### D6 — Generated per-stack agents
 - Role templates (`red/green/verify/fix`) + per-stack parameter files generate the arduino/bun/python/quarkus/rust agent set (20 files). SE principles are written once — in the templates.
   **AMENDED 2026-09-25 (CR-MDB-035, DN-multi-harness §D17, CR-MDB-025):** Model B ships the generated stack × role set only, rendered per project by `init`/`agents` (D10.8); the installer deploys none, and counts are not stated (§4 criterion 4).
