@@ -287,7 +287,8 @@ skill does not show.
 - **After a wait that elapsed while a step was still running,** check `status` and reattach
   with `gate-run --intent <goal> --agent <id>` (Crucible #1432).
 - **Client output goes to a file** — `test --log <path> --agent <id>` where the verb takes
-  `--log`, a redirect otherwise — and never through `| head`.
+  `--log`, a redirect otherwise — and the client's envelope, in the file or on stdout, is read
+  whole, never filtered.
 - **Where `--log` is absent:** the rust client's `regression`, and `pre-merge-gate` on the
   arduino, mvn and rust clients — redirect their output to a file instead.
 
@@ -301,6 +302,15 @@ when clean); `pre-merge-gate` STREAMS its progress. Parse stdout as the
 machine channel. The board answers the clients in compact TOON, with `help`
 hints naming the next step: that is what the clients receive, and the envelope
 carries it to you.
+
+- **The envelope is read whole, every time** — its `warnings[]`, `help[]` and `error` carry
+  what you need next. The client's output is never grepped, headed, tailed, otherwise filtered or
+  narrowed with `jq`, and never summarised by pattern. The rule binds every agent, orchestrators
+  included.
+- **Its output is never redirected away:** neither its stdout nor its stderr goes to `/dev/null`.
+- **A long run writes its output to a file,** and that file's envelope is read whole.
+- **The runner log a client writes with `--log` is not an envelope:** searching it for a failure
+  stays allowed.
 
 ## Who runs what (roles — the boundary the output can't tell you)
 

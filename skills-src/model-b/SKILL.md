@@ -69,7 +69,7 @@ Electronics (anthill-forge / hw tooling / electronics agents+skills) is EXCLUDED
 - **Do exactly what is asked** — parse instructions literally; take the complete fix, never the path of least resistance, and leave no legacy shadow or duplicate helper behind.
 - **Never read another project's working tree without the user's permission** — cross-project input comes through Sandesh messages, published artefacts (packages, installed clients, deployed skills) and this repository.
 - **Report in plain words** — a failure is stated as one, never softened into a euphemism. Keep reports concise, and never restate board state (cycle tables, progress) the user can already see.
-- **Never pipe user feedback or poll output through head, tail or grep** — read it whole.
+- **Never pipe user feedback, poll output or AXI output through head, tail or grep** — read it whole: an AXI envelope is never piped, filtered or redirected away.
 - **Never kill a user-visible process** — describe what and why, and let the user kill it.
 - **Edit files with the harness's file-edit capability or ast-grep, never `sed`**; if a bulk text edit seems to need `sed`, surface it first.
 - **Prefer the project's cached reads and compressed shell** (and its ranked search and tree), where its `AGENTS.md` names them, over the harness's native equivalents.

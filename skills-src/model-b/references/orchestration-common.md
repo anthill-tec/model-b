@@ -55,6 +55,7 @@ Universal rules for ANY orchestrator, ANY project/stack. Verbose detail + failur
 - **The brief names the spec and the cycle's scope, points to the rules that bind the phase, and states the phase's boundaries** (plus the measured baseline and agent id / role / cycle); the agent definition carries the how.
 - **A brief states the scope, the approved spec (the spec wins) and the definition's standard procedure.** The orchestrator adds no extra proof steps, because VERIFY and the gate catch drift.
 - **Every brief opens with an Identity block pinning the agent id** (without it agents self-name and vanish from the board), and its step 1 is the exact register command — confirm the registration early in the agent's transcript. Register only the assigned id: no probe or scratch agents on the live board.
+- **Every dispatch brief carries the AXI envelope rule** (§ "Every AXI envelope is read whole"): every envelope the agent's AXI commands print is read whole, never piped, filtered or redirected away.
 - **Agents commit the code they write.** The orchestrator never resets and recommits an agent's commits — the agent's commit range is the phase's record.
 - **A phase is accepted from the agent's report, its ingested run on the board, and the phase's commit range** (`<base>..<head>`; a RED commit is test-only). No suite is re-run and no work re-checked between phases — only at gates or after a crash.
 - **The correctness gates are the CR's VERIFY cycle, the FIX cycles it opens, and the pre-merge gate** — not per-phase checking by the orchestrator.
@@ -114,6 +115,15 @@ Universal rules for ANY orchestrator, ANY project/stack. Verbose detail + failur
 - **A client gap** an agent reports (a runner the client cannot drive) is raised with Crucible; a brief you write never tells an agent to work around it.
 - **The escape hatch** — a blocking hook's `ALLOW_RAW_<RUNNER>=1` — is used only with your explicit approval.
 - **Two client gaps are known:** the python client drives unittest only (a pytest project), and `bun-crucible.py test` takes no test-name filter (a one-test bun run).
+
+## Every AXI envelope is read whole (NON-NEGOTIABLE)
+- **It covers the output of an AXI command:** the Crucible clients (`<stack>-crucible.py`), `sandesh`, `modelb-axi`, `worktree-flow.py`, `gh-axi`, `chrome-devtools-axi` and `lavish-axi`. The list is closed.
+- **Every envelope is read whole, every time:** its `warnings[]`, `help[]` and `error` carry the guidance the caller needs next, and a cut-down envelope loses it silently.
+- **Its output is never grepped, headed, tailed or otherwise filtered,** never narrowed with `jq`, and never summarised by pattern.
+- **Its output is never redirected away:** neither its stdout nor its stderr goes to `/dev/null`.
+- **A long run writes its output to a file,** and that file's envelope is read whole.
+- **The rule binds every agent, orchestrators included.**
+- **A runner log a client writes with `--log` is not an envelope:** searching it for a failure stays allowed.
 
 ## Workflow gates
 - Never skip RED — even for chores/lint (RED = a real failing test; a compile failure IS a RED). A refactor or an extraction still has a real RED — the test or harness change, and tests for the extracted code's consumption contract — captured and reported.
