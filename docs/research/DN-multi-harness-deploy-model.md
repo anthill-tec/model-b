@@ -1024,6 +1024,16 @@ Implemented by CR-MDB-064.
   with no valid session name shutdown runs no call, since a `stop` would reach the shared default
   session's bridge; and the warning goes before a shutdown only when it runs a call other than `stop`.
 
+### D24 — The Sandesh extension's tools are allowed in the generated permission policy
+
+**User ruling 2026-10-16, after a shutdown hung.** The generated per-project policy
+(`modelb_axi/permission_policy.py`) allowed no Sandesh tool, so each first use per session raised a
+permission prompt (`"*": "ask"`). An unattended shutdown waited on the prompt for `sandesh_notify_stop`
+until the session was force-quit (pi-permission-system log, 2026-10-16 00:13:28 → 00:28:11 UTC; Sandesh
+#1472). The policy allows the Sandesh extension's tools by exact name, derived from the `sandesh-pi`
+requirement row as `dispatch` and `lean-ctx` already are; `sandesh_archive` and `sandesh_unarchive`
+keep asking. Implemented by CR-MDB-077.
+
 ## Consequences per CR
 
 | CR | What this DN changes |
