@@ -46,3 +46,9 @@ regression); CR-MDB-032 (suite relocation and hermeticity)
     `tests/test_axi_envelope_read_whole.py`. Its detector also spares a no-space pipe
     (`status|head`) and masks `< file > /dev/null` as a placeholder; both are accepted blind spots,
     worth a comment.
+11. **Coverage-gate follow-ups (CR-MDB-073 VERIFY).**
+    - `tools/coverage-check.py` counts `hooks-src/scripts/` files as expected only when an area covers
+      that directory; no test pins it.
+    - No test pins that `tools/` stays out of the sdist's `only-include`.
+    - `AGENTS.md`'s skip list ("Nothing else skips") leaves out the skips when neither `develop` nor
+      `origin/develop` resolves (`ClosedCrSpecsUntouchedTest` and CR-MDB-073's two §S4 gates).
