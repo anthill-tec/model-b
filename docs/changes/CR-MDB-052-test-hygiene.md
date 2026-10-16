@@ -34,3 +34,9 @@ regression); CR-MDB-032 (suite relocation and hermeticity)
 7. **A sweep of the suite's own health** at gap analysis: every analyzer finding in `tests/`, slow or
    network-bound tests, skip reasons, and helpers defined in more than one module, each fixed or
    recorded with a reason.
+8. **Names that outgrew their scope.** `tests/test_install_guide.py`'s `RELEASE_WORKFLOW_COMMANDS_RE`
+   and `test_the_project_name_gate_spares_the_release_workflow_commands_only` now also spare
+   `modelb-axi agents`, which is not a release-workflow command; rename both to what they cover.
+9. **`AGENTS.md`'s stale agent and stack counts.** It says "16 stack×role agents" and names four stack
+   files (`stacks/{arduino,bun,python,quarkus}`), but `generator/agents` holds 20 definitions,
+   rust included.
