@@ -54,7 +54,9 @@ keeps `bun test` for structural gates only.
 - Which tests pin the current `bun.toml` text, and which shipped-text gates (the registry-key
   detector included) the rewritten text meets.
 - What Sandesh's own project already holds of the removed text, and what it must add.
-- What Crucible's bun client offers for a targeted run under a project-declared runner, and with no
-  project-specific default package dir (requested of Crucible 2026-10-18); the text states the client
-  as released.
+- How the released bun client runs a targeted test under a project-declared runner. On 0.3.0 a tier
+  verb passes what follows `--` to its declared script (`unit -- <file>` runs
+  `bun run test:unit -- <file>`), while `test --tests` runs Bun's own runner; a declared script for
+  `test --tests` and a package dir with no project-specific default arrive with Crucible 0.4.0
+  (CR-CRU-194). The text states the client the release ships against.
 - The re-score.
