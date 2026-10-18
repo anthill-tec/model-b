@@ -23,8 +23,13 @@ CR-MDB-062's VERIFY (C5) found no defect in its scope. It recorded these points 
    - a line after an arithmetic `$((1<<2))`, which is read as a heredoc.
 
    CR-MDB-056's verify listed further forms. They are now non-goals in CR-MDB-062: `make test`,
-   `mvn install`, `vitest` and `jest`, `python3 -m tests.test_x`, `bash -c`, `sudo`, `xargs`, `nohup`
-   and `exec`.
+   `mvn install`, `jest`, `python3 -m tests.test_x`, `bash -c`, `sudo`, `xargs`, `nohup` and `exec`.
+
+   **In a bun project the bun hook also stops direct Vitest runs and the workspace-filter forms**
+   (DN-multi-harness-deploy-model §D25; measured 2026-10-18 on a Bun workspace that runs Vitest under
+   Bun, where all five are allowed today): `bun run --filter <pkg> test`, `bun run --filter '*' test`,
+   `vitest run`, `bunx vitest run` and `bun x vitest`. `vitest` leaves CR-MDB-062's non-goals for bun
+   projects; the guard keeps parity.
 2. **The other `block-*` hooks:**
    - `block-cr-completed-without-spec-update` still cites `ORCHESTRATOR-RULES.md §5`, a stale reference;
    - it, `block-write-outside-worktree` and `post-regression-disk-reminder` still catch only
