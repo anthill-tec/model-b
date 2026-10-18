@@ -1045,6 +1045,53 @@ keep asking. Implemented by CR-MDB-077.
   must never be re-run on an existing project. Without it, only new projects would get a policy
   change.
 
+### D25 — Stacks carry build, test and packaging only; a project's own services are its own
+
+**User rulings 2026-10-18, on Arduino App Lab's proposal** (`PROPOSAL-go-stack-and-bun-frontend-generality.md`:
+a Go backend in a Wails desktop shell, a Bun/TypeScript browser frontend, and backend services the
+frontend consumes).
+
+- **Model B's scope in a stack is build, test and packaging.** A stack file carries what holds for
+  every project on that runner. Frameworks (React, VanJS, Wails) and one project's architecture are
+  out of it: they live in that project's `AGENTS.md` or knowledge store. Crucible works at the same
+  level — test results and coverage, never the framework.
+- **One `frontend` project type, never split by stack combination or framework.** Three settings stay
+  independent: `PROJECT_STACKS` (runners, clients, hooks, agents — a list, so combinations need no
+  new type), `PROJECT_TYPE` (whether bootstrap and shutdown run a dev server with a browser UI) and
+  `RELEASE_TARGETS` (packaging). What varies between frontends — the dev-server command, where its
+  port comes from, the packaging — is a parameter or a release target. A Go + Bun + Wails project is
+  `PROJECT_STACKS=go,bun`, `PROJECT_TYPE=frontend`; Wails is a shell with no test runner, so it is not a
+  stack (the 2026-09-22 VS Code ruling, §D16).
+- **`go` becomes a generated stack.** Its Crucible client, `go-crucible.py`, is Crucible's to author
+  first: Model B ships, vendors and maintains no client. The client runs Go's tests and translates
+  their output, compile errors and coverage into what Crucible ingests; the Model B `go` CR waits on it.
+- **`bun.toml` holds only what holds for every Bun project.** Its Sandesh-specific text (the `sandesh`
+  CLI shim, `pi.exec` mocks, argv mapping, the `integrations/pi/` default) leaves Model B entirely and
+  lives in Sandesh's own project — never in a memory template, which `init` copies into every project
+  of the stack. Crucible's rendered bun agents carry that text today; they are corrected when Crucible
+  re-renders with `modelb-axi agents`. The stack presumes no test runner: a project may declare
+  another runner on the Bun runtime (Vitest under Bun), and the stack names the runner the project
+  declares. Release 1.0.0.
+- **In a bun project the bun hook stops direct Vitest runs and the workspace-filter forms**
+  (`bun run --filter <pkg> test`, `vitest`, `bunx vitest`, `bun x vitest`): they bypass the client.
+  `vitest` leaves CR-MDB-062's non-goals for bun projects. Release 1.0.0 (CR-MDB-066).
+- **The generated services skill starts one dev server.** A frontend project's other services — its
+  own backends, services it consumes, the backends its integration tests need — are project-specific.
+  The project's Mainline creates and maintains them as project-local skill and script combinations,
+  which bootstrap and shutdown call; the scaffold never generates or touches them. Crucible's
+  hand-written `crucible-bootstrap-services` is the precedent: one dev server, the rest its own. The
+  integration rule is unchanged: a seam crossing a network or vendor boundary is proven against the
+  real backend, which the project's own services bring up.
+- **`migrate` changes existing files incrementally.** For every file it touches (`.env`, `.envrc`,
+  `.gitignore`, `AGENTS.md`) it only adds: Model B's lines sit in a marked managed block that a re-run
+  updates and nothing else; a project's own lines are never altered or removed (an `.envrc` that loads
+  the project's own environment keeps it, with `dotenv` added only when missing); a key present with a
+  different value is reported, never overwritten; a secret already in `.env` stays where it is, with
+  a note that Model B keeps secrets in `.env.local`.
+- **Placement:** the `bun.toml` change in release 1.0.0 (CR-MDB-079); the `go` stack in 1.1.0
+  (CR-MDB-080), beside the project type (CR-MDB-074) and `migrate` (CR-MDB-055), which App Lab's
+  onboarding needs.
+
 ## Consequences per CR
 
 | CR | What this DN changes |
@@ -1063,6 +1110,10 @@ keep asking. Implemented by CR-MDB-077.
 | **062** (blocking hooks) | §D21 amended: python and bun hooks; `init` refuses a hook whose script is not deployed. |
 | **063** (test-interpreter probe) | §D21 amended (2026-10-14): the project `.venv` route, the bootstrap check, `python3` on `PATH` for every stack's client, and `freshness` with a dead recorded interpreter. |
 | **064** (Python floor) | §D22: `requires-python >=3.14`. |
+| **074** (project type) | §D25: one `frontend` type; the generated skill starts one dev server (its port in a config key or pinned on the command); a project's other services are project-local, maintained by its Mainline, called by bootstrap and shutdown. |
+| **055** (`migrate`) | §D25: every touched file changes incrementally, Model B's lines in a managed block. |
+| **NEW — CR-MDB-079** | §D25: `bun.toml` general to every Bun project. |
+| **NEW — CR-MDB-080** | §D25: the `go` generated stack, after Crucible's `go-crucible.py`. |
 
 ## Open, deliberately not decided here
 
