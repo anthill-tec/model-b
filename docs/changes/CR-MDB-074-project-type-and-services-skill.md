@@ -7,7 +7,7 @@ Gap analysis, the spec and its pre-review happen in order when this CR starts.
 **Depends on:** CR-MDB-061 (the global Chrome-UI skill it calls), CR-MDB-050 (`init` and the
 schema) and CR-MDB-055 (`migrate`). The board is authoritative: read `queue`, not this line.
 **Labels:** scaffold, schema, skills, frontend
-**Design reference:** DN-multi-harness-deploy-model §D23; PRD D3.1 (the schema-driven registry);
+**Design reference:** DN-multi-harness-deploy-model §D23, §D25; PRD D3.1 (the schema-driven registry);
 Crucible #1456–#1458.
 
 ## Context
@@ -17,6 +17,8 @@ Crucible keeps a hand-written project skill that brings its services up at `/boo
 its pages, Lavish sessions, and a production instance to leave alone. For a frontend project
 (a node or bun server with a browser UI, alongside Lavish design docs), Model B generates that skill
 from project parameters. A backend project writes its own, by hand, and Model B never touches it.
+Whatever the type, the generated skill starts one dev server: a project's other services — its own
+backends, services it consumes, the backends its integration tests need — are its own.
 
 ## Scope (seed)
 
@@ -24,8 +26,9 @@ from project parameters. A backend project writes its own, by hand, and Model B 
    `backend`, and its readers. `init` and `migrate` ask it.
 2. **The generated services skill** goes into the project's skills folder, for `frontend` only,
    from project parameters asked at `init` or `migrate`:
-   - **The dev server.** It runs under Pi's `process` tool with a ready pattern. The command and
-     the config file and key holding the port are parameters; the port is never hardcoded. It
+   - **The dev server, one.** It runs under Pi's `process` tool with a ready pattern. The command
+     and where the port comes from are parameters — a config file and key, or the command itself
+     pinning it (a Wails project: `wails dev -devserver host:port`); the port is never hardcoded. It
      restarts after merges to develop. Crucible's: `bun run src/server.ts`, with the port at
      `data/crucible.toml` `[server] port`.
    - **The pages.** A UI URL template. Crucible's:
@@ -40,9 +43,12 @@ from project parameters. A backend project writes its own, by hand, and Model B 
    - **Teardown order.** Close the tabs before stopping Lavish, because a stopped Lavish server
      makes its tabs unrecognisable. Then stop the poll and the Lavish server, and stop the dev
      server last.
-3. **`bootstrap` and `shutdown`** call the project's services skill where one exists, of either
-   type.
-4. **Re-generation.** `migrate` (and a re-run of `init`, per CR-MDB-050) regenerates a frontend
+3. **`bootstrap` and `shutdown`** call the project's services skills where they exist, of either
+   type: the generated one, and the project's own.
+4. **The project's own services are its Mainline's.** An orchestrator rule: the project's Mainline
+   creates and maintains project-local skill and script combinations for the services the generated
+   skill does not start, and the scaffold never generates or touches them.
+5. **Re-generation.** `migrate` (and a re-run of `init`, per CR-MDB-050) regenerates a frontend
    project's services skill from its parameters. Crucible will regenerate its own this way and
    retire its hand-written one.
 
