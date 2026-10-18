@@ -8,6 +8,7 @@ The design is discussed with the user at this CR's gap analysis; the spec is wri
 release workflow templates); board-authoritative: read `queue`, not this line
 **Labels:** cli, scaffold, migration, schema
 **Design reference:** PRD D9/D10 (D10 amended 2026-10-03); `DN-scaffold-packaging.md` §10;
+DN-multi-harness-deploy-model §D25;
 CR-MDB-043 (schema-driven registry); CR-MDB-041, CR-MDB-045, CR-MDB-047, CR-MDB-048
 (the files `init` scaffolds and their readers)
 
@@ -27,8 +28,13 @@ A `migrate` verb that brings an existing project up to what `init` would have pr
    and report what is present, missing, or differs.
 2. **Plan, then write.** `--dry-run` prints the full plan and writes nothing; the real run validates
    everything before the first write, writes atomically, and commits only what it wrote.
-3. **Add, never replace:** missing `.env` keys appended (existing keys and lines kept); the `AGENTS.md`
-   sections `init` renders (Setup, design references, lean-ctx) added without touching hand-written text;
+3. **Add, never replace — incrementally, for every file it touches** (`.env`, `.envrc`, `.gitignore`,
+   `AGENTS.md`): Model B's lines sit in a marked managed block that a re-run updates and nothing else;
+   the project's own lines are never altered or removed. An `.envrc` that loads the project's own
+   environment keeps it, with `dotenv` added only when missing. A key present with a different value is
+   reported, never overwritten. A secret already in `.env` stays where it is, with a note that Model B
+   keeps secrets in `.env.local`. The `AGENTS.md` sections `init` renders (Setup, design references,
+   lean-ctx) go into the managed block without touching hand-written text;
    `docs/memory/` seeded where absent; agents, hooks and the permission policy rendered under the
    existing ownership rules.
 4. **What it cannot move, it lists:** `~/.claude` memory notes and `ORCHESTRATOR-` notes to fold into
@@ -49,6 +55,6 @@ and shape flags, only for values the project does not record, and `init`'s `--dr
 `--yes`, `--force-managed` and `--modelb-home`; the project is the current directory, `--target DIR`
 overrides it, for `init`, `migrate` and `agents` alike (aligning all three is in this CR's scope).
 
-Open design questions for the gap analysis: how a hand-written `AGENTS.md` takes rendered sections
-(markers or a managed region); the monorepo shape; how a project's existing release or CI workflow
+Open design questions for the gap analysis: the managed block's marker for each file's syntax; the
+monorepo shape; how a project's existing release or CI workflow
 is brought to the template (reported only, replaced on confirmation, or adopted as hand-edited).
