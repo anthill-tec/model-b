@@ -32,12 +32,14 @@ Stdlib only.
 
 import ast
 import json
+import os
 import re
 import shutil
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from tests._helpers import (
     REPO_ROOT,
@@ -162,10 +164,10 @@ def _cargo_stand_in(log: Path) -> str:
     )
 
 
-def _scratch_dirs() -> set:
-    """Every ``dead-scan-lift-*`` entry in the temp directory a tool run inherits (its ``TMPDIR``
-    is the test process's — §S4.1)."""
-    return set(Path(tempfile.gettempdir()).glob(SCRATCH_PREFIX + "*"))
+def _scratch_dirs(temp_dir: Path) -> set:
+    """Every ``dead-scan-lift-*`` entry in ``temp_dir`` -- the private ``TMPDIR`` a
+    ``LiftLintTest`` run inherits from the test process (§S4.1)."""
+    return set(Path(temp_dir).glob(SCRATCH_PREFIX + "*"))
 
 
 class _DeadScanCase(unittest.TestCase):
@@ -180,6 +182,20 @@ class _DeadScanCase(unittest.TestCase):
         self.out.mkdir()
         self.cwd = self.work / "cwd"
         self.cwd.mkdir()
+
+    def _use_private_tmpdir(self) -> Path:
+        """Point ``TMPDIR`` at a fresh directory inside the work area for the rest of the test
+        and return it, so a ``lift-lint`` scratch copy is made where no concurrent run on the
+        host can disturb it, and goes with the work area. It is set in the TEST PROCESS's
+        environment, which each tool run inherits whole: the run's own environment still
+        differs from the test process's only in ``PATH`` and git's configuration variables
+        (§S4.1, AC15)."""
+        tmpdir = self.work / "tmp"
+        tmpdir.mkdir()
+        patcher = mock.patch.dict(os.environ, {"TMPDIR": str(tmpdir)})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        return tmpdir
 
     def _assert_no_traceback(self, result):
         self.assertNotIn("Traceback", result.stderr, f"no traceback expected:\n{result.stderr}")
@@ -330,14 +346,7 @@ class LiftLintTest(_DeadScanCase):
     def setUp(self):
         super().setUp()
         self.cargo_log = self.work / "cargo.log"
-        self.scratch_before = _scratch_dirs()
-        self.addCleanup(self._remove_new_scratch)
-
-    def _remove_new_scratch(self):
-        """Remove any scratch copy the run left behind, after the test has asserted on it, so a
-        failing run leaves no debris in the temp directory."""
-        for leftover in _scratch_dirs() - self.scratch_before:
-            shutil.rmtree(leftover, ignore_errors=True)
+        self.tmpdir = self._use_private_tmpdir()
 
     def _cargo_calls(self) -> list[dict]:
         if not self.cargo_log.exists():
@@ -350,8 +359,9 @@ class LiftLintTest(_DeadScanCase):
                         bin_dir=bin_dir, cwd=self.cwd, timeout=120)
 
     def _assert_no_new_scratch(self):
-        self.assertEqual(_scratch_dirs() - self.scratch_before, set(),
-                         f"AC8: no {SCRATCH_PREFIX}* scratch directory remains")
+        self.assertEqual(_scratch_dirs(self.tmpdir), set(),
+                         f"AC8: no {SCRATCH_PREFIX}* scratch directory remains in the run's "
+                         f"TMPDIR {self.tmpdir}")
 
     def _assert_refused(self, result):
         self.assertNotEqual(result.returncode, 0, f"stdout:\n{result.stdout}")
@@ -378,8 +388,12 @@ class LiftLintTest(_DeadScanCase):
         self.assertTrue(lift_lint["check_ok"])
         self.assertEqual(lift_lint["stripped_attr_lines"], 1)
         self.assertIn(f"{DEAD_CODE_WARNING['path']}:{DEAD_CODE_WARNING['line']}", self._markdown())
-        self.assertFalse(Path(calls[0]["cwd"]).exists(),
-                         f"AC8: the scratch copy {calls[0]['cwd']} is removed")
+        scratch = Path(calls[0]["cwd"])
+        self.assertEqual(scratch.parent, self.tmpdir.resolve(),
+                         "the scratch copy is made in the run's private TMPDIR, the directory "
+                         "the no-leftover check reads")
+        self.assertTrue(scratch.name.startswith(SCRATCH_PREFIX), scratch.name)
+        self.assertFalse(scratch.exists(), f"AC8: the scratch copy {scratch} is removed")
         self._assert_no_new_scratch()
 
     def test_cargo_absent_is_refused_with_an_error_line(self):
@@ -1051,9 +1065,7 @@ class LiftLintCollectionTest(_ModeCase):
     def setUp(self):
         super().setUp()
         self.cargo_log = self.work / "cargo.log"
-        scratch_before = _scratch_dirs()
-        self.addCleanup(lambda: [shutil.rmtree(d, ignore_errors=True)
-                                 for d in _scratch_dirs() - scratch_before])
+        self._use_private_tmpdir()
         git_repo(self.project, self.WORKSPACE)
 
     def _lift_lint(self, exit_code: int) -> tuple:
@@ -1098,9 +1110,7 @@ class ModeSelectionTest(_ModeCase):
     def setUp(self):
         super().setUp()
         self.cargo_log = self.work / "cargo.log"
-        scratch_before = _scratch_dirs()
-        self.addCleanup(lambda: [shutil.rmtree(d, ignore_errors=True)
-                                 for d in _scratch_dirs() - scratch_before])
+        self._use_private_tmpdir()
         git_repo(self.project, {
             "Cargo.toml": WORKSPACE_ROOT_MANIFEST,
             "crates/alpha/Cargo.toml": cargo_member_manifest("alpha"),

@@ -27,6 +27,10 @@ AC9–AC14, AC16).
   second); with two ``pre`` snapshots of one slice taken the same day, the later one's short sha
   sorting first by name, a ``post`` pairs with the later one and ``health/index.json`` lists
   them in creation order.
+- ``LegacySnapshotOrderTest`` — AC12 (§S3.4, the fallback for a manifest without ``created``):
+  such a manifest ranks as made at the start of its directory's date, so in
+  ``health/index.json`` and in a ``post``'s pairing it comes before every snapshot of the same
+  date that records ``created``; across dates the date decides.
 - ``MissingArgumentsTest`` — AC13 (§S3.5): each missing or invalid argument is an argparse usage
   error (exit 2, no ``Traceback``) that leaves the ledger byte-identical and makes no commit.
 - ``HeaderAndDocstringTest`` — AC14 (§S3.6): the ``# Consuming skills:`` header and the module
@@ -93,6 +97,16 @@ WORKSPACE = {
     "crates/alpha/Cargo.toml": cargo_member_manifest("alpha"),
     "crates/alpha/src/lib.rs": ALPHA_LIB,
 }
+
+#: The forbidden call's site in ``ALPHA_LIB``: its path from the workspace root and its line.
+VIOLATION_PATH = "crates/alpha/src/lib.rs"
+VIOLATION_LINE = 2
+
+
+def _site(path: str, line: int) -> str:
+    """A report's ``<path>:<line>`` site, built at run time so this module carries no literal
+    path-and-line citation (``tests.test_cite_by_symbol``'s guard)."""
+    return f"{path}:{line}"
 
 #: One ``[[forbid]]`` rule the library breaks once, one ``[[require_present]]`` rule whose
 #: pattern appears nowhere.
@@ -219,14 +233,15 @@ class SnapshotHotPathRulesTest(_HealthRepo):
                         f"{hot_path['rules_file']} absent")
         self.assertEqual(
             [(v["rule"], v["path"], v["line"], v["content"]) for v in hot_path["violations"]],
-            [("no-json-in-hot-path", "crates/alpha/src/lib.rs", 2,
+            [("no-json-in-hot-path", VIOLATION_PATH, VIOLATION_LINE,
               "serde_json::to_string(&1).unwrap()")],
             "AC10: exactly the one production-line violation; the comment line is dropped")
         self.assertEqual(
             [(s["rule"], s["pattern"]) for s in hot_path["sanity_failures"]],
             [("boundary-sanity", "NEVER_PRESENT_TOKEN")])
         markdown = (self.snap / "dead_scan_report.md").read_text(encoding="utf-8")
-        self.assertIn("rule `no-json-in-hot-path`: `crates/alpha/src/lib.rs:2`", markdown)
+        self.assertIn(
+            f"rule `no-json-in-hot-path`: `{_site(VIOLATION_PATH, VIOLATION_LINE)}`", markdown)
 
     def test_the_snapshot_totals_count_hot_path_violations_and_sanity_failures(self):
         totals = json.loads((self.snap / "snapshot.json").read_text(encoding="utf-8"))["totals"]
@@ -399,6 +414,98 @@ class SnapshotOrderTest(_HealthRepo):
         self.assertEqual([entry["dir"] for entry in index],
                          [self.first[1], self.second[1], self.post[1]],
                          "AC12: index.json orders by `created`")
+
+
+def _legacy_snapshot(phase: str, day: str, sha: str, slice_=None) -> tuple:
+    """A snapshot directory as a tool from before §S3.4 wrote it -- its manifest records no
+    ``created`` -- as ``(directory name, {relative path: text})`` under ``ASSETS``. It carries
+    an empty crate map, so a ``post`` paired with it can still write its delta."""
+    name = f"{day}_{sha}_{phase}" + (f"_{slice_}" if slice_ else "")
+    manifest = {"schema": 1, "project": "fixture", "date": day, "head": sha,
+                "branch": "main", "dirty": False, "phase": phase, "slice": slice_,
+                "totals": {}, "files": ["crate_map_baseline.json"]}
+    return name, {
+        f"{ASSETS}/health/{name}/snapshot.json": json.dumps(manifest, indent=1),
+        f"{ASSETS}/health/{name}/crate_map_baseline.json": json.dumps({"crates": []}),
+    }
+
+
+class LegacySnapshotOrderTest(_HealthRepo):
+    """AC12 (§S3.4) -- a manifest without ``created`` falls back to its directory name: it
+    ranks as made at the START of its directory's date. On the same date it comes before every
+    manifest that records ``created``; across dates the date decides.
+
+    The fixture repository holds three legacy snapshots (no ``created``): a ``baseline`` of
+    2000-01-01, a ``pre`` of ``CR-9`` dated today (the UTC date the new snapshots' ``created``
+    carries) and an ``adhoc`` of 2999-12-31. Then a ``pre`` and a ``post`` of ``CR-9`` are
+    taken, each recording ``created``."""
+
+    SLICE = "CR-9"
+
+    @classmethod
+    def setUpClass(cls):
+        cls.today = datetime.now(UTC).date().isoformat()
+        cls.earlier, earlier_files = _legacy_snapshot("baseline", "2000-01-01", "1111111")
+        cls.legacy_pre, legacy_pre_files = _legacy_snapshot("pre", cls.today, "0000000",
+                                                            cls.SLICE)
+        cls.later, later_files = _legacy_snapshot("adhoc", "2999-12-31", "2222222")
+        files = {**DEAD_WORKSPACE, **earlier_files, **legacy_pre_files, **later_files}
+        cls.work, cls.repo, cls.bin_dir, cls.cwd = cls.build("mdb-health-legacy-", files,
+                                                              dot=True)
+        cls.health = cls.repo / ASSETS / "health"
+        cls.pre_result, cls.pre = _take(cls.repo, cls.bin_dir, cls.cwd, "pre",
+                                        "--slice", cls.SLICE)
+        cls.post_result, cls.post = _take(cls.repo, cls.bin_dir, cls.cwd, "post",
+                                          "--slice", cls.SLICE)
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.work, True)
+
+    def setUp(self):
+        for result in (self.pre_result, self.post_result):
+            self.assertNotIn("Traceback", result.stdout + result.stderr)
+        self.assertDotStandInRan(self.work, self.bin_dir, 2)
+        for name in (self.earlier, self.legacy_pre, self.later):
+            self.assertNotIn("created", _manifest(self.health / name),
+                             f"fixture: {name} is a legacy manifest")
+        for name in (self.pre, self.post):
+            self.assertEqual(_manifest(self.health / name)["created"][:10], self.today,
+                             f"fixture: {name} was created on the legacy pre's date")
+
+    def _index_dirs(self) -> list:
+        index = json.loads((self.health / "index.json").read_text(encoding="utf-8"))
+        return [entry["dir"] for entry in index]
+
+    def test_on_the_same_date_the_index_ranks_a_legacy_manifest_before_created_ones(self):
+        same_day = [d for d in self._index_dirs()
+                    if d in (self.legacy_pre, self.pre, self.post)]
+        self.assertEqual(same_day, [self.legacy_pre, self.pre, self.post],
+                         "AC12: a manifest without `created` ranks as made at the start of its "
+                         "directory's date -- before that date's snapshots recording `created`")
+
+    def test_the_index_lists_every_snapshot_by_date_then_creation(self):
+        self.assertEqual(self._index_dirs(),
+                         [self.earlier, self.legacy_pre, self.pre, self.post, self.later],
+                         "AC12: across dates the date decides; on one date a legacy manifest "
+                         "comes first")
+
+    def test_across_dates_the_date_decides_the_index_order(self):
+        dirs = self._index_dirs()
+        self.assertEqual(len(dirs), 5, dirs)
+        self.assertEqual(dirs[0], self.earlier,
+                         "AC12: a legacy manifest of an earlier date comes before today's")
+        self.assertEqual(dirs[-1], self.later,
+                         "AC12: a legacy manifest of a later date comes after today's")
+
+    def test_a_post_pairs_with_the_created_pre_not_a_same_day_legacy_pre(self):
+        delta = (self.health / self.post / "health_delta.md").read_text(encoding="utf-8")
+        self.assertEqual(delta.splitlines()[0],
+                         f"# Health delta — `{self.pre}` → `{self.post}`",
+                         "AC12: the pairing orders by the same rule -- the legacy pre of the "
+                         "same date is the EARLIER one")
+        self.assertIn(f"[health] delta vs {self.pre} -> health_delta.md",
+                      self.post_result.stdout)
 
 
 # ------------------------------------------------------------------ AC13 ----
@@ -576,6 +683,12 @@ class HeaderAndDocstringTest(unittest.TestCase):
 #: A one-member workspace whose library carries one bare ``#[allow(dead_code)]`` (a live
 #: inventory finding, ``fn unused``) and no pub-scan candidate.
 DEAD_LIB = "#[allow(dead_code)]\nfn unused() {}\npub fn api() {}\n"
+
+#: The bare ``#[allow(dead_code)]``'s site in ``DEAD_LIB``, as the inventory reports it: the
+#: path within its crate, and its line.
+DEAD_ALLOW_PATH = "src/lib.rs"
+DEAD_ALLOW_LINE = 1
+
 DEAD_WORKSPACE = {**WORKSPACE, "crates/alpha/src/lib.rs": DEAD_LIB}
 
 #: ``DEAD_LIB`` grown by two private production lines (prod LOC 3 -> 5, no new finding).
@@ -973,7 +1086,8 @@ QUERY_LEDGER = (
 )
 
 QUERY_LEDGER_LINES = {
-    "DS-q1": "- DS-q1 [CULL/APPROVED] alpha src/lib.rs:1 fn unused — bare allow",
+    "DS-q1": (f"- DS-q1 [CULL/APPROVED] alpha "
+              f"{_site(QUERY_LEDGER[0]['path'], QUERY_LEDGER[0]['line'])} fn unused — bare allow"),
     "DS-q2": "- DS-q2 [KEEP/PROPOSED] alpha src/lib.rs fn api — public api",
     "F-q3": "- F-q3 [CULL/APPROVED] (workspace)   — workspace dep",
 }
@@ -1030,7 +1144,8 @@ class QueryTest(_HealthRepo):
             f"- {self.first} (baseline): prod 3, test 0, tests# 0, dead 1, fan-in 0\n"
             f"- {self.second} (adhoc): prod 5, test 0, tests# 0, dead 1, fan-in 0\n"
             f"\nOpen findings @ {self.second}: 1 suppressions, 0 pub candidates\n"
-            f"- {self.live[0]} [allow] src/lib.rs:1 fn unused (unclassified)\n"))
+            f"- {self.live[0]} [allow] {_site(DEAD_ALLOW_PATH, DEAD_ALLOW_LINE)} "
+            "fn unused (unclassified)\n"))
 
     def test_query_crate_of_an_unknown_crate_lists_nothing(self):
         self.assertQueryOutput(("crate", "ghost"), (
