@@ -48,6 +48,10 @@
   a dry run, a removal and a no-worktree run end with the orchestrator's ``cr-void`` step, a
   ``--superseded`` run with its ``cr-supersede`` step; ``--delete-branch`` with no worktree
   deletes the branch.
+- ``AbortPathTest`` — §S8 / AC10: ``abort``'s refusals (no ``--cr``, a dirty worktree without
+  ``--force``), ``--force``, ``--delete-branch`` with a worktree and the branch kept without it,
+  no worktree and its dry run, ``--release-lock`` real and dry, ``--dry-run`` with a worktree,
+  and ``--delete-branch`` with no worktree refused when more than one branch is the CR's.
 - ``NoSchedulerNoteBoardTest`` — AC7 / §S6: the script names neither ``WF_REQUEST_DIR`` nor
   ``reschedule-request``; ``status`` names no note from ``$WF_REQUEST_DIR`` or the project's
   ``.env``; ``orchestration-track.md`` names no ``reschedule-request``.
@@ -1485,6 +1489,291 @@ class AbortBoardStepTest(_WorktreeFlowPathCase):
         self._assert_ends_with_void(result)
         self.assertFalse(self._branch_exists(BRANCH), "the existing branch is deleted")
         self.assertEqual(self._head(DEVELOP), develop_before, "develop is untouched")
+
+
+#: A second branch of the fixture CR, and a branch of another CR sharing its id as a prefix.
+SLUG_BRANCH = f"{BRANCH}-slug"
+OTHER_CR_BRANCH = f"{BRANCH}0"
+
+
+class AbortPathTest(_WorktreeFlowPathCase):
+    """§S8 / AC10: ``abort``'s paths -- each refusal, ``--force`` on a dirty worktree,
+    ``--delete-branch`` with a worktree and the branch kept without it, no worktree and its dry
+    run, ``--release-lock`` real and dry, ``--dry-run`` with a worktree, and ``--delete-branch``
+    with no worktree refused when more than one branch is the CR's."""
+
+    VOID = f'abort: next, the orchestrator\'s board step: cr-void --cr {CR} --reason "{REASON}"'
+
+    def _abort(self, *extra):
+        return self._wf("abort", "--cr", CR, "--reason", REASON, *extra)
+
+    def _started(self) -> str:
+        """The CR's worktree with one own commit and a track label; returns the commit."""
+        self._add_worktree()
+        repo_git(self.repo, "config", f"wf.track.{CR}", TRACK)
+        return self._branch_commit("a.txt", "a\n", "feat(core): GREEN — own")
+
+    def _dirty(self):
+        write_files(self.wt, {"a.txt": "edited, uncommitted\n", "new.txt": "untracked\n"})
+
+    def _removals_and_deletes(self) -> list:
+        """The git calls a run made that remove a worktree or delete a branch."""
+        return [c["argv"] for c in self._git_calls()
+                if c["argv"][:2] == ["worktree", "remove"] or c["argv"][:2] == ["branch", "-D"]]
+
+    def _listed_worktrees(self) -> list:
+        out = repo_git(self.repo, "worktree", "list", "--porcelain")
+        return [os.path.realpath(line[len("worktree "):]) for line in out.splitlines()
+                if line.startswith("worktree ")]
+
+    def _assert_refused(self, result, stderr: str):
+        self.assertEqual(result.returncode, 1, self._output(result))
+        self.assertEqual(result.stderr, stderr, self._output(result))
+        self.assertEqual(result.stdout, "", "a refusal prints no board step")
+        self.assertEqual(self._removals_and_deletes(), [], "a refusal removes nothing")
+
+    # ------------------------------------------------------------------ refusals ----
+
+    def test_abort_without_cr_or_release_lock_is_refused_naming_both(self):
+        own = self._started()
+
+        result = self._wf("abort", "--reason", REASON, "--delete-branch")
+
+        self._assert_refused(result, "[worktree-flow] ERROR: abort needs --cr (or --release-lock).\n")
+        self.assertTrue(self.wt.is_dir())
+        self.assertEqual(self._head(BRANCH), own)
+        self.assertEqual(self._config(f"wf.track.{CR}"), TRACK)
+
+    def test_abort_of_a_dirty_worktree_without_force_is_refused_and_keeps_the_changes(self):
+        own = self._started()
+        self._dirty()
+
+        result = self._abort("--delete-branch")
+
+        self._assert_refused(result, (
+            f"[worktree-flow] ERROR: {self.wt} has uncommitted changes. RECOVER first — commit the "
+            f"work worth keeping onto the branch (it is KEPT as the recovery point unless "
+            f"--delete-branch) or stash it, then re-run. --force discards.\n"))
+        self.assertEqual((self.wt / "a.txt").read_text(encoding="utf-8"), "edited, uncommitted\n")
+        self.assertEqual((self.wt / "new.txt").read_text(encoding="utf-8"), "untracked\n")
+        self.assertEqual(self._head(BRANCH), own, "the branch is kept")
+        self.assertEqual(self._config(f"wf.track.{CR}"), TRACK, "the track label is kept")
+
+    def test_abort_dry_run_of_a_dirty_worktree_without_force_is_refused_too(self):
+        self._started()
+        self._dirty()
+
+        result = self._abort("--dry-run")
+
+        self.assertEqual(result.returncode, 1, self._output(result))
+        self.assertTrue(result.stderr.startswith(
+            f"[worktree-flow] ERROR: {self.wt} has uncommitted changes."), self._output(result))
+        self.assertEqual(result.stdout, "")
+        self.assertTrue(self.wt.is_dir())
+
+    # ------------------------------------------------------------------ --force ----
+
+    def test_abort_force_removes_a_dirty_worktree_and_keeps_the_branch(self):
+        own = self._started()
+        self._dirty()
+
+        result = self._abort("--force")
+
+        self.assertEqual(result.returncode, 0, self._output(result))
+        self.assertEqual(self._removals_and_deletes(),
+                         [["worktree", "remove", str(self.wt), "--force"]])
+        self.assertFalse(self.wt.exists(), "the dirty worktree is removed")
+        self.assertNotIn(os.path.realpath(self.wt), self._listed_worktrees())
+        self.assertEqual(self._head(BRANCH), own, "the branch is kept without --delete-branch")
+        self.assertEqual(result.stdout.splitlines(), [
+            f"abort: removed worktree {self.wt}",
+            "  → exit the worktree: modelb_worktree_exit",
+            f"abort: branch {BRANCH} kept (delete with: git -C {self.repo} branch -D {BRANCH})",
+            self.VOID,
+        ])
+        self.assertIsNone(self._config(f"wf.track.{CR}"), "the track label is unset")
+
+    # ------------------------------------------------------------------ --delete-branch ----
+
+    def test_abort_delete_branch_with_a_worktree_removes_it_and_deletes_the_branch(self):
+        self._started()
+        develop_before = self._head(DEVELOP)
+
+        result = self._abort("--delete-branch")
+
+        self.assertEqual(result.returncode, 0, self._output(result))
+        self.assertEqual(self._removals_and_deletes(),
+                         [["worktree", "remove", str(self.wt)], ["branch", "-D", BRANCH]])
+        self.assertFalse(self.wt.exists())
+        self.assertFalse(self._branch_exists(BRANCH), "the unmerged branch is deleted")
+        self.assertEqual(self._head(DEVELOP), develop_before, "develop is untouched")
+        self.assertEqual(result.stdout.splitlines(), [
+            f"abort: removed worktree {self.wt}",
+            "  → exit the worktree: modelb_worktree_exit",
+            f"abort: deleted branch {BRANCH}",
+            self.VOID,
+        ])
+        self.assertNotIn("kept", result.stdout)
+        self.assertIsNone(self._config(f"wf.track.{CR}"))
+
+    def test_abort_without_delete_branch_keeps_the_branch_and_names_its_delete_command(self):
+        own = self._started()
+
+        result = self._abort()
+
+        self.assertEqual(result.returncode, 0, self._output(result))
+        self.assertEqual(self._removals_and_deletes(), [["worktree", "remove", str(self.wt)]])
+        self.assertFalse(self.wt.exists())
+        self.assertEqual(self._head(BRANCH), own, "the branch is kept at its own commit")
+        self.assertIn(
+            f"abort: branch {BRANCH} kept (delete with: git -C {self.repo} branch -D {BRANCH})",
+            result.stdout.splitlines())
+        self.assertNotIn("deleted branch", result.stdout)
+
+    # ------------------------------------------------------------------ no worktree ----
+
+    def test_abort_with_no_worktree_reports_it_and_touches_no_branch(self):
+        repo_git(self.repo, "branch", BRANCH, DEVELOP)
+        repo_git(self.repo, "config", f"wf.track.{CR}", TRACK)
+
+        result = self._abort()
+
+        self.assertEqual(result.returncode, 0, self._output(result))
+        self.assertEqual(result.stdout.splitlines(), [
+            f"abort: no live worktree for {CR} (never started or already removed)",
+            self.VOID,
+        ])
+        self.assertEqual(result.stderr, "")
+        self.assertEqual(self._removals_and_deletes(), [])
+        self.assertTrue(self._branch_exists(BRANCH), "no --delete-branch, no branch deleted")
+        self.assertFalse(self.wt.exists())
+        self.assertIsNone(self._config(f"wf.track.{CR}"), "the track label is unset")
+
+    def test_abort_dry_run_with_no_worktree_prints_the_plan_and_changes_nothing(self):
+        repo_git(self.repo, "branch", BRANCH, DEVELOP)
+        repo_git(self.repo, "config", f"wf.track.{CR}", TRACK)
+
+        result = self._abort("--dry-run", "--delete-branch")
+
+        self.assertEqual(result.returncode, 0, self._output(result))
+        self.assertEqual(result.stdout.splitlines(), [
+            f"[dry-run] no worktree for {CR}",
+            f"[dry-run] git -C {self.repo} branch -D {BRANCH}",
+            self.VOID,
+        ])
+        self.assertEqual(self._removals_and_deletes(), [])
+        self.assertTrue(self._branch_exists(BRANCH), "a dry run deletes nothing")
+        self.assertEqual(self._config(f"wf.track.{CR}"), TRACK, "a dry run unsets nothing")
+
+    # ------------------------------------------------------------------ --release-lock ----
+
+    def test_abort_release_lock_removes_the_lock_and_prints_no_board_step(self):
+        own = self._started()
+        self._lock().write_text(OTHER_LOCK + "\n", encoding="utf-8")
+
+        result = self._wf("abort", "--release-lock", "--cr", CR, "--reason", REASON)
+
+        self.assertEqual(result.returncode, 0, self._output(result))
+        self.assertEqual(result.stdout, f"abort: released merge lock [{OTHER_LOCK}]\n")
+        self.assertEqual(result.stderr, "")
+        self.assertFalse(self._lock().exists(), "the lock file is removed")
+        self.assertEqual(self._removals_and_deletes(), [], "--release-lock aborts no CR")
+        self.assertTrue(self.wt.is_dir())
+        self.assertEqual(self._head(BRANCH), own)
+        self.assertEqual(self._config(f"wf.track.{CR}"), TRACK)
+
+    def test_abort_release_lock_needs_no_cr_or_reason(self):
+        self._lock().write_text(OTHER_LOCK + "\n", encoding="utf-8")
+
+        result = self._wf("abort", "--release-lock")
+
+        self.assertEqual(result.returncode, 0, self._output(result))
+        self.assertEqual(result.stdout, f"abort: released merge lock [{OTHER_LOCK}]\n")
+        self.assertFalse(self._lock().exists())
+
+    def test_abort_release_lock_dry_run_names_the_holder_and_leaves_the_lock(self):
+        self._lock().write_text(OTHER_LOCK + "\n", encoding="utf-8")
+
+        result = self._wf("abort", "--release-lock", "--dry-run")
+
+        self.assertEqual(result.returncode, 0, self._output(result))
+        self.assertEqual(result.stdout, f"[dry-run] would release merge lock [{OTHER_LOCK}]\n")
+        self.assertEqual(result.stderr, "")
+        self.assertEqual(self._lock().read_text(encoding="utf-8"), OTHER_LOCK + "\n",
+                         "a dry run leaves the lock as it was")
+
+    # ------------------------------------------------------------------ --dry-run ----
+
+    def test_abort_dry_run_with_a_worktree_prints_the_commands_and_removes_nothing(self):
+        own = self._started()
+
+        result = self._abort("--dry-run", "--delete-branch")
+
+        self.assertEqual(result.returncode, 0, self._output(result))
+        self.assertEqual(result.stdout.splitlines(), [
+            f"[dry-run] git -C {self.repo} worktree remove {self.wt}",
+            f"[dry-run] git -C {self.repo} branch -D {BRANCH}",
+            self.VOID,
+        ])
+        self.assertEqual(self._removals_and_deletes(), [])
+        self.assertNotIn(["worktree", "prune"], [c["argv"] for c in self._git_calls()])
+        self.assertTrue(self.wt.is_dir(), "a dry run removes no worktree")
+        self.assertIn(os.path.realpath(self.wt), self._listed_worktrees())
+        self.assertEqual(self._head(BRANCH), own, "a dry run deletes no branch")
+        self.assertEqual(self._config(f"wf.track.{CR}"), TRACK, "a dry run unsets nothing")
+
+    def test_abort_dry_run_with_force_prints_the_forced_removal(self):
+        self._started()
+        self._dirty()
+
+        result = self._abort("--dry-run", "--force")
+
+        self.assertEqual(result.returncode, 0, self._output(result))
+        self.assertEqual(result.stdout.splitlines(), [
+            f"[dry-run] git -C {self.repo} worktree remove {self.wt} --force",
+            self.VOID,
+        ])
+        self.assertEqual((self.wt / "new.txt").read_text(encoding="utf-8"), "untracked\n")
+
+    # ------------------------------------------------------------------ several branches ----
+
+    def test_abort_delete_branch_with_no_worktree_and_two_cr_branches_is_refused_naming_them(self):
+        repo_git(self.repo, "branch", BRANCH, DEVELOP)
+        repo_git(self.repo, "branch", SLUG_BRANCH, DEVELOP)
+
+        result = self._abort("--delete-branch")
+
+        self._assert_refused(result, (
+            f"[worktree-flow] ERROR: more than one branch for {CR} ({BRANCH}, {SLUG_BRANCH}) — "
+            f"delete the one you mean with git branch -D.\n"))
+        self.assertTrue(self._branch_exists(BRANCH))
+        self.assertTrue(self._branch_exists(SLUG_BRANCH))
+
+    def test_abort_dry_run_delete_branch_with_two_cr_branches_is_refused_too(self):
+        repo_git(self.repo, "branch", BRANCH, DEVELOP)
+        repo_git(self.repo, "branch", SLUG_BRANCH, DEVELOP)
+
+        result = self._abort("--delete-branch", "--dry-run")
+
+        self._assert_refused(result, (
+            f"[worktree-flow] ERROR: more than one branch for {CR} ({BRANCH}, {SLUG_BRANCH}) — "
+            f"delete the one you mean with git branch -D.\n"))
+
+    def test_abort_delete_branch_with_no_worktree_counts_only_the_crs_own_branches(self):
+        repo_git(self.repo, "branch", SLUG_BRANCH, DEVELOP)
+        repo_git(self.repo, "branch", OTHER_CR_BRANCH, DEVELOP)
+
+        result = self._abort("--delete-branch")
+
+        self.assertEqual(result.returncode, 0, self._output(result))
+        self.assertEqual(self._removals_and_deletes(), [["branch", "-D", SLUG_BRANCH]])
+        self.assertFalse(self._branch_exists(SLUG_BRANCH), "the CR's slugged branch is deleted")
+        self.assertTrue(self._branch_exists(OTHER_CR_BRANCH), "another CR's branch is kept")
+        self.assertEqual(result.stdout.splitlines(), [
+            f"abort: no live worktree for {CR} (never started or already removed)",
+            f"abort: deleted branch {SLUG_BRANCH}",
+            self.VOID,
+        ])
 
 
 # ---------------------------------------------------------------------------------------------
