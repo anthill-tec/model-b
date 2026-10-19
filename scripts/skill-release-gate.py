@@ -285,6 +285,12 @@ class Gate:
         console = self.phase_engine(cfg)
         self.phase_checks(cfg, console)
         self.say(f"RESULT: {self.passed} passed, {self.failed} failed")
+        if not self.passed and not self.failed:
+            # No skill found, no engine built and no check run: a gate that checked nothing
+            # never passes the release (CR-MDB-081 §S7).
+            print(f"{R}Release gate FAILED — nothing was checked (no skill, no engine build, "
+                  f"no lifecycle check); do not finish the release.{X}")
+            return 1
         if self.failed:
             print(f"{R}Release gate FAILED — do not finish the release.{X}")
             return 1
