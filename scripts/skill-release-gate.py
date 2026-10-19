@@ -25,7 +25,11 @@ Phases (each auto-skips when its config is absent):
 Config lives in the project's `pyproject.toml` under `[tool.skill-release]`
 (or a standalone `.skill-release.toml`). Substitutions available in `env`,
 check argv/cmd, and teardown: `$TMP` (a scratch dir) and `$THROWAWAY_DB`
-(a unique per-run name). Nothing touches a live store.
+(a unique per-run name). Nothing touches a live store. A configuration carrying
+`[teardown] drop_mongo_db` is refused at load: `[teardown] cmd` is the teardown step.
+
+Phase 1, with no `[skills] paths`, discovers `<name>/SKILL.md` under `skills/`,
+`.agents/skills/` and `.pi/skills/`.
 
   ~/.agents/scripts/skill-release-gate.py [--project-dir .]
 
@@ -46,6 +50,15 @@ import venv
 import zipfile
 
 G, R, B, X = "\033[32m", "\033[31m", "\033[1m", "\033[0m"
+
+#: The skill roots phase 1 discovers `<name>/SKILL.md` under when no paths are configured.
+SKILL_ROOTS = ("skills", ".agents/skills", ".pi/skills")
+
+#: A teardown key no longer honoured; a configuration carrying it is refused (CR-MDB-081 §S7).
+RETIRED_TEARDOWN_KEY = "drop_mongo_db"
+
+class ConfigError(Exception):
+    """A configuration the gate refuses while it loads, before any phase runs."""
 
 
 class Gate:
@@ -93,7 +106,19 @@ class Gate:
         nested = doc.get("tool", {}).get("skill-release")
         return nested if nested is not None else doc
 
+    @staticmethod
+    def _refuse_retired(cfg):
+        """Refuse a configuration whose teardown still carries the retired key (§S7)."""
+        if cfg and RETIRED_TEARDOWN_KEY in (cfg.get("teardown") or {}):
+            raise ConfigError(
+                f"[teardown] {RETIRED_TEARDOWN_KEY} is no longer supported — "
+                "use [teardown] cmd to tear down the throwaway store")
+        return cfg
+
     def load_config(self, override=None):
+        return self._refuse_retired(self._find_config(override))
+
+    def _find_config(self, override=None):
         if override:
             return self._extract(override)
         pyproject = os.path.join(self.root, "pyproject.toml")
@@ -122,9 +147,9 @@ class Gate:
         skcfg = cfg.get("skills", {})
         paths = skcfg.get("paths")
         if not paths:
-            # auto-discover flat skills/<name>/SKILL.md and .claude/skills/<name>/
+            # auto-discover <root>/<name>/SKILL.md under each of SKILL_ROOTS
             paths = []
-            for base in ("skills", ".claude/skills"):
+            for base in SKILL_ROOTS:
                 d = os.path.join(self.root, base)
                 if os.path.isdir(d):
                     for entry in sorted(os.listdir(d)):
@@ -252,16 +277,6 @@ class Gate:
 
     def teardown(self, cfg, env):
         td = cfg.get("teardown", {})
-        dbname = td.get("drop_mongo_db")
-        if dbname:
-            dbname = self.subst(dbname)
-            uri = env.get("VIDUSHI_MONGO_URI", "mongodb://127.0.0.1:27017")
-            runpy = os.path.join(self.tmp, "runvenv", "bin", "python")
-            if os.path.isfile(runpy):
-                subprocess.run([runpy, "-c",
-                                "import sys;from pymongo import MongoClient;"
-                                "MongoClient(sys.argv[1],serverSelectionTimeoutMS=2000).drop_database(sys.argv[2])",
-                                uri, dbname], capture_output=True)
         if td.get("cmd"):
             subprocess.run(self.subst(td["cmd"]), shell=True, env=env, capture_output=True)
 
@@ -285,7 +300,11 @@ def main():
     tmp = tempfile.mkdtemp(prefix="skill-relgate.")
     gate = Gate(a.project_dir, tmp)
     try:
-        cfg = gate.load_config(a.config)
+        try:
+            cfg = gate.load_config(a.config)
+        except ConfigError as exc:
+            print(f"{R}{exc}{X}", file=sys.stderr)
+            return 2
         if cfg is None:
             print(f"{R}no [tool.skill-release] config found in {gate.root}{X}")
             return 2
