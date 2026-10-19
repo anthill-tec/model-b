@@ -343,6 +343,8 @@ def write_files(root, files) -> Path:
 # interpreter with the test process's environment, only ``PATH`` and git's configuration
 # variables changed (§S4.1), so coverage measures it; the external programs on its ``PATH`` are
 # the test's choice (§S4.2); git never reads the host's global or system configuration (§S4.3).
+# CR-MDB-081 §S9 adds the tools' own variables, each set or cleared by the test and never
+# inherited from the session, and a private ``TMPDIR`` set in the test process.
 
 #: The tool scripts' directory in this repository.
 TOOL_SCRIPTS_DIR = REPO_ROOT / "scripts"
@@ -353,6 +355,10 @@ GIT_ISOLATION_ENV = {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"
 
 #: The host programs a tool run's ``PATH`` links, and the only ones (CR-MDB-078 §S4.2).
 TOOL_PATH_PROGRAMS = ("git", "tar")
+
+#: The tool scripts' own environment variables (CR-MDB-081 §S9): a tool run never inherits one
+#: from the session; a test that needs one passes it to :func:`run_tool` as ``env``.
+TOOL_OWN_ENV = ("WORKTREE_FLOW_PROJECT_DIR", "WF_TRACK", "WF_REQUEST_DIR", "SKILLGATE_SOON")
 
 #: The identity a fixture repository commits as, written to its own config (CR-MDB-078 §S4.3).
 FIXTURE_GIT_IDENTITY = {"user.name": "Fixture", "user.email": "fixture@example.invalid"}
@@ -368,10 +374,13 @@ def tool_bin_dir(bin_dir, stand_ins=None) -> Path:
     """Build ``bin_dir`` as a tool run's whole ``PATH`` and return it: a link to the host's
     ``git`` and ``tar`` alone, plus each ``{name: body}`` of ``stand_ins`` written with
     :func:`write_executable` -- so ``cargo``, ``cargo-machete`` and ``dot`` are present only as a
-    test's stand-in, never the host's (CR-MDB-078 §S4.2)."""
+    test's stand-in, never the host's (CR-MDB-078 §S4.2). A stand-in named ``git`` or ``tar``
+    takes that program's place: no host link is made for it (CR-MDB-081 §S8, a logging ``git``)."""
     bin_dir = Path(bin_dir)
     bin_dir.mkdir(parents=True, exist_ok=True)
     for program in TOOL_PATH_PROGRAMS:
+        if program in (stand_ins or {}):
+            continue
         host = shutil.which(program)
         if host is None:
             raise RuntimeError(f"fixture: {program} is not on the host PATH")
@@ -381,23 +390,45 @@ def tool_bin_dir(bin_dir, stand_ins=None) -> Path:
     return bin_dir
 
 
-def tool_env(bin_dir) -> dict:
-    """The test process's environment with ``PATH`` set to ``bin_dir`` alone and git's
-    configuration isolated -- nothing else changed (CR-MDB-078 §S4.1)."""
-    env = dict(os.environ)
-    env["PATH"] = str(bin_dir)
-    env.update(GIT_ISOLATION_ENV)
-    return env
+def tool_env(bin_dir, env=None) -> dict:
+    """The test process's environment with ``PATH`` set to ``bin_dir`` alone, git's
+    configuration isolated (CR-MDB-078 §S4.1) and every :data:`TOOL_OWN_ENV` variable cleared --
+    then each ``{name: value}`` of ``env`` set, the only way a tool's own variable reaches a run
+    (CR-MDB-081 §S9). Nothing else changed: ``TMPDIR`` is the test process's own, made private
+    with :func:`use_private_tmpdir`."""
+    run_env = dict(os.environ)
+    for name in TOOL_OWN_ENV:
+        run_env.pop(name, None)
+    run_env["PATH"] = str(bin_dir)
+    run_env.update(GIT_ISOLATION_ENV)
+    run_env.update(env or {})
+    return run_env
 
 
-def run_tool(script: str, *args, bin_dir, cwd, timeout: int = 60) -> subprocess.CompletedProcess:
+def run_tool(script: str, *args, bin_dir, cwd, timeout: int = 60,
+             env=None) -> subprocess.CompletedProcess:
     """Run ``scripts/<script>`` with ``args`` on the test's own interpreter, in ``cwd`` (a temp
-    directory, never the repository -- CR-MDB-078 §S4.4), under :func:`tool_env` of ``bin_dir``."""
+    directory, never the repository -- CR-MDB-078 §S4.4), under :func:`tool_env` of ``bin_dir``
+    and ``env``."""
     return subprocess.run(
         [sys.executable, str(TOOL_SCRIPTS_DIR / script), *map(str, args)],
-        capture_output=True, text=True, timeout=timeout, cwd=str(cwd), env=tool_env(bin_dir),
-        stdin=subprocess.DEVNULL,
+        capture_output=True, text=True, timeout=timeout, cwd=str(cwd),
+        env=tool_env(bin_dir, env), stdin=subprocess.DEVNULL,
     )
+
+
+def use_private_tmpdir(test, work) -> Path:
+    """Point ``TMPDIR`` at a fresh ``tmp`` directory inside the work area ``work`` for the rest
+    of ``test`` (a ``unittest.TestCase``) and return it, so a tool's scratch files are made where
+    no concurrent run on the host can disturb them, and go with the work area. It is set in the
+    TEST PROCESS's environment, which each tool run inherits (CR-MDB-081 §S9; CR-MDB-078 §S4.1)."""
+    from unittest import mock
+    tmpdir = Path(work) / "tmp"
+    tmpdir.mkdir()
+    patcher = mock.patch.dict(os.environ, {"TMPDIR": str(tmpdir)})
+    patcher.start()
+    test.addCleanup(patcher.stop)
+    return tmpdir
 
 
 def repo_git(repo, *args) -> str:

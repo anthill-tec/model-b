@@ -25,7 +25,11 @@ Phases (each auto-skips when its config is absent):
 Config lives in the project's `pyproject.toml` under `[tool.skill-release]`
 (or a standalone `.skill-release.toml`). Substitutions available in `env`,
 check argv/cmd, and teardown: `$TMP` (a scratch dir) and `$THROWAWAY_DB`
-(a unique per-run name). Nothing touches a live store.
+(a unique per-run name). Nothing touches a live store. A configuration carrying
+`[teardown] drop_mongo_db` is refused at load: `[teardown] cmd` is the teardown step.
+
+Phase 1, with no `[skills] paths`, discovers `<name>/SKILL.md` under `skills/`,
+`.agents/skills/` and `.pi/skills/`.
 
   ~/.agents/scripts/skill-release-gate.py [--project-dir .]
 
@@ -44,8 +48,24 @@ import tempfile
 import tomllib
 import venv
 import zipfile
+from pathlib import PurePosixPath
 
 G, R, B, X = "\033[32m", "\033[31m", "\033[1m", "\033[0m"
+
+#: The skill roots phase 1 discovers `<name>/SKILL.md` under when no paths are configured.
+SKILL_ROOTS = ("skills", ".agents/skills", ".pi/skills")
+
+#: A teardown key no longer honoured; a configuration carrying it is refused (CR-MDB-081 §S7).
+RETIRED_TEARDOWN_KEY = "drop_mongo_db"
+
+def _count_members(names, glob):
+    """How many wheel member names match the glob as a whole; ``*`` stays inside one
+    directory and ``?`` / ``[...]`` match one character (``PurePosixPath.full_match``)."""
+    return sum(1 for n in names if PurePosixPath(n).full_match(glob))
+
+
+class ConfigError(Exception):
+    """A configuration the gate refuses while it loads, before any phase runs."""
 
 
 class Gate:
@@ -93,7 +113,19 @@ class Gate:
         nested = doc.get("tool", {}).get("skill-release")
         return nested if nested is not None else doc
 
+    @staticmethod
+    def _refuse_retired(cfg):
+        """Refuse a configuration whose teardown still carries the retired key (§S7)."""
+        if cfg and RETIRED_TEARDOWN_KEY in (cfg.get("teardown") or {}):
+            raise ConfigError(
+                f"[teardown] {RETIRED_TEARDOWN_KEY} is no longer supported — "
+                "use [teardown] cmd to tear down the throwaway store")
+        return cfg
+
     def load_config(self, override=None):
+        return self._refuse_retired(self._find_config(override))
+
+    def _find_config(self, override=None):
         if override:
             return self._extract(override)
         pyproject = os.path.join(self.root, "pyproject.toml")
@@ -122,9 +154,9 @@ class Gate:
         skcfg = cfg.get("skills", {})
         paths = skcfg.get("paths")
         if not paths:
-            # auto-discover flat skills/<name>/SKILL.md and .claude/skills/<name>/
+            # auto-discover <root>/<name>/SKILL.md under each of SKILL_ROOTS
             paths = []
-            for base in ("skills", ".claude/skills"):
+            for base in SKILL_ROOTS:
                 d = os.path.join(self.root, base)
                 if os.path.isdir(d):
                     for entry in sorted(os.listdir(d)):
@@ -178,15 +210,14 @@ class Gate:
                 self.bad(f"forbidden entry point '{forbidden}' present")
             else:
                 self.ok(f"no forbidden entry point '{forbidden}'")
-        # wheel globs (+ optional exact counts)
+        # wheel globs (+ optional exact counts): full patterns -- `*`, `?`, `[...]` -- matched
+        # against each whole member name, `*` never crossing `/` (CR-MDB-081 §S7)
         counts = eng.get("wheel_glob_counts", {})
         for glob, want in counts.items():
-            rx = "^" + re.escape(glob).replace(r"\*", "[^/]*") + "$"
-            got = sum(1 for n in names if re.match(rx, n))
+            got = _count_members(names, glob)
             (self.ok if got == want else self.bad)(f"wheel bundles {want}x '{glob}' (found {got})")
         for glob in eng.get("wheel_globs", []):
-            rx = "^" + re.escape(glob).replace(r"\*", "[^/]*") + "$"
-            got = sum(1 for n in names if re.match(rx, n))
+            got = _count_members(names, glob)
             (self.ok if got else self.bad)(f"wheel bundles '{glob}' (found {got})")
 
         # phase 3: clean install
@@ -194,7 +225,12 @@ class Gate:
         runpath, runpy = self.make_venv("runvenv")
         inst = subprocess.run([runpy, "-m", "pip", "install", "-q", whl], capture_output=True, text=True)
         console = os.path.join(runpath, "bin", eng.get("console", ""))
-        if eng.get("console") and os.path.isfile(console):
+        if not eng.get("console"):
+            # Name the key the [engine] table lacks, never `'None'` (CR-MDB-081 §S7).
+            self.bad("[engine] names no `console` key — no installed console to check",
+                     inst.stdout + inst.stderr)
+            return None
+        if os.path.isfile(console):
             self.ok(f"console '{eng['console']}' installed")
         else:
             self.bad(f"console '{eng.get('console')}' not installed", inst.stdout + inst.stderr)
@@ -252,16 +288,6 @@ class Gate:
 
     def teardown(self, cfg, env):
         td = cfg.get("teardown", {})
-        dbname = td.get("drop_mongo_db")
-        if dbname:
-            dbname = self.subst(dbname)
-            uri = env.get("VIDUSHI_MONGO_URI", "mongodb://127.0.0.1:27017")
-            runpy = os.path.join(self.tmp, "runvenv", "bin", "python")
-            if os.path.isfile(runpy):
-                subprocess.run([runpy, "-c",
-                                "import sys;from pymongo import MongoClient;"
-                                "MongoClient(sys.argv[1],serverSelectionTimeoutMS=2000).drop_database(sys.argv[2])",
-                                uri, dbname], capture_output=True)
         if td.get("cmd"):
             subprocess.run(self.subst(td["cmd"]), shell=True, env=env, capture_output=True)
 
@@ -270,6 +296,12 @@ class Gate:
         console = self.phase_engine(cfg)
         self.phase_checks(cfg, console)
         self.say(f"RESULT: {self.passed} passed, {self.failed} failed")
+        if not self.passed and not self.failed:
+            # No skill found, no engine built and no check run: a gate that checked nothing
+            # never passes the release (CR-MDB-081 §S7).
+            print(f"{R}Release gate FAILED — nothing was checked (no skill, no engine build, "
+                  f"no lifecycle check); do not finish the release.{X}")
+            return 1
         if self.failed:
             print(f"{R}Release gate FAILED — do not finish the release.{X}")
             return 1
@@ -285,7 +317,11 @@ def main():
     tmp = tempfile.mkdtemp(prefix="skill-relgate.")
     gate = Gate(a.project_dir, tmp)
     try:
-        cfg = gate.load_config(a.config)
+        try:
+            cfg = gate.load_config(a.config)
+        except ConfigError as exc:
+            print(f"{R}{exc}{X}", file=sys.stderr)
+            return 2
         if cfg is None:
             print(f"{R}no [tool.skill-release] config found in {gate.root}{X}")
             return 2

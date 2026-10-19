@@ -1,7 +1,6 @@
 # CR-MDB-081 — worktree-flow merges, never rebases; tests for it and the skill release gate
 
-**Status:** PENDING — spec drafted 2026-10-19 from the gap analysis, the spec pre-review folded in;
-awaiting approval.
+**Status:** COMPLETED (filed 2026-10-19, gap analysis and pre-review 2026-10-19).
 **Type:** feature + tests (the deployed `worktree-flow.py` and `skill-release-gate.py`, and the rules
 that name `sync`)
 **Priority:** P1 — release 1.0.0, wave 2; after CR-MDB-078.

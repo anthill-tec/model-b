@@ -19,7 +19,7 @@ Worker-orchestrator-only rules. Read COMMON + TRACK. (Coordinator rules → MAIN
 - The MOMENT `worktree-flow start` creates the worktree, **enter it with `modelb_worktree_enter`** and the path `start` prints. The `block-write-outside-worktree` hook then blocks your file-tool writes outside it (not writes a shell command makes), and every agent you dispatch naming the CR runs rooted in it under the same hook. Your session cwd stays the main tree (it is fixed at launch) — never rely on per-command `cd` or an empty-var `git -C ""`, which fall back to develop.
 - ASSERT once, before any other action: `git -C .worktrees/<cr> rev-parse --show-toplevel` ends in `/.worktrees/<cr>` AND `git -C .worktrees/<cr> branch --show-current` == `feature/<cr>-…`.
 - **Design-phase steps — the gap analysis and the spec pre-review — happen before the worktree exists**, against the spec Mainline holds on develop; the pre-review runs in the main tree, read-only. Everything from `worktree-flow start` on happens in the worktree — investigation / §S1 / RED / GREEN / VERIFY / builds. There is NO "investigate-first on develop" phase for implementation work: investigate-first = investigate-first INSIDE the worktree (its checkout == develop's content, so nothing is lost). Read its files by explicit path (`.worktrees/` is gitignored, so a gitignore-aware listing omits it).
-- `worktree-flow` (status / sync) resolves the main tree from git. Resync = merge develop INTO your branch, in the worktree (`git -C .worktrees/<cr>`).
+- `worktree-flow` (status / sync) resolves the main tree from git. Resync your CR's branch with `worktree-flow.py sync --cr <cr>` before `finish` — it merges develop in, never a rebase.
 - **`finish` and `abort`.** Both remove the worktree and run from the main tree, where your session already is. `finish` runs only AFTER the user's merge sign-off (relayed by Mainline). After `finish` or `abort`, exit with `modelb_worktree_exit`.
 - develop is the integration tree — MAINLINE-only otherwise. Any develop-level need → relay to Mainline; never edit develop yourself.
 
@@ -37,7 +37,7 @@ Worker-orchestrator-only rules. Read COMMON + TRACK. (Coordinator rules → MAIN
 - **Absorb transient infra errors** (API overload, sub-agent spawn blips, flaky network): retry with backoff; escalate only a persistent block or one that affects scheduling.
 - A user-approved block authorizes the full RED→GREEN→VERIFY cycle — do NOT stop after gap-analysis to ask permission to start RED.
 - Signal completion with `sandesh reply --project <Project> --from "<your address>" --to-msg <START message id>` threaded under the START (assignment) message, never a later GO/approval message.
-- Cull/re-scope spanning multiple CRs by SUT: re-home ONLY your CR's SUT subset, LEAVE the file-disjoint subset, and RAISE a reschedule-request for the owning CR (touching a sibling's file is a parallel-execution hazard).
+- Cull/re-scope spanning multiple CRs by SUT: re-home ONLY your CR's SUT subset, LEAVE the file-disjoint subset, and RAISE a Sandesh request to Mainline to reschedule the owning CR (touching a sibling's file is a parallel-execution hazard).
 
 ## Run captive sub-agents in the BACKGROUND
 - Dispatch RED/GREEN/VERIFY/FIX in the background — if your harness can run it in the background, do so and wait for its completion notice — so the session stays responsive to Mainline's mail during agent runs.

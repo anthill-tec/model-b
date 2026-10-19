@@ -13,9 +13,10 @@ parallel sessions sharing it collide. The fix is per-CR git worktrees for isolat
 closed with a direct `git merge --no-ff` into develop (the same result `git flow feature
 finish` produces, but with NO dependency on the git-flow binary). The close has a fixed,
 error-prone "dance" (the branch can only be deleted AFTER its worktree is removed; merges
-to develop must be serialized; a feature branch must be rebased onto develop if develop
-moved while the CR was in flight). This script encodes that dance once so VD only calls
-stable command signatures with the CR id.
+to develop must be serialized; develop must be merged into a feature branch if develop
+moved while the CR was in flight — a merge, never a rebase, so every commit keeps its
+sha). This script encodes that dance once so VD only calls stable command signatures
+with the CR id.
 
 Design invariants (see rust-orchestration.md (Tooling — worktree-flow)):
   * Source of truth is GIT, not a sidecar state file. State is derived live from
@@ -39,18 +40,20 @@ Subcommands:
            `--track <label>` (or $WF_TRACK env, set once per session) stamps a human
            track/session name onto the worktree for `status` identification.
   status   Parse all worktrees; show each branch's ahead/behind vs develop, whether
-           a rebase is needed before it can cleanly finish, the latest COMMITTED
+           it needs a `sync` (develop merged in) before it can cleanly finish, the latest COMMITTED
            Crucible phase (RED/GREEN/RED-fix/close-out, inferred from the commit-message
            convention — git-derived, no sidecar), and the track/session label if one was
            stamped at `start`. This is the parallel-execution dashboard.
-  sync     Rebase a CR's feature branch onto the current develop (run when another
+  sync     Merge the current develop into a CR's feature branch (run when another
            parallel CR has merged and moved develop). Aborts cleanly on conflict —
-           never leaves a half-rebased tree.
-  finish   The close dance: lock -> verify clean -> auto-rebase if develop moved ->
+           never leaves a half-merged tree.
+  finish   The close dance: lock -> verify clean -> merge develop in if develop moved ->
            git merge --no-ff into develop -> git worktree remove -> git branch -d
            -> (optional) push. Releases the lock on every exit path.
   abort    Abandon a CR worktree without merging: git worktree remove (+ optional
-           branch delete). For cancelled / superseded CRs.
+           branch delete). For cancelled / superseded CRs. Ends by printing the board
+           step the orchestrator takes next: `cr-void`, or `cr-supersede` with
+           --superseded.
 
 Scheduling is NOT here (CR-MDB-028). This tool owns what it can DERIVE FROM GIT
 (worktrees, ahead/behind, phase, merge); Crucible owns what used to live in the
@@ -103,12 +106,6 @@ import sys
 import time
 
 WORKTREE_SUBDIR = ".worktrees"
-
-# Model-B scheduler-note board: if $WF_REQUEST_DIR points at the project's
-# memory dir, `status` also lists pending `reschedule-request-*.md`
-# (track → Mainline) and `directive-*.md` (Mainline → track), so a status pull
-# doubles as a poll for scheduler notes and neither side misses a pending one.
-REQUEST_DIR_ENV = "WF_REQUEST_DIR"
 
 # Model B's own TOON codec (`toon.py`) sits BESIDE this script; the insert below
 # makes it importable wherever the bundle is relocated. There is no local
@@ -262,7 +259,7 @@ def _ahead_behind(repo, base, branch):
     """(ahead, behind) of <branch> relative to <base>.
 
     ahead  = commits on branch not on base (the CR's work)
-    behind = commits on base not on branch (how far develop moved → rebase needed)
+    behind = commits on base not on branch (how far develop moved → sync needed)
     """
     out = _git_out(["rev-list", "--left-right", "--count", f"{base}...{branch}"], repo)
     if not out:
@@ -291,7 +288,8 @@ def _phase_from_log(repo, base, branch):
     Phase is the latest COMMITTED RED/GREEN/RED-fix/close-out. VERIFY is read-only and
     usually leaves no commit, so a GREEN tip often means 'GREEN done, VERIFY next'.
     """
-    out = _git_out(["log", f"{base}..{branch}", "--format=%s"], repo)
+    # Own commits only: a `sync` merge commit is not the CR's work (CR-MDB-081 §S3).
+    out = _git_out(["log", "--no-merges", f"{base}..{branch}", "--format=%s"], repo)
     subjects = [s for s in out.splitlines() if s.strip()]
     if not subjects:
         return ("started — RED pending", 0, "")
@@ -477,74 +475,6 @@ def _pid_alive(pid):
     return True
 
 
-def _dotenv(repo, key):
-    """Read a key from <repo>/.env (exported env wins). For WF_REQUEST_DIR etc."""
-    if os.environ.get(key):
-        return os.environ[key]
-    env_path = os.path.join(repo, ".env")
-    if not os.path.isfile(env_path):
-        return None
-    try:
-        with open(env_path, encoding="utf-8") as fh:
-            for line in fh:
-                line = line.strip()
-                if line.startswith(key + "=") or line.startswith(key + " "):
-                    return line.partition("=")[2].split("#", 1)[0].strip().strip('"').strip("'")
-    except OSError:
-        return None
-    return None
-
-
-def _note_description(path):
-    """First `description:` line from a note's YAML frontmatter (trimmed)."""
-    try:
-        with open(path, encoding="utf-8") as fh:
-            for i, line in enumerate(fh):
-                if i > 12:
-                    break
-                s = line.strip()
-                if s.startswith("description:"):
-                    d = s[len("description:"):].strip().strip('"').strip("'")
-                    return d if len(d) <= 150 else d[:149] + "…"
-    except OSError:
-        pass
-    return ""
-
-
-def _render_request_board(main_wt):
-    """List pending scheduler notes in WF_REQUEST_DIR — so a `status` pull doubles
-    as an inbox check, alongside the active request-poll.py watcher.
-
-    reschedule-request-*.md = track → Mainline (Mainline must consume + reschedule).
-    directive-*.md          = Mainline → track; still present ⇒ UNCONSUMED by the track.
-    """
-    req_dir = _dotenv(main_wt, REQUEST_DIR_ENV)
-    if not req_dir or not os.path.isdir(req_dir):
-        return
-    reqs, dirs = [], []
-    for name in sorted(os.listdir(req_dir)):
-        if not name.endswith(".md"):
-            continue
-        if name.startswith("reschedule-request-"):
-            reqs.append(name)
-        elif name.startswith("directive-"):
-            dirs.append(name)
-    if not reqs and not dirs:
-        return
-    print(file=sys.stderr)
-    print("scheduler inbox ($WF_REQUEST_DIR):", file=sys.stderr)
-    for name in reqs:
-        print(f"  ⇧ REQUEST   {name}  → Mainline: consume + reschedule", file=sys.stderr)
-        d = _note_description(os.path.join(req_dir, name))
-        if d:
-            print(f"              {d}", file=sys.stderr)
-    for name in dirs:
-        print(f"  ⇩ DIRECTIVE {name}  → UNCONSUMED by target track", file=sys.stderr)
-        d = _note_description(os.path.join(req_dir, name))
-        if d:
-            print(f"              {d}", file=sys.stderr)
-
-
 def cmd_status(args):
     project_dir = _resolve_project_dir(args.project_dir)
     main_wt = _main_worktree(project_dir)
@@ -572,8 +502,11 @@ def cmd_status(args):
         clean = _is_clean(wt["path"])
         if is_main:
             state = "clean" if clean else "DIRTY (has WIP)"
+        elif wt["detached"] or not wt["branch"]:
+            # `finish` refuses a detached worktree, so it is never called finish-ready.
+            state = "DETACHED (no branch to finish)" + ("" if clean else " + DIRTY")
         elif behind:
-            state = f"REBASE NEEDED (develop moved {behind})" + ("" if clean else " + DIRTY")
+            state = f"SYNC NEEDED (develop moved {behind})" + ("" if clean else " + DIRTY")
         else:
             state = ("clean — finish-ready" if clean else "DIRTY (commit first)")
         a = "" if ahead is None else str(ahead)
@@ -602,7 +535,6 @@ def cmd_status(args):
             "path": wt["path"], "phase": phase,
             "commits_ahead": commits_ahead, "last_subject": subject,
         })
-    _render_request_board(main_wt)
     # `lanes` stays in the envelope — CR-MDB-010's `status` contract is unchanged
     # — but it is now always empty: the lane plan lives in Crucible's queue, and
     # nothing here produces a local scheduling answer (CR-MDB-028 §S1).
@@ -615,7 +547,7 @@ def cmd_status(args):
 
 
 # --------------------------------------------------------------------------- #
-# sync (rebase feature branch onto develop)
+# sync (merge develop into the feature branch)
 # --------------------------------------------------------------------------- #
 
 def _resolve_cr_worktree(main_wt, cr):
@@ -640,31 +572,48 @@ def cmd_sync(args):
     ahead, behind = _ahead_behind(main_wt, develop, branch)
     if not behind:
         print(f"sync: ok branch={branch} already up to date with {develop} "
-              f"(ahead={ahead}, behind=0) — no rebase needed")
+              f"(ahead={ahead}, behind=0) — nothing to merge")
         return 0
 
     if not _is_clean(wt_dir):
         sys.exit(f"[worktree-flow] ERROR: {wt_dir} has uncommitted changes. "
-                 f"Commit or stash before rebasing.")
+                 f"Commit or stash before syncing.")
 
     if args.dry_run:
-        print(f"[dry-run] git -C {wt_dir} rebase {develop}   "
+        print(f"[dry-run] git -C {wt_dir} merge --no-edit {develop}   "
               f"(branch is {behind} behind {develop})")
         return 0
 
-    print(f"sync: rebasing {branch} onto {develop} ({behind} commit(s) behind)…")
-    r = _git(["rebase", develop], wt_dir)
-    if r.returncode != 0:
-        # Never leave a half-rebased tree — abort and report.
-        _git(["rebase", "--abort"], wt_dir)
-        sys.stderr.write(r.stdout + r.stderr)
-        print(f"[worktree-flow] ERROR: rebase hit conflicts — ABORTED cleanly. "
-              f"{branch} is unchanged. Resolve manually in {wt_dir}:\n"
-              f"  git -C {wt_dir} rebase {develop}   # then fix conflicts")
+    print(f"sync: merging {develop} into {branch} ({behind} commit(s) behind)…")
+    conflicts = _merge_develop_in(wt_dir, develop)
+    if conflicts is not None:
+        print(f"[worktree-flow] ERROR: merging {develop} into {branch} conflicted — ABORTED. "
+              f"{branch} is unchanged. Conflicting paths: {', '.join(conflicts) or '(none listed)'}. "
+              f"Resolve manually in {wt_dir}:\n"
+              f"  git -C {wt_dir} merge {develop}   # then fix conflicts", file=sys.stderr)
         return 1
     new_head = _git_out(["rev-parse", "--short", "HEAD"], wt_dir)
-    print(f"sync: ok {branch} rebased onto {develop} (new head {new_head})")
+    print(f"sync: ok {develop} merged into {branch} (new head {new_head})")
     return 0
+
+
+def _merge_develop_in(wt_dir, develop):
+    """Merge develop into the CR branch checked out at ``wt_dir`` (CR-MDB-081 §S1/§S2).
+
+    `git merge --no-edit <develop>` — a fast-forward where the branch has no commits of its
+    own, a merge commit otherwise; every existing commit keeps its sha. Returns None on
+    success; on failure aborts the merge (`git merge --abort`), so the branch and worktree are
+    left as they were, writes git's output to stderr, and returns the conflicting paths.
+    """
+    r = _git(["merge", "--no-edit", develop], wt_dir)
+    if r.returncode == 0:
+        return None
+    conflicts = _git_out(["diff", "--name-only", "--diff-filter=U"], wt_dir).splitlines()
+    _git(["merge", "--abort"], wt_dir)
+    sys.stderr.write(r.stdout + r.stderr)
+    for path in conflicts:
+        print(f"[worktree-flow] conflict: {path}", file=sys.stderr)
+    return conflicts
 
 
 # --------------------------------------------------------------------------- #
@@ -710,30 +659,30 @@ def cmd_finish(args):
                      f"`abort --release-lock` only if you are sure no finish is running.)")
 
     try:
-        # --- Rebase if develop moved (rebase at the right time) ---------------
+        # --- Catch up if develop moved: merge develop in (CR-MDB-081 §S2) -----
+        catch_up = []
         if behind:
             if args.no_auto_sync:
                 sys.exit(f"[worktree-flow] ERROR: {branch} is {behind} behind {develop} and "
                          f"--no-auto-sync was set. Run `sync --cr {args.cr}` first.")
-            print(f"finish: {branch} is {behind} behind {develop} → rebasing first…",
+            print(f"finish: {branch} is {behind} behind {develop} → merging {develop} in first…",
                   file=sys.stderr)
-            if args.dry_run:
-                print(f"[dry-run] git -C {wt_dir} rebase {develop}", file=sys.stderr)
-            else:
-                rb = _git(["rebase", develop], wt_dir)
-                if rb.returncode != 0:
-                    _git(["rebase", "--abort"], wt_dir)
-                    sys.stderr.write(rb.stdout + rb.stderr)
-                    sys.exit(f"[worktree-flow] ERROR: pre-finish rebase conflicted — ABORTED. "
-                             f"{branch} unchanged, NOT merged. Resolve in {wt_dir} then retry.")
+            catch_up.append(f"git -C {wt_dir} merge --no-edit {develop}")
+            if not args.dry_run:
+                conflicts = _merge_develop_in(wt_dir, develop)
+                if conflicts is not None:
+                    sys.exit(f"[worktree-flow] ERROR: pre-finish merge of {develop} conflicted "
+                             f"({', '.join(conflicts) or 'no paths listed'}) — ABORTED. "
+                             f"{branch} unchanged, NOT merged. Run `sync --cr {args.cr}`, "
+                             f"resolve in {wt_dir}, then retry.")
 
         # --- The dance: merge --no-ff, THEN remove worktree, THEN delete branch -
         # Direct git — no git-flow binary. Same result git flow feature finish gives.
-        # Merge FIRST (worktree still intact) so a (near-impossible, post-rebase) merge
+        # Merge FIRST (worktree still intact) so a (near-impossible, post-sync) merge
         # failure leaves everything recoverable. The branch is deleted LAST, after its
         # worktree is gone (git refuses to delete a branch checked out in a worktree).
         merge_msg = f"Merge branch '{branch}' into {develop}"
-        steps = [
+        steps = catch_up + [
             f"git -C {main_wt} merge --no-ff {branch} -m {merge_msg!r}",
             f"git -C {main_wt} worktree remove {wt_dir}",
             f"git -C {main_wt} worktree prune",
@@ -759,7 +708,7 @@ def cmd_finish(args):
             _git(["merge", "--abort"], main_wt)  # leave develop clean; worktree untouched
             sys.exit(f"[worktree-flow] ERROR: `git merge --no-ff {branch}` failed (exit "
                      f"{mg.returncode}) — merge ABORTED, {develop} left clean, worktree and "
-                     f"branch untouched (nothing lost). This is unexpected after the rebase; "
+                     f"branch untouched (nothing lost). This is unexpected after the catch-up merge; "
                      f"inspect {wt_dir} and merge manually if needed.")
 
         r = _git(["worktree", "remove", wt_dir], main_wt)
@@ -824,7 +773,8 @@ def cmd_finish(args):
             help_lines.append(f"git -C {main_wt} branch -d {branch}")
 
         merged_head = _git_out(["rev-parse", "--short", develop], main_wt)
-        print(f"finish: ok merged {branch} → {develop} (now {merged_head}); branch deleted",
+        branch_note = "branch deleted" if del_r.returncode == 0 else "branch kept"
+        print(f"finish: ok merged {branch} → {develop} (now {merged_head}); {branch_note}",
               file=sys.stderr)
         print("  → exit the worktree: modelb_worktree_exit", file=sys.stderr)
         _unset_track(main_wt, args.cr)  # tidy the track label (best-effort; harmless if absent)
@@ -863,6 +813,11 @@ def cmd_abort(args):
 
     if args.release_lock:
         holder = _read_lock(main_wt)
+        if holder is None:
+            # Nothing to release: say so, never `[None]` (CR-MDB-081 §S5).
+            print(f"{'[dry-run] ' if args.dry_run else 'abort: '}no merge lock is held "
+                  "— nothing to release")
+            return 0
         if args.dry_run:
             print(f"[dry-run] would release merge lock [{holder}]")
             return 0
@@ -873,12 +828,12 @@ def cmd_abort(args):
     if not args.cr:
         sys.exit("[worktree-flow] ERROR: abort needs --cr (or --release-lock).")
     if not getattr(args, "reason", None):
-        sys.exit("[worktree-flow] ERROR: abort/supersede needs --reason — the cause is "
-                 "recorded on the CR in Crucible's queue (ABORTED/SUPERSEDED must say why).")
-    target = "SUPERSEDED" if getattr(args, "superseded", False) else "ABORTED"
+        sys.exit("[worktree-flow] ERROR: abort needs --reason (unless --release-lock) — the "
+                 "cause the orchestrator gives in its next board step, cr-void or cr-supersede.")
+    next_step = _abort_board_step(args.cr, args.reason, getattr(args, "superseded", False))
 
-    # Remove the worktree IF one exists; tolerate its absence so a queue-only
-    # (never-started) CR can still be aborted with this single command.
+    # Remove the worktree IF one exists; tolerate its absence so a never-started CR
+    # (or one whose worktree is already gone) can still be aborted with this one command.
     wt_dir = _worktree_dir(main_wt, args.cr)
     wt = _find_worktree(main_wt, wt_dir)
     if wt is not None and wt.get("branch") and not wt.get("detached"):
@@ -892,7 +847,7 @@ def cmd_abort(args):
             print(f"[dry-run] git -C {main_wt} {' '.join(rm)}")
             if args.delete_branch:
                 print(f"[dry-run] git -C {main_wt} branch -D {branch}")
-            print(f"[dry-run] record {args.cr} → {target} on the CR in Crucible's queue  ({args.reason})")
+            print(next_step)
             return 0
         r = _git(rm, main_wt)
         if r.returncode != 0:
@@ -902,21 +857,56 @@ def cmd_abort(args):
         print(f"abort: removed worktree {wt_dir}")
         print("  → exit the worktree: modelb_worktree_exit")
         if args.delete_branch:
-            d = _git(["branch", "-D", branch], main_wt)
-            if d.returncode != 0:
-                sys.stderr.write(d.stderr)
+            if not _delete_branch(main_wt, branch):
                 return 1
-            print(f"abort: deleted branch {branch}")
         else:
             print(f"abort: branch {branch} kept (delete with: git -C {main_wt} branch -D {branch})")
     else:
+        branches = _cr_branches(main_wt, args.cr) if args.delete_branch else []
+        if len(branches) > 1:
+            sys.exit(f"[worktree-flow] ERROR: more than one branch for {args.cr} "
+                     f"({', '.join(branches)}) — delete the one you mean with git branch -D.")
         if args.dry_run:
-            print(f"[dry-run] no worktree for {args.cr}; record → {target} on the CR in Crucible's queue  ({args.reason})")
+            print(f"[dry-run] no worktree for {args.cr}")
+            for branch in branches:
+                print(f"[dry-run] git -C {main_wt} branch -D {branch}")
+            print(next_step)
             return 0
-        print(f"abort: no live worktree for {args.cr} (queue-only or already removed)")
+        print(f"abort: no live worktree for {args.cr} (never started or already removed)")
+        for branch in branches:
+            if not _delete_branch(main_wt, branch):
+                return 1
 
     _unset_track(main_wt, args.cr)  # tidy the track label (best-effort; harmless if absent)
+    print(next_step)
     return 0
+
+
+def _abort_board_step(cr, reason, superseded):
+    """The board step the orchestrator takes after an abort (CR-MDB-081 §S5): `cr-void`
+    for a dropped CR, `cr-supersede` for a superseded one, with the reason as the cause."""
+    if superseded:
+        return (f"abort: next, the orchestrator's board step (cause: \"{reason}\"): "
+                f"cr-supersede --cr {cr} --by <successor>")
+    return f'abort: next, the orchestrator\'s board step: cr-void --cr {cr} --reason "{reason}"'
+
+
+def _cr_branches(main_wt, cr):
+    """The CR's existing feature branches: `<prefix><cr>` and `<prefix><cr>-<slug>`."""
+    prefix = _feature_prefix(main_wt)
+    out = _git_out(["for-each-ref", "--format=%(refname:short)",
+                    f"refs/heads/{prefix}{cr}", f"refs/heads/{prefix}{cr}-*"], main_wt)
+    return [b for b in out.splitlines() if b.strip()]
+
+
+def _delete_branch(main_wt, branch):
+    """`git branch -D <branch>`; True on success, git's error on stderr otherwise."""
+    d = _git(["branch", "-D", branch], main_wt)
+    if d.returncode != 0:
+        sys.stderr.write(d.stderr)
+        return False
+    print(f"abort: deleted branch {branch}")
+    return True
 
 
 # --------------------------------------------------------------------------- #
@@ -957,34 +947,39 @@ def main():
     _add_project_dir_arg(s)
     s.set_defaults(func=cmd_start)
 
-    st = sub.add_parser("status", help="Parallel-execution dashboard: worktrees, ahead/behind, rebase need, inferred phase.")
+    st = sub.add_parser("status", help="Parallel-execution dashboard: worktrees, ahead/behind, sync need, inferred phase.")
     _add_project_dir_arg(st)
     st.set_defaults(func=cmd_status)
 
-    sy = sub.add_parser("sync", help="Rebase a CR's feature branch onto develop (aborts cleanly on conflict).")
-    sy.add_argument("--cr", required=True, help="CR id whose worktree/branch to rebase")
+    sy = sub.add_parser("sync", help="Merge develop into a CR's feature branch (aborts cleanly on conflict).")
+    sy.add_argument("--cr", required=True, help="CR id whose worktree/branch to bring level with develop")
     _add_dry_run_arg(sy)
     _add_project_dir_arg(sy)
     sy.set_defaults(func=cmd_sync)
 
-    f = sub.add_parser("finish", help="Close dance: lock -> rebase-if-needed -> worktree remove -> git flow finish.")
+    f = sub.add_parser("finish", help="Close dance: lock -> merge develop in if needed -> merge --no-ff into develop -> worktree remove -> branch -d.")
     f.add_argument("--cr", required=True, help="CR id to finish")
     f.add_argument("--note", dest="close_note",
                    help="close-out delivery/shipped summary (accepted for compatibility; the "
                         "close-out record itself now lives on the CR in Crucible's queue)")
     f.add_argument("--push", action="store_true", help="Also `git push origin develop` after merge")
     f.add_argument("--no-auto-sync", action="store_true",
-                   help="Fail (instead of auto-rebasing) if develop moved; forces an explicit `sync`")
+                   help="Fail (instead of merging develop in) if develop moved; forces an explicit `sync`")
     _add_dry_run_arg(f)
     _add_project_dir_arg(f)
     f.set_defaults(func=cmd_finish)
 
     ab = sub.add_parser("abort", help="Abandon a CR (cancelled/superseded): remove its worktree if one exists (+ optionally its branch).")
     ab.add_argument("--cr", help="CR id to abort (worktree removed if present)")
-    ab.add_argument("--delete-branch", action="store_true", help="Also delete the feature branch (git branch -D)")
+    ab.add_argument("--delete-branch", action="store_true", help="Also delete the feature branch (git branch -D), with or without a worktree")
     ab.add_argument("--force", action="store_true", help="Discard uncommitted changes in the worktree")
-    ab.add_argument("--reason", help="REQUIRED cause (unless --release-lock): why it's aborted/superseded (e.g. 'replaced by CR-X') — record it on the CR in Crucible's queue")
-    ab.add_argument("--superseded", action="store_true", help="Mark SUPERSEDED (replaced by another CR) instead of the default ABORTED (cancelled/dropped)")
+    ab.add_argument("--reason", help="REQUIRED cause (unless --release-lock): why the CR is dropped or "
+                                     "superseded (e.g. 'replaced by CR-X') — printed in the board step "
+                                     "the orchestrator takes next (cr-void --reason, or the cause of "
+                                     "cr-supersede)")
+    ab.add_argument("--superseded", action="store_true",
+                    help="The CR is replaced by another: end with the cr-supersede step instead of "
+                         "the default cr-void (cancelled/dropped)")
     ab.add_argument("--release-lock", action="store_true",
                     help="Break a stale merge lock (only if you are SURE no finish is running)")
     _add_dry_run_arg(ab)

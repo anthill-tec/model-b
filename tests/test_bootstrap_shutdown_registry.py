@@ -762,12 +762,16 @@ class TrackWorktreeTest(unittest.TestCase):
         self.assertTrue(hits, "bootstrap does not re-enter a resumed Track's worktree "
                               "(modelb_worktree_enter with .worktrees/<cr>) before any write")
 
-    def test_shutdowns_develop_merge_runs_in_the_worktree_with_git_c(self):
+    def test_shutdowns_develop_merge_is_worktree_flow_sync_for_the_crs_worktree(self):
+        # CR-MDB-081 §S4 / AC5: the develop merge is the tool's, for the CR's worktree branch --
+        # `worktree-flow.py sync --cr <cr>` -- never a git merge run by hand on any tree.
         norm = normalise(_skill_text("shutdown"))
-        merges = len(re.findall(r"merge develop", norm))
-        in_worktree = len(re.findall(r"git -c \.worktrees/<cr> merge develop --no-edit", norm))
-        self.assertGreaterEqual(in_worktree, 1)
-        self.assertEqual(merges, in_worktree, "a develop merge that is not git -C .worktrees/<cr>")
+        hand = re.findall(r"\bgit (?:-c \S+ )?merge\b[^;()]{0,20}\bdevelop\b", norm)
+        self.assertEqual(hand, [], "a develop merge run by hand, not worktree-flow.py sync")
+        syncs = len(re.findall(r"worktree-flow\.py sync\b", norm))
+        for_cr = len(re.findall(r"worktree-flow\.py sync --cr <cr>", norm))
+        self.assertGreaterEqual(for_cr, 1)
+        self.assertEqual(syncs, for_cr, "a sync not for the CR's worktree (--cr <cr>)")
 
     def test_the_tracks_status_check_runs_in_the_worktree_with_git_c(self):
         norm = normalise(self._step_2a())

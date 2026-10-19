@@ -150,9 +150,10 @@ Host is going down (power failure, forced stop). After closing the active write:
      cycle awaiting the pre-merge gate. You never finish a CR on your own: its merge needs
      Mainline's user-approved sign-off (`orchestration-track.md`). Without it, a graceful
      shutdown mid-CR commits the worktree, reports its state, and leaves the CR open.
-   - **Where Mainline relays an approved finish:** bring the worktree up to develop
-     (`git -C .worktrees/<cr> merge develop --no-edit`, to behind=0), then, from the main tree,
-     `~/.agents/scripts/worktree-flow.py finish --cr <CR>` (merge-not-rebase), then
+   - **Where Mainline relays an approved finish:** bring the CR's worktree branch level with
+     develop with `~/.agents/scripts/worktree-flow.py sync --cr <cr>` (it merges develop in, to
+     behind=0), then, from the main tree, `~/.agents/scripts/worktree-flow.py finish --cr <CR>`
+     (merge-not-rebase), then
      `modelb_worktree_exit`. (worktree-flow emits a TOON envelope on stdout; the human board
      is on stderr.)
    - If Mainline/User replies with an emergency/immediate-stop → switch to the **Emergency**
