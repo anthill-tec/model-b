@@ -176,17 +176,69 @@ def parse_deps(member_dir: Path, pkg_names: set):
     return sorted(prod), sorted(dev)
 
 
+class WorkspaceError(Exception):
+    """A malformed Cargo workspace (CR-MDB-078 §S1.4): reported as an `error:` line."""
+
+
+def _read_manifest(path: Path, shown: str) -> dict:
+    """Parse the TOML manifest at `path`; `shown` names it in a refusal."""
+    if not path.is_file():
+        raise WorkspaceError(f"{shown} not found")
+    try:
+        return tomllib.loads(path.read_text())
+    except tomllib.TOMLDecodeError as e:
+        raise WorkspaceError(f"{shown} is not valid TOML: {e}") from e
+
+
+def _package_name(manifest: dict, shown: str) -> str:
+    name = manifest.get("package", {}).get("name")
+    if not isinstance(name, str) or not name:
+        raise WorkspaceError(f"{shown} has no [package] name")
+    return name.replace("-", "_")
+
+
+def _member_dirs(root: Path, workspace: dict) -> list:
+    """Cargo's member set: `members` paths and glob patterns, minus `exclude`
+    (`default-members` never changes the set)."""
+    excluded = [Path(e).as_posix() for e in workspace.get("exclude", [])]
+    dirs = []
+    for entry in workspace.get("members", []):
+        if any(c in entry for c in "*?["):
+            found = sorted(p.relative_to(root).as_posix()
+                           for p in root.glob(entry) if p.is_dir())
+        else:
+            found = [Path(entry).as_posix()]
+        for mdir in found:
+            if mdir in dirs or any(mdir == e or mdir.startswith(e + "/") for e in excluded):
+                continue
+            dirs.append(mdir)
+    return dirs
+
+
+def workspace_members(root: Path) -> list:
+    """[(member dir, package name)] of the workspace at `root`, the root package
+    (dir ".") first when the root manifest has a [package] table (§S1.3)."""
+    manifest = _read_manifest(root / "Cargo.toml", str(root / "Cargo.toml"))
+    workspace = manifest.get("workspace")
+    if not isinstance(workspace, dict):
+        raise WorkspaceError(f"{root / 'Cargo.toml'} has no [workspace] table")
+    members = []
+    if "package" in manifest:
+        members.append((".", _package_name(manifest, str(root / "Cargo.toml"))))
+    for mdir in _member_dirs(root, workspace):
+        if mdir == ".":
+            continue
+        shown = f"{mdir}/Cargo.toml"
+        if not (root / shown).is_file():
+            raise WorkspaceError(f"workspace member {mdir} has no Cargo.toml")
+        members.append((mdir, _package_name(_read_manifest(root / shown, shown), shown)))
+    return members
+
+
 def collect(root: Path):
-    text = (root / "Cargo.toml").read_text()
-    m = re.search(r"members\s*=\s*\[(.*?)\]", text, re.S)
-    if not m:
-        sys.exit("error: no [workspace] members in Cargo.toml")
-    members = re.findall(r'"([^"]+)"', m.group(1))
-    pkg_of = {}
-    for mdir in members:
-        mt = (root / mdir / "Cargo.toml").read_text()
-        pm = re.search(r'^name\s*=\s*"([^"]+)"', mt, re.M)
-        pkg_of[mdir] = pm.group(1).replace("-", "_")
+    pairs = workspace_members(root)
+    members = [mdir for mdir, _ in pairs]
+    pkg_of = dict(pairs)
     pkg_names = set(pkg_of.values())
 
     rows = []
@@ -289,7 +341,8 @@ def build_dot(meta, rows, cfg, name: str):
                        and r["pkg"] not in agg_of]
             members += sorted({agg_of[r["pkg"]] for r in rows
                                if r["dir"].split("/")[0] == top and r["pkg"] in agg_of})
-            clusters[top] = {"label": f"{top}/", "members": members,
+            key = "root" if top == "." else top  # the root package: a valid DOT id
+            clusters[key] = {"label": f"{top}/", "members": members,
                              "color": FALLBACK_COLORS[i % len(FALLBACK_COLORS)]}
 
     def metrics(node):
@@ -374,7 +427,10 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
     name = args.name or root.name
 
-    meta, rows = collect(root)
+    try:
+        meta, rows = collect(root)
+    except WorkspaceError as e:
+        sys.exit(f"error: {e}")
     write_json_md(meta, rows, out)
     dot_src, n_edges = build_dot(meta, rows, load_config(out), name)
     dot_path = out / f"{name}_crate_map.dot"
@@ -388,7 +444,12 @@ def main():
     if not args.no_render:
         if shutil.which("dot"):
             svg = out / f"{name}_crate_map.svg"
-            subprocess.run(["dot", "-Tsvg", str(dot_path), "-o", str(svg)], check=True)
+            r = subprocess.run(["dot", "-Tsvg", str(dot_path), "-o", str(svg)],
+                               capture_output=True, text=True)
+            if r.returncode != 0:
+                detail = " ".join(r.stderr.split())
+                sys.exit(f"error: dot exited {r.returncode} rendering {dot_path.name}"
+                         + (f": {detail}" if detail else ""))
             print(f"[crate-map] rendered {svg}")
         else:
             print("[crate-map] graphviz `dot` not on PATH — skipped render (--no-render to silence)")

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Owner: Model B (roundhouse/model-b) — adopted by CR-MDB-022 §S1.
-# Consuming skills: memory-templates (rust-orchestration.md); driven by the code-health
-#   skill, which this repo's skills-src does not publish yet.
+# Consuming skills: code-health (skills-src/code-health, deployed with the rust stack), which
+#   drives it; memory-templates (rust-orchestration.md).
 #
 """rust-code-health.py — code-health snapshots for Cargo workspaces.
 
@@ -26,18 +26,18 @@ Usage:
   rust-code-health.py ledger assign --slice CR-X --ids F-1,DS-...   # CR filing stamps findings
   rust-code-health.py ledger sync [--slice CR-X --db-state STATE]   # board->ledger mirror / full true-up
 
-Board->ledger auto-link (Maintenance CRs ONLY): the ledger is the SOURCE for
-maintenance-CR planning, filed in TWO EXPLICIT STEPS (CR-MDB-028 §S6 — the
-one-act convenience is gone with the local ChangeSet DB):
-  1. `python-crucible.py cr-plan --cr CR-X --title "..." --release R --wave N`
-     files the CR on Crucible's queue (the board that owns the plan).
+Board->ledger link (Maintenance CRs ONLY): the ledger is the SOURCE for
+maintenance-CR planning, filed in TWO EXPLICIT STEPS (CR-MDB-028 §S6):
+  1. `rust-crucible.py cr-plan --cr CR-X --title "..." --release R --wave N`
+     files the CR on the Crucible board (which owns the plan).
   2. `rust-code-health.py ledger assign --slice CR-X --ids F-...,DS-...`
      stamps each finding's `slice` with that CR (this tool, standalone).
-Every subsequent board transition mirrors via schedule_db.set_state -> `ledger
-sync` (IN_PROGRESS -> IN_PROGRESS, COMPLETED -> COMPLETED + merge commit,
-ABORTED/SUPERSEDED -> findings return to the APPROVED pool). POST snapshots
-RATIFY completion: a finding whose stable id still appears in the fresh scan is
-flagged NOT-RATIFIED in health_delta.md and the ledger.
+A board transition reaches the ledger only through the operator's `ledger sync
+--slice CR-X --db-state STATE` (IN_PROGRESS -> IN_PROGRESS, COMPLETED ->
+COMPLETED + merge commit, ABORTED/SUPERSEDED -> findings return to the APPROVED
+pool); nothing mirrors it automatically. POST snapshots RATIFY completion: a
+finding whose stable id still appears in the fresh scan is flagged NOT-RATIFIED
+in health_delta.md and the ledger.
 
 The audit-cull ledger is MACHINE-READABLE: audit-cull-ledger.jsonl, one JSON
 object per finding (schema v1). Its keys join every snapshot asset:
@@ -46,17 +46,25 @@ object per finding (schema v1). Its keys join every snapshot asset:
   id     -> dead_scan_report finding ids (stable DS-* hashes)
   register -> dead_code_register.toml keep_future[].ledger
   first_seen/resolved_in -> health/<snapshot-dir> names (embed date+sha+phase)
-  commit -> git history        slice -> ChangeSet-DB CR id
+  commit -> git history        slice -> the CR id on the Crucible board
 
 Layout produced (all git-committed):
   <out>/health/<date>_<sha>_<phase>[_<slice>]/
-    snapshot.json          manifest: head, branch, dirty, phase, slice, totals
+    snapshot.json          manifest: created (UTC), head, branch, dirty, phase,
+                           slice, totals (incl. hot-path counts)
+    crate_map.toml, dead_code_register.toml, boundary_rules.toml,
+    hot_path_rules.toml    seeded config copies (when present in <out>)
     crate_map_baseline.{json,md} + <name>_crate_map.{dot,svg}
     dead_scan_report.{json,md}
     audit-cull-ledger.jsonl frozen copy of the living ledger
     dead_code_register.toml frozen copy of the retention register
     health_delta.md        (post only) delta vs the paired pre snapshot
-  <out>/health/index.json  regenerated series index (the RAG/trend entry point)
+  <out>/health/index.json  regenerated series index (the RAG/trend entry point),
+                           ordered by `created`; a manifest without it ranks
+                           as made at the start of its directory's date
+
+A failed sub-tool removes the snapshot directory the run created, so a rerun
+is not refused.
 """
 import argparse
 import json
@@ -64,7 +72,7 @@ import shutil
 import subprocess
 import sys
 import time
-from datetime import date
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 SCRIPTS = Path(__file__).resolve().parent
@@ -105,18 +113,30 @@ def scan_counts(ds):
         "unused_features": len(ds.get("deps", {}).get("features", [])),
         "boundary_violations": len(ds.get("boundaries", {}).get("violations", [])),
         "hoist_candidates": len(ds.get("boundaries", {}).get("hoist_candidates", [])),
+        "hot_path_violations": len(ds.get("hot_path", {}).get("violations", [])),
+        "hot_path_sanity_failures": len(ds.get("hot_path", {}).get("sanity_failures", [])),
     }
 
 
 def rebuild_index(health_dir):
+    """Regenerate <health>/index.json, ordered by each manifest's `created`.
+    A manifest without it ranks as made at the start of its directory's date
+    (the `YYYY-MM-DD` before the first `_`): on that date it comes before every
+    manifest recording `created`, and across dates the date decides (§S3.4)."""
+    if not health_dir.exists():
+        return []  # no snapshot yet: nothing to index, and no directory to create
     entries = []
-    for d in sorted(health_dir.iterdir()) if health_dir.exists() else []:
+    for d in health_dir.iterdir():
         mf = d / "snapshot.json"
         if d.is_dir() and mf.exists():
             m = json.loads(mf.read_text())
             entries.append({"dir": d.name, **{k: m.get(k) for k in
-                            ("date", "head", "branch", "dirty", "phase", "slice")},
+                            ("created", "date", "head", "branch", "dirty", "phase",
+                             "slice")},
                             "totals": m.get("totals", {})})
+    # a bare `YYYY-MM-DD` sorts before every `YYYY-MM-DDTHH:MM:SSZ` of that date
+    entries.sort(key=lambda e: (e.get("created") or e["dir"].split("_", 1)[0],
+                                e["dir"]))
     (health_dir / "index.json").write_text(json.dumps(entries, indent=1))
     return entries
 
@@ -221,6 +241,8 @@ def _commit_paths(root, paths, message):
     _commit_ledger: never fails the caller; index.lock retry x3."""
     rels = []
     for p in paths:
+        if not Path(p).exists():
+            continue  # not written by this run (e.g. no svg without `dot`)
         try:
             rels.append(str(Path(p).relative_to(root)))
         except ValueError:
@@ -405,10 +427,12 @@ def cmd_snapshot(args):
     snap = out / "health" / snap_name
     if snap.exists():
         sys.exit(f"[health] REFUSED: {snap} exists — snapshots are immutable.")
+    created = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     snap.mkdir(parents=True)
 
     # seed configs so sub-tools behave identically to the living run
-    for cfg in ("crate_map.toml", "dead_code_register.toml", "boundary_rules.toml"):
+    for cfg in ("crate_map.toml", "dead_code_register.toml", "boundary_rules.toml",
+                "hot_path_rules.toml"):
         if (out / cfg).exists():
             shutil.copy2(out / cfg, snap / cfg)
 
@@ -419,10 +443,13 @@ def cmd_snapshot(args):
              "--project-dir", str(root), "--out", str(snap)])
     print(r2.stdout, end="")
     if r1.returncode or r2.returncode:
+        # a failed snapshot leaves nothing behind, so a rerun is not refused (§S3.3)
+        shutil.rmtree(snap)
         sys.exit(f"[health] sub-tool failed:\n{r1.stderr}\n{r2.stderr}")
 
     # true up the ledger against the board, ratify (post), THEN freeze it
     ratification = []
+    ledger_paths = []
     rows = _load_ledger(out)
     if rows is not None:
         today = date.today().isoformat()
@@ -433,12 +460,14 @@ def cmd_snapshot(args):
         if args.phase == "post" and args.slice:
             ratification = _ratify(rows, args.slice, snap, snap_name, today)
         _save_ledger(out, rows)
+        ledger_paths.append(_ledger_path(out))
         shutil.copy2(_ledger_path(out), snap / "audit-cull-ledger.jsonl")
 
     cm = json.loads((snap / "crate_map_baseline.json").read_text())
     ds = json.loads((snap / "dead_scan_report.json").read_text())
     totals = {**cm["meta"]["totals"], **scan_counts(ds)}
     manifest = {"schema": 1, "project": name, "date": date.today().isoformat(),
+                "created": created,
                 "head": head, "branch": branch, "dirty": dirty,
                 "phase": args.phase, "slice": args.slice,
                 "keys": "crate(pkg) -> module(file path) -> site(line); "
@@ -481,7 +510,8 @@ def cmd_snapshot(args):
     # directive 2026-07-04: snapshot runs must not leave the tree dirty)
     living_paths = [out / f for f in LIVING + [f"{name}_crate_map.dot",
                                                f"{name}_crate_map.svg"]]
-    _commit_paths(root, [snap, out / "health" / "index.json"] + living_paths,
+    _commit_paths(root, [snap, out / "health" / "index.json"] + living_paths
+                  + ledger_paths,
                   f"docs(health): {args.phase.upper()} snapshot {snap_name}")
     print(f"[health] snapshot {snap_name} @ {head} ({branch}"
           f"{', DIRTY' if dirty else ''}) — {len(manifest['files'])} files")
@@ -542,6 +572,25 @@ def cmd_query(args):
                   f"{r.get('finding', '')[:100]}")
 
 
+def _check_arguments(args, query_parser, ledger_parser):
+    """Refuse the missing or invalid arguments of §S3.5 with an argparse usage
+    error (exit 2), before anything is written or committed."""
+    if args.cmd == "query":
+        if args.what == "crate" and not args.a:
+            query_parser.error("query crate requires a crate name")
+        if args.what == "delta" and not (args.a and args.b):
+            query_parser.error("query delta requires two snapshot names")
+    elif args.cmd == "ledger":
+        if args.action == "assign":
+            if not args.slice:
+                ledger_parser.error("ledger assign requires --slice")
+            if not args.ids:
+                ledger_parser.error("ledger assign requires --ids")
+        elif bool(args.slice) != bool(args.db_state):
+            ledger_parser.error("ledger sync takes --slice and --db-state together, "
+                                "or neither (the full true-up)")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -564,6 +613,7 @@ def main():
     lg.add_argument("--slice", default=None, help="CR id")
     lg.add_argument("--ids", default=None, help="comma-sep finding ids (assign)")
     lg.add_argument("--db-state", dest="db_state", default=None,
+                    choices=["IN_PROGRESS", "COMPLETED", "ABORTED", "SUPERSEDED"],
                     help="ChangeSet state to mirror (sync): IN_PROGRESS|COMPLETED|ABORTED|SUPERSEDED")
     lg.add_argument("--commit", default=None, help="merge sha (sync COMPLETED; auto-detected if omitted)")
     lg.add_argument("--no-commit", dest="no_commit", action="store_true",
@@ -571,6 +621,7 @@ def main():
     lg.add_argument("--project-dir", default=None)
     lg.add_argument("--out", default=None)
     args = ap.parse_args()
+    _check_arguments(args, q, lg)
     if args.cmd == "snapshot":
         cmd_snapshot(args)
     elif args.cmd == "ledger":

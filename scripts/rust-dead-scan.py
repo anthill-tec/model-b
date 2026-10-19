@@ -12,7 +12,7 @@ crates), so dead public API survives a lint-clean workspace. Findings emit as
 ledger fragments with STABLE IDs (DS-xxxxxxxxxx = hash of kind|crate|path|item)
 so they can be cited across snapshots.
 
-Modes (default: inventory pub-scan deps reconcile; lift-lint is opt-in — it builds):
+Modes (default: inventory pub-scan deps reconcile boundaries hot-path; lift-lint is opt-in — it builds):
   inventory  static: every #[allow(dead_code)] / #[expect(dead_code)] /
              #[deprecated] site — src-prod vs src-testgated vs tests-dir split,
              reason-clause extraction, class-bucket heuristic.
@@ -32,6 +32,10 @@ Modes (default: inventory pub-scan deps reconcile; lift-lint is opt-in — it bu
              (version.workspace = true), and the hoisting rule (a dep declared
              with its own version by >= min_crates members -> hoist candidate).
              Turns prose invariants into machine-checked findings, every scan.
+  hot-path   declarative source guard from <out>/hot_path_rules.toml:
+             [[forbid]] regex patterns on the production lines of the listed
+             paths; [[require_present]] sanity rules that fail when their
+             pattern is absent (a mis-configured scan).
   lift-lint  (--lift-lint, BUILDS) scratch-copy the tree (git archive HEAD),
              strip the allow/expect(dead_code) attributes, cargo check
              --workspace --all-features, collect which sites the compiler
@@ -44,11 +48,14 @@ Outputs (in --out, default <project>/docs/research/assets):
 """
 import argparse
 import hashlib
+import io
 import json
+import os
 import re
 import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
 import tomllib
 from datetime import date
@@ -98,16 +105,63 @@ def git_head(root):
         return "unknown"
 
 
+class WorkspaceError(Exception):
+    """A malformed Cargo workspace (CR-MDB-078 §S2.4): reported as an `error:` line."""
+
+
+def _read_manifest(path, shown):
+    """Parse the TOML manifest at `path`; `shown` names it in a refusal."""
+    if not path.is_file():
+        raise WorkspaceError(f"{shown} not found")
+    try:
+        return tomllib.loads(path.read_text())
+    except tomllib.TOMLDecodeError as e:
+        raise WorkspaceError(f"{shown} is not valid TOML: {e}") from e
+
+
+def _package_name(manifest, shown):
+    name = manifest.get("package", {}).get("name")
+    if not isinstance(name, str) or not name:
+        raise WorkspaceError(f"{shown} has no [package] name")
+    return name.replace("-", "_")
+
+
+def _member_dirs(root, workspace):
+    """Cargo's member set: `members` paths and glob patterns, minus `exclude`
+    (`default-members` never changes the set)."""
+    excluded = [Path(e).as_posix() for e in workspace.get("exclude", [])]
+    dirs = []
+    for entry in workspace.get("members", []):
+        if any(c in entry for c in "*?["):
+            found = sorted(p.relative_to(root).as_posix()
+                           for p in root.glob(entry) if p.is_dir())
+        else:
+            found = [Path(entry).as_posix()]
+        for mdir in found:
+            if mdir in dirs or any(mdir == e or mdir.startswith(e + "/") for e in excluded):
+                continue
+            dirs.append(mdir)
+    return dirs
+
+
 def workspace_members(root):
-    text = (root / "Cargo.toml").read_text()
-    m = re.search(r"members\s*=\s*\[(.*?)\]", text, re.S)
-    members = re.findall(r'"([^"]+)"', m.group(1)) if m else []
-    out = []
-    for mdir in members:
-        mt = (root / mdir / "Cargo.toml").read_text()
-        pm = re.search(r'^name\s*=\s*"([^"]+)"', mt, re.M)
-        out.append((mdir, pm.group(1).replace("-", "_")))
-    return out
+    """[(member dir, package name)] of the workspace at `root`, the root package
+    (dir ".") first when the root manifest has a [package] table (§S1.3)."""
+    manifest = _read_manifest(root / "Cargo.toml", str(root / "Cargo.toml"))
+    workspace = manifest.get("workspace")
+    if not isinstance(workspace, dict):
+        raise WorkspaceError(f"{root / 'Cargo.toml'} has no [workspace] table")
+    members = []
+    if "package" in manifest:
+        members.append((".", _package_name(manifest, str(root / "Cargo.toml"))))
+    for mdir in _member_dirs(root, workspace):
+        if mdir == ".":
+            continue
+        shown = f"{mdir}/Cargo.toml"
+        if not (root / shown).is_file():
+            raise WorkspaceError(f"workspace member {mdir} has no Cargo.toml")
+        members.append((mdir, _package_name(_read_manifest(root / shown, shown), shown)))
+    return members
 
 
 def gated_lines(lines):
@@ -490,11 +544,35 @@ def mode_reconcile(inventory, register_path):
             "unregistered_marks": unregistered, "orphaned_register_entries": orphaned}
 
 
+class LiftLintError(Exception):
+    """lift-lint cannot run (CR-MDB-078 §S2.7): reported as an `error:` line."""
+
+
 def mode_lift_lint(root):
-    """git-archive HEAD to scratch, strip dead_code suppressions, cargo check."""
+    """git-archive HEAD to scratch, strip dead_code suppressions, cargo check.
+
+    The tree is copied without a shell (a path with a space works); the scratch
+    copy is removed on every path. A missing `cargo` or a repository with no
+    commit raises LiftLintError."""
+    if shutil.which("cargo") is None:
+        raise LiftLintError("lift-lint needs `cargo` on PATH; it was not found")
     scratch = Path(tempfile.mkdtemp(prefix="dead-scan-lift-"))
-    subprocess.run(f"git -C {root} archive HEAD | tar -x -C {scratch}",
-                   shell=True, check=True)
+    try:
+        return _lift_lint_in(root, scratch)
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
+
+
+def _lift_lint_in(root, scratch):
+    """Copy HEAD of `root` into `scratch`, strip the suppressions, run cargo check there."""
+    archive = subprocess.run(["git", "-C", str(root), "archive", "--format=tar", "HEAD"],
+                             capture_output=True)
+    if archive.returncode != 0:
+        detail = archive.stderr.decode(errors="replace").strip()
+        raise LiftLintError(f"lift-lint copies the tree at HEAD, and `git archive HEAD` "
+                            f"failed in {root}: {detail}")
+    with tarfile.open(fileobj=io.BytesIO(archive.stdout)) as tar:
+        tar.extractall(scratch, filter="data")
     strip_re = re.compile(r"^\s*#\[(allow|expect)\(dead_code[^\]]*\]\s*(//.*)?$")
     stripped = 0
     for f in scratch.rglob("*.rs"):
@@ -506,7 +584,7 @@ def mode_lift_lint(root):
     p = subprocess.run(
         ["cargo", "check", "--workspace", "--all-features", "--message-format=json"],
         cwd=scratch, capture_output=True, text=True,
-        env={**__import__("os").environ, "CARGO_BUILD_JOBS": "10"})
+        env={**os.environ, "CARGO_BUILD_JOBS": "10"})
     fired = []
     for line in p.stdout.splitlines():
         try:
@@ -522,7 +600,6 @@ def mode_lift_lint(root):
                     fired.append({"path": span["file_name"],
                                   "line": span["line_start"],
                                   "text": msg["message"]["message"]})
-    shutil.rmtree(scratch, ignore_errors=True)
     return {"stripped_attr_lines": stripped, "fired": fired,
             "check_ok": p.returncode == 0}
 
@@ -587,6 +664,21 @@ def emit(report, out):
         if bd["exists"] and not (bd["violations"] or bd["lockstep_failures"] or bd["hoist_candidates"]):
             md.append("- all rules pass.")
         md.append("")
+    hp = report.get("hot_path")
+    if hp:
+        md.append("## Hot-path guard")
+        md.append("")
+        if not hp["exists"]:
+            md.append(f"- no rules file at `{hp['rules_file']}` — skipped.")
+        for v in hp["violations"]:
+            md.append(f"- 🛑 `{v['id']}` VIOLATION of rule `{v['rule']}`: "
+                      f"`{v['path']}:{v['line']}` — `{v['content']}`")
+        for s in hp["sanity_failures"]:
+            md.append(f"- ⚠ `{s['id']}` sanity failure: rule `{s['rule']}` — pattern "
+                      f"`{s['pattern']}` not found")
+        if hp["exists"] and not (hp["violations"] or hp["sanity_failures"]):
+            md.append("- all rules pass.")
+        md.append("")
     rc = report.get("reconcile")
     if rc:
         md.append("## Retention-register reconciliation")
@@ -636,7 +728,10 @@ def main():
     modes = list(args.modes)
     if args.lift_lint and "lift-lint" not in modes:
         modes.append("lift-lint")
-    members = workspace_members(root)
+    try:
+        members = workspace_members(root)
+    except WorkspaceError as e:
+        sys.exit(f"error: {e}")
     report = {"meta": {"head": git_head(root), "date": date.today().isoformat(),
                        "modes": modes, "members": len(members)}}
 
@@ -656,7 +751,10 @@ def main():
     if "hot-path" in modes:
         report["hot_path"] = mode_hot_path(root, out / "hot_path_rules.toml")
     if "lift-lint" in modes:
-        report["lift_lint"] = mode_lift_lint(root)
+        try:
+            report["lift_lint"] = mode_lift_lint(root)
+        except LiftLintError as e:
+            sys.exit(f"error: {e}")
 
     emit(report, out)
     counts = []
