@@ -34,6 +34,24 @@
   refuses a single ``--force``, a branch checked out elsewhere refuses ``branch -d`` -- none
   depends on file permissions, so a root user sees the same.
 
+§S4–§S6, the rules, ``abort`` and the scheduler-note board (AC5, AC6, AC7):
+
+- ``WorktreeFlowDescribesNoRebaseTest`` — AC5: no help text, message or docstring of
+  ``scripts/worktree-flow.py`` describes the tool as rebasing (a sentence saying it never
+  rebases -- ``never``/``not``/``no``/``nor``/``without`` shortly before ``rebas`` -- is spared).
+- ``SyncRuleSurfacesTest`` — AC5 / §S4: in ``orchestration-common.md``'s § Worktree isolation
+  (basics), ``orchestration-track.md``, the ``shutdown`` skill's Step 2A and
+  ``rust-orchestration.md``, a sentence names ``worktree-flow.py sync --cr <cr>`` together with
+  ``finish``; no sentence forbids ``sync``, merges develop into a worktree branch by hand, or
+  describes ``worktree-flow`` as rebasing.
+- ``AbortBoardStepTest`` — AC6 / §S5: ``abort``'s output, refusal and help claim no board write;
+  a dry run, a removal and a no-worktree run end with the orchestrator's ``cr-void`` step, a
+  ``--superseded`` run with its ``cr-supersede`` step; ``--delete-branch`` with no worktree
+  deletes the branch.
+- ``NoSchedulerNoteBoardTest`` — AC7 / §S6: the script names neither ``WF_REQUEST_DIR`` nor
+  ``reschedule-request``; ``status`` names no note from ``$WF_REQUEST_DIR`` or the project's
+  ``.env``; ``orchestration-track.md`` names no ``reschedule-request``.
+
 Every run is a subprocess of the test interpreter under ``tests/_helpers.py``'s ``run_tool``
 (§S9): real git repositories in temp directories, the tools' own variables cleared, a private
 ``TMPDIR`` set in the test process, and on ``PATH`` a logging ``git`` stand-in that records each
@@ -46,6 +64,7 @@ Stdlib only.
 import ast
 import json
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -53,16 +72,20 @@ import unittest
 from pathlib import Path
 
 from tests._helpers import (
+    REPO_ROOT,
     TOOL_SCRIPTS_DIR,
     decode_envelope,
     git_commit_all,
     git_repo,
+    md_section,
+    read_text,
     repo_git,
     run_tool,
     tool_bin_dir,
     use_private_tmpdir,
     write_files,
 )
+from tests.test_bootstrap_shutdown_registry import sentences
 
 WORKTREE_FLOW = "worktree-flow.py"
 
@@ -1160,6 +1183,360 @@ class FinishTest(_FinishCase):
                     if argv[:1] in (["merge"], ["branch"], ["push"])
                     or argv[:2] in (["worktree", "remove"], ["worktree", "prune"])]
         self.assertEqual(mutating, [], "a dry run runs no mutating git command")
+
+
+# ---------------------------------------------------------------------------------------------
+# §S4 / AC5: the tool and its rules describe a merge, never a rebase.
+# ---------------------------------------------------------------------------------------------
+
+#: ``rebas`` (rebase, rebases, rebasing, rebased) in any case.
+_REBASING = re.compile(r"rebas", re.IGNORECASE)
+
+#: A rebase the sentence says does NOT happen: a negation shortly before ``rebas``.
+_NEGATED_REBASE = re.compile(r"\b(?:never|not|no|nor|without)\b[\w\s,-]{0,30}?rebas\w*",
+                             re.IGNORECASE)
+
+
+def _rebasing_descriptions(pieces) -> list:
+    """The pieces of text that describe something as rebasing: a ``rebas`` left once every
+    negated one (``never rebases``, ``merge-not-rebase``, ``not a long rebase``) is removed."""
+    return [p for p in pieces if _REBASING.search(_NEGATED_REBASE.sub("", p))]
+
+
+def _script_text_pieces(source: str) -> list:
+    """Every string constant of ``source`` -- docstrings, help texts, messages, f-string parts
+    -- split into sentences and lines."""
+    pieces = []
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            pieces += [p for p in re.split(r"(?<=[.;!?])\s+|\n", node.value) if p.strip()]
+    return pieces
+
+
+class WorktreeFlowDescribesNoRebaseTest(_WorktreeFlowCase):
+    """AC5 / §S4: no help text, message or docstring of ``worktree-flow.py`` describes the tool
+    as rebasing."""
+
+    maxDiff = None
+
+    def test_no_string_in_worktree_flow_describes_the_tool_as_rebasing(self):
+        # The detector bites on a rebasing description and spares a negated one.
+        self.assertEqual(_rebasing_descriptions([
+            "Rebase a CR's feature branch onto develop",
+            "Fail (instead of auto-rebasing) if develop moved",
+            "sync merges develop in and never rebases",
+            "finish (merge-not-rebase)",
+            "merge develop in (not a long re-conflicting rebase)",
+        ]), ["Rebase a CR's feature branch onto develop",
+             "Fail (instead of auto-rebasing) if develop moved"])
+        source = (TOOL_SCRIPTS_DIR / WORKTREE_FLOW).read_text(encoding="utf-8")
+        pieces = _script_text_pieces(source)
+        self.assertIn("Print the exact git commands that would run; mutate nothing.",
+                      " ".join(pieces), "the scan must see the script's help texts")
+        self.assertEqual(_rebasing_descriptions(pieces), [])
+
+    def test_no_help_of_worktree_flow_or_its_verbs_describes_rebasing(self):
+        helps = {}
+        for verb in ((), ("start",), ("status",), ("sync",), ("finish",), ("abort",)):
+            result = self._run(*verb, "-h")
+            self.assertEqual(result.returncode, 0, self._output(result))
+            helps[" ".join(verb) or "worktree-flow"] = result.stdout
+        offenders = {name: _rebasing_descriptions(
+                         re.split(r"(?<=[.;!?])\s+|\n", re.sub(r"[ \t]*\n[ \t]+", " ", text)))
+                     for name, text in helps.items()}
+        self.assertEqual({name: hits for name, hits in offenders.items() if hits}, {})
+
+
+#: The four rule surfaces of §S4, as ``{name: (path, heading or None)}``.
+RULE_SURFACES = {
+    "orchestration-common.md § Worktree isolation (basics)": (
+        "skills-src/model-b/references/orchestration-common.md", "## Worktree isolation (basics)"),
+    "orchestration-track.md": ("skills-src/model-b/references/orchestration-track.md", None),
+    "shutdown Step 2A": ("skills-src/shutdown/SKILL.md", "## Step 2A"),
+    "rust-orchestration.md": ("skills-src/memory-templates/rust-orchestration.md", None),
+}
+
+#: The rules' form of the step: the CR's worktree branch brought level by the tool.
+_SYNC_FOR_CR = re.compile(r"worktree-flow\.py sync --cr <cr>")
+
+#: A sentence telling the orchestrator not to use ``sync``.
+_FORBIDS_SYNC = re.compile(r"\b(?:(?:never|not|don't|do not)\s+(?:use|run|call)|avoid)\s+"
+                           r"(?:worktree-flow(?:\.py)?\s+)?sync\b")
+
+#: A develop merge made by hand, and the worktree it is made in.
+_HAND_MERGE = re.compile(r"\bmerg(?:e|es|ing) develop\b|\bgit -c \.worktrees/<cr> merge\b")
+_WORKTREE_CONTEXT = re.compile(r"\.worktrees/|\bworktree\b(?!-flow)|\byour branch\b")
+
+#: What spares a hand merge: the tool's own step, the no-worktree case §S4 keeps, a negation.
+_HAND_MERGE_SPARED = re.compile(r"worktree-flow\.py sync\b|\b(?:no|without a|without its) "
+                                r"worktree\b|\b(?:never|do not|don't)\s+(?:\S+\s+){0,2}merg")
+
+
+def _rule_surface_sentences(name: str) -> list:
+    """The normalised sentences of the rule surface ``name`` (its section, when it has one)."""
+    rel, heading = RULE_SURFACES[name]
+    text = read_text(REPO_ROOT / rel)
+    if heading is not None:
+        text = md_section(text, heading)
+    return sentences(text)
+
+
+def _forbids_sync(sentence_list) -> list:
+    return [s for s in sentence_list if _FORBIDS_SYNC.search(s)]
+
+
+def _hand_worktree_merges(sentence_list) -> list:
+    """The sentences merging develop into a worktree branch by hand, not through the tool."""
+    return [s for s in sentence_list if _HAND_MERGE.search(s) and _WORKTREE_CONTEXT.search(s)
+            and not _HAND_MERGE_SPARED.search(s)]
+
+
+class SyncRuleSurfacesTest(unittest.TestCase):
+    """AC5 / §S4: each rule surface names ``worktree-flow.py sync --cr <cr>`` as the step before
+    ``finish`` -- the two in one sentence -- and none forbids ``sync``, merges develop into a
+    worktree branch by hand, or describes ``worktree-flow`` as rebasing."""
+
+    def _each_surface(self):
+        for name in RULE_SURFACES:
+            found = _rule_surface_sentences(name)
+            self.assertTrue(found, f"{name}: the surface (or its section) is missing")
+            yield name, found
+
+    def test_each_rule_surface_names_sync_for_the_crs_worktree_together_with_finish(self):
+        for name, found in self._each_surface():
+            with self.subTest(surface=name):
+                named = [s for s in found
+                         if _SYNC_FOR_CR.search(s) and re.search(r"\bfinish\b", s)]
+                self.assertTrue(named, f"{name}: no sentence names `worktree-flow.py sync --cr "
+                                       f"<cr>` as the step before `finish`")
+
+    def test_no_rule_surface_forbids_sync(self):
+        self.assertEqual(_forbids_sync([
+            "worktree-flow sync and finish rebase, and never use sync.",
+            "do not run worktree-flow.py sync on a main-tree branch.",
+            "bring it level with worktree-flow.py sync --cr <cr> before finish.",
+        ]), ["worktree-flow sync and finish rebase, and never use sync.",
+             "do not run worktree-flow.py sync on a main-tree branch."])
+        for name, found in self._each_surface():
+            with self.subTest(surface=name):
+                self.assertEqual(_forbids_sync(found), [])
+
+    def test_no_rule_surface_merges_develop_into_a_worktree_branch_by_hand(self):
+        self.assertEqual(_hand_worktree_merges([
+            "resync = merge develop into your branch, in the worktree (git -c .worktrees/<cr>).",
+            "bring the worktree up to develop (git -c .worktrees/<cr> merge develop --no-edit).",
+            "resync with worktree-flow.py sync --cr <cr>, which merges develop into your branch.",
+            "a cr on a feature branch in the main tree, with no worktree, merges develop in by "
+            "hand: sync needs .worktrees/<cr>.",
+            "merge develop into the feature branch until behind=0.",
+        ]), ["resync = merge develop into your branch, in the worktree (git -c .worktrees/<cr>).",
+             "bring the worktree up to develop (git -c .worktrees/<cr> merge develop --no-edit)."])
+        for name, found in self._each_surface():
+            with self.subTest(surface=name):
+                self.assertEqual(_hand_worktree_merges(found), [])
+
+    def test_no_rule_surface_describes_worktree_flow_as_rebasing(self):
+        for name, found in self._each_surface():
+            with self.subTest(surface=name):
+                self.assertEqual(_rebasing_descriptions(found), [])
+
+
+# ---------------------------------------------------------------------------------------------
+# §S5 / AC6: ``abort`` promises nothing it does not do, and ends with the board step the
+# orchestrator takes next.
+# ---------------------------------------------------------------------------------------------
+
+#: The cause every ``abort`` fixture gives.
+REASON = "dropped by the fixture"
+
+#: A promise of a board write: abort records, marks or files something on Crucible's queue.
+_BOARD_WRITE_CLAIM = re.compile(r"\brecord|crucible'?s queue|\bmark(?:s|ed)?\b", re.IGNORECASE)
+
+#: The orchestrator's own board step, which may say what IT records.
+_BOARD_STEP = re.compile(r"\bcr-(?:void|supersede)\b")
+
+
+def _board_write_claims(chunks) -> list:
+    """The chunks claiming that ``abort`` writes to the board -- every chunk naming a board-write
+    word and no ``cr-void`` / ``cr-supersede`` step."""
+    return [c for c in chunks if _BOARD_WRITE_CLAIM.search(c) and not _BOARD_STEP.search(c)]
+
+
+def _help_entries(text: str) -> list:
+    """argparse help split into entries: an option line with its wrapped continuation lines
+    joined, every other paragraph likewise."""
+    entries, current = [], []
+    for line in text.splitlines():
+        if not line.strip() or re.match(r"\s{0,4}-", line):
+            if current:
+                entries.append(re.sub(r"\s+", " ", " ".join(current)))
+            current = []
+        if line.strip():
+            current.append(line.strip())
+    if current:
+        entries.append(re.sub(r"\s+", " ", " ".join(current)))
+    return entries
+
+
+def _last_line(text: str) -> str:
+    lines = [line for line in text.splitlines() if line.strip()]
+    return lines[-1] if lines else ""
+
+
+class AbortBoardStepTest(_WorktreeFlowPathCase):
+    """AC6 / §S5: ``abort`` claims no board write; each ``--cr`` run that reaches its end closes
+    with ``cr-void --cr <cr> --reason "<reason>"``, or with ``--superseded``
+    ``cr-supersede --cr <cr> --by <successor>`` and the reason as the cause."""
+
+    VOID = f'cr-void --cr {CR} --reason "{REASON}"'
+    SUPERSEDE = f"cr-supersede --cr {CR} --by <successor>"
+
+    def _abort(self, *extra):
+        return self._wf("abort", "--cr", CR, "--reason", REASON, *extra)
+
+    def _assert_ends_with_void(self, result):
+        self.assertEqual(result.returncode, 0, self._output(result))
+        self.assertIn(self.VOID, _last_line(result.stdout), self._output(result))
+        self.assertNotIn("cr-supersede", result.stdout + result.stderr)
+        self.assertEqual(_board_write_claims((result.stdout + result.stderr).splitlines()), [])
+
+    def test_abort_help_promises_no_board_write(self):
+        # The detector bites on a board-write promise and spares the orchestrator's step.
+        self.assertEqual(_board_write_claims([
+            f"[dry-run] record {CR} → ABORTED on the CR in Crucible's queue  ({REASON})",
+            "--superseded  Mark SUPERSEDED (replaced by another CR)",
+            f"abort: removed worktree {CR}",
+            f'next: python-crucible.py cr-void --cr {CR} --reason "{REASON}" records the drop',
+        ]), [f"[dry-run] record {CR} → ABORTED on the CR in Crucible's queue  ({REASON})",
+             "--superseded  Mark SUPERSEDED (replaced by another CR)"])
+        self.assertEqual(_help_entries("usage: x\n\noptions:\n  --reason REASON  why\n"
+                                       "                   it was dropped\n  -h, --help  help\n"),
+                         ["usage: x", "options:", "--reason REASON why it was dropped",
+                          "-h, --help help"])
+
+        result = self._run("abort", "-h")
+
+        self.assertEqual(result.returncode, 0, self._output(result))
+        entries = _help_entries(result.stdout)
+        self.assertTrue([e for e in entries if e.startswith("--reason")], result.stdout)
+        self.assertTrue([e for e in entries if e.startswith("--superseded")], result.stdout)
+        self.assertEqual(_board_write_claims(entries), [])
+
+    def test_abort_dry_run_ends_with_the_cr_void_step_and_changes_nothing(self):
+        self._add_worktree()
+        own = self._branch_commit("a.txt", "a\n", "feat(core): GREEN — own")
+
+        result = self._abort("--dry-run")
+
+        self._assert_ends_with_void(result)
+        self.assertTrue(self.wt.is_dir(), "a dry run removes nothing")
+        self.assertEqual(self._head(BRANCH), own)
+
+    def test_abort_removal_ends_with_the_cr_void_step(self):
+        self._add_worktree()
+        own = self._branch_commit("a.txt", "a\n", "feat(core): GREEN — own")
+
+        result = self._abort()
+
+        self._assert_ends_with_void(result)
+        self.assertFalse(self.wt.exists(), "the worktree is removed")
+        self.assertEqual(self._head(BRANCH), own, "the branch is kept without --delete-branch")
+
+    def test_abort_with_no_worktree_ends_with_the_cr_void_step(self):
+        result = self._abort()
+
+        self._assert_ends_with_void(result)
+        self.assertFalse(self.wt.exists())
+
+    def test_abort_superseded_ends_with_the_cr_supersede_step_giving_the_reason_as_the_cause(self):
+        self._add_worktree()
+        self._branch_commit("a.txt", "a\n", "feat(core): GREEN — own")
+
+        result = self._abort("--superseded")
+
+        self.assertEqual(result.returncode, 0, self._output(result))
+        self.assertIn(self.SUPERSEDE, _last_line(result.stdout), self._output(result))
+        self.assertIn(REASON, result.stdout, "the reason is given as the cause")
+        self.assertNotIn("cr-void", result.stdout + result.stderr)
+        self.assertEqual(_board_write_claims((result.stdout + result.stderr).splitlines()), [])
+        self.assertFalse(self.wt.exists())
+
+    def test_abort_without_reason_is_refused_without_promising_a_board_write(self):
+        self._add_worktree()
+
+        result = self._wf("abort", "--cr", CR)
+
+        self.assertEqual(result.returncode, 1, self._output(result))
+        self.assertTrue(result.stderr.startswith("[worktree-flow] ERROR: "), self._output(result))
+        self.assertIn("--reason", result.stderr)
+        self.assertEqual(_board_write_claims(result.stderr.splitlines()), [])
+        self.assertEqual(result.stdout, "")
+        self.assertTrue(self.wt.is_dir(), "a refused abort removes nothing")
+
+    def test_abort_delete_branch_with_no_worktree_deletes_the_existing_branch(self):
+        self._add_worktree()
+        self._branch_commit("a.txt", "a\n", "feat(core): GREEN — unmerged own")
+        repo_git(self.repo, "worktree", "remove", self.wt)
+        self.assertTrue(self._branch_exists(BRANCH), "fixture: the branch outlives its worktree")
+        develop_before = self._head(DEVELOP)
+
+        result = self._abort("--delete-branch")
+
+        self._assert_ends_with_void(result)
+        self.assertFalse(self._branch_exists(BRANCH), "the existing branch is deleted")
+        self.assertEqual(self._head(DEVELOP), develop_before, "develop is untouched")
+
+
+# ---------------------------------------------------------------------------------------------
+# §S6 / AC7: the scheduler-note board is gone.
+# ---------------------------------------------------------------------------------------------
+
+#: The notes a request directory holds in the fixture.
+REQUEST_NOTE = "reschedule-request-x.md"
+DIRECTIVE_NOTE = "directive-y.md"
+
+
+class NoSchedulerNoteBoardTest(_WorktreeFlowPathCase):
+    """AC7 / §S6: no ``$WF_REQUEST_DIR``, no ``reschedule-request``; ``status`` lists no note and
+    is otherwise unchanged."""
+
+    def setUp(self):
+        super().setUp()
+        self._add_worktree()
+        self._branch_commit("a.txt", "a\n", "feat(core): GREEN — own")
+        self.request_dir = write_files(self.work / "requests", {
+            REQUEST_NOTE: "---\ndescription: please reschedule CR-TST-001\n---\n",
+            DIRECTIVE_NOTE: "---\ndescription: start CR-TST-002\n---\n",
+        })
+
+    def _assert_names_no_note(self, result):
+        self.assertEqual(result.returncode, 0, self._output(result))
+        for text in (result.stdout, result.stderr):
+            for needle in (REQUEST_NOTE, DIRECTIVE_NOTE, "reschedule", "scheduler inbox"):
+                self.assertNotIn(needle, text, self._output(result))
+
+    def test_worktree_flow_names_neither_the_request_dir_nor_a_reschedule_request(self):
+        source = (TOOL_SCRIPTS_DIR / WORKTREE_FLOW).read_text(encoding="utf-8")
+        self.assertEqual([n for n in ("WF_REQUEST_DIR", "reschedule-request") if n in source], [])
+
+    def test_status_names_no_note_from_wf_request_dir_and_is_otherwise_unchanged(self):
+        plain = self._wf("status")
+        with_dir = self._wf("status", env={"WF_REQUEST_DIR": str(self.request_dir)})
+
+        self._assert_names_no_note(with_dir)
+        self.assertEqual((with_dir.stdout, with_dir.stderr), (plain.stdout, plain.stderr),
+                         "$WF_REQUEST_DIR changes neither the envelope nor the human board")
+
+    def test_status_reads_no_note_directory_from_the_projects_env_file(self):
+        write_files(self.repo, {".env": f"WF_REQUEST_DIR={self.request_dir}\n"})
+
+        self._assert_names_no_note(self._wf("status"))
+
+    def test_orchestration_track_names_no_reschedule_request(self):
+        track = read_text(REPO_ROOT / RULE_SURFACES["orchestration-track.md"][0])
+        self.assertIn("## Raise every approval/request to Mainline", track,
+                      "the scan must read the track rules")
+        self.assertEqual([line for line in track.splitlines() if "reschedule-request" in line], [])
 
 
 if __name__ == "__main__":
