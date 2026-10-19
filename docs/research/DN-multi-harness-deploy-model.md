@@ -1077,11 +1077,29 @@ frontend consumes).
   `vitest` leaves CR-MDB-062's non-goals for bun projects. Release 1.0.0 (CR-MDB-066).
 - **The generated services skill starts one dev server.** A frontend project's other services — its
   own backends, services it consumes, the backends its integration tests need — are project-specific.
-  The project's Mainline creates and maintains them as project-local skill and script combinations,
-  which bootstrap and shutdown call; the scaffold never generates or touches them. Crucible's
-  hand-written `crucible-bootstrap-services` is the precedent: one dev server, the rest its own. The
-  integration rule is unchanged: a seam crossing a network or vendor boundary is proven against the
+  The integration rule is unchanged: a seam crossing a network or vendor boundary is proven against the
   real backend, which the project's own services bring up.
+- **A project's dependency services are declared, and Model B runs them** (user ruling 2026-10-19, on
+  a shared tool that had absorbed one project's database teardown). The services a project depends on
+  are the project orchestrator's to define, never hoisted into a shared skill, stack, template or tool.
+  Nearly every project has dependency services to bring up, so the mechanism is expected in every
+  project, of either type, and is not an option: bootstrap and shutdown always run its start and stop
+  steps, and an empty section starts nothing. Model B provides the means, generic to every project: a section of the project's configuration
+  where its orchestrator declares each service it needs started or stopped, with a description of what
+  it is for and the commands (or the described action) that start and stop it; and utility scripts
+  that register a service, remove one, and run the declared start and stop sequences, which bootstrap
+  and shutdown call. The orchestrator registers and removes services through those scripts at any
+  point in the project's life. The scripts are Model B's but live in the project's own folder: `init`
+  drops them in at scaffold time (and `migrate` into an existing project), beside the configuration
+  section, created empty; a re-run updates Model B's scripts and never the declarations. Living in the
+  project is what keeps them free of permission prompts: the project's rendered permission policy
+  allows its own scripts by path, so starting and stopping services asks nothing and no global
+  allowance is widened (the strict per-project policy of CR-MDB-049 names them). This replaces
+  hand-written skill-and-script pairs as the way a project brings up its own services. Crucible's
+  hand-written `crucible-bootstrap-services` stays the precedent for the split: one dev server is the
+  generated skill's, the rest are the project's declarations. A shared tool that needs a project's
+  service at its teardown runs the project's own command and names no project. Release 1.1.0
+  (CR-MDB-074).
 - **`migrate` changes existing files incrementally.** For every file it touches (`.env`, `.envrc`,
   `.gitignore`, `AGENTS.md`) it only adds: Model B's lines sit in a marked managed block that a re-run
   updates and nothing else; a project's own lines are never altered or removed (an `.envrc` that loads
@@ -1110,7 +1128,7 @@ frontend consumes).
 | **062** (blocking hooks) | §D21 amended: python and bun hooks; `init` refuses a hook whose script is not deployed. |
 | **063** (test-interpreter probe) | §D21 amended (2026-10-14): the project `.venv` route, the bootstrap check, `python3` on `PATH` for every stack's client, and `freshness` with a dead recorded interpreter. |
 | **064** (Python floor) | §D22: `requires-python >=3.14`. |
-| **074** (project type) | §D25: one `frontend` type; the generated skill starts one dev server (its port in a config key or pinned on the command); a project's other services are project-local, maintained by its Mainline, called by bootstrap and shutdown. |
+| **074** (project type) | §D25: one `frontend` type; the generated skill starts one dev server (its port in a config key or pinned on the command); a project's dependency services are declared in its configuration by its orchestrator, registered and removed through Model B utility scripts that `init` drops into the project, which bootstrap and shutdown call to start and stop them. |
 | **055** (`migrate`) | §D25: every touched file changes incrementally, Model B's lines in a managed block. |
 | **NEW — CR-MDB-079** | §D25: `bun.toml` general to every Bun project. |
 | **NEW — CR-MDB-080** | §D25: the `go` generated stack, after Crucible's `go-crucible.py`. |
