@@ -85,7 +85,7 @@ SELECTED_CODE = re.compile(r"F\d+|I\d+|BLE001|PIE810|RUF059|SIM102|SIM105")
 RUFF_PRUNED = frozenset({
     ".bzr", ".direnv", ".eggs", ".git", ".git-rewrite", ".hg", ".ipynb_checkpoints", ".mypy_cache",
     ".nox", ".pants.d", ".pyenv", ".pytest_cache", ".pytype", ".ruff_cache", ".svn", ".tox",
-    ".venv", ".vscode", "__pypackages__", "_build", "buck-out", "build", "dist", "node_modules",
+    ".venv", "__pypackages__", "_build", "buck-out", "build", "dist", "node_modules",
     "site-packages", "venv", "__pycache__", ".worktrees", ".lean-ctx", "test-reports",
 })
 
