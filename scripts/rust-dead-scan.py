@@ -98,16 +98,63 @@ def git_head(root):
         return "unknown"
 
 
+class WorkspaceError(Exception):
+    """A malformed Cargo workspace (CR-MDB-078 §S2.4): reported as an `error:` line."""
+
+
+def _read_manifest(path, shown):
+    """Parse the TOML manifest at `path`; `shown` names it in a refusal."""
+    if not path.is_file():
+        raise WorkspaceError(f"{shown} not found")
+    try:
+        return tomllib.loads(path.read_text())
+    except tomllib.TOMLDecodeError as e:
+        raise WorkspaceError(f"{shown} is not valid TOML: {e}") from e
+
+
+def _package_name(manifest, shown):
+    name = manifest.get("package", {}).get("name")
+    if not isinstance(name, str) or not name:
+        raise WorkspaceError(f"{shown} has no [package] name")
+    return name.replace("-", "_")
+
+
+def _member_dirs(root, workspace):
+    """Cargo's member set: `members` paths and glob patterns, minus `exclude`
+    (`default-members` never changes the set)."""
+    excluded = [Path(e).as_posix() for e in workspace.get("exclude", [])]
+    dirs = []
+    for entry in workspace.get("members", []):
+        if any(c in entry for c in "*?["):
+            found = sorted(p.relative_to(root).as_posix()
+                           for p in root.glob(entry) if p.is_dir())
+        else:
+            found = [Path(entry).as_posix()]
+        for mdir in found:
+            if mdir in dirs or any(mdir == e or mdir.startswith(e + "/") for e in excluded):
+                continue
+            dirs.append(mdir)
+    return dirs
+
+
 def workspace_members(root):
-    text = (root / "Cargo.toml").read_text()
-    m = re.search(r"members\s*=\s*\[(.*?)\]", text, re.S)
-    members = re.findall(r'"([^"]+)"', m.group(1)) if m else []
-    out = []
-    for mdir in members:
-        mt = (root / mdir / "Cargo.toml").read_text()
-        pm = re.search(r'^name\s*=\s*"([^"]+)"', mt, re.M)
-        out.append((mdir, pm.group(1).replace("-", "_")))
-    return out
+    """[(member dir, package name)] of the workspace at `root`, the root package
+    (dir ".") first when the root manifest has a [package] table (§S1.3)."""
+    manifest = _read_manifest(root / "Cargo.toml", str(root / "Cargo.toml"))
+    workspace = manifest.get("workspace")
+    if not isinstance(workspace, dict):
+        raise WorkspaceError(f"{root / 'Cargo.toml'} has no [workspace] table")
+    members = []
+    if "package" in manifest:
+        members.append((".", _package_name(manifest, str(root / "Cargo.toml"))))
+    for mdir in _member_dirs(root, workspace):
+        if mdir == ".":
+            continue
+        shown = f"{mdir}/Cargo.toml"
+        if not (root / shown).is_file():
+            raise WorkspaceError(f"workspace member {mdir} has no Cargo.toml")
+        members.append((mdir, _package_name(_read_manifest(root / shown, shown), shown)))
+    return members
 
 
 def gated_lines(lines):
@@ -636,7 +683,10 @@ def main():
     modes = list(args.modes)
     if args.lift_lint and "lift-lint" not in modes:
         modes.append("lift-lint")
-    members = workspace_members(root)
+    try:
+        members = workspace_members(root)
+    except WorkspaceError as e:
+        sys.exit(f"error: {e}")
     report = {"meta": {"head": git_head(root), "date": date.today().isoformat(),
                        "modes": modes, "members": len(members)}}
 
