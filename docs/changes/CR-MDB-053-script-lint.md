@@ -1,7 +1,6 @@
 # CR-MDB-053 — Model B's lint rule set and gate step; its findings fixed
 
-**Status:** PENDING — spec drafted 2026-10-19 from the gap analysis, the spec pre-review folded in;
-awaiting approval.
+**Status:** COMPLETED (filed 2026-10-19, gap analysis and pre-review 2026-10-19).
 **Type:** refactor (tool scripts, package, hooks) + tooling (lint config, the pre-merge gate)
 **Priority:** P2 — release 1.0.0, wave 2; straight after CR-MDB-081, before the release's test-hygiene CR
 (CR-MDB-052).
