@@ -48,6 +48,7 @@ import tempfile
 import tomllib
 import venv
 import zipfile
+from pathlib import PurePosixPath
 
 G, R, B, X = "\033[32m", "\033[31m", "\033[1m", "\033[0m"
 
@@ -56,6 +57,12 @@ SKILL_ROOTS = ("skills", ".agents/skills", ".pi/skills")
 
 #: A teardown key no longer honoured; a configuration carrying it is refused (CR-MDB-081 §S7).
 RETIRED_TEARDOWN_KEY = "drop_mongo_db"
+
+def _count_members(names, glob):
+    """How many wheel member names match the glob as a whole; ``*`` stays inside one
+    directory and ``?`` / ``[...]`` match one character (``PurePosixPath.full_match``)."""
+    return sum(1 for n in names if PurePosixPath(n).full_match(glob))
+
 
 class ConfigError(Exception):
     """A configuration the gate refuses while it loads, before any phase runs."""
@@ -203,15 +210,14 @@ class Gate:
                 self.bad(f"forbidden entry point '{forbidden}' present")
             else:
                 self.ok(f"no forbidden entry point '{forbidden}'")
-        # wheel globs (+ optional exact counts)
+        # wheel globs (+ optional exact counts): full patterns -- `*`, `?`, `[...]` -- matched
+        # against each whole member name, `*` never crossing `/` (CR-MDB-081 §S7)
         counts = eng.get("wheel_glob_counts", {})
         for glob, want in counts.items():
-            rx = "^" + re.escape(glob).replace(r"\*", "[^/]*") + "$"
-            got = sum(1 for n in names if re.match(rx, n))
+            got = _count_members(names, glob)
             (self.ok if got == want else self.bad)(f"wheel bundles {want}x '{glob}' (found {got})")
         for glob in eng.get("wheel_globs", []):
-            rx = "^" + re.escape(glob).replace(r"\*", "[^/]*") + "$"
-            got = sum(1 for n in names if re.match(rx, n))
+            got = _count_members(names, glob)
             (self.ok if got else self.bad)(f"wheel bundles '{glob}' (found {got})")
 
         # phase 3: clean install
