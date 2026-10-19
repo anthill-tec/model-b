@@ -813,6 +813,11 @@ def cmd_abort(args):
 
     if args.release_lock:
         holder = _read_lock(main_wt)
+        if holder is None:
+            # Nothing to release: say so, never `[None]` (CR-MDB-081 §S5).
+            print(f"{'[dry-run] ' if args.dry_run else 'abort: '}no merge lock is held "
+                  "— nothing to release")
+            return 0
         if args.dry_run:
             print(f"[dry-run] would release merge lock [{holder}]")
             return 0
