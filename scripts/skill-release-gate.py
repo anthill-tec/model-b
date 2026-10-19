@@ -225,7 +225,12 @@ class Gate:
         runpath, runpy = self.make_venv("runvenv")
         inst = subprocess.run([runpy, "-m", "pip", "install", "-q", whl], capture_output=True, text=True)
         console = os.path.join(runpath, "bin", eng.get("console", ""))
-        if eng.get("console") and os.path.isfile(console):
+        if not eng.get("console"):
+            # Name the key the [engine] table lacks, never `'None'` (CR-MDB-081 §S7).
+            self.bad("[engine] names no `console` key — no installed console to check",
+                     inst.stdout + inst.stderr)
+            return None
+        if os.path.isfile(console):
             self.ok(f"console '{eng['console']}' installed")
         else:
             self.bad(f"console '{eng.get('console')}' not installed", inst.stdout + inst.stderr)
