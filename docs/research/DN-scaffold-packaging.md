@@ -153,3 +153,20 @@ the generated setup is in the same position.
    CR that ships `migrate` aligns all three.)
 
 Model B is `migrate`'s first project: the additions it received by hand are the acceptance check.
+
+**`migrate` also keeps a governed project current (user rulings, 2026-10-19).** A project Model B
+already governs had no way to catch up with a newer Model B as a whole: `agents` re-renders the agent
+definitions and the permission policy, `release-workflow` the release workflow, and nothing re-renders
+the hook wiring after `init`. One verb now does both jobs:
+5. **`migrate` on a governed project brings it up to the installed Model B.** A project whose `.env`
+   holds the registry is governed. On it, `migrate` re-renders everything Model B owns at the installed
+   version — the agent definitions and the permission policy, the hook wiring, the release workflow,
+   and every later Model B-owned artifact (the dependency-services scripts of DN-multi-harness §D25
+   join the list) — under the ownership rules: a marked file is Model B's, a hand-modified one is
+   skipped unless `--force-managed`, an unmarked one is never written. `--dry-run` prints the plan. It
+   reports each file changed, skipped or left. There is no separate `update` verb; `agents` and
+   `release-workflow` stay as single-artifact verbs. Release 1.0.0 (CR-MDB-082); the adoption half of
+   ruling 2, for a project Model B does not yet govern, stays in CR-MDB-055.
+6. **A project records the Model B version that last rendered it,** in its registry. `migrate` reports
+   the move from that version to the installed one and records the new one; `bootstrap` says when the
+   installed Model B is newer than the project's recorded version and names `migrate`.
