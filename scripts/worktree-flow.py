@@ -291,7 +291,8 @@ def _phase_from_log(repo, base, branch):
     Phase is the latest COMMITTED RED/GREEN/RED-fix/close-out. VERIFY is read-only and
     usually leaves no commit, so a GREEN tip often means 'GREEN done, VERIFY next'.
     """
-    out = _git_out(["log", f"{base}..{branch}", "--format=%s"], repo)
+    # Own commits only: a `sync` merge commit is not the CR's work (CR-MDB-081 §S3).
+    out = _git_out(["log", "--no-merges", f"{base}..{branch}", "--format=%s"], repo)
     subjects = [s for s in out.splitlines() if s.strip()]
     if not subjects:
         return ("started — RED pending", 0, "")
@@ -573,7 +574,7 @@ def cmd_status(args):
         if is_main:
             state = "clean" if clean else "DIRTY (has WIP)"
         elif behind:
-            state = f"REBASE NEEDED (develop moved {behind})" + ("" if clean else " + DIRTY")
+            state = f"SYNC NEEDED (develop moved {behind})" + ("" if clean else " + DIRTY")
         else:
             state = ("clean — finish-ready" if clean else "DIRTY (commit first)")
         a = "" if ahead is None else str(ahead)
@@ -615,7 +616,7 @@ def cmd_status(args):
 
 
 # --------------------------------------------------------------------------- #
-# sync (rebase feature branch onto develop)
+# sync (merge develop into the feature branch)
 # --------------------------------------------------------------------------- #
 
 def _resolve_cr_worktree(main_wt, cr):
@@ -640,31 +641,48 @@ def cmd_sync(args):
     ahead, behind = _ahead_behind(main_wt, develop, branch)
     if not behind:
         print(f"sync: ok branch={branch} already up to date with {develop} "
-              f"(ahead={ahead}, behind=0) — no rebase needed")
+              f"(ahead={ahead}, behind=0) — nothing to merge")
         return 0
 
     if not _is_clean(wt_dir):
         sys.exit(f"[worktree-flow] ERROR: {wt_dir} has uncommitted changes. "
-                 f"Commit or stash before rebasing.")
+                 f"Commit or stash before syncing.")
 
     if args.dry_run:
-        print(f"[dry-run] git -C {wt_dir} rebase {develop}   "
+        print(f"[dry-run] git -C {wt_dir} merge --no-edit {develop}   "
               f"(branch is {behind} behind {develop})")
         return 0
 
-    print(f"sync: rebasing {branch} onto {develop} ({behind} commit(s) behind)…")
-    r = _git(["rebase", develop], wt_dir)
-    if r.returncode != 0:
-        # Never leave a half-rebased tree — abort and report.
-        _git(["rebase", "--abort"], wt_dir)
-        sys.stderr.write(r.stdout + r.stderr)
-        print(f"[worktree-flow] ERROR: rebase hit conflicts — ABORTED cleanly. "
-              f"{branch} is unchanged. Resolve manually in {wt_dir}:\n"
-              f"  git -C {wt_dir} rebase {develop}   # then fix conflicts")
+    print(f"sync: merging {develop} into {branch} ({behind} commit(s) behind)…")
+    conflicts = _merge_develop_in(wt_dir, develop)
+    if conflicts is not None:
+        print(f"[worktree-flow] ERROR: merging {develop} into {branch} conflicted — ABORTED. "
+              f"{branch} is unchanged. Conflicting paths: {', '.join(conflicts) or '(none listed)'}. "
+              f"Resolve manually in {wt_dir}:\n"
+              f"  git -C {wt_dir} merge {develop}   # then fix conflicts", file=sys.stderr)
         return 1
     new_head = _git_out(["rev-parse", "--short", "HEAD"], wt_dir)
-    print(f"sync: ok {branch} rebased onto {develop} (new head {new_head})")
+    print(f"sync: ok {develop} merged into {branch} (new head {new_head})")
     return 0
+
+
+def _merge_develop_in(wt_dir, develop):
+    """Merge develop into the CR branch checked out at ``wt_dir`` (CR-MDB-081 §S1/§S2).
+
+    `git merge --no-edit <develop>` — a fast-forward where the branch has no commits of its
+    own, a merge commit otherwise; every existing commit keeps its sha. Returns None on
+    success; on failure aborts the merge (`git merge --abort`), so the branch and worktree are
+    left as they were, writes git's output to stderr, and returns the conflicting paths.
+    """
+    r = _git(["merge", "--no-edit", develop], wt_dir)
+    if r.returncode == 0:
+        return None
+    conflicts = _git_out(["diff", "--name-only", "--diff-filter=U"], wt_dir).splitlines()
+    _git(["merge", "--abort"], wt_dir)
+    sys.stderr.write(r.stdout + r.stderr)
+    for path in conflicts:
+        print(f"[worktree-flow] conflict: {path}", file=sys.stderr)
+    return conflicts
 
 
 # --------------------------------------------------------------------------- #
@@ -710,22 +728,22 @@ def cmd_finish(args):
                      f"`abort --release-lock` only if you are sure no finish is running.)")
 
     try:
-        # --- Rebase if develop moved (rebase at the right time) ---------------
+        # --- Catch up if develop moved: merge develop in (CR-MDB-081 §S2) -----
+        catch_up = []
         if behind:
             if args.no_auto_sync:
                 sys.exit(f"[worktree-flow] ERROR: {branch} is {behind} behind {develop} and "
                          f"--no-auto-sync was set. Run `sync --cr {args.cr}` first.")
-            print(f"finish: {branch} is {behind} behind {develop} → rebasing first…",
+            print(f"finish: {branch} is {behind} behind {develop} → merging {develop} in first…",
                   file=sys.stderr)
-            if args.dry_run:
-                print(f"[dry-run] git -C {wt_dir} rebase {develop}", file=sys.stderr)
-            else:
-                rb = _git(["rebase", develop], wt_dir)
-                if rb.returncode != 0:
-                    _git(["rebase", "--abort"], wt_dir)
-                    sys.stderr.write(rb.stdout + rb.stderr)
-                    sys.exit(f"[worktree-flow] ERROR: pre-finish rebase conflicted — ABORTED. "
-                             f"{branch} unchanged, NOT merged. Resolve in {wt_dir} then retry.")
+            catch_up.append(f"git -C {wt_dir} merge --no-edit {develop}")
+            if not args.dry_run:
+                conflicts = _merge_develop_in(wt_dir, develop)
+                if conflicts is not None:
+                    sys.exit(f"[worktree-flow] ERROR: pre-finish merge of {develop} conflicted "
+                             f"({', '.join(conflicts) or 'no paths listed'}) — ABORTED. "
+                             f"{branch} unchanged, NOT merged. Run `sync --cr {args.cr}`, "
+                             f"resolve in {wt_dir}, then retry.")
 
         # --- The dance: merge --no-ff, THEN remove worktree, THEN delete branch -
         # Direct git — no git-flow binary. Same result git flow feature finish gives.
@@ -733,7 +751,7 @@ def cmd_finish(args):
         # failure leaves everything recoverable. The branch is deleted LAST, after its
         # worktree is gone (git refuses to delete a branch checked out in a worktree).
         merge_msg = f"Merge branch '{branch}' into {develop}"
-        steps = [
+        steps = catch_up + [
             f"git -C {main_wt} merge --no-ff {branch} -m {merge_msg!r}",
             f"git -C {main_wt} worktree remove {wt_dir}",
             f"git -C {main_wt} worktree prune",
