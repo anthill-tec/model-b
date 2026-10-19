@@ -24,6 +24,10 @@ Class map:
 - ``LintGateDetectorTest`` / ``AgentsMdLintGateTest`` — AC5: the pre-merge gate opens with a step
   running ``ruff check`` that must exit 0, before the ``pre-merge-gate`` run; the six existing steps
   keep their wording, renumbered after it (:func:`lint_gate_findings`).
+- ``PostMergeLintDetectorTest`` / ``AgentsMdPostMergeLintTest`` — §S5 (a VERIFY finding the user
+  approved): the post-merge develop gate cites every gate step from the lint step through the
+  ``pre-merge-gate`` run, so develop stays lint-clean after a merge too
+  (:func:`post_merge_lint_findings`).
 - ``LintDocsDetectorTest`` / ``AgentsMdLintDocsTest`` — AC5: Development Commands names
   ``ruff check`` and ``uv tool install ruff`` and keeps the unit naming
   ``.github/workflows/release.yml``; Important Files names ``[tool.ruff]``; no sentence says no
@@ -407,6 +411,45 @@ def lint_gate_findings(text: str) -> list[str]:
     return out
 
 
+# ------------------------------------------- §S5: the post-merge develop gate ----
+
+POST_MERGE_LINT = ("the post-merge develop gate cites the gate's steps from the lint step through "
+                   "the pre-merge-gate run")
+
+POST_MERGE_GATE = re.compile(r"\bpost-merge develop gate\b")
+#: A step citation: "step 1", "steps 1–3", "steps 1 to 3", "steps 1, 2 and 3".
+STEP_CITATION = re.compile(
+    r"\bsteps? (\d+(?:\s*(?:[\u2013\u2014-]|to|through|,|,? and)\s*\d+)*)")
+STEP_RANGE = re.compile(r"(\d+)\s*(?:[\u2013\u2014-]|to|through)\s*(\d+)")
+
+
+def cited_steps(unit: str) -> set[int]:
+    """Every step number ``unit`` cites, each range expanded."""
+    out: set[int] = set()
+    for m in STEP_CITATION.finditer(unit):
+        out.update(int(n) for n in re.findall(r"\d+", m.group(1)))
+        for a, b in STEP_RANGE.findall(m.group(1)):
+            out.update(range(int(a), int(b) + 1))
+    return out
+
+
+def post_merge_lint_findings(text: str) -> list[str]:
+    """§S5: whether the post-merge develop gate in the Testing & QA of ``text`` (an
+    ``AGENTS.md``) runs the lint step — every unit naming that gate and citing gate steps cites
+    each step from the lint step (the one running ``ruff check``) through the ``pre-merge-gate``
+    run, numbered as the gate numbers them."""
+    section = testing_section(text)
+    steps = gate_steps(section)
+    lint = next((n for n, t in steps if RUFF_CHECK.search(t)), None)
+    gate = next((n for n, t in steps if GATE_COMMAND.search(t)), None)
+    bullets = [c for u in units(section)
+               if POST_MERGE_GATE.search(n := normalise(u)) and (c := cited_steps(n))]
+    if (lint is None or gate is None or lint >= gate or not bullets
+            or any(not set(range(lint, gate + 1)) <= c for c in bullets)):
+        return [POST_MERGE_LINT]
+    return []
+
+
 # ------------------------------------------------------------ AC5: the docs ----
 
 RUFF_CHECK_SHOWN = "Development Commands show ruff check"
@@ -464,6 +507,12 @@ GOOD_IMPORTANT = (
 GOOD_TESTING = ("## Testing & QA\n\nModel B's pre-merge gate, in order:\n\n" + GOOD_LINT_STEP
                 + GOOD_GATE + "\n")
 GOOD_AGENTS = "# Repository Guidelines\n\n" + GOOD_DEV + GOOD_IMPORTANT + GOOD_TESTING
+#: The post-merge develop gate's bullet, citing the lint step (1) through the gate run (3).
+GOOD_POST_MERGE = ("- **When develop moves before the merge,** the post-merge develop gate is a coverage "
+                   "run, run as steps 1\u20133, and a changed total is recorded on develop.\n")
+#: The bullet as the gate's lint step left it: the coverage steps only.
+TODAYS_POST_MERGE = GOOD_POST_MERGE.replace("steps 1\u20133", "steps 2\u20133")
+GOOD_POST_MERGE_AGENTS = GOOD_AGENTS + GOOD_POST_MERGE
 #: The retired sentence, as the spec commit's ``AGENTS.md`` carries it.
 NO_LINTER_SENTENCE = (
     "There is **no** Makefile/justfile and **no** linter/formatter/type-checker configured (no "
@@ -799,6 +848,50 @@ class AgentsMdLintGateTest(unittest.TestCase):
     def test_the_gate_opens_with_a_ruff_check_step_and_keeps_the_six_steps_after_it(self):
         self.assertEqual(lint_gate_findings(AGENTS_MD.read_text(encoding="utf-8")), [],
                          "AC5 / §S5: the pre-merge gate's lint step")
+
+
+class PostMergeLintDetectorTest(unittest.TestCase):
+    """§S5 — :func:`post_merge_lint_findings`, both ways on synthetic text."""
+
+    def test_a_bullet_citing_the_lint_step_through_the_gate_run_passes(self):
+        self.assertEqual(post_merge_lint_findings(GOOD_POST_MERGE_AGENTS), [])
+
+    def test_any_citation_form_covering_steps_1_to_3_passes(self):
+        for cited in ("steps 1-3", "steps 1 to 3", "steps 1, 2 and 3", "steps 1\u20134"):
+            with self.subTest(cited=cited):
+                text = GOOD_POST_MERGE_AGENTS.replace("steps 1\u20133", cited)
+                self.assertEqual(post_merge_lint_findings(text), [])
+
+    def test_todays_bullet_citing_the_coverage_steps_only_is_reported(self):
+        text = GOOD_AGENTS + TODAYS_POST_MERGE
+        self.assertEqual(post_merge_lint_findings(text), [POST_MERGE_LINT])
+
+    def test_a_bullet_stopping_before_the_gate_run_is_reported(self):
+        text = GOOD_POST_MERGE_AGENTS.replace("steps 1\u20133", "steps 1\u20132")
+        self.assertEqual(post_merge_lint_findings(text), [POST_MERGE_LINT])
+
+    def test_no_post_merge_bullet_is_reported(self):
+        self.assertEqual(post_merge_lint_findings(GOOD_AGENTS), [POST_MERGE_LINT])
+
+    def test_a_gate_with_no_lint_step_is_reported(self):
+        text = GOOD_POST_MERGE_AGENTS.replace(GOOD_LINT_STEP + GOOD_GATE, TODAYS_GATE)
+        self.assertEqual(post_merge_lint_findings(text), [POST_MERGE_LINT])
+
+    def test_cited_steps_expands_ranges_and_lists(self):
+        self.assertEqual(cited_steps("run as steps 1\u20133, and step 5"), {1, 2, 3, 5})
+        self.assertEqual(cited_steps("run as steps 2, 4 and 6"), {2, 4, 6})
+        self.assertEqual(cited_steps("a coverage run"), set())
+
+
+class AgentsMdPostMergeLintTest(unittest.TestCase):
+    """§S5 — the real ``AGENTS.md``'s post-merge develop gate runs the lint step too."""
+
+    def test_the_post_merge_develop_gate_cites_the_lint_step_through_the_gate_run(self):
+        section = testing_section(AGENTS_MD.read_text(encoding="utf-8"))
+        said = [normalise(u) for u in units(section) if POST_MERGE_GATE.search(normalise(u))]
+        self.assertEqual(post_merge_lint_findings(AGENTS_MD.read_text(encoding="utf-8")), [],
+                         "§S5: the post-merge develop gate runs the lint step (steps 1–3); "
+                         "it says:\n  " + "\n  ".join(said))
 
 
 class LintDocsDetectorTest(unittest.TestCase):
