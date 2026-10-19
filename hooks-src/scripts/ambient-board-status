@@ -62,6 +62,7 @@ marker -> manifest-key table, kept in parity with pre-flight's
 `STACK_CLIENT_KEYS` by test, §S3); zero workflow-cycle env coupling.
 """
 
+import contextlib
 import json
 import os
 import re
@@ -270,15 +271,13 @@ def _degrade(note: str) -> int:
 
 def main() -> int:
     # Printing never raises on an unencodable character (e.g. a surrogate).
-    try:
+    # A non-reconfigurable stdout keeps its own error policy.
+    with contextlib.suppress(AttributeError, ValueError, OSError):
         sys.stdout.reconfigure(errors="backslashreplace")
-    except (AttributeError, ValueError, OSError):
-        pass  # a non-reconfigurable stdout keeps its own error policy
-    # Drain the SessionStart stdin payload (unused; keeps the pipe clean).
-    try:
+    # Drain the SessionStart stdin payload (unused; keeps the pipe clean); a closed/absent
+    # stdin is fine for an ambient hook.
+    with contextlib.suppress(OSError):
         sys.stdin.read()
-    except OSError:
-        pass  # a closed/absent stdin is fine for an ambient hook
 
     override = os.environ.get("MODELB_STATUS_CMD", "")
     if override:

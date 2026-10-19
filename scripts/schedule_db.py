@@ -309,7 +309,7 @@ def _ledger_hook(con, cr, state):
         if p.returncode != 0:
             print(f"[schedule_db] warn: ledger sync exited {p.returncode} for {cr}: "
                   f"{p.stderr.strip()[:200]}", file=sys.stderr)
-    except Exception as e:  # the board op must never fail on ledger mirroring
+    except Exception as e:  # noqa: BLE001 — the board op must never fail on ledger mirroring
         print(f"[schedule_db] warn: ledger hook failed for {cr}: {e}", file=sys.stderr)
 
 
