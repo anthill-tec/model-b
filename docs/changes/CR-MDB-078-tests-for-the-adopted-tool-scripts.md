@@ -1,7 +1,6 @@
 # CR-MDB-078 — Tests for the rust health tools, and the defects they find
 
-**Status:** PENDING — spec drafted 2026-10-19 from the gap analysis, the spec pre-review folded in;
-awaiting approval.
+**Status:** COMPLETED (filed 2026-10-17, gap analysis and pre-review 2026-10-19).
 **Type:** tests + fixes (the deployed rust health tools)
 **Priority:** P1 — release 1.0.0, wave 2; after CR-MDB-073.
 **Depends on:** CR-MDB-073, whose gate measures the result. The board is authoritative: read `queue`.
