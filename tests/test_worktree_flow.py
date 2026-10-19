@@ -721,6 +721,22 @@ class StatusTest(_WorktreeFlowPathCase):
         self.assertEqual((row["phase"], row["commits_ahead"]), (None, None))
         self.assertEqual(row["path"], str(self.wt))
 
+    def test_status_never_calls_a_detached_worktree_finish_ready(self):
+        # `finish` refuses a detached worktree, so its state must name it as detached instead.
+        repo_git(self.repo, "worktree", "add", "-q", "--detach", self.wt, DEVELOP)
+
+        result = self._wf("status")
+
+        self.assertEqual(result.returncode, 0, self._output(result))
+        state = self._row(result)["state"]
+        self.assertNotIn("finish-ready", state)
+        self.assertIn("detached", state.lower())
+        board = [line for line in result.stderr.splitlines() if "(detached)" in line]
+        self.assertEqual(len(board), 1, result.stderr)
+        self.assertNotIn("finish-ready", board[0])
+        self.assertIn("detached", board[0].split("(detached)", 1)[1].lower(),
+                      "the board's state column names the worktree as detached")
+
     def test_status_shows_a_dirty_level_worktree_as_dirty(self):
         self._add_worktree()
         write_files(self.wt, {"wip.txt": "uncommitted\n"})
@@ -1059,6 +1075,23 @@ class FinishTest(_FinishCase):
                          [f"branch -d {BRANCH} failed (branch kept) — delete manually"])
         self.assertEqual(axi["help"], [f"git -C {self.repo} branch -d {BRANCH}"])
         self.assertIsNone(self._config(f"wf.track.{CR}"), "the track label is unset")
+
+    def test_finish_with_a_failed_branch_delete_never_says_the_branch_was_deleted(self):
+        # The branch is also checked out elsewhere, so `branch -d` refuses it.
+        repo_git(self.repo, "worktree", "add", "-q", "--force", self.work / "second", BRANCH)
+
+        result = self._wf("finish", "--cr", CR)
+
+        self.assertEqual(result.returncode, 0, self._output(result))
+        self.assertTrue(self._branch_exists(BRANCH), "the branch is kept")
+        claims = [line for line in (result.stdout + result.stderr).splitlines()
+                  if "branch deleted" in line.lower()]
+        self.assertEqual(claims, [], "no line may say the kept branch was deleted")
+        self.assertIn(f"[worktree-flow] WARN: merge + worktree removal succeeded but "
+                      f"`branch -d {BRANCH}` failed (branch kept). Delete manually: "
+                      f"git -C {self.repo} branch -d {BRANCH}\n", result.stderr)
+        self.assertEqual(self._axi(result)["warnings"],
+                         [f"branch -d {BRANCH} failed (branch kept) — delete manually"])
 
     def test_finish_push_merges_removes_deletes_and_pushes_develop(self):
         remote = self._bare_remote("origin.git")
