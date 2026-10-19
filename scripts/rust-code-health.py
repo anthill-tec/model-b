@@ -120,8 +120,10 @@ def scan_counts(ds):
 def rebuild_index(health_dir):
     """Regenerate <health>/index.json, ordered by each manifest's `created`,
     falling back to the directory name for a manifest without it (§S3.4)."""
+    if not health_dir.exists():
+        return []  # no snapshot yet: nothing to index, and no directory to create
     entries = []
-    for d in health_dir.iterdir() if health_dir.exists() else []:
+    for d in health_dir.iterdir():
         mf = d / "snapshot.json"
         if d.is_dir() and mf.exists():
             m = json.loads(mf.read_text())
@@ -234,6 +236,8 @@ def _commit_paths(root, paths, message):
     _commit_ledger: never fails the caller; index.lock retry x3."""
     rels = []
     for p in paths:
+        if not Path(p).exists():
+            continue  # not written by this run (e.g. no svg without `dot`)
         try:
             rels.append(str(Path(p).relative_to(root)))
         except ValueError:
@@ -440,6 +444,7 @@ def cmd_snapshot(args):
 
     # true up the ledger against the board, ratify (post), THEN freeze it
     ratification = []
+    ledger_paths = []
     rows = _load_ledger(out)
     if rows is not None:
         today = date.today().isoformat()
@@ -450,6 +455,7 @@ def cmd_snapshot(args):
         if args.phase == "post" and args.slice:
             ratification = _ratify(rows, args.slice, snap, snap_name, today)
         _save_ledger(out, rows)
+        ledger_paths.append(_ledger_path(out))
         shutil.copy2(_ledger_path(out), snap / "audit-cull-ledger.jsonl")
 
     cm = json.loads((snap / "crate_map_baseline.json").read_text())
@@ -499,7 +505,8 @@ def cmd_snapshot(args):
     # directive 2026-07-04: snapshot runs must not leave the tree dirty)
     living_paths = [out / f for f in LIVING + [f"{name}_crate_map.dot",
                                                f"{name}_crate_map.svg"]]
-    _commit_paths(root, [snap, out / "health" / "index.json"] + living_paths,
+    _commit_paths(root, [snap, out / "health" / "index.json"] + living_paths
+                  + ledger_paths,
                   f"docs(health): {args.phase.upper()} snapshot {snap_name}")
     print(f"[health] snapshot {snap_name} @ {head} ({branch}"
           f"{', DIRTY' if dirty else ''}) — {len(manifest['files'])} files")
