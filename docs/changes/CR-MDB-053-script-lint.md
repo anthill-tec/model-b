@@ -31,6 +31,9 @@ Every item below is re-measured at gap analysis; the spec is written then.
 5. **Two redundant comment guards** no mutation can kill: the `//` check in `rust-crate-map.py`'s
    `count_signals` and in `rust-dead-scan.py`'s `mode_inventory` (the attribute patterns only match at
    the start of a code line). Remove them or keep them as documented intent.
+6. **Dead code and spacing found by CR-MDB-081's VERIFY:** `scripts/worktree-flow.py`'s `_pid_alive` has
+   no caller (it predates CR-MDB-081); `scripts/skill-release-gate.py` carries pycodestyle E302/E305
+   blank-line slips before its top-level definitions.
 
 The stale references this seed once carried moved into the CRs that test their scripts:
 `rust-code-health.py`'s docstring into CR-MDB-078, `skill-release-gate.py`'s skill roots into
