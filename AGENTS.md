@@ -160,7 +160,7 @@ Model B's pre-merge gate lints Model B's own Python (CR-MDB-053 §S5), then meas
 7. **The orchestrator records the new total** on the `Coverage baseline:` line, in the close-out's docs-only status-flip commit. That includes a drop the user approved.
 
 - **The first figure.** The `Coverage baseline:` line was added in CR-MDB-073's first cycle, from a measurement under the `[tool.coverage]` config. CR-MDB-073's own gate checks against it, and its status flip records the gate's figure.
-- **When develop moves before the merge,** the post-merge develop gate is a coverage run, run as steps 2–3, and a changed total is recorded on develop in a docs-only commit.
+- **When develop moves before the merge,** the post-merge develop gate is a coverage run, run as steps 1–3, and a changed total is recorded on develop in a docs-only commit.
 - **A `pre-merge-gate` run does not replace the full-suite `test` command** shown above; the `regression --coverage` example names the same `--cov-source`.
 
 - **Agent ids:** free-form, and a READABILITY habit rather than a parsed key — TDD-role agents by convention `CR-MDB-NNN-<cycle id>-<ROLE>`, the cycle's server id (e.g. `CR-MDB-059-237-RED`), the spec pre-review `CR-MDB-NNN-SPEC-REVIEW` (a VERIFY agent registered as `report` with no cycle, before `plan-file`), orchestrator ops `vidushi-mdb`. The id is assigned by the dispatcher and never minted by the agent; the ROLE is declared at registration via `--role` from the case-exact set `{RED, GREEN, FIX, VERIFY, ORCHESTRATOR, report}` and is never inferred from the id's shape, and the four TDD roles must additionally bind their cycle with `--cycle <id>` (the server refuses an unbound TDD registration 409). Read the client's agent-naming header rather than improvising.
