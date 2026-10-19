@@ -60,7 +60,8 @@ Layout produced (all git-committed):
     dead_code_register.toml frozen copy of the retention register
     health_delta.md        (post only) delta vs the paired pre snapshot
   <out>/health/index.json  regenerated series index (the RAG/trend entry point),
-                           ordered by `created` (directory name when absent)
+                           ordered by `created`; a manifest without it ranks
+                           as made at the start of its directory's date
 
 A failed sub-tool removes the snapshot directory the run created, so a rerun
 is not refused.
@@ -118,8 +119,10 @@ def scan_counts(ds):
 
 
 def rebuild_index(health_dir):
-    """Regenerate <health>/index.json, ordered by each manifest's `created`,
-    falling back to the directory name for a manifest without it (§S3.4)."""
+    """Regenerate <health>/index.json, ordered by each manifest's `created`.
+    A manifest without it ranks as made at the start of its directory's date
+    (the `YYYY-MM-DD` before the first `_`): on that date it comes before every
+    manifest recording `created`, and across dates the date decides (§S3.4)."""
     if not health_dir.exists():
         return []  # no snapshot yet: nothing to index, and no directory to create
     entries = []
@@ -131,7 +134,9 @@ def rebuild_index(health_dir):
                             ("created", "date", "head", "branch", "dirty", "phase",
                              "slice")},
                             "totals": m.get("totals", {})})
-    entries.sort(key=lambda e: (e.get("created") or e["dir"], e["dir"]))
+    # a bare `YYYY-MM-DD` sorts before every `YYYY-MM-DDTHH:MM:SSZ` of that date
+    entries.sort(key=lambda e: (e.get("created") or e["dir"].split("_", 1)[0],
+                                e["dir"]))
     (health_dir / "index.json").write_text(json.dumps(entries, indent=1))
     return entries
 
