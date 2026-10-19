@@ -18,7 +18,8 @@ its pages, Lavish sessions, and a production instance to leave alone. For a fron
 (a node or bun server with a browser UI, alongside Lavish design docs), Model B generates that skill
 from project parameters. A backend project writes its own, by hand, and Model B never touches it.
 Whatever the type, the generated skill starts one dev server: a project's other services — its own
-backends, services it consumes, the backends its integration tests need — are its own.
+backends, services it consumes, the backends its integration tests need — are its own, declared by its
+orchestrator and run by a Model B tool (DN §D25).
 
 ## Scope (seed)
 
@@ -43,13 +44,25 @@ backends, services it consumes, the backends its integration tests need — are 
    - **Teardown order.** Close the tabs before stopping Lavish, because a stopped Lavish server
      makes its tabs unrecognisable. Then stop the poll and the Lavish server, and stop the dev
      server last.
-3. **`bootstrap` and `shutdown`** call the project's services skills where they exist, of either
-   type: the generated one, and the project's own.
-4. **The project's own services are its Mainline's.** An orchestrator rule: the project's Mainline
-   creates and maintains project-local skill and script combinations for the services the generated
-   skill does not start, and the scaffold never generates or touches them.
+3. **`bootstrap` and `shutdown`** start and stop a project's services, of either type: the generated
+   skill's dev server, and the project's declared dependency services through the tool of item 4.
+4. **Declared dependency services, and the scripts that run them** — in every project, of either
+   type: nearly every project has dependency services to bring up, so bootstrap and shutdown always
+   run the start and stop steps, and an empty section starts nothing. A section of the project's
+   configuration where its orchestrator declares each service the project depends on — its own
+   backends, services it consumes, the backends its integration tests need — with a description of
+   what it is for and the commands (or the described action) that start and stop it. Model B utility
+   scripts register a service, remove one, and run the declared start and stop sequences; bootstrap and
+   shutdown call them, and the orchestrator registers and removes services through them at any point
+   in the project's life. The scripts are generic and Model B's, but live in the project's own folder:
+   `init` drops them in at scaffold time, beside the configuration section, created empty. The
+   project's rendered permission policy allows them by path, so starting, stopping, registering and
+   removing services asks no permission and no global allowance is widened. An
+   orchestrator rule: the project's Mainline maintains the declarations; no project's service is named
+   in a shared skill, stack, template or tool.
 5. **Re-generation.** `migrate` (and a re-run of `init`, per CR-MDB-050) regenerates a frontend
-   project's services skill from its parameters. Crucible will regenerate its own this way and
+   project's services skill from its parameters, and drops in or updates Model B's service scripts in
+   an existing project, never touching its declarations. Crucible will regenerate its own this way and
    retire its hand-written one.
 
 ## To measure at gap analysis
@@ -60,4 +73,14 @@ backends, services it consumes, the backends its integration tests need — are 
   (the first-line ownership marker) so that hand edits are detected, not clobbered.
 - How a backend project's hand-written services skill is told apart, so the scaffold never touches
   it.
+- Where the declarations live (the registry, `crucible.toml`, a project file of their own), their
+  shape (description, start and stop commands or a described action, readiness, order and dependencies
+  between services, local-only values), the scripts' register and remove verbs, and how they report a
+  service that fails to start or stop.
+- Where in the project the scripts go, how they are marked as Model B's so a hand edit is detected and
+  never clobbered, and how `init` and `migrate` keep them current.
+- How the rendered permission policy names the scripts (CR-MDB-077's re-render, CR-MDB-049's strict
+  policy), and that a run of each verb raises no prompt.
+- A project that kept hand-written service skills before this CR (Crucible's): how it moves to
+  declarations.
 - The re-score.
