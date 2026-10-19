@@ -324,6 +324,121 @@ def build_tree(root, files=(), *, git=None) -> Path:
         raise ValueError(f"git must be 'dir', 'file' or None, not {git!r}")
     return root
 
+
+def write_files(root, files) -> Path:
+    """Write each ``{relative path: text}`` of ``files`` under ``root``, parents created, and
+    return ``root`` -- the seam for a fixture tree whose files carry real content (a Cargo
+    workspace's manifests and sources), where :func:`build_tree` writes placeholders."""
+    root = Path(root)
+    root.mkdir(parents=True, exist_ok=True)
+    for rel, text in files.items():
+        target = root / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text, encoding="utf-8")
+    return root
+
+# ------------------------------------------------------------------ tool-script runs ----
+#
+# CR-MDB-078 §S4: a deployed tool script (``scripts/*``) runs as a subprocess of the test
+# interpreter with the test process's environment, only ``PATH`` and git's configuration
+# variables changed (§S4.1), so coverage measures it; the external programs on its ``PATH`` are
+# the test's choice (§S4.2); git never reads the host's global or system configuration (§S4.3).
+
+#: The tool scripts' directory in this repository.
+TOOL_SCRIPTS_DIR = REPO_ROOT / "scripts"
+
+#: Git's configuration variables every fixture-repository git call and every tool run carries:
+#: the host's global and system git configuration excluded (CR-MDB-078 §S4.3).
+GIT_ISOLATION_ENV = {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}
+
+#: The host programs a tool run's ``PATH`` links, and the only ones (CR-MDB-078 §S4.2).
+TOOL_PATH_PROGRAMS = ("git", "tar")
+
+#: The identity a fixture repository commits as, written to its own config (CR-MDB-078 §S4.3).
+FIXTURE_GIT_IDENTITY = {"user.name": "Fixture", "user.email": "fixture@example.invalid"}
+
+
+def tool_bin_dir(bin_dir, stand_ins=None) -> Path:
+    """Build ``bin_dir`` as a tool run's whole ``PATH`` and return it: a link to the host's
+    ``git`` and ``tar`` alone, plus each ``{name: body}`` of ``stand_ins`` written with
+    :func:`write_executable` -- so ``cargo``, ``cargo-machete`` and ``dot`` are present only as a
+    test's stand-in, never the host's (CR-MDB-078 §S4.2)."""
+    bin_dir = Path(bin_dir)
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    for program in TOOL_PATH_PROGRAMS:
+        host = shutil.which(program)
+        if host is None:
+            raise RuntimeError(f"fixture: {program} is not on the host PATH")
+        os.symlink(Path(host).resolve(), bin_dir / program)
+    for name, body in (stand_ins or {}).items():
+        write_executable(bin_dir, name, body)
+    return bin_dir
+
+
+def tool_env(bin_dir) -> dict:
+    """The test process's environment with ``PATH`` set to ``bin_dir`` alone and git's
+    configuration isolated -- nothing else changed (CR-MDB-078 §S4.1)."""
+    env = dict(os.environ)
+    env["PATH"] = str(bin_dir)
+    env.update(GIT_ISOLATION_ENV)
+    return env
+
+
+def run_tool(script: str, *args, bin_dir, cwd, timeout: int = 60) -> subprocess.CompletedProcess:
+    """Run ``scripts/<script>`` with ``args`` on the test's own interpreter, in ``cwd`` (a temp
+    directory, never the repository -- CR-MDB-078 §S4.4), under :func:`tool_env` of ``bin_dir``."""
+    return subprocess.run(
+        [sys.executable, str(TOOL_SCRIPTS_DIR / script), *map(str, args)],
+        capture_output=True, text=True, timeout=timeout, cwd=str(cwd), env=tool_env(bin_dir),
+        stdin=subprocess.DEVNULL,
+    )
+
+
+def repo_git(repo, *args) -> str:
+    """Run ``git -C repo <args>`` with the host's global and system git configuration excluded
+    and return its stripped stdout; a failure raises, naming the command and its stderr."""
+    env = dict(os.environ)
+    env.update(GIT_ISOLATION_ENV)
+    result = subprocess.run(
+        ["git", "-C", str(repo), *map(str, args)], capture_output=True, text=True,
+        timeout=30, env=env, stdin=subprocess.DEVNULL,
+    )
+    if result.returncode != 0:
+        raise AssertionError(f"fixture: git {' '.join(map(str, args))} failed: {result.stderr}")
+    return result.stdout.strip()
+
+
+def git_commit_all(repo, message: str) -> str:
+    """Stage everything in the fixture repository ``repo``, commit it as ``message`` and return
+    the new commit's full sha."""
+    repo_git(repo, "add", "-A")
+    repo_git(repo, "commit", "-q", "--allow-empty", "-m", message)
+    return repo_git(repo, "rev-parse", "HEAD")
+
+
+def git_merge_no_ff(repo, branch: str, message: str) -> str:
+    """Merge ``branch`` into the checked-out branch of ``repo`` as a ``--no-ff`` merge commit
+    and return its full sha (CR-MDB-078 §S4.3)."""
+    repo_git(repo, "merge", "-q", "--no-ff", "-m", message, branch)
+    return repo_git(repo, "rev-parse", "HEAD")
+
+
+def git_repo(root, files=None, *, branch: str = "main", message: str = "fixture") -> Path:
+    """Build a real git repository at ``root`` and return it -- the one fixture-repository
+    builder of CR-MDB-078 §S4.3 / AC16. Its identity and ``commit.gpgsign=false`` are written to
+    the repository's own config, so a commit -- a tool's own included, under :func:`tool_env` --
+    succeeds on a host with no global git identity. ``files`` (``{relative path: text}``), when
+    given, are written and committed as ``message`` on ``branch``."""
+    root = Path(root)
+    root.mkdir(parents=True, exist_ok=True)
+    repo_git(root, "init", "-q", "-b", branch)
+    for key, value in {**FIXTURE_GIT_IDENTITY, "commit.gpgsign": "false"}.items():
+        repo_git(root, "config", key, value)
+    if files:
+        write_files(root, files)
+        git_commit_all(root, message)
+    return root
+
 # ------------------------------------------------------------------ interpreter fixture ----
 
 #: The published Python floor (CR-MDB-064 §S2): the installer accepts an interpreter at or
