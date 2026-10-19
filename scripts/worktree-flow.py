@@ -573,6 +573,9 @@ def cmd_status(args):
         clean = _is_clean(wt["path"])
         if is_main:
             state = "clean" if clean else "DIRTY (has WIP)"
+        elif wt["detached"] or not wt["branch"]:
+            # `finish` refuses a detached worktree, so it is never called finish-ready.
+            state = "DETACHED (no branch to finish)" + ("" if clean else " + DIRTY")
         elif behind:
             state = f"SYNC NEEDED (develop moved {behind})" + ("" if clean else " + DIRTY")
         else:
@@ -842,7 +845,8 @@ def cmd_finish(args):
             help_lines.append(f"git -C {main_wt} branch -d {branch}")
 
         merged_head = _git_out(["rev-parse", "--short", develop], main_wt)
-        print(f"finish: ok merged {branch} → {develop} (now {merged_head}); branch deleted",
+        branch_note = "branch deleted" if del_r.returncode == 0 else "branch kept"
+        print(f"finish: ok merged {branch} → {develop} (now {merged_head}); {branch_note}",
               file=sys.stderr)
         print("  → exit the worktree: modelb_worktree_exit", file=sys.stderr)
         _unset_track(main_wt, args.cr)  # tidy the track label (best-effort; harmless if absent)
