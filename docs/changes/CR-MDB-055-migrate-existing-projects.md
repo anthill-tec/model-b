@@ -4,8 +4,8 @@
 The design is discussed with the user at this CR's gap analysis; the spec is written then.
 **Type:** feature (CLI, scaffold)
 **Priority:** P2 — release 1.1.0, wave 3.
-**Depends on:** CR-MDB-050 (both change `init`'s handling of an existing target) and CR-MDB-068 (the
-release workflow templates); board-authoritative: read `queue`, not this line
+**Depends on:** CR-MDB-050 (both change `init`'s handling of an existing target), CR-MDB-068 (the
+release workflow templates) and CR-MDB-082 (`migrate` on a governed project); board-authoritative: read `queue`, not this line
 **Labels:** cli, scaffold, migration, schema
 **Design reference:** PRD D9/D10 (D10 amended 2026-10-03); `DN-scaffold-packaging.md` §10;
 DN-multi-harness-deploy-model §D25;
@@ -23,7 +23,10 @@ and `KNOWLEDGE_CATEGORY` were added by hand, the "older projects" path the skill
 
 ## Scope (seed)
 
-A `migrate` verb that brings an existing project up to what `init` would have produced, losing nothing:
+`migrate` exists after CR-MDB-082 for a project Model B already governs, which it brings up to the
+installed Model B by re-rendering what Model B owns. This CR adds its other half — a project Model B
+does not yet govern — bringing it up to what `init` would have produced, losing nothing, and ending
+with CR-MDB-082's renders:
 1. **Inventory** the project against the schema (`project_schema.toml`) and the files `init` scaffolds,
    and report what is present, missing, or differs.
 2. **Plan, then write.** `--dry-run` prints the full plan and writes nothing; the real run validates
@@ -49,6 +52,11 @@ A `migrate` verb that brings an existing project up to what `init` would have pr
    project scaffolded before a feature existed (bootstrap Step 1's `SANDESH_ADDRESS`/`.envrc`, which today
    warns that re-running `init` overwrites the project; orchestration-common's older-project notes) name
    `migrate` instead.
+8. **The dependency-services scripts** (DN §D25, CR-MDB-074): `migrate` drops Model B's service
+   scripts into the project's own folder and adds the empty services section to its configuration, as
+   `init` does at scaffold time, never touching services the project has already declared. A project
+   that brings its services up by hand-written skills or scripts keeps them; `migrate` reports them as
+   candidates to declare.
 
 Ruled 2026-10-03 (`DN-scaffold-packaging.md` §10, PRD D10 amended): `migrate` takes `init`'s identity
 and shape flags, only for values the project does not record, and `init`'s `--dry-run`, `--no-commit`,
