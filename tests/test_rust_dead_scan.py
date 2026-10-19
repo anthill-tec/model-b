@@ -32,14 +32,12 @@ Stdlib only.
 
 import ast
 import json
-import os
 import re
 import shutil
 import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest import mock
 
 from tests._helpers import (
     REPO_ROOT,
@@ -48,6 +46,7 @@ from tests._helpers import (
     git_repo,
     run_tool,
     tool_bin_dir,
+    use_private_tmpdir,
     write_files,
 )
 
@@ -190,12 +189,7 @@ class _DeadScanCase(unittest.TestCase):
         environment, which each tool run inherits whole: the run's own environment still
         differs from the test process's only in ``PATH`` and git's configuration variables
         (§S4.1, AC15)."""
-        tmpdir = self.work / "tmp"
-        tmpdir.mkdir()
-        patcher = mock.patch.dict(os.environ, {"TMPDIR": str(tmpdir)})
-        patcher.start()
-        self.addCleanup(patcher.stop)
-        return tmpdir
+        return use_private_tmpdir(self, self.work)
 
     def _assert_no_traceback(self, result):
         self.assertNotIn("Traceback", result.stderr, f"no traceback expected:\n{result.stderr}")
