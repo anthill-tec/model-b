@@ -10,6 +10,12 @@ AC9–AC14, AC16).
 - ``LedgerAssignTest``, ``LedgerAbsentTest`` — AC9 (§S3.1 ``ledger assign``).
 - ``LedgerSyncTest`` — AC9 (§S3.1 ``ledger sync``): the four board states and the no-argument
   sync with no legacy ChangeSet DB.
+- ``SnapshotWithoutDotTest``, ``SnapshotPostLedgerCommitTest`` — AC9, AC15 (§S3.1 the
+  auto-commit staging the snapshot's paths): with no ``dot`` the snapshot commits the paths it
+  wrote and leaves the tree clean; a ``post`` commits the living ledger it rewrote.
+- ``QueryWithoutHealthDirectoryTest`` — AC9 (§S3.1 ``query ledger`` with no ledger): with no
+  ``<out>/health/``, ``query ledger`` reports no ledger and ``query trend`` exits 0, neither
+  with a ``Traceback``.
 - ``ToolCommitWithoutGlobalIdentityTest`` — AC16: a tool's own commit succeeds in a
   ``git_repo`` repository with no global git identity.
 - ``SnapshotHotPathRulesTest`` — AC10 (§S3.2): a snapshot taken with ``hot_path_rules.toml`` in
@@ -1387,6 +1393,184 @@ class ToolCommitWithoutGlobalIdentityTest(_HealthRepo):
         self.assertEqual(_subject(self.repo), f"docs(health): BASELINE snapshot {name}")
         self.assertEqual(_author(self.repo), FIXTURE_AUTHOR)
         self.assertEqual(repo_git(self.repo, "status", "--porcelain"), "")
+
+
+# ------------------------------------------------------------------ AC9 / AC15: the paths ----
+#
+# "The auto-commit staging only the snapshot's paths" (§S3.1), passing "the same way on a host
+# with none of ... `dot`" (AC15), and the tool's own directive at the auto-commit -- "snapshot runs
+# must not leave the tree dirty" -- make every path a snapshot writes one of the snapshot's
+# paths: the svg it never rendered is not one; the living ledger a ``post`` rewrote is one.
+# ``query`` with no ledger (§S3.1) holds in a project that has no ``<out>/health/`` either.
+
+
+class SnapshotWithoutDotTest(_HealthRepo):
+    """§S3.1 snapshot (AC9, AC15): with no ``dot`` on the ``PATH`` the crate map is not
+    rendered, and a snapshot in a clean repository still commits its paths -- the directory,
+    ``health/index.json`` and the living copies it wrote -- leaving the tree clean."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.work, cls.repo, cls.bin_dir, cls.cwd = cls.build("mdb-health-nodot-",
+                                                              DEAD_WORKSPACE)
+        cls.out = cls.repo / ASSETS
+        cls.health = cls.out / "health"
+        cls.base = repo_git(cls.repo, "rev-parse", "HEAD")
+        cls.result = _snapshot(cls.repo, cls.bin_dir, cls.cwd, "baseline")
+        cls.added = _health_dirs(cls.health)
+        cls.name = cls.added[0] if len(cls.added) == 1 else ""
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.work, True)
+
+    def setUp(self):
+        output = self.result.stdout + self.result.stderr
+        self.assertNotIn("Traceback", output)
+        self.assertEqual(self.result.returncode, 0, output)
+        self.assertNoStandInOnPath(self.bin_dir)
+        self.assertEqual(len(self.added), 1, f"one snapshot directory:\n{output}")
+        self.assertIn("[crate-map] graphviz `dot` not on PATH — skipped render "
+                      "(--no-render to silence)", self.result.stdout.splitlines(),
+                      "the crate map took its no-dot path")
+        self.assertFalse((self.out / "fixture_crate_map.svg").exists(), "no svg rendered")
+
+    def test_the_snapshot_commits_once_and_leaves_the_tree_clean(self):
+        subject = f"docs(health): BASELINE snapshot {self.name}"
+        self.assertEqual(_commit_count(self.repo), 2,
+                         "§S3.1: the snapshot makes exactly one commit; stderr:\n"
+                         f"{self.result.stderr}")
+        self.assertEqual(repo_git(self.repo, "rev-parse", "HEAD^"), self.base)
+        self.assertEqual(_subject(self.repo), subject)
+        self.assertIn(f"[health] committed: {subject}", self.result.stdout.splitlines())
+        self.assertEqual(self.result.stderr, "", "no auto-commit warning")
+        self.assertEqual(repo_git(self.repo, "status", "--porcelain"), "",
+                         "snapshot runs must not leave the tree dirty")
+
+    def test_the_commit_holds_exactly_the_paths_the_snapshot_wrote(self):
+        snap = self.health / self.name
+        expected = sorted([f"{ASSETS}/health/{self.name}/{p.name}" for p in snap.iterdir()]
+                          + [f"{ASSETS}/health/index.json"]
+                          + [f"{ASSETS}/{n}" for n in LIVING_COPIES
+                             if n != "fixture_crate_map.svg"])
+        self.assertEqual(_commit_files(self.repo), expected,
+                         "§S3.1: the snapshot directory, the index and the living copies it "
+                         "wrote -- not the svg it never rendered")
+
+
+class QueryWithoutHealthDirectoryTest(_HealthRepo):
+    """§S3.1 ``query ledger`` with no ledger, and ``query trend`` (AC9), in a project with no
+    snapshot and no ledger: ``<out>`` absent, and ``<out>`` present with no ``health/``."""
+
+    LAYOUTS = {
+        "no-out": DEAD_WORKSPACE,
+        "out-without-health": {**DEAD_WORKSPACE,
+                               f"{ASSETS}/crate_map.toml": "# fixture crate-map config\n"},
+    }
+
+    def setUp(self):
+        self.work, _, self.bin_dir, self.cwd = self.build("mdb-health-nohealth-", {})
+        self.addCleanup(shutil.rmtree, self.work, True)
+        self.assertNoStandInOnPath(self.bin_dir)
+
+    def projects(self):
+        """Yield ``(layout, repo, out)`` for each layout, ``<out>/health/`` absent in each."""
+        for layout, files in self.LAYOUTS.items():
+            repo = git_repo(self.work / layout, files)
+            out = repo / ASSETS
+            if (out / "health").exists():
+                raise AssertionError(f"fixture: {layout} has no health directory")
+            yield layout, repo, out
+
+    def query(self, repo, out, *args):
+        return run_tool(HEALTH, "query", *args, "--project-dir", repo, "--out", out,
+                        bin_dir=self.bin_dir, cwd=self.cwd)
+
+    def test_query_ledger_reports_no_ledger_without_a_traceback(self):
+        for layout, repo, out in self.projects():
+            with self.subTest(layout=layout):
+                result = self.query(repo, out, "ledger")
+                self.assertNotIn("Traceback", result.stdout + result.stderr)
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertEqual(result.stderr, f"[health] no ledger at {out / LEDGER}\n")
+                self.assertEqual(result.stdout, "")
+                self.assertFalse((out / LEDGER).exists())
+
+    def test_query_trend_exits_zero_without_a_traceback(self):
+        for layout, repo, out in self.projects():
+            with self.subTest(layout=layout):
+                result = self.query(repo, out, "trend")
+                self.assertNotIn("Traceback", result.stdout + result.stderr)
+                self.assertEqual(result.returncode, 0, result.stderr)
+
+
+class SnapshotPostLedgerCommitTest(_HealthRepo):
+    """§S3.1 snapshot (AC9): a ``post`` snapshot that rewrites the living ledger -- its
+    ratification verdicts -- commits that ledger with the snapshot, leaving the tree clean.
+
+    ``pre CR-7``, then a committed ledger with two COMPLETED ``CR-7`` rows (one still live,
+    one gone), then ``post CR-7``."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.work, cls.repo, cls.bin_dir, cls.cwd = cls.build("mdb-health-postledger-",
+                                                              DEAD_WORKSPACE, dot=True)
+        cls.out = cls.repo / ASSETS
+        cls.health = cls.out / "health"
+        _, cls.pre = _take(cls.repo, cls.bin_dir, cls.cwd, "pre", "--slice", "CR-7")
+        report = json.loads((cls.health / cls.pre / "dead_scan_report.json")
+                            .read_text(encoding="utf-8"))
+        live = [f["id"] for f in report["inventory"] if f["item"] == "fn unused"]
+        if len(live) != 1:
+            raise AssertionError(f"fixture: one live `fn unused` finding, got {live}")
+        cls.live = live[0]
+        cls.ledger_before = _ledger_text([
+            {"id": cls.live, "status": "COMPLETED", "verdict": "CULL", "crate": "alpha",
+             "slice": "CR-7", "source": "scan", "item": "fn unused"},
+            {"id": "DS-0000000000", "status": "COMPLETED", "verdict": "CULL",
+             "crate": "alpha", "slice": "CR-7", "source": "scan", "item": "fn gone"},
+        ])
+        write_files(cls.out, {LEDGER: cls.ledger_before})
+        cls.base = git_commit_all(cls.repo, "ledger")
+        status = repo_git(cls.repo, "status", "--porcelain")
+        if status:
+            raise AssertionError(f"fixture: a clean tree before the post, got {status!r}")
+        cls.result, cls.post = _take(cls.repo, cls.bin_dir, cls.cwd, "post", "--slice", "CR-7")
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.work, True)
+
+    def setUp(self):
+        output = self.result.stdout + self.result.stderr
+        self.assertNotIn("Traceback", output)
+        self.assertEqual(self.result.returncode, 0, output)
+        self.assertDotStandInRan(self.work, self.bin_dir, 2)
+        rows = _read_ledger(self.out / LEDGER)
+        self.assertEqual([rows[f].get("ratified") for f in (self.live, "DS-0000000000")],
+                         ["NOT-RATIFIED", "RATIFIED"], "the post rewrote the living ledger")
+        self.assertNotEqual((self.out / LEDGER).read_text(encoding="utf-8"), self.ledger_before)
+
+    def test_the_post_snapshots_commit_includes_the_rewritten_ledger(self):
+        self.assertEqual(repo_git(self.repo, "rev-parse", "HEAD^"), self.base,
+                         "exactly one commit for the post snapshot")
+        self.assertEqual(_subject(self.repo), f"docs(health): POST snapshot {self.post}")
+        committed = _commit_files(self.repo)
+        self.assertIn(f"{ASSETS}/{LEDGER}", committed,
+                      "§S3.1: the living ledger the post rewrote is one of its paths")
+        self.assertEqual(repo_git(self.repo, "show", f"HEAD:{ASSETS}/{LEDGER}") + "\n",
+                         (self.out / LEDGER).read_text(encoding="utf-8"),
+                         "the committed ledger carries the ratification verdicts")
+        snap_rel = f"{ASSETS}/health/{self.post}"
+        allowed = {f"{ASSETS}/health/index.json", f"{ASSETS}/{LEDGER}",
+                   *(f"{ASSETS}/{n}" for n in LIVING_COPIES)}
+        self.assertEqual([p for p in committed if not p.startswith(snap_rel + "/")
+                          and p not in allowed], [],
+                         "nothing outside the snapshot's paths is committed")
+
+    def test_the_post_snapshot_leaves_the_tree_clean(self):
+        self.assertEqual(repo_git(self.repo, "status", "--porcelain"), "",
+                         "snapshot runs must not leave the tree dirty")
 
 
 if __name__ == "__main__":
