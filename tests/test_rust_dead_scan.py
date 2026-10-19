@@ -36,6 +36,7 @@ from pathlib import Path
 from tests._helpers import (
     REPO_ROOT,
     TOOL_SCRIPTS_DIR,
+    cargo_member_manifest,
     git_repo,
     run_tool,
     tool_bin_dir,
@@ -49,10 +50,6 @@ RUST_MEMORY_TEMPLATE = REPO_ROOT / "skills-src" / "memory-templates" / "rust-orc
 
 #: The prefix of the scratch directory ``lift-lint`` copies the tree into (§S2.7).
 SCRATCH_PREFIX = "dead-scan-lift-"
-
-
-def _package(name: str) -> str:
-    return f'[package]\nname = "{name}"\nversion = "0.1.0"\nedition = "2021"\n'
 
 
 #: A one-member workspace: ``crates/alpha``.
@@ -198,7 +195,7 @@ class HotPathMarkdownSectionTest(_DeadScanCase):
         self.bin_dir = tool_bin_dir(self.work / "bin")
         write_files(self.project, {
             "Cargo.toml": WORKSPACE_ROOT_MANIFEST,
-            "crates/alpha/Cargo.toml": _package("alpha"),
+            "crates/alpha/Cargo.toml": cargo_member_manifest("alpha"),
             "crates/alpha/src/lib.rs": HOT_PATH_LIB,
         })
 
@@ -282,7 +279,7 @@ class StatedModesTest(_DeadScanCase):
         bin_dir = tool_bin_dir(self.work / "bin")
         write_files(self.project, {
             "Cargo.toml": WORKSPACE_ROOT_MANIFEST,
-            "crates/alpha/Cargo.toml": _package("alpha"),
+            "crates/alpha/Cargo.toml": cargo_member_manifest("alpha"),
             "crates/alpha/src/lib.rs": "pub fn used() {}\n",
         })
         result = run_tool(DEAD_SCAN, "--project-dir", self.project, "--out", self.out,
@@ -320,7 +317,7 @@ class LiftLintTest(_DeadScanCase):
 
     WORKSPACE = {
         "Cargo.toml": WORKSPACE_ROOT_MANIFEST,
-        "crates/alpha/Cargo.toml": _package("alpha"),
+        "crates/alpha/Cargo.toml": cargo_member_manifest("alpha"),
         "crates/alpha/src/lib.rs": LIFT_LINT_LIB,
     }
 

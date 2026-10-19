@@ -358,6 +358,12 @@ TOOL_PATH_PROGRAMS = ("git", "tar")
 FIXTURE_GIT_IDENTITY = {"user.name": "Fixture", "user.email": "fixture@example.invalid"}
 
 
+def cargo_member_manifest(name: str) -> str:
+    """A Cargo manifest whose ``[package]`` table names ``name`` -- the manifest a synthetic
+    workspace's member carries in the rust tool tests (CR-MDB-078 §S1/§S2)."""
+    return f'[package]\nname = "{name}"\nversion = "0.1.0"\nedition = "2021"\n'
+
+
 def tool_bin_dir(bin_dir, stand_ins=None) -> Path:
     """Build ``bin_dir`` as a tool run's whole ``PATH`` and return it: a link to the host's
     ``git`` and ``tar`` alone, plus each ``{name: body}`` of ``stand_ins`` written with

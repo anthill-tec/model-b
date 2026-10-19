@@ -28,7 +28,14 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tests._helpers import git_repo, repo_git, run_tool, tool_bin_dir, write_files
+from tests._helpers import (
+    cargo_member_manifest,
+    git_repo,
+    repo_git,
+    run_tool,
+    tool_bin_dir,
+    write_files,
+)
 
 CRATE_MAP = "rust-crate-map.py"
 DEAD_SCAN = "rust-dead-scan.py"
@@ -37,14 +44,10 @@ DEAD_SCAN = "rust-dead-scan.py"
 DEAD_SITE_LIB = "#[allow(dead_code)]\nfn unused_helper() {}\n"
 
 
-def _package(name: str) -> str:
-    return f'[package]\nname = "{name}"\nversion = "0.1.0"\nedition = "2021"\n'
-
-
 #: AC2's root manifest: a root package, ``default-members`` on a line before ``members``, a
 #: commented-out ``members`` line, a glob ``members`` and an ``exclude``.
 AC2_ROOT_MANIFEST = (
-    _package("root")
+    cargo_member_manifest("root")
     + "\n[workspace]\n"
     + 'default-members = ["crates/alpha"]\n'
     + '# members = ["crates/alpha", "crates/beta", "crates/skip"]\n'
@@ -57,11 +60,11 @@ AC2_ROOT_MANIFEST = (
 AC2_WORKSPACE = {
     "Cargo.toml": AC2_ROOT_MANIFEST,
     "src/lib.rs": DEAD_SITE_LIB,
-    "crates/alpha/Cargo.toml": _package("alpha"),
+    "crates/alpha/Cargo.toml": cargo_member_manifest("alpha"),
     "crates/alpha/src/lib.rs": DEAD_SITE_LIB,
-    "crates/beta/Cargo.toml": _package("beta"),
+    "crates/beta/Cargo.toml": cargo_member_manifest("beta"),
     "crates/beta/src/lib.rs": DEAD_SITE_LIB,
-    "crates/skip/Cargo.toml": _package("skip"),
+    "crates/skip/Cargo.toml": cargo_member_manifest("skip"),
     "crates/skip/src/lib.rs": DEAD_SITE_LIB,
 }
 
@@ -144,7 +147,7 @@ def _workspace(members: str) -> str:
 
 #: A well-formed member, so a case's only fault is the one it names.
 ALPHA_MEMBER = {
-    "crates/alpha/Cargo.toml": _package("alpha"),
+    "crates/alpha/Cargo.toml": cargo_member_manifest("alpha"),
     "crates/alpha/src/lib.rs": "pub fn alpha() {}\n",
 }
 
@@ -157,7 +160,7 @@ MALFORMED_WORKSPACES = {
         ("Cargo.toml",),
     ),
     "no_workspace_table": (
-        {"Cargo.toml": _package("solo") + '\n[package.metadata.release]\nmembers = ["crates/alpha"]\n',
+        {"Cargo.toml": cargo_member_manifest("solo") + '\n[package.metadata.release]\nmembers = ["crates/alpha"]\n',
          **ALPHA_MEMBER},
         ("Cargo.toml", "workspace"),
     ),
