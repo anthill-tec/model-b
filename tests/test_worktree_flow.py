@@ -458,6 +458,9 @@ class StatusAfterAMergeTest(_WorktreeFlowCase):
 #: The lock line a finish running for another CR leaves in the merge lock.
 OTHER_LOCK = "cr=CR-TST-999 pid=4242 ts=1700000000"
 
+#: What ``abort --release-lock`` says when no merge lock is held.
+NO_LOCK_HELD = re.compile(r"\bno (?:merge )?lock (?:was |is )?held\b", re.IGNORECASE)
+
 #: The track label a fixture stamps on a CR.
 TRACK = "Track 1 - Fixture"
 
@@ -1295,6 +1298,21 @@ def _hand_worktree_merges(sentence_list) -> list:
             and not _HAND_MERGE_SPARED.search(s)]
 
 
+#: A rule bringing a stale branch level with develop: a resync, a develop merge, "level with".
+_CATCH_UP_RULE = re.compile(r"\bresync\b|\bmerg(?:e|es|ing) develop (?:in|into)\b|\blevel with\b")
+
+#: What lets a catch-up rule stand: it names the tool's step for a worktree branch, it is the
+#: main-tree case with no worktree (§S4 keeps it), or it is the ``sync`` verb's own entry.
+_CATCH_UP_SPARED = re.compile(r"worktree-flow\.py sync --cr <cr>|\b(?:no|without a|without its) "
+                              r"worktree\b|^sync --cr <")
+
+
+def _catch_ups_without_sync(sentence_list) -> list:
+    """The catch-up rules naming no ``worktree-flow.py sync --cr <cr>`` for a worktree branch."""
+    return [s for s in sentence_list
+            if _CATCH_UP_RULE.search(s) and not _CATCH_UP_SPARED.search(s)]
+
+
 class SyncRuleSurfacesTest(unittest.TestCase):
     """AC5 / §S4: each rule surface names ``worktree-flow.py sync --cr <cr>`` as the step before
     ``finish`` -- the two in one sentence -- and none forbids ``sync``, merges develop into a
@@ -1338,6 +1356,24 @@ class SyncRuleSurfacesTest(unittest.TestCase):
         for name, found in self._each_surface():
             with self.subTest(surface=name):
                 self.assertEqual(_hand_worktree_merges(found), [])
+
+    def test_every_catch_up_rule_names_sync_for_a_worktree_branch(self):
+        # The detector bites on a resync rule that names no tool step, and spares the tool's
+        # step, the main-tree case and the sync verb's own entry.
+        self.assertEqual(_catch_ups_without_sync([
+            "resync a stale branch by merging develop into it (not a long re-conflicting rebase).",
+            "bring the branch level with develop before finish.",
+            "resync a stale branch by merging develop into it: for a cr's worktree branch, "
+            "worktree-flow.py sync --cr <cr>.",
+            "a cr on a feature branch in the main tree, with no worktree, merges develop in by "
+            "hand until behind=0.",
+            "sync --cr <id> (merges develop into the cr's branch, never a rebase;",
+            "any develop-level need → relay to mainline;",
+        ]), ["resync a stale branch by merging develop into it (not a long re-conflicting rebase).",
+             "bring the branch level with develop before finish."])
+        for name, found in self._each_surface():
+            with self.subTest(surface=name):
+                self.assertEqual(_catch_ups_without_sync(found), [])
 
     def test_no_rule_surface_describes_worktree_flow_as_rebasing(self):
         for name, found in self._each_surface():
@@ -1701,6 +1737,20 @@ class AbortPathTest(_WorktreeFlowPathCase):
         self.assertEqual(result.stderr, "")
         self.assertEqual(self._lock().read_text(encoding="utf-8"), OTHER_LOCK + "\n",
                          "a dry run leaves the lock as it was")
+
+    def test_abort_release_lock_with_no_lock_held_says_so_and_never_prints_none(self):
+        for flags in ((), ("--dry-run",)):
+            with self.subTest(flags=flags):
+                self.assertFalse(self._lock().exists(), "fixture: no merge lock is held")
+
+                result = self._wf("abort", "--release-lock", *flags)
+
+                output = result.stdout + result.stderr
+                self.assertEqual(result.returncode, 0, self._output(result))
+                self.assertRegex(output, NO_LOCK_HELD, self._output(result))
+                self.assertNotIn("None", output, self._output(result))
+                self.assertNotIn("released merge lock", output, self._output(result))
+                self.assertFalse(self._lock().exists(), "no lock file is created")
 
     # ------------------------------------------------------------------ --dry-run ----
 

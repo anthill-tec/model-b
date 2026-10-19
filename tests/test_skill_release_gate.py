@@ -86,6 +86,10 @@ RETIRED_TEARDOWN_TABLE = f'[teardown]\n{RETIRED_TEARDOWN_KEY} = "$THROWAWAY_DB"\
 #: What the refusal names as the replacement (§S7).
 TEARDOWN_CMD = "[teardown] cmd"
 
+#: What a gate that checked nothing (``0 passed, 0 failed``) says as it fails.
+NOTHING_CHECKED = re.compile(r"\bnothing\b(?: was| is)? checked\b|\bchecked nothing\b",
+                             re.IGNORECASE)
+
 
 class _SkillReleaseGateCase(unittest.TestCase):
     """A work area with a fixture project and a ``PATH`` of the host's ``git``/``tar`` plus a
@@ -156,16 +160,21 @@ class SkillDiscoveryTest(_SkillReleaseGateCase):
             self.assertIn(rel, result.stdout, self._output(result))
         self.assertNotIn(".claude", result.stdout + result.stderr, self._output(result))
 
-    def test_a_skill_under_claude_skills_alone_is_never_validated(self):
+    def test_a_skill_under_claude_skills_alone_is_never_validated_and_the_gate_fails(self):
         self._add_skills(".claude/skills/delta")
 
         result = self._gate()
 
         self.assertEqual(self._validator_calls(), [],
                          ".claude/skills/ is no longer read\n" + self._output(result))
+        output = result.stdout + result.stderr
         self.assertNotIn("1. skill conformance", result.stdout, self._output(result))
-        self.assertNotIn(".claude", result.stdout + result.stderr, self._output(result))
-        self.assertEqual(result.returncode, 0, self._output(result))
+        self.assertNotIn(".claude", output, self._output(result))
+        # With .claude/skills/ unread, nothing is checked -- and a gate that checked nothing
+        # fails, saying so; it never passes the release.
+        self.assertNotEqual(result.returncode, 0, self._output(result))
+        self.assertRegex(_ANSI.sub("", output), NOTHING_CHECKED, self._output(result))
+        self.assertNotIn("Release gate PASSED", output, self._output(result))
 
 
 class MongoTeardownRemovedTest(_SkillReleaseGateCase):
@@ -265,6 +274,7 @@ RESULT_PASSED = ("Release gate PASSED — skill + artifact conformance OK; "
                  "safe to `git flow release finish`.")
 RESULT_FAILED = "Release gate FAILED — do not finish the release."
 
+
 class _VerdictReading:
     """Reads the gate's printed verdicts with its colour codes stripped."""
 
@@ -284,6 +294,7 @@ class _VerdictReading:
         return re.findall(r"^== (.*)$", self._plain(text), re.M)
 
 # ------------------------------------------------------------------ as subprocesses ----
+
 
 class ConfigDiscoveryTest(_SkillReleaseGateCase, _VerdictReading):
     """§S8: the configuration is ``pyproject.toml``'s ``[tool.skill-release]``, else the
@@ -371,6 +382,7 @@ class ConfigDiscoveryTest(_SkillReleaseGateCase, _VerdictReading):
                       self._output(result))
         self.assertEqual(self._validator_calls(), [], self._output(result))
 
+
 class PhaseOneValidatorTest(_SkillReleaseGateCase, _VerdictReading):
     """§S8: phase 1 with an ``agentskills`` stand-in that passes and one that fails -- a pass
     prints the validator's own line, a failure its stdout and stderr, and the gate's exit code
@@ -439,6 +451,7 @@ class PhaseOneValidatorTest(_SkillReleaseGateCase, _VerdictReading):
                          "a failure does not stop the next skill's validation")
 
 # ------------------------------------------------------------------ in process ----
+
 
 #: The wheel the stand-in build writes, and its members.
 WHEEL_NAME = "fixture-0.1.0-py3-none-any.whl"
@@ -519,11 +532,13 @@ with open(LOG, "a", encoding="utf-8") as fh:
     fh.write(json.dumps({"argv": sys.argv[1:], "db": os.environ.get("FIXTURE_DB")}) + "\\n")
 """
 
+
 def _read_log(path) -> list:
     path = Path(path)
     if not path.exists():
         return []
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
+
 
 class _GateInProcessCase(unittest.TestCase, _VerdictReading):
     """The script loaded as a module by its path; ``Gate.make_venv`` replaced by a stand-in that
@@ -622,6 +637,7 @@ class _GateInProcessCase(unittest.TestCase, _VerdictReading):
     def _console_calls(self) -> list:
         return _read_log(self.console_log)
 
+
 class ProvisionValidatorTest(_GateInProcessCase):
     """§S8 phase 1 with ``agentskills`` absent: ``skills-ref`` is provisioned in a throwaway
     venv through ``make_venv`` and the validator in that venv's ``bin`` validates each skill."""
@@ -661,6 +677,7 @@ class ProvisionValidatorTest(_GateInProcessCase):
         _, out = self._call(gate.phase_skills, {})
 
         self.assertEqual((self.venv_calls, out, gate.passed, gate.failed), ([], "", 0, 0))
+
 
 class EngineBuildTest(_GateInProcessCase):
     """§S8 phase 2: the wheel built or not, the entry point, a forbidden entry point, glob
@@ -787,6 +804,37 @@ class EngineBuildTest(_GateInProcessCase):
             ("FAIL", "wheel bundles 'fixture/*.json' (found 0)"),
         ], out)
 
+    def test_glob_counts_take_fnmatch_question_mark_and_bracket_patterns(self):
+        gate = self._gate()
+
+        _, out = self._call(gate.phase_engine, self._engine(wheel_glob_counts={
+            "fixture/data/?.md": 2, "fixture/data/[a].md": 1, "fixture/data/[!a].md": 1,
+            "fixture/c?i.py": 1, "fixture/data/[c-z].md": 1}))
+
+        self.assertEqual(self._phase_two(self._verdicts(out))[1:], [
+            ("PASS", "wheel bundles 2x 'fixture/data/?.md' (found 2)"),
+            ("PASS", "wheel bundles 1x 'fixture/data/[a].md' (found 1)"),
+            ("PASS", "wheel bundles 1x 'fixture/data/[!a].md' (found 1)"),
+            ("PASS", "wheel bundles 1x 'fixture/c?i.py' (found 1)"),
+            ("FAIL", "wheel bundles 1x 'fixture/data/[c-z].md' (found 0)"),
+        ], out)
+        self.assertEqual(gate.failed, 1, out)
+
+    def test_globs_take_fnmatch_question_mark_and_bracket_patterns(self):
+        gate = self._gate()
+
+        _, out = self._call(gate.phase_engine, self._engine(wheel_globs=[
+            "fixture/c?i.py", "fixture/data/[ab].md", "fixture-0.1.0.dist-info/[eM]*",
+            "fixture/data/[!ab].md"]))
+
+        self.assertEqual(self._phase_two(self._verdicts(out))[1:], [
+            ("PASS", "wheel bundles 'fixture/c?i.py' (found 1)"),
+            ("PASS", "wheel bundles 'fixture/data/[ab].md' (found 2)"),
+            ("PASS", "wheel bundles 'fixture-0.1.0.dist-info/[eM]*' (found 2)"),
+            ("FAIL", "wheel bundles 'fixture/data/[!ab].md' (found 0)"),
+        ], out)
+
+
 class CleanInstallTest(_GateInProcessCase):
     """§S8 phase 3: the wheel installed into a fresh venv, the console found or not, and the
     import check run from the gate's scratch directory."""
@@ -825,7 +873,7 @@ class CleanInstallTest(_GateInProcessCase):
                          [["-m", "build"], ["-m", "pip"]],
                          "no import check once the console is missing")
 
-    def test_an_engine_naming_no_console_fails_phase_three(self):
+    def test_an_engine_naming_no_console_fails_phase_three_naming_the_missing_key(self):
         gate = self._gate()
 
         console, out = self._call(gate.phase_engine, {"engine": {"build": True}})
@@ -833,7 +881,11 @@ class CleanInstallTest(_GateInProcessCase):
         self.assertIsNone(console)
         fails = [v for v in self._verdicts(out) if v[0] == "FAIL"]
         self.assertEqual(len(fails), 1, out)
-        self.assertTrue(fails[0][1].endswith("not installed"), out)
+        self.assertEqual(gate.failed, 1, out)
+        # The message names the `console` key the [engine] table lacks -- never `'None'`.
+        self.assertRegex(fails[0][1], r"\bconsole\b", out)
+        self.assertRegex(fails[0][1], r"\b(?:no|missing|names no|not set|unset|lacks)\b", out)
+        self.assertNotIn("None", self._plain(out), out)
 
     def test_an_import_from_site_packages_passes_run_from_the_gates_scratch_directory(self):
         gate = self._gate()
@@ -859,6 +911,7 @@ class CleanInstallTest(_GateInProcessCase):
                          ("FAIL", "'fixture' imports from site-packages (not the repo)"), out)
         self.assertEqual(self._details(out), [str(self.project / "fixture")], out)
         self.assertEqual(gate.failed, 1, out)
+
 
 class LifecycleCheckTest(_GateInProcessCase):
     """§S8 phase 4: every check field -- ``expect``, ``expect_re``, ``reject``, ``json_type``,
@@ -979,6 +1032,7 @@ class LifecycleCheckTest(_GateInProcessCase):
         self.assertTrue((self.gate_tmp / "data").is_dir(), "phase 4 makes $TMP/data")
         self.assertEqual(self._verdicts(out), [("PASS", "env")], out)
 
+
 class SubstitutionTest(_GateInProcessCase):
     """§S8: ``$TMP``, ``$THROWAWAY_DB``, ``$SOON`` and ``$TODAY`` in a check's argv,
     ``expect`` and ``reject``; ``$SOON`` ten days out unless ``SKILLGATE_SOON`` sets it."""
@@ -1020,6 +1074,7 @@ class SubstitutionTest(_GateInProcessCase):
 
         self.assertEqual(self._verdicts(out), [("FAIL", "names the db")], out)
         self.assertEqual(self._details(out)[0], "unexpected '$THROWAWAY_DB'", out)
+
 
 class TeardownTest(_GateInProcessCase):
     """AC9 / §S8: ``[teardown] cmd`` runs through the shell after the checks, with the
@@ -1065,6 +1120,7 @@ class TeardownTest(_GateInProcessCase):
         self._phase_four([], {"cmd": "record skipped"})
 
         self.assertEqual(_read_log(self.recorder_log), [])
+
 
 class GateRunVerdictTest(_GateInProcessCase):
     """§S8: ``Gate.run`` runs the phases in order and returns 0 with the PASSED verdict when
@@ -1112,6 +1168,29 @@ class GateRunVerdictTest(_GateInProcessCase):
         self.assertEqual(self._console_calls(), [], "no check runs without a console")
         self.assertNotIn("4. lifecycle", out)
         self.assertEqual(self._headers(out)[-1], "RESULT: 1 passed, 1 failed", out)
+
+    def test_a_run_that_checked_nothing_fails_saying_nothing_was_checked(self):
+        shutil.rmtree(self.project / "skills")
+        configurations = (
+            {},
+            {"engine": {"build": False, "console": "fixture"}},
+            # Checks with no engine have no console to run against: phase 4 is skipped too.
+            {"check": [{"name": "greets", "argv": ["say", "hello"], "expect": ["hello"]}]},
+        )
+        for cfg in configurations:
+            with self.subTest(cfg=cfg):
+                gate = self._gate()
+                err = io.StringIO()
+
+                with contextlib.redirect_stderr(err):
+                    code, out = self._call(gate.run, cfg)
+
+                out += err.getvalue()
+                self.assertEqual((gate.passed, gate.failed), (0, 0), out)
+                self.assertNotEqual(code, 0, "a gate that checked nothing never passes\n" + out)
+                self.assertRegex(self._plain(out), NOTHING_CHECKED, out)
+                self.assertNotIn("PASSED", out)
+                self.assertEqual((self.venv_calls, self._console_calls()), ([], []), out)
 
 
 if __name__ == "__main__":
