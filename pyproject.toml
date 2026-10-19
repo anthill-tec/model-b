@@ -76,6 +76,20 @@ patch = ["subprocess"]
 [tool.coverage.report]
 omit = ["scripts/toon.py"]
 
+# Lint (CR-MDB-053 §S1): Model B's pinned ruff rule set, run by the pre-merge gate's lint step.
+# Ruff is a development tool (`uv tool install ruff`), never a runtime dependency. The
+# extensionless hook scripts are included; the generated and non-shipped trees are excluded.
+# PLW1510 is not selected: its hits are deliberate subprocess.run calls whose return code the
+# caller reads.
+[tool.ruff]
+required-version = ">=0.16"
+target-version = "py314"
+extend-include = ["hooks-src/scripts/*"]
+extend-exclude = ["scripts/toon.py", ".github/scripts", "tests", "archive", "generator/agents"]
+
+[tool.ruff.lint]
+select = ["F", "I", "BLE001", "PIE810", "RUF059", "SIM102", "SIM105"]
+
 [tool.hatch.build.targets.sdist]
 only-include = [
     "modelb_axi",

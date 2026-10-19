@@ -101,7 +101,7 @@ def git_head(root):
     try:
         return subprocess.run(["git", "-C", str(root), "rev-parse", "--short", "HEAD"],
                               capture_output=True, text=True, check=True).stdout.strip()
-    except Exception:
+    except (subprocess.CalledProcessError, OSError):
         return "unknown"
 
 
@@ -204,7 +204,7 @@ def item_after(lines, idx):
     k = idx + 1
     while k < len(lines):
         s = lines[k].strip()
-        if not s or s.startswith("//") or s.startswith("#["):
+        if not s or s.startswith(("//", "#[")):
             k += 1
             continue
         m = ITEM_RE.match(lines[k])
@@ -245,8 +245,6 @@ def mode_inventory(root, members):
             gated = gated_lines(lines)
             for i, line in enumerate(lines):
                 s = line.lstrip()
-                if s.startswith("//"):
-                    continue  # D3-scanfix: skip doc/line comments — attrs are code, not prose
                 m = SUPPRESS_RE.match(s)  # real #[allow/expect(dead_code)] at code line-start only
                 if m:
                     item = item_after(lines, i)
@@ -706,7 +704,7 @@ def emit(report, out):
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0] if __doc__ else None)
     ap.add_argument("modes", nargs="*",
                     default=["inventory", "pub-scan", "deps", "reconcile", "boundaries", "hot-path"],
                     help="subset of: inventory pub-scan deps reconcile boundaries hot-path lift-lint")
@@ -732,24 +730,26 @@ def main():
         members = workspace_members(root)
     except WorkspaceError as e:
         sys.exit(f"error: {e}")
-    report = {"meta": {"head": git_head(root), "date": date.today().isoformat(),
-                       "modes": modes, "members": len(members)}}
+    head = git_head(root)
+    report: dict[str, object] = {"meta": {"head": head, "date": date.today().isoformat(),
+                                         "modes": modes, "members": len(members)}}
 
-    inventory = None
+    inventory = pub_scan = deps = boundaries = hot_path = None
     if "inventory" in modes or "reconcile" in modes:
         inventory = mode_inventory(root, members)
     if "inventory" in modes:
         report["inventory"] = inventory
     if "pub-scan" in modes:
-        report["pub_scan"] = mode_pub_scan(root, members)
+        pub_scan = report["pub_scan"] = mode_pub_scan(root, members)
     if "deps" in modes:
-        report["deps"] = mode_deps(root, members)
+        deps = report["deps"] = mode_deps(root, members)
     if "reconcile" in modes:
         report["reconcile"] = mode_reconcile(inventory, out / "dead_code_register.toml")
     if "boundaries" in modes:
-        report["boundaries"] = mode_boundaries(root, members, out / "boundary_rules.toml")
+        boundaries = report["boundaries"] = mode_boundaries(root, members,
+                                                             out / "boundary_rules.toml")
     if "hot-path" in modes:
-        report["hot_path"] = mode_hot_path(root, out / "hot_path_rules.toml")
+        hot_path = report["hot_path"] = mode_hot_path(root, out / "hot_path_rules.toml")
     if "lift-lint" in modes:
         try:
             report["lift_lint"] = mode_lift_lint(root)
@@ -760,20 +760,20 @@ def main():
     counts = []
     if inventory is not None:
         counts.append(f"inventory={len(inventory)}")
-    if "pub_scan" in report:
-        counts.append(f"pub-candidates={len(report['pub_scan']['candidates'])}")
-    if "deps" in report:
-        counts.append(f"unused-deps={len(report['deps']['machete']['unused'])} "
-                      f"features={len(report['deps']['features'])}")
-    if "boundaries" in report:
-        b = report["boundaries"]
+    if pub_scan is not None:
+        counts.append(f"pub-candidates={len(pub_scan['candidates'])}")
+    if deps is not None:
+        counts.append(f"unused-deps={len(deps['machete']['unused'])} "
+                      f"features={len(deps['features'])}")
+    if boundaries is not None:
+        b = boundaries
         counts.append(f"boundary-violations={len(b['violations'])} "
                       f"hoist={len(b['hoist_candidates'])} lockstep={len(b['lockstep_failures'])}")
-    if "hot_path" in report:
-        hp = report["hot_path"]
+    if hot_path is not None:
+        hp = hot_path
         counts.append(f"hot-path-violations={len(hp['violations'])} "
                       f"sanity-fail={len(hp['sanity_failures'])}")
-    print(f"[dead-scan] @ {report['meta']['head']}: {' | '.join(counts)}")
+    print(f"[dead-scan] @ {head}: {' | '.join(counts)}")
     print(f"[dead-scan] wrote dead_scan_report.json / .md in {out}")
 
 

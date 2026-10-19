@@ -58,6 +58,7 @@ SKILL_ROOTS = ("skills", ".agents/skills", ".pi/skills")
 #: A teardown key no longer honoured; a configuration carrying it is refused (CR-MDB-081 §S7).
 RETIRED_TEARDOWN_KEY = "drop_mongo_db"
 
+
 def _count_members(names, glob):
     """How many wheel member names match the glob as a whole; ``*`` stays inside one
     directory and ``?`` / ``[...]`` match one character (``PurePosixPath.full_match``)."""
@@ -196,7 +197,6 @@ class Gate:
         self.ok(f"built {os.path.basename(whl)}")
         names = zipfile.ZipFile(whl).namelist()
         # entry point present / forbidden absent
-        ep_txt = "\n".join(n for n in names if n.endswith("entry_points.txt"))
         ep_content = ""
         with zipfile.ZipFile(whl) as z:
             for n in names:
@@ -278,7 +278,7 @@ class Gate:
                     want = list if jt in ("list", "array") else dict
                     if not isinstance(val, want):
                         fails.append(f"json is {type(val).__name__}, expected {jt}")
-                except Exception as e:
+                except ValueError as e:
                     fails.append(f"json parse error: {e}")
             if fails:
                 self.bad(name, "; ".join(fails) + "\n" + out)

@@ -71,10 +71,9 @@ def count_signals(text: str) -> dict:
     counts = {k: 0 for k in SIGNALS}
     for raw in text.splitlines():
         s = raw.lstrip()
-        if not s.startswith("//"):
-            for k in ATTR_SIGNALS:
-                if SIGNALS[k].match(s):
-                    counts[k] += 1
+        for k in ATTR_SIGNALS:
+            if SIGNALS[k].match(s):
+                counts[k] += 1
         counts["todo_fixme"] += len(SIGNALS["todo_fixme"].findall(raw))
     return counts
 
@@ -83,7 +82,7 @@ def git_head(root: Path) -> str:
     try:
         return subprocess.run(["git", "-C", str(root), "rev-parse", "--short", "HEAD"],
                               capture_output=True, text=True, check=True).stdout.strip()
-    except Exception:
+    except (subprocess.CalledProcessError, OSError):
         return "unknown"
 
 
@@ -126,7 +125,8 @@ def classify_lines(path: Path):
     return code, comment, blank, tg_code
 
 
-def scan_dir(d: Path, base: Path = None, kind: str = "src", modules: list = None):
+def scan_dir(d: Path, base: Path | None = None, kind: str = "src",
+             modules: list | None = None):
     """Aggregate a dir; when `modules` is a list, append one per-file row to it
     (path relative to `base`, classified LOC + signals) — the module-level
     granularity that joins the crate map to dead-scan/ledger rows."""
@@ -407,7 +407,7 @@ def build_dot(meta, rows, cfg, name: str):
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0] if __doc__ else None)
     ap.add_argument("--project-dir", default=None,
                     help="workspace root (default: git toplevel of cwd)")
     ap.add_argument("--out", default=None,

@@ -455,7 +455,7 @@ def cmd_snapshot(args):
         today = date.today().isoformat()
         try:
             _true_up_against_board(root, rows, today)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 — a snapshot must never fail on the board true-up
             print(f"[health] warn: board true-up failed: {e}", file=sys.stderr)
         if args.phase == "post" and args.slice:
             ratification = _ratify(rows, args.slice, snap, snap_name, today)
@@ -592,7 +592,7 @@ def _check_arguments(args, query_parser, ledger_parser):
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0] if __doc__ else None)
     sub = ap.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("snapshot")
     s.add_argument("--phase", required=True, choices=["baseline", "pre", "post", "adhoc"])

@@ -98,7 +98,7 @@ Examples:
 """
 
 import argparse
-import json
+import contextlib
 import os
 import shutil
 import subprocess
@@ -380,10 +380,8 @@ def _read_lock(repo):
 
 
 def _release_lock(repo):
-    try:
+    with contextlib.suppress(FileNotFoundError):
         os.remove(_lock_path(repo))
-    except FileNotFoundError:
-        pass
 
 
 # --------------------------------------------------------------------------- #
@@ -419,7 +417,7 @@ def cmd_start(args):
     # Advisory: warn if local develop is behind its upstream (we still branch off LOCAL).
     upstream = _git_out(["rev-parse", "--abbrev-ref", f"{base}@{{upstream}}"], main_wt)
     if upstream:
-        ahead, behind = _ahead_behind(main_wt, upstream, base)
+        _ahead, behind = _ahead_behind(main_wt, upstream, base)
         if behind:
             print(f"[worktree-flow] NOTE: local {base} is {behind} commit(s) behind "
                   f"{upstream}. Branching off LOCAL {base} ({base_head}) per the rule "
@@ -451,7 +449,7 @@ def cmd_start(args):
         if os.path.isfile(env_src) and not os.path.exists(env_dst):
             shutil.copy2(env_src, env_dst)
             print(f"  env: copied .env → {env_dst}  (gitignored; Crucible ingest ready)")
-    except Exception as _env_err:
+    except Exception as _env_err:  # noqa: BLE001 — the .env copy must never fail start
         print(f"  NOTE: could not auto-copy .env into worktree: {_env_err} (continuing)")
     print(f"  → enter it with the Model B worktree tool: modelb_worktree_enter {wt_dir}")
     if label:
@@ -463,17 +461,6 @@ def cmd_start(args):
 # --------------------------------------------------------------------------- #
 # status
 # --------------------------------------------------------------------------- #
-
-def _pid_alive(pid):
-    """True if the process is still running (PermissionError ⇒ alive, other user)."""
-    try:
-        os.kill(int(pid), 0)
-    except (ProcessLookupError, TypeError, ValueError):
-        return False
-    except PermissionError:
-        return True
-    return True
-
 
 def cmd_status(args):
     project_dir = _resolve_project_dir(args.project_dir)
@@ -651,12 +638,11 @@ def cmd_finish(args):
                  f"nothing to finish.")
 
     # --- Serialize the merge --------------------------------------------------
-    if not args.dry_run:
-        if not _acquire_lock(main_wt, args.cr):
-            holder = _read_lock(main_wt)
-            sys.exit(f"[worktree-flow] ERROR: merge lock held by another finish [{holder}]. "
-                     f"Wait for it to release, then retry. (Break a stale lock with "
-                     f"`abort --release-lock` only if you are sure no finish is running.)")
+    if not args.dry_run and not _acquire_lock(main_wt, args.cr):
+        holder = _read_lock(main_wt)
+        sys.exit(f"[worktree-flow] ERROR: merge lock held by another finish [{holder}]. "
+                 f"Wait for it to release, then retry. (Break a stale lock with "
+                 f"`abort --release-lock` only if you are sure no finish is running.)")
 
     try:
         # --- Catch up if develop moved: merge develop in (CR-MDB-081 §S2) -----
