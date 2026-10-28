@@ -1,4 +1,4 @@
-<!-- A `java-stack` skill reference (cross-project Java language reference). Imported 2026-09-21 from the user's global memory (`~/.claude/memory/java-modern-syntax.md`); moved into the `java-stack` skill by CR-MDB-086, and read by the quarkus agents when their task needs it. -->
+<!-- A `java-stack` skill reference (cross-project Java language reference). Imported 2026-09-21 from the user's former global memory; moved into the `java-stack` skill by CR-MDB-086, and read by the quarkus agents when their task needs it. -->
 
 # Java Modern Syntax & Features (JDK 8-25)
 
