@@ -36,14 +36,36 @@ module holds what that data does not:
   keeps it, byte for byte, after ``modelb-axi agents``, which renders its stack skills, the
   orchestration reference included.
 
+The rest of the surfaces, the cycle after (§S4.2–§S4.5, §S5.5; §S4.2's Dimension 8 is in
+``tests.test_gap_analysis_reach_and_pre_review``, §S5.1's neutrality widening in
+``tests.test_orchestrator_rule_triage``):
+
+- ``RetiredMemoryDetectorTest`` — the pure functions those classes use, proved both ways.
+- ``StackFilesReadTheStackSkillsTest`` — §S4.3/AC5: ``quarkus.toml``'s and ``rust.toml``'s
+  "Companion memory" bullets name their stack skill's ``references/orchestration.md`` and no
+  "orchestration memory", in the stack file and in every rendered definition; ``rust.toml`` names
+  no memory template and its provenance header keeps no "memory template wins" rule.
+- ``ScriptsAndHooksNameTheRustStackTest`` — §S4.4/AC5: the ``# Consuming skills:`` header of
+  each of the five tool scripts names the ``rust-stack`` skill and no memory template;
+  ``worktree-flow.py``'s design-invariants pointer and its partial-deletion comment name it too;
+  the disk reminder, run on a full regression, names the ``rust-stack`` skill's Disk hygiene
+  section.
+- ``NoShippedFileNamesTheRetiredMemoryTest`` — §S4.5/§S5.5/AC5/AC7: no file under
+  ``skills-src/``, ``generator/``, ``scripts/`` or ``hooks-src/``, nor ``AGENTS.md``, names
+  ``docs/memory/``, a memory template, "orchestration memory" or a template's file name — apart
+  from §S4.1's ``modelb-axi agents`` pointer in ``bootstrap`` and ``shutdown``.
+
 Isolation: every ``init``/``agents`` run is in process under ``tests.test_stack_skills``' sandbox
 (``HOME``, ``PI_CODING_AGENT_DIR``, ``MODELB_HOME`` and ``XDG_DATA_HOME`` pinned to a throw-away
 directory), its ``install.toml`` pointed at the repository's own assets. Stdlib only.
 """
 
 import ast
+import json
 import re
 import shutil
+import tempfile
+import tomllib
 import unittest
 from pathlib import Path
 
@@ -56,9 +78,12 @@ from tests._helpers import (
     REPO_ROOT,
     md_section,
     read_text,
+    run_hook,
     split_frontmatter,
 )
 from tests._helpers import rendered_definition as _rendered_definition
+from tests.test_bootstrap_shutdown_registry import docs_memory_findings
+from tests.test_rust_code_health import _consuming_skills_entry, _header_lines
 
 GENERATOR_DIR = REPO_ROOT / "generator"
 SKILLS_DIR = GENERATOR_DIR / "skills"
@@ -173,6 +198,49 @@ RETIRED_SYMBOLS = (
 RETIRED_NAMES = ("memory-templates", "docs/memory")
 DOCS_MEMORY = "docs/memory"
 
+#: §S4.3 — the stack files whose "Companion memory" bullet points at the stack skill's reference.
+COMPANION_STACKS = {"quarkus": "java-stack", "rust": "rust-stack"}
+COMPANION_PREFIX = "- **Companion memory"
+#: §S4.3/AC5 — what the bullets no longer say.
+ORCHESTRATION_MEMORY = re.compile(r"(?i)\borchestration\s+memory\b")
+#: §S4.3–§S4.5 — a memory template, by its name (singular or plural, spaced or hyphenated).
+MEMORY_TEMPLATE = re.compile(r"(?i)\bmemory[\s-]+templates?\b")
+#: §S4.3 — the precedence rule ``rust.toml``'s provenance header drops.
+PRECEDENCE_WINS = re.compile(r"(?i)\bwins\b")
+
+#: §S4.4 — the tool scripts whose ``# Consuming skills:`` header names the ``rust-stack`` skill.
+SCRIPTS_DIR = REPO_ROOT / "scripts"
+RUST_STACK_CONSUMERS = (
+    "rust-code-health.py",
+    "rust-crate-map.py",
+    "rust-dead-scan.py",
+    "schedule_db.py",
+    "worktree-flow.py",
+)
+RUST_STACK = "rust-stack"
+WORKTREE_FLOW = SCRIPTS_DIR / "worktree-flow.py"
+#: §S4.4 — ``worktree-flow.py``'s other mentions, by an anchor each keeps.
+DESIGN_INVARIANTS = re.compile(r"Design invariants\b[\s\S]{0,240}?:\s*\n")
+PARTIAL_DELETION_ANCHOR = "PARTIAL DELETION"
+#: §S4.4 — the disk reminder, the command that fires it, and the section it names.
+DISK_REMINDER = "post-regression-disk-reminder"
+FULL_REGRESSION = "python3 ~/.crucible/clients/rust-crucible.py pre-merge-gate --agent vidushi-x"
+DISK_HYGIENE_SECTION = "Disk hygiene"
+
+#: §S4.5/AC5 — the roots whose files ship, beside ``AGENTS.md``.
+SHIPPED_ROOTS = ("skills-src", "generator", "scripts", "hooks-src")
+#: §S4.1 — the two files whose pointer for older projects may name ``docs/memory/``.
+POINTER_FILES = ("skills-src/bootstrap/SKILL.md", "skills-src/shutdown/SKILL.md")
+#: §S4.5/AC5 — what no shipped file names: (what, how it is found).
+RETIRED_MEMORY_NAMES = (
+    ("docs/memory/", re.compile(r"docs/memory\b")),
+    ("a memory template", MEMORY_TEMPLATE),
+    ("orchestration memory", ORCHESTRATION_MEMORY),
+    ("a memory template's file name",
+     re.compile(r"\b(?:arduino|java|rust)-orchestration\.md\b|\boperational-commands\.md\b")),
+)
+AGENTS_MD = REPO_ROOT / "AGENTS.md"
+
 _FENCE = re.compile(r"^\s*(```|~~~)")
 _HEADING = re.compile(r"^#{1,6}\s")
 
@@ -278,6 +346,93 @@ def beside_section_findings(text: str, anchor: str, section: str) -> list[str]:
     if any(anchor in sections[j][1] for j in near):
         return []
     return [f"{anchor!r} is not in or beside the {sections[i][0]!r} section"]
+
+
+def retired_memory_findings(text: str, *, pointer_allowed: bool = False) -> list[str]:
+    """§S4.5/AC5: each retired name ``text`` holds, with the first line it is on. With
+    ``pointer_allowed`` (§S4.1's two files) ``docs/memory`` is read by the paragraph instead: only
+    a paragraph that is the ``modelb-axi agents`` pointer, and names no file under it, may name it."""
+    found = []
+    for what, pattern in RETIRED_MEMORY_NAMES:
+        if what == "docs/memory/" and pointer_allowed:
+            found += docs_memory_findings(text)
+            continue
+        match = pattern.search(text)
+        if match:
+            line = text[text.rfind("\n", 0, match.start()) + 1:].split("\n", 1)[0]
+            found.append(f"{what}: {line.strip()[:160]!r}")
+    return found
+
+
+def companion_bullet(text: str) -> list[str]:
+    """The ``- **Companion memory`` bullet line(s) of ``text``."""
+    return [ln for ln in text.splitlines() if ln.lstrip().startswith(COMPANION_PREFIX)]
+
+
+def companion_findings(bullet: str, skill: str) -> list[str]:
+    """§S4.3/AC5: what a "Companion memory" bullet lacks or still says — it names ``skill`` and
+    its ``references/orchestration.md``, and no "orchestration memory" or memory template."""
+    found = []
+    if skill not in bullet:
+        found.append(f"names no {skill}")
+    if ORCHESTRATION_REL not in bullet:
+        found.append(f"names no {ORCHESTRATION_REL}")
+    if ORCHESTRATION_MEMORY.search(bullet):
+        found.append("says orchestration memory")
+    if MEMORY_TEMPLATE.search(bullet):
+        found.append("names a memory template")
+    return found
+
+
+def provenance_header(text: str) -> str:
+    """The leading ``#`` comment lines of a TOML file, joined."""
+    lines = []
+    for line in text.splitlines():
+        if not line.startswith("#"):
+            break
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def consuming_skills_findings(source: str) -> list[str]:
+    """§S4.4/AC5: what a script's ``# Consuming skills:`` entry lacks or still names — it has a
+    non-empty value naming the ``rust-stack`` skill, and no memory template or template name."""
+    entry = _consuming_skills_entry(_header_lines(source))
+    if not entry.startswith("Consuming skills:"):
+        return ["no `# Consuming skills:` entry"]
+    found = []
+    if not entry[len("Consuming skills:"):].strip().rstrip(".-"):
+        found.append("an empty `Consuming skills:` value")
+    if not re.search(rf"(?<![\w-]){re.escape(RUST_STACK)}(?![\w-])", entry):
+        found.append(f"names no {RUST_STACK}: {entry!r}")
+    found += retired_memory_findings(entry)
+    return found
+
+
+def comment_block(source: str, anchor: str) -> str:
+    """The run of ``#`` comment lines around the first line holding ``anchor``; ``""`` if none."""
+    lines = source.splitlines()
+    hits = [i for i, ln in enumerate(lines) if anchor in ln and ln.lstrip().startswith("#")]
+    if not hits:
+        return ""
+    start = end = hits[0]
+    while start > 0 and lines[start - 1].lstrip().startswith("#"):
+        start -= 1
+    while end + 1 < len(lines) and lines[end + 1].lstrip().startswith("#"):
+        end += 1
+    return "\n".join(lines[start:end + 1])
+
+
+def shipped_files(root: Path) -> list[Path]:
+    """§S4.5: every file under ``SHIPPED_ROOTS`` (bytecode caches left out), then ``AGENTS.md``."""
+    files = []
+    for name in SHIPPED_ROOTS:
+        for path in sorted((root / name).rglob("*")):
+            if path.is_file() and "__pycache__" not in path.relative_to(root).parts:
+                files.append(path)
+    if (root / "AGENTS.md").is_file():
+        files.append(root / "AGENTS.md")
+    return files
 
 
 def _reference(stack: str) -> Path:
@@ -673,6 +828,220 @@ class OlderProjectKeepsDocsMemoryTest(skills_gate._RepoAssetsSandbox):
                       "§S3.3/AC7: the orchestration reference is rendered")
         self.assertIn(reference, skills_gate._listed(axi, "written"),
                       f"§S3.3: the envelope names it written; axi={axi!r}")
+
+
+# ------------------------------------------------------------------ §S4.2–§S4.5 detectors ----
+
+
+class RetiredMemoryDetectorTest(unittest.TestCase):
+    """The §S4.3–§S4.5 pure functions, proved both ways on synthetic text."""
+
+    def test_each_retired_name_is_found_and_the_new_wording_is_not(self):
+        biting = {
+            "docs/memory/": "Read `docs/memory/INDEX.md` first.",
+            "a memory template": "Where the two disagree the memory template wins.",
+            "orchestration memory": "they live in the project's orchestration memory.",
+            "a memory template's file name": "see java-orchestration.md and operational-commands.md",
+        }
+        for what, text in biting.items():
+            with self.subTest(what=what):
+                self.assertEqual([f.split(":", 1)[0] for f in retired_memory_findings(text)], [what])
+        self.assertEqual(
+            [f.split(":", 1)[0] for f in retired_memory_findings("memory-templates (rust-orchestration.md)")],
+            ["a memory template", "a memory template's file name"],
+        )
+        spared = ("the `rust-stack` skill's `references/orchestration.md` (Disk hygiene); the "
+                  "project's memory; the orchestrator reference; the agent templates")
+        self.assertEqual(retired_memory_findings(spared), [])
+
+    def test_a_finding_quotes_the_line_it_is_on(self):
+        self.assertEqual(retired_memory_findings("a\nb names docs/memory/ here\nc\n"),
+                         ["docs/memory/: 'b names docs/memory/ here'"])
+
+    def test_the_pointer_for_older_projects_is_spared_only_where_it_is_allowed(self):
+        pointer = ("A project with none that still has a `docs/memory/` predates the stack skills: run "
+                   "`modelb-axi agents` at the project root, and read nothing from `docs/memory/`.\n")
+        self.assertEqual(retired_memory_findings(pointer, pointer_allowed=True), [])
+        self.assertEqual(len(retired_memory_findings(pointer)), 1, "outside §S4.1's two files")
+        reads = pointer + "\nThen read `docs/memory/INDEX.md`.\n"
+        self.assertNotEqual(retired_memory_findings(reads, pointer_allowed=True), [])
+
+    def test_companion_findings_bite_on_todays_bullet_and_spare_the_spec_worded_one(self):
+        old = ("- **Companion memory:** the `rust-stack` skill, loaded with this definition. The "
+               "orchestrator's gates and disk hygiene live in the project's orchestration memory, "
+               "read as the project directs.")
+        new = ("- **Companion memory:** the `rust-stack` skill, loaded with this definition. The "
+               "orchestrator's gates and disk hygiene live in its `references/orchestration.md`.")
+        self.assertEqual(companion_findings(old, "rust-stack"),
+                         [f"names no {ORCHESTRATION_REL}", "says orchestration memory"])
+        self.assertEqual(companion_findings(new, "rust-stack"), [])
+        self.assertEqual(companion_findings(new, "java-stack"), ["names no java-stack"])
+        self.assertEqual(companion_bullet("x\n" + new + "\n- **Other:** y\n"), [new])
+
+    def test_the_provenance_header_is_the_leading_comment_only(self):
+        text = "# one\n# the memory template wins\n\nkey = 1\n# later\n"
+        self.assertEqual(provenance_header(text), "# one\n# the memory template wins")
+        self.assertIsNotNone(PRECEDENCE_WINS.search(provenance_header(text)))
+        self.assertIsNone(PRECEDENCE_WINS.search("# reconciled from the four definitions"))
+
+    def test_consuming_skills_findings_bite_on_todays_header_and_spare_the_new(self):
+        old = ("#!/usr/bin/env python3\n# Owner: Model B.\n# Consuming skills: memory-templates "
+               "(rust-orchestration.md); invoked by\n#   scripts/rust-code-health.py.\n#\n\"\"\"doc\"\"\"\n")
+        new = ("#!/usr/bin/env python3\n# Owner: Model B.\n# Consuming skills: rust-stack "
+               "(references/orchestration.md); invoked by\n#   scripts/rust-code-health.py.\n#\n")
+        self.assertEqual([f.split(":", 1)[0] for f in consuming_skills_findings(old)],
+                         ["names no rust-stack", "a memory template", "a memory template's file name"])
+        self.assertEqual(consuming_skills_findings(new), [])
+        self.assertEqual(consuming_skills_findings("# Owner: Model B.\n"), ["no `# Consuming skills:` entry"])
+        self.assertEqual(consuming_skills_findings("# Consuming skills: rust-stack-extra\n"),
+                         ["names no rust-stack: 'Consuming skills: rust-stack-extra'"])
+
+    def test_comment_block_is_the_run_of_comment_lines_around_the_anchor(self):
+        source = "x = 1\n    # a\n    # PARTIAL DELETION b\n    # c\ny = 2\n# d\n"
+        self.assertEqual(comment_block(source, PARTIAL_DELETION_ANCHOR),
+                         "    # a\n    # PARTIAL DELETION b\n    # c")
+        self.assertEqual(comment_block(source, "absent"), "")
+
+    def test_the_design_invariants_pointer_reads_to_its_colon(self):
+        doc = ("Intro.\n\nDesign invariants (see the `rust-stack` skill's\nreference (Tooling)):\n"
+               "  * Source of truth: GIT.\n")
+        match = DESIGN_INVARIANTS.search(doc)
+        self.assertIsNotNone(match)
+        assert match is not None
+        self.assertIn(RUST_STACK, match.group(0))
+        self.assertNotIn("Source of truth", match.group(0))
+
+    def test_shipped_files_read_the_four_roots_and_agents_md_and_skip_bytecode(self):
+        root = Path(tempfile.mkdtemp(prefix="mdb-shipped-"))
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        for rel in ("skills-src/a/SKILL.md", "generator/stacks/rust.toml", "scripts/x.py",
+                    "scripts/__pycache__/x.cpython-314.pyc", "hooks-src/scripts/h", "AGENTS.md",
+                    "docs/changes/CR.md", "tests/test_x.py"):
+            (root / rel).parent.mkdir(parents=True, exist_ok=True)
+            (root / rel).write_text("x\n", encoding="utf-8")
+        self.assertEqual([p.relative_to(root).as_posix() for p in shipped_files(root)],
+                         ["skills-src/a/SKILL.md", "generator/stacks/rust.toml", "scripts/x.py",
+                          "hooks-src/scripts/h", "AGENTS.md"])
+
+
+# ------------------------------------------------------------------ §S4.3 ----
+
+
+class StackFilesReadTheStackSkillsTest(unittest.TestCase):
+    """§S4.3/AC5 — the "Companion memory" bullets name the stack skill's
+    ``references/orchestration.md``, never "orchestration memory"; ``rust.toml`` names no memory
+    template and keeps no "memory template wins" precedence rule."""
+
+    maxDiff = None
+
+    def test_each_companion_bullet_names_its_skills_orchestration_reference(self):
+        found = {}
+        for stack, skill in COMPANION_STACKS.items():
+            mechanics = tomllib.loads(read_text(STACKS_DIR / f"{stack}.toml"))["mechanics"]
+            bullets = companion_bullet(mechanics)
+            self.assertEqual(len(bullets), 1, f"precondition: one Companion memory bullet in {stack}.toml")
+            if f := companion_findings(bullets[0], skill):
+                found[f"{stack}.toml"] = f
+        self.assertEqual(found, {}, "§S4.3/AC5: the bullets name references/orchestration.md and "
+                                    "no orchestration memory")
+
+    def test_every_rendered_definition_carries_the_new_bullet(self):
+        # The real wiring: the stack file reaches each role's definition through the renderer.
+        found = {}
+        for stack, skill in COMPANION_STACKS.items():
+            for role in ROLES:
+                bullets = companion_bullet(_rendered_definition(stack, role))
+                self.assertEqual(len(bullets), 1, f"precondition: one bullet in {stack}-{role}")
+                if f := companion_findings(bullets[0], skill):
+                    found[f"{stack}-{role}"] = f
+        self.assertEqual(found, {}, "§S4.3/AC5: re-rendered definitions name the reference")
+
+    def test_rust_toml_names_no_memory_template(self):
+        text = read_text(RUST_TOML)
+        self.assertEqual([m.group(0) for m in MEMORY_TEMPLATE.finditer(text)], [],
+                         "§S4.3/AC5: rust.toml names no memory template")
+
+    def test_rust_tomls_provenance_header_keeps_no_precedence_rule(self):
+        header = provenance_header(read_text(RUST_TOML))
+        self.assertTrue(header.strip(), "precondition: rust.toml keeps a provenance header")
+        self.assertIsNone(PRECEDENCE_WINS.search(header),
+                          f"§S4.3: the 'memory template wins' rule goes; header={header!r}")
+
+
+# ------------------------------------------------------------------ §S4.4 ----
+
+
+class ScriptsAndHooksNameTheRustStackTest(unittest.TestCase):
+    """§S4.4/AC5 — the tool scripts' headers and ``worktree-flow.py``'s other mentions name the
+    ``rust-stack`` skill; the disk reminder names its Disk hygiene section."""
+
+    maxDiff = None
+
+    def test_each_consuming_skills_header_names_the_rust_stack_skill(self):
+        found = {
+            name: f
+            for name in RUST_STACK_CONSUMERS
+            if (f := consuming_skills_findings(read_text(SCRIPTS_DIR / name)))
+        }
+        self.assertEqual(found, {}, "§S4.4/AC5: each header names rust-stack, not rust-orchestration.md")
+
+    def test_worktree_flows_design_invariants_pointer_names_the_rust_stack_skill(self):
+        match = DESIGN_INVARIANTS.search(read_text(WORKTREE_FLOW))
+        self.assertIsNotNone(match, "precondition: worktree-flow.py states its design invariants")
+        assert match is not None
+        self.assertIn(RUST_STACK, match.group(0), f"§S4.4: {match.group(0)!r}")
+        self.assertEqual(retired_memory_findings(match.group(0)), [])
+
+    def test_worktree_flows_partial_deletion_comment_names_the_rust_stack_skill(self):
+        block = comment_block(read_text(WORKTREE_FLOW), PARTIAL_DELETION_ANCHOR)
+        self.assertTrue(block, "precondition: worktree-flow.py's partial-deletion comment")
+        self.assertIn(RUST_STACK, block, f"§S4.4: {block!r}")
+        self.assertEqual(retired_memory_findings(block), [])
+
+    def test_the_disk_reminder_names_the_rust_stack_skills_disk_hygiene_section(self):
+        result = run_hook(DISK_REMINDER, {"tool_name": "bash", "tool_input": {"command": FULL_REGRESSION}})
+        self.assertEqual(result.returncode, 0, f"informational hook; stderr={result.stderr!r}")
+        reason = json.loads(result.stdout)["reason"]
+        self.assertIn(RUST_STACK, reason, f"§S4.4/AC5: {reason!r}")
+        self.assertIn(DISK_HYGIENE_SECTION, reason, f"§S4.4: the section, by its title; {reason!r}")
+        self.assertEqual(retired_memory_findings(reason), [], "§S4.4/AC5")
+
+    def test_the_disk_reminder_stays_silent_on_another_command(self):
+        result = run_hook(DISK_REMINDER, {"tool_name": "bash", "tool_input": {"command": "echo hello"}})
+        self.assertEqual((result.returncode, result.stdout), (0, ""))
+
+
+# ------------------------------------------------------------------ §S4.5, §S5.5 ----
+
+
+class NoShippedFileNamesTheRetiredMemoryTest(unittest.TestCase):
+    """§S4.5/§S5.5/AC5/AC7 — no shipped file names ``docs/memory/``, a memory template,
+    "orchestration memory" or a template's file name, apart from §S4.1's pointer."""
+
+    maxDiff = None
+
+    def test_no_shipped_file_names_the_retired_memory(self):
+        files = shipped_files(REPO_ROOT)
+        rels = [p.relative_to(REPO_ROOT).as_posix() for p in files]
+        self.assertEqual([name for name in SHIPPED_ROOTS if not any(r.startswith(f"{name}/") for r in rels)],
+                         [], "precondition: every shipped root is read")
+        self.assertEqual(rels[-1], "AGENTS.md", "precondition: AGENTS.md is read")
+        found = {}
+        for path in files:
+            rel = path.relative_to(REPO_ROOT).as_posix()
+            text = path.read_text(encoding="utf-8", errors="replace")
+            if f := retired_memory_findings(text, pointer_allowed=rel in POINTER_FILES):
+                found[rel] = f
+        self.assertEqual(found, {}, "§S4.5/AC5")
+
+    def test_agents_md_names_no_memory_templates_or_docs_memory(self):
+        # Regression pin (passes today): its skills-src/ row once ended "Plus `memory-templates/`".
+        text = read_text(AGENTS_MD)
+        self.assertEqual([n for n in ("memory-templates", "docs/memory") if n in text], [],
+                         "§S5.5/AC7")
+        rows = [ln for ln in text.splitlines() if ln.startswith("| `skills-src/` |")]
+        self.assertEqual(len(rows), 1, "precondition: one skills-src/ row")
+        self.assertEqual(retired_memory_findings(rows[0]), [])
 
 
 if __name__ == "__main__":

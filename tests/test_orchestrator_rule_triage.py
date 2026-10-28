@@ -67,7 +67,10 @@ CR-MDB-042 §S2–§S3 (absorb) — the approved triage is the work list:
   ``Roundhouse`` or ``ORCHESTRATOR-`` unless
   the same line is a dated provenance citation (a ``CR-<ACR>-<n>`` id and a ``20YY-MM-DD`` date),
   and none names a harness tool retired by CR-MDB-031 (the vocabulary of
-  ``tests.test_client_path_anchoring``, the ``sandesh_*`` MCP tools included).
+  ``tests.test_client_path_anchoring``, the ``sandesh_*`` MCP tools included). CR-MDB-060
+  §S5.1/AC6 widens both checks from ``skills-src/`` to ``generator/skills/``, where the
+  orchestrator's notes moved (``neutrality_gate_files``); the pinned bundle set re-pins the moved
+  notes there.
 - ``HeadingRenameMapTest`` — CR-MDB-044 §S1: the triage is frozen, so a destination heading
   renamed since resolves through ``HEADING_RENAMES`` (file, old heading) → new heading, held here
   and holding exactly one entry: ``orchestration-common.md`` § "Never author code — always
@@ -994,6 +997,19 @@ def model_b_owned_skill_files(root: Path) -> list[Path]:
     return out
 
 
+#: CR-MDB-060 §S5.1 — the stack skills' sources, which the neutrality and retired-tool checks read
+#: beside ``skills-src/``: the orchestrator's notes moved there (§S1.1).
+STACK_SKILLS_SOURCES = "generator/skills"
+#: CR-MDB-060 §S5.1 — the stack skills under it today, the moved notes among them.
+STACK_SKILL_NAMES = {"arduino-stack", "java-stack", "rust-stack"}
+
+
+def neutrality_gate_files(root: Path) -> list[Path]:
+    """CR-MDB-060 §S5.1: the files ``ModelBCommonTextNeutralTest`` reads — every Model B-owned
+    ``skills-src/`` Markdown file, then every ``generator/skills/**/*.md``."""
+    return model_b_owned_skill_files(root) + sorted((root / STACK_SKILLS_SOURCES).rglob("*.md"))
+
+
 class AbsorbedDestinationTest(_RealFileMixin):
     #: 63 common + 9 stack:rust + 2 stack:arduino + 4 project:model-b \u2014 the 5 gap-analysis rows
     #: included since C3 adopted the bundle (\u00a7S4; was 73 while they were excluded) \u2014 plus the
@@ -1257,39 +1273,45 @@ class FileMoveMapTest(_RealFileMixin):
 
 class ModelBCommonTextNeutralTest(unittest.TestCase):
     """CR-MDB-042 AC3 (widened at 3b6555c): the name and tool gate covers every Model B-owned
-    ``skills-src/`` Markdown file, not only the ``model-b`` bundle and ``gap-analysis``."""
+    ``skills-src/`` Markdown file, not only the ``model-b`` bundle and ``gap-analysis``; CR-MDB-060
+    §S5.1/AC6 widens it to ``generator/skills/``, where the orchestrator's notes moved."""
 
     def test_model_b_owned_files_are_every_bundle_but_the_exempt_ones(self):
-        files = model_b_owned_skill_files(REPO_ROOT)
+        # MIGRATED (CR-MDB-060 §S5.1/AC6; was model_b_owned_skill_files alone): the gate reads
+        # neutrality_gate_files, skills-src/ and generator/skills/.
+        files = neutrality_gate_files(REPO_ROOT)
         rels = {p.relative_to(REPO_ROOT).as_posix() for p in files}
         for path in model_b_common_files(REPO_ROOT) + [REPO_ROOT / GAP_ANALYSIS_SKILL]:
             self.assertIn(path.relative_to(REPO_ROOT).as_posix(), rels)
-        bundles = {rel.split("/")[1] for rel in rels if rel.count("/") > 1}
+        bundles = {rel.split("/")[1] for rel in rels
+                   if rel.startswith("skills-src/") and rel.count("/") > 1}
         # MIGRATED PIN (CR-MDB-041 \u00a7S4): bootstrap/ and shutdown/ are no longer exempt.
         # MIGRATED at CR-MDB-061 (§S8): the chrome-ui-relay bundle is Model B-owned.
-        # MIGRATED (CR-MDB-060 §S5.2): the memory-templates bundle is pinned only while a
-        # template has not moved (``FILE_MOVES``); once moved, the rust notes are no skills-src/
-        # file (widening the gate to generator/skills/ is §S5.1's).
-        rust = resolve_file("skills-src/memory-templates/rust-orchestration.md", REPO_ROOT)
-        unmoved_bundles = {rel.split("/")[1] for rel in FILE_MOVES
-                           if resolve_file(rel, REPO_ROOT) == rel}
+        # MIGRATED (CR-MDB-060 §S5.1; was the memory-templates bundle while a template had not
+        # moved): skills-src/ holds no memory template; the moved notes are pinned below.
         self.assertEqual(bundles, {"bootstrap", "chrome-ui-relay", "code-health", "cr-authoring",
                                    "crucible", "gap-analysis", "git-workflow",
-                                   "model-b", "shutdown"} | unmoved_bundles)
-        if rust.startswith("skills-src/"):
-            self.assertIn(rust, rels)
-        else:
-            self.assertNotIn("skills-src/memory-templates/rust-orchestration.md", rels)
+                                   "model-b", "shutdown"})
+        self.assertEqual(sorted(rel for rel in rels if rel.startswith("skills-src/memory-templates/")),
+                         [], "CR-MDB-060 §S3.1: skills-src/ holds no memory template")
+        # CR-MDB-060 §S5.1/AC6: the moved notes are read where they live now.
+        stack_skills = {rel.split("/")[2] for rel in rels
+                        if rel.startswith(f"{STACK_SKILLS_SOURCES}/") and rel.count("/") > 2}
+        self.assertEqual(stack_skills, STACK_SKILL_NAMES)
+        self.assertEqual(sorted(set(FILE_MOVES.values()) - rels), [],
+                         "CR-MDB-060 §S5.1/AC6: each moved note is read under generator/skills/")
 
     def test_model_b_owned_text_names_no_project_or_orchestrator_note(self):
+        # MIGRATED (CR-MDB-060 §S5.1/AC6): generator/skills/ is read too.
         problems = []
-        for path in model_b_owned_skill_files(REPO_ROOT):
+        for path in neutrality_gate_files(REPO_ROOT):
             problems += project_name_findings(path.relative_to(REPO_ROOT).as_posix(), read_text(path))
         self.assertEqual(problems, [])
 
     def test_model_b_owned_text_names_no_retired_harness_tool(self):
+        # MIGRATED (CR-MDB-060 §S5.1/AC6): generator/skills/ is read too.
         problems = []
-        for path in model_b_owned_skill_files(REPO_ROOT):
+        for path in neutrality_gate_files(REPO_ROOT):
             problems += retired_tool_findings(path.relative_to(REPO_ROOT).as_posix(), read_text(path))
         self.assertEqual(problems, [])
 
@@ -1646,6 +1668,21 @@ class AbsorbRulesOnSyntheticTreeTest(unittest.TestCase):
                           "skills-src/crucible/SKILL.md",
                           "skills-src/memory-templates/rust-orchestration.md",
                           "skills-src/model-b/SKILL.md", "skills-src/shutdown/SKILL.md"])
+
+    def test_neutrality_gate_files_add_generator_skills_markdown_only(self):
+        # CR-MDB-060 §S5.1: the stack skills' Markdown is read beside skills-src/'s; the agent
+        # templates, the rendered agents and a non-Markdown file under generator/skills/ are not.
+        for rel in ("skills-src/model-b/SKILL.md", "skills-src/crucible-register/SKILL.md",
+                    "generator/skills/rust-stack/SKILL.md",
+                    "generator/skills/rust-stack/references/orchestration.md",
+                    "generator/skills/rust-stack/notes.txt",
+                    "generator/templates/red.md", "generator/agents/rust-red-agent.md"):
+            self._write(rel, "# x\n")
+        self.assertEqual([p.relative_to(self.root).as_posix() for p in neutrality_gate_files(self.root)],
+                         ["skills-src/model-b/SKILL.md", "generator/skills/rust-stack/SKILL.md",
+                          "generator/skills/rust-stack/references/orchestration.md"])
+        self.assertEqual([p.relative_to(self.root).as_posix() for p in model_b_owned_skill_files(self.root)],
+                         ["skills-src/model-b/SKILL.md"], "the skills-src/ half is unchanged")
 
     def test_fix_inside_verify_is_flagged_unless_the_line_says_never(self):
         text = ("Run the FIX agent inside the same VERIFY cycle.\n"
