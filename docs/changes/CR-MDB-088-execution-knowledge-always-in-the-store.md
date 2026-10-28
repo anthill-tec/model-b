@@ -35,9 +35,15 @@ its own: a `restore` brings them back at low confidence, and the next write can 
    shutdown (the facts the run overtook), each fact is checked against the board and the repo, then
    rewritten under its key or removed, and the report names what changed. The rule and its three
    moments land in the bootstrap, shutdown and `model-b` skills and in `orchestration-common`.
-4. **The store keeps its facts.** The bootstrap step that restores the category re-confirms each current
-   fact the restore brings back, so nothing current stays at the low confidence that lets it be
-   archived again.
+4. **The store keeps its facts** (research note `lean-ctx-for-model-b` §S4, lean-ctx 3.11.4):
+   - **The category is loaded from a complete source.** A bare category recall returns only 10 facts,
+     and only those get the retrieval that slows their decay, so bootstrap reads the whole category
+     (an export, or a recall with a raised limit).
+   - **Restored facts are re-confirmed.** A `restore` brings a fact back at about 0.25 confidence,
+     below the 0.3 archive threshold, so each current fact it brings back is re-confirmed (rewritten
+     under its key, or given positive feedback) or the next lifecycle run archives it again.
+   - **The limits are stated.** The 200-fact cap is shared with lean-ctx's own automatic captures,
+     decay compounds on every lifecycle run, and `restore` has no dry run.
 5. **The reach:** `project_schema.toml`, `modelb_axi/scaffold.py`, the rendered `AGENTS.md` lean-ctx
    section, `contracts/lean-ctx.md`, and the tests that pin the conditional key or the "without the
    key" rule.
@@ -47,4 +53,6 @@ its own: a `restore` brings them back at low confidence, and the next write can 
 - Whether the reconciliation and re-confirmation can be stated as checkable rules in the skills, and
   how the knowledge-store tools' behaviour (archive on write, restore confidence) is stated without
   naming a lean-ctx tool where the built-in form forbids it.
-- **Score:** seeded at 5.
+- Which of the store's levers (a raised `max_facts`, automatic consolidation off) are project-scoped
+  and need no `lean-ctx trust`; the project config file itself is CR-MDB-091's.
+- **Score:** seeded at 5; item 4's widening (2026-10-29, from the lean-ctx study) may raise it.
