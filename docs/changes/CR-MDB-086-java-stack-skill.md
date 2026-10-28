@@ -1,7 +1,6 @@
 # CR-MDB-086 — The Java stack skill: the Java references and mechanics, rendered into Java projects
 
-**Status:** PENDING — spec drafted 2026-10-28 from the gap analysis, the spec pre-review folded in;
-awaiting approval.
+**Status:** COMPLETED (filed 2026-10-28, gap analysis and pre-review 2026-10-28).
 **Type:** feature (stack skill content, stack file, scaffold seeding, reference material)
 **Priority:** P1 — release 1.0.0, wave 2, after CR-MDB-085 and before CR-MDB-060.
 **Depends on:** CR-MDB-085 (the stack-skill mechanism); the board is authoritative: read `queue`, not
