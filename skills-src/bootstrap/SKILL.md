@@ -95,10 +95,13 @@ Read — in this order:
      README's setup tasks; never read the empty board `plans` then returns as idle.
 3. **The root project's stack skills' orchestrator references** —
    `references/orchestration.md` in each `.agents/skills/<name>/` that has one, whatever the
-   skill's name; open the ones relevant to what
-   you are about to do. A project with none that still has a `docs/memory/` predates
-   the stack skills: tell the user to run `modelb-axi agents` at the project root to render its
-   stack skills, and read nothing from `docs/memory/`.
+   skill's name; open the ones relevant to what you are about to do. A project with none notes
+   it and skips.
+
+   Where the project has none but still has a `docs/memory/` and one of its stacks declares a
+   stack skill, tell the user to run `modelb-axi agents` at the project root to render its stack
+   skills; a project none of whose stacks declares a stack skill (python, bun) is not pointed
+   there. Nothing is read from `docs/memory/`.
 
 **Fallback** — a project with no `.env` registry, or a missing key: take the same value from
 the project's `AGENTS.md`; a value found in neither, ask the user once. A project with no
