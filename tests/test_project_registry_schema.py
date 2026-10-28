@@ -318,14 +318,30 @@ CRUCIBLE_IDENTITY_POINTER_RE = re.compile(
     r"`crucible` skill\b.{0,40}\bIdentity\b|\bIdentity\b.{0,40}`crucible` skill\b")
 #: CR-MDB-046 §S4: the Skill-freeze stack line's kept prefix; the rest of the line is pinned
 #: phrase-level by :func:`stack_line_findings`.
-GOLDEN_STACK_LINE_PREFIX = (f"- {STACKS}: use the `{STACKS}` stack skills and generated "
-                            "RED/GREEN/VERIFY/FIX agents")
+#:
+#: MIGRATED PIN (CR-MDB-085 cycle 277 RED, §S1.5/AC3; was "- python: use the `python` stack
+#: skills and generated RED/GREEN/VERIFY/FIX agents"): the line names a stack's skill only where
+#: one is declared, and the fixture's ``python`` declares none, so the kept prefix is the stack's
+#: own bullet; the generated agents it named stay pinned, with the absent stack skill, by
+#: :func:`stack_line_findings`.
+GOLDEN_STACK_LINE_PREFIX = f"- {STACKS}:"
+#: CR-MDB-085 §S1.5: a stack line naming a stack skill — the same pattern
+#: ``tests.test_stack_skills.AgentsMdStackLineTest`` holds a skill-less stack's line to.
+STACK_SKILL_MENTION_RE = re.compile(r"(?i)stack skill")
 
 
 def stack_line_findings(line: str) -> list[str]:
     """CR-MDB-046 §S4: a scaffolded Skill-freeze stack line says its agents are rendered at
-    scaffold time and re-rendered with ``modelb-axi agents``, and no longer calls them frozen."""
+    scaffold time and re-rendered with ``modelb-axi agents``, and no longer calls them frozen.
+
+    CR-MDB-085 §S1.5/AC3: for a stack with no declared stack skill (this module's ``python``
+    fixture) the line names no stack skill, and still names the generated RED/GREEN/VERIFY/FIX
+    agents its old kept prefix carried."""
     problems = []
+    if STACK_SKILL_MENTION_RE.search(line):
+        problems.append("names a stack skill for a stack that declares none")
+    if "generated RED/GREEN/VERIFY/FIX agents" not in line:
+        problems.append("does not name the generated RED/GREEN/VERIFY/FIX agents")
     if re.search(r"\bfrozen\b", line, re.IGNORECASE):
         problems.append("still calls the agents frozen")
     if not re.search(r"\brendered at scaffold time\b", line):
@@ -881,7 +897,8 @@ class _Shared:
                 [ln for ln in kept_rules if not any(ln == seen for seen in remaining_rules)], [],
                 f"CR-MDB-048 §S2: today's other Workflow rules are kept, in order; got {a_rules!r}")
             # MIGRATED at CR-MDB-046 C4 FIX (§S4): the Skill-freeze stack line no longer calls
-            # the agents frozen; it keeps GOLDEN_STACK_LINE_PREFIX, is pinned phrase-level by
+            # the agents frozen; it keeps GOLDEN_STACK_LINE_PREFIX (the stack's own bullet since
+            # CR-MDB-085 §S1.5, which drops its stack-skill clause), is pinned phrase-level by
             # test_agents_md_stack_lines_say_rendered_at_scaffold_time_and_re_rendered, and is
             # left out of this comparison on both sides.
             self.assertEqual(
@@ -918,7 +935,10 @@ class _Shared:
         def test_agents_md_stack_lines_say_rendered_at_scaffold_time_and_re_rendered(self):
             """CR-MDB-046 §S4: ``_render_agents_md``'s Skill-freeze stack line says the agents are
             rendered at scaffold time and re-rendered with ``modelb-axi agents``, never
-            "frozen"."""
+            "frozen".
+
+            MIGRATED (CR-MDB-085 cycle 277 RED, §S1.5/AC3): the fixture's ``python`` declares
+            no stack skill, so its line names none, and still names the generated agents."""
             freeze = md_section(self._read("AGENTS.md"), "## Skill freeze")
             lines = [ln for ln in freeze.splitlines() if ln.startswith(GOLDEN_STACK_LINE_PREFIX)]
             self.assertEqual(len(lines), 1, f"one stack line; section={freeze!r}")
@@ -2303,20 +2323,39 @@ class CrucibleIdentityPointerDetectorTest(unittest.TestCase):
 
 
 class StackLineDetectorTest(unittest.TestCase):
-    """CR-MDB-046 §S4: :func:`stack_line_findings`, proven both ways on synthetic stack lines."""
+    """CR-MDB-046 §S4: :func:`stack_line_findings`, proven both ways on synthetic stack lines.
 
-    TODAY = (f"{GOLDEN_STACK_LINE_PREFIX} as frozen at scaffold time.")
-    GOOD = (f"{GOLDEN_STACK_LINE_PREFIX}, rendered at scaffold time; re-render them with "
-            "`modelb-axi agents`.")
+    MIGRATED (CR-MDB-085 cycle 277 RED, §S1.5/AC3): ``TODAY`` is the pre-CR-MDB-046 line, written
+    out (it named the ``python`` stack skills and called the agents frozen); ``CR046`` is the line
+    ``_render_agents_md`` renders before CR-MDB-085, which fails on its stack-skill clause alone;
+    ``GOOD`` names no stack skill."""
 
-    def test_the_new_line_passes_and_todays_fails_on_all_three(self):
+    TODAY = (f"- {STACKS}: use the `{STACKS}` stack skills and generated RED/GREEN/VERIFY/FIX "
+             "agents as frozen at scaffold time.")
+    CR046 = (f"- {STACKS}: use the `{STACKS}` stack skills and generated RED/GREEN/VERIFY/FIX "
+             "agents, rendered at scaffold time; re-render them with `modelb-axi agents`.")
+    GOOD = (f"{GOLDEN_STACK_LINE_PREFIX} use the generated RED/GREEN/VERIFY/FIX agents, "
+            "rendered at scaffold time; re-render them with `modelb-axi agents`.")
+
+    def test_the_new_line_passes_and_todays_fails_on_all_four(self):
         self.assertEqual(stack_line_findings(self.GOOD), [])
-        self.assertEqual(len(stack_line_findings(self.TODAY)), 3, stack_line_findings(self.TODAY))
+        self.assertEqual(stack_line_findings(self.TODAY),
+                         ["names a stack skill for a stack that declares none",
+                          "still calls the agents frozen",
+                          "does not say the agents are rendered at scaffold time",
+                          "does not name re-rendering with `modelb-axi agents`"])
+
+    def test_the_cr046_line_fails_only_on_its_stack_skill_clause(self):
+        self.assertEqual(stack_line_findings(self.CR046),
+                         ["names a stack skill for a stack that declares none"])
 
     def test_each_phrase_bites(self):
         for old, new in (("rendered at scaffold time", "frozen at scaffold time"),
                          ("rendered at scaffold time", "made at scaffold time"),
-                         ("`modelb-axi agents`", "hand")):
+                         ("`modelb-axi agents`", "hand"),
+                         ("use the generated", "use the `python` stack skill and generated"),
+                         ("use the generated", "use the Python Stack Skills and generated"),
+                         ("generated RED/GREEN/VERIFY/FIX agents", "agents")):
             with self.subTest(old=old, new=new):
                 self.assertNotEqual(stack_line_findings(self.GOOD.replace(old, new)), [])
 
