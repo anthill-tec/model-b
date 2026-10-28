@@ -185,6 +185,9 @@ class RequirementsDeclarationTest(unittest.TestCase):
         ("worktree", 1, "recommended", True),
         # CR-MDB-047 §S1: Sandesh's own Pi extension is required.
         ("sandesh-pi", 1, "required", True),
+        # MIGRATED at CR-MDB-089 (§S1): the process tool's and the web tools' packages.
+        ("processes", 1, "recommended", True),
+        ("web-search", 1, "recommended", True),
         ("uv", 2, "required", True),
         # MIGRATED at CR-MDB-047 C4 FIX (VERIFY F9, "Quoting" AC amended at
         # 5dd8a36): the `sandesh` CLI is required (was recommended).
@@ -199,6 +202,78 @@ class RequirementsDeclarationTest(unittest.TestCase):
         # CR-MDB-047 §S1: the tier-2 direnv path probe.
         ("direnv", 2, "recommended", True),
     ]
+
+    #: CR-MDB-089 §S1 — the process tool's and the web tools' rows, exactly as the spec's
+    #: table declares them: no other field, so no ``absent_effect``.
+    _PROCESS_AND_WEB_ROWS = {
+        "processes": {
+            "id": "processes", "tier": 1, "provider": "@mjakl/pi-processes",
+            "policy": "recommended", "scope": "always", "probe": "pi-package",
+            "asset_families": ("orchestration skills' supervised long runs",),
+            "remediation": "pi install npm:@mjakl/pi-processes",
+            "tools": ("process",),
+        },
+        "web-search": {
+            "id": "web-search", "tier": 1, "provider": "@ollama/pi-web-search",
+            "policy": "recommended", "scope": "always", "probe": "pi-package",
+            "asset_families": ("research in gap analysis and spec review",),
+            "remediation": "pi install npm:@ollama/pi-web-search",
+            "tools": ("web_fetch", "web_search"),
+        },
+    }
+    #: The declared order: the two rows follow ``sandesh-pi``; no other row moves.
+    _ROW_ORDER = [
+        "dispatch", "lean-ctx", "permissions", "worktree", "sandesh-pi",
+        "processes", "web-search",
+        "uv", "sandesh", "crucible", "crucible-client", "python3", "bash", "gh", "jq",
+        "direnv", "toolchain",
+    ]
+    #: Every other row's content as it stood before CR-MDB-089: the sha256 of
+    #: ``json.dumps(row, sort_keys=True)``. A CR that changes a row on purpose re-pins its digest.
+    _OTHER_ROW_DIGESTS = {
+        "dispatch": "1d043ea21f7242e308937d5e20091b3f1b2109115eab885664f7f85c823c148d",
+        "lean-ctx": "72e9016464ecd808996c900540b9a37e5377a3f23f66e8d6895f36697a9deb53",
+        "permissions": "034105a9139ebd2660e29676fd6bfa06e46c90019438a43b82564b8753048fd2",
+        "worktree": "d804918b3c8d02f340e083a19faa091d13dfa032076848019168eb3dced204c8",
+        "sandesh-pi": "d4c60da7eafb7fb25f5602d1372e6660fe63ba720b317fca67144bb565ddb8f6",
+        "uv": "9a6c93c5f6ceb26d7e9c529709bcabd01f29a00de29119ca0f7cbfe0f7ae7547",
+        "sandesh": "ee79c9ac2b60c4873ac7ee94d2149bfde1cb92f70226f9fabf1234dcdc338932",
+        "crucible": "15b9250dd40b2d726bf2a989bfb30832ae11eac82ef757cbbe32b2eb907ec1f7",
+        "crucible-client": "43b36c4d7555f9c142b8b4b3e96dd4c8763610fe7dd0692a76be7c59b410aeb5",
+        "python3": "e9f9efff943da653ccf8837e85b145326b7355ce5d4c356fb4de439ea8666566",
+        "bash": "7012b0e1e165e914a2d0fb87c975fe25c10295fa7a8d85ffbf78a51bf807c39e",
+        "gh": "e7066ab7cd765fd6ca90ac80c821045a289c1b390df688037d8047d19c34e1a0",
+        "jq": "6d9e61e5c70b8900ca2fcdd2f9d566b96b6ac4fcfbec6525b19aaf7367da47c6",
+        "direnv": "63fa8c9feac931efc9d7d85fbe4a825935a178567ad3aef66e1f760c73f09587",
+        "toolchain": "5da9e86c1d14f014958dac83900aa61dabecb5f2859dad10b22617582575e4fa",
+    }
+
+    def test_processes_and_web_search_rows_carry_exactly_the_spec_fields_and_values(self):
+        """CR-MDB-089 §S1: each row equals the spec's table row field for field — no
+        ``absent_effect``, no field beyond the table's."""
+        for req_id, expected in self._PROCESS_AND_WEB_ROWS.items():
+            with self.subTest(id=req_id):
+                rows = [r for r in _requirements() if r.get("id") == req_id]
+                self.assertEqual(len(rows), 1, f"CR-MDB-089 §S1: exactly one `{req_id}` row; "
+                                 f"ids={[r.get('id') for r in _requirements()]!r}")
+                self.assertEqual(rows[0], expected)
+                self.assertNotIn("absent_effect", rows[0])
+
+    def test_the_two_rows_follow_sandesh_pi_and_no_other_row_moves(self):
+        self.assertEqual([r.get("id") for r in _requirements()], self._ROW_ORDER,
+                         "CR-MDB-089 §S1: the two rows come after sandesh-pi; nothing else moves")
+
+    def test_every_other_row_is_unchanged(self):
+        import hashlib
+        import json
+        digests = {
+            r["id"]: hashlib.sha256(json.dumps(r, sort_keys=True).encode("utf-8")).hexdigest()
+            for r in _requirements() if r.get("id") not in self._PROCESS_AND_WEB_ROWS
+        }
+        changed = sorted(k for k, v in self._OTHER_ROW_DIGESTS.items() if digests.get(k) != v)
+        self.assertEqual(changed, [], "CR-MDB-089 §S1: every other row is unchanged")
+        self.assertEqual(sorted(digests), sorted(self._OTHER_ROW_DIGESTS),
+                         "CR-MDB-089 §S1: no other row is added or removed")
 
     def test_every_row_carries_every_field(self):
         rows = _requirements()
@@ -601,8 +676,10 @@ class HarnessProbeTest(_SandboxedInstallerCase):
         # MIGRATED at CR-MDB-045 C1 RED (§S1: the fifth tier-1 row, sandesh-pi).
         self.assertEqual(
             self.harness_verdicts(result),
+            # MIGRATED at CR-MDB-089 (§S1): the processes and web-search rows join the line.
             {"dispatch": "unknown", "lean-ctx": "unknown", "permissions": "unknown",
-             "worktree": "unknown", "sandesh-pi": "unknown"},
+             "worktree": "unknown", "sandesh-pi": "unknown",
+             "processes": "unknown", "web-search": "unknown"},
         )
 
     def test_unrecognised_settings_shape_is_unknown(self):
@@ -614,8 +691,10 @@ class HarnessProbeTest(_SandboxedInstallerCase):
         # MIGRATED at CR-MDB-045 C1 RED (§S1: sandesh-pi).
         self.assertEqual(
             self.harness_verdicts(result),
+            # MIGRATED at CR-MDB-089 (§S1): the processes and web-search rows join the line.
             {"dispatch": "unknown", "lean-ctx": "unknown", "permissions": "unknown",
-             "worktree": "unknown", "sandesh-pi": "unknown"},
+             "worktree": "unknown", "sandesh-pi": "unknown",
+             "processes": "unknown", "web-search": "unknown"},
         )
 
     def test_env_var_agent_dir_wins_over_home_default(self):
@@ -624,8 +703,10 @@ class HarnessProbeTest(_SandboxedInstallerCase):
         result = self.run_installer()
         self.assertEqual(
             self.harness_verdicts(result),
+            # MIGRATED at CR-MDB-089 (§S1): the processes and web-search rows join the line.
             {"dispatch": "absent", "lean-ctx": "absent", "permissions": "absent",
-             "worktree": "absent", "sandesh-pi": "absent"},
+             "worktree": "absent", "sandesh-pi": "absent",
+             "processes": "absent", "web-search": "absent"},
             f"§S2: $PI_CODING_AGENT_DIR must be read when set; stderr={result.stderr!r}",
         )
 
@@ -634,8 +715,10 @@ class HarnessProbeTest(_SandboxedInstallerCase):
         result = self.run_installer(agent_dir_env=False)
         self.assertEqual(
             self.harness_verdicts(result),
+            # MIGRATED at CR-MDB-089 (§S1): the processes and web-search rows join the line.
             {"dispatch": "detected", "lean-ctx": "detected", "permissions": "detected",
-             "worktree": "detected", "sandesh-pi": "detected"},
+             "worktree": "detected", "sandesh-pi": "detected",
+             "processes": "detected", "web-search": "detected"},
             f"§S2: ~/.pi/agent/settings.json is the default; stderr={result.stderr!r}",
         )
 
@@ -728,6 +811,90 @@ class RecommendedAndUnknownPolicyTest(_SandboxedInstallerCase):
         self.assertEqual(self.install_toml()["capabilities"].get("dispatch"), "unknown")
 
 
+class ProcessAndWebPackagesPreflightTest(_SandboxedInstallerCase):
+    """CR-MDB-089 §S1 "the pre-flight": the ``processes`` and ``web-search`` rows are probed
+    through Pi's settings by the unchanged generic handling. With neither package provisioned
+    the harness line reports both ``absent``, each WARN names its ``pi install npm:…``
+    remediation and its ``asset_families``, and the run continues; ``--yes`` installs neither;
+    listed in ``settings.json`` ``packages[]`` and present under ``npm/node_modules/``, both are
+    ``detected``. ``HOME`` and ``PI_CODING_AGENT_DIR`` are sandbox temp dirs."""
+
+    _ROWS = {
+        "processes": ("@mjakl/pi-processes", "orchestration skills' supervised long runs"),
+        "web-search": ("@ollama/pi-web-search", "research in gap analysis and spec review"),
+    }
+
+    def setUp(self):
+        super().setUp()
+        self.marker = self._root / "installer-ran"
+        for name in ("pi", "npm", "npx", "pnpm"):
+            _write_exe(self.bin_dir, name, _marker_shim(self.marker))
+
+    def _runs(self) -> list[str]:
+        if not self.marker.exists():
+            return []
+        return [ln for ln in self.marker.read_text(encoding="utf-8").splitlines() if ln.strip()]
+
+    def test_neither_package_provisioned_reports_both_absent_warns_and_continues(self):
+        make_provisioned_agent_dir(self.agent_dir, omit=tuple(self._ROWS))
+        result = self.run_installer()
+        axi = _decode(result.stdout)
+        verdicts = self.harness_verdicts(result)
+        self.assertEqual({k: verdicts.get(k) for k in self._ROWS},
+                         {"processes": "absent", "web-search": "absent"},
+                         f"CR-MDB-089 §S1: both are on the harness line; stderr={result.stderr!r}")
+        self.assertEqual((result.returncode, axi.get("outcome")), (0, "installed"),
+                         f"recommended rows: the run continues; stderr={result.stderr!r}")
+        warnings = axi.get("warnings", [])
+        for req_id, (package, family) in self._ROWS.items():
+            with self.subTest(id=req_id):
+                hits = [w for w in warnings if w.startswith(f"{req_id}=absent")]
+                self.assertEqual(len(hits), 1, f"exactly one `{req_id}=absent` warning; {warnings!r}")
+                self.assertIn(f"pi install npm:{package}", hits[0])
+                self.assertIn(family, hits[0], "the warning names its asset_families verbatim")
+        self.assertEqual(
+            {k: self.install_toml()["capabilities"].get(k) for k in self._ROWS},
+            {"processes": "absent", "web-search": "absent"},
+            "[capabilities] records both verdicts")
+
+    def test_yes_installs_neither_package(self):
+        make_provisioned_agent_dir(self.agent_dir, omit=tuple(self._ROWS))
+        settings_before = (self.agent_dir / "settings.json").read_bytes()
+        result = self.run_installer()
+        self.assertEqual(self._runs(), [],
+                         "CR-MDB-089 §S1: --yes runs no install for either third-party package "
+                         "(every other tier-1 package is provisioned, so nothing runs)")
+        self.assertEqual((self.agent_dir / "settings.json").read_bytes(), settings_before)
+        verdicts = self.harness_verdicts(result)
+        self.assertEqual({k: verdicts.get(k) for k in self._ROWS},
+                         {"processes": "absent", "web-search": "absent"},
+                         f"both are probed and stay absent; stderr={result.stderr!r}")
+        for req_id, (package, _family) in self._ROWS.items():
+            with self.subTest(id=req_id):
+                self.assertIn(f"pi install npm:{package}", result.stderr,
+                              "the remediation is named, never run")
+
+    def test_both_listed_and_on_disk_report_detected(self):
+        packages = [package for package, _family in self._ROWS.values()]
+        make_agent_dir(
+            self.agent_dir,
+            packages=[npm_spec(p) for cap, p in TIER1_PACKAGES.items() if cap not in self._ROWS]
+            + [npm_spec(p) for p in packages],
+            on_disk=[p for cap, p in TIER1_PACKAGES.items() if cap not in self._ROWS] + packages,
+        )
+        result = self.run_installer()
+        axi = _decode(result.stdout)
+        verdicts = self.harness_verdicts(result)
+        self.assertEqual({k: verdicts.get(k) for k in self._ROWS},
+                         {"processes": "detected", "web-search": "detected"},
+                         f"CR-MDB-089 §S1: listed and on disk is detected; stderr={result.stderr!r}")
+        self.assertEqual(axi.get("outcome"), "installed", result.stderr)
+        self.assertEqual(
+            [w for w in axi.get("warnings", []) if any(p in w for p in packages)], [],
+            "a detected package draws no warning")
+        self.assertEqual(self._runs(), [], "nothing is installed")
+
+
 class NoThirdPartyInstallUnderYesTest(_SandboxedInstallerCase):
     """§S3 AC3: ``--yes`` against an agent dir lacking every extension
     installs no THIRD-PARTY extension and leaves ``settings.json``
@@ -772,9 +939,12 @@ class NoThirdPartyInstallUnderYesTest(_SandboxedInstallerCase):
     def _assert_no_third_party_install(self, result, before_bytes, before_tree):
         # MIGRATED at CR-MDB-045 C1 RED (§S1: sandesh-pi is a third-party
         # tier-1 row, absent here and never installed by --yes).
+        # MIGRATED at CR-MDB-089 (§S1): processes and web-search are third-party tier-1
+        # rows too, absent here and never installed by --yes.
         self.assertEqual(self.harness_verdicts(result), {
             "dispatch": "absent", "lean-ctx": "absent", "permissions": "absent",
             "worktree": "absent", "sandesh-pi": "absent",
+            "processes": "absent", "web-search": "absent",
         })
         self.assertEqual(self.settings.read_bytes(), before_bytes, "settings.json must be byte-identical")
         self.assertEqual(self._snapshot(), before_tree, "the agent dir must be untouched")
@@ -983,8 +1153,10 @@ class PreflightReportLinesTest(_SandboxedInstallerCase):
         result = self.run_installer()
         self.assertEqual(
             parse_group_line(result.stderr, "harness:"),
+            # MIGRATED at CR-MDB-089 (§S1): the processes and web-search rows join the line.
             {"dispatch": "detected", "lean-ctx": "detected", "permissions": "detected",
-             "worktree": "detected", "sandesh-pi": "detected"},
+             "worktree": "detected", "sandesh-pi": "detected",
+             "processes": "detected", "web-search": "detected"},
             result.stderr,
         )
         self.assertIn("deps: uv=detected sandesh=detected crucible=detected", result.stderr)
@@ -1088,8 +1260,10 @@ class InstallTomlCapabilitiesRecordTest(_SandboxedInstallerCase):
             self.fail(f"§S4: [capabilities] missing; got {data!r}")
         self.assertEqual(
             {k: caps.get(k) for k in TIER1_PACKAGES},
+            # MIGRATED at CR-MDB-089 (§S1): [capabilities] records the two new rows.
             {"dispatch": "detected", "lean-ctx": "detected", "permissions": "absent",
-             "worktree": "detected", "sandesh-pi": "detected"},
+             "worktree": "detected", "sandesh-pi": "detected",
+             "processes": "detected", "web-search": "detected"},
         )
         self.assertEqual(caps.get("uv"), "detected")
         self.assertEqual(caps.get("crucible"), "absent")

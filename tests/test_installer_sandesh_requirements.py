@@ -149,6 +149,9 @@ _OTHER_ROWS_TOOLS: dict[str, tuple[str, ...]] = {
     ),
     "permissions": (),
     "worktree": ("modelb_worktree_enter", "modelb_worktree_exit"),
+    # MIGRATED at CR-MDB-089 (§S1): the two new tier-1 rows declare their tools.
+    "processes": ("process",),
+    "web-search": ("web_fetch", "web_search"),
 }
 
 

@@ -27,7 +27,9 @@ MODELB_PI_PACKAGE = "@anthill-tec/modelb-pi"
 #: The THIRD-PARTY tier-1 capabilities (CR-MDB-036 §S1, and Sandesh's own Pi
 #: extension, CR-MDB-045 §S1): ``--yes`` never runs ``pi install`` for these
 #: (only for Model B's own package).
-THIRD_PARTY_TIER1 = ("dispatch", "lean-ctx", "permissions", "sandesh-pi")
+#: MIGRATED at CR-MDB-089 (§S1): the processes and web-search rows are third-party too.
+THIRD_PARTY_TIER1 = ("dispatch", "lean-ctx", "permissions", "sandesh-pi",
+                     "processes", "web-search")
 
 #: Tier-1 harness capability id -> the npm package that provides it
 #: (CR-MDB-036 §S1 table + CR-MDB-029 §S3's row, ``worktree`` since
@@ -40,6 +42,9 @@ TIER1_PACKAGES = {
     "permissions": "@gotgenes/pi-permission-system",
     "worktree": MODELB_PI_PACKAGE,
     "sandesh-pi": "@anthill-tec/sandesh-pi",
+    # MIGRATED at CR-MDB-089 (§S1): the process tool's and the web tools' packages.
+    "processes": "@mjakl/pi-processes",
+    "web-search": "@ollama/pi-web-search",
 }
 
 #: The oldest ``sandesh`` CLI Model B accepts (CR-MDB-047 §S1): the pre-flight

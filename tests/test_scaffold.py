@@ -1534,9 +1534,11 @@ class ScaffoldCapabilityContractTest(unittest.TestCase):
         # CR-MDB-029 §S3 adds the fourth, ``watcher``, and CR-MDB-045 §S1
         # the fifth, ``sandesh-pi`` (MIGRATED at CR-MDB-045 C1 RED); CR-MDB-047
         # §S1 renames ``watcher`` to ``worktree`` (MIGRATED at CR-MDB-047 C1 RED).
+        # MIGRATED at CR-MDB-089 (§S1): the processes and web-search rows join them.
         self.assertEqual(
             sorted(r["id"] for r in rows),
-            ["dispatch", "lean-ctx", "permissions", "sandesh-pi", "worktree"],
+            ["dispatch", "lean-ctx", "permissions", "processes", "sandesh-pi",
+             "web-search", "worktree"],
             f"requirements data drifted from \u00a7S1's tier-1 table: {rows!r}",
         )
         for row in rows:

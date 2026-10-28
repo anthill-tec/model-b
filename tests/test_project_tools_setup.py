@@ -91,7 +91,13 @@ PYTHON3_DEFAULT_REMEDIATION = "uv python install --default 3.14"
 # ------------------------------------------------------------------ helpers ----
 
 def _row(requirement_id: str) -> dict:
-    return next(r for r in REQUIREMENTS if r["id"] == requirement_id)
+    # MIGRATED at CR-MDB-089 (§S1): an undeclared id fails the test that names it, rather than
+    # erroring with StopIteration.
+    rows = [r for r in REQUIREMENTS if r["id"] == requirement_id]
+    if len(rows) != 1:
+        raise AssertionError(f"exactly one `{requirement_id}` requirement row expected; "
+                             f"found {len(rows)}")
+    return rows[0]
 
 
 def _always_ids() -> list[str]:
@@ -562,7 +568,9 @@ class CapabilityContractStateTest(_ProjectCase):
     def test_a_pre_capabilities_install_lists_the_unrecorded_tools_as_unknown(self):
         section = self.contract_for(None)
         # MIGRATED at CR-MDB-047 C1 RED (§S1): watcher -> worktree, + direnv.
+        # MIGRATED at CR-MDB-089 (§S1): the processes and web-search rows are unrecorded too.
         for rid in ("dispatch", "lean-ctx", "permissions", "worktree", "sandesh-pi",
+                    "processes", "web-search",
                     "bash", "gh", "jq", "direnv", "crucible-client"):
             with self.subTest(tool=rid):
                 self.assert_listed(section, rid, UNKNOWN, _row(rid)["remediation"])
@@ -574,6 +582,29 @@ class CapabilityContractStateTest(_ProjectCase):
         for rid in ("uv", "sandesh", "crucible"):
             with self.subTest(tool=rid):
                 self.assert_listed(section, rid, PRESENT, _row(rid)["remediation"])
+
+    def test_the_processes_and_web_search_lines_carry_their_policy_state_and_remediation(self):
+        """CR-MDB-089 §S1 "init": a contract line per new id, `` `<id>` (recommended):
+        <state> ``, plus the remediation when the package is not detected."""
+        section = self.contract_for(self.verdicts(processes="absent", web_search="detected"))
+        cases = (("processes", ABSENT, "pi install npm:@mjakl/pi-processes"),
+                 ("web-search", PRESENT, "pi install npm:@ollama/pi-web-search"))
+        for rid, state, remediation in cases:
+            with self.subTest(tool=rid):
+                lines = _subject_lines(section, rid)
+                self.assertEqual(len(lines), 1, f"one `{rid}` line; section={section!r}")
+                self.assertTrue(lines[0].lstrip().startswith(f"- `{rid}` (recommended): {state}"),
+                                f"CR-MDB-089 §S1: `{rid}` (recommended): {state}; {lines[0]!r}")
+                self.assert_listed(section, rid, state, remediation)
+
+    def test_unrecorded_or_unknown_processes_and_web_search_lines_read_unknown(self):
+        """CR-MDB-089 §S1 "init on an older installation": the two lines read ``unknown``,
+        with their remediations, until the installer is re-run."""
+        section = self.contract_for(self.verdicts(processes=None, web_search="unknown"))
+        for rid, remediation in (("processes", "pi install npm:@mjakl/pi-processes"),
+                                 ("web-search", "pi install npm:@ollama/pi-web-search")):
+            with self.subTest(tool=rid):
+                self.assert_listed(section, rid, UNKNOWN, remediation)
 
     def test_only_the_projects_stacks_are_listed(self):
         section = self.contract_for(self.verdicts())

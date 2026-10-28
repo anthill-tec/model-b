@@ -81,7 +81,10 @@ PRESENT, ABSENT, UNKNOWN = "present", "absent", "unknown"
 #: then tier 2, as §S1 leaves them: the five Pi extensions, then uv, Sandesh,
 #: Crucible and the PATH tools. MIGRATED at CR-MDB-047 C1 RED (§S1): the
 #: ``watcher`` row is ``worktree``, and ``direnv`` is a tier-2 PATH tool.
-TIER1_IDS = ("dispatch", "lean-ctx", "permissions", "worktree", SANDESH_PI_ID)
+#: MIGRATED at CR-MDB-089 (§S1): the processes and web-search rows follow sandesh-pi;
+#: ``EXPECTED_TOOL_IDS``, built from this tuple, gains both keys with it.
+TIER1_IDS = ("dispatch", "lean-ctx", "permissions", "worktree", SANDESH_PI_ID,
+             "processes", "web-search")
 ALWAYS_TIER2_IDS = ("uv", "sandesh", "crucible", "python3", "bash", "gh", "jq", "direnv")
 #: The stack-scoped rows, judged for the project's own stacks.
 STACK_ROW_IDS = ("crucible-client", "toolchain")
@@ -530,6 +533,40 @@ class InitUnknownVerdictsTest(_InitSandboxCase):
         _tools, err = self.tools_of(self.root / "proj")
         self.assertIsNone(RERUN_INSTALLER_RE.search(err),
                           f"every row has a verdict: nothing to re-run; err={err!r}")
+
+
+class InitProcessAndWebVerdictsTest(_InitSandboxCase):
+    """CR-MDB-089 §S1 "init": the envelope's ``tools`` field carries the ``processes`` and
+    ``web-search`` verdicts the installation recorded, and against an ``install.toml`` that
+    predates the two rows, the "records no verdict" note names both ids."""
+
+    NEW_IDS = ("processes", "web-search")
+
+    @staticmethod
+    def _unrecorded_in_note(err: str) -> list[list[str]]:
+        """The ids each "records no verdict for <ids> —" note names."""
+        notes = re.findall(r"records no verdict for (.+?) —", err)
+        return [sorted(part.strip() for part in note.split(",")) for note in notes]
+
+    def test_tools_carries_both_recorded_verdicts(self):
+        verdicts = _complete_verdicts("detected")
+        verdicts["processes"] = "absent"
+        self.write_install(verdicts)
+        tools, _err = self.tools_of(self.root / "proj")
+        self.assertEqual({k: tools.get(k) for k in self.NEW_IDS},
+                         {"processes": ABSENT, "web-search": PRESENT},
+                         f"CR-MDB-089 §S1: both keys, read from install.toml; tools={tools!r}")
+
+    def test_an_install_toml_predating_the_rows_names_both_in_the_no_verdict_note(self):
+        verdicts = {k: v for k, v in _complete_verdicts("detected").items()
+                    if k not in self.NEW_IDS}
+        self.write_install(verdicts)
+        tools, err = self.tools_of(self.root / "proj")
+        self.assertEqual(self._unrecorded_in_note(err), [sorted(self.NEW_IDS)],
+                         f"CR-MDB-089 §S1: one note, naming exactly the two rows; err={err!r}")
+        self.assertEqual({k: tools.get(k) for k in self.NEW_IDS},
+                         dict.fromkeys(self.NEW_IDS, UNKNOWN), tools)
+        self.assertEqual(tools.get("sandesh-pi"), PRESENT, "a recorded row keeps its verdict")
 
 
 # ---------------------------------------------------------------------------

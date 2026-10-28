@@ -1838,6 +1838,125 @@ def check_post_release_policy_rerender(text: str) -> list[str]:
     return out + sandesh_tool_faults(step, POST_RELEASE_WHERE)
 
 
+# CR-MDB-089 §S4 — the guide regions that list the tier-1 Pi packages name the process tool's
+# package and the web tools' package. The gates read the marked regions by name
+# (:func:`region_texts`).
+
+#: CR-MDB-089 §S1's two rows: id -> the npm package that provides it.
+PROCESS_AND_WEB_PACKAGES = {"processes": "@mjakl/pi-processes",
+                            "web-search": "@ollama/pi-web-search"}
+#: The recommended tier-1 rows the ``missing-capabilities`` sentence names, all four.
+RECOMMENDED_TIER1_IDS = ("permissions", "worktree", "processes", "web-search")
+#: The count of Pi packages the prerequisites and pre-flight regions state (five, becoming seven).
+PI_PACKAGE_COUNT = "seven"
+_PI_PACKAGE_COUNT_RE = re.compile(
+    r"(?<![\w-])(one|two|three|four|five|six|seven|eight|nine|ten|\d+) pi packages\b")
+
+
+def _region(text: str, name: str) -> str:
+    return region_texts(text).get(name, "")
+
+
+def _list_items_naming(body: str, term: str) -> list[str]:
+    """The list items of ``body`` (:func:`_prose_blocks`) naming ``term`` in code."""
+    return [b for b in _prose_blocks(body)
+            if b.lstrip().startswith(("- ", "* ")) and has_code_token(b, term)]
+
+
+def _package_count_faults(body: str, where: str) -> list[str]:
+    counts = _PI_PACKAGE_COUNT_RE.findall(normalise(body))
+    if counts and all(c == PI_PACKAGE_COUNT for c in counts):
+        return []
+    return [f"{where}: the count of Pi packages is not {PI_PACKAGE_COUNT} (found {counts})"]
+
+
+def check_quick_start_tool_packages(text: str) -> list[str]:
+    """CR-MDB-089 §S4: the quick-start block carries a ``pi install npm:…`` line for each of
+    the two packages."""
+    lines = _fenced_lines(_region(text, "quick-start"))
+    return [f"quick-start: no `pi install npm:{pkg}` line in the install block"
+            for pkg in PROCESS_AND_WEB_PACKAGES.values() if f"pi install npm:{pkg}" not in lines]
+
+
+def check_prerequisites_tool_packages(text: str) -> list[str]:
+    """CR-MDB-089 §S4: the prerequisites region counts seven Pi packages, and lists each new
+    package in an item naming its id in code, marked recommended and third-party, with its
+    ``pi install`` command in code."""
+    body = _region(text, "prerequisites")
+    out = _package_count_faults(body, "prerequisites")
+    for rid, pkg in PROCESS_AND_WEB_PACKAGES.items():
+        items = _list_items_naming(body, rid)
+        if not items:
+            out.append(f"prerequisites: no list item names `{rid}` in code")
+            continue
+        item = items[0]
+        flat = normalise(item)
+        if not re.search(r"\brecommended\b", flat):
+            out.append(f"prerequisites: `{rid}` is not marked recommended")
+        if not re.search(r"\bthird-party\b", flat):
+            out.append(f"prerequisites: `{rid}` is not marked third-party")
+        if not has_code_token(item, f"pi install npm:{pkg}"):
+            out.append(f"prerequisites: `{rid}` does not name `pi install npm:{pkg}` in code")
+    return out
+
+
+def check_web_search_ollama_precondition(text: str) -> list[str]:
+    """CR-MDB-089 §S4: beside ``web-search`` — in the prerequisites list item naming it — the
+    guide states its precondition: a local Ollama, running and signed in."""
+    items = _list_items_naming(_region(text, "prerequisites"), "web-search")
+    if not items:
+        return ["prerequisites: no list item names `web-search` in code"]
+    # Prose only: the package name in code, ``@ollama/pi-web-search``, states no precondition.
+    flat = normalise(_INLINE_CODE_RE.sub(" ", items[0]))
+    if all(re.search(p, flat) for p in (r"\bollama\b", r"\blocal\b", r"\brunning\b",
+                                        r"\bsigned in\b")):
+        return []
+    return ["prerequisites: the `web-search` item does not state its precondition: a local "
+            "Ollama, running and signed in"]
+
+
+def check_preflight_tool_packages(text: str) -> list[str]:
+    """CR-MDB-089 §S4: the pre-flight region's example ``harness:`` line carries both ids, and
+    its count of Pi packages is seven."""
+    body = _region(text, "reading-the-pre-flight")
+    out = []
+    harness = [ln for ln in _fenced_lines(body) if ln.startswith("harness:")]
+    if len(harness) != 1:
+        out.append(f"reading-the-pre-flight: {len(harness)} example `harness:` lines (want 1)")
+    else:
+        out += [f"reading-the-pre-flight: the example `harness:` line has no `{rid}=`"
+                for rid in PROCESS_AND_WEB_PACKAGES
+                if not re.search(rf"(?<![\w-]){re.escape(rid)}=\S", harness[0])]
+    return out + _package_count_faults(body, "reading-the-pre-flight")
+
+
+def check_warnings_tool_packages(text: str) -> list[str]:
+    """CR-MDB-089 §S4: the warnings table has a row per new id carrying its ``asset_families``
+    string verbatim."""
+    families = {"processes": "orchestration skills' supervised long runs",
+                "web-search": "research in gap analysis and spec review"}
+    lines = _region(text, "warnings").splitlines()
+    return [f"warnings: no table row names `{rid}` with `{family}` verbatim"
+            for rid, family in families.items()
+            if not any(ln.lstrip().startswith("|") and _token_re(f"`{rid}`").search(ln)
+                       and family in ln for ln in lines)]
+
+
+def check_missing_recommended_rows(text: str) -> list[str]:
+    """CR-MDB-089 §S4: one sentence of the ``missing-capabilities`` region names the recommended
+    rows — all four, each in code — and says they are recommended."""
+    body = _region(text, "missing-capabilities")
+    lines = body.splitlines()
+    prose = " ".join(ln for ln, fenced in zip(lines, _fence_mask(lines), strict=True)
+                     if not fenced)
+    for sentence in _SENTENCE_END_RE.split(re.sub(r"\s+", " ", prose)):
+        if (re.search(r"\brecommended\b", sentence)
+                and all(f"`{rid}`" in sentence for rid in RECOMMENDED_TIER1_IDS)):
+            return []
+    return ["missing-capabilities: no sentence names the recommended rows "
+            + ", ".join(f"`{rid}`" for rid in RECOMMENDED_TIER1_IDS)]
+
+
 def check_cr029_acceptance(text: str) -> list[str]:
     """CR-MDB-029's acceptance criteria take the package README from the
     guide's marked regions, and no longer own the guide's install step."""
@@ -2333,6 +2452,214 @@ class InstallGuidePermissionSourceTest(unittest.TestCase):
     def test_guide_drops_global_report_and_states_permissions_come_from_each_project(self):
         self.assertTrue(GUIDE.is_file(), f"{GUIDE.relative_to(REPO_ROOT)} must exist")
         self.assertEqual(check_permission_source(_read(GUIDE)), [])
+
+
+#: CR-MDB-089 §S4 — a conforming excerpt of the five regions that list the tier-1 Pi packages,
+#: for proving the region gates both ways on synthetic text.
+CONFORMING_TOOL_PACKAGE_REGIONS = """\
+<!-- install-guide:begin quick-start -->
+## Quick start
+
+```sh
+pi install npm:@gotgenes/pi-subagents
+pi install npm:@mjakl/pi-processes
+pi install npm:@ollama/pi-web-search
+modelb-axi --yes --harnesses pi --target-root ~ --stacks python
+```
+<!-- install-guide:end quick-start -->
+
+<!-- install-guide:begin prerequisites -->
+## Prerequisites
+
+1. **Pi.** Install Pi first.
+2. **Pi's packages.** Model B's assets rely on seven Pi packages:
+   - `dispatch` — required: `pi install npm:@gotgenes/pi-subagents`
+   - `processes` — recommended, third-party, supervises long runs: `pi install npm:@mjakl/pi-processes`
+   - `web-search` — recommended, third-party; it needs a local Ollama, running and signed in:
+     `pi install npm:@ollama/pi-web-search`
+<!-- install-guide:end prerequisites -->
+
+<!-- install-guide:begin reading-the-pre-flight -->
+## Reading the pre-flight
+
+```text
+harness: dispatch=detected processes=detected web-search=detected
+```
+
+- `harness:` — the seven Pi packages.
+<!-- install-guide:end reading-the-pre-flight -->
+
+<!-- install-guide:begin warnings -->
+## Warnings: what stops working
+
+| Requirement | If it is missing |
+|---|---|
+| `processes` | the orchestration skills' supervised long runs are lost. |
+| `web-search` | the research in gap analysis and spec review loses the web. |
+<!-- install-guide:end warnings -->
+
+<!-- install-guide:begin missing-capabilities -->
+## Missing capabilities
+
+`permissions`, `worktree`, `processes` and `web-search` are recommended rather than required:
+when any is absent you get a warning, never a failure.
+<!-- install-guide:end missing-capabilities -->
+"""
+
+
+class InstallGuideProcessAndWebPackagesTest(unittest.TestCase):
+    """CR-MDB-089 §S4 — the guide regions that list the tier-1 Pi packages name the process
+    tool's package (``processes``) and the web tools' package (``web-search``): the quick-start
+    block, the prerequisites (seven packages, each new one recommended and third-party, the
+    ``web-search`` one with its Ollama precondition), the pre-flight's example ``harness:`` line
+    and count, the warnings table and the ``missing-capabilities`` sentence. The real guide,
+    then each gate proved both ways on :data:`CONFORMING_TOOL_PACKAGE_REGIONS`."""
+
+    def setUp(self):
+        self.guide = _read(GUIDE)
+        self.good = CONFORMING_TOOL_PACKAGE_REGIONS
+
+    # ------------------------------------------------------------------ the real guide ----
+
+    def test_the_quick_start_block_installs_both_packages(self):
+        self.assertEqual(check_quick_start_tool_packages(self.guide), [])
+
+    def test_the_prerequisites_list_seven_packages_with_both_new_ones(self):
+        self.assertEqual(check_prerequisites_tool_packages(self.guide), [])
+
+    def test_the_ollama_precondition_sits_beside_web_search(self):
+        self.assertEqual(check_web_search_ollama_precondition(self.guide), [])
+
+    def test_the_pre_flight_example_and_count_carry_both_packages(self):
+        self.assertEqual(check_preflight_tool_packages(self.guide), [])
+
+    def test_the_warnings_table_has_a_row_per_new_id(self):
+        self.assertEqual(check_warnings_tool_packages(self.guide), [])
+
+    def test_missing_capabilities_names_the_four_recommended_rows(self):
+        self.assertEqual(check_missing_recommended_rows(self.guide), [])
+
+    # -------------------------------------------------------------- proved both ways ----
+
+    def test_the_quick_start_checker_both_ways(self):
+        self.assertEqual(check_quick_start_tool_packages(self.good), [])
+        cases = {
+            "processes dropped": (self.good.replace("pi install npm:@mjakl/pi-processes\n", "", 1),
+                                  ["quick-start: no `pi install npm:@mjakl/pi-processes` line "
+                                   "in the install block"]),
+            "web-search in prose only": (
+                self.good.replace("pi install npm:@ollama/pi-web-search\nmodelb-axi",
+                                  "modelb-axi", 1),
+                ["quick-start: no `pi install npm:@ollama/pi-web-search` line in the install "
+                 "block"]),
+        }
+        for label, (text, expected) in cases.items():
+            with self.subTest(case=label):
+                self.assertNotEqual(text, self.good)
+                self.assertEqual(check_quick_start_tool_packages(text), expected)
+
+    def test_the_prerequisites_checker_both_ways(self):
+        self.assertEqual(check_prerequisites_tool_packages(self.good), [])
+        cases = {
+            "five packages": (self.good.replace("seven Pi packages:", "five Pi packages:"),
+                              ["prerequisites: the count of Pi packages is not seven "
+                               "(found ['five'])"]),
+            "processes unlisted": (
+                self.good.replace("   - `processes` — recommended, third-party, supervises long "
+                                  "runs: `pi install npm:@mjakl/pi-processes`\n", ""),
+                ["prerequisites: no list item names `processes` in code"]),
+            "not third-party": (self.good.replace("recommended, third-party, supervises",
+                                                  "recommended, supervises"),
+                                ["prerequisites: `processes` is not marked third-party"]),
+            "not recommended": (self.good.replace("recommended, third-party; it needs",
+                                                  "third-party; it needs"),
+                                ["prerequisites: `web-search` is not marked recommended"]),
+            "command in prose": (self.good.replace("`pi install npm:@mjakl/pi-processes`",
+                                                   "pi install npm:@mjakl/pi-processes"),
+                                 ["prerequisites: `processes` does not name "
+                                  "`pi install npm:@mjakl/pi-processes` in code"]),
+        }
+        for label, (text, expected) in cases.items():
+            with self.subTest(case=label):
+                self.assertNotEqual(text, self.good)
+                self.assertEqual(check_prerequisites_tool_packages(text), expected)
+
+    def test_the_ollama_precondition_checker_both_ways(self):
+        self.assertEqual(check_web_search_ollama_precondition(self.good), [])
+        fault = ["prerequisites: the `web-search` item does not state its precondition: a local "
+                 "Ollama, running and signed in"]
+        cases = {
+            "no Ollama": self.good.replace("a local Ollama, running and signed in",
+                                           "a local server, running and signed in"),
+            "not signed in": self.good.replace("running and signed in", "running"),
+            "not running": self.good.replace("running and signed in", "signed in"),
+            "not local": self.good.replace("a local Ollama", "an Ollama"),
+            "in another item": self.good.replace(
+                "; it needs a local Ollama, running and signed in:", ":").replace(
+                "   - `processes` — recommended, third-party, supervises long runs",
+                "   - `processes` — recommended, third-party; a local Ollama, running and "
+                "signed in, supervises long runs"),
+        }
+        for label, text in cases.items():
+            with self.subTest(case=label):
+                self.assertNotEqual(text, self.good)
+                self.assertEqual(check_web_search_ollama_precondition(text), fault)
+
+    def test_the_pre_flight_checker_both_ways(self):
+        self.assertEqual(check_preflight_tool_packages(self.good), [])
+        cases = {
+            "no processes on the line": (
+                self.good.replace(" processes=detected web-search", " web-search"),
+                ["reading-the-pre-flight: the example `harness:` line has no `processes=`"]),
+            "a longer id": (
+                self.good.replace("web-search=detected\n", "web-search-x=detected\n"),
+                ["reading-the-pre-flight: the example `harness:` line has no `web-search=`"]),
+            "five packages": (self.good.replace("the seven Pi packages", "the five Pi packages"),
+                              ["reading-the-pre-flight: the count of Pi packages is not seven "
+                               "(found ['five'])"]),
+        }
+        for label, (text, expected) in cases.items():
+            with self.subTest(case=label):
+                self.assertNotEqual(text, self.good)
+                self.assertEqual(check_preflight_tool_packages(text), expected)
+
+    def test_the_warnings_checker_both_ways(self):
+        self.assertEqual(check_warnings_tool_packages(self.good), [])
+        cases = {
+            "no processes row": (
+                self.good.replace("| `processes` | the orchestration skills' supervised long "
+                                  "runs are lost. |\n", ""),
+                ["warnings: no table row names `processes` with "
+                 "`orchestration skills' supervised long runs` verbatim"]),
+            "the family reworded": (
+                self.good.replace("research in gap analysis and spec review",
+                                  "research during gap analysis"),
+                ["warnings: no table row names `web-search` with "
+                 "`research in gap analysis and spec review` verbatim"]),
+        }
+        for label, (text, expected) in cases.items():
+            with self.subTest(case=label):
+                self.assertNotEqual(text, self.good)
+                self.assertEqual(check_warnings_tool_packages(text), expected)
+
+    def test_the_missing_capabilities_checker_both_ways(self):
+        self.assertEqual(check_missing_recommended_rows(self.good), [])
+        fault = ["missing-capabilities: no sentence names the recommended rows `permissions`, "
+                 "`worktree`, `processes`, `web-search`"]
+        cases = {
+            "two rows only": self.good.replace(", `processes` and `web-search`", " and `worktree`"),
+            "web-search in prose": self.good.replace("and `web-search` are", "and web-search are"),
+            "not recommended": self.good.replace("are recommended rather than required",
+                                                 "are optional"),
+            "split across sentences": self.good.replace(
+                "`permissions`, `worktree`, `processes` and `web-search` are recommended",
+                "`permissions` and `worktree` are recommended. So are `processes` and "
+                "`web-search`"),
+        }
+        for label, text in cases.items():
+            with self.subTest(case=label):
+                self.assertNotEqual(text, self.good)
+                self.assertEqual(check_missing_recommended_rows(text), fault)
 
 
 class InstallGuideProjectTrustPolicyTest(unittest.TestCase):

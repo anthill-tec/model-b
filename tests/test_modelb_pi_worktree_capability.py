@@ -119,7 +119,10 @@ class WorktreeRequirementRowTest(unittest.TestCase):
             kinds,
             {"dispatch": "pi-package", "lean-ctx": "pi-package",
              "permissions": "pi-package", "worktree": "pi-package",
-             "sandesh-pi": "pi-package"},
+             # MIGRATED at CR-MDB-089 (§S1): the processes and web-search rows are
+             # probed as pi-packages too.
+             "sandesh-pi": "pi-package", "processes": "pi-package",
+             "web-search": "pi-package"},
         )
 
 # ---------------------------------------------------------------------------
