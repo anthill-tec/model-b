@@ -241,19 +241,19 @@ def render(
             passages = load_builtin_passages(templates_dir)
         defn = builtin_form(defn, passages)
     emitted = EMITTERS[harness](defn, drops)
-    return _with_marker(emitted)
+    return with_marker(emitted)
 
-def _sha256_text(text: str) -> str:
+def sha256_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
-def _with_marker(content: str, prefix: str = MARKER_PREFIX) -> str:
+def with_marker(content: str, prefix: str = MARKER_PREFIX) -> str:
     """Insert the ownership marker (``prefix`` plus a digest) as the first
     frontmatter line (right after the opening ``---``); its digest is the
     sha256 of ``content`` itself, so removing the marker line restores exactly
     what was hashed. A stack skill's ``SKILL.md`` passes its own prefix
     (CR-MDB-085 §S1.3)."""
     head, _, rest = content.partition("\n")
-    return f"{head}\n{prefix}{_sha256_text(content)}\n{rest}"
+    return f"{head}\n{prefix}{sha256_text(content)}\n{rest}"
 
 def ownership_state(text: str, prefix: str = MARKER_PREFIX) -> str:
     """Classify an existing file (§S6 Ownership) by its frontmatter marker,
@@ -274,7 +274,7 @@ def ownership_state(text: str, prefix: str = MARKER_PREFIX) -> str:
         if stripped.startswith(prefix):
             recorded = stripped[len(prefix):].strip()
             rest = "".join(lines[:idx] + lines[idx + 1:])
-            return OWNED_INTACT if _sha256_text(rest) == recorded else OWNED_HAND_MODIFIED
+            return OWNED_INTACT if sha256_text(rest) == recorded else OWNED_HAND_MODIFIED
     return NOT_OWNED
 
 def first_line_ownership(text: str, prefix: str, suffix: str = "") -> str:
@@ -293,7 +293,7 @@ def first_line_ownership(text: str, prefix: str, suffix: str = "") -> str:
     if suffix and recorded.endswith(suffix):
         recorded = recorded[:-len(suffix)]
     recorded = recorded.strip()
-    return OWNED_INTACT if recorded == _sha256_text(rest) else OWNED_HAND_MODIFIED
+    return OWNED_INTACT if recorded == sha256_text(rest) else OWNED_HAND_MODIFIED
 
 def render_definitions(
     stacks: list[str],

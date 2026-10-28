@@ -87,7 +87,7 @@ def skills_for(
 
 def _reference_marker(text: str) -> str:
     """``text`` under the §S1.3 first-line reference marker over it."""
-    return f"{REFERENCE_MARKER_PREFIX}{agents._sha256_text(text)}{REFERENCE_MARKER_SUFFIX}\n{text}"
+    return f"{REFERENCE_MARKER_PREFIX}{agents.sha256_text(text)}{REFERENCE_MARKER_SUFFIX}\n{text}"
 
 
 def render_skills(generator_dir: Path, stacks: list[str]) -> dict[str, str]:
@@ -109,7 +109,7 @@ def render_skills(generator_dir: Path, stacks: list[str]) -> dict[str, str]:
             text = skill_md.read_text(encoding="utf-8")
             if not text.startswith("---\n"):
                 raise StackSkillError(f"{skill_md}: no frontmatter to carry the marker")
-            rendered[(reldir / SKILL_FILE).as_posix()] = agents._with_marker(
+            rendered[(reldir / SKILL_FILE).as_posix()] = agents.with_marker(
                 text, SKILL_MARKER_PREFIX
             )
             references = source / REFERENCES_DIRNAME
