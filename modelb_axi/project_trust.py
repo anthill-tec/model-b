@@ -21,10 +21,12 @@ UNKNOWN = "unknown"
 
 _DEFAULT_TRUST = {"always": TRUSTED, "never": UNTRUSTED, "ask": ASK}
 
-#: The one warning for ``untrusted`` / ``ask`` (§S4).
+#: The one warning for ``untrusted`` / ``ask`` (§S4); CR-MDB-085 §S1.5 adds
+#: the stack skills (.agents/skills/) to what does not load.
 UNTRUSTED_WARNING = (
     "project trust: {state} — Pi will not load this project's hooks and "
-    "permission policy (.pi/extensions/) until the project is trusted; run "
+    "permission policy (.pi/extensions/) or its stack skills (.agents/skills/) "
+    "until the project is trusted; run "
     "/trust in Pi from the project. This is Pi's saved decision only: a "
     "command-line override (--approve) or an extension may decide otherwise."
 )

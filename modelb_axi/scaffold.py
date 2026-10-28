@@ -39,7 +39,14 @@ import tomllib
 import unicodedata
 from pathlib import Path
 
-from modelb_axi import agents, permission_policy, project_trust, requirements, workflows
+from modelb_axi import (
+    agents,
+    permission_policy,
+    project_trust,
+    requirements,
+    stack_skills,
+    workflows,
+)
 from modelb_axi._fsutil import atomic_write
 from modelb_axi.axi import envelope
 from modelb_axi.capabilities import resolve_agent_dir
@@ -908,9 +915,11 @@ def _render_capability_contract(
                 line(name, f"{carriers[0]} toolchain", worst(found), probe["remediation"])
     if "pi" in harnesses:
         # CR-MDB-037 §S4: Pi loads .pi/extensions only in a trusted project.
+        # CR-MDB-085 §S1.5: nor its stack skills under `.agents/skills/`.
         lines.append(
             "- project trust (Pi): this project's hooks and permission "
-            "policy under `.pi/extensions/` load only once the project is "
+            "policy under `.pi/extensions/`, and its stack skills under "
+            "`.agents/skills/`, load only once the project is "
             "trusted: run `/trust` in Pi from the project root"
         )
     return (
@@ -941,11 +950,21 @@ def _render_lean_ctx_section(category: str) -> str:
     )
 
 
+def _stack_skill_clause(names: list[str]) -> str:
+    """CR-MDB-085 §S1.5: the stack line's stack-skill clause — the declared
+    skills of the stack, or nothing for a stack that declares none."""
+    if not names:
+        return ""
+    noun = "stack skill" if len(names) == 1 else "stack skills"
+    return f"{', '.join(f'`{n}`' for n in names)} {noun} and "
+
+
 def _render_agents_md(
     name: str, token: str, acronym: str, mode: str, owner: str,
     stacks: list[str], harnesses: list[str], sandesh_project: str | None = None,
     states: dict | None = None, knowledge_category: str | None = None,
     tools: dict | None = None, release_setup: list[str] | None = None,
+    stack_skill_names: dict[str, list[str]] | None = None,
 ) -> str:
     """Project ``AGENTS.md`` override (§S3.3/§S3.8): identity from the
     registry, the design-reference lines (the retired queue README's
@@ -955,7 +974,11 @@ def _render_agents_md(
     (:func:`_render_setup_section`), stack-derived skill freeze,
     per-installed-harness anchor notes, the capability contract from the
     recorded ``states``, the lean-ctx section when ``knowledge_category``
-    is set (CR-MDB-045 §S4/§S5), and the generator note."""
+    is set (CR-MDB-045 §S4/§S5), and the generator note.
+
+    CR-MDB-085 §S1.5: a stack's line names its stack skill only where
+    ``stack_skill_names`` (stack -> the declared skills naming it) declares
+    one; a stack without one names no stack skill."""
     label = _orchestrator_label(mode, token)
     sandesh_line = (
         f"- Sandesh project: `{sandesh_project}` (`SANDESH_PROJECT`; addresses "
@@ -966,8 +989,8 @@ def _render_agents_md(
         if sandesh_project else ""
     )
     stack_lines = "\n".join(
-        f"- {stack}: use the `{stack}` stack skills and generated "
-        f"RED/GREEN/VERIFY/FIX agents, rendered at scaffold time; re-render "
+        f"- {stack}: use the {_stack_skill_clause((stack_skill_names or {}).get(stack, []))}"
+        f"generated RED/GREEN/VERIFY/FIX agents, rendered at scaffold time; re-render "
         f"them with `modelb-axi agents`."
         for stack in stacks
     )
@@ -1442,6 +1465,27 @@ def _prerender_agents(
         raise ScaffoldError(f"agent definitions cannot be rendered: {exc}") from exc
 
 
+def _prerender_stack_skills(
+    stacks: list[str], agent_sources: tuple[Path, Path],
+) -> tuple[dict[str, str], dict[str, list[str]]]:
+    """The project's stack skills (CR-MDB-085 §S1), from the ``generator/``
+    directory of the asset root the agent sources resolved from: every file
+    rendered in memory (keyed by project-relative path), and each stack's
+    rendered skill names for the ``AGENTS.md`` stack line. A declaration or
+    source that cannot be rendered is a :class:`ScaffoldError`, raised before
+    any write."""
+    generator_dir = agent_sources[0].parent
+    try:
+        texts = stack_skills.render_skills(generator_dir, stacks)
+        declared = stack_skills.skills_for(
+            stack_skills.load_declaration(generator_dir), stacks)
+    except stack_skills.StackSkillError as exc:
+        raise ScaffoldError(f"stack skills cannot be rendered: {exc}") from exc
+    rendered = {rel.split("/")[2] for rel in texts}
+    names = {stack: [n for n in found if n in rendered] for stack, found in declared.items()}
+    return texts, names
+
+
 #: Memory-template family prefix -> the stacks whose selection emits it
 #: (CR-MDB-031 §S1): the quarkus agent definitions read the ``java-*``
 #: templates, so a ``java-*`` template is emitted for ``java`` OR
@@ -1522,6 +1566,8 @@ def _emit_plan(
     tool_states: dict | None = None,
     release_texts: dict[str, str] | None = None,
     release_setup: list[str] | None = None,
+    skill_texts: dict[str, str] | None = None,
+    skill_names: dict[str, list[str]] | None = None,
 ) -> list[str]:
     """Perform the real §S3/§S4 emission under ``target``; returns the
     emitted file paths (relative to ``target``).
@@ -1557,7 +1603,12 @@ def _emit_plan(
     ``release_texts`` is the release workflow and its two scripts
     :func:`run_init` rendered in validation, written at the root under the
     ownership rules; ``release_setup`` their setup tasks, carried by the
-    root ``AGENTS.md``'s Setup section (CR-MDB-068 §S5)."""
+    root ``AGENTS.md``'s Setup section (CR-MDB-068 §S5).
+
+    ``skill_texts`` is the stack skills :func:`run_init` rendered in
+    validation, written at the root under the ownership rules; ``skill_names``
+    each stack's skills, named by the ``AGENTS.md`` stack line (CR-MDB-085
+    §S1.3/§S1.5)."""
     if emitted is None:
         emitted = []
     tools = tools or {}
@@ -1623,7 +1674,8 @@ def _emit_plan(
         "AGENTS.md",
         _render_agents_md(name, token, acronym, mode, owner, stacks, harnesses,
                           registry.get("SANDESH_PROJECT"), tool_states,
-                          knowledge_category, tools, release_setup),
+                          knowledge_category, tools, release_setup,
+                          stack_skill_names=skill_names),
     )
 
     # §S3.4 in-repo project memory.
@@ -1663,6 +1715,18 @@ def _emit_plan(
             )
         finally:
             emitted.extend(agent_report.get("written", []))
+
+    # CR-MDB-085 §S1.3: the stack skills, at the root only, under the
+    # agent definitions' ownership rules.
+    if skill_texts:
+        skill_report: dict = {}
+        try:
+            stack_skills.place_skills(target, skill_texts, force_managed, skill_report)
+        finally:
+            emitted.extend(skill_report.get("written", []))
+            if ownership is not None:
+                for key in ("skipped", "unmanaged"):
+                    ownership.setdefault(key, []).extend(skill_report.get(key, []))
 
     # CR-MDB-037 §S3: the workflow permission policy, for a Pi project,
     # under the CR-MDB-025 §S6 ownership rules.
@@ -1813,9 +1877,13 @@ def run_init(args: argparse.Namespace, home: Path) -> int:
     # the lean-ctx verdict selects — a render failure is refused before the
     # first write, --dry-run included; emission writes only this text.
     agent_texts: dict[str, str] | None = None
+    skill_texts: dict[str, str] | None = None
+    skill_names: dict[str, list[str]] | None = None
     if agent_sources is not None:
         try:
             agent_texts = _prerender_agents(stacks, harnesses, agent_sources, tools)
+            # CR-MDB-085 §S1.3: the stack skills too, before the first write.
+            skill_texts, skill_names = _prerender_stack_skills(stacks, agent_sources)
         except ScaffoldError as exc:
             print(f"modelb-axi: error: {exc}", file=sys.stderr)
             print(envelope("init", False, warnings=[str(exc)], dry_run=dry_run))
@@ -1862,6 +1930,8 @@ def run_init(args: argparse.Namespace, home: Path) -> int:
                 tool_states=tool_states,
                 release_texts=release_texts,
                 release_setup=release_setup,
+                skill_texts=skill_texts,
+                skill_names=skill_names,
             )
         except (ScaffoldError, OSError) as exc:
             # CR-MDB-033 §S4: a mid-emission failure may leave a partial
@@ -2015,6 +2085,10 @@ def run_agents(args: argparse.Namespace, home: Path, project_root: Path | None =
         tools, _unrecorded = read_tool_verdicts(load_install_toml(home), stacks)
         # CR-MDB-045 §S8: rendered in memory before the first write.
         agent_texts = _prerender_agents(stacks, harnesses, (templates_dir, stacks_dir), tools)
+        # CR-MDB-085 §S1.4: the stack skills, rendered with the agents and
+        # before the first write — only where the agent definitions render.
+        skill_texts = (_prerender_stack_skills(stacks, (templates_dir, stacks_dir))[0]
+                       if _renders_agents(harnesses) else {})
     except (ScaffoldError, UnknownHarnessError) as exc:
         print(f"modelb-axi: error: {exc}", file=sys.stderr)
         print(envelope("agents", False, warnings=[str(exc)], project=str(root)))
@@ -2029,6 +2103,9 @@ def run_agents(args: argparse.Namespace, home: Path, project_root: Path | None =
             force_managed=force_managed, report=report,
             lean_ctx=tools.get("lean-ctx") == TOOL_PRESENT, rendered=agent_texts,
         )
+        # CR-MDB-085 §S1.4: the stack skills, by the same rules; a re-render
+        # writes and never deletes.
+        stack_skills.place_skills(root, skill_texts, force_managed, report)
         # CR-MDB-077 §S3: the permission policy, for a Pi project, as
         # `init` places it; reported beside the agent files.
         if "pi" in harnesses:

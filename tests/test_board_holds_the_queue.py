@@ -116,8 +116,9 @@ SECOND_MERGE_RECORD = re.compile(
     r"\b(?:and|plus) (?:a|the merge's) milestone\b|\bmerge's milestone\b")
 
 #: The shipped surfaces the reach AC covers: every skill bundle, reference and memory template
-#: under ``skills-src/``, and the generator's templates and stack files.
-REACH_ROOTS = ("skills-src", "generator/templates", "generator/stacks")
+#: under ``skills-src/``, and the generator's templates and stack files — and (CR-MDB-085 §S6.1,
+#: MIGRATED) the stack skills' sources under ``generator/skills/``.
+REACH_ROOTS = ("skills-src", "generator/templates", "generator/stacks", "generator/skills")
 REACH_SUFFIXES = {".md", ".tmpl", ".toml"}
 
 #: The files whose older-project case may still name the README (AC: "except bootstrap's and
@@ -751,7 +752,8 @@ class QueueReadmeReachTest(unittest.TestCase):
     def test_the_reach_covers_the_skills_references_templates_and_stack_files(self):
         surfaces = shipped_surfaces()
         for rel in (CRUCIBLE_SKILL, CR_AUTHORING, MAINLINE_REF, JAVA_TEMPLATE,
-                    "generator/templates/red.md.tmpl", "generator/stacks/python.toml"):
+                    "generator/templates/red.md.tmpl", "generator/stacks/python.toml",
+                    "generator/skills/rust-stack/SKILL.md"):
             self.assertIn(rel, surfaces)
 
     def test_no_shipped_surface_names_the_queue_readme_as_a_step(self):

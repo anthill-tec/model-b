@@ -268,6 +268,8 @@ CONTRACT_RENAME_REQUIREMENTS = (
 #: the files that tell an agent what to run.
 S6_SCAN_ROOTS = (
     "skills-src",
+    # MIGRATED (CR-MDB-085 §S6.1): the stack skills' sources tell an agent what to run too.
+    "generator/skills",
     "modelb_axi",
     "scripts",
     "contracts",
@@ -762,6 +764,11 @@ class DetachmentS6Test(unittest.TestCase):
             f"chezmoi-managed and reverted on the next apply. Found "
             f"{len(offending)}: {offending}",
         )
+
+    def test_s6_every_scan_root_holds_files(self):
+        """CR-MDB-085 §S6.1: a scan root that names nothing makes the gate vacuous there."""
+        empty = [root for root in S6_SCAN_ROOTS if not _scan_files(root)]
+        self.assertEqual([], empty, f"§S6/AC1: scan roots holding no file: {empty}")
 
     def test_s6_excluded_surfaces_are_excluded_from_the_detachment_gate(self):
         overlap = [root for root in S6_EXCLUDED_ROOTS if root in S6_SCAN_ROOTS]

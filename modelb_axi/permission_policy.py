@@ -91,7 +91,7 @@ def render_policy(*, lean_ctx: bool = True) -> str:
     permission["external_directory_read"] = reads
     permission["external_directory_write"] = {"*": "ask", _TMP: "allow"}
     body = json.dumps({"permission": permission}, indent=2) + "\n"
-    return f"{MARKER_PREFIX}{agents._sha256_text(body)}\n{body}"
+    return f"{MARKER_PREFIX}{agents.sha256_text(body)}\n{body}"
 
 
 def ownership_state(text: str) -> str:

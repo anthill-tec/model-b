@@ -350,10 +350,12 @@ CURRENT_SKILLS = {
     ("quarkus", "green"): ["crucible"],
     ("quarkus", "verify"): [],
     ("quarkus", "fix"): ["crucible"],
-    ("rust", "red"): ["crucible"],
-    ("rust", "green"): ["crucible"],
-    ("rust", "verify"): [],
-    ("rust", "fix"): ["crucible"],
+    # MIGRATED (CR-MDB-085 §S2/AC4): every rust role lists the `rust-stack` stack skill (was
+    # crucible / crucible / none / crucible).
+    ("rust", "red"): ["crucible", "rust-stack"],
+    ("rust", "green"): ["crucible", "rust-stack"],
+    ("rust", "verify"): ["rust-stack"],
+    ("rust", "fix"): ["crucible", "rust-stack"],
 }
 
 
@@ -787,9 +789,15 @@ def _rendered_definitions() -> list[Path]:
 _PROSE_SKILL_RE = re.compile(r"`([a-z0-9][a-z0-9-]*)` skill\b")
 
 
+#: CR-MDB-085 §S1.1: the stack skills' sources, rendered into a project by ``modelb-axi init``.
+GENERATOR_SKILLS_DIR = REPO_ROOT / "generator" / "skills"
+
+
 def _shipped_skills() -> set[str]:
-    """Bundles Model B ships: directories under skills-src/ with a SKILL.md."""
-    return {p.name for p in SKILLS_SRC_DIR.iterdir() if (p / "SKILL.md").is_file()}
+    """Skills Model B ships: directories under skills-src/ with a SKILL.md and — MIGRATED at
+    CR-MDB-085 §S1.1/§S2 — the stack skills under generator/skills/ with a SKILL.md."""
+    roots = [SKILLS_SRC_DIR] + ([GENERATOR_SKILLS_DIR] if GENERATOR_SKILLS_DIR.is_dir() else [])
+    return {p.name for root in roots for p in root.iterdir() if (p / "SKILL.md").is_file()}
 
 
 def _unshipped_role_skills(stack_toml_texts: dict[str, str], shipped: set[str]) -> list[str]:

@@ -6,7 +6,7 @@ that puts ``python3`` in front of it runs it on whatever ``python3`` comes first
 instead. Crucible's clients (``~/.crucible/clients/``) are not deployed scripts.
 
 The gate scans every text file under ``skills-src/``, ``contracts/``, ``generator/templates/``,
-``scripts/`` and ``hooks-src/``. The texts that said a deployed ``worktree-flow.py`` runs
+``scripts/``, ``hooks-src/`` and — CR-MDB-085 §S6.1 — ``generator/skills/``. The texts that said a deployed ``worktree-flow.py`` runs
 "under a bare ``python3``" — ``contracts/crucible-envelope.md`` and the docstring of
 ``modelb_axi/toon.py`` and its generated copy ``scripts/toon.py`` — name the recorded
 interpreter instead.
@@ -24,7 +24,9 @@ from tests._helpers import files_under, read_text
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 #: The roots §S4's grep gate covers.
-GATED_ROOTS = ("skills-src", "contracts", "generator/templates", "scripts", "hooks-src")
+#: MIGRATED (CR-MDB-085 §S6.1): ``generator/skills`` — the stack skills' sources — joins them.
+GATED_ROOTS = ("skills-src", "contracts", "generator/templates", "scripts", "hooks-src",
+               "generator/skills")
 
 #: An interpreter word followed by a deployed Model B script's path, in any home spelling.
 THROUGH_PYTHON_RE = re.compile(
@@ -98,6 +100,8 @@ class DeployedScriptsRunDirectlyTest(unittest.TestCase):
         self.assertEqual(scanned, {"skills-src", "contracts", "generator", "scripts",
                                    "hooks-src"})
         self.assertIn(REPO_ROOT / "skills-src" / "code-health" / "SKILL.md", _gated_files())
+        self.assertIn(REPO_ROOT / "generator" / "skills" / "rust-stack" / "SKILL.md",
+                      _gated_files())
 
     def test_no_gated_file_runs_a_deployed_script_through_python(self):
         hits = [f"{path.relative_to(REPO_ROOT)}:{n}: {line}"

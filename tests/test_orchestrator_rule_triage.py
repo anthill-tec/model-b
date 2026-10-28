@@ -74,6 +74,13 @@ CR-MDB-042 §S2–§S3 (absorb) — the approved triage is the work list:
   dispatch + diff-verify" → "Never author code — dispatch with an accurate brief". A mapped
   heading is looked up under its new name only; every other destination resolves unaided.
 - ``AbsorbRulesOnSyntheticTreeTest`` — the same pure functions over a temp tree.
+- ``MovedRulesMapTest`` — CR-MDB-085 §S6.2: the triage stays frozen while CR-MDB-085 §S3 moves six
+  of its rules out of their memory template. ``MOVED_RULES`` — beside ``HEADING_RENAMES``, which
+  keeps its one entry — maps each such row, by its line in the frozen audit (191, 192, 211, 284,
+  373 and 384; 191 joined the spec's five by orchestrator ruling), to its new file and its §S3
+  anchor phrase(s). The gate finds the phrases there instead of checking the row's old heading, its
+  new-section body and its class rule; the audit's bytes are pinned (``TRIAGE_FILE_SHA256``).
+- ``MovedRulesOnSyntheticTextTest`` — the moved-rules functions on in-memory text and a temp tree.
 
 CR-MDB-042 §S5 (mapping) — ``archive/mapping.md`` (gated by ``tests.test_archive_mapping``, whose
 pattern matcher ``covers_required`` is reused: ``<name>`` is one path component, ``{a,b}`` one of
@@ -97,11 +104,12 @@ Stdlib only.
 import re
 import shutil
 import tempfile
+import tomllib
 import unittest
 from collections.abc import Sequence
 from pathlib import Path
 
-from tests._helpers import REPO_ROOT, at_line, md_section, read_text
+from tests._helpers import REPO_ROOT, at_line, md_section, read_text, sha256_bytes
 from tests.test_archive_mapping import (
     MAP_PATH,
     _unticked,
@@ -406,6 +414,12 @@ def triage_findings(rows: list[dict]) -> list[str]:
 class _RealFileMixin(unittest.TestCase):
     """Base for the real-file classes (no tests of its own)."""
 
+    def moved(self) -> dict:
+        """CR-MDB-085 §S6.2: the frozen rows whose rule moved, by Source cell."""
+        rows, problems = moved_rule_rows(read_text(TRIAGE_FILE))
+        self.assertEqual(problems, [], "MOVED_RULES names an audit line that is not a triage row")
+        return rows
+
     def load(self):
         self.assertTrue(TRIAGE_FILE.is_file(),
                         f"CR-MDB-042 §S1: {TRIAGE_FILE.relative_to(REPO_ROOT)} does not exist")
@@ -469,8 +483,10 @@ class TriageCoverageTest(_RealFileMixin):
 
 class TriageClassRulesTest(_RealFileMixin):
     def test_every_row_has_a_known_class_and_a_destination_its_class_allows(self):
+        # MIGRATED (CR-MDB-085 §S6.2): a moved row is checked by its anchor phrases in its new
+        # file (MovedRulesMapTest) instead of by its class rule.
         _, triage = self.load()
-        self.assertEqual(triage_findings(triage), [])
+        self.assertEqual(triage_findings(unmoved(triage, self.moved())), [])
 
     def test_every_stale_row_carries_a_note_and_the_dash_destination(self):
         _, triage = self.load()
@@ -760,6 +776,80 @@ HEADING_RENAMES = {
 }
 
 
+#: CR-MDB-085 §S6.2: the triage audit stays frozen, and CR-MDB-085 §S3 moves six of its rules out
+#: of their memory template. Each such row, keyed by its line in the frozen audit, names the file its
+#: rule now lives in and the §S3 anchor phrase(s) it is found by there. For a moved row the gate
+#: checks the phrases in the new file INSTEAD OF the old heading, its new-section body and its class
+#: rule. Row 191 joined the spec's five by orchestrator ruling: its rules move with §S3.2's bullets.
+MOVED_RULES = {
+    191: ("generator/stacks/rust.toml",
+          ("clippy --crate <c> --tests", "never the exit code", "never a resting state")),
+    192: ("generator/stacks/rust.toml", ("from dev-only to production",)),
+    211: ("generator/skills/rust-stack/references/e2e-docker-nextest.md",
+          ("added to BOTH nextest default-filters",)),
+    284: ("generator/stacks/rust.toml", ("verified per dependent crate",)),
+    373: ("generator/stacks/arduino.toml",
+          ("Verify the exact part", "Hardware identity is the first bring-up gate")),
+    384: ("generator/stacks/arduino.toml",
+          ("Verify the exact part", "Hardware identity is the first bring-up gate")),
+}
+#: CR-MDB-085 §S6.2/AC9: the frozen audit's bytes — the moved-rules map never edits it.
+TRIAGE_FILE_SHA256 = "01e0ff21c75bfb28bf06a902947781344f1aa875f34ff8abaa3532621c6c7ebb"
+
+
+def moved_rule_rows(text: str, moved: dict = MOVED_RULES) -> tuple[dict, list[str]]:
+    """``({Source cell: (audit line, row, new file, anchors)}, problems)``: the triage row at each
+    line ``moved`` names. A line that is not a row of the ``## Triage`` table is a problem."""
+    _, triage, _ = parse_triage_text(text)
+    by_source = {row["Source"]: row for row in triage}
+    lines = text.splitlines()
+    out, problems = {}, []
+    for number, (new_file, anchors) in sorted(moved.items()):
+        line = lines[number - 1] if 0 < number <= len(lines) else ""
+        cells = _cells(line) if line.strip().startswith("|") else []
+        row = by_source.get(cells[0]) if cells else None
+        if row is None:
+            problems.append(f"audit line {number} is not a triage row")
+            continue
+        out[row["Source"]] = (number, row, new_file, anchors)
+    return out, problems
+
+
+def moved_rule_findings(moved_rows: dict, root: Path) -> list[str]:
+    """Each moved row whose new file is missing, or lacks one of its anchor phrases."""
+    problems = []
+    for number, _row, new_file, anchors in sorted(moved_rows.values(), key=lambda v: v[0]):
+        path = root / new_file
+        if not path.is_file():
+            problems.append(f"row {number}: {new_file} does not exist")
+            continue
+        text = read_text(path)
+        problems += [f"row {number}: {new_file} lacks {anchor!r}" for anchor in anchors
+                     if anchor not in text]
+    return problems
+
+
+def moved_rule_departure_findings(moved_rows: dict, root: Path) -> list[str]:
+    """Each moved row whose anchor phrase is still in the memory template it moved out of."""
+    problems = []
+    for number, row, _new_file, anchors in sorted(moved_rows.values(), key=lambda v: v[0]):
+        m = _SKILL_DEST.match(row["Destination"])
+        old = root / m.group(1) if m else None
+        if old is None or not old.is_file():
+            continue
+        text = read_text(old)
+        problems += [f"row {number}: {m.group(1)} still carries {anchor!r}" for anchor in anchors
+                     if anchor in text]
+    return problems
+
+
+def unmoved(rows_or_targets: list, moved_rows: dict) -> list:
+    """Triage rows, or ``(row, file, section)`` targets, without the rows whose rule moved."""
+    def source(item):
+        return (item[0] if isinstance(item, tuple) else item)["Source"]
+    return [item for item in rows_or_targets if source(item) not in moved_rows]
+
+
 def resolve_heading(rel: str, section_name: str, renames: dict = HEADING_RENAMES) -> str:
     """The heading a destination resolves to: its rename when ``(rel, section)`` is mapped, else
     the section as written."""
@@ -881,15 +971,28 @@ class AbsorbedDestinationTest(_RealFileMixin):
         self.assertEqual(destination_findings(targets, REPO_ROOT), [])
 
     def test_every_absorbed_row_destination_file_carries_its_section_heading(self):
+        # MIGRATED (CR-MDB-085 §S6.2): a row whose rule moved is checked by its anchor phrases in
+        # its new file (MovedRulesMapTest), not by its old heading.
         _, triage = self.load()
-        self.assertEqual(destination_findings(absorbed_destinations(triage), REPO_ROOT), [])
+        targets = unmoved(absorbed_destinations(triage), self.moved())
+        self.assertEqual(len(targets), self.EXPECTED_TARGETS - MovedRulesMapTest.EXPECTED_ABSORBED)
+        self.assertEqual(destination_findings(targets, REPO_ROOT), [])
 
-    def test_arduino_orchestration_template_exists_with_both_sections(self):
+    def test_arduino_template_keeps_test_tiers_and_its_driver_rules_join_the_arduino_gotchas(self):
+        # MIGRATED (CR-MDB-085 §S3.5/§S6.3; was "the template exists with both sections"): "Test
+        # tiers and agents" stays; "Hardware drivers" leaves the template and its two rules join
+        # arduino.toml's GREEN and FIX gotchas.
         path = REPO_ROOT / ARDUINO_TEMPLATE
         self.assertTrue(path.is_file(), f"CR-MDB-042 \u00a7S2: {ARDUINO_TEMPLATE} does not exist")
         text = read_text(path)
-        for heading in ("Test tiers and agents", "Hardware drivers"):
-            self.assertIsNotNone(section_body(text, heading), f"{ARDUINO_TEMPLATE}: no '{heading}'")
+        self.assertIsNotNone(section_body(text, "Test tiers and agents"),
+                             f"{ARDUINO_TEMPLATE}: no 'Test tiers and agents'")
+        self.assertIsNone(section_body(text, "Hardware drivers"),
+                          f"CR-MDB-085 §S3.5: {ARDUINO_TEMPLATE} still carries 'Hardware drivers'")
+        gotchas = tomllib.loads(read_text(REPO_ROOT / ARDUINO_STACK))["gotchas"]
+        missing = [f"{role}: {anchor!r}" for role in ("green", "fix")
+                   for anchor in HARDWARE_DRIVER_ANCHORS if anchor not in gotchas[role]]
+        self.assertEqual(missing, [], "CR-MDB-085 §S3.5: arduino.toml's GREEN and FIX gotchas")
 
     def test_model_b_project_rows_land_in_the_repo_agents_md(self):
         _, triage = self.load()
@@ -911,8 +1014,11 @@ class AbsorbedNewSectionBodyTest(_RealFileMixin):
         self.assertEqual(len(rows), self.EXPECTED_NEW_SECTION_ROWS)
 
     def test_every_new_section_carries_rule_text_under_its_heading(self):
+        # MIGRATED (CR-MDB-085 §S6.2): a row whose rule moved is checked by its anchor phrases in
+        # its new file (MovedRulesMapTest), not by a body under its old heading.
         _, triage = self.load()
-        self.assertEqual(new_section_body_findings(absorbed_destinations(triage), REPO_ROOT), [])
+        targets = unmoved(absorbed_destinations(triage), self.moved())
+        self.assertEqual(new_section_body_findings(targets, REPO_ROOT), [])
 
 
 class HeadingRenameMapTest(_RealFileMixin):
@@ -952,10 +1058,54 @@ class HeadingRenameMapTest(_RealFileMixin):
         self.assertTrue(all(f"no heading '{self.OLD}'" in f for f in found), found)
 
     def test_every_other_destination_resolves_unaided(self):
+        # MIGRATED (CR-MDB-085 §S6.2): the rows whose rule moved are checked by the moved-rules
+        # map instead (was 79 - 11 = 68 rows resolving unaided).
         _, others = self._split()
+        others = unmoved(others, self.moved())
         self.assertEqual(len(others), AbsorbedDestinationTest.EXPECTED_TARGETS
-                         - self.EXPECTED_RENAMED_TARGETS)
+                         - self.EXPECTED_RENAMED_TARGETS - MovedRulesMapTest.EXPECTED_ABSORBED)
         self.assertEqual(destination_findings(others, REPO_ROOT, renames={}), [])
+
+
+#: CR-MDB-085 §S3.5: arduino.toml's stack file, and the two "Hardware drivers" anchor phrases.
+ARDUINO_STACK = "generator/stacks/arduino.toml"
+HARDWARE_DRIVER_ANCHORS = ("Verify the exact part", "Hardware identity is the first bring-up gate")
+
+
+class MovedRulesMapTest(_RealFileMixin):
+    """CR-MDB-085 §S6.2/AC9 — the frozen triage's moved rules are found by their anchor phrases in
+    their new files; the rename map keeps its one entry and the audit is not edited."""
+
+    #: The frozen rows whose rule CR-MDB-085 moves (191 joined the spec's five by ruling).
+    EXPECTED_ROWS = (191, 192, 211, 284, 373, 384)
+    #: Of them, the rows ``absorbed_destinations`` selects (384 is a ``duplicate``).
+    EXPECTED_ABSORBED = 5
+
+    def test_the_map_names_exactly_the_six_frozen_rows_each_a_template_row(self):
+        self.assertEqual(tuple(sorted(MOVED_RULES)), self.EXPECTED_ROWS)
+        moved = self.moved()
+        self.assertEqual(sorted(number for number, _r, _f, _a in moved.values()),
+                         list(self.EXPECTED_ROWS))
+        for number, row, _new_file, anchors in moved.values():
+            with self.subTest(row=number):
+                self.assertTrue(anchors)
+                self.assertRegex(row["Destination"],
+                                 r"^`skills-src/memory-templates/(rust|arduino)-orchestration\.md` § ")
+        _, triage = self.load()
+        absorbed = [t for t in absorbed_destinations(triage) if t[0]["Source"] in moved]
+        self.assertEqual(len(absorbed), self.EXPECTED_ABSORBED)
+
+    def test_each_moved_rule_is_found_by_its_anchor_phrases_in_its_new_file(self):
+        self.assertEqual(moved_rule_findings(self.moved(), REPO_ROOT), [],
+                         "CR-MDB-085 §S6.2: a moved rule is not in its new file")
+
+    def test_each_moved_rule_has_left_the_template_it_moved_out_of(self):
+        self.assertEqual(moved_rule_departure_findings(self.moved(), REPO_ROOT), [],
+                         "CR-MDB-085 §S3: a moved rule's anchor phrase is still in its template")
+
+    def test_the_frozen_audit_is_byte_for_byte_unchanged(self):
+        self.assertEqual(sha256_bytes(TRIAGE_FILE.read_bytes()), TRIAGE_FILE_SHA256,
+                         "CR-MDB-085 §S6.2: the triage audit is frozen — never edited")
 
 
 class ModelBCommonTextNeutralTest(unittest.TestCase):
@@ -1063,6 +1213,67 @@ class CapabilityWordingTest(unittest.TestCase):
                  for p in sorted((REPO_ROOT / "skills-src" / "model-b").rglob("*.md"))
                  for n, line in enumerate(read_text(p).splitlines(), 1) if pattern.search(line)]
         self.assertEqual(found, [])
+
+
+class MovedRulesOnSyntheticTextTest(unittest.TestCase):
+    """CR-MDB-085 §S6.2 — the moved-rules functions proved both ways on synthetic text."""
+
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp(prefix="mdb-moved-rules-"))
+        self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
+        self.text = _fixture_text()
+        self.lines = self.text.splitlines()
+        # The fixture's stack:rust row, and its line number (1-based).
+        self.rust_line = next(n for n, ln in enumerate(self.lines, 1) if "§ §7 Rust overrides" in ln)
+        self.rust_source = _cells(self.lines[self.rust_line - 1])[0]
+
+    def _write(self, rel: str, text: str) -> None:
+        path = self.root / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+
+    def test_a_mapped_line_resolves_to_its_triage_row_and_a_non_row_line_is_reported(self):
+        moved = {self.rust_line: ("new.toml", ("rule phrase",)), 1: ("x.toml", ("y",))}
+        rows, problems = moved_rule_rows(self.text, moved)
+        self.assertEqual(problems, ["audit line 1 is not a triage row"])
+        self.assertEqual(list(rows), [self.rust_source])
+        number, row, new_file, anchors = rows[self.rust_source]
+        self.assertEqual((number, row["Class"], new_file, anchors),
+                         (self.rust_line, "stack:rust", "new.toml", ("rule phrase",)))
+
+    def test_an_inventory_line_is_not_a_triage_row(self):
+        inventory_line = next(n for n, ln in enumerate(self.lines, 1) if ln.startswith("| `~/"))
+        _, problems = moved_rule_rows(self.text, {inventory_line: ("new.toml", ("p",))})
+        self.assertEqual(problems, [f"audit line {inventory_line} is not a triage row"])
+
+    def test_the_anchor_is_found_in_the_new_file_or_reported(self):
+        rows, _ = moved_rule_rows(self.text, {self.rust_line: ("g/new.toml", ("one", "two"))})
+        n = self.rust_line
+        self.assertEqual(moved_rule_findings(rows, self.root),
+                         [f"row {n}: g/new.toml does not exist"])
+        self._write("g/new.toml", "one only\n")
+        self.assertEqual(moved_rule_findings(rows, self.root), [f"row {n}: g/new.toml lacks 'two'"])
+        self._write("g/new.toml", "one and two\n")
+        self.assertEqual(moved_rule_findings(rows, self.root), [])
+
+    def test_an_anchor_still_in_the_old_template_is_reported(self):
+        rows, _ = moved_rule_rows(self.text, {self.rust_line: ("g/new.toml", ("one",))})
+        old = "skills-src/memory-templates/rust-orchestration.md"
+        self._write(old, "## Gates\n\n- one rule.\n")
+        self.assertEqual(moved_rule_departure_findings(rows, self.root),
+                         [f"row {self.rust_line}: {old} still carries 'one'"])
+        self._write(old, "## Gates\n\n- the rule lives in the rust agent definitions.\n")
+        self.assertEqual(moved_rule_departure_findings(rows, self.root), [])
+
+    def test_a_moved_row_leaves_the_destination_check_and_an_unmoved_one_stays(self):
+        _, triage, _ = parse_triage_text(self.text)
+        rows, _ = moved_rule_rows(self.text, {self.rust_line: ("g/new.toml", ("one",))})
+        targets = absorbed_destinations(triage)
+        kept = unmoved(targets, rows)
+        self.assertEqual(len(kept), len(targets) - 1)
+        self.assertNotIn(self.rust_source, [t[0]["Source"] for t in kept])
+        self.assertEqual(len(unmoved(triage, rows)), len(triage) - 1)
+        self.assertEqual(unmoved(targets, {}), targets)
 
 
 def _target(rel: str, section_name: str, cls: str = "common", note: str = "Rule: x.") -> tuple:

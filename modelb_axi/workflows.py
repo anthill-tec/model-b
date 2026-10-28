@@ -198,7 +198,7 @@ def _release_yml(stacks: list[str], targets: list[str], source_dir: Path) -> str
 
 
 def _with_marker(body: str) -> str:
-    return f"{MARKER_PREFIX}{agents._sha256_text(body)}\n{body}"
+    return f"{MARKER_PREFIX}{agents.sha256_text(body)}\n{body}"
 
 
 def ownership_state(text: str) -> str:

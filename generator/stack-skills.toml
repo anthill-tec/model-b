@@ -1,0 +1,7 @@
+# Stack skills (CR-MDB-085 §S1.2): one [skills.<name>] table per skill, naming the stacks it
+# renders for — `stacks = ["<stack>", …]`. A skill's source is generator/skills/<name>/ (a
+# SKILL.md, and a references/ directory only when it has references). A stack with or without a
+# stack file may be named. No [skills] table declares no skill.
+
+[skills.rust-stack]
+stacks = ["rust"]

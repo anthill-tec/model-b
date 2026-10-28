@@ -36,7 +36,8 @@ invocations.
 
 **Guarded** (``GUARDED_ROOTS``): ``skills-src/`` except ``skills-src/memory-templates/``,
 ``contracts/``, ``AGENTS.md``, ``generator/templates/``, ``generator/stacks/``,
-``generator/agents/`` and ``.pi/agents/``.
+``generator/agents/``, ``.pi/agents/`` and — CR-MDB-085 §S6.1 — ``generator/skills/``, the stack
+skills' sources.
 
 How a text is read (``runner_findings``): a fence is a line opening with three or more backticks
 or tildes; each line inside it is one command line, judged alone. Outside fences, a block is a
@@ -73,6 +74,8 @@ GUARDED_ROOTS = (
     "generator/stacks",
     "generator/agents",
     ".pi/agents",
+    # MIGRATED (CR-MDB-085 §S6.1): the stack skills' sources are guarded too.
+    "generator/skills",
 )
 #: The one carve-out from §S3's guarded set (CR-MDB-060 carries the rule into the facts).
 GUARD_EXCLUDED = ("skills-src/memory-templates",)
@@ -958,7 +961,7 @@ class GuardedSetTest(unittest.TestCase):
     def test_the_guarded_set_names_each_root_of_section_s3(self):
         self.assertIn("AGENTS.md", self.relative)
         for prefix in ("skills-src/", "contracts/", "generator/templates/", "generator/stacks/",
-                       "generator/agents/", ".pi/agents/"):
+                       "generator/agents/", ".pi/agents/", "generator/skills/"):
             with self.subTest(root=prefix):
                 self.assertTrue(any(r.startswith(prefix) for r in self.relative))
 
@@ -970,7 +973,7 @@ class GuardedSetTest(unittest.TestCase):
 
     def test_nothing_outside_the_guarded_set_is_guarded(self):
         roots = ("skills-src/", "contracts/", "generator/templates/", "generator/stacks/",
-                 "generator/agents/", ".pi/agents/")
+                 "generator/agents/", ".pi/agents/", "generator/skills/")
         stray = [r for r in self.relative if r != "AGENTS.md" and not r.startswith(roots)]
         self.assertEqual(stray, [])
         for outside in ("docs/", "tests/", "hooks-src/", "archive/", "audits/", "scripts/",
