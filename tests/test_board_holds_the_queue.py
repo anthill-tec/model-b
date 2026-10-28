@@ -72,7 +72,7 @@ import re
 import subprocess
 import unittest
 
-from tests._helpers import REPO_ROOT, read_text, split_frontmatter
+from tests._helpers import ORCHESTRATION_REFERENCES, REPO_ROOT, read_text, split_frontmatter
 from tests.test_bootstrap_shutdown_registry import normalise
 
 CRUCIBLE_SKILL = "skills-src/crucible/SKILL.md"
@@ -80,8 +80,10 @@ CR_AUTHORING = "skills-src/cr-authoring/SKILL.md"
 MODEL_B_SKILL = "skills-src/model-b/SKILL.md"
 MAINLINE_REF = "skills-src/model-b/references/orchestration-mainline.md"
 COMMON_REF = "skills-src/model-b/references/orchestration-common.md"
-JAVA_TEMPLATE = "skills-src/memory-templates/java-orchestration.md"
-RUST_TEMPLATE = "skills-src/memory-templates/rust-orchestration.md"
+#: MIGRATED (CR-MDB-060 §S1.1): the java and rust templates are their stack skills'
+#: ``references/orchestration.md`` now.
+JAVA_TEMPLATE = ORCHESTRATION_REFERENCES["java"]
+RUST_TEMPLATE = ORCHESTRATION_REFERENCES["rust"]
 BOOTSTRAP = "skills-src/bootstrap/SKILL.md"
 SHUTDOWN = "skills-src/shutdown/SKILL.md"
 

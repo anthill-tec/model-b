@@ -29,10 +29,10 @@ Class map (one per C1 acceptance criterion):
   amended at a8540df — a scaffolded project has no ``docs/research/DN-model-b-language.md``);
   ``AGENTS.md`` carries no ``crucible:``-prefixed ontology citation (it need not cite the
   ontology at all); ``_HARNESS_NATIVE_NOTES`` is gone.
-- ``MemoryTemplateFamilyTest`` — ``--stacks quarkus`` and ``--stacks java`` scaffold the one
-  ``java-*.md`` template, ``java-orchestration.md``, and none of the five Java references
-  CR-MDB-086 moved into the ``java-stack`` skill; ``--stacks rust`` scaffolds
-  ``rust-orchestration.md``; ``--stacks python`` neither.
+- ``MemoryTemplateFamilyTest`` — MIGRATED (CR-MDB-060 §S1.1/§S3.1): no ``docs/memory/`` is
+  written and ``skills-src/memory-templates/`` is gone; ``--stacks quarkus`` and ``--stacks java``
+  render ``java-stack``'s orchestration reference, ``--stacks rust`` ``rust-stack``'s, ``--stacks
+  python`` neither.
 - ``StaleHarnessIdRefusedTest`` — with ``install.toml`` recording ``harnesses = ["claude-code"]``,
   ``init``, ``agents`` and the installer flow (``--reinstall`` without ``--harnesses``) each exit
   non-zero, write nothing, and name ``claude-code`` and the ``--reinstall … --harnesses pi``
@@ -95,15 +95,6 @@ CHECKOUT_PREFIXED_ONTOLOGY = "crucible:docs/research/DN-model-b-language.md"
 STALE_ID = "claude-code"
 RECOVERY_RE = re.compile(r"--reinstall\b.*--harnesses[ =]pi\b")
 
-#: The java memory templates. MIGRATED (CR-MDB-086 §S2.1/§S6.1; were six): the five Java
-#: references moved into the ``java-stack`` skill, so ``java-orchestration.md`` is the one left.
-JAVA_TEMPLATES = frozenset(p.name for p in MEMORY_TEMPLATES.glob("java-*.md"))
-#: CR-MDB-086 §S2.2 — the five moved references' old names, which ``init`` no longer seeds.
-MOVED_JAVA_REFERENCES = frozenset({
-    "java-coding-standards.md", "java-testing-practices.md", "java-modern-syntax.md",
-    "java-maven-best-practices.md", "java-quarkus-patterns.md",
-})
-RUST_TEMPLATES = frozenset(p.name for p in MEMORY_TEMPLATES.glob("rust-*.md"))
 
 
 # ------------------------------------------------------------------ scans ----
@@ -548,54 +539,43 @@ class ScaffoldPiProjectTest(_SandboxedInitCase):
 
 
 class MemoryTemplateFamilyTest(_SandboxedInitCase):
-    """§S1 AC — a ``<prefix>-*.md`` memory template is emitted when any stack of its family is
-    selected: ``java-*`` for ``java`` or ``quarkus``, ``rust-*`` for ``rust``."""
+    """§S1 AC — a stack's material reaches a project only when a stack of its family is selected:
+    the java notes for ``java`` or ``quarkus``, the rust notes for ``rust``.
 
-    def _memory_files(self, stacks: str) -> set:
+    MIGRATED (CR-MDB-060 §S1.1/§S3.1/AC4): ``init`` seeds no ``docs/memory/`` — the
+    ``<prefix>-*.md`` templates are gone, and each stack's notes arrive as its rendered stack
+    skill's ``references/orchestration.md``. The family rule is held over those references; the
+    five Java references CR-MDB-086 moved stay out of ``docs/memory/`` because nothing is written
+    there. Were: test_fixture_has_one_java_and_one_rust_template,
+    test_quarkus_scaffolds_java_orchestration_and_no_moved_java_reference,
+    test_java_scaffolds_java_orchestration_and_no_moved_java_reference,
+    test_rust_scaffolds_rust_orchestration_and_no_java_template,
+    test_python_scaffolds_neither_family_but_the_stack_neutral_template."""
+
+    def _orchestration_skills(self, stacks: str) -> set:
         result, target = self.scaffold(stacks)
         self.assertEqual(result.returncode, 0,
                          f"fixture: init --stacks {stacks} must succeed; stderr={result.stderr!r}")
-        memory = target / "docs" / "memory"
-        return {p.name for p in memory.glob("*.md")}
+        self.assertFalse((target / "docs" / "memory").exists(),
+                         f"CR-MDB-060 §S3.1: init --stacks {stacks} writes no docs/memory/")
+        return {p.parent.parent.name
+                for p in (target / ".agents" / "skills").glob("*/references/orchestration.md")}
 
-    # MIGRATED (CR-MDB-086 §S2.1/§S2.2/§S6.1): the three tests below were
-    # test_fixture_has_six_java_and_one_rust_template, test_quarkus_scaffolds_all_six_java_templates
-    # and test_java_scaffolds_all_six_java_templates; the java family is java-orchestration.md alone.
-    def test_fixture_has_one_java_and_one_rust_template(self):
-        self.assertEqual(JAVA_TEMPLATES, {"java-orchestration.md"},
-                         f"the one java-* template: {JAVA_TEMPLATES!r}")
-        self.assertEqual(RUST_TEMPLATES, {"rust-orchestration.md"})
-        self.assertEqual(sorted(MOVED_JAVA_REFERENCES & JAVA_TEMPLATES), [],
-                         "CR-MDB-086 §S2.1: no moved reference stays a memory template")
+    def test_the_memory_templates_directory_is_gone(self):
+        self.assertFalse(MEMORY_TEMPLATES.exists(),
+                         "CR-MDB-060 §S3.1: skills-src/memory-templates/ no longer exists")
 
-    def test_quarkus_scaffolds_java_orchestration_and_no_moved_java_reference(self):
-        files = self._memory_files("quarkus")
-        self.assertEqual(
-            sorted(JAVA_TEMPLATES - files), [],
-            "§S1: --stacks quarkus must scaffold every java-*.md template; "
-            f"scaffolded {sorted(files)!r}",
-        )
-        self.assertEqual(sorted(MOVED_JAVA_REFERENCES & files), [],
-                         f"CR-MDB-086 §S2.2: quarkus seeds no moved reference; got {sorted(files)!r}")
-        self.assertEqual(sorted(RUST_TEMPLATES & files), [], "no rust template for quarkus")
+    def test_quarkus_renders_the_java_orchestration_reference_and_no_rust_one(self):
+        self.assertEqual(self._orchestration_skills("quarkus"), {"java-stack"})
 
-    def test_java_scaffolds_java_orchestration_and_no_moved_java_reference(self):
-        files = self._memory_files("java")
-        self.assertEqual(sorted(JAVA_TEMPLATES - files), [],
-                         f"§S1: --stacks java scaffolds every java-*.md; got {sorted(files)!r}")
-        self.assertEqual(sorted(MOVED_JAVA_REFERENCES & files), [],
-                         f"CR-MDB-086 §S2.2: java seeds no moved reference; got {sorted(files)!r}")
+    def test_java_renders_the_java_orchestration_reference(self):
+        self.assertEqual(self._orchestration_skills("java"), {"java-stack"})
 
-    def test_rust_scaffolds_rust_orchestration_and_no_java_template(self):
-        files = self._memory_files("rust")
-        self.assertIn("rust-orchestration.md", files, f"§S1: got {sorted(files)!r}")
-        self.assertEqual(sorted(JAVA_TEMPLATES & files), [], "no java template for rust")
+    def test_rust_renders_the_rust_orchestration_reference_and_no_java_one(self):
+        self.assertEqual(self._orchestration_skills("rust"), {"rust-stack"})
 
-    def test_python_scaffolds_neither_family_but_the_stack_neutral_template(self):
-        files = self._memory_files("python")
-        self.assertEqual(sorted((JAVA_TEMPLATES | RUST_TEMPLATES) & files), [],
-                         f"§S1: --stacks python scaffolds neither family; got {sorted(files)!r}")
-        self.assertIn("operational-commands.md", files, "stack-neutral templates are still emitted")
+    def test_python_renders_neither_family(self):
+        self.assertEqual(self._orchestration_skills("python"), set())
 
 
 # ------------------------------------------------------------------ stale harness id ----

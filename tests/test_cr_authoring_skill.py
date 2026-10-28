@@ -18,7 +18,7 @@ import unittest
 from pathlib import Path
 
 from tests._helpers import archive_has_content_move as _archive_has_content_move
-from tests._helpers import md_section
+from tests._helpers import ORCHESTRATION_REFERENCES, md_section
 from tests._helpers import read_text_lenient as _read
 from tests._helpers import split_frontmatter as _split_frontmatter
 
@@ -36,8 +36,9 @@ ARCHIVE_WAVE2 = REPO_ROOT / "archive" / "wave2"
 
 # §S4 consumer surfaces the CR spec names explicitly that have a repo copy.
 CONSUMER_SURFACES = (
-    MEMORY_TEMPLATES_DIR / "rust-orchestration.md",
-    MEMORY_TEMPLATES_DIR / "java-orchestration.md",
+    # MIGRATED (CR-MDB-060 §S1.1): the two templates are their stack skills' references.
+    REPO_ROOT / ORCHESTRATION_REFERENCES["rust"],
+    REPO_ROOT / ORCHESTRATION_REFERENCES["java"],
     REPO_AGENTS_MD,
 )
 

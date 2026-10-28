@@ -60,9 +60,10 @@ GENERATOR_SKILLS = GENERATOR_DIR / "skills"
 #: CR-MDB-085 §S1.3: where a project's stack skills render.
 RENDERED_SKILLS_RELDIR = Path(".agents") / "skills"
 #: CR-MDB-086 AC8: the stack skills under generator/skills/, and the stacks whose render writes
-#: them all (rust: rust-stack; quarkus: java-stack).
-STACK_SKILLS = ["java-stack", "rust-stack"]
-RENDERED_STACKS = ["rust", "quarkus"]
+#: them all (rust: rust-stack; quarkus: java-stack). MIGRATED (CR-MDB-060 §S1.2/AC7):
+#: arduino-stack joins them, rendered for arduino.
+STACK_SKILLS = ["arduino-stack", "java-stack", "rust-stack"]
+RENDERED_STACKS = ["arduino", "rust", "quarkus"]
 PI_AGENTS = REPO_ROOT / ".pi" / "agents"
 
 # ------------------------------------------------------------------ §S3.1 the stdlib rule ----
@@ -701,7 +702,8 @@ class PiSkillLoaderOracleTest(unittest.TestCase):
         # CR-MDB-085 §S6.1: Pi's loader over the stack skills' sources.
         expected = sorted(str(p) for p in _stack_skill_files())
         self.assertEqual([Path(p).parent.name for p in expected], STACK_SKILLS,
-                         "CR-MDB-086 AC8: generator/skills/ holds java-stack and rust-stack")
+                         "CR-MDB-086 AC8, CR-MDB-060 AC7: generator/skills/ holds arduino-stack, "
+                         "java-stack and rust-stack")
         out = _run_pi_oracle(self, self.api, {"skills_dir": str(GENERATOR_SKILLS)})
         self.assertEqual(out["diagnostics"], [],
                          "§S3.2: Pi's loadSkillsFromDir reports diagnostics over generator/skills/")

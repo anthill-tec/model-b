@@ -53,7 +53,7 @@ import unittest
 from pathlib import Path
 
 from modelb_axi.agents import PI_TOOL_NAMES, ROLE_DENIED_TOOLS
-from tests._helpers import at_line, run_hook
+from tests._helpers import ORCHESTRATION_REFERENCES, at_line, run_hook
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -648,8 +648,10 @@ class ClientPathAnchoringS1Test(unittest.TestCase):
         # the testing practices moved into the java-stack skill's references.
         expected = {
             "generator/skills/java-stack/references/testing-practices.md": "mvn-crucible.py",
-            "skills-src/memory-templates/java-orchestration.md": "mvn-crucible.py",
-            "skills-src/memory-templates/rust-orchestration.md": "rust-crucible.py",
+            # MIGRATED (CR-MDB-060 §S1.1): the templates are the stack skills' orchestration
+            # references now.
+            ORCHESTRATION_REFERENCES["java"]: "mvn-crucible.py",
+            ORCHESTRATION_REFERENCES["rust"]: "rust-crucible.py",
         }
         missing = [f"{rel}: {ANCHOR}{c}" for rel, c in expected.items() if ANCHOR + c not in _read(rel)]
         self.assertEqual(missing, [], f"§S1: memory templates not naming the installed client: {missing}")
@@ -816,7 +818,7 @@ class ClientPathAnchoringS1Test(unittest.TestCase):
         self.assertEqual(failures, [], "§S1 hook docstrings:\n  " + "\n  ".join(failures))
 
     def test_s1_java_orchestration_names_no_reviewer_skill(self):
-        rel = "skills-src/memory-templates/java-orchestration.md"
+        rel = ORCHESTRATION_REFERENCES["java"]  # MIGRATED (CR-MDB-060 §S1.1): was the java memory template
         hits = [f"{rel}:{n}: {sorted(set(re.findall(r'reviewer-[a-z]+', line)))}"
                 for n, line in enumerate(_read(rel).splitlines(), 1) if re.search(r"\breviewer-[a-z]", line)]
         self.assertEqual(hits, [], f"§S1: java-orchestration.md names unshipped reviewer-* skills: {hits}")

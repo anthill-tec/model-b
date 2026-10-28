@@ -58,7 +58,12 @@ import tomllib
 import unittest
 from pathlib import Path
 
-from tests._helpers import at_line, render_script, write_interpreter_fixture
+from tests._helpers import (
+    ORCHESTRATION_REFERENCES,
+    at_line,
+    render_script,
+    write_interpreter_fixture,
+)
 from tests._helpers import write_executable as _write_fake_executable
 from tests.pi_capability_sandbox import with_agent_dir
 
@@ -688,9 +693,10 @@ OPEN_CR_NUMBERS_IN_S4_SCOPE = (17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 28, 29, 3
 def _chezmoi_prose_instruction_scope_files():
     """The exact §S4 surface set: AGENTS.md, contracts/lean-ctx.md,
     every skills-src/memory-templates/*.md, docs/changes/README.md, and the
-    named OPEN CR specs only."""
+    named OPEN CR specs only. MIGRATED (CR-MDB-060 §S1.1/§S2): the memory templates are the
+    stacks' orchestration references now; operational-commands.md is deleted."""
     files = [REPO_ROOT / "AGENTS.md", CONTRACTS_DIR / "lean-ctx.md", CHANGES_DIR / "README.md"]
-    files.extend(sorted(MEMORY_TEMPLATES_DIR.glob("*.md")))
+    files.extend(REPO_ROOT / rel for rel in ORCHESTRATION_REFERENCES.values())
     for number in OPEN_CR_NUMBERS_IN_S4_SCOPE:
         files.extend(sorted(CHANGES_DIR.glob(f"CR-MDB-0{number}-*.md")))
     return [f for f in files if f.is_file()]

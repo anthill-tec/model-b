@@ -1454,11 +1454,7 @@ def _copy_c3_asset_root(dest: Path) -> Path:
     this suite honours)."""
     dest.mkdir(parents=True, exist_ok=True)
     shutil.copytree(GENERATOR_DIR, dest / "generator")
-    (dest / "skills-src").mkdir(parents=True, exist_ok=True)
-    shutil.copytree(
-        REPO_ROOT / "skills-src" / "memory-templates",
-        dest / "skills-src" / "memory-templates",
-    )
+    # MIGRATED (CR-MDB-060 §S3.1): no skills-src/memory-templates/ copy — init seeds no memory.
     return dest
 
 

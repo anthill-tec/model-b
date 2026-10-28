@@ -130,7 +130,8 @@ class CoreSplitS4NoStaleShimReferencesTest(unittest.TestCase):
     orchestration-universal shim files by name."""
 
     AGENTS_DIR = REPO_ROOT / "generator" / "agents"
-    MEMORY_DIR = REPO_ROOT / "skills-src" / "memory-templates"
+    # MIGRATED (CR-MDB-060 §S1.1): the orchestration notes live in the stack skills' sources.
+    MEMORY_DIR = REPO_ROOT / "generator" / "skills"
     SKILLS_DIR = REPO_ROOT / "skills-src"
 
     def test_s4_agents_dir_no_agent_baseline_mentions(self):

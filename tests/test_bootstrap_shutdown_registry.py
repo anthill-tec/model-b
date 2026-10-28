@@ -60,7 +60,14 @@ from pathlib import Path
 
 from modelb_axi import scaffold
 from modelb_axi.requirements import PYTHON_VENV_ROUTE, STACK_CLIENT_KEYS
-from tests._helpers import REPO_ROOT, build_tree, read_text, run_hook, split_frontmatter
+from tests._helpers import (
+    ORCHESTRATION_REFERENCES,
+    REPO_ROOT,
+    build_tree,
+    read_text,
+    run_hook,
+    split_frontmatter,
+)
 from tests.test_orchestrator_rule_triage import (
     EXEMPT_BUNDLES,
     model_b_owned_skill_files,
@@ -91,7 +98,8 @@ INIT_STACKS = ("python", "rust")
 MANIFEST = "~/.crucible/crucible-clients.json"
 #: The other surfaces \u00a7S4 aligns with the two skills (F4).
 TRACK_REF = "skills-src/model-b/references/orchestration-track.md"
-RUST_TEMPLATE = "skills-src/memory-templates/rust-orchestration.md"
+#: MIGRATED (CR-MDB-060 §S1.1): the rust template is rust-stack's orchestration reference.
+RUST_TEMPLATE = ORCHESTRATION_REFERENCES["rust"]
 #: Every surface whose client naming \u00a7S2/\u00a7S4 governs.
 CLIENT_SURFACES = {**SKILLS, "orchestration-track": TRACK_REF, "rust-orchestration": RUST_TEMPLATE}
 
@@ -359,11 +367,16 @@ class ScaffoldedFilesOnlyTest(unittest.TestCase):
     def tearDownClass(cls):
         shutil.rmtree(cls.root, ignore_errors=True)
 
-    def test_sandboxed_init_produces_agents_md_env_and_memory_index(self):
+    def test_sandboxed_init_produces_agents_md_env_and_the_rust_orchestration_reference(self):
+        # MIGRATED (CR-MDB-060 §S1.1/§S3.1; was test_sandboxed_init_produces_agents_md_env_and_
+        # memory_index): init writes no docs/memory/ — the rust notes arrive as the rendered
+        # rust-stack reference.
         self.assertEqual(self.result.returncode, 0, self.result.stderr[-800:])
-        for rel in PROJECT_FILES:
+        for rel in ("AGENTS.md", ".env"):
             self.assertIn(rel, self.produced)
-        self.assertIn("docs/memory/rust-orchestration.md", self.produced)
+        self.assertIn(".agents/skills/rust-stack/references/orchestration.md", self.produced)
+        self.assertEqual(sorted(r for r in self.produced if r.startswith("docs/memory/")), [],
+                         "CR-MDB-060 §S3.1: init writes no docs/memory/")
         home_left = sorted(p.name for p in (self.root / "home").iterdir())
         self.assertEqual(home_left, [], "init wrote into the sandbox HOME")
 

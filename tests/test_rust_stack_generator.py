@@ -48,6 +48,7 @@ import tomllib
 import unittest
 from pathlib import Path
 
+from tests._helpers import ORCHESTRATION_REFERENCES
 from tests._helpers import read_text as _raw
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -58,9 +59,8 @@ BUILD_PY = GENERATOR_DIR / "build.py"
 
 RUST_TOML = STACKS_DIR / "rust.toml"
 QUARKUS_TOML = STACKS_DIR / "quarkus.toml"
-ORCHESTRATION_MEMORY = (
-    REPO_ROOT / "skills-src" / "memory-templates" / "rust-orchestration.md"
-)
+# MIGRATED (CR-MDB-060 §S1.1): the template is rust-stack's orchestration reference now.
+ORCHESTRATION_MEMORY = REPO_ROOT / ORCHESTRATION_REFERENCES["rust"]
 # MIGRATED (CR-MDB-085 §S6.3): the template's agent-facing material moved to the rust-stack stack
 # skill (§S3.1), so the reconciliation reads the moved text too — the template keeps only its
 # orchestrator-facing sections.
