@@ -40,7 +40,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from modelb_axi import scaffold
+from modelb_axi import agents, scaffold, stack_skills
 from tests._helpers import (
     decode_axi,
     deploy_hook_scripts,
@@ -821,6 +821,428 @@ class StackSkillSourcesTest(unittest.TestCase):
             "§S1.1/§S1.2/AC1: the repository's generator/skills/ and "
             "generator/stack-skills.toml",
         )
+
+
+# ------------------------------------------------------------------ §S1.2 the declaration ----
+
+
+class StackSkillDeclarationTest(unittest.TestCase):
+    """§S1.2 — ``stack_skills.load_declaration`` reads ``generator/stack-skills.toml``: a missing
+    file or ``[skills]`` table declares no skill; a declaration that cannot be read, or a skill
+    naming no stacks, is a :class:`stack_skills.StackSkillError` naming what is wrong, raised
+    before anything renders."""
+
+    def setUp(self):
+        self.generator_dir = Path(tempfile.mkdtemp(prefix="modelb-stack-skill-decl-"))
+        self.addCleanup(shutil.rmtree, self.generator_dir, ignore_errors=True)
+
+    def _declare(self, text: str) -> None:
+        (self.generator_dir / "stack-skills.toml").write_text(text, encoding="utf-8")
+
+    def _refused(self) -> str:
+        with self.assertRaises(stack_skills.StackSkillError) as ctx:
+            stack_skills.load_declaration(self.generator_dir)
+        return str(ctx.exception)
+
+    def test_a_missing_declaration_file_declares_no_skill(self):
+        self.assertEqual(stack_skills.load_declaration(self.generator_dir), {})
+        self.assertEqual(stack_skills.render_skills(self.generator_dir, ["rust"]), {})
+
+    def test_a_declaration_without_a_skills_table_declares_no_skill(self):
+        self._declare("# no stack skill declared yet\n")
+        self.assertEqual(stack_skills.load_declaration(self.generator_dir), {})
+
+    def test_a_declared_skill_reads_back_with_every_stack_it_names(self):
+        self._declare(declaration_text({"zeta-stack": ["rust", "bun"]}))
+        self.assertEqual(
+            stack_skills.load_declaration(self.generator_dir),
+            {"zeta-stack": ["rust", "bun"]},
+        )
+
+    def test_a_declaration_that_does_not_parse_is_refused_naming_its_file(self):
+        self._declare("[skills.alpha-stack\nstacks = [\n")
+        self.assertIn("stack-skills.toml", self._refused())
+
+    def test_a_skills_key_that_is_not_a_table_is_refused_naming_its_file(self):
+        self._declare('skills = ["alpha-stack"]\n')
+        self.assertIn("stack-skills.toml", self._refused())
+
+    def test_a_skill_with_an_empty_stacks_list_is_refused_naming_the_skill(self):
+        self._declare("[skills.alpha-stack]\nstacks = []\n")
+        self.assertIn("alpha-stack", self._refused())
+
+    def test_a_skill_whose_stacks_are_not_a_list_of_stack_names_is_refused(self):
+        cases = {
+            "a bare string": '[skills.alpha-stack]\nstacks = "rust"\n',
+            "a number in the list": '[skills.alpha-stack]\nstacks = ["rust", 1]\n',
+            "no stacks key": "[skills.alpha-stack]\n",
+            "an entry that is not a table": '[skills]\nalpha-stack = "rust"\n',
+        }
+        for label, text in cases.items():
+            with self.subTest(case=label):
+                self._declare(text)
+                self.assertIn("alpha-stack", self._refused())
+
+    def test_skills_for_maps_every_listed_stack_to_the_skills_naming_it(self):
+        declaration = {
+            "zeta-stack": ["rust", "bun"],
+            "alpha-stack": ["rust"],
+            "ghost-stack": ["java"],
+        }
+        got = stack_skills.skills_for(declaration, ["rust", "bun", "python"])
+        self.assertEqual(
+            {stack: sorted(names) for stack, names in got.items()},
+            {
+                "rust": ["alpha-stack", "zeta-stack"],
+                "bun": ["zeta-stack"],
+                "python": [],
+            },
+            "§S1.2/§S1.5: a skill naming several stacks belongs to each; a stack naming none "
+            "has none; an unlisted stack is absent",
+        )
+
+
+# ------------------------------------------------------------------ §S1.1/§S1.3 rendering ----
+
+
+class StackSkillRenderSourcesTest(unittest.TestCase):
+    """§S1.1 / §S1.3 — ``stack_skills.render_skills`` renders in memory: every file under a
+    skill's ``references/`` (nested ones included) under the first-line marker; a ``SKILL.md``
+    with no frontmatter to carry its marker, or a source that cannot be decoded, is a
+    :class:`stack_skills.StackSkillError` naming the skill."""
+
+    def setUp(self):
+        self.generator_dir = Path(tempfile.mkdtemp(prefix="modelb-stack-skill-render-"))
+        self.addCleanup(shutil.rmtree, self.generator_dir, ignore_errors=True)
+        write_skill_sources(
+            self.generator_dir,
+            {"alpha-stack": ["rust"]},
+            {"alpha-stack": FIXTURE_SOURCES["alpha-stack"]},
+        )
+        self.source = self.generator_dir / "skills" / "alpha-stack"
+
+    def _refused(self) -> str:
+        with self.assertRaises(stack_skills.StackSkillError) as ctx:
+            stack_skills.render_skills(self.generator_dir, ["rust"])
+        return str(ctx.exception)
+
+    def test_a_skill_md_without_frontmatter_is_refused_naming_the_skill(self):
+        (self.source / "SKILL.md").write_text(
+            "# Alpha stack\n\nNo frontmatter.\n", encoding="utf-8"
+        )
+        self.assertIn("alpha-stack", self._refused())
+
+    def test_an_undecodable_reference_is_refused_as_a_stack_skill_error(self):
+        (self.source / "references" / "alpha-notes.md").write_bytes(
+            b"\xff\xfe\x00 not utf-8"
+        )
+        self.assertIn("alpha-stack", self._refused())
+
+    def test_a_nested_reference_renders_at_its_own_path_under_the_first_line_marker(
+        self,
+    ):
+        nested = "# Gamma notes\n\nA reference one directory down.\n"
+        deep = self.source / "references" / "deep" / "gamma-notes.md"
+        deep.parent.mkdir()
+        deep.write_text(nested, encoding="utf-8")
+        rendered = stack_skills.render_skills(self.generator_dir, ["rust"])
+        key = rel("alpha-stack", "references/deep/gamma-notes.md")
+        self.assertEqual(
+            rendered.get(key),
+            f"{REFERENCE_MARKER_PREFIX}{sha256_text(nested)}{REFERENCE_MARKER_SUFFIX}\n{nested}",
+            f"§S1.3: a nested reference is rendered under its marker; keys={sorted(rendered)}",
+        )
+        self.assertEqual(
+            sorted(rendered),
+            sorted(expected_skill_files(["rust"]) + [key]),
+            "§S1.3: exactly the skill's files are rendered",
+        )
+
+
+# ------------------------------------------------------------------ §S1.3 ownership forms ----
+
+
+class StackSkillOwnershipFormsTest(unittest.TestCase):
+    """§S1.3 — the two marker forms: ``agents.first_line_ownership`` takes a suffix after the
+    hash (a reference's closing ``-->``) and, without one, classifies as it always did;
+    ``stack_skills.ownership_state`` classifies a top-level ``SKILL.md`` by its frontmatter marker
+    and every reference — one named ``SKILL.md`` included — by the first-line form; the agents'
+    own marker stays the default where no prefix is given."""
+
+    BODY = "# Notes\n\nSome reference text.\n"
+    SKILL = skill_md("alpha-stack", "d", "Body.\n")
+
+    def _reference(
+        self, body: str, digest: str | None = None, newline: str = "\n"
+    ) -> str:
+        digest = sha256_text(body) if digest is None else digest
+        return (
+            f"{REFERENCE_MARKER_PREFIX}{digest}{REFERENCE_MARKER_SUFFIX}{newline}{body}"
+        )
+
+    def test_first_line_ownership_with_a_suffix_classifies_each_state(self):
+        cases = {
+            "intact": (self._reference(self.BODY), agents.OWNED_INTACT),
+            "intact, CRLF marker line": (
+                self._reference(self.BODY, newline="\r\n"),
+                agents.OWNED_INTACT,
+            ),
+            "edited body": (
+                self._reference(self.BODY) + "An edit.\n",
+                agents.OWNED_HAND_MODIFIED,
+            ),
+            "wrong digest": (
+                self._reference(self.BODY, "0" * 64),
+                agents.OWNED_HAND_MODIFIED,
+            ),
+            "no marker": (self.BODY, agents.NOT_OWNED),
+            "the marker on a later line": (
+                "\n" + self._reference(self.BODY),
+                agents.NOT_OWNED,
+            ),
+        }
+        for label, (text, state) in cases.items():
+            with self.subTest(case=label):
+                self.assertEqual(
+                    agents.first_line_ownership(
+                        text, REFERENCE_MARKER_PREFIX, REFERENCE_MARKER_SUFFIX
+                    ),
+                    state,
+                )
+
+    def test_first_line_ownership_without_a_suffix_strips_nothing_after_the_hash(self):
+        prefix = REFERENCE_MARKER_PREFIX
+        self.assertEqual(
+            agents.first_line_ownership(
+                f"{prefix}{sha256_text(self.BODY)}\n{self.BODY}", prefix
+            ),
+            agents.OWNED_INTACT,
+        )
+        self.assertEqual(
+            agents.first_line_ownership(self._reference(self.BODY), prefix),
+            agents.OWNED_HAND_MODIFIED,
+            "no suffix given: text after the hash is part of the recorded digest",
+        )
+
+    def test_every_rendered_file_is_intact_under_its_own_form_a_nested_skill_md_included(
+        self,
+    ):
+        with tempfile.TemporaryDirectory(prefix="modelb-stack-skill-forms-") as tmp:
+            generator_dir = Path(tmp)
+            sources = {
+                **FIXTURE_SOURCES["alpha-stack"],
+                "references/SKILL.md": "# A reference that happens to be named SKILL.md\n",
+            }
+            write_skill_sources(
+                generator_dir, {"alpha-stack": ["rust"]}, {"alpha-stack": sources}
+            )
+            rendered = stack_skills.render_skills(generator_dir, ["rust"])
+        nested = rel("alpha-stack", "references/SKILL.md")
+        self.assertIn(
+            nested, rendered, "precondition: the nested SKILL.md is a reference"
+        )
+        self.assertTrue(
+            rendered[nested].startswith(REFERENCE_MARKER_PREFIX),
+            "§S1.3: a reference carries the first-line marker, whatever its name",
+        )
+        for path, text in rendered.items():
+            with self.subTest(file=path):
+                self.assertEqual(
+                    stack_skills.ownership_state(path, text), agents.OWNED_INTACT
+                )
+
+    def test_with_marker_inserts_the_agents_marker_where_no_prefix_is_given(self):
+        marked = agents._with_marker(self.SKILL)
+        self.assertEqual(
+            marked.splitlines()[1], f"{agents.MARKER_PREFIX}{sha256_text(self.SKILL)}"
+        )
+        skill_marked = agents._with_marker(self.SKILL, SKILL_MARKER_PREFIX)
+        self.assertEqual(
+            skill_marked.splitlines()[1],
+            f"{SKILL_MARKER_PREFIX}{sha256_text(self.SKILL)}",
+        )
+
+    def test_ownership_state_reads_the_agents_marker_where_no_prefix_is_given(self):
+        agent_marked = with_skill_marker(self.SKILL, sha256_text(self.SKILL)).replace(
+            SKILL_MARKER_PREFIX, agents.MARKER_PREFIX
+        )
+        skill_marked = with_skill_marker(self.SKILL, sha256_text(self.SKILL))
+        self.assertEqual(agents.ownership_state(agent_marked), agents.OWNED_INTACT)
+        self.assertEqual(
+            agents.ownership_state(skill_marked),
+            agents.NOT_OWNED,
+            "an agent-definition classifier never claims a stack skill's SKILL.md",
+        )
+        self.assertEqual(
+            stack_skills.ownership_state(ALPHA_SKILL, agent_marked),
+            agents.NOT_OWNED,
+            "§S1.3: a stack skill's classifier never claims an agent-marked file",
+        )
+        self.assertEqual(
+            stack_skills.ownership_state(ALPHA_SKILL, skill_marked), agents.OWNED_INTACT
+        )
+
+
+# ------------------------------------------------------------------ §S1.3/§S1.4 before any write ----
+
+
+class StackSkillValidatedBeforeAnyWriteTest(_StackSkillSandbox):
+    """§S1.3 / §S1.4 — a declaration that cannot be rendered is refused before the first write:
+    ``init`` (real or ``--dry-run``) writes nothing into its target, and ``agents`` neither
+    re-renders a definition nor records a new stack set."""
+
+    def _break_declaration(self) -> None:
+        (self.asset_root / "generator" / "stack-skills.toml").write_text(
+            "[skills.alpha-stack]\nstacks = []\n", encoding="utf-8"
+        )
+
+    def _tree(self, project: Path) -> dict:
+        return {
+            p.relative_to(project).as_posix(): p.read_bytes()
+            for p in project.rglob("*")
+            if p.is_file() and ".git" not in p.relative_to(project).parts
+        }
+
+    def test_init_refuses_a_malformed_declaration_before_any_write(self):
+        self._break_declaration()
+        for dry_run in (False, True):
+            with self.subTest(dry_run=dry_run):
+                target = self.root / f"proj-dry-{dry_run}"
+                target.mkdir()
+                rc, axi, err = self.init(target, "rust", dry_run=dry_run)
+                self.assertEqual(rc, 2, f"axi={axi!r} stderr={err!r}")
+                self.assertIs(axi.get("ok"), False, f"axi={axi!r}")
+                self.assertIn("alpha-stack", " ".join(_listed(axi, "warnings")))
+                self.assertEqual(
+                    sorted(p.name for p in target.iterdir()),
+                    [],
+                    "§S1.3: nothing is written before the refusal",
+                )
+
+    def test_agents_refuses_a_malformed_declaration_before_any_write(self):
+        target = self.root / "proj"
+        self.init_ok(target, "rust")
+        before = self._tree(target)
+        self._break_declaration()
+        rc, axi, err = self.agents(target, stacks="rust,python")
+        self.assertEqual(rc, 2, f"axi={axi!r} stderr={err!r}")
+        self.assertIs(axi.get("ok"), False, f"axi={axi!r}")
+        self.assertIn("alpha-stack", " ".join(_listed(axi, "warnings")))
+        after = self._tree(target)
+        self.assertEqual(
+            sorted(set(after) - set(before)),
+            [],
+            "§S1.4: no file is added before the refusal",
+        )
+        self.assertEqual(
+            [p for p in before if before[p] != after.get(p)],
+            [],
+            "§S1.4: no file (.env included) is rewritten before the refusal",
+        )
+
+
+# ------------------------------------------------------------------ §S1.3/§S1.4 --force-managed ----
+
+
+class StackSkillForceManagedTest(_StackSkillSandbox):
+    """§S1.3 / §S1.4 — the agent definitions' ownership rules include ``--force-managed``: a
+    hand-modified rendered file is rewritten under it, by ``init`` and by ``agents``; an
+    unmarked file is never written, forced or not."""
+
+    def _rendered(self, path: str) -> str:
+        source = FIXTURE_SOURCES["alpha-stack"][path]
+        if path == "SKILL.md":
+            return with_skill_marker(source, sha256_text(source))
+        return f"{REFERENCE_MARKER_PREFIX}{sha256_text(source)}{REFERENCE_MARKER_SUFFIX}\n{source}"
+
+    def test_init_force_managed_rewrites_a_hand_modified_skill_never_an_unmarked_file(
+        self,
+    ):
+        target = self.root / "proj"
+        unmarked = "# My own alpha notes\n\nWritten by hand, no marker.\n"
+        hand_modified = with_skill_marker(
+            FIXTURE_SOURCES["alpha-stack"]["SKILL.md"], "0" * 64
+        )
+        for path, text in ((ALPHA_SKILL, hand_modified), (ALPHA_NOTES, unmarked)):
+            (target / path).parent.mkdir(parents=True, exist_ok=True)
+            (target / path).write_text(text, encoding="utf-8")
+
+        axi = self.init_ok(target, "rust", force_managed=True)
+
+        self.assertEqual(
+            (target / ALPHA_SKILL).read_text(encoding="utf-8"),
+            self._rendered("SKILL.md"),
+            "§S1.3: --force-managed rewrites a hand-modified rendered file",
+        )
+        self.assertIn(ALPHA_SKILL, _listed(axi, "emitted"), f"axi={axi!r}")
+        self.assertEqual(
+            (target / ALPHA_NOTES).read_text(encoding="utf-8"),
+            unmarked,
+            "§S1.3: an unmarked file is never written",
+        )
+        self.assertIn(ALPHA_NOTES, _listed(axi, "unmanaged"), f"axi={axi!r}")
+
+    def test_agents_force_managed_rewrites_a_hand_modified_reference(self):
+        target = self.root / "proj"
+        self.init_ok(target, "rust")
+        notes = target / ALPHA_NOTES
+        notes.write_text(
+            notes.read_text(encoding="utf-8") + "A hand edit.\n", encoding="utf-8"
+        )
+        args = argparse.Namespace(stacks=None, force_managed=True)
+        out, err = io.StringIO(), io.StringIO()
+        with (
+            self._environ(),
+            contextlib.redirect_stdout(out),
+            contextlib.redirect_stderr(err),
+        ):
+            rc = scaffold.run_agents(args, self.modelb_home, project_root=target)
+        axi = decode_axi(out.getvalue())
+        self.assertEqual(rc, 0, f"axi={axi!r} stderr={err.getvalue()!r}")
+        self.assertEqual(
+            notes.read_text(encoding="utf-8"),
+            self._rendered("references/alpha-notes.md"),
+            "§S1.4: --force-managed rewrites a hand-modified reference",
+        )
+        self.assertIn(ALPHA_NOTES, _listed(axi, "written"), f"axi={axi!r}")
+        self.assertNotIn(ALPHA_NOTES, _listed(axi, "skipped"), f"axi={axi!r}")
+
+
+# ------------------------------------------------------------------ §S1.5 several skills ----
+
+
+class StackLineNamesEveryDeclaredSkillTest(_StackSkillSandbox):
+    """§S1.5 — a stack declaring two skills renders both, and its ``AGENTS.md`` stack line names
+    both."""
+
+    def setUp(self):
+        super().setUp()
+        write_skill_sources(
+            self.asset_root / "generator",
+            {**FIXTURE_DECLARATION, "zeta-stack": ["rust"]},
+            {
+                "zeta-stack": {
+                    "SKILL.md": skill_md("zeta-stack", "Second rust skill.", "Z.\n")
+                }
+            },
+        )
+
+    def test_the_stack_line_names_both_skills_declared_for_the_stack(self):
+        target = self.root / "proj"
+        self.init_ok(target, "rust")
+        self.assertTrue(
+            (target / rel("zeta-stack", "SKILL.md")).is_file(),
+            "precondition: both skills render",
+        )
+        freeze = md_section(
+            (target / "AGENTS.md").read_text(encoding="utf-8"), "## Skill freeze"
+        )
+        lines = [ln for ln in freeze.splitlines() if ln.startswith("- rust:")]
+        self.assertEqual(
+            len(lines), 1, f"precondition: one rust stack line; {freeze!r}"
+        )
+        for name in ("alpha-stack", "zeta-stack"):
+            self.assertIn(f"`{name}`", lines[0], f"§S1.5: the rust line names {name}")
 
 
 if __name__ == "__main__":
