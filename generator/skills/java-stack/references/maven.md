@@ -311,8 +311,8 @@ git commit -m "Your message"
 # Run only unit tests
 python3 ~/.crucible/clients/mvn-crucible.py module --agent <agent-id>
 
-# Run integration tests (failsafe)
-python3 ~/.crucible/clients/mvn-crucible.py e2e --agent <agent-id>
+# Run integration tests: failsafe *IT, at the integration-test phase (surefire runs first)
+python3 ~/.crucible/clients/mvn-crucible.py integration --agent <agent-id>
 ```
 
 ### JAR Plugin (Library Packaging)

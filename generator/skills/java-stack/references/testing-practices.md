@@ -52,7 +52,7 @@ Never big-bang across layers ("migrate 10 files then fix tests later") — each 
 - Test business logic in isolation
 
 **Integration Tests (`*IT.java`)**
-- Run through the client's `e2e` verb (failsafe), NOT `unit` or `module`
+- Run through the client's `integration` verb (failsafe, at Maven's `integration-test` phase, after the lifecycle's surefire run), NOT `unit` or `module`
 - Use real infrastructure (TestContainers, DevServices)
 - Slower execution
 - Test actual integration with databases, message queues, etc.
@@ -557,8 +557,8 @@ Quarkus produces TWO JaCoCo outputs; only one is correct for Quarkus-managed cla
 # Unit tests only (a module's surefire suite)
 python3 ~/.crucible/clients/mvn-crucible.py module --agent <agent-id>
 
-# Integration tests only (failsafe)
-python3 ~/.crucible/clients/mvn-crucible.py e2e --agent <agent-id>
+# Integration tests: failsafe *IT, at Maven's integration-test phase (surefire runs first)
+python3 ~/.crucible/clients/mvn-crucible.py integration --agent <agent-id>
 
 # Clean build + all tests (the orchestrator's gate)
 python3 ~/.crucible/clients/mvn-crucible.py regression --agent <agent-id>
