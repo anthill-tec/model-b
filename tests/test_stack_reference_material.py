@@ -113,6 +113,7 @@ from tests._helpers import (
     read_text,
     split_frontmatter,
 )
+from tests._helpers import rendered_definition as _rendered
 
 GENERATOR_DIR = REPO_ROOT / "generator"
 STACKS_DIR = GENERATOR_DIR / "stacks"
@@ -537,13 +538,6 @@ def old_reference_findings(text: str) -> list[str]:
 def _skills_line(text: str) -> str | None:
     return next(
         (ln for ln in text.splitlines() if agents.SKILLS_LINE_PREFIX in ln), None
-    )
-
-
-def _rendered(stack: str, role: str) -> str:
-    """One definition rendered in memory from today's stack file and templates."""
-    return agents.render(
-        stack, role, agents.load_stack_params(STACKS_DIR, stack), TEMPLATES_DIR
     )
 
 

@@ -46,6 +46,19 @@ ORCHESTRATION_TEMPLATE_MOVES = {
     for stack, reference in ORCHESTRATION_REFERENCES.items()
 }
 
+#: The generator's stack files and agent templates, as ``rendered_definition`` reads them.
+GENERATOR_STACKS_DIR = REPO_ROOT / "generator" / "stacks"
+GENERATOR_TEMPLATES_DIR = REPO_ROOT / "generator" / "templates"
+
+
+def rendered_definition(stack: str, role: str) -> str:
+    """One definition rendered in memory from today's stack file and templates."""
+    from modelb_axi import agents
+
+    return agents.render(
+        stack, role, agents.load_stack_params(GENERATOR_STACKS_DIR, stack), GENERATOR_TEMPLATES_DIR
+    )
+
 
 def installed_crucible_file(stack: str, sibling: str | None = None) -> tuple:
     """``(path, "")`` for the installed client ``clients[stack]`` listed in Crucible's manifest,

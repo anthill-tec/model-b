@@ -58,6 +58,7 @@ from tests._helpers import (
     read_text,
     split_frontmatter,
 )
+from tests._helpers import rendered_definition as _rendered_definition
 
 GENERATOR_DIR = REPO_ROOT / "generator"
 SKILLS_DIR = GENERATOR_DIR / "skills"
@@ -288,10 +289,6 @@ def _require_references(test: unittest.TestCase) -> dict:
     missing = [rel for rel in ORCHESTRATION_REFERENCES.values() if not (REPO_ROOT / rel).is_file()]
     test.assertEqual(missing, [], "§S1.1: each stack's orchestration reference exists")
     return {stack: read_text(_reference(stack)) for stack in ORCHESTRATION_REFERENCES}
-
-
-def _rendered_definition(stack: str, role: str) -> str:
-    return agents.render(stack, role, agents.load_stack_params(STACKS_DIR, stack), TEMPLATES_DIR)
 
 
 # ------------------------------------------------------------------ the detectors ----
