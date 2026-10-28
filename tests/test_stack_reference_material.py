@@ -34,6 +34,10 @@ the CR moves with it:
   ``tests.test_skill_frontmatter``).
 - ``AgentsMdNamesStackSkillSourcesTest`` — §S6.4/AC9: ``AGENTS.md`` § Key Directories names
   ``generator/skills/`` and ``generator/stack-skills.toml``.
+- ``GeneratorRowDetectorTest`` / ``GeneratorRowCurrentTest`` — §S6.4/AC9: :func:`generator_row_findings`
+  proved both ways, then run over ``AGENTS.md``'s ``generator/`` row: it names every
+  ``generator/stacks/*.toml`` and states the number of files in ``generator/agents/``, both
+  derived from the tree.
 
 Anchor phrases are the spec's (§S3 tables), checked as written. Hermetic: reads repository files
 and renders in memory; nothing is installed or written outside a temp dir. Stdlib only.
@@ -806,6 +810,111 @@ class AgentsMdNamesStackSkillSourcesTest(unittest.TestCase):
                 if n not in section
             ],
             [],
+        )
+
+
+
+#: §S6.4 — a stated count of generated definitions: ``<n> files`` or ``<n> [generated] definitions``.
+_DEFINITION_COUNT = re.compile(r"(?<![\w.-])(\d+) (?:generated )?(?:files|definitions)\b")
+
+
+def generator_row(agents_md: str) -> str:
+    """The ``generator/`` row of ``agents_md``'s ``## Key Directories`` table ("" when none)."""
+    for line in md_section(agents_md, "## Key Directories").splitlines():
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if line.lstrip().startswith("|") and cells[0].strip("`") == "generator/":
+            return line
+    return ""
+
+
+def generator_row_findings(agents_md: str, stacks: list[str], definitions: int) -> list[str]:
+    """What the ``generator/`` row of ``agents_md`` gets wrong against the tree (§S6.4): a stack
+    of ``stacks`` (the ``generator/stacks/*.toml`` stems) it does not name, and a stated count of
+    generated definitions other than exactly one, equal to ``definitions``."""
+    row = generator_row(agents_md)
+    if not row:
+        return ["AGENTS.md: the Key Directories table has no generator/ row"]
+    out = [
+        f"the generator/ row does not name the stack file {stack}.toml"
+        for stack in stacks
+        if not re.search(rf"(?<![\w-]){re.escape(stack)}(?![\w-])", row)
+    ]
+    counts = _DEFINITION_COUNT.findall(row)
+    if counts != [str(definitions)]:
+        out.append(
+            f"the generator/ row states {counts} as the generated definitions' count; "
+            f"generator/agents/ holds {definitions}"
+        )
+    return out
+
+
+class GeneratorRowDetectorTest(unittest.TestCase):
+    """§S6.4 — :func:`generator_row_findings` proved both ways on synthetic tables."""
+
+    STACKS = ["arduino", "bun", "rust"]
+
+    @staticmethod
+    def _agents_md(row: str) -> str:
+        return (
+            "# T\n\n## Key Directories\n\n| Path | Purpose |\n|---|---|\n"
+            f"| `skills-src/` | bundles |\n{row}\n\n## Next\n\n"
+            "| `generator/` | stacks/{arduino}.toml (9 files) |\n"
+        )
+
+    def test_a_current_row_has_no_finding(self):
+        row = "| `generator/` | `stacks/{arduino,bun,rust}.toml` → `agents/` (12 files) |"
+        self.assertEqual(generator_row_findings(self._agents_md(row), self.STACKS, 12), [])
+
+    def test_a_row_missing_a_stack_or_stating_a_stale_count_is_found(self):
+        row = "| `generator/` | `stacks/{arduino,bun}.toml` → `agents/` (8 files); rust-stack |"
+        self.assertEqual(
+            generator_row_findings(self._agents_md(row), self.STACKS, 12),
+            [
+                "the generator/ row does not name the stack file rust.toml",
+                "the generator/ row states ['8'] as the generated definitions' count; "
+                "generator/agents/ holds 12",
+            ],
+        )
+
+    def test_a_row_stating_no_count_or_a_second_count_is_found(self):
+        for label, row, counts in (
+            ("no count", "| `generator/` | `stacks/{arduino,bun,rust}.toml` |", []),
+            (
+                "a stale count beside the right one",
+                "| `generator/` | `stacks/{arduino,bun,rust}.toml` (12 files, was 8 files) |",
+                ["12", "8"],
+            ),
+        ):
+            with self.subTest(case=label):
+                self.assertEqual(
+                    generator_row_findings(self._agents_md(row), self.STACKS, 12),
+                    [
+                        f"the generator/ row states {counts} as the generated definitions' "
+                        "count; generator/agents/ holds 12"
+                    ],
+                )
+
+    def test_a_table_with_no_generator_row_is_found(self):
+        self.assertEqual(
+            generator_row_findings(self._agents_md("| `tools/` | repo-only |"), self.STACKS, 12),
+            ["AGENTS.md: the Key Directories table has no generator/ row"],
+            "a generator/ row outside ## Key Directories does not count",
+        )
+
+
+class GeneratorRowCurrentTest(unittest.TestCase):
+    """§S6.4/AC9 — ``AGENTS.md``'s ``generator/`` row names every ``generator/stacks/*.toml``
+    and the number of files in ``generator/agents/``, both read from the tree."""
+
+    def test_the_generator_row_names_every_stack_file_and_the_definitions_count(self):
+        stacks = sorted(path.stem for path in STACKS_DIR.glob("*.toml"))
+        definitions = sum(1 for path in AGENTS_DIR.iterdir() if path.is_file())
+        self.assertTrue(stacks, "precondition: generator/stacks/ holds stack files")
+        self.assertGreater(definitions, 0, "precondition: generator/agents/ holds definitions")
+        self.assertEqual(
+            generator_row_findings(read_text(REPO_ROOT / "AGENTS.md"), stacks, definitions),
+            [],
+            "§S6.4/AC9: the generator/ row states the tree's stack files and definitions",
         )
 
 

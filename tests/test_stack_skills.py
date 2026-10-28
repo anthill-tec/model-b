@@ -28,6 +28,7 @@ Stdlib only.
 """
 
 import argparse
+import ast
 import contextlib
 import io
 import json
@@ -1057,11 +1058,11 @@ class StackSkillOwnershipFormsTest(unittest.TestCase):
                 )
 
     def test_with_marker_inserts_the_agents_marker_where_no_prefix_is_given(self):
-        marked = agents._with_marker(self.SKILL)
+        marked = agents.with_marker(self.SKILL)
         self.assertEqual(
             marked.splitlines()[1], f"{agents.MARKER_PREFIX}{sha256_text(self.SKILL)}"
         )
-        skill_marked = agents._with_marker(self.SKILL, SKILL_MARKER_PREFIX)
+        skill_marked = agents.with_marker(self.SKILL, SKILL_MARKER_PREFIX)
         self.assertEqual(
             skill_marked.splitlines()[1],
             f"{SKILL_MARKER_PREFIX}{sha256_text(self.SKILL)}",
@@ -1088,17 +1089,80 @@ class StackSkillOwnershipFormsTest(unittest.TestCase):
         )
 
 
+class MarkerHelpersPublicTest(unittest.TestCase):
+    """§S1.3 — the marker helpers ``stack_skills`` uses across modules are public:
+    ``agents.sha256_text`` and ``agents.with_marker`` exist and behave, and
+    ``modelb_axi/stack_skills.py`` reaches no ``agents._…`` private helper."""
+
+    def test_sha256_text_is_public_and_hashes_the_text_as_utf8(self):
+        for text in ("", "# Notes\n", "café — §S1.3\n"):
+            with self.subTest(text=text):
+                self.assertEqual(agents.sha256_text(text), sha256_text(text))
+
+    def test_with_marker_is_public_and_marks_over_the_unmarked_content(self):
+        skill = skill_md("alpha-stack", "d", "Body.\n")
+        marked = agents.with_marker(skill, SKILL_MARKER_PREFIX)
+        lines = marked.splitlines(keepends=True)
+        self.assertEqual(lines[1], f"{SKILL_MARKER_PREFIX}{sha256_text(skill)}\n")
+        self.assertEqual(
+            "".join(lines[:1] + lines[2:]),
+            skill,
+            "removing the marker line restores exactly what was hashed",
+        )
+
+    def test_stack_skills_reaches_no_private_agents_helper(self):
+        source = REPO_ROOT / "modelb_axi" / "stack_skills.py"
+        private = []
+        for node in ast.walk(ast.parse(source.read_text(encoding="utf-8"))):
+            if (
+                isinstance(node, ast.Attribute)
+                and isinstance(node.value, ast.Name)
+                and node.value.id == "agents"
+                and node.attr.startswith("_")
+            ):
+                private.append(f"agents.{node.attr}")
+            elif (
+                isinstance(node, ast.ImportFrom) and node.module == "modelb_axi.agents"
+            ):
+                private += [
+                    f"agents.{alias.name}"
+                    for alias in node.names
+                    if alias.name.startswith("_")
+                ]
+        self.assertEqual(
+            sorted(set(private)),
+            [],
+            "stack_skills.py calls the public marker helpers, never an agents._… one",
+        )
+
+
 # ------------------------------------------------------------------ §S1.3/§S1.4 before any write ----
 
 
 class StackSkillValidatedBeforeAnyWriteTest(_StackSkillSandbox):
-    """§S1.3 / §S1.4 — a declaration that cannot be rendered is refused before the first write:
-    ``init`` (real or ``--dry-run``) writes nothing into its target, and ``agents`` neither
+    """§S1.1 / §S1.3 / §S1.4 / AC1 — a declaration that cannot be rendered, or a source whose
+    ``SKILL.md`` frontmatter ``name`` differs from its directory, is refused before the first
+    write: ``init`` (real or ``--dry-run``) writes nothing into its target, and ``agents`` neither
     re-renders a definition nor records a new stack set."""
+
+    #: §S1.1 — a frontmatter ``name`` that is not the source directory's (``alpha-stack``).
+    MISMATCHED_NAME = "alpha-stack-renamed"
 
     def _break_declaration(self) -> None:
         (self.asset_root / "generator" / "stack-skills.toml").write_text(
             "[skills.alpha-stack]\nstacks = []\n", encoding="utf-8"
+        )
+
+    def _mismatch_source_name(self) -> None:
+        """Rewrite ``alpha-stack``'s source ``SKILL.md`` so its frontmatter ``name`` differs
+        from its directory; everything else about the source stays valid."""
+        self.source("alpha-stack", "SKILL.md").write_text(
+            skill_md(
+                self.MISMATCHED_NAME,
+                "Synthetic stack skill for the rust stack: fixture material only.",
+                "# Alpha stack\n\nA source whose name is not its directory's.\n",
+            ),
+            encoding="utf-8",
         )
 
     def _tree(self, project: Path) -> dict:
@@ -1143,6 +1207,67 @@ class StackSkillValidatedBeforeAnyWriteTest(_StackSkillSandbox):
             [p for p in before if before[p] != after.get(p)],
             [],
             "§S1.4: no file (.env included) is rewritten before the refusal",
+        )
+
+    def test_init_refuses_a_source_whose_frontmatter_name_differs_from_its_directory(
+        self,
+    ):
+        self._mismatch_source_name()
+        for dry_run in (False, True):
+            with self.subTest(dry_run=dry_run):
+                target = self.root / f"proj-mismatch-dry-{dry_run}"
+                target.mkdir()
+                rc, axi, err = self.init(target, "rust", dry_run=dry_run)
+                self.assertEqual(
+                    rc,
+                    2,
+                    "§S1.1/AC1: init refuses a source whose frontmatter name differs from its "
+                    f"directory; axi={axi!r} stderr={err!r}",
+                )
+                self.assertIs(axi.get("ok"), False, f"axi={axi!r}")
+                self.assertIn(
+                    "alpha-stack",
+                    " ".join(_listed(axi, "warnings")),
+                    "§S1.1: the refusal names the skill",
+                )
+                self.assertEqual(
+                    sorted(p.name for p in target.iterdir()),
+                    [],
+                    "§S1.1: nothing is written before the refusal",
+                )
+
+    def test_agents_refuses_a_source_whose_frontmatter_name_differs_from_its_directory(
+        self,
+    ):
+        target = self.root / "proj"
+        self.init_ok(target, "rust")
+        before = self._tree(target)
+        self.assertIn(ALPHA_SKILL, before, "precondition: init rendered alpha-stack")
+        self._mismatch_source_name()
+        rc, axi, err = self.agents(target, stacks="rust,python")
+        self.assertEqual(
+            rc,
+            2,
+            "§S1.1/AC1: `modelb-axi agents` refuses a source whose frontmatter name differs "
+            f"from its directory; axi={axi!r} stderr={err!r}",
+        )
+        self.assertIs(axi.get("ok"), False, f"axi={axi!r}")
+        self.assertIn(
+            "alpha-stack",
+            " ".join(_listed(axi, "warnings")),
+            "§S1.1: the refusal names the skill",
+        )
+        after = self._tree(target)
+        self.assertEqual(
+            sorted(set(after) - set(before)),
+            [],
+            "§S1.1: no file is added before the refusal",
+        )
+        self.assertEqual(
+            [p for p in before if before[p] != after.get(p)],
+            [],
+            "§S1.1: no file (the rendered SKILL.md and .env included) is rewritten before "
+            "the refusal",
         )
 
 

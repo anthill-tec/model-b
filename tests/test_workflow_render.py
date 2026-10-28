@@ -18,7 +18,8 @@ Class map:
 - ``FirstLineOwnershipTest`` — ``agents.first_line_ownership(text, prefix)`` classifies intact,
   hand-modified and unmanaged text, and ``place_owned`` applies it.
 - ``PermissionPolicyUsesFirstLineOwnershipTest`` — the permission policy classifies through it, and
-  ``_sha256_text`` (and ``first_line_ownership``) is defined once, in ``modelb_axi/agents.py``.
+  ``sha256_text`` (and ``first_line_ownership``) is defined once, in ``modelb_axi/agents.py`` —
+  public since CR-MDB-085 §S1.3, with no private ``_sha256_text`` twin.
 - ``RenderRefusesAnUnsafeTargetDirTest`` - CR-MDB-068 C5 RED (VERIFY F1): ``render`` refuses a
   target whose ``dir`` holds a character outside ``[A-Za-z0-9._/-]``, naming the ``dir``.
 - ``ReleaseTargetsDefinedOnceTest`` - CR-MDB-068 C5 RED (VERIFY F9): the canonical target order
@@ -364,7 +365,8 @@ class FirstLineOwnershipTest(unittest.TestCase):
 
 class PermissionPolicyUsesFirstLineOwnershipTest(unittest.TestCase):
     """§S2 — the permission policy classifies through ``agents.first_line_ownership`` (its own
-    copy goes), and ``_sha256_text`` is defined once."""
+    copy goes), and ``sha256_text`` is defined once (public since CR-MDB-085 §S1.3; no private
+    ``_sha256_text`` twin is defined anywhere)."""
 
     def test_placing_the_policy_classifies_the_existing_file_through_it(self):
         tmp = Path(tempfile.mkdtemp(prefix="r68-policy-"))
@@ -383,12 +385,13 @@ class PermissionPolicyUsesFirstLineOwnershipTest(unittest.TestCase):
 
     def test_sha256_text_and_first_line_ownership_are_defined_once_in_agents(self):
         package = REPO_ROOT / "modelb_axi"
-        found: dict[str, list[str]] = {"_sha256_text": [], "first_line_ownership": []}
+        found: dict[str, list[str]] = {"sha256_text": [], "_sha256_text": [],
+                                       "first_line_ownership": []}
         for path in sorted(package.glob("*.py")):
             for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
                 if isinstance(node, ast.FunctionDef) and node.name in found:
                     found[node.name].append(path.name)
-        self.assertEqual(found, {"_sha256_text": ["agents.py"],
+        self.assertEqual(found, {"sha256_text": ["agents.py"], "_sha256_text": [],
                                  "first_line_ownership": ["agents.py"]})
 
 
