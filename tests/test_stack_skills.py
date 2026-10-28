@@ -655,6 +655,50 @@ class AgentsMdStackLineTest(_StackSkillSandbox):
             "§S1.5/AC3: a stack without a declared skill names no stack skill",
         )
 
+    def test_stack_line_leaves_off_a_declared_skill_whose_source_has_no_skill_md(self):
+        """§S1.5 / AC3 — ``hollow-stack`` is declared for arduino but its source has no
+        ``SKILL.md``, so it renders nothing and the arduino line names no stack skill; the rust
+        line, beside it, still names its rendered ``alpha-stack``."""
+        target = self.root / "proj"
+        self.init_ok(target, "arduino,rust")
+        self.assertFalse(
+            (target / SKILLS_RELDIR / "hollow-stack").exists(),
+            "precondition (§S1.2): the declared skill without SKILL.md renders nothing",
+        )
+        freeze = md_section(
+            (target / "AGENTS.md").read_text(encoding="utf-8"), "## Skill freeze"
+        )
+        lines = {
+            stack: [ln for ln in freeze.splitlines() if ln.startswith(f"- {stack}:")]
+            for stack in ("arduino", "rust")
+        }
+        for stack, found in lines.items():
+            self.assertEqual(
+                len(found), 1, f"precondition: one {stack} stack line; {freeze!r}"
+            )
+        arduino_line, rust_line = lines["arduino"][0], lines["rust"][0]
+        self.assertIn(
+            "`alpha-stack`",
+            rust_line,
+            "§S1.5/AC3: the rendered skill beside it is still named",
+        )
+        self.assertNotIn(
+            "hollow-stack",
+            arduino_line,
+            "§S1.5/AC3: a declared skill with no SKILL.md is left off the stack line",
+        )
+        self.assertNotRegex(
+            arduino_line,
+            r"(?i)stack skill",
+            "§S1.5/AC3: the arduino line names no stack skill when its declared one is not "
+            "rendered",
+        )
+        self.assertNotIn(
+            "hollow-stack",
+            freeze,
+            "§S1.5/AC3: the unrendered skill is named on no line of the stack section",
+        )
+
 
 class StackSkillsTrustSurfacesTest(_StackSkillSandbox):
     """§S1.5 / AC3 — the untrusted-project warning ``init`` prints and the ``AGENTS.md``
