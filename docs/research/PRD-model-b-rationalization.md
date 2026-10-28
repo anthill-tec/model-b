@@ -103,6 +103,13 @@ The `~/.claude` user space grew organically into 24 memory files, ~50 skills, 29
 
   **AMENDED 2026-10-16 (user ruling, after a shutdown hung):** a shutdown's last two acts are strictly sequential — stop the wake watcher by address, confirm from the addressbook that the address no longer shows `listening`, and only then unregister it. They are never issued together (one parallel batch or one command). Model B 1.0.0's shutdown skill, which every installation deploys, carries the rule. The hang itself was reported to the Sandesh project (Sandesh #1464).
 
+  **AMENDED 2026-10-10 (user rulings, filed with CR-MDB-060): the knowledge store is the one home for a project's memory notes.**
+  - **lean-ctx is required by default.** Every Model B project has a `KNOWLEDGE_CATEGORY`, and `docs/memory/` is retired. A machine without lean-ctx is a preflight failure with its remediation, never a silent fallback to Markdown. This supersedes "where lean-ctx is installed" in the 2026-09-27 amendment above.
+  - **The language references become facts:** short, keyed, searchable facts, not documents.
+  - **Model B's own notes were migrated by hand, outside a CR** (2026-10-10): the untracked execution knowledge in the Claude-era user-scope notes went into `modelb-workflow`, and Model B's own `docs/memory/` (only the generic `operational-commands.md`) was removed. The CR covers the definitions Model B manages.
+
+  **AMENDED 2026-10-14 (user ruling): facts are reconciled automatically, never on request.** At bootstrap (right after the category is loaded), after every `cr-close` (each fact naming the closed CR) and at shutdown (the facts the run overtook), the orchestrator checks every fact against the board and the repo. It rewrites an overtaken fact under its key, removes one the repo or the board now tracks, and reports what changed. A fact is never only flagged for the user's approval.
+
 ### D6 — Generated per-stack agents
 - Role templates (`red/green/verify/fix`) + per-stack parameter files generate the arduino/bun/python/quarkus/rust agent set (20 files). SE principles are written once — in the templates.
   **AMENDED 2026-09-25 (CR-MDB-035, DN-multi-harness §D17, CR-MDB-025):** Model B ships the generated stack × role set only, rendered per project by `init`/`agents` (D10.8); the installer deploys none, and counts are not stated (§4 criterion 4).
