@@ -3,11 +3,13 @@
 **Status:** PENDING — **SEED, not the finished spec** (filed 2026-10-10 into release 1.0.0, wave 2).
 Gap analysis, the design record, the spec and its pre-review happen in order when this CR starts.
 **Type:** feature (scaffold, project schema, skills, memory templates, installer preflight)
-**Priority:** P1 — release 1.0.0, wave 2 (user ruling 2026-10-10).
+**Priority:** P1 — release 1.0.0, wave 2.
 **Depends on:** none (board-authoritative: read `queue`, not this line)
 **Labels:** memory, knowledge-store, lean-ctx, scaffold, skills
 **Design reference:** CR-MDB-045 (execution knowledge store, `KNOWLEDGE_CATEGORY`); PRD D10;
-`contracts/lean-ctx.md`; `orchestration-common` § "Memory"; user rulings 2026-10-10 (below).
+`contracts/lean-ctx.md`; `orchestration-common` § "Memory"; PRD D5, amendments of 2026-10-10 (the
+knowledge store is the one home; lean-ctx required; language references as facts) and 2026-10-14
+(facts reconciled automatically).
 
 ## Context
 
@@ -17,19 +19,7 @@ store under `KNOWLEDGE_CATEGORY` (CR-MDB-045) — but only where the installer f
 `docs/memory/` from `skills-src/memory-templates/` (`operational-commands.md`,
 `<stack>-orchestration.md` for arduino/java/rust, five long `java-*.md` language references) plus an
 `INDEX.md`, which the bootstrap and shutdown skills read. The knowledge store is more efficient and
-searchable; the user rules it the one home for a Model B project's memory notes.
-
-## User rulings (2026-10-10)
-
-1. **Release 1.0.0,** a new CR in wave 2.
-2. **lean-ctx is required by default:** every Model B project has a `KNOWLEDGE_CATEGORY`;
-   `docs/memory/` is retired. A machine without lean-ctx is a preflight failure with remediation,
-   not a silent fallback to Markdown.
-3. **The language references are split into facts** — short, keyed, searchable facts, not documents.
-4. **Model B's own notes are migrated as a chore, outside this CR** (user ruling 2026-10-10: the CR
-   covers only the definitions Model B manages). Done 2026-10-10: the Claude-era user-scope notes'
-   untracked execution knowledge went into `modelb-workflow` by hand, and `docs/memory/` (only the
-   generic `operational-commands.md` template) was removed in a `chore(memory)` commit.
+searchable, and PRD D5 makes it the one home for a Model B project's memory notes.
 
 ## Scope (seed)
 
