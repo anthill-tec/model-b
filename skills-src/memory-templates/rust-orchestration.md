@@ -2,7 +2,7 @@
 
 Rust-stack embodiment of `orchestration-common.md` (workflow, approval gates,
 dispatch, verify-independently — not restated here) and
-`~/.agents/skills/model-b/references/sub-agent-procedure.md` (sub-agent procedure). This file is the Rust mechanics: the scripts, the gate sequence, disk policy.
+`~/.agents/skills/model-b/references/sub-agent-procedure.md` (sub-agent procedure). This file is the Rust mechanics: the scripts, the gate sequence, disk policy. The agent-facing material lives with the agents: the E2E / docker / nextest-concurrency gotchas and the flaky-test investigation principle in the `rust-stack` stack skill, and the per-role RED/GREEN/VERIFY rules in the rust agent definitions.
 
 > CR / PRD / DN doc conventions → the `cr-authoring` skill (universal). A project's own deltas on top live in its `AGENTS.md`; the orchestrator rules in the `model-b` skill.
 
@@ -25,8 +25,6 @@ dispatch, verify-independently — not restated here) and
 - **`crucible` skill + its `references/rust.md`** — nextest junit + llvm-cov lcov + rustc compile-error parser. Load `crucible` (read `references/rust.md`) before any ingesting run.
 
 **Use the CLI, NEVER inline python.** Standard Crucible ops (register/unregister/heartbeat/ingest/regression) go through `rust-crucible.py` — a stable signature gets one-time permission approval; per-call inline python (`python3 -c …` through the shell) re-prompts every run. Inline python is reserved for one-off computations the CLI doesn't cover. `rust-crucible.py` subcommands: `register`/`unregister`; `test`/`check`/`clippy`/`auto-ingest` (all take `--agent` for inline ingest, `--crate`, `--features`, `--test <bin>`); `regression-ingest --crates a,b` (per-crate coverage); `workspace-regression --all-features` (the canonical docker-free coverage gate); `pre-merge-gate` (docker-free `-P ci`); `docker-e2e-gate` (docker-infra tier, `-P e2e`). No project hardcoded — defaults to the git repo of CWD, override via `--project-dir` / `RUST_CRUCIBLE_PROJECT_DIR`; reads `CRUCIBLE_PROJECT_KEY` from `<project-dir>/.env`.
-
-**Crucible ingest routing** (the skill/CLI handles this automatically, but know it): compile-fail → `/api/v2/runs/compile` `format: rustc` (raw stderr) → Compile panel; compiled+ran → `/api/v2/runs` `format: junit` → Test panel. Coverage is published ONLY on a full-green `--all-features` workspace run; per-crate/per-cycle runs never carry coverage.
 
 **`worktree-flow.py` subcommands (exactly 5 — `start`/`status`/`sync`/`finish`/`abort`; CR-MDB-028 removed the ChangeSet half)** — `start --cr <id> [--slug <s>] [--track <label> | $WF_TRACK]` (worktree + `feature/<cr>-<slug>` off LOCAL develop; `--track`/`$WF_TRACK` stamps a human session/track label as git config `wf.track.<cr>`, shown in `status`, unset on finish/abort — terminals/harnesses do NOT expose the renamed session title to subprocesses, so this one-time-per-session label is how a track names itself); `status` (dashboard: worktrees, ahead/behind, sync-need, merge lock, **+ latest committed Crucible phase** — RED/GREEN/RED-fix/close-out, inferred per-worktree from the commit-message convention; **+ track label**; git-derived, no sidecar); `sync --cr <id>` (merges develop into the CR's branch, never a rebase; aborts cleanly on conflict); `finish --cr <id> [--push]` (lock → `sync`'s catch-up merge if behind → `merge --no-ff` → `worktree remove` → `branch -d`); bring a CR's worktree branch level with `worktree-flow.py sync --cr <cr>` before `finish`; `abort --cr <id> [--delete-branch]`. `finish` MUST run from the integration tree, not inside the worktree (it hard-errors otherwise — leave the worktree first); takes an atomic `.git/worktree-flow-merge.lock` so parallel finishes serialize. **Always `--dry-run` first** when unsure. Does NOT replace `git flow feature start` for sequential single-CR work — parallel-mode only.
 
@@ -63,22 +61,8 @@ confirm per project. `[profile.e2e]` re-declares the `kafka-e2e-serial` group so
 the shared-stack binaries serialize there too.
 
 - **Gate sizing:** with deterministic proof (a RED test that forces the race, or fix-by-construction), 2-run smoke suffices. Without proof, sample N× to close a flake.
-- **A new docker-dependent test is added to BOTH nextest default-filters** (`ci` excludes it, `e2e` includes it) — otherwise it never runs. Then confirm it actually runs (N > 0, not 0 or skipped) — an unrun gate is itself a false green.
 - **Clippy `-D warnings` clean BEFORE any full merge regression** — a slow regression a fast clippy would fail is wasted.
 - **Report skipped/ignored tests explicitly** — every regression. Under `-P ci` the docker-infra tier is *filtered* (won't appear at all, not "skipped"); remaining skips are real `#[ignore]` holes or runtime-skips — a bare count hides them.
-
-## RED/GREEN/VERIFY additions
-- **Clippy runs with `--tests`** (`clippy --crate <c> --tests --deny-warnings`) in RED, GREEN and VERIFY — without it the test targets are not compiled and their lints surface only at the merge gate.
-- **Read the `passed=/failed=` summary, never the exit code** — the coverage gate runs with `--ignore-run-fail`, so `exit=0` can carry `failed>0`.
-- **`#[ignore]` is temporary, never a resting state** — track each ignored test and resolve it in a dedicated follow-up CR.
-- **GREEN may promote a cargo dependency from dev-only to production** without escalating, when production code legitimately imports it.
-- **A variant added to a shared cross-crate enum** is verified per dependent crate with `--all-features` and clippy `--tests`, never a partial feature set.
-- **Every `rust-crucible.py` run in a worktree passes `--project-dir <absolute worktree>`** — cwd resets between shell calls, and the default resolves the main tree, so the run tests unmodified code (a false green).
-- **A new feature-gated test file gets its `[[test]]` + `required-features` entry in the same cycle** — nextest silently skips it otherwise; confirm the new target names actually run, not only that the total rose.
-- **A new crate's first RED pre-wires every dependency the crate will need** — no mid-cycle manifest churn.
-
-## RED that won't compile
-Rust RED frequently fails to **compile** (the target type/field/fn doesn't exist yet) — that is a valid RED. Ingest it via the rustc-compile path (the `crucible` skill, `references/rust.md`), never as empty junit.
 
 ## Disk hygiene (orchestrator-only)
 A full `--all-features`/llvm-cov run leaves 100-200G+ of `target/`. Guards are **embodied in tooling** (don't rely on recall):
@@ -100,22 +84,5 @@ Recovery (orchestrator runs these — agents do NOT have `cargo sweep`/`cargo ca
 ## CARGO_BUILD_JOBS cap (dev workstation — mandatory before any heavy build)
 Default cargo spawns one rustc per core; instrument-coverage doubles compile memory. On the 24-core / 31 GiB-RAM dev box, `cargo llvm-cov nextest --workspace --all-features`, a cold/partially-invalidated `--workspace` build, or `--features e2e` after a partial target clean all OOM the machine (kernel watchdog reset, ~1 min unclean reboot). **Prefix heavy builds with `CARGO_BUILD_JOBS=12`** (one rustc per 2 cores, halves peak working set; ~1.5× wall time, no crash). Verified safe at 12 (~11.8 GiB zram peak); drop to 8 for heavier feature sets. `rust-crucible.py` gates embed this — only matters for ad-hoc raw runs. Do NOT skip it (two confirmed crashes 2026-05-19 from forgetting). A gate reaped mid-compile is uncapped rustc parallelism thrashing zram, not the OOM killer — cap the build jobs; diagnose with `oomctl` / the cgroup's `memory.events`.
 
-## Flaky-test investigation principle (timing/parallel-load failures)
-Logical sequence + data integrity preserved = OK to serialize; otherwise fix the root cause. Ask whether the failure means (a) the SYSTEM produces wrong results (data lost/reordered/duplicated/corrupted, invalid state transitions) → real bug, fix the code; or (b) the TEST asserts wall-clock timing for its own sake while the system still completes correctly with eventual consistency → flawed test: rewrite to assert semantic correctness (data integrity, ordering), or — only if the timing observation is genuinely the sole detection path — accept a `#[serial]` / nextest serial-group with explicit justification naming the preserved invariant. `#[serial]` without root-cause investigation accrues debt.
-
+## Gate sizing
 **Gate sizing follow-on:** deterministic proof (a RED test that forces the race, or fix-by-construction that removes the shared mutable state) makes statistical "N consecutive runs" redundant — 2-run smoke suffices. N× sampling is only for fixes WITHOUT proof.
-
-## E2E / docker / nextest-concurrency gotchas
-Re-read before any CR touching `deploy/docker-compose.*` or adding a `tests/e2e_*.rs` binary.
-- **Container UID owns bind-mount writes.** Images often run non-root (otel-collector 10001, postgres 70); files written into a HOST bind-mount are owned by the container UID → host-user harness gets EACCES even on 0777 dirs. Add `user: "${UID:-1000}:${GID:-1000}"` to the compose service; export `UID=$(id -u) GID=$(id -g)` before `docker compose up`.
-- **`docker compose down -v` does NOT touch host bind-mounts** (only named volumes). Stale files from a prior run survive teardown → "same test fails the second time" mysteries. Harness must `rm -f` stale bind-mount files in `ensure_compose_up` BEFORE `up`; if owned by a prior container UID, use a throwaway `docker run --rm -v <bind>:/data alpine sh -c 'chmod 0777 /data && rm -f /data/<file>'`.
-- **`docker compose up --wait` only waits on services WITH a healthcheck.** No healthcheck → returns the instant `docker start` succeeds, before the listener binds → early events dropped. Add an explicit harness readiness poll (`http_client.head(&url).send().await.is_ok()` proves the listener is bound — any HTTP response beats connection-refused).
-- **nextest runs each test in its OWN process**, so `Drop`/`Box::leak`'d teardown fires per test → up/down/up/down per test. Treat process-per-test + Drop teardown as a stress test: every readiness wait / cleanup / chmod must be idempotent, fast, and tolerant of "previous test left X in state Y".
-- **`#[serial]` only serializes WITHIN a binary.** Two binaries (`e2e_kafka`, `e2e_telemetry`) run concurrently even if both use `#[serial]` internally. To serialize ACROSS binaries sharing a resource (the docker stack), use nextest `test-groups` in `.config/nextest.toml` (`max-threads = 1` + a `binary(...)` filter override per binary). Adding a new e2e binary that shares the stack → add a matching filter to the same group.
-- **Half-stack vs full-stack `up` profiles cause silent cross-binary breakage.** `docker compose down -v` tears down the FULL project (the project is the unit), so half-stack→full-stack transitions surface races + ownership mismatches pure-isolation never hits. Canonical CR gate = pure isolation (`-E 'binary(my_e2e)'`); workspace runs include cross-binary failures that aren't production defects.
-- **Cross-binary failures ≠ production defects (usually).** An e2e suite that passes 8/8 in isolation but fails under workspace regression = harness cross-binary race. Investigate test-infra; do NOT modify production code; capture the limitation + propose a harness-hardening follow-up CR.
-- **One invariant per e2e test.** A "span exported" test must not also assert `total_acked >= N` (ack path is barrier-gated and orthogonal to the telemetry path); conflating them fails the test on a different subsystem's defect. To prove "events processed" use a non-ack signal (a span/hop with the matching trace_id).
-- **Zero-cost-when-off assertions are no signal.** "≤0 spans when off" passes trivially when the production emission path is silently dead (0 spans for any reason satisfies it). When triaging a partial-pass e2e suite, always check an always-on positive assertion too — all-positive-fail + zero-cost-pass = the whole emission path is dead.
-
-## Test naming
-Test function names describe the invariant under test in plain English — never CR-ordinal positions. Smell: `t22_sink_e2e_codec_encode`, `test_33`, `s5_test_14` (those `tN_` / `sN_` prefixes are CR-internal task numbers that lose all meaning once the CR closes). Rename to e.g. `sink_encodes_three_codecs_with_sr_wire_prefix`, `source_consumes_json_kafka_and_emits_cloudevent`. (Test FILES likewise: name by feature, never by CR ID.)

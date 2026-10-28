@@ -71,6 +71,8 @@ green = '''
 - **Run the failing test first** (`arduino-crucible.py unit`) and confirm it fails for the RIGHT reason before implementing; read the module under test + its header (`ctx_read mode:"signatures"`).
 - **Style:** match existing (`#define`s at top of `.cpp`, `RGB565_*` colours, no dead code, clean includes; no fully-qualified inline names). Commit style `feat|fix(<CR-ID>): ...`.
 - **Prohibited:** committing with a broken `arduino-cli` build; putting a hardware include into a pure module; big-bang across modules; skipping the L0 compile gate.
+- **Verify the exact part before writing a register-level driver** — from the vendor datasheet and the driver library's source. Mocks cannot catch a wrong chip.
+- **Hardware identity is the first bring-up gate** — a bus scan and a part-ID read pin the real address and part before any driver logic is trusted; host mocks validate logic, never the hardware contract.
 '''
 verify = '''
 - **Gates to run INDEPENDENTLY:** (1) full native suite (regression) + ingest — `arduino-crucible.py regression --agent YOUR_AGENT_ID --project-dir sheetal-firmware` (the `regression` tier with coverage lands in CR-SHE-006; until then use `unit`); read the JUnit, report the REAL counts. (2) **L0 compile** — `arduino-cli compile --fqbn arduino:renesas_uno:minima --build-path ./build sheetal-firmware` — must build; report flash/RAM. (3) **Coverage** (when CR-SHE-006 lands): lcov summary; judge adequacy of YOUR-CR lines, not the whole repo. (4) Where the CR involves hardware/protocol and L2/L3/L4 exist: run/inspect them; else file the gap.
@@ -86,4 +88,6 @@ fix = '''
 - **Caller-existence findings** are fixed by wiring the real caller, not by deleting the API or adding a test caller. **Boundary findings** (a hardware include leaked into a pure module) are fixed by restoring the seam (move the dependency behind injection/callback), not by suppressing the symptom.
 - **Final gate:** full native suite + ingest (GREEN) and final `arduino-cli compile` clean — confirm no finding regressed another. Commit style `fix(<CR-ID>): <finding summary>`.
 - **Style:** clean includes, no dead code, match house style; verify library APIs against `~/.opensrc/repos/github.com/moononournation/Arduino_GFX/v1.6.5/src` (never from memory).
+- **Verify the exact part before writing a register-level driver** — from the vendor datasheet and the driver library's source. Mocks cannot catch a wrong chip.
+- **Hardware identity is the first bring-up gate** — a bus scan and a part-ID read pin the real address and part before any driver logic is trusted; host mocks validate logic, never the hardware contract.
 '''
