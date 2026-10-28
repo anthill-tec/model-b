@@ -1159,6 +1159,9 @@ Design stable, deterministic IDs based on business keys rather than random gener
 - No delays or waits needed after HSET operations
 - Avoid unnecessary `Thread.sleep()` waits
 
+### TAG-Field Queries
+TAG-field queries use uppercase values in curly braces (`@status:{AVAILABLE}`).
+
 ### FT.DROPINDEX DD Option
 **Always use DD=true** to delete underlying hash documents:
 
