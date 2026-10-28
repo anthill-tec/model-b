@@ -1161,3 +1161,27 @@ workflow.
   They are present on this machine but Model B has never emitted definitions for them, and
   nothing yet establishes their frontmatter contracts. Out of scope until a CR needs it — and
   CR-MDB-031 removes them from the roster until one does.
+
+### D27 — The process tool and the read-only web tools are allowed in the generated permission policy
+
+**User rulings 2026-10-29, after a research sub-agent raised a run of permission prompts.** The
+generated per-project policy (`modelb_axi/permission_policy.py`) allows tools by exact name and asks
+about the rest (`"*": "ask"`). Three tools the workflow uses were not in it: `process`, which
+supervises long runs (full test suites, the pre-merge gate, builds), and `web_fetch` and
+`web_search`, which read the web during research. Each first use per session raised a prompt.
+
+- **Permissions are set per project, never globally.** The change goes into the policy Model B
+  generates for each project, never into the user's global
+  `~/.pi/agent/extensions/pi-permission-system/config.json`, which Model B does not write
+  (CR-MDB-038 §S3).
+- **Every project gets them, at scaffold and at migration.** `init` renders the policy for a new
+  project. `modelb-axi agents` re-renders it for an existing one (§D24). Any later migration verb
+  renders it through the same function.
+- **The tools come from requirement rows.** As for `dispatch`, `lean-ctx` and `sandesh-pi` (§D24),
+  the policy allows the tools of declared requirement rows and never restates a tool name. `process`
+  is supplied by `@mjakl/pi-processes`, and `web_fetch` and `web_search` by `@ollama/pi-web-search`.
+  Both are third-party Pi packages: the installer names their remediation and never installs them.
+- **`bash` stays on ask.** `ctx_shell` covers shell use. CR-MDB-049 decides how `bash` is allowed by
+  command.
+
+Implemented by CR-MDB-089.
