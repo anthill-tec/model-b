@@ -51,7 +51,8 @@ RETIRED_VERB_CALL = re.compile(
 )
 
 #: Trees the AC pins. `AGENTS.md` is a file, the rest are directories.
-GREP_ROOTS = ("skills-src", "scripts", "hooks-src", "AGENTS.md")
+#: MIGRATED (CR-MDB-085 §S6.1): ``generator/skills`` — the stack skills' sources — is published too.
+GREP_ROOTS = ("skills-src", "scripts", "hooks-src", "AGENTS.md", "generator/skills")
 
 #: `archive/` is immutable history (§S7 table); `audits/` is dated evidence;
 #: `docs/` holds the CR specs that must be able to NAME the retired verbs to

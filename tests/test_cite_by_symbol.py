@@ -44,6 +44,8 @@ GUARDED_DIRS = (
     "skills-src",
     "generator/templates",
     "generator/stacks",
+    # MIGRATED (CR-MDB-085 §S6.1): the stack skills' sources.
+    "generator/skills",
     "modelb_axi",
     "pi-package",
     "scripts",
@@ -311,7 +313,8 @@ class CitationGuardTest(unittest.TestCase):
 
     def test_the_guarded_surfaces_are_the_ones_s4_lists(self):
         self.assertEqual(GUARDED_DIRS, ("skills-src", "generator/templates", "generator/stacks",
-                                        "modelb_axi", "pi-package", "scripts", "tests"))
+                                        "generator/skills", "modelb_axi", "pi-package", "scripts",
+                                        "tests"))
         self.assertEqual(GUARDED_FILES, ("AGENTS.md",))
         missing = [rel for rel in GUARDED_DIRS + GUARDED_FILES if not (REPO_ROOT / rel).exists()]
         self.assertEqual(missing, [])

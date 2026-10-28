@@ -354,7 +354,8 @@ OLD_ORDERING = re.compile(
     r"gap[- ]analysis\s*→\s*(?:lock|approval|present|`?plan-file)|proceed to feature branch",
     re.IGNORECASE)
 #: The shipped surfaces the old-ordering gate reads.
-ORDERING_SURFACES = ("skills-src", "generator/templates", "generator/stacks")
+# MIGRATED (CR-MDB-085 §S6.1): the stack skills' sources are an ordering surface too.
+ORDERING_SURFACES = ("skills-src", "generator/templates", "generator/stacks", "generator/skills")
 
 
 # ------------------------------------------------------------------ reading ----

@@ -573,6 +573,9 @@ class AxiEnvelopeGuardedTreeTest(unittest.TestCase):
         files = guarded_files()
         self.assertTrue(any(f.name == "orchestration-common.md" for f in files),
                         "the guarded set must include the model-b references")
+        # MIGRATED (CR-MDB-085 §S6.1): the guard reads the stack skills' sources too.
+        self.assertIn(REPO_ROOT / "generator" / "skills" / "rust-stack" / "SKILL.md", files,
+                      "the guarded set must include generator/skills/")
         found = [f"{path.relative_to(REPO_ROOT).as_posix()}:{line}: `{content}`"
                  for path in files for line, content in axi_findings(read_text(path))]
         self.assertEqual(found, [], "§S3: a guarded file shows an AXI call piped or redirected "

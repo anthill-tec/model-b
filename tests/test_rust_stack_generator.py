@@ -61,6 +61,13 @@ QUARKUS_TOML = STACKS_DIR / "quarkus.toml"
 ORCHESTRATION_MEMORY = (
     REPO_ROOT / "skills-src" / "memory-templates" / "rust-orchestration.md"
 )
+# MIGRATED (CR-MDB-085 §S6.3): the template's agent-facing material moved to the rust-stack stack
+# skill (§S3.1), so the reconciliation reads the moved text too — the template keeps only its
+# orchestrator-facing sections.
+RUST_STACK_SOURCES = (
+    GENERATOR_DIR / "skills" / "rust-stack" / "SKILL.md",
+    GENERATOR_DIR / "skills" / "rust-stack" / "references" / "e2e-docker-nextest.md",
+)
 
 ROLES = ("red", "green", "verify", "fix")
 
@@ -269,7 +276,10 @@ class RustStackTierGuidanceS1Test(unittest.TestCase):
 class RustStackMechanicsReconciliationS1Test(unittest.TestCase):
     """§S1 final bullet (narrowed per this module's docstring) — the
     mechanics section preserves the key facts named in rust-orchestration.md
-    rather than silently dropping them during reconciliation."""
+    rather than silently dropping them during reconciliation.
+
+    MIGRATED (CR-MDB-085 §S6.3): the facts are read from the template AND
+    from the text CR-MDB-085 moved out of it, the rust-stack sources."""
 
     def test_s1_mechanics_preserves_orchestration_source_facts(self):
         self.assertTrue(RUST_TOML.is_file(), f"{RUST_TOML} must exist")
@@ -277,9 +287,14 @@ class RustStackMechanicsReconciliationS1Test(unittest.TestCase):
             ORCHESTRATION_MEMORY.is_file(),
             f"{ORCHESTRATION_MEMORY} must exist to reconcile against",
         )
+        missing_sources = [str(p.relative_to(REPO_ROOT)) for p in RUST_STACK_SOURCES
+                           if not p.is_file()]
+        self.assertEqual(missing_sources, [],
+                         "CR-MDB-085 §S6.3: the moved rust material must exist to reconcile against")
         mechanics = _rust_params().get("mechanics")
         assert isinstance(mechanics, str)
-        source_text = _raw(ORCHESTRATION_MEMORY)
+        source_text = "\n".join(
+            _raw(p) for p in (ORCHESTRATION_MEMORY,) + RUST_STACK_SOURCES)
         missing = [
             fact for fact in ORCHESTRATION_FACT_ANCHORS
             if fact in source_text and fact not in mechanics

@@ -1615,7 +1615,9 @@ class AgentsVerbReadsScaffoldedStacksTest(unittest.TestCase):
 
 # MIGRATED at CR-MDB-068 C3 RED (§S8): the rendered release workflow's parts and scripts
 # ship too (was the three roots without workflows-src).
-GATE_ROOTS = ("skills-src", "generator/templates", "hooks-src", "workflows-src")
+# MIGRATED (CR-MDB-085 §S6.1): the stack skills' sources (generator/skills) ship too.
+GATE_ROOTS = ("skills-src", "generator/templates", "hooks-src", "workflows-src",
+              "generator/skills")
 HANDOVER_MD = REPO_ROOT / "skills-src" / "CRUCIBLE-HANDOVER.md"
 
 #: A registry key's shape.
