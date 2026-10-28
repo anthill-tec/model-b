@@ -1,4 +1,4 @@
-<!-- Model B memory template (cross-project Java language reference). Imported 2026-09-21 from the user's global memory (java-testing-practices.md) by ruling: PRD §D5's global tier has no Pi home, so language refs ride the stack's memory templates and are scaffolded into <project>/docs/memory/. -->
+<!-- A `java-stack` skill reference (cross-project Java language reference). Imported 2026-09-21 from the user's global memory (`~/.claude/memory/java-testing-practices.md`); moved into the `java-stack` skill by CR-MDB-086, and read by the quarkus agents when their task needs it. -->
 
 # Java Testing Practices
 
@@ -46,13 +46,13 @@ Never big-bang across layers ("migrate 10 files then fix tests later") — each 
 ### Unit Tests vs Integration Tests
 
 **Unit Tests (`*Test.java`)**
-- Run with `./mvnw test`
+- Run through the client's `unit` or `module` verb (surefire)
 - Use mocking for external dependencies
 - Fast execution
 - Test business logic in isolation
 
 **Integration Tests (`*IT.java`)**
-- Run with `./mvnw verify` (NOT `./mvnw test`)
+- Run through the client's `e2e` verb (failsafe), NOT `unit` or `module`
 - Use real infrastructure (TestContainers, DevServices)
 - Slower execution
 - Test actual integration with databases, message queues, etc.
@@ -430,7 +430,7 @@ find src/test -name "*StreamSubscription*IT.java"
 grep "createSubscription" StreamSubscriptionServiceIT.java
 
 # 3. Run those tests
-./mvnw test -Dtest=StreamSubscriptionServiceIT
+python3 ~/.crucible/clients/mvn-crucible.py unit --test StreamSubscriptionServiceIT --agent <agent-id>
 # Result: 16/16 tests GREEN ✅
 ```
 
@@ -497,7 +497,7 @@ quarkus.test.continuous-testing=false
 cat target/surefire-reports/*.txt | grep -E "(Tests run:|Failures:|Errors:)"
 
 # Check specific test class result
-cat target/surefire-reports/org.fourpm.entitystore.service.MyServiceIT.txt
+cat target/surefire-reports/com.example.entitystore.service.MyServiceIT.txt
 
 # Check failsafe reports (if used separately)
 cat target/failsafe-reports/*.txt | grep -E "(Tests run:|Failures:|Errors:)"
@@ -554,14 +554,14 @@ Quarkus produces TWO JaCoCo outputs; only one is correct for Quarkus-managed cla
 
 ### Test Suite Commands
 ```bash
-# Unit tests only
-./mvnw test
+# Unit tests only (a module's surefire suite)
+python3 ~/.crucible/clients/mvn-crucible.py module --agent <agent-id>
 
-# Integration tests only (includes unit tests)
-./mvnw verify
+# Integration tests only (failsafe)
+python3 ~/.crucible/clients/mvn-crucible.py e2e --agent <agent-id>
 
-# Clean build + all tests
-./mvnw clean verify
+# Clean build + all tests (the orchestrator's gate)
+python3 ~/.crucible/clients/mvn-crucible.py regression --agent <agent-id>
 ```
 
 ## Mockito Configuration
@@ -621,10 +621,10 @@ public void testDelete_NotFound() {
 ```java
 // Use TestDataFactory for schema JSON (single source of truth)
 String propertySchema = TestDataFactory.getPropertySchemaJson(
-    "org.fourpm.entitystore.entity", "Property");
+    "com.example.entitystore.entity", "Property");
 
 Map<String, Object> requestBody = new LinkedHashMap<>();
-requestBody.put("typeName", "org.fourpm.entitystore.entity.Property");
+requestBody.put("typeName", "com.example.entitystore.entity.Property");
 requestBody.put("indexedFieldNames", List.of("id", "status", "address.city"));
 requestBody.put("defaultTTL", "PT168H");
 requestBody.put("ttlRefreshPolicy", "PRESERVE");
@@ -772,7 +772,7 @@ Route every Maven test run + Crucible ingest through `~/.crucible/clients/mvn-cr
 2. **Test type:** I/O-backed service tests using `@InjectMock` = FAIL (must be integration).
 3. **Test breadth:** only happy path = FAIL. Thin IT coverage (missing error paths, edge cases, validation scenarios) = MAJOR, not MINOR.
 4. **Corner cases:** no edge-case / error-path tests = FAIL.
-5. **Coding standards:** unused imports, wrong naming, empty catch blocks = FAIL (see java-coding-standards.md).
+5. **Coding standards:** unused imports, wrong naming, empty catch blocks = FAIL (see `coding-standards.md`).
 6. **Test naming:** descriptive pattern (`testMethodName_scenario_expectedResult` or equivalent). Vague names (`test1`, `testIt`, `testCreate`) = FAIL.
 7. **SSE events:** all mutation operations emit SSE events (where the service exposes SSE).
 8. **Deduplication:** repeated operations are idempotent or properly guarded.
@@ -892,7 +892,7 @@ kill -9 $(lsof -t -i :8082)
 | Tests hanging | `restrictToAnnotatedClass = true`? Docker running? prefer Docker over Podman |
 | Container detection failures | Docker installed/running? `DOCKER_HOST` set? restart IDE/test runner; migrate Podman → Docker |
 | "client version 1.32 is too old" | Docker 29.x: `~/.docker-java.properties` with `api.version=1.44` |
-| ClassCastException in dev mode | disable continuous testing (`quarkus.test.continuous-testing=false`) or press `s`; run `./mvnw test` |
+| ClassCastException in dev mode | disable continuous testing (`quarkus.test.continuous-testing=false`) or press `s`; rerun through the client's `unit` verb |
 
 ## Testing Guidelines Summary
 
