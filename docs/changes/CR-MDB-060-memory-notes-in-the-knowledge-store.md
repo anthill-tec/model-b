@@ -76,7 +76,8 @@ port commands, and the summary table — goes. The moved text is checked by its 
 
 ## §S3 — `init` writes no `docs/memory/`
 
-1. `init` writes no `docs/memory/` directory, no template copy and no `INDEX.md`, for any stack.
+1. `init` writes no `docs/memory/` directory, no template copy and no `INDEX.md`, for any stack, and
+   its help names no project memory.
    `modelb_axi/scaffold.py` loses `_memory_templates_dir`, `MEMORY_TEMPLATE_FAMILIES`,
    `_select_memory_templates`, `_render_memory_index`, the `docs/memory/INDEX.md` entry in
    `plan_files`, the emission of `docs/memory/` and the `_agent_sources` docstring's reference to the
@@ -89,9 +90,11 @@ port commands, and the summary table — goes. The moved text is checked by its 
 
 1. **`bootstrap` and `shutdown`, Step 0.5, item 3,** read the orchestrator references of the root
    project's rendered stack skills — `references/orchestration.md` in each `.agents/skills/<name>/`
-   that has one — where they read `docs/memory/INDEX.md` and its slices. A project with none notes it
-   and skips; where it has none but still has a `docs/memory/`, the skill says to run `modelb-axi
-   agents` at the project root to render its stack skills, and reads nothing from `docs/memory/`.
+   that has one, whatever the skill's name — where they read `docs/memory/INDEX.md` and its slices. A
+   project with none notes it and skips. Where it has none but still has a `docs/memory/` and one of
+   its stacks declares a stack skill, the skill says to run `modelb-axi agents` at the project root
+   to render its stack skills; a project none of whose stacks declares a stack skill (python, bun) is
+   not pointed there. Nothing is read from `docs/memory/`.
 2. **`gap-analysis`**, Dimension 8, names the stack skills and their references where it names "the
    memory templates".
 3. **The stack files:** `quarkus.toml`'s and `rust.toml`'s "Companion memory" bullets name the stack
@@ -155,10 +158,12 @@ port commands, and the summary table — goes. The moved text is checked by its 
       carries §S2's anchors and `java-stack`'s routing row for it names the moved commands.
 - [ ] **AC4 (§S3).** `init` (sandboxed) for each stack writes no `docs/memory/`, and its `planned` and
       `emitted` lists name none; `skills-src/memory-templates/` does not exist; `modelb_axi/` defines
-      none of §S3.1's symbols and names no `memory-templates` or `docs/memory`.
-- [ ] **AC5 (§S4).** `bootstrap` and `shutdown` Step 0.5 name the stack skills' `references/orchestration.md`,
-      read nothing from `docs/memory/`, and name it only in the pointer to `modelb-axi agents` for a
-      project with no stack-skill reference; `gap-analysis` Dimension 8 names the stack skills and no
+      none of §S3.1's symbols and names no `memory-templates` or `docs/memory`; `init`'s help names no
+      project memory.
+- [ ] **AC5 (§S4).** `bootstrap` and `shutdown` Step 0.5 name the stack skills' `references/orchestration.md`
+      in any rendered skill (no `<stack>-stack` name assumed), read nothing from `docs/memory/`, and
+      name it only in the pointer to `modelb-axi agents`, which is limited to a project one of whose
+      stacks declares a stack skill; `gap-analysis` Dimension 8 names the stack skills and no
       memory templates; `quarkus.toml`'s and `rust.toml`'s "Companion memory" bullets name
       `references/orchestration.md` and neither names "orchestration memory"; `rust.toml` names no
       memory template; no shipped file §S4.5 lists names `docs/memory/`, a memory template,
