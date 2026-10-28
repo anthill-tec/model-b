@@ -1,7 +1,6 @@
 # CR-MDB-085 — Stack skills: the mechanism, and rust's and arduino's reference material
 
-**Status:** PENDING — spec drafted 2026-10-28 from the gap analysis, three spec pre-reviews folded in;
-awaiting approval.
+**Status:** COMPLETED (filed 2026-10-28, gap analysis and pre-review 2026-10-28).
 **Type:** feature (generator, scaffold, stack files, gates)
 **Priority:** P1 — release 1.0.0, wave 2, before CR-MDB-086 and CR-MDB-060.
 **Depends on:** none known; the board is authoritative: read `queue`, not this line.
@@ -35,8 +34,8 @@ skill's content is CR-MDB-086.
    same asset-root chain as the agent sources (packaged first, then the repository). A source whose
    `SKILL.md` frontmatter `name` differs from its directory is refused before any write, by `init` and
    by `modelb-axi agents`.
-2. **The declaration** is one file, `generator/stack-skills.toml`, outside `generator/stacks/`: each
-   skill names the stacks it renders for. A stack with or without a stack file may be named (CR-MDB-086
+2. **The declaration** is one file, `generator/stack-skills.toml`, outside `generator/stacks/`: one
+   `[skills.<name>]` table per skill, its `stacks = ["<stack>", …]` naming the stacks it renders for. A stack with or without a stack file may be named (CR-MDB-086
    names `java`, which has none). This CR declares `rust-stack` for `rust`. A declared skill whose
    source has no `SKILL.md` renders nothing.
 3. **Rendering.** `modelb-axi init` renders the declared skill of each stack in `--stacks` into
