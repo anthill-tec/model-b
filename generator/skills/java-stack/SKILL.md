@@ -39,8 +39,10 @@ nothing about the failsafe `*IT` classes that still call it.
 ## Native (GraalVM) builds
 
 Native builds are RAM-heavy and slow. Run them at the gate or in CI, not every cycle — JVM e2e for
-the cycles, native last: `e2e --native --failsafe-only` through the client. Budget the time and
-watch memory, not disk.
+the cycles, native last: `e2e --native` through the client, one step that runs `clean verify -Dnative`,
+building the native package and running failsafe against it. `e2e --native --failsafe-only` runs
+only the two failsafe goals against a native package already built, so it follows a build of the
+native package and never replaces one. Budget the time and watch memory, not disk.
 
 ## Before a native or JVM e2e cycle
 

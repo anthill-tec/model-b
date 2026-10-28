@@ -1231,8 +1231,13 @@ Both goals are needed for a complete run:
 Without `verify`, test failures are silently swallowed (written to report but build succeeds).
 Without `integration-test`, `verify` has nothing to check.
 
+The client's `e2e --failsafe-only` runs just these two goals, against a native package already
+built: build it first (`./mvnw package -DskipTests -Dnative -Dquarkus.container-image.build=true`,
+as below), or run the one-step `e2e --native`, a `clean verify -Dnative` that builds it and then
+runs failsafe.
+
 ```bash
-# Correct E2E-only command (no lifecycle overhead)
+# Correct E2E-only command (no lifecycle overhead), once the native package is built
 python3 ~/.crucible/clients/mvn-crucible.py e2e --failsafe-only --native --system-prop quarkus.container-image.build=false --agent <agent-id>
 ```
 
