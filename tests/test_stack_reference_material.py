@@ -16,7 +16,8 @@ checked as data (:data:`EXPECTED_DECLARATION`, :data:`STACK_SKILL_SOURCES`,
 - ``DefinitionsLoadTheirStackSkillTest`` — CR-MDB-085 §S2/AC4, CR-MDB-086 §S1.4: every rust role
   lists ``rust-stack`` and every quarkus role ``java-stack``, so every rendered definition's skills
   line names its stack's skill; ``rust.toml``'s "Companion memory" bullet names ``rust-stack``; no
-  definition names a stack skill not declared for its stack.
+  definition names a stack skill not declared for its stack. Each stack's "Companion memory"
+  bullet names its stack skill and no template or ``docs/memory/`` path (CR-MDB-086 §S5.1).
 - ``JavaReferencesMovedTest`` — CR-MDB-086 §S2.1/AC1: the five references leave
   ``skills-src/memory-templates/`` (``java-orchestration.md`` stays), keep their titles, and each
   one's provenance line names it a ``java-stack`` reference — never ``docs/memory/`` or a memory
@@ -32,8 +33,17 @@ checked as data (:data:`EXPECTED_DECLARATION`, :data:`STACK_SKILL_SOURCES`,
   says the quarkus definitions read the ``java-*`` templates.
 - ``OldReferenceDetectorTest`` / ``JavaCrossReferencesTest`` — CR-MDB-086 §S2.3/AC6:
   :func:`old_reference_findings` proved both ways, then run over the moved references and the
-  memory templates (``java-orchestration.md`` is checked with §S3's surgery); the moved
+  memory templates, ``java-orchestration.md`` among them (MIGRATED, §S3/AC6); the moved
   references point at each other's new homes; ``operational-commands.md`` names no Java reference.
+- ``HeadingBodyDetectorTest`` / ``JavaOrchestrationMovesTest`` — CR-MDB-086 §S3/AC5:
+  :func:`empty_heading_findings` proved both ways; then each §S3 row by its anchor phrase — in its
+  destination and gone from ``java-orchestration.md`` where it moves or is deleted, still there
+  where it stays; no heading left without a body; "Layered enterprise architecture" keeps
+  "Planning the layers"; the preamble names ``java-stack``, no ``generator/`` path, and no longer
+  says the quarkus definitions reference all four files.
+- ``QuarkusTomlCitesJavaStackTest`` — CR-MDB-086 §S5/§S4.1/AC3: each of the five §S5.2 places
+  names its ``java-stack`` reference by its path; ``quarkus.toml`` names no ``docs/memory/`` or
+  template path, no old reference name, no ``java-orchestration`` and no project of §S4.1.
 - ``RustTomlNamesNoTemplateTest`` — §S3.6/AC5: ``rust.toml`` names no ``memory-templates/`` path
   and no ``-orchestration.md`` name, its provenance comment included.
 - ``RustOrchestrationMovesTest`` — §S3.1, §S3.3, §S3.4/AC5: each §S3.1 row's anchor phrase is in
@@ -324,6 +334,95 @@ _OLD_HOMES = ("memory-templates/", "docs/memory/")
 #: CR-MDB-086 §S2.2 — the families comment saying the quarkus definitions read the java-* templates.
 QUARKUS_READS_JAVA_TEMPLATES = re.compile(r"(?i)quarkus[^.;]*\bread[^.;]*java-\*")
 
+JAVA_TEMPLATE_REL = "skills-src/memory-templates/java-orchestration.md"
+TESTING_PRACTICES_REL = "references/testing-practices.md"
+CODING_STANDARDS_REL = "references/coding-standards.md"
+QUARKUS_PATTERNS = JAVA_STACK_DIR / "references" / "quarkus-patterns.md"
+
+#: CR-MDB-086 §S3 — the java-orchestration.md rows that leave it: (row, its anchor phrase, which
+#: the template no longer holds; where it goes and the phrase it is found there by, or None when
+#: it is deleted — stated in quarkus.toml). A row going to ``SKILL.md`` is found there by §S1.3's
+#: "Anchor in SKILL.md"; the common flags line leaves its task-specific flags there (§S1.3).
+JAVA_S3_LEAVES = (
+    ("Tooling: the unit verb", "`unit --test <Class[#method]>`", None),
+    ("Tooling: the module verb", "`module [--module <m> --also-make]`", None),
+    ("Tooling: the compile verb", "`compile` — `mvn clean test-compile`", None),
+    ("Tooling: the e2e verb", "`e2e [--failsafe-only]", None),
+    ("Tooling: its common flags", "Common flags:", (JAVA_STACK_SKILL, "--also-make")),
+    ("RED that won't compile", "A Java RED frequently fails to **compile**", None),
+    (
+        "Layered enterprise architecture: its intro",
+        "Migration/implementation is **bottom-up",
+        None,
+    ),
+    ("the shared-library reuse paragraph", "Reuse shared-library components", None),
+    ("the RediSearch paragraph", "TAG-field queries", (QUARKUS_PATTERNS, "TAG-field queries")),
+    ("native builds", "RAM-heavy and slow", (JAVA_STACK_SKILL, "RAM-heavy and slow")),
+    (
+        "the DevServices bullet's docker-clean check",
+        "Check docker is clean before native/JVM e2e cycles",
+        (JAVA_STACK_SKILL, "docker is clean"),
+    ),
+    ("the DevServices isolation", "restrictToAnnotatedClass = true)` for isolation", None),
+    ("@Nested", "can throw `ClassCastException`", None),
+    ("surefire versus failsafe", "surefire runs `*Test.java`", None),
+    ("the console", "Don't parse mvn console output", None),
+    ("the reactor", "**Multi-module reactor**", None),
+)
+#: CR-MDB-086 §S3 — what stays in java-orchestration.md: (what, a phrase it is found by).
+JAVA_S3_STAYS = (
+    ("the preamble", "# Java/Quarkus Orchestration"),
+    ("the preamble's cr-authoring pointer", "`cr-authoring` skill"),
+    ("Tooling", "## Tooling"),
+    ("Tooling: the register verb", "`register --role"),
+    ("Tooling: project resolution and the optional .env keys", "No project hardcoded"),
+    ("Tooling: the orchestrator's verbs", "`regression`"),
+    ("Tooling: the orchestrator's verbs", "`auto-ingest"),
+    ("Tooling: the orchestrator's verbs", "`pre-merge-gate`"),
+    ("Tooling: worktree-flow.py", "~/.agents/scripts/worktree-flow.py"),
+    ("Tooling: scheduling", "Scheduling is stack-agnostic"),
+    ("Tooling: the split", "The split (CR-MDB-028"),
+    ("Tooling: the crucible skill", "`crucible` skill, `references/java.md`"),
+    ("Pre-merge gate", "## Pre-merge gate"),
+    ("JaCoCo — read the RIGHT report", "## JaCoCo — read the RIGHT report"),
+    ("Planning the layers", "### Planning the layers"),
+    ("Disk / cache hygiene", "## Disk / cache hygiene"),
+)
+#: CR-MDB-086 §S3 — the headings left with no body, and so removed.
+JAVA_GONE_HEADINGS = ("The four test tiers", "Quarkus build + test gotchas")
+LAYERED_HEADING = "Layered enterprise architecture"
+PLANNING_HEADING = "Planning the layers"
+#: CR-MDB-086 §S3 — the preamble's claim that the quarkus definitions reference all four files.
+REFERENCES_ALL_FOUR = re.compile(r"(?i)\breferences?\s+all\s+four\b")
+
+#: CR-MDB-086 §S5.2 — the five places quarkus.toml cites a Java reference: (place, the
+#: ``[gotchas]`` role holding it, the anchor it is found by, the reference it names by its path).
+QUARKUS_CITATIONS = (
+    ("RED's @TempDir bullet", "red", "`@TempDir` with `@QuarkusTest`", TESTING_PRACTICES_REL),
+    (
+        "RED's resource-layer/IT-tests bullet",
+        "red",
+        "**Resource-layer/IT tests:**",
+        TESTING_PRACTICES_REL,
+    ),
+    (
+        "the code-quality rule",
+        "green",
+        "**Code quality (NON-NEGOTIABLE):**",
+        CODING_STANDARDS_REL,
+    ),
+    ("VERIFY's test-quality checks", "verify", "**Test quality:**", TESTING_PRACTICES_REL),
+    ("FIX's test-quality row", "fix", "| Test-quality finding |", TESTING_PRACTICES_REL),
+)
+#: CR-MDB-086 §S5/§S4.1/AC3 — what quarkus.toml names nowhere.
+QUARKUS_TOML_FORBIDDEN = (
+    "docs/memory/",
+    "memory-templates/",
+    "java-testing-practices.md",
+    "java-coding-standards.md",
+    "java-orchestration",
+) + PROJECT_NAMES
+
 #: §S4 — the sections §S3 moves, by template: patterns a sentence names one by.
 MOVED_SECTION_NAMES = {
     RUST_TEMPLATE_REL: (
@@ -427,6 +526,37 @@ def _section_of(text: str, phrase: str) -> str | None:
         if phrase in line:
             return heading
     return None
+
+
+def _headings(text: str) -> list[tuple[int, int, str]]:
+    """``(line index, level, title)`` of each Markdown heading in ``text``; a fenced line is
+    never a heading."""
+    found, fenced = [], False
+    for index, line in enumerate(text.splitlines()):
+        if _FENCE.match(line):
+            fenced = not fenced
+            continue
+        if not fenced and _HEADING.match(line):
+            hashes = len(line) - len(line.lstrip("#"))
+            found.append((index, hashes, line.lstrip("#").strip()))
+    return found
+
+
+def empty_heading_findings(text: str) -> list[str]:
+    """CR-MDB-086 §S3: each heading of ``text`` left with neither text nor a sub-heading under
+    it — nothing but blank lines before the next heading of its own level or higher, or the end."""
+    lines = text.splitlines()
+    heads = _headings(text)
+    found = []
+    for k, (index, level, title) in enumerate(heads):
+        following = heads[k + 1] if k + 1 < len(heads) else None
+        end = following[0] if following else len(lines)
+        if any(ln.strip() for ln in lines[index + 1 : end]):
+            continue
+        if following is not None and following[1] > level:
+            continue
+        found.append(f"heading {title!r} has neither text nor a sub-heading")
+    return found
 
 
 def _sentences(text: str) -> list[str]:
@@ -600,16 +730,31 @@ class DefinitionsLoadTheirStackSkillTest(unittest.TestCase):
             found, [], "AC4: no definition names a stack skill not declared for its stack"
         )
 
-    def test_the_companion_memory_bullet_names_rust_stack_instead_of_the_template(self):
-        mechanics = _load_toml(RUST_TOML)["mechanics"]
-        bullets = [
-            ln for ln in mechanics.splitlines() if ln.startswith("- **Companion memory")
-        ]
+    def test_the_companion_memory_bullet_names_its_stacks_skill_and_no_template_path(self):
+        # MIGRATED (CR-MDB-086 §S5.1/§S6.1; was ..._names_rust_stack_instead_of_the_template):
+        # quarkus.toml's bullet names java-stack, and neither names a docs/memory/ path.
+        problems = []
+        for stack, skill in DEFINITION_SKILL.items():
+            mechanics = _load_toml(STACKS_DIR / f"{stack}.toml")["mechanics"]
+            bullets = [
+                ln for ln in mechanics.splitlines() if ln.startswith("- **Companion memory")
+            ]
+            if len(bullets) != 1:
+                problems.append(f"{stack}.toml: {len(bullets)} Companion memory bullets, not 1")
+                continue
+            if skill not in bullets[0]:
+                problems.append(f"{stack}.toml: the Companion memory bullet does not name {skill}")
+            problems += [
+                f"{stack}.toml: the Companion memory bullet names {path!r}"
+                for path in ("memory-templates/", "docs/memory/")
+                if path in bullets[0]
+            ]
         self.assertEqual(
-            len(bullets), 1, "rust.toml's mechanics carry one Companion memory bullet"
+            problems,
+            [],
+            "CR-MDB-085 §S2: rust.toml's names rust-stack; CR-MDB-086 §S5.1: quarkus.toml's names "
+            "java-stack and no docs/memory/ or template path",
         )
-        self.assertIn(RUST_STACK, bullets[0])
-        self.assertNotIn("memory-templates/", bullets[0])
 
 
 class RustTomlNamesNoTemplateTest(unittest.TestCase):
@@ -1144,12 +1289,15 @@ class OldReferenceDetectorTest(unittest.TestCase):
 class JavaCrossReferencesTest(unittest.TestCase):
     """CR-MDB-086 §S2.3/AC6 — every cross-reference among the moved references and the memory
     templates names the reference's new home; ``operational-commands.md`` names no Java
-    reference. ``java-orchestration.md``'s references are checked with §S3's surgery."""
+    reference."""
 
     def test_no_moved_reference_or_template_names_a_moved_reference_by_its_old_name(self):
-        files = [JAVA_STACK_DIR / rel for rel in JAVA_REFERENCE_RELS] + [
-            p for p in sorted(MEMORY_TEMPLATES_DIR.glob("*.md")) if p != JAVA_TEMPLATE
-        ]
+        # MIGRATED (CR-MDB-086 §S3/AC6): java-orchestration.md, skipped until §S3's surgery, is
+        # checked with the other templates.
+        files = [JAVA_STACK_DIR / rel for rel in JAVA_REFERENCE_RELS] + sorted(
+            MEMORY_TEMPLATES_DIR.glob("*.md")
+        )
+        self.assertIn(JAVA_TEMPLATE, files, "precondition: java-orchestration.md is checked")
         found = {}
         for path in files:
             findings = old_reference_findings(read_text(path)) if path.is_file() else ["missing"]
@@ -1174,6 +1322,115 @@ class JavaCrossReferencesTest(unittest.TestCase):
         names = JAVA_OLD_NAMES + JAVA_REFERENCE_RELS + (JAVA_STACK,)
         self.assertEqual([n for n in names if n in text], [], "§S2.3/AC6")
         self.assertIn("## Quarkus-Specific Commands", text, "only the Related line is dropped")
+
+
+class HeadingBodyDetectorTest(unittest.TestCase):
+    """CR-MDB-086 §S3 — :func:`empty_heading_findings` proved both ways on synthetic text."""
+
+    def test_a_heading_with_neither_text_nor_a_sub_heading_is_found(self):
+        for text, title in (
+            ("# T\n\nIntro.\n\n## Emptied\n\n## Next\n\nText.\n", "Emptied"),
+            ("# T\n\nIntro.\n\n## Parent\n\n### Emptied\n\n## Next\n\nText.\n", "Emptied"),
+            ("# T\n\nIntro.\n\n## Last\n\n\n", "Last"),
+        ):
+            with self.subTest(text=text):
+                self.assertEqual(
+                    empty_heading_findings(text),
+                    [f"heading {title!r} has neither text nor a sub-heading"],
+                )
+
+    def test_a_heading_with_text_or_a_sub_heading_and_a_fenced_hash_line_are_not(self):
+        text = (
+            "# T\n\nIntro.\n\n## Parent\n\n### Child\n\nBody.\n\n"
+            "## Fenced\n\n```\n# a comment, not a heading\n```\n"
+        )
+        self.assertEqual(empty_heading_findings(text), [])
+        self.assertEqual(
+            [title for _i, _level, title in _headings(text)], ["T", "Parent", "Child", "Fenced"]
+        )
+
+
+class JavaOrchestrationMovesTest(unittest.TestCase):
+    """CR-MDB-086 §S3/AC5 — every agent-facing section leaves ``java-orchestration.md``: each row
+    by its anchor phrase, the headings it empties, and the preamble."""
+
+    def setUp(self):
+        self.template = read_text(JAVA_TEMPLATE)
+
+    def test_each_s3_row_holds_by_its_anchor_phrase(self):
+        problems = []
+        for row, anchor, destination in JAVA_S3_LEAVES:
+            if anchor in self.template:
+                problems.append(f"{row}: {anchor!r} is still in {JAVA_TEMPLATE_REL}")
+            if destination is not None:
+                path, phrase = destination
+                if not path.is_file() or phrase not in read_text(path):
+                    problems.append(
+                        f"{row}: {phrase!r} is not in {path.relative_to(REPO_ROOT).as_posix()}"
+                    )
+        problems += [
+            f"{what}: {phrase!r} is no longer in {JAVA_TEMPLATE_REL}"
+            for what, phrase in JAVA_S3_STAYS
+            if phrase not in self.template
+        ]
+        self.assertEqual(
+            problems,
+            [],
+            "§S3/AC5: a row that moves is in its destination and not in the template; a deleted "
+            "row is gone; a row that stays, stays",
+        )
+
+    def test_every_heading_keeps_a_body_and_layered_architecture_keeps_planning_the_layers(self):
+        self.assertEqual(empty_heading_findings(self.template), [], "§S3: a bodiless heading")
+        heads = _headings(self.template)
+        self.assertEqual(
+            [title for _i, _level, title in heads if title.startswith(JAVA_GONE_HEADINGS)],
+            [],
+            "§S3: \"Quarkus build + test gotchas\" and \"The four test tiers\" go",
+        )
+        layered = [k for k, (_i, _l, title) in enumerate(heads) if title.startswith(LAYERED_HEADING)]
+        self.assertEqual(len(layered), 1, f"§S3: {LAYERED_HEADING!r} stays, once")
+        k = layered[0]
+        self.assertLess(k + 1, len(heads), f"§S3: a heading follows {LAYERED_HEADING!r}")
+        self.assertTrue(
+            heads[k + 1][2].startswith(PLANNING_HEADING) and heads[k + 1][1] > heads[k][1],
+            f"§S3: {PLANNING_HEADING!r} is {LAYERED_HEADING!r}'s sub-heading; got {heads[k + 1]!r}",
+        )
+
+    def test_the_preamble_names_java_stack_and_no_generator_path_nor_all_four_files(self):
+        preamble = _preamble(self.template)
+        self.assertIn(JAVA_STACK, preamble, "§S3: the preamble names the java-stack skill")
+        self.assertNotIn("generator/", preamble, "§S3: the preamble names no generator/ path")
+        self.assertNotRegex(
+            preamble,
+            REFERENCES_ALL_FOUR,
+            "§S3: the preamble no longer says the quarkus definitions reference all four files",
+        )
+
+
+class QuarkusTomlCitesJavaStackTest(unittest.TestCase):
+    """CR-MDB-086 §S5/§S4.1/AC3 — ``quarkus.toml`` cites the ``java-stack`` references by their
+    paths, and names no ``docs/memory/`` or template path, no old reference name and no project."""
+
+    def test_each_s5_2_place_names_its_reference_by_its_path(self):
+        gotchas = _load_toml(QUARKUS_TOML)["gotchas"]
+        problems = []
+        for place, role, anchor, reference in QUARKUS_CITATIONS:
+            lines = [ln for ln in gotchas[role].splitlines() if anchor in ln]
+            if len(lines) != 1:
+                problems.append(f"{place}: {len(lines)} lines of [gotchas].{role} hold {anchor!r}")
+            elif reference not in lines[0]:
+                problems.append(f"{place}: does not name {reference}: {lines[0][:160]!r}")
+        self.assertEqual(problems, [], "§S5.2/AC3")
+
+    def test_quarkus_toml_names_no_memory_path_old_reference_template_or_project(self):
+        text = read_text(QUARKUS_TOML)
+        self.assertEqual(
+            [name for name in QUARKUS_TOML_FORBIDDEN if name in text],
+            [],
+            "AC3: no docs/memory/ or memory-templates/ path, no java-testing-practices.md, "
+            "java-coding-standards.md or java-orchestration, no store-utils (§S4.1)",
+        )
 
 
 # ------------------------------------------------------------------ §S6.1 ----
