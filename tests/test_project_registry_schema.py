@@ -1662,7 +1662,6 @@ NOT_REGISTRY_KEYS = {
     # example / placeholder text
     "COMMIT": "enum-variant example in cr-authoring's AC-precision guidance",
     "ROLLBACK": "enum-variant example in cr-authoring's AC-precision guidance",
-    "SOME_ENV_VAR": "placeholder in a `docker run -e` example (operational commands)",
     "VAR": "generic `VAR=value` wording in the block-direct-*-test hook docstrings",
     # runtime names the widened detector (C4 FIX F3: `$KEY`, `${KEY}`,
     # environ reads) matches — none is a project-registry key

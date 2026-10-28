@@ -968,7 +968,7 @@ class ClientPathAnchoringS2Test(unittest.TestCase):
 
 # ================================================================= §S3 ==========
 
-S3_TREES = ("skills-src", "generator/templates", "generator/stacks", "contracts")
+S3_TREES = ("skills-src", "generator/skills", "generator/templates", "generator/stacks", "contracts")
 
 #: §S3 never-vacuous floors (F6), measured at CR-MDB-020 C3 FIX (74 invocations). A tree or parse
 #: source whose count falls below its floor means the parser went blind there, not that the text
@@ -976,7 +976,12 @@ S3_TREES = ("skills-src", "generator/templates", "generator/stacks", "contracts"
 #: generator/templates and contracts carry no invocation today; their floor is recorded as 0.
 #: Lowered at CR-MDB-041 C3 FIX (70 invocations): skills-src 46\u219242 and span 25\u219221 with the four
 #: ``python-crucible.py`` span examples it removed (bootstrap's two, orchestration-track's two).
-S3_MIN_PER_TREE = {"skills-src": 42, "generator/templates": 0, "generator/stacks": 28, "contracts": 0}
+#: MIGRATED at CR-MDB-060 (§S1.1, §S2): the java and rust orchestrator notes moved out of
+#: ``skills-src/`` into ``generator/skills/`` and took four invocations with them, so skills-src
+#: 42→38; ``generator/skills`` joins the gated trees with its floor at its measured count (17),
+#: so the moved invocations stay counted and contract-checked.
+S3_MIN_PER_TREE = {"skills-src": 38, "generator/skills": 17, "generator/templates": 0,
+                   "generator/stacks": 28, "contracts": 0}
 S3_MIN_PER_SOURCE = {"fence": 34, "span": 21, "toml": 15}
 
 
