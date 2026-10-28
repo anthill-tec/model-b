@@ -346,10 +346,12 @@ CURRENT_SKILLS = {
     ("python", "red"): [], ("python", "green"): [],
     ("python", "verify"): [],
     ("python", "fix"): [],
-    ("quarkus", "red"): ["crucible"],
-    ("quarkus", "green"): ["crucible"],
-    ("quarkus", "verify"): [],
-    ("quarkus", "fix"): ["crucible"],
+    # MIGRATED (CR-MDB-086 §S1.4): every quarkus role lists the `java-stack` stack skill (was
+    # crucible / crucible / none / crucible).
+    ("quarkus", "red"): ["crucible", "java-stack"],
+    ("quarkus", "green"): ["crucible", "java-stack"],
+    ("quarkus", "verify"): ["java-stack"],
+    ("quarkus", "fix"): ["crucible", "java-stack"],
     # MIGRATED (CR-MDB-085 §S2/AC4): every rust role lists the `rust-stack` stack skill (was
     # crucible / crucible / none / crucible).
     ("rust", "red"): ["crucible", "rust-stack"],

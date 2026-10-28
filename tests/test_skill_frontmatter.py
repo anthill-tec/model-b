@@ -24,9 +24,10 @@ The file set is every ``skills-src/*/SKILL.md``, ``generator/agents/*.md`` and
 
 CR-MDB-085 §S6.1 widens both halves to the stack skills: ``generator/skills/*/SKILL.md`` passes the
 stdlib rule, and Pi's loader reports no diagnostics and one skill per directory over
-``generator/skills/`` and over a rendered ``.agents/skills/rust-stack/`` (``stack_skills``'
-in-memory render, written to a temp dir); no stack skill shares a name with a ``skills-src/``
-bundle.
+``generator/skills/`` and over a rendered ``.agents/skills/`` (``stack_skills``' in-memory render,
+written to a temp dir); no stack skill shares a name with a ``skills-src/`` bundle. CR-MDB-086
+(§S6.1, AC8) renders ``java-stack`` beside ``rust-stack``: the stack skills are
+:data:`STACK_SKILLS`, rendered for :data:`RENDERED_STACKS`.
 
 The package-root finder is ``_find_pi_package_root`` from ``tests/_helpers.py``, the one copy
 ``test_pi_hook_runtime`` imports too (``OnePiPackageRootFinderTest``).
@@ -58,6 +59,10 @@ GENERATOR_DIR = REPO_ROOT / "generator"
 GENERATOR_SKILLS = GENERATOR_DIR / "skills"
 #: CR-MDB-085 §S1.3: where a project's stack skills render.
 RENDERED_SKILLS_RELDIR = Path(".agents") / "skills"
+#: CR-MDB-086 AC8: the stack skills under generator/skills/, and the stacks whose render writes
+#: them all (rust: rust-stack; quarkus: java-stack).
+STACK_SKILLS = ["java-stack", "rust-stack"]
+RENDERED_STACKS = ["rust", "quarkus"]
 PI_AGENTS = REPO_ROOT / ".pi" / "agents"
 
 # ------------------------------------------------------------------ §S3.1 the stdlib rule ----
@@ -413,10 +418,12 @@ def _stack_skill_files() -> list:
     return sorted(GENERATOR_SKILLS.glob("*/SKILL.md"))
 
 
-def _render_rust_stack_skills(project: Path) -> list:
-    """CR-MDB-085 §S1.3: the stack skills a ``rust`` project renders, written under ``project``
-    from ``stack_skills``' in-memory render; the rendered ``SKILL.md`` paths, sorted."""
-    for rel, text in stack_skills.render_skills(GENERATOR_DIR, ["rust"]).items():
+def _render_stack_skills(project: Path) -> list:
+    """CR-MDB-085 §S1.3: the stack skills a project of :data:`RENDERED_STACKS` renders, written
+    under ``project`` from ``stack_skills``' in-memory render; the rendered ``SKILL.md`` paths,
+    sorted. MIGRATED (CR-MDB-086 §S6.1; was ``_render_rust_stack_skills``): java-stack beside
+    rust-stack."""
+    for rel, text in stack_skills.render_skills(GENERATOR_DIR, RENDERED_STACKS).items():
         path = project / rel
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")
@@ -449,18 +456,20 @@ class FrontmatterTreeTest(unittest.TestCase):
 
     def test_every_stack_skill_source_frontmatter_passes_the_rule(self):
         # CR-MDB-085 §S6.1: generator/skills/ joins the file set (empty before the CR: fails).
+        # CR-MDB-086 AC8: java-stack is there beside rust-stack.
+        self.assertEqual([p.parent.name for p in _stack_skill_files()], STACK_SKILLS)
         found = self._scan(_stack_skill_files(), skill=True)
         self.assertEqual(found, {}, f"§S3.1: stack skill frontmatter problems: {found}")
 
     def test_every_rendered_stack_skill_frontmatter_passes_the_rule(self):
         # CR-MDB-085 §S6.1: the rendered SKILL.md carries the §S1.3 marker in its frontmatter.
         with tempfile.TemporaryDirectory(prefix="modelb-rendered-stack-skill-") as tmp:
-            rendered = _render_rust_stack_skills(Path(tmp))
-            self.assertEqual([p.parent.name for p in rendered], ["rust-stack"])
+            rendered = _render_stack_skills(Path(tmp))
+            self.assertEqual([p.parent.name for p in rendered], STACK_SKILLS)
             found = {p.parent.name: frontmatter_violations(p.read_text(encoding="utf-8"),
                                                            p.parent.name)
                      for p in rendered}
-        self.assertEqual(found, {"rust-stack": []})
+        self.assertEqual(found, {name: [] for name in STACK_SKILLS})
 
     def test_no_stack_skill_shares_a_name_with_a_skills_src_bundle(self):
         stack = {p.parent.name for p in _stack_skill_files()}
@@ -691,7 +700,8 @@ class PiSkillLoaderOracleTest(unittest.TestCase):
     def test_pi_loads_generator_skills_with_no_diagnostics_one_skill_per_directory(self):
         # CR-MDB-085 §S6.1: Pi's loader over the stack skills' sources.
         expected = sorted(str(p) for p in _stack_skill_files())
-        self.assertNotEqual(expected, [], "generator/skills/ holds no stack skill")
+        self.assertEqual([Path(p).parent.name for p in expected], STACK_SKILLS,
+                         "CR-MDB-086 AC8: generator/skills/ holds java-stack and rust-stack")
         out = _run_pi_oracle(self, self.api, {"skills_dir": str(GENERATOR_SKILLS)})
         self.assertEqual(out["diagnostics"], [],
                          "§S3.2: Pi's loadSkillsFromDir reports diagnostics over generator/skills/")
@@ -700,16 +710,18 @@ class PiSkillLoaderOracleTest(unittest.TestCase):
             with self.subTest(skill=skill["filePath"]):
                 self.assertEqual(skill["name"], Path(skill["filePath"]).parent.name)
 
-    def test_pi_loads_a_rendered_rust_stack_with_no_diagnostics(self):
-        # CR-MDB-085 §S6.1: Pi's loader over a rust project's rendered .agents/skills/.
+    def test_pi_loads_the_rendered_stack_skills_with_no_diagnostics(self):
+        # CR-MDB-085 §S6.1: Pi's loader over a project's rendered .agents/skills/.
+        # MIGRATED (CR-MDB-086 AC8; was test_pi_loads_a_rendered_rust_stack_with_no_diagnostics):
+        # a rendered java-stack beside rust-stack.
         with tempfile.TemporaryDirectory(prefix="modelb-pi-rendered-skills-") as tmp:
-            rendered = _render_rust_stack_skills(Path(tmp))
-            self.assertEqual([p.parent.name for p in rendered], ["rust-stack"])
+            rendered = _render_stack_skills(Path(tmp))
+            self.assertEqual([p.parent.name for p in rendered], STACK_SKILLS)
             out = _run_pi_oracle(self, self.api,
                                  {"skills_dir": str(Path(tmp) / RENDERED_SKILLS_RELDIR)})
         self.assertEqual(out["diagnostics"], [])
-        self.assertEqual([(s["name"], s["filePath"]) for s in out["skills"]],
-                         [("rust-stack", str(rendered[0]))])
+        self.assertEqual(sorted((s["name"], s["filePath"]) for s in out["skills"]),
+                         [(p.parent.name, str(p)) for p in rendered])
 
     def test_pi_parses_every_rendered_agent_to_string_name_and_description(self):
         agents = [str(p) for p in _agent_files()]

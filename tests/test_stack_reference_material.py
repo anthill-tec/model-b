@@ -1,16 +1,39 @@
-"""rust's and arduino's reference material leaves its templates (CR-MDB-085 §S2–§S6).
+"""The stack skills' reference material leaves its templates (CR-MDB-085 §S2–§S6, CR-MDB-086).
 
 Contract: ``docs/changes/CR-MDB-085-stack-skills-rendered-per-project.md``. §S1's mechanism (its
 tests are ``tests.test_stack_skills``) renders a stack skill declared in
 ``generator/stack-skills.toml`` from ``generator/skills/<name>/``. This module holds the content
-the CR moves with it:
+the CR moves with it, and the Java material ``docs/changes/CR-MDB-086-java-stack-skill.md`` moves
+into ``java-stack``. The declaration, the sources, the render and the definitions' skills are
+checked as data (:data:`EXPECTED_DECLARATION`, :data:`STACK_SKILL_SOURCES`,
+:data:`DEFINITION_SKILL`), one entry per stack skill:
 
-- ``RustStackDeclaredTest`` — §S1.2/§S2/AC1: ``rust-stack`` is declared for ``rust`` and nothing
-  else is; its source is a ``SKILL.md`` and ``references/e2e-docker-nextest.md``, the reference
-  pointed to from ``SKILL.md``; a render for ``rust`` writes both, and for any other stack nothing.
-- ``RustDefinitionsLoadRustStackTest`` — §S2/AC4: every rust role lists ``rust-stack``, so every
-  rendered rust definition's skills line names it; ``rust.toml``'s "Companion memory" bullet names
-  it; no other stack's definition names a stack skill.
+- ``StackSkillsDeclaredTest`` — CR-MDB-085 §S1.2/§S2/AC1, CR-MDB-086 §S1.1–2/AC1/AC2:
+  ``rust-stack`` is declared for ``rust``, ``java-stack`` for ``quarkus`` and ``java``, and nothing
+  else is; each source is a ``SKILL.md`` and exactly its references, each pointed to from
+  ``SKILL.md`` by its path; a render for a stack writes its declared skills, and for any other
+  stack nothing.
+- ``DefinitionsLoadTheirStackSkillTest`` — CR-MDB-085 §S2/AC4, CR-MDB-086 §S1.4: every rust role
+  lists ``rust-stack`` and every quarkus role ``java-stack``, so every rendered definition's skills
+  line names its stack's skill; ``rust.toml``'s "Companion memory" bullet names ``rust-stack``; no
+  definition names a stack skill not declared for its stack.
+- ``JavaReferencesMovedTest`` — CR-MDB-086 §S2.1/AC1: the five references leave
+  ``skills-src/memory-templates/`` (``java-orchestration.md`` stays), keep their titles, and each
+  one's provenance line names it a ``java-stack`` reference — never ``docs/memory/`` or a memory
+  template.
+- ``JavaStackSkillTest`` — CR-MDB-086 §S1.3/AC2: ``SKILL.md`` carries each §S1.3 rule by its
+  anchor and the client's task-specific flags, and restates no ``quarkus.toml`` line.
+- ``JavaStackInitTest`` — CR-MDB-086 §S2.2/AC4: ``init --stacks quarkus`` and ``--stacks java``
+  (sandboxed, Pi harness, the repository's own assets) render ``java-stack`` with its references,
+  seed no moved reference into ``docs/memory/`` and index none, and still seed
+  ``java-orchestration.md``.
+- ``MemoryTemplateFamiliesCommentDetectorTest`` / ``MemoryTemplateFamiliesCommentTest`` —
+  CR-MDB-086 §S2.2: the memory-template families' comment in ``modelb_axi/scaffold.py`` no longer
+  says the quarkus definitions read the ``java-*`` templates.
+- ``OldReferenceDetectorTest`` / ``JavaCrossReferencesTest`` — CR-MDB-086 §S2.3/AC6:
+  :func:`old_reference_findings` proved both ways, then run over the moved references and the
+  memory templates (``java-orchestration.md`` is checked with §S3's surgery); the moved
+  references point at each other's new homes; ``operational-commands.md`` names no Java reference.
 - ``RustTomlNamesNoTemplateTest`` — §S3.6/AC5: ``rust.toml`` names no ``memory-templates/`` path
   and no ``-orchestration.md`` name, its provenance comment included.
 - ``RustOrchestrationMovesTest`` — §S3.1, §S3.3, §S3.4/AC5: each §S3.1 row's anchor phrase is in
@@ -57,6 +80,7 @@ from tests import test_gap_analysis_reach_and_pre_review as ordering_gate
 from tests import test_project_registry_schema as registry_gate
 from tests import test_raw_runner_guard as runner_gate
 from tests import test_skill_frontmatter as frontmatter_gate
+from tests import test_stack_skills as skills_gate
 from tests import test_tooling_detachment as tooling_gate
 from tests import test_worktree_flow_surfaces as worktree_gate
 from tests._helpers import REPO_ROOT, md_section, read_text, split_frontmatter
@@ -75,22 +99,70 @@ ARDUINO_TEMPLATE_REL = "skills-src/memory-templates/arduino-orchestration.md"
 RUST_TEMPLATE = REPO_ROOT / RUST_TEMPLATE_REL
 ARDUINO_TEMPLATE = REPO_ROOT / ARDUINO_TEMPLATE_REL
 
-#: §S1.2/§S2 — the one declaration this CR makes.
+#: §S1.2/§S2 — the declaration: CR-MDB-085's ``rust-stack``, and CR-MDB-086 §S1.1's
+#: ``java-stack`` for ``quarkus`` and ``java``.
 RUST_STACK = "rust-stack"
-EXPECTED_DECLARATION = {RUST_STACK: ["rust"]}
+JAVA_STACK = "java-stack"
+EXPECTED_DECLARATION = {RUST_STACK: ["rust"], JAVA_STACK: ["quarkus", "java"]}
 RUST_STACK_DIR = SKILLS_DIR / RUST_STACK
+JAVA_STACK_DIR = SKILLS_DIR / JAVA_STACK
 SKILL_REL = "SKILL.md"
 E2E_REFERENCE_REL = "references/e2e-docker-nextest.md"
 RUST_STACK_SKILL = RUST_STACK_DIR / SKILL_REL
 E2E_REFERENCE = RUST_STACK_DIR / E2E_REFERENCE_REL
-#: §S1.3 — where ``init`` renders it.
-RENDERED_RUST_STACK = {
-    f".agents/skills/{RUST_STACK}/{SKILL_REL}",
-    f".agents/skills/{RUST_STACK}/{E2E_REFERENCE_REL}",
+JAVA_STACK_SKILL = JAVA_STACK_DIR / SKILL_REL
+
+#: CR-MDB-086 §S1.2 — java-stack's references: (reference, the memory template it moves from, the
+#: title it keeps — the move is verbatim, §S2.1).
+JAVA_REFERENCES = (
+    ("references/coding-standards.md", "java-coding-standards.md", "# Java Coding Standards"),
+    (
+        "references/testing-practices.md",
+        "java-testing-practices.md",
+        "# Java Testing Practices",
+    ),
+    (
+        "references/modern-syntax.md",
+        "java-modern-syntax.md",
+        "# Java Modern Syntax & Features (JDK 8-25)",
+    ),
+    (
+        "references/maven.md",
+        "java-maven-best-practices.md",
+        "# Maven Best Practices for Java Library Projects",
+    ),
+    (
+        "references/quarkus-patterns.md",
+        "java-quarkus-patterns.md",
+        "# Quarkus Patterns and Best Practices",
+    ),
+)
+JAVA_REFERENCE_RELS = tuple(ref for ref, _old, _title in JAVA_REFERENCES)
+JAVA_OLD_NAMES = tuple(old for _ref, old, _title in JAVA_REFERENCES)
+MEMORY_TEMPLATES_DIR = REPO_ROOT / "skills-src" / "memory-templates"
+JAVA_TEMPLATE = MEMORY_TEMPLATES_DIR / "java-orchestration.md"
+OPERATIONAL_COMMANDS = MEMORY_TEMPLATES_DIR / "operational-commands.md"
+QUARKUS_TOML = STACKS_DIR / "quarkus.toml"
+SCAFFOLD_PY = REPO_ROOT / "modelb_axi" / "scaffold.py"
+
+#: Each stack skill's source files, relative to its directory: CR-MDB-085 §S1.2's, and
+#: CR-MDB-086 §S1.2's ``SKILL.md`` and exactly the five references.
+STACK_SKILL_SOURCES = {
+    RUST_STACK: (SKILL_REL, E2E_REFERENCE_REL),
+    JAVA_STACK: (SKILL_REL,) + JAVA_REFERENCE_RELS,
 }
+#: §S1.3 — where ``init`` renders each skill.
+RENDERED = {
+    name: {f".agents/skills/{name}/{rel}" for rel in rels}
+    for name, rels in STACK_SKILL_SOURCES.items()
+}
+RENDERED_RUST_STACK = RENDERED[RUST_STACK]
+RENDERED_JAVA_STACK = RENDERED[JAVA_STACK]
 
 STACKS = ("arduino", "bun", "python", "quarkus", "rust")
 ROLES = ("red", "green", "verify", "fix")
+#: The stack skill every role of a stack lists: CR-MDB-085 §S2's rust, CR-MDB-086 §S1.4's quarkus.
+DEFINITION_SKILL = {"rust": RUST_STACK, "quarkus": JAVA_STACK}
 
 #: §S3.1 — rust-orchestration.md to rust-stack: (moved section, anchor phrase, destination).
 S3_1_ROWS = (
@@ -211,8 +283,46 @@ PROJECT_EXAMPLES = (
     "e2e_telemetry",
     "total_acked",
 )
+#: CR-MDB-086 §S4.1 — the project the Java material named; found anywhere in the text.
+PROJECT_NAMES = ("org.fourpm", "fourpm", "store-utils", "4pm-Store-utils")
 _CTX_TOOL = re.compile(r"\bctx_[a-z_]+")
 _LEAN_CTX = re.compile(r"lean-ctx", re.IGNORECASE)
+
+#: CR-MDB-086 §S1.3 — the rules java-stack's ``SKILL.md`` carries: (rule, anchor in SKILL.md).
+JAVA_SKILL_RULES = (
+    ("Test-first problem isolation", "Test-First Problem Isolation"),
+    ("Never disable DevServices globally to cure a hang", "DevServices globally"),
+    (
+        "Removing a method: check its unit and integration tests",
+        "unit tests AND integration tests",
+    ),
+    ("Native (GraalVM) builds", "RAM-heavy and slow"),
+    ("Check docker is clean before native or JVM e2e cycles", "docker is clean"),
+    ("The client's task-specific flags", "--also-make"),
+)
+#: CR-MDB-086 §S1.3 — the client's task-specific flags, and the monorepo backend's variable.
+JAVA_CLIENT_FLAGS = (
+    "--test",
+    "--also-make",
+    "--native",
+    "--profile",
+    "--system-prop",
+    "--update-snapshots",
+    "--coverage-profile",
+    "CRUCIBLE_MAVEN_DIR",
+)
+
+#: CR-MDB-086 §S2.3 — a moved reference named by its old name (``.md`` optional), behind any path.
+_OLD_REFERENCE = re.compile(
+    r"(?<![\w-])(?P<prefix>(?:[\w.~-]+/)*)"
+    r"(?P<name>java-(?:coding-standards|testing-practices|modern-syntax|maven-best-practices"
+    r"|quarkus-patterns))(?:\.md)?(?![\w-])"
+)
+#: CR-MDB-086 §S2.3 — the old homes: a path ending in one names the moved reference's old path.
+_OLD_HOMES = ("memory-templates/", "docs/memory/")
+
+#: CR-MDB-086 §S2.2 — the families comment saying the quarkus definitions read the java-* templates.
+QUARKUS_READS_JAVA_TEMPLATES = re.compile(r"(?i)quarkus[^.;]*\bread[^.;]*java-\*")
 
 #: §S4 — the sections §S3 moves, by template: patterns a sentence names one by.
 MOVED_SECTION_NAMES = {
@@ -241,11 +351,53 @@ def _load_toml(path: Path) -> dict:
     return tomllib.loads(read_text(path))
 
 
+def _skill_source_files(name: str) -> list[Path]:
+    """Every file of the stack skill ``name``'s source, sorted."""
+    skill_dir = SKILLS_DIR / name
+    if not skill_dir.is_dir():
+        return []
+    return sorted(p for p in skill_dir.rglob("*") if p.is_file())
+
+
 def _rust_stack_files() -> list[Path]:
     """Every file of the rust-stack source, sorted."""
-    if not RUST_STACK_DIR.is_dir():
-        return []
-    return sorted(p for p in RUST_STACK_DIR.rglob("*") if p.is_file())
+    return _skill_source_files(RUST_STACK)
+
+
+def _restated_lines(stack_toml: Path, text: str) -> list[str]:
+    """Each line of ``stack_toml`` (list markers dropped) at least :data:`RESTATED_LINE_MIN`
+    characters long that ``text`` holds verbatim, sorted."""
+    lines = {ln.strip().lstrip("-").strip() for ln in read_text(stack_toml).splitlines()}
+    return sorted(ln for ln in lines if len(ln) >= RESTATED_LINE_MIN and ln in text)
+
+
+def _comment_above(source: str, symbol: str) -> str:
+    """The ``#`` comment block directly above the first line of ``source`` starting with
+    ``symbol``, its markers dropped and its lines joined ("" when none)."""
+    lines = source.splitlines()
+    index = next((i for i, ln in enumerate(lines) if ln.startswith(symbol)), None)
+    if index is None:
+        return ""
+    block = []
+    for line in reversed(lines[:index]):
+        if not line.lstrip().startswith("#"):
+            break
+        block.insert(0, line.lstrip().lstrip("#:").strip())
+    return " ".join(block)
+
+
+def old_reference_findings(text: str) -> list[str]:
+    """CR-MDB-086 §S2.3: each mention in ``text`` of a moved Java reference by its old path (behind
+    ``memory-templates/`` or ``docs/memory/``) or by its bare old name. A path elsewhere — the
+    reference's origin in a global memory, say — is neither."""
+    found = []
+    for match in _OLD_REFERENCE.finditer(text):
+        prefix, name = match.group("prefix"), match.group("name")
+        if not prefix:
+            found.append(f"names {name} by its bare old name")
+        elif prefix.endswith(_OLD_HOMES):
+            found.append(f"names {name} by its old path {match.group(0)!r}")
+    return found
 
 
 def _skills_line(text: str) -> str | None:
@@ -313,12 +465,14 @@ def pointer_findings(text: str, names: tuple[str, ...]) -> list[str]:
 
 
 def rewording_findings(text: str) -> list[str]:
-    """§S5.2/§S5.3: each project component a moved example names, each ``ctx_`` tool, lean-ctx."""
+    """§S5.2/§S5.3: each project component a moved example names, each name of CR-MDB-086 §S4.1's
+    project, each ``ctx_`` tool, lean-ctx."""
     found = [
         f"names the project component {name!r}"
         for name in PROJECT_EXAMPLES
         if re.search(rf"(?<![A-Za-z0-9_]){re.escape(name)}(?![A-Za-z0-9_])", text)
     ]
+    found += [f"names the project {name!r}" for name in PROJECT_NAMES if name in text]
     found += [
         f"names the tool {tool!r}" for tool in sorted(set(_CTX_TOOL.findall(text)))
     ]
@@ -330,100 +484,120 @@ def rewording_findings(text: str) -> list[str]:
 # ------------------------------------------------------------------ §S1.2 / §S2 ----
 
 
-class RustStackDeclaredTest(unittest.TestCase):
-    """§S1.2/§S2/AC1 — ``rust-stack`` is declared for ``rust``, and its source is a ``SKILL.md``
-    that points to ``references/e2e-docker-nextest.md``."""
+class StackSkillsDeclaredTest(unittest.TestCase):
+    """CR-MDB-085 §S1.2/§S2/AC1, CR-MDB-086 §S1.1–2/AC1/AC2 — each stack skill is declared for its
+    stacks, and its source is a ``SKILL.md`` that points to each of its references by its path.
+    MIGRATED (CR-MDB-086 §S6.1; was ``RustStackDeclaredTest``): ``java-stack`` taken as data."""
 
-    def test_the_declaration_names_rust_stack_for_rust_and_nothing_else(self):
+    def test_the_declaration_names_each_stack_skill_for_its_stacks_and_nothing_else(self):
         self.assertEqual(
             stack_skills.load_declaration(GENERATOR_DIR),
             EXPECTED_DECLARATION,
-            "§S1.2: this CR declares rust-stack for rust; no arduino-stack (§S3.5)",
+            "CR-MDB-085 §S1.2: rust-stack for rust, no arduino-stack (§S3.5); CR-MDB-086 "
+            "§S1.1/AC1: java-stack for quarkus and java",
         )
 
-    def test_the_rust_stack_source_is_its_skill_md_and_the_e2e_reference(self):
-        rels = [p.relative_to(RUST_STACK_DIR).as_posix() for p in _rust_stack_files()]
-        self.assertEqual(rels, sorted([SKILL_REL, E2E_REFERENCE_REL]))
-        frontmatter, body = split_frontmatter(read_text(RUST_STACK_SKILL))
-        fields = dict(
-            ln.split(": ", 1) for ln in frontmatter.splitlines() if ": " in ln
-        )
-        self.assertEqual(fields.get("name"), RUST_STACK)
-        self.assertTrue(
-            fields.get("description", "").strip(), "SKILL.md carries a description"
-        )
-        self.assertIn(
-            E2E_REFERENCE_REL,
-            body,
-            "a reference is read only when SKILL.md points to it",
-        )
+    def test_each_stack_skill_source_is_its_skill_md_and_exactly_its_references(self):
+        for name, rels in STACK_SKILL_SOURCES.items():
+            with self.subTest(skill=name):
+                skill_dir = SKILLS_DIR / name
+                found = [p.relative_to(skill_dir).as_posix() for p in _skill_source_files(name)]
+                self.assertEqual(
+                    found,
+                    sorted(rels),
+                    f"CR-MDB-086 §S1.2/AC1: {skill_dir.relative_to(REPO_ROOT).as_posix()} holds "
+                    "SKILL.md and exactly its references",
+                )
+                frontmatter, body = split_frontmatter(read_text(skill_dir / SKILL_REL))
+                fields = dict(
+                    ln.split(": ", 1) for ln in frontmatter.splitlines() if ": " in ln
+                )
+                self.assertEqual(fields.get("name"), name)
+                self.assertTrue(
+                    fields.get("description", "").strip(), "SKILL.md carries a description"
+                )
+                self.assertEqual(
+                    [rel for rel in rels if rel != SKILL_REL and rel not in body],
+                    [],
+                    "CR-MDB-086 AC2: a reference is read only when SKILL.md names it by its path",
+                )
 
-    def test_a_render_for_rust_writes_rust_stack_and_for_any_other_stack_nothing(self):
-        self.assertEqual(
-            set(stack_skills.render_skills(GENERATOR_DIR, ["rust"])),
-            RENDERED_RUST_STACK,
-        )
-        for stack in ("arduino", "bun", "python", "quarkus"):
+    def test_a_render_writes_each_stacks_declared_skills_and_for_any_other_stack_nothing(self):
+        for stack in STACKS + ("java",):
+            expected = set().union(
+                *(RENDERED[n] for n, stacks in EXPECTED_DECLARATION.items() if stack in stacks)
+            )
             with self.subTest(stack=stack):
-                self.assertEqual(stack_skills.render_skills(GENERATOR_DIR, [stack]), {})
+                self.assertEqual(
+                    set(stack_skills.render_skills(GENERATOR_DIR, [stack])),
+                    expected,
+                    "§S1.3: a stack renders the skills declared for it, and only those",
+                )
 
 
-class RustDefinitionsLoadRustStackTest(unittest.TestCase):
-    """§S2/AC4 — every rust definition loads ``rust-stack``; no other stack's names one."""
+class DefinitionsLoadTheirStackSkillTest(unittest.TestCase):
+    """CR-MDB-085 §S2/AC4, CR-MDB-086 §S1.4 — every definition of a stack with a stack skill loads
+    it; no definition names a stack skill not declared for its stack. MIGRATED (CR-MDB-086 §S6.1;
+    was ``RustDefinitionsLoadRustStackTest``): the quarkus stack's ``java-stack`` taken as data."""
 
-    def test_every_rust_role_lists_rust_stack_in_its_skills(self):
-        roles = _load_toml(RUST_TOML)["roles"]
+    def test_every_role_lists_its_stacks_skill_in_its_skills(self):
         missing = [
-            role for role in ROLES if RUST_STACK not in roles[role].get("skills", [])
+            f"{stack}-{role}: {skill}"
+            for stack, skill in DEFINITION_SKILL.items()
+            for role, table in sorted(_load_toml(STACKS_DIR / f"{stack}.toml")["roles"].items())
+            if role in ROLES and skill not in table.get("skills", [])
         ]
         self.assertEqual(
-            missing, [], "§S2: every role of the rust stack lists rust-stack"
+            missing,
+            [],
+            "CR-MDB-085 §S2: every rust role lists rust-stack; CR-MDB-086 §S1.4: every quarkus "
+            "role lists java-stack",
         )
 
-    def test_every_rendered_rust_definition_skills_line_names_rust_stack(self):
+    def test_every_rendered_definition_skills_line_names_its_stacks_skill(self):
         failures = []
-        for role in ROLES:
-            for label, text in (
-                ("render", _rendered("rust", role)),
-                ("generator/agents", read_text(AGENTS_DIR / f"rust-{role}-agent.md")),
-            ):
-                line = _skills_line(text)
-                if line is None or RUST_STACK not in line:
-                    failures.append(f"rust-{role} ({label}): {line!r}")
+        for stack, skill in DEFINITION_SKILL.items():
+            for role in ROLES:
+                for label, text in (
+                    ("render", _rendered(stack, role)),
+                    (
+                        "generator/agents",
+                        read_text(AGENTS_DIR / f"{stack}-{role}-agent.md"),
+                    ),
+                ):
+                    line = _skills_line(text)
+                    if line is None or skill not in line:
+                        failures.append(f"{stack}-{role} ({label}): {line!r}")
         self.assertEqual(
             failures,
             [],
-            "AC4: each rust skills line names rust-stack, e.g. "
+            "each skills line names its stack's skill, e.g. "
             "'Load these skills first: crucible, rust-stack.'",
         )
 
-    def test_no_other_stacks_definition_names_a_stack_skill(self):
-        declared = set(stack_skills.load_declaration(GENERATOR_DIR))
+    def test_no_definition_names_a_stack_skill_not_declared_for_its_stack(self):
+        declared = stack_skills.load_declaration(GENERATOR_DIR)
         self.assertEqual(
-            declared, set(EXPECTED_DECLARATION), "precondition: the declared skills"
+            set(declared), set(EXPECTED_DECLARATION), "precondition: the declared skills"
         )
         texts = {
-            f"render {s}-{r}": _rendered(s, r)
-            for s in STACKS
-            if s != "rust"
-            for r in ROLES
+            (f"render {s}-{r}", s): _rendered(s, r) for s in STACKS for r in ROLES
         }
         texts.update(
             {
-                p.relative_to(REPO_ROOT).as_posix(): read_text(p)
+                (p.relative_to(REPO_ROOT).as_posix(), p.name.split("-", 1)[0]): read_text(p)
                 for p in sorted(AGENTS_DIR.glob("*-agent.md"))
                 + sorted(PI_AGENTS_DIR.glob("*.md"))
-                if not p.name.startswith("rust-")
             }
         )
         found = sorted(
             f"{where}: {name}"
-            for where, text in texts.items()
-            for name in declared
-            if name in text
+            for (where, stack), text in texts.items()
+            for name, stacks in declared.items()
+            if stack not in stacks and name in text
         )
         self.assertEqual(
-            found, [], "AC4: no other stack's definition names a stack skill"
+            found, [], "AC4: no definition names a stack skill not declared for its stack"
         )
 
     def test_the_companion_memory_bullet_names_rust_stack_instead_of_the_template(self):
@@ -609,12 +783,7 @@ class RustStackRestatesNothingTest(unittest.TestCase):
         self.assertEqual(found, [], "AC5: no moved text is restated in rust-stack")
 
     def test_no_line_of_rust_toml_is_restated_in_rust_stack(self):
-        lines = {
-            ln.strip().lstrip("-").strip() for ln in read_text(RUST_TOML).splitlines()
-        }
-        restated = sorted(
-            ln for ln in lines if len(ln) >= RESTATED_LINE_MIN and ln in self.text
-        )
+        restated = _restated_lines(RUST_TOML, self.text)
         self.assertEqual(
             restated, [], "§S2: SKILL.md restates nothing rust.toml states"
         )
@@ -711,10 +880,37 @@ class StackSkillRewordingDetectorTest(unittest.TestCase):
         )
         self.assertEqual(rewording_findings(text), [])
 
+    def test_each_name_of_the_java_materials_project_is_found(self):
+        # CR-MDB-086 §S4.1: a package under org.fourpm, the shared library and its repository.
+        text = (
+            "Package `org.fourpm.store.api`; reuse `store-utils` from the "
+            "`4pm-Store-utils` repository.\n"
+        )
+        self.assertEqual(
+            rewording_findings(text),
+            [
+                "names the project 'org.fourpm'",
+                "names the project 'fourpm'",
+                "names the project 'store-utils'",
+                "names the project '4pm-Store-utils'",
+            ],
+        )
+        self.assertEqual(
+            rewording_findings("Group id `fourpm`.\n"), ["names the project 'fourpm'"]
+        )
+
+    def test_a_neutral_package_and_shared_library_are_not(self):
+        text = (
+            "Package `com.example.store.api`; reuse `shared-utils` from the "
+            "`example-shared-utils` repository.\n"
+        )
+        self.assertEqual(rewording_findings(text), [])
+
 
 class StackSkillRewordingsTest(unittest.TestCase):
-    """§S5/AC7 — ``generator/skills/`` teaches no runner invocation, names no project component,
-    no ``ctx_`` tool and no lean-ctx."""
+    """CR-MDB-085 §S5/AC7, CR-MDB-086 §S4/AC6 — ``generator/skills/`` teaches no runner
+    invocation, names no project component, no project of §S4.1, no ``ctx_`` tool and no
+    lean-ctx. MIGRATED (CR-MDB-086 §S6.1): every declared stack skill must be there to be read."""
 
     def setUp(self):
         self.files = (
@@ -722,8 +918,10 @@ class StackSkillRewordingsTest(unittest.TestCase):
             if SKILLS_DIR.is_dir()
             else []
         )
-        self.assertIn(
-            RUST_STACK_SKILL, self.files, "generator/skills/ holds rust-stack"
+        self.assertEqual(
+            [n for n in STACK_SKILL_SOURCES if SKILLS_DIR / n / SKILL_REL not in self.files],
+            [],
+            "generator/skills/ holds rust-stack and java-stack",
         )
 
     def test_the_raw_runner_guard_over_generator_skills_finds_nothing(self):
@@ -740,7 +938,242 @@ class StackSkillRewordingsTest(unittest.TestCase):
             for p in self.files
             if (f := rewording_findings(read_text(p)))
         }
-        self.assertEqual(found, {}, "§S5.2/§S5.3")
+        self.assertEqual(found, {}, "CR-MDB-085 §S5.2/§S5.3; CR-MDB-086 §S4.1/§S4.3")
+
+
+# ------------------------------------------------------------------ CR-MDB-086 ----
+
+
+class JavaReferencesMovedTest(unittest.TestCase):
+    """CR-MDB-086 §S2.1/AC1 — the five references leave ``skills-src/memory-templates/`` for
+    java-stack, verbatim, each opening on a provenance line naming it a ``java-stack`` reference."""
+
+    def test_memory_templates_holds_none_of_the_five_and_keeps_java_orchestration(self):
+        self.assertEqual(
+            [old for old in JAVA_OLD_NAMES if (MEMORY_TEMPLATES_DIR / old).exists()],
+            [],
+            "AC1: skills-src/memory-templates/ holds none of the five source files",
+        )
+        self.assertTrue(
+            JAVA_TEMPLATE.is_file(), "§S2.2: java-orchestration.md stays (CR-MDB-060's)"
+        )
+
+    def test_each_reference_keeps_its_title(self):
+        problems = []
+        for rel, _old, title in JAVA_REFERENCES:
+            path = JAVA_STACK_DIR / rel
+            if not path.is_file():
+                problems.append(f"{rel}: missing")
+            elif title not in read_text(path).splitlines():
+                problems.append(f"{rel}: no {title!r}")
+        self.assertEqual(problems, [], "§S2.1: the five files move verbatim")
+
+    def test_each_references_provenance_line_names_it_a_java_stack_reference(self):
+        problems = []
+        for rel in JAVA_REFERENCE_RELS:
+            path = JAVA_STACK_DIR / rel
+            if not path.is_file():
+                problems.append(f"{rel}: missing")
+                continue
+            first = next((ln for ln in read_text(path).splitlines() if ln.strip()), "")
+            if JAVA_STACK not in first or "reference" not in first.lower():
+                problems.append(f"{rel}: does not name it a java-stack reference: {first!r}")
+            if "docs/memory/" in first:
+                problems.append(f"{rel}: names docs/memory/: {first!r}")
+            if re.search(r"(?i)memory[\s-]+template", first):
+                problems.append(f"{rel}: calls it a memory template: {first!r}")
+        self.assertEqual(problems, [], "§S2.1/AC1: each one's opening provenance line")
+
+
+class JavaStackSkillTest(unittest.TestCase):
+    """CR-MDB-086 §S1.3/AC2 — java-stack's ``SKILL.md`` carries the rules the agents need that
+    ``quarkus.toml`` does not state, and restates nothing it does."""
+
+    def setUp(self):
+        self.assertTrue(
+            JAVA_STACK_SKILL.is_file(),
+            f"AC2: {JAVA_STACK_SKILL.relative_to(REPO_ROOT).as_posix()} exists",
+        )
+        self.text = read_text(JAVA_STACK_SKILL)
+
+    def test_skill_md_carries_each_s1_3_rule_by_its_anchor(self):
+        self.assertEqual(
+            [f"{rule}: {anchor!r}" for rule, anchor in JAVA_SKILL_RULES if anchor not in self.text],
+            [],
+            "§S1.3/AC2",
+        )
+
+    def test_skill_md_names_the_clients_task_specific_flags(self):
+        self.assertEqual(
+            [
+                flag
+                for flag in JAVA_CLIENT_FLAGS
+                if not re.search(rf"(?<![\w-]){re.escape(flag)}(?![\w-])", self.text)
+            ],
+            [],
+            "§S1.3: the client's task-specific flags and the monorepo backend's CRUCIBLE_MAVEN_DIR",
+        )
+
+    def test_no_line_of_quarkus_toml_is_restated_in_skill_md(self):
+        self.assertEqual(
+            _restated_lines(QUARKUS_TOML, self.text),
+            [],
+            "§S1.3/AC2: no quarkus.toml line of 40 or more characters appears verbatim in SKILL.md",
+        )
+
+
+class JavaStackInitTest(skills_gate._StackSkillSandbox):
+    """CR-MDB-086 §S2.2/AC4 — ``init --stacks quarkus`` and ``init --stacks java``, sandboxed with
+    the Pi harness and the repository's own assets, render ``java-stack`` with its five references
+    and seed no moved reference into ``docs/memory/``; ``java-orchestration.md`` is still seeded."""
+
+    JAVA_STACKS = ("quarkus", "java")
+
+    def setUp(self):
+        super().setUp()
+        install = self.modelb_home / "install.toml"
+        text = read_text(install)
+        line = f'asset_root = "{self.asset_root}"'
+        self.assertEqual(text.count(line), 1, f"precondition: one asset_root line; got {text!r}")
+        install.write_text(text.replace(line, f'asset_root = "{REPO_ROOT}"'), encoding="utf-8")
+
+    def test_init_renders_java_stack_with_its_five_references(self):
+        for stack in self.JAVA_STACKS:
+            with self.subTest(stack=stack):
+                target = self.root / f"proj-{stack}"
+                self.init_ok(target, stack)
+                self.assertEqual(
+                    set(skills_gate.skill_files(target)),
+                    RENDERED_JAVA_STACK,
+                    f"AC4: init --stacks {stack} writes .agents/skills/java-stack/ and its "
+                    "five references",
+                )
+
+    def test_init_seeds_no_moved_reference_into_docs_memory_but_still_java_orchestration(self):
+        moved = JAVA_OLD_NAMES + tuple(Path(rel).name for rel in JAVA_REFERENCE_RELS)
+        for stack in self.JAVA_STACKS:
+            with self.subTest(stack=stack):
+                target = self.root / f"proj-{stack}"
+                self.init_ok(target, stack)
+                memory = target / "docs" / "memory"
+                self.assertEqual(
+                    sorted(p.name for p in memory.glob("*.md") if p.name in moved), [],
+                    f"AC4: init --stacks {stack} seeds no moved reference into docs/memory/",
+                )
+                self.assertTrue(
+                    (memory / "java-orchestration.md").is_file(),
+                    "AC4: java-orchestration.md is still seeded",
+                )
+                index = read_text(memory / "INDEX.md")
+                self.assertEqual(
+                    [ln for ln in index.splitlines() if any(name in ln for name in moved)],
+                    [],
+                    "AC4: no index line for a moved reference",
+                )
+                self.assertIn("java-orchestration.md", index)
+
+
+class MemoryTemplateFamiliesCommentDetectorTest(unittest.TestCase):
+    """CR-MDB-086 §S2.2 — :func:`_comment_above` and :data:`QUARKUS_READS_JAVA_TEMPLATES` proved
+    both ways on synthetic source."""
+
+    SOURCE = (
+        "x = 1\n\n"
+        "#: Memory-template family prefix -> the stacks whose selection emits it\n"
+        "#: (CR-MDB-031 §S1): the quarkus agent definitions read the ``java-*``\n"
+        "#: templates, so a ``java-*`` template is emitted for ``java`` OR\n"
+        "#: ``quarkus``.\n"
+        "FAMILIES: dict = {}\n"
+    )
+
+    def test_the_comment_saying_the_quarkus_definitions_read_the_java_templates_is_found(self):
+        comment = _comment_above(self.SOURCE, "FAMILIES")
+        self.assertTrue(comment.startswith("Memory-template family prefix"), comment)
+        self.assertRegex(comment, QUARKUS_READS_JAVA_TEMPLATES)
+
+    def test_a_comment_naming_the_families_stacks_only_is_not(self):
+        source = self.SOURCE.replace(
+            "the quarkus agent definitions read the ``java-*``\n#: templates, so ", ""
+        )
+        comment = _comment_above(source, "FAMILIES")
+        self.assertIn("emitted for ``java`` OR ``quarkus``", comment)
+        self.assertNotRegex(comment, QUARKUS_READS_JAVA_TEMPLATES)
+        self.assertEqual(_comment_above("FAMILIES = {}\n", "FAMILIES"), "")
+
+
+class MemoryTemplateFamiliesCommentTest(unittest.TestCase):
+    """CR-MDB-086 §S2.2 — the memory-template families' comment in ``modelb_axi/scaffold.py``
+    no longer says the quarkus definitions read the ``java-*`` templates."""
+
+    def test_the_families_comment_names_no_quarkus_reading_of_the_java_templates(self):
+        comment = _comment_above(read_text(SCAFFOLD_PY), "MEMORY_TEMPLATE_FAMILIES")
+        self.assertTrue(comment, "precondition: MEMORY_TEMPLATE_FAMILIES carries its comment")
+        self.assertNotRegex(comment, QUARKUS_READS_JAVA_TEMPLATES, "§S2.2")
+
+
+class OldReferenceDetectorTest(unittest.TestCase):
+    """CR-MDB-086 §S2.3 — :func:`old_reference_findings` proved both ways on synthetic text."""
+
+    def test_an_old_path_and_a_bare_old_name_are_found(self):
+        text = (
+            "See `skills-src/memory-templates/java-modern-syntax.md`, "
+            "<project>/docs/memory/java-maven-best-practices.md, java-testing-practices.md "
+            "\"Reviewer checklist\" and the java-quarkus-patterns reference.\n"
+        )
+        self.assertEqual(
+            old_reference_findings(text),
+            [
+                "names java-modern-syntax by its old path "
+                "'skills-src/memory-templates/java-modern-syntax.md'",
+                "names java-maven-best-practices by its old path "
+                "'docs/memory/java-maven-best-practices.md'",
+                "names java-testing-practices by its bare old name",
+                "names java-quarkus-patterns by its bare old name",
+            ],
+        )
+
+    def test_a_new_home_another_template_and_an_origin_path_are_not(self):
+        text = (
+            "See references/testing-practices.md \"Reviewer checklist\", `coding-standards.md`, "
+            "the `java-stack` skill, java-orchestration.md, and the origin "
+            "`~/.claude/memory/java-coding-standards.md`.\n"
+        )
+        self.assertEqual(old_reference_findings(text), [])
+
+
+class JavaCrossReferencesTest(unittest.TestCase):
+    """CR-MDB-086 §S2.3/AC6 — every cross-reference among the moved references and the memory
+    templates names the reference's new home; ``operational-commands.md`` names no Java
+    reference. ``java-orchestration.md``'s references are checked with §S3's surgery."""
+
+    def test_no_moved_reference_or_template_names_a_moved_reference_by_its_old_name(self):
+        files = [JAVA_STACK_DIR / rel for rel in JAVA_REFERENCE_RELS] + [
+            p for p in sorted(MEMORY_TEMPLATES_DIR.glob("*.md")) if p != JAVA_TEMPLATE
+        ]
+        found = {}
+        for path in files:
+            findings = old_reference_findings(read_text(path)) if path.is_file() else ["missing"]
+            if findings:
+                found[path.relative_to(REPO_ROOT).as_posix()] = findings
+        self.assertEqual(found, {}, "§S2.3/AC6")
+
+    def test_the_coding_standards_and_testing_practices_point_at_each_others_new_home(self):
+        problems = []
+        for rel, target in (
+            ("references/coding-standards.md", "testing-practices.md"),
+            ("references/testing-practices.md", "coding-standards.md"),
+        ):
+            path = JAVA_STACK_DIR / rel
+            text = read_text(path) if path.is_file() else ""
+            if not re.search(rf"(?<![\w-])(?:references/)?{re.escape(target)}", text):
+                problems.append(f"{rel} does not name {target}")
+        self.assertEqual(problems, [], "§S2.3: a cross-reference names the new home")
+
+    def test_operational_commands_names_no_java_reference(self):
+        text = read_text(OPERATIONAL_COMMANDS)
+        names = JAVA_OLD_NAMES + JAVA_REFERENCE_RELS + (JAVA_STACK,)
+        self.assertEqual([n for n in names if n in text], [], "§S2.3/AC6")
+        self.assertIn("## Quarkus-Specific Commands", text, "only the Related line is dropped")
 
 
 # ------------------------------------------------------------------ §S6.1 ----
