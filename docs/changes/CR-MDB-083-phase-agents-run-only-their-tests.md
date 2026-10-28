@@ -3,12 +3,14 @@
 **Status:** PENDING — **SEED, not the finished spec** (filed 2026-10-28 into release 1.0.0, wave 2).
 Gap analysis, the spec and its pre-review happen in order when this CR starts.
 **Type:** workflow (generated agent definitions, stack files, skills, orchestration rules)
-**Priority:** P1 — release 1.0.0, wave 2, before CR-MDB-060.
-**Depends on:** none known; the board is authoritative: read `queue`, not this line.
+**Priority:** P1 — release 1.0.0, wave 2, after Crucible 0.4.0 is installed: written once against the
+0.4.0 clients' verbs.
+**Depends on:** the Crucible 0.4.0 doc-sync CR, once filed; the board is authoritative: read `queue`,
+not this line.
 **Labels:** agents, generator, stacks, skills, crucible, test-scope
 **Design reference:** `skills-src/model-b/references/sub-agent-procedure.md` § TDD (step 6: the full
 suite is the orchestrator's); `skills-src/crucible/SKILL.md` § Who runs what; PRD D3 (the canonical
-definition and its procedure).
+definition and its procedure); DN-multi-harness-deploy-model §D26 (the test-scope ladder).
 
 ## Context
 
@@ -32,36 +34,35 @@ The shipped surfaces disagree on how wide a phase agent's runs are:
 - Nothing tells an orchestrator how to scope a brief's test runs, so orchestrators widen them to be
   safe.
 
-The clients mostly allow a narrow run: python `--tests` down to one method, rust `--crate` with
-`--test` and `--filter`, mvn `--test` and `--module`, bun `--tests` per file (a name filter arrives
-with Crucible 0.4.0). Arduino is the one client with no filter below the tier directory.
+The Crucible 0.4.0 clients give each rung one form. The narrow rung keeps each stack's native
+filter: python `test --tests`, bun `test --tests`/`--name`, rust `test --crate`/`--test`/`--filter`,
+mvn `unit --test`/`--module`, arduino `test`/`unit --tests`. The whole-suite rung is the same verb on
+every stack: `regression` without `--coverage`, which runs the whole suite as the `regression` tier
+with no coverage. Each `pre-merge-gate` still measures coverage. The final flag names are those of
+0.4.0's release notes.
 
 ## Scope (seed)
 
 1. **One test-scope ladder, stated once,** in the sub-agent procedure; the definitions, the stack files
    and the `crucible` skill point to it rather than restating it:
-   - RED, GREEN and FIX run their own tests by name: the cycle's RED tests and the tests of the files
-     they changed; never the full suite, with or without coverage.
-   - VERIFY runs the wider net (see open question 1).
-   - The orchestrator's pre-merge gate is the only full run.
+   - RED, GREEN and FIX run their own tests: the cycle's RED tests and the tests of the files they
+     changed, with the stack's narrowest filter; never the whole suite, with or without coverage, and
+     never a whole crate, module or package.
+   - VERIFY runs the whole suite without coverage (`regression`, no `--coverage`), in branch
+     verification only; its spec pre-review runs nothing.
+   - The orchestrator's pre-merge gate is the only coverage run.
 2. **The templates' wording** (`generator/templates/{red,green,fix,verify}.md.tmpl`): "affected" becomes
-   the ladder's defined term; FIX's "targeted regression" goes, since `regression` names a tier; the
-   VERIFY definition and the `crucible` skill agree.
+   the ladder's defined term; FIX's "targeted regression" goes, since `regression` names a tier;
+   VERIFY's "targeted regression" and "NO full-suite" become its whole-suite run, and the `crucible`
+   skill's "Does NOT run the regression" agrees. The tests pinning VERIFY's old wording
+   (`tests/test_verify_spec_pre_review_mode.py`) are migrated in RED.
 3. **The stack files** (`generator/stacks/*.toml`): each stack's run commands and gates follow the
-   ladder — quarkus GREEN runs `--test` rather than a module regression; arduino GREEN and FIX keep
-   the full native suite only while its client has no filter, marked as a client gap; rust and the
-   others are re-checked against the ladder.
-4. **An orchestrator rule** in `orchestration-common.md` (and wherever a brief's contents are named):
-   a brief lists the cycle's tests by name and never asks GREEN or FIX for a full run or an
-   "every module that reads a changed file" run; that wider list belongs in VERIFY's brief.
-5. **A Crucible request:** a per-suite or per-test filter for `arduino-crucible.py`. When it ships, the
-   arduino stack drops its full-suite final step (a later doc-sync, not this CR).
-6. **The generated definitions are re-rendered** (`generator/build.py build`), and every guard over the
-   changed text is updated; adopting projects take the change with `modelb-axi agents`.
-
-## Open questions (for gap analysis)
-
-1. **VERIFY's rung:** the affected targets (the tests of everything the branch changed, plus what reads
-   it), or the full suite without coverage, leaving coverage to the orchestrator's gate.
-2. **Quarkus `module` and rust per-crate runs:** whether a whole module or crate is ever GREEN's own
-   scope (a cross-module change), or always VERIFY's.
+   ladder — quarkus GREEN runs `--test` rather than a module regression; arduino GREEN and FIX run
+   `--tests` rather than the full native suite; rust's `smoke-test` stays the orchestrator's, with
+   VERIFY on `regression`; every stack's test_command and VERIFY gates are re-checked.
+4. **An orchestrator rule** in `orchestration-common.md`, on the rule that a brief adds no extra proof
+   steps: a wider test run is one, so a brief never widens a phase agent's runs and names no test
+   list.
+5. **The generated definitions are re-rendered** (`generator/build.py build`), this repository's
+   `.pi/agents` matches them, and every guard over the changed text is updated; adopting projects
+   take the change with `modelb-axi agents`.
