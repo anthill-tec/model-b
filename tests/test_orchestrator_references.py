@@ -31,7 +31,8 @@ module holds what that data does not:
 - ``InitWritesNoDocsMemoryTest`` — §S3.1–2/AC4: ``init`` for each stack writes no ``docs/memory/``
   and names none in its ``planned`` or ``emitted`` list; ``skills-src/memory-templates/`` does not
   exist; ``modelb_axi/`` defines none of §S3.1's symbols and names no ``memory-templates`` or
-  ``docs/memory``.
+  ``docs/memory``; ``init``'s help (``modelb-axi init --help`` and its line in the top-level help)
+  names no project memory. ``InitHelpDetectorTest`` proves that help detector both ways.
 - ``OlderProjectKeepsDocsMemoryTest`` — §S3.3/AC7: a project scaffolded with a ``docs/memory/``
   keeps it, byte for byte, after ``modelb-axi agents``, which renders its stack skills, the
   orchestration reference included.
@@ -60,6 +61,7 @@ Isolation: every ``init``/``agents`` run is in process under ``tests.test_stack_
 directory), its ``install.toml`` pointed at the repository's own assets. Stdlib only.
 """
 
+import argparse
 import ast
 import json
 import re
@@ -69,7 +71,7 @@ import tomllib
 import unittest
 from pathlib import Path
 
-from modelb_axi import agents, scaffold, stack_skills
+from modelb_axi import agents, cli, scaffold, stack_skills
 from tests import test_raw_runner_guard as runner_gate
 from tests import test_stack_skills as skills_gate
 from tests._helpers import (
@@ -196,6 +198,8 @@ RETIRED_SYMBOLS = (
 )
 #: §S3.1–2/AC4 — what no file under ``modelb_axi/`` names.
 RETIRED_NAMES = ("memory-templates", "docs/memory")
+#: §S3.1/AC4 — project memory, as ``init``'s help would name it ("in-repo memory", ``docs/memory``).
+HELP_MEMORY = re.compile(r"(?i)\bmemory\b")
 DOCS_MEMORY = "docs/memory"
 
 #: §S4.3 — the stack files whose "Companion memory" bullet points at the stack skill's reference.
@@ -293,6 +297,23 @@ def provenance_findings(stack: str, text: str) -> list[str]:
     if "docs/memory" in plain:
         found.append(f"the first line names docs/memory: {first!r}")
     return found
+
+
+def help_memory_findings(help_text: str) -> list[str]:
+    """§S3.1/AC4: each line of a rendered help text that names project memory, stripped. The help
+    is read as printed, so a phrase argparse wraps ("in-repo\\nmemory") is still found."""
+    return [line.strip() for line in help_text.splitlines() if HELP_MEMORY.search(line)]
+
+
+def init_help_texts() -> dict:
+    """``{where: text}`` of ``init``'s help as the CLI prints it: ``modelb-axi init --help`` and
+    ``init``'s line in ``modelb-axi --help``."""
+    parser = cli._build_parser()
+    sub = next(a for a in parser._actions  # stdlib argparse: the declared actions
+               if isinstance(a, argparse._SubParsersAction))
+    listed = next(a for a in sub._choices_actions if a.dest == "init")
+    return {"modelb-axi init --help": sub.choices["init"].format_help(),
+            "modelb-axi --help, its init line": listed.help or ""}
 
 
 def anchor_findings(text: str, anchors=S1_5_ANCHORS) -> list[str]:
@@ -783,6 +804,32 @@ class InitWritesNoDocsMemoryTest(skills_gate._RepoAssetsSandbox):
                 found[path.relative_to(REPO_ROOT).as_posix()] = hits
         self.assertEqual(found, {}, "§S3.1–2/AC4: scaffold.py's emission and docstrings, deploy.py's "
                                     "docstring")
+
+    def test_init_help_names_no_project_memory(self):
+        helps = init_help_texts()
+        self.assertIn("usage: modelb-axi init", helps["modelb-axi init --help"],
+                      "precondition: the help read is init's own")
+        self.assertEqual({where: help_memory_findings(text) for where, text in helps.items()
+                          if help_memory_findings(text)}, {},
+                         "§S3.1/AC4: init's help names no project memory")
+
+
+class InitHelpDetectorTest(unittest.TestCase):
+    """§S3.1/AC4 — ``help_memory_findings``, proved both ways on synthetic help text."""
+
+    def test_todays_description_is_found_even_when_argparse_wraps_it(self):
+        wrapped = ("usage: modelb-axi init [-h]\n\nScaffold a Model B project: registry (.env), docs\n"
+                   "model, AGENTS.md for the installed harness set, in-repo\nmemory, git+git-flow, "
+                   "and (opt-in) registrations.\n")
+        self.assertEqual(help_memory_findings(wrapped), ["memory, git+git-flow, and (opt-in) registrations."])
+        self.assertEqual(len(help_memory_findings("writes docs/memory/INDEX.md\nProject Memory\n")), 2)
+
+    def test_a_description_naming_no_memory_is_not_found(self):
+        spec = ("usage: modelb-axi init [-h]\n\nScaffold a Model B project: registry (.env), docs\n"
+                "model, AGENTS.md for the installed harness set, its stack skills, git+git-flow,\n"
+                "and (opt-in) registrations.\n")
+        self.assertEqual(help_memory_findings(spec), [])
+        self.assertEqual(help_memory_findings("memorytest memorable"), [])
 
 
 class OlderProjectKeepsDocsMemoryTest(skills_gate._RepoAssetsSandbox):
