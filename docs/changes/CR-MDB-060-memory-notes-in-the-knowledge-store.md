@@ -4,8 +4,8 @@
 Gap analysis, the design record, the spec and its pre-review happen in order when this CR starts.
 **Type:** feature (scaffold, project schema, skills, memory templates, installer preflight)
 **Priority:** P1 — release 1.0.0, wave 2.
-**Depends on:** CR-MDB-085 (the stack skills take the reference material out of `docs/memory/` first);
-the board is authoritative: read `queue`, not this line.
+**Depends on:** CR-MDB-085 and CR-MDB-086 (the stack skills take the agent-facing and reference
+material out of `docs/memory/` first); the board is authoritative: read `queue`, not this line.
 **Labels:** memory, knowledge-store, lean-ctx, scaffold, skills
 **Design reference:** CR-MDB-045 (execution knowledge store, `KNOWLEDGE_CATEGORY`); PRD D10;
 `contracts/lean-ctx.md`; `orchestration-common` § "Memory"; PRD D5, amendments of 2026-10-10 (the
@@ -31,7 +31,7 @@ searchable, and PRD D5 makes it the one home for a Model B project's memory note
 2. **`init` ships knowledge, not Markdown notes.** The orchestrator-facing notes — those parts of the
    stack orchestration templates, and `operational-commands.md` — become importable knowledge seeds
    (keyed facts, per stack); `init` writes no `docs/memory/` and no `INDEX.md`. The reference material
-   and the agent-facing mechanics are the stack skills' (CR-MDB-085).
+   and the agent-facing mechanics are the stack skills' and the stack files' (CR-MDB-085, CR-MDB-086).
 3. **The import path.** CR-MDB-045 forbids writing through the `lean-ctx knowledge` CLI, so the seeds
    are imported through the session's knowledge capability: an OKF bundle (one Markdown file per fact,
    with YAML frontmatter), imported with skip-existing merge, idempotent on re-runs.
@@ -64,4 +64,5 @@ searchable, and PRD D5 makes it the one home for a Model B project's memory note
   `docs/memory/` or the conditional key.
 - **Boundary with CR-MDB-055 (`migrate`, 1.1.0):** existing projects' `docs/memory/` and Claude-era
   user-scope memory notes migrate through `migrate`; this CR covers new projects and Model B itself.
-- **Score:** seeded at 13; re-scored at gap analysis now that the reference material is CR-MDB-085's.
+- **Score:** seeded at 13; re-scored at gap analysis now that the reference material is CR-MDB-085's
+  and CR-MDB-086's.
