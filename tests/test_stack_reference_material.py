@@ -9,9 +9,11 @@ checked as data (:data:`EXPECTED_DECLARATION`, :data:`STACK_SKILL_SOURCES`,
 :data:`DEFINITION_SKILL`), one entry per stack skill:
 
 - ``StackSkillsDeclaredTest`` — CR-MDB-085 §S1.2/§S2/AC1, CR-MDB-086 §S1.1–2/AC1/AC2:
-  ``rust-stack`` is declared for ``rust``, ``java-stack`` for ``quarkus`` and ``java``, and nothing
-  else is; each source is a ``SKILL.md`` and exactly its references, each pointed to from
-  ``SKILL.md`` by its path; a render for a stack writes its declared skills, and for any other
+  ``rust-stack`` is declared for ``rust``, ``java-stack`` for ``quarkus`` and ``java``, and —
+  MIGRATED (CR-MDB-060 §S1.2–3/AC2; CR-MDB-085's "no ``arduino-stack``" ruling reversed) —
+  ``arduino-stack`` for ``arduino``, and nothing else is; each source is a ``SKILL.md`` and exactly
+  its references (each of the three now with its ``references/orchestration.md``), each pointed to
+  from ``SKILL.md`` by its path; a render for a stack writes its declared skills, and for any other
   stack nothing.
 - ``DefinitionsLoadTheirStackSkillTest`` — CR-MDB-085 §S2/AC4, CR-MDB-086 §S1.4: every rust role
   lists ``rust-stack`` and every quarkus role ``java-stack``, so every rendered definition's skills
@@ -19,9 +21,9 @@ checked as data (:data:`EXPECTED_DECLARATION`, :data:`STACK_SKILL_SOURCES`,
   definition names a stack skill not declared for its stack. Each stack's "Companion memory"
   bullet names its stack skill and no template or ``docs/memory/`` path (CR-MDB-086 §S5.1).
 - ``JavaReferencesMovedTest`` — CR-MDB-086 §S2.1/AC1: the five references leave
-  ``skills-src/memory-templates/`` (``java-orchestration.md`` stays), keep their titles, and each
-  one's provenance line names it a ``java-stack`` reference — never ``docs/memory/`` or a memory
-  template.
+  ``skills-src/memory-templates/`` (``java-orchestration.md`` became ``java-stack``'s
+  ``references/orchestration.md``, CR-MDB-060 §S1.1), keep their titles, and each one's provenance
+  line names it a ``java-stack`` reference — never ``docs/memory/`` or a memory template.
 - ``JavaStackSkillTest`` / ``NativeBuildDetectorTest`` — CR-MDB-086 §S1.3/AC2: ``SKILL.md``
   carries each §S1.3 rule by its anchor and the client's task-specific flags, and restates no
   ``quarkus.toml`` line; :func:`native_build_findings` proved both ways, then its native-build rule
@@ -31,16 +33,15 @@ checked as data (:data:`EXPECTED_DECLARATION`, :data:`STACK_SKILL_SOURCES`,
   :func:`integration_verb_findings` proved both ways, then no reference sends a failsafe ``*IT``
   run to ``e2e`` or calls a ``verify`` run "failsafe only".
 - ``JavaStackInitTest`` — CR-MDB-086 §S2.2/AC4: ``init --stacks quarkus`` and ``--stacks java``
-  (sandboxed, Pi harness, the repository's own assets) render ``java-stack`` with its references,
-  seed no moved reference into ``docs/memory/`` and index none, and still seed
-  ``java-orchestration.md``.
-- ``MemoryTemplateFamiliesCommentDetectorTest`` / ``MemoryTemplateFamiliesCommentTest`` —
-  CR-MDB-086 §S2.2: the memory-template families' comment in ``modelb_axi/scaffold.py`` no longer
-  says the quarkus definitions read the ``java-*`` templates.
+  (sandboxed, Pi harness, the repository's own assets) render ``java-stack`` with its references;
+  MIGRATED (CR-MDB-060 §S3.1/AC4): they write no ``docs/memory/`` at all, and the Java orchestrator
+  notes arrive as the rendered ``references/orchestration.md``. (The memory-template families'
+  comment check, CR-MDB-086 §S2.2, went with ``MEMORY_TEMPLATE_FAMILIES`` — CR-MDB-060 §S3.1.)
 - ``OldReferenceDetectorTest`` / ``JavaCrossReferencesTest`` — CR-MDB-086 §S2.3/AC6:
   :func:`old_reference_findings` proved both ways, then run over the moved references and the
-  memory templates, ``java-orchestration.md`` among them (MIGRATED, §S3/AC6); the moved
-  references point at each other's new homes; ``operational-commands.md`` names no Java reference.
+  stacks' orchestration references (the memory templates until CR-MDB-060 §S1.1); the moved
+  references point at each other's new homes. (``operational-commands.md``'s check went with the
+  file, CR-MDB-060 §S2.)
 - ``HeadingBodyDetectorTest`` / ``JavaOrchestrationMovesTest`` — CR-MDB-086 §S3/AC5:
   :func:`empty_heading_findings` proved both ways; then each §S3 row by its anchor phrase — in its
   destination and gone from ``java-orchestration.md`` where it moves or is deleted, still there
@@ -79,6 +80,11 @@ checked as data (:data:`EXPECTED_DECLARATION`, :data:`STACK_SKILL_SOURCES`,
   ``generator/stacks/*.toml`` and states the number of files in ``generator/agents/``, both
   derived from the tree.
 
+MIGRATED (CR-MDB-060 §S1.1): the templates the CR-MDB-085 and CR-MDB-086 classes read —
+``rust-orchestration.md``, ``arduino-orchestration.md``, ``java-orchestration.md`` — are the stack
+skills' ``references/orchestration.md`` now (:data:`tests._helpers.ORCHESTRATION_REFERENCES`), moved
+with their headings and rules; "the template" below names that reference.
+
 Anchor phrases are the spec's (§S3 tables), checked as written. Hermetic: reads repository files
 and renders in memory; nothing is installed or written outside a temp dir. Stdlib only.
 """
@@ -100,7 +106,14 @@ from tests import test_skill_frontmatter as frontmatter_gate
 from tests import test_stack_skills as skills_gate
 from tests import test_tooling_detachment as tooling_gate
 from tests import test_worktree_flow_surfaces as worktree_gate
-from tests._helpers import REPO_ROOT, md_section, read_text, split_frontmatter
+from tests._helpers import (
+    ORCHESTRATION_REFERENCES,
+    REPO_ROOT,
+    md_section,
+    read_text,
+    split_frontmatter,
+)
+from tests._helpers import rendered_definition as _rendered
 
 GENERATOR_DIR = REPO_ROOT / "generator"
 STACKS_DIR = GENERATOR_DIR / "stacks"
@@ -111,16 +124,23 @@ SKILLS_DIR = GENERATOR_DIR / "skills"
 
 RUST_TOML = STACKS_DIR / "rust.toml"
 ARDUINO_TOML = STACKS_DIR / "arduino.toml"
-RUST_TEMPLATE_REL = "skills-src/memory-templates/rust-orchestration.md"
-ARDUINO_TEMPLATE_REL = "skills-src/memory-templates/arduino-orchestration.md"
+#: MIGRATED (CR-MDB-060 §S1.1): the templates are the stack skills' orchestration references now.
+RUST_TEMPLATE_REL = ORCHESTRATION_REFERENCES["rust"]
+ARDUINO_TEMPLATE_REL = ORCHESTRATION_REFERENCES["arduino"]
 RUST_TEMPLATE = REPO_ROOT / RUST_TEMPLATE_REL
 ARDUINO_TEMPLATE = REPO_ROOT / ARDUINO_TEMPLATE_REL
 
-#: §S1.2/§S2 — the declaration: CR-MDB-085's ``rust-stack``, and CR-MDB-086 §S1.1's
-#: ``java-stack`` for ``quarkus`` and ``java``.
+#: §S1.2/§S2 — the declaration: CR-MDB-085's ``rust-stack``, CR-MDB-086 §S1.1's ``java-stack``
+#: for ``quarkus`` and ``java``, and CR-MDB-060 §S1.2's ``arduino-stack`` for ``arduino`` (MIGRATED:
+#: CR-MDB-085 §S3.5's "no arduino-stack" ruling is reversed under the PRD D5 amendment).
 RUST_STACK = "rust-stack"
 JAVA_STACK = "java-stack"
-EXPECTED_DECLARATION = {RUST_STACK: ["rust"], JAVA_STACK: ["quarkus", "java"]}
+ARDUINO_STACK = "arduino-stack"
+EXPECTED_DECLARATION = {
+    RUST_STACK: ["rust"],
+    JAVA_STACK: ["quarkus", "java"],
+    ARDUINO_STACK: ["arduino"],
+}
 RUST_STACK_DIR = SKILLS_DIR / RUST_STACK
 JAVA_STACK_DIR = SKILLS_DIR / JAVA_STACK
 SKILL_REL = "SKILL.md"
@@ -157,16 +177,19 @@ JAVA_REFERENCES = (
 JAVA_REFERENCE_RELS = tuple(ref for ref, _old, _title in JAVA_REFERENCES)
 JAVA_OLD_NAMES = tuple(old for _ref, old, _title in JAVA_REFERENCES)
 MEMORY_TEMPLATES_DIR = REPO_ROOT / "skills-src" / "memory-templates"
-JAVA_TEMPLATE = MEMORY_TEMPLATES_DIR / "java-orchestration.md"
-OPERATIONAL_COMMANDS = MEMORY_TEMPLATES_DIR / "operational-commands.md"
+#: MIGRATED (CR-MDB-060 §S1.1; was ``skills-src/memory-templates/java-orchestration.md``).
+JAVA_TEMPLATE = REPO_ROOT / ORCHESTRATION_REFERENCES["java"]
 QUARKUS_TOML = STACKS_DIR / "quarkus.toml"
-SCAFFOLD_PY = REPO_ROOT / "modelb_axi" / "scaffold.py"
 
+#: CR-MDB-060 §S1.1 — the reference each stack's orchestrator notes became.
+ORCHESTRATION_REL = "references/orchestration.md"
 #: Each stack skill's source files, relative to its directory: CR-MDB-085 §S1.2's, and
-#: CR-MDB-086 §S1.2's ``SKILL.md`` and exactly the five references.
+#: CR-MDB-086 §S1.2's ``SKILL.md`` and exactly the five references. MIGRATED (CR-MDB-060
+#: §S1.1–2/AC2): each carries its orchestrator reference, and ``arduino-stack`` is that alone.
 STACK_SKILL_SOURCES = {
-    RUST_STACK: (SKILL_REL, E2E_REFERENCE_REL),
-    JAVA_STACK: (SKILL_REL,) + JAVA_REFERENCE_RELS,
+    RUST_STACK: (SKILL_REL, E2E_REFERENCE_REL, ORCHESTRATION_REL),
+    JAVA_STACK: (SKILL_REL,) + JAVA_REFERENCE_RELS + (ORCHESTRATION_REL,),
+    ARDUINO_STACK: (SKILL_REL, ORCHESTRATION_REL),
 }
 #: §S1.3 — where ``init`` renders each skill.
 RENDERED = {
@@ -338,10 +361,7 @@ _OLD_REFERENCE = re.compile(
 #: CR-MDB-086 §S2.3 — the old homes: a path ending in one names the moved reference's old path.
 _OLD_HOMES = ("memory-templates/", "docs/memory/")
 
-#: CR-MDB-086 §S2.2 — the families comment saying the quarkus definitions read the java-* templates.
-QUARKUS_READS_JAVA_TEMPLATES = re.compile(r"(?i)quarkus[^.;]*\bread[^.;]*java-\*")
-
-JAVA_TEMPLATE_REL = "skills-src/memory-templates/java-orchestration.md"
+JAVA_TEMPLATE_REL = ORCHESTRATION_REFERENCES["java"]
 TESTING_PRACTICES_REL = "references/testing-practices.md"
 CODING_STANDARDS_REL = "references/coding-standards.md"
 QUARKUS_PATTERNS = JAVA_STACK_DIR / "references" / "quarkus-patterns.md"
@@ -501,21 +521,6 @@ def _restated_lines(stack_toml: Path, text: str) -> list[str]:
     return sorted(ln for ln in lines if len(ln) >= RESTATED_LINE_MIN and ln in text)
 
 
-def _comment_above(source: str, symbol: str) -> str:
-    """The ``#`` comment block directly above the first line of ``source`` starting with
-    ``symbol``, its markers dropped and its lines joined ("" when none)."""
-    lines = source.splitlines()
-    index = next((i for i, ln in enumerate(lines) if ln.startswith(symbol)), None)
-    if index is None:
-        return ""
-    block = []
-    for line in reversed(lines[:index]):
-        if not line.lstrip().startswith("#"):
-            break
-        block.insert(0, line.lstrip().lstrip("#:").strip())
-    return " ".join(block)
-
-
 def old_reference_findings(text: str) -> list[str]:
     """CR-MDB-086 §S2.3: each mention in ``text`` of a moved Java reference by its old path (behind
     ``memory-templates/`` or ``docs/memory/``) or by its bare old name. A path elsewhere — the
@@ -533,13 +538,6 @@ def old_reference_findings(text: str) -> list[str]:
 def _skills_line(text: str) -> str | None:
     return next(
         (ln for ln in text.splitlines() if agents.SKILLS_LINE_PREFIX in ln), None
-    )
-
-
-def _rendered(stack: str, role: str) -> str:
-    """One definition rendered in memory from today's stack file and templates."""
-    return agents.render(
-        stack, role, agents.load_stack_params(STACKS_DIR, stack), TEMPLATES_DIR
     )
 
 
@@ -712,8 +710,8 @@ class StackSkillsDeclaredTest(unittest.TestCase):
         self.assertEqual(
             stack_skills.load_declaration(GENERATOR_DIR),
             EXPECTED_DECLARATION,
-            "CR-MDB-085 §S1.2: rust-stack for rust, no arduino-stack (§S3.5); CR-MDB-086 "
-            "§S1.1/AC1: java-stack for quarkus and java",
+            "CR-MDB-085 §S1.2: rust-stack for rust; CR-MDB-086 §S1.1/AC1: java-stack for "
+            "quarkus and java; CR-MDB-060 §S1.2/AC2: arduino-stack for arduino",
         )
 
     def test_each_stack_skill_source_is_its_skill_md_and_exactly_its_references(self):
@@ -1155,7 +1153,7 @@ class StackSkillRewordingsTest(unittest.TestCase):
         self.assertEqual(
             [n for n in STACK_SKILL_SOURCES if SKILLS_DIR / n / SKILL_REL not in self.files],
             [],
-            "generator/skills/ holds rust-stack and java-stack",
+            "generator/skills/ holds every declared stack skill",
         )
 
     def test_the_raw_runner_guard_over_generator_skills_finds_nothing(self):
@@ -1182,14 +1180,17 @@ class JavaReferencesMovedTest(unittest.TestCase):
     """CR-MDB-086 §S2.1/AC1 — the five references leave ``skills-src/memory-templates/`` for
     java-stack, verbatim, each opening on a provenance line naming it a ``java-stack`` reference."""
 
-    def test_memory_templates_holds_none_of_the_five_and_keeps_java_orchestration(self):
+    def test_memory_templates_holds_none_of_the_five_and_java_orchestration_is_a_reference(self):
+        # MIGRATED (CR-MDB-060 §S1.1; was ..._and_keeps_java_orchestration): the java-orchestration.md
+        # CR-MDB-086 left behind is java-stack's references/orchestration.md now.
         self.assertEqual(
             [old for old in JAVA_OLD_NAMES if (MEMORY_TEMPLATES_DIR / old).exists()],
             [],
             "AC1: skills-src/memory-templates/ holds none of the five source files",
         )
         self.assertTrue(
-            JAVA_TEMPLATE.is_file(), "§S2.2: java-orchestration.md stays (CR-MDB-060's)"
+            JAVA_TEMPLATE.is_file(),
+            f"CR-MDB-060 §S1.1: java-orchestration.md moved to {JAVA_TEMPLATE_REL}",
         )
 
     def test_each_reference_keeps_its_title(self):
@@ -1304,20 +1305,14 @@ class NativeBuildDetectorTest(unittest.TestCase):
                 self.assertEqual(native_build_findings(text), [])
 
 
-class JavaStackInitTest(skills_gate._StackSkillSandbox):
+class JavaStackInitTest(skills_gate._RepoAssetsSandbox):
     """CR-MDB-086 §S2.2/AC4 — ``init --stacks quarkus`` and ``init --stacks java``, sandboxed with
     the Pi harness and the repository's own assets, render ``java-stack`` with its five references
-    and seed no moved reference into ``docs/memory/``; ``java-orchestration.md`` is still seeded."""
+    and seed no moved reference into ``docs/memory/``. MIGRATED (CR-MDB-060 §S1.1/§S3.1/AC4): the
+    rendered skill carries ``references/orchestration.md`` too, and ``init`` writes no
+    ``docs/memory/`` — the java orchestrator notes are no longer seeded there."""
 
     JAVA_STACKS = ("quarkus", "java")
-
-    def setUp(self):
-        super().setUp()
-        install = self.modelb_home / "install.toml"
-        text = read_text(install)
-        line = f'asset_root = "{self.asset_root}"'
-        self.assertEqual(text.count(line), 1, f"precondition: one asset_root line; got {text!r}")
-        install.write_text(text.replace(line, f'asset_root = "{REPO_ROOT}"'), encoding="utf-8")
 
     def test_init_renders_java_stack_with_its_five_references(self):
         for stack in self.JAVA_STACKS:
@@ -1331,66 +1326,24 @@ class JavaStackInitTest(skills_gate._StackSkillSandbox):
                     "five references",
                 )
 
-    def test_init_seeds_no_moved_reference_into_docs_memory_but_still_java_orchestration(self):
-        moved = JAVA_OLD_NAMES + tuple(Path(rel).name for rel in JAVA_REFERENCE_RELS)
+    def test_init_writes_no_docs_memory_and_renders_the_java_orchestration_reference(self):
+        # MIGRATED (CR-MDB-060 §S1.1/§S3.1/AC4; was
+        # test_init_seeds_no_moved_reference_into_docs_memory_but_still_java_orchestration): no
+        # docs/memory/ — so no moved reference and no index line — and java-orchestration.md arrives
+        # as the rendered java-stack reference instead of a seeded template.
+        rendered = f".agents/skills/{JAVA_STACK}/{ORCHESTRATION_REL}"
         for stack in self.JAVA_STACKS:
             with self.subTest(stack=stack):
                 target = self.root / f"proj-{stack}"
                 self.init_ok(target, stack)
-                memory = target / "docs" / "memory"
-                self.assertEqual(
-                    sorted(p.name for p in memory.glob("*.md") if p.name in moved), [],
-                    f"AC4: init --stacks {stack} seeds no moved reference into docs/memory/",
+                self.assertFalse(
+                    (target / "docs" / "memory").exists(),
+                    f"CR-MDB-060 AC4: init --stacks {stack} writes no docs/memory/",
                 )
                 self.assertTrue(
-                    (memory / "java-orchestration.md").is_file(),
-                    "AC4: java-orchestration.md is still seeded",
+                    (target / rendered).is_file(),
+                    f"CR-MDB-060 §S1.1: init --stacks {stack} renders {rendered}",
                 )
-                index = read_text(memory / "INDEX.md")
-                self.assertEqual(
-                    [ln for ln in index.splitlines() if any(name in ln for name in moved)],
-                    [],
-                    "AC4: no index line for a moved reference",
-                )
-                self.assertIn("java-orchestration.md", index)
-
-
-class MemoryTemplateFamiliesCommentDetectorTest(unittest.TestCase):
-    """CR-MDB-086 §S2.2 — :func:`_comment_above` and :data:`QUARKUS_READS_JAVA_TEMPLATES` proved
-    both ways on synthetic source."""
-
-    SOURCE = (
-        "x = 1\n\n"
-        "#: Memory-template family prefix -> the stacks whose selection emits it\n"
-        "#: (CR-MDB-031 §S1): the quarkus agent definitions read the ``java-*``\n"
-        "#: templates, so a ``java-*`` template is emitted for ``java`` OR\n"
-        "#: ``quarkus``.\n"
-        "FAMILIES: dict = {}\n"
-    )
-
-    def test_the_comment_saying_the_quarkus_definitions_read_the_java_templates_is_found(self):
-        comment = _comment_above(self.SOURCE, "FAMILIES")
-        self.assertTrue(comment.startswith("Memory-template family prefix"), comment)
-        self.assertRegex(comment, QUARKUS_READS_JAVA_TEMPLATES)
-
-    def test_a_comment_naming_the_families_stacks_only_is_not(self):
-        source = self.SOURCE.replace(
-            "the quarkus agent definitions read the ``java-*``\n#: templates, so ", ""
-        )
-        comment = _comment_above(source, "FAMILIES")
-        self.assertIn("emitted for ``java`` OR ``quarkus``", comment)
-        self.assertNotRegex(comment, QUARKUS_READS_JAVA_TEMPLATES)
-        self.assertEqual(_comment_above("FAMILIES = {}\n", "FAMILIES"), "")
-
-
-class MemoryTemplateFamiliesCommentTest(unittest.TestCase):
-    """CR-MDB-086 §S2.2 — the memory-template families' comment in ``modelb_axi/scaffold.py``
-    no longer says the quarkus definitions read the ``java-*`` templates."""
-
-    def test_the_families_comment_names_no_quarkus_reading_of_the_java_templates(self):
-        comment = _comment_above(read_text(SCAFFOLD_PY), "MEMORY_TEMPLATE_FAMILIES")
-        self.assertTrue(comment, "precondition: MEMORY_TEMPLATE_FAMILIES carries its comment")
-        self.assertNotRegex(comment, QUARKUS_READS_JAVA_TEMPLATES, "§S2.2")
 
 
 class OldReferenceDetectorTest(unittest.TestCase):
@@ -1424,16 +1377,17 @@ class OldReferenceDetectorTest(unittest.TestCase):
 
 
 class JavaCrossReferencesTest(unittest.TestCase):
-    """CR-MDB-086 §S2.3/AC6 — every cross-reference among the moved references and the memory
-    templates names the reference's new home; ``operational-commands.md`` names no Java
-    reference."""
+    """CR-MDB-086 §S2.3/AC6 — every cross-reference among the moved references and the stacks'
+    orchestration references (the memory templates until CR-MDB-060 §S1.1) names the reference's
+    new home."""
 
     def test_no_moved_reference_or_template_names_a_moved_reference_by_its_old_name(self):
         # MIGRATED (CR-MDB-086 §S3/AC6): java-orchestration.md, skipped until §S3's surgery, is
-        # checked with the other templates.
-        files = [JAVA_STACK_DIR / rel for rel in JAVA_REFERENCE_RELS] + sorted(
-            MEMORY_TEMPLATES_DIR.glob("*.md")
-        )
+        # checked with the other templates. MIGRATED (CR-MDB-060 §S1.1): the templates are the
+        # three orchestration references now.
+        files = [JAVA_STACK_DIR / rel for rel in JAVA_REFERENCE_RELS] + [
+            REPO_ROOT / rel for rel in ORCHESTRATION_REFERENCES.values()
+        ]
         self.assertIn(JAVA_TEMPLATE, files, "precondition: java-orchestration.md is checked")
         found = {}
         for path in files:
@@ -1453,12 +1407,6 @@ class JavaCrossReferencesTest(unittest.TestCase):
             if not re.search(rf"(?<![\w-])(?:references/)?{re.escape(target)}", text):
                 problems.append(f"{rel} does not name {target}")
         self.assertEqual(problems, [], "§S2.3: a cross-reference names the new home")
-
-    def test_operational_commands_names_no_java_reference(self):
-        text = read_text(OPERATIONAL_COMMANDS)
-        names = JAVA_OLD_NAMES + JAVA_REFERENCE_RELS + (JAVA_STACK,)
-        self.assertEqual([n for n in names if n in text], [], "§S2.3/AC6")
-        self.assertIn("## Quarkus-Specific Commands", text, "only the Related line is dropped")
 
 
 class IntegrationVerbDetectorTest(unittest.TestCase):
@@ -1519,8 +1467,13 @@ class JavaIntegrationVerbTest(unittest.TestCase):
     maxDiff = None
 
     def test_no_reference_sends_an_it_run_to_e2e_or_calls_a_verify_run_failsafe_only(self):
+        # MIGRATED (CR-MDB-060 §S1.1): the orchestration reference joins the five.
         files = sorted((JAVA_STACK_DIR / "references").glob("*.md"))
-        self.assertEqual(len(files), len(JAVA_REFERENCE_RELS), "precondition: the five references")
+        self.assertEqual(
+            [p.relative_to(JAVA_STACK_DIR).as_posix() for p in files],
+            sorted(JAVA_REFERENCE_RELS + (ORCHESTRATION_REL,)),
+            "precondition: the five references and the orchestration reference",
+        )
         found = {
             p.relative_to(REPO_ROOT).as_posix(): f
             for p in files

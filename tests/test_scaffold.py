@@ -335,44 +335,21 @@ class HarnessRecoveryCommandTest(unittest.TestCase):
         self.assertIn("--allow-missing-capabilities", str(raised.exception))
 
 
-def _uncovered_stack_templates(names, stack_names, families) -> list:
-    """Sorted memory-template names ``<prefix>-*.md`` whose prefix is a stack name but which no
-    selection of that stack would emit: the prefix is not a ``families`` key, or its family does
-    not list the prefix's own stack."""
-    uncovered = []
-    for name in names:
-        prefix = name.split("-", 1)[0] if "-" in name else None
-        if prefix in stack_names and prefix not in families.get(prefix, frozenset()):
-            uncovered.append(name)
-    return sorted(uncovered)
-
-
 class MemoryTemplateFamilyCoverageTest(unittest.TestCase):
-    """CR-MDB-031 C5 F7 -- every stack-prefixed memory template (``<prefix>-*.md`` where the
-    prefix is a ``KNOWN_STACKS`` entry or a generator stack) is covered by
-    ``MEMORY_TEMPLATE_FAMILIES``; otherwise it would ship to every project as if stack-neutral."""
+    """CR-MDB-031 C5 F7 -- no stack's material ships to every project as if stack-neutral.
 
-    def test_every_stack_prefixed_memory_template_has_a_family(self):
+    MIGRATED (CR-MDB-060 §S1.1/§S3.1; were test_every_stack_prefixed_memory_template_has_a_family
+    and test_detector_bites_on_an_unmapped_or_self_excluding_prefix): the memory templates and
+    ``MEMORY_TEMPLATE_FAMILIES`` are gone; a stack's notes are its stack skill's reference, rendered
+    only for the stacks the skill is declared for (``tests.test_stack_reference_material``)."""
+
+    def test_no_memory_template_directory_and_no_families_table_remain(self):
         from modelb_axi import scaffold
 
-        templates = REPO_ROOT / "skills-src" / "memory-templates"
-        names = sorted(p.name for p in templates.glob("*.md"))
-        self.assertTrue(names, "precondition: memory templates exist")
-        stack_names = set(scaffold.KNOWN_STACKS) | {
-            p.stem for p in (REPO_ROOT / "generator" / "stacks").glob("*.toml")}
-        self.assertEqual(
-            _uncovered_stack_templates(names, stack_names, scaffold.MEMORY_TEMPLATE_FAMILIES), [],
-            "stack-prefixed memory templates with no MEMORY_TEMPLATE_FAMILIES entry",
-        )
-
-    def test_detector_bites_on_an_unmapped_or_self_excluding_prefix(self):
-        families = {"java": frozenset({"quarkus"}), "rust": frozenset({"rust"})}
-        names = ["java-a.md", "rust-b.md", "python-c.md", "quarkus-d.md",
-                 "operational-commands.md", "notes.md"]
-        self.assertEqual(
-            _uncovered_stack_templates(names, {"java", "rust", "python", "quarkus"}, families),
-            ["java-a.md", "python-c.md", "quarkus-d.md"],
-        )
+        self.assertFalse((REPO_ROOT / "skills-src" / "memory-templates").exists(),
+                         "CR-MDB-060 §S3.1: skills-src/memory-templates/ no longer exists")
+        self.assertFalse(hasattr(scaffold, "MEMORY_TEMPLATE_FAMILIES"),
+                         "CR-MDB-060 §S3.1: scaffold.MEMORY_TEMPLATE_FAMILIES is gone")
 
 
 class StdlibOnlyImportScanTest(unittest.TestCase):
@@ -536,24 +513,20 @@ class InitEmissionSoloRunTest(unittest.TestCase):
         # CR-MDB-031 §S1: the CLAUDE.md symlink half is retired with the
         # claude-code anchor.
 
-    def test_memory_docs_index_and_stack_filtered_templates(self):
-        memory_dir = self._target / "docs" / "memory"
-        index_path = memory_dir / "INDEX.md"
-        self.assertTrue(
-            index_path.is_file(),
-            f"S3.4: `docs/memory/INDEX.md` must be emitted; init stderr={self._result.stderr!r}",
+    def test_no_docs_memory_and_no_stack_notes_for_python(self):
+        # MIGRATED (CR-MDB-060 §S3.1; was test_memory_docs_index_and_stack_filtered_templates):
+        # init writes no docs/memory/ — no INDEX.md, no template copy, stack-neutral or not — and a
+        # `--stacks python` run renders no stack's orchestration notes.
+        self.assertEqual(self._result.returncode, 0, f"init stderr={self._result.stderr!r}")
+        self.assertFalse(
+            (self._target / "docs" / "memory").exists(),
+            f"CR-MDB-060 §S3.1: `docs/memory/` must not be emitted; init stderr={self._result.stderr!r}",
         )
-        # NEGATIVE / bound -- zero non-python stack templates leak into a
-        # `--stacks python` run (java/rust templates exist in the source tree).
-        for offender in ("java-orchestration.md", "rust-orchestration.md"):
-            self.assertFalse(
-                (memory_dir / offender).exists(),
-                f"S3.4: `--stacks python` must emit zero non-python stack templates; found {offender}",
-            )
-        # POSITIVE -- the stack-neutral template IS emitted regardless of --stacks.
-        self.assertTrue(
-            (memory_dir / "operational-commands.md").is_file(),
-            "S3.4: the stack-neutral memory template must be emitted for any --stacks value",
+        self.assertEqual(
+            sorted(p.relative_to(self._target).as_posix()
+                   for p in self._target.rglob("orchestration.md")),
+            [],
+            "S3.4: `--stacks python` emits no stack's orchestration notes",
         )
 
     def test_git_repo_on_develop_with_single_commit_and_clean_porcelain(self):

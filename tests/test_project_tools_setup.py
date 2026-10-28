@@ -860,18 +860,25 @@ class ProjectPolicyMatchesToolsTest(_ProjectCase):
 class MemorySlicesMatchToolsTest(_ProjectCase):
     """\u00a7S8 "The memory slices" (finding b): with lean-ctx absent or unknown
     no stack memory template ``init`` scaffolds into ``docs/memory/`` names a
-    lean-ctx tool \u2014 every stack family selected."""
+    lean-ctx tool \u2014 every stack family selected.
 
-    def test_no_scaffolded_memory_slice_names_lean_ctx(self):
+    MIGRATED (CR-MDB-060 §S1.1/§S3.1; was test_no_scaffolded_memory_slice_names_lean_ctx): the
+    stack notes reach a project as its rendered stack skills' ``references/orchestration.md``, and
+    ``init`` writes no ``docs/memory/``; the rule is held over those references."""
+
+    def test_no_rendered_orchestration_reference_names_lean_ctx(self):
         for verdict in ("absent", "unknown"):
             with self.subTest(lean_ctx=verdict):
                 self.write_install(self.verdicts(lean_ctx=verdict))
                 target = self.root / f"proj-{verdict}"
                 self.init_ok(target, stacks=",".join(scaffold.KNOWN_STACKS))
-                slices = sorted((target / "docs" / "memory").glob("*.md"))
-                self.assertIn("rust-orchestration.md", [p.name for p in slices])
-                found = {p.name: [ln for ln in p.read_text(encoding="utf-8").splitlines()
-                                  if _LEAN_CTX_NAME_RE.search(ln)] for p in slices}
+                self.assertFalse((target / "docs" / "memory").exists(),
+                                 "CR-MDB-060 §S3.1: init writes no docs/memory/")
+                slices = sorted((target / ".agents" / "skills").glob("*/references/orchestration.md"))
+                self.assertEqual([p.parent.parent.name for p in slices],
+                                 ["arduino-stack", "java-stack", "rust-stack"])
+                found = {p.parent.parent.name: [ln for ln in p.read_text(encoding="utf-8").splitlines()
+                                                if _LEAN_CTX_NAME_RE.search(ln)] for p in slices}
                 self.assertEqual({k: v for k, v in found.items() if v}, {})
 
 

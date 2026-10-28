@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # Owner: Model B (roundhouse/model-b) — adopted by CR-MDB-022 §S1.
 # Consuming skills: bootstrap, shutdown, model-b (references/orchestration-common.md,
-#   references/orchestration-track.md), memory-templates (java-orchestration.md,
-#   rust-orchestration.md); AGENTS.md names it too.
+#   references/orchestration-track.md), java-stack and rust-stack (each skill's
+#   references/orchestration.md); AGENTS.md names it too.
 #
 """Git worktree + git-flow orchestration CLI — deterministic start/close ceremony
 for PARALLEL CR execution.
@@ -18,7 +18,8 @@ moved while the CR was in flight — a merge, never a rebase, so every commit ke
 sha). This script encodes that dance once so VD only calls stable command signatures
 with the CR id.
 
-Design invariants (see rust-orchestration.md (Tooling — worktree-flow)):
+Design invariants (see the `rust-stack` skill's references/orchestration.md
+(Tooling — worktree-flow)):
   * Source of truth is GIT, not a sidecar state file. State is derived live from
     `git worktree list --porcelain`, `git merge-base`, `git rev-list`, `git status`.
     There is no JSON to drift out of sync with reality.
@@ -709,7 +710,8 @@ def cmd_finish(args):
                 # can unlink root-owned files. Make git as consistent as possible (prune
                 # any now-danging admin entry), then surface the leftover FOLDER and the
                 # exact sudo recovery so the operator is never left guessing. (CR-NAI-255
-                # left exactly this orphan; rust-orchestration.md (Disk hygiene).)
+                # left exactly this orphan; the `rust-stack` skill's
+                # references/orchestration.md (Disk hygiene).)
                 sys.stderr.write(rf.stderr)
                 _git(["worktree", "prune"], main_wt)
                 del_r = _git(["branch", "-d", branch], main_wt)

@@ -16,3 +16,8 @@ Logical sequence + data integrity preserved = OK to serialize; otherwise fix the
 
 Read `references/e2e-docker-nextest.md` before any task touching `deploy/docker-compose.*` or
 adding a `tests/e2e_*.rs` binary, or a docker-dependent test.
+
+## The orchestrator's mechanics
+
+The orchestrator reads `references/orchestration.md` — the Cargo and Crucible tooling, test
+scope, the pre-merge gate's two tiers, disk hygiene, the `CARGO_BUILD_JOBS` cap and gate sizing.

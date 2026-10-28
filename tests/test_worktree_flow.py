@@ -76,6 +76,7 @@ import unittest
 from pathlib import Path
 
 from tests._helpers import (
+    ORCHESTRATION_REFERENCES,
     REPO_ROOT,
     TOOL_SCRIPTS_DIR,
     decode_envelope,
@@ -1260,7 +1261,8 @@ RULE_SURFACES = {
         "skills-src/model-b/references/orchestration-common.md", "## Worktree isolation (basics)"),
     "orchestration-track.md": ("skills-src/model-b/references/orchestration-track.md", None),
     "shutdown Step 2A": ("skills-src/shutdown/SKILL.md", "## Step 2A"),
-    "rust-orchestration.md": ("skills-src/memory-templates/rust-orchestration.md", None),
+    # MIGRATED (CR-MDB-060 §S1.1): the rust template is rust-stack's orchestration reference.
+    "rust-orchestration.md": (ORCHESTRATION_REFERENCES["rust"], None),
 }
 
 #: The rules' form of the step: the CR's worktree branch brought level by the tool.

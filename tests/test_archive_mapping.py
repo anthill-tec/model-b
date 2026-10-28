@@ -71,7 +71,10 @@ of the listed alternatives; everything else is literal. Then:
    ``maven-best-practices``, ``quarkus-patterns`` — audits/2026-07-20-memory-corpus.md; they became
    ``java-``-prefixed only as memory templates in 2616ad9), and those five templates' own paths
    ``skills-src/memory-templates/java-<name>.md`` (moved into the ``java-stack`` skill by
-   CR-MDB-086 §S6.2) are each covered by a row whose WHOLE Old
+   CR-MDB-086 §S6.2), and the four memory templates CR-MDB-060 retires
+   (``skills-src/memory-templates/{arduino,java,rust}-orchestration.md``, moved into their stack
+   skills' ``references/orchestration.md``, and ``operational-commands.md``, deleted — §S5.3) are
+   each covered by a row whose WHOLE Old
    path matches the named path (trailing ``/`` ignored; same component count) — so
    ``~/.claude/CLAUDE.md`` does not cover ``CLAUDE.md``. Conversely no row may cover a name that
    never existed (``NEVER_EXISTED_OLD_PATHS``), and the retired IDE agents' row is ``deleted``: no
@@ -87,7 +90,14 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tests._helpers import REPO_ROOT, files_under, read_text, write_executable
+from tests._helpers import (
+    ORCHESTRATION_REFERENCES,
+    ORCHESTRATION_TEMPLATE_MOVES,
+    REPO_ROOT,
+    files_under,
+    read_text,
+    write_executable,
+)
 
 MAP_PATH = REPO_ROOT / "archive" / "mapping.md"
 GATE_NAME = "tests/test_archive_mapping.py"
@@ -119,6 +129,11 @@ REQUIRED_OLD_PATHS = (
     "skills-src/memory-templates/java-modern-syntax.md",
     "skills-src/memory-templates/java-maven-best-practices.md",
     "skills-src/memory-templates/java-quarkus-patterns.md",
+    # CR-MDB-060 §S5.3: the four memory templates it retires.
+    "skills-src/memory-templates/arduino-orchestration.md",
+    "skills-src/memory-templates/java-orchestration.md",
+    "skills-src/memory-templates/rust-orchestration.md",
+    "skills-src/memory-templates/operational-commands.md",
 )
 #: CR-MDB-086 §S6.2 — each Java memory template's path, and the java-stack reference it became.
 JAVA_STACK_REFERENCES_DIR = "generator/skills/java-stack/references/"
@@ -135,6 +150,18 @@ JAVA_TEMPLATE_MOVES = {
         JAVA_STACK_REFERENCES_DIR + "quarkus-patterns.md",
 }
 JAVA_STACK_CR = "CR-MDB-086"
+#: CR-MDB-060 §S5.3 — each retired orchestration path and the stack-skill reference it became
+#: (``None``: deleted). The ``~/.claude/memory/`` family row is split one row per member.
+ORCHESTRATION_CR = "CR-MDB-060"
+CLAUDE_MEMORY_ORCHESTRATION_ROWS = {
+    "~/.claude/memory/java-orchestration.md": ORCHESTRATION_REFERENCES["java"],
+    "~/.claude/memory/rust-orchestration.md": ORCHESTRATION_REFERENCES["rust"],
+    "~/.claude/memory/operational-commands.md": None,
+}
+ORCHESTRATION_TEMPLATE_ROWS = {
+    **ORCHESTRATION_TEMPLATE_MOVES,
+    "skills-src/memory-templates/operational-commands.md": None,
+}
 DEVOPS_ENVIRONMENT = "~/.claude/memory/devops-environment.md"
 BECAME_A_MEMORY_TEMPLATE = re.compile(r"(?i)became\s+an?\s+memory[\s-]+template")
 #: Names no ``~/.claude/memory/`` file ever had: the template names of the two unprefixed Java
@@ -359,6 +386,32 @@ def covers_required(old_path: str, required: str) -> bool:
     return len(patterns) == len(parts) and _tail_matches(patterns, parts)
 
 
+def split_row_findings(rows: list, expected: dict, cr: str = ORCHESTRATION_CR) -> list[str]:
+    """CR-MDB-060 §S5.3: for each ``old -> now`` of ``expected`` (``now`` is ``None`` for a
+    deleted path), exactly one row covers ``old`` whole (``covers_required``) and no other path of
+    ``expected`` — a family row is split one row per member; its Kind is ``moved`` with Now
+    ``now``, or ``deleted`` with Now ``—``; its Moved by cites ``cr``."""
+    problems = []
+    for old, now in expected.items():
+        covering = [row for row in rows if covers_required(row["old"], old)]
+        if len(covering) != 1:
+            problems.append(f"{old}: {len(covering)} rows cover it, expected 1")
+            continue
+        row = covering[0]
+        others = sorted(p for p in expected if p != old and covers_required(row["old"], p))
+        if others:
+            problems.append(f"{old}: its row {row['old']} also covers {', '.join(others)}")
+        kind = "moved" if now else "deleted"
+        if _unticked(row["kind"]) != kind:
+            problems.append(f"{old}: Kind {row['kind']!r}, expected {kind}")
+        want = now or NO_SUCCESSOR
+        if _unticked(row["now"]).split("#", 1)[0].strip() != want:
+            problems.append(f"{old}: Now {row['now']!r}, expected {want}")
+        if cr not in {_unticked(t) for t in row["moved_by"].split(",")}:
+            problems.append(f"{old}: Moved by {row['moved_by']!r} does not cite {cr}")
+    return problems
+
+
 def archived_files(repo_root: Path) -> list[tuple[str, str]]:
     """``(bucket, rel)`` for every file under ``archive/<bucket>/``, sorted."""
     found = []
@@ -500,6 +553,20 @@ class ArchiveMappingS4Test(unittest.TestCase):
         self.assertIn("java-stack", row["authority"], "Authority names the new location")
         self.assertIn("remain in `~/.claude/memory/`", row["authority"])
         self.assertIn(JAVA_STACK_CR, {_unticked(t) for t in row["moved_by"].split(",")})
+
+    def test_the_claude_memory_orchestration_family_row_is_split_one_row_per_member(self):
+        """CR-MDB-060 §S5.3/AC6: java and rust ``moved``, Now their stack skill's orchestration
+        reference; ``operational-commands.md`` ``deleted``; each citing CR-MDB-060."""
+        _header, rows = self._parsed()
+        self.assertEqual(split_row_findings(rows, CLAUDE_MEMORY_ORCHESTRATION_ROWS), [],
+                         "CR-MDB-060 §S5.3/AC6")
+
+    def test_each_retired_orchestration_template_has_its_moved_or_deleted_row(self):
+        """CR-MDB-060 §S5.3/AC6: a ``moved`` row per ``<stack>-orchestration.md`` template, Now its
+        reference; a ``deleted`` row for ``operational-commands.md``; each citing CR-MDB-060."""
+        _header, rows = self._parsed()
+        self.assertEqual(split_row_findings(rows, ORCHESTRATION_TEMPLATE_ROWS), [],
+                         "CR-MDB-060 §S5.3/AC6")
 
 # ------------------------------------------------------------------ detectors ----
 
@@ -693,6 +760,33 @@ class ArchiveMappingDetectorS4Test(unittest.TestCase):
             "~/.claude/memory/java-coding-standards.md",
             "~/.claude/memory/java-testing-practices.md",
         ])
+
+    def test_an_unsplit_family_row_and_a_wrong_kind_now_or_moved_by_are_reported(self):
+        """CR-MDB-060 §S5.3: ``split_row_findings`` over in-memory rows, both ways."""
+        expected = {"~/.claude/memory/a.md": "skills-src/model-b/SKILL.md",
+                    "~/.claude/memory/b.md": None}
+        family = ["| `~/.claude/memory/{a,b}.md` | moved | `skills-src/model-b/SKILL.md` | Model B "
+                  "| CR-MDB-001 |"]
+        rows = parse_map(self._text(family))[1]
+        self.assertEqual(split_row_findings(rows, expected, cr="CR-MDB-001"), [
+            "~/.claude/memory/a.md: its row `~/.claude/memory/{a,b}.md` also covers "
+            "~/.claude/memory/b.md",
+            "~/.claude/memory/b.md: its row `~/.claude/memory/{a,b}.md` also covers "
+            "~/.claude/memory/a.md",
+            "~/.claude/memory/b.md: Kind 'moved', expected deleted",
+            "~/.claude/memory/b.md: Now '`skills-src/model-b/SKILL.md`', expected —",
+        ])
+        split = ["| `~/.claude/memory/a.md` | moved | `skills-src/model-b/SKILL.md` | Model B "
+                 "| CR-MDB-001 |",
+                 "| `~/.claude/memory/b.md` | deleted | — | dropped | CR-MDB-001 |"]
+        rows = parse_map(self._text(split))[1]
+        self.assertEqual(split_row_findings(rows, expected, cr="CR-MDB-001"), [])
+        self.assertEqual(split_row_findings(rows, expected, cr="CR-MDB-060"), [
+            "~/.claude/memory/a.md: Moved by 'CR-MDB-001' does not cite CR-MDB-060",
+            "~/.claude/memory/b.md: Moved by 'CR-MDB-001' does not cite CR-MDB-060",
+        ])
+        self.assertEqual(split_row_findings(rows[:1], expected, cr="CR-MDB-001"),
+                         ["~/.claude/memory/b.md: 0 rows cover it, expected 1"])
 
     def test_matching_rule_tail_directory_and_pattern_cases(self):
         self.assertTrue(covers_archived("`~/.claude/memory/agent-baseline.md`", "agent-baseline.md"))

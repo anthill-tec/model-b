@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Owner: Model B (roundhouse/model-b) — adopted by CR-MDB-022 §S1.
 # Consuming skills: code-health (skills-src/code-health, deployed with the rust stack), which
-#   drives it; memory-templates (rust-orchestration.md).
+#   drives it; rust-stack (references/orchestration.md).
 #
 """rust-code-health.py — code-health snapshots for Cargo workspaces.
 

@@ -126,7 +126,7 @@ import zipfile
 from pathlib import Path
 
 from modelb_axi import deploy
-from tests._helpers import installed_crucible_file
+from tests._helpers import ORCHESTRATION_REFERENCES, installed_crucible_file
 from tests._helpers import read_text_lenient as _read
 from tests._helpers import rel_to_repo as _rel
 
@@ -317,8 +317,9 @@ S6_CONSUMING_SURFACES = (
     "skills-src/shutdown/SKILL.md",
     "skills-src/model-b/references/orchestration-common.md",
     "skills-src/model-b/references/orchestration-track.md",
-    "skills-src/memory-templates/java-orchestration.md",
-    "skills-src/memory-templates/rust-orchestration.md",
+    # MIGRATED (CR-MDB-060 §S1.1): the two templates are their stack skills' references.
+    ORCHESTRATION_REFERENCES["java"],
+    ORCHESTRATION_REFERENCES["rust"],
     "AGENTS.md",
 )
 

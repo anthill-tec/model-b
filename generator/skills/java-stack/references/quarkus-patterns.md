@@ -1181,6 +1181,105 @@ Only bulk re-indexing of **existing** documents is asynchronous, not new writes
 ### Verify Documentation
 Always check official Redis documentation instead of assuming timing behavior
 
+## RediSearch Commands
+```bash
+# List all indexes
+redis-cli FT._LIST
+
+# Get index info
+redis-cli FT.INFO <index-name>
+
+# Search index
+redis-cli FT.SEARCH <index-name> "@field:{value}"
+
+# Search with pagination
+redis-cli FT.SEARCH <index-name> "*" LIMIT 0 10
+
+# Drop index (with hash documents)
+redis-cli FT.DROPINDEX <index-name> DD
+```
+
+## Quarkus-Specific Commands
+
+### Health Check Endpoints
+```bash
+# Comprehensive health check
+curl http://localhost:8080/q/health | jq
+
+# Liveness probe
+curl http://localhost:8080/q/health/live | jq
+
+# Readiness probe
+curl http://localhost:8080/q/health/ready | jq
+
+# Startup probe
+curl http://localhost:8080/q/health/started | jq
+```
+
+**Expected Healthy Response:**
+```json
+{
+  "status": "UP",
+  "checks": [
+    {"name": "MongoDB connection health check", "status": "UP"},
+    {"name": "Redis connection health check", "status": "UP"}
+  ]
+}
+```
+
+### Metrics & Observability
+```bash
+# Prometheus metrics (all)
+curl http://localhost:8080/q/metrics
+
+# Application metrics only
+curl http://localhost:8080/q/metrics/application
+
+# JVM/base metrics
+curl http://localhost:8080/q/metrics/base
+```
+
+### OpenAPI & Swagger
+```bash
+# OpenAPI specification (JSON)
+curl http://localhost:8080/q/openapi
+
+# OpenAPI specification (YAML)
+curl http://localhost:8080/q/openapi?format=yaml
+
+# Swagger UI (browser)
+open http://localhost:8080/q/swagger-ui
+```
+
+### Build with Container Image
+```bash
+# Build with Quarkus container image extension
+./mvnw clean package -Dquarkus.container-image.build=true
+
+# Build native with container
+./mvnw clean package -Dnative -Dquarkus.container-image.build=true
+```
+
+## Apicurio/Confluent Schema Registry (Quarkus)
+
+### Schema Registry Operations
+```bash
+# List schema subjects
+curl http://localhost:8082/apis/ccompat/v7/subjects
+
+# Get schema versions for subject
+curl http://localhost:8082/apis/ccompat/v7/subjects/<subject>/versions
+
+# Get specific schema version
+curl http://localhost:8082/apis/ccompat/v7/subjects/<subject>/versions/<version>
+
+# Get latest schema
+curl http://localhost:8082/apis/ccompat/v7/subjects/<subject>/versions/latest
+
+# Delete schema version
+curl -X DELETE http://localhost:8082/apis/ccompat/v7/subjects/<subject>/versions/<version>
+```
+
 ## Maven Failsafe Plugin (E2E Tests)
 
 ### Plugin-Level vs Execution-Level Configuration (CRITICAL)

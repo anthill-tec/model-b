@@ -34,10 +34,11 @@ A client invocation (``<stack>-crucible.py …``) and a non-runner mention (``[t
 ``pytest.ini``, ``pytest-cov``, ``/tmp/pytest-collect.txt``, ``mvn package``) are never runner
 invocations.
 
-**Guarded** (``GUARDED_ROOTS``): ``skills-src/`` except ``skills-src/memory-templates/``,
-``contracts/``, ``AGENTS.md``, ``generator/templates/``, ``generator/stacks/``,
+**Guarded** (``GUARDED_ROOTS``): ``skills-src/``, ``contracts/``, ``AGENTS.md``, ``generator/templates/``, ``generator/stacks/``,
 ``generator/agents/``, ``.pi/agents/`` and — CR-MDB-085 §S6.1 — ``generator/skills/``, the stack
-skills' sources.
+skills' sources — the stacks' orchestration notes among them since CR-MDB-060 §S1.1 moved them
+there from ``skills-src/memory-templates/``, the one carve-out, which went with the directory
+(CR-MDB-060 §S3.1, §S5.1).
 
 How a text is read (``runner_findings``): a fence is a line opening with three or more backticks
 or tildes; each line inside it is one command line, judged alone. Outside fences, a block is a
@@ -63,7 +64,7 @@ import time
 import unittest
 from pathlib import Path
 
-from tests._helpers import REPO_ROOT, read_text
+from tests._helpers import ORCHESTRATION_REFERENCES, REPO_ROOT, read_text
 
 #: §S3's guarded set, relative to the repository root: a directory guards every file under it.
 GUARDED_ROOTS = (
@@ -77,8 +78,9 @@ GUARDED_ROOTS = (
     # MIGRATED (CR-MDB-085 §S6.1): the stack skills' sources are guarded too.
     "generator/skills",
 )
-#: The one carve-out from §S3's guarded set (CR-MDB-060 carries the rule into the facts).
-GUARD_EXCLUDED = ("skills-src/memory-templates",)
+#: Carve-outs from §S3's guarded set: none. MIGRATED (CR-MDB-060 §S3.1/§S5.1; was
+#: ``skills-src/memory-templates``): the directory is gone, its notes guarded in ``generator/skills``.
+GUARD_EXCLUDED = ()
 
 #: Where a runner command word ends: whitespace, the fragment's end, or closing punctuation.
 _END = r"(?=$|[\s)\"'`,])"
@@ -940,8 +942,8 @@ class RunnerStackOnSampleTextTest(unittest.TestCase):
 
 
 class GuardedSetTest(unittest.TestCase):
-    """§S3 — the guard covers exactly the guarded set: every file under each guarded root, the
-    memory templates excepted, and nothing outside it."""
+    """§S3 — the guard covers exactly the guarded set: every file under each guarded root, and
+    nothing outside it. MIGRATED (CR-MDB-060 §S3.1): no memory-templates carve-out."""
 
     def setUp(self):
         self.files = guarded_files()
@@ -952,8 +954,6 @@ class GuardedSetTest(unittest.TestCase):
             path = REPO_ROOT / entry
             expected = ([path] if path.is_file() else
                         [Path(d) / n for d, _s, names in os.walk(path) for n in names])
-            expected = [p for p in expected
-                        if not p.is_relative_to(REPO_ROOT / "skills-src" / "memory-templates")]
             with self.subTest(root=entry):
                 self.assertTrue(expected, f"§S3's guarded {entry} is missing from the tree")
                 self.assertEqual(sorted(set(expected) - set(self.files)), [])
@@ -965,11 +965,14 @@ class GuardedSetTest(unittest.TestCase):
             with self.subTest(root=prefix):
                 self.assertTrue(any(r.startswith(prefix) for r in self.relative))
 
-    def test_the_memory_templates_are_outside_the_guard(self):
-        memory = REPO_ROOT / "skills-src" / "memory-templates"
-        self.assertTrue(any(memory.rglob("*")), "the carve-out must name a real directory")
-        self.assertEqual([r for r in self.relative if r.startswith("skills-src/memory-templates/")],
-                         [])
+    def test_the_orchestration_references_are_inside_the_guard(self):
+        # MIGRATED (CR-MDB-060 §S1.1/§S3.1; was test_the_memory_templates_are_outside_the_guard):
+        # the notes the carve-out spared are stack-skill references now, and guarded.
+        self.assertEqual(GUARD_EXCLUDED, ())
+        self.assertEqual(
+            [rel for rel in ORCHESTRATION_REFERENCES.values() if rel not in self.relative], [],
+            "CR-MDB-060 §S1.1: each stack's orchestration reference is guarded",
+        )
 
     def test_nothing_outside_the_guarded_set_is_guarded(self):
         roots = ("skills-src/", "contracts/", "generator/templates/", "generator/stacks/",

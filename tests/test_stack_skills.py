@@ -135,14 +135,11 @@ def write_skill_sources(generator_dir: Path, declaration: dict, sources: dict) -
 
 
 def build_asset_root(dest: Path) -> Path:
-    """A private asset root: the repository's agent templates and stack files, its memory
-    templates, and the SYNTHETIC skill declaration and sources (never the real ones)."""
+    """A private asset root: the repository's agent templates and stack files, and the
+    SYNTHETIC skill declaration and sources (never the real ones). MIGRATED (CR-MDB-060 §S3.1;
+    was a copy of ``skills-src/memory-templates/`` too): ``init`` seeds no memory templates."""
     shutil.copytree(GENERATOR_DIR / "templates", dest / "generator" / "templates")
     shutil.copytree(GENERATOR_DIR / "stacks", dest / "generator" / "stacks")
-    shutil.copytree(
-        REPO_ROOT / "skills-src" / "memory-templates",
-        dest / "skills-src" / "memory-templates",
-    )
     write_skill_sources(dest / "generator", FIXTURE_DECLARATION, FIXTURE_SOURCES)
     return dest
 
@@ -306,6 +303,21 @@ class _StackSkillSandbox(unittest.TestCase):
 
 def _listed(axi: dict, key: str) -> list[str]:
     return [str(item) for item in axi.get(key) or []]
+
+
+class _RepoAssetsSandbox(_StackSkillSandbox):
+    """The same sandbox, its ``install.toml`` pointed at the REPOSITORY's own assets (its real
+    stack-skill declaration and sources) instead of the synthetic asset root — for the tests
+    that check what ``init`` and ``agents`` render from the real skills (CR-MDB-086 §S2.2,
+    CR-MDB-060 §S1.2/§S3)."""
+
+    def setUp(self):
+        super().setUp()
+        install = self.modelb_home / "install.toml"
+        text = install.read_text(encoding="utf-8")
+        line = f'asset_root = "{self.asset_root}"'
+        self.assertEqual(text.count(line), 1, f"precondition: one asset_root line; got {text!r}")
+        install.write_text(text.replace(line, f'asset_root = "{REPO_ROOT}"'), encoding="utf-8")
 
 
 # ------------------------------------------------------------------ §S1.3 init ----

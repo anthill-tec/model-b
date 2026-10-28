@@ -40,6 +40,7 @@ import unittest
 from pathlib import Path
 
 from tests._helpers import (
+    ORCHESTRATION_REFERENCES,
     REPO_ROOT,
     TOOL_SCRIPTS_DIR,
     cargo_member_manifest,
@@ -53,7 +54,8 @@ from tests._helpers import (
 DEAD_SCAN = "rust-dead-scan.py"
 
 #: The rust memory template whose tool list names the dead scan's modes (§S2.6).
-RUST_MEMORY_TEMPLATE = REPO_ROOT / "skills-src" / "memory-templates" / "rust-orchestration.md"
+#: MIGRATED (CR-MDB-060 §S1.1): rust-stack's orchestration reference, the template it was.
+RUST_MEMORY_TEMPLATE = REPO_ROOT / ORCHESTRATION_REFERENCES["rust"]
 
 #: The prefix of the scratch directory ``lift-lint`` copies the tree into (§S2.7).
 SCRATCH_PREFIX = "dead-scan-lift-"

@@ -3,24 +3,36 @@ PRD D5 and D3.1, both amended 2026-09-26).
 
 Contract: ``docs/changes/CR-MDB-041-bootstrap-reads-scaffolded-files.md``. The two skills
 (``skills-src/bootstrap/SKILL.md``, ``skills-src/shutdown/SKILL.md``) load the orchestrator's
-rules from the ``model-b`` references, then the project's ``AGENTS.md`` and ``.env``, then
-``docs/memory/INDEX.md``; take the project's identity from the registry keys the CR-MDB-043
+rules from the ``model-b`` references, then the project's ``AGENTS.md`` and ``.env``, then the
+root project's stack skills' ``references/orchestration.md`` (CR-MDB-060 §S4.1, was
+``docs/memory/INDEX.md``); take the project's identity from the registry keys the CR-MDB-043
 schema declares; fall back to ``AGENTS.md`` and one question; resolve the role without a
 working-directory heuristic; and reload / drain work on the Crucible board, never a todo list.
 
 Class map — one class per acceptance criterion:
 
 - ``ReadingOrderTest`` — the rules-loading step names ``orchestration-common.md``, the role
-  file, ``sandesh.md``, then ``AGENTS.md`` and ``.env``, then ``docs/memory/INDEX.md``; no
-  ``ORCHESTRATOR-`` note and no ``MEMORY.md`` anywhere.
+  file, ``sandesh.md``, then ``AGENTS.md`` and ``.env``, then the root project's stack skills'
+  ``references/orchestration.md`` (MIGRATED, CR-MDB-060 §S4.1: was ``docs/memory/INDEX.md``);
+  ``docs/memory/`` is named only in the pointer to run ``modelb-axi agents`` at the project
+  root, and no file under it is named; that pointer is limited to a project one of whose stacks
+  declares a stack skill (CR-MDB-060 §S4.1/AC5); no ``ORCHESTRATOR-`` note and no ``MEMORY.md``
+  anywhere.
 - ``ScaffoldedFilesOnlyTest`` — every project file the skills name is one a sandboxed
-  ``init --harnesses pi`` produces (NO installer run).
+  ``init --harnesses pi`` produces (NO installer run); a ``.agents/skills/<name>/`` placeholder
+  resolves to each skill ``init`` rendered (MIGRATED, CR-MDB-060 §S4.1: was the
+  ``<stack>-stack`` path form, resolved by stack).
 - ``IdentityFromRegistryTest`` — ``SANDESH_PROJECT`` / ``ORCHESTRATOR_LABEL`` /
   ``track<N>-<PROJECT_TOKEN>`` / ``PROJECT_STACKS``; every ``sandesh`` example passes
   ``--project`` built from ``SANDESH_PROJECT``; no ``python-crucible.py`` for every project;
   no literal ``vidushi`` id; every key named is declared in the schema (its loader).
-- ``RegistryFallbackTest`` — no registry / missing key → ``AGENTS.md`` → ask once; a missing
-  index is skipped; nothing is fatal.
+- ``RegistryFallbackTest`` — no registry / missing key → ``AGENTS.md`` → ask once; the Fallback
+  paragraph notes and skips a project with no stack-skill orchestration reference and names no
+  ``INDEX.md`` (MIGRATED, CR-MDB-060 §S4.1: was "a missing index is skipped"); nothing is fatal.
+- ``StackSkillReferenceWordingTest`` — the reference is read in each of the root project's
+  ``.agents/skills/<name>/`` "that has one" (MIGRATED, CR-MDB-060 §S4.1: was the orchestration
+  template "for a stack that has one"), whatever the skill's name — no ``<stack>-stack`` or
+  other stack-built skill directory is assumed (CR-MDB-060 §S4.1/AC5).
 - ``RoleResolutionTest`` — no ``show-toplevel`` / ``/.worktrees/`` role inference; the order
   is (argument →) carried context → Sandesh address (``Track <N> - …``) → ask.
 - ``BoardNotTodoListTest`` — no todo/task list (frontmatter included); bootstrap reloads from
@@ -60,7 +72,15 @@ from pathlib import Path
 
 from modelb_axi import scaffold
 from modelb_axi.requirements import PYTHON_VENV_ROUTE, STACK_CLIENT_KEYS
-from tests._helpers import REPO_ROOT, build_tree, read_text, run_hook, split_frontmatter
+from modelb_axi.stack_skills import load_declaration
+from tests._helpers import (
+    ORCHESTRATION_REFERENCES,
+    REPO_ROOT,
+    build_tree,
+    read_text,
+    run_hook,
+    split_frontmatter,
+)
 from tests.test_orchestrator_rule_triage import (
     EXEMPT_BUNDLES,
     model_b_owned_skill_files,
@@ -80,18 +100,28 @@ SKILLS = {
 }
 MODEL_B_REFERENCE_FILES = frozenset(
     p.name for p in (REPO_ROOT / "skills-src" / "model-b" / "references").glob("*.md"))
-#: The project files §S2 has the skills read, all three scaffolded by ``init``.
-PROJECT_FILES = ("AGENTS.md", ".env", "docs/memory/INDEX.md")
+#: The project files §S2 has the skills read, both scaffolded by ``init``. MIGRATED (CR-MDB-060
+#: §S4.1): ``docs/memory/INDEX.md`` left — the skills read the stack skills' references.
+PROJECT_FILES = ("AGENTS.md", ".env")
+#: CR-MDB-060 §S4.1: what item 3 of Step 0.5 reads — the orchestrator reference of each of the
+#: root project's rendered stack skills (``.agents/skills/<name>/``) that has one.
+ORCHESTRATION_REFERENCE = "references/orchestration.md"
+ROOT_STACK_SKILLS = r"(?<![~\w/])\.agents/skills/"
+#: CR-MDB-060 §S4.1: the retired project memory, named only in the pointer to this verb.
+DOCS_MEMORY = "docs/memory"
+AGENTS_VERB = "modelb-axi agents"
 #: The registry keys §S2 has the skills read by schema name.
 IDENTITY_KEYS = ("SANDESH_PROJECT", "ORCHESTRATOR_LABEL", "PROJECT_TOKEN", "PROJECT_STACKS")
-#: The stacks the sandboxed ``init`` is run with: rust ships an orchestration template, so a
-#: ``<stack>`` placeholder in a named path resolves to a file ``init`` really writes.
+#: The stacks the sandboxed ``init`` is run with: rust declares a stack skill with an orchestration
+#: reference, so a ``.agents/skills/<name>/`` placeholder in a named path resolves to a file
+#: ``init`` really writes (MIGRATED, CR-MDB-060 §S4.1: was a ``<stack>`` placeholder only).
 INIT_STACKS = ("python", "rust")
 #: Crucible's installed client manifest \u2014 the file the skills resolve a stack's client through.
 MANIFEST = "~/.crucible/crucible-clients.json"
 #: The other surfaces \u00a7S4 aligns with the two skills (F4).
 TRACK_REF = "skills-src/model-b/references/orchestration-track.md"
-RUST_TEMPLATE = "skills-src/memory-templates/rust-orchestration.md"
+#: MIGRATED (CR-MDB-060 §S1.1): the rust template is rust-stack's orchestration reference.
+RUST_TEMPLATE = ORCHESTRATION_REFERENCES["rust"]
 #: Every surface whose client naming \u00a7S2/\u00a7S4 governs.
 CLIENT_SURFACES = {**SKILLS, "orchestration-track": TRACK_REF, "rust-orchestration": RUST_TEMPLATE}
 
@@ -135,6 +165,81 @@ def blocks(text: str) -> list[str]:
     return [normalise(b) for b in re.split(r"\n\s*\n", text) if b.strip()]
 
 
+_ITEM_SPLIT = re.compile(r"\n\s*\n|\n\s*(?:[-*]|\d+\.)\s+")
+#: A file named under ``docs/memory/`` (on normalised text) — a read of the retired memory.
+_DOCS_MEMORY_FILE = re.compile(r"docs/memory/[\w<](?:[\w<>.-]*[\w>])?")
+
+
+def items(text: str) -> list[str]:
+    """``text`` split into paragraphs and list items (a wrapped item kept whole), each
+    normalised."""
+    return [normalise(i) for i in _ITEM_SPLIT.split(text) if i.strip()]
+
+
+def docs_memory_findings(text: str) -> list[str]:
+    """CR-MDB-060 §S4.1: each paragraph or list item that names ``docs/memory`` outside the
+    pointer to ``modelb-axi agents``, and each that names a file under it — the skills read
+    nothing from ``docs/memory/``."""
+    found = []
+    for item in items(text):
+        if DOCS_MEMORY not in item:
+            continue
+        if AGENTS_VERB not in item:
+            found.append(f"names docs/memory/ outside the {AGENTS_VERB} pointer: {item[:160]}")
+        named = _DOCS_MEMORY_FILE.search(item)
+        if named:
+            found.append(f"names a file under docs/memory/ ({named.group(0)}): {item[:160]}")
+    return found
+
+
+def agents_pointer_items(text: str) -> list[str]:
+    """CR-MDB-060 §S4.1: each paragraph or list item that, for a project still holding a
+    ``docs/memory/``, says to run ``modelb-axi agents`` at the project root."""
+    return [i for i in items(text)
+            if DOCS_MEMORY in i and AGENTS_VERB in i and re.search(r"\broot\b", i)]
+
+
+#: CR-MDB-060 §S4.1/AC5: the condition that limits the ``modelb-axi agents`` pointer — one of the
+#: project's stacks declares a stack skill (on normalised text, in the pointer's own item).
+_DECLARES_A_STACK_SKILL = re.compile(
+    r"\bstacks?\b.{0,80}\bdeclares?\b.{0,40}\bstack[- ]skills?\b"
+    r"|\bstack[- ]skills?\b.{0,40}\bdeclared\b.{0,80}\bstacks?\b")
+
+
+def unconditional_pointer_items(text: str) -> list[str]:
+    """CR-MDB-060 §S4.1/AC5: each ``modelb-axi agents`` pointer (see ``agents_pointer_items``)
+    that does not limit itself to a project one of whose stacks declares a stack skill — such a
+    pointer also sends a project none of whose stacks has one (python, bun) to the verb."""
+    return [i for i in agents_pointer_items(text) if not _DECLARES_A_STACK_SKILL.search(i)]
+
+
+#: A root-project skill directory a skill names: ``.agents/skills/<segment>/``, never under ``~``.
+_ROOT_SKILL_DIR = re.compile(r"(?<![~\w/])\.agents/skills/([^/\s`]+)/")
+#: A skill directory that assumes nothing of the skill's name: one bare placeholder, not ``<stack>``.
+_ANY_SKILL_PLACEHOLDER = re.compile(r"<(?!stack>)[a-z][a-z-]*>")
+
+
+def assumed_skill_name_findings(text: str) -> list[str]:
+    """CR-MDB-060 §S4.1/AC5: each ``.agents/skills/<segment>/`` ``text`` names whose segment
+    assumes the skill's name — ``<stack>-stack``, ``<stack>``, a literal ``rust-stack`` — rather
+    than one bare placeholder standing for any rendered skill."""
+    return sorted({seg for seg in _ROOT_SKILL_DIR.findall(text)
+                   if not _ANY_SKILL_PLACEHOLDER.fullmatch(seg)})
+
+
+def names_any_skill_reference(text: str) -> bool:
+    """CR-MDB-060 §S4.1/AC5: ``text`` names ``references/orchestration.md`` in a skill directory
+    that may be any rendered skill — ``.agents/skills/<name>/`` (one bare placeholder), with the
+    reference as its path or within 120 characters of it."""
+    for m in _ROOT_SKILL_DIR.finditer(text):
+        if not _ANY_SKILL_PLACEHOLDER.fullmatch(m.group(1)):
+            continue
+        near = text[max(0, m.start() - 120):m.end() + 120]
+        if ORCHESTRATION_REFERENCE in near:
+            return True
+    return False
+
+
 def _headings(text: str) -> list[tuple[int, int]]:
     out, fenced = [], False
     for i, line in enumerate(text.splitlines()):
@@ -154,7 +259,8 @@ READING_MARKERS = (
     ("sandesh.md", r"(?<![\w-])sandesh\.md"),
     ("AGENTS.md", r"(?<![\w-])AGENTS\.md"),
     (".env", r"(?<![\w.])\.env(?![\w.])"),
-    ("docs/memory/INDEX.md", r"docs/memory/INDEX\.md"),
+    # MIGRATED (CR-MDB-060 §S4.1): was ("docs/memory/INDEX.md", r"docs/memory/INDEX\.md").
+    ("the stack skills' orchestration reference", r"references/orchestration\.md"),
 )
 
 
@@ -205,20 +311,46 @@ def named_project_files(text: str) -> set[str]:
             if n.rsplit("/", 1)[-1] not in MODEL_B_REFERENCE_FILES and n != "SKILL.md"}
 
 
-def resolve_placeholders(name: str) -> list[str]:
-    """``name`` with a ``<stack>`` placeholder resolved against ``INIT_STACKS`` (each stack);
-    any other placeholder is left in place (and so matches no scaffolded file)."""
-    if "<stack>" not in name:
-        return [name]
-    return [name.replace("<stack>", s) for s in INIT_STACKS]
+def rendered_skill_names(produced: frozenset[str] | set[str]) -> list[str]:
+    """The root project's skills ``init`` rendered: each ``<name>`` of a produced
+    ``.agents/skills/<name>/<file>``."""
+    return sorted({p.split("/")[2] for p in produced
+                   if p.startswith(".agents/skills/") and p.count("/") >= 3})
+
+
+_SKILL_DIR_PLACEHOLDER = re.compile(r"^\.agents/skills/(<[^/<>]+>)/")
+
+
+def resolve_placeholders(name: str, produced: frozenset[str] | set[str] = frozenset()) -> list[str]:
+    """``name`` with its placeholders resolved: a ``.agents/skills/<name>/`` segment against each
+    skill ``init`` rendered (``rendered_skill_names(produced)``; MIGRATED, CR-MDB-060 §S4.1) — a
+    skill-relative ``references/…`` path read in each of them too — and a ``<stack>`` placeholder against ``INIT_STACKS`` (each stack); any other placeholder is left in
+    place (and so matches no scaffolded file)."""
+    candidates = [name]
+    skill_dir = _SKILL_DIR_PLACEHOLDER.match(name)
+    if skill_dir:
+        candidates = [name.replace(skill_dir.group(1), skill, 1)
+                      for skill in rendered_skill_names(produced)]
+    elif name.startswith("references/"):
+        # A skill-relative path ("`references/orchestration.md` in each `.agents/skills/<name>/`"):
+        # the file in a rendered skill.
+        candidates = [name] + [f".agents/skills/{skill}/{name}"
+                               for skill in rendered_skill_names(produced)]
+    resolved = []
+    for cand in candidates:
+        resolved += ([cand.replace("<stack>", s) for s in INIT_STACKS] if "<stack>" in cand
+                     else [cand])
+    return resolved
 
 
 def unscaffolded_names(named: set[str], produced: set[str]) -> list[str]:
     """Each named project file that no scaffolded file is (by path, or by basename): a
-    ``<stack>`` name counts when ``init`` produced it for at least one of its stacks."""
+    ``<stack>`` name counts when ``init`` produced it for at least one of its stacks, a
+    ``.agents/skills/<name>/`` one when ``init`` produced it in at least one rendered skill."""
     basenames = {p.rsplit("/", 1)[-1] for p in produced}
     return sorted(n for n in named
-                  if not any(c in produced or c in basenames for c in resolve_placeholders(n)))
+                  if not any(c in produced or c in basenames
+                             for c in resolve_placeholders(n, produced)))
 
 
 def sandesh_invocations(text: str) -> list[str]:
@@ -301,7 +433,9 @@ def key_names_named(rel: str, text: str) -> set[str]:
 class ReadingOrderTest(unittest.TestCase):
     """AC2 (first half) / §S2 reading order."""
 
-    def test_rules_step_reads_model_b_references_then_agents_md_and_env_then_memory_index(self):
+    def test_rules_step_reads_model_b_references_then_agents_md_and_env_then_the_stack_references(self):
+        # MIGRATED (CR-MDB-060 §S4.1; was ..._then_memory_index): docs/memory/INDEX.md is no
+        # longer read — the stack skills' references/orchestration.md is, after AGENTS.md/.env.
         for name in SKILLS:
             with self.subTest(skill=name):
                 step = reading_step(_skill_text(name))
@@ -317,8 +451,86 @@ class ReadingOrderTest(unittest.TestCase):
                 project = (pos["AGENTS.md"], pos[".env"])
                 self.assertGreater(min(project), refs[-1],
                                    f"{name}: AGENTS.md/.env named before the model-b references: {pos}")
-                self.assertGreater(pos["docs/memory/INDEX.md"], max(project),
-                                   f"{name}: docs/memory/INDEX.md before AGENTS.md/.env: {pos}")
+                self.assertGreater(pos["the stack skills' orchestration reference"], max(project),
+                                   f"{name}: the stack skills' reference before AGENTS.md/.env: "
+                                   f"{pos}")
+
+    def test_neither_skill_reads_docs_memory_it_names_it_only_in_the_modelb_axi_agents_pointer(self):
+        # CR-MDB-060 §S4.1/AC5.
+        for name in SKILLS:
+            with self.subTest(skill=name):
+                text = split_frontmatter(_skill_text(name))[1]
+                self.assertEqual(docs_memory_findings(text), [],
+                                 f"CR-MDB-060 §S4.1: {name} reads from docs/memory/")
+
+    def test_each_skill_points_a_project_with_docs_memory_to_modelb_axi_agents_at_its_root(self):
+        # CR-MDB-060 §S4.1/AC5: a project with no stack-skill reference but a docs/memory/ is
+        # told to run modelb-axi agents at the project root to render its stack skills.
+        for name in SKILLS:
+            with self.subTest(skill=name):
+                self.assertTrue(agents_pointer_items(_skill_text(name)),
+                                f"CR-MDB-060 §S4.1: {name} has no pointer to run {AGENTS_VERB} at "
+                                "the project root")
+
+    def test_the_modelb_axi_agents_pointer_is_limited_to_a_project_whose_stacks_declare_a_stack_skill(self):
+        # CR-MDB-060 §S4.1/AC5: the pointer applies only where one of the project's stacks
+        # declares a stack skill — a project none of whose stacks has one (python, bun) is not
+        # pointed at modelb-axi agents, which would render nothing for it.
+        declared = {s for stacks in load_declaration(REPO_ROOT / "generator").values() for s in stacks}
+        self.assertEqual(sorted({"python", "bun"} & declared), [],
+                         "precondition: python and bun declare no stack skill")
+        for name in SKILLS:
+            with self.subTest(skill=name):
+                text = split_frontmatter(_skill_text(name))[1]
+                self.assertTrue(agents_pointer_items(text),
+                                f"precondition: {name} has the {AGENTS_VERB} pointer")
+                self.assertEqual(unconditional_pointer_items(text), [],
+                                 f"CR-MDB-060 §S4.1/AC5: {name}'s {AGENTS_VERB} pointer is not "
+                                 "limited to a project one of whose stacks declares a stack skill")
+
+    def test_unconditional_pointer_detector_on_synthetic_text(self):
+        # Today's wording: the pointer reaches every project with a docs/memory/ — found.
+        today = ("3. The references. A project with none that still has a `docs/memory/` predates\n"
+                 "   the stack skills: tell the user to run `modelb-axi agents` at the project root\n"
+                 "   to render its stack skills, and read nothing from `docs/memory/`.\n")
+        self.assertEqual(len(unconditional_pointer_items(today)), 1)
+        # The spec's wording: limited to a project one of whose stacks declares a stack skill.
+        spec = ("3. The references. A project with none notes it and skips. Where it has none but\n"
+                "   still has a `docs/memory/` and one of its stacks declares a stack skill, tell\n"
+                "   the user to run `modelb-axi agents` at the project root to render its stack\n"
+                "   skills; a project none of whose stacks declares a stack skill (python, bun) is\n"
+                "   not pointed there. Nothing is read from `docs/memory/`.\n")
+        self.assertEqual(len(agents_pointer_items(spec)), 1)
+        self.assertEqual(unconditional_pointer_items(spec), [])
+        # The condition must sit in the pointer's own item, not in a neighbouring paragraph.
+        apart = ("Some stacks declare a stack skill.\n\n"
+                 "A project with a `docs/memory/` runs `modelb-axi agents` at the project root.\n")
+        self.assertEqual(len(unconditional_pointer_items(apart)), 1)
+        # Stack skills merely named (rendered, predating) are no condition.
+        named = ("A project with a `docs/memory/` predates the stack skills: run `modelb-axi agents`\n"
+                 "at the project root to render its stack skills.\n")
+        self.assertEqual(len(unconditional_pointer_items(named)), 1)
+
+    def test_docs_memory_detectors_on_synthetic_text(self):
+        good = ("3. The `references/orchestration.md` of each `.agents/skills/<name>/` that has one.\n"
+                "   A project with none notes it and skips; one that still has a `docs/memory/`\n"
+                "   runs `modelb-axi agents` at the project root and reads nothing from it.\n")
+        self.assertEqual(docs_memory_findings(good), [])
+        self.assertEqual(len(agents_pointer_items(good)), 1)
+        old = ("3. `docs/memory/INDEX.md` \u2014 the project memory index \u2014 and the slices it lists\n"
+               "   (`docs/memory/<stack>-orchestration.md`).\n\n"
+               "**Fallback** \u2014 a missing `docs/memory/INDEX.md` is noted and skipped.\n")
+        found = docs_memory_findings(old)
+        self.assertEqual(len(found), 4, found)
+        self.assertEqual(sum(f.startswith("names a file under docs/memory/ (docs/memory/index.md)")
+                             for f in found), 2, found)
+        self.assertEqual(agents_pointer_items(old), [])
+        # A pointer that also names a file under docs/memory/ still reads from it.
+        reads = "Run `modelb-axi agents` at the root; meanwhile read `docs/memory/INDEX.md`.\n"
+        self.assertEqual(len(docs_memory_findings(reads)), 1)
+        self.assertIn("(docs/memory/index.md)", docs_memory_findings(reads)[0])
+        # The pointer must say where to run the verb.
+        self.assertEqual(agents_pointer_items("With a `docs/memory/`, run `modelb-axi agents`.\n"), [])
 
     def test_neither_skill_names_an_orchestrator_note_or_memory_md(self):
         for name in SKILLS:
@@ -330,11 +542,13 @@ class ReadingOrderTest(unittest.TestCase):
                                            f"MEMORY.md")
 
     def test_reading_step_detector_on_synthetic_text(self):
+        # MIGRATED (CR-MDB-060 §S4.1): item 5 reads the stack skills' references.
         good = ("# T\n\n## Step 0.5 — Read\n\n1. `orchestration-common.md`\n2. "
                 "`orchestration-track.md`\n3. `sandesh.md`\n4. the project's `AGENTS.md` and "
-                "`.env`\n5. `docs/memory/INDEX.md`\n\n## Step 1\n\nsandesh.md again\n")
+                "`.env`\n5. `references/orchestration.md` in each `.agents/skills/<name>/` that "
+                "has one\n\n## Step 1\n\nsandesh.md again\n")
         step = reading_step(good)
-        self.assertIn("docs/memory/INDEX.md", step)
+        self.assertIn("references/orchestration.md", step)
         self.assertNotIn("## Step 1", step)
         self.assertEqual(reading_step("# T\n\n## A\n\nnothing\n"), "")
 
@@ -359,20 +573,31 @@ class ScaffoldedFilesOnlyTest(unittest.TestCase):
     def tearDownClass(cls):
         shutil.rmtree(cls.root, ignore_errors=True)
 
-    def test_sandboxed_init_produces_agents_md_env_and_memory_index(self):
+    def test_sandboxed_init_produces_agents_md_env_and_the_rust_orchestration_reference(self):
+        # MIGRATED (CR-MDB-060 §S1.1/§S3.1; was test_sandboxed_init_produces_agents_md_env_and_
+        # memory_index): init writes no docs/memory/ — the rust notes arrive as the rendered
+        # rust-stack reference.
         self.assertEqual(self.result.returncode, 0, self.result.stderr[-800:])
-        for rel in PROJECT_FILES:
+        for rel in ("AGENTS.md", ".env"):
             self.assertIn(rel, self.produced)
-        self.assertIn("docs/memory/rust-orchestration.md", self.produced)
+        self.assertIn(".agents/skills/rust-stack/references/orchestration.md", self.produced)
+        self.assertEqual(sorted(r for r in self.produced if r.startswith("docs/memory/")), [],
+                         "CR-MDB-060 §S3.1: init writes no docs/memory/")
         home_left = sorted(p.name for p in (self.root / "home").iterdir())
         self.assertEqual(home_left, [], "init wrote into the sandbox HOME")
 
-    def test_each_skill_names_all_three_scaffolded_project_files(self):
+    def test_each_skill_names_agents_md_env_and_the_stack_skills_orchestration_reference(self):
+        # MIGRATED (CR-MDB-060 §S4.1; was ..._names_all_three_scaffolded_project_files): the
+        # third file read is the stack skills' references/orchestration.md, never docs/memory/.
         for name in SKILLS:
             with self.subTest(skill=name):
                 named = named_project_files(_skill_text(name))
                 self.assertEqual(sorted(set(PROJECT_FILES) - named), [],
                                  f"{name} does not name every file it reads")
+                self.assertTrue([n for n in named if n.endswith(ORCHESTRATION_REFERENCE)],
+                                f"{name} names no {ORCHESTRATION_REFERENCE}: {sorted(named)}")
+                self.assertEqual(sorted(n for n in named if n.startswith(DOCS_MEMORY + "/")), [],
+                                 f"CR-MDB-060 §S4.1: {name} names a file under docs/memory/")
 
     def test_every_project_file_either_skill_names_is_scaffolded_by_init(self):
         self.assertEqual(self.result.returncode, 0, self.result.stderr[-800:])
@@ -391,6 +616,29 @@ class ScaffoldedFilesOnlyTest(unittest.TestCase):
                                  "docs/memory/<stack>-orchestration.md", "MEMORY.md"})
         produced = {"AGENTS.md", ".env", "docs/memory/INDEX.md", "docs/memory/rust-orchestration.md"}
         self.assertEqual(unscaffolded_names(named, produced), ["MEMORY.md"])
+
+    def test_a_skill_dir_placeholder_resolves_to_each_rendered_skill(self):
+        # MIGRATED (CR-MDB-060 §S4.1): the skills name .agents/skills/<name>/, whatever the
+        # skill's name, so the placeholder resolves to each skill init rendered — not by stack.
+        ref = ".agents/skills/<name>/references/orchestration.md"
+        self.assertEqual(named_project_files(f"Read `{ref}` where it exists."), {ref})
+        produced = {"AGENTS.md", ".agents/skills/rust-stack/SKILL.md",
+                    ".agents/skills/rust-stack/references/orchestration.md"}
+        self.assertEqual(rendered_skill_names(produced), ["rust-stack"])
+        self.assertEqual(resolve_placeholders(ref, produced),
+                         [".agents/skills/rust-stack/references/orchestration.md"])
+        self.assertEqual(unscaffolded_names({ref}, produced), [])
+        # No rendered skill holds the reference: still unscaffolded.
+        bare = {"AGENTS.md", ".agents/skills/rust-stack/SKILL.md"}
+        self.assertEqual(unscaffolded_names({ref}, bare), [ref])
+        self.assertEqual(unscaffolded_names({ref}, {"AGENTS.md"}), [ref])
+        # A skill-relative reference ("`references/orchestration.md` in each
+        # `.agents/skills/<name>/`") is the file in a rendered skill; absent there, unscaffolded.
+        self.assertEqual(unscaffolded_names({ORCHESTRATION_REFERENCE}, produced), [])
+        self.assertEqual(unscaffolded_names({ORCHESTRATION_REFERENCE}, bare),
+                         [ORCHESTRATION_REFERENCE])
+        # The <stack> placeholder still resolves by stack.
+        self.assertEqual(unscaffolded_names({"docs/<stack>-notes.md"}, {"docs/rust-notes.md"}), [])
 
 
 class IdentityFromRegistryTest(unittest.TestCase):
@@ -482,7 +730,10 @@ class RegistryFallbackTest(unittest.TestCase):
 
     MISSING_REGISTRY = r"(?:no|without an?|missing|absent)\b[^.]{0,40}(?:registry|\.env|key)"
     ASK_ONCE = r"\bask(?:ed|s)?\b[^.]{0,60}\bonce\b"
-    INDEX_SKIPPED = r"docs/memory/index\.md"
+    #: MIGRATED (CR-MDB-060 §S4.1; was the docs/memory/INDEX.md pattern): a project with no
+    #: stack-skill orchestration reference.
+    NO_REFERENCE = (r"(?:\bno\b|\bnone\b|missing|absent|without)[^.]{0,100}"
+                    r"(?:orchestration reference|references/orchestration\.md|stack[- ]skill)")
     NON_FATAL = (r"nothing (?:here )?is (?:an error|fatal)|never fatal|non-fatal|not (?:an error|fatal)"
                  r"|no error")
 
@@ -497,15 +748,29 @@ class RegistryFallbackTest(unittest.TestCase):
                 self.assertLess(block.index("agents.md"), must_match(self.ASK_ONCE, block).start(),
                                 f"{name}: AGENTS.md is not consulted before asking")
 
-    def test_missing_memory_index_is_noted_and_skipped(self):
+    def _fallback(self, name: str) -> str:
+        found = [b for b in blocks(_skill_text(name)) if b.startswith("fallback")]
+        self.assertEqual(len(found), 1, f"{name}: expected one Fallback paragraph")
+        return found[0]
+
+    def test_the_fallback_skips_a_project_with_no_stack_skill_reference_and_names_no_index(self):
+        # MIGRATED (CR-MDB-060 §S4.1; was test_missing_memory_index_is_noted_and_skipped): the
+        # Fallback paragraph says a project with no stack-skill orchestration reference is noted
+        # and skipped, instead of naming docs/memory/INDEX.md.
         for name in SKILLS:
             with self.subTest(skill=name):
-                hits = [s for s in blocks(_skill_text(name))
-                        if re.search(self.INDEX_SKIPPED, s)
-                        and re.search(r"\b(?:missing|absent|no)\b[^.]{0,60}index|index\.md[^.]{0,40}"
-                                      r"\b(?:missing|absent|does not exist)", s)
-                        and re.search(r"\bskip", s)]
-                self.assertTrue(hits, f"{name} does not skip a missing docs/memory/INDEX.md")
+                fallback = self._fallback(name)
+                self.assertNotIn("index.md", fallback,
+                                 f"CR-MDB-060 §S4.1: {name}'s Fallback still names INDEX.md")
+                self.assertRegex(fallback, self.NO_REFERENCE)
+                self.assertRegex(fallback, r"\bskip")
+
+    def test_the_no_reference_pattern_on_synthetic_text(self):
+        new = normalise("**Fallback** \u2014 A project with no stack-skill orchestration reference is "
+                        "noted and skipped. Nothing here is an error.")
+        self.assertRegex(new, self.NO_REFERENCE)
+        old = normalise("**Fallback** \u2014 A missing `docs/memory/INDEX.md` is noted and skipped.")
+        self.assertNotRegex(old, self.NO_REFERENCE)
 
     def test_the_fallback_is_stated_non_fatal(self):
         for name in SKILLS:
@@ -891,15 +1156,69 @@ class UnregisteredProjectTest(unittest.TestCase):
                       unregistered_pointer_findings(reversed_order))
 
 
-class MemoryIndexWordingTest(unittest.TestCase):
-    """F9 / \u00a7S4: the orchestration template is read "for a stack that has one"."""
+class StackSkillReferenceWordingTest(unittest.TestCase):
+    """F9 / CR-MDB-041 §S4, MIGRATED (CR-MDB-060 §S4.1; was ``MemoryIndexWordingTest``: the
+    orchestration template is read "for a stack that has one"): the reference is read in each of
+    the root project's rendered stack skills that has one."""
 
-    def test_orchestration_template_is_for_a_stack_that_has_one(self):
+    THAT_HAS_ONE = (r"references/orchestration\.md.{0,120}\bthat ha(?:s|ve) one\b"
+                    r"|\bthat ha(?:s|ve) one\b.{0,120}references/orchestration\.md")
+
+    def test_the_reference_is_read_in_each_root_project_stack_skill_that_has_one(self):
         for name in SKILLS:
             with self.subTest(skill=name):
-                norm = normalise(_skill_text(name))
-                self.assertRegex(norm, r"orchestration template[^.]{0,80}for a stack that has one")
-                self.assertNotRegex(norm, r"orchestration template[^.]{0,80}among them")
+                step = normalise(reading_step(_skill_text(name)))
+                self.assertRegex(step, self.THAT_HAS_ONE)
+                self.assertRegex(step, ROOT_STACK_SKILLS)
+                self.assertRegex(step, r"\broot project\b")
+                self.assertNotRegex(step, r"orchestration template|memory index")
+
+    def test_the_reference_is_found_in_any_rendered_skill_whatever_its_name(self):
+        # CR-MDB-060 §S4.1/AC5: Step 0.5 reads references/orchestration.md in any rendered
+        # .agents/skills/<name>/, assuming no <stack>-stack (or other stack-built) skill name.
+        for name in SKILLS:
+            with self.subTest(skill=name):
+                text = split_frontmatter(_skill_text(name))[1]
+                self.assertEqual(assumed_skill_name_findings(text), [],
+                                 f"CR-MDB-060 §S4.1/AC5: {name} assumes the skill's name")
+                self.assertTrue(names_any_skill_reference(reading_step(_skill_text(name))),
+                                f"CR-MDB-060 §S4.1/AC5: {name}'s Step 0.5 names no "
+                                f"{ORCHESTRATION_REFERENCE} in any .agents/skills/<name>/")
+
+    def test_the_skill_name_detectors_on_synthetic_text(self):
+        today = ("3. The references —\n"
+                 "   `.agents/skills/<stack>-stack/references/orchestration.md` for each stack.\n")
+        self.assertEqual(assumed_skill_name_findings(today), ["<stack>-stack"])
+        self.assertFalse(names_any_skill_reference(today))
+        for seg in ("<stack>", "rust-stack"):
+            with self.subTest(segment=seg):
+                text = f"Read `.agents/skills/{seg}/references/orchestration.md`."
+                self.assertEqual(assumed_skill_name_findings(text), [seg])
+                self.assertFalse(names_any_skill_reference(text))
+        for text in ("Read `.agents/skills/<name>/references/orchestration.md` where it exists.",
+                     "`references/orchestration.md` in each `.agents/skills/<name>/` that has one."):
+            with self.subTest(text=text):
+                self.assertEqual(assumed_skill_name_findings(text), [])
+                self.assertTrue(names_any_skill_reference(text))
+        # The installed model-b skill is not a root-project skill directory.
+        installed = "`~/.agents/skills/model-b/references/orchestration-common.md`"
+        self.assertEqual(assumed_skill_name_findings(installed), [])
+        self.assertFalse(names_any_skill_reference(installed))
+        # A generic directory far from the reference does not name it there.
+        far = "`.agents/skills/<name>/`" + " filler" * 40 + " `references/orchestration.md`"
+        self.assertFalse(names_any_skill_reference(far))
+
+    def test_the_wording_patterns_on_synthetic_text(self):
+        new = normalise("3. The root project's stack skills: `references/orchestration.md` in each "
+                        "`.agents/skills/<name>/` that has one.")
+        self.assertRegex(new, self.THAT_HAS_ONE)
+        self.assertRegex(new, ROOT_STACK_SKILLS)
+        installed = normalise("`~/.agents/skills/model-b/references/orchestration-common.md`")
+        self.assertNotRegex(installed, ROOT_STACK_SKILLS)
+        self.assertNotRegex(installed, self.THAT_HAS_ONE)
+        old = normalise("(among them the orchestration template for a stack that has one, "
+                        "`docs/memory/<stack>-orchestration.md`)")
+        self.assertNotRegex(old, self.THAT_HAS_ONE)
 
 
 class WatcherWordingTest(unittest.TestCase):

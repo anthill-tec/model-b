@@ -67,7 +67,10 @@ CR-MDB-042 §S2–§S3 (absorb) — the approved triage is the work list:
   ``Roundhouse`` or ``ORCHESTRATOR-`` unless
   the same line is a dated provenance citation (a ``CR-<ACR>-<n>`` id and a ``20YY-MM-DD`` date),
   and none names a harness tool retired by CR-MDB-031 (the vocabulary of
-  ``tests.test_client_path_anchoring``, the ``sandesh_*`` MCP tools included).
+  ``tests.test_client_path_anchoring``, the ``sandesh_*`` MCP tools included). CR-MDB-060
+  §S5.1/AC6 widens both checks from ``skills-src/`` to ``generator/skills/``, where the
+  orchestrator's notes moved (``neutrality_gate_files``); the pinned bundle set re-pins the moved
+  notes there.
 - ``HeadingRenameMapTest`` — CR-MDB-044 §S1: the triage is frozen, so a destination heading
   renamed since resolves through ``HEADING_RENAMES`` (file, old heading) → new heading, held here
   and holding exactly one entry: ``orchestration-common.md`` § "Never author code — always
@@ -81,6 +84,15 @@ CR-MDB-042 §S2–§S3 (absorb) — the approved triage is the work list:
   anchor phrase(s). The gate finds the phrases there instead of checking the row's old heading, its
   new-section body and its class rule; the audit's bytes are pinned (``TRIAGE_FILE_SHA256``).
 - ``MovedRulesOnSyntheticTextTest`` — the moved-rules functions on in-memory text and a temp tree.
+- ``FileMoveMapTest`` — CR-MDB-060 §S5.2/AC6: the triage stays frozen while CR-MDB-060 §S1.1 moves
+  each stack's memory template, headings unchanged, into its stack skill. ``FILE_MOVES`` — beside
+  ``MOVED_RULES`` — maps each old template path to its ``references/orchestration.md``; every check
+  that reads a destination file (the destination and new-section-body checks, the moved-rules
+  departure check, the arduino template check, ``CapabilityWordingTest``, the pinned bundle set)
+  resolves the file through it (``resolve_file``). The audit's Destination strings and the class
+  rules are left as written; the audit's bytes stay pinned.
+- ``FileMoveMapOnSyntheticTreeTest`` — ``resolve_file`` and the checks that use it, both sides of
+  the move, over a temp tree.
 
 CR-MDB-042 §S5 (mapping) — ``archive/mapping.md`` (gated by ``tests.test_archive_mapping``, whose
 pattern matcher ``covers_required`` is reused: ``<name>`` is one path component, ``{a,b}`` one of
@@ -109,7 +121,14 @@ import unittest
 from collections.abc import Sequence
 from pathlib import Path
 
-from tests._helpers import REPO_ROOT, at_line, md_section, read_text, sha256_bytes
+from tests._helpers import (
+    ORCHESTRATION_TEMPLATE_MOVES,
+    REPO_ROOT,
+    at_line,
+    md_section,
+    read_text,
+    sha256_bytes,
+)
 from tests.test_archive_mapping import (
     MAP_PATH,
     _unticked,
@@ -796,6 +815,32 @@ MOVED_RULES = {
 #: CR-MDB-085 §S6.2/AC9: the frozen audit's bytes — the moved-rules map never edits it.
 TRIAGE_FILE_SHA256 = "01e0ff21c75bfb28bf06a902947781344f1aa875f34ff8abaa3532621c6c7ebb"
 
+#: CR-MDB-060 §S5.2: the triage stays frozen while CR-MDB-060 §S1.1 moves each stack's memory
+#: template, headings unchanged, into its stack skill. A destination the audit names by an old
+#: template path resolves through this map to the file its rules live in now; the audit's
+#: Destination strings and the class rules are left as written.
+FILE_MOVES = {
+    "skills-src/memory-templates/arduino-orchestration.md":
+        "generator/skills/arduino-stack/references/orchestration.md",
+    "skills-src/memory-templates/java-orchestration.md":
+        "generator/skills/java-stack/references/orchestration.md",
+    "skills-src/memory-templates/rust-orchestration.md":
+        "generator/skills/rust-stack/references/orchestration.md",
+}
+
+
+def resolve_file(rel: str, root: Path, moves: dict = FILE_MOVES) -> str:
+    """The repo-relative file a destination ``rel`` names under ``root``: a moved template's
+    reference (``moves``) — unless only the template is on disk, i.e. the move has not landed
+    under ``root`` — and every other path as written. A moved template found nowhere resolves to
+    its reference, so a missing file is reported where it should be."""
+    new = moves.get(rel)
+    if new is None:
+        return rel
+    if (root / rel).is_file() and not (root / new).is_file():
+        return rel
+    return new
+
 
 def moved_rule_rows(text: str, moved: dict = MOVED_RULES) -> tuple[dict, list[str]]:
     """``({Source cell: (audit line, row, new file, anchors)}, problems)``: the triage row at each
@@ -829,16 +874,18 @@ def moved_rule_findings(moved_rows: dict, root: Path) -> list[str]:
     return problems
 
 
-def moved_rule_departure_findings(moved_rows: dict, root: Path) -> list[str]:
-    """Each moved row whose anchor phrase is still in the memory template it moved out of."""
+def moved_rule_departure_findings(moved_rows: dict, root: Path,
+                                  moves: dict = FILE_MOVES) -> list[str]:
+    """Each moved row whose anchor phrase is still in the memory template it moved out of — the
+    template read where it lives now (``resolve_file``, CR-MDB-060 §S5.2)."""
     problems = []
     for number, row, _new_file, anchors in sorted(moved_rows.values(), key=lambda v: v[0]):
         m = _SKILL_DEST.match(row["Destination"])
-        old = root / m.group(1) if m else None
-        if old is None or not old.is_file():
+        rel = resolve_file(m.group(1), root, moves) if m else None
+        if rel is None or not (root / rel).is_file():
             continue
-        text = read_text(old)
-        problems += [f"row {number}: {m.group(1)} still carries {anchor!r}" for anchor in anchors
+        text = read_text(root / rel)
+        problems += [f"row {number}: {rel} still carries {anchor!r}" for anchor in anchors
                      if anchor in text]
     return problems
 
@@ -861,36 +908,39 @@ def _renamed_note(section_name: str, resolved: str) -> str:
 
 
 def destination_findings(targets: list[tuple[dict, str, str]], root: Path,
-                         renames: dict = HEADING_RENAMES) -> list[str]:
+                         renames: dict = HEADING_RENAMES, moves: dict = FILE_MOVES) -> list[str]:
     """Each target whose file is missing or lacks a heading equal to its section — a renamed
-    section (``renames``) is looked up under its new heading only."""
+    section (``renames``) is looked up under its new heading only, and a moved file (``moves``,
+    CR-MDB-060 §S5.2) is read where it lives now."""
     problems = []
     for row, rel, section_name in targets:
         where = f"({row['Source']})"
         if not rel:
             problems.append(f"destination does not parse: {section_name} {where}")
             continue
-        path = root / rel
+        found = resolve_file(rel, root, moves)
+        path = root / found
         if not path.is_file():
-            problems.append(f"{rel}: file does not exist {where}")
+            problems.append(f"{found}: file does not exist {where}")
             continue
         resolved = resolve_heading(rel, section_name, renames)
         if section_body(read_text(path), resolved) is None:
-            problems.append(f"{rel}: no heading '{resolved}'{_renamed_note(section_name, resolved)} "
+            problems.append(f"{found}: no heading '{resolved}'{_renamed_note(section_name, resolved)} "
                             f"{where}")
     return problems
 
 
 def new_section_body_findings(targets: list[tuple[dict, str, str]], root: Path,
-                              renames: dict = HEADING_RENAMES) -> list[str]:
+                              renames: dict = HEADING_RENAMES,
+                              moves: dict = FILE_MOVES) -> list[str]:
     """Each new-section target that is missing or carries no rule text under its heading (a
-    renamed section is read under its new heading)."""
+    renamed section is read under its new heading; a moved file where it lives now)."""
     problems = []
     for row, rel, section_name in targets:
         if not is_new_section_row(row):
             continue
         where = f"({row['Source']})"
-        path = root / rel if rel else None
+        path = root / resolve_file(rel, root, moves) if rel else None
         resolved = resolve_heading(rel, section_name, renames)
         body = section_body(read_text(path), resolved) if path and path.is_file() else None
         if body is None:
@@ -947,6 +997,19 @@ def model_b_owned_skill_files(root: Path) -> list[Path]:
     return out
 
 
+#: CR-MDB-060 §S5.1 — the stack skills' sources, which the neutrality and retired-tool checks read
+#: beside ``skills-src/``: the orchestrator's notes moved there (§S1.1).
+STACK_SKILLS_SOURCES = "generator/skills"
+#: CR-MDB-060 §S5.1 — the stack skills under it today, the moved notes among them.
+STACK_SKILL_NAMES = {"arduino-stack", "java-stack", "rust-stack"}
+
+
+def neutrality_gate_files(root: Path) -> list[Path]:
+    """CR-MDB-060 §S5.1: the files ``ModelBCommonTextNeutralTest`` reads — every Model B-owned
+    ``skills-src/`` Markdown file, then every ``generator/skills/**/*.md``."""
+    return model_b_owned_skill_files(root) + sorted((root / STACK_SKILLS_SOURCES).rglob("*.md"))
+
+
 class AbsorbedDestinationTest(_RealFileMixin):
     #: 63 common + 9 stack:rust + 2 stack:arduino + 4 project:model-b \u2014 the 5 gap-analysis rows
     #: included since C3 adopted the bundle (\u00a7S4; was 73 while they were excluded) \u2014 plus the
@@ -982,13 +1045,15 @@ class AbsorbedDestinationTest(_RealFileMixin):
         # MIGRATED (CR-MDB-085 §S3.5/§S6.3; was "the template exists with both sections"): "Test
         # tiers and agents" stays; "Hardware drivers" leaves the template and its two rules join
         # arduino.toml's GREEN and FIX gotchas.
-        path = REPO_ROOT / ARDUINO_TEMPLATE
-        self.assertTrue(path.is_file(), f"CR-MDB-042 \u00a7S2: {ARDUINO_TEMPLATE} does not exist")
+        # MIGRATED (CR-MDB-060 §S5.2): the template is read where it lives now (``FILE_MOVES``).
+        rel = resolve_file(ARDUINO_TEMPLATE, REPO_ROOT)
+        path = REPO_ROOT / rel
+        self.assertTrue(path.is_file(), f"CR-MDB-042 \u00a7S2: {rel} does not exist")
         text = read_text(path)
         self.assertIsNotNone(section_body(text, "Test tiers and agents"),
-                             f"{ARDUINO_TEMPLATE}: no 'Test tiers and agents'")
+                             f"{rel}: no 'Test tiers and agents'")
         self.assertIsNone(section_body(text, "Hardware drivers"),
-                          f"CR-MDB-085 §S3.5: {ARDUINO_TEMPLATE} still carries 'Hardware drivers'")
+                          f"CR-MDB-085 §S3.5: {rel} still carries 'Hardware drivers'")
         gotchas = tomllib.loads(read_text(REPO_ROOT / ARDUINO_STACK))["gotchas"]
         missing = [f"{role}: {anchor!r}" for role in ("green", "fix")
                    for anchor in HARDWARE_DRIVER_ANCHORS if anchor not in gotchas[role]]
@@ -1108,32 +1173,145 @@ class MovedRulesMapTest(_RealFileMixin):
                          "CR-MDB-085 §S6.2: the triage audit is frozen — never edited")
 
 
+def moved_template_targets(triage: list[dict], moves: dict = FILE_MOVES) -> list[tuple[dict, str, str]]:
+    """``(row, old template, section)`` for every triage row, of any class, whose Destination
+    names a template ``moves`` maps (CR-MDB-060 §S5.2)."""
+    out = []
+    for row in triage:
+        m = _SKILL_DEST.match(row["Destination"])
+        if m and m.group(1) in moves:
+            out.append((row, m.group(1), m.group(2).strip()))
+    return out
+
+
+class FileMoveMapTest(_RealFileMixin):
+    """CR-MDB-060 §S5.2/AC6 — the frozen triage's moved templates resolve through ``FILE_MOVES``
+    to their stack skills' ``references/orchestration.md``; the audit is not edited."""
+
+    RUST = "skills-src/memory-templates/rust-orchestration.md"
+    #: The frozen rows destined for a moved template, per template (no row names the java one).
+    EXPECTED_ROWS_BY_TEMPLATE = {RUST: 12, ARDUINO_TEMPLATE: 4}
+    #: Of the sixteen, the rows ``MOVED_RULES`` maps (191, 192, 211, 284, 373 and 384).
+    EXPECTED_MOVED = 6
+    #: Of the ten left, the rows ``absorbed_destinations`` selects (208, 209, 260, 271 and 362).
+    EXPECTED_ABSORBED_UNMOVED = 5
+
+    def _targets(self) -> list:
+        _, triage = self.load()
+        return moved_template_targets(triage)
+
+    def test_the_map_moves_each_stack_template_to_its_stack_skills_orchestration_reference(self):
+        self.assertEqual(FILE_MOVES, ORCHESTRATION_TEMPLATE_MOVES,
+                         "CR-MDB-060 §S1.1: the triage's file-move map is §S1.1's table")
+        self.assertEqual(FILE_MOVES[self.RUST],
+                         "generator/skills/rust-stack/references/orchestration.md")
+
+    def test_the_rows_destined_for_a_moved_template_are_the_frozen_sixteen(self):
+        targets = self._targets()
+        counts = {}
+        for _row, rel, _section in targets:
+            counts[rel] = counts.get(rel, 0) + 1
+        self.assertEqual(counts, self.EXPECTED_ROWS_BY_TEMPLATE)
+        self.assertEqual(len(targets) - len(unmoved(targets, self.moved())), self.EXPECTED_MOVED)
+
+    def test_every_row_destined_for_a_moved_template_resolves_to_its_reference(self):
+        # AC6: the audit names the old template; the gate reads the reference it became.
+        wrong = sorted({f"{rel} resolves to {resolve_file(rel, REPO_ROOT)}, expected the existing "
+                        f"{FILE_MOVES[rel]}" for _row, rel, _section in self._targets()
+                        if resolve_file(rel, REPO_ROOT) != FILE_MOVES[rel]
+                        or not (REPO_ROOT / FILE_MOVES[rel]).is_file()})
+        self.assertEqual(wrong, [], "CR-MDB-060 §S5.2/AC6: a moved template's rows do not resolve "
+                                    "to its reference")
+
+    def test_through_the_map_every_unmoved_rows_heading_is_found(self):
+        targets = unmoved(self._targets(), self.moved())
+        self.assertEqual(len(targets), sum(self.EXPECTED_ROWS_BY_TEMPLATE.values())
+                         - self.EXPECTED_MOVED)
+        self.assertEqual(destination_findings(targets, REPO_ROOT), [])
+
+    def test_unaided_the_moved_templates_rows_no_longer_resolve_the_templates_are_gone(self):
+        # Like the rename map's unaided check: the old template paths are left for good.
+        targets = unmoved(self._targets(), self.moved())
+        found = destination_findings(targets, REPO_ROOT, moves={})
+        self.assertEqual(len(found), len(targets), found)
+        self.assertTrue(all(": file does not exist (" in f for f in found), found)
+
+    def _tree(self, side: str) -> Path:
+        """A temp copy of every file the destination and departure checks read, each moved
+        template placed at its old path (``before``) or at its reference (``after``), read from
+        wherever it lives in the repository now."""
+        root = Path(tempfile.mkdtemp(prefix=f"mdb-file-moves-{side}-"))
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        _, triage = self.load()
+        rels = {rel for _, rel, _ in absorbed_destinations(triage) if rel} | set(FILE_MOVES)
+        for rel in sorted(rels):
+            src = REPO_ROOT / resolve_file(rel, REPO_ROOT)
+            self.assertTrue(src.is_file(), f"{rel}: found neither at its path nor through the map")
+            dst = root / (FILE_MOVES.get(rel, rel) if side == "after" else rel)
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(src, dst)
+        return root
+
+    def test_the_real_destinations_resolve_on_both_sides_of_the_move(self):
+        """The map proved both ways over the real files: with every template at its old path and
+        with every template at its reference, the destination, new-section-body and departure
+        checks find nothing; unaided, the after side loses exactly the absorbed template rows."""
+        _, triage = self.load()
+        targets = unmoved(absorbed_destinations(triage), self.moved())
+        for side in ("before", "after"):
+            with self.subTest(side=side):
+                root = self._tree(side)
+                self.assertEqual(resolve_file(ARDUINO_TEMPLATE, root),
+                                 ARDUINO_TEMPLATE if side == "before" else FILE_MOVES[ARDUINO_TEMPLATE])
+                self.assertEqual(destination_findings(targets, root), [])
+                self.assertEqual(new_section_body_findings(targets, root), [])
+                self.assertEqual(moved_rule_departure_findings(self.moved(), root), [])
+                unaided = destination_findings(targets, root, moves={})
+                expected = 0 if side == "before" else self.EXPECTED_ABSORBED_UNMOVED
+                self.assertEqual(len(unaided), expected, unaided)
+
+
 class ModelBCommonTextNeutralTest(unittest.TestCase):
     """CR-MDB-042 AC3 (widened at 3b6555c): the name and tool gate covers every Model B-owned
-    ``skills-src/`` Markdown file, not only the ``model-b`` bundle and ``gap-analysis``."""
+    ``skills-src/`` Markdown file, not only the ``model-b`` bundle and ``gap-analysis``; CR-MDB-060
+    §S5.1/AC6 widens it to ``generator/skills/``, where the orchestrator's notes moved."""
 
     def test_model_b_owned_files_are_every_bundle_but_the_exempt_ones(self):
-        files = model_b_owned_skill_files(REPO_ROOT)
+        # MIGRATED (CR-MDB-060 §S5.1/AC6; was model_b_owned_skill_files alone): the gate reads
+        # neutrality_gate_files, skills-src/ and generator/skills/.
+        files = neutrality_gate_files(REPO_ROOT)
         rels = {p.relative_to(REPO_ROOT).as_posix() for p in files}
         for path in model_b_common_files(REPO_ROOT) + [REPO_ROOT / GAP_ANALYSIS_SKILL]:
             self.assertIn(path.relative_to(REPO_ROOT).as_posix(), rels)
-        bundles = {rel.split("/")[1] for rel in rels if rel.count("/") > 1}
+        bundles = {rel.split("/")[1] for rel in rels
+                   if rel.startswith("skills-src/") and rel.count("/") > 1}
         # MIGRATED PIN (CR-MDB-041 \u00a7S4): bootstrap/ and shutdown/ are no longer exempt.
         # MIGRATED at CR-MDB-061 (§S8): the chrome-ui-relay bundle is Model B-owned.
+        # MIGRATED (CR-MDB-060 §S5.1; was the memory-templates bundle while a template had not
+        # moved): skills-src/ holds no memory template; the moved notes are pinned below.
         self.assertEqual(bundles, {"bootstrap", "chrome-ui-relay", "code-health", "cr-authoring",
-                                   "crucible", "gap-analysis", "git-workflow", "memory-templates",
+                                   "crucible", "gap-analysis", "git-workflow",
                                    "model-b", "shutdown"})
-        self.assertIn("skills-src/memory-templates/rust-orchestration.md", rels)
+        self.assertEqual(sorted(rel for rel in rels if rel.startswith("skills-src/memory-templates/")),
+                         [], "CR-MDB-060 §S3.1: skills-src/ holds no memory template")
+        # CR-MDB-060 §S5.1/AC6: the moved notes are read where they live now.
+        stack_skills = {rel.split("/")[2] for rel in rels
+                        if rel.startswith(f"{STACK_SKILLS_SOURCES}/") and rel.count("/") > 2}
+        self.assertEqual(stack_skills, STACK_SKILL_NAMES)
+        self.assertEqual(sorted(set(FILE_MOVES.values()) - rels), [],
+                         "CR-MDB-060 §S5.1/AC6: each moved note is read under generator/skills/")
 
     def test_model_b_owned_text_names_no_project_or_orchestrator_note(self):
+        # MIGRATED (CR-MDB-060 §S5.1/AC6): generator/skills/ is read too.
         problems = []
-        for path in model_b_owned_skill_files(REPO_ROOT):
+        for path in neutrality_gate_files(REPO_ROOT):
             problems += project_name_findings(path.relative_to(REPO_ROOT).as_posix(), read_text(path))
         self.assertEqual(problems, [])
 
     def test_model_b_owned_text_names_no_retired_harness_tool(self):
+        # MIGRATED (CR-MDB-060 §S5.1/AC6): generator/skills/ is read too.
         problems = []
-        for path in model_b_owned_skill_files(REPO_ROOT):
+        for path in neutrality_gate_files(REPO_ROOT):
             problems += retired_tool_findings(path.relative_to(REPO_ROOT).as_posix(), read_text(path))
         self.assertEqual(problems, [])
 
@@ -1203,7 +1381,12 @@ class CapabilityWordingTest(unittest.TestCase):
     ``model-b`` bundle names capabilities, never a harness tool (DN-multi-harness \u00a7D18)."""
 
     def test_memory_templates_name_no_generator_stacks_path(self):
-        found = [f"{p.name}:{n}" for p in sorted((REPO_ROOT / "skills-src" / "memory-templates").glob("*.md"))
+        # MIGRATED (CR-MDB-060 §S5.2): the stack templates are read where they live now
+        # (``FILE_MOVES``); operational-commands.md, a command sheet and no stack template, is
+        # dropped by CR-MDB-060 §S2.
+        files = [REPO_ROOT / resolve_file(rel, REPO_ROOT) for rel in sorted(FILE_MOVES)]
+        self.assertEqual([p.relative_to(REPO_ROOT).as_posix() for p in files if not p.is_file()], [])
+        found = [f"{p.relative_to(REPO_ROOT).as_posix()}: {n}" for p in files
                  for n, line in enumerate(read_text(p).splitlines(), 1) if "generator/stacks/" in line]
         self.assertEqual(found, [])
 
@@ -1276,6 +1459,66 @@ class MovedRulesOnSyntheticTextTest(unittest.TestCase):
         self.assertEqual(unmoved(targets, {}), targets)
 
 
+class FileMoveMapOnSyntheticTreeTest(unittest.TestCase):
+    """CR-MDB-060 §S5.2 — ``resolve_file`` and the checks that read through it, proved on both
+    sides of a move over a temp tree."""
+
+    OLD = "skills-src/memory-templates/rust-orchestration.md"
+    NEW = "generator/skills/rust-stack/references/orchestration.md"
+    SRC = "(`~/.claude/AGENTS.md` § Non-negotiables (1))"
+
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp(prefix="mdb-file-moves-"))
+        self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
+
+    def _write(self, rel: str, text: str) -> None:
+        path = self.root / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+
+    def test_a_moved_template_resolves_to_its_reference_unless_only_the_template_is_on_disk(self):
+        moves = {self.OLD: self.NEW}
+        self.assertEqual(resolve_file(self.OLD, self.root, moves), self.NEW)  # neither on disk
+        self._write(self.OLD, "## Gates\n")
+        self.assertEqual(resolve_file(self.OLD, self.root, moves), self.OLD)  # before the move
+        self._write(self.NEW, "## Gates\n")
+        self.assertEqual(resolve_file(self.OLD, self.root, moves), self.NEW)  # both: the reference
+        (self.root / self.OLD).unlink()
+        self.assertEqual(resolve_file(self.OLD, self.root, moves), self.NEW)  # after the move
+        self.assertEqual(resolve_file("skills-src/model-b/SKILL.md", self.root, moves),
+                         "skills-src/model-b/SKILL.md")
+        self.assertEqual(resolve_file(self.OLD, self.root, {}), self.OLD)
+
+    def test_the_destination_check_reads_a_moved_template_at_its_reference(self):
+        self._write(self.NEW, "# R\n\n## Gates\n\nRule.\n")
+        targets = [_target(self.OLD, "Gates", cls="stack:rust"),
+                   _target(self.OLD, "Gone", cls="stack:rust")]
+        self.assertEqual(destination_findings(targets, self.root),
+                         [f"{self.NEW}: no heading 'Gone' {self.SRC}"])
+        self.assertEqual(destination_findings(targets, self.root, moves={}),
+                         [f"{self.OLD}: file does not exist {self.SRC}"] * 2)
+
+    def test_the_new_section_body_check_reads_a_moved_template_at_its_reference(self):
+        new = "New section. Rule: x."
+        self._write(self.NEW, "## Full\n\nRule.\n\n## Empty\n\n## End\n")
+        targets = [_target(self.OLD, "Full", cls="stack:rust", note=new),
+                   _target(self.OLD, "Empty", cls="stack:rust", note=new)]
+        self.assertEqual(new_section_body_findings(targets, self.root),
+                         [f"{self.OLD} § Empty: new section has no body {self.SRC}"])
+        self.assertEqual(len(new_section_body_findings(targets, self.root, moves={})), 2)
+
+    def test_an_anchor_still_in_the_moved_reference_is_reported_under_the_reference(self):
+        text = _fixture_text()
+        line = next(n for n, ln in enumerate(text.splitlines(), 1) if "§ §7 Rust overrides" in ln)
+        rows, _ = moved_rule_rows(text, {line: ("g/new.toml", ("one",))})
+        self._write(self.NEW, "## Gates\n\n- one rule.\n")
+        self.assertEqual(moved_rule_departure_findings(rows, self.root, {self.OLD: self.NEW}),
+                         [f"row {line}: {self.NEW} still carries 'one'"])
+        self.assertEqual(moved_rule_departure_findings(rows, self.root, {}), [])
+        self._write(self.NEW, "## Gates\n\n- the rule lives in the rust agent definitions.\n")
+        self.assertEqual(moved_rule_departure_findings(rows, self.root, {self.OLD: self.NEW}), [])
+
+
 def _target(rel: str, section_name: str, cls: str = "common", note: str = "Rule: x.") -> tuple:
     return (_row(cls=cls, dest=f"`{rel}` \u00a7 {section_name}", note=note), rel, section_name)
 
@@ -1307,6 +1550,8 @@ class AbsorbRulesOnSyntheticTreeTest(unittest.TestCase):
         self.assertEqual(section_body(text, "B"), "\nb rule")
 
     def test_missing_file_and_missing_heading_are_reported_present_ones_are_not(self):
+        # MIGRATED (CR-MDB-060 §S5.2): a moved template found nowhere is reported where it lives
+        # now — its reference (``FILE_MOVES``), was the template path.
         self._write("skills-src/model-b/SKILL.md", "# M\n\n## Roles\n\nx\n")
         targets = [_target("skills-src/model-b/SKILL.md", "Roles"),
                    _target("skills-src/model-b/SKILL.md", "Operating rules"),
@@ -1314,7 +1559,8 @@ class AbsorbRulesOnSyntheticTreeTest(unittest.TestCase):
         src = "(`~/.claude/AGENTS.md` \u00a7 Non-negotiables (1))"
         self.assertEqual(destination_findings(targets, self.root), [
             f"skills-src/model-b/SKILL.md: no heading 'Operating rules' {src}",
-            f"{ARDUINO_TEMPLATE}: file does not exist {src}",
+            "generator/skills/arduino-stack/references/orchestration.md: file does not exist "
+            f"{src}",
         ])
 
     def test_a_mapped_heading_is_looked_up_under_its_new_name_only(self):
@@ -1422,6 +1668,21 @@ class AbsorbRulesOnSyntheticTreeTest(unittest.TestCase):
                           "skills-src/crucible/SKILL.md",
                           "skills-src/memory-templates/rust-orchestration.md",
                           "skills-src/model-b/SKILL.md", "skills-src/shutdown/SKILL.md"])
+
+    def test_neutrality_gate_files_add_generator_skills_markdown_only(self):
+        # CR-MDB-060 §S5.1: the stack skills' Markdown is read beside skills-src/'s; the agent
+        # templates, the rendered agents and a non-Markdown file under generator/skills/ are not.
+        for rel in ("skills-src/model-b/SKILL.md", "skills-src/crucible-register/SKILL.md",
+                    "generator/skills/rust-stack/SKILL.md",
+                    "generator/skills/rust-stack/references/orchestration.md",
+                    "generator/skills/rust-stack/notes.txt",
+                    "generator/templates/red.md", "generator/agents/rust-red-agent.md"):
+            self._write(rel, "# x\n")
+        self.assertEqual([p.relative_to(self.root).as_posix() for p in neutrality_gate_files(self.root)],
+                         ["skills-src/model-b/SKILL.md", "generator/skills/rust-stack/SKILL.md",
+                          "generator/skills/rust-stack/references/orchestration.md"])
+        self.assertEqual([p.relative_to(self.root).as_posix() for p in model_b_owned_skill_files(self.root)],
+                         ["skills-src/model-b/SKILL.md"], "the skills-src/ half is unchanged")
 
     def test_fix_inside_verify_is_flagged_unless_the_line_says_never(self):
         text = ("Run the FIX agent inside the same VERIFY cycle.\n"

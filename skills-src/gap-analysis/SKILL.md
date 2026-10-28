@@ -187,7 +187,7 @@ behaviour: the file named in the request is rarely the only one that states it.
 For every rule or behaviour the CR changes, find every file that states or uses it:
 - the skills and role references;
 - the agent templates, `builtin-tools.toml` and the stack files;
-- the memory templates, and everything the scaffold renders;
+- the stack skills and their references, and everything the scaffold renders;
 - the tests that pin any of it.
 
 List each hit and where the spec covers it. A hit the spec does not cover is a gap, not a follow-up.

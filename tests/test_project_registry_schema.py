@@ -406,18 +406,6 @@ def _golden_agents_md(label: str, mode: str) -> str:
     )
 
 
-def _golden_memory_index(template_names: list[str]) -> str:
-    lines = "\n".join(f"- [{n}]({n})" for n in template_names)
-    return (
-        f"# {NAME} — project memory index\n"
-        "\n"
-        "Seeded by `modelb-axi init` from the installation's `memory-templates/` "
-        f"filtered by --stacks ({STACKS}).\n"
-        "\n"
-        f"{lines}\n"
-    )
-
-
 def _golden_sub_agents_md(sub: str) -> str:
     return (
         f"# {NAME} / {sub} — sub-project AGENTS.md\n"
@@ -432,10 +420,11 @@ def _golden_sub_agents_md(sub: str) -> str:
 def _reference_other_files(home: Path, mode: str, scratch: Path) -> dict:
     """Today's bytes for every emitted file init renders WITHOUT any registry
     value — hook instances + compiled wiring + compiler report, agent
-    definitions, the permission policy, memory templates, the research
-    placeholder, and (MIGRATED at CR-MDB-068 C2 RED, §S5) the release workflow
-    and its two scripts — produced by the modules that own them (none in this
-    CR's scope), into ``scratch``."""
+    definitions, the permission policy, the research placeholder, and (MIGRATED
+    at CR-MDB-068 C2 RED, §S5) the release workflow and its two scripts —
+    produced by the modules that own them (none in this CR's scope), into
+    ``scratch``. MIGRATED (CR-MDB-060 §S3.1): no memory templates — ``init``
+    seeds no ``docs/memory/``."""
     stacks, harnesses = [STACKS], ["pi"]
     files: dict = {"docs/research/.gitkeep": b""}
     instances = scaffold._hook_instances(stacks, mode)
@@ -453,9 +442,6 @@ def _reference_other_files(home: Path, mode: str, scratch: Path) -> dict:
     for path in scratch.rglob("*"):
         if path.is_file():
             files[str(path.relative_to(scratch))] = path.read_bytes()
-    for template in scaffold._select_memory_templates(
-            scaffold._memory_templates_dir(home), stacks):
-        files[f"docs/memory/{template.name}"] = template.read_bytes()
     # MIGRATED at CR-MDB-068 C2 RED (§S5): init renders the release workflow and its two scripts
     # (no --release-targets: no target), from the workflow sources its home resolves.
     for rel, text in workflows.render(stacks, [], scaffold._workflow_sources(home)).items():
@@ -778,10 +764,6 @@ class _Shared:
             # Same HOME as the init subprocess: the policy reads Path.home().
             with mock.patch.dict(os.environ, {"HOME": str(cls._root / "home")}):
                 cls._reference = _reference_other_files(home, cls.MODE, scratch)
-            cls._template_names = [
-                t.name for t in scaffold._select_memory_templates(
-                    scaffold._memory_templates_dir(home), [STACKS])
-            ]
 
         @classmethod
         def tearDownClass(cls):
@@ -953,8 +935,8 @@ class _Shared:
             records no lean-ctx verdict, so the agents under ``.pi/agents/`` are
             rendered for Pi's built-in tools (CR-MDB-045 §S8) and are pinned by
             tests.test_project_tools_setup; they are no longer today's bytes."""
+            # MIGRATED (CR-MDB-060 §S3.1): no docs/memory/INDEX.md — init writes no docs/memory/.
             literal = {
-                "docs/memory/INDEX.md": _golden_memory_index(self._template_names).encode("utf-8"),
                 # CR-MDB-048 §S2: the specs' directory exists through an empty .gitkeep.
                 "docs/changes/.gitkeep": b"",
             }
@@ -994,7 +976,8 @@ class _Shared:
             # MIGRATED at CR-MDB-057 C1 RED (§S2): one `crucible.toml`, at the root only.
             expected = set(self._reference) | {
                 ".env", ".env.local", ".gitignore", "AGENTS.md",
-                "docs/changes/.gitkeep", "docs/memory/INDEX.md", ".envrc", "crucible.toml",
+                # MIGRATED (CR-MDB-060 §S3.1): no `docs/memory/INDEX.md` (nor any template copy).
+                "docs/changes/.gitkeep", ".envrc", "crucible.toml",
                 # MIGRATED at CR-MDB-058 C3 RED (§S5): one `CHANGELOG.md`, at the root only.
                 "CHANGELOG.md",
             }
@@ -1679,7 +1662,6 @@ NOT_REGISTRY_KEYS = {
     # example / placeholder text
     "COMMIT": "enum-variant example in cr-authoring's AC-precision guidance",
     "ROLLBACK": "enum-variant example in cr-authoring's AC-precision guidance",
-    "SOME_ENV_VAR": "placeholder in a `docker run -e` example (operational commands)",
     "VAR": "generic `VAR=value` wording in the block-direct-*-test hook docstrings",
     # runtime names the widened detector (C4 FIX F3: `$KEY`, `${KEY}`,
     # environ reads) matches — none is a project-registry key

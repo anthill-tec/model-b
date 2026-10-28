@@ -33,6 +33,32 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 #: How every skip reason spells the manifest, so a reader can find it on any machine.
 CRUCIBLE_MANIFEST_SPELLING = "~/.crucible/crucible-clients.json"
 
+#: CR-MDB-060 §S1.1 — each stack's orchestrator notes: the stack-skill reference each memory
+#: template became (moved with ``git mv``, its headings unchanged), relative to the repository.
+ORCHESTRATION_REFERENCES = {
+    "arduino": "generator/skills/arduino-stack/references/orchestration.md",
+    "java": "generator/skills/java-stack/references/orchestration.md",
+    "rust": "generator/skills/rust-stack/references/orchestration.md",
+}
+#: CR-MDB-060 §S1.1 — the file-move map: each retired memory template -> its reference.
+ORCHESTRATION_TEMPLATE_MOVES = {
+    f"skills-src/memory-templates/{stack}-orchestration.md": reference
+    for stack, reference in ORCHESTRATION_REFERENCES.items()
+}
+
+#: The generator's stack files and agent templates, as ``rendered_definition`` reads them.
+GENERATOR_STACKS_DIR = REPO_ROOT / "generator" / "stacks"
+GENERATOR_TEMPLATES_DIR = REPO_ROOT / "generator" / "templates"
+
+
+def rendered_definition(stack: str, role: str) -> str:
+    """One definition rendered in memory from today's stack file and templates."""
+    from modelb_axi import agents
+
+    return agents.render(
+        stack, role, agents.load_stack_params(GENERATOR_STACKS_DIR, stack), GENERATOR_TEMPLATES_DIR
+    )
+
 
 def installed_crucible_file(stack: str, sibling: str | None = None) -> tuple:
     """``(path, "")`` for the installed client ``clients[stack]`` listed in Crucible's manifest,

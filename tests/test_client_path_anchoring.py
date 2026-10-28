@@ -53,7 +53,7 @@ import unittest
 from pathlib import Path
 
 from modelb_axi.agents import PI_TOOL_NAMES, ROLE_DENIED_TOOLS
-from tests._helpers import at_line, run_hook
+from tests._helpers import ORCHESTRATION_REFERENCES, at_line, run_hook
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -648,8 +648,10 @@ class ClientPathAnchoringS1Test(unittest.TestCase):
         # the testing practices moved into the java-stack skill's references.
         expected = {
             "generator/skills/java-stack/references/testing-practices.md": "mvn-crucible.py",
-            "skills-src/memory-templates/java-orchestration.md": "mvn-crucible.py",
-            "skills-src/memory-templates/rust-orchestration.md": "rust-crucible.py",
+            # MIGRATED (CR-MDB-060 §S1.1): the templates are the stack skills' orchestration
+            # references now.
+            ORCHESTRATION_REFERENCES["java"]: "mvn-crucible.py",
+            ORCHESTRATION_REFERENCES["rust"]: "rust-crucible.py",
         }
         missing = [f"{rel}: {ANCHOR}{c}" for rel, c in expected.items() if ANCHOR + c not in _read(rel)]
         self.assertEqual(missing, [], f"§S1: memory templates not naming the installed client: {missing}")
@@ -816,7 +818,7 @@ class ClientPathAnchoringS1Test(unittest.TestCase):
         self.assertEqual(failures, [], "§S1 hook docstrings:\n  " + "\n  ".join(failures))
 
     def test_s1_java_orchestration_names_no_reviewer_skill(self):
-        rel = "skills-src/memory-templates/java-orchestration.md"
+        rel = ORCHESTRATION_REFERENCES["java"]  # MIGRATED (CR-MDB-060 §S1.1): was the java memory template
         hits = [f"{rel}:{n}: {sorted(set(re.findall(r'reviewer-[a-z]+', line)))}"
                 for n, line in enumerate(_read(rel).splitlines(), 1) if re.search(r"\breviewer-[a-z]", line)]
         self.assertEqual(hits, [], f"§S1: java-orchestration.md names unshipped reviewer-* skills: {hits}")
@@ -966,7 +968,7 @@ class ClientPathAnchoringS2Test(unittest.TestCase):
 
 # ================================================================= §S3 ==========
 
-S3_TREES = ("skills-src", "generator/templates", "generator/stacks", "contracts")
+S3_TREES = ("skills-src", "generator/skills", "generator/templates", "generator/stacks", "contracts")
 
 #: §S3 never-vacuous floors (F6), measured at CR-MDB-020 C3 FIX (74 invocations). A tree or parse
 #: source whose count falls below its floor means the parser went blind there, not that the text
@@ -974,7 +976,12 @@ S3_TREES = ("skills-src", "generator/templates", "generator/stacks", "contracts"
 #: generator/templates and contracts carry no invocation today; their floor is recorded as 0.
 #: Lowered at CR-MDB-041 C3 FIX (70 invocations): skills-src 46\u219242 and span 25\u219221 with the four
 #: ``python-crucible.py`` span examples it removed (bootstrap's two, orchestration-track's two).
-S3_MIN_PER_TREE = {"skills-src": 42, "generator/templates": 0, "generator/stacks": 28, "contracts": 0}
+#: MIGRATED at CR-MDB-060 (§S1.1, §S2): the java and rust orchestrator notes moved out of
+#: ``skills-src/`` into ``generator/skills/`` and took four invocations with them, so skills-src
+#: 42→38; ``generator/skills`` joins the gated trees with its floor at its measured count (17),
+#: so the moved invocations stay counted and contract-checked.
+S3_MIN_PER_TREE = {"skills-src": 38, "generator/skills": 17, "generator/templates": 0,
+                   "generator/stacks": 28, "contracts": 0}
 S3_MIN_PER_SOURCE = {"fence": 34, "span": 21, "toml": 15}
 
 

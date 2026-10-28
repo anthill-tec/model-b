@@ -3,8 +3,7 @@
 Manifest-driven copy of the package's skill assets into the target root:
 
 - Skill bundles (any ``skills-src/`` subdirectory carrying a ``SKILL.md``
-  marker — e.g. ``crucible``; ``memory-templates`` is scaffold material,
-  not a skill bundle) deploy ONCE into the harness-neutral shared store
+  marker — e.g. ``crucible``) deploy ONCE into the harness-neutral shared store
   ``<target-root>/.agents/skills/<name>/`` (PRD §D2). Stack-scoped bundles
   (``crucible-report-*``, CR-MDB-036 §S7; ``code-health`` -> rust,
   CR-MDB-023 §S4) deploy only for a selected stack or no stack filter.

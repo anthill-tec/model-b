@@ -1,3 +1,5 @@
+<!-- The `java-stack` skill's orchestrator reference: the Java/Quarkus mechanics an orchestrator owns (moved into the skill by CR-MDB-060). -->
+
 # Java/Quarkus Orchestration — Maven + Crucible + worktree-flow (orchestrator-side)
 
 Java/Quarkus-stack embodiment of `orchestration-common.md` (workflow, approval gates,
@@ -15,17 +17,17 @@ in the quarkus-{red,green,verify,fix}-agent definitions and the `java-stack` ski
 ## Tooling (the workflow is embodied here — don't hand-roll)
 - **`~/.crucible/clients/mvn-crucible.py`** (Crucible's installed client, listed in `~/.crucible/crucible-clients.json`) — single entry for Maven test runs + Crucible ingest. Test tiers + lifecycle + docker. **Use the CLI, NEVER inline curl/python** — a stable signature gets one-time permission approval; per-call inline re-prompts every run. Subcommands:
   - `register --role RED|GREEN|FIX|VERIFY|ORCHESTRATOR|report [--cycle <cycleId>]` / `unregister` — agent lifecycle (heartbeat / remove; `identity.displayName` inside the payload). `--role` is required and case-exact (five uppercase, `report` lowercase); the server binds the cycle at registration — `RED|GREEN|FIX|VERIFY` must pass `--cycle` for an ACTIVE cycle of an OPEN plan or the registration is refused 409, while `ORCHESTRATOR`/`report` may register unbound.
-  - `regression` — full reactor `mvn clean verify` → surefire + failsafe + JaCoCo → `/api/v2/runs/parsed` **with coverage**. Orchestrator gate.
+  - `regression` — the full reactor's clean build through Maven's verify phase → surefire + failsafe + JaCoCo → `/api/v2/runs/parsed` **with coverage**. Orchestrator gate.
   - `auto-ingest [--coverage]` — ingest EXISTING reports without running mvn.
   - `docker-up`/`docker-down`, `pre-merge-gate` (docker-up → regression → docker-down).
   - No project hardcoded — defaults to the git repo of CWD; `--project-dir`/`$MVN_CRUCIBLE_PROJECT_DIR`; reads `CRUCIBLE_PROJECT_KEY` (a UUID) from `<project-dir>/.env`. Optional `.env`: `CRUCIBLE_MAVEN_DIR`, `CRUCIBLE_COMPOSE_FILE`, `CRUCIBLE_DOCKER_SERVICES`, `CRUCIBLE_BIND_MOUNT_PATHS`, `CRUCIBLE_COVERAGE_PROFILE`.
 - **`~/.agents/scripts/worktree-flow.py`** — parallel-CR isolation: `start`/`status`/`sync`/`finish`/`abort`. Git-based, **stack-agnostic** — Java CRs use it unchanged. `finish` = `merge --no-ff` → `worktree remove` → `branch -d`; run from the integration tree, not inside the worktree (leave the worktree first); atomic merge lock serializes parallel finishes. Does NOT replace `git flow feature start` for sequential single-CR work.
-  - **Scheduling is stack-agnostic — a Java track gets its next CR exactly like Rust.** Readiness is asked of Crucible, never of the tool: `python3 ~/.crucible/clients/python-crucible.py next --track "Track N - <Project>"` → `NEXT <cr>` | `HOLD <cr>` (deps not all COMPLETED) | `DRAINED`. Loop + HOLD/DRAINED semantics are documented in `orchestration-track.md`; the `worktree-flow` command set is in `rust-orchestration.md`.
+  - **Scheduling is stack-agnostic — a Java track gets its next CR exactly like Rust.** Readiness is asked of Crucible, never of the tool: `python3 ~/.crucible/clients/python-crucible.py next --track "Track N - <Project>"` → `NEXT <cr>` | `HOLD <cr>` (deps not all COMPLETED) | `DRAINED`. Loop + HOLD/DRAINED semantics are documented in `orchestration-track.md`; the `worktree-flow` command set is in the tool's own help (`worktree-flow.py --help`).
   - **The split (CR-MDB-028, 2026-09-21):** `worktree-flow` owns what it derives from git — worktrees, ahead/behind, phase, merge; Crucible owns queue membership, release, wave, seq, dependencies and readiness. The tool's ChangeSet DB half is gone.
 - **`crucible` skill, `references/java.md`** — documents the underlying surefire/JaCoCo ingest API. `mvn-crucible.py` automates it; the reference file is the API doc.
 
 ## Pre-merge gate (the regression gate)
-1. `mvn-crucible.py regression --agent <orchestrator-id>` → `mvn clean verify` (whole reactor) → parse surefire + failsafe + JaCoCo → `/api/v2/runs/parsed`.
+1. `mvn-crucible.py regression --agent <orchestrator-id>` → a clean build of the whole reactor through the verify phase → parse surefire + failsafe + JaCoCo → `/api/v2/runs/parsed`.
 2. **Coverage published ONLY on a zero-failure full run** — JaCoCo from a partial/failed/targeted run is incomplete; the script refuses to attach it when `failed > 0`.
 3. For CRs touching docker-compose e2e: `pre-merge-gate` wraps docker-up → regression → docker-down. (Quarkus DevServices/TestContainers self-provision containers and need no compose.)
 4. **Report ignored/skipped tests explicitly** — every regression. Enumerate `@Disabled`/`@DisabledIf`/skipped tests with reasons; distinguish env-gated (docker/native unavailable) from real coverage holes. A bare pass/skip count hides them.

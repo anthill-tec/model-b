@@ -3,9 +3,10 @@
 
 - §S1 — ``skills-src/gap-analysis/SKILL.md`` gains, under its dimension headings, Dimension 8
   (rule and behaviour reach: every file that states or uses a changed rule — the skills and role
-  references, the agent templates, ``builtin-tools.toml`` and the stack files, the memory templates
-  and everything the scaffold renders, the tests that pin it; a hit the spec does not cover is a
-  gap, not a follow-up), Dimension 9 (the scenario matrix: stack, agent role, orchestrator role,
+  references, the agent templates, ``builtin-tools.toml`` and the stack files, the stack skills and
+  their references (MIGRATED, CR-MDB-060 §S4.2: were the memory templates, which Dimension 8 no
+  longer names) and everything the scaffold renders, the tests that pin it; a hit the spec does
+  not cover is a gap, not a follow-up), Dimension 9 (the scenario matrix: stack, agent role, orchestrator role,
   a tool present/absent/unknown, repo shape, a project scaffolded before the change, an upstream
   provider down; walked by reading, a sandbox only where reading cannot settle it; each case an AC
   or a non-goal) and Dimension 10 (standing invariants: ``AGENTS.md`` rules and existing gates).
@@ -82,10 +83,14 @@ DIM8_CLASSES = (
     r"\bagent templates\b",
     r"builtin-tools\.toml",
     r"\bstack files\b",
-    r"\bmemory templates\b",
+    # MIGRATED (CR-MDB-060 §S4.2/AC5): was r"\bmemory templates\b" — Dimension 8 names the stack
+    # skills and their references where it named the memory templates.
+    r"\bstack skills\b.{0,80}\breferences\b",
     r"\bscaffold renders\b|\brendered by the scaffold\b",
     r"\btests? that pins?\b",
 )
+#: CR-MDB-060 §S4.2/AC5 — what Dimension 8 no longer names: the retired memory templates.
+DIM8_RETIRED = re.compile(r"\bmemory[\s-]+templates?\b", re.IGNORECASE)
 #: Dimension 8 — list each hit and where the spec covers it (one unit).
 DIM8_LIST_EACH_HIT = (r"\blist each hit\b", r"\bwhere the spec covers it\b")
 #: Dimension 8 — an uncovered hit is a gap, not a follow-up (one unit).
@@ -476,6 +481,13 @@ class GapAnalysisNewDimensionsTest(_RuleAssertions):
         self.assertTrue(body.strip(), f"{GAP_REL}: no Dimension 8")
         self.assert_across(body, DIM8_CLASSES, f"{GAP_REL} Dimension 8")
 
+    def test_dimension_eight_names_no_memory_templates(self):
+        # CR-MDB-060 §S4.2/AC5: the templates are gone; the stack skills carry the notes.
+        body = dimension_body(_read(GAP_REL), 8)
+        self.assertTrue(body.strip(), f"{GAP_REL}: no Dimension 8")
+        self.assertEqual([m.group(0) for m in DIM8_RETIRED.finditer(body)], [],
+                         f"CR-MDB-060 §S4.2/AC5: {GAP_REL} Dimension 8 names a memory template")
+
     def test_dimension_eight_lists_each_hit_and_an_uncovered_hit_is_a_gap_not_a_follow_up(self):
         body = dimension_body(_read(GAP_REL), 8)
         self.assertTrue(body.strip(), f"{GAP_REL}: no Dimension 8")
@@ -753,7 +765,7 @@ reach, the scenario matrix and the standing invariants.
 For every rule or behaviour the CR changes, find every file that states or uses it:
 - the skills and role references;
 - the agent templates, `builtin-tools.toml` and the stack files;
-- the memory templates, and everything the scaffold renders;
+- the stack skills and their references, and everything the scaffold renders;
 - the tests that pin any of it.
 
 List each hit and where the spec covers it. A hit the spec does not cover is a gap, not a follow-up.
@@ -935,6 +947,7 @@ class PreReviewRuleDetectorTest(unittest.TestCase):
             with self.subTest(heading=number):
                 self.assertRegex(normalise(headings[number]), title)
         self.assertEqual(lacking_across(dimension_body(GOOD_GAP, 8), DIM8_CLASSES), [])
+        self.assertIsNone(DIM8_RETIRED.search(dimension_body(GOOD_GAP, 8)))
         self.assertEqual(lacking_across(dimension_body(GOOD_GAP, 9), DIM9_CASES), [])
         for number, rule in ((8, DIM8_LIST_EACH_HIT), (8, DIM8_GAP_NOT_FOLLOW_UP),
                              (9, DIM9_BY_READING), (9, DIM9_AC_OR_NON_GOAL),
@@ -964,7 +977,12 @@ class PreReviewRuleDetectorTest(unittest.TestCase):
 
     def test_each_s1_detector_bites_when_its_phrase_is_changed(self):
         mutations = {
-            "classes": (8, DIM8_CLASSES, "- the memory templates, and everything the scaffold renders;\n", ""),
+            # MIGRATED (CR-MDB-060 §S4.2): the bullet names the stack skills, not the templates.
+            "classes": (8, DIM8_CLASSES,
+                        "- the stack skills and their references, and everything the scaffold renders;\n",
+                        ""),
+            "stack-skills": (8, DIM8_CLASSES, "the stack skills and their references",
+                             "the memory templates"),
             "builtin": (8, DIM8_CLASSES, "`builtin-tools.toml` and ", ""),
             "gap": (8, DIM8_GAP_NOT_FOLLOW_UP, "not a follow-up", "a follow-up"),
             "unknown": (9, DIM9_CASES, "present, absent or unknown", "present or absent"),
@@ -983,6 +1001,16 @@ class PreReviewRuleDetectorTest(unittest.TestCase):
                     self.assertNotEqual(lacking_across(body, rule), [])
                 else:
                     self.assertEqual(satisfying(body, rule), [])
+
+    def test_the_retired_memory_template_detector_bites_on_the_old_bullet_and_spares_the_new(self):
+        # CR-MDB-060 §S4.2: the pre-CR Dimension 8 bullet is found; the spec-worded one is not.
+        old_body = dimension_body(GOOD_GAP.replace(
+            "the stack skills and their references", "the memory templates"), 8)
+        self.assertEqual([m.group(0) for m in DIM8_RETIRED.finditer(old_body)], ["memory templates"])
+        self.assertEqual([m.group(0) for m in DIM8_RETIRED.finditer("a memory-template copy")],
+                         ["memory-template"])
+        self.assertIsNone(DIM8_RETIRED.search(dimension_body(GOOD_GAP, 8)))
+        self.assertIsNone(DIM8_RETIRED.search("the agent templates; the project's memory"))
 
     def test_each_rules_detector_bites_when_its_phrase_is_changed(self):
         mutations = {

@@ -38,6 +38,8 @@ import re
 import unittest
 from pathlib import Path
 
+from tests._helpers import ORCHESTRATION_REFERENCES
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # --- §S7 grep gate -----------------------------------------------------------
@@ -135,8 +137,9 @@ TRACK_REF = (
 COMMON_REF = (
     REPO_ROOT / "skills-src" / "model-b" / "references" / "orchestration-common.md"
 )
-RUST_TEMPLATE = REPO_ROOT / "skills-src" / "memory-templates" / "rust-orchestration.md"
-JAVA_TEMPLATE = REPO_ROOT / "skills-src" / "memory-templates" / "java-orchestration.md"
+#: MIGRATED (CR-MDB-060 §S1.1): the templates are the stack skills' orchestration references now.
+RUST_TEMPLATE = REPO_ROOT / ORCHESTRATION_REFERENCES["rust"]
+JAVA_TEMPLATE = REPO_ROOT / ORCHESTRATION_REFERENCES["java"]
 AGENTS_MD = REPO_ROOT / "AGENTS.md"
 SKILLS_SRC = REPO_ROOT / "skills-src"
 
@@ -502,7 +505,7 @@ class WorktreeFlowSurfacesS3Test(unittest.TestCase):
         self.assertEqual(
             [],
             offenders,
-            "skills-src/memory-templates/rust-orchestration.md still ships "
+            f"{ORCHESTRATION_REFERENCES['rust']} still ships "
             "command lines for verbs C1 removed; delete the `reconcile` and "
             "`cs` lines and repoint `next` (§S3):\n  " + "\n  ".join(offenders),
         )
@@ -557,7 +560,7 @@ class WorktreeFlowSurfacesS3Test(unittest.TestCase):
         self.assertEqual(
             [],
             rosters,
-            "skills-src/memory-templates/java-orchestration.md enumerates "
+            f"{ORCHESTRATION_REFERENCES['java']} enumerates "
             "worktree-flow verbs C1 deleted; the roster is exactly "
             "start/status/sync/finish/abort:\n  " + "\n  ".join(rosters),
         )

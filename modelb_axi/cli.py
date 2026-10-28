@@ -266,8 +266,8 @@ def _add_init_parser(subparsers) -> None:
         help="scaffold a Model B project under --target",
         description=(
             "Scaffold a Model B project: registry (.env), docs model, "
-            "AGENTS.md for the installed harness set, in-repo "
-            "memory, git+git-flow, and (opt-in) registrations."
+            "AGENTS.md for the installed harness set, its stack skills, "
+            "git+git-flow, and (opt-in) registrations."
         ),
     )
     init.add_argument("--name", metavar="NAME", help="project display name (registry)")

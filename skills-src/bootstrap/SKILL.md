@@ -25,7 +25,7 @@ Each role probes the other's liveness the same way, from the machine-readable ad
 
 **Read the rules that bind your role before acting.** Once Step 0 fixes your role,
 **Step 0.5 loads the rule set you must execute by** (the `model-b` references, then the
-project's conventions and identity, then its memory index). This is mandatory, not optional
+project's conventions and identity, then its stack skills' orchestrator references). This is mandatory, not optional
 reading — every later step is performed the way YOUR role is supposed to perform it. The
 role rules are authoritative: if any later step conflicts with them, the role rule wins.
 
@@ -93,14 +93,19 @@ Read — in this order:
      yet registered in Crucible: do the Setup section of the root project's `AGENTS.md` when
      it has one, and otherwise (a project scaffolded before the board held the queue) its
      README's setup tasks; never read the empty board `plans` then returns as idle.
-3. **`docs/memory/INDEX.md`** — the project memory index — and the slices it lists (among
-   them the orchestration template for a stack that has one,
-   `docs/memory/<stack>-orchestration.md`); open
-   the ones relevant to what you are about to do.
+3. **The root project's stack skills' orchestrator references** —
+   `references/orchestration.md` in each `.agents/skills/<name>/` that has one, whatever the
+   skill's name; open the ones relevant to what you are about to do. A project with none notes
+   it and skips.
+
+   Where the project has none but still has a `docs/memory/` and one of its stacks declares a
+   stack skill, tell the user to run `modelb-axi agents` at the project root to render its stack
+   skills; a project none of whose stacks declares a stack skill (python, bun) is not pointed
+   there. Nothing is read from `docs/memory/`.
 
 **Fallback** — a project with no `.env` registry, or a missing key: take the same value from
-the project's `AGENTS.md`; a value found in neither, ask the user once. A missing
-`docs/memory/INDEX.md` is noted and skipped. Nothing here is an error. `KNOWLEDGE_CATEGORY`
+the project's `AGENTS.md`; a value found in neither, ask the user once. A project with no
+stack-skill orchestration reference is noted and skipped. Nothing here is an error. `KNOWLEDGE_CATEGORY`
 has no fallback: without it, Step 0.6 is skipped, never asked about.
 
 Do NOT proceed to Step 1 until you have read the common file **and** your role file **and**

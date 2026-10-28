@@ -42,6 +42,7 @@ from pathlib import Path
 from modelb_axi import deploy
 from tests.test_installer_stack_selection import _StackSandboxCase
 from tests.test_package_publishing import build_sdist, build_wheel, wheel_names, wheel_read
+from tests._helpers import ORCHESTRATION_REFERENCES
 from tests.test_worktree_flow_surfaces import HISTORY_MARK, WF_CS
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -846,7 +847,8 @@ class ModelBOwnedTestSetS4Test(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 INSTALL_GUIDE = REPO_ROOT / "docs" / "install-guide.md"
-RUST_ORCHESTRATION = SKILLS_SRC / "memory-templates" / "rust-orchestration.md"
+#: MIGRATED (CR-MDB-060 §S1.1): rust-stack's orchestration reference, the template it was.
+RUST_ORCHESTRATION = REPO_ROOT / ORCHESTRATION_REFERENCES["rust"]
 
 #: F3 -- the flags ``rust-crucible.py cr-close --help`` takes: ``--commit``
 #: (required by argparse), ``--agent`` (required by the server, §S2b: every

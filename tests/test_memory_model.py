@@ -19,6 +19,7 @@ import unittest
 from pathlib import Path
 
 from tests._helpers import archive_has_content_move as _archive_has_content_move
+from tests._helpers import ORCHESTRATION_REFERENCES
 from tests._helpers import read_text_lenient as _read
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -34,10 +35,10 @@ JAVA_TESTING_PRACTICES_MD = (
     REPO_ROOT / "generator" / "skills" / "java-stack" / "references" / "testing-practices.md"
 )
 
-# SS4 relocation targets.
-JAVA_ORCHESTRATION_TEMPLATE = MEMORY_TEMPLATES_DIR / "java-orchestration.md"
-RUST_ORCHESTRATION_TEMPLATE = MEMORY_TEMPLATES_DIR / "rust-orchestration.md"
-OPERATIONAL_COMMANDS_TEMPLATE = MEMORY_TEMPLATES_DIR / "operational-commands.md"
+# SS4 relocation targets. MIGRATED (CR-MDB-060 §S1.1/§S2): the two orchestration templates are
+# their stack skills' references now; operational-commands.md is deleted.
+JAVA_ORCHESTRATION_TEMPLATE = REPO_ROOT / ORCHESTRATION_REFERENCES["java"]
+RUST_ORCHESTRATION_TEMPLATE = REPO_ROOT / ORCHESTRATION_REFERENCES["rust"]
 
 ARCHIVE_WAVE2 = REPO_ROOT / "archive" / "wave2"
 
@@ -128,17 +129,17 @@ class MemoryModelS4Test(unittest.TestCase):
     SS2.)"""
 
     def test_s4_relocated_template_files_exist_in_repo(self):
+        # MIGRATED (CR-MDB-060 §S1.1/§S2): the two orchestration notes live at their stack skills'
+        # references; operational-commands.md, dropped, is no longer a relocation target.
         template_files = {
             "java-orchestration.md": JAVA_ORCHESTRATION_TEMPLATE,
             "rust-orchestration.md": RUST_ORCHESTRATION_TEMPLATE,
-            "operational-commands.md": OPERATIONAL_COMMANDS_TEMPLATE,
         }
         missing = [name for name, path in template_files.items() if not path.is_file()]
-        # POSITIVE -- all 3 relocation targets must exist under
-        # skills-src/memory-templates/ in this repo.
+        # POSITIVE -- both relocation targets must exist in this repo.
         self.assertEqual(
             missing, [],
-            f"expected all 3 SS4 template files under {MEMORY_TEMPLATES_DIR}, "
+            f"expected both SS4 orchestration notes at {sorted(ORCHESTRATION_REFERENCES.values())}, "
             f"missing: {missing}",
         )
 
@@ -185,6 +186,8 @@ class MemoryModelS5Test(unittest.TestCase):
                 str(SKILLS_SRC_DIR),
                 str(AGENTS_MD),
                 str(REPO_ROOT / "generator" / "agents"),
+                # MIGRATED (CR-MDB-060 §S1.1): the orchestration notes' new home is a consumer too.
+                str(REPO_ROOT / "generator" / "skills"),
             ],
             capture_output=True,
             text=True,
