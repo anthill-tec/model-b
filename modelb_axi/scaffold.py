@@ -1,7 +1,7 @@
 """Scaffold flow of the one ``modelb-axi`` binary (CR-MDB-013 §S2).
 
 ``modelb-axi init`` is the scaffold: it makes every rule this project
-forged (registry, docs model, memory instantiation, git+git-flow,
+forged (registry, docs model, stack skills, git+git-flow,
 registrations) correct-by-construction for a NEW project under
 ``--target``. Cycle C1 ships the entry + flag surface, the installed-
 harness seam, validation, and the ``--dry-run`` plan; the real emission
@@ -360,7 +360,6 @@ def plan_files(sub_projects: list[str]) -> list[str]:
         "AGENTS.md",
         "docs/changes/.gitkeep",
         "docs/research/.gitkeep",
-        "docs/memory/INDEX.md",
         "hooks/README.md",
         # CR-MDB-068 §S5: the release workflow and its two scripts, at the root only.
         *RELEASE_FILES,
@@ -1283,29 +1282,10 @@ def _render_hooks_readme(
     return "\n".join(lines)
 
 
-def _memory_templates_dir(home: Path) -> Path:
-    """Asset-root resolution for ``memory-templates/`` (§S3.4):
-    ``install.toml [install].asset_root`` → packaged ``modelb_axi/_assets``
-    → repo checkout fallback (both via :func:`default_asset_root`)."""
-    candidates: list[Path] = []
-    configured = load_install_toml(home).get("install", {}).get("asset_root")
-    if configured:
-        candidates.append(Path(str(configured)))
-    candidates.append(default_asset_root())
-    for root in candidates:
-        templates = root / "skills-src" / "memory-templates"
-        if templates.is_dir():
-            return templates
-    raise ScaffoldError(
-        "no memory-templates/ found under any asset root; tried: "
-        + ", ".join(str(c) for c in candidates)
-    )
-
-
 def _agent_sources(home: Path) -> tuple[Path, Path]:
     """Asset-root resolution for the agent templates + stack TOMLs
-    (CR-MDB-025 §S6), the same chain as :func:`_memory_templates_dir`:
-    ``install.toml [install].asset_root`` → :func:`default_asset_root`.
+    (CR-MDB-025 §S6): ``install.toml [install].asset_root`` →
+    :func:`default_asset_root`.
     Returns ``(templates_dir, stacks_dir)``."""
     candidates: list[Path] = []
     configured = load_install_toml(home).get("install", {}).get("asset_root")
@@ -1486,43 +1466,6 @@ def _prerender_stack_skills(
     return texts, names
 
 
-#: Memory-template family prefix -> the stacks whose selection emits it
-#: (CR-MDB-031 §S1): a ``java-*`` template is emitted for ``java`` OR
-#: ``quarkus``. A prefix absent here is stack-neutral. The Java language
-#: references are the ``java-stack`` skill's (CR-MDB-086 §S2.2).
-MEMORY_TEMPLATE_FAMILIES: dict[str, frozenset[str]] = {
-    "arduino": frozenset({"arduino"}),
-    "java": frozenset({"java", "quarkus"}),
-    "rust": frozenset({"rust"}),
-}
-
-
-def _select_memory_templates(templates_dir: Path, stacks: list[str]) -> list[Path]:
-    """Filter templates by ``--stacks``: a ``<prefix>-*.md`` template of a
-    family in :data:`MEMORY_TEMPLATE_FAMILIES` is emitted only when a stack
-    of that family is selected; stack-neutral templates (e.g.
-    ``operational-commands.md``) are always emitted."""
-    selected = []
-    for path in sorted(templates_dir.glob("*.md")):
-        family = MEMORY_TEMPLATE_FAMILIES.get(path.name.split("-", 1)[0])
-        if family is not None and not family & set(stacks):
-            continue
-        selected.append(path)
-    return selected
-
-
-def _render_memory_index(name: str, stacks: list[str], template_names: list[str]) -> str:
-    lines = "\n".join(f"- [{n}]({n})" for n in template_names)
-    return (
-        f"# {name} — project memory index\n"
-        "\n"
-        "Seeded by `modelb-axi init` from the installation's "
-        f"`memory-templates/` filtered by --stacks ({', '.join(stacks)}).\n"
-        "\n"
-        f"{lines}\n"
-    )
-
-
 def _git(target: Path, *args: str) -> None:
     """Run git under ``target`` with explicit identity config so commits
     work in bare CI environments (§S4)."""
@@ -1649,7 +1592,6 @@ def _emit_plan(
             return
         write(CHANGELOG_NAME, CHANGELOG_TEXT)
 
-    templates = _select_memory_templates(_memory_templates_dir(home), stacks)
     target.mkdir(parents=True, exist_ok=True)
 
     # §S3.1 registry + §S3.5 .gitignore.
@@ -1676,14 +1618,6 @@ def _emit_plan(
                           registry.get("SANDESH_PROJECT"), tool_states,
                           knowledge_category, tools, release_setup,
                           stack_skill_names=skill_names),
-    )
-
-    # §S3.4 in-repo project memory.
-    for template in templates:
-        write(f"docs/memory/{template.name}", template.read_text(encoding="utf-8"))
-    write(
-        "docs/memory/INDEX.md",
-        _render_memory_index(name, stacks, [t.name for t in templates]),
     )
 
     # §S3.7 hooks seam — filled by CR-MDB-015 §S5: stack/mode-derived

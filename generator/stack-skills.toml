@@ -8,3 +8,6 @@ stacks = ["rust"]
 
 [skills.java-stack]
 stacks = ["quarkus", "java"]
+
+[skills.arduino-stack]
+stacks = ["arduino"]

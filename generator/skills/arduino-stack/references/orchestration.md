@@ -1,3 +1,5 @@
+<!-- The `arduino-stack` skill's orchestrator reference: the Arduino firmware mechanics an orchestrator owns (moved into the skill by CR-MDB-060). -->
+
 # Arduino Orchestration — firmware tiers + Crucible (orchestrator-side)
 
 Arduino-stack embodiment of `orchestration-common.md` (workflow, approval gates,

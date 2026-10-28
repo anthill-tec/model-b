@@ -16,7 +16,8 @@ states what every phase needs; this skill holds what only some tasks need.
 | TDD layering, Quarkus test patterns, DevServices, JaCoCo, E2E kinds, the reviewer checklist | `references/testing-practices.md` |
 | Records, sealed types, pattern matching, virtual threads (JDK 8-25) | `references/modern-syntax.md` |
 | The Maven build lifecycle, plugins, dependency and release management | `references/maven.md` |
-| Quarkus configuration, reactive and SSE patterns, Redis, the failsafe plugin | `references/quarkus-patterns.md` |
+| Quarkus configuration, reactive and SSE patterns, Redis, the failsafe plugin; the health, metrics, OpenAPI and container-image build commands, the schema registry's and RediSearch's commands | `references/quarkus-patterns.md` |
+| The orchestrator's Maven and Crucible mechanics: the client's verbs, the pre-merge gate, JaCoCo, planning the layers, disk hygiene | `references/orchestration.md` |
 
 ## Test-First Problem Isolation
 
