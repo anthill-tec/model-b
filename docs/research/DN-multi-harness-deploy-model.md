@@ -1110,6 +1110,27 @@ frontend consumes).
   (CR-MDB-080), beside the project type (CR-MDB-074) and `migrate` (CR-MDB-055), which App Lab's
   onboarding needs.
 
+### D26 — Each role runs the tests its phase needs; only the gate measures coverage
+
+**User rulings 2026-10-28**, on wide test runs by phase agents in every project that adopts the
+workflow.
+
+- **RED, GREEN and FIX run only their own tests:** the cycle's RED tests and the tests of the files
+  they change, with the narrowest selection the stack's Crucible client offers. Never the whole suite,
+  with or without coverage: a wider run adds nothing that VERIFY and the gate do not already do.
+- **A whole build unit is not a phase agent's scope** — a crate, a Maven module, a package — even when
+  the cycle changes its public API. A break elsewhere in it is VERIFY's to find.
+- **VERIFY runs the whole suite without coverage,** in branch verification only; its spec pre-review
+  still runs nothing. It is the independent cross-check of the branch: a break outside the cycle's own
+  tests shows there, before the gate.
+- **The orchestrator's pre-merge gate stays the only coverage run,** and the only run that gates the
+  merge.
+- **A brief never widens a phase agent's runs.** A wider run is an extra proof step, which a brief
+  never adds, and a brief names no test list: the agent's definition chooses its tests.
+- **Each rung's verbs come from the stack's Crucible client.** Where a client cannot narrow a phase
+  agent's run, the stack file says so as a client gap and the agent runs the narrowest selection there
+  is; Crucible owns closing the gap.
+
 ## Consequences per CR
 
 | CR | What this DN changes |
@@ -1132,6 +1153,7 @@ frontend consumes).
 | **055** (`migrate`) | §D25: every touched file changes incrementally, Model B's lines in a managed block. |
 | **NEW — CR-MDB-079** | §D25: `bun.toml` general to every Bun project. |
 | **NEW — CR-MDB-080** | §D25: the `go` generated stack, after Crucible's `go-crucible.py`. |
+| **NEW — CR-MDB-083** | §D26: the test-scope ladder in the sub-agent procedure, the generated definitions, the stack files, the `crucible` skill and the brief rules; each stack's verbs from its Crucible client. |
 
 ## Open, deliberately not decided here
 
