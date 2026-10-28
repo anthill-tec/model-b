@@ -90,11 +90,24 @@ def _reference_marker(text: str) -> str:
     return f"{REFERENCE_MARKER_PREFIX}{agents.sha256_text(text)}{REFERENCE_MARKER_SUFFIX}\n{text}"
 
 
+def _frontmatter_name(text: str) -> str | None:
+    """The ``name`` a ``SKILL.md``'s frontmatter declares (quotes stripped), or ``None`` when
+    its frontmatter declares none."""
+    for line in text.splitlines()[1:]:
+        if line.rstrip() == "---":
+            break
+        key, sep, value = line.partition(":")
+        if sep and key.strip() == "name":
+            return value.strip().strip("\"'")
+    return None
+
+
 def render_skills(generator_dir: Path, stacks: list[str]) -> dict[str, str]:
     """Every file of the declared skills of ``stacks``, rendered in memory with its marker and
     keyed by project-relative (posix) path; writes nothing. A declared skill whose source has
     no ``SKILL.md`` renders nothing. Raises :class:`StackSkillError` when the declaration or a
-    source cannot be read, or a ``SKILL.md`` has no frontmatter to carry its marker."""
+    source cannot be read, a ``SKILL.md`` has no frontmatter to carry its marker, or its
+    frontmatter ``name`` differs from its source directory (§S1.1)."""
     declaration = load_declaration(generator_dir)
     rendered: dict[str, str] = {}
     for name, declared in declaration.items():
@@ -109,6 +122,12 @@ def render_skills(generator_dir: Path, stacks: list[str]) -> dict[str, str]:
             text = skill_md.read_text(encoding="utf-8")
             if not text.startswith("---\n"):
                 raise StackSkillError(f"{skill_md}: no frontmatter to carry the marker")
+            declared_name = _frontmatter_name(text)
+            if declared_name != name:
+                raise StackSkillError(
+                    f"the stack skill {name!r}: {skill_md} declares the frontmatter name "
+                    f"{declared_name!r}, not its directory's {name!r}"
+                )
             rendered[(reldir / SKILL_FILE).as_posix()] = agents.with_marker(
                 text, SKILL_MARKER_PREFIX
             )
