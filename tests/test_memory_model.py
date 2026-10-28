@@ -27,7 +27,12 @@ SKILLS_SRC_DIR = REPO_ROOT / "skills-src"
 AGENTS_MD = REPO_ROOT / "AGENTS.md"
 MEMORY_TEMPLATES_DIR = SKILLS_SRC_DIR / "memory-templates"
 
-JAVA_TESTING_PRACTICES_MD = MEMORY_TEMPLATES_DIR / "java-testing-practices.md"
+#: MIGRATED (CR-MDB-086 SS1.2/SS6.1; was skills-src/memory-templates/java-testing-practices.md):
+#: the Java testing practices moved into the java-stack skill's references, so the SS2 merge
+#: anchors are pinned in the file it became.
+JAVA_TESTING_PRACTICES_MD = (
+    REPO_ROOT / "generator" / "skills" / "java-stack" / "references" / "testing-practices.md"
+)
 
 # SS4 relocation targets.
 JAVA_ORCHESTRATION_TEMPLATE = MEMORY_TEMPLATES_DIR / "java-orchestration.md"

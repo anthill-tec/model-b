@@ -1,4 +1,4 @@
-<!-- Model B memory template (cross-project Java language reference). Imported 2026-09-21 from the user's global memory (java-coding-standards.md) by ruling: PRD §D5's global tier has no Pi home, so language refs ride the stack's memory templates and are scaffolded into <project>/docs/memory/. -->
+<!-- A `java-stack` skill reference (cross-project Java language reference). Imported 2026-09-21 from the user's former global memory; moved into the `java-stack` skill by CR-MDB-086, and read by the quarkus agents when their task needs it. -->
 
 # Java Coding Standards
 
@@ -9,10 +9,10 @@
 
 ```java
 // ❌ WRONG - Full namespace
-org.fourpm.entitystore.dto.BusinessEntityDto dto;
+com.example.entitystore.dto.BusinessEntityDto dto;
 
 // ✅ CORRECT - Import and use short name
-import org.fourpm.entitystore.dto.BusinessEntityDto;
+import com.example.entitystore.dto.BusinessEntityDto;
 ...
 BusinessEntityDto dto;
 ```
@@ -162,7 +162,7 @@ Easier to filter on browser side in JavaScript/TypeScript Bun/Node.js apps.
 
 - Follow Java naming strictly: **`camelCase` methods/fields, `PascalCase` classes/records/enums, `UPPER_SNAKE_CASE` constants.**
 - Meaningful variable names — no single-letter names outside tight loop indices/lambda params.
-- Test method names are descriptive: `methodName_scenario_expectedResult` (or equivalent). Vague names (`test1`, `testIt`) are not acceptable — see java-testing-practices.md "Reviewer checklist".
+- Test method names are descriptive: `methodName_scenario_expectedResult` (or equivalent). Vague names (`test1`, `testIt`) are not acceptable — see `testing-practices.md` "Reviewer checklist".
 
 ## MongoDB Entity Annotations
 

@@ -1,4 +1,4 @@
-<!-- Model B memory template (cross-project Java language reference). Imported 2026-09-21 from the user's global memory (maven-best-practices.md) by ruling: PRD §D5's global tier has no Pi home, so language refs ride the stack's memory templates and are scaffolded into <project>/docs/memory/. -->
+<!-- A `java-stack` skill reference (cross-project Java language reference). Imported 2026-09-21 from the user's former global memory; moved into the `java-stack` skill by CR-MDB-086, and read by the quarkus agents when their task needs it. -->
 
 # Maven Best Practices for Java Library Projects
 
@@ -10,7 +10,7 @@
 ```bash
 # ✅ CORRECT - Clean build before commit/release
 ./mvnw clean compile
-./mvnw clean test
+python3 ~/.crucible/clients/mvn-crucible.py module --agent <agent-id>
 ./mvnw clean install
 
 # ❌ WRONG - Incremental builds can hide issues
@@ -35,10 +35,10 @@ validate → compile → test → package → verify → install → deploy
 ./mvnw clean compile
 
 # Compile and run unit tests
-./mvnw clean test
+python3 ~/.crucible/clients/mvn-crucible.py module --agent <agent-id>
 
-# Run integration tests (includes unit tests)
-./mvnw clean verify
+# Run unit and integration tests, the full reactor (the orchestrator's gate)
+python3 ~/.crucible/clients/mvn-crucible.py regression --agent <agent-id>
 
 # Install to local Maven repository
 ./mvnw clean install
@@ -83,7 +83,7 @@ git checkout feature/xyz
 echo $?  # Should be 0
 
 # 3. Run tests
-./mvnw test
+python3 ~/.crucible/clients/mvn-crucible.py module --agent <agent-id>
 
 # 4. Commit only if GREEN
 git commit -m "Your message"
@@ -309,10 +309,10 @@ git commit -m "Your message"
 **Usage:**
 ```bash
 # Run only unit tests
-./mvnw test
+python3 ~/.crucible/clients/mvn-crucible.py module --agent <agent-id>
 
-# Run integration tests (includes unit tests)
-./mvnw verify
+# Run integration tests: failsafe *IT, at the integration-test phase (surefire runs first)
+python3 ~/.crucible/clients/mvn-crucible.py integration --agent <agent-id>
 ```
 
 ### JAR Plugin (Library Packaging)
@@ -750,7 +750,7 @@ git commit -m "Your message"
 **Solution:**
 ```bash
 # Force clean test
-./mvnw clean test
+python3 ~/.crucible/clients/mvn-crucible.py module --agent <agent-id>
 
 # Check versions
 ./mvnw --version
@@ -869,14 +869,14 @@ jobs:
 
 ### Before Every Commit
 - [ ] Run `./mvnw clean compile` (verify no compilation errors)
-- [ ] Run `./mvnw test` (verify all tests pass)
+- [ ] Run the tests through the client's `module` verb (verify all tests pass)
 - [ ] Remove unused imports from Java files
 - [ ] Run tests again after import cleanup
 - [ ] Verify exit codes are 0
 
 ### Before Every Release
 - [ ] Update version in pom.xml (remove -SNAPSHOT)
-- [ ] Run `./mvnw clean verify` (full test suite)
+- [ ] Run the full test suite through the client's `regression` verb
 - [ ] Check dependency updates (`./mvnw versions:display-dependency-updates`)
 - [ ] Verify sources JAR generated
 - [ ] Verify Javadoc JAR generated

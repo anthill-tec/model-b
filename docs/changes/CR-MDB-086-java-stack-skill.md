@@ -1,7 +1,6 @@
 # CR-MDB-086 — The Java stack skill: the Java references and mechanics, rendered into Java projects
 
-**Status:** PENDING — spec drafted 2026-10-28 from the gap analysis, the spec pre-review folded in;
-awaiting approval.
+**Status:** COMPLETED (filed 2026-10-28, gap analysis and pre-review 2026-10-28).
 **Type:** feature (stack skill content, stack file, scaffold seeding, reference material)
 **Priority:** P1 — release 1.0.0, wave 2, after CR-MDB-085 and before CR-MDB-060.
 **Depends on:** CR-MDB-085 (the stack-skill mechanism); the board is authoritative: read `queue`, not
@@ -51,7 +50,7 @@ skill. CR-MDB-060 then retires `docs/memory/`.
    | Test-first problem isolation | testing practices, "CRITICAL: Test-First Problem Isolation" | `Test-First Problem Isolation` |
    | Never disable DevServices globally to cure a hang | testing practices, "Test Hanging Root Cause" | `DevServices globally` |
    | Removing a method: check its unit and integration tests | testing practices' inline CRITICAL | `unit tests AND integration tests` |
-   | Native (GraalVM) builds | `java-orchestration.md` (§S3) | `RAM-heavy and slow` |
+   | Native (GraalVM) builds, the native package built before a failsafe-only run | `java-orchestration.md` (§S3) | `RAM-heavy and slow` |
    | Check docker is clean before native or JVM e2e cycles | `java-orchestration.md` (§S3) | `docker is clean` |
    | The client's task-specific flags: `unit --test <Class>#<method>`, `--also-make`, `--native`, `--profile`, `--system-prop`, `--update-snapshots`, `--coverage-profile`; the monorepo backend's `CRUCIBLE_MAVEN_DIR` | `java-orchestration.md` (§S3) | `--also-make` |
 
@@ -98,7 +97,8 @@ A heading is left without a body when it has neither text nor a sub-heading unde
 removed: "Layered enterprise architecture" keeps "Planning the layers" as its sub-heading and stays;
 "Quarkus build + test gotchas" and "The four test tiers" go. The preamble names where the
 agent-facing material went (the quarkus agent definitions and the `java-stack` skill), never a
-`generator/` path, and no longer says the quarkus definitions reference all four files.
+`generator/` path, and no longer says the quarkus definitions reference all four files. No count of
+test tiers is left in the template.
 
 ## §S4 — Rewordings the move requires
 
@@ -106,7 +106,9 @@ agent-facing material went (the quarkus agent definitions and the `java-stack` s
    `4pm-Store-utils` become neutral examples, in the moved references and in `quarkus.toml` (its GREEN
    shared-libraries gotcha). The rest of one project's architecture stays as written for CR-MDB-087.
 2. **The test-run rule (§D21):** a form the raw-runner guard's rules match that an agent runs becomes
-   the stack client's verb; a descriptive or checklist form is reworded or dropped.
+   the stack client's verb; a descriptive or checklist form is reworded or dropped. A failsafe `*IT`
+   run names the client's `integration` verb, as `quarkus.toml`'s tiers do; a reworded form keeps
+   what the original ran (a `verify` runs surefire and failsafe both, never "failsafe only").
 3. No reference names a `ctx_*` or lean-ctx tool.
 
 ## §S5 — `quarkus.toml`
@@ -127,7 +129,8 @@ agent-facing material went (the quarkus agent definitions and the `java-stack` s
    or section; `test_stack_reference_material` (its declaration, its quarkus render, its "no other
    stack names a stack skill" check and its project-name examples generalised to take `java-stack`,
    not cloned) and `test_pi_agent_definitions` (its quarkus skills rows); `test_skill_frontmatter`
-   renders `java-stack` beside `rust-stack` for its rendered-skill checks.
+   renders `java-stack` beside `rust-stack` for its rendered-skill checks;
+   `test_project_registry_schema`'s registry-key allowlist drops a name no shipped text uses any more.
 2. **`archive/mapping.md`:**
    - one row per old path, `` `skills-src/memory-templates/java-<name>.md` ``, kind `moved`, Now the
      reference file it became, Moved-by `CR-MDB-086`;
@@ -146,8 +149,9 @@ agent-facing material went (the quarkus agent definitions and the `java-stack` s
       names; `skills-src/memory-templates/` holds none of the five source files; no moved reference's
       provenance line names `docs/memory/` or calls it a memory template.
 - [ ] **AC2 (§S1.3).** `SKILL.md` names each of the five references by its path; it carries each
-      §S1.3 table row by its anchor; no line of 40 or more characters from `quarkus.toml` appears
-      verbatim in it.
+      §S1.3 table row by its anchor; its native-build rule names the native package built before a
+      `--failsafe-only` run, or uses the one-step `e2e --native`; no line of 40 or more characters from
+      `quarkus.toml` appears verbatim in it.
 - [ ] **AC3 (§S1.4, §S4.1, §S5).** Every rendered quarkus definition's skills line names `java-stack`;
       `quarkus.toml`'s "Companion memory" bullet names `java-stack`, and each of the five §S5.2 places
       names `references/testing-practices.md` or `references/coding-standards.md`; `quarkus.toml`
@@ -160,13 +164,16 @@ agent-facing material went (the quarkus agent definitions and the `java-stack` s
       from `java-orchestration.md` where it moves or is deleted; present where it stays. No heading in
       the template is left with neither text nor a sub-heading; "Layered enterprise architecture"
       stays with "Planning the layers" under it; the preamble names the `java-stack` skill, names no
-      `generator/` path, and no longer says the quarkus definitions reference all four files.
+      `generator/` path, and no longer says the quarkus definitions reference all four files; no count
+      of test tiers is left in it.
 - [ ] **AC6 (§S2.3, §S4).** No moved file or template names a moved reference by its old path or bare
       old name; `operational-commands.md` names no Java reference; `generator/skills/` contains no `org.fourpm`, `fourpm`, `store-utils` or
       `4pm-Store-utils`; the raw-runner guard over `generator/skills/` finds nothing; no `ctx_` tool or
-      lean-ctx is named there.
+      lean-ctx is named there; no reference sends a failsafe `*IT` run to `e2e` or calls a `verify` run
+      "failsafe only".
 - [ ] **AC7 (§S6).** `archive/mapping.md` carries the §S6.2 rows, its required old paths include the
-      five, and its gate passes; each §S6.1 test passes against the moved files, `scaffold.py`'s
+      five, and its gate passes; each §S6.1 test passes against the moved files, the registry-key
+      allowlist names no `DD`, `scaffold.py`'s
       memory-template families' comment names no quarkus reading of the `java-*` templates.
 - [ ] **AC8.** The skill-frontmatter and Pi skill-loader checks pass over `generator/skills/java-stack/`
       and a rendered `.agents/skills/java-stack/`; `generator/build.py --check` is clean; this

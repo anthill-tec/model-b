@@ -644,8 +644,10 @@ class ClientPathAnchoringS1Test(unittest.TestCase):
         self.assertFalse(_CHECKOUT in text, "§S1: crucible/SKILL.md still names the checkout")
 
     def test_s1_memory_templates_name_the_installed_client(self):
+        # MIGRATED (CR-MDB-086 §S1.2/§S6.1; was skills-src/memory-templates/java-testing-practices.md):
+        # the testing practices moved into the java-stack skill's references.
         expected = {
-            "skills-src/memory-templates/java-testing-practices.md": "mvn-crucible.py",
+            "generator/skills/java-stack/references/testing-practices.md": "mvn-crucible.py",
             "skills-src/memory-templates/java-orchestration.md": "mvn-crucible.py",
             "skills-src/memory-templates/rust-orchestration.md": "rust-crucible.py",
         }

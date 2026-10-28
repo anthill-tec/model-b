@@ -1487,9 +1487,9 @@ def _prerender_stack_skills(
 
 
 #: Memory-template family prefix -> the stacks whose selection emits it
-#: (CR-MDB-031 §S1): the quarkus agent definitions read the ``java-*``
-#: templates, so a ``java-*`` template is emitted for ``java`` OR
-#: ``quarkus``. A prefix absent here is stack-neutral.
+#: (CR-MDB-031 §S1): a ``java-*`` template is emitted for ``java`` OR
+#: ``quarkus``. A prefix absent here is stack-neutral. The Java language
+#: references are the ``java-stack`` skill's (CR-MDB-086 §S2.2).
 MEMORY_TEMPLATE_FAMILIES: dict[str, frozenset[str]] = {
     "arduino": frozenset({"arduino"}),
     "java": frozenset({"java", "quarkus"}),

@@ -69,7 +69,9 @@ of the listed alternatives; everything else is literal. Then:
    ``~/.claude/agents/<IDE>-<role>-agent.md`` of the retired IDE stack (CR-MDB-024) and the five Java references by their
    ORIGINAL names (``java-coding-standards``, ``java-testing-practices``, ``java-modern-syntax``,
    ``maven-best-practices``, ``quarkus-patterns`` — audits/2026-07-20-memory-corpus.md; they became
-   ``java-``-prefixed only as memory templates in 2616ad9) are each covered by a row whose WHOLE Old
+   ``java-``-prefixed only as memory templates in 2616ad9), and those five templates' own paths
+   ``skills-src/memory-templates/java-<name>.md`` (moved into the ``java-stack`` skill by
+   CR-MDB-086 §S6.2) are each covered by a row whose WHOLE Old
    path matches the named path (trailing ``/`` ignored; same component count) — so
    ``~/.claude/CLAUDE.md`` does not cover ``CLAUDE.md``. Conversely no row may cover a name that
    never existed (``NEVER_EXISTED_OLD_PATHS``), and the retired IDE agents' row is ``deleted``: no
@@ -111,7 +113,30 @@ REQUIRED_OLD_PATHS = (
     "~/.claude/memory/java-modern-syntax.md",
     "~/.claude/memory/maven-best-practices.md",
     "~/.claude/memory/quarkus-patterns.md",
+    # CR-MDB-086 §S6.2: the five Java memory templates, moved into the java-stack skill.
+    "skills-src/memory-templates/java-coding-standards.md",
+    "skills-src/memory-templates/java-testing-practices.md",
+    "skills-src/memory-templates/java-modern-syntax.md",
+    "skills-src/memory-templates/java-maven-best-practices.md",
+    "skills-src/memory-templates/java-quarkus-patterns.md",
 )
+#: CR-MDB-086 §S6.2 — each Java memory template's path, and the java-stack reference it became.
+JAVA_STACK_REFERENCES_DIR = "generator/skills/java-stack/references/"
+JAVA_TEMPLATE_MOVES = {
+    "skills-src/memory-templates/java-coding-standards.md":
+        JAVA_STACK_REFERENCES_DIR + "coding-standards.md",
+    "skills-src/memory-templates/java-testing-practices.md":
+        JAVA_STACK_REFERENCES_DIR + "testing-practices.md",
+    "skills-src/memory-templates/java-modern-syntax.md":
+        JAVA_STACK_REFERENCES_DIR + "modern-syntax.md",
+    "skills-src/memory-templates/java-maven-best-practices.md":
+        JAVA_STACK_REFERENCES_DIR + "maven.md",
+    "skills-src/memory-templates/java-quarkus-patterns.md":
+        JAVA_STACK_REFERENCES_DIR + "quarkus-patterns.md",
+}
+JAVA_STACK_CR = "CR-MDB-086"
+DEVOPS_ENVIRONMENT = "~/.claude/memory/devops-environment.md"
+BECAME_A_MEMORY_TEMPLATE = re.compile(r"(?i)became\s+an?\s+memory[\s-]+template")
 #: Names no ``~/.claude/memory/`` file ever had: the template names of the two unprefixed Java
 #: originals, and the unprefixed forms of the three prefixed ones.
 NEVER_EXISTED_OLD_PATHS = (
@@ -426,6 +451,55 @@ class ArchiveMappingS4Test(unittest.TestCase):
         whole_modules = [row["old"] for row in rows
                          if WHOLE_TEST_MODULE_RE.fullmatch(_raw_components(row["old"])[-1])]
         self.assertEqual(whole_modules, [], "an Old path stands for every live test module")
+
+    def test_each_moved_java_template_has_a_moved_row_to_its_java_stack_reference(self):
+        """CR-MDB-086 §S6.2/AC7: one ``moved`` row per old template path, Now the reference it
+        became, Moved by citing CR-MDB-086."""
+        _header, rows = self._parsed()
+        problems = []
+        for old, reference in JAVA_TEMPLATE_MOVES.items():
+            covering = [row for row in rows if covers_required(row["old"], old)]
+            if len(covering) != 1:
+                problems.append(f"{old}: {len(covering)} rows cover it, expected 1")
+                continue
+            row = covering[0]
+            if _unticked(row["kind"]) != "moved":
+                problems.append(f"{old}: Kind {row['kind']!r}, expected moved")
+            if _unticked(row["now"]).split("#", 1)[0].strip() != reference:
+                problems.append(f"{old}: Now {row['now']!r}, expected `{reference}`")
+            if JAVA_STACK_CR not in {_unticked(t) for t in row["moved_by"].split(",")}:
+                problems.append(f"{old}: Moved by {row['moved_by']!r} does not cite {JAVA_STACK_CR}")
+        self.assertEqual(problems, [], "CR-MDB-086 §S6.2/AC7")
+
+    def test_the_devops_environment_row_names_the_java_stack_testing_practices(self):
+        """CR-MDB-086 §S6.2/AC7: the row gains CR-MDB-086 and names the new location in Now and
+        Authority, no longer saying the file became a memory template."""
+        _header, rows = self._parsed()
+        devops = [row for row in rows if _unticked(row["old"]) == DEVOPS_ENVIRONMENT]
+        self.assertEqual(len(devops), 1, f"{DEVOPS_ENVIRONMENT}: exactly one row")
+        row = devops[0]
+        self.assertEqual(_unticked(row["kind"]), "absorbed")
+        self.assertEqual(_unticked(row["now"]).split("#", 1)[0].strip(),
+                         JAVA_STACK_REFERENCES_DIR + "testing-practices.md")
+        self.assertIn("java-stack", row["authority"], "Authority names the new location")
+        self.assertNotRegex(row["authority"], BECAME_A_MEMORY_TEMPLATE)
+        self.assertIn(JAVA_STACK_CR, {_unticked(t) for t in row["moved_by"].split(",")})
+
+    def test_the_five_java_references_family_row_names_the_java_stack_skill(self):
+        """CR-MDB-086 §S6.2/AC7: the row gains CR-MDB-086 and names the new location in Now and
+        Authority, keeping its "remain in ``~/.claude/memory/``" wording."""
+        _header, rows = self._parsed()
+        family = [row for row in rows
+                  if covers_required(row["old"], "~/.claude/memory/java-coding-standards.md")]
+        self.assertEqual(len(family), 1, "exactly one row covers the five Java references")
+        row = family[0]
+        self.assertEqual(_unticked(row["kind"]), "moved")
+        now = _unticked(row["now"]).split("#", 1)[0].strip()
+        self.assertTrue(now.startswith("generator/skills/java-stack"),
+                        f"Now names the java-stack skill: {now!r}")
+        self.assertIn("java-stack", row["authority"], "Authority names the new location")
+        self.assertIn("remain in `~/.claude/memory/`", row["authority"])
+        self.assertIn(JAVA_STACK_CR, {_unticked(t) for t in row["moved_by"].split(",")})
 
 # ------------------------------------------------------------------ detectors ----
 

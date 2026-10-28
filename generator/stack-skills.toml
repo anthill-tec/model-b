@@ -5,3 +5,6 @@
 
 [skills.rust-stack]
 stacks = ["rust"]
+
+[skills.java-stack]
+stacks = ["quarkus", "java"]

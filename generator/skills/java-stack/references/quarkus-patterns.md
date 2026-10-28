@@ -1,4 +1,4 @@
-<!-- Model B memory template (cross-project Java language reference). Imported 2026-09-21 from the user's global memory (quarkus-patterns.md) by ruling: PRD §D5's global tier has no Pi home, so language refs ride the stack's memory templates and are scaffolded into <project>/docs/memory/. -->
+<!-- A `java-stack` skill reference (cross-project Java language reference). Imported 2026-09-21 from the user's former global memory; moved into the `java-stack` skill by CR-MDB-086, and read by the quarkus agents when their task needs it. -->
 
 # Quarkus Patterns and Best Practices
 
@@ -473,7 +473,7 @@ Once SSE stream starts, HTTP headers are already sent - exceptions during stream
 
 ### Solution 1: GlobalStreamExceptionMapper (Typed SSE Error Events — PREFERRED)
 
-**From store-utils `org.fourpm.utils.sse`** — converts exceptions into typed error DTOs that flow through the SSE stream itself.
+**From the shared library's `com.example.utils.sse`** — converts exceptions into typed error DTOs that flow through the SSE stream itself.
 
 **Architecture:**
 ```
@@ -1127,9 +1127,9 @@ public class SseTestClient implements AutoCloseable {
 ```java
 // E2E test sends avroSchema inline — schema registered TO registry
 Map<String, Object> request = new LinkedHashMap<>();
-request.put("typeName", "org.fourpm.entitystore.entity.Property");
+request.put("typeName", "com.example.entitystore.entity.Property");
 request.put("avroSchema", TestDataFactory.getPropertySchemaJson(
-    "org.fourpm.entitystore.entity", "Property"));
+    "com.example.entitystore.entity", "Property"));
 // ... other fields
 
 // POST /store/entity-types/register → 201 (not 500!)
@@ -1159,6 +1159,9 @@ Design stable, deterministic IDs based on business keys rather than random gener
 - No delays or waits needed after HSET operations
 - Avoid unnecessary `Thread.sleep()` waits
 
+### TAG-Field Queries
+TAG-field queries use uppercase values in curly braces (`@status:{AVAILABLE}`).
+
 ### FT.DROPINDEX DD Option
 **Always use DD=true** to delete underlying hash documents:
 
@@ -1182,7 +1185,7 @@ Always check official Redis documentation instead of assuming timing behavior
 
 ### Plugin-Level vs Execution-Level Configuration (CRITICAL)
 
-**Problem:** `<configuration>` nested inside `<execution>` only applies during lifecycle runs (`mvn verify`). Direct goal invocation (`mvn failsafe:integration-test`) ignores execution-scoped config.
+**Problem:** `<configuration>` nested inside `<execution>` only applies during lifecycle runs (the `verify` phase). Direct invocation of the `failsafe:integration-test` goal ignores execution-scoped config.
 
 **Fix:** Place shared configuration (`<includes>`, `<argLine>`, `<systemPropertyVariables>`) at the **plugin level**, not inside `<execution>`.
 
@@ -1228,9 +1231,14 @@ Both goals are needed for a complete run:
 Without `verify`, test failures are silently swallowed (written to report but build succeeds).
 Without `integration-test`, `verify` has nothing to check.
 
+The client's `e2e --failsafe-only` runs just these two goals, against a native package already
+built: build it first (`./mvnw package -DskipTests -Dnative -Dquarkus.container-image.build=true`,
+as below), or run the one-step `e2e --native`, a `clean verify -Dnative` that builds it and then
+runs failsafe.
+
 ```bash
-# Correct E2E-only command (no lifecycle overhead)
-./mvnw failsafe:integration-test failsafe:verify -Dnative -Dquarkus.container-image.build=false
+# Correct E2E-only command (no lifecycle overhead), once the native package is built
+python3 ~/.crucible/clients/mvn-crucible.py e2e --failsafe-only --native --system-prop quarkus.container-image.build=false --agent <agent-id>
 ```
 
 ### NEVER Run clean Before E2E Tests
