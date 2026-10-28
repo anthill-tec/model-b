@@ -569,9 +569,11 @@ class TargetedTextFixesTest(unittest.TestCase):
         self.assertEqual(wrong, {}, "§S2: crucible_reference cites ~/.agents/skills/crucible/references/")
 
     def test_java_testing_practices_writes_panache_find_as_a_call(self):
-        lines = (SKILLS_SRC / "memory-templates" / "java-testing-practices.md").read_text(
-            encoding="utf-8").splitlines()
-        bare = [f"java-testing-practices.md:{n}: {ln.strip()}" for n, ln in enumerate(lines, 1)
+        # MIGRATED (CR-MDB-086 §S1.2/§S6.1; was skills-src/memory-templates/java-testing-practices.md):
+        # the testing practices moved into the java-stack skill's references.
+        lines = (REPO_ROOT / "generator" / "skills" / "java-stack" / "references"
+                 / "testing-practices.md").read_text(encoding="utf-8").splitlines()
+        bare = [f"testing-practices.md:{n}: {ln.strip()}" for n, ln in enumerate(lines, 1)
                 if "`find`" in ln]
         self.assertEqual(bare, [], "§S2: Panache's method is written `find()`, not the Pi tool name")
         mock = [ln for ln in lines if "Mock static query methods" in ln]
