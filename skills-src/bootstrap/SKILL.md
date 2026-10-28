@@ -94,8 +94,8 @@ Read — in this order:
      it has one, and otherwise (a project scaffolded before the board held the queue) its
      README's setup tasks; never read the empty board `plans` then returns as idle.
 3. **The root project's stack skills' orchestrator references** —
-   `.agents/skills/<stack>-stack/references/orchestration.md` for each of the root project's
-   stacks that has one (quarkus and java share `java-stack`'s); open the ones relevant to what
+   `references/orchestration.md` in each `.agents/skills/<name>/` that has one, whatever the
+   skill's name; open the ones relevant to what
    you are about to do. A project with none that still has a `docs/memory/` predates
    the stack skills: tell the user to run `modelb-axi agents` at the project root to render its
    stack skills, and read nothing from `docs/memory/`.
