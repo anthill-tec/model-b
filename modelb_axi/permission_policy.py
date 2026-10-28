@@ -7,7 +7,8 @@
   package's loader strips comments; a marker KEY would make the file invalid
   and clamp the project to ``ask``). ``"*": "ask"`` is the explicit fallback;
   ``allow`` goes by exact tool name to :func:`workflow_tools` — the
-  ``dispatch``, ``lean-ctx`` and ``sandesh-pi`` names read from
+  ``dispatch``, ``lean-ctx``, ``sandesh-pi``, ``processes`` and
+  ``web-search`` names (CR-MDB-089 §S2) read from
   :data:`modelb_axi.requirements.REQUIREMENTS` at call time, never restated,
   less the ask-set :data:`ASK_TOOLS` (``sandesh_archive`` and
   ``sandesh_unarchive``), which stays at the ``ask`` fallback whichever row
@@ -41,7 +42,9 @@ FIXED_WORKFLOW_TOOLS: tuple[str, ...] = (
     "todo", "ask_user_question", "notify_parent", "ask_parent",
 )
 #: The requirement rows whose ``tools`` the policy allows.
-_TOOL_REQUIREMENTS: tuple[str, ...] = ("dispatch", "lean-ctx", "sandesh-pi")
+_TOOL_REQUIREMENTS: tuple[str, ...] = (
+    "dispatch", "lean-ctx", "sandesh-pi", "processes", "web-search",
+)
 #: The ask-set: names left out of the allow-set whichever row supplies them,
 #: so they resolve to ``"*": "ask"`` (CR-MDB-077 §S2).
 ASK_TOOLS: tuple[str, ...] = ("sandesh_archive", "sandesh_unarchive")
