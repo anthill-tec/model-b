@@ -32,7 +32,9 @@ skill's content is CR-MDB-086.
 1. **Sources.** A stack skill's source is `generator/skills/<name>/`, the directory named as its
    frontmatter `name`: a `SKILL.md`, and a `references/` directory only when the skill has references.
    `generator/` ships in the wheel; the installer deploys nothing from it. Sources resolve through the
-   same asset-root chain as the agent sources (packaged first, then the repository).
+   same asset-root chain as the agent sources (packaged first, then the repository). A source whose
+   `SKILL.md` frontmatter `name` differs from its directory is refused before any write, by `init` and
+   by `modelb-axi agents`.
 2. **The declaration** is one file, `generator/stack-skills.toml`, outside `generator/stacks/`: each
    skill names the stacks it renders for. A stack with or without a stack file may be named (CR-MDB-086
    names `java`, which has none). This CR declares `rust-stack` for `rust`. A declared skill whose
@@ -52,7 +54,8 @@ skill's content is CR-MDB-086.
    rendered" warning stays true only when nothing was written. A re-render writes and never deletes: a
    skill for a stack the project no longer lists stays where it is.
 5. **The project's `AGENTS.md`.** Its rendered stack line names a stack's skill only where one is
-   declared, and names no stack skill for a stack without one. Both trust surfaces — the
+   declared and rendered: a declared skill whose source has no `SKILL.md` is left off it, as is any
+   stack without a declared skill. Both trust surfaces — the
    untrusted-project warning `init` prints and the rendered `AGENTS.md`'s project-trust line — name the
    stack skills among what an untrusted project does not load.
 
@@ -138,7 +141,8 @@ name no generator path).
    template's "Hardware drivers" heading and its `HeadingRenameMapTest`; `test_rust_stack_generator`'s
    reads of `rust-orchestration.md`; `test_project_registry_schema`'s stack-line golden; the
    regenerated rust and arduino definitions under `generator/agents/`.
-4. `AGENTS.md` § Key Directories names `generator/skills/` and `generator/stack-skills.toml`.
+4. `AGENTS.md` § Key Directories names `generator/skills/` and `generator/stack-skills.toml`, and its
+   `generator/` row states the stack files and the number of generated definitions the tree holds.
 
 ## Acceptance criteria
 
@@ -150,12 +154,14 @@ name no generator path).
       in its reference; `--dry-run` writes nothing; the written files are in `init`'s emitted list; a
       hand-modified rendered file is skipped and reported, and an unmarked file at a rendered path is
       left untouched, by both `init` and `modelb-axi agents`. A fixture declaring a skill for a stack
-      with no stack file renders it for that stack.
+      with no stack file renders it for that stack. A source whose frontmatter `name` differs from its
+      directory is refused before any write by both `init` and `modelb-axi agents`.
 - [ ] **AC2 (§S1.2, §S1.4).** `modelb-axi agents` at a rust project's root re-renders `rust-stack` and
       names it in its envelope; a second run changes nothing; after the project drops rust it deletes
       nothing. A declared skill whose source has no `SKILL.md` renders nothing.
 - [ ] **AC3 (§S1.5).** A rust project's rendered `AGENTS.md` stack line names `rust-stack`; a python,
-      bun or arduino project's names no stack skill; the untrusted-project warning and the `AGENTS.md`
+      bun or arduino project's names no stack skill, nor does the line of a stack whose declared skill
+      has no `SKILL.md`; the untrusted-project warning and the `AGENTS.md`
       project-trust line each name the stack skills.
 - [ ] **AC4 (§S2).** Every rendered rust definition's skills line names `rust-stack`, and `rust.toml`'s
       "Companion memory" bullet names it; no other stack's definition names a stack skill.
@@ -174,7 +180,8 @@ name no generator path).
       `.agents/skills/rust-stack/`.
 - [ ] **AC9 (§S6.2–4).** `test_orchestrator_rule_triage` passes with its moved-rules map covering rows
       191, 192, 211, 284, 373 and 384, its rename map at one entry, and the audit file unchanged; `AGENTS.md`
-      names `generator/skills/` and `generator/stack-skills.toml`.
+      names `generator/skills/` and `generator/stack-skills.toml`, and its `generator/` row names every
+      `generator/stacks/*.toml` and the number of files in `generator/agents/`.
 - [ ] **AC10.** `generator/build.py --check` is clean, this repository's `.pi/agents` matches the
       regeneration, and the full suite passes through the Crucible client.
 
