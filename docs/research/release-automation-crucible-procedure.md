@@ -242,6 +242,14 @@ the parallel data when it reported, and left no data files behind. Release 1.0.0
 Crucible 0.4.0. Its client changes reach Model B through a doc-sync CR in the release after the one
 that is current when 0.4.0 is installed.
 
+**Reinstated (user ruling, 2026-10-28).** Release 1.0.0 waits until Crucible 0.4.0 is released and
+installed. The 0.4.0 clients carry what the workflow's 1.0.0 surfaces need to name: a `lint` verb that
+`pre-merge-gate` runs (CR-CRU-199), the project's own coverage config read with no `--cov-source`
+(CR-CRU-192), bun's `test --name` (CR-CRU-190), arduino's `test`/`unit --tests` (CR-CRU-211) and
+`cr-close`'s check of the last gate (CR-CRU-188). The 0.4.0 client changes reach Model B before 1.0.0,
+through a doc-sync CR filed into 1.0.0 when 0.4.0's release notes arrive, so 1.0.0 documents the
+clients its users install.
+
 ## A release's expected date is at least the next day (user ruling, 2026-10-16)
 
 On Sandesh's 0.4.3 hotfix the user ruled that a release's expected date (`release-propose --target`)
