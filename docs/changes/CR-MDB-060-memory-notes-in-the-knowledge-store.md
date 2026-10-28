@@ -1,7 +1,6 @@
 # CR-MDB-060 — `docs/memory/` is retired: the orchestrator's stack notes move into the stack skills
 
-**Status:** PENDING — spec drafted 2026-10-28 from the gap analysis, the spec pre-review folded in;
-awaiting approval.
+**Status:** COMPLETED (filed 2026-10-10, gap analysis and pre-review 2026-10-28).
 **Type:** refactor (scaffold, stack skills, skills, scripts, reference material, gates)
 **Priority:** P1 — release 1.0.0, wave 2, after CR-MDB-086 and before CR-MDB-088.
 **Depends on:** CR-MDB-085 and CR-MDB-086 (the stack-skill mechanism and the Java skill); the board is
