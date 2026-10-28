@@ -43,11 +43,11 @@ from unittest import mock
 from modelb_axi import agents, scaffold, stack_skills
 from tests._helpers import (
     decode_axi,
-    deploy_hook_scripts,
     md_section,
     repo_git,
     sha256_text,
     split_frontmatter,
+    write_install_toml,
 )
 from tests.pi_capability_sandbox import (
     AGENT_DIR_ENV,
@@ -208,20 +208,25 @@ class _StackSkillSandbox(unittest.TestCase):
         self.xdg.mkdir()
         self.asset_root = build_asset_root(self.root / "assets")
         self.modelb_home = self.root / "modelb-home"
-        hooks_scripts_dir = deploy_hook_scripts(
-            self.modelb_home / ".agents" / "hooks" / "scripts"
+        # The shared install fixture (every hook script deployed into the store it names — a
+        # fixture the hook-script gate drives), pointed at the private asset root and recording
+        # lean-ctx as detected.
+        install_toml = write_install_toml(str(self.modelb_home))
+        text = install_toml.read_text(encoding="utf-8")
+        asset_lines = re.findall(r"(?m)^asset_root = .*$", text)
+        self.assertEqual(
+            len(asset_lines), 1, f"precondition: one asset_root line; got {text!r}"
         )
-        (self.modelb_home / "install.toml").write_text(
-            "[install]\n"
-            'version = "0.1.0"\n'
-            'harnesses = ["pi"]\n'
-            f'asset_root = "{self.asset_root}"\n'
-            f'hooks_scripts_dir = "{hooks_scripts_dir}"\n'
-            '\n[deps]\nuv = "present"\n'
-            '\n[capabilities]\n"lean-ctx" = "detected"\n'
-            "\n[files]\n",
-            encoding="utf-8",
+        self.assertEqual(
+            text.count("\n[files]\n"),
+            1,
+            f"precondition: one [files] table; got {text!r}",
         )
+        text = text.replace(asset_lines[0], f'asset_root = "{self.asset_root}"', 1)
+        text = text.replace(
+            "\n[files]\n", '\n[capabilities]\n"lean-ctx" = "detected"\n\n[files]\n', 1
+        )
+        install_toml.write_text(text, encoding="utf-8")
 
     def _environ(self):
         return mock.patch.dict(
