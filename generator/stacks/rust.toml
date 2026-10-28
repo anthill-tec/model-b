@@ -1,9 +1,9 @@
 # Stack parameters — Rust/Cargo (cargo-nextest + llvm-cov via the released rust-crucible client)
 # Authored by CR-MDB-024 §S1, reconciled from the four hand-maintained rust definitions
-# (Pi global scope, pre-CR-MDB-024) and the Rust orchestration memory template.
-# Where the two disagree the memory template wins, except for items a PRD/DN rule has
-# since retired (a home-dotdir script path, a Crucible development checkout, the old
-# register phase flag) — those are never imported. Unlike the other four stacks, the
+# (Pi global scope, pre-CR-MDB-024) and the Rust orchestrator's notes, now the `rust-stack`
+# skill's `references/orchestration.md`. Items a PRD/DN rule has since retired (a home-dotdir
+# script path, a Crucible development checkout, the old register phase flag) are never
+# imported. Unlike the other four stacks, the
 # client path here is already the released one (CR-MDB-020 moves the others).
 
 display_name = "Rust/Cargo"
@@ -23,7 +23,7 @@ mechanics = '''
 - **Test scope:** per cycle = TARGETED (only the affected crates, with the project's test feature set); per CR = full workspace, which is the orchestrator's gate. Building `--workspace` every cycle wastes 10–15 minute builds.
 - **Orchestrator-only gates — a phase agent never runs these:** `smoke-test` (raw workspace nextest, no llvm-cov — the pre-merge smoke ×2), `workspace-regression` (llvm-cov coverage; coverage is published ONLY from a full-green `--all-features` run, never from a per-crate or per-cycle run), `pre-merge-gate` (docker-FREE, `-P ci`: fail-fast workspace clippy then `workspace-regression`), and `docker-e2e-gate` (docker up, `-P e2e`, the docker-infra tier only, JUnit, no coverage). These gates embed the workstation's `CARGO_BUILD_JOBS` cap and a disk precheck; an ad-hoc heavy workspace or llvm-cov build bypasses both — do not run one.
 - **Third-party crate APIs — never from memory:** read the real source at the version `Cargo.lock` pins — `opensrc fetch crates:<name>` then `rg "fn <name>" $(opensrc path crates:<name>)/src/`, or the extracted copy under `~/.cargo/registry/src/`. Read the source + CHANGELOG before adding or upgrading a crate. rust-analyzer autocomplete is not proof: it offers methods from other versions and from traits you have not imported.
-- **Companion memory:** the `rust-stack` skill, loaded with this definition — the e2e/docker/nextest-concurrency gotchas and the flaky-test investigation principle. The orchestrator's gates and disk hygiene live in the project's orchestration memory, read as the project directs.
+- **Companion memory:** the `rust-stack` skill, loaded with this definition — the e2e/docker/nextest-concurrency gotchas and the flaky-test investigation principle. The orchestrator's gates and disk hygiene live in its `references/orchestration.md`.
 - **Test locations:** unit → inline `#[cfg(test)] mod tests` at the bottom of the module under test; integration → `<crate>/tests/<feature>.rs`; end-to-end → `<crate>/tests/<scenario>_e2e.rs` (often feature- or docker-gated); doc tests → examples in the public item's `///` doc comment. Files and test functions are named for the FEATURE or invariant, never for a CR or cycle (`cr165_c2_tests.rs`, `t22_sink_…`, `s5_test_14` are forbidden — they lose all meaning once the CR closes).
 '''
 

@@ -46,7 +46,8 @@ def main() -> int:
 
     if any(pattern.search(command) for pattern in _REGRESSION_PATTERNS):
         reason = (
-            "💽 DISK-HYGIENE (rust-orchestration.md — Disk hygiene): a full "
+            "💽 DISK-HYGIENE (the rust-stack skill's references/orchestration.md — "
+            "Disk hygiene): a full "
             "--all-features regression ran — it can leave 100-200G+ of target/ "
             f"artifacts. Disk now: {_disk_line()}. If free space is low, "
             "reclaim (orchestrator-only): `cargo sweep --time 7` + "

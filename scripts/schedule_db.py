@@ -1,5 +1,5 @@
 # Owner: Model B (roundhouse/model-b) — adopted by CR-MDB-022 §S1.
-# Consuming skills: memory-templates (rust-orchestration.md); scripts/rust-code-health.py
+# Consuming skills: rust-stack (references/orchestration.md); scripts/rust-code-health.py
 #   imports it directly for its board→ledger full true-up.
 #
 # TRANSITIONAL — this file is on its way out; build nothing new on it.

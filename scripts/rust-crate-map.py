@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Owner: Model B (roundhouse/model-b) — adopted by CR-MDB-022 §S1.
-# Consuming skills: memory-templates (rust-orchestration.md); invoked by
+# Consuming skills: rust-stack (references/orchestration.md); invoked by
 #   scripts/rust-code-health.py.
 #
 """rust-crate-map.py — Cargo-workspace crate map + LOC metrics generator.
