@@ -130,8 +130,8 @@ name no generator path).
    `test_cite_by_symbol`'s guarded directories and `test_gap_analysis_reach_and_pre_review`'s ordering
    surfaces.
 2. **The orchestrator-rule triage stays frozen.** `test_orchestrator_rule_triage` gains a moved-rules
-   map beside its CR-MDB-044 rename map: each frozen row whose rule this CR moves — 192, 211, 284, 373
-   and 384 — names its new file and its anchor phrase (§S3), and the gate checks for the phrase there
+   map beside its CR-MDB-044 rename map: each frozen row whose rule this CR moves — 191, 192, 211, 284,
+   373 and 384 — names its new file and its anchor phrase (§S3), and the gate checks for the phrase there
    instead of checking the old heading and its class rule. The rename map keeps its one entry;
    `audits/2026-09-26-orchestrator-rule-triage.md` is not edited.
 3. **Tests repointed** to the moved text: `test_orchestrator_rule_triage`'s check of the arduino
@@ -173,7 +173,7 @@ name no generator path).
       skill-loader checks pass with no diagnostics over `generator/skills/` and over a rendered
       `.agents/skills/rust-stack/`.
 - [ ] **AC9 (§S6.2–4).** `test_orchestrator_rule_triage` passes with its moved-rules map covering rows
-      192, 211, 284, 373 and 384, its rename map at one entry, and the audit file unchanged; `AGENTS.md`
+      191, 192, 211, 284, 373 and 384, its rename map at one entry, and the audit file unchanged; `AGENTS.md`
       names `generator/skills/` and `generator/stack-skills.toml`.
 - [ ] **AC10.** `generator/build.py --check` is clean, this repository's `.pi/agents` matches the
       regeneration, and the full suite passes through the Crucible client.
