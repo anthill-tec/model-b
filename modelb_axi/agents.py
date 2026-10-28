@@ -246,15 +246,19 @@ def render(
 def _sha256_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
-def _with_marker(content: str) -> str:
-    """Insert the ownership marker as the first frontmatter line (right after
-    the opening ``---``); its digest is the sha256 of ``content`` itself, so
-    removing the marker line restores exactly what was hashed."""
+def _with_marker(content: str, prefix: str = MARKER_PREFIX) -> str:
+    """Insert the ownership marker (``prefix`` plus a digest) as the first
+    frontmatter line (right after the opening ``---``); its digest is the
+    sha256 of ``content`` itself, so removing the marker line restores exactly
+    what was hashed. A stack skill's ``SKILL.md`` passes its own prefix
+    (CR-MDB-085 §S1.3)."""
     head, _, rest = content.partition("\n")
-    return f"{head}\n{MARKER_PREFIX}{_sha256_text(content)}\n{rest}"
+    return f"{head}\n{prefix}{_sha256_text(content)}\n{rest}"
 
-def ownership_state(text: str) -> str:
-    """Classify an existing file (§S6 Ownership).
+def ownership_state(text: str, prefix: str = MARKER_PREFIX) -> str:
+    """Classify an existing file (§S6 Ownership) by its frontmatter marker,
+    ``prefix`` — the agents' by default; a stack skill's ``SKILL.md`` passes
+    its own (CR-MDB-085 §S1.3).
 
     ``intact`` — the frontmatter carries the marker and its digest matches the
     rest of the file; ``hand_modified`` — the marker is present but the digest
@@ -267,23 +271,28 @@ def ownership_state(text: str) -> str:
         stripped = lines[idx].rstrip("\r\n")
         if stripped == "---":
             break
-        if stripped.startswith(MARKER_PREFIX):
-            recorded = stripped[len(MARKER_PREFIX):].strip()
+        if stripped.startswith(prefix):
+            recorded = stripped[len(prefix):].strip()
             rest = "".join(lines[:idx] + lines[idx + 1:])
             return OWNED_INTACT if _sha256_text(rest) == recorded else OWNED_HAND_MODIFIED
     return NOT_OWNED
 
-def first_line_ownership(text: str, prefix: str) -> str:
+def first_line_ownership(text: str, prefix: str, suffix: str = "") -> str:
     """Classify a file owned by a first-line marker (CR-MDB-068 §S2): ``intact``
     when its first line is ``prefix`` plus the sha256 of everything after the
-    first newline; ``hand_modified`` when the prefix is there and the digest
-    does not match; ``unmanaged`` otherwise. The permission policy and the
-    release-workflow files classify through it."""
+    first newline, then ``suffix`` when one is given (a stack skill's reference
+    closes an HTML comment after the hash, CR-MDB-085 §S1.3); ``hand_modified``
+    when the prefix is there and the digest does not match; ``unmanaged``
+    otherwise. The permission policy, the release-workflow files and the stack
+    skills' references classify through it."""
     first, _, rest = text.partition("\n")
     first = first.rstrip("\r")
     if not first.startswith(prefix):
         return NOT_OWNED
-    recorded = first[len(prefix):].strip()
+    recorded = first[len(prefix):].rstrip()
+    if suffix and recorded.endswith(suffix):
+        recorded = recorded[:-len(suffix)]
+    recorded = recorded.strip()
     return OWNED_INTACT if recorded == _sha256_text(rest) else OWNED_HAND_MODIFIED
 
 def render_definitions(
