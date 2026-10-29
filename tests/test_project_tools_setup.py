@@ -1189,6 +1189,24 @@ class AgentRenderFailureRefusedTest(_ProjectCase):
 # MIGRATED at CR-MDB-090 (§S5): gains §S5's bullet after the cached-reads bullet — AXI commands
 # through `ctx_shell` with `raw=true`, the truncated run's full-output file, and the machine-wide
 # context ledger.
+# MIGRATED at CR-MDB-091 (§S4): gains the project-config note as its last bullet
+# (:data:`GOOD_PROJECT_CONFIG_NOTE`), so the bullet indices above it are unchanged.
+
+#: CR-MDB-091 §S4 — the note bullet, in the spec's words: the root's ``.lean-ctx.toml`` sets the
+#: fact cap and turns automatic consolidation off, needs no ``lean-ctx trust`` and is re-rendered by
+#: ``modelb-axi agents``; a hand-added sensitive key applies only after ``lean-ctx trust``, which is
+#: lean-ctx's decision and not Pi's ``/trust``; a hand-edited file is left alone unless
+#: ``--force-managed``. It names "the knowledge store", never the ``lean-ctx knowledge`` CLI.
+#: ``tests.test_lean_ctx_project_config`` proves its detector on it.
+GOOD_PROJECT_CONFIG_NOTE = """\
+- The repository root's `.lean-ctx.toml` sets the knowledge store's fact cap and turns
+  automatic consolidation off. It needs no `lean-ctx trust`, and it is Model B's:
+  `modelb-axi agents` re-renders it. A security-sensitive key added to it by hand applies only
+  after `lean-ctx trust`, which is lean-ctx's own decision and not Pi's `/trust`. A hand-edited
+  file is left alone by `modelb-axi agents` unless `--force-managed`, which replaces it and
+  drops the added keys.
+"""
+
 GOOD_POINTER = """\
 ## lean-ctx (for the orchestrator working this project)
 - Prefer lean-ctx's cached reads and compressed shell over the harness's built-in read and
@@ -1217,7 +1235,7 @@ GOOD_POINTER = """\
   by its key, with `action=restore`, `store=facts` and `query="kb-cat <key>"`, and
   rewritten at once. Every `remember` and `remove` archives each fact still below the store's
   0.3 archive threshold, and `action=feedback` does not lift a fact over that threshold.
-"""
+""" + GOOD_PROJECT_CONFIG_NOTE
 
 
 class LeanCtxPointerDetectorTest(unittest.TestCase):

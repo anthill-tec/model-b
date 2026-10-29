@@ -38,6 +38,22 @@ Class map:
 - ``AgentsVerbNamesTheLeanCtxConfigTest`` — §S3, text: the ``agents`` subparser's help and
   description, and its stderr progress line, name the "lean-ctx project config" and the
   "permission policy"; :func:`missing_verb_phrases`, the checker, is proved both ways.
+- ``ProjectConfigNoteDetectorTest`` / ``ProjectConfigNoteTest`` — §S4: the scaffolded
+  ``AGENTS.md`` lean-ctx section carries one bullet naming ``.lean-ctx.toml`` and
+  ``modelb-axi agents``, saying ``lean-ctx trust`` is not needed for the file, naming Pi's
+  ``/trust`` as a different decision, and naming ``--force-managed``
+  (:func:`project_config_note_findings`, proved both ways on
+  ``tests.test_project_tools_setup.GOOD_POINTER``); the ``## Setup`` section names neither
+  ``lean-ctx index build`` nor ``lean-ctx trust``.
+- ``ContractProjectConfigDetectorTest`` / ``ContractProjectConfigTest`` — §S5:
+  ``contracts/lean-ctx.md`` § "Project-scoped levers" records where the levers are set, the
+  substring hazard, the re-render that un-trusts the file and ``autonomy.silent_preload``
+  (:func:`contract_config_findings`, one cut per pin).
+- ``GuideProjectConfigDetectorTest`` / ``GuideProjectConfigTest`` — §S6: the guide's
+  ``project-trust`` region carries the config paragraph (:func:`check_trust_lean_ctx_config`,
+  proved both ways on ``tests.test_install_guide.conforming_guide()``).
+- ``ModelBOwnLeanCtxConfigTest`` — §S7: Model B commits its own ``.lean-ctx.toml``, equal to
+  the render with an intact marker, and the sdist does not ship it.
 
 Why lean-ctx reads only these keys this way (lean-ctx 3.11.4): five keys are merged when the raw
 project text merely contains their name, so a comment naming one resets that setting for the
@@ -60,6 +76,7 @@ import ast
 import importlib
 import inspect
 import os
+import re
 import subprocess
 import tempfile
 import tomllib
@@ -70,9 +87,14 @@ from unittest import mock
 from modelb_axi import agents, scaffold
 from modelb_axi.cli import _build_parser
 from tests import test_agents_verb_permission_policy as _policy
+from tests import test_execution_knowledge_rules as _rules
 from tests import test_init_tool_verdicts as _verdicts
+from tests import test_install_guide as _guide
 from tests import test_project_setup_section as _setup
+from tests import test_project_tools_setup as _tools
 from tests._helpers import decode_axi
+from tests.test_board_holds_the_queue import norm_units
+from tests.test_bootstrap_shutdown_registry import normalise
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -646,6 +668,510 @@ class MissingVerbPhrasesCheckerTest(unittest.TestCase):
         for text in ("the lean-ctx config and the policy", "", None):
             with self.subTest(text=text):
                 self.assertEqual(missing_verb_phrases(text), list(VERB_PHRASES))
+
+
+# ------------------------------------------------------------------ "lean-ctx trust" wording ----
+# §S4 and §S6 read the same two things in one unit: a sentence saying ``lean-ctx trust`` is
+# not needed for the file, and a separate clause naming Pi's ``/trust`` as a different decision.
+
+#: The literal that names lean-ctx's own trust command, on normalised text.
+LEAN_CTX_TRUST = "lean-ctx trust"
+#: A negation (§S4/§S6 AC: ``no``, ``not`` or ``never``).
+_NEGATION_RE = re.compile(r"\b(?:no|not|never)\b")
+#: How far before ``lean-ctx trust`` the negation may start (§S4/§S6 AC: 40 characters).
+NEGATION_REACH = 40
+#: Sentence ends (``;`` included) and clause breaks, on normalised text.
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.;!?])\s+")
+_CLAUSE_SPLIT_RE = re.compile(r"[,;:()—–]")
+#: Pi's own trust command, named as Pi's.
+_PI_TRUST_RE = re.compile(r"\bpi's /trust(?![\w-])")
+#: A word setting Pi's ``/trust`` apart from lean-ctx's.
+_CONTRAST_RE = re.compile(r"\b(?:not|never|different|separate|unlike|rather than|instead of)\b")
+
+
+def says_lean_ctx_trust_not_needed(unit: str) -> bool:
+    """A sentence of the normalised ``unit`` puts a negation (``no``, ``not``, ``never``) at most
+    :data:`NEGATION_REACH` characters before ``lean-ctx trust``, with no ``/trust`` between them —
+    so a negation that belongs to the Pi ``/trust`` clause does not count."""
+    for sentence in _SENTENCE_SPLIT_RE.split(unit):
+        for trust in re.finditer(re.escape(LEAN_CTX_TRUST), sentence):
+            for negation in _NEGATION_RE.finditer(sentence):
+                if (negation.end() <= trust.start()
+                        and trust.start() - negation.start() <= NEGATION_REACH
+                        and "/trust" not in sentence[negation.end():trust.start()]):
+                    return True
+    return False
+
+
+def names_pi_trust_as_a_different_decision(unit: str) -> bool:
+    """A clause of the normalised ``unit`` names Pi's ``/trust`` with a contrast word (``not``,
+    ``different``, ...), the clause does not itself name ``lean-ctx trust``, and its sentence
+    names a ``decision``."""
+    for sentence in _SENTENCE_SPLIT_RE.split(unit):
+        if not re.search(r"\bdecision\b", sentence):
+            continue
+        for clause in _CLAUSE_SPLIT_RE.split(sentence):
+            if (_PI_TRUST_RE.search(clause) and _CONTRAST_RE.search(clause)
+                    and LEAN_CTX_TRUST not in clause):
+                return True
+    return False
+
+
+# ------------------------------------------------------------------ §S4 the note ----
+
+#: §S4 AC "the note": the findings :func:`project_config_note_findings` names, in order.
+NOTE_FILE_AND_VERB = "names .lean-ctx.toml and modelb-axi agents"
+NOTE_NO_TRUST_NEEDED = "says lean-ctx trust is not needed for the file"
+NOTE_PI_TRUST = "names Pi's /trust as a different decision"
+NOTE_FORCE_MANAGED = "names --force-managed"
+NOTE_KNOWLEDGE_CLI = "names lean-ctx knowledge"
+NOTE_PINS = (NOTE_FILE_AND_VERB, NOTE_NO_TRUST_NEEDED, NOTE_PI_TRUST, NOTE_FORCE_MANAGED)
+
+_CONFIG_FILE_RE = re.compile(r"(?<![\w-])\.lean-ctx\.toml(?![\w-])")
+_AGENTS_VERB_RE = re.compile(r"(?<![\w-])modelb-axi agents(?![\w-])")
+_FORCE_MANAGED_RE = re.compile(r"(?<![\w-])--force-managed(?![\w-])")
+
+
+def _note_unit_findings(unit: str) -> list[str]:
+    """What the normalised bullet ``unit`` lacks of §S4's note, and ``lean-ctx knowledge`` if it
+    names it."""
+    out = []
+    if not (_CONFIG_FILE_RE.search(unit) and _AGENTS_VERB_RE.search(unit)):
+        out.append(NOTE_FILE_AND_VERB)
+    if not says_lean_ctx_trust_not_needed(unit):
+        out.append(NOTE_NO_TRUST_NEEDED)
+    if not names_pi_trust_as_a_different_decision(unit):
+        out.append(NOTE_PI_TRUST)
+    if not _FORCE_MANAGED_RE.search(unit):
+        out.append(NOTE_FORCE_MANAGED)
+    if "lean-ctx knowledge" in unit:
+        out.append(NOTE_KNOWLEDGE_CLI)
+    return out
+
+
+def project_config_note_findings(section: str) -> list[str]:
+    """§S4 AC: what the lean-ctx ``section`` of an ``AGENTS.md`` lacks of the project-config note
+    — ONE bullet (``tests.test_project_tools_setup._bullet_units``, normalised) carrying
+    :data:`NOTE_PINS` and not naming ``lean-ctx knowledge``. Empty when one bullet carries it all;
+    otherwise the findings of the closest bullet, so splitting the note across two bullets bites."""
+    units = [normalise(unit) for unit in _tools._bullet_units(section)]
+    if not units:
+        return list(NOTE_PINS)
+    return min((_note_unit_findings(unit) for unit in units), key=len)
+
+
+def setup_lean_ctx_task_findings(body: str) -> list[str]:
+    """§S4 AC: each normalised unit of a ``## Setup`` ``body`` naming ``lean-ctx index build``
+    or ``lean-ctx trust`` (no such Setup task)."""
+    return [unit for unit in norm_units(body)
+            if "lean-ctx index build" in unit or LEAN_CTX_TRUST in unit]
+
+
+class ProjectConfigNoteDetectorTest(unittest.TestCase):
+    """§S4 AC — :func:`project_config_note_findings`, proved both ways on
+    ``tests.test_project_tools_setup.GOOD_POINTER`` (whose last bullet is the note): each pin is
+    removed alone by one cut."""
+
+    NOTE = _tools.GOOD_PROJECT_CONFIG_NOTE
+
+    def cut(self, old: str, new: str, *, count: int = 1) -> str:
+        """``GOOD_POINTER`` with ``old`` replaced by ``new`` inside the note only."""
+        self.assertEqual(self.NOTE.count(old), count, f"cut anchor {old!r}")
+        self.assertEqual(_tools.GOOD_POINTER.count(self.NOTE), 1, "the note is in GOOD_POINTER")
+        return _tools.GOOD_POINTER.replace(self.NOTE, self.NOTE.replace(old, new))
+
+    def test_the_good_section_carrying_the_note_has_no_finding(self):
+        self.assertEqual(project_config_note_findings(_tools.GOOD_POINTER), [])
+
+    def test_the_note_alone_has_no_finding_and_the_rest_of_the_section_lacks_it_all(self):
+        self.assertEqual(project_config_note_findings("## lean-ctx (x)\n" + self.NOTE), [])
+        without = _tools.GOOD_POINTER.replace(self.NOTE, "")
+        self.assertEqual(project_config_note_findings(without), list(NOTE_PINS),
+                         "today's section (no note) lacks every pin")
+        self.assertEqual(project_config_note_findings("## lean-ctx (x)\n"), list(NOTE_PINS))
+
+    def test_the_good_section_still_passes_pointer_findings(self):
+        """The note stays clear of CR-MDB-088's checks: no ``lean-ctx knowledge`` unnegated."""
+        self.assertEqual(_tools.pointer_findings(_tools.GOOD_POINTER, "kb-cat"), [])
+
+    def test_each_pin_is_lost_by_its_one_cut(self):
+        cases = {
+            "no .lean-ctx.toml": (
+                self.cut("`.lean-ctx.toml` sets", "lean-ctx config sets"), [NOTE_FILE_AND_VERB]),
+            "no modelb-axi agents": (
+                self.cut("`modelb-axi agents`", "the agents verb", count=2), [NOTE_FILE_AND_VERB]),
+            "no negation before lean-ctx trust": (
+                self.cut("It needs no `lean-ctx trust`", "It needs `lean-ctx trust`"),
+                [NOTE_NO_TRUST_NEEDED]),
+            "no Pi /trust clause": (
+                self.cut(", which is lean-ctx's own decision and not Pi's `/trust`.", "."),
+                [NOTE_PI_TRUST]),
+            "Pi /trust with no contrast": (
+                self.cut("and not Pi's `/trust`", "like Pi's `/trust`"), [NOTE_PI_TRUST]),
+            "Pi /trust with no decision": (
+                self.cut("lean-ctx's own decision and not", "lean-ctx's own call and not"),
+                [NOTE_PI_TRUST]),
+            "no --force-managed": (self.cut("`--force-managed`", "a flag"), [NOTE_FORCE_MANAGED]),
+            "names lean-ctx knowledge": (
+                self.cut("the knowledge store's fact cap", "the lean-ctx knowledge store's fact cap"),
+                [NOTE_KNOWLEDGE_CLI]),
+        }
+        for label, (text, expected) in cases.items():
+            with self.subTest(case=label):
+                self.assertNotEqual(text, _tools.GOOD_POINTER, "the cut changes the fixture")
+                self.assertEqual(project_config_note_findings(text), expected)
+
+    def test_a_unit_whose_only_negation_sits_in_the_pi_trust_clause_bites(self):
+        """§S4 AC: "run `lean-ctx trust`, not Pi's `/trust`" says lean-ctx trust IS needed."""
+        after = self.cut("It needs no `lean-ctx trust`, and",
+                         "Run `lean-ctx trust`, not Pi's `/trust`, for it, and")
+        self.assertEqual(project_config_note_findings(after), [NOTE_NO_TRUST_NEEDED])
+        before = self.cut("It needs no `lean-ctx trust`, and",
+                          "It needs not Pi's `/trust` but `lean-ctx trust`, and")
+        self.assertEqual(project_config_note_findings(before), [NOTE_NO_TRUST_NEEDED],
+                         "a negation before Pi's /trust does not reach past it")
+
+    def test_the_negation_reaches_forty_characters_and_no_further(self):
+        near = "it needs no " + "x" * 25 + " lean-ctx trust."
+        far = "it needs no " + "x" * 40 + " lean-ctx trust."
+        self.assertTrue(says_lean_ctx_trust_not_needed(near))
+        self.assertFalse(says_lean_ctx_trust_not_needed(far))
+        self.assertFalse(says_lean_ctx_trust_not_needed("it needs no key. lean-ctx trust."),
+                         "the negation must be in the same sentence")
+        self.assertFalse(says_lean_ctx_trust_not_needed("cannot lean-ctx trust."),
+                         "not inside a word is not a negation")
+
+    def test_splitting_the_note_across_two_bullets_bites(self):
+        split_force = self.cut(". A hand-edited\n  file", ".\n- A hand-edited\n  file")
+        self.assertEqual(project_config_note_findings(split_force), [NOTE_FORCE_MANAGED])
+        split_trust = self.cut(" A security-sensitive key", "\n- A security-sensitive key")
+        self.assertEqual(project_config_note_findings(split_trust),
+                         [NOTE_PI_TRUST, NOTE_FORCE_MANAGED])
+
+
+class SetupLeanCtxTaskDetectorTest(unittest.TestCase):
+    """§S4 AC — :func:`setup_lean_ctx_task_findings`, proved both ways."""
+
+    def test_a_setup_task_naming_index_build_or_lean_ctx_trust_bites(self):
+        for task in ("- Run `lean-ctx index build` once.", "- Run `lean-ctx trust` in the root."):
+            with self.subTest(task=task):
+                self.assertEqual(len(setup_lean_ctx_task_findings(f"## Setup\n{task}\n")), 1)
+
+    def test_other_tasks_and_pis_trust_are_spared(self):
+        body = ("## Setup\n- Register with Crucible.\n- Run `/trust` in Pi.\n"
+                "- Build the lean-ctx index? No: it builds itself.\n")
+        self.assertEqual(setup_lean_ctx_task_findings(body), [])
+
+
+class ProjectConfigNoteTest(_setup._Case):
+    """§S4 AC (PRD D5, ruled 2026-10-29): the render, and the root and ``a/AGENTS.md`` of a
+    scaffolded monorepo, each carry the note in their one lean-ctx section, whatever the verdict;
+    the ``## Setup`` section names no lean-ctx task."""
+
+    def test_the_renderer_carries_the_note(self):
+        section = scaffold._render_lean_ctx_section("kb-render")
+        self.assertEqual(len(_tools._lean_ctx_sections(section)), 1, section)
+        self.assertEqual(project_config_note_findings(section), [], section)
+
+    def test_the_root_and_sub_project_agents_md_carry_the_note_whatever_the_verdict(self):
+        for verdict in ("detected", "absent"):
+            with self.subTest(lean_ctx=verdict):
+                self.install_with(**{"lean-ctx": verdict})
+                self.target = self.root / f"proj-{verdict}"
+                self.init_ok(repo_shape="monorepo:a")
+                for rel in ("AGENTS.md", "a/AGENTS.md"):
+                    found = _tools._lean_ctx_sections(self.text(rel))
+                    self.assertEqual(len(found), 1, f"{rel}: one lean-ctx section")
+                    self.assertEqual(project_config_note_findings(found[0]), [],
+                                     f"§S4: {rel} carries the note; {found[0]!r}")
+
+    def test_the_setup_section_names_no_lean_ctx_task(self):
+        self.init_ok()
+        body = _setup.setup_body(self.text("AGENTS.md"))
+        self.assertTrue(body, "precondition: the root AGENTS.md has a Setup section")
+        self.assertEqual(setup_lean_ctx_task_findings(body), [],
+                         "§S4: no lean-ctx index build task and no trust task")
+
+
+# ------------------------------------------------------------------ §S5 the contract ----
+
+#: §S5's section: ``contracts/lean-ctx.md`` § "Project-scoped levers".
+LEVERS_HEADING = "Project-scoped levers"
+#: §S5 AC: the new pins, one unit each (``tests.test_execution_knowledge_rules.rule_units``:
+#: normalised, backticks dropped, lower-cased).
+CONTRACT_CONFIG_PINS = {
+    "where the levers are set": (
+        r"(?<![\w-])\.lean-ctx\.toml(?![\w-])", r"\bmodelb-axi init\b",
+        r"(?:^|\s)#\s+(?:[\w-]+\s+){0,2}marker\b", r"\bmodelb-axi agents\b"),
+    "the substring hazard": (
+        *(rf"\b{name}\b" for name in OVERRIDE_HAZARD_NAMES),
+        r"\bconfig::merge_local\b", r"rust/src/core/config/merge\.rs"),
+    "a re-render un-trusts the file": (
+        r"\bre-render", r"\bcontent hash\b", r"\blean-ctx trust\b"),
+    "any project file sets silent_preload": (
+        r"\bautonomy\.silent_preload\b", r"\btrue\b", r"\bconfig::merge_local\b"),
+}
+
+
+def contract_config_findings(section: str) -> list[str]:
+    """§S5 AC: the name of each :data:`CONTRACT_CONFIG_PINS` entry no single unit of ``section``
+    carries whole."""
+    units = _rules.rule_units(section)
+    return [name for name, rule in CONTRACT_CONFIG_PINS.items()
+            if not any(all(re.search(p, unit) for p in rule) for unit in units)]
+
+
+def levers_section(text: str) -> str:
+    """The body of § "Project-scoped levers"; an ``AssertionError`` when there is none."""
+    body = _rules.section_starting(text, LEVERS_HEADING)
+    if body is None:
+        raise AssertionError(f"no heading starting {LEVERS_HEADING!r}")
+    return body
+
+
+#: §S5 — the new bullets, in the spec's words, after the section's last paragraph.
+GOOD_CONTRACT_CONFIG = """\
+Where the levers are set, and what the project file does:
+- `modelb-axi init` writes the levers to the project root's `.lean-ctx.toml`, under a first-line
+  `#` ownership marker, and `modelb-axi agents` re-renders it for an existing project. The file
+  raises lean-ctx's default 200-fact cap to 500.
+- lean-ctx merges `response_shaping`, `compression_level`, `compression_aggressiveness`,
+  `terse_agent` and `behavior_nudges` when the file's text merely contains their name, so no
+  comment in the file names one (`Config::merge_local`, `rust/src/core/config/merge.rs`).
+- A re-render changes the content hash `lean-ctx trust` pins, so a trusted file is untrusted
+  again. An intact file carries no sensitive key, so nothing it sets is lost (`is_trusted_for`,
+  `rust/src/core/workspace_trust.rs`).
+- Any project file sets `autonomy.silent_preload` (default `true`) over the global value, even
+  one that does not name it (`Config::merge_local`, `rust/src/core/config/merge.rs`).
+"""
+#: The anchor in ``tests.test_execution_knowledge_rules.GOOD_CONTRACT`` the new bullets follow.
+_LEVERS_LAST_PARAGRAPH_END = "`recall_facts_limit` themselves.\n"
+
+
+def good_contract() -> str:
+    """``GOOD_CONTRACT`` with :data:`GOOD_CONTRACT_CONFIG` after its levers' last paragraph."""
+    if _rules.GOOD_CONTRACT.count(_LEVERS_LAST_PARAGRAPH_END) != 1:
+        raise AssertionError(f"fixture anchor {_LEVERS_LAST_PARAGRAPH_END!r} in GOOD_CONTRACT")
+    return _rules.GOOD_CONTRACT.replace(
+        _LEVERS_LAST_PARAGRAPH_END, _LEVERS_LAST_PARAGRAPH_END + "\n" + GOOD_CONTRACT_CONFIG)
+
+
+class ContractProjectConfigDetectorTest(unittest.TestCase):
+    """§S5 AC — :func:`contract_config_findings`, proved both ways on synthetic text, one cut
+    per pin."""
+
+    def cut(self, old: str, new: str) -> str:
+        self.assertEqual(GOOD_CONTRACT_CONFIG.count(old), 1, f"cut anchor {old!r}")
+        return levers_section(good_contract().replace(
+            GOOD_CONTRACT_CONFIG, GOOD_CONTRACT_CONFIG.replace(old, new)))
+
+    def test_the_good_section_has_no_finding_and_keeps_the_pinned_levers(self):
+        section = levers_section(good_contract())
+        self.assertEqual(contract_config_findings(section), [])
+        for rule, lead_in in ((_rules.CONTRACT_LEVERS, True), (_rules.CONTRACT_NOT_STOPPED, False),
+                              (_rules.CONTRACT_LEVERS_ROOT, False),
+                              (_rules.CONTRACT_LARGER_CATEGORY, False)):
+            with self.subTest(rule=rule[0]):
+                self.assertTrue(_rules.satisfying_units(section, rule, lead_in),
+                                _rules.missing_report(section, rule, lead_in))
+
+    def test_todays_section_lacks_every_new_pin(self):
+        self.assertEqual(contract_config_findings(levers_section(_rules.GOOD_CONTRACT)),
+                         list(CONTRACT_CONFIG_PINS))
+
+    def test_each_pin_is_lost_by_its_one_cut(self):
+        where, hazard = "where the levers are set", "the substring hazard"
+        rerender, preload = "a re-render un-trusts the file", "any project file sets silent_preload"
+        cases = {
+            ".lean-ctx.toml": ("project root's `.lean-ctx.toml`", "project root's config file",
+                               where),
+            "modelb-axi init": ("`modelb-axi init` writes", "Model B writes", where),
+            "the # marker": ("`#` ownership marker", "ownership marker", where),
+            "modelb-axi agents": ("and `modelb-axi agents` re-renders", "and a later run re-renders",
+                                  where),
+            **{name: (f"`{name}`", "`other_key`", hazard) for name in OVERRIDE_HAZARD_NAMES},
+            "the hazard's symbol": ("names one (`Config::merge_local`, ", "names one (", hazard),
+            "the hazard's path": (", `rust/src/core/config/merge.rs`).\n- A re-render",
+                                  ").\n- A re-render", hazard),
+            "re-render": ("A re-render changes", "An update changes", rerender),
+            "content hash": ("the content hash", "the stamp", rerender),
+            "lean-ctx trust": ("`lean-ctx trust` pins", "trust pins", rerender),
+            "autonomy.silent_preload": ("`autonomy.silent_preload`", "a preload switch", preload),
+            "true": (" (default `true`)", "", preload),
+            "its symbol": ("name it (`Config::merge_local`, ", "name it (", preload),
+        }
+        self.assertEqual(sum(len(rule) for rule in CONTRACT_CONFIG_PINS.values()), len(cases),
+                         "one cut per pin")
+        for label, (old, new, finding) in cases.items():
+            with self.subTest(cut=label):
+                self.assertEqual(contract_config_findings(self.cut(old, new)), [finding])
+
+    def test_a_pin_split_across_two_bullets_bites(self):
+        split = self.cut("ownership marker, and `modelb-axi agents`",
+                         "ownership marker.\n- `modelb-axi agents`")
+        self.assertEqual(contract_config_findings(split), ["where the levers are set"])
+
+    def test_a_differently_cased_name_or_a_bullet_outside_the_section_bites(self):
+        self.assertEqual(contract_config_findings(self.cut("`terse_agent`", "`Terse-Agent`")),
+                         ["the substring hazard"])
+        moved = good_contract().replace(GOOD_CONTRACT_CONFIG, "").replace(
+            "## Filed requests / gaps (operational findings)\n",
+            "## Filed requests / gaps (operational findings)\n\n" + GOOD_CONTRACT_CONFIG)
+        self.assertEqual(contract_config_findings(levers_section(moved)),
+                         list(CONTRACT_CONFIG_PINS))
+
+
+class ContractProjectConfigTest(unittest.TestCase):
+    """§S5 AC: ``contracts/lean-ctx.md`` § "Project-scoped levers" carries the new pins (its
+    existing pins are ``tests.test_execution_knowledge_rules``', unmigrated)."""
+
+    def test_the_contracts_levers_section_records_the_scaffolded_config(self):
+        text = (REPO_ROOT / _rules.CONTRACT_REL).read_text(encoding="utf-8")
+        found = contract_config_findings(levers_section(text))
+        self.assertEqual(found, [], f"§S5: {_rules.CONTRACT_REL} § {LEVERS_HEADING!r} lacks "
+                                    f"{found!r}")
+
+
+# ------------------------------------------------------------------ §S6 the guide ----
+
+_GUIDE_WHERE = _guide.TRUST
+GUIDE_NO_PARAGRAPH = f"{_GUIDE_WHERE}: no paragraph names `{CONFIG_RELPATH}` in code"
+GUIDE_NO_VERB = f"{_GUIDE_WHERE}: the `{CONFIG_RELPATH}` paragraph does not name `modelb-axi agents`"
+GUIDE_NO_FLAG = f"{_GUIDE_WHERE}: the `{CONFIG_RELPATH}` paragraph does not name `--force-managed`"
+GUIDE_NO_TRUST_NEEDED = (f"{_GUIDE_WHERE}: the `{CONFIG_RELPATH}` paragraph does not say "
+                         "`lean-ctx trust` is not needed")
+GUIDE_PI_TRUST = (f"{_GUIDE_WHERE}: the `{CONFIG_RELPATH}` paragraph does not name Pi's `/trust` "
+                  "as a different decision")
+
+
+def _guide_paragraph_faults(block: str) -> list[str]:
+    flat = normalise(block)
+    out = []
+    if not _guide.has_code_token(block, _guide.AGENTS_COMMAND):
+        out.append(GUIDE_NO_VERB)
+    if not _guide.has_code_token(block, _guide.subcommand_flag("agents", "--force-managed")):
+        out.append(GUIDE_NO_FLAG)
+    if not says_lean_ctx_trust_not_needed(flat):
+        out.append(GUIDE_NO_TRUST_NEEDED)
+    if not names_pi_trust_as_a_different_decision(flat):
+        out.append(GUIDE_PI_TRUST)
+    return out
+
+
+def check_trust_lean_ctx_config(text: str) -> list[str]:
+    """§S6 AC: a paragraph (or list item) of ``Project trust`` names ``.lean-ctx.toml``,
+    ``modelb-axi agents`` and ``--force-managed`` in code; a sentence of it says ``lean-ctx trust``
+    is not needed for the file, and a separate clause names Pi's ``/trust`` as a different
+    decision. The closest such paragraph's faults; one fault when none names the file."""
+    blocks = [b for b in _guide._prose_blocks(_guide._section(text, _guide.TRUST))
+              if _guide.has_code_token(b, CONFIG_RELPATH)]
+    if not blocks:
+        return [GUIDE_NO_PARAGRAPH]
+    return min((_guide_paragraph_faults(b) for b in blocks), key=len)
+
+
+class GuideProjectConfigDetectorTest(unittest.TestCase):
+    """§S6 AC — :func:`check_trust_lean_ctx_config`, proved both ways on
+    ``tests.test_install_guide.conforming_guide()``, one cut per item."""
+
+    PARA = _guide.CONFORMING_LEAN_CTX_CONFIG
+
+    def setUp(self):
+        self.guide = _guide.conforming_guide()
+        self.assertEqual(self.guide.count(self.PARA), 1, "the paragraph is in the fixture")
+
+    def cut(self, old: str, new: str) -> str:
+        self.assertEqual(self.PARA.count(old), 1, f"cut anchor {old!r}")
+        return self.guide.replace(self.PARA, self.PARA.replace(old, new))
+
+    def test_the_conforming_guide_passes(self):
+        self.assertEqual(check_trust_lean_ctx_config(self.guide), [])
+
+    def test_the_conforming_guide_without_the_paragraph_bites(self):
+        self.assertEqual(check_trust_lean_ctx_config(self.guide.replace(self.PARA, "")),
+                         [GUIDE_NO_PARAGRAPH])
+
+    def test_each_item_is_lost_by_its_one_cut(self):
+        cases = {
+            "the file in prose": (self.cut("`.lean-ctx.toml`", ".lean-ctx.toml"),
+                                  [GUIDE_NO_PARAGRAPH]),
+            "the verb in prose": (self.cut("`modelb-axi agents`", "modelb-axi agents"),
+                                  [GUIDE_NO_VERB]),
+            "no flag": (self.cut(" unless `--force-managed`", ""), [GUIDE_NO_FLAG]),
+            "a longer flag": (self.cut("`--force-managed`", "`--force-managed-x`"),
+                              [GUIDE_NO_FLAG]),
+            "no negation": (self.cut("It needs no `lean-ctx trust`", "It needs `lean-ctx trust`"),
+                            [GUIDE_NO_TRUST_NEEDED]),
+            "no Pi /trust clause": (self.cut(" and not Pi's `/trust`", ""), [GUIDE_PI_TRUST]),
+            "only negation in the /trust clause": (
+                self.cut("It needs no `lean-ctx trust`, which is lean-ctx's decision and not "
+                         "Pi's `/trust`.",
+                         "Run `lean-ctx trust`, not Pi's `/trust`: it is lean-ctx's decision."),
+                [GUIDE_NO_TRUST_NEEDED]),
+        }
+        for label, (text, expected) in cases.items():
+            with self.subTest(case=label):
+                self.assertNotEqual(text, self.guide, "the cut changes the fixture")
+                self.assertEqual(check_trust_lean_ctx_config(text), expected)
+
+    def test_split_across_paragraphs_or_outside_project_trust_bites(self):
+        split = self.cut("`/trust`. `modelb-axi agents`", "`/trust`.\n\n`modelb-axi agents`")
+        self.assertEqual(check_trust_lean_ctx_config(split), [GUIDE_NO_VERB, GUIDE_NO_FLAG])
+        moved = self.guide.replace(self.PARA, "").replace(
+            f"## {_guide.WIDENING}\n", f"## {_guide.WIDENING}\n\n{self.PARA}\n")
+        self.assertEqual(check_trust_lean_ctx_config(moved), [GUIDE_NO_PARAGRAPH])
+
+    def test_the_conforming_guide_still_passes_the_policy_re_render_gate(self):
+        """§S6: the policy paragraph's gate stays green beside the new paragraph."""
+        self.assertEqual(_guide.check_trust_policy_rerender(self.guide), [])
+
+
+class GuideProjectConfigTest(unittest.TestCase):
+    """§S6 AC: the real guide's ``project-trust`` region carries the config paragraph."""
+
+    def test_the_guides_project_trust_region_carries_the_config_paragraph(self):
+        self.assertEqual(check_trust_lean_ctx_config(_guide.GUIDE.read_text(encoding="utf-8")), [])
+
+
+# ------------------------------------------------------------------ §S7 Model B's own config ----
+
+
+def sdist_ships(only_include: list[str], rel: str) -> bool:
+    """Whether an sdist built with ``only_include`` carries the repository path ``rel``: an
+    entry naming it, a directory above it, or the root."""
+    return any(entry.strip("/") in ("", ".") or rel == entry.rstrip("/")
+               or rel.startswith(entry.rstrip("/") + "/") for entry in only_include)
+
+
+class ModelBOwnLeanCtxConfigTest(unittest.TestCase):
+    """§S7 AC (PRD D5, ruled 2026-10-29): Model B's repository root commits its own
+    ``.lean-ctx.toml``, equal to the render with an intact marker; the sdist does not ship it."""
+
+    def test_git_tracks_the_config_at_the_repository_root(self):
+        listed = subprocess.run(["git", "-C", str(REPO_ROOT), "ls-files", "--", CONFIG_RELPATH],
+                                capture_output=True, text=True, timeout=30, check=True)
+        self.assertEqual(listed.stdout.splitlines(), [CONFIG_RELPATH],
+                         "§S7: `git ls-files -- .lean-ctx.toml` prints .lean-ctx.toml")
+
+    def test_its_text_is_the_render_and_its_marker_is_intact(self):
+        path = REPO_ROOT / CONFIG_RELPATH
+        self.assertTrue(path.is_file(), f"§S7: {CONFIG_RELPATH} at the repository root")
+        text = path.read_bytes().decode("utf-8")
+        module = config_module()
+        self.assertEqual(text, module.render_config(), "§S7: placed through place_project_config")
+        self.assertEqual(module.ownership_state(text), agents.OWNED_INTACT)
+
+    def test_the_sdist_does_not_ship_it(self):
+        with (REPO_ROOT / "pyproject.toml").open("rb") as handle:
+            only = tomllib.load(handle)["tool"]["hatch"]["build"]["targets"]["sdist"]["only-include"]
+        self.assertFalse(sdist_ships(only, CONFIG_RELPATH), f"§S7: only-include={only!r}")
+
+    def test_sdist_ships_both_ways(self):
+        self.assertTrue(sdist_ships(["modelb_axi", CONFIG_RELPATH], CONFIG_RELPATH))
+        self.assertTrue(sdist_ships(["."], CONFIG_RELPATH))
+        self.assertTrue(sdist_ships(["docs/"], "docs/install-guide.md"))
+        self.assertFalse(sdist_ships(["modelb_axi", ".lean-ctx", "docs/install-guide.md"],
+                                     CONFIG_RELPATH))
 
 
 if __name__ == "__main__":
