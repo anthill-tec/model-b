@@ -65,9 +65,9 @@ Model B relies on five knowledge verbs, and no others, each with its `ctx_knowle
 - remember (`remember`) — record one short fact under the category with a stable kebab-case
   key; the same key supersedes the earlier fact;
 - list a category (`recall` + `category`) — every fact in the category (bootstrap's load);
-- restore (`restore`, `category=facts`, `query=<category>`, repeated until it restores nothing)
+- restore (`restore`, `store=facts`, `query=<category>`, repeated until it restores nothing)
   — bring the category's archived facts back (bootstrap runs it before listing), and restore by
-  key (`restore`, `category=facts`, `query="<category> <key>"`);
+  key (`restore`, `store=facts`, `query="<category> <key>"`);
 - remove (`remove`) — delete a fact once the repo tracks it (the GC rule);
 - export (`export`) — the fallback for an incomplete listing.
 
@@ -104,7 +104,7 @@ The new pitfalls, each citing its lean-ctx 3.11.4 source path and symbol:
   decays on every lifecycle run, compounding, and every `remember` and `remove` runs the
   lifecycle. A restore runs none.
 - **Restore.**
-  - Its `category` argument is the store.
+  - It selects its store with `store` (default: all four) and ignores a `category` argument.
   - Unscoped, it restores every store, and other projects' archived facts from the shared legacy
     facts archive.
   - It returns at most 50 items, scoped or not, so it is repeated until it restores nothing.
