@@ -74,3 +74,11 @@ main checkout is the integration tree) and `contracts/worktree-layout.md`
     where § "Code quality" starts its list directly under the heading. The shipped skills and references
     are swept for markdownlint findings and fixed as text-only edits, with each fix checked against the
     gates that read those files.
+15. **The dead older-git branch in the gate lock** (Crucible #1496, user ruling 2026-10-29: folded into
+    this CR). `scripts/gate-lock.sh`'s `lock_path()` falls back to resolving a relative `--git-common-dir`
+    when `--path-format=absolute` prints nothing, and `contracts/gate-lock.md` § "Lock path derivation"
+    keeps an "Older-git fallback" row for it. Git older than 2.31 echoes the unknown option and exits 0, so
+    that branch never runs where it was meant to; Crucible removes its twin in `_gate_lock_path`
+    (CR-CRU-217). Drop the branch and the row. Decide at gap analysis whether a run outside git keeps the
+    shared `/tmp/nai-gate.lock` or runs unlocked, as Crucible's does after CR-CRU-217, and state it in the
+    contract. The self-contained comparison in `tests/test_tooling_detachment.py` stays.
