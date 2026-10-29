@@ -15,6 +15,12 @@ capability, the tool form lives in the definitions and ``AGENTS.md``).
   read whole from Pi's full-output file); lean-ctx's context ledger is machine-wide, never evicted
   or reset; a repo-wide search from the main checkout skips ``.worktrees/``, so a CR's in-flight
   code is searched by its worktree's path, ``.worktrees/<cr>``.
+- CR-MDB-092 §S7.1 (PRD D5, ruled 2026-10-29; ``docs/changes/
+  CR-MDB-092-lean-ctx-contract-refresh-and-role-tools.md``) — § Runtime/Tooling gains a fourth
+  bullet, one list item with no nested list: the reach tools for gap analysis, the spec pre-review
+  and close-out (``ctx_graph``, ``ctx_callgraph``, ``ctx_explore``, ``ctx_compose``), served only
+  under lean-ctx's ``standard`` or ``power`` tool profile, and a sub-agent having only the tools its
+  definition's ``tools:`` lists (``general-purpose`` gets Pi's built-ins). Its pin is §S8.3's.
 
 §S5's scaffolded bullet is pinned by ``pointer_findings`` in ``tests/test_project_tools_setup.py``.
 
@@ -27,9 +33,13 @@ Class map:
   the pin only through a shown piped AXI call fails on that call.
 - ``LedgerRuleInEachPlaceTest`` — the pin on the procedure and ``orchestration-common``; no
   template states the rule; no ``shutdown`` file gains a ledger step.
-- ``AgentsMdRuntimePinsProofTest`` — the three ``AGENTS.md`` pins (``agents_md_runtime_findings``)
-  proved both ways on synthetic text.
-- ``AgentsMdRuntimePinsTest`` — the three pins on the real ``AGENTS.md``.
+- ``AgentsMdRuntimePinsProofTest`` — the four ``AGENTS.md`` pins (``agents_md_runtime_findings``)
+  proved both ways on synthetic text, and the reach bullet's shape (``reach_bullet_shape_findings``:
+  exactly one, with no nested list).
+- ``AgentsMdRuntimePinsTest`` — the four pins, and the reach bullet's shape, on the real
+  ``AGENTS.md``.
+
+MIGRATED at CR-MDB-092 (§S7, §S8.3): "three pins" became four throughout.
 
 **The gates** match normalised text (``normalise``: lower-cased, backticks and ``*`` dropped), unit
 by unit (``units``, imported from ``tests/test_chrome_ui_relay_skill.py``): a unit is a list item
@@ -55,7 +65,7 @@ from tests.test_axi_envelope_read_whole import (
     _axi_finding_messages,
     _carries,
 )
-from tests.test_chrome_ui_relay_skill import units
+from tests.test_chrome_ui_relay_skill import normalise, units
 from tests.test_python_floor import RUNTIME_HEADING
 
 AGENTS_MD = REPO_ROOT / "AGENTS.md"
@@ -93,12 +103,21 @@ def shutdown_ledger_step_findings(text: str) -> list[str]:
 
 RAW_PIN_NAME = "every AXI command runs through ctx_shell with raw=true; a truncated run's full-output file"
 AGENTS_LEDGER_PIN_NAME = "lean-ctx's context ledger is machine-wide: never evicted or reset"
+#: CR-MDB-092 §S7.1, §S8.3: the reach tools, served under lean-ctx's ``standard`` profile; a
+#: sub-agent has only its definition's ``tools:``, and ``general-purpose`` has none.
+REACH_PIN_NAME = ("the reach tools ctx_graph and ctx_callgraph, served under the standard profile; "
+                  "a general-purpose sub-agent has no tools: and no ctx_* tool")
+#: CR-MDB-092 §S8.3: the reach unit's five patterns (normalised text).
+REACH_PINS = (r"\bctx_graph\b", r"\bctx_callgraph\b", r"\bstandard\b", r"\bgeneral-purpose\b",
+              r"tools:")
 WORKTREE_PIN_NAME = "a search reaches a CR's in-flight code by its worktree's path, .worktrees/<cr>"
 #: §S7: ``(name, patterns)`` — one unit of § Runtime/Tooling carries each pin.
 AGENTS_MD_PINS = (
     (RAW_PIN_NAME, (CTX_SHELL, RAW_TRUE, AXI_WORD, r"\btruncat|\bfull[- ]output\b")),
     (AGENTS_LEDGER_PIN_NAME, (MACHINE_WIDE, EVICT, RESET, r"\bnever\b")),
     (WORKTREE_PIN_NAME, (r"\.worktrees/", r"\bsearch", r"<cr>")),
+    # MIGRATED at CR-MDB-092 (§S7.1, §S8.3): the fourth pin, the reach unit.
+    (REACH_PIN_NAME, REACH_PINS),
 )
 
 
@@ -110,6 +129,30 @@ def agents_md_runtime_findings(text: str) -> list[str]:
     out = [f"§ Runtime/Tooling lacks {[name]}" for name, patterns in AGENTS_MD_PINS
            if not _carries(section_units, patterns)]
     return out + _axi_finding_messages(section)
+
+
+_TOP_LEVEL_ITEM = re.compile(r"^(?:[-*+]|\d+[.)])\s+")
+_NESTED_ITEM = re.compile(r"^\s+(?:[-*+]|\d+[.)])\s+")
+
+
+def reach_bullet_shape_findings(text: str) -> list[str]:
+    """CR-MDB-092 §S7.1: § Runtime/Tooling carries exactly one top-level list item meeting the
+    reach pin (``REACH_PINS``), and that item has no nested list. ``[]`` when it does."""
+    items: list[list[str]] = []
+    current: list[str] | None = None
+    for line in md_section(text, RUNTIME_HEADING).splitlines():
+        if _TOP_LEVEL_ITEM.match(line):
+            current = [line]
+            items.append(current)
+        elif not line.strip() or line.lstrip().startswith("#"):
+            current = None
+        elif current is not None:
+            current.append(line)
+    reach = [lines for lines in items if _carries([normalise("\n".join(lines))], REACH_PINS)]
+    if len(reach) != 1:
+        return [f"§ Runtime/Tooling has {len(reach)} reach bullets; exactly one is expected"]
+    nested = [line for line in reach[0][1:] if _NESTED_ITEM.match(line)]
+    return [f"the reach bullet has a nested list: {nested}"] if nested else []
 
 
 # ------------------------------------------------------------------ synthetic samples ----
@@ -179,12 +222,14 @@ AGENTS_MD_SAMPLE = f"""# Repository Guidelines
 - **Every AXI command runs through `ctx_shell` with `raw=true`.** The AXI commands are the Crucible clients, `sandesh`, `modelb-axi`, `worktree-flow.py`, `gh-axi`, `chrome-devtools-axi` and `lavish-axi`; compression can cut or reshape their envelopes. A long run redirects both streams (`> /tmp/<run>.out 2>&1`) to a file under `/tmp`. That file is read with the built-in `read` from the envelope's first line (the last line that begins `axi:`) to its end; a search may only locate that line's number. When Pi truncates a run, its notice names the full-output file; the envelope is read whole from it with `read` `offset`/`limit`.
 - **lean-ctx's context ledger is machine-wide.** Ignore its evict hints, and never evict or reset it during a run.
 - **A repo-wide search from the main checkout skips `.worktrees/`.** The directory is gitignored, and lean-ctx's walkers also prune it. Search a CR's in-flight code by passing its worktree's path, `.worktrees/<cr>`, never `.worktrees` itself.
+- **Reach tools** for gap analysis, the spec pre-review and close-out: `ctx_graph` (`action=impact`; `action=diff`, `since=develop`), `ctx_callgraph` (`action=callers`), `ctx_explore` and `ctx_compose`. lean-ctx serves `ctx_graph` and `ctx_explore` only under its `standard` or `power` tool profile (or a `tools_enabled` list naming them). A sub-agent has only the tools its definition's `tools:` lists; a dispatch type with none (`general-purpose`) gets Pi's built-ins and no `ctx_*` tool.
 - Confirm destructive operations; delegate super-user ops to the user.
 
 ## Testing & QA
 
 Something else.
 """
+# MIGRATED at CR-MDB-092 (§S7.1): AGENTS_MD_SAMPLE gains the reach bullet, worded as §S7.1 words it.
 
 _RAW_BULLET_START = "- **Every AXI command runs through"
 _LEDGER_BULLET = ("- **lean-ctx's context ledger is machine-wide.** Ignore its evict hints, and "
@@ -193,6 +238,14 @@ _WORKTREE_BULLET = ("- **A repo-wide search from the main checkout skips `.workt
                     "directory is gitignored, and lean-ctx's walkers also prune it. Search a CR's "
                     "in-flight code by passing its worktree's path, `.worktrees/<cr>`, never "
                     "`.worktrees` itself.\n")
+#: CR-MDB-092 §S7.1: the reach bullet, as in ``AGENTS_MD_SAMPLE``.
+_REACH_BULLET = ("- **Reach tools** for gap analysis, the spec pre-review and close-out: `ctx_graph` "
+                 "(`action=impact`; `action=diff`, `since=develop`), `ctx_callgraph` "
+                 "(`action=callers`), `ctx_explore` and `ctx_compose`. lean-ctx serves `ctx_graph` "
+                 "and `ctx_explore` only under its `standard` or `power` tool profile (or a "
+                 "`tools_enabled` list naming them). A sub-agent has only the tools its "
+                 "definition's `tools:` lists; a dispatch type with none (`general-purpose`) gets "
+                 "Pi's built-ins and no `ctx_*` tool.\n")
 
 #: For each pattern of each ``AGENTS.md`` pin, ``(what is cut, replacements, pin)``.
 AGENTS_MD_CUTS = (
@@ -217,9 +270,18 @@ AGENTS_MD_CUTS = (
     ("search", (("A repo-wide search", "A repo-wide walk"), ("Search a CR's", "Reach a CR's")),
      WORKTREE_PIN_NAME),
     ("<cr>", (("`.worktrees/<cr>`", "`.worktrees/` and the CR id"),), WORKTREE_PIN_NAME),
+    # MIGRATED at CR-MDB-092 (§S7.1, §S8.3): one cut per pattern of the reach pin.
+    ("ctx_graph", (("`ctx_graph` (`action=impact`;", "`ctx_map` (`action=impact`;"),
+                   ("serves `ctx_graph` and", "serves the graph tool and")), REACH_PIN_NAME),
+    ("ctx_callgraph", (("`ctx_callgraph` (`action=callers`)", "a call search (`action=callers`)"),),
+     REACH_PIN_NAME),
+    ("standard", (("its `standard` or `power` tool profile", "its `power` tool profile"),),
+     REACH_PIN_NAME),
+    ("general-purpose", (("(`general-purpose`)", "(the default type)"),), REACH_PIN_NAME),
+    ("tools:", (("its definition's `tools:` lists", "its definition lists"),), REACH_PIN_NAME),
 )
 
-#: Today's § Runtime/Tooling: none of the three bullets.
+#: Today's § Runtime/Tooling: none of the four bullets. MIGRATED at CR-MDB-092 (§S7): was three.
 TODAYS_RUNTIME_SECTION = f"""# Repository Guidelines
 
 {RUNTIME_HEADING}
@@ -235,11 +297,12 @@ Something else.
 """
 
 #: A bad sample: § Runtime/Tooling meets every pin only through a shown piped AXI call.
+#: MIGRATED at CR-MDB-092 (§S7, §S8.3): the --note gains the reach words, so it meets the fourth pin.
 AGENTS_MD_BAD = f"""# Repository Guidelines
 
 {RUNTIME_HEADING}
 
-- `sandesh status --note "an axi command via ctx_shell with raw=true, a truncated run, machine-wide, evict, reset, never, search .worktrees/<cr>" | head`
+- `sandesh status --note "an axi command via ctx_shell with raw=true, a truncated run, machine-wide, evict, reset, never, search .worktrees/<cr>, ctx_graph, ctx_callgraph, the standard profile, general-purpose has no tools: line" | head`
 
 ## Testing & QA
 
@@ -359,7 +422,8 @@ class AgentsMdRuntimePinsProofTest(unittest.TestCase):
                 found = agents_md_runtime_findings(_cut(AGENTS_MD_SAMPLE, replacements))
                 self.assertEqual(found, [f"§ Runtime/Tooling lacks {[pin]}"])
 
-    def test_todays_runtime_section_lacks_all_three_pins(self):
+    def test_todays_runtime_section_lacks_all_four_pins(self):
+        # MIGRATED at CR-MDB-092 (§S7, §S8.3): was test_todays_runtime_section_lacks_all_three_pins.
         self.assertEqual(agents_md_runtime_findings(TODAYS_RUNTIME_SECTION),
                          [f"§ Runtime/Tooling lacks {[name]}" for name, _p in AGENTS_MD_PINS])
 
@@ -373,6 +437,10 @@ class AgentsMdRuntimePinsProofTest(unittest.TestCase):
             ("by passing its worktree's path, `.worktrees/<cr>`, never",
              "by passing its worktree's path.\n- That path is `.worktrees/<cr>`, never",
              WORKTREE_PIN_NAME),
+            # MIGRATED at CR-MDB-092 (§S7.1, §S8.3): the reach pin split at its sub-agent sentence.
+            ("(or a `tools_enabled` list naming them). A sub-agent has only",
+             "(or a `tools_enabled` list naming them).\n- A sub-agent has only",
+             REACH_PIN_NAME),
         )
         for old, new, pin in splits:
             with self.subTest(pin=pin):
@@ -383,8 +451,9 @@ class AgentsMdRuntimePinsProofTest(unittest.TestCase):
     def test_each_pin_outside_runtime_tooling_does_not_count(self):
         raw_bullet = next(line + "\n" for line in AGENTS_MD_SAMPLE.splitlines()
                           if line.startswith(_RAW_BULLET_START))
+        # MIGRATED at CR-MDB-092 (§S7.1, §S8.3): the reach bullet moved out bites too.
         for bullet, pin in ((raw_bullet, RAW_PIN_NAME), (_LEDGER_BULLET, AGENTS_LEDGER_PIN_NAME),
-                            (_WORKTREE_BULLET, WORKTREE_PIN_NAME)):
+                            (_WORKTREE_BULLET, WORKTREE_PIN_NAME), (_REACH_BULLET, REACH_PIN_NAME)):
             with self.subTest(pin=pin):
                 self.assertIn(bullet, AGENTS_MD_SAMPLE)
                 moved = AGENTS_MD_SAMPLE.replace(bullet, "").replace(
@@ -401,12 +470,49 @@ class AgentsMdRuntimePinsProofTest(unittest.TestCase):
         self.assertEqual(len(found), 1, found)
         self.assertIn("shows an AXI call piped or redirected away", found[0])
 
+    def test_the_reach_bullet_shape_spares_the_conforming_sample(self):
+        """CR-MDB-092 §S7.1: one reach bullet, no nested list."""
+        self.assertEqual(reach_bullet_shape_findings(AGENTS_MD_SAMPLE), [])
+
+    def test_the_reach_bullet_with_a_nested_list_bites(self):
+        """CR-MDB-092 §S7.1: "one list item with no nested list" — its words still pass the pin
+        (``units`` joins nested items), so only the shape check catches it."""
+        old = " A sub-agent has only"
+        self.assertEqual(_REACH_BULLET.count(old), 1)
+        nested = AGENTS_MD_SAMPLE.replace(_REACH_BULLET,
+                                          _REACH_BULLET.replace(old, "\n  - A sub-agent has only"))
+        self.assertNotEqual(nested, AGENTS_MD_SAMPLE)
+        self.assertEqual(agents_md_runtime_findings(nested), [], "the pin alone does not bite")
+        nested_line = ("  - A sub-agent has only the tools its definition's `tools:` lists; a "
+                       "dispatch type with none (`general-purpose`) gets Pi's built-ins and no "
+                       "`ctx_*` tool.")
+        self.assertEqual(reach_bullet_shape_findings(nested),
+                         [f"the reach bullet has a nested list: {[nested_line]}"])
+
+    def test_no_reach_bullet_or_two_reach_bullets_bite_the_shape(self):
+        self.assertEqual(reach_bullet_shape_findings(TODAYS_RUNTIME_SECTION),
+                         ["§ Runtime/Tooling has 0 reach bullets; exactly one is expected"])
+        twice = AGENTS_MD_SAMPLE.replace(_REACH_BULLET, _REACH_BULLET + _REACH_BULLET)
+        self.assertEqual(reach_bullet_shape_findings(twice),
+                         ["§ Runtime/Tooling has 2 reach bullets; exactly one is expected"])
+        moved = AGENTS_MD_SAMPLE.replace(_REACH_BULLET, "").replace(
+            "## Testing & QA\n\n", "## Testing & QA\n\n" + _REACH_BULLET)
+        self.assertEqual(reach_bullet_shape_findings(moved),
+                         ["§ Runtime/Tooling has 0 reach bullets; exactly one is expected"])
+
 
 class AgentsMdRuntimePinsTest(unittest.TestCase):
-    """§S4 AC on the real ``AGENTS.md``: the three pins pass in § Runtime/Tooling."""
+    """§S4 AC on the real ``AGENTS.md``: the four pins pass in § Runtime/Tooling (MIGRATED at
+    CR-MDB-092 §S7: was three), and its reach bullet is one list item with no nested list."""
 
-    def test_agents_md_runtime_tooling_carries_the_raw_ledger_and_worktree_bullets(self):
+    def test_agents_md_runtime_tooling_carries_the_raw_ledger_worktree_and_reach_bullets(self):
+        # MIGRATED at CR-MDB-092 (§S7.1, §S8.3): was
+        # test_agents_md_runtime_tooling_carries_the_raw_ledger_and_worktree_bullets; the reach pin.
         self.assertEqual(agents_md_runtime_findings(read_text(AGENTS_MD)), [])
+
+    def test_agents_md_reach_bullet_is_one_list_item_with_no_nested_list(self):
+        """CR-MDB-092 §S7.1."""
+        self.assertEqual(reach_bullet_shape_findings(read_text(AGENTS_MD)), [])
 
 
 if __name__ == "__main__":

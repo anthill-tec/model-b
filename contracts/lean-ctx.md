@@ -2,55 +2,110 @@
 
 **Owner:** LEAN-CTX project (upstream tool provider; `lean-ctx` engine and the `pi-lean-ctx`
 Pi extension).
-**Status:** FILED FINDINGS — the surface already exists, dual MCP + CLI; this contract
-documents how it reaches Pi, the preference order Model B relies on, and the operational
-findings raised.
+**Status:** FINDINGS — (a) and (b) closed by lean-ctx 3.11.4's answers; the others are recorded
+under § Filed requests / gaps for filing (§S3).
 
 ## Current state
 
-- **Engine.** `lean-ctx` (3.10.2 observed) is **dual** MCP + CLI:
+- **Engine.** `lean-ctx` 3.11.4 (read in its source) is **dual** MCP + CLI, with 79 MCP tools:
   - MCP server: the `ctx_*` tools (read / search / shell / tree / overview / knowledge / …),
     several read modes, tree-sitter AST extraction, compression patterns, and a session
     cache held by the long-running server process;
   - CLI: `lean-ctx -c "<command>"` (compressed shell), `lean-ctx read <file>`,
     `lean-ctx grep <pattern>`, plus management verbs (`doctor`, `gain`, `tools <profile>`,
     `allow`, `verify-cache`, …).
-- **Pi extension.** Pi reaches the engine through the `pi-lean-ctx` package (3.10.2
-  observed; installed with `pi install npm:pi-lean-ctx`, a user-level Pi package that Model B
-  neither ships nor installs). It registers two kinds of `ctx_*` tool in Pi:
-  - CLI-backed tools — `ctx_read`, `ctx_shell`, `ctx_grep`, `ctx_find`, `ctx_ls` — each a
-    `lean-ctx` CLI invocation with compression on;
-  - an embedded MCP bridge (on by default; `LEAN_CTX_PI_ENABLE_MCP=0` forces the CLI-only
-    path) that runs `lean-ctx` as an MCP server over stdio, routes `ctx_read` through it so
-    unchanged re-reads hit the session cache, and registers the server's other advertised
-    tools (`ctx_search`, `ctx_tree`, `ctx_overview`, `ctx_patch`, `ctx_call`, …) as Pi tools.
-    The tool surface follows a profile (`lean` default, `standard`, `power`); tools outside it
-    (e.g. `ctx_edit` under `lean`) stay reachable through `ctx_call`.
+- **Pi extension.** Pi reaches the engine through the `pi-lean-ctx` package (3.11.4; installed
+  with `pi install npm:pi-lean-ctx`, a user-level Pi package that Model B neither ships nor
+  installs). It registers seven tools itself, in every profile: `ctx_read`, `ctx_shell`,
+  `ctx_grep`, `ctx_find`, `ctx_ls`, `ctx_edit` and `lean_ctx`. `ctx_read` and `ctx_edit` go
+  through the bridge when it is connected, and `ctx_edit` fails without it.
+  - The CLI-backed tools — `ctx_shell`, `ctx_grep`, `ctx_find`, `ctx_ls` — are each a
+    `lean-ctx` CLI invocation with compression on.
+  - The embedded MCP bridge (on by default; `LEAN_CTX_PI_ENABLE_MCP=0` forces the CLI-only
+    path) runs `lean-ctx` as an MCP server over stdio, routes `ctx_read` and `ctx_edit` through
+    it so unchanged re-reads hit the session cache, and registers the server's other advertised
+    tools as Pi tools.
+- **The served tool surface.** The engine resolves it: `LEAN_CTX_TOOL_PROFILE`, then the global
+  `tool_profile`, then `tools_enabled` (`ToolProfile::from_config`, `rust/src/core/tool_profiles.rs`).
+  - Unpinned, the bridge serves the lazy core, twelve names (`ctx_read`, `ctx_shell`, `ctx_search`,
+    `ctx_glob`, `ctx_tree`, `ctx_session`, `ctx_compose`, `ctx_callgraph`, `ctx_patch`, `ctx_call`,
+    `ctx_expand` and the `shell` alias, `ShellAliasTool`; `CORE_TOOL_NAMES`,
+    `rust/src/tool_defs/mod.rs`) and reaches the rest through `ctx_call`; lean-ctx's own setup
+    leaves the profile unpinned.
+  - Pinned `standard`, it serves 17 tools plus `ctx_call`; this machine pins `standard`.
+  - `pi-lean-ctx`'s `toolProfile` (default `lean`) forwards nothing for `lean`, so the global
+    config decides.
+  - `tool_profile` applies from a project `.lean-ctx.toml` only once it is trusted.
+  - The generated agents' `ctx_callgraph` is served in the lazy core, `standard` and `power`, never
+    in `minimal` (or `auto` before it escalates); VERIFY's `ctx_graph` and `ctx_explore` only in
+    `standard`, `power` or a `tools_enabled` list naming them (the dependency PRD D5 has this
+    contract record).
 - **Mode.** The extension's default is **additive**: Pi's own built-in read / shell / search /
-  listing tools stay available beside the `ctx_*` tools. `LEAN_CTX_PI_MODE=replace` hides the
-  replaceable built-ins. Pi's native file edit and file write are unchanged in every mode.
+  listing tools stay available beside the `ctx_*` tools, and `routeShell` hides `bash` alone.
+  `LEAN_CTX_PI_MODE=replace` hides the replaceable built-ins. Pi's native file edit and file
+  write are unchanged in every mode.
+- **The read cache.** On Pi, `ctx_read` with `mode=full` (or `fresh=true`) is always a fresh disk
+  read, never the ~13-token stub; only the other modes re-read an unchanged file cheaply. A read
+  without a mode gets the extension's size-based choice, never `auto`.
+- **The response budgets.**
+  - Every bridged response is cut at `turn_fresh_limit` (4096 tokens), and at
+    `turn_fresh_limit_verbatim` (32768) for a `ctx_read` with `mode=raw`; on Pi no other tool
+    reaches the verbatim budget. The cut keeps the line that names the recovery path.
+  - The CLI-backed `ctx_shell` and `ctx_grep` are not under it.
+  - Cited: `enforce_turn_budget`, `rust/src/core/budget.rs`.
 - **Governing guidance.** The user's home `AGENTS.md` carries the lean-ctx section Pi loads as
   project context for every project under it: prefer the `ctx_*` tools, because only they are
   compressed and cached — in additive mode the built-ins are not routed through lean-ctx.
-- **Checks.** `/lean-ctx` in Pi reports the binary, the bridge state and the active `ctx_*`
-  tool names; `lean-ctx verify-cache` proves (or disproves) that the session cache engages.
+- **Checks.** `/lean-ctx` in Pi reports the binary and the bridge state; its `Tool profile:` line
+  reports `pi-lean-ctx`'s own setting, and the served set is the bridge's tool list.
+  `lean-ctx verify-cache` proves (or disproves) that the session cache engages.
 
 ## Preference order (as ruled)
 
 1. `ctx_read` over the built-in file read (modes: `full` for a file you will edit,
    `signatures` for API context, `map` for large files, `diff` after an edit, `lines:N-M` for
-   a known region; `anchored` when the edit goes through `ctx_patch`).
+   a known region; `anchored` when the edit goes through `ctx_patch`); `full` is always fresh
+   on Pi; `raw` for exact bytes.
 2. `ctx_shell` over the built-in shell for commands with side effects (build, test, git);
    `ctx_search` / `ctx_grep` over the built-in content search; `ctx_tree` / `ctx_ls` /
    `ctx_find` over the built-in listing and file finding.
 3. File edits and new files stay on Pi's native edit and write; `ctx_patch` (anchored by line
-   and hash from `ctx_read mode=anchored`) or `ctx_edit` (through `ctx_call` under the `lean`
-   profile) when cache coherence or race protection matters.
+   and hash from `ctx_read mode=anchored`) or `ctx_edit` (an extension tool in every profile; it
+   needs the bridge) when cache coherence or race protection matters.
 4. Compression bypass ladder (only when compressed output hides needed detail):
-   `lines:N-M` → `full` → `ctx_shell` with `raw=true`, then return to compressed defaults.
+   `lines:N-M` → `full` → `raw=true` (`ctx_read` `mode=raw` for a file, up to 32768 tokens;
+   `ctx_shell` `raw=true` for a command), then return to compressed defaults.
 
 Model B's skills name capabilities, not these tools (DN §D18); this order is the local
 practice for a Pi session that has `pi-lean-ctx` loaded, never a dependency a skill assumes.
+
+## Context ledger
+
+- One file, machine-wide: `$XDG_STATE_HOME/lean-ctx/context_ledger.json` (`ledger_path`,
+  `rust/src/core/context_ledger/helpers.rs`). The per-agent path has no caller: `load_for_agent`
+  is only called with `"default"`.
+- Who writes it:
+  - bridged reads (`persist_read`);
+  - every compressed `lean-ctx -c` run with output — on Pi, a non-raw `ctx_shell` or a `ctx_grep`
+    (`record_shell_command_named`) — except a passthrough- or verbatim-class command or one that
+    redirects to a file (`execute_shell_post_gate`), which writes no entry;
+  - the daemon;
+  - and a `raw=true` `ctx_shell` writes nothing.
+- What "pressure" is: tokens sent over a fixed window, plus a pinned/stale boost capped at 0.20
+  (`pressure`, `rust/src/core/context_ledger/ledger.rs`). It measures no model's context.
+  Auto-pinned one-off shell entries alone can saturate the boost (`ignite_high_salience`).
+- Model B's rule (CR-MDB-090): because the ledger is machine-wide, ignore its evict hints,
+  and never evict or reset it during a run. A `lean-ctx ledger status` can write the file when
+  the daemon does not answer.
+
+## Sub-agents
+
+- A pi-subagents dispatch type with no `tools:` (`general-purpose`) gets Pi's built-ins only
+  (`read bash edit write grep find ls`); `Explore` and `Plan` get `read bash grep find ls`
+  (`getToolNamesForType`). Only an agent file's `tools:` admits a `ctx_*` tool, and Model B's
+  generated definitions carry their own `tools:`; a `general-purpose.md` in `.pi/agents/` or
+  `$PI_CODING_AGENT_DIR/agents/` overrides the built-in type by name (`loadCustomAgents`).
+  Model B ships no such override.
 
 ## Knowledge store
 
@@ -173,15 +228,18 @@ lean-ctx enforces a restricted shell command allowlist in its MCP tools (233 com
 permitted in the observed configuration — the built-in list plus the extras — configured in
 `~/.config/lean-ctx/config.toml`). Project tools that are not on the built-in list are
 blocked there — the per-stack Crucible clients (`~/.crucible/clients/<stack>-crucible.py`)
-are the recurring case — which pushes those runs off the compressed channel. On Pi,
-`ctx_shell` is served by the CLI-backed path; whether that path applies the same allowlist has
-not been measured here.
+are the recurring case — which pushes those runs off the compressed channel.
 
-Mitigation in place: the additive `lean-ctx allow <cmd>` flow appends to
-`shell_allowlist_extra` WITHOUT replacing the built-in list (currently extra includes
-`sandesh`, `opensrc`, `python-crucible.py`). Finding filed: project-tool friction recurs per
-tool; requested a smoother path (e.g. a per-project allowlist file, or trusting a declared
-project-tool directory).
+History: the additive `lean-ctx allow <cmd>` flow appends to `shell_allowlist_extra` WITHOUT
+replacing the built-in list (the extras included `sandesh`, `opensrc`, `python-crucible.py`).
+Finding filed: project-tool friction recurred per tool; requested a smoother path (e.g. a
+per-project allowlist file, or trusting a declared project-tool directory).
+
+**Closed.** lean-ctx 3.11.4's answer: a trusted project `.lean-ctx.toml` may carry
+`shell_allowlist_extra`, merged additively (`Config::merge_local`). Measured in source: the CLI
+`-c` path enforces the allowlist for a non-terminal caller (`allowlist_gate`), which is Pi's case.
+Model B's AXI commands run with `raw=true` (CR-MDB-090) and so never meet it. The key is the
+user's to add, after `lean-ctx trust` (CR-MDB-091 Non-goals).
 
 ### (b) File-write redirect block × orchestration scripts
 The `ctx_shell` file-write redirect block (guarding against uncontrolled writes) collides
@@ -189,4 +247,57 @@ with orchestration scripts whose normal operation writes files (test-report gene
 script-managed logs). The block cannot distinguish a sanctioned orchestration write from an
 uncontrolled one, so those invocations must leave the compressed channel entirely. Finding
 filed: an escape for declared write targets so orchestration scripts can stay on
-`ctx_shell`. Observed before Model B moved to Pi; not re-measured under `pi-lean-ctx`.
+`ctx_shell`. Observed before Model B moved to Pi.
+
+**Closed.** lean-ctx 3.11.4's answer: `write_allow_paths`, global, or in a project
+`.lean-ctx.toml` once `lean-ctx trust` pins it, widens where `ctx_shell` may redirect. Its default
+is the OS temp directories, and the session's project is always allowed; `shell_allow_writes`
+sits beside it. The check runs only in the MCP `ctx_shell` (`CtxShellTool::handle`), never on
+Pi's CLI path.
+
+### (c) Per-agent or per-project ledger scoping
+`load_for_agent` (`rust/src/core/context_ledger/ledger.rs`) is only called with `"default"`, so
+every agent and project shares one ledger. Ask: scope the ledger per agent or per project.
+Status: to file.
+
+### (d) Auto-pinned shell labels saturate the boost
+Auto-pinning one-off shell labels (`ignite_high_salience`, `rust/src/core/context_ledger/ledger.rs`)
+saturates the 0.20 pinned/stale boost (`pressure`). Ask: exclude shell labels from ignition.
+Status: to file.
+
+### (e) The daemon's in-memory ledger
+The daemon's in-memory ledger disagrees with the file, and `ledger status` asks the daemon first
+(`cmd_ledger`, `rust/src/cli/ledger_cmd.rs`). Ask: one ledger state for the daemon and the file.
+Status: to file.
+
+### (f) Decay per lifecycle run
+Decay compounds on every lifecycle run (`apply_confidence_decay`,
+`rust/src/core/memory_lifecycle.rs`). Ask: decay once per interval. Status: to file.
+
+### (g) The listing limit
+A category listing is capped by the global-only `recall_facts_limit`, with no per-call or
+per-project limit, though it reports `showing <n>/<total>` (`handle_recall`,
+`rust/src/tools/ctx_knowledge/remember.rs`); only the listed facts are protected from decay.
+Ask: a per-call or per-project limit. Status: to file.
+
+### (h) Declared test clients
+The Crucible clients are not in `is_test_runner_command` (`rust/src/shell/compress/engine.rs`;
+`classify`, `rust/src/shell/output_policy.rs`), and `excluded_commands` is a prefix match.
+Ask: a verbatim class for declared test clients. Status: to file.
+
+### (i) The CLI shell path's ledger write
+The CLI shell path rewrites the whole ledger file (`ContextLedger::load`/`save` in
+`record_shell_command_named`, not the locked merge of `persist_read`), and consolidates the
+machine's latest session's project (`SessionState::load_latest`) through `maybe_consolidate`,
+which runs only when the call carries tokens (`original_tokens > 0`), while the session save
+runs on every call (PRD D5, ruled 2026-10-29). Ask: merge under the lock. Status: to file.
+
+### (k) The status command's profile line
+`/lean-ctx` reports the extension's `toolProfile`, not the served surface (the extension's status
+handler, `extensions/index.ts`; PRD D5, ruled 2026-10-29). Ask: report the bridge's tool list.
+Status: to file.
+
+### (l) The read-mode description
+`pi-lean-ctx`'s `readModeSchema` describes `full` as "≤turn budget; raw=true beyond", but its
+`ctx_read` has no `raw` parameter (`readSchema`, `extensions/index.ts`): only `mode=raw` works.
+Ask: correct the description or add the parameter. Status: to file.

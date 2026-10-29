@@ -35,22 +35,22 @@ verify = "VERIFY agent — reviews a Sheetal firmware CR after GREEN. Read-only 
 fix = "FIX agent — addresses specific findings from an arduino-verify-agent report in the Sheetal firmware. Fixes only the listed, approved findings; does NOT decide what to fix (the orchestrator does). Keeps the host `g++` test build and the `arduino-cli` target build green; re-ingests."
 
 [roles.red]
-tools = ["read", "write", "edit", "grep", "find", "ls", "ctx_shell", "ctx_read", "ctx_grep", "ctx_glob", "ctx_find", "ctx_ls", "ctx_patch", "ctx_edit", "ctx_search", "ctx_tree"]
+tools = ["read", "write", "edit", "grep", "find", "ls", "ctx_shell", "ctx_read", "ctx_grep", "ctx_glob", "ctx_find", "ctx_ls", "ctx_patch", "ctx_edit", "ctx_search", "ctx_tree", "ctx_callgraph"]
 thinking = "high"
 skills = []
 
 [roles.green]
-tools = ["read", "write", "edit", "grep", "find", "ls", "ctx_shell", "ctx_read", "ctx_grep", "ctx_glob", "ctx_find", "ctx_ls", "ctx_patch", "ctx_edit", "ctx_search", "ctx_tree"]
+tools = ["read", "write", "edit", "grep", "find", "ls", "ctx_shell", "ctx_read", "ctx_grep", "ctx_glob", "ctx_find", "ctx_ls", "ctx_patch", "ctx_edit", "ctx_search", "ctx_tree", "ctx_callgraph"]
 thinking = "high"
 skills = []
 
 [roles.verify]
-tools = ["read", "grep", "find", "ls", "ctx_shell", "ctx_read", "ctx_grep", "ctx_glob", "ctx_find", "ctx_ls", "ctx_search", "ctx_tree"]
+tools = ["read", "grep", "find", "ls", "ctx_shell", "ctx_read", "ctx_grep", "ctx_glob", "ctx_find", "ctx_ls", "ctx_search", "ctx_tree", "ctx_callgraph", "ctx_graph", "ctx_explore"]
 thinking = "medium"
 skills = []
 
 [roles.fix]
-tools = ["read", "write", "edit", "grep", "find", "ls", "ctx_shell", "ctx_read", "ctx_grep", "ctx_glob", "ctx_find", "ctx_ls", "ctx_patch", "ctx_edit", "ctx_search", "ctx_tree"]
+tools = ["read", "write", "edit", "grep", "find", "ls", "ctx_shell", "ctx_read", "ctx_grep", "ctx_glob", "ctx_find", "ctx_ls", "ctx_patch", "ctx_edit", "ctx_search", "ctx_tree", "ctx_callgraph"]
 thinking = "high"
 skills = []
 

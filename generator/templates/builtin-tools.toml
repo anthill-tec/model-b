@@ -125,6 +125,17 @@ lean = '''Standard tools allowed: **read** (review), **find**, **ctx_shell** (re
 builtin = '''Tools allowed: **read** (review), **grep** and **find** (search), **bash** (read-only + crucible client).'''
 
 [[passage]]
+lean = '''**Blast radius (read-only).** For each new public symbol, `ctx_callgraph` (`action=callers`) lists its call
+sites; `ctx_graph` (`action=diff`, `since=<base>`) shows the files the branch reaches, and `action=impact`
+what depends on a changed file; `ctx_explore` (`citation=true`) locates where a behaviour lives. Where
+lean-ctx does not serve one of them (`ctx_graph` and `ctx_explore` need its `standard` or `power` tool
+profile, and its `minimal` profile serves none of the three), `ctx_search` (`action=symbol` or
+`action=find_related`) or `grep` finds the callers and the related code, and
+`git diff <base>..HEAD --stat` lists the files.'''
+builtin = '''**Blast radius (read-only).** For each new public symbol, `grep` its name for its callers;
+`git diff <base>..HEAD --stat` shows the files the branch reaches.'''
+
+[[passage]]
 lean = '''Prefer lean-ctx for >20-line output; every AXI command — the crucible client included — runs through `ctx_shell` with `raw=true`, and its envelope is read as the output-discipline line says. Docs via `ctx_read`+`ctx_search`. New files: `write`; targeted edits with known old/new strings: `edit`; analyze: `ctx_read` (not `read`); search: `ctx_search`.'''
 builtin = '''Nothing compresses the built-in tools' output: keep >20-line output out of your context; every AXI command — the crucible client included — runs through `bash`, and its envelope is read as the output-discipline line says. Docs via `grep` + a ranged `read`. New files: `write`; targeted edits with known old/new strings: `edit`; analyze: `grep`, then `read` that range; search: one precise `grep`.'''
 

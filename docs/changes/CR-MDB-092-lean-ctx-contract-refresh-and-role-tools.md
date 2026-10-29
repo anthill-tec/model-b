@@ -1,6 +1,6 @@
 # CR-MDB-092 — The lean-ctx contract refreshed; each role gets the lean-ctx tools that serve it
 
-**Status:** PENDING — spec drafted 2026-10-29 from the gap analysis and the user's rulings (PRD D5, 2026-10-29); the spec pre-review folded in; awaiting approval.
+**Status:** COMPLETED (filed 2026-10-29, gap analysis and pre-review 2026-10-29).
 **Type:** feature (the contract; the stack files' `tools:`, one template paragraph and its built-in
 passage, the generated agents; Model B's `AGENTS.md` and the scaffolded lean-ctx section) + upstream
 findings recorded
@@ -35,7 +35,8 @@ Every fact below is read in lean-ctx 3.11.4's source (`rust/src/…`, upstream `
   `tool_profile`, then `tools_enabled`.
   - **Unpinned** (lean-ctx's setup default, `clear_profile_in_config`): the bridge advertises the lazy core,
     `CORE_TOOL_NAMES` (`rust/src/tool_defs/mod.rs`): `ctx_read`, `ctx_shell`, `ctx_search`, `ctx_glob`,
-    `ctx_tree`, `ctx_session`, `ctx_compose`, `ctx_callgraph`, `ctx_patch`, `ctx_call`, `ctx_expand`. The
+    `ctx_tree`, `ctx_session`, `ctx_compose`, `ctx_callgraph`, `ctx_patch`, `ctx_call`, `ctx_expand`, and
+    `shell` (the `ShellAliasTool` alias; amended at cycle 308's VERIFY: twelve names, not eleven). The
     rest is reached through `ctx_call` (`candidate_set`, `explicit_profile`,
     `rust/src/server/tool_visibility.rs`).
   - **Pinned `standard`:** `STANDARD_TOOLS`, 17 tools, plus `ctx_call`. This machine pins it
@@ -118,7 +119,7 @@ Every fact below is read in lean-ctx 3.11.4's source (`rust/src/…`, upstream `
    - The version, the seven tools and the bridge sentence are one unit (the Pi extension bullet).
 4. **A new bullet, "The served tool surface"**, states in one unit:
    - the engine resolves it: `LEAN_CTX_TOOL_PROFILE`, then the global `tool_profile`, then `tools_enabled`;
-   - unpinned, the bridge serves the lazy core (the eleven names in Context) and the rest through `ctx_call`;
+   - unpinned, the bridge serves the lazy core (the twelve names in Context, `shell` included) and the rest through `ctx_call`;
    - pinned `standard`, it serves 17 tools plus `ctx_call`;
    - `pi-lean-ctx`'s `toolProfile` (default `lean`) forwards nothing for `lean`, so the global config decides;
    - lean-ctx's own setup leaves the profile unpinned;
@@ -206,19 +207,23 @@ Both are `##` sections, placed after § Preference order and before § Knowledge
    - **(c)** per-agent or per-project ledger scoping: `load_for_agent` is only called with `"default"`;
    - **(d)** auto-pinning one-off shell labels (`ignite_high_salience`) saturates the 0.20 pinned/stale boost
      (`pressure`); the ask is to exclude shell labels from ignition;
-   - **(e)** the daemon's in-memory ledger disagrees with the file (`ledger status` asks the daemon first);
+   - **(e)** the daemon's in-memory ledger disagrees with the file (`ledger status` asks the daemon first;
+     `cmd_ledger`, `rust/src/cli/ledger_cmd.rs`);
    - **(f)** decay compounds per lifecycle run (`apply_confidence_decay`,
      `rust/src/core/memory_lifecycle.rs`);
    - **(g)** a category listing is capped by the global-only `recall_facts_limit`, with no per-call or
      per-project limit, though it reports `showing <n>/<total>` (`handle_recall`,
      `rust/src/tools/ctx_knowledge/remember.rs`); only the listed facts are protected from decay;
    - **(h)** a verbatim class for declared test clients: the Crucible clients are not in
-     `is_test_runner_command`, and `excluded_commands` is a prefix match;
+     `is_test_runner_command` (`rust/src/shell/compress/engine.rs`; `classify`,
+     `rust/src/shell/output_policy.rs`), and `excluded_commands` is a prefix match;
    - **(i)** the CLI shell path rewrites the whole ledger file (`ContextLedger::load`/`save` in
      `record_shell_command_named`, not the locked merge of `persist_read`), and consolidates the machine's
-     latest session's project (`SessionState::load_latest`), a session save that runs even when the
-     ledger write is skipped (PRD D5, ruled 2026-10-29);
-   - **(k)** `/lean-ctx` reports the extension's `toolProfile`, not the served surface (PRD D5, ruled 2026-10-29);
+     latest session's project (`SessionState::load_latest`) through `maybe_consolidate`, which runs only
+     when the call carries tokens (`original_tokens > 0`), while the session save runs on every call
+     (PRD D5, ruled 2026-10-29; reworded at cycle 308's VERIFY);
+   - **(k)** `/lean-ctx` reports the extension's `toolProfile`, not the served surface (the extension's status
+     handler, `extensions/index.ts`; PRD D5, ruled 2026-10-29);
    - **(l)** `pi-lean-ctx`'s `readModeSchema` describes `full` as "≤turn budget; raw=true beyond", but its
      `ctx_read` has no `raw` parameter (`readSchema`, `extensions/index.ts`): only `mode=raw` works; the ask
      is to correct the description or add the parameter.
@@ -305,7 +310,9 @@ paragraph.
        - `version`: `\blean-ctx 3\.11\.4\b`;
        - `extension version`: `\bpi-lean-ctx\b` and `\b3\.11\.4\b`;
        - `served surface`: `\btool_profile\b`, `\blean_ctx_tool_profile\b`, `\btoolprofile\b`,
-         `\blazy core\b`, `\bstandard\b`, `\bctx_call\b`, `\btrust`, `\bctx_graph\b`, `\bctx_explore\b`;
+         `\blazy core\b`, `\bstandard\b`, `\bctx_call\b`, `\btrust`, `\bctx_graph\b`, `\bctx_explore\b`,
+         and `\bshell\b` with `\bctx_expand\b` (the lazy core's twelve names include `shell`; amended at
+         cycle 308's VERIFY);
        - `ctx_edit`: `\bctx_edit\b`, `\bevery profile\b`, `\bbridge\b`;
        - `fresh full`: `mode=full`, `\bfresh\b`, `\b13\b|\bstub\b`;
        - `budgets`: `\b4096\b`, `\b32768\b`, `\braw\b`, `turn_fresh_limit`;
@@ -323,12 +330,14 @@ paragraph.
        - `(b) closed`: `\bwrite_allow_paths\b`, `lean-ctx trust`, `\bclosed\b`, `\bctxshelltool\b`;
        - `(c)`: `\bload_for_agent\b`, `\bto file\b`;
        - `(d)`: `\bignite_high_salience\b`, `0\.20`, `\bto file\b`;
-       - `(e)`: `\bdaemon\b`, `\bdisagree`, `\bto file\b`;
+       - `(e)`: `\bdaemon\b`, `\bdisagree`, `ledger_cmd\.rs`, `\bto file\b`;
        - `(f)`: `\bapply_confidence_decay\b`, `\bcompound`, `\bto file\b`;
        - `(g)`: `\brecall_facts_limit\b`, `\bshowing\b`, `\bglobal-only\b`, `\bto file\b`;
-       - `(h)`: `\bis_test_runner_command\b`, `\bverbatim\b`, `\bto file\b`;
+       - `(h)`: `\bis_test_runner_command\b`, `\bverbatim\b`, `engine\.rs`, `output_policy\.rs`, `\bto file\b`;
        - (PRD D5, ruled 2026-10-29) `(i)`: `\brecord_shell_command_named\b`, `\bload_latest\b`,
-         `\bto file\b`; `(k)`: `/lean-ctx`, `\btoolprofile\b`, `\bto file\b`;
+         `\bmaybe_consolidate\b`, `\bto file\b`; `(k)`: `/lean-ctx`, `\btoolprofile\b`, `index\.ts`,
+         `\bto file\b` (the `ledger_cmd.rs`, `engine.rs`, `output_policy.rs`, `maybe_consolidate` and
+         `index.ts` patterns amended at cycle 308's VERIFY);
        - `(l)`: `\breadmodeschema\b`, `raw=true`, `mode=raw`, `\bto file\b`.
      - Every pin is met by the text §S1–§S3 prescribe: each pin's words are in the unit that section
        names, and the held-back invalidate finding has no pin.
@@ -509,7 +518,9 @@ never asserted against an installed copy.
 
 ## Cycle plan
 
-No commit sits red. Each cycle commits once, after its GREEN, with its migrations, once `ruff check` exits 0.
+Nothing stays red past a cycle's GREEN: RED commits its failing tests on their own (test-only), and GREEN
+makes them pass in the same cycle, once `ruff check` exits 0 (PRD D5, ruled 2026-10-29: RED commits are
+allowed).
 A test that reads text a cycle changes (the contract, a template or stack file, the regenerated
 `generator/agents/*` and `.pi/agents/*`, `AGENTS.md`, the scaffolded section) is migrated in that cycle,
 never a later one. No test module is added, so `AGENTS.md`'s module count (114) is unchanged in every

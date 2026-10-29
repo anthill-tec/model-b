@@ -106,6 +106,13 @@ OVERRIDES = (None, "shared-kb")
 #: row's own (ties included).
 PYTHON3_DEFAULT_REMEDIATION = "uv python install --default 3.14"
 
+#: CR-MDB-092 §S8.4: the scaffolded reach bullet's finding, and its five patterns (§S8.3's, matched
+#: case-insensitively on a bullet unit with backticks and ``*`` dropped).
+REACH_FINDING = ("reach tools: ctx_graph and ctx_callgraph under the standard profile; "
+                 "general-purpose has no tools:")
+REACH_PATTERNS = (r"(?i)\bctx_graph\b", r"(?i)\bctx_callgraph\b", r"(?i)\bstandard\b",
+                  r"(?i)\bgeneral-purpose\b", r"(?i)tools:")
+
 
 # ------------------------------------------------------------------ helpers ----
 
@@ -240,6 +247,11 @@ def pointer_findings(section: str, category: str) -> list[str]:
     if first(r"(?i)\bcontext ledger\b", r"\bmachine-wide\b", r"(?i)\bevict", r"(?i)\breset",
              r"(?i)\bnever\b") is None:
         findings.append("the context ledger is machine-wide: never evicted or reset")
+    # MIGRATED at CR-MDB-092 (§S7.2, §S8.4; PRD D5, ruled 2026-10-29): the section gains the
+    # reach bullet: the reach tools, served only under lean-ctx's `standard` (or `power`) tool
+    # profile, and a sub-agent having only its definition's `tools:` (`general-purpose` none).
+    if first(*REACH_PATTERNS) is None:
+        findings.append(REACH_FINDING)
     return findings
 
 
@@ -680,6 +692,18 @@ class LeanCtxPointerTest(_ProjectCase):
         section = scaffold._render_lean_ctx_section("kb-render")
         self.assertEqual(len(_lean_ctx_sections(section)), 1, section)
         self.assertEqual(pointer_findings(section, "kb-render"), [], section)
+
+    def test_the_renderer_puts_the_reach_bullet_after_the_tool_form_bullet_with_since_base(self):
+        """CR-MDB-092 §S7.2: the reach bullet follows the CR-MDB-090 tool-form bullet, with
+        ``since=develop`` written ``since=<base>``."""
+        units = _bullet_units(scaffold._render_lean_ctx_section("kb-render"))
+        tool_form = [i for i, u in enumerate(units) if re.search(r"\bctx_shell\b", u)
+                     and re.search(r"\braw=true\b", u)]
+        reach = [i for i, u in enumerate(units) if all(re.search(p, u) for p in REACH_PATTERNS)]
+        self.assertEqual(len(tool_form), 1, units)
+        self.assertEqual(reach, [tool_form[0] + 1], units)
+        self.assertIn("since=<base>", units[reach[0]])
+        self.assertNotIn("since=develop", units[reach[0]])
 
     def test_every_lean_ctx_verdict_writes_one_section_root_and_sub(self):
         # MIGRATED at CR-MDB-088 (§S1.2, §S2; was
@@ -1191,6 +1215,8 @@ class AgentRenderFailureRefusedTest(_ProjectCase):
 # context ledger.
 # MIGRATED at CR-MDB-091 (§S4): gains the project-config note as its last bullet
 # (:data:`GOOD_PROJECT_CONFIG_NOTE`), so the bullet indices above it are unchanged.
+# MIGRATED at CR-MDB-092 (§S7.2, §S8.4): gains the reach bullet third, after the CR-MDB-090
+# tool-form bullet, with `since=<base>`; every bullet after it moves down one.
 
 #: CR-MDB-091 §S4 — the note bullet, in the spec's words: the root's ``.lean-ctx.toml`` sets the
 #: fact cap and turns automatic consolidation off, needs no ``lean-ctx trust`` and is re-rendered by
@@ -1214,6 +1240,12 @@ GOOD_POINTER = """\
 - Run AXI commands through `ctx_shell` with `raw=true`. When Pi truncates a run, read the
   envelope whole from the full-output file its notice names. lean-ctx's context ledger is
   machine-wide: ignore its evict hints, and never evict or reset it.
+- **Reach tools** for gap analysis, the spec pre-review and close-out: `ctx_graph`
+  (`action=impact`; `action=diff`, `since=<base>`), `ctx_callgraph` (`action=callers`),
+  `ctx_explore` and `ctx_compose`. lean-ctx serves `ctx_graph` and `ctx_explore` only under its
+  `standard` or `power` tool profile (or a `tools_enabled` list naming them). A sub-agent has
+  only the tools its definition's `tools:` lists; a dispatch type with none (`general-purpose`)
+  gets Pi's built-ins and no `ctx_*` tool.
 - Keep this project's execution knowledge in lean-ctx's knowledge store under the category
   `kb-cat` (`KNOWLEDGE_CATEGORY` in `.env`), through the session's `ctx_knowledge` tool. Never
   use the `lean-ctx knowledge` CLI: its project does not follow the working directory.
@@ -1274,6 +1306,9 @@ class LeanCtxPointerDetectorTest(unittest.TestCase):
             "through `ctx_shell` with `raw=true`", "through `ctx_shell`"),
         "the context ledger is machine-wide: never evicted or reset": (
             "and never evict or reset it", "and evict or reset it when it fills"),
+        # MIGRATED at CR-MDB-092 (§S7.2, §S8.4): the reach finding, lost by its one mutation.
+        REACH_FINDING: ("a dispatch type with none (`general-purpose`)",
+                        "a dispatch type with none"),
     }
 
     def test_the_good_pointer_has_no_finding(self):
@@ -1290,10 +1325,12 @@ class LeanCtxPointerDetectorTest(unittest.TestCase):
     def test_the_listing_before_the_restore_is_found(self):
         # MIGRATED at CR-MDB-090 (§S5): §S5's bullet is the second, so the restore and the
         # listing are bullets 4 and 5 (were 3 and 4).
+        # MIGRATED at CR-MDB-092 (§S7.2): the reach bullet is the third, so the restore and the
+        # listing are bullets 5 and 6 (were 4 and 5).
         bullets = GOOD_POINTER.split("\n- ")
-        self.assertTrue(bullets[4].startswith("**Restore.**"), bullets[4])
-        self.assertTrue(bullets[5].startswith("**List.**"), bullets[5])
-        swapped = "\n- ".join(bullets[:4] + [bullets[5], bullets[4]] + bullets[6:])
+        self.assertTrue(bullets[5].startswith("**Restore.**"), bullets[5])
+        self.assertTrue(bullets[6].startswith("**List.**"), bullets[6])
+        swapped = "\n- ".join(bullets[:5] + [bullets[6], bullets[5]] + bullets[7:])
         self.assertEqual(pointer_findings(swapped, "kb-cat"),
                          ["order: restore before the listing"])
 
@@ -1337,13 +1374,14 @@ class LeanCtxPointerDetectorTest(unittest.TestCase):
         and ignores ``category``, so each restore form naming ``category=facts`` is a finding."""
         named = "category=facts named (a restore selects its store with store=facts)"
         self.assertEqual(GOOD_POINTER.count("`store=facts`"), 2)
-        # The scoped restore (bullet 3) names `category=facts`.
+        # The scoped restore names `category=facts`. MIGRATED at CR-MDB-092 (§S7.2): the
+        # comment named its bullet number, which the reach bullet moves.
         scoped = GOOD_POINTER.replace("`store=facts`", "`category=facts`", 1)
         found = pointer_findings(scoped, "kb-cat")
         self.assertIn("scoped restore repeated until it restores nothing", found)
         self.assertIn(named, found)
         self.assertNotIn("restore by key", found)
-        # The restore by key (bullet 5) names `category=facts`.
+        # The restore by key names `category=facts`.
         head, _, tail = GOOD_POINTER.rpartition("`store=facts`")
         found = pointer_findings(head + "`category=facts`" + tail, "kb-cat")
         self.assertIn("restore by key", found)
@@ -1361,6 +1399,41 @@ class LeanCtxPointerDetectorTest(unittest.TestCase):
         other = GOOD_POINTER.replace("`query=kb-cat`", "`query=kb-cat-old`")
         self.assertIn("scoped restore repeated until it restores nothing",
                       pointer_findings(other, "kb-cat"))
+
+    #: CR-MDB-092 §S8.4: one cut per pattern of the reach finding, ``(pattern, replacements)``;
+    #: each removes every naming of that word from the reach bullet.
+    REACH_CUTS = (
+        ("ctx_graph", (("`ctx_graph`\n  (`action=impact`;", "`ctx_map`\n  (`action=impact`;"),
+                       ("serves `ctx_graph` and", "serves the graph tool and"))),
+        ("ctx_callgraph", (("`ctx_callgraph` (`action=callers`)", "a call search (`action=callers`)"),)),
+        ("standard", (("`standard` or `power` tool profile", "`power` tool profile"),)),
+        ("general-purpose", (("(`general-purpose`)", "(the default type)"),)),
+        ("tools:", (("its definition's `tools:` lists", "its definition lists"),)),
+    )
+
+    def test_each_reach_cut_is_found_and_nothing_else(self):
+        """CR-MDB-092 §S7 AC: each new pin is proved by a cut."""
+        for pattern, replacements in self.REACH_CUTS:
+            with self.subTest(pattern=pattern):
+                text = GOOD_POINTER
+                for old, new in replacements:
+                    self.assertEqual(text.count(old), 1, f"cut anchor {old!r}")
+                    text = text.replace(old, new)
+                self.assertEqual(pointer_findings(text, "kb-cat"), [REACH_FINDING])
+
+    def test_the_reach_bullet_split_across_two_bullets_is_found(self):
+        """CR-MDB-092 §S8.4: the five words in one bullet; split them and the finding stands."""
+        old = "naming them). A sub-agent has\n  only"
+        self.assertEqual(GOOD_POINTER.count(old), 1)
+        split = GOOD_POINTER.replace(old, "naming them).\n- A sub-agent has\n  only")
+        self.assertEqual(pointer_findings(split, "kb-cat"), [REACH_FINDING])
+
+    def test_todays_section_without_the_reach_bullet_lacks_exactly_the_reach_finding(self):
+        """CR-MDB-092 §S7.2: the section as ``init`` renders it before this change."""
+        bullets = GOOD_POINTER.split("\n- ")
+        self.assertTrue(bullets[3].startswith("**Reach tools**"), bullets[3])
+        today = "\n- ".join(bullets[:3] + bullets[4:])
+        self.assertEqual(pointer_findings(today, "kb-cat"), [REACH_FINDING])
 
 
 class ContractCheckersTest(unittest.TestCase):

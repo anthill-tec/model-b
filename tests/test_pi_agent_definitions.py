@@ -222,6 +222,13 @@ tests/test_installer_correctness.py for §S6 coupling (`PROJECT_STACKS`,
 Stdlib only: unittest + tomllib + re + shutil + subprocess + sys + tempfile
 + importlib.util + pathlib + hashlib + os, matching the sibling generator
 test modules' existing conventions.
+
+CR-MDB-092 §S4–§S6, §S8.2: `RoleLeanCtxToolsTest` pins each role's lean-ctx tools
+(`ctx_callgraph` for every role; `ctx_graph` and `ctx_explore` for VERIFY too) and
+VERIFY's "Blast radius (read-only)" paragraph, through `role_tool_findings` and
+`reach_paragraph_findings`, each proved both ways. Migrated with it:
+`WRITE_CAPABLE_TOOLS` and `READ_ONLY_TOOLS` and their failure messages
+(16 -> 17, 12 -> 15 names).
 """
 
 import hashlib
@@ -237,12 +244,20 @@ import unittest
 from pathlib import Path
 
 from modelb_axi import agents as agents_mod
+from modelb_axi import requirements as requirements_mod
 from tests._helpers import decode_envelope as _decode_envelope_c3
-from tests._helpers import deploy_hook_scripts, write_executable, write_install_toml
+from tests._helpers import (
+    deploy_hook_scripts,
+    md_section,
+    write_executable,
+    write_install_toml,
+)
 from tests._helpers import parse_env_file as _parse_env_file_c3
 from tests._helpers import read_text_lenient as _read
 from tests._helpers import split_frontmatter as _split_frontmatter
 from tests.pi_capability_sandbox import fake_sandesh, with_agent_dir
+from tests.test_execution_knowledge_rules import rule_units
+from tests.test_project_tools_setup import _tools as _rendered_tools
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 GENERATOR_DIR = REPO_ROOT / "generator"
@@ -255,16 +270,20 @@ AGENTS_MODULE_PATH = REPO_ROOT / "modelb_axi" / "agents.py"
 STACKS = ("arduino", "bun", "python", "quarkus", "rust")
 ROLES = ("red", "green", "verify", "fix")
 
-# §S2 -- the exact, spec-pinned emitted tool sets (Pi names, lowercase).
+# §S2 -- the exact, spec-pinned emitted tool sets (Pi names, lowercase), in
+# the stack files' TOML order.
+# MIGRATED at CR-MDB-092 (§S4): RED/GREEN/FIX gain `ctx_callgraph` after
+# `ctx_tree` (16 -> 17 names); VERIFY gains `ctx_callgraph`, `ctx_graph` and
+# `ctx_explore` after `ctx_tree` (12 -> 15 names).
 WRITE_CAPABLE_TOOLS = (
     "read", "write", "edit", "grep", "find", "ls",
     "ctx_shell", "ctx_read", "ctx_grep", "ctx_glob", "ctx_find", "ctx_ls",
-    "ctx_patch", "ctx_edit", "ctx_search", "ctx_tree",
+    "ctx_patch", "ctx_edit", "ctx_search", "ctx_tree", "ctx_callgraph",
 )
 READ_ONLY_TOOLS = (
     "read", "grep", "find", "ls",
     "ctx_shell", "ctx_read", "ctx_grep", "ctx_glob", "ctx_find", "ctx_ls",
-    "ctx_search", "ctx_tree",
+    "ctx_search", "ctx_tree", "ctx_callgraph", "ctx_graph", "ctx_explore",
 )
 FORBIDDEN_FOR_VERIFY = ("write", "edit", "ctx_patch", "ctx_edit")
 
@@ -643,12 +662,13 @@ class EmittedToolsFleetGateS2Test(unittest.TestCase):
             tools_value = _tools_line_value(path) or ""
             names = [n.strip() for n in tools_value.split(",") if n.strip()]
             if set(names) != set(WRITE_CAPABLE_TOOLS) or len(names) != len(WRITE_CAPABLE_TOOLS):
+                # MIGRATED at CR-MDB-092 (§S4): 16 -> 17 write-capable names.
                 failures.append(
-                    f"{path.name}: tools: must be exactly the 16 write-capable "
+                    f"{path.name}: tools: must be exactly the 17 write-capable "
                     f"names {sorted(WRITE_CAPABLE_TOOLS)}, got {sorted(names)}"
                 )
         # POSITIVE/EXACT -- every RED/GREEN/FIX definition carries exactly
-        # the 16-name write-capable set, no more, no fewer.
+        # the 17-name write-capable set, no more, no fewer.
         self.assertEqual(failures, [], "\n".join(failures))
 
     def test_s2_verify_definitions_carry_exactly_the_read_only_tool_set_and_no_write_tools(self):
@@ -659,8 +679,9 @@ class EmittedToolsFleetGateS2Test(unittest.TestCase):
             tools_value = _tools_line_value(path) or ""
             names = [n.strip() for n in tools_value.split(",") if n.strip()]
             if set(names) != set(READ_ONLY_TOOLS) or len(names) != len(READ_ONLY_TOOLS):
+                # MIGRATED at CR-MDB-092 (§S4): the 12-name read-only set -> 15.
                 failures.append(
-                    f"{path.name}: tools: must be exactly the 12-name "
+                    f"{path.name}: tools: must be exactly the 15-name "
                     f"read-only set {sorted(READ_ONLY_TOOLS)}, got {sorted(names)}"
                 )
             forbidden_present = sorted(set(names) & set(FORBIDDEN_FOR_VERIFY))
@@ -2449,6 +2470,280 @@ class ReleasedClientPathS8Test(unittest.TestCase):
             result.returncode, 0,
             f"build.py --check must be clean:\n{result.stdout}\n{result.stderr}",
         )
+
+
+# ---------------------------------------------------------------------------
+# CR-MDB-092 §S4–§S6, §S8.2 -- each role gets the lean-ctx tools that serve
+# it. RED, GREEN and FIX gain `ctx_callgraph`; VERIFY gains `ctx_callgraph`,
+# `ctx_graph` and `ctx_explore`, and a "Blast radius (read-only)" paragraph
+# (§S5) after its Tool Usage paragraph, with a built-in passage. No role gets
+# `ctx_delta`, `ctx_compose`, `ctx_call` or `process` (§S4.3). Two
+# module-level detectors read the definitions: `role_tool_findings` (the
+# tool-set check) and `reach_paragraph_findings` (VERIFY's paragraph, unit by
+# unit through `rule_units`, normalised: lower-cased, `**` and backticks
+# dropped). Each is proved both ways on synthetic text.
+# ---------------------------------------------------------------------------
+
+#: CR-MDB-092 §S4.1: the three reach tools `PI_TOOL_NAMES` maps, each to itself.
+REACH_TOOLS = ("ctx_callgraph", "ctx_graph", "ctx_explore")
+
+#: CR-MDB-092 §S8.2: the names every role ("*") expects and bars; VERIFY adds its own.
+ROLE_EXPECTED_TOOLS = {"*": ("ctx_callgraph",), "verify": ("ctx_graph", "ctx_explore")}
+ROLE_BARRED_TOOLS = {
+    "*": ("ctx_delta", "ctx_compose", "ctx_call", "process"),
+    "verify": ("write", "edit", "ctx_patch", "ctx_edit"),
+}
+
+#: CR-MDB-092 §S8.2: the normalised prefix of VERIFY's reach unit.
+REACH_UNIT_PREFIX = "blast radius"
+#: CR-MDB-092 §S8.2: what the reach unit carries in the lean-ctx form ...
+REACH_LEAN_PINS = (
+    r"\bctx_callgraph\b", r"action=callers", r"\bctx_graph\b", r"action=diff",
+    r"since=<base>", r"action=impact", r"\bctx_explore\b", r"\bctx_search\b",
+    r"\bgrep\b", r"git diff <base>\.\.head --stat",
+)
+#: ... and in the built-in form, where it names no `ctx_` tool;
+REACH_BUILTIN_PINS = (r"\bgrep\b", r"git diff <base>\.\.head --stat")
+REACH_BUILTIN_BARRED = (r"ctx_",)
+#: ... and what it never says in either form (CR-MDB-090's render pin and
+#: `line_rule_findings` stay untouched).
+REACH_BARRED_BOTH = (r"\boutput[- ]discipline\b", r"-crucible\.py\b|\bcrucible[- ]client")
+
+#: CR-MDB-092 §S5: the paragraph `verify.md.tmpl` § "Tool Usage" gains, exactly (the
+#: spec's text; compared with its whitespace collapsed, so the line wrapping is free).
+REACH_PARAGRAPH_LEAN = """\
+**Blast radius (read-only).** For each new public symbol, `ctx_callgraph` (`action=callers`) lists its call
+sites; `ctx_graph` (`action=diff`, `since=<base>`) shows the files the branch reaches, and `action=impact`
+what depends on a changed file; `ctx_explore` (`citation=true`) locates where a behaviour lives. Where
+lean-ctx does not serve one of them (`ctx_graph` and `ctx_explore` need its `standard` or `power` tool
+profile, and its `minimal` profile serves none of the three), `ctx_search` (`action=symbol` or
+`action=find_related`) or `grep` finds the callers and the related code, and
+`git diff <base>..HEAD --stat` lists the files."""
+
+#: CR-MDB-092 §S5: that paragraph's `builtin-tools.toml` passage's `builtin`, exactly.
+REACH_PARAGRAPH_BUILTIN = """\
+**Blast radius (read-only).** For each new public symbol, `grep` its name for its callers;
+`git diff <base>..HEAD --stat` shows the files the branch reaches."""
+
+#: A VERIFY Tool Usage section as it reads before the reach paragraph, for the samples.
+_REACH_SAMPLE_HEAD = (
+    "## Tool Usage (lean-ctx — protects context)\n\n"
+    "Prefer lean-ctx for >20-line output. Standard tools allowed: **read**, **find**.\n\n"
+)
+_REACH_SAMPLE_TAIL = "\n\n## Test runs go through the client (NON-NEGOTIABLE)\n\n- Every run.\n"
+
+
+def role_tool_findings(role: str, tools) -> list[str]:
+    """CR-MDB-092 §S8.2: one finding per expected name missing from ``tools`` and per
+    barred name present in it, for ``role`` (every role's names, then VERIFY's)."""
+    expected = ROLE_EXPECTED_TOOLS["*"] + ROLE_EXPECTED_TOOLS.get(role, ())
+    barred = ROLE_BARRED_TOOLS["*"] + ROLE_BARRED_TOOLS.get(role, ())
+    present = set(tools)
+    return ([f"{role}: missing {name}" for name in expected if name not in present]
+            + [f"{role}: barred {name}" for name in barred if name in present])
+
+
+def reach_paragraph_findings(body: str, *, lean: bool) -> list[str]:
+    """CR-MDB-092 §S8.2: exactly one normalised unit of ``body`` begins ``blast radius``;
+    it carries :data:`REACH_LEAN_PINS` (``lean``) or :data:`REACH_BUILTIN_PINS` and no
+    ``ctx_`` (built-in form), and matches no :data:`REACH_BARRED_BOTH` pattern."""
+    units = [u for u in rule_units(body) if u.startswith(REACH_UNIT_PREFIX)]
+    if len(units) != 1:
+        return [f"expected one blast-radius unit, found {len(units)}"]
+    unit = units[0]
+    pins = REACH_LEAN_PINS if lean else REACH_BUILTIN_PINS
+    barred = REACH_BARRED_BOTH + (() if lean else REACH_BUILTIN_BARRED)
+    return ([f"missing {p}" for p in pins if not re.search(p, unit)]
+            + [f"barred {p}" for p in barred if re.search(p, unit)])
+
+
+class RoleLeanCtxToolsTest(unittest.TestCase):
+    """CR-MDB-092 §S4–§S6, §S8.2 -- the role tools, VERIFY's reach paragraph and the
+    regenerated definitions, with both detectors proved both ways."""
+
+    def _render(self, lean_ctx: bool) -> dict[str, str]:
+        rendered = agents_mod.render_definitions(
+            list(STACKS), ["pi"], TEMPLATES_DIR, STACKS_DIR, lean_ctx=lean_ctx)
+        self.assertEqual(len(rendered), len(STACKS) * len(ROLES), sorted(rendered))
+        return rendered
+
+    # ---- role_tool_findings, proved both ways -------------------------------
+
+    def test_role_tool_findings_spares_the_conforming_lines(self):
+        for role in ("red", "green", "fix"):
+            with self.subTest(role=role):
+                self.assertEqual(role_tool_findings(role, WRITE_CAPABLE_TOOLS), [])
+        self.assertEqual(role_tool_findings("verify", READ_ONLY_TOOLS), [])
+
+    def test_role_tool_findings_bites_a_verify_line_without_ctx_graph(self):
+        line = [t for t in READ_ONLY_TOOLS if t != "ctx_graph"]
+        self.assertEqual(role_tool_findings("verify", line), ["verify: missing ctx_graph"])
+
+    def test_role_tool_findings_bites_a_green_line_carrying_ctx_delta(self):
+        line = list(WRITE_CAPABLE_TOOLS) + ["ctx_delta"]
+        self.assertEqual(role_tool_findings("green", line), ["green: barred ctx_delta"])
+
+    def test_role_tool_findings_bites_a_verify_line_carrying_ctx_call(self):
+        line = list(READ_ONLY_TOOLS) + ["ctx_call"]
+        self.assertEqual(role_tool_findings("verify", line), ["verify: barred ctx_call"])
+
+    def test_role_tool_findings_bites_todays_lines_and_a_writing_verify(self):
+        todays_write = [t for t in WRITE_CAPABLE_TOOLS if t != "ctx_callgraph"]
+        todays_verify = [t for t in READ_ONLY_TOOLS if t not in REACH_TOOLS]
+        self.assertEqual(role_tool_findings("fix", todays_write), ["fix: missing ctx_callgraph"])
+        self.assertEqual(
+            role_tool_findings("verify", todays_verify),
+            ["verify: missing ctx_callgraph", "verify: missing ctx_graph",
+             "verify: missing ctx_explore"])
+        self.assertEqual(
+            role_tool_findings("verify", list(READ_ONLY_TOOLS) + ["ctx_edit", "process"]),
+            ["verify: barred process", "verify: barred ctx_edit"])
+        # A barred VERIFY-only name is no finding for a writing role.
+        self.assertEqual(role_tool_findings("red", WRITE_CAPABLE_TOOLS), [])
+
+    # ---- reach_paragraph_findings, proved both ways --------------------------
+
+    def test_reach_paragraph_findings_spares_both_conforming_samples(self):
+        lean = _REACH_SAMPLE_HEAD + REACH_PARAGRAPH_LEAN + _REACH_SAMPLE_TAIL
+        builtin = _REACH_SAMPLE_HEAD + REACH_PARAGRAPH_BUILTIN + _REACH_SAMPLE_TAIL
+        self.assertEqual(reach_paragraph_findings(lean, lean=True), [])
+        self.assertEqual(reach_paragraph_findings(builtin, lean=False), [])
+
+    def test_reach_paragraph_findings_bites_a_lean_sample_without_the_fallback_clause(self):
+        cut = REACH_PARAGRAPH_LEAN[:REACH_PARAGRAPH_LEAN.index(" Where\nlean-ctx")]
+        self.assertNotEqual(cut, REACH_PARAGRAPH_LEAN)
+        body = _REACH_SAMPLE_HEAD + cut + _REACH_SAMPLE_TAIL
+        self.assertEqual(
+            reach_paragraph_findings(body, lean=True),
+            [r"missing \bctx_search\b", r"missing \bgrep\b",
+             r"missing git diff <base>\.\.head --stat"])
+
+    def test_reach_paragraph_findings_bites_a_lean_sample_without_ctx_graph(self):
+        cut = REACH_PARAGRAPH_LEAN.replace("`ctx_graph`", "the graph tool")
+        self.assertNotIn("ctx_graph", cut)
+        body = _REACH_SAMPLE_HEAD + cut + _REACH_SAMPLE_TAIL
+        self.assertEqual(reach_paragraph_findings(body, lean=True), [r"missing \bctx_graph\b"])
+
+    def test_reach_paragraph_findings_bites_a_lean_sample_without_ctx_search(self):
+        cut = REACH_PARAGRAPH_LEAN.replace(
+            "`ctx_search` (`action=symbol` or\n`action=find_related`) or `grep`", "`grep`")
+        self.assertNotIn("ctx_search", cut)
+        body = _REACH_SAMPLE_HEAD + cut + _REACH_SAMPLE_TAIL
+        self.assertEqual(reach_paragraph_findings(body, lean=True), [r"missing \bctx_search\b"])
+
+    def test_reach_paragraph_findings_bites_a_builtin_sample_still_naming_ctx_callgraph(self):
+        named = REACH_PARAGRAPH_BUILTIN + " `ctx_callgraph` lists the callers."
+        body = _REACH_SAMPLE_HEAD + named + _REACH_SAMPLE_TAIL
+        self.assertEqual(reach_paragraph_findings(body, lean=False), [r"barred ctx_"])
+        # The lean-ctx paragraph left untranslated in a built-in render bites too.
+        lean_left = _REACH_SAMPLE_HEAD + REACH_PARAGRAPH_LEAN + _REACH_SAMPLE_TAIL
+        self.assertEqual(reach_paragraph_findings(lean_left, lean=False), [r"barred ctx_"])
+
+    def test_reach_paragraph_findings_bites_two_blast_radius_units_and_none(self):
+        twice = (_REACH_SAMPLE_HEAD + REACH_PARAGRAPH_LEAN + "\n\n" + REACH_PARAGRAPH_LEAN
+                 + _REACH_SAMPLE_TAIL)
+        self.assertEqual(reach_paragraph_findings(twice, lean=True),
+                         ["expected one blast-radius unit, found 2"])
+        none = _REACH_SAMPLE_HEAD.rstrip("\n") + _REACH_SAMPLE_TAIL
+        self.assertEqual(reach_paragraph_findings(none, lean=True),
+                         ["expected one blast-radius unit, found 0"])
+
+    def test_reach_paragraph_findings_bites_a_unit_saying_output_discipline_or_a_client(self):
+        said = REACH_PARAGRAPH_LEAN + " Output discipline applies."
+        body = _REACH_SAMPLE_HEAD + said + _REACH_SAMPLE_TAIL
+        self.assertEqual(reach_paragraph_findings(body, lean=True),
+                         [r"barred \boutput[- ]discipline\b"])
+        client = REACH_PARAGRAPH_BUILTIN + " Run the crucible client after."
+        body = _REACH_SAMPLE_HEAD + client + _REACH_SAMPLE_TAIL
+        self.assertEqual(reach_paragraph_findings(body, lean=False),
+                         [r"barred -crucible\.py\b|\bcrucible[- ]client"])
+
+    # ---- §S4 the tools lines ----------------------------------------------------
+
+    def test_reach_tools_translate_to_themselves_and_no_intent_is_dropped(self):
+        # §S4.1: PI_TOOL_NAMES maps each new name to itself.
+        self.assertEqual({t: agents_mod.PI_TOOL_NAMES.get(t) for t in REACH_TOOLS},
+                         {t: t for t in REACH_TOOLS})
+        self.assertEqual(agents_mod.translate_tools(list(REACH_TOOLS), agents_mod.PI_TOOL_NAMES),
+                         (list(REACH_TOOLS), []))
+        # §S4 AC: the drop report over the real stack files is empty.
+        drops: list[dict] = []
+        for stack in STACKS:
+            params = agents_mod.load_stack_params(STACKS_DIR, stack)
+            for role in ROLES:
+                agents_mod.render(stack, role, params, TEMPLATES_DIR, drops=drops)
+        self.assertEqual(drops, [])
+        # §S4.4: the project policy's lean-ctx tools already allow all three.
+        self.assertEqual([t for t in REACH_TOOLS if t not in requirements_mod._LEAN_CTX_TOOLS], [])
+
+    def test_each_lean_ctx_render_carries_its_roles_tools_in_toml_order(self):
+        for rel, text in sorted(self._render(lean_ctx=True).items()):
+            role = _role_of(Path(rel).name)
+            tools = _rendered_tools(text)
+            expected = READ_ONLY_TOOLS if role == "verify" else WRITE_CAPABLE_TOOLS
+            with self.subTest(definition=rel):
+                self.assertEqual(tools, list(expected))
+                self.assertEqual(len(tools), 15 if role == "verify" else 17)
+                self.assertEqual(role_tool_findings(role, tools), [])
+
+    def test_each_built_in_render_carries_no_ctx_tool_and_the_built_in_reach_paragraph(self):
+        for rel, text in sorted(self._render(lean_ctx=False).items()):
+            role = _role_of(Path(rel).name)
+            _, body = _split_frontmatter(text)
+            with self.subTest(definition=rel):
+                self.assertEqual([t for t in _rendered_tools(text) if t.startswith("ctx_")], [])
+                if role == "verify":
+                    self.assertEqual(reach_paragraph_findings(body, lean=False), [])
+                else:
+                    self.assertEqual(reach_paragraph_findings(body, lean=False),
+                                     ["expected one blast-radius unit, found 0"])
+
+    # ---- §S5 VERIFY's reach paragraph -----------------------------------------
+
+    def test_only_verify_carries_the_reach_paragraph_in_the_lean_ctx_form(self):
+        for rel, text in sorted(self._render(lean_ctx=True).items()):
+            role = _role_of(Path(rel).name)
+            _, body = _split_frontmatter(text)
+            with self.subTest(definition=rel):
+                if role == "verify":
+                    self.assertEqual(reach_paragraph_findings(body, lean=True), [])
+                else:
+                    self.assertEqual(reach_paragraph_findings(body, lean=True),
+                                     ["expected one blast-radius unit, found 0"])
+
+    def test_verify_template_tool_usage_gains_the_paragraph_after_the_existing_one(self):
+        section = md_section(_read(TEMPLATES_DIR / "verify.md.tmpl"), "## Tool Usage")
+        units = rule_units(section)
+        self.assertEqual(len(units), 2, units)
+        self.assertTrue(units[0].startswith("prefer lean-ctx"), units[0])
+        self.assertTrue(units[1].startswith(REACH_UNIT_PREFIX), units[1])
+        self.assertIn(" ".join(REACH_PARAGRAPH_LEAN.split()), " ".join(section.split()))
+        self.assertEqual(reach_paragraph_findings(section, lean=True), [])
+
+    def test_builtin_tools_toml_carries_exactly_one_reach_passage_with_the_spec_text(self):
+        with (TEMPLATES_DIR / agents_mod.BUILTIN_PASSAGES_NAME).open("rb") as fh:
+            passages = tomllib.load(fh)["passage"]
+        reach = [p for p in passages
+                 if " ".join(p["lean"].split()) == " ".join(REACH_PARAGRAPH_LEAN.split())]
+        self.assertEqual(len(reach), 1, "one [[passage]] whose lean is the reach paragraph")
+        self.assertEqual(" ".join(reach[0]["builtin"].split()),
+                         " ".join(REACH_PARAGRAPH_BUILTIN.split()))
+
+    # ---- §S6 the regenerated definitions ---------------------------------------
+
+    def test_the_tracked_definitions_carry_the_role_tools_and_verifys_paragraph(self):
+        tracked = _rendered_definitions()
+        self.assertEqual(len(tracked), len(STACKS) * len(ROLES) + len(REPO_PROJECT_STACKS) * len(ROLES),
+                         "precondition: 20 generator/agents + 4 .pi/agents definitions")
+        for path in tracked:
+            text = _read(path)
+            role = _role_of(path.name)
+            tools = _rendered_tools(text)
+            _, body = _split_frontmatter(text)
+            with self.subTest(definition=str(path.relative_to(REPO_ROOT))):
+                self.assertEqual(role_tool_findings(role, tools), [])
+                if role == "verify":
+                    self.assertEqual(reach_paragraph_findings(body, lean=True), [])
 
 
 if __name__ == "__main__":
