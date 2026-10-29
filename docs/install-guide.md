@@ -18,6 +18,8 @@ If you already have Pi and the `modelb-axi` command (see [Prerequisites](#prereq
 pi install npm:@gotgenes/pi-subagents
 pi install npm:pi-lean-ctx
 pi install npm:@gotgenes/pi-permission-system
+pi install npm:@mjakl/pi-processes
+pi install npm:@ollama/pi-web-search
 modelb-axi --yes --harnesses pi --target-root ~ --stacks python
 ```
 
@@ -33,7 +35,7 @@ Install these in the order given; no step relies on one that comes after it.
 
 1. **Pi.** The `pi` command must be on your `PATH`. Install it by Pi's own instructions.
    Model B deploys into Pi's reach; it does not install Pi.
-2. **Pi's packages.** Model B's assets rely on five Pi packages. Install them with Pi's own
+2. **Pi's packages.** Model B's assets rely on seven Pi packages. Install them with Pi's own
    command (the installer can also offer to run these for you, see
    [Install offers](#install-offers)):
    - `dispatch` — required: `pi install npm:@gotgenes/pi-subagents`
@@ -41,6 +43,10 @@ Install these in the order given; no step relies on one that comes after it.
    - `permissions` — recommended: `pi install npm:@gotgenes/pi-permission-system`
    - `worktree` — recommended, Model B's own package: `pi install npm:@anthill-tec/modelb-pi`
    - `sandesh-pi` — required, Sandesh's own Pi extension, the wake path: `pi install npm:@anthill-tec/sandesh-pi`
+   - `processes` — recommended, third-party, supervises the orchestration skills' long runs:
+     `pi install npm:@mjakl/pi-processes`
+   - `web-search` — recommended, third-party, gives gap analysis and spec review the web; it
+     needs a local Ollama, running and signed in: `pi install npm:@ollama/pi-web-search`
 3. **`uv`** — required. It installs the installer itself:
    `curl -LsSf https://astral.sh/uv/install.sh | sh`
 4. **`git`** — required to create a project: every project `modelb-axi init` creates is a
@@ -123,13 +129,13 @@ Before it writes anything, the installer checks the machine and prints one line 
 typical run with `--stacks python` prints:
 
 ```text
-harness: dispatch=detected lean-ctx=detected permissions=detected worktree=detected sandesh-pi=detected
+harness: dispatch=detected lean-ctx=detected permissions=detected worktree=detected sandesh-pi=detected processes=detected web-search=detected
 deps: uv=detected sandesh=detected crucible=detected
 python3: /usr/bin/python3 (3.14.0)
 stack python: python3=detected xmlrunner=absent coverage=detected client=detected
 ```
 
-- `harness:` — the five Pi packages. A package counts as `detected` only when Pi would load
+- `harness:` — the seven Pi packages. A package counts as `detected` only when Pi would load
   it: it is listed in `packages` in `~/.pi/agent/settings.json` (not switched off with
   `"extensions": []`) and it is present under `~/.pi/agent/npm/node_modules/`. If you keep
   Pi's settings elsewhere, set `PI_CODING_AGENT_DIR` and the installer looks there instead.
@@ -192,6 +198,8 @@ provides it. By requirement:
 | `permissions` | the agent definitions' permission: frontmatter is ignored, so sub-agents run without their declared tool limits, and a project's permission policy has nothing to enforce it. |
 | `worktree` | the orchestration skills lose worktree isolation: a sub-agent cannot be started in its CR's worktree. |
 | `sandesh-pi` | the bootstrap and shutdown skills lose Sandesh's own Pi extension, the wake path: nothing wakes the session when a message arrives. Required — see [Missing capabilities](#missing-capabilities). |
+| `processes` | the orchestration skills' supervised long runs are lost: a long test or build run cannot be started and watched in the background. |
+| `web-search` | the research in gap analysis and spec review cannot search or fetch the web. |
 | `uv` | the modelb-axi installer cannot be installed or updated and the Sandesh install cannot run; the pre-flight stops at once. |
 | `sandesh` | the bootstrap and shutdown skills cannot send or watch for messages. Required — see [Missing capabilities](#missing-capabilities). |
 | `crucible` | the crucible skills and the crucible-report-* skill bundles have no client to report test runs through. |
@@ -273,8 +281,9 @@ missing package stay inert until you install it, and `install.toml` records that
 was used.
 
 A required package reported `unknown` does not stop the install; it is a warning, because the
-installer cannot prove the package is missing. `permissions` and `worktree` are recommended
-rather than required: when either is absent you get a warning, never a failure.
+installer cannot prove the package is missing. `permissions`, `worktree`, `processes` and
+`web-search` are recommended rather than required: when any of them is absent you get a
+warning, never a failure.
 <!-- install-guide:end missing-capabilities -->
 
 <!-- install-guide:begin install-outcomes -->
@@ -428,8 +437,9 @@ A project created with `modelb-axi init` depends on two things under `.pi/extens
 - its hooks, the `.ts` files that run Model B's checks at points in a Pi session;
 - its permission policy, `.pi/extensions/pi-permission-system/config.json`, read by the
   `pi-permission-system` package: anything not listed is asked about (`"*": "ask"`); the
-  workflow's tools and skills are allowed; the Sandesh extension's tools are allowed, except
-  archiving and unarchiving a project, which ask; reads of `~/.agents/*`, `~/.crucible/*`,
+  workflow's tools and skills are allowed; the process tool and the web tools are allowed too;
+  the Sandesh extension's tools are allowed, except archiving and unarchiving a project, which
+  ask; reads of `~/.agents/*`, `~/.crucible/*`,
   `~/.pi/agent/*` and `/tmp/*` are allowed, and so are reads of `~/.bun/install/*` when the
   `pi` on your `PATH` was installed with bun (Pi's own code); writes outside the project are
   allowed only under `/tmp/*`.

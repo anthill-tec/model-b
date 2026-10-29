@@ -92,6 +92,10 @@ OVERBROAD_PATTERNS = frozenset({"*", "**", "~", "~/*", "~/**", "/", "/*", "/**",
 
 _SHA256_TAIL = re.compile(r"([0-9a-f]{64})\s*$")
 
+#: CR-MDB-089 §S2 — the process tool and the read-only web tools, as the spec names them: the
+#: ``processes`` row's ``process`` and the ``web-search`` row's ``web_fetch`` and ``web_search``.
+PROCESS_AND_WEB_TOOLS = ("process", "web_fetch", "web_search")
+
 
 def expected_allow_tools() -> set[str]:
     """The §S3 allow-set, with the dispatch, lean-ctx and sandesh-pi names read
@@ -101,6 +105,9 @@ def expected_allow_tools() -> set[str]:
     # MIGRATED at CR-MDB-077 (§S2): the sandesh-pi row's tools join the allow-set,
     # less the ask-set (sandesh_archive, sandesh_unarchive), which stays at ask.
     tools |= set(_requirements.requirement("sandesh-pi")["tools"])
+    # MIGRATED at CR-MDB-089 (§S2): the process tool and the web tools join the allow-set,
+    # named as the spec names them (§S1 pins the rows that carry them).
+    tools |= set(PROCESS_AND_WEB_TOOLS)
     tools -= set(SANDESH_ASK_TOOLS)
     return tools | set(BUILTIN_FILE_TOOLS) | set(FIXED_WORKFLOW_TOOLS)
 
@@ -438,6 +445,8 @@ class SandeshToolsPolicyWithoutLeanCtxTest(_InitSandbox):
             set(BUILTIN_FILE_TOOLS) | set(FIXED_WORKFLOW_TOOLS)
             | set(_requirements.requirement("dispatch")["tools"])
             | set(SANDESH_ALLOWED_TOOLS) | {"bash"}
+            # MIGRATED at CR-MDB-089 (§S2): the process tool and the web tools, lean-ctx or not.
+            | set(PROCESS_AND_WEB_TOOLS)
         )
         self.assertEqual(
             sorted(_allowed_tools(self.permission)), sorted(expected),
@@ -578,6 +587,8 @@ class PermissionPolicyReadsRequirementsDataTest(unittest.TestCase):
             set(self._DISPATCH_SENTINEL) | set(self._LEAN_CTX_SENTINEL)
             | set(BUILTIN_FILE_TOOLS) | set(FIXED_WORKFLOW_TOOLS)
             | set(SANDESH_ALLOWED_TOOLS)
+            # MIGRATED at CR-MDB-089 (§S2): the unpatched processes and web-search rows' tools.
+            | set(PROCESS_AND_WEB_TOOLS)
         )
         self.assertEqual(
             sorted(allowed), sorted(expected),
@@ -600,6 +611,8 @@ class PermissionPolicyReadsRequirementsDataTest(unittest.TestCase):
             | set(_requirements.requirement("lean-ctx")["tools"])
             | set(BUILTIN_FILE_TOOLS) | set(FIXED_WORKFLOW_TOOLS)
             | {"sentinel_sandesh_tool_077", "sentinel_sandesh_second_077"}
+            # MIGRATED at CR-MDB-089 (§S2): the unpatched processes and web-search rows' tools.
+            | set(PROCESS_AND_WEB_TOOLS)
         )
         self.assertEqual(
             sorted(self._allowed(permission)), sorted(expected),
@@ -628,12 +641,83 @@ class PermissionPolicyReadsRequirementsDataTest(unittest.TestCase):
             {"sentinel_dispatch_tool_077", "sentinel_sandesh_tool_077"}
             | set(_requirements.requirement("lean-ctx")["tools"])
             | set(BUILTIN_FILE_TOOLS) | set(FIXED_WORKFLOW_TOOLS)
+            # MIGRATED at CR-MDB-089 (§S2): the unpatched processes and web-search rows' tools.
+            | set(PROCESS_AND_WEB_TOOLS)
         )
         self.assertEqual(
             sorted(self._allowed(permission)), sorted(expected),
             "CR-MDB-077 §S2: the dispatch sentinel stays allowed beside the sandesh-pi one",
         )
         self.assertEqual(permission.get("*"), "ask", "the fallback the ask-set resolves to")
+
+
+    def test_processes_and_web_search_sentinels_replace_their_allows(self):
+        """CR-MDB-089 §S2, data-derived: replacing either row's ``tools`` with sentinel names
+        changes the rendered allow-set to match, and the replaced names disappear."""
+        declared = [r["id"] for r in _requirements.REQUIREMENTS]
+        self.assertTrue({"processes", "web-search"} <= set(declared),
+                        f"CR-MDB-089 §S1: both rows are declared; ids={declared!r}")
+        cases = {
+            "processes": ({"processes": ("sentinel_process_tool_089",)},
+                          {"sentinel_process_tool_089", "web_fetch", "web_search"}, {"process"}),
+            "web-search": ({"web-search": ("sentinel_web_tool_089", "sentinel_web_second_089")},
+                           {"process", "sentinel_web_tool_089", "sentinel_web_second_089"},
+                           {"web_fetch", "web_search"}),
+        }
+        for label, (rows, expected_new, replaced) in cases.items():
+            with self.subTest(row=label):
+                shutil.rmtree(self.target, ignore_errors=True)
+                self.target.mkdir()
+                permission = self._init_with(rows)
+                expected = (
+                    set(_requirements.requirement("dispatch")["tools"])
+                    | set(_requirements.requirement("lean-ctx")["tools"])
+                    | set(BUILTIN_FILE_TOOLS) | set(FIXED_WORKFLOW_TOOLS)
+                    | set(SANDESH_ALLOWED_TOOLS) | expected_new
+                )
+                self.assertEqual(
+                    sorted(self._allowed(permission)), sorted(expected),
+                    f"CR-MDB-089 §S2: the {label} allows are read from REQUIREMENTS at render time")
+                self.assertEqual(sorted(replaced & set(permission)), [],
+                                 "CR-MDB-089 §S2: the replaced names are gone")
+
+
+class ProcessAndWebToolsPolicyTest(_InitSandbox):
+    """CR-MDB-089 §S2, the rendered policy: a project ``init`` renders for Pi allows
+    ``process``, ``web_fetch`` and ``web_search`` by exact name, with lean-ctx present; ``bash``
+    stays outside the allow-set, and the ask-set is unchanged."""
+
+    def setUp(self):
+        super().setUp()
+        self.permission = _parsed_policy(self, self.render()[0])["permission"]
+
+    def test_the_process_and_web_tools_are_allowed_by_exact_name(self):
+        self.assertEqual({t: self.permission.get(t) for t in PROCESS_AND_WEB_TOOLS},
+                         dict.fromkeys(PROCESS_AND_WEB_TOOLS, "allow"),
+                         "CR-MDB-089 §S2: the three tools are allowed with lean-ctx present")
+        self.assertNotIn("bash", self.permission,
+                         "CR-MDB-089 §S2: bash stays outside the allow-set while lean-ctx is present")
+        for tool in SANDESH_ASK_TOOLS:
+            with self.subTest(ask=tool):
+                self.assertNotIn(tool, self.permission, "the ask-set is unchanged")
+        self.assertEqual(self.permission.get("*"), "ask")
+
+
+class ProcessAndWebToolsPolicyWithoutLeanCtxTest(_InitSandbox):
+    """CR-MDB-089 §S2, the rendered policy with lean-ctx recorded ``absent``: the three tools
+    are allowed beside ``bash``, as today's lean-ctx-absent render allows ``bash``."""
+
+    lean_ctx = "absent"
+
+    def setUp(self):
+        super().setUp()
+        self.permission = _parsed_policy(self, self.render("no-lean-ctx")[0])["permission"]
+
+    def test_the_process_and_web_tools_are_allowed_alongside_bash(self):
+        self.assertEqual({t: self.permission.get(t) for t in PROCESS_AND_WEB_TOOLS},
+                         dict.fromkeys(PROCESS_AND_WEB_TOOLS, "allow"),
+                         "CR-MDB-089 §S2: the three tools are allowed with lean-ctx absent")
+        self.assertEqual(self.permission.get("bash"), "allow", "lean-ctx absent allows bash")
 
 
 # ---------------------------------------------------------------------------

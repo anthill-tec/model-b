@@ -1,6 +1,6 @@
 # CR-MDB-089 — The generated permission policy allows the process tool and the read-only web tools
 
-**Status:** PENDING — spec approved 2026-10-29 (gap analysis and spec pre-review 2026-10-29).
+**Status:** COMPLETED (filed, gap analysis and pre-review 2026-10-29).
 **Type:** fix (`modelb_axi`: the requirements table, the per-project policy; the install guide)
 **Priority:** P1 — release 1.0.0, wave 2, ahead of CR-MDB-088.
 **Depends on:** none (board-authoritative: read `queue`)

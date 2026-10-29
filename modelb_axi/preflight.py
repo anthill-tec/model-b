@@ -6,7 +6,7 @@ Probes, in order, against the CURRENT environment (``shutil.which`` and
 
 1. **Harness capabilities** (tier 1, :mod:`modelb_axi.capabilities`) —
    reported as ``harness: dispatch=<v> lean-ctx=<v> permissions=<v>
-   worktree=<v> sandesh-pi=<v>``.
+   worktree=<v> sandesh-pi=<v> processes=<v> web-search=<v>``.
 2. ``uv`` — the bootstrap dependency everything else rides on. Absent is
    the pre-flight FAILURE mode: non-zero exit with bootstrap
    instructions.

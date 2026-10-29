@@ -299,6 +299,60 @@ class AgentsVerbPlacesThePolicyTest(_AgentsVerbPolicyCase):
         self.assert_listed_once(axi, "unchanged")
 
 
+#: CR-MDB-089 §S2 — the process tool and the read-only web tools the policy now allows.
+PROCESS_AND_WEB_TOOLS = ("process", "web_fetch", "web_search")
+
+
+class AgentsVerbAllowsTheProcessAndWebToolsTest(_AgentsVerbPolicyCase):
+    """CR-MDB-089 §S3, the wired path: ``python3 -m modelb_axi agents`` in a seeded sandbox
+    project rewrites an intact policy rendered without the three tools to the new render, and
+    skips a hand-modified one unless ``--force-managed``."""
+
+    def policy_without_the_three(self) -> str:
+        """The current render less ``process``, ``web_fetch`` and ``web_search``, its marker
+        re-computed (``agents.sha256_text``) so it is intact."""
+        _first, _, rest = self.expected_policy(True).partition("\n")
+        data = json.loads(rest)
+        for tool in PROCESS_AND_WEB_TOOLS:
+            data["permission"].pop(tool, None)
+        body = json.dumps(data, indent=2) + "\n"
+        older = f"{permission_policy.MARKER_PREFIX}{agents.sha256_text(body)}\n{body}"
+        self.assertEqual(permission_policy.ownership_state(older), agents.OWNED_INTACT,
+                         "fixture precondition: an intact marker")
+        self.assertEqual([t for t in PROCESS_AND_WEB_TOOLS if t in _permission(older)], [],
+                         "fixture precondition: the seed allows none of the three")
+        return older
+
+    def test_an_intact_policy_without_the_three_tools_is_rewritten_to_allow_them(self):
+        self.seed(POLICY_REL, self.policy_without_the_three())
+        axi, _ = self.agents_ok()
+        text = self.policy.read_text(encoding="utf-8")
+        self.assertEqual({t: _permission(text).get(t) for t in PROCESS_AND_WEB_TOOLS},
+                         dict.fromkeys(PROCESS_AND_WEB_TOOLS, "allow"),
+                         "CR-MDB-089 §S3: the re-rendered policy allows the three tools")
+        self.assertEqual(text, self.expected_policy(True), "it is today's render")
+        self.assert_listed_once(axi, "written")
+
+    def test_a_hand_modified_policy_without_the_three_is_skipped_until_forced(self):
+        first, _, rest = self.policy_without_the_three().partition("\n")
+        data = json.loads(rest)
+        data["permission"]["bash"] = "allow"
+        edited = f"{first}\n{json.dumps(data, indent=2)}\n"
+        self.assertEqual(permission_policy.ownership_state(edited), agents.OWNED_HAND_MODIFIED,
+                         "fixture precondition: a hand-modified policy")
+        self.seed(POLICY_REL, edited)
+        axi, _ = self.agents_ok()
+        self.assertEqual(self.policy.read_bytes(), edited.encode("utf-8"),
+                         "CR-MDB-089 §S3: a hand-modified policy is skipped, byte-identical")
+        self.assert_listed_once(axi, "skipped")
+        forced, _ = self.agents_ok("--force-managed")
+        text = self.policy.read_text(encoding="utf-8")
+        self.assertEqual({t: _permission(text).get(t) for t in PROCESS_AND_WEB_TOOLS},
+                         dict.fromkeys(PROCESS_AND_WEB_TOOLS, "allow"),
+                         "CR-MDB-089 §S3: --force-managed rewrites it to allow the three tools")
+        self.assert_listed_once(forced, "written")
+
+
 # ---------------------------------------------------------------------------
 # §S3 — failure paths
 # ---------------------------------------------------------------------------

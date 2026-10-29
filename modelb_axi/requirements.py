@@ -130,6 +130,32 @@ REQUIREMENTS: tuple[dict, ...] = (
         ),
     },
     {
+        # CR-MDB-089 §S1: the process tool for supervised long runs — a
+        # third-party package, so ``--yes`` never installs it.
+        "id": "processes",
+        "tier": 1,
+        "provider": "@mjakl/pi-processes",
+        "policy": "recommended",
+        "scope": "always",
+        "probe": "pi-package",
+        "asset_families": ("orchestration skills' supervised long runs",),
+        "remediation": "pi install npm:@mjakl/pi-processes",
+        "tools": ("process",),
+    },
+    {
+        # CR-MDB-089 §S1: the read-only web tools — a third-party package;
+        # its Ollama precondition is stated in the install guide (§S4).
+        "id": "web-search",
+        "tier": 1,
+        "provider": "@ollama/pi-web-search",
+        "policy": "recommended",
+        "scope": "always",
+        "probe": "pi-package",
+        "asset_families": ("research in gap analysis and spec review",),
+        "remediation": "pi install npm:@ollama/pi-web-search",
+        "tools": ("web_fetch", "web_search"),
+    },
+    {
         "id": "uv",
         "tier": 2,
         "provider": "uv",
