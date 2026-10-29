@@ -288,9 +288,9 @@ Ask: a verbatim class for declared test clients. Status: to file.
 ### (i) The CLI shell path's ledger write
 The CLI shell path rewrites the whole ledger file (`ContextLedger::load`/`save` in
 `record_shell_command_named`, not the locked merge of `persist_read`), and consolidates the
-machine's latest session's project (`SessionState::load_latest`), a session save that runs even
-when the ledger write is skipped (PRD D5, ruled 2026-10-29). Ask: merge under the lock.
-Status: to file.
+machine's latest session's project (`SessionState::load_latest`) through `maybe_consolidate`,
+which runs only when the call carries tokens (`original_tokens > 0`), while the session save
+runs on every call (PRD D5, ruled 2026-10-29). Ask: merge under the lock. Status: to file.
 
 ### (k) The status command's profile line
 `/lean-ctx` reports the extension's `toolProfile`, not the served surface (the extension's status
