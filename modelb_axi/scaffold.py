@@ -981,6 +981,15 @@ def _render_lean_ctx_section(category: str) -> str:
         "and `remove` archives each fact still below the store's 0.3 archive "
         "threshold (a restore runs no lifecycle), and `action=feedback` does not "
         "lift a fact over that threshold.\n"
+        # CR-MDB-091 §S4: the project config — no `lean-ctx trust` needed,
+        # lean-ctx's decision and not Pi's `/trust`, Model B's to re-render.
+        "- The repository root's `.lean-ctx.toml` sets the knowledge store's "
+        "fact cap and turns automatic consolidation off. It needs no "
+        "`lean-ctx trust`, and it is Model B's: `modelb-axi agents` re-renders "
+        "it. A security-sensitive key added to it by hand applies only after "
+        "`lean-ctx trust`, which is lean-ctx's own decision and not Pi's "
+        "`/trust`. A hand-edited file is left alone by `modelb-axi agents` "
+        "unless `--force-managed`, which replaces it and drops the added keys.\n"
     )
 
 
