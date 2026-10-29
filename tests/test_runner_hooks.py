@@ -62,6 +62,13 @@ What the module pins, for all four runner hooks — ``block-direct-python-test``
   ``npx``) are blocked by the bun hook alone, in a project holding any one bun marker, and
   allowed outside one; the guard's ``PACKAGE_MANAGER_FORMS``, ``FILTER_FORMS``,
   ``VITEST_FORMS`` and ``BUN_NON_RUNNERS`` join the parity corpus.
+- **The marker walk (CR-MDB-066 §S4, AC5):** each hook, loaded in process
+  (``tests._helpers.load_hook_module``), lists each directory its ``_in_project`` looks in at
+  most once with ``os.scandir`` and never calls ``pathlib.Path.glob`` (a recorder, proved both
+  ways on a synthetic walk); a marker counts only when ``os.path.isfile`` accepts it. Through
+  the real scripts: an execute-only directory still counts a literal marker it holds and is not
+  descended; a read-only one hides the marker it holds; a marker-named symlink loop or
+  directory is no marker. The verdicts are today's.
 
 The block REASON (§S4) is pinned in ``tests/test_client_path_anchoring.py``, beside the reason
 checks it extends. Each class is a per-hook binding of a mixin, so one more runner hook is one
@@ -71,6 +78,8 @@ Stdlib only.
 """
 
 import ast
+import importlib.machinery
+import importlib.util
 import json
 import os
 import shutil
@@ -78,11 +87,14 @@ import sys
 import tempfile
 import time
 import unittest
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import TYPE_CHECKING
+from unittest import mock
 
-from tests._helpers import HOOK_SCRIPTS_DIR, build_tree, run_hook
+from tests import _helpers
+from tests._helpers import HOOK_SCRIPTS_DIR, build_tree, load_hook_module, run_hook
 from tests.test_raw_runner_guard import (
     ARGUMENT_MENTIONS,
     ATTACHED_M_FORMS,
@@ -846,6 +858,328 @@ class MvnHookMarkerRuleTest(_MarkerRule, _NotASandeshStack, _RunnerHookCase):
                 root = build_tree(self.tmp / marker, ["app/" + marker], git="dir")
                 self._check("block", root, ".", f"(app/{marker} below the git root)")
                 self._check("block", root, "app/src", f"(app/{marker} in a parent)")
+
+
+# ----------------------------------------------------------------- §S4 walk ----------
+
+class _WalkRecorder:
+    """CR-MDB-066 AC5 — while active, records every directory ``os.scandir`` lists (its path
+    after ``os.path.realpath``, so a listing reached through a symlink counts against its target)
+    and every ``pathlib.Path.glob`` call. Each call passes through to the real function and the
+    recorder raises nothing of its own: ``_in_project`` reads an ``OSError`` or ``ValueError`` as
+    "not a project", so a recorder that raised would hide the walk it watches."""
+
+    def __init__(self):
+        self.listed = []
+        self.globbed = []
+        self._patches = ()
+
+    def __enter__(self):
+        real_scandir, real_glob = os.scandir, Path.glob
+
+        def scandir(path="."):
+            if not isinstance(path, int):  # an open directory fd names no path
+                self.listed.append(os.path.realpath(path))
+            return real_scandir(path)
+
+        def glob(path, pattern, *args, **kwargs):
+            self.globbed.append(f"{path}.glob({pattern!r})")
+            return real_glob(path, pattern, *args, **kwargs)
+
+        self._patches = (mock.patch.object(os, "scandir", scandir),
+                         mock.patch.object(Path, "glob", glob))
+        for patch in self._patches:
+            patch.start()
+        return self
+
+    def __exit__(self, *exc):
+        for patch in reversed(self._patches):
+            patch.stop()
+        return False
+
+
+def _walk_findings(recorder, once, never):
+    """Each way the walk ``recorder`` watched breaks CR-MDB-066 §S4.1 (AC5), one finding per
+    point: a path of ``once`` listed other than exactly once, a path of ``never`` listed at all,
+    any other path listed, and each ``Path.glob`` call. Paths are ``os.path.realpath`` strings;
+    ``[]`` when the walk listed exactly ``once``, each one time, and globbed nothing."""
+    counts = Counter(recorder.listed)
+    findings = [f"{path}: listed {counts[path]} times, want once"
+                for path in once if counts[path] != 1]
+    findings += [f"{path}: listed {counts[path]} times, want never"
+                 for path in never if counts[path]]
+    findings += [f"{path}: listed {counts[path]} times, outside the walk"
+                 for path in sorted(counts) if path not in once and path not in never]
+    findings += [f"Path.glob called: {call}" for call in recorder.globbed]
+    return findings
+
+
+#: CR-MDB-066 AC5's tree: a ``.git`` directory, no marker, the directories below and a directory
+#: symlink ``link -> a`` (made by the test).
+WALK_TREE_DIRS = ("a/b/c/d/", "e/f/", "node_modules/x/", ".hidden/y/")
+#: The directories a run from the root or from ``e/f`` lists, each exactly once (``a/b/c`` sits 3
+#: levels below the git root, so its listing serves its markers; its children are never listed).
+WALK_LISTED_ONCE = (".", "a", "a/b", "a/b/c", "e", "e/f")
+#: The directories no run lists: 4 levels down, skipped, or below a skipped one. ``link`` is
+#: never listed either: listed, it would be recorded as ``a`` (its ``realpath``), twice.
+WALK_NEVER_LISTED = ("a/b/c/d", "node_modules", "node_modules/x", ".hidden", ".hidden/y")
+
+
+class MarkerWalkRecorderTest(unittest.TestCase):
+    """CR-MDB-066 AC5 — the walk recorder and ``_walk_findings`` proved both ways on a synthetic
+    walk before they judge a hook: a clean walk yields nothing; a second listing of one directory
+    (directly or through a directory symlink) and a ``Path.glob`` call are each reported."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="modelb-walk-recorder-", dir="/tmp"))
+        self.root = build_tree(self.tmp / "tree", ("a/", "b/", "a/notes.txt"))
+        (self.root / "link").symlink_to(self.root / "a", target_is_directory=True)
+        self.once = [os.path.realpath(self.root / rel) for rel in (".", "a", "b")]
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _walk(self, extra=()):
+        """List the root, ``a`` and ``b`` once each, then each path of ``extra``."""
+        for rel in (".", "a", "b", *extra):
+            with os.scandir(self.root / rel) as entries:
+                list(entries)
+
+    def test_a_walk_listing_each_directory_once_and_globbing_nothing_yields_no_finding(self):
+        with _WalkRecorder() as recorder:
+            self._walk()
+        self.assertEqual(len(recorder.listed), 3, "precondition: the recorder saw each listing")
+        self.assertEqual(_walk_findings(recorder, self.once, []), [])
+
+    def test_a_second_listing_of_one_directory_is_reported(self):
+        with _WalkRecorder() as recorder:
+            self._walk(extra=("b",))
+        self.assertEqual(_walk_findings(recorder, self.once, []),
+                         [f"{self.once[2]}: listed 2 times, want once"])
+
+    def test_a_listing_through_a_directory_symlink_counts_against_its_target(self):
+        with _WalkRecorder() as recorder:
+            self._walk(extra=("link",))
+        self.assertEqual(_walk_findings(recorder, self.once, []),
+                         [f"{self.once[1]}: listed 2 times, want once"])
+
+    def test_a_listing_of_a_never_listed_directory_is_reported(self):
+        never = [os.path.realpath(self.root / "b")]
+        with _WalkRecorder() as recorder:
+            self._walk()
+        findings = _walk_findings(recorder, self.once[:2], never)
+        self.assertEqual(findings, [f"{never[0]}: listed 1 times, want never"])
+
+    def test_a_glob_call_is_reported_and_still_answers(self):
+        with _WalkRecorder() as recorder:
+            matches = sorted(p.name for p in (self.root / "a").glob("*.txt"))
+        self.assertEqual(matches, ["notes.txt"], "the recorder passes the call through")
+        globs = [f for f in _walk_findings(recorder, [], []) if f.startswith("Path.glob")]
+        self.assertEqual(globs, [f"Path.glob called: {self.root / 'a'}.glob('*.txt')"])
+
+    def test_the_recorder_restores_scandir_and_glob_on_exit(self):
+        real_scandir, real_glob = os.scandir, Path.glob
+        with _WalkRecorder():
+            self.assertIsNot(os.scandir, real_scandir, "precondition: scandir is wrapped")
+        self.assertIs(os.scandir, real_scandir)
+        self.assertIs(Path.glob, real_glob)
+
+
+class HookModuleLoaderTest(unittest.TestCase):
+    """CR-MDB-066 AC5 — ``tests._helpers.load_hook_module`` loads a hook in process with
+    bytecode writing off for the load and restored after it. Passes on arrival (RED writes the
+    loader); proved both ways in a temp directory: a plain ``SourceFileLoader`` load there writes
+    a ``__pycache__``, the helper's writes none."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="modelb-hook-loader-", dir="/tmp"))
+        self.saved = sys.dont_write_bytecode
+
+    def tearDown(self):
+        sys.dont_write_bytecode = self.saved
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _copy(self, name, directory):
+        directory.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(HOOK_SCRIPTS_DIR / name, directory / name)
+        return directory
+
+    def test_a_plain_source_file_load_writes_bytecode_beside_the_hook(self):
+        # The bite: what the helper must prevent happens to a load that leaves the flag on.
+        directory = self._copy("block-direct-cargo-test", self.tmp / "plain")
+        sys.dont_write_bytecode = False
+        loader = importlib.machinery.SourceFileLoader("plain_hook",
+                                                      str(directory / "block-direct-cargo-test"))
+        spec = importlib.util.spec_from_loader(loader.name, loader)
+        self.assertIsNotNone(spec, "precondition: a module spec for the copy")
+        assert spec is not None  # narrows the type for the checker
+        module = importlib.util.module_from_spec(spec)
+        loader.exec_module(module)
+        self.assertTrue((directory / "__pycache__").is_dir())
+
+    def test_the_helper_writes_no_bytecode_and_restores_the_flag(self):
+        for spec in RUNNER_HOOKS.values():
+            directory = self._copy(spec["script"], self.tmp / "helper")
+            for flag in (False, True):
+                with self.subTest(hook=spec["script"], dont_write_bytecode=flag):
+                    sys.dont_write_bytecode = flag
+                    with mock.patch.object(_helpers, "HOOK_SCRIPTS_DIR", directory):
+                        module = load_hook_module(spec["script"])
+                    restored = sys.dont_write_bytecode
+                    sys.dont_write_bytecode = self.saved
+                    self.assertIs(restored, flag)
+                    self.assertNotEqual(module.__name__, "__main__")
+                    self.assertTrue(callable(module._in_project))
+                    self.assertFalse((directory / "__pycache__").exists(),
+                                     "the helper wrote bytecode beside the hook")
+
+    def test_each_load_is_a_fresh_module_and_none_lands_in_hooks_src(self):
+        for spec in RUNNER_HOOKS.values():
+            with self.subTest(hook=spec["script"]):
+                first = load_hook_module(spec["script"])
+                self.assertIsNot(load_hook_module(spec["script"]), first)
+                self.assertNotIn(first.__name__, sys.modules)
+        self.assertFalse((HOOK_SCRIPTS_DIR / "__pycache__").exists(),
+                         "a __pycache__ landed under hooks-src/scripts/")
+
+
+class _MarkerWalk(_MixinBase):
+    """CR-MDB-066 §S4 (AC5): one listing per directory, a by-name fallback for a directory that
+    can be searched but not listed, a marker only when ``os.path.isfile`` accepts it."""
+
+    def chmod(self, path, mode):
+        """chmod ``path`` to ``mode`` (restored to 0o755 in tearDown)."""
+        self.locked.append(path)
+        path.chmod(mode)
+
+    def literal_markers(self):
+        """This stack's marker names, ``requirements*.txt`` (a pattern) aside."""
+        return tuple(m for m in self.spec["markers"] if not m.startswith("requirements"))
+
+    def test_the_walk_lists_each_directory_once_and_never_globs(self):
+        # Fails today: the walk lists no directory 3 levels down (``a/b/c``'s markers are read
+        # by name); python's ``_has_marker`` also globs ``requirements*.txt`` in every directory.
+        root = build_tree(self.tmp / "walk", WALK_TREE_DIRS, git="dir")
+        (root / "link").symlink_to(root / "a", target_is_directory=True)
+        once = [os.path.realpath(root / rel) for rel in WALK_LISTED_ONCE]
+        never = [os.path.realpath(root / rel) for rel in WALK_NEVER_LISTED]
+        for cwd in (root, root / "e" / "f"):
+            with self.subTest(cwd=str(cwd.relative_to(root))):
+                module = load_hook_module(self.spec["script"])  # fresh: no state carried over
+                with _WalkRecorder() as recorder:
+                    in_project = module._in_project(str(cwd))
+                self.assertIs(in_project, False, "precondition: the tree holds no marker")
+                findings = _walk_findings(recorder, once, never)
+                self.assertEqual(findings, [], f"CR-MDB-066 §S4.1: {self.spec['script']} "
+                                 "lists a directory other than once, or globs:\n  "
+                                 + "\n  ".join(findings))
+
+    def test_an_execute_only_directory_still_counts_a_literal_marker_it_holds(self):
+        # Passes on arrival (today reads markers by name); fails against a §S4 that drops a
+        # directory it cannot list instead of checking it by name (§S4.2).
+        for marker in self.literal_markers():
+            with self.subTest(marker=marker):
+                root = build_tree(self.tmp / f"xo-{marker}", [f"xo/{marker}", "README.md"],
+                                  git="dir")
+                self.chmod(root / "xo", 0o111)
+                self.assertVerdict("block", self.run_cmd, root,
+                                   f"(xo/{marker} in an execute-only directory below the root)")
+                self.assertVerdict("block", self.run_cmd, root / "xo",
+                                   f"({marker} in the execute-only cwd)")
+
+    def test_an_execute_only_directory_is_not_descended(self):
+        # Passes on arrival; fails against a §S4 that walks on below a directory it cannot list.
+        root = build_tree(self.tmp / "xo-below", [f"xo/inner/{self.marker}", "README.md"],
+                          git="dir")
+        self.chmod(root / "xo", 0o111)
+        self.assertVerdict("allow", self.run_cmd, root,
+                           "(the only marker is below an execute-only directory)")
+
+    def test_a_read_only_directory_below_the_root_hides_the_marker_it_holds(self):
+        # Passes on arrival; fails against a §S4 that asks ``DirEntry.is_file()`` (answered
+        # from ``d_type``, so it accepts the marker the precondition below shows) or none.
+        for marker in self.spec["markers"]:
+            with self.subTest(marker=marker):
+                root = build_tree(self.tmp / f"ro-{marker}", [f"ro/{marker}", "README.md"],
+                                  git="dir")
+                self.chmod(root / "ro", 0o444)
+                with os.scandir(root / "ro") as entries:
+                    listed = {e.name: e.is_file() for e in entries}
+                self.assertEqual(listed, {marker: True},
+                                 "precondition: the read-only directory lists the marker and "
+                                 "DirEntry.is_file() accepts it")
+                self.assertFalse(os.path.isfile(root / "ro" / marker),
+                                 "precondition: os.path.isfile cannot stat inside it")
+                self.assertVerdict("allow", self.run_cmd, root,
+                                   f"(ro/{marker} in a read-only directory below the root)")
+
+    def test_a_marker_named_symlink_loop_is_no_marker_and_does_not_stop_the_walk(self):
+        # Passes on arrival; fails against a §S4 that asks ``DirEntry.is_file()`` (it raises on
+        # the loop, and the raise reads as "not a project") or that counts a name alone.
+        root = build_tree(self.tmp / "loop", [f"a/{self.marker}"], git="dir")
+        (root / self.marker).symlink_to(self.marker)
+        self.assertVerdict("block", self.run_cmd, root,
+                           f"(a {self.marker} symlink loop at the root, a/{self.marker} below)")
+        alone = build_tree(self.tmp / "loop-alone", ["README.md"], git="dir")
+        (alone / self.marker).symlink_to(self.marker)
+        self.assertVerdict("allow", self.run_cmd, alone,
+                           f"(the only {self.marker} is a symlink loop)")
+
+    def test_a_directory_named_like_a_marker_is_no_marker(self):
+        # Passes on arrival; fails against a §S4 that counts a listed name without
+        # ``os.path.isfile``.
+        for marker in self.spec["markers"]:
+            with self.subTest(marker=marker):
+                root = build_tree(self.tmp / f"dir-{marker}", [f"{marker}/", f"a/{marker}/"],
+                                  git="dir")
+                self.assertVerdict("allow", self.run_cmd, root,
+                                   f"(only directories named {marker})")
+
+    def test_the_hook_docstring_states_where_it_applies_citing_section_s4(self):
+        # CR-MDB-066 §S7.2 (AC9): the "Where it applies" paragraph states §S4's walk.
+        source = (HOOK_SCRIPTS_DIR / self.spec["script"]).read_text(encoding="utf-8")
+        doc = ast.get_docstring(ast.parse(source)) or ""
+        paragraphs = [p for p in doc.split("\n\n") if p.startswith("Where it applies")]
+        self.assertEqual(len(paragraphs), 1, "precondition: one 'Where it applies' paragraph")
+        self.assertIn("CR-MDB-066 §S4", paragraphs[0],
+                      f"CR-MDB-066 §S7.2: {self.spec['script']}'s 'Where it applies'")
+
+
+class PythonHookMarkerWalkTest(_MarkerWalk, _RunnerHookCase):
+    HOOK = "python"
+
+    def test_an_execute_only_directory_hides_a_requirements_file_it_holds(self):
+        # Passes on arrival (a glob cannot list it); fails against a §S4 whose by-name
+        # fallback guesses ``requirements*.txt`` names (§S4.2).
+        root = build_tree(self.tmp / "xo-req", ["xo/requirements.txt", "README.md"], git="dir")
+        self.chmod(root / "xo", 0o111)
+        self.assertVerdict("allow", self.run_cmd, root, "(xo/requirements.txt, xo execute-only)")
+        self.assertVerdict("allow", self.run_cmd, root / "xo",
+                           "(requirements.txt in the execute-only cwd)")
+
+    def test_a_requirements_file_counts_at_every_depth_the_walk_looks(self):
+        # Passes on arrival; fails against a §S4 that matches ``requirements*.txt`` in some
+        # listings only (the parents', or the walk's below the root).
+        cases = (("requirements_test.txt", "e/f", "block", "at the root, cwd e/f"),
+                 ("e/requirements-dev.txt", "e/f", "block", "in the cwd's parent"),
+                 ("a/b/c/requirements.txt", ".", "block", "3 levels below the root"),
+                 ("a/b/c/d/requirements.txt", ".", "allow", "4 levels below the root"))
+        for index, (rel, cwd_rel, expected, why) in enumerate(cases):
+            with self.subTest(marker=rel):
+                root = build_tree(self.tmp / f"req-{index}", [rel, "e/f/"], git="dir")
+                self.assertVerdict(expected, self.run_cmd, root / cwd_rel, f"({rel}, {why})")
+
+
+class BunHookMarkerWalkTest(_MarkerWalk, _RunnerHookCase):
+    HOOK = "bun"
+
+
+class CargoHookMarkerWalkTest(_MarkerWalk, _RunnerHookCase):
+    HOOK = "cargo"
+
+
+class MvnHookMarkerWalkTest(_MarkerWalk, _RunnerHookCase):
+    HOOK = "mvn"
 
 
 # ----------------------------------------------------------------- fail-open --------
