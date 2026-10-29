@@ -293,8 +293,9 @@ when the ledger write is skipped (PRD D5, ruled 2026-10-29). Ask: merge under th
 Status: to file.
 
 ### (k) The status command's profile line
-`/lean-ctx` reports the extension's `toolProfile`, not the served surface (PRD D5, ruled
-2026-10-29). Ask: report the bridge's tool list. Status: to file.
+`/lean-ctx` reports the extension's `toolProfile`, not the served surface (the extension's status
+handler, `extensions/index.ts`; PRD D5, ruled 2026-10-29). Ask: report the bridge's tool list.
+Status: to file.
 
 ### (l) The read-mode description
 `pi-lean-ctx`'s `readModeSchema` describes `full` as "≤turn budget; raw=true beyond", but its
