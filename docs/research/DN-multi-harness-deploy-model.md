@@ -946,8 +946,8 @@ Implemented by CR-MDB-062.
 **AMENDED 2026-10-30 (user rulings at CR-MDB-066's gap analysis):**
 - **More command positions,** in the guard and all four runner hooks alike: past `!`, `{`, `if`, `then`,
   `else`, `elif`, `while`, `until` and `do`; past `command` (with `-p`) and `time -p`; an unquoted backquote
-  opens a command position (a quoted argument is still never one); an arithmetic `$((…))` is skipped before
-  the heredoc check.
+  opens a command position (a quoted argument is still never one); an arithmetic `$((…))` or bare `((…))` is
+  skipped before the heredoc check.
 - **The package managers' test script** is a runner in a bun project: npm `test`/`tst`/`t` and
   `run`/`run-script test`, pnpm `test`/`run test`, yarn `test`/`run test`, each `run` form also with
   `test:<name>`. Only `bun run --filter <pkg>` (any number of filters) is caught as the workspace form.
