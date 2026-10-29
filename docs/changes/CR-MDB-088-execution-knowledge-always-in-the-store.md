@@ -1,6 +1,6 @@
 # CR-MDB-088 — Execution knowledge always lives in the knowledge store, reconciled automatically
 
-**Status:** PENDING — spec drafted 2026-10-29 from the gap analysis and the user's rulings (PRD D5, 2026-10-29); the spec pre-review folded in; awaiting approval.
+**Status:** COMPLETED (filed 2026-10-28, gap analysis and pre-review 2026-10-29).
 **Type:** feature (project schema, scaffold, skills, contract)
 **Priority:** P1 — release 1.0.0, wave 2, after CR-MDB-060.
 **Depends on:** CR-MDB-060 (COMPLETED; both edit bootstrap and shutdown). The board is authoritative: read
