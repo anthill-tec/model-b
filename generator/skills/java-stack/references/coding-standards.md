@@ -202,10 +202,10 @@ private String fieldName;
 ### Occasional Clean Compile
 Run `./mvnw clean compile` periodically during development - Maven compiler caching can become stale
 
-## Never Commit Failed State
+## Never Commit a Broken Build
 
 ### TDD Discipline
-**NEVER commit in RED state:**
+**A RED commit holds failing tests only; every other commit is on a clean build with its tests passing.** Before every commit but RED's test-only commit:
 1. ✅ Run test → verify GREEN
 2. ✅ Remove unused imports
 3. ✅ Run test AGAIN → verify still GREEN

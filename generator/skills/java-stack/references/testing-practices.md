@@ -30,7 +30,7 @@
 **NEVER:**
 - Refactor implementation without reading tests first
 - Change return types without checking test expectations
-- Commit in RED state
+- Commit with a failing test
 
 ### Layer Migration Order (bottom-up)
 When migrating or refactoring across layers, go **bottom-up — ONE class at a time, test after each, GREEN before moving on:**
@@ -905,4 +905,4 @@ kill -9 $(lsof -t -i :8082)
 7. **Problem isolation:** Run existing tests FIRST to narrow debugging scope
 8. **Both suites:** Write unit AND integration tests for comprehensive coverage
 9. **Clean imports:** Remove unused imports before final commit
-10. **Never commit RED:** Always achieve GREEN before committing
+10. **Commit only on a clean build:** A RED commit holds failing tests only; every other commit is on a clean build with its tests passing

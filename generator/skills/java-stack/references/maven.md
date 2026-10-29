@@ -911,7 +911,7 @@ jobs:
 
 **BEFORE committing:**
 1. "Did I run clean compile?" → Required before every commit
-2. "Are tests GREEN?" → Never commit RED state
+2. "Are tests GREEN?" → Required before every commit but RED's test-only commit
 3. "Any unused imports?" → Clean them up
 
 **BEFORE releasing:**
