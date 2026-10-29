@@ -49,6 +49,10 @@ PI_TOOL_NAMES = {
     "ctx_edit": "ctx_edit",
     "ctx_search": "ctx_search",
     "ctx_tree": "ctx_tree",
+    # CR-MDB-092 §S4.1: the reach tools, each mapped to itself.
+    "ctx_callgraph": "ctx_callgraph",
+    "ctx_graph": "ctx_graph",
+    "ctx_explore": "ctx_explore",
     # CR-MDB-045 §S8: Pi's built-in shell, which takes ``ctx_shell``'s
     # place in the built-in form.
     "bash": "bash",
