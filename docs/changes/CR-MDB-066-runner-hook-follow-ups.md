@@ -200,7 +200,7 @@ exception).
    - `_SINGLE_LINE_CORPORA` gains `PACKAGE_MANAGER_FORMS`, `FILTER_FORMS` and `VITEST_FORMS`;
      `_PLACED_CORPORA` gains `GRAMMAR_FORMS`; `_parity_corpus` gains every new corpus (`labelled` or
      `plain`); `NEVER_BLOCKED["bun"]` gains `BUN_NON_RUNNERS`;
-   - `BLOCKED_POSITIONS` gains `"{ {run}; }"`, `"if {run}; then :; fi"`, `"if true; then {run}; fi"`,
+   - `BLOCKED_POSITIONS` gains `"{{ {run}; }}"` (formats to `{ <run>; }`), `"if {run}; then :; fi"`, `"if true; then {run}; fi"`,
      `"if false; then :; else {run}; fi"`, `"while {run}; do :; done"`, `"for f in a; do {run}; done"`,
      `"! {run}"`, `"command {run}"`, `"command -p {run}"`, `"time -p {run}"`, ``"echo `{run}`"``,
      ``"out=`{run}`"``, `"echo $((1<<2))\n{run}"`, `"((n<<2))\n{run}"` and
