@@ -99,6 +99,12 @@ def read_text_lenient(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
 
 
+def unchanged_text(text: str) -> str:
+    """``text`` itself, unchanged -- the identity used where a text transform is expected: the
+    whole file as a rule's region, or a rule unit kept raw (unnormalised)."""
+    return text
+
+
 def sha256_text(text: str) -> str:
     """The hex sha256 of ``text`` encoded as UTF-8 -- computed test-side, never through
     production's own hashing helper."""

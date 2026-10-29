@@ -73,7 +73,7 @@ import re
 import unittest
 
 from modelb_axi import scaffold
-from tests._helpers import REPO_ROOT, read_text
+from tests._helpers import REPO_ROOT, read_text, unchanged_text
 from tests.test_bootstrap_shutdown_registry import (
     affirmed_findings,
     key_names_named,
@@ -561,7 +561,7 @@ def rule_units(text: str, lead_in: bool = False, raw: bool = False) -> list[str]
     lazy continuation lines), and each paragraph before a list. With ``lead_in``, a paragraph
     ending in ``:`` together with the list attached to it is one more unit. With ``raw``, the
     same units in the same order, unnormalised (their code spans kept)."""
-    normalise = _keep if raw else _normalise
+    normalise = unchanged_text if raw else _normalise
     units = []
     for block in _blocks(text):
         first_item = next((i for i, ln in enumerate(block) if _ITEM_RE.match(ln)), None)
@@ -584,10 +584,6 @@ def rule_units(text: str, lead_in: bool = False, raw: bool = False) -> list[str]
         if lead_in and paragraph and paragraph[-1].rstrip().endswith(":"):
             units.append(normalise("\n".join(block)))
     return units
-
-
-def _keep(text: str) -> str:
-    return text
 
 
 _normalise = normalise
