@@ -1,6 +1,6 @@
 # CR-MDB-092 — The lean-ctx contract refreshed; each role gets the lean-ctx tools that serve it
 
-**Status:** PENDING — spec drafted 2026-10-29 from the gap analysis and the user's rulings (PRD D5, 2026-10-29); the spec pre-review folded in; awaiting approval.
+**Status:** COMPLETED (filed 2026-10-29, gap analysis and pre-review 2026-10-29).
 **Type:** feature (the contract; the stack files' `tools:`, one template paragraph and its built-in
 passage, the generated agents; Model B's `AGENTS.md` and the scaffolded lean-ctx section) + upstream
 findings recorded
