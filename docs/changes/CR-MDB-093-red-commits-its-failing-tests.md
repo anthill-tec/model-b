@@ -80,6 +80,12 @@ stays red past the cycle's GREEN or across a merge."
   becomes "Commit with a failing test" (a refactor starts and ends GREEN).
 - `maven.md`: the "BEFORE committing" item asks whether the tests are GREEN for every commit but RED's
   test-only commit.
+- Two more GREEN-first lines (amended at cycle 311's VERIFY): `maven.md` § "Build Verification Workflow"
+  ("**Before every commit:**" … "# 4. Commit only if GREEN") and `coding-standards.md` § "Maven Clean Build"
+  ("5. Commit if GREEN") apply to every commit but RED's test-only commit.
+- Each of the three references states the whole rule once, in one unit: a RED commit holds failing tests
+  only; every other commit is on a clean build with its tests passing; nothing stays red past the cycle's
+  GREEN, and never across a merge (amended at cycle 311's VERIFY).
 - Each reference keeps its title line and provenance line (`tests/test_stack_reference_material.py`).
 
 ## Acceptance criteria
@@ -100,7 +106,12 @@ lines). Each pattern below is independent under that matcher: cutting it alone m
       the file.
 - [ ] **§S4, the java-stack references.** None of "NEVER commit in RED state", "Never commit RED",
       "Commit in RED state" or "Never commit RED state" appears in `generator/skills/java-stack/references/*.md`;
-      each edited reference keeps its title and provenance line.
+      each edited reference keeps its title and provenance line. Amended at cycle 311's VERIFY:
+      - no line of those references says `Commit if GREEN` or `Commit only if GREEN`, and a `Before every
+        commit` heading carries `but RED's test-only commit` in its own block;
+      - each of `coding-standards.md`, `testing-practices.md` and `maven.md` has one block carrying
+        `test-only`, `clean build`, `past the cycle's GREEN` and `across a merge`;
+      - the shared phrase helper the detectors use lives once, in `tests/_helpers.py`.
 - [ ] **Proofs.** Every detector is proved both ways on synthetic text: a conforming sample passes; each
       pattern cut alone bites; each retired phrase bites; a rule split across two blocks bites. The
       synthetic proofs pass at RED by design — only the checks against the real files fail there.
