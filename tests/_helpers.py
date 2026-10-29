@@ -215,6 +215,16 @@ def md_section(content: str, heading_prefix: str, stop_prefix: str = "## ") -> s
     return "\n".join(out)
 
 
+# MIGRATED at CR-MDB-093 (§S4): from tests/test_agent_definition_rules.py, unchanged; shared with
+# tests/test_suite_hygiene.py and tests/test_stack_reference_material.py.
+def retired_phrases(text: str, phrases: tuple[str, ...]) -> list[str]:
+    """Each of ``phrases`` that ``text`` says anywhere, headings included: case-insensitive, as
+    whole words, with ``**`` and backticks dropped and whitespace (line breaks too) collapsed."""
+    plain = re.sub(r"\s+", " ", text.replace("**", "").replace("`", ""))
+    return [phrase for phrase in phrases
+            if re.search(rf"(?<!\w){re.escape(phrase)}(?!\w)", plain, re.IGNORECASE)]
+
+
 def parse_env_file(path: Path) -> dict:
     """Minimal ``KEY=VALUE`` parser for an emitted ``.env``/``.env.local``
     (values may be bare or double-quoted; blank lines and ``#``-comments are

@@ -45,8 +45,8 @@ sentence is free):
   ``GIT_WORKFLOW_COMMIT_RULES``, no block of it requires GREEN before every commit without RED's
   test-only exception, and the file never says "never commit RED state"
   (``commit_timing_findings``). A retired phrase is found anywhere in its file, headings included
-  (``retired_phrases`` — shared with ``tests.test_suite_hygiene`` and
-  ``tests.test_stack_reference_material`` for §S3 and §S4).
+  (``retired_phrases`` — MIGRATED at CR-MDB-093 (§S4) to ``tests._helpers``, shared with
+  ``tests.test_suite_hygiene`` and ``tests.test_stack_reference_material`` for §S3 and §S4).
 
 A rule is carried when ONE block — a list item with its wrapped lines, or a paragraph — matches
 every pattern of the rule (``rule_blocks`` / ``missing_rules``, case-insensitive, ``**`` and
@@ -59,7 +59,8 @@ import re
 import unittest
 
 from modelb_axi.agents import load_stack_params, neutral_definition
-from tests._helpers import REPO_ROOT, read_text
+# MIGRATED at CR-MDB-093 (§S4): retired_phrases moved to tests._helpers.
+from tests._helpers import REPO_ROOT, read_text, retired_phrases
 from tests.test_generator_role_contract import _role_names, _stack_names
 from tests.test_orchestration_acceptance_model import missing_rules, rule_blocks
 from tests.test_orchestrator_rule_triage import markdown_headings, section_body
@@ -336,14 +337,6 @@ def git_workflow_findings(text: str) -> list[str]:
         return problems + [f"{COMMIT_TIMING_HEADING}: no heading"]
     return problems + [f"{COMMIT_TIMING_HEADING}: {name}"
                        for name in missing_rules(body, GIT_WORKFLOW_RULES)]
-
-
-def retired_phrases(text: str, phrases: tuple[str, ...]) -> list[str]:
-    """Each of ``phrases`` that ``text`` says anywhere, headings included: case-insensitive, as
-    whole words, with ``**`` and backticks dropped and whitespace (line breaks too) collapsed."""
-    plain = re.sub(r"\s+", " ", text.replace("**", "").replace("`", ""))
-    return [phrase for phrase in phrases
-            if re.search(rf"(?<!\w){re.escape(phrase)}(?!\w)", plain, re.IGNORECASE)]
 
 
 def procedure_commit_findings(text: str) -> list[str]:

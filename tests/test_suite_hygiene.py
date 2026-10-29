@@ -84,8 +84,9 @@ import unittest
 from pathlib import Path
 
 from tests import test_deployed_asset_freshness as freshness
-from tests._helpers import md_section
-from tests.test_agent_definition_rules import missing_rules, retired_phrases
+# MIGRATED at CR-MDB-093 (§S4): retired_phrases moved to tests._helpers.
+from tests._helpers import md_section, retired_phrases
+from tests.test_agent_definition_rules import missing_rules
 from tests.test_board_holds_the_queue import norm_units
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
