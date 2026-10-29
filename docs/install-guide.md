@@ -437,8 +437,9 @@ A project created with `modelb-axi init` depends on two things under `.pi/extens
 - its hooks, the `.ts` files that run Model B's checks at points in a Pi session;
 - its permission policy, `.pi/extensions/pi-permission-system/config.json`, read by the
   `pi-permission-system` package: anything not listed is asked about (`"*": "ask"`); the
-  workflow's tools and skills are allowed; the Sandesh extension's tools are allowed, except
-  archiving and unarchiving a project, which ask; reads of `~/.agents/*`, `~/.crucible/*`,
+  workflow's tools and skills are allowed; the process tool and the web tools are allowed too;
+  the Sandesh extension's tools are allowed, except archiving and unarchiving a project, which
+  ask; reads of `~/.agents/*`, `~/.crucible/*`,
   `~/.pi/agent/*` and `/tmp/*` are allowed, and so are reads of `~/.bun/install/*` when the
   `pi` on your `PATH` was installed with bun (Pi's own code); writes outside the project are
   allowed only under `/tmp/*`.
