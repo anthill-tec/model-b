@@ -15,7 +15,16 @@ its own; prose around a fence never exempts it.
 ``<<'WORD'``, ``<<"WORD"``, ``<<-WORD`` up to the line ``WORD``), and after ``&&``, ``||``,
 ``;``, ``|``, ``&`` or ``(`` outside quotes; past a leading ``VAR=value``, ``env`` with any
 options and assignments, ``timeout`` with any options and a duration, ``nice [-n N]`` and
-``time`` (``runner_at``). ``stack_of`` names the stack of that runner. The forms, in per-stack
+``time`` (``runner_at``). CR-MDB-066 §S1 adds the shell grammar's positions: the reserved
+words ``!``, ``{``, ``if``, ``then``, ``else``, ``elif``, ``while``, ``until`` and ``do``,
+each a whole word before whitespace, are stepped over like a wrapper, in any order with the
+others, and so are ``command [-p]`` (``command -v``/``-V`` run nothing and stay unmatched) and
+``time [-p]``; an unquoted backquote opens a command substitution whose text, up to the
+closing backquote, is one more position, its enclosing segment unchanged (a backquote in
+quotes or a heredoc body opens nothing, an unclosed one reads as an unclosed quote); and an
+unquoted ``$((…))`` or ``((…))`` is skipped whole up to the ``))`` that closes it, so
+nothing in it is a position and no ``<<`` in it opens a heredoc. ``stack_of`` names the stack
+of that runner. The forms, in per-stack
 groups (§S1 item 1):
 
 - ``PYTHON_RUNNERS``: a python interpreter (bare, versioned or a path), with any options, then
@@ -100,11 +109,13 @@ _ENV_OPTION = (r"(?:-[uC]\s*\S+|--(?:unset|chdir)(?:=\S+|\s+\S+)"
 _TIMEOUT_OPTION = (r"(?:-[ks]\s*\S+|--(?:kill-after|signal)(?:=\S+|\s+\S+)"
                    r"|-{1,2}[A-Za-z][\w-]*(?:=\S+)?)")
 #: A wrapper before a command: ``VAR=value``, ``env [options]``, ``timeout [options] <n>``,
-#: ``nice [-n N]``, ``time``.
+#: ``nice [-n N]``, ``time [-p]``, ``command [-p]`` and the reserved words ``!``, ``{``,
+#: ``if``, ``then``, ``else``, ``elif``, ``while``, ``until``, ``do`` (CR-MDB-066 §S1).
 _WRAPPER = re.compile(
     r"(?:[A-Za-z_][A-Za-z0-9_]*=(?:\"[^\"]*\"|'[^']*'|\S*)|env(?:\s+" + _ENV_OPTION + r")*"
     r"|timeout(?:\s+" + _TIMEOUT_OPTION + r")*\s+\S+"
-    r"|nice(?:\s+(?:-n\s*\S+|--adjustment(?:=\S+|\s+\S+)|-\d+))?|time)(?:\s+|$)")
+    r"|nice(?:\s+(?:-n\s*\S+|--adjustment(?:=\S+|\s+\S+)|-\d+))?|time(?:\s+-p)?"
+    r"|command(?:\s+-p)?|[!{]|if|then|else|elif|while|until|do)(?:\s+|$)")
 #: ``uv run`` with its options, the ones that take a value stepped over with it: a command
 #: position before a python runner form (CR-MDB-062 §S1 item 3).
 _UV_RUN = re.compile(
@@ -236,6 +247,17 @@ def _segments(text: str) -> list[tuple[int, int]]:
             quote = char
             index += 1
             continue
+        if char == "`":
+            close = index + 1
+            while close < len(text) and text[close] != "`":
+                close += 2 if text[close] == "\\" else 1
+            if close >= len(text):
+                quote = char  # an unclosed backquote reads as an unclosed quote
+                break
+            inner = _segments(text[index + 1:close])
+            segments.extend((index + 1 + begin, index + 1 + end) for begin, end in inner)
+            index = close + 1
+            continue
         if char == "#" and (index == 0 or text[index - 1] in " \t\n;&|("):
             newline = text.find("\n", index)
             index = len(text) if newline < 0 else newline
@@ -244,6 +266,12 @@ def _segments(text: str) -> list[tuple[int, int]]:
             segments.append((start, index))
             index = _skip_heredoc_bodies(text, index + 1, pending)
             start, pending = index, []
+            continue
+        if text.startswith("$((", index) or text.startswith("((", index):
+            index, depth = text.index("((", index) + 2, 2
+            while index < len(text) and depth:
+                depth += {"(": 1, ")": -1}.get(text[index], 0)
+                index += 1
             continue
         if text.startswith("<<<", index):
             index += 3  # a here-string, not a heredoc: it opens no body
@@ -261,7 +289,7 @@ def _segments(text: str) -> list[tuple[int, int]]:
             continue
         index += 1
     segments.append((start, len(text)))
-    return segments
+    return sorted(segments)
 
 
 def _runner(fragment: str):

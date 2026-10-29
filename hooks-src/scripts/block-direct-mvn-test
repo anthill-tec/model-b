@@ -22,6 +22,17 @@ of them; a here-string `<<<` opens no heredoc. A runner word inside a quoted
 argument or a heredoc body is never a position. It reads shell as the
 raw-runner guard does (`tests/test_raw_runner_guard.py`).
 
+Command positions also follow the shell grammar (CR-MDB-066 §S1): the reserved
+words `!`, `{`, `if`, `then`, `else`, `elif`, `while`, `until` and `do`, each a
+whole word before whitespace, are stepped over like a wrapper, in any order with
+the others, and so are `command [-p]` (`command -v` / `-V` run nothing and stay
+allowed) and `time [-p]`. An unquoted backquote opens a command substitution:
+its text, up to the closing backquote, is one more position, and the enclosing
+command still runs to its own end; a backquote in quotes or a heredoc body
+opens nothing, and an unclosed one reads as an unclosed quote. An unquoted
+`$((…))` or `((…))` is skipped whole, up to the `))` that brings its depth back
+to zero: nothing in it is a position and no `<<` in it opens a heredoc.
+
 Where it applies (CR-MDB-062 §S3): a `pom.xml`, `build.gradle` or
 `build.gradle.kts` in the payload's `cwd`, in a parent up to and including the
 git root (the nearest ancestor holding any `.git` entry), or in a directory at
@@ -70,11 +81,13 @@ _ENV_OPTION = (r"(?:-[uC]\s*\S+|--(?:unset|chdir)(?:=\S+|\s+\S+)"
 _TIMEOUT_OPTION = (r"(?:-[ks]\s*\S+|--(?:kill-after|signal)(?:=\S+|\s+\S+)"
                    r"|-{1,2}[A-Za-z][\w-]*(?:=\S+)?)")
 #: A wrapper before a command: `VAR=value`, `env [options]`, `timeout [options] <n>`,
-#: `nice [-n N]`, `time`.
+#: `nice [-n N]`, `time [-p]`, `command [-p]` and the reserved words `!`, `{`, `if`,
+#: `then`, `else`, `elif`, `while`, `until`, `do` (CR-MDB-066 §S1).
 _WRAPPER = re.compile(
     r"(?:[A-Za-z_][A-Za-z0-9_]*=(?:\"[^\"]*\"|'[^']*'|\S*)|env(?:\s+" + _ENV_OPTION + r")*"
     r"|timeout(?:\s+" + _TIMEOUT_OPTION + r")*\s+\S+"
-    r"|nice(?:\s+(?:-n\s*\S+|--adjustment(?:=\S+|\s+\S+)|-\d+))?|time)(?:\s+|$)")
+    r"|nice(?:\s+(?:-n\s*\S+|--adjustment(?:=\S+|\s+\S+)|-\d+))?|time(?:\s+-p)?"
+    r"|command(?:\s+-p)?|[!{]|if|then|else|elif|while|until|do)(?:\s+|$)")
 
 REASON = """⛔ BLOCKED: a direct `mvn test` / `mvn verify` / `mvn integration-test` / `mvn test-compile` run (or a surefire / failsafe goal) is not allowed in a Java project.
 
@@ -137,6 +150,19 @@ def _segments(text: str):
             quote = char
             index += 1
             continue
+        if char == "`":
+            close = index + 1
+            while close < len(text) and text[close] != "`":
+                close += 2 if text[close] == "\\" else 1
+            if close >= len(text):
+                quote = char  # an unclosed backquote reads as an unclosed quote
+                break
+            inner = _segments(text[index + 1:close])
+            if inner is None:
+                return None
+            segments.extend((index + 1 + begin, index + 1 + end) for begin, end in inner)
+            index = close + 1
+            continue
         if char == "#" and (index == 0 or text[index - 1] in " \t\n;&|("):
             newline = text.find("\n", index)
             index = len(text) if newline < 0 else newline
@@ -145,6 +171,12 @@ def _segments(text: str):
             segments.append((start, index))
             index = _skip_heredoc_bodies(text, index + 1, pending)
             start, pending = index, []
+            continue
+        if text.startswith("$((", index) or text.startswith("((", index):
+            index, depth = text.index("((", index) + 2, 2
+            while index < len(text) and depth:
+                depth += {"(": 1, ")": -1}.get(text[index], 0)
+                index += 1
             continue
         if text.startswith("<<<", index):
             index += 3  # a here-string, not a heredoc: it opens no body
@@ -164,7 +196,7 @@ def _segments(text: str):
     if quote:
         return None
     segments.append((start, len(text)))
-    return segments
+    return sorted(segments)
 
 
 def _commands(text: str):
