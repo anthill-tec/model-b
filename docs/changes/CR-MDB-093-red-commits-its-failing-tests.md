@@ -1,7 +1,6 @@
 # CR-MDB-093 — A RED phase commits its failing tests; the written rules say so
 
-**Status:** PENDING — spec drafted 2026-10-30 from the gap analysis, the spec pre-review folded in; awaiting
-approval.
+**Status:** COMPLETED (filed 2026-10-29, gap analysis and pre-review 2026-10-30).
 **Type:** fix (the sub-agent procedure, the git-workflow skill, the java-stack references, `AGENTS.md`)
 **Priority:** P2 — release 1.0.0, wave 2.
 **Depends on:** none (board-authoritative: read `queue`, not this line)
