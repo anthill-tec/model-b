@@ -67,9 +67,11 @@ CONTRACT_REFRESH_PINS = {
     "Current state": {
         "version": (r"\blean-ctx 3\.11\.4\b",),
         "extension version": (r"\bpi-lean-ctx\b", r"\b3\.11\.4\b"),
+        # MIGRATED at CR-MDB-092 (§S1, §S8.1): the lazy core's twelve names include `shell`, so the
+        # unit names `shell` beside `ctx_expand` (amended at cycle 308's VERIFY).
         "served surface": (r"\btool_profile\b", r"\blean_ctx_tool_profile\b", r"\btoolprofile\b",
                            r"\blazy core\b", r"\bstandard\b", r"\bctx_call\b", r"\btrust",
-                           r"\bctx_graph\b", r"\bctx_explore\b"),
+                           r"\bctx_graph\b", r"\bctx_explore\b", r"\bshell\b", r"\bctx_expand\b"),
         "ctx_edit": (r"\bctx_edit\b", r"\bevery profile\b", r"\bbridge\b"),
         "fresh full": (r"mode=full", r"\bfresh\b", r"\b13\b|\bstub\b"),
         "budgets": (r"\b4096\b", r"\b32768\b", r"\braw\b", r"turn_fresh_limit"),
@@ -91,12 +93,19 @@ CONTRACT_REFRESH_PINS = {
                        r"\bctxshelltool\b"),
         "(c)": (r"\bload_for_agent\b", r"\bto file\b"),
         "(d)": (r"\bignite_high_salience\b", r"0\.20", r"\bto file\b"),
-        "(e)": (r"\bdaemon\b", r"\bdisagree", r"\bto file\b"),
+        # MIGRATED at CR-MDB-092 (§S3.3, §S8.1): (e) cites its source path, `ledger_cmd.rs`.
+        "(e)": (r"\bdaemon\b", r"\bdisagree", r"ledger_cmd\.rs", r"\bto file\b"),
         "(f)": (r"\bapply_confidence_decay\b", r"\bcompound", r"\bto file\b"),
         "(g)": (r"\brecall_facts_limit\b", r"\bshowing\b", r"\bglobal-only\b", r"\bto file\b"),
-        "(h)": (r"\bis_test_runner_command\b", r"\bverbatim\b", r"\bto file\b"),
-        "(i)": (r"\brecord_shell_command_named\b", r"\bload_latest\b", r"\bto file\b"),
-        "(k)": (r"/lean-ctx", r"\btoolprofile\b", r"\bto file\b"),
+        # MIGRATED at CR-MDB-092 (§S3.3, §S8.1): (h) cites its source paths, `engine.rs` and
+        # `output_policy.rs`.
+        "(h)": (r"\bis_test_runner_command\b", r"\bverbatim\b", r"engine\.rs", r"output_policy\.rs",
+                r"\bto file\b"),
+        # MIGRATED at CR-MDB-092 (§S3.3, §S8.1): (i), reworded, names `maybe_consolidate`.
+        "(i)": (r"\brecord_shell_command_named\b", r"\bload_latest\b", r"\bmaybe_consolidate\b",
+                r"\bto file\b"),
+        # MIGRATED at CR-MDB-092 (§S3.3, §S8.1): (k) cites its source path, `index.ts`.
+        "(k)": (r"/lean-ctx", r"\btoolprofile\b", r"index\.ts", r"\bto file\b"),
         "(l)": (r"\breadmodeschema\b", r"raw=true", r"mode=raw", r"\bto file\b"),
     },
 }
@@ -141,10 +150,10 @@ def contract_retired_findings(text: str) -> list[str]:
 _GOOD_SERVED_SURFACE = """\
 - **The served tool surface.** The engine resolves it: `LEAN_CTX_TOOL_PROFILE`, then the global
   `tool_profile`, then `tools_enabled` (`ToolProfile::from_config`, `rust/src/core/tool_profiles.rs`).
-  - Unpinned, the bridge serves the lazy core (`ctx_read`, `ctx_shell`, `ctx_search`, `ctx_glob`,
-    `ctx_tree`, `ctx_session`, `ctx_compose`, `ctx_callgraph`, `ctx_patch`, `ctx_call`,
-    `ctx_expand`) and reaches the rest through `ctx_call`; lean-ctx's own setup leaves the
-    profile unpinned.
+  - Unpinned, the bridge serves the lazy core, twelve names (`ctx_read`, `ctx_shell`, `ctx_search`,
+    `ctx_glob`, `ctx_tree`, `ctx_session`, `ctx_compose`, `ctx_callgraph`, `ctx_patch`, `ctx_call`,
+    `ctx_expand` and the `shell` alias) and reaches the rest through `ctx_call`; lean-ctx's own
+    setup leaves the profile unpinned.
   - Pinned `standard`, it serves 17 tools plus `ctx_call`; this machine pins `standard`.
   - `pi-lean-ctx`'s `toolProfile` (default `lean`) forwards nothing for `lean`, so the global
     config decides.
@@ -153,6 +162,7 @@ _GOOD_SERVED_SURFACE = """\
     in `minimal` (or `auto` before it escalates); VERIFY's `ctx_graph` and `ctx_explore` only in
     `standard`, `power` or a `tools_enabled` list naming them.
 """
+# MIGRATED at CR-MDB-092 (§S1, §S8.1): the sample's lazy core names `shell`, its twelfth name.
 
 #: CR-MDB-092 §S8.1: a conforming contract, built from the text §S1–§S3 prescribe; it passes both
 #: detectors.
@@ -265,8 +275,9 @@ saturates the 0.20 pinned/stale boost (`pressure`). Ask: exclude shell labels fr
 Status: to file.
 
 ### (e) The daemon's in-memory ledger
-The daemon's in-memory ledger disagrees with the file, and `ledger status` asks the daemon first.
-Ask: one ledger state for the daemon and the file. Status: to file.
+The daemon's in-memory ledger disagrees with the file, and `ledger status` asks the daemon first
+(`cmd_ledger`, `rust/src/cli/ledger_cmd.rs`). Ask: one ledger state for the daemon and the file.
+Status: to file.
 
 ### (f) Decay per lifecycle run
 Decay compounds on every lifecycle run (`apply_confidence_decay`,
@@ -279,18 +290,20 @@ per-project limit, though it reports `showing <n>/<total>` (`handle_recall`,
 Ask: a per-call or per-project limit. Status: to file.
 
 ### (h) Declared test clients
-The Crucible clients are not in `is_test_runner_command`, and `excluded_commands` is a prefix
-match. Ask: a verbatim class for declared test clients. Status: to file.
+The Crucible clients are not in `is_test_runner_command` (`rust/src/shell/compress/engine.rs`;
+`classify`, `rust/src/shell/output_policy.rs`), and `excluded_commands` is a prefix match.
+Ask: a verbatim class for declared test clients. Status: to file.
 
 ### (i) The CLI shell path's ledger write
 The CLI shell path rewrites the whole ledger file (`ContextLedger::load`/`save` in
 `record_shell_command_named`, not the locked merge of `persist_read`), and consolidates the
-machine's latest session's project (`SessionState::load_latest`), a session save that runs even
-when the ledger write is skipped. Ask: merge under the lock. Status: to file.
+machine's latest session's project (`SessionState::load_latest`) through `maybe_consolidate`,
+which runs only when the call carries tokens (`original_tokens > 0`), while the session save
+runs on every call. Ask: merge under the lock. Status: to file.
 
 ### (k) The status command's profile line
-`/lean-ctx` reports the extension's `toolProfile`, not the served surface. Ask: report the
-bridge's tool list. Status: to file.
+`/lean-ctx` reports the extension's `toolProfile`, not the served surface (the extension's status
+handler, `extensions/index.ts`). Ask: report the bridge's tool list. Status: to file.
 
 ### (l) The read-mode description
 `pi-lean-ctx`'s `readModeSchema` describes `full` as "≤turn budget; raw=true beyond", but its
@@ -326,6 +339,23 @@ CONTRACT_REFRESH_CUTS = {
     "(i)": ("(`SessionState::load_latest`)", "(the latest session)"),
     "(k)": ("reports the extension's `toolProfile`, not", "reports the extension's setting, not"),
     "(l)": ("only `mode=raw` works", "only the mode works"),
+}
+
+#: MIGRATED at CR-MDB-092 (§S1, §S3.3, §S8.1): one cut per pattern amended at cycle 308's VERIFY —
+#: ``(pin, pattern) -> (old, new)`` removes only that pattern's words from the pin's unit in
+#: :data:`GOOD_LEAN_CTX_CONTRACT` (``old`` occurs exactly once).
+CONTRACT_REFRESH_AMENDED_CUTS = {
+    ("served surface", r"\bshell\b"): ("`ctx_expand` and the `shell` alias)", "`ctx_expand`)"),
+    ("served surface", r"\bctx_expand\b"): ("`ctx_expand` and the `shell` alias)",
+                                           "and the `shell` alias)"),
+    ("(e)", r"ledger_cmd\.rs"): ("(`cmd_ledger`, `rust/src/cli/ledger_cmd.rs`)", "(`cmd_ledger`)"),
+    ("(h)", r"engine\.rs"): ("(`rust/src/shell/compress/engine.rs`;\n`classify`", "(`classify`"),
+    ("(h)", r"output_policy\.rs"): ("`classify`, `rust/src/shell/output_policy.rs`)",
+                                   "`classify`)"),
+    ("(i)", r"\bmaybe_consolidate\b"): ("(`SessionState::load_latest`) through `maybe_consolidate`,",
+                                       "(`SessionState::load_latest`),"),
+    ("(k)", r"index\.ts"): ("(the extension's status\nhandler, `extensions/index.ts`)",
+                           "(the extension's status\nhandler)"),
 }
 
 #: CR-MDB-092 §S8.1: a literal excerpt of the contract as it stood before the refresh (its header,
@@ -606,6 +636,29 @@ class LeanCtxContractRefreshTest(unittest.TestCase):
         for name, (old, new) in CONTRACT_REFRESH_CUTS.items():
             with self.subTest(pin=name):
                 self.assertEqual(contract_refresh_findings(self.cut(old, new)), [name])
+
+    # MIGRATED at CR-MDB-092 (§S1, §S3.3, §S8.1): the patterns amended at cycle 308's VERIFY.
+    def test_the_amended_patterns_are_in_their_pins(self):
+        pins = {name: rule for section in CONTRACT_REFRESH_PINS.values() for name, rule in section.items()}
+        self.assertEqual(sorted(set(CONTRACT_REFRESH_AMENDED_CUTS)), sorted({
+            ("served surface", r"\bshell\b"), ("served surface", r"\bctx_expand\b"),
+            ("(e)", r"ledger_cmd\.rs"), ("(h)", r"engine\.rs"), ("(h)", r"output_policy\.rs"),
+            ("(i)", r"\bmaybe_consolidate\b"), ("(k)", r"index\.ts")}))
+        for name, pattern in CONTRACT_REFRESH_AMENDED_CUTS:
+            with self.subTest(pin=name, pattern=pattern):
+                self.assertIn(pattern, pins[name])
+
+    def test_each_amended_pattern_cut_returns_exactly_that_pins_name(self):
+        for (name, pattern), (old, new) in CONTRACT_REFRESH_AMENDED_CUTS.items():
+            with self.subTest(pin=name, pattern=pattern):
+                self.assertEqual(contract_refresh_findings(self.cut(old, new)), [name])
+
+    def test_ctx_shell_alone_does_not_name_the_shell_alias(self):
+        # `\bshell\b` must not be met by `ctx_shell`: the cut leaves `ctx_shell` in the unit.
+        old, new = CONTRACT_REFRESH_AMENDED_CUTS[("served surface", r"\bshell\b")]
+        cut = self.cut(old, new)
+        self.assertIn("`ctx_shell`", cut.partition("## Preference order")[0])
+        self.assertEqual(contract_refresh_findings(cut), ["served surface"])
 
     def test_a_pin_split_across_two_units_bites(self):
         splits = {
