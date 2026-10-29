@@ -1,6 +1,6 @@
 # CR-MDB-090 — A long client run is read whole, unfiltered; the shared context ledger is left alone
 
-**Status:** PENDING — spec drafted 2026-10-29 from the gap analysis and the user's rulings (PRD D5, 2026-10-29); the spec pre-review folded in; awaiting approval.
+**Status:** COMPLETED (filed, gap analysis and pre-review 2026-10-29).
 **Type:** fix (the generated agent templates and their built-in passages, the `model-b` and
 `crucible` skills, `AGENTS.md`, the scaffolded `AGENTS.md` lean-ctx section)
 **Priority:** P1.

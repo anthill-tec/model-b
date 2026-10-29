@@ -72,4 +72,4 @@ Electronics (anthill-forge / hw tooling / electronics agents+skills) is EXCLUDED
 - **Never pipe user feedback, poll output or AXI output through head, tail or grep** — read it whole: an AXI envelope is never piped, filtered or redirected away.
 - **Never kill a user-visible process** — describe what and why, and let the user kill it.
 - **Edit files with the harness's file-edit capability or ast-grep, never `sed`**; if a bulk text edit seems to need `sed`, surface it first.
-- **Prefer the project's cached reads and compressed shell** (and its ranked search and tree), where its `AGENTS.md` names them, over the harness's native equivalents.
+- **Prefer the project's cached reads and compressed shell** (and its ranked search and tree), where its `AGENTS.md` names them, over the harness's native equivalents — except that an AXI command runs uncompressed, in the shell's raw mode.

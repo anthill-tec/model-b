@@ -33,8 +33,10 @@
 - **Every envelope is read whole, every time:** its `warnings[]`, `help[]` and `error` carry what you need next.
 - **Its output is never grepped, headed, tailed or otherwise filtered,** never narrowed with `jq`, and never summarised by pattern.
 - **Its output is never redirected away:** neither its stdout nor its stderr goes to `/dev/null`.
-- **A long run writes its output to a file,** and that file's envelope is read whole.
-- **A runner log a client writes with `--log` is not an envelope:** searching it for a failure stays allowed.
+- **Every AXI command runs uncompressed:** through the project's compressed shell in its raw mode, as the agent definition or the project's `AGENTS.md` names it, so no compression step cuts or reshapes its envelope.
+- **A run the harness truncates names the file that holds its full output.** This is the fallback for a run that was not redirected. The envelope is near the end of the output, and its first line is the **last** line that begins `axi:` (under a JSON output format the envelope is one JSON line). When the output shown does not reach back to the envelope's first line, that file is read in windows, by line offset and limit, until the envelope has been read whole. It is never filtered to fit.
+- **A long run redirects both its streams to a file under `/tmp`, outside the tree, so the envelope is read whole:** that file is read with the harness's plain file read from the envelope's first line to its end; a search that only locates that line's number is allowed, and the envelope itself is never searched or filtered (PRD D5, ruled 2026-10-29).
+- **A runner log a client writes with `--log` is not an envelope:** searching it for a failure stays allowed. `--log` keeps that runner log beside the run, and does not take the run's output off the console.
 
 ## TDD — exact procedure, no shortcuts
 1. Write ONLY the test (no production code, not even the target type).
@@ -49,9 +51,12 @@
 - A run longer than a minute or two gets a tool timeout longer than the run — a timeout that kills a run mid-flight loses its ingest.
 - A run that times out is never re-invoked blind: first check the board for your own open run (it may still be running, or already ingested), then decide.
 
+## The context ledger is left alone
+- **The context ledger is machine-wide.** The context-pressure figure that the project's cached-read and compressed-shell tools report comes from one context ledger, shared by every session, sub-agent and project on the machine, and measured against a fixed window, not your context. Ignore its hints to evict entries, and never evict entries or reset the ledger during a run: evicting excludes a file for the session, and resetting clears the re-read cache that every other session relies on.
+
 ## Report EVERY run
 - RED and GREEN, every single one — no exceptions. An unreported RED reads as "skipped TDD."
-- If stdout is truncated, read the report file (junit / lcov / surefire) — do NOT re-run.
+- If a run's output is truncated, the envelope is read whole from the file the harness names, and failure detail from the report file (junit / lcov / surefire) or the `--log` file. The run is never re-run.
 
 ## Scope discipline
 - ONE class/module/file at a time; test after each; GREEN before moving on.
