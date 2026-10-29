@@ -266,8 +266,9 @@ saturates the 0.20 pinned/stale boost (`pressure`). Ask: exclude shell labels fr
 Status: to file.
 
 ### (e) The daemon's in-memory ledger
-The daemon's in-memory ledger disagrees with the file, and `ledger status` asks the daemon first.
-Ask: one ledger state for the daemon and the file. Status: to file.
+The daemon's in-memory ledger disagrees with the file, and `ledger status` asks the daemon first
+(`cmd_ledger`, `rust/src/cli/ledger_cmd.rs`). Ask: one ledger state for the daemon and the file.
+Status: to file.
 
 ### (f) Decay per lifecycle run
 Decay compounds on every lifecycle run (`apply_confidence_decay`,
