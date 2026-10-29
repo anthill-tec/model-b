@@ -41,6 +41,7 @@ from pathlib import Path
 
 from modelb_axi import (
     agents,
+    lean_ctx_config,
     permission_policy,
     project_trust,
     requirements,
@@ -364,6 +365,8 @@ def plan_files(sub_projects: list[str]) -> list[str]:
         "hooks/README.md",
         # CR-MDB-068 §S5: the release workflow and its two scripts, at the root only.
         *RELEASE_FILES,
+        # CR-MDB-091 §S2: the project's lean-ctx config, at the root only.
+        lean_ctx_config.CONFIG_RELPATH,
     ]
     for sub in sub_projects:
         base += [f"{sub}/.env", f"{sub}/.envrc", f"{sub}/AGENTS.md"]
@@ -1709,6 +1712,20 @@ def _emit_plan(
             if ownership is not None:
                 for key in ("skipped", "unmanaged"):
                     ownership.setdefault(key, []).extend(policy_report.get(key, []))
+
+    # CR-MDB-091 §S2: the project's lean-ctx config, at the root, whatever the
+    # harnesses and the recorded lean-ctx verdict (PRD D5), under the same
+    # ownership rules.
+    config_report: dict = {}
+    try:
+        lean_ctx_config.place_project_config(
+            target, force_managed=force_managed, report=config_report,
+        )
+    finally:
+        emitted.extend(config_report.get("written", []))
+        if ownership is not None:
+            for key in ("skipped", "unmanaged"):
+                ownership.setdefault(key, []).extend(config_report.get(key, []))
 
     # CR-MDB-068 §S5: the release workflow and its two scripts, at the root
     # only, under the same ownership rules.
