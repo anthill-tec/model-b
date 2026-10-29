@@ -42,14 +42,19 @@ to zero: nothing in it is a position and no `<<` in it opens a heredoc.
 
 Where it applies (CR-MDB-062 §S3): a `package.json`, `bun.lock`, `bun.lockb` or
 `bunfig.toml` in the payload's `cwd`, in a parent up to and including the git
-root (the nearest ancestor holding any `.git` entry), or in a directory at most 3
-levels below that git root. The walk below follows no symlink, skips hidden
-directories, `node_modules`, `.venv`, `venv`, `target`, `dist` and `build`, skips
-a directory it cannot read, and stops at the first marker. Without a git root
-only the `cwd` and its parents count. An empty or missing `cwd`, an unreadable
-payload, a non-`bash` tool, a command that does not tokenise and any filesystem
-error allow: this is a deterrent, and an exception from a `closed` hook would
-block every shell call.
+root (the nearest ancestor holding any `.git` entry), or in a directory at most
+3 levels below that git root. The walk below follows no symlink, skips hidden
+directories, `node_modules`, `.venv`, `venv`, `target`, `dist` and `build`, and
+stops at the first marker. Each directory is listed once per run, with
+`os.scandir` (CR-MDB-066 §S4): that one listing serves both its markers and its
+child directories, the deepest directory's for its markers alone, and a listed
+marker counts only when `os.path.isfile` accepts it (a directory or a symlink
+loop named like one does not). A directory that can be searched but not listed
+is checked by name for its literal markers and its `.git` entry, and is not
+descended. Without a git root only the `cwd` and its parents count. An empty or
+missing `cwd`, an unreadable payload, a non-`bash` tool, a command that does not
+tokenise and any filesystem error allow: this is a deterrent, and an exception
+from a `closed` hook would block every shell call.
 
 The block reason (CR-MDB-062 §S4) names the client listed in Crucible's
 manifest `~/.crucible/crucible-clients.json` —
@@ -277,45 +282,71 @@ def _is_bun_test_invocation(command: str) -> bool:
     return False
 
 
-def _has_marker(directory: Path) -> bool:
-    return any((directory / marker).is_file() for marker in MARKERS)
+def _has_marker(directory: str, listing) -> bool:
+    """A file named in `MARKERS` in `directory`: read from its `listing`, or by name when it
+    cannot be listed (`listing` is `None`). A file is what `os.path.isfile` accepts
+    (CR-MDB-066 §S4)."""
+    if listing is None:
+        return any(os.path.isfile(os.path.join(directory, marker)) for marker in MARKERS)
+    return any(name in MARKERS and os.path.isfile(path) for name, path, _ in listing)
 
 
-def _marker_below(root: Path, depth: int) -> bool:
-    """A marker in a directory at most `depth` levels below `root`: no symlink followed, hidden
-    and `SKIPPED_DIRS` directories never entered, an unreadable directory skipped."""
-    if depth <= 0:
-        return False
-    try:
-        with os.scandir(root) as entries:
-            children = [Path(e.path) for e in entries
-                        if e.is_dir(follow_symlinks=False)
-                        and not e.name.startswith(".") and e.name not in SKIPPED_DIRS]
-    except OSError:
-        return False  # unreadable directory -> skipped
-    for child in sorted(children):
+def _listing(directory: str, memo: dict):
+    """`directory`'s entries as sorted `(name, path, is_dir)` tuples (`is_dir` follows no
+    symlink), listed once per run with `os.scandir` and kept in `memo`; `None` when it cannot
+    be listed (CR-MDB-066 §S4.1)."""
+    if directory not in memo:
         try:
-            if _has_marker(child):
-                return True
+            with os.scandir(directory) as entries:
+                memo[directory] = sorted((entry.name, entry.path,
+                                          entry.is_dir(follow_symlinks=False))
+                                         for entry in entries)
         except OSError:
+            memo[directory] = None  # cannot be listed -> checked by name, not descended
+    return memo[directory]
+
+
+def _has_git(directory: str, listing) -> bool:
+    """Any `.git` entry in `directory`: read from its `listing`, or by name when it cannot be
+    listed (CR-MDB-066 §S4.2)."""
+    if listing is None:
+        return os.path.lexists(os.path.join(directory, ".git"))
+    return any(name == ".git" for name, _, _ in listing)
+
+
+def _marker_below(root: str, depth: int, memo: dict) -> bool:
+    """A marker in a directory at most `depth` levels below `root`: no symlink followed, hidden
+    and `SKIPPED_DIRS` directories never entered, a directory that cannot be listed checked by
+    name and not descended; each directory listed once, the deepest only for its markers."""
+    listing = _listing(root, memo)
+    if depth <= 0 or listing is None:
+        return False
+    for name, path, is_dir in listing:
+        if not is_dir or name.startswith(".") or name in SKIPPED_DIRS:
             continue
-        if _marker_below(child, depth - 1):
+        if _has_marker(path, _listing(path, memo)):
+            return True
+        if _marker_below(path, depth - 1, memo):
             return True
     return False
 
 
 def _in_project(cwd: str) -> bool:
     """CR-MDB-062 §S3: a marker in `cwd`, in a parent up to and including the git root, or
-    at most `WALK_DEPTH` levels below that git root. No git root: `cwd` and its parents."""
+    at most `WALK_DEPTH` levels below that git root. No git root: `cwd` and its parents.
+    CR-MDB-066 §S4: one listing per directory per run, shared by the parents and the walk."""
     if not cwd:
         return False
+    memo: dict = {}
     try:
         directory = Path(cwd)
         for candidate in (directory, *directory.parents):
-            if _has_marker(candidate):
+            path = str(candidate)
+            listing = _listing(path, memo)
+            if _has_marker(path, listing):
                 return True
-            if os.path.lexists(candidate / ".git"):
-                return _marker_below(candidate, WALK_DEPTH)
+            if _has_git(path, listing):
+                return _marker_below(path, WALK_DEPTH, memo)
     except (OSError, ValueError):
         return False  # any filesystem error -> allow (a closed hook must never raise)
     return False
