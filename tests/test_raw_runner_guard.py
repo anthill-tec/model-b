@@ -616,6 +616,71 @@ NON_RUNNER_MENTIONS = (
     "mvn package",
 )
 
+#: CR-MDB-066 §S1 — the command positions the shell grammar adds, with the stack of the runner
+#: at the position (labelled). At least one entry per §S1 item for each of python, bun, cargo
+#: and mvn, and ``{ make junit; }`` for make: (1) the reserved words ``!``, ``{``, ``if``,
+#: ``then``, ``else``, ``elif``, ``while``, ``until`` and ``do``, stepped over in any order with
+#: the other wrappers; (2) ``command`` with an optional ``-p``; (3) ``time -p``; (4) an unquoted
+#: backquote, whose text up to the closing backquote is a position; (5) an arithmetic ``$((…))``
+#: or ``((…))``, skipped whole, so no ``<<`` inside it opens a heredoc that swallows a later
+#: line.
+GRAMMAR_FORMS = (
+    # python
+    ("{ pytest; }", "python"),
+    ("if pytest; then echo ok; fi", "python"),
+    ("! pytest -x", "python"),
+    ("for f in a; do python3 -m unittest; done", "python"),
+    ("! time -p pytest", "python"),
+    ("if ! command pytest; then :; fi", "python"),
+    ("command pytest", "python"),
+    ("command -p python3 -m unittest", "python"),
+    ("time -p pytest", "python"),
+    ("echo `pytest -q`", "python"),
+    ("out=`python3 -m unittest`", "python"),
+    ("echo $((1<<2))\npytest", "python"),
+    # bun
+    ("{ bun test; }", "bun"),
+    ("if true; then bun test; fi", "bun"),
+    ("until bun test; do :; done", "bun"),
+    ("command bun test", "bun"),
+    ("time -p bun test", "bun"),
+    ("echo `bun test`", "bun"),
+    ("((n<<2))\nbun test", "bun"),
+    # cargo
+    ("! cargo test", "cargo"),
+    ("if false; then :; else cargo test; fi", "cargo"),
+    ("while cargo test; do :; done", "cargo"),
+    ("command -p cargo test", "cargo"),
+    ("time -p cargo nextest run", "cargo"),
+    ("time -p nice -n 5 cargo test", "cargo"),
+    ("v=`cargo test --workspace`", "cargo"),
+    ("while ((n<<1)); do cargo llvm-cov; done", "cargo"),
+    ("while ((n<<1)); do\ncargo test\ndone", "cargo"),
+    # mvn
+    ("{ mvn verify; }", "mvn"),
+    ("if false; then :; elif mvn test; then :; fi", "mvn"),
+    ("command mvn test", "mvn"),
+    ("time -p mvn verify", "mvn"),
+    ("echo `mvn verify`", "mvn"),
+    ("echo $((1<<2))\nmvn verify", "mvn"),
+    # make
+    ("{ make junit; }", "make"),
+)
+
+#: CR-MDB-066 §S1 (AC1) — what §S1's grammar never makes a runner: ``command -v``/``-V`` look a
+#: command up and run nothing; the text after a closing backquote and after an arithmetic
+#: expansion continues the enclosing command; ``if`` and ``ifconfig`` are whole words only when
+#: they are; a backquote inside double quotes opens nothing.
+GRAMMAR_NON_RUNNERS = (
+    "command -v pytest",
+    "command -V cargo",
+    "echo `date` pytest",
+    "echo $((1<<2)) pytest",
+    "if [ -f pytest.ini ]; then echo y; fi",
+    "ifconfig",
+    'git commit -m "fix `pytest`"',
+)
+
 #: Long runs of interpreter options (CR-MDB-062 C5 F1): ``-W``/``-X`` take a value, attached or
 #: the next word, and the option forms share no string, so each run is read one way only and is
 #: judged well inside a hook's timeout — a run that names no runner as fast as one that does.
@@ -824,13 +889,15 @@ class RunnerStackOnSampleTextTest(unittest.TestCase):
                 self.assertNoRunner(form)
 
     def test_every_corpus_entry_is_labelled_with_one_of_the_stacks_and_appears_once(self):
+        # MIGRATED at CR-MDB-066 (§S8.1): GRAMMAR_FORMS joins the labelled corpora and
+        # GRAMMAR_NON_RUNNERS the plain ones.
         labelled = (RUNNER_FORMS + WRAPPED_FORMS + POSITION_FORMS + ATTACHED_M_FORMS
-                    + UV_RUN_FORMS + TEST_FILE_FORMS + BUN_SCRIPT_FORMS)
+                    + UV_RUN_FORMS + TEST_FILE_FORMS + BUN_SCRIPT_FORMS + GRAMMAR_FORMS)
         self.assertEqual(sorted({stack for _form, stack in labelled}), sorted(STACKS))
         commands = ([form for form, _stack in labelled] + list(CLIENT_FORMS)
                     + list(NON_RUNNER_MENTIONS) + list(NARROWED_BUN_SCRIPTS)
                     + list(HEREDOC_BODIES) + list(QUOTED_LINES) + list(NON_TEST_SCRIPTS)
-                    + list(ARGUMENT_MENTIONS))
+                    + list(ARGUMENT_MENTIONS) + list(GRAMMAR_NON_RUNNERS))
         self.assertEqual(sorted(c for c in set(commands) if commands.count(c) > 1), [],
                          "a corpus entry appears more than once (the corpora are §S6's parity "
                          "source)")
@@ -938,6 +1005,87 @@ class RunnerStackOnSampleTextTest(unittest.TestCase):
         for command in _single_line(NARROWED_BUN_SCRIPTS + NON_TEST_SCRIPTS + ARGUMENT_MENTIONS):
             with self.subTest(command=command):
                 self.assertEqual(runner_findings(f"Run `{command}` now."), [])
+                self.assertEqual(runner_findings(f"```bash\n{command}\n```"), [])
+
+
+def _in_code_span(entry: str) -> str:
+    """``entry`` as a guarded file shows it in a code span (CR-MDB-066 §S8.1, AC1): delimited
+    by a backtick run one longer than the longest run ``entry`` holds, padded with a space on
+    each side, so a backquote inside the entry neither closes the span nor joins its
+    delimiter."""
+    longest = max((len(run) for run in re.findall(r"`+", entry)), default=0)
+    delimiter = "`" * (longest + 1)
+    return f"{delimiter} {entry} {delimiter}"
+
+
+#: CR-MDB-066 §S1 — which item each ``GRAMMAR_FORMS`` entry exercises, read off its text: a
+#: reserved word, ``command``, ``time -p``, a backquote, an arithmetic ``((``.
+_GRAMMAR_ITEMS = {
+    "reserved word": re.compile(r"(?:^|[\s;(])(?:!|\{|if|then|else|elif|while|until|do)\s"),
+    "command": re.compile(r"(?:^|[\s;(])command\s"),
+    "time -p": re.compile(r"(?:^|[\s;(])time\s+-p\s"),
+    "backquote": re.compile(r"`"),
+    "arithmetic": re.compile(r"\(\("),
+}
+
+
+class CommandGrammarOnSampleTextTest(unittest.TestCase):
+    """CR-MDB-066 §S1 (AC1) — the shell grammar's command positions in the guard: reserved
+    words, ``command [-p]``, ``time -p``, an unquoted backquote and an arithmetic expansion,
+    proved on sample text both ways."""
+
+    def test_grammar_forms_hold_an_entry_per_section_s1_item_for_each_hooked_stack(self):
+        # AC1's corpus shape; a precondition of the checks below, so a corpus that lost an
+        # item's entry for a stack would make them prove less than AC1 asks.
+        missing = [f"{stack}: {item}" for stack in ("python", "bun", "cargo", "mvn")
+                   for item, pattern in _GRAMMAR_ITEMS.items()
+                   if not any(pattern.search(c) for c, s in GRAMMAR_FORMS if s == stack)]
+        self.assertEqual(missing, [], "AC1: GRAMMAR_FORMS lacks an entry for")
+        self.assertIn(("{ make junit; }", "make"), GRAMMAR_FORMS)
+        # The fails-today detector: the stack of each form comes from ``stack_of``.
+        wrong = [f"{command!r}: stack_of gives {stack_of(command)!r}, want {stack!r}"
+                 for command, stack in GRAMMAR_FORMS if stack_of(command) != stack]
+        self.assertEqual(wrong, [], "CR-MDB-066 §S1: the guard misses a command position:\n  "
+                         + "\n  ".join(wrong))
+
+    def test_runner_at_finds_a_runner_in_each_grammar_form(self):
+        missed = [command for command, _stack in GRAMMAR_FORMS if runner_at(command) is None]
+        self.assertEqual(missed, [], "CR-MDB-066 §S1: runner_at finds no runner in")
+
+    def test_the_code_span_placement_shows_each_entry_whole(self):
+        # The placement AC1 prescribes, proved before it is used: the span's content is the
+        # entry itself, backquotes and all; a single-backtick span would cut it.
+        for entry in _single_line(GRAMMAR_FORMS) + _single_line(GRAMMAR_NON_RUNNERS):
+            with self.subTest(entry=entry):
+                placed = f"Run {_in_code_span(entry)} from the project root."
+                self.assertEqual([content for _s, _e, content in _code_spans(placed)], [entry])
+        self.assertEqual(_in_code_span("echo `pytest`"), "`` echo `pytest` ``")
+        self.assertEqual(_in_code_span("pytest"), "` pytest `")
+        cut = [content for _s, _e, content in _code_spans("Run `echo `pytest`` now.")]
+        self.assertNotEqual(cut, ["echo `pytest`"])
+
+    def test_each_single_line_grammar_form_is_caught_in_a_code_span_and_on_a_fenced_line(self):
+        forms = _single_line(GRAMMAR_FORMS)
+        self.assertGreaterEqual(len(forms), 25, "precondition: the single-line forms")
+        for form in forms:
+            with self.subTest(form=form):
+                self.assertEqual(
+                    runner_findings(f"Run {_in_code_span(form)} from the project root."),
+                    [(1, form)])
+                self.assertEqual(runner_findings(f"Iterate:\n\n```bash\n{form}\n```\n"),
+                                 [(4, form)])
+
+    def test_each_grammar_non_runner_gives_no_stack_and_no_finding_in_either_placement(self):
+        # A regression pin, passing today: it fails against a §S1 that over-reaches — one
+        # stepping over ``command -v``/``-V``, reading the text after a closing backquote or
+        # after ``$((…))`` as a position, matching ``if`` inside ``ifconfig``, or opening a
+        # substitution inside double quotes.
+        self.assertEqual(len(GRAMMAR_NON_RUNNERS), 7)
+        for command in GRAMMAR_NON_RUNNERS:
+            with self.subTest(command=command):
+                self.assertIsNone(stack_of(command), f"for {command!r}")
+                self.assertIsNone(runner_at(command), f"for {command!r}")
+                self.assertEqual(runner_findings(f"Run {_in_code_span(command)} now."), [])
                 self.assertEqual(runner_findings(f"```bash\n{command}\n```"), [])
 
 

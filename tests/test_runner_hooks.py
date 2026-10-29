@@ -47,6 +47,15 @@ What the module pins, for all four runner hooks — ``block-direct-python-test``
   stack is blocked by that stack's hook only; a command it passes is allowed by all four; each
   of §S5's hook-only extras (``HOOK_ONLY_EXTRAS``) is blocked by its own hook only. The arduino
   forms are left out.
+- **The shell grammar's positions (CR-MDB-066 §S1):** the reserved words ``!``, ``{``, ``if``,
+  ``then``, ``else``, ``elif``, ``while``, ``until`` and ``do``, ``command [-p]`` and
+  ``time -p`` are stepped over like a wrapper; an unquoted backquote opens a command position up
+  to its closing backquote; an arithmetic ``$((…))`` or ``((…))`` is skipped whole, so no ``<<``
+  in it opens a heredoc. ``command -v``/``-V`` and the text after a closing backquote stay
+  allowed; the guard's ``GRAMMAR_FORMS`` and ``GRAMMAR_NON_RUNNERS`` join the parity corpus.
+- **Source identity (CR-MDB-066 AC10):** the four hooks' copies of the shared parser and walk
+  (``SHARED_DEFINITIONS``, and every other name all four define but the per-stack four) are one
+  source, compared by ``ast.unparse``.
 
 The block REASON (§S4) is pinned in ``tests/test_client_path_anchoring.py``, beside the reason
 checks it extends. Each class is a per-hook binding of a mixin, so one more runner hook is one
@@ -73,6 +82,8 @@ from tests.test_raw_runner_guard import (
     ATTACHED_M_FORMS,
     BUN_SCRIPT_FORMS,
     CLIENT_FORMS,
+    GRAMMAR_FORMS,
+    GRAMMAR_NON_RUNNERS,
     HEREDOC_BODIES,
     NARROWED_BUN_SCRIPTS,
     NON_RUNNER_MENTIONS,
@@ -157,6 +168,24 @@ BLOCKED_POSITIONS = (
     "cat <<<EOF\n{run}",
     'cat <<< "$x"\n{run}',
     "cat <<< hi && {run}",
+    # CR-MDB-066 §S1 — the shell grammar's positions: the reserved words, ``command [-p]``,
+    # ``time -p``, an unquoted backquote, and a line after an arithmetic expansion whose ``<<``
+    # opens no heredoc (the group's own braces doubled for ``str.format``: ``{ <run>; }``)
+    "{{ {run}; }}",
+    "if {run}; then :; fi",
+    "if true; then {run}; fi",
+    "if false; then :; else {run}; fi",
+    "while {run}; do :; done",
+    "for f in a; do {run}; done",
+    "! {run}",
+    "command {run}",
+    "command -p {run}",
+    "time -p {run}",
+    "echo `{run}`",
+    "out=`{run}`",
+    "echo $((1<<2))\n{run}",
+    "((n<<2))\n{run}",
+    "while ((n<<1)); do\n{run}\ndone",
 )
 
 #: §S2 — commands where ``{run}`` sits only in a heredoc body or a quoted argument (an allow).
@@ -182,6 +211,15 @@ ALLOWED_MENTIONS = (
     "echo hi #; {run}",
     "echo hi \\\n{run}",
     "cat <<<'{run}'",
+    # CR-MDB-066 §S1 — a lookup runs nothing; the text after a closing backquote or an
+    # arithmetic expansion continues the enclosing command; a backquote inside double quotes or
+    # a heredoc body opens nothing
+    "command -v {run}",
+    "command -V {run}",
+    "echo `date` {run}",
+    "echo $((1<<2)) {run}",
+    'git commit -m "fix `{run}`"',
+    "cat <<EOF\n`{run}`\nEOF",
 )
 
 #: Orchestrator ruling on §S6: the shell removes quotes and redirections before the runner
@@ -399,7 +437,8 @@ class MvnHookExtrasTest(_RunnerHookCase):
 _SINGLE_LINE_CORPORA = (RUNNER_FORMS, ATTACHED_M_FORMS, UV_RUN_FORMS, TEST_FILE_FORMS,
                         BUN_SCRIPT_FORMS)
 #: The guard's corpora of forms already placed at a later position or under a wrapper.
-_PLACED_CORPORA = (WRAPPED_FORMS, POSITION_FORMS)
+#: MIGRATED at CR-MDB-066 (§S8.2): gains GRAMMAR_FORMS, the shell grammar's positions.
+_PLACED_CORPORA = (WRAPPED_FORMS, POSITION_FORMS, GRAMMAR_FORMS)
 
 #: §S1's python runner forms beyond the guard's corpora, one per shape.
 PYTHON_HOOK_FORMS = (
@@ -901,6 +940,163 @@ class RunnerHookScriptsSelfContainedTest(unittest.TestCase):
         self.assertEqual(failures, [], "§S2 runner hook scripts:\n  " + "\n  ".join(failures))
 
 
+# ----------------------------------------------------------------- source identity ----
+
+#: CR-MDB-066 AC10 — the shared parser and walk every runner hook carries its own copy of: each
+#: must exist in all four hooks with the same source.
+SHARED_DEFINITIONS = ("_SEPARATOR", "_HEREDOC", "_ENV_OPTION", "_TIMEOUT_OPTION", "_WRAPPER",
+                      "_skip_heredoc_bodies", "_segments", "_commands", "_shell_words",
+                      "_marker_below", "_in_project")
+#: CR-MDB-066 AC10 — the per-stack names all four hooks define, each with its own source.
+PER_STACK_DEFINITIONS = frozenset({"MARKERS", "REASON", "_has_marker", "main"})
+
+
+def _top_level_definitions(source):
+    """``{name: source}`` for each top-level definition in ``source`` (CR-MDB-066 AC10): a
+    ``def`` by its whole ``ast.unparse``, an assignment to a name by its value's."""
+    definitions = {}
+    for node in ast.parse(source).body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            definitions[node.name] = ast.unparse(node)
+        elif isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    definitions[target.id] = ast.unparse(node.value)
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) \
+                and node.value is not None:
+            definitions[node.target.id] = ast.unparse(node.value)
+    return definitions
+
+
+def _source_identity_failures(sources):
+    """Each way the hooks in ``sources`` (``{script: source}``) break CR-MDB-066 AC10, naming the
+    definition: a ``SHARED_DEFINITIONS`` name missing from a hook, and a shared name — one of
+    ``SHARED_DEFINITIONS`` or any other all the hooks define, ``PER_STACK_DEFINITIONS`` aside —
+    whose copies differ. ``[]`` when the copies are identical."""
+    defined = {script: _top_level_definitions(source) for script, source in sources.items()}
+    failures = [f"{script}: {name} is not defined" for name in SHARED_DEFINITIONS
+                for script, names in defined.items() if name not in names]
+    common = set.intersection(*(set(names) for names in defined.values()))
+    for name in sorted((common | set(SHARED_DEFINITIONS)) - PER_STACK_DEFINITIONS):
+        copies = {}
+        for script, names in defined.items():
+            if name in names:
+                copies.setdefault(names[name], []).append(script)
+        if len(copies) > 1:
+            groups = " | ".join(", ".join(scripts) for scripts in copies.values())
+            failures.append(f"{name}: {len(copies)} different copies ({groups})")
+    return failures
+
+
+#: A synthetic runner hook for the AC10 detector's proof: every shared definition, the per-stack
+#: four (filled per copy), a shared extra helper, ``_shared_extra``.
+_SYNTHETIC_HOOK = '''
+import re
+
+MARKERS = ({marker!r},)
+REASON = {reason!r}
+_SEPARATOR = re.compile(";")
+_HEREDOC = re.compile("<<")
+_ENV_OPTION = "-i"
+_TIMEOUT_OPTION = "-k"
+_WRAPPER = re.compile("env")
+
+
+def _skip_heredoc_bodies(text, index, pending):
+    return index
+
+
+def _segments(text):
+    return [(0, len(text))]
+
+
+def _commands(text):
+    return [text]
+
+
+def _shell_words(segment):
+    return segment.split()
+
+
+def _has_marker(directory):
+    return {marker!r} in directory
+
+
+def _marker_below(root, depth):
+    return False
+
+
+def _in_project(cwd):
+    return bool(cwd)
+
+
+def _shared_extra(value):
+    return value
+
+
+def main():
+    return {code}
+'''
+
+
+class RunnerHookSourceIdentityTest(unittest.TestCase):
+    """CR-MDB-066 AC10 — the four runner hooks' copies of the shared parser and walk stay one
+    source: every ``SHARED_DEFINITIONS`` name exists in each with the same ``ast.unparse``, and
+    so does every other name all four define, ``PER_STACK_DEFINITIONS`` aside.
+
+    Passes on arrival (CR-MDB-066's cycle plan, item 1): all eleven names are identical today.
+    It guards cycles 1–3's edits to the hooks' copies; its detector is proved both ways on
+    synthetic sources first."""
+
+    def _synthetic(self):
+        """Four synthetic hooks, identical but for the per-stack four."""
+        return {f"block-direct-{stack}-test": _SYNTHETIC_HOOK.format(
+                    marker=spec["markers"][0], reason=f"blocked: {spec['run']}", code=index)
+                for index, (stack, spec) in enumerate(RUNNER_HOOKS.items())}
+
+    def test_identical_copies_differing_only_in_the_per_stack_four_pass(self):
+        sources = self._synthetic()
+        self.assertEqual(len(set(sources.values())), 4, "precondition: the per-stack four differ")
+        self.assertEqual(_source_identity_failures(sources), [])
+
+    def test_a_changed_named_copy_is_reported_by_name(self):
+        sources = self._synthetic()
+        sources["block-direct-mvn-test"] = sources["block-direct-mvn-test"].replace(
+            "return [(0, len(text))]", "return []")
+        failures = _source_identity_failures(sources)
+        self.assertEqual(len(failures), 1, failures)
+        self.assertTrue(failures[0].startswith("_segments: 2 different copies"), failures)
+        self.assertIn("block-direct-mvn-test", failures[0])
+
+    def test_a_missing_named_definition_is_reported_by_name(self):
+        sources = self._synthetic()
+        sources["block-direct-bun-test"] = sources["block-direct-bun-test"].replace(
+            '_HEREDOC = re.compile("<<")\n', "")
+        self.assertEqual(_source_identity_failures(sources),
+                         ["block-direct-bun-test: _HEREDOC is not defined"])
+
+    def test_a_shared_extra_helper_changed_in_one_copy_is_reported_by_name(self):
+        sources = self._synthetic()
+        sources["block-direct-cargo-test"] = sources["block-direct-cargo-test"].replace(
+            "    return value\n", "    return not value\n")
+        failures = _source_identity_failures(sources)
+        self.assertEqual(len(failures), 1, failures)
+        self.assertTrue(failures[0].startswith("_shared_extra: 2 different copies"), failures)
+
+    def test_a_helper_not_all_four_define_is_not_compared(self):
+        sources = self._synthetic()
+        sources["block-direct-python-test"] += "\n\ndef _own_helper():\n    return 1\n"
+        sources["block-direct-bun-test"] += "\n\ndef _own_helper():\n    return 2\n"
+        self.assertEqual(_source_identity_failures(sources), [])
+
+    def test_the_four_runner_hooks_share_one_source_for_the_parser_and_the_walk(self):
+        sources = {spec["script"]: (HOOK_SCRIPTS_DIR / spec["script"]).read_text(encoding="utf-8")
+                   for spec in RUNNER_HOOKS.values()}
+        failures = _source_identity_failures(sources)
+        self.assertEqual(failures, [], "CR-MDB-066 AC10: the runner hooks' shared copies "
+                         "diverge:\n  " + "\n  ".join(failures))
+
+
 # ----------------------------------------------------------------- §S6 parity ---------
 
 #: §S6 — commands beyond the guard's own corpora, each with the stack the guard must name
@@ -939,6 +1135,10 @@ PARITY_FORMS = (
     ("echo $(pytest -q)", "python"),
     ("echo $(cargo test)", "cargo"),
     ("echo $(bun test)", "bun"),
+    # CR-MDB-066 §S8.2 — passes on arrival: it pins today's block. §S1.4's substitution
+    # leaves its enclosing segment unchanged, so the words after the closing backquote stay
+    # Maven's arguments and ``test`` is still its goal.
+    ("mvn -Drevision=`git describe` test", "mvn"),
 ) + tuple((command, stack) for stack, forms in QUOTED_WORD_FORMS.items() for command in forms)
 
 #: This module's position and mention forms, for each hook's plain runner, with their stacks.
@@ -959,12 +1159,15 @@ HOOK_ONLY_EXTRAS = {
 
 def _parity_corpus():
     """§S6's corpus, each command once: the guard's ``RUNNER_FORMS``, ``WRAPPED_FORMS``,
-    ``CLIENT_FORMS`` and ``NON_RUNNER_MENTIONS``, its CR-MDB-062 corpora, ``MODULE_FORMS`` and
-    ``PARITY_FORMS`` — the arduino (``make``) entries left out."""
+    ``CLIENT_FORMS`` and ``NON_RUNNER_MENTIONS``, its CR-MDB-062 and CR-MDB-066 corpora,
+    ``MODULE_FORMS`` and ``PARITY_FORMS`` — the arduino (``make``) entries left out."""
+    # MIGRATED at CR-MDB-066 (§S8.2): GRAMMAR_FORMS joins the labelled corpora and
+    # GRAMMAR_NON_RUNNERS the plain ones.
     labelled = (RUNNER_FORMS + WRAPPED_FORMS + POSITION_FORMS + ATTACHED_M_FORMS + UV_RUN_FORMS
-                + TEST_FILE_FORMS + BUN_SCRIPT_FORMS + MODULE_FORMS + PARITY_FORMS)
+                + TEST_FILE_FORMS + BUN_SCRIPT_FORMS + GRAMMAR_FORMS + MODULE_FORMS
+                + PARITY_FORMS)
     plain = (CLIENT_FORMS + NON_RUNNER_MENTIONS + NARROWED_BUN_SCRIPTS + HEREDOC_BODIES
-             + QUOTED_LINES + NON_TEST_SCRIPTS + ARGUMENT_MENTIONS)
+             + QUOTED_LINES + NON_TEST_SCRIPTS + ARGUMENT_MENTIONS + GRAMMAR_NON_RUNNERS)
     commands = [command for command, stack in labelled if stack != "make"] + list(plain)
     return tuple(dict.fromkeys(commands))
 
@@ -988,9 +1191,11 @@ class RunnerHookGuardParityTest(unittest.TestCase):
         shutil.rmtree(cls.tmp, ignore_errors=True)
 
     def test_the_corpus_holds_every_named_corpus_and_no_arduino_form(self):
+        # MIGRATED at CR-MDB-066 (§S8.2): the grammar corpora are in the corpus too.
         for command in ("python3 -m unittest", "bun test", "cargo test", "mvn test", "(mvn test)",
                         CLIENT_FORMS[0], NON_RUNNER_MENTIONS[0], NARROWED_BUN_SCRIPTS[0],
-                        HEREDOC_BODIES[0], NON_TEST_SCRIPTS[0], ARGUMENT_MENTIONS[0]):
+                        HEREDOC_BODIES[0], NON_TEST_SCRIPTS[0], ARGUMENT_MENTIONS[0],
+                        GRAMMAR_FORMS[0][0], GRAMMAR_NON_RUNNERS[0]):
             self.assertIn(command, self.corpus)
         self.assertEqual([c for c in self.corpus if "make junit" in c], [])
         self.assertEqual(len(self.corpus), len(set(self.corpus)))
