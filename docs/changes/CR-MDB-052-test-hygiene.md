@@ -69,3 +69,8 @@ main checkout is the integration tree) and `contracts/worktree-layout.md`
     `404 unknown project`. `start` copies `crucible.toml` from the main tree when it exists, never
     committed, and reports it on its `env:` line; a project without one is unaffected. Tested in
     `tests/test_worktree_flow.py`.
+14. **Markdown lint findings in the shipped skills** (found 2026-10-29). pi-lens's markdownlint reports
+    MD032 (lists not surrounded by blank lines) in `skills-src/model-b/references/sub-agent-procedure.md`,
+    where § "Code quality" starts its list directly under the heading. The shipped skills and references
+    are swept for markdownlint findings and fixed as text-only edits, with each fix checked against the
+    gates that read those files.
