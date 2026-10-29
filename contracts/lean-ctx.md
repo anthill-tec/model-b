@@ -99,11 +99,13 @@ the root and its sub-projects keep their execution knowledge together.
 The new pitfalls, each citing its lean-ctx 3.11.4 source path and symbol:
 - **The listing limit.** A listing shows at most `memory.knowledge.recall_facts_limit` facts (10).
   The key is global-only, not settable in a project's `.lean-ctx.toml`. The listing says
-  `showing <n>/<total>`, and only the listed facts are retrieved.
+  `showing <n>/<total>`, and only the listed facts are retrieved. Source: `handle_recall`,
+  `rust/src/tools/ctx_knowledge/remember.rs`.
 - **Decay.** A fact retrieved or confirmed within the last day does not decay. Every other fact
   decays on every lifecycle run, compounding, and every `remember` and `remove` runs the
-  lifecycle. A restore runs none.
-- **Restore.**
+  lifecycle. A restore runs none. Source: `apply_confidence_decay`,
+  `rust/src/core/memory_lifecycle.rs`.
+- **Restore.** (`CtxKnowledgeTool`, `rust/src/tools/registered/ctx_knowledge.rs`)
   - It selects its store with `store` (default: all four) and ignores a `category` argument.
   - Unscoped, it restores every store, and other projects' archived facts from the shared legacy
     facts archive.
@@ -111,23 +113,30 @@ The new pitfalls, each citing its lean-ctx 3.11.4 source path and symbol:
   - It keeps each fact's archived confidence.
   - The next write re-archives a fact below 0.3.
 - **The restore's scope is a substring.** `query` is a case-insensitive substring match over each
-  archived fact's category, key and value (`restore_facts`), through the archive root shared by
+  archived fact's category, key and value (`restore_facts`,
+  `rust/src/tools/ctx_knowledge/restore.rs`), through the archive root shared by
   every unprotected project. `query=<category>` therefore also restores another project's facts
   under the same category, a category whose name contains it, and any fact whose key or value
   mentions it. Model B removes such a fact at reconciliation and reports it.
-- **Removed facts come back.** `remove` deletes only the live fact (`remove_fact`), and the
+- **Removed facts come back.** `remove` deletes only the live fact (`remove_fact`,
+  `rust/src/core/knowledge/core.rs`), and the
   archive keeps its copy, so the next restore brings back a fact removed at reconciliation, until
   its archive file is pruned. Model B removes it again and reports it.
-- **The archive is bounded and shared.** It keeps 16 files (`DEFAULT_MAX_ARCHIVE_FILES`) in the
+- **The archive is bounded and shared.** It keeps 16 files (`DEFAULT_MAX_ARCHIVE_FILES`,
+  `rust/src/core/memory_archive.rs`) in the
   root shared by every unprotected project, and each archiving lifecycle run adds one, so other
   projects' activity can prune this project's archived facts. A restore is best-effort; the
   one-listing bound is the prevention.
 - **Re-confirmation.** A same-key rewrite re-confirms (the confidence goes to the midpoint).
-  `feedback` does not change confidence.
-- **Export.** It writes a JSON file of the whole store, and retrieves nothing.
+  `feedback` does not change confidence. Source: `handle_feedback`,
+  `rust/src/tools/ctx_knowledge/mod.rs`.
+- **Export.** It writes a JSON file of the whole store, and retrieves nothing. Source:
+  `handle_export`, `rust/src/tools/ctx_knowledge/mod.rs`.
 - **The cap.** The 200-fact cap is shared with automatic captures. `auto_capture` is global-only.
+  Source: `KnowledgePolicy`, `rust/src/core/memory_policy.rs`.
 - **Rehydration.** A category listing that finds no current fact rehydrates at most 3 archived
-  facts at ≥0.6, through `remember` (`rehydrate_from_archives`). So a listing can write: a
+  facts at ≥0.6, through `remember` (`rehydrate_from_archives`,
+  `rust/src/tools/ctx_knowledge/remember.rs`). So a listing can write: a
   Track that only lists makes no write of its own, but its listing may.
 
 ### Project-scoped levers
