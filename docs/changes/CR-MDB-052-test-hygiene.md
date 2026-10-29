@@ -62,3 +62,10 @@ main checkout is the integration tree) and `contracts/worktree-layout.md`
     as the integration tree in a submodule and list no CR it does not have. A CR worktree under
     `.worktrees/<cr>` in a submodule is still listed, and `sync`, `finish` and `abort` still find it.
     Tested with a submodule fixture.
+13. **`worktree-flow.py start` copies the project's gitignored `crucible.toml`** (Crucible #1494, user
+    ruling 2026-10-29: folded into this CR). `start` copies the gitignored `.env` into a new worktree, but
+    not `crucible.toml`, whose `[client] url` names the board the project's clients post to (Crucible
+    0.3.0). Without it, a client in the worktree falls back to the default board and is refused with
+    `404 unknown project`. `start` copies `crucible.toml` from the main tree when it exists, never
+    committed, and reports it on its `env:` line; a project without one is unaffected. Tested in
+    `tests/test_worktree_flow.py`.
