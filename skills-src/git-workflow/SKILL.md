@@ -55,8 +55,8 @@ fix: CR-CF-049 deduplicate imports + add @NotNull validation
 ## Commit Timing
 
 - **One commit per step** — don't split a step across multiple commits
-- **Commit after GREEN — never commit RED state** (unless it's a test-only commit in a TDD test-write step): no failing tests, no compilation errors, nothing that breaks the build
-- TDD discipline before every commit: RED → GREEN → clean up (remove unused imports) → run tests AGAIN (still GREEN) → commit
+- **A test-only RED commit is allowed** — RED commits its failing tests on their own; every other commit is on a clean build: no failing tests, no compilation errors, nothing that breaks the build. Nothing stays red past the cycle's GREEN, and never across a merge
+- TDD discipline before every commit but RED's test-only commit: RED → GREEN → clean up (remove unused imports) → run tests AGAIN (still GREEN) → commit
 - **Stage what you changed, by path** (`git add <path> …`) — never `git add -A`; another agent's or the user's work may share the tree. Don't leave your own changes unstaged
 - Dispatched sub-agents: the Model B sub-agent procedure (`~/.agents/skills/model-b/references/sub-agent-procedure.md`) §TDD is authoritative — a compile failure IS a RED state (ingest it); do NOT run the full suite (that's the orchestrator's pre-merge gate)
 

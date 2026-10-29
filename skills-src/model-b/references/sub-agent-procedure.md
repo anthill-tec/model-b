@@ -67,7 +67,9 @@
 - Remove ALL unused imports; import instead of fully-qualified inline names; rename an unused lambda/closure parameter to `_`.
 - Key a guard's allowlist to an annotation marker at the site, never a line number — an unrelated edit shifts lines and re-breaks it.
 - Checkers are proved on synthetic fixtures — text the test builds, showing both a violation and a clean case. A test never pins live repo violations: a checker that passes only because today's tree has, or lacks, a given defect proves nothing.
-- Clean build before commit; GREEN before commit — never commit in RED.
+- RED commits its failing tests on their own, a test-only commit; GREEN, FIX and a BACKFILL cycle's agent
+  commit only on a clean build with their tests passing. Nothing stays red past the cycle's GREEN, and never
+  across a merge.
 - Conventional commits (`type(scope): desc`); no AI attribution.
 - No empty catch blocks, no unjustified suppressed warnings, no dead/commented-out code.
 - **A test leak** — state one test leaves for another: an environment variable, a stub, a global — is fixed at its source, never in the tests it breaks.

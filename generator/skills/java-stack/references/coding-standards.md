@@ -33,7 +33,7 @@ BusinessEntityDto dto;
 2. **Remove ALL unused imports** from modified classes
 3. **Run tests AGAIN** to catch any mistakes
 4. Check compiler warnings and IDE diagnostics
-5. Git commit (only if tests still GREEN)
+5. Git commit (tests still GREEN, as for every commit but RED's test-only commit)
 
 **NO EXCEPTIONS** - This is a code quality standard
 
@@ -197,15 +197,15 @@ private String fieldName;
 2. Run `./mvnw clean compile` (not just `compile`)
 3. Verify no compilation errors
 4. Run tests
-5. Commit if GREEN
+5. Commit on a clean build with the tests passing (every commit but RED's test-only commit)
 
 ### Occasional Clean Compile
 Run `./mvnw clean compile` periodically during development - Maven compiler caching can become stale
 
-## Never Commit Failed State
+## Never Commit a Broken Build
 
 ### TDD Discipline
-**NEVER commit in RED state:**
+**A RED commit holds failing tests only (a test-only commit); every other commit is on a clean build with its tests passing; nothing stays red past the cycle's GREEN, and never across a merge.** Before every commit but RED's test-only commit:
 1. ✅ Run test → verify GREEN
 2. ✅ Remove unused imports
 3. ✅ Run test AGAIN → verify still GREEN

@@ -36,6 +36,11 @@ Class map:
   synthetic text first (was: ``ci.yml`` running the suite on ``develop``, release and hotfix pushes
   and pull requests beside ``release.yml``'s rehearsal). That it shows no runner in a code span is
   the raw-runner guard's, not repeated here.
+- ``AgentsMdTddCommitDetectorTest`` / ``AgentsMdTddCommitTest`` — CR-MDB-093 §S3 (PRD D5, ruling
+  of 2026-10-29): one block of ``AGENTS.md`` § Testing & QA lets RED commit its failing tests on
+  their own (:data:`AGENTS_TDD_RULES`), and the file never says "never commit failing tests"
+  (:func:`agents_md_tdd_findings`, reusing ``tests.test_agent_definition_rules``' matcher); proved
+  on synthetic text first.
 
 §S3 rule (``_duplicate_module_functions``). For every ``tests/*.py`` file, every MODULE-LEVEL
 ``def``/``async def`` (a direct child of the module body) is keyed by ``ast.dump`` of its body with
@@ -79,7 +84,9 @@ import unittest
 from pathlib import Path
 
 from tests import test_deployed_asset_freshness as freshness
-from tests._helpers import md_section
+# MIGRATED at CR-MDB-093 (§S4): retired_phrases moved to tests._helpers.
+from tests._helpers import md_section, retired_phrases
+from tests.test_agent_definition_rules import missing_rules
 from tests.test_board_holds_the_queue import norm_units
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -1177,6 +1184,86 @@ class AgentsMdReleaseCheckTest(unittest.TestCase):
 
     def test_agents_md_names_modelb_axi_release_check_where_it_describes_the_cli(self):
         self.assertEqual(agents_md_release_check_findings(AGENTS_MD.read_text(encoding="utf-8")), [])
+
+
+# ------------------------------------------------- CR-MDB-093 §S3 AGENTS.md TDD commits ----
+
+#: CR-MDB-093 §S3 — Testing & QA's TDD bullet: RED commits its failing tests on their own.
+AGENTS_TDD_RULES = {
+    "TDD is mandatory: RED commits its failing tests on their own (a test-only commit); every other "
+    "commit is on a clean build, and nothing stays red past the cycle's GREEN": (
+        r"TDD is mandatory", r"test-only", r"clean build", r"past the cycle's GREEN"),
+}
+#: CR-MDB-093 §S3 — the retired rule, said nowhere in ``AGENTS.md``.
+AGENTS_TDD_RETIRED = ("never commit failing tests",)
+
+
+def agents_md_tdd_findings(text: str) -> list[str]:
+    """CR-MDB-093 §S3: ``AGENTS.md`` never says "never commit failing tests", and one block of
+    its § Testing & QA carries :data:`AGENTS_TDD_RULES`."""
+    problems = [f"retired phrase: {phrase}" for phrase in retired_phrases(text, AGENTS_TDD_RETIRED)]
+    return problems + [f"Testing & QA: {name}"
+                       for name in missing_rules(_testing_section(text), AGENTS_TDD_RULES)]
+
+
+_AGENTS_TDD_RULE = f"Testing & QA: {next(iter(AGENTS_TDD_RULES))}"
+_AGENTS_TDD_RETIRED_FINDING = "retired phrase: never commit failing tests"
+
+
+class AgentsMdTddCommitDetectorTest(unittest.TestCase):
+    """CR-MDB-093 §S3 — :func:`agents_md_tdd_findings`, both ways on synthetic text."""
+
+    BULLET = ("- TDD is mandatory: RED before GREEN. RED commits its failing tests on their own (a "
+              "test-only\n  commit); every other commit is on a clean build with its tests passing, and "
+              "nothing stays red\n  past the cycle's GREEN or across a merge.\n")
+    GOOD = ("# Repository Guidelines\n\n## Testing & QA\n\nPure unittest.\n\n" + BULLET + "\n"
+            "## Workflow Rules\n\n- Solo project.\n")
+
+    def test_the_conforming_text_passes(self):
+        self.assertEqual(agents_md_tdd_findings(self.GOOD), [])
+
+    def test_each_pattern_cut_alone_bites(self):
+        for old, new, pattern in (
+                ("TDD is mandatory", "TDD is required", "TDD is mandatory"),
+                ("(a test-only\n  commit)", "(a tests-only\n  commit)", "test-only"),
+                ("on a clean build", "on a green build", "clean build"),
+                ("past the cycle's GREEN", "past the cycle's end", "past the cycle's GREEN")):
+            with self.subTest(pattern=pattern):
+                self.assertEqual(self.GOOD.count(old), 1, old)
+                self.assertEqual(agents_md_tdd_findings(self.GOOD.replace(old, new)),
+                                 [_AGENTS_TDD_RULE])
+
+    def test_never_commit_failing_tests_bites_anywhere_in_the_file(self):
+        for added in ("- Never commit **failing** tests.\n", "- RED before GREEN, never commit\n  failing "
+                      "tests.\n", "### Never commit failing tests\n"):
+            with self.subTest(added=added):
+                self.assertEqual(agents_md_tdd_findings(self.GOOD + added),
+                                 [_AGENTS_TDD_RETIRED_FINDING])
+        todays = self.GOOD.replace(self.BULLET, "- TDD is mandatory: RED before GREEN, never commit "
+                                   "failing tests, clean build before every commit.\n")
+        self.assertEqual(agents_md_tdd_findings(todays),
+                         [_AGENTS_TDD_RETIRED_FINDING, _AGENTS_TDD_RULE])
+
+    def test_the_rule_split_across_two_blocks_or_outside_testing_and_qa_bites(self):
+        split = self.GOOD.replace("commit); every other commit", "commit).\n- Every other commit")
+        self.assertNotEqual(split, self.GOOD)
+        self.assertEqual(agents_md_tdd_findings(split), [_AGENTS_TDD_RULE])
+        moved = self.GOOD.replace(self.BULLET, "") + self.BULLET
+        self.assertEqual(agents_md_tdd_findings(moved), [_AGENTS_TDD_RULE],
+                         "the rule under Workflow Rules is not Testing & QA's")
+        self.assertEqual(agents_md_tdd_findings("# Repository Guidelines\n"), [_AGENTS_TDD_RULE])
+
+
+class AgentsMdTddCommitTest(unittest.TestCase):
+    """CR-MDB-093 §S3 — the real ``AGENTS.md`` lets RED commit its failing tests on their own."""
+
+    def test_testing_and_qa_lets_red_commit_its_failing_tests_on_their_own(self):
+        self.assertEqual([p for p in agents_md_tdd_findings(AGENTS_MD.read_text(encoding="utf-8"))
+                          if p.startswith("Testing & QA: ")], [])
+
+    def test_agents_md_never_says_never_commit_failing_tests(self):
+        self.assertEqual(
+            retired_phrases(AGENTS_MD.read_text(encoding="utf-8"), AGENTS_TDD_RETIRED), [])
 
 
 if __name__ == "__main__":

@@ -79,6 +79,21 @@ checked as data (:data:`EXPECTED_DECLARATION`, :data:`STACK_SKILL_SOURCES`,
   proved both ways, then run over ``AGENTS.md``'s ``generator/`` row: it names every
   ``generator/stacks/*.toml`` and states the number of files in ``generator/agents/``, both
   derived from the tree.
+- ``JavaRedCommitPhraseDetectorTest`` / ``JavaRedCommitPhrasesTest`` — CR-MDB-093 §S4 (PRD D5,
+  ruling of 2026-10-29): :func:`java_red_commit_findings` proved both ways, then no reference under
+  ``generator/skills/java-stack/references/`` forbids a RED commit outright
+  (:data:`JAVA_RETIRED_COMMIT_PHRASES`). Each edited reference keeping its title and provenance line
+  is ``JavaReferencesMovedTest``'s.
+- ``JavaGreenFirstLineDetectorTest`` / ``JavaGreenFirstLinesTest`` — CR-MDB-093 §S4, amended at
+  cycle 311's VERIFY: :func:`java_green_first_findings` proved both ways, then no java-stack
+  reference says "Commit if GREEN" or "Commit only if GREEN" (:data:`JAVA_GREEN_FIRST_PHRASES`),
+  and every block opening on "Before every commit" carries ``but RED's test-only commit`` itself —
+  ``maven.md`` § "Build Verification Workflow" keeping one such lead.
+- ``JavaWholeCommitRuleDetectorTest`` / ``JavaWholeCommitRuleTest`` — CR-MDB-093 §S4, amended at
+  cycle 311's VERIFY: :func:`java_whole_rule_findings` proved both ways, then each of
+  :data:`JAVA_COMMIT_RULE_RELS` states the whole rule in one block (:data:`JAVA_WHOLE_COMMIT_RULE`).
+- ``SharedPhraseHelperTest`` — CR-MDB-093 §S4, amended at cycle 311's VERIFY: ``retired_phrases``
+  is defined once, in ``tests/_helpers.py``, and the three modules using it import it from there.
 
 MIGRATED (CR-MDB-060 §S1.1): the templates the CR-MDB-085 and CR-MDB-086 classes read —
 ``rust-orchestration.md``, ``arduino-orchestration.md``, ``java-orchestration.md`` — are the stack
@@ -89,6 +104,7 @@ Anchor phrases are the spec's (§S3 tables), checked as written. Hermetic: reads
 and renders in memory; nothing is installed or written outside a temp dir. Stdlib only.
 """
 
+import ast
 import re
 import tomllib
 import unittest
@@ -111,9 +127,12 @@ from tests._helpers import (
     REPO_ROOT,
     md_section,
     read_text,
+    retired_phrases,  # MIGRATED at CR-MDB-093 (§S4)
     split_frontmatter,
 )
 from tests._helpers import rendered_definition as _rendered
+from tests.test_orchestration_acceptance_model import missing_rules, rule_blocks
+from tests.test_orchestrator_rule_triage import section_body
 
 GENERATOR_DIR = REPO_ROOT / "generator"
 STACKS_DIR = GENERATOR_DIR / "stacks"
@@ -1787,6 +1806,292 @@ class GeneratorRowCurrentTest(unittest.TestCase):
             generator_row_findings(read_text(REPO_ROOT / "AGENTS.md"), stacks, definitions),
             [],
             "§S6.4/AC9: the generator/ row states the tree's stack files and definitions",
+        )
+
+
+# ------------------------------------------------------------------ CR-MDB-093 ----
+
+#: CR-MDB-093 §S4 — the phrases that forbid a RED commit outright; none stays in java-stack's
+#: references (a RED commit holds failing tests only; every other commit is on a clean build).
+JAVA_RETIRED_COMMIT_PHRASES = ("NEVER commit in RED state", "Never commit RED", "Commit in RED state",
+                               "Never commit RED state")
+#: CR-MDB-093 §S4 — the three references the ruling edits.
+JAVA_COMMIT_RULE_RELS = ("references/coding-standards.md", "references/testing-practices.md",
+                         "references/maven.md")
+
+
+def java_red_commit_findings(text: str) -> list[str]:
+    """CR-MDB-093 §S4: each of :data:`JAVA_RETIRED_COMMIT_PHRASES` ``text`` says (whole words,
+    case-insensitive, across markup and line breaks)."""
+    return retired_phrases(text, JAVA_RETIRED_COMMIT_PHRASES)
+
+
+class JavaRedCommitPhraseDetectorTest(unittest.TestCase):
+    """CR-MDB-093 §S4 — :func:`java_red_commit_findings`, both ways on synthetic text."""
+
+    GOOD = ("# Java Coding Standards\n\n## Never Commit a Broken Build\n\n"
+            "A RED commit holds failing tests only; every other commit is on a clean build with its "
+            "tests passing.\n\n1. Run the tests.\n2. Commit if GREEN (every commit but RED's "
+            "test-only commit).\n\n**NEVER:**\n- Commit with a failing test\n\n"
+            "10. **Never commit with a failing test:** every commit but RED's test-only commit is "
+            "GREEN\n\n2. \"Are tests GREEN?\" → for every commit but RED's test-only commit\n")
+
+    def test_the_conforming_text_passes(self):
+        self.assertEqual(java_red_commit_findings(self.GOOD), [])
+
+    def test_each_retired_phrase_bites_alone(self):
+        for phrase, found in (
+                ("NEVER commit in RED state", ["NEVER commit in RED state", "Commit in RED state"]),
+                ("Never commit RED", ["Never commit RED"]),
+                ("Commit in RED state", ["Commit in RED state"]),
+                ("Never commit RED state", ["Never commit RED", "Never commit RED state"])):
+            with self.subTest(phrase=phrase):
+                self.assertEqual(java_red_commit_findings(self.GOOD + phrase + "\n"), found)
+
+    def test_todays_lines_bite_across_markup_and_line_breaks(self):
+        for line, found in (
+                ("**NEVER commit in RED state:**", ["NEVER commit in RED state", "Commit in RED state"]),
+                ("10. **Never commit RED:** Always achieve GREEN before committing",
+                 ["Never commit RED"]),
+                ("- Commit in RED state", ["Commit in RED state"]),
+                ("2. \"Are tests GREEN?\" → Never commit RED state",
+                 ["Never commit RED", "Never commit RED state"]),
+                ("- never commit\n  `red` state", ["Never commit RED", "Never commit RED state"])):
+            with self.subTest(line=line):
+                self.assertEqual(java_red_commit_findings(self.GOOD + line + "\n"), found)
+
+    def test_a_longer_word_is_not_a_retired_phrase(self):
+        self.assertEqual(java_red_commit_findings("Never commit REDACTED keys; commit in RED states."),
+                         [])
+
+
+class JavaRedCommitPhrasesTest(unittest.TestCase):
+    """CR-MDB-093 §S4 — no java-stack reference forbids a RED commit outright."""
+
+    def test_no_java_stack_reference_forbids_a_red_commit_outright(self):
+        paths = sorted((JAVA_STACK_DIR / "references").glob("*.md"))
+        rels = {path.relative_to(JAVA_STACK_DIR).as_posix() for path in paths}
+        self.assertEqual([rel for rel in JAVA_COMMIT_RULE_RELS if rel not in rels], [],
+                         "precondition: the three references the ruling edits are there")
+        self.assertEqual(
+            [f"{path.relative_to(JAVA_STACK_DIR).as_posix()}: {hit}"
+             for path in paths for hit in java_red_commit_findings(read_text(path))],
+             [],
+            "§S4: a RED commit holds failing tests only; every other commit is on a clean build",
+        )
+
+
+#: CR-MDB-093 §S4 (amended at cycle 311's VERIFY) — the GREEN-first lines; no line of java-stack's
+#: references says either (every commit but RED's test-only commit is the one GREEN gates).
+JAVA_GREEN_FIRST_PHRASES = ("Commit if GREEN", "Commit only if GREEN")
+#: CR-MDB-093 §S4 (amended at cycle 311's VERIFY) — a block opening on "Before every commit" (the
+#: lead of a commit checklist, list marker and markup aside) carries RED's exception itself.
+_BEFORE_EVERY_COMMIT_LEAD = re.compile(r"^(?:(?:[-*+]|\d+[.)])\s+)?Before every commit\b", re.IGNORECASE)
+JAVA_RED_EXCEPTION = r"but RED's test-only commit"
+BEFORE_EVERY_COMMIT_FINDING = "Before every commit without RED's test-only exception"
+#: CR-MDB-093 §S4 (amended at cycle 311's VERIFY) — the whole rule, stated once in one block of each
+#: of :data:`JAVA_COMMIT_RULE_RELS`.
+JAVA_WHOLE_COMMIT_RULE = {
+    "a RED commit holds failing tests only (test-only); every other commit is on a clean build; "
+    "nothing stays red past the cycle's GREEN, and never across a merge": (
+        r"test-only", r"clean build", r"past the cycle's GREEN", r"across a merge"),
+}
+_JAVA_WHOLE_RULE_FINDING = f"whole rule: {next(iter(JAVA_WHOLE_COMMIT_RULE))}"
+MAVEN_REL = "references/maven.md"
+BUILD_VERIFICATION_HEADING = "Build Verification Workflow"
+
+
+def before_every_commit_leads(text: str) -> list[str]:
+    """The ``rule_blocks`` blocks of ``text`` that open on "Before every commit"."""
+    return [block for block in rule_blocks(text) if _BEFORE_EVERY_COMMIT_LEAD.match(block)]
+
+
+def java_green_first_findings(text: str) -> list[str]:
+    """CR-MDB-093 §S4: each of :data:`JAVA_GREEN_FIRST_PHRASES` ``text`` says (whole words,
+    case-insensitive, across markup and line breaks), then each "Before every commit" lead block
+    that does not itself carry :data:`JAVA_RED_EXCEPTION`."""
+    problems = [f"GREEN-first line: {phrase}"
+                for phrase in retired_phrases(text, JAVA_GREEN_FIRST_PHRASES)]
+    return problems + [f"{BEFORE_EVERY_COMMIT_FINDING}: {block}"
+                       for block in before_every_commit_leads(text)
+                       if not re.search(JAVA_RED_EXCEPTION, block, re.IGNORECASE)]
+
+
+def java_whole_rule_findings(text: str) -> list[str]:
+    """CR-MDB-093 §S4: ``whole rule: …`` unless one block of ``text`` carries every pattern of
+    :data:`JAVA_WHOLE_COMMIT_RULE`."""
+    return [f"whole rule: {name}" for name in missing_rules(text, JAVA_WHOLE_COMMIT_RULE)]
+
+
+class JavaGreenFirstLineDetectorTest(unittest.TestCase):
+    """CR-MDB-093 §S4 (amended at cycle 311's VERIFY) — :func:`java_green_first_findings`, both
+    ways on synthetic text."""
+
+    GOOD = ("### Build Verification Workflow\n\n**Before every commit but RED's test-only commit:**\n"
+            "```bash\n# 1. Clean build\n./mvnw clean compile\n\n# 4. Commit when the tests pass\n"
+            "git commit -m \"Your message\"\n```\n\n### Maven Clean Build\n\n**Workflow:**\n"
+            "1. Run `./mvnw clean compile`\n2. Run tests\n3. Commit on a clean build (every commit "
+            "but RED's test-only commit is GREEN)\n")
+
+    def test_the_conforming_text_passes(self):
+        self.assertEqual(java_green_first_findings(self.GOOD), [])
+        self.assertEqual(len(before_every_commit_leads(self.GOOD)), 1,
+                         "precondition: the sample has one Before every commit lead")
+
+    def test_each_green_first_phrase_bites_alone(self):
+        for line, found in (
+                ("5. Commit if GREEN\n", ["GREEN-first line: Commit if GREEN"]),
+                ("```bash\n# 4. Commit only if GREEN\ngit commit\n```\n",
+                 ["GREEN-first line: Commit only if GREEN"]),
+                ("- **Commit** only if\n  `green`\n", ["GREEN-first line: Commit only if GREEN"]),
+                ("3. commit IF green\n", ["GREEN-first line: Commit if GREEN"])):
+            with self.subTest(line=line):
+                self.assertEqual(java_green_first_findings(self.GOOD + "\n" + line), found)
+
+    def test_a_longer_word_is_not_a_green_first_phrase(self):
+        self.assertEqual(java_green_first_findings("Commit if GREENER; recommit only if GREEN."), [])
+
+    def test_a_before_every_commit_lead_without_reds_exception_bites(self):
+        todays = self.GOOD.replace("**Before every commit but RED's test-only commit:**",
+                                   "**Before every commit:**")
+        self.assertNotEqual(todays, self.GOOD)
+        self.assertEqual(java_green_first_findings(todays),
+                         [f"{BEFORE_EVERY_COMMIT_FINDING}: Before every commit: bash"])
+        for cut in ("but RED's commit", "but the test-only commit", "except RED's test-only commit"):
+            with self.subTest(cut=cut):
+                lead = f"- Before every commit {cut}: run the tests\n"
+                self.assertEqual(java_green_first_findings(self.GOOD + "\n" + lead),
+                                 [f"{BEFORE_EVERY_COMMIT_FINDING}: {lead.strip()}"])
+
+    def test_reds_exception_in_another_block_than_the_lead_bites(self):
+        split = self.GOOD.replace(
+            "**Before every commit but RED's test-only commit:**\n",
+            "This applies to every commit but RED's test-only commit.\n\n**Before every commit:**\n")
+        self.assertNotEqual(split, self.GOOD)
+        self.assertEqual(java_green_first_findings(split),
+                         [f"{BEFORE_EVERY_COMMIT_FINDING}: Before every commit: bash"])
+
+    def test_todays_maven_build_verification_workflow_bites_twice(self):
+        todays = ("### Build Verification Workflow\n\n**Before every commit:**\n```bash\n"
+                  "# 1. Clean build\n./mvnw clean compile\n\n# 4. Commit only if GREEN\n"
+                  "git commit -m \"Your message\"\n```\n")
+        self.assertEqual(java_green_first_findings(todays),
+                         ["GREEN-first line: Commit only if GREEN",
+                          f"{BEFORE_EVERY_COMMIT_FINDING}: Before every commit: bash"])
+
+
+class JavaGreenFirstLinesTest(unittest.TestCase):
+    """CR-MDB-093 §S4 (amended at cycle 311's VERIFY) — no java-stack reference says "Commit if
+    GREEN" or "Commit only if GREEN", and maven.md's "Before every commit" lead excepts RED's
+    test-only commit in its own block."""
+
+    def test_no_java_stack_reference_has_a_green_first_line(self):
+        paths = sorted((JAVA_STACK_DIR / "references").glob("*.md"))
+        self.assertTrue(paths, "precondition: java-stack has references")
+        self.assertEqual(
+            [f"{path.relative_to(JAVA_STACK_DIR).as_posix()}: {hit}"
+             for path in paths for hit in java_green_first_findings(read_text(path))],
+            [],
+            "§S4: every commit but RED's test-only commit is GREEN — no line says Commit (only) if "
+            "GREEN, and a Before every commit lead carries but RED's test-only commit",
+        )
+
+    def test_mavens_build_verification_workflow_lead_excepts_reds_test_only_commit(self):
+        body = section_body(read_text(JAVA_STACK_DIR / MAVEN_REL), BUILD_VERIFICATION_HEADING)
+        if body is None:
+            self.fail(f"precondition: {MAVEN_REL} has § {BUILD_VERIFICATION_HEADING}")
+        leads = before_every_commit_leads(body)
+        self.assertEqual(len(leads), 1,
+                         f"§S4: § {BUILD_VERIFICATION_HEADING} keeps one Before every commit lead")
+        self.assertRegex(leads[0], re.compile(JAVA_RED_EXCEPTION, re.IGNORECASE),
+                         f"§S4: § {BUILD_VERIFICATION_HEADING}'s lead applies to every commit but "
+                         "RED's test-only commit")
+
+
+class JavaWholeCommitRuleDetectorTest(unittest.TestCase):
+    """CR-MDB-093 §S4 (amended at cycle 311's VERIFY) — :func:`java_whole_rule_findings`, both
+    ways on synthetic text."""
+
+    GOOD = ("## Never Commit a Broken Build\n\n**A RED commit holds failing tests only (a test-only "
+            "commit);\nevery other commit is on a clean build with its tests passing; nothing stays red "
+            "past\nthe cycle's GREEN, and never across a merge.**\n\n1. Run the tests\n")
+
+    def test_the_conforming_text_passes(self):
+        self.assertEqual(java_whole_rule_findings(self.GOOD), [])
+
+    def test_each_pattern_cut_alone_bites(self):
+        for old, new, pattern in (
+                ("(a test-only ", "(a tests-only ", "test-only"),
+                ("on a clean build", "on a green build", "clean build"),
+                ("past\nthe cycle's GREEN", "past\nthe cycle's end", "past the cycle's GREEN"),
+                ("never across a merge", "never into develop", "across a merge")):
+            with self.subTest(pattern=pattern):
+                self.assertEqual(self.GOOD.count(old), 1, old)
+                self.assertEqual(java_whole_rule_findings(self.GOOD.replace(old, new)),
+                                 [_JAVA_WHOLE_RULE_FINDING])
+
+    def test_the_rule_split_across_two_blocks_bites(self):
+        split = self.GOOD.replace("passing; nothing stays red", "passing.**\n\n- **Nothing stays red")
+        self.assertNotEqual(split, self.GOOD)
+        self.assertEqual(java_whole_rule_findings(split), [_JAVA_WHOLE_RULE_FINDING])
+        self.assertEqual(java_whole_rule_findings("# Java Coding Standards\n"), [_JAVA_WHOLE_RULE_FINDING])
+
+    def test_todays_partial_rule_bites(self):
+        todays = ("10. **Commit only on a clean build:** A RED commit holds failing tests only; every "
+                  "other commit is on a clean build with its tests passing\n")
+        self.assertEqual(java_whole_rule_findings(todays), [_JAVA_WHOLE_RULE_FINDING])
+
+
+class JavaWholeCommitRuleTest(unittest.TestCase):
+    """CR-MDB-093 §S4 (amended at cycle 311's VERIFY) — each of coding-standards.md,
+    testing-practices.md and maven.md states the whole rule once, in one block."""
+
+    def test_each_edited_reference_states_the_whole_rule_in_one_block(self):
+        self.assertEqual(
+            [f"{rel}: {hit}" for rel in JAVA_COMMIT_RULE_RELS
+             for hit in java_whole_rule_findings(read_text(JAVA_STACK_DIR / rel))],
+            [],
+            "§S4: a RED commit holds failing tests only; every other commit is on a clean build with "
+            "its tests passing; nothing stays red past the cycle's GREEN, and never across a merge",
+        )
+
+
+#: CR-MDB-093 §S4 (amended at cycle 311's VERIFY) — the shared phrase helper and the modules that
+#: use it; it is defined once, in ``tests/_helpers.py``, and each module imports it from there.
+PHRASE_HELPER = "retired_phrases"
+PHRASE_HELPER_HOME = "tests/_helpers.py"
+PHRASE_HELPER_USERS = ("tests/test_agent_definition_rules.py", "tests/test_suite_hygiene.py",
+                       "tests/test_stack_reference_material.py")
+
+
+def _module_level_functions(path: Path) -> set[str]:
+    tree = ast.parse(read_text(path))
+    return {node.name for node in tree.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))}
+
+
+def _imported_from(path: Path, name: str) -> list[str]:
+    """The module each ``from <module> import`` statement of ``path`` imports ``name`` from."""
+    return [node.module or "" for node in ast.walk(ast.parse(read_text(path)))
+            if isinstance(node, ast.ImportFrom) and any(a.name == name for a in node.names)]
+
+
+class SharedPhraseHelperTest(unittest.TestCase):
+    """CR-MDB-093 §S4 (amended at cycle 311's VERIFY) — ``retired_phrases`` lives once, in
+    ``tests/_helpers.py``, and the three modules that use it import it from there."""
+
+    def test_the_phrase_helper_is_defined_once_in_the_shared_helpers(self):
+        defining = sorted(path.relative_to(REPO_ROOT).as_posix()
+                          for path in (REPO_ROOT / "tests").glob("*.py")
+                          if PHRASE_HELPER in _module_level_functions(path))
+        self.assertEqual(defining, [PHRASE_HELPER_HOME],
+                         f"§S4: {PHRASE_HELPER} is defined once, in {PHRASE_HELPER_HOME}")
+
+    def test_each_module_using_the_phrase_helper_imports_it_from_the_shared_helpers(self):
+        self.assertEqual(
+            {rel: _imported_from(REPO_ROOT / rel, PHRASE_HELPER) for rel in PHRASE_HELPER_USERS},
+            {rel: ["tests._helpers"] for rel in PHRASE_HELPER_USERS},
+            f"§S4: each module imports {PHRASE_HELPER} from tests._helpers",
         )
 
 

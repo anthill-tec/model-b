@@ -74,7 +74,9 @@ git checkout feature/xyz
 
 ### Build Verification Workflow
 
-**Before every commit:**
+A RED commit holds failing tests only (a test-only commit); every other commit is on a clean build with its tests passing; nothing stays red past the cycle's GREEN, and never across a merge.
+
+**Before every commit but RED's test-only commit:**
 ```bash
 # 1. Clean build
 ./mvnw clean compile
@@ -85,7 +87,7 @@ echo $?  # Should be 0
 # 3. Run tests
 python3 ~/.crucible/clients/mvn-crucible.py module --agent <agent-id>
 
-# 4. Commit only if GREEN
+# 4. Commit when the tests pass
 git commit -m "Your message"
 ```
 
@@ -911,7 +913,7 @@ jobs:
 
 **BEFORE committing:**
 1. "Did I run clean compile?" → Required before every commit
-2. "Are tests GREEN?" → Never commit RED state
+2. "Are tests GREEN?" → Required before every commit but RED's test-only commit
 3. "Any unused imports?" → Clean them up
 
 **BEFORE releasing:**
