@@ -33,7 +33,13 @@ groups (§S1 item 1):
   a test file (``test_*.py``, ``*_test.py``) run directly by an interpreter. ``uv run`` with
   its options (and their values) is a command position before any of these;
 - ``BUN_RUNNERS``: ``bun test``, ``bun run test``/``npm run test`` alone or as ``test:<name>``,
-  ``npm test``, ``bunx``/``bun x``/``npx`` ``playwright test``, ``playwright test``;
+  ``npm test``, ``bunx``/``bun x``/``npx`` ``playwright test``, ``playwright test``; and
+  (CR-MDB-066 §S2) the package managers' test script — ``npm test``/``tst``/``t``,
+  ``pnpm test``, ``yarn test``, and ``run``/``run-script`` before ``test`` or ``test:<name>``
+  for ``bun``, ``npm``, ``pnpm`` and ``yarn`` — with any number of ``--filter <pattern>`` or
+  ``--filter=<pattern>`` options between ``bun run`` and the script; and ``vitest``, bare or
+  by path, alone or after ``bunx``/``bun x`` (``--bun`` allowed) or ``npx``
+  (``vitest.config.ts`` and ``vitest-preview`` are no runner);
 - ``CARGO_RUNNERS``: ``cargo test``, ``cargo nextest``, ``cargo llvm-cov``;
 - the Maven rule: ``mvn``/``mvnw``/``./mvnw`` with the goal ``test``, ``verify``,
   ``integration-test`` or ``test-compile``, or a ``surefire:``/``failsafe:`` goal (exact goals);
@@ -139,12 +145,16 @@ PYTHON_RUNNERS = (
     re.compile(_INTERPRETER + r"\s+(?:[^\s'\"`]*/)?(?:test_[^\s/'\"`]*|[^\s/'\"`]*_test)\.py"
                + _END),
 )
-#: The bun runner forms; a script row is ``test`` alone or ``test:<name>`` (§S1 item 4).
+#: The bun runner forms; a script row is ``test`` alone or ``test:<name>`` (§S1 item 4). The
+#: package managers' test script, ``bun run``'s ``--filter`` options and Vitest (CR-MDB-066
+#: §S2): each ``--filter`` takes one word, so a run of them is read one way only.
 BUN_RUNNERS = (
     re.compile(r"bun\s+test" + _END),
-    re.compile(r"(?:bun|npm)\s+run\s+test(?::\S+)?" + _END),
-    re.compile(r"npm\s+test" + _END),
+    re.compile(r"(?:bun\s+run(?:\s+--filter(?:=\S+|\s+\S+))*|bun\s+run-script"
+               r"|(?:npm|pnpm|yarn)\s+run(?:-script)?)\s+test(?::\S+)?" + _END),
+    re.compile(r"(?:npm\s+(?:test|tst|t)|(?:pnpm|yarn)\s+test)" + _END),
     re.compile(r"(?:(?:bunx|bun\s+x|npx)\s+)?playwright\s+test" + _END),
+    re.compile(r"(?:(?:bunx|bun\s+x)(?:\s+--bun)?\s+|npx\s+)?(?:\S*/)?vitest" + _END),
 )
 #: The cargo runner forms.
 CARGO_RUNNERS = (re.compile(r"cargo\s+(?:test|nextest|llvm-cov)" + _END),)

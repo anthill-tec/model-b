@@ -6,6 +6,14 @@ inside a bun project and redirects it to the bun-crucible.py client
 (CR-MDB-062 §S2). `bun run <file>` and any other script (`npm run testdata`) are
 allowed.
 
+The bun forms (CR-MDB-066 §S2) add the package managers' test script — `npm test` /
+`tst` / `t`, `pnpm test`, `yarn test`, and `run` / `run-script` before `test` or
+`test:<name>` for `bun`, `npm`, `pnpm` and `yarn` — with any number of
+`--filter <pattern>` or `--filter=<pattern>` options between `bun run` and the
+script; and `vitest`, bare or by path, alone or after `bunx` / `bun x` (`--bun`
+allowed) or `npx`. `vitest.config.ts`, `bunx vitest-preview`, `bun --filter <p> test`,
+`pnpm exec vitest`, `yarn vitest` and `bun run vitest` are no runner.
+
 Contract: the neutral payload (CR-MDB-030 §S3: `tool_name` `bash` /
 `tool_input.command` / `cwd`); exit 0 allows, exit 2 blocks with
 `{"decision":"block","reason":...}` on stdout. Self-contained and stdlib only
@@ -50,6 +58,12 @@ with its `test` and `check` verbs, the tier verbs `unit`, `module`,
 `integration`, `e2e` and `bdd`, and `regression`; its client gap (a single test
 selected by name); and the `ALLOW_RAW_BUN=1` escape hatch, used only with the
 orchestrator's approval.
+
+It presumes no runner (CR-MDB-066 §S3): its first line names every form it
+blocks; a tier verb runs the `test:<tier>` script the project declares in
+`package.json`, by name, and the client refuses a tier the project declares no
+script for; `test` and `regression` run `bun test`, so a project whose runner is
+another (Vitest under Bun) runs its suites with the tier verbs.
 """
 
 import json
@@ -68,11 +82,15 @@ SKIPPED_DIRS = frozenset({"node_modules", ".venv", "venv", "target", "dist", "bu
 #: Where a runner command word ends.
 _END = r"(?=$|[\s)\"'`,])"
 #: The bun runner forms (CR-MDB-062 §S1/§S2); a script row is `test` alone or `test:<name>`.
+#: The package managers' test script, `bun run`'s `--filter` options and Vitest (CR-MDB-066
+#: §S2): each `--filter` takes one word, so a run of them is read one way only.
 BUN_RUNNERS = (
     re.compile(r"bun\s+test" + _END),
-    re.compile(r"(?:bun|npm)\s+run\s+test(?::\S+)?" + _END),
-    re.compile(r"npm\s+test" + _END),
+    re.compile(r"(?:bun\s+run(?:\s+--filter(?:=\S+|\s+\S+))*|bun\s+run-script"
+               r"|(?:npm|pnpm|yarn)\s+run(?:-script)?)\s+test(?::\S+)?" + _END),
+    re.compile(r"(?:npm\s+(?:test|tst|t)|(?:pnpm|yarn)\s+test)" + _END),
     re.compile(r"(?:(?:bunx|bun\s+x|npx)\s+)?playwright\s+test" + _END),
+    re.compile(r"(?:(?:bunx|bun\s+x)(?:\s+--bun)?\s+|npx\s+)?(?:\S*/)?vitest" + _END),
 )
 #: A command separator outside quotes; a `&` in a redirection (`2>&1`, `&>file`) and the `|`
 #: of `>|` separate nothing.
@@ -94,16 +112,16 @@ _WRAPPER = re.compile(
     r"|nice(?:\s+(?:-n\s*\S+|--adjustment(?:=\S+|\s+\S+)|-\d+))?|time(?:\s+-p)?"
     r"|command(?:\s+-p)?|[!{]|if|then|else|elif|while|until|do)(?:\s+|$)")
 
-REASON = """⛔ BLOCKED: a direct bun test run (`bun test` / `bun run test[:<name>]` / `npm test` / `npm run test[:<name>]` / `playwright test`) is not allowed in a bun project.
+REASON = """⛔ BLOCKED: a direct bun test run (`bun test` / `bun run test[:<name>]`, a `--filter` included / the `npm` / `pnpm` / `yarn` test-script forms / `playwright test` / `vitest`) is not allowed in a bun project.
 
-Run it through Crucible's client instead — it runs the same `bun test` AND ingests
+Run it through Crucible's client instead — it runs the project's tests AND ingests
 the results (JUnit XML + lcov) under your agent id. The client is listed in Crucible's
 manifest `~/.crucible/crucible-clients.json`; register first if you have not:
   • Test files (omit --tests to run the whole suite):
       python3 ~/.crucible/clients/bun-crucible.py test [--tests <file> ...] --agent <id>
   • Type check / RED compile-fail (tsc):
       python3 ~/.crucible/clients/bun-crucible.py check --agent <id>
-  • A tier — runs the `test:<tier>` script the project declares in package.json:
+  • A tier verb runs the `test:<tier>` script the project declares in package.json, by name, and the client refuses a tier the project declares no script for:
       python3 ~/.crucible/clients/bun-crucible.py unit --agent <id>
       python3 ~/.crucible/clients/bun-crucible.py module --agent <id>
       python3 ~/.crucible/clients/bun-crucible.py integration --agent <id>
@@ -111,6 +129,7 @@ manifest `~/.crucible/crucible-clients.json`; register first if you have not:
       python3 ~/.crucible/clients/bun-crucible.py bdd --agent <id>
   • Full regression with coverage (pre-merge gate):
       python3 ~/.crucible/clients/bun-crucible.py regression --coverage --agent <id>
+  `test` and `regression` run `bun test`; a project whose runner is another (Vitest under Bun) runs its suites with the tier verbs.
 
 Client gap: `test` takes no test-name filter, so a single test selected by name is not
 served by it — raise that with the orchestrator rather than working around it.
