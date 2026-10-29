@@ -2036,10 +2036,11 @@ def run_agents(args: argparse.Namespace, home: Path, project_root: Path | None =
     ``PROJECT_STACKS``. Emits one AXI envelope (verb ``agents``) on stdout
     listing written, unchanged, skipped and unmanaged files. For a Pi
     project the permission policy is placed after the agents, under the same
-    ownership rules and recorded lean-ctx verdict (CR-MDB-077 §S3). Returns
+    ownership rules and recorded lean-ctx verdict (CR-MDB-077 §S3); then the
+    lean-ctx project config, for every project (CR-MDB-091 §S3). Returns
     the process exit code."""
-    print("modelb-axi: agents — re-render project agent definitions and the "
-          "permission policy", file=sys.stderr)
+    print("modelb-axi: agents — re-render project agent definitions, the "
+          "permission policy and the lean-ctx project config", file=sys.stderr)
     root = project_root if project_root is not None else Path.cwd()
     env_path = root / ".env"
     requested = getattr(args, "stacks", None)
@@ -2097,6 +2098,11 @@ def run_agents(args: argparse.Namespace, home: Path, project_root: Path | None =
                 root, force_managed=force_managed, report=report,
                 lean_ctx=tools.get("lean-ctx") == TOOL_PRESENT,
             )
+        # CR-MDB-091 §S3: the project's lean-ctx config, as `init` places
+        # it, whatever the harnesses and the recorded lean-ctx verdict.
+        lean_ctx_config.place_project_config(
+            root, force_managed=force_managed, report=report,
+        )
         if requested:
             _set_env_value(env_path, PROJECT_STACKS_KEY, ",".join(stacks))
     except OSError as exc:
