@@ -281,8 +281,9 @@ per-project limit, though it reports `showing <n>/<total>` (`handle_recall`,
 Ask: a per-call or per-project limit. Status: to file.
 
 ### (h) Declared test clients
-The Crucible clients are not in `is_test_runner_command`, and `excluded_commands` is a prefix
-match. Ask: a verbatim class for declared test clients. Status: to file.
+The Crucible clients are not in `is_test_runner_command` (`rust/src/shell/compress/engine.rs`;
+`classify`, `rust/src/shell/output_policy.rs`), and `excluded_commands` is a prefix match.
+Ask: a verbatim class for declared test clients. Status: to file.
 
 ### (i) The CLI shell path's ledger write
 The CLI shell path rewrites the whole ledger file (`ContextLedger::load`/`save` in
