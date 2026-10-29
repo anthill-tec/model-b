@@ -41,6 +41,7 @@ from pathlib import Path
 
 from modelb_axi import (
     agents,
+    lean_ctx_config,
     permission_policy,
     project_trust,
     requirements,
@@ -364,6 +365,8 @@ def plan_files(sub_projects: list[str]) -> list[str]:
         "hooks/README.md",
         # CR-MDB-068 §S5: the release workflow and its two scripts, at the root only.
         *RELEASE_FILES,
+        # CR-MDB-091 §S2: the project's lean-ctx config, at the root only.
+        lean_ctx_config.CONFIG_RELPATH,
     ]
     for sub in sub_projects:
         base += [f"{sub}/.env", f"{sub}/.envrc", f"{sub}/AGENTS.md"]
@@ -978,6 +981,15 @@ def _render_lean_ctx_section(category: str) -> str:
         "and `remove` archives each fact still below the store's 0.3 archive "
         "threshold (a restore runs no lifecycle), and `action=feedback` does not "
         "lift a fact over that threshold.\n"
+        # CR-MDB-091 §S4: the project config — no `lean-ctx trust` needed,
+        # lean-ctx's decision and not Pi's `/trust`, Model B's to re-render.
+        "- The repository root's `.lean-ctx.toml` sets the knowledge store's "
+        "fact cap and turns automatic consolidation off. It needs no "
+        "`lean-ctx trust`, and it is Model B's: `modelb-axi agents` re-renders "
+        "it. A security-sensitive key added to it by hand applies only after "
+        "`lean-ctx trust`, which is lean-ctx's own decision and not Pi's "
+        "`/trust`. A hand-edited file is left alone by `modelb-axi agents` "
+        "unless `--force-managed`, which replaces it and drops the added keys.\n"
     )
 
 
@@ -1710,6 +1722,20 @@ def _emit_plan(
                 for key in ("skipped", "unmanaged"):
                     ownership.setdefault(key, []).extend(policy_report.get(key, []))
 
+    # CR-MDB-091 §S2: the project's lean-ctx config, at the root, whatever the
+    # harnesses and the recorded lean-ctx verdict (PRD D5), under the same
+    # ownership rules.
+    config_report: dict = {}
+    try:
+        lean_ctx_config.place_project_config(
+            target, force_managed=force_managed, report=config_report,
+        )
+    finally:
+        emitted.extend(config_report.get("written", []))
+        if ownership is not None:
+            for key in ("skipped", "unmanaged"):
+                ownership.setdefault(key, []).extend(config_report.get(key, []))
+
     # CR-MDB-068 §S5: the release workflow and its two scripts, at the root
     # only, under the same ownership rules.
     if release_texts is not None:
@@ -2019,10 +2045,11 @@ def run_agents(args: argparse.Namespace, home: Path, project_root: Path | None =
     ``PROJECT_STACKS``. Emits one AXI envelope (verb ``agents``) on stdout
     listing written, unchanged, skipped and unmanaged files. For a Pi
     project the permission policy is placed after the agents, under the same
-    ownership rules and recorded lean-ctx verdict (CR-MDB-077 §S3). Returns
+    ownership rules and recorded lean-ctx verdict (CR-MDB-077 §S3); then the
+    lean-ctx project config, for every project (CR-MDB-091 §S3). Returns
     the process exit code."""
-    print("modelb-axi: agents — re-render project agent definitions and the "
-          "permission policy", file=sys.stderr)
+    print("modelb-axi: agents — re-render project agent definitions, the "
+          "permission policy and the lean-ctx project config", file=sys.stderr)
     root = project_root if project_root is not None else Path.cwd()
     env_path = root / ".env"
     requested = getattr(args, "stacks", None)
@@ -2080,6 +2107,11 @@ def run_agents(args: argparse.Namespace, home: Path, project_root: Path | None =
                 root, force_managed=force_managed, report=report,
                 lean_ctx=tools.get("lean-ctx") == TOOL_PRESENT,
             )
+        # CR-MDB-091 §S3: the project's lean-ctx config, as `init` places
+        # it, whatever the harnesses and the recorded lean-ctx verdict.
+        lean_ctx_config.place_project_config(
+            root, force_managed=force_managed, report=report,
+        )
         if requested:
             _set_env_value(env_path, PROJECT_STACKS_KEY, ",".join(stacks))
     except OSError as exc:

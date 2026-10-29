@@ -447,6 +447,10 @@ def _reference_other_files(home: Path, mode: str, scratch: Path) -> dict:
     # lean-ctx verdict, so init renders the policy for Pi's built-in tools
     # (CR-MDB-045 \u00a7S8); the reference is that form.
     _permission_policy.place_project_policy(scratch, lean_ctx=False)
+    # MIGRATED at CR-MDB-091 (§S2): init writes the project's lean-ctx config at the root, on every
+    # verdict; the reference places it through the module that owns it.
+    from modelb_axi import lean_ctx_config
+    lean_ctx_config.place_project_config(scratch)
     for path in scratch.rglob("*"):
         if path.is_file():
             files[str(path.relative_to(scratch))] = path.read_bytes()

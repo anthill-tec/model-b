@@ -438,6 +438,11 @@ policy, and Model B never writes it.
 re-render its agent definitions and its policy, for example after upgrading Model B. A policy
 you have edited is left alone unless you pass `--force-managed`.
 
+**lean-ctx's project config.** `init` also writes `.lean-ctx.toml`, lean-ctx's project config:
+the knowledge store's fact cap and automatic consolidation off. It needs no `lean-ctx trust`,
+which is lean-ctx's decision and not Pi's `/trust`. `modelb-axi agents` re-renders it; one you
+have edited is left alone unless you pass `--force-managed`.
+
 **Creating a project.** For example:
 
 ```sh

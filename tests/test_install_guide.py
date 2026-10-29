@@ -2089,6 +2089,17 @@ CONFORMING_POLICY_ITEM = (
 CONFORMING_POLICY_RERENDER = (
     "Run `modelb-axi agents` from an existing project's root to re-render its policy, for "
     "example after upgrading. A policy you have edited is left alone unless `--force-managed`.")
+#: CR-MDB-091 §S6 — the conforming guide's lean-ctx project-config paragraph, after the policy
+#: re-render paragraph: ``init`` also writes ``.lean-ctx.toml`` (the fact cap, automatic
+#: consolidation off); it needs no ``lean-ctx trust``, lean-ctx's decision and not Pi's ``/trust``;
+#: ``modelb-axi agents`` re-renders it, an edited one left alone unless ``--force-managed``. It
+#: names no policy, so the policy re-render gate still reads its own paragraph alone.
+#: ``tests.test_lean_ctx_project_config`` proves its gate on it.
+CONFORMING_LEAN_CTX_CONFIG = (
+    "`init` also writes `.lean-ctx.toml`, lean-ctx's project config: the knowledge store's fact "
+    "cap and automatic consolidation off. It needs no `lean-ctx trust`, which is lean-ctx's "
+    "decision and not Pi's `/trust`. `modelb-axi agents` re-renders it; one you have edited is "
+    "left alone unless `--force-managed`.")
 
 
 #: CR-MDB-058 §S7 — the conforming guide's statement of what the marked regions are for.
@@ -2127,9 +2138,11 @@ def conforming_guide() -> str:
         # MIGRATED at CR-MDB-077 (§S4): the policy item allows the Sandesh tools except
         # archiving and unarchiving, and a paragraph names the verb that re-renders the policy
         # (was: the load line and the permission source only).
+        # MIGRATED at CR-MDB-091 (§S6): the lean-ctx project-config paragraph follows the policy
+        # re-render paragraph (CONFORMING_LEAN_CTX_CONFIG).
         TRUST: [f"`.pi/extensions` and `{policy_dir_name()}` load once you run `/trust`.",
                 "", _CONFORMING_PERMISSION_SOURCE, "", CONFORMING_POLICY_ITEM, "",
-                CONFORMING_POLICY_RERENDER],
+                CONFORMING_POLICY_RERENDER, "", CONFORMING_LEAN_CTX_CONFIG],
     }
     out = ["# Installing", "", "<!-- install-guide:begin install -->", ""]
     for heading in INSTALL_TOPICS:
@@ -2796,9 +2809,13 @@ class InstallGuideProjectTrustPolicyTest(unittest.TestCase):
     def test_the_policy_rerender_checker_both_ways(self):
         self.assertEqual(check_trust_policy_rerender(self.guide), [])
         para = CONFORMING_POLICY_RERENDER
+        # MIGRATED at CR-MDB-091 (§S6): "no verb" and "outside Project trust" now find the
+        # re-render fault, not the no-paragraph one: the lean-ctx config paragraph
+        # (CONFORMING_LEAN_CTX_CONFIG) still names `modelb-axi agents` in Project trust, and it names
+        # no policy (CR-MDB-077 §S4's rule: a naming paragraph without the re-rendered policy).
         cases = {
             "no verb": (self.guide.replace(para, "Re-render the policy unless `--force-managed`."),
-                        [self.NO_PARAGRAPH]),
+                        [self.NO_RERENDER]),
             "the verb in prose": (self.guide.replace("`modelb-axi agents`", "modelb-axi agents"),
                                   [self.NO_PARAGRAPH]),
             "a longer verb": (self.guide.replace("`modelb-axi agents`", "`modelb-axi agentsx`"),
@@ -2816,7 +2833,12 @@ class InstallGuideProjectTrustPolicyTest(unittest.TestCase):
             "outside Project trust": (
                 self.guide.replace(para, "").replace(f"## {WIDENING}\n",
                                                      f"## {WIDENING}\n\n{para}\n"),
-                [self.NO_PARAGRAPH]),
+                [self.NO_RERENDER]),
+            # MIGRATED at CR-MDB-091 (§S6): with the config paragraph gone too, no paragraph
+            # names the verb (what "no verb" found before the config paragraph).
+            "no verb in either paragraph": (
+                self.guide.replace(para, "Re-render the policy unless `--force-managed`.")
+                .replace(CONFORMING_LEAN_CTX_CONFIG, ""), [self.NO_PARAGRAPH]),
         }
         for label, (text, expected) in cases.items():
             with self.subTest(case=label):

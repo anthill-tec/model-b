@@ -1,6 +1,6 @@
 # CR-MDB-091 — `init` scaffolds the project's lean-ctx config
 
-**Status:** PENDING — spec drafted 2026-10-29 from the gap analysis and the user's rulings (PRD D5, 2026-10-29); the spec pre-review folded in; awaiting approval.
+**Status:** COMPLETED (filed 2026-10-29, gap analysis and pre-review 2026-10-29).
 **Type:** feature (`modelb_axi`: a new project file under marker ownership; `init`, `modelb-axi agents`;
 the scaffolded `AGENTS.md`; the contract and the install guide)
 **Priority:** P2.
