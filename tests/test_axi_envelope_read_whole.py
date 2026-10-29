@@ -22,6 +22,22 @@ Class map:
   rule in the lean-ctx and the built-in renders, and ``.pi/agents/python-*`` is byte-identical to
   ``generator/agents/python-*``.
 
+CR-MDB-090 (§S1, §S2, §S6, §S7; PRD D5, ruled 2026-10-29) extends the rule to a long run read whole:
+
+- ``RULE_PINS`` gains four pins (every AXI command runs uncompressed, the truncated run's file,
+  the located line, ``--log`` keeps the console stream), which ``ORCHESTRATION_PINS`` inherits.
+- The procedure gains the "Report EVERY run" pin (``procedure_findings``), the ``crucible`` skill the
+  ``--log`` correction pin (``crucible_skill_findings``), the ``model-b`` skill the uncompressed pin
+  (``model_b_skill_findings``); ``OUTPUT_DISCIPLINE_PINS`` gains the truncated-run file and the
+  long-run redirect.
+- ``NewRulePinsProofTest`` — each new pin split across two units or two sections does not count;
+  the located-line pin bites a unit that locates the line but never says the envelope is never
+  searched or filtered.
+- ``ClientClauseRenderPinTest`` — the render pin (``client_clause_findings``) and the registration
+  line (``registration_line_findings``) proved both ways on synthetic text.
+- ``ClientClauseInTemplatesAndRendersTest`` — the render pin and the registration line on the four
+  templates, both renders of every stack, and the tracked ``generator/agents/*``.
+
 **What the guard reads** (§S3): each code span, and each fenced line judged alone with the lines it
 continues joined — ``shown`` imported from ``tests/test_chrome_ui_relay_skill.py``, never copied.
 A governing "never" spares nothing: the raw-runner guard's ``_governed`` is never applied.
@@ -44,6 +60,7 @@ command. Stdlib only.
 """
 
 import re
+import tomllib
 import unittest
 
 from modelb_axi import agents
@@ -52,6 +69,7 @@ from tests.test_agent_generator import GENERATOR_AGENTS_DIR, STACKS_DIR, TEMPLAT
 from tests.test_chrome_ui_relay_skill import (
     _FENCE_LINE,
     _HEADING_LINE,
+    normalise,
     rule_findings,
     shown,
     units,
@@ -156,6 +174,35 @@ SUMMARY_CLAUSE = r"\bcounts\b[^.;]{0,20}\bfailing(?: \w+)? names\b[^.;]{0,20}\ba
 #: Searching the ``--log`` file (``rg`` in it).
 SEARCH_THE_LOG = r"\b(?:rg|search(?:ing|ed|es)?)\b"
 
+# ------------------------------------------------ CR-MDB-090 "a long run is read whole" ----
+
+#: The AXI word itself (normalised text is lower-cased).
+AXI_WORD = r"\baxi\b"
+#: The envelope, singular (the located-line, "Report EVERY run" and ``--log`` correction pins).
+ENVELOPE_SINGULAR = r"\benvelope\b"
+TRUNCAT = r"\btruncat"
+CONSOLE = r"\bconsole\b"
+NEGATION = r"\b(?:not|never|does not)\b"
+REDIRECT = r"\bredirect"
+#: "A long run redirects both streams" (``> /tmp/<run>.out 2>&1``).
+BOTH_STREAMS = r"2>&1"
+TMP = r"/tmp\b"
+OFFSET_OR_LIMIT = r"\b(?:offset|limit)\b"
+
+#: CR-MDB-090 §S7: the four pins ``RULE_PINS`` gains (``ORCHESTRATION_PINS`` inherits them).
+UNCOMPRESSED_PIN_NAME = "every AXI command runs uncompressed"
+TRUNCATED_RUN_PIN_NAME = "a truncated run names a file read whole in windows"
+LOCATED_LINE_PIN_NAME = "the located line: the envelope itself is never searched or filtered"
+LOG_CONSOLE_PIN_NAME = "--log does not take the output off the console"
+NEW_RULE_PINS = (
+    (UNCOMPRESSED_PIN_NAME,
+     (r"\buncompressed\b|\braw mode\b", AXI_WORD + "|" + ENVELOPE_OR_OUTPUT)),
+    (TRUNCATED_RUN_PIN_NAME, (TRUNCAT, A_FILE, r"\b(?:offset|windows?)\b", READ_WHOLE)),
+    (LOCATED_LINE_PIN_NAME,
+     (r"\bline(?:'s)? number\b", ENVELOPE_SINGULAR, r"\bnever\b[^.;]{0,30}\bsearch", FILTERED)),
+    (LOG_CONSOLE_PIN_NAME, (LOG_FLAG, CONSOLE, NEGATION)),
+)
+
 #: §S2 items 1, 2 and 5 (AC): ``(name, patterns)`` — one unit of the section carries each pin.
 RULE_PINS = (
     ("the envelope or output is read whole", (ENVELOPE_OR_OUTPUT, READ_WHOLE)),
@@ -164,7 +211,7 @@ RULE_PINS = (
     ("a long run's output goes to a file whose envelope is read whole",
      (LONG_RUN, A_FILE, READ_WHOLE)),
     ("the --log runner-log exception", (LOG_FLAG, LOG_EXCEPTION)),
-)
+) + NEW_RULE_PINS  # MIGRATED at CR-MDB-090 (§S1, §S7): the four new pins.
 #: §S2 item 1, also (AC): the command list, every agent, summarising by pattern.
 ORCHESTRATION_PINS = RULE_PINS + (
     ("the §S1 command list", COMMAND_LIST),
@@ -180,7 +227,32 @@ BRIEF_PINS = (r"\bevery (?:dispatch )?brief\b", ENVELOPE)
 UNIT_PINS = (ENVELOPE_OR_OUTPUT, READ_WHOLE, PIPED, FILTERED, REDIRECTED_AWAY)
 #: §S2 item 6 (AC): the output-discipline line.
 OUTPUT_DISCIPLINE = r"\boutput discipline\b"
-OUTPUT_DISCIPLINE_PINS = (ENVELOPE, READ_WHOLE, PIPED, FILTERED, REDIRECTED_AWAY, SUMMARY_CLAUSE)
+# MIGRATED at CR-MDB-090 (§S2.3, §S7): gains the truncated-run file (TRUNCAT, A_FILE,
+# OFFSET_OR_LIMIT) and the long-run redirect (REDIRECT, BOTH_STREAMS, TMP).
+OUTPUT_DISCIPLINE_PINS = (ENVELOPE, READ_WHOLE, PIPED, FILTERED, REDIRECTED_AWAY, SUMMARY_CLAUSE,
+                          TRUNCAT, A_FILE, OFFSET_OR_LIMIT, REDIRECT, BOTH_STREAMS, TMP)
+
+#: CR-MDB-090 §S1.1: the procedure's § "Report EVERY run" pin.
+REPORT_RUN_SECTION = "## Report EVERY run"
+REPORT_RUN_PIN_NAME = "a truncated run is read whole from the file, failure detail from the report file"
+REPORT_RUN_PINS = (TRUNCAT, r"\bfile\b", ENVELOPE_SINGULAR, READ_WHOLE, r"\breport file\b|junit")
+#: CR-MDB-090 §S1.3: the ``crucible`` skill's ``--log`` correction pin (any unit of the file).
+LOG_CORRECTION_PIN_NAME = "--log keeps a runner log and does not take the output off the console"
+LOG_CORRECTION_PINS = (LOG_FLAG, CONSOLE, NEGATION, REDIRECT, ENVELOPE_SINGULAR, READ_WHOLE)
+#: CR-MDB-090 §S1.4: the ``model-b`` skill pin (any unit of the file).
+MODEL_B_UNCOMPRESSED_PIN_NAME = "an AXI command runs uncompressed"
+MODEL_B_UNCOMPRESSED_PINS = (r"\buncompressed\b", AXI_WORD)
+
+#: CR-MDB-090 §S2.1, §S7: the render pin. The client-clause unit names the crucible client
+#: and "the output-discipline line" (hyphenated, so it is never a second output-discipline unit).
+CLIENT_MARKER = r"-crucible\.py\b|\bcrucible[- ]client"
+CLIENT_CLAUSE_MARKER = r"\boutput-discipline line\b"
+CTX_SHELL = r"\bctx_shell\b"
+RAW_TRUE = r"\braw=true\b"
+BASH = r"\bbash\b"
+SHORT_COMMAND_EXCEPTION = r"\bshort-command exception\b"
+#: CR-MDB-090 §S2.1: the registration line after the register command ("Run via", "Via").
+REGISTRATION_LINE = r"^(?:run )?via (?:ctx_shell|bash)\b"
 #: §S2 item 7 (AC): ``generator/stacks/rust.toml``'s debugging line.
 DEBUGGING_LINE = r"\bdebugging a failed run\b"
 DEBUGGING_PINS = (ENVELOPE, READ_WHOLE, PIPED, FILTERED, REDIRECTED_AWAY, LOG_FLAG, SEARCH_THE_LOG)
@@ -266,6 +338,86 @@ def debugging_line_findings(text: str) -> list[str]:
     return line_rule_findings(text, DEBUGGING_LINE, DEBUGGING_PINS) + _axi_finding_messages(text)
 
 
+def procedure_pin_findings(text: str) -> list[str]:
+    """CR-MDB-090 §S1.1: a section stating the rule whole (``RULE_PINS``), and § "Report EVERY
+    run" carrying the truncated-run unit."""
+    out = section_rule_findings(text, RULE_PINS)
+    if not _carries(units(md_section(text, REPORT_RUN_SECTION)), REPORT_RUN_PINS):
+        out.append(f"§ {REPORT_RUN_SECTION[3:]!r} lacks {[REPORT_RUN_PIN_NAME]}")
+    return out
+
+
+def procedure_findings(text: str) -> list[str]:
+    """§S2 item 2 (CR-MDB-072), widened by CR-MDB-090 §S1.1; and no §S3 finding."""
+    return procedure_pin_findings(text) + _axi_finding_messages(text)
+
+
+def crucible_skill_pin_findings(text: str) -> list[str]:
+    """CR-MDB-090 §S1.3: a section stating the rule whole, and one unit correcting ``--log``."""
+    out = section_rule_findings(text, RULE_PINS)
+    if not _carries(units(text), LOG_CORRECTION_PINS):
+        out.append(f"no unit corrects --log; it lacks {[LOG_CORRECTION_PIN_NAME]}")
+    return out
+
+
+def crucible_skill_findings(text: str) -> list[str]:
+    """§S2 item 5 (CR-MDB-072), widened by CR-MDB-090 §S1.3; and no §S3 finding."""
+    return crucible_skill_pin_findings(text) + _axi_finding_messages(text)
+
+
+def model_b_skill_pin_findings(text: str) -> list[str]:
+    """CR-MDB-090 §S1.4: the read-whole unit, and one unit saying an AXI command runs
+    uncompressed."""
+    out = rule_findings(text, UNIT_PINS)
+    if not _carries(units(text), MODEL_B_UNCOMPRESSED_PINS):
+        out.append(f"no unit runs an AXI command uncompressed; it lacks "
+                   f"{[MODEL_B_UNCOMPRESSED_PIN_NAME]}")
+    return out
+
+
+def model_b_skill_findings(text: str) -> list[str]:
+    """§S2 item 4 (CR-MDB-072), widened by CR-MDB-090 §S1.4; and no §S3 finding."""
+    return model_b_skill_pin_findings(text) + _axi_finding_messages(text)
+
+
+def client_clause_findings(text: str, lean_ctx: bool) -> list[str]:
+    """CR-MDB-090 §S2.1–§S2.2, the render pin: exactly one client-clause unit, naming
+    ``axi``, ``ctx_shell`` and ``raw=true`` in the lean-ctx form, ``bash`` and no ``raw=true`` in
+    the built-in form; exactly one output-discipline unit; no "short-command exception"."""
+    out: list[str] = []
+    clauses = [unit for unit in units(text)
+               if re.search(CLIENT_MARKER, unit) and re.search(CLIENT_CLAUSE_MARKER, unit)]
+    if len(clauses) != 1:
+        out.append(f"expected one client-clause unit, found {len(clauses)}")
+    else:
+        needed = (AXI_WORD, CTX_SHELL, RAW_TRUE) if lean_ctx else (BASH,)
+        missing = [p for p in needed if not re.search(p, clauses[0])]
+        if missing:
+            out.append(f"the client clause lacks {missing}")
+        if not lean_ctx and re.search(RAW_TRUE, clauses[0]):
+            out.append(f"the client clause names {[RAW_TRUE]}")
+    out += line_rule_findings(text, OUTPUT_DISCIPLINE, ())
+    if re.search(SHORT_COMMAND_EXCEPTION, normalise(text)):
+        out.append("a unit still says the short-command exception")
+    return out
+
+
+def registration_line_findings(text: str, lean_ctx: bool) -> list[str]:
+    """CR-MDB-090 §S2.1: exactly one registration line, naming ``ctx_shell`` with ``raw=true`` in
+    the lean-ctx form, ``bash`` and no ``raw=true`` in the built-in form."""
+    lines = [unit for unit in units(text) if re.search(REGISTRATION_LINE, unit)]
+    if len(lines) != 1:
+        return [f"expected one registration line, found {len(lines)}"]
+    needed = (CTX_SHELL, RAW_TRUE) if lean_ctx else (BASH,)
+    out = []
+    missing = [p for p in needed if not re.search(p, lines[0])]
+    if missing:
+        out.append(f"the registration line lacks {missing}")
+    if not lean_ctx and re.search(RAW_TRUE, lines[0]):
+        out.append(f"the registration line names {[RAW_TRUE]}")
+    return out
+
+
 # ------------------------------------------------------------------ the places ----
 
 SKILLS = REPO_ROOT / "skills-src"
@@ -293,9 +445,15 @@ name: sample
 - The output of an AXI command is its envelope, and every envelope is read whole, every time.
 - Its output is never grepped, headed, tailed, otherwise filtered or narrowed with `jq`.
 - Its output is never redirected away: stdout and stderr never go to `/dev/null`.
-- A long run writes to a file, and that file is read whole.
+- Every AXI command runs uncompressed, through the compressed shell in its raw mode.
+- A run the harness truncates names the file that holds all it printed; that file is read in
+  windows, by line offset and limit, until it is read whole.
+- A long run redirects both its streams to a file under `/tmp`, and that file is read whole.
+- A search may only locate the line's number of the first line that begins `axi:`; the envelope
+  itself is never searched or filtered.
 - A runner log a client writes with `--log` is not an envelope; searching it for a failure stays
-  allowed.
+  allowed. `--log` keeps that runner log beside the run, and does not take the run's stream off
+  the console.
 
 ## Next
 
@@ -303,6 +461,10 @@ Something else.
 """
 
 #: For each pin of ``RULE_PINS``, a cut that removes it from ``RULE_SECTION_SAMPLE`` alone.
+# MIGRATED at CR-MDB-090 (§S1.1, §S7): the sample gains the four new pins' bullets (worded so no
+# new bullet carries "envelope"/"output" beside "read whole", keeping the first cut a one-pin
+# bite); the long-run bullet now redirects both streams, so its cut follows it; the four new pins
+# gain their cuts.
 RULE_SECTION_CUTS = (
     ("every envelope is read whole, every time", "every envelope matters",
      "the envelope or output is read whole"),
@@ -310,10 +472,15 @@ RULE_SECTION_CUTS = (
      "two of grep, head, tail, jq and filter"),
     ("redirected away: stdout and stderr never go to `/dev/null`", "kept",
      "redirecting away, with /dev/null"),
-    ("A long run writes", "A run writes",
+    ("A long run redirects", "A run redirects",
      "a long run's output goes to a file whose envelope is read whole"),
     ("is not an envelope; searching it for a failure stays\n  allowed", "is kept",
      "the --log runner-log exception"),
+    ("runs uncompressed, through the compressed shell in its raw mode", "runs through the shell",
+     UNCOMPRESSED_PIN_NAME),
+    ("A run the harness truncates", "A run the harness cuts", TRUNCATED_RUN_PIN_NAME),
+    ("; the envelope\n  itself is never searched or filtered", "", LOCATED_LINE_PIN_NAME),
+    ("off\n  the console", "elsewhere", LOG_CONSOLE_PIN_NAME),
 )
 
 #: §S2 item 1: the rule's section with the command list, every agent and summarising by pattern,
@@ -355,22 +522,78 @@ READ_WHOLE_UNIT_CUTS = (
     ("or redirected away", "or moved", REDIRECTED_AWAY),
 )
 
+#: CR-MDB-090 §S1.1: the procedure — the rule's section, and § "Report EVERY run" whose truncated
+#: bullet reads the envelope whole from the file the harness names.
+PROCEDURE_SAMPLE = RULE_SECTION_SAMPLE.replace("""## Next
+""", """## Report EVERY run
+
+- RED and GREEN, every single one.
+- If a run's output is truncated, the envelope is read whole from the file the harness names, and
+  failure detail from the report file (junit / lcov / surefire) or the `--log` file. The run is
+  never re-run.
+
+## Next
+""")
+
+PROCEDURE_CUTS = RULE_SECTION_CUTS + (
+    ("If a run's output is truncated", "If a run's output is long", REPORT_RUN_PIN_NAME),
+)
+
+#: CR-MDB-090 §S1.3: the crucible skill — the rule's section, and the verb surface's corrected
+#: client-output bullet.
+CRUCIBLE_SAMPLE = RULE_SECTION_SAMPLE.replace("""## Next
+""", """## The 0.3.0 verb surface
+
+- **Client output goes to a file:** a client run's output, both streams, goes to a file under
+  `/tmp` through a redirect; `--log <path>`, where the verb takes it, keeps a runner log beside it
+  and does not take the output off the console; the client's envelope, in the file or on stdout,
+  is read whole, never filtered.
+
+## Next
+""")
+
+CRUCIBLE_CUTS = RULE_SECTION_CUTS + (
+    ("and does not take the output off the console; ", "and ", LOG_CORRECTION_PIN_NAME),
+)
+
+#: CR-MDB-090 §S1.4: the model-b skill — the read-whole bullet, and the cached-reads bullet's
+#: uncompressed exception.
+MODEL_B_SKILL_SAMPLE = READ_WHOLE_UNIT_SAMPLE + (
+    "- **Prefer the project's cached reads and compressed shell**, except that an AXI command runs\n"
+    "  uncompressed, in the shell's raw mode.\n")
+
+MODEL_B_SKILL_CUTS = READ_WHOLE_UNIT_CUTS + (
+    ("an AXI command runs\n  uncompressed", "an AXI command runs\n  plainly",
+     MODEL_B_UNCOMPRESSED_PIN_NAME),
+)
+
 #: §S2 item 6: an output-discipline line carrying the rule and its summary clause.
+# MIGRATED at CR-MDB-090 (§S2.3, §S7): the line gains the long-run redirect and the truncated-run
+# sentences, worded as §S2.3 words them.
 OUTPUT_DISCIPLINE_SAMPLE = """# Sample
 
 - **Output discipline:** every run goes through the client, which prints only counts + failing
   names + assertion lines; the client's envelope is read whole and is never piped, filtered or
-  redirected away.
+  redirected away. A long run redirects both streams (`> /tmp/<run>.out 2>&1`) to a file under
+  `/tmp`, and reads it with `read` from the envelope's first line, the last line that begins
+  `axi:`, to its end. A run the harness truncates names its full-output file, and the envelope is
+  read whole from it with `read` (`offset`/`limit`) when the output shown does not reach back to
+  the envelope's first line.
 - Something else.
 """
 
+# MIGRATED at CR-MDB-090 (§S2.3, §S7): "envelope" and "read whole" now recur in the new sentences,
+# so their cuts replace every occurrence; the redirect and truncated-run pins gain their cuts.
 OUTPUT_DISCIPLINE_CUTS = (
-    ("the client's envelope is read whole", "the client's summary is read whole", ENVELOPE),
-    ("is read whole and", "is kept and", READ_WHOLE),
+    ("envelope", "summary", ENVELOPE),
+    ("read whole", "read", READ_WHOLE),
     ("never piped, filtered", "never filtered", PIPED),
     ("piped, filtered or", "piped or", FILTERED),
     ("or\n  redirected away", "or\n  moved", REDIRECTED_AWAY),
     ("counts + failing\n  names + assertion lines", "a summary", SUMMARY_CLAUSE),
+    ("A run the harness truncates", "A run the harness cuts", TRUNCAT),
+    (" (`offset`/`limit`)", "", OFFSET_OR_LIMIT),
+    (" 2>&1", "", BOTH_STREAMS),
 )
 
 #: §S2 item 7: the debugging line carrying the rule, ``--log`` and searching the log.
@@ -393,12 +616,14 @@ DEBUGGING_CUTS = (
 )
 
 #: Bad samples (AC): each meets every pin of its gate ONLY through shown piped AXI calls.
+# MIGRATED at CR-MDB-090 (§S1, §S7): the --note strings gain the four new pins' words (and the
+# crucible --log correction's: --log, console, a negation, redirect, envelope, read whole).
 RULE_SECTION_BAD = """# Sample
 
 ## Rule
 
 ```bash
-sandesh status --note "the output is read whole, redirected away to /dev/null, a long run to a file is read whole, --log is not an envelope" | grep x | head
+sandesh status --note "the output is read whole, redirected away to /dev/null, a long run to a file is read whole, --log is not an envelope, an axi command runs uncompressed, a truncated run file read in windows, a line's number but the envelope is never searched or filtered, --log not off the console" | grep x | head
 ```
 """
 ORCHESTRATION_BAD = """# Sample
@@ -406,20 +631,35 @@ ORCHESTRATION_BAD = """# Sample
 ## Rule
 
 ```bash
-sandesh status --note "the output is read whole, redirected away to /dev/null, a long run to a file is read whole, --log is not an envelope, every agent, never summarised by pattern, <stack>-crucible.py modelb-axi worktree-flow.py gh-axi chrome-devtools-axi lavish-axi" | grep x | head
+sandesh status --note "the output is read whole, redirected away to /dev/null, a long run to a file is read whole, --log is not an envelope, an axi command runs uncompressed, a truncated run file read in windows, a line's number but the envelope is never searched or filtered, --log not off the console, every agent, never summarised by pattern, <stack>-crucible.py modelb-axi worktree-flow.py gh-axi chrome-devtools-axi lavish-axi" | grep x | head
 ```
 
 ## Never author code — dispatch with an accurate brief
 
 - `sandesh send --body "every dispatch brief carries the envelope rule" | tail`
 """
+#: CR-MDB-090 §S1.1: the procedure's bad sample adds a "Report EVERY run" section met only through
+#: a second shown piped call.
+PROCEDURE_BAD = RULE_SECTION_BAD + """
+## Report EVERY run
+
+- `sandesh status --note "a truncated run, the envelope read whole from the file, the report file junit" | head`
+"""
+#: CR-MDB-090 §S1.3: ``RULE_SECTION_BAD``'s one shown call also carries the --log correction's words.
+CRUCIBLE_BAD = RULE_SECTION_BAD
 READ_WHOLE_UNIT_BAD = """# Sample
 
 - `sandesh fetch --note "every envelope is read whole, never piped, filtered or redirected away" | grep x`
 """
+#: CR-MDB-090 §S1.4.
+MODEL_B_SKILL_BAD = """# Sample
+
+- `sandesh fetch --note "every envelope is read whole, never piped, filtered or redirected away, an axi command runs uncompressed" | grep x`
+"""
+# MIGRATED at CR-MDB-090 (§S2.3, §S7): the --note gains the redirect and truncated-run words.
 OUTPUT_DISCIPLINE_BAD = """# Sample
 
-- **Output discipline:** `<client> test --note "the envelope is read whole, never piped, filtered or redirected away, counts + failing names + assertion lines" | tail`
+- **Output discipline:** `<client> test --note "the envelope is read whole, never piped, filtered or redirected away, counts + failing names + assertion lines, a truncated run file read by offset, redirect 2>&1 to /tmp" | tail`
 """
 DEBUGGING_BAD = """# Sample
 
@@ -428,17 +668,18 @@ DEBUGGING_BAD = """# Sample
 
 #: ``(place, gate, conforming sample, cuts, bad sample, shown calls in the bad sample)`` — the
 #: AC's "each gate is proved both ways on synthetic text", one row per place of §S2 items 1–7.
+# MIGRATED at CR-MDB-090 (§S1, §S7): items 2, 4 and 5 move to their widened gates and samples.
 PLACE_GATES = (
     ("item 1, orchestration-common.md", orchestration_common_findings, ORCHESTRATION_SAMPLE,
      ORCHESTRATION_CUTS, ORCHESTRATION_BAD, 2),
-    ("item 2, sub-agent-procedure.md", rule_section_findings, RULE_SECTION_SAMPLE,
-     RULE_SECTION_CUTS, RULE_SECTION_BAD, 1),
+    ("item 2, sub-agent-procedure.md", procedure_findings, PROCEDURE_SAMPLE,
+     PROCEDURE_CUTS, PROCEDURE_BAD, 2),
     ("item 3, sandesh.md", read_whole_unit_findings, READ_WHOLE_UNIT_SAMPLE,
      READ_WHOLE_UNIT_CUTS, READ_WHOLE_UNIT_BAD, 1),
-    ("item 4, the model-b skill", read_whole_unit_findings, READ_WHOLE_UNIT_SAMPLE,
-     READ_WHOLE_UNIT_CUTS, READ_WHOLE_UNIT_BAD, 1),
-    ("item 5, the crucible skill", rule_section_findings, RULE_SECTION_SAMPLE,
-     RULE_SECTION_CUTS, RULE_SECTION_BAD, 1),
+    ("item 4, the model-b skill", model_b_skill_findings, MODEL_B_SKILL_SAMPLE,
+     MODEL_B_SKILL_CUTS, MODEL_B_SKILL_BAD, 1),
+    ("item 5, the crucible skill", crucible_skill_findings, CRUCIBLE_SAMPLE,
+     CRUCIBLE_CUTS, CRUCIBLE_BAD, 1),
     ("item 6, the agent templates", output_discipline_findings, OUTPUT_DISCIPLINE_SAMPLE,
      OUTPUT_DISCIPLINE_CUTS, OUTPUT_DISCIPLINE_BAD, 1),
     ("item 7, rust.toml's debugging line", debugging_line_findings, DEBUGGING_SAMPLE,
@@ -451,6 +692,9 @@ _PINS_ONLY = {
         section_rule_findings(text, ORCHESTRATION_PINS)
         + ([] if _carries(units(md_section(text, BRIEF_SECTION)), BRIEF_PINS) else ["brief"])),
     rule_section_findings: lambda text: section_rule_findings(text, RULE_PINS),
+    procedure_findings: procedure_pin_findings,
+    crucible_skill_findings: crucible_skill_pin_findings,
+    model_b_skill_findings: model_b_skill_pin_findings,
     read_whole_unit_findings: lambda text: rule_findings(text, UNIT_PINS),
     output_discipline_findings: lambda text: line_rule_findings(
         text, OUTPUT_DISCIPLINE, OUTPUT_DISCIPLINE_PINS),
@@ -618,14 +862,18 @@ class RulePlaceGateProofTest(unittest.TestCase):
                                          "piped or redirected away: `modelb-axi agents 2>/dev/null`"])
 
     def test_section_pins_split_across_two_sections_do_not_count(self):
+        # MIGRATED at CR-MDB-090 (§S1.1): the --log bullet now also says --log keeps the console
+        # stream, so moving it out of the section drops both of its pins.
         log_bullet = ("- A runner log a client writes with `--log` is not an envelope; searching "
-                      "it for a failure stays\n  allowed.\n")
+                      "it for a failure stays\n  allowed. `--log` keeps that runner log beside the "
+                      "run, and does not take the run's stream off\n  the console.\n")
+        self.assertIn(log_bullet, RULE_SECTION_SAMPLE)
         split = RULE_SECTION_SAMPLE.replace(log_bullet, "").replace(
             "Something else.\n", "Something else.\n\n" + log_bullet)
         self.assertNotEqual(split, RULE_SECTION_SAMPLE)
         self.assertEqual(rule_section_findings(split),
                          ["no section states the rule; the closest lacks "
-                          "['the --log runner-log exception']"])
+                          f"{['the --log runner-log exception', LOG_CONSOLE_PIN_NAME]}"])
 
     def test_a_heading_inside_a_fence_does_not_split_a_section(self):
         fenced_heading = RULE_SECTION_SAMPLE.replace(
@@ -655,7 +903,9 @@ class RulePlaceGateProofTest(unittest.TestCase):
                  "Never `| tail`.\n")
         found = output_discipline_findings(green)
         self.assertEqual(len(found), 1, found)
-        self.assertIn(f"lacks {[ENVELOPE, READ_WHOLE, PIPED, FILTERED, REDIRECTED_AWAY]}", found[0])
+        # MIGRATED at CR-MDB-090 (§S2.3, §S7): the lacks list gains the two new pins' patterns.
+        self.assertIn(f"lacks {[ENVELOPE, READ_WHOLE, PIPED, FILTERED, REDIRECTED_AWAY, TRUNCAT,
+                                 A_FILE, OFFSET_OR_LIMIT, REDIRECT, BOTH_STREAMS, TMP]}", found[0])
 
     def test_todays_model_b_bullet_bites(self):
         bullet = ("- **Never pipe user feedback or poll output through head, tail or grep** — "
@@ -672,16 +922,21 @@ class RuleInEachPlaceTest(unittest.TestCase):
         self.assertEqual(orchestration_common_findings(read_text(ORCHESTRATION_COMMON)), [])
 
     def test_item_2_the_sub_agent_procedure_states_the_rule(self):
-        self.assertEqual(rule_section_findings(read_text(SUB_AGENT_PROCEDURE)), [])
+        # MIGRATED at CR-MDB-090 (§S1.1): the widened gate — the four new pins and the
+        # "Report EVERY run" pin.
+        self.assertEqual(procedure_findings(read_text(SUB_AGENT_PROCEDURE)), [])
 
     def test_item_3_the_sandesh_reference_reads_every_envelope_whole(self):
         self.assertEqual(read_whole_unit_findings(read_text(SANDESH_REFERENCE)), [])
 
     def test_item_4_the_model_b_skill_bullet_gains_axi_output(self):
-        self.assertEqual(read_whole_unit_findings(read_text(MODEL_B_SKILL)), [])
+        # MIGRATED at CR-MDB-090 (§S1.4): the widened gate — an AXI command runs uncompressed.
+        self.assertEqual(model_b_skill_findings(read_text(MODEL_B_SKILL)), [])
 
     def test_item_5_the_crucible_skill_widens_never_through_head_to_the_rule(self):
-        self.assertEqual(rule_section_findings(read_text(CRUCIBLE_SKILL)), [])
+        # MIGRATED at CR-MDB-090 (§S1.3): the widened gate — the four new pins and the --log
+        # correction.
+        self.assertEqual(crucible_skill_findings(read_text(CRUCIBLE_SKILL)), [])
 
     def test_item_6_each_role_templates_output_discipline_line_carries_the_rule(self):
         for template in ROLE_TEMPLATES:
@@ -733,6 +988,334 @@ class RenderedOutputDisciplineTest(unittest.TestCase):
             with self.subTest(definition=name):
                 self.assertEqual((PI_AGENTS_DIR / name).read_bytes(),
                                  (GENERATOR_AGENTS_DIR / name).read_bytes())
+
+
+# ------------------------------------------------------------------ CR-MDB-090 §S7 tests ----
+
+#: §S7: for each new ``RULE_PINS`` pin, ``(old, new, pin)`` splitting its words across two units of
+#: ``RULE_SECTION_SAMPLE``'s rule section.
+NEW_RULE_PIN_UNIT_SPLITS = (
+    ("- Every AXI command runs uncompressed, through the compressed shell in its raw mode.\n",
+     "- Every AXI command is covered.\n"
+     "- A command runs uncompressed, through the compressed shell in its raw mode.\n",
+     UNCOMPRESSED_PIN_NAME),
+    ("holds all it printed; that file is read in\n  windows",
+     "holds all it printed.\n- That file is read in\n  windows", TRUNCATED_RUN_PIN_NAME),
+    ("`axi:`; the envelope\n  itself is never searched or filtered.",
+     "`axi:`.\n- The envelope\n  itself is never searched or filtered.", LOCATED_LINE_PIN_NAME),
+    ("beside the run, and does not take the run's stream off\n  the console.",
+     "beside the run.\n- It does not take the run's stream off\n  the console.", LOG_CONSOLE_PIN_NAME),
+)
+#: §S7: for each new ``RULE_PINS`` pin, ``(text removed from the rule section, bullet moved to
+#: § Next, pin)``.
+NEW_RULE_PIN_SECTION_MOVES = (
+    ("- Every AXI command runs uncompressed, through the compressed shell in its raw mode.\n",
+     "- Every AXI command runs uncompressed, through the compressed shell in its raw mode.\n",
+     UNCOMPRESSED_PIN_NAME),
+    ("- A run the harness truncates names the file that holds all it printed; that file is read in\n"
+     "  windows, by line offset and limit, until it is read whole.\n",
+     "- A run the harness truncates names the file that holds all it printed; that file is read in\n"
+     "  windows, by line offset and limit, until it is read whole.\n",
+     TRUNCATED_RUN_PIN_NAME),
+    ("- A search may only locate the line's number of the first line that begins `axi:`; the envelope\n"
+     "  itself is never searched or filtered.\n",
+     "- A search may only locate the line's number of the first line that begins `axi:`; the envelope\n"
+     "  itself is never searched or filtered.\n",
+     LOCATED_LINE_PIN_NAME),
+    (" `--log` keeps that runner log beside the run, and does not take the run's stream off\n"
+     "  the console.",
+     "- `--log` keeps that runner log beside the run, and does not take the run's stream off\n"
+     "  the console.\n",
+     LOG_CONSOLE_PIN_NAME),
+)
+
+
+class NewRulePinsProofTest(unittest.TestCase):
+    """CR-MDB-090 §S7 AC "every new detector proved both ways on synthetic text" — beyond the cuts
+    in ``RulePlaceGateProofTest``: each new pin split across two units or two sections does not
+    count, and the located-line pin needs the envelope never searched or filtered."""
+
+    def test_each_new_rule_pin_split_across_two_units_does_not_count(self):
+        for old, new, pin in NEW_RULE_PIN_UNIT_SPLITS:
+            with self.subTest(pin=pin):
+                self.assertIn(old, RULE_SECTION_SAMPLE)
+                split = RULE_SECTION_SAMPLE.replace(old, new)
+                self.assertEqual(rule_section_findings(split),
+                                 [f"no section states the rule; the closest lacks {[pin]}"])
+
+    def test_each_new_rule_pin_moved_to_another_section_does_not_count(self):
+        for removed, moved, pin in NEW_RULE_PIN_SECTION_MOVES:
+            with self.subTest(pin=pin):
+                self.assertIn(removed, RULE_SECTION_SAMPLE)
+                split = RULE_SECTION_SAMPLE.replace(removed, "").replace(
+                    "Something else.\n", "Something else.\n\n" + moved)
+                self.assertEqual(rule_section_findings(split),
+                                 [f"no section states the rule; the closest lacks {[pin]}"])
+
+    def test_the_located_line_pin_bites_a_unit_that_locates_the_line_but_never_forbids_searching(self):
+        allowed_only = RULE_SECTION_SAMPLE.replace(
+            "itself is never searched or filtered.", "itself is read whole.")
+        self.assertNotEqual(allowed_only, RULE_SECTION_SAMPLE)
+        self.assertEqual(rule_section_findings(allowed_only),
+                         [f"no section states the rule; the closest lacks {[LOCATED_LINE_PIN_NAME]}"])
+
+    def test_the_located_line_pin_accepts_line_number_without_the_possessive(self):
+        plain = RULE_SECTION_SAMPLE.replace("the line's number", "the line number")
+        self.assertNotEqual(plain, RULE_SECTION_SAMPLE)
+        self.assertEqual(rule_section_findings(plain), [])
+
+    def test_todays_procedure_rule_section_lacks_exactly_the_four_new_pins(self):
+        today = """# Sample
+
+## Every AXI envelope is read whole (NON-NEGOTIABLE)
+- **It covers the output of an AXI command:** the Crucible clients (`<stack>-crucible.py`), `sandesh`, `modelb-axi`, `worktree-flow.py`, `gh-axi`, `chrome-devtools-axi` and `lavish-axi`.
+- **Every envelope is read whole, every time:** its `warnings[]`, `help[]` and `error` carry what you need next.
+- **Its output is never grepped, headed, tailed or otherwise filtered,** never narrowed with `jq`, and never summarised by pattern.
+- **Its output is never redirected away:** neither its stdout nor its stderr goes to `/dev/null`.
+- **A long run writes its output to a file,** and that file's envelope is read whole.
+- **A runner log a client writes with `--log` is not an envelope:** searching it for a failure stays allowed.
+"""
+        self.assertEqual(rule_section_findings(today),
+                         [f"no section states the rule; the closest lacks "
+                          f"{[name for name, _patterns in NEW_RULE_PINS]}"])
+
+    def test_the_report_every_run_pin_counts_only_in_its_section(self):
+        moved = PROCEDURE_SAMPLE.replace("## Report EVERY run", "## Elsewhere")
+        self.assertNotEqual(moved, PROCEDURE_SAMPLE)
+        self.assertEqual(procedure_pin_findings(moved),
+                         [f"§ 'Report EVERY run' lacks {[REPORT_RUN_PIN_NAME]}"])
+
+    def test_the_report_every_run_pin_split_across_two_units_does_not_count(self):
+        old = "the envelope is read whole from the file the harness names, and\n  failure detail"
+        self.assertIn(old, PROCEDURE_SAMPLE)
+        split = PROCEDURE_SAMPLE.replace(old, "the envelope is kept.\n- It is read whole from the "
+                                              "file the harness names, and\n  failure detail")
+        self.assertEqual(procedure_pin_findings(split),
+                         [f"§ 'Report EVERY run' lacks {[REPORT_RUN_PIN_NAME]}"])
+
+    def test_todays_report_every_run_bullet_bites(self):
+        today = PROCEDURE_SAMPLE.replace(
+            "- If a run's output is truncated, the envelope is read whole from the file the harness "
+            "names, and\n  failure detail from the report file (junit / lcov / surefire) or the "
+            "`--log` file. The run is\n  never re-run.\n",
+            "- If stdout is truncated, read the report file (junit / lcov / surefire) — do NOT "
+            "re-run.\n")
+        self.assertNotEqual(today, PROCEDURE_SAMPLE)
+        self.assertEqual(procedure_pin_findings(today),
+                         [f"§ 'Report EVERY run' lacks {[REPORT_RUN_PIN_NAME]}"])
+
+    def test_the_log_correction_pin_split_across_two_units_does_not_count(self):
+        old = "off the console; the client's envelope, in the file or on stdout,\n  is read whole"
+        self.assertIn(old, CRUCIBLE_SAMPLE)
+        split = CRUCIBLE_SAMPLE.replace(old, "off the console.\n- The client's envelope, in the "
+                                             "file or on stdout,\n  is read whole")
+        self.assertEqual(crucible_skill_pin_findings(split),
+                         [f"no unit corrects --log; it lacks {[LOG_CORRECTION_PIN_NAME]}"])
+
+    def test_todays_crucible_client_output_bullet_bites_the_log_correction_pin(self):
+        today = RULE_SECTION_SAMPLE + """
+## The 0.3.0 verb surface
+
+- **Client output goes to a file** — `test --log <path> --agent <id>` where the verb takes
+  `--log`, a redirect otherwise — and the client's envelope, in the file or on stdout, is read
+  whole, never filtered.
+"""
+        self.assertEqual(crucible_skill_pin_findings(today),
+                         [f"no unit corrects --log; it lacks {[LOG_CORRECTION_PIN_NAME]}"])
+
+    def test_the_model_b_skill_pin_split_across_two_units_does_not_count(self):
+        old = "except that an AXI command runs\n  uncompressed, in the shell's raw mode."
+        self.assertIn(old, MODEL_B_SKILL_SAMPLE)
+        split = MODEL_B_SKILL_SAMPLE.replace(
+            old, "except for AXI commands.\n- A command runs uncompressed, in the shell's raw mode.")
+        self.assertEqual(model_b_skill_pin_findings(split),
+                         [f"no unit runs an AXI command uncompressed; it lacks "
+                          f"{[MODEL_B_UNCOMPRESSED_PIN_NAME]}"])
+
+    def test_todays_model_b_cached_reads_bullet_bites_the_uncompressed_pin(self):
+        today = READ_WHOLE_UNIT_SAMPLE + (
+            "- **Prefer the project's cached reads and compressed shell** (and its ranked search "
+            "and tree), where its `AGENTS.md` names them, over the harness's native equivalents.\n")
+        self.assertEqual(model_b_skill_pin_findings(today),
+                         [f"no unit runs an AXI command uncompressed; it lacks "
+                          f"{[MODEL_B_UNCOMPRESSED_PIN_NAME]}"])
+
+
+#: §S2.1: a lean-ctx definition — the registration line and the tool-usage client clause.
+LEAN_CLIENT_SAMPLE = """# Sample
+
+1. **Register with Crucible.**
+   ```bash
+   <client> register --role RED --cycle <cycleId>
+   ```
+   Run via `ctx_shell` with `raw=true` (single short command). If registration fails, STOP.
+2. **Read the spec.**
+
+## Tool Usage
+
+Prefer the lean-ctx tools for anything that may print >20 lines; every AXI command — the crucible
+client included — runs through `ctx_shell` with `raw=true`, and its envelope is read as the
+output-discipline line says.
+- **Output discipline:** every run goes through the stack crucible client; its envelope is read
+  whole.
+"""
+#: §S2.2: the same definition in the built-in form — ``bash`` in ``ctx_shell``'s place, no ``raw``.
+BUILTIN_CLIENT_SAMPLE = LEAN_CLIENT_SAMPLE.replace(
+    "`ctx_shell` with `raw=true`", "`bash`").replace("lean-ctx tools", "built-in tools")
+
+#: §S7 "the render pin bites": ``(cut, replacement, findings)`` on ``LEAN_CLIENT_SAMPLE``.
+LEAN_CLIENT_CUTS = (
+    ("`ctx_shell` with `raw=true`, and its", "`ctx_shell`, and its",
+     [f"the client clause lacks {[RAW_TRUE]}"]),
+    ("every AXI command — the crucible\nclient included —", "the crucible\nclient",
+     [f"the client clause lacks {[AXI_WORD]}"]),
+    ("runs through `ctx_shell` with `raw=true`, and", "runs through the shell, and",
+     [f"the client clause lacks {[CTX_SHELL, RAW_TRUE]}"]),
+    ("output-discipline line says", '"Output discipline" says',
+     ["expected one client-clause unit, found 0",
+      f"expected one unit matching {OUTPUT_DISCIPLINE}, found 2"]),
+)
+#: §S7 "the render pin bites": ``(cut, replacement, findings)`` on ``BUILTIN_CLIENT_SAMPLE``.
+BUILTIN_CLIENT_CUTS = (
+    ("runs through `bash`, and", "runs through `bash` with `raw=true`, and",
+     [f"the client clause names {[RAW_TRUE]}"]),
+    ("runs through `bash`, and", "runs through the shell, and",
+     [f"the client clause lacks {[BASH]}"]),
+    ("output-discipline line says", '"Output discipline" says',
+     ["expected one client-clause unit, found 0",
+      f"expected one unit matching {OUTPUT_DISCIPLINE}, found 2"]),
+)
+
+
+class ClientClauseRenderPinTest(unittest.TestCase):
+    """CR-MDB-090 §S7 AC "the render pin" and §S2.1's registration line, proved both ways on
+    synthetic text."""
+
+    def test_the_lean_ctx_sample_passes_the_render_pin_and_the_registration_line(self):
+        self.assertEqual(client_clause_findings(LEAN_CLIENT_SAMPLE, lean_ctx=True), [])
+        self.assertEqual(registration_line_findings(LEAN_CLIENT_SAMPLE, lean_ctx=True), [])
+
+    def test_the_built_in_sample_passes_the_render_pin_and_the_registration_line(self):
+        self.assertNotIn("raw=true", BUILTIN_CLIENT_SAMPLE)
+        self.assertEqual(client_clause_findings(BUILTIN_CLIENT_SAMPLE, lean_ctx=False), [])
+        self.assertEqual(registration_line_findings(BUILTIN_CLIENT_SAMPLE, lean_ctx=False), [])
+
+    def test_each_lean_ctx_cut_bites_the_render_pin(self):
+        for cut, replacement, findings in LEAN_CLIENT_CUTS:
+            with self.subTest(cut=cut):
+                self.assertIn(cut, LEAN_CLIENT_SAMPLE)
+                self.assertEqual(client_clause_findings(
+                    LEAN_CLIENT_SAMPLE.replace(cut, replacement), lean_ctx=True), findings)
+
+    def test_each_built_in_cut_bites_the_render_pin(self):
+        for cut, replacement, findings in BUILTIN_CLIENT_CUTS:
+            with self.subTest(cut=cut):
+                self.assertIn(cut, BUILTIN_CLIENT_SAMPLE)
+                self.assertEqual(client_clause_findings(
+                    BUILTIN_CLIENT_SAMPLE.replace(cut, replacement), lean_ctx=False), findings)
+
+    def test_the_short_command_exception_bites_in_either_form(self):
+        for lean_ctx, sample in ((True, LEAN_CLIENT_SAMPLE), (False, BUILTIN_CLIENT_SAMPLE)):
+            with self.subTest(lean_ctx=lean_ctx):
+                found = client_clause_findings(
+                    sample + "\nCrucible-client calls are the short-command exception.\n",
+                    lean_ctx=lean_ctx)
+                self.assertEqual(found, ["a unit still says the short-command exception"])
+
+    def test_todays_lean_ctx_tool_usage_wording_bites(self):
+        today = LEAN_CLIENT_SAMPLE.replace(
+            "Prefer the lean-ctx tools for anything that may print >20 lines; every AXI command — "
+            "the crucible\nclient included — runs through `ctx_shell` with `raw=true`, and its "
+            "envelope is read as the\noutput-discipline line says.",
+            "Prefer lean-ctx for anything printing >20 lines (crucible client via `ctx_shell` is "
+            "the short-command exception).")
+        self.assertNotEqual(today, LEAN_CLIENT_SAMPLE)
+        self.assertEqual(client_clause_findings(today, lean_ctx=True),
+                         ["expected one client-clause unit, found 0",
+                          "a unit still says the short-command exception"])
+
+    def test_a_lean_ctx_registration_line_without_raw_true_bites(self):
+        today = LEAN_CLIENT_SAMPLE.replace("Run via `ctx_shell` with `raw=true` (single",
+                                           "Run via `ctx_shell` (single")
+        self.assertNotEqual(today, LEAN_CLIENT_SAMPLE)
+        self.assertEqual(registration_line_findings(today, lean_ctx=True),
+                         [f"the registration line lacks {[RAW_TRUE]}"])
+
+    def test_a_built_in_registration_line_naming_raw_true_bites(self):
+        bad = BUILTIN_CLIENT_SAMPLE.replace("Run via `bash` (single",
+                                            "Run via `bash` with `raw=true` (single")
+        self.assertNotEqual(bad, BUILTIN_CLIENT_SAMPLE)
+        self.assertEqual(registration_line_findings(bad, lean_ctx=False),
+                         [f"the registration line names {[RAW_TRUE]}"])
+
+    def test_a_definition_without_a_registration_line_bites(self):
+        gone = LEAN_CLIENT_SAMPLE.replace(
+            "   Run via `ctx_shell` with `raw=true` (single short command). If registration fails, "
+            "STOP.\n", "")
+        self.assertNotEqual(gone, LEAN_CLIENT_SAMPLE)
+        self.assertEqual(registration_line_findings(gone, lean_ctx=True),
+                         ["expected one registration line, found 0"])
+
+
+BUILTIN_TOOLS = TEMPLATES_DIR / "builtin-tools.toml"
+
+
+class ClientClauseInTemplatesAndRendersTest(unittest.TestCase):
+    """CR-MDB-090 §S2, §S6 AC — the four templates, both renders of every stack and the tracked
+    ``generator/agents/*``: one client clause running every AXI command raw (``bash`` in the
+    built-in form), the registration line with ``raw=true`` (lean-ctx form only), no
+    "short-command exception"."""
+
+    def _render(self, lean_ctx: bool) -> dict[str, str]:
+        stacks = sorted(p.stem for p in STACKS_DIR.glob("*.toml"))
+        rendered = agents.render_definitions(stacks, ["pi"], TEMPLATES_DIR, STACKS_DIR,
+                                             lean_ctx=lean_ctx)
+        self.assertEqual(len(rendered), 4 * len(stacks))
+        return rendered
+
+    def test_no_role_template_says_the_short_command_exception(self):
+        for template in ROLE_TEMPLATES:
+            with self.subTest(template=template.name):
+                self.assertNotRegex(normalise(read_text(template)), SHORT_COMMAND_EXCEPTION)
+
+    def test_each_role_templates_client_clause_runs_every_axi_command_raw(self):
+        for template in ROLE_TEMPLATES:
+            with self.subTest(template=template.name):
+                self.assertEqual(client_clause_findings(read_text(template), lean_ctx=True), [])
+
+    def test_each_role_templates_registration_line_names_raw_true(self):
+        for template in ROLE_TEMPLATES:
+            with self.subTest(template=template.name):
+                self.assertEqual(registration_line_findings(read_text(template), lean_ctx=True), [])
+
+    def test_no_built_in_passage_names_raw_true_or_the_short_command_exception(self):
+        passages = tomllib.loads(read_text(BUILTIN_TOOLS))["passage"]
+        found = [p["builtin"] for p in passages
+                 if re.search(RAW_TRUE, normalise(p["builtin"]))
+                 or re.search(SHORT_COMMAND_EXCEPTION, normalise(p["builtin"]))]
+        self.assertEqual(found, [])
+
+    def test_every_lean_ctx_render_has_the_raw_client_clause_and_registration_line(self):
+        for rel, text in sorted(self._render(lean_ctx=True).items()):
+            with self.subTest(definition=rel):
+                self.assertEqual(client_clause_findings(text, lean_ctx=True)
+                                 + registration_line_findings(text, lean_ctx=True), [])
+
+    def test_every_built_in_render_has_the_bash_client_clause_and_names_no_raw_or_lean_ctx(self):
+        for rel, text in sorted(self._render(lean_ctx=False).items()):
+            with self.subTest(definition=rel):
+                self.assertEqual(client_clause_findings(text, lean_ctx=False)
+                                 + registration_line_findings(text, lean_ctx=False), [])
+                self.assertNotIn("raw=true", text)
+                self.assertNotIn("ctx_", text)
+                self.assertNotIn("lean-ctx", text)
+
+    def test_the_tracked_generated_agents_carry_the_raw_client_clause_and_registration_line(self):
+        for path in sorted(GENERATOR_AGENTS_DIR.glob("*.md")):
+            with self.subTest(definition=path.name):
+                text = read_text(path)
+                self.assertEqual(client_clause_findings(text, lean_ctx=True)
+                                 + registration_line_findings(text, lean_ctx=True), [])
 
 
 if __name__ == "__main__":
