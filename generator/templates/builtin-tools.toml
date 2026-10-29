@@ -35,15 +35,15 @@ too, and keep `bash` for running commands.
 # --- First Actions: the registration command runs in the shell. ---------------
 
 [[passage]]
-lean = '''   Run via `ctx_shell` (single short command — exempt from the "no long-output" rule).'''
+lean = '''   Run via `ctx_shell` with `raw=true` (single short command — exempt from the "no long-output" rule).'''
 builtin = '''   Run via `bash` (single short command — exempt from the "no long-output" rule).'''
 
 [[passage]]
-lean = '''   Via `ctx_shell` (short command). If it fails, STOP and report.'''
+lean = '''   Via `ctx_shell` with `raw=true` (short command). If it fails, STOP and report.'''
 builtin = '''   Via `bash` (short command). If it fails, STOP and report.'''
 
 [[passage]]
-lean = '''   Via `ctx_shell` (short). If it fails, STOP and report.'''
+lean = '''   Via `ctx_shell` with `raw=true` (short). If it fails, STOP and report.'''
 builtin = '''   Via `bash` (short). If it fails, STOP and report.'''
 
 # --- Reading the CR spec: map it, then read only the ranges you need. ---------
@@ -77,8 +77,8 @@ lean = '''## Tool Usage (lean-ctx — protects your context window)'''
 builtin = '''## Tool Usage (built-in tools — protects your context window)'''
 
 [[passage]]
-lean = '''Prefer the lean-ctx tools (`ctx_shell`, `ctx_read`, `ctx_search`) over raw `read`/`grep` for anything that may print >20 lines; `ctx_shell` is your only shell (Crucible-client calls via `ctx_shell` are the short-command exception).'''
-builtin = '''Your tools are Pi's built-ins, and nothing compresses their output: read a range with `read`, search with a precise `grep`, and keep anything that may print >20 lines out of your context; `bash` is your only shell (Crucible-client calls via `bash` are the short-command exception).'''
+lean = '''Prefer the lean-ctx tools (`ctx_shell`, `ctx_read`, `ctx_search`) over raw `read`/`grep` for anything that may print >20 lines; `ctx_shell` is your only shell, and every AXI command — the crucible client included — runs through `ctx_shell` with `raw=true`, and its envelope is read as the output-discipline line says.'''
+builtin = '''Your tools are Pi's built-ins, and nothing compresses their output: read a range with `read`, search with a precise `grep`, and keep anything that may print >20 lines out of your context; `bash` is your only shell, and every AXI command — the crucible client included — runs through `bash`, and its envelope is read as the output-discipline line says.'''
 
 [[passage]]
 lean = '''- **Docs (`docs/**.md`):** `ctx_read(..., mode: "map")` once → `ctx_search` batched → `ctx_read(mode: "lines:N-M")` for a range. FORBIDDEN: `read`/`grep`/`cat`/`head`/`tail`/`sed` on the full spec (`read` only when about to `edit` a spec).'''
@@ -99,8 +99,8 @@ lean = '''## Tool Usage (lean-ctx — protects context)'''
 builtin = '''## Tool Usage (built-in tools — protects context)'''
 
 [[passage]]
-lean = '''Prefer lean-ctx for anything printing >20 lines (crucible client via `ctx_shell` is the short-command exception).'''
-builtin = '''Nothing compresses the built-in tools' output: keep anything printing >20 lines out of your context (crucible client via `bash` is the short-command exception).'''
+lean = '''Prefer lean-ctx for anything printing >20 lines; every AXI command — the crucible client included — runs through `ctx_shell` with `raw=true`, and its envelope is read as the output-discipline line says.'''
+builtin = '''Nothing compresses the built-in tools' output: keep anything printing >20 lines out of your context; every AXI command — the crucible client included — runs through `bash`, and its envelope is read as the output-discipline line says.'''
 
 [[passage]]
 lean = '''- Docs: `ctx_read` once → `ctx_search("<pattern>", "<dir>")`. NEVER `read` the full spec; no `grep`/`cat` on `docs/**.md`.'''
@@ -117,16 +117,16 @@ builtin = '''- The tools you reach for: **read** (a line range, or a file you'll
 # --- Tool Usage: VERIFY and FIX (one paragraph each). ---------------------------
 
 [[passage]]
-lean = '''Prefer lean-ctx for >20-line output (crucible client via `ctx_shell` is the short-command exception). Docs via `ctx_read`+`ctx_search` (never `read` the full spec).'''
-builtin = '''Nothing compresses the built-in tools' output: keep >20-line output out of your context (crucible client via `bash` is the short-command exception). Docs via `grep` + a ranged `read` (never `read` the full spec).'''
+lean = '''Prefer lean-ctx for >20-line output; every AXI command — the crucible client included — runs through `ctx_shell` with `raw=true`, and its envelope is read as the output-discipline line says. Docs via `ctx_read`+`ctx_search` (never `read` the full spec).'''
+builtin = '''Nothing compresses the built-in tools' output: keep >20-line output out of your context; every AXI command — the crucible client included — runs through `bash`, and its envelope is read as the output-discipline line says. Docs via `grep` + a ranged `read` (never `read` the full spec).'''
 
 [[passage]]
 lean = '''Standard tools allowed: **read** (review), **find**, **ctx_shell** (read-only + crucible client).'''
 builtin = '''Tools allowed: **read** (review), **grep** and **find** (search), **bash** (read-only + crucible client).'''
 
 [[passage]]
-lean = '''Prefer lean-ctx for >20-line output (crucible client via `ctx_shell` is the short-command exception). Docs via `ctx_read`+`ctx_search`. New files: `write`; targeted edits with known old/new strings: `edit`; analyze: `ctx_read` (not `read`); search: `ctx_search`.'''
-builtin = '''Nothing compresses the built-in tools' output: keep >20-line output out of your context (crucible client via `bash` is the short-command exception). Docs via `grep` + a ranged `read`. New files: `write`; targeted edits with known old/new strings: `edit`; analyze: `grep`, then `read` that range; search: one precise `grep`.'''
+lean = '''Prefer lean-ctx for >20-line output; every AXI command — the crucible client included — runs through `ctx_shell` with `raw=true`, and its envelope is read as the output-discipline line says. Docs via `ctx_read`+`ctx_search`. New files: `write`; targeted edits with known old/new strings: `edit`; analyze: `ctx_read` (not `read`); search: `ctx_search`.'''
+builtin = '''Nothing compresses the built-in tools' output: keep >20-line output out of your context; every AXI command — the crucible client included — runs through `bash`, and its envelope is read as the output-discipline line says. Docs via `grep` + a ranged `read`. New files: `write`; targeted edits with known old/new strings: `edit`; analyze: `grep`, then `read` that range; search: one precise `grep`.'''
 
 [[passage]]
 lean = '''Standard tools: **read** (a file you'll `edit`), **find**, **ctx_shell** (crucible client + git).'''
