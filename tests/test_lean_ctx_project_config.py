@@ -1,9 +1,9 @@
 """The project's lean-ctx config: ``modelb_axi.lean_ctx_config`` renders ``.lean-ctx.toml``, and
-``init`` writes it at the root on every lean-ctx verdict (CR-MDB-091 §S1, §S2; PRD D5, amended
-2026-10-29).
+``init`` writes it at the root on every lean-ctx verdict, and ``modelb-axi agents`` re-renders it
+(CR-MDB-091 §S1, §S2, §S3; PRD D5, amended 2026-10-29).
 
-Contract: ``docs/changes/CR-MDB-091-init-scaffolds-the-lean-ctx-project-config.md`` §S1, §S2 and
-their acceptance criteria.
+Contract: ``docs/changes/CR-MDB-091-init-scaffolds-the-lean-ctx-project-config.md`` §S1, §S2, §S3
+and their acceptance criteria.
 
 Class map:
 
@@ -27,6 +27,17 @@ Class map:
   commit carries it and the scaffolded ``.gitignore`` does not ignore it; ``--dry-run`` plans it
   and writes nothing; every lean-ctx verdict writes the same file; an unmarked existing file is
   left byte-identical and reported ``unmanaged`` with ``_ownership_warnings``' wording.
+- ``AgentsVerbPlacesTheLeanCtxConfigTest`` — §S3, the wired path: ``python3 -m modelb_axi agents``
+  writes a missing config after the permission policy, leaves a current one ``unchanged``,
+  rewrites an older intact render, skips a hand-modified one (the agent file's warning) until
+  ``--force-managed``, never writes an unmarked one (``unmanaged``, the agent file's warning),
+  leaves it alone under ``--stacks``, and writes it whatever the recorded lean-ctx verdict.
+- ``AgentsVerbLeanCtxConfigFailurePathsTest`` — §S3, failure paths: a ``.lean-ctx.toml`` that is
+  a directory exits 3 (``ok: false``, the error named, the agents and the policy in ``written``); a
+  run refused for want of a ``.env`` (exit 2) writes no config.
+- ``AgentsVerbNamesTheLeanCtxConfigTest`` — §S3, text: the ``agents`` subparser's help and
+  description, and its stderr progress line, name the "lean-ctx project config" and the
+  "permission policy"; :func:`missing_verb_phrases`, the checker, is proved both ways.
 
 Why lean-ctx reads only these keys this way (lean-ctx 3.11.4): five keys are merged when the raw
 project text merely contains their name, so a comment naming one resets that setting for the
@@ -35,12 +46,16 @@ project — :func:`override_hazards` pins that the render names none of them, it
 Isolation (NON-NEGOTIABLE): every ``init`` runs in process in the sandbox of
 ``tests.test_init_tool_verdicts`` (through ``tests.test_project_setup_section._Case``) — a
 hand-written ``install.toml`` under a per-test temp ``MODELB_HOME``, ``HOME`` and
-``PI_CODING_AGENT_DIR`` pinned to per-test temp dirs. No test reads the real
+``PI_CODING_AGENT_DIR`` pinned to per-test temp dirs. Every ``agents`` run drives
+``python3 -m modelb_axi agents`` in the seeded sandbox of
+``tests.test_agents_verb_permission_policy._AgentsVerbPolicyCase`` (``HOME``, ``MODELB_HOME``,
+``XDG_DATA_HOME`` and ``PI_CODING_AGENT_DIR`` under a per-test temp dir). No test reads the real
 ``~/.config/lean-ctx``, ``~/.pi`` or ``~/.crucible``, and none runs ``lean-ctx``.
 
 Stdlib only.
 """
 
+import argparse
 import ast
 import importlib
 import inspect
@@ -53,8 +68,11 @@ from pathlib import Path
 from unittest import mock
 
 from modelb_axi import agents, scaffold
+from modelb_axi.cli import _build_parser
+from tests import test_agents_verb_permission_policy as _policy
 from tests import test_init_tool_verdicts as _verdicts
 from tests import test_project_setup_section as _setup
+from tests._helpers import decode_axi
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -427,6 +445,207 @@ class InitWritesTheLeanCtxConfigTest(_setup._Case):
         self.assertEqual(warnings.count(expected[0]), 1,
                          f"§S2: one warning in _ownership_warnings' unmanaged wording; "
                          f"warnings={warnings!r}")
+
+
+# ------------------------------------------------------------------ §S3 agents re-renders it ----
+
+#: §S3 AC, text: the two phrases the ``agents`` verb's help, description and progress line name.
+VERB_PHRASES = ("lean-ctx project config", "permission policy")
+
+
+def missing_verb_phrases(text: str | None) -> list[str]:
+    """The phrases among :data:`VERB_PHRASES` that ``text`` does not contain, in the order listed;
+    whitespace-normalised and case-insensitive."""
+    normalised = " ".join((text or "").split()).lower()
+    return [phrase for phrase in VERB_PHRASES if phrase not in normalised]
+
+
+class _AgentsVerbConfigCase(_policy._AgentsVerbPolicyCase):
+    """The seeded sandbox of ``tests.test_agents_verb_permission_policy``, and the config in it."""
+
+    def setUp(self):
+        super().setUp()
+        self.config = self.project / CONFIG_RELPATH
+
+    def hand_modified_config(self) -> str:
+        """Today's marker line over a hand-edited body."""
+        edited = config_module().render_config().replace("max_facts = 500", "max_facts = 900")
+        self.assertEqual(config_module().ownership_state(edited), agents.OWNED_HAND_MODIFIED,
+                         "fixture precondition: a hand-modified config")
+        return edited
+
+    def older_intact_config(self) -> str:
+        """An older render: a body with ``max_facts = 200``, its marker recomputed with
+        ``agents.sha256_text`` so it is intact."""
+        body = BODY.replace("max_facts = 500", "max_facts = 200")
+        older = f"{MARKER_PREFIX}{agents.sha256_text(body)}\n{body}"
+        self.assertEqual(config_module().ownership_state(older), agents.OWNED_INTACT,
+                         "fixture precondition: an intact marker")
+        self.assertNotEqual(older, config_module().render_config(),
+                            "fixture precondition: an older render, not today's")
+        return older
+
+    def assert_config_gets_the_agents_warning(self, axi: dict, agent_rel: str) -> None:
+        """The config's warning is the one ``agent_rel`` gets, with the config's path."""
+        warnings = axi.get("warnings") or []
+        agent_hits = [w for w in warnings if agent_rel in w]
+        self.assertEqual(len(agent_hits), 1,
+                         f"fixture precondition: one warning for {agent_rel}; {warnings!r}")
+        expected = agent_hits[0].replace(agent_rel, CONFIG_RELPATH)
+        self.assertEqual([w for w in warnings if CONFIG_RELPATH in w], [expected],
+                         "§S3: a skipped or unmanaged config gets the warning an agent file gets")
+
+
+class AgentsVerbPlacesTheLeanCtxConfigTest(_AgentsVerbConfigCase):
+    """§S3 AC "the wired path", one test per bullet."""
+
+    def test_no_config_yet_is_written_after_the_policy_and_reported_in_written_only(self):
+        self.assertFalse(self.config.exists(), "fixture precondition: no config yet")
+        axi, _ = self.agents_ok()
+        self.assertTrue(self.config.is_file(), "§S3: the verb writes the missing config")
+        self.assertEqual(self.config.read_text(encoding="utf-8"), config_module().render_config(),
+                         "§S3: the written config is render_config()")
+        self.assert_listed_once(axi, "written", CONFIG_RELPATH)
+        written = axi.get("written") or []
+        self.assertIn(_policy.POLICY_REL, written, "fixture precondition: the policy is written")
+        self.assertGreater(written.index(CONFIG_RELPATH), written.index(_policy.POLICY_REL),
+                           f"§S3: the config is placed after the permission policy; {written!r}")
+
+    def test_an_identical_config_is_reported_unchanged_only_and_left_byte_identical(self):
+        current = config_module().render_config()
+        self.seed(CONFIG_RELPATH, current)
+        axi, _ = self.agents_ok()
+        self.assertEqual(self.config.read_bytes(), current.encode("utf-8"))
+        self.assert_listed_once(axi, "unchanged", CONFIG_RELPATH)
+
+    def test_an_older_render_under_an_intact_marker_is_rewritten_and_reported_written_only(self):
+        self.seed(CONFIG_RELPATH, self.older_intact_config())
+        axi, _ = self.agents_ok()
+        self.assertEqual(self.config.read_text(encoding="utf-8"), config_module().render_config(),
+                         "§S3: an intact older render is rewritten to today's")
+        self.assert_listed_once(axi, "written", CONFIG_RELPATH)
+
+    def test_a_hand_modified_config_is_skipped_with_the_agents_warning_then_rewritten_when_forced(
+            self):
+        edited = self.hand_modified_config()
+        self.seed(CONFIG_RELPATH, edited)
+        self.seed(_policy.SKIPPED_AGENT_REL,
+                  self.rendered_agent(_policy.SKIPPED_AGENT_REL) + "\nhand edit\n")
+        axi, result = self.agents_ok()
+        self.assertEqual(self.config.read_bytes(), edited.encode("utf-8"),
+                         "§S3: a skipped config is byte-identical to its seed")
+        self.assert_listed_once(axi, "skipped", CONFIG_RELPATH)
+        self.assert_config_gets_the_agents_warning(axi, _policy.SKIPPED_AGENT_REL)
+        self.assertIn(CONFIG_RELPATH, result.stderr, "the warning reaches stderr too")
+
+        forced, _ = self.agents_ok("--force-managed")
+        self.assertEqual(self.config.read_text(encoding="utf-8"), config_module().render_config(),
+                         "§S3: --force-managed rewrites a hand-modified config")
+        self.assert_listed_once(forced, "written", CONFIG_RELPATH)
+
+    def test_an_unmarked_config_is_never_written_and_is_reported_unmanaged_with_the_warning(self):
+        unmarked = "[memory.knowledge]\nmax_facts = 300\n"
+        self.seed(CONFIG_RELPATH, unmarked)
+        self.seed(_policy.UNMANAGED_AGENT_REL, _policy.UNMARKED_AGENT)
+        for extra in ((), ("--force-managed",)):
+            with self.subTest(flags=extra):
+                axi, _ = self.agents_ok(*extra)
+                self.assertEqual(self.config.read_bytes(), unmarked.encode("utf-8"),
+                                 "§S3: an unmarked config is byte-identical to its seed")
+                self.assert_listed_once(axi, "unmanaged", CONFIG_RELPATH)
+                self.assert_config_gets_the_agents_warning(axi, _policy.UNMANAGED_AGENT_REL)
+
+    def test_the_stacks_flag_leaves_an_intact_current_config_byte_identical_and_unchanged(self):
+        current = config_module().render_config()
+        self.seed(CONFIG_RELPATH, current)
+        axi, _ = self.agents_ok("--stacks", "python,rust")
+        self.assertEqual(axi.get("stacks"), ["python", "rust"], "fixture: the new stack set")
+        self.assertEqual(self.config.read_bytes(), current.encode("utf-8"),
+                         "§S3: --stacks changes nothing in the config (the render takes no stack)")
+        self.assert_listed_once(axi, "unchanged", CONFIG_RELPATH)
+
+    def test_lean_ctx_recorded_absent_writes_the_same_config(self):
+        self.write_install(_policy.ABSENT)
+        axi, _ = self.agents_ok()
+        self.assertEqual(self.config.read_text(encoding="utf-8") if self.config.is_file() else None,
+                         config_module().render_config(),
+                         "§S3: lean-ctx recorded absent writes the same render_config()")
+        self.assert_listed_once(axi, "written", CONFIG_RELPATH)
+
+
+class AgentsVerbLeanCtxConfigFailurePathsTest(_AgentsVerbConfigCase):
+    """§S3 AC "failure paths"."""
+
+    def test_a_config_path_that_is_a_directory_exits_3_with_ok_false_naming_the_error(self):
+        self.config.mkdir()
+        result = self.run_agents()
+        axi = decode_axi(result.stdout)
+        self.assertEqual((result.returncode, axi.get("verb"), axi.get("ok")), (3, "agents", False),
+                         f"§S3: an I/O error on the config exits 3 with an ok:false envelope; "
+                         f"stdout={result.stdout!r} stderr={result.stderr!r}")
+        warnings = axi.get("warnings") or []
+        self.assertEqual(len(warnings), 1, f"one warning, the error; {warnings!r}")
+        self.assertIn(CONFIG_RELPATH, warnings[0], "§S3: the warning names the error on that path")
+        self.assertEqual(sorted(axi.get("written") or []),
+                         sorted((*_policy.AGENT_RELS, _policy.POLICY_REL)),
+                         "§S3: written lists the agent files and the policy")
+        self.assertTrue(self.config.is_dir(), "the directory is left as it was")
+
+    def test_a_run_without_a_env_exits_2_and_creates_no_config(self):
+        (self.project / ".env").unlink()
+        result = self.run_agents()
+        axi = decode_axi(result.stdout)
+        self.assertEqual((result.returncode, axi.get("ok")), (2, False),
+                         f"§S3: a validation refusal exits 2; stderr={result.stderr!r}")
+        self.assertFalse(self.config.exists(), "§S3: a refused run writes no config")
+
+
+class AgentsVerbNamesTheLeanCtxConfigTest(_AgentsVerbConfigCase):
+    """§S3 AC "text": the ``agents`` subparser's help and description, and its one stderr progress
+    line, name the lean-ctx project config and still name the permission policy."""
+
+    def agents_subcommand(self) -> tuple[argparse.Action, argparse.ArgumentParser]:
+        sub = next(a for a in _build_parser()._actions  # stdlib argparse: the declared actions
+                   if isinstance(a, argparse._SubParsersAction))
+        choice = next(a for a in sub._get_subactions() if a.dest == "agents")
+        return choice, sub.choices["agents"]
+
+    def test_the_help_names_the_lean_ctx_project_config_and_the_permission_policy(self):
+        choice, _parser = self.agents_subcommand()
+        self.assertEqual(missing_verb_phrases(choice.help), [], f"§S3: the help; {choice.help!r}")
+
+    def test_the_description_names_the_lean_ctx_project_config_and_the_permission_policy(self):
+        _choice, parser = self.agents_subcommand()
+        self.assertEqual(missing_verb_phrases(parser.description), [],
+                         f"§S3: the description; {parser.description!r}")
+
+    def test_the_stderr_progress_line_names_the_lean_ctx_project_config_and_the_policy(self):
+        _axi, result = self.agents_ok()
+        progress = [ln for ln in result.stderr.splitlines() if ln.startswith("modelb-axi: agents")]
+        self.assertEqual(len(progress), 1, f"one progress line; stderr={result.stderr!r}")
+        self.assertEqual(missing_verb_phrases(progress[0]), [],
+                         f"§S3: the progress line; {progress[0]!r}")
+
+
+class MissingVerbPhrasesCheckerTest(unittest.TestCase):
+    """§S3 AC "text" — :func:`missing_verb_phrases`, proved both ways."""
+
+    def test_text_naming_both_phrases_passes_whitespace_and_case_aside(self):
+        self.assertEqual(missing_verb_phrases(
+            "re-render the agents, the Lean-Ctx  Project\nConfig and the permission\tPOLICY"), [])
+
+    def test_text_naming_only_the_permission_policy_bites(self):
+        self.assertEqual(missing_verb_phrases("re-render the agents and the permission policy"),
+                         ["lean-ctx project config"])
+
+    def test_text_naming_only_the_lean_ctx_project_config_bites(self):
+        self.assertEqual(missing_verb_phrases("re-render the agents and the lean-ctx project config"),
+                         ["permission policy"])
+
+    def test_near_misses_and_none_bite_on_both(self):
+        for text in ("the lean-ctx config and the policy", "", None):
+            with self.subTest(text=text):
+                self.assertEqual(missing_verb_phrases(text), list(VERB_PHRASES))
 
 
 if __name__ == "__main__":

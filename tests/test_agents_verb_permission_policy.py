@@ -220,8 +220,10 @@ class AgentsVerbPlacesThePolicyTest(_AgentsVerbPolicyCase):
                          "§S3: the written policy is the recorded verdict's render")
         self.assert_listed_once(axi, "written")
         written = axi.get("written") or []
-        self.assertEqual(sorted(written), sorted((*AGENT_RELS, POLICY_REL)),
-                         "the agent files and the policy, nothing else")
+        # MIGRATED at CR-MDB-091 (§S3): the verb also places the project's lean-ctx config,
+        # `.lean-ctx.toml`, after the policy (was the agent files and the policy only).
+        self.assertEqual(sorted(written), sorted((*AGENT_RELS, POLICY_REL, ".lean-ctx.toml")),
+                         "the agent files, the policy and the lean-ctx config, nothing else")
         self.assertGreater(written.index(POLICY_REL), max(written.index(r) for r in AGENT_RELS),
                            "§S3: the policy is placed after the agent definitions")
         permission = _permission(self.policy.read_text(encoding="utf-8"))
