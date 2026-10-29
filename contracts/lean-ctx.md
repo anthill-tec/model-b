@@ -27,10 +27,11 @@ under § Filed requests / gaps for filing (§S3).
     tools as Pi tools.
 - **The served tool surface.** The engine resolves it: `LEAN_CTX_TOOL_PROFILE`, then the global
   `tool_profile`, then `tools_enabled` (`ToolProfile::from_config`, `rust/src/core/tool_profiles.rs`).
-  - Unpinned, the bridge serves the lazy core (`ctx_read`, `ctx_shell`, `ctx_search`, `ctx_glob`,
-    `ctx_tree`, `ctx_session`, `ctx_compose`, `ctx_callgraph`, `ctx_patch`, `ctx_call`,
-    `ctx_expand`) and reaches the rest through `ctx_call`; lean-ctx's own setup leaves the
-    profile unpinned.
+  - Unpinned, the bridge serves the lazy core, twelve names (`ctx_read`, `ctx_shell`, `ctx_search`,
+    `ctx_glob`, `ctx_tree`, `ctx_session`, `ctx_compose`, `ctx_callgraph`, `ctx_patch`, `ctx_call`,
+    `ctx_expand` and the `shell` alias, `ShellAliasTool`; `CORE_TOOL_NAMES`,
+    `rust/src/tool_defs/mod.rs`) and reaches the rest through `ctx_call`; lean-ctx's own setup
+    leaves the profile unpinned.
   - Pinned `standard`, it serves 17 tools plus `ctx_call`; this machine pins `standard`.
   - `pi-lean-ctx`'s `toolProfile` (default `lean`) forwards nothing for `lean`, so the global
     config decides.
