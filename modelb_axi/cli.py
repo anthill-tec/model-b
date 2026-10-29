@@ -310,9 +310,9 @@ def _add_init_parser(subparsers) -> None:
     init.add_argument(
         "--knowledge-category", metavar="ID",
         help=(
-            "KNOWLEDGE_CATEGORY registry value, the lean-ctx knowledge category "
-            "of the project's execution knowledge; written only when the "
-            "installation records lean-ctx present (default: <token>-workflow)"
+            "KNOWLEDGE_CATEGORY registry value, the knowledge-store category "
+            "of the project's execution knowledge; every project carries the "
+            "key (default: <token>-workflow)"
         ),
     )
     init.add_argument("--target", metavar="DIR", help="project directory to scaffold into")

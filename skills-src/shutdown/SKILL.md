@@ -130,7 +130,8 @@ Proceed to your role branch (2A Track / 2B Mainline).
 
 ### Step 1B — EMERGENCY (`emergency` flag set)
 Host is going down (power failure, forced stop). After closing the active write:
-- **Fast-abort** the rest — do NOT finish the active cycle, do NOT attempt a CR merge.
+- **Fast-abort** the rest — do NOT finish the active cycle, do NOT attempt a CR merge. No
+  reconciliation: the fast-abort skips it.
 - Preserve in-progress work where cheap: leave the worktree intact or stash it (so the
   next run can resume); do NOT force a merge.
 - Best-effort ack (Step 2/3) naming what was left mid-flight.
@@ -172,7 +173,8 @@ Host is going down (power failure, forced stop). After closing the active write:
    or to the **user** if the command came on this session:
    *"Track N safe to shut down — CR-XXX open at <sha>, active cycle <label>, worktree committed
    (or: CR-XXX merged @ <HEAD> on the relayed sign-off / no carried work)."* The ack IS the
-   shutdown indicator.
+   shutdown indicator. The ack names the facts the Track found overtaken, raised to Mainline.
+   A Track writes no fact.
 5. **LAST — stop your own watcher, confirm it has stopped, then unregister — never together**
    (see § The common final step).
 
@@ -214,7 +216,10 @@ and goes **last**.
    Push is the User's call — ask, or follow the standing rule. (Emergency: commit if safe;
    only true power-failure justifies skipping.)
 4. **Report to the USER** — all tracks confirmed down (ack + active-state), develop HEAD +
-   ahead/behind, and what is queued/locked for the next run.
+   ahead/behind, and what is queued/locked for the next run. Before the report, list the
+   category the project's `.env` names in `KNOWLEDGE_CATEGORY` (the project's `AGENTS.md` names
+   it otherwise), and reconcile each fact the run overtook (`orchestration-common` § "Memory").
+   The report to the user names what changed.
 5. **LAST — stop Mainline's OWN watcher, confirm it has stopped, then unregister — never
    together** (see § The common final step).
    Mainline is the final orchestrator down.

@@ -52,7 +52,7 @@ findings raised.
 Model B's skills name capabilities, not these tools (DN §D18); this order is the local
 practice for a Pi session that has `pi-lean-ctx` loaded, never a dependency a skill assumes.
 
-## Knowledge store (CR-MDB-045 §S7)
+## Knowledge store
 
 Model B keeps a project's execution knowledge in lean-ctx's knowledge store, under the
 category the project's `.env` names in `KNOWLEDGE_CATEGORY`. The skills name this only as a
@@ -61,21 +61,24 @@ resolves to on lean-ctx, and what a session must know when using it.
 
 ### Knowledge verbs Model B relies on
 
-Model B relies on four knowledge verbs, and no others:
-- remember — record one short fact under the category with a stable kebab-case key; the same
-  key supersedes the earlier fact;
-- list a category — every fact in the category (bootstrap's load);
-- restore — bring the category's archived facts back (bootstrap runs it before listing);
-- remove — delete a fact once the repo tracks it (the GC rule).
+Model B relies on five knowledge verbs, and no others, each with its `ctx_knowledge` form:
+- remember (`remember`) — record one short fact under the category with a stable kebab-case
+  key; the same key supersedes the earlier fact;
+- list a category (`recall` + `category`): at most the listing limit, with `showing <n>/<total>`;
+- restore (`restore`, `store=facts`, `query=<category>`, repeated until it restores nothing)
+  — bring the category's archived facts back (bootstrap runs it before listing), and restore by
+  key (`restore`, `store=facts`, `query="<category> <key>"`);
+- remove (`remove`) — delete a fact once the repo tracks it (the GC rule);
+- export (`export`) — the fallback for an incomplete listing.
 
 ### Setup path
 
 How a project gets lean-ctx set up, in order:
 - the installer probes lean-ctx and records its verdict in `install.toml` `[capabilities]`;
-- then `modelb-axi init` reads that verdict, and runs no probe of its own. With lean-ctx
-  present it writes `KNOWLEDGE_CATEGORY` to `.env` (`<PROJECT_TOKEN>-workflow` in kebab-case, or
-  the `--knowledge-category` override; each monorepo sub-project carries its own) and the lean-ctx
-  pointer section to the scaffolded `AGENTS.md`. Absent or unknown, neither is written.
+- then `modelb-axi init` reads that verdict, and runs no probe of its own. It writes
+  `KNOWLEDGE_CATEGORY` to `.env` (`<PROJECT_TOKEN>-workflow` in kebab-case, or the
+  `--knowledge-category` override; each monorepo sub-project carries its own) and the lean-ctx
+  pointer section to the scaffolded `AGENTS.md` whatever the verdict.
 
 A monorepo's sub-projects derive the same category as the root when they share its token, so
 the root and its sub-projects keep their execution knowledge together.
@@ -92,6 +95,63 @@ the root and its sub-projects keep their execution knowledge together.
   capability, never that CLI.
 - The store holds lean-ctx's automatic captures in their own rooms beside the project's
   category; they are not the project's facts and are never loaded.
+
+The new pitfalls, each citing its lean-ctx 3.11.4 source path and symbol:
+- **The listing limit.** A listing shows at most `memory.knowledge.recall_facts_limit` facts (10).
+  The key is global-only, not settable in a project's `.lean-ctx.toml`. The listing says
+  `showing <n>/<total>`, and only the listed facts are retrieved. Source: `handle_recall`,
+  `rust/src/tools/ctx_knowledge/remember.rs`.
+- **Decay.** A fact retrieved or confirmed within the last day does not decay. Every other fact
+  decays on every lifecycle run, compounding, and every `remember` and `remove` runs the
+  lifecycle. A restore runs none. Source: `apply_confidence_decay`,
+  `rust/src/core/memory_lifecycle.rs`.
+- **Restore.** (`CtxKnowledgeTool`, `rust/src/tools/registered/ctx_knowledge.rs`)
+  - It selects its store with `store` (default: all four) and ignores a `category` argument.
+  - Unscoped, it restores every store, and other projects' archived facts from the shared legacy
+    facts archive.
+  - It returns at most 50 items, scoped or not, so it is repeated until it restores nothing.
+  - It keeps each fact's archived confidence.
+  - The next write re-archives a fact below 0.3.
+- **The restore's scope is a substring.** `query` is a case-insensitive substring match over each
+  archived fact's category, key and value (`restore_facts`,
+  `rust/src/tools/ctx_knowledge/restore.rs`), through the archive root shared by
+  every unprotected project. `query=<category>` therefore also restores another project's facts
+  under the same category, a category whose name contains it, and any fact whose key or value
+  mentions it. Model B removes such a fact at reconciliation and reports it.
+- **Removed facts come back.** `remove` deletes only the live fact (`remove_fact`,
+  `rust/src/core/knowledge/core.rs`), and the
+  archive keeps its copy, so the next restore brings back a fact removed at reconciliation, until
+  its archive file is pruned. Model B removes it again and reports it.
+- **The archive is bounded and shared.** It keeps 16 files (`DEFAULT_MAX_ARCHIVE_FILES`,
+  `rust/src/core/memory_archive.rs`) in the
+  root shared by every unprotected project, and each archiving lifecycle run adds one, so other
+  projects' activity can prune this project's archived facts. A restore is best-effort; the
+  one-listing bound is the prevention.
+- **Re-confirmation.** A same-key rewrite re-confirms (the confidence goes to the midpoint).
+  `feedback` does not change confidence. Source: `handle_feedback`,
+  `rust/src/tools/ctx_knowledge/mod.rs`.
+- **Export.** It writes a JSON file of the whole store, and retrieves nothing. Source:
+  `handle_export`, `rust/src/tools/ctx_knowledge/mod.rs`.
+- **The cap.** The 200-fact cap is shared with automatic captures. `auto_capture` is global-only.
+  Source: `KnowledgePolicy`, `rust/src/core/memory_policy.rs`.
+- **Rehydration.** A category listing that finds no current fact rehydrates at most 3 archived
+  facts at ≥0.6, through `remember` (`rehydrate_from_archives`,
+  `rust/src/tools/ctx_knowledge/remember.rs`). So a listing can write: a
+  Track that only lists makes no write of its own, but its listing may.
+
+### Project-scoped levers
+
+**The project-scoped levers** (no trust needed), and the values Model B sets through CR-MDB-091
+(PRD D5, 2026-10-29: a cap of 500, automatic consolidation off):
+- `memory.knowledge.max_facts` raised to 500;
+- `autonomy.auto_consolidate = false`.
+
+`auto_consolidate = false` does not stop consolidation on MCP shutdown and on compaction, nor
+automatic captures.
+
+The levers apply through the bridge process's resolved project root (normally the git top
+level, so a monorepo's root file). A user who wants a larger category raises the global
+`recall_facts_limit` themselves.
 
 ## Filed requests / gaps (operational findings)
 

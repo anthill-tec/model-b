@@ -172,8 +172,9 @@ def _active_schema(schema: list[dict], tools: dict) -> list[dict]:
 
 def _overrides_not_applied(schema: list[dict], tools: dict, inputs: dict) -> list[str]:
     """A note for each flag given for a ``when`` key its tool leaves out \u2014
-    e.g. ``--knowledge-category`` while lean-ctx is not present (CR-MDB-045
-    \u00a7S4)."""
+    e.g. a fixture key's flag while its tool is not present (CR-MDB-045
+    \u00a7S4). No packaged key carries ``when`` since CR-MDB-088 §S1.4, so
+    ``--knowledge-category`` is always applied and never noted."""
     notes = []
     for entry in schema:
         if "when" not in entry or tools.get(entry["when"]) == TOOL_PRESENT:
@@ -932,20 +933,45 @@ def _render_capability_contract(
 
 def _render_lean_ctx_section(category: str) -> str:
     """The lean-ctx section of a project's ``AGENTS.md``, for the
-    orchestrator working it (CR-MDB-045 §S4): cached reads and the
-    compressed shell, where execution knowledge is kept, and what
-    bootstrap loads."""
+    orchestrator working it (CR-MDB-045 §S4, CR-MDB-088 §S2): cached reads
+    and the compressed shell, where execution knowledge is kept, and the
+    store's verbs — the scoped restore, the listing and the rewrite of the
+    kept restored facts first."""
     return (
         "## lean-ctx (for the orchestrator working this project)\n"
         "- Prefer lean-ctx's cached reads and compressed shell over the "
         "harness's built-in read and shell tools.\n"
         "- Keep this project's execution knowledge in lean-ctx's knowledge "
         f"store under the category `{category}` (`KNOWLEDGE_CATEGORY` in `.env`), "
-        "through the session's knowledge capability. Never through the "
+        "through the session's `ctx_knowledge` tool. Never use the "
         "`lean-ctx knowledge` CLI: its project does not follow the working "
         "directory.\n"
-        "- At bootstrap, load that category, and only that category: restore its "
-        "archived facts, then list it.\n"
+        "- **Restore.** At bootstrap, Mainline or Solo restores the category's "
+        "archived facts with `ctx_knowledge` `action=restore`, `store=facts` "
+        f"and `query={category}`, and repeats it "
+        "until it restores nothing (each restore returns at most 50 items). The "
+        "query is a substring match on each archived fact's category, key and "
+        "value, through an archive shared between projects, so a scoped restore "
+        "can still bring in another project's facts under the same or a "
+        "containing name; such a fact is removed at reconciliation and reported. "
+        "Never restore unscoped: that restores every store, and other projects' "
+        "archived facts. A Track never restores.\n"
+        f"- **List.** List the category with `action=recall` and `category={category}`. "
+        "The answer says `showing <n>/<total>`. When `<n>` is less than `<total>`, "
+        "the listing is incomplete: `action=export` writes the whole store to a "
+        "file it names, and the rest is read from there. The file sits under "
+        "lean-ctx's data directory, outside the project permission policy's "
+        "allowed reads, so reading it prompts the user. A Track only lists.\n"
+        "- **Rewrite first.** The restored facts are those the listing (or the "
+        "export) shows below 30% confidence. Decide each fact's outcome first; "
+        "then, before any other write, rewrite each restored fact that is kept "
+        "with `action=remember` under its key; only then make the "
+        "reconciliation's removals and other rewrites. A fact a rewrite archives "
+        "again is restored by its key, with `action=restore`, `store=facts` "
+        f'and `query="{category} <key>"`, and rewritten at once. Every `remember` '
+        "and `remove` archives each fact still below the store's 0.3 archive "
+        "threshold (a restore runs no lifecycle), and `action=feedback` does not "
+        "lift a fact over that threshold.\n"
     )
 
 
@@ -960,8 +986,8 @@ def _stack_skill_clause(names: list[str]) -> str:
 
 def _render_agents_md(
     name: str, token: str, acronym: str, mode: str, owner: str,
-    stacks: list[str], harnesses: list[str], sandesh_project: str | None = None,
-    states: dict | None = None, knowledge_category: str | None = None,
+    stacks: list[str], harnesses: list[str], knowledge_category: str,
+    sandesh_project: str | None = None, states: dict | None = None,
     tools: dict | None = None, release_setup: list[str] | None = None,
     stack_skill_names: dict[str, list[str]] | None = None,
 ) -> str:
@@ -972,8 +998,9 @@ def _render_agents_md(
     file must not name them), the ``## Setup`` section from ``tools``
     (:func:`_render_setup_section`), stack-derived skill freeze,
     per-installed-harness anchor notes, the capability contract from the
-    recorded ``states``, the lean-ctx section when ``knowledge_category``
-    is set (CR-MDB-045 §S4/§S5), and the generator note.
+    recorded ``states``, the lean-ctx section for ``knowledge_category`` —
+    rendered for every project, whatever the lean-ctx verdict (CR-MDB-088
+    §S1.3; CR-MDB-045 §S5) — and the generator note.
 
     CR-MDB-085 §S1.5: a stack's line names its stack skill only where
     ``stack_skill_names`` (stack -> the declared skills naming it) declares
@@ -1037,7 +1064,7 @@ def _render_agents_md(
         "\n"
         + _render_capability_contract(stacks, tuple(harnesses), states)
         + "\n"
-        + (_render_lean_ctx_section(knowledge_category) + "\n" if knowledge_category else "")
+        + _render_lean_ctx_section(knowledge_category) + "\n"
         + "## Generator note\n"
         "- Agents regenerate from the INSTALLATION's generator assets — "
         "never from a per-project copy.\n"
@@ -1045,12 +1072,12 @@ def _render_agents_md(
 
 
 def _render_sub_agents_md(
-    name: str, sub: str, token: str, acronym: str, knowledge_category: str | None = None,
+    name: str, sub: str, token: str, acronym: str, knowledge_category: str,
 ) -> str:
-    """Per-sub-project ``AGENTS.md`` override (§S3 monorepo); with
-    ``knowledge_category`` — the category in the sub-project's own
-    ``.env`` — it carries its own lean-ctx section (CR-MDB-045 §S4)."""
-    lean_ctx = "\n" + _render_lean_ctx_section(knowledge_category) if knowledge_category else ""
+    """Per-sub-project ``AGENTS.md`` override (§S3 monorepo); it always
+    carries its own lean-ctx section for ``knowledge_category`` — the
+    category in the sub-project's own ``.env`` (CR-MDB-088 §S1.3)."""
+    lean_ctx = "\n" + _render_lean_ctx_section(knowledge_category)
     return (
         f"# {name} / {sub} — sub-project AGENTS.md\n"
         "\n"
@@ -1555,7 +1582,7 @@ def _emit_plan(
     if emitted is None:
         emitted = []
     tools = tools or {}
-    knowledge_category = registry.get("KNOWLEDGE_CATEGORY") or None
+    knowledge_category = registry["KNOWLEDGE_CATEGORY"]
 
     def write(rel: str, text: str) -> None:
         path = target / rel
@@ -1615,8 +1642,8 @@ def _emit_plan(
     write(
         "AGENTS.md",
         _render_agents_md(name, token, acronym, mode, owner, stacks, harnesses,
-                          registry.get("SANDESH_PROJECT"), tool_states,
-                          knowledge_category, tools, release_setup,
+                          knowledge_category, registry.get("SANDESH_PROJECT"),
+                          tool_states, tools, release_setup,
                           stack_skill_names=skill_names),
     )
 

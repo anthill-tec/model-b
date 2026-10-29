@@ -76,6 +76,7 @@ import unittest
 from pathlib import Path
 
 from tests._helpers import REPO_ROOT, build_tree, decode_envelope, read_text
+from tests._helpers import unchanged_text as whole
 from tests.test_board_holds_the_queue import (
     CR_AUTHORING_QUEUE_HEADING,
     CR_CLOSE,
@@ -134,10 +135,6 @@ def intro(text: str) -> str:
         if started:
             out.append(line)
     return "\n".join(out)
-
-
-def whole(text: str) -> str:
-    return text
 
 
 def crucible_envelope(text: str) -> str:

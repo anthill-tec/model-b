@@ -179,6 +179,8 @@ Every other orchestrator run stays unbound:
 The rest of the close-out:
 
 - Steps 6 and 8 bracket the merge: before the merge, the spec's `**Status:**` flip; after it, `cr-close --commit <merge sha> --agent <id>`, which transitions the CR's tracking state to COMPLETED on the Crucible board and posts `cr-merged` (it takes the merge's sha, so it waits for the merge commit). Do NOT hand-edit anything else for it: the README is RELEASE-branch only (version + CI badges) per the project's rules, NEVER a per-CR delivery entry in develop, and NEVER a track's job (parallel tracks editing the shared README collide). Never a `## Close-out` section in the CR spec. Run the stack's `check-cr-close` gate where the stack ships one.
+- **After `cr-close`,** Mainline or Solo lists the category and reconciles each fact naming the
+  closed CR (§ "Memory").
 - **Read the Crucible plan before the last cycle's `cycle-done`** (every earlier cycle done), **and before proposing a merge, `finish` or `cr-close`** (every cycle, VERIFY included, done).
 - **A release-fix CR** follows steps 2–5 and 8: it has no feature branch to sync or merge, and its `cr-close` takes its last commit on the release branch (`git-workflow` § Releases).
 - **The close-out's `**Status:**` flip is the LAST commit on the feature branch** — after the merge, touch zero docs for the shipped CR (`cr-close` is a board write, not a doc edit). Run a post-merge develop gate only when develop moved since the branch point (or several CRs land together); never re-run a gate after a docs-only sync.
@@ -194,8 +196,58 @@ The rest of the close-out:
 ## Memory
 - **GC principle:** memory holds ONLY what the repo doesn't yet track. The moment a note becomes a repo artifact (CR spec / a CR filed on the board / PRD / DN / README) or is abandoned, DELETE it (keep ≤ a one-line pointer). Duplicated notes rot + burn context every recall.
 - **No unilateral writes:** do not write/update shared memory or rules files unilaterally — raise the learning to the coordinator (Mainline), who records it centrally. (Solo: record only with user awareness.)
-- **Where to keep execution knowledge:** where the project's `.env` carries `KNOWLEDGE_CATEGORY`, execution knowledge is kept in the project's knowledge store under that category — one short fact per item, each with a stable kebab-case key. Writing the same key again replaces the fact: the same key supersedes, so a fact is corrected, never duplicated.
+- **The one home.** Execution knowledge is kept in the project's knowledge store, under the
+  category its `.env` names in `KNOWLEDGE_CATEGORY`, and nowhere else:
+  - one short fact per item, each with a stable kebab-case key;
+  - the same key supersedes;
+  - a fact about a CR names its id;
+  - the store starts empty.
+- **A missing key or store is reported, never worked around.**
+  - A project whose `.env` lacks `KNOWLEDGE_CATEGORY` takes the category from its `AGENTS.md`
+    and reports that the key is missing from `.env`.
+  - A project with neither the key in `.env` nor the category in its `AGENTS.md`: ask the user
+    once.
+  - A session without the knowledge-store capability reports it, with the remediation the
+    project's `AGENTS.md` capability contract names.
+  - Execution knowledge never falls back to a file.
+- **Reconciled automatically, never on request.** There are three moments:
+  - at bootstrap, right after the category is loaded;
+  - after every `cr-close`, for each fact naming the closed CR. For a Track's `cr-close`, this
+    happens once Mainline confirms it;
+  - at shutdown, for each fact the run overtook.
+
+  At each moment, Mainline or Solo checks every fact concerned against the board and the repo. It
+  rewrites an overtaken fact under its key, removes one the repo or the board now tracks, and
+  reports what changed. A fact is never only flagged for the user's approval. A Track raises the
+  facts it finds overtaken to Mainline.
+- **One listing holds the category** (PRD D5, 2026-10-29).
+  - The category is kept within what one listing of it shows. Every load lists it before the
+    run's first remember- or remove-class write (a restore runs no lifecycle), because a fact
+    listed or confirmed within the last day is the only kind the store keeps from decaying.
+  - A listing names how many facts it shows of how many. One that shows fewer than all is
+    reported, the rest is read from the store's complete export, and the category is reconciled
+    down to the limit by Mainline or Solo; a Track reports it.
+- **Restored facts are re-confirmed** (PRD D5, 2026-10-29).
+  - Why it is needed: a restore brings a fact back at the confidence it was archived with, often
+    below the store's archive threshold, and every remember- or remove-class write archives each
+    fact below that threshold again.
+  - The restored facts are those the listing (or the export) shows below 30% confidence.
+  - So, in order: decide each fact's outcome against the board and the repo; then, before any
+    other write, rewrite under its key each restored fact the reconciliation keeps; only then
+    make the reconciliation's other writes (removals, other rewrites).
+  - When a rewrite leaves another restored fact archived again, that fact is restored by its key
+    and rewritten at once.
+  - Positive feedback does not re-confirm a fact.
+- **What a restore brings back.**
+  - The restore matches the category by name, through an archive shared between projects. A
+    restored fact that is not this project's is removed at reconciliation and reported.
+  - A restored fact the repo or the board already tracks is removed again and reported.
+  - A restore can miss facts the store has already pruned; the prevention is the one-listing
+    bound.
+- **The store's limits.**
+  - Its fact cap is shared with the store's automatic captures.
+  - Decay compounds on every write.
+  - A restore has no dry run.
 - **What goes there:** only execution knowledge — how this project's work actually runs. Never an orchestrator rule, an agent definition, a ruling that belongs in the PRD or a DN, or a project fact that belongs in `.env` or `AGENTS.md`; those have their own homes.
 - **Who writes:** only Mainline or Solo writes facts; a Track reads them, and raises new ones to Mainline, who decides what is recorded.
 - **The GC and no-unilateral-write rules still apply** to the knowledge store: a fact the repo comes to track is removed, and nothing is recorded behind the coordinator's back.
-- **Without the key,** nothing changes: a project whose `.env` has no `KNOWLEDGE_CATEGORY` keeps no knowledge store, and memory works as above.

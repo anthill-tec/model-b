@@ -1,6 +1,6 @@
 # CR-MDB-088 — Execution knowledge always lives in the knowledge store, reconciled automatically
 
-**Status:** PENDING — spec drafted 2026-10-29 from the gap analysis and the user's rulings (PRD D5, 2026-10-29); the spec pre-review folded in; awaiting approval.
+**Status:** COMPLETED (filed 2026-10-28, gap analysis and pre-review 2026-10-29).
 **Type:** feature (project schema, scaffold, skills, contract)
 **Priority:** P1 — release 1.0.0, wave 2, after CR-MDB-060.
 **Depends on:** CR-MDB-060 (COMPLETED; both edit bootstrap and shutdown). The board is authoritative: read
@@ -50,8 +50,9 @@
     (≈0.25 after a quality archive), and the next write archives it again.
   - **Re-confirmation.** A same-key rewrite re-confirms a fact (the confidence goes to the midpoint, ≥0.5).
     Positive feedback does not: it leaves the confidence unchanged.
-  - **Restore has no category scope.** `ctx_knowledge`'s restore reads its `category` argument as the
-    *store*, so today's "restore the category" answers `Unknown store`. Unscoped, it restores up to 50
+  - **Restore has no category scope.** `ctx_knowledge`'s restore selects its store with a `store` argument
+    (`facts`, `history`, `procedures`, `patterns`; default all) and ignores `category` (`CtxKnowledgeTool`,
+    `rust/src/tools/registered/ctx_knowledge.rs`; amended at cycle 295's VERIFY). Unscoped, it restores up to 50
     items from all four stores. Facts archive under a root shared by every unprotected project, so it can
     also bring in another project's archived facts. Only a `query` substring scopes it, and the substring
     matches each archived fact's category, key and value, so a scoped restore still reaches another
@@ -78,11 +79,14 @@
    - `source = "derive"`, rule `knowledge_category`, override `--knowledge-category`;
    - validated as `kebab_id`.
 2. **`init` writes the key and the section on every verdict.** For every lean-ctx verdict (`detected`,
-   `installed`, `absent`, `unknown`, unrecorded) and with no `install.toml`, `init` writes:
+   `installed`, `absent`, `unknown`, unrecorded), `init` writes:
    - `KNOWLEDGE_CATEGORY` into the root `.env` and each sub-project's `.env`;
    - the lean-ctx section (§S2) into the root `AGENTS.md` and each sub-project's `AGENTS.md`.
 
-   `--knowledge-category` is always applied, and no "not applied" note is printed for it.
+   `--knowledge-category` is always applied, and no "not applied" note is printed for it. With no
+   `install.toml`, a real `init` refuses before its first write (no hook scripts are deployed,
+   CR-MDB-033 §S1), so that case is a `--dry-run`: its envelope's `registry` carries the key's value and
+   it prints no "not applied" note.
 3. **The renderers.** `scaffold._render_agents_md` and `scaffold._render_sub_agents_md` take
    `knowledge_category: str` as a required argument, and render the lean-ctx section unconditionally.
    `_emit_plan` passes `registry["KNOWLEDGE_CATEGORY"]`. The docstrings that cite CR-MDB-045 §S4's
@@ -113,7 +117,7 @@ DN §D18):
    `lean-ctx knowledge` CLI: its project does not follow the working directory. Only the "never" clause
    names the CLI.
 3. **Restore.** At bootstrap, Mainline or Solo restores the category's archived facts with `ctx_knowledge`
-   `action=restore`, `category=facts` (the store, not the category) and `query=<category>`, and repeats
+   `action=restore`, `store=facts` and `query=<category>`, and repeats
    it until it restores nothing (each restore returns at most 50 items). The query is a substring match
    on each archived fact's category, key and value, through an archive shared between projects, so a
    scoped restore can still bring in another project's facts under the same or a containing name; such a
@@ -128,7 +132,7 @@ DN §D18):
    confidence. Decide each fact's outcome first; then, before any other write, rewrite each restored fact
    that is kept with `action=remember` under its key; only then make the reconciliation's removals and
    other rewrites. A fact a rewrite archives again is restored by its key, with `action=restore`,
-   `category=facts` and `query="<category> <key>"`, and rewritten at once. Every `remember` and `remove`
+   `store=facts` and `query="<category> <key>"`, and rewritten at once. Every `remember` and `remove`
    archives each fact still below the store's 0.3 archive threshold (a restore runs no lifecycle), and
    `action=feedback` does not lift a fact over that threshold.
 
@@ -260,9 +264,9 @@ CR reference, and records the following.
 
 **The verbs** Model B relies on, each with its `ctx_knowledge` form:
 - remember;
-- list a category (`recall` + `category`);
-- restore (`restore`, `category=facts`, `query=<category>`, repeated until it restores nothing), and
-  restore by key (`restore`, `category=facts`, `query="<category> <key>"`);
+- list a category (`recall` + `category`): at most the listing limit, with `showing <n>/<total>`;
+- restore (`restore`, `store=facts`, `query=<category>`, repeated until it restores nothing), and
+  restore by key (`restore`, `store=facts`, `query="<category> <key>"`);
 - remove;
 - export (the fallback for an incomplete listing).
 
@@ -276,7 +280,7 @@ the pointer **whatever the verdict**. The sentence "Absent or unknown, neither i
 - the CLI's project does not follow the working directory;
 - the store holds lean-ctx's automatic captures.
 
-**The new pitfalls,** each citing its lean-ctx 3.11.4 source path and symbol:
+**The new pitfalls,** each citing its lean-ctx 3.11.4 source path and symbol (amended at cycle 295's VERIFY: the contract gives both for every pitfall, never the lead-in alone):
 - **The listing limit.** A listing shows at most `memory.knowledge.recall_facts_limit` facts (10). The key
   is global-only, not settable in a project's `.lean-ctx.toml`. The listing says `showing <n>/<total>`, and
   only the listed facts are retrieved.
@@ -284,7 +288,7 @@ the pointer **whatever the verdict**. The sentence "Absent or unknown, neither i
   every lifecycle run, compounding, and every `remember` and `remove` runs the lifecycle. A restore runs
   none.
 - **Restore.**
-  - Its `category` argument is the store.
+  - It selects its store with `store` (default: all four) and ignores a `category` argument.
   - Unscoped, it restores every store, and other projects' archived facts from the shared legacy facts
     archive.
   - It returns at most 50 items, scoped or not, so it is repeated until it restores nothing.
@@ -389,9 +393,12 @@ full suite runs at VERIFY and at the pre-merge gate.
 - [ ] **AC-S1, `init` on every verdict** (in-process `scaffold.run_init`, through `_InitSandboxCase`'s
       sandbox, with `HOME`, `MODELB_HOME` and `PI_CODING_AGENT_DIR` under a temp dir).
       - **The runs:** lean-ctx `detected`, `installed`, `absent`, `unknown` and unrecorded; an
-        `install.toml` without `[capabilities]`; and no `install.toml`, with the `harnesses="pi"` dev
-        override (without `install.toml`, `resolve_harnesses` refuses otherwise). Each with
-        `repo_shape="monorepo:a"` and no override, and again with `knowledge_category="shared-kb"`.
+        `install.toml` without `[capabilities]`. Each with `repo_shape="monorepo:a"` and no override, and
+        again with `knowledge_category="shared-kb"`.
+      - **No `install.toml`** (amended at cycle 292's RED: a real run refuses before its first write,
+        CR-MDB-033 §S1): a `--dry-run` with the `harnesses="pi"` dev override, with and without the
+        override; its envelope's `registry` carries the derived value or `shared-kb`, no "not applied"
+        note is printed, and nothing is written.
       - **The root `.env` and `a/.env`** each carry exactly one `KNOWLEDGE_CATEGORY=` line: the derived
         `<token>-workflow`, or `shared-kb`.
       - **`.env.local`** names no `KNOWLEDGE_CATEGORY`.
@@ -416,7 +423,7 @@ full suite runs at VERIFY and at the pre-merge gate.
         names lean-ctx, apart from the capability contract, on every verdict. It names the category,
         and `KNOWLEDGE_CATEGORY`, and still carries "read", "shell", "knowledge" and "bootstrap"
         (`test_the_section_carries_the_three_instructions`, unmigrated).
-      - **What it carries:** `ctx_knowledge`; `action=restore` with `category=facts` and
+      - **What it carries:** `ctx_knowledge`; `action=restore` with `store=facts` and
         `query=<category>`, in one line, repeated until it restores nothing; the substring scope and the
         removal of another project's restored facts; the restore-by-key form `query="<category> <key>"`;
         `action=recall`; `showing`; `action=export`, and that reading its file prompts the user;
@@ -502,8 +509,10 @@ full suite runs at VERIFY and at the pre-merge gate.
       - `test_orchestration_common_close_out_states_the_eight_step_order` passes unmigrated: eight
         numbered steps, `CLOSE_OUT_ORDER`.
 - [ ] **AC-S7, the contract.**
-      - **The verbs:** they include export, restore's `category=facts` and `query` form repeated until
-        it restores nothing, and the restore-by-key form `query="<category> <key>"`.
+      - **The verbs:** they include export, restore's `store=facts` and `query` form repeated until
+        it restores nothing, and the restore-by-key form `query="<category> <key>"`. No restore form names
+        `category=` (amended at cycle 295's VERIFY). The listing verb says it shows at most the listing
+        limit, with `showing <n>/<total>`, and never "every fact in the category".
       - **The setup path:** says `init` writes the key and pointer whatever the verdict, and the sentence
         "Absent or unknown, neither is written" is gone.
       - **The pitfalls:** the five existing ones keep satisfying `PITFALLS`. Each new pitfall in §S7 is
@@ -511,7 +520,9 @@ full suite runs at VERIFY and at the pre-merge gate.
         `recall_facts_limit` and "global"); decay on every write; restore's store argument, cross-project
         reach, the 50-item cap and kept confidence; the substring scope; removed facts coming back from
         the archive; the archive's 16 shared files; feedback not re-confirming; export as a file; the
-        shared cap with global `auto_capture`; rehydration, and that it is a listing's write.
+        shared cap with global `auto_capture`; rehydration, and that it is a listing's write. Each new
+        pitfall's unit names a lean-ctx source path (under `rust/src/`) and a symbol (amended at cycle 295's
+        VERIFY).
       - **The levers:** they name `memory.knowledge.max_facts` and `autonomy.auto_consolidate` as
         project-scoped with no trust needed, the values CR-MDB-091 sets (500, `false`), and the project
         root as normally the git top level.
@@ -543,7 +554,7 @@ full suite runs at VERIFY and at the pre-merge gate.
 - **Existing projects without the key.** They take it from `AGENTS.md`, or add it by hand. `migrate` is
   CR-MDB-082.
 - **Existing projects' old `AGENTS.md` pointer** ("restore its archived facts, then list it"), which leads
-  to `Unknown store` or an unscoped restore. CR-MDB-082's `migrate` re-renders it.
+  to an unscoped restore. CR-MDB-082's `migrate` re-renders it.
 - **Correcting the research note `lean-ctx-for-model-b`.** It is a dated record; the corrections live in
   this CR's gap analysis.
 

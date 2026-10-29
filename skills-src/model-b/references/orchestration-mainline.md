@@ -62,4 +62,4 @@ Coordinator-only rules. Read COMMON + MAINLINE. (Worker rules → TRACK; sub-age
 - On close-out, append new deferrals + remove resolved; GC aggressively (an item that became a CR or was abandoned → delete, ≤ one-line pointer).
 
 ## Memory stewardship
-- Mainline owns memory. Tracks RAISE rules/learnings (request); Mainline (or the user) records them centrally, dated, in the correct bucket — keeping memory single-authored across parallel sessions.
+- Mainline owns memory. A Track raises the facts and learnings it finds to Mainline, which keeps them in the knowledge store under their keys (`orchestration-common` § "Memory"), so the store stays single-authored across parallel sessions.
