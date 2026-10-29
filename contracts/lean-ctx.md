@@ -153,6 +153,19 @@ The levers apply through the bridge process's resolved project root (normally th
 level, so a monorepo's root file). A user who wants a larger category raises the global
 `recall_facts_limit` themselves.
 
+Where the levers are set, and what the project file does:
+- `modelb-axi init` writes the levers to the project root's `.lean-ctx.toml`, under a first-line
+  `#` ownership marker, and `modelb-axi agents` re-renders it for an existing project. The file
+  raises lean-ctx's default 200-fact cap to 500.
+- lean-ctx merges `response_shaping`, `compression_level`, `compression_aggressiveness`,
+  `terse_agent` and `behavior_nudges` when the file's text merely contains their name, so no
+  comment in the file names one (`Config::merge_local`, `rust/src/core/config/merge.rs`).
+- A re-render changes the content hash `lean-ctx trust` pins, so a trusted file is untrusted
+  again. An intact file carries no sensitive key, so nothing it sets is lost (`is_trusted_for`,
+  `rust/src/core/workspace_trust.rs`).
+- Any project file sets `autonomy.silent_preload` (default `true`) over the global value, even
+  one that does not name it (`Config::merge_local`, `rust/src/core/config/merge.rs`).
+
 ## Filed requests / gaps (operational findings)
 
 ### (a) Shell-allowlist friction for project tooling
