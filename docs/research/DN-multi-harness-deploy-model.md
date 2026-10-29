@@ -906,7 +906,8 @@ Implemented by CR-MDB-057 and CR-MDB-056.
   - `uv run python …`;
   - a test file run directly (`python3 tests/test_x.py`, the incident form).
 
-  `make test`, `mvn install`, `vitest` and `jest`, and indented code blocks, stay outside it.
+  `make test`, `mvn install`, `vitest` and `jest`, and indented code blocks, stay outside it (`vitest`: §D25 brings
+  it in for bun projects; CR-MDB-066).
 - **All four runner hooks share one convention:**
   - a command position past `VAR=value`, `env` and its options, `timeout`, `nice` and `time`;
   - the marker rule above;
@@ -940,6 +941,29 @@ Implemented by CR-MDB-062.
 - **A dead recorded interpreter makes the install outdated.** When the interpreter `install.toml`
   records is missing or no longer accepted, the `already_installed` envelope's `freshness` reads
   `outdated` and an `interpreter` field names the recorded path and why it was rejected.
+
+
+**AMENDED 2026-10-30 (user rulings at CR-MDB-066's gap analysis):**
+- **More command positions,** in the guard and all four runner hooks alike: past `!`, `{`, `if`, `then`,
+  `else`, `elif`, `while`, `until` and `do`; past `command` (with `-p`) and `time -p`; an unquoted backquote
+  opens a command position (a quoted argument is still never one); an arithmetic `$((…))` is skipped before
+  the heredoc check.
+- **The package managers' test script** is a runner in a bun project: npm `test`/`tst`/`t` and
+  `run`/`run-script test`, pnpm `test`/`run test`, yarn `test`/`run test`, each `run` form also with
+  `test:<name>`. Only `bun run --filter <pkg>` (any number of filters) is caught as the workspace form.
+- **Vitest** is a runner in a bun project: bare or by path, and after `bunx`, `bun x` or `npx` (`--bun` allowed
+  after `bunx`/`bun x`). The bun hook's block reason tells a project whose runner is not `bun test` to run its
+  suites with the client's tier verbs; the client's `regression` gap for such projects is raised with Crucible.
+- **The marker walk** reads one directory listing per directory in all four hooks, with a by-name fallback for
+  a directory that can be searched but not listed.
+- **A source-identity check** keeps the four hooks' hand-kept parser copies identical, beside the verdict
+  parity test; each hook stays a self-contained script.
+- **The other `block-*` hooks** harden their payload check as the runner hooks do, and the stale
+  `ORCHESTRATOR-RULES.md §5` reference names the `model-b` skill's close-out instead.
+- **A shared installer's offer** names every stack it covers, and a stack whose tool the shared install
+  provided gets no `absent` warning; all of it stays in one CR (no split).
+
+Implemented by CR-MDB-066.
 
 ### D22 — The published Python floor is 3.14
 
