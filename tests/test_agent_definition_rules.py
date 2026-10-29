@@ -39,6 +39,14 @@ sentence is free):
   that file reverts the whole tree unnegated (``whole_tree_revert_lines``).
 - **Stack surface kept.** Every rendered agent carries its stack's test, register and unregister
   commands and its Crucible client reference.
+- **When each role commits** (CR-MDB-093 §S1/§S2, PRD D5 ruling of 2026-10-29): the procedure's
+  § "Code quality" carries ``PROCEDURE_COMMIT_RULES`` in one block and never says "never commit in
+  RED" (``procedure_commit_findings``); git-workflow's § "Commit Timing" carries
+  ``GIT_WORKFLOW_COMMIT_RULES``, no block of it requires GREEN before every commit without RED's
+  test-only exception, and the file never says "never commit RED state"
+  (``commit_timing_findings``). A retired phrase is found anywhere in its file, headings included
+  (``retired_phrases`` — shared with ``tests.test_suite_hygiene`` and
+  ``tests.test_stack_reference_material`` for §S3 and §S4).
 
 A rule is carried when ONE block — a list item with its wrapped lines, or a paragraph — matches
 every pattern of the rule (``rule_blocks`` / ``missing_rules``, case-insensitive, ``**`` and
@@ -130,6 +138,34 @@ COMMIT_RULES = {
 GIT_WORKFLOW_RULES = {
     "stage what you changed, by path": (r"stage what you changed", r"by path"),
 }
+
+#: CR-MDB-093 §S1 — the procedure's § "Code quality": RED commits its failing tests on their own.
+PROCEDURE_COMMIT_RULES = {
+    "RED commits its failing tests on their own, a test-only commit; GREEN, FIX and a BACKFILL "
+    "cycle's agent commit only on a clean build; nothing stays red past the cycle's GREEN, and never "
+    "across a merge": (
+        r"\bRED commits\b", r"test-only", r"\bGREEN, FIX and a BACKFILL cycle's agent commit\b",
+        r"clean build", r"past the cycle's GREEN", r"across a merge"),
+}
+#: CR-MDB-093 §S1 — the procedure's retired rule, said nowhere in the file.
+PROCEDURE_RETIRED = ("never commit in RED",)
+
+#: CR-MDB-093 §S2 — git-workflow's § "Commit Timing".
+GIT_WORKFLOW_COMMIT_RULES = {
+    "a test-only RED commit is allowed; every other commit has no failing tests; nothing stays red "
+    "past the cycle's GREEN, and never across a merge": (
+        r"test-only RED commit", r"failing tests", r"past the cycle's GREEN", r"across a merge"),
+    "the TDD-discipline bullet applies to every commit but RED's test-only commit": (
+        r"TDD[\s-]discipline", r"but RED's test-only commit"),
+}
+#: CR-MDB-093 §S2 — git-workflow's retired rule, said nowhere in the file.
+GIT_WORKFLOW_RETIRED = ("never commit RED state",)
+#: CR-MDB-093 §S2 — a block naming GREEN that requires it before every commit ...
+_GREEN_EVERY_COMMIT = re.compile(
+    r"\bevery commit\b|\bcommit after GREEN\b|\bGREEN before (?:every )?commit", re.IGNORECASE)
+#: ... is allowed only with RED's test-only commit excepted.
+_RED_TEST_ONLY_EXCEPTION = re.compile(r"but RED's test-only commit", re.IGNORECASE)
+GREEN_EVERY_COMMIT_FINDING = "GREEN before every commit, with no exception for RED's test-only commit"
 
 #: The five agent surfaces a field rule may live on.
 SURFACES = ("procedure", "red", "green", "verify", "fix")
@@ -302,6 +338,40 @@ def git_workflow_findings(text: str) -> list[str]:
                        for name in missing_rules(body, GIT_WORKFLOW_RULES)]
 
 
+def retired_phrases(text: str, phrases: tuple[str, ...]) -> list[str]:
+    """Each of ``phrases`` that ``text`` says anywhere, headings included: case-insensitive, as
+    whole words, with ``**`` and backticks dropped and whitespace (line breaks too) collapsed."""
+    plain = re.sub(r"\s+", " ", text.replace("**", "").replace("`", ""))
+    return [phrase for phrase in phrases
+            if re.search(rf"(?<!\w){re.escape(phrase)}(?!\w)", plain, re.IGNORECASE)]
+
+
+def procedure_commit_findings(text: str) -> list[str]:
+    """CR-MDB-093 §S1: the procedure never says "never commit in RED", and one block of its
+    § "Code quality" states when each role commits."""
+    problems = [f"retired phrase: {phrase}" for phrase in retired_phrases(text, PROCEDURE_RETIRED)]
+    body = section_body(text, CODE_QUALITY_HEADING)
+    return problems + [f"{CODE_QUALITY_HEADING}: {name}"
+                       for name in missing_rules(body, PROCEDURE_COMMIT_RULES)]
+
+
+def commit_timing_findings(text: str) -> list[str]:
+    """CR-MDB-093 §S2: git-workflow never says "never commit RED state"; its § "Commit Timing"
+    carries :data:`GIT_WORKFLOW_COMMIT_RULES`, and no block of it requires GREEN before every
+    commit without RED's test-only commit excepted (one finding per such block)."""
+    problems = [f"retired phrase: {phrase}" for phrase in retired_phrases(text, GIT_WORKFLOW_RETIRED)]
+    body = section_body(text, COMMIT_TIMING_HEADING)
+    if body is None:
+        return problems + [f"{COMMIT_TIMING_HEADING}: no heading"]
+    problems += [f"{COMMIT_TIMING_HEADING}: {name}"
+                 for name in missing_rules(body, GIT_WORKFLOW_COMMIT_RULES)]
+    return problems + [f"{COMMIT_TIMING_HEADING}: {GREEN_EVERY_COMMIT_FINDING}: {block}"
+                       for block in rule_blocks(body)
+                       if re.search(r"\bGREEN\b", block, re.IGNORECASE)
+                       and _GREEN_EVERY_COMMIT.search(block)
+                       and not _RED_TEST_ONLY_EXCEPTION.search(block)]
+
+
 def field_rule_findings(surfaces: dict[str, str]) -> list[str]:
     """Each field rule is carried on its home surfaces (in its home section, where one is named) and
     restated on no other surface."""
@@ -468,6 +538,31 @@ class FieldRulesTest(unittest.TestCase):
 
     def test_procedure_never_reverts_the_whole_tree(self):
         self.assertEqual(whole_tree_revert_lines(read_text(REPO_ROOT / PROCEDURE_REL)), [])
+
+
+class WhenEachRoleCommitsTest(unittest.TestCase):
+    """CR-MDB-093 §S1/§S2 — the procedure and git-workflow let RED commit its failing tests on their
+    own, a test-only commit, and keep every other commit on a clean build."""
+
+    def test_procedure_code_quality_states_when_each_role_commits(self):
+        self.assertEqual([p for p in procedure_commit_findings(read_text(REPO_ROOT / PROCEDURE_REL))
+                          if p.startswith(f"{CODE_QUALITY_HEADING}: ")], [])
+
+    def test_procedure_never_says_never_commit_in_red(self):
+        self.assertEqual(retired_phrases(read_text(REPO_ROOT / PROCEDURE_REL), PROCEDURE_RETIRED), [])
+
+    def test_git_workflow_commit_timing_allows_a_test_only_red_commit(self):
+        self.assertEqual([p for p in commit_timing_findings(read_text(REPO_ROOT / GIT_WORKFLOW_REL))
+                          if p.startswith(f"{COMMIT_TIMING_HEADING}: ")
+                          and GREEN_EVERY_COMMIT_FINDING not in p], [])
+
+    def test_git_workflow_commit_timing_requires_green_before_every_commit_but_reds(self):
+        self.assertEqual([p for p in commit_timing_findings(read_text(REPO_ROOT / GIT_WORKFLOW_REL))
+                          if GREEN_EVERY_COMMIT_FINDING in p], [])
+
+    def test_git_workflow_never_says_never_commit_red_state(self):
+        self.assertEqual(
+            retired_phrases(read_text(REPO_ROOT / GIT_WORKFLOW_REL), GIT_WORKFLOW_RETIRED), [])
 
 
 class StackSurfaceKeptTest(unittest.TestCase):
@@ -753,6 +848,159 @@ class AgentDefinitionCheckersOnSyntheticTextTest(unittest.TestCase):
         self.assertEqual(stack_surface_findings(body, params), ["stack: crucible_reference"])
         body += " — see ~/.agents/skills/crucible/references/stack.md"
         self.assertEqual(stack_surface_findings(body, params), [])
+
+
+# ------------------------------------------------- CR-MDB-093 §S1/§S2 synthetic ----
+
+_PROCEDURE_COMMIT_BULLET = (
+    "- **RED commits its failing tests on their own**, a test-only commit; GREEN, FIX and a BACKFILL "
+    "cycle's\n  agent commit only on a clean build with their tests passing. Nothing stays red past the "
+    "cycle's\n  GREEN, and never across a merge.\n")
+
+_GOOD_PROCEDURE_COMMIT = (
+    "# AGENTS\n## Code quality\n- Remove ALL unused imports.\n" + _PROCEDURE_COMMIT_BULLET
+    + "- Conventional commits (`type(scope): desc`); no AI attribution.\n\n"
+    "## Consequences\nViolations: the agent's own files are reverted.\n")
+
+_PROCEDURE_RULE = f"{CODE_QUALITY_HEADING}: {next(iter(PROCEDURE_COMMIT_RULES))}"
+_PROCEDURE_RETIRED_FINDING = "retired phrase: never commit in RED"
+
+_GOOD_COMMIT_TIMING = (
+    "# Git Workflow\n## Commit Timing\n- **One commit per step**\n"
+    "- **A test-only RED commit is allowed**; every other commit is on a clean build — no failing\n"
+    "  tests, no compilation errors, nothing that breaks the build. Nothing stays red past the cycle's\n"
+    "  GREEN, and never across a merge.\n"
+    "- TDD discipline before every commit but RED's test-only commit: RED → GREEN → clean up →\n"
+    "  run tests AGAIN (still GREEN) → commit\n"
+    "- **Stage what you changed, by path** (`git add <path> …`).\n\n"
+    "## Working Directory\n- Verify the branch.\n")
+
+_TIMING_RULE, _TDD_RULE = (f"{COMMIT_TIMING_HEADING}: {name}" for name in GIT_WORKFLOW_COMMIT_RULES)
+_TIMING_RETIRED_FINDING = "retired phrase: never commit RED state"
+#: git-workflow's § Commit Timing before CR-MDB-093: its two GREEN-first bullets.
+_TODAYS_TIMING_BULLETS = (
+    "- **Commit after GREEN — never commit RED state** (unless it's a test-only commit in a TDD "
+    "test-write step): no failing tests, no compilation errors, nothing that breaks the build\n"
+    "- TDD discipline before every commit: RED → GREEN → clean up (remove unused imports) → run "
+    "tests AGAIN (still GREEN) → commit\n")
+
+
+def _green_first(text: str, lead: str) -> str:
+    """The GREEN-before-every-commit finding for the Commit Timing block of ``text`` whose text,
+    after its list marker, starts ``lead``."""
+    block = next(b for b in rule_blocks(section_body(text, COMMIT_TIMING_HEADING) or "")
+                 if re.sub(r"^(?:[-*+]|\d+[.)])\s+", "", b).startswith(lead))
+    return f"{COMMIT_TIMING_HEADING}: {GREEN_EVERY_COMMIT_FINDING}: {block}"
+
+
+class CommitRuleCheckersOnSyntheticTextTest(unittest.TestCase):
+    """CR-MDB-093 §S1/§S2 — :func:`procedure_commit_findings`, :func:`commit_timing_findings` and
+    :func:`retired_phrases`, both ways on synthetic text."""
+
+    def test_conforming_procedure_and_git_workflow_pass(self):
+        self.assertEqual(procedure_commit_findings(_GOOD_PROCEDURE_COMMIT), [])
+        self.assertEqual(commit_timing_findings(_GOOD_COMMIT_TIMING), [])
+        self.assertEqual(git_workflow_findings(_GOOD_COMMIT_TIMING), [])
+
+    def test_each_procedure_pattern_cut_alone_bites(self):
+        for old, new, pattern in (
+                ("RED commits its", "RED writes its", "RED commits"),
+                ("a test-only commit", "a tests-only commit", "test-only"),
+                ("BACKFILL cycle's\n  agent commit", "BACKFILL cycle's\n  agent may commit",
+                 "GREEN, FIX and a BACKFILL cycle's agent commit"),
+                ("on a clean build", "on a green build", "clean build"),
+                ("past the cycle's\n  GREEN", "past the cycle's\n  end", "past the cycle's GREEN"),
+                ("never across a merge", "never across a release", "across a merge")):
+            with self.subTest(pattern=pattern):
+                self.assertEqual(procedure_commit_findings(_once(_GOOD_PROCEDURE_COMMIT, old, new)),
+                                 [_PROCEDURE_RULE])
+
+    def test_never_commit_in_red_bites_anywhere_in_the_procedure(self):
+        for added in ("- Never commit in **RED**.\n",
+                      "- Clean build before commit — never commit\n  in `RED`.\n",
+                      "## Never Commit In RED\n- Keep the build clean.\n"):
+            with self.subTest(added=added):
+                self.assertEqual(
+                    procedure_commit_findings(_GOOD_PROCEDURE_COMMIT + "\n## Elsewhere\n" + added),
+                    [_PROCEDURE_RETIRED_FINDING])
+        todays = _once(_GOOD_PROCEDURE_COMMIT, _PROCEDURE_COMMIT_BULLET,
+                       "- Clean build before commit; GREEN before commit — never commit in RED.\n")
+        self.assertEqual(procedure_commit_findings(todays),
+                         [_PROCEDURE_RETIRED_FINDING, _PROCEDURE_RULE])
+
+    def test_procedure_rule_split_across_two_blocks_or_outside_code_quality_bites(self):
+        split = _once(_GOOD_PROCEDURE_COMMIT, "a test-only commit; GREEN, FIX",
+                      "a test-only commit.\n- GREEN, FIX")
+        self.assertEqual(procedure_commit_findings(split), [_PROCEDURE_RULE])
+        moved = _once(_GOOD_PROCEDURE_COMMIT, _PROCEDURE_COMMIT_BULLET, "") + _PROCEDURE_COMMIT_BULLET
+        self.assertEqual(procedure_commit_findings(moved), [_PROCEDURE_RULE])
+        self.assertEqual(procedure_commit_findings("# AGENTS\n" + _PROCEDURE_COMMIT_BULLET),
+                         [_PROCEDURE_RULE])
+
+    def test_each_commit_timing_pattern_cut_alone_bites(self):
+        for old, new, pattern in (
+                ("A test-only RED commit is allowed", "A RED commit is allowed", "test-only RED commit"),
+                ("no failing\n  tests", "no red\n  tests", "failing tests"),
+                ("past the cycle's\n  GREEN", "past the cycle's\n  end", "past the cycle's GREEN"),
+                ("never across a merge", "never across a release", "across a merge")):
+            with self.subTest(pattern=pattern):
+                self.assertEqual(commit_timing_findings(_once(_GOOD_COMMIT_TIMING, old, new)),
+                                 [_TIMING_RULE])
+        self.assertEqual(
+            commit_timing_findings(_once(_GOOD_COMMIT_TIMING, "TDD discipline", "Discipline")),
+            [_TDD_RULE])
+        no_exception = _once(_GOOD_COMMIT_TIMING, " but RED's test-only commit:", ":")
+        self.assertEqual(commit_timing_findings(no_exception),
+                         [_TDD_RULE, _green_first(no_exception, "TDD discipline")])
+
+    def test_never_commit_red_state_bites_anywhere_in_git_workflow(self):
+        elsewhere = _GOOD_COMMIT_TIMING + "\n## What NOT To Do\n- Never commit `RED`\n  state.\n"
+        self.assertEqual(commit_timing_findings(elsewhere), [_TIMING_RETIRED_FINDING])
+        first = _TODAYS_TIMING_BULLETS.splitlines(keepends=True)[0]
+        inside = _once(_GOOD_COMMIT_TIMING, "- **Stage what", first + "- **Stage what")
+        self.assertEqual(commit_timing_findings(inside),
+                         [_TIMING_RETIRED_FINDING, _green_first(inside, "Commit after GREEN")])
+
+    def test_todays_commit_timing_is_reported_for_each_missing_rule_and_green_first_bullet(self):
+        start = _GOOD_COMMIT_TIMING.index("- **A test-only")
+        end = _GOOD_COMMIT_TIMING.index("- **Stage what")
+        todays = _GOOD_COMMIT_TIMING[:start] + _TODAYS_TIMING_BULLETS + _GOOD_COMMIT_TIMING[end:]
+        self.assertEqual(commit_timing_findings(todays), [
+            _TIMING_RETIRED_FINDING, _TIMING_RULE, _TDD_RULE,
+            _green_first(todays, "Commit after GREEN"), _green_first(todays, "TDD discipline")])
+
+    def test_commit_timing_rule_split_across_two_blocks_bites(self):
+        split = _once(_GOOD_COMMIT_TIMING, "breaks the build. Nothing stays",
+                      "breaks the build.\n- Nothing stays")
+        self.assertEqual(commit_timing_findings(split), [_TIMING_RULE])
+        tdd_split = _once(_GOOD_COMMIT_TIMING, "before every commit but RED's test-only commit:",
+                          "before every commit:")
+        tdd_split = _once(tdd_split, "- **Stage what",
+                          "- The discipline applies to all but RED's test-only commit.\n- **Stage what")
+        self.assertEqual(commit_timing_findings(tdd_split),
+                         [_TDD_RULE, _green_first(tdd_split, "TDD discipline")])
+
+    def test_a_block_requiring_green_before_every_commit_bites_unless_red_is_excepted(self):
+        for added, bites in (
+                ("- GREEN before commit, always.\n", True),
+                ("- Commit after GREEN.\n", True),
+                ("- Run the tests; every commit waits for GREEN.\n", True),
+                ("- Every commit but RED's test-only commit comes after GREEN.\n", False),
+                ("- Every commit is signed.\n", False)):
+            text = _once(_GOOD_COMMIT_TIMING, "- **Stage what", added + "- **Stage what")
+            with self.subTest(added=added):
+                self.assertEqual(commit_timing_findings(text),
+                                 [_green_first(text, added[2:12])] if bites else [])
+        self.assertEqual(commit_timing_findings("# Git\n"), ["Commit Timing: no heading"])
+
+    def test_retired_phrases_match_whole_words_across_markup_and_line_breaks(self):
+        phrases = ("never commit in RED", "never commit RED state")
+        self.assertEqual(retired_phrases("**Never** commit in\n`RED`.", phrases),
+                         ["never commit in RED"])
+        self.assertEqual(retired_phrases("## Never commit RED state\n", phrases),
+                         ["never commit RED state"])
+        self.assertEqual(retired_phrases("never commit in REDUX; never commit RED states", phrases),
+                         [])
 
 
 if __name__ == "__main__":

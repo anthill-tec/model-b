@@ -79,6 +79,11 @@ checked as data (:data:`EXPECTED_DECLARATION`, :data:`STACK_SKILL_SOURCES`,
   proved both ways, then run over ``AGENTS.md``'s ``generator/`` row: it names every
   ``generator/stacks/*.toml`` and states the number of files in ``generator/agents/``, both
   derived from the tree.
+- ``JavaRedCommitPhraseDetectorTest`` / ``JavaRedCommitPhrasesTest`` — CR-MDB-093 §S4 (PRD D5,
+  ruling of 2026-10-29): :func:`java_red_commit_findings` proved both ways, then no reference under
+  ``generator/skills/java-stack/references/`` forbids a RED commit outright
+  (:data:`JAVA_RETIRED_COMMIT_PHRASES`). Each edited reference keeping its title and provenance line
+  is ``JavaReferencesMovedTest``'s.
 
 MIGRATED (CR-MDB-060 §S1.1): the templates the CR-MDB-085 and CR-MDB-086 classes read —
 ``rust-orchestration.md``, ``arduino-orchestration.md``, ``java-orchestration.md`` — are the stack
@@ -114,6 +119,7 @@ from tests._helpers import (
     split_frontmatter,
 )
 from tests._helpers import rendered_definition as _rendered
+from tests.test_agent_definition_rules import retired_phrases
 
 GENERATOR_DIR = REPO_ROOT / "generator"
 STACKS_DIR = GENERATOR_DIR / "stacks"
@@ -1787,6 +1793,78 @@ class GeneratorRowCurrentTest(unittest.TestCase):
             generator_row_findings(read_text(REPO_ROOT / "AGENTS.md"), stacks, definitions),
             [],
             "§S6.4/AC9: the generator/ row states the tree's stack files and definitions",
+        )
+
+
+# ------------------------------------------------------------------ CR-MDB-093 ----
+
+#: CR-MDB-093 §S4 — the phrases that forbid a RED commit outright; none stays in java-stack's
+#: references (a RED commit holds failing tests only; every other commit is on a clean build).
+JAVA_RETIRED_COMMIT_PHRASES = ("NEVER commit in RED state", "Never commit RED", "Commit in RED state",
+                               "Never commit RED state")
+#: CR-MDB-093 §S4 — the three references the ruling edits.
+JAVA_COMMIT_RULE_RELS = ("references/coding-standards.md", "references/testing-practices.md",
+                         "references/maven.md")
+
+
+def java_red_commit_findings(text: str) -> list[str]:
+    """CR-MDB-093 §S4: each of :data:`JAVA_RETIRED_COMMIT_PHRASES` ``text`` says (whole words,
+    case-insensitive, across markup and line breaks)."""
+    return retired_phrases(text, JAVA_RETIRED_COMMIT_PHRASES)
+
+
+class JavaRedCommitPhraseDetectorTest(unittest.TestCase):
+    """CR-MDB-093 §S4 — :func:`java_red_commit_findings`, both ways on synthetic text."""
+
+    GOOD = ("# Java Coding Standards\n\n## Never Commit a Broken Build\n\n"
+            "A RED commit holds failing tests only; every other commit is on a clean build with its "
+            "tests passing.\n\n1. Run the tests.\n2. Commit if GREEN (every commit but RED's "
+            "test-only commit).\n\n**NEVER:**\n- Commit with a failing test\n\n"
+            "10. **Never commit with a failing test:** every commit but RED's test-only commit is "
+            "GREEN\n\n2. \"Are tests GREEN?\" → for every commit but RED's test-only commit\n")
+
+    def test_the_conforming_text_passes(self):
+        self.assertEqual(java_red_commit_findings(self.GOOD), [])
+
+    def test_each_retired_phrase_bites_alone(self):
+        for phrase, found in (
+                ("NEVER commit in RED state", ["NEVER commit in RED state", "Commit in RED state"]),
+                ("Never commit RED", ["Never commit RED"]),
+                ("Commit in RED state", ["Commit in RED state"]),
+                ("Never commit RED state", ["Never commit RED", "Never commit RED state"])):
+            with self.subTest(phrase=phrase):
+                self.assertEqual(java_red_commit_findings(self.GOOD + phrase + "\n"), found)
+
+    def test_todays_lines_bite_across_markup_and_line_breaks(self):
+        for line, found in (
+                ("**NEVER commit in RED state:**", ["NEVER commit in RED state", "Commit in RED state"]),
+                ("10. **Never commit RED:** Always achieve GREEN before committing",
+                 ["Never commit RED"]),
+                ("- Commit in RED state", ["Commit in RED state"]),
+                ("2. \"Are tests GREEN?\" → Never commit RED state",
+                 ["Never commit RED", "Never commit RED state"]),
+                ("- never commit\n  `red` state", ["Never commit RED", "Never commit RED state"])):
+            with self.subTest(line=line):
+                self.assertEqual(java_red_commit_findings(self.GOOD + line + "\n"), found)
+
+    def test_a_longer_word_is_not_a_retired_phrase(self):
+        self.assertEqual(java_red_commit_findings("Never commit REDACTED keys; commit in RED states."),
+                         [])
+
+
+class JavaRedCommitPhrasesTest(unittest.TestCase):
+    """CR-MDB-093 §S4 — no java-stack reference forbids a RED commit outright."""
+
+    def test_no_java_stack_reference_forbids_a_red_commit_outright(self):
+        paths = sorted((JAVA_STACK_DIR / "references").glob("*.md"))
+        rels = {path.relative_to(JAVA_STACK_DIR).as_posix() for path in paths}
+        self.assertEqual([rel for rel in JAVA_COMMIT_RULE_RELS if rel not in rels], [],
+                         "precondition: the three references the ruling edits are there")
+        self.assertEqual(
+            [f"{path.relative_to(JAVA_STACK_DIR).as_posix()}: {hit}"
+             for path in paths for hit in java_red_commit_findings(read_text(path))],
+            [],
+            "§S4: a RED commit holds failing tests only; every other commit is on a clean build",
         )
 
 
