@@ -64,7 +64,7 @@ resolves to on lean-ctx, and what a session must know when using it.
 Model B relies on five knowledge verbs, and no others, each with its `ctx_knowledge` form:
 - remember (`remember`) — record one short fact under the category with a stable kebab-case
   key; the same key supersedes the earlier fact;
-- list a category (`recall` + `category`) — every fact in the category (bootstrap's load);
+- list a category (`recall` + `category`): at most the listing limit, with `showing <n>/<total>`;
 - restore (`restore`, `store=facts`, `query=<category>`, repeated until it restores nothing)
   — bring the category's archived facts back (bootstrap runs it before listing), and restore by
   key (`restore`, `store=facts`, `query="<category> <key>"`);
