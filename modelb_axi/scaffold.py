@@ -934,13 +934,19 @@ def _render_capability_contract(
 def _render_lean_ctx_section(category: str) -> str:
     """The lean-ctx section of a project's ``AGENTS.md``, for the
     orchestrator working it (CR-MDB-045 §S4, CR-MDB-088 §S2): cached reads
-    and the compressed shell, where execution knowledge is kept, and the
+    and the compressed shell, AXI commands run raw and the context ledger
+    left alone (CR-MDB-090 §S5), where execution knowledge is kept, and the
     store's verbs — the scoped restore, the listing and the rewrite of the
     kept restored facts first."""
     return (
         "## lean-ctx (for the orchestrator working this project)\n"
         "- Prefer lean-ctx's cached reads and compressed shell over the "
         "harness's built-in read and shell tools.\n"
+        # CR-MDB-090 §S5: the tool form, and the machine-wide context ledger.
+        "- Run AXI commands through `ctx_shell` with `raw=true`. When Pi "
+        "truncates a run, read the envelope whole from the full-output file "
+        "its notice names. lean-ctx's context ledger is machine-wide: ignore "
+        "its evict hints, and never evict or reset it.\n"
         "- Keep this project's execution knowledge in lean-ctx's knowledge "
         f"store under the category `{category}` (`KNOWLEDGE_CATEGORY` in `.env`), "
         "through the session's `ctx_knowledge` tool. Never use the "

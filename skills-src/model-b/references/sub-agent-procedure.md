@@ -51,6 +51,9 @@
 - A run longer than a minute or two gets a tool timeout longer than the run — a timeout that kills a run mid-flight loses its ingest.
 - A run that times out is never re-invoked blind: first check the board for your own open run (it may still be running, or already ingested), then decide.
 
+## The context ledger is left alone
+- **The context ledger is machine-wide.** The context-pressure figure that the project's cached-read and compressed-shell tools report comes from one context ledger, shared by every session, sub-agent and project on the machine, and measured against a fixed window, not your context. Ignore its hints to evict entries, and never evict entries or reset the ledger during a run: evicting excludes a file for the session, and resetting clears the re-read cache that every other session relies on.
+
 ## Report EVERY run
 - RED and GREEN, every single one — no exceptions. An unreported RED reads as "skipped TDD."
 - If a run's output is truncated, the envelope is read whole from the file the harness names, and failure detail from the report file (junit / lcov / surefire) or the `--log` file. The run is never re-run.

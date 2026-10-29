@@ -53,7 +53,7 @@ Key invariants:
 | `contracts/` | Interface contracts: `crucible-envelope.md`, `gate-lock.md`, `sandesh-cli.md`, `lean-ctx.md` (cross-project), `worktree-layout.md` (the `.worktrees/<cr>` string and its six consumers). Repo-only — not shipped in the wheel |
 | `docs/research/` | `PRD-model-b-rationalization.md` (D1–D10) + `DN-*.md` design notes |
 | `docs/changes/` | `CR-MDB-NNN-*.md` specs; `README.md` is read-only history frozen at CR-MDB-048's merge — the Crucible board holds the queue and the execution state |
-| `tests/` | 112 `unittest` modules; mostly structural/contract gates |
+| `tests/` | 113 `unittest` modules; mostly structural/contract gates |
 | `archive/` | Read-only history: `BASELINE.md` (the wave-0 baseline), `wave1..3/` and `contracts/` (archived files), and `mapping.md` — the living map from every relocated path to where it lives now, gated by `tests/test_archive_mapping.py` (a CR that moves a mapped path updates its row) |
 | `audits/` | Dated evidence files backing PRD decisions |
 
@@ -126,6 +126,9 @@ A brief that may run `modelb-axi` pins `--modelb-home` / `--target-root` and exp
 - **Python ≥ 3.14** (`tomllib`); the published floor, `requires-python = ">=3.14"`. Package manager: **uv** (`uv tool install --python 3.14 .`); no `uv.lock`, no `requirements.txt`.
 - Crucible's installed clients, `~/.crucible/clients/<stack>-crucible.py` (listed in `~/.crucible/crucible-clients.json`, installed by Crucible's own installer), are the only sanctioned client surface — never a checkout of the Crucible project. Model B ships, vendors and maintains none of them.
 - Prefer lean-ctx reads (`ctx_read`/`ctx_search`/`ctx_shell`/`ctx_tree`) over raw file/grep/shell calls.
+- **Every AXI command runs through `ctx_shell` with `raw=true`.** The AXI commands are the Crucible clients, `sandesh`, `modelb-axi`, `worktree-flow.py`, `gh-axi`, `chrome-devtools-axi` and `lavish-axi`; compression can cut or reshape their envelopes. A long run redirects both streams (`> /tmp/<run>.out 2>&1`) to a file under `/tmp`. That file is read with the built-in `read` from the envelope's first line (the last line that begins `axi:`) to its end; a search may only locate that line's number. When Pi truncates a run, its notice names the full-output file; the envelope is read whole from it with `read` `offset`/`limit`.
+- **lean-ctx's context ledger is machine-wide.** Ignore its evict hints, and never evict or reset it during a run.
+- **A repo-wide search from the main checkout skips `.worktrees/`.** The directory is gitignored, and lean-ctx's walkers also prune it. Search a CR's in-flight code by passing its worktree's path, `.worktrees/<cr>`, never `.worktrees` itself.
 - Confirm destructive operations; delegate super-user ops to the user.
 - Crucible: the **production** board only (`127.0.0.1:3849`), reached through the released client's API — never its database, never a dev instance.
 - Model B never mutates `~/.claude` directly — the `modelb-axi` installer is the only deployment channel (PRD §D9/§D10), and the repo-local authoring rule means no CR writes there at all. The user's own dotfile-manager discipline is out of scope for this file.
@@ -133,7 +136,7 @@ A brief that may run `modelb-axi` pins `--modelb-home` / `--target-root` and exp
 
 ## Testing & QA
 
-Pure **`unittest`** — no pytest, no `conftest.py`, no fixtures/markers. 112 modules in `tests/` (`tests/test_*.py`), each file ending in `if __name__ == "__main__": unittest.main()`. Naming as practised: the wave-1/2 modules use `<Topic><Section>Test` classes (e.g. `ContractsS2Test`) with `test_s<n>_<assertion>` methods; later modules use `<Feature>Test` classes (e.g. `BlockDirectCargoTestScriptTest`) with descriptive method names. A helper more than one module needs lives once in `tests/_helpers.py` and is imported (CR-MDB-032 §S3 gates a module-level helper body defined in two modules).
+Pure **`unittest`** — no pytest, no `conftest.py`, no fixtures/markers. 113 modules in `tests/` (`tests/test_*.py`), each file ending in `if __name__ == "__main__": unittest.main()`. Naming as practised: the wave-1/2 modules use `<Topic><Section>Test` classes (e.g. `ContractsS2Test`) with `test_s<n>_<assertion>` methods; later modules use `<Feature>Test` classes (e.g. `BlockDirectCargoTestScriptTest`) with descriptive method names. A helper more than one module needs lives once in `tests/_helpers.py` and is imported (CR-MDB-032 §S3 gates a module-level helper body defined in two modules).
 
 Every test run goes through the Crucible client, which runs the suite and ingests the result — never a test runner invoked directly. A runner the client cannot drive is a client gap, raised with Crucible.
 

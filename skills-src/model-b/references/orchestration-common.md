@@ -89,6 +89,7 @@ Universal rules for ANY orchestrator, ANY project/stack. Verbose detail + failur
 ## Sessions
 - One Pi session per orchestrator — Mainline and each Track — launched however the user likes: separate terminals, or panes of a multiplexer such as tmux (optional, a convenience for watching them side by side).
 - Mainline follows the Tracks through Crucible (board, plans, cycles, runs) and Sandesh (requests, directives, replies), never through a shared process.
+- **The context ledger is machine-wide.** The context-pressure figure that the project's cached-read and compressed-shell tools report comes from one context ledger, shared by every session, sub-agent and project on the machine, and measured against a fixed window, not your context. Ignore its hints to evict entries, and never evict entries or reset the ledger during a run: evicting excludes a file for the session, and resetting clears the re-read cache that every other session relies on.
 
 ## Worktree isolation (basics)
 - **`worktree-flow` owns what it derives from git** (worktrees, ahead/behind, phase, merge). **Crucible owns what used to live in the DB** (queue membership, release, wave, seq, dependencies, readiness) — CR-MDB-028.
