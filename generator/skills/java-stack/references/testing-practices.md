@@ -7,14 +7,14 @@
 ### Standard TDD Cycle
 1. **Write test** (RED - should fail)
 2. **Implement code** (GREEN - make test pass)
-3. **Git commit** (only if tests GREEN)
+3. **Git commit** (tests GREEN, as for every commit but RED's test-only commit)
 
 ### Java-Specific TDD Cycle (MANDATORY)
 1. **Write test** (RED)
 2. **Implement code** (GREEN)
 3. **Clean up: Remove unused imports** from all modified files
 4. **Run tests AGAIN** to verify import removal didn't break anything
-5. **Git commit** (only if tests still GREEN)
+5. **Git commit** (tests still GREEN, as for every commit but RED's test-only commit)
 
 (Dispatched sub-agents: the Model B sub-agent procedure (`~/.agents/skills/model-b/references/sub-agent-procedure.md`) §TDD is authoritative — a compile failure IS a RED state (ingest it); do NOT run the full suite, that's the orchestrator's pre-merge gate.)
 
@@ -25,7 +25,7 @@
 2. **Update tests** if behavior changes (e.g., 200 → 204 for DELETE)
 3. **Refactor implementation** to match updated tests
 4. **Run tests** to verify GREEN
-5. **Commit** only when GREEN
+5. **Commit** on GREEN, as for every commit but RED's test-only commit
 
 **NEVER:**
 - Refactor implementation without reading tests first
@@ -896,7 +896,7 @@ kill -9 $(lsof -t -i :8082)
 
 ## Testing Guidelines Summary
 
-1. **ALWAYS follow TDD:** Write test first (RED) → Implement (GREEN) → Commit
+1. **ALWAYS follow TDD:** Write test first (RED) → Commit the failing tests (RED's test-only commit) → Implement (GREEN) → Commit
 2. **Unit tests:** Use PanacheMock for static query methods only
 3. **Integration tests:** Use TestContainers with `restrictToAnnotatedClass = true`
 4. **Reactive tests:** Use `@RunOnVertxContext` with `UniAsserter`
@@ -905,4 +905,4 @@ kill -9 $(lsof -t -i :8082)
 7. **Problem isolation:** Run existing tests FIRST to narrow debugging scope
 8. **Both suites:** Write unit AND integration tests for comprehensive coverage
 9. **Clean imports:** Remove unused imports before final commit
-10. **Commit only on a clean build:** A RED commit holds failing tests only; every other commit is on a clean build with its tests passing
+10. **Commit only on a clean build:** A RED commit holds failing tests only (a test-only commit); every other commit is on a clean build with its tests passing; nothing stays red past the cycle's GREEN, and never across a merge
