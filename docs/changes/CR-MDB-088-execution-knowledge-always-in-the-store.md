@@ -78,11 +78,14 @@
    - `source = "derive"`, rule `knowledge_category`, override `--knowledge-category`;
    - validated as `kebab_id`.
 2. **`init` writes the key and the section on every verdict.** For every lean-ctx verdict (`detected`,
-   `installed`, `absent`, `unknown`, unrecorded) and with no `install.toml`, `init` writes:
+   `installed`, `absent`, `unknown`, unrecorded), `init` writes:
    - `KNOWLEDGE_CATEGORY` into the root `.env` and each sub-project's `.env`;
    - the lean-ctx section (§S2) into the root `AGENTS.md` and each sub-project's `AGENTS.md`.
 
-   `--knowledge-category` is always applied, and no "not applied" note is printed for it.
+   `--knowledge-category` is always applied, and no "not applied" note is printed for it. With no
+   `install.toml`, a real `init` refuses before its first write (no hook scripts are deployed,
+   CR-MDB-033 §S1), so that case is a `--dry-run`: its envelope's `registry` carries the key's value and
+   it prints no "not applied" note.
 3. **The renderers.** `scaffold._render_agents_md` and `scaffold._render_sub_agents_md` take
    `knowledge_category: str` as a required argument, and render the lean-ctx section unconditionally.
    `_emit_plan` passes `registry["KNOWLEDGE_CATEGORY"]`. The docstrings that cite CR-MDB-045 §S4's
@@ -389,9 +392,12 @@ full suite runs at VERIFY and at the pre-merge gate.
 - [ ] **AC-S1, `init` on every verdict** (in-process `scaffold.run_init`, through `_InitSandboxCase`'s
       sandbox, with `HOME`, `MODELB_HOME` and `PI_CODING_AGENT_DIR` under a temp dir).
       - **The runs:** lean-ctx `detected`, `installed`, `absent`, `unknown` and unrecorded; an
-        `install.toml` without `[capabilities]`; and no `install.toml`, with the `harnesses="pi"` dev
-        override (without `install.toml`, `resolve_harnesses` refuses otherwise). Each with
-        `repo_shape="monorepo:a"` and no override, and again with `knowledge_category="shared-kb"`.
+        `install.toml` without `[capabilities]`. Each with `repo_shape="monorepo:a"` and no override, and
+        again with `knowledge_category="shared-kb"`.
+      - **No `install.toml`** (amended at cycle 292's RED: a real run refuses before its first write,
+        CR-MDB-033 §S1): a `--dry-run` with the `harnesses="pi"` dev override, with and without the
+        override; its envelope's `registry` carries the derived value or `shared-kb`, no "not applied"
+        note is printed, and nothing is written.
       - **The root `.env` and `a/.env`** each carry exactly one `KNOWLEDGE_CATEGORY=` line: the derived
         `<token>-workflow`, or `shared-kb`.
       - **`.env.local`** names no `KNOWLEDGE_CATEGORY`.
