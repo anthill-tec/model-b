@@ -1801,6 +1801,49 @@ def check_trust_policy_rerender(text: str) -> list[str]:
             f"left alone unless `{flag}`"]
 
 
+# CR-MDB-089 §S4 — the ``project-trust`` region's policy bullet: the policy also allows the
+# process tool and the read-only web tools (DN §D27). The guide names them in prose only: neither
+# web tool's name appears in it, and ``process`` never in code (DN §D18, as extended to the guide
+# by CR-MDB-077).
+
+#: A read-only web tool's name, in code or in prose.
+_WEB_TOOL_RE = re.compile(r"(?<![\w-])web_(?:fetch|search)(?![\w-])")
+#: The process tool's name: never a code span (or a fenced line) of its own in the guide.
+PROCESS_TOOL = "process"
+
+
+def process_web_tool_faults(text: str, where: str) -> list[str]:
+    """One fault per web tool name in ``text`` (in code or in prose), then one per code span or
+    fenced line that is exactly ``process``."""
+    out = [f"{where}: names the web tool `{m.group(0)}`" for m in _WEB_TOOL_RE.finditer(text)]
+    out += [f"{where}: names the process tool `{PROCESS_TOOL}` in code"
+            for code in code_texts(text) if code.strip() == PROCESS_TOOL]
+    return out
+
+
+def check_no_process_web_tool_names(text: str) -> list[str]:
+    """CR-MDB-089 §S4: the guide names neither ``web_fetch`` nor ``web_search``, and never
+    ``process`` in code."""
+    return process_web_tool_faults(text, "guide")
+
+
+def check_trust_process_web_policy(text: str) -> list[str]:
+    """CR-MDB-089 §S4: the ``Project trust`` list item naming the policy file in code says, in
+    one sentence, that the process tool and the web tools are allowed."""
+    path = policy_path()
+    items = [b for b in _prose_blocks(_section(text, TRUST))
+             if b.lstrip().startswith(("- ", "* ")) and has_code_token(b, path)]
+    if not items:
+        return [f"{TRUST}: no list item names `{path}` in code"]
+    if any(re.search(r"\bprocess tool\b", s) and re.search(r"\bweb tools\b", s)
+           and re.search(r"\ballow(?:s|ed)?\b", s)
+           and not re.search(r"\b(?:not|never|no longer)\s+(?:also\s+)?allow", s)
+           for item in items for s in _sentences(item)):
+        return []
+    return [f"{TRUST}: the policy item does not say the process tool and the web tools are "
+            "allowed"]
+
+
 #: CR-MDB-077 §S4 — the git-workflow skill's post-release maintenance step, by its label.
 POST_RELEASE_MAINTENANCE = "**Post-release maintenance**"
 POST_RELEASE_WHERE = "## Releases: post-release maintenance"
@@ -2036,10 +2079,13 @@ _CONFORMING_PERMISSION_SOURCE = (
 
 
 #: CR-MDB-077 §S4 — the conforming guide's policy list item and its re-render paragraph.
+#: MIGRATED at CR-MDB-089 (§S4): the item also allows the process tool and the web tools, named
+#: in prose (was: anything not listed asks; the Sandesh tools allowed, except archiving and
+#: unarchiving a project).
 CONFORMING_POLICY_ITEM = (
     "- its permission policy, `.pi/extensions/pi-permission-system/config.json`: anything not "
-    "listed asks; the Sandesh extension's tools are allowed, except archiving and unarchiving "
-    "a project, which ask.")
+    "listed asks; the process tool and the web tools are also allowed; the Sandesh extension's "
+    "tools are allowed, except archiving and unarchiving a project, which ask.")
 CONFORMING_POLICY_RERENDER = (
     "Run `modelb-axi agents` from an existing project's root to re-render its policy, for "
     "example after upgrading. A policy you have edited is left alone unless `--force-managed`.")
@@ -2797,6 +2843,112 @@ class InstallGuideProjectTrustPolicyTest(unittest.TestCase):
                 self.assertEqual(check_no_sandesh_tool(self.guide + "\n" + clean + "\n"), [])
 
 
+class InstallGuideProjectTrustProcessAndWebToolsTest(unittest.TestCase):
+    """CR-MDB-089 §S4 — the guide's ``project-trust`` region: the policy item says the
+    policy also allows the process tool and the web tools, and the guide names neither
+    ``web_fetch`` nor ``web_search``, and never ``process`` in code (DN §D18). The real
+    guide, then each gate proved both ways on the conforming fixture."""
+
+    NO_ALLOW = (f"{TRUST}: the policy item does not say the process tool and the web tools are "
+                "allowed")
+    NO_ITEM = f"{TRUST}: no list item names `.pi/extensions/pi-permission-system/config.json` in code"
+
+    def setUp(self):
+        self.guide = conforming_guide()
+
+    # ------------------------------------------------------------------ the real guide ----
+
+    def test_the_guides_policy_item_allows_the_process_tool_and_the_web_tools(self):
+        self.assertEqual(check_trust_process_web_policy(_read(GUIDE)), [])
+
+    def test_the_guide_names_no_web_tool_and_never_process_in_code(self):
+        """Guards text already true: today's guide names no tool of the three."""
+        self.assertEqual(check_no_process_web_tool_names(_read(GUIDE)), [])
+
+    # -------------------------------------------------------------- proved both ways ----
+
+    def test_the_fixture_policy_item_names_the_two_in_prose(self):
+        self.assertIn("the process tool and the web tools are also allowed",
+                      CONFORMING_POLICY_ITEM)
+        self.assertEqual(policy_path(), ".pi/extensions/pi-permission-system/config.json")
+
+    def test_the_process_and_web_policy_checker_both_ways(self):
+        self.assertEqual(check_trust_process_web_policy(self.guide), [])
+        item = CONFORMING_POLICY_ITEM
+        cases = {
+            "the process tool unnamed": (
+                self.guide.replace("the process tool and the web tools are also allowed",
+                                   "the web tools are also allowed"), [self.NO_ALLOW]),
+            "the web tools unnamed": (
+                self.guide.replace("the process tool and the web tools are also allowed",
+                                   "the process tool is also allowed"), [self.NO_ALLOW]),
+            "not allowed": (
+                self.guide.replace("the web tools are also allowed",
+                                   "the web tools are not allowed"), [self.NO_ALLOW]),
+            "never allowed": (
+                self.guide.replace("the web tools are also allowed",
+                                   "the web tools are never allowed"), [self.NO_ALLOW]),
+            "asking, not allowed": (
+                self.guide.replace("the web tools are also allowed", "the web tools ask"),
+                [self.NO_ALLOW]),
+            "split across sentences": (
+                self.guide.replace("the process tool and the web tools are also allowed",
+                                   "the process tool is also allowed; so are the web tools"),
+                [self.NO_ALLOW]),
+            "in another paragraph": (
+                self.guide.replace("the process tool and the web tools are also allowed; ", "")
+                .replace("## Marked regions", "The process tool and the web tools are also "
+                         "allowed.\n\n## Marked regions"), [self.NO_ALLOW]),
+            "no item names the policy": (
+                self.guide.replace(item, item.replace("`.pi/extensions/pi-permission-system/"
+                                                      "config.json`", "the policy file")),
+                [self.NO_ITEM]),
+            "a paragraph, not a list item": (self.guide.replace(item, item[2:]), [self.NO_ITEM]),
+            "outside Project trust": (
+                self.guide.replace(item, "").replace(f"## {WIDENING}\n",
+                                                     f"## {WIDENING}\n\n{item}\n"),
+                [self.NO_ITEM]),
+        }
+        for label, (text, expected) in cases.items():
+            with self.subTest(case=label):
+                self.assertNotEqual(text, self.guide, "the case changes the fixture")
+                self.assertEqual(check_trust_process_web_policy(text), expected)
+        wrapped = self.guide.replace("the process tool and the web tools",
+                                     "the process\n  tool and the web tools")
+        self.assertEqual(check_trust_process_web_policy(wrapped), [],
+                         "a sentence wrapped across lines still counts")
+        self.assertEqual(check_trust_process_web_policy(
+            self.guide.replace("the process tool and the web tools are also allowed",
+                               "the policy also allows the process tool and the web tools")), [],
+            "the spec's own wording passes")
+
+    def test_the_no_process_web_tool_names_checker_both_ways(self):
+        self.assertEqual(check_no_process_web_tool_names(self.guide), [])
+        for injected, fault in (
+                ("Run `web_fetch` on the page.", "guide: names the web tool `web_fetch`"),
+                ("It calls web_search in prose.", "guide: names the web tool `web_search`"),
+                ("```\nweb_fetch\n```", "guide: names the web tool `web_fetch`"),
+                ("The `process` tool supervises runs.",
+                 "guide: names the process tool `process` in code"),
+                ("The `` process `` tool.", "guide: names the process tool `process` in code"),
+                ("```\nprocess\n```", "guide: names the process tool `process` in code")):
+            with self.subTest(injected=injected):
+                self.assertEqual(
+                    check_no_process_web_tool_names(self.guide + "\n" + injected + "\n"), [fault])
+        three = self.guide + "\n`process`, `web_search` and `web_fetch`.\n"
+        self.assertEqual(check_no_process_web_tool_names(three),
+                         ["guide: names the web tool `web_search`",
+                          "guide: names the web tool `web_fetch`",
+                          "guide: names the process tool `process` in code"])
+        for clean in ("The process tool and the web tools.",
+                      "`processes` and `web-search`: `pi install npm:@mjakl/pi-processes`.",
+                      "`@ollama/pi-web-search` supervises a process.",
+                      "`my_web_fetch` and `web_fetcher` and `process-x`."):
+            with self.subTest(clean=clean):
+                self.assertEqual(
+                    check_no_process_web_tool_names(self.guide + "\n" + clean + "\n"), [])
+
+
 class InstallGuidePypiSurfaceTest(unittest.TestCase):
     """The PyPI project page is a surface derived from the guide (the whole
     guide, as the package readme); the guide says so outside every region
@@ -3228,6 +3380,9 @@ class InstallGuideCheckerProofTest(unittest.TestCase):
         self.assertEqual(check_trust_sandesh_policy(self.guide), [])
         self.assertEqual(check_trust_policy_rerender(self.guide), [])
         self.assertEqual(check_no_sandesh_tool(self.guide), [])
+        # CR-MDB-089 §S4: the policy item's process and web tools, and their names.
+        self.assertEqual(check_trust_process_web_policy(self.guide), [])
+        self.assertEqual(check_no_process_web_tool_names(self.guide), [])
 
     def test_permission_source_faults_are_reported(self):
         stated = _CONFORMING_PERMISSION_SOURCE
