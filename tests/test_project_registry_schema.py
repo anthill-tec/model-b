@@ -406,7 +406,14 @@ def _golden_agents_md(label: str, mode: str) -> str:
     )
 
 
+#: CR-MDB-088 §S1: the derived ``KNOWLEDGE_CATEGORY`` every ``.env`` init writes carries.
+KNOWLEDGE_LINE = f"KNOWLEDGE_CATEGORY={TOKEN}-workflow\n"
+
+
 def _golden_sub_agents_md(sub: str) -> str:
+    # MIGRATED at CR-MDB-088 (§S1.2, §S2): every sub-project's AGENTS.md carries the rendered
+    # lean-ctx section for its own category, whatever the lean-ctx verdict (its content is
+    # pinned by tests.test_project_tools_setup).
     return (
         f"# {NAME} / {sub} — sub-project AGENTS.md\n"
         "\n"
@@ -414,6 +421,7 @@ def _golden_sub_agents_md(sub: str) -> str:
         "Tools resolve THIS directory's `.env` registry — never the repo root's on "
         "this sub-project's behalf. Repo-wide conventions live in the root "
         "`AGENTS.md`.\n"
+        "\n" + scaffold._render_lean_ctx_section(f"{TOKEN}-workflow")
     )
 
 
@@ -792,8 +800,13 @@ class _Shared:
                 _key_lines(text, "CRUCIBLE_PROJECT_KEY"), ["CRUCIBLE_PROJECT_KEY=\n"],
                 f"§S2/AC: CRUCIBLE_PROJECT_KEY= is rendered empty in the root .env; .env={text!r}",
             )
+            # MIGRATED at CR-MDB-088 (§S1.2): the fixture records no lean-ctx verdict, and the
+            # root .env carries the derived KNOWLEDGE_CATEGORY all the same.
+            self.assertEqual(_key_lines(text, "KNOWLEDGE_CATEGORY"), [KNOWLEDGE_LINE],
+                             f"CR-MDB-088 §S1: the derived category; .env={text!r}")
             self.assertEqual(
-                _without_keys(text, "SANDESH_PROJECT", "CRUCIBLE_PROJECT_KEY", "SANDESH_ADDRESS"),
+                _without_keys(text, "SANDESH_PROJECT", "CRUCIBLE_PROJECT_KEY", "SANDESH_ADDRESS",
+                              "KNOWLEDGE_CATEGORY"),
                 _golden_env(self.LABEL, with_stacks=True),
                 "§S2/AC: every other root .env line is today's, in today's order",
             )
@@ -855,8 +868,10 @@ class _Shared:
             # ## Setup section and the header-slot lines are left out of the comparison
             # (pinned by tests.test_project_setup_section); the Workflow rules keep today's
             # bullets, in order, except the two that named the queue README.
-            actual = _agents_md_without_cr048_additions(
-                _without_capability_contract(self._read("AGENTS.md")))
+            # MIGRATED at CR-MDB-088 (§S2): the `## lean-ctx` section, written on every verdict
+            # and pinned by tests.test_project_tools_setup, is left out of the comparison.
+            actual = _agents_md_without_cr048_additions(_outside_section(
+                _without_capability_contract(self._read("AGENTS.md")), "## lean-ctx"))
             golden = _golden_agents_md(self.LABEL, self.MODE)
             head, rules = "## Identity & naming", "## Workflow rules"
             a_pre, a_rest = actual.split(head, 1)
@@ -1014,7 +1029,11 @@ class SoloMonorepoInitAgainstTodayTest(_Shared.InitAgainstToday):
                                  "§S1: the project key is root-scoped")
                 self.assertEqual(_key_lines(text, "SANDESH_ADDRESS"), [ADDRESS_LINE],
                                  f"CR-MDB-047 §S2: the sub-project's address; {sub}/.env={text!r}")
-                self.assertEqual(_without_keys(text, "SANDESH_PROJECT", "SANDESH_ADDRESS"),
+                # MIGRATED at CR-MDB-088 (§S1.2): the sub .env carries the key, as the root does.
+                self.assertEqual(_key_lines(text, "KNOWLEDGE_CATEGORY"), [KNOWLEDGE_LINE],
+                                 f"CR-MDB-088 §S1: the sub-project's category; {sub}/.env={text!r}")
+                self.assertEqual(_without_keys(text, "SANDESH_PROJECT", "SANDESH_ADDRESS",
+                                               "KNOWLEDGE_CATEGORY"),
                                  _golden_env(self.LABEL, with_stacks=False))
 
 
@@ -1521,6 +1540,31 @@ class EmitPlanTakesTheResolvedRegistryTest(unittest.TestCase):
                               f"_emit_plan({name}=...) has a dead default")
 
 
+class AgentsMdRenderersRequireTheKnowledgeCategoryTest(unittest.TestCase):
+    """CR-MDB-088 §S1.3 / AC-S1 "the texts": ``_render_agents_md`` and
+    ``_render_sub_agents_md`` take ``knowledge_category`` with no default, and render the
+    lean-ctx section unconditionally."""
+
+    def test_neither_renderer_defaults_the_knowledge_category(self):
+        for renderer in (scaffold._render_agents_md, scaffold._render_sub_agents_md):
+            with self.subTest(renderer=renderer.__name__):
+                params = inspect.signature(renderer).parameters
+                self.assertIn("knowledge_category", params)
+                self.assertIs(params["knowledge_category"].default, inspect.Parameter.empty,
+                              f"{renderer.__name__}(knowledge_category=...) has a default")
+
+    def test_the_sub_renderer_refuses_a_call_without_the_category(self):
+        with self.assertRaises(TypeError) as ctx:
+            scaffold._render_sub_agents_md(NAME, "a", TOKEN, ACRONYM)
+        self.assertIn("knowledge_category", str(ctx.exception))
+
+    def test_the_sub_renderer_renders_the_section_for_the_category_it_is_given(self):
+        text = scaffold._render_sub_agents_md(NAME, "a", TOKEN, ACRONYM, "kb-sub")
+        headings = [ln for ln in text.splitlines() if ln.startswith("## lean-ctx")]
+        self.assertEqual(len(headings), 1, text)
+        self.assertIn("`kb-sub`", md_section(text, "## lean-ctx"))
+
+
 class SchemaReadersAndSkillKeyListTest(unittest.TestCase):
     """C4 FIX F10 — SANDESH_PROJECT's readers name only real readers today
     (a reader still to come is marked pending), and the model-b skill's
@@ -1548,6 +1592,81 @@ class SchemaReadersAndSkillKeyListTest(unittest.TestCase):
         # (was SKILL_LISTED_KEYS).
         self.assertEqual(sorted(k for k in SCHEMA_KEYS if f"`{k}`" not in item), [],
                          "§4.1 names every key the schema declares")
+
+    def test_the_model_b_skill_knowledge_category_entry_says_every_project_carries_it(self):
+        """CR-MDB-088 §S1.6 / AC-S1 "the texts": §4.1's ``KNOWLEDGE_CATEGORY`` entry says
+        every project carries the key — no "only when" — and names the knowledge-store
+        capability and no lean-ctx tool (DN §D18)."""
+        text = (REPO_ROOT / "skills-src" / "model-b" / "SKILL.md").read_text(encoding="utf-8")
+        section = text.split("## 4. ", 1)[1].split("\n## ", 1)[0]
+        item = next(line for line in section.splitlines()
+                    if line.startswith("1. **Naming registry"))
+        entry = registry_entry(item, "KNOWLEDGE_CATEGORY")
+        self.assertEqual(knowledge_entry_findings(entry), [], entry)
+
+
+def registry_entry(item: str, key: str) -> str:
+    """The ``` `KEY` (...) ``` entry of ``key`` in the model-b skill's §4.1 key list: the key
+    and its parenthesised text, to the matching close; empty when the key has no entry."""
+    start = item.find(f"`{key}` (")
+    if start == -1:
+        return ""
+    depth = 0
+    for i in range(item.index("(", start), len(item)):
+        depth += {"(": 1, ")": -1}.get(item[i], 0)
+        if depth == 0:
+            return item[start:i + 1]
+    return item[start:]
+
+
+def knowledge_entry_findings(entry: str) -> list[str]:
+    """What the ``KNOWLEDGE_CATEGORY`` entry gets wrong of CR-MDB-088 §S1.6."""
+    found = []
+    if not entry:
+        return ["no entry"]
+    if re.search(r"(?i)\bonly when\b", entry):
+        found.append("conditional: only when")
+    if not re.search(r"(?i)\bevery\b.{0,40}\bproject", entry):
+        found.append("does not say every project carries it")
+    if not re.search(r"(?i)\bknowledge[- ]store\b", entry):
+        found.append("does not name the knowledge-store capability")
+    if re.search(r"(?i)lean[-_]ctx|(?<![\w])ctx_[a-z_]+", entry):
+        found.append("names lean-ctx")
+    return found
+
+
+class KnowledgeEntryDetectorTest(unittest.TestCase):
+    """CR-MDB-088 §S1.6: :func:`registry_entry` and :func:`knowledge_entry_findings`, proved
+    both ways on synthetic text."""
+
+    ITEM = ("1. **Naming registry:** ... `SANDESH_PROJECT` (the id (derived)), "
+            "`KNOWLEDGE_CATEGORY` ({body}), `SANDESH_ADDRESS` (the address).")
+    GOOD = ("every project carries it: the knowledge-store category of the project's execution "
+            "knowledge, derived as `<PROJECT_TOKEN>-workflow` unless `init --knowledge-category` "
+            "sets it")
+
+    def test_the_entry_runs_to_its_matching_close(self):
+        entry = registry_entry(self.ITEM.format(body="a (nested) b"), "KNOWLEDGE_CATEGORY")
+        self.assertEqual(entry, "`KNOWLEDGE_CATEGORY` (a (nested) b)")
+        self.assertEqual(registry_entry("no keys here", "KNOWLEDGE_CATEGORY"), "")
+
+    def test_the_good_entry_has_no_finding(self):
+        entry = registry_entry(self.ITEM.format(body=self.GOOD), "KNOWLEDGE_CATEGORY")
+        self.assertEqual(knowledge_entry_findings(entry), [])
+
+    def test_todays_conditional_and_a_lean_ctx_tool_are_found(self):
+        for body, finding in (
+            ("written only when the installation records its knowledge-store tool present: "
+             "every project's category", "conditional: only when"),
+            (self.GOOD.replace("every project carries it", "a project may carry it"),
+             "does not say every project carries it"),
+            (self.GOOD.replace("knowledge-store category", "category"),
+             "does not name the knowledge-store capability"),
+            (self.GOOD + ", kept through `ctx_knowledge`", "names lean-ctx"),
+        ):
+            with self.subTest(finding=finding):
+                entry = registry_entry(self.ITEM.format(body=body), "KNOWLEDGE_CATEGORY")
+                self.assertIn(finding, knowledge_entry_findings(entry))
 
 
 # ------------------------------------------------------------------ run_agents ----

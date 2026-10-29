@@ -2,12 +2,19 @@
 (CR-MDB-045 §S4, §S5, §S8; PRD D10, amended 2026-09-27, and D5).
 
 - §S4 — lean-ctx's project setup. The schema key ``KNOWLEDGE_CATEGORY``
-  (``.env``, scope ``root+sub``, ``when = "lean-ctx"``, derived as
-  ``<PROJECT_TOKEN>-workflow``, overridable by ``--knowledge-category``,
-  validated as a kebab-case id) and, when lean-ctx is present, a lean-ctx
-  section in the scaffolded ``AGENTS.md`` naming the category — a monorepo
-  sub-project's ``AGENTS.md`` names its own. With lean-ctx absent or unknown
-  neither the key nor the section is written.
+  (``.env``, scope ``root+sub``, derived as ``<PROJECT_TOKEN>-workflow``,
+  overridable by ``--knowledge-category``, validated as a kebab-case id) and a
+  lean-ctx section in the scaffolded ``AGENTS.md`` naming the category — a
+  monorepo sub-project's ``AGENTS.md`` names its own.
+  MIGRATED at CR-MDB-088 (§S1, §S2): the key is unconditional — it carries no
+  ``when`` — so ``init`` writes the key and the section on every lean-ctx
+  verdict (``detected``, ``installed``, ``absent``, ``unknown``, unrecorded,
+  an ``install.toml`` without ``[capabilities]``), and with no ``install.toml``
+  at all (seen through ``--dry-run``: without ``install.toml`` a real run is
+  refused before its first write, CR-MDB-033 §S1); ``--knowledge-category`` is
+  always applied, with no "not applied" note. The section names the store's
+  verbs (CR-MDB-088 §S2): the scoped restore repeated until it restores
+  nothing, the listing, and the rewrite of the kept restored facts first.
 - §S5 — the ``AGENTS.md`` capability contract lists each of the project's
   tools with its state (``present`` / ``absent`` / ``unknown``) and the
   remediation where it is not present; the Sandesh and Crucible setup tasks
@@ -82,6 +89,18 @@ _STATE_RE = re.compile(r"\b(present|absent|unknown)\b")
 _FIRST_CODE_SPAN_RE = re.compile(r"`([^`]+)`")
 _HEADING_RE = re.compile(r"^(#{2,3}) (.*)$")
 
+#: CR-MDB-088 AC-S1's runs, by lean-ctx verdict: a recorded verdict, ``None``
+#: (unrecorded), ``NO_CAPS`` (an ``install.toml`` without ``[capabilities]``) and
+#: ``NO_INSTALL`` (no ``install.toml``; the ``harnesses="pi"`` dev override).
+NO_CAPS, NO_INSTALL = "no-caps", "no-install"
+#: The runs that write: a run without ``install.toml`` is refused before its first
+#: write (``scaffold._hook_scripts_root``, CR-MDB-033 §S1), so it is seen through
+#: ``--dry-run`` only.
+WRITTEN_VERDICTS = ("detected", "installed", "absent", "unknown", None, NO_CAPS)
+EVERY_VERDICT = WRITTEN_VERDICTS + (NO_INSTALL,)
+#: Each run without an override and again with one (CR-MDB-088 AC-S1).
+OVERRIDES = (None, "shared-kb")
+
 #: CR-MDB-063 §S3: the merged python3 line's remediation when a selected
 #: stack's ``<stack>.python3`` state is non-present and at least as bad as the
 #: row's own (ties included).
@@ -135,6 +154,77 @@ def _lean_ctx_sections(text: str) -> list[str]:
         f"{heading}\n{body}" for heading, body in _sections(text)
         if "lean-ctx" in heading.lower() and "capability contract" not in heading.lower()
     ]
+
+
+def _bullet_units(section: str) -> list[str]:
+    """Each top-level bullet of ``section``, its continuation lines joined, with the
+    Markdown emphasis and code backticks dropped (one bullet is one line)."""
+    units: list[list[str]] = []
+    for line in section.splitlines():
+        if line.startswith("- "):
+            units.append([line[2:].strip()])
+        elif units and line.strip() and not line.startswith("#"):
+            units[-1].append(line.strip())
+    return [re.sub(r"[`*]", "", " ".join(u)) for u in units]
+
+
+def pointer_findings(section: str, category: str) -> list[str]:
+    """What the ``AGENTS.md`` lean-ctx section lacks of CR-MDB-088 §S2's bullets 2–5
+    (AC-S2 "What it carries", "Order", "Roles", "The CLI"), for ``category``; empty when it
+    carries them all. Each finding is a stable name."""
+    units = _bullet_units(section)
+    cat = re.escape(category)
+    scoped_query = rf'query="?{cat}"?(?![\w-]| <key>)'
+
+    def first(*patterns: str) -> int | None:
+        for i, unit in enumerate(units):
+            if all(re.search(p, unit) for p in patterns):
+                return i
+        return None
+
+    findings = []
+    if "ctx_knowledge" not in section:
+        findings.append("ctx_knowledge")
+    restore = first(r"action=restore", r"category=facts", scoped_query,
+                    r"\brepeat\w*\b.{0,120}\buntil\b.{0,40}\brestores nothing\b")
+    if restore is None:
+        findings.append("scoped restore repeated until it restores nothing")
+    if first(r"\bsubstring\b", r"\banother project", r"\bremov\w*") is None:
+        findings.append("substring scope and another project's facts removed")
+    if first(r"action=restore", rf'query="{cat} <key>"') is None:
+        findings.append("restore by key")
+    listing = first(r"action=recall", rf"category={cat}(?![\w-])")
+    if listing is None:
+        findings.append("listing with action=recall")
+    if first(r"\bshowing\b") is None:
+        findings.append("showing")
+    if first(r"action=export", r"\bprompts? the user\b") is None:
+        findings.append("export, and reading its file prompts the user")
+    if first(r"action=remember") is None:
+        findings.append("action=remember")
+    if first(r"\brestored facts?\b.{0,160}\bbelow 30 ?%") is None:
+        findings.append("restored facts are those below 30% confidence")
+    if first(r"\bfeedback\b.{0,40}\b(?:does not|doesn't|never)\b.{0,20}\blifts?\b"
+             r".{0,60}\bthreshold\b") is None:
+        findings.append("feedback does not lift a fact over the threshold")
+    if restore is not None and listing is not None and restore > listing:
+        findings.append("order: restore before the listing")
+    rewrite_first = [
+        u for u in units if re.search(r"\bbefore any other write\b", u)
+        and (kept := re.search(r"\brewrit\w*\b[^.;]{0,60}\bkept\b.{0,60}action=remember", u))
+        and (rest := re.search(r"\bonly then\b[^.;]{0,80}\b(?:removals?|other (?:re)?writes?)\b",
+                               u))
+        and kept.start() < rest.start()
+    ]
+    if not rewrite_first:
+        findings.append("order: the kept restored facts rewritten before the other writes")
+    if first(r"\bTrack\b[^.]{0,20}\bnever restores?\b") is None:
+        findings.append("a Track never restores")
+    if first(r"\bTrack\b[^.]{0,20}\bonly lists?\b") is None:
+        findings.append("a Track only lists")
+    if any("lean-ctx knowledge" in u and not re.search(r"(?i)\bnever\b", u) for u in units):
+        findings.append("the CLI named other than to forbid it")
+    return findings
 
 
 def _subject_lines(section: str, name: str) -> list[str]:
@@ -208,6 +298,16 @@ class _ProjectCase(_verdicts._InitSandboxCase):
                 verdicts[key] = verdict
         return verdicts
 
+    def install_for(self, verdict) -> dict:
+        """Set the sandbox up for one CR-MDB-088 AC-S1 run (:data:`EVERY_VERDICT`) and
+        return the extra ``init`` fields it needs."""
+        install = self.modelb_home / "install.toml"
+        if verdict == NO_INSTALL:
+            install.unlink(missing_ok=True)
+            return {"harnesses": "pi"}
+        self.write_install(None if verdict == NO_CAPS else self.verdicts(lean_ctx=verdict))
+        return {}
+
     def init_ok(self, target: Path, **fields) -> tuple[dict, str]:
         rc, axi, err = self.run_init(target, **fields)
         self.assertEqual((rc, axi.get("ok")), (0, True), f"init must succeed; stderr={err!r}")
@@ -234,11 +334,29 @@ class KnowledgeCategorySchemaEntryTest(unittest.TestCase):
                                         f"names={[e.get('name') for e in table]!r}")
         return found[0]
 
-    def test_it_is_a_root_and_sub_env_key_rendered_only_when_lean_ctx_is_present(self):
+    def test_it_is_an_unconditional_root_and_sub_env_key_read_by_shutdown_too(self):
+        # MIGRATED at CR-MDB-088 (§S1; was
+        # test_it_is_a_root_and_sub_env_key_rendered_only_when_lean_ctx_is_present): the key
+        # carries no `when`, keeps its other fields, and its readers gain the shutdown skill.
         entry = self._entry()
+        self.assertNotIn("when", entry, f"CR-MDB-088 §S1.1: the key is unconditional; {entry!r}")
         self.assertEqual(
-            (entry.get("file"), entry.get("scope"), entry.get("when")),
-            (".env", "root+sub", "lean-ctx"), entry)
+            (entry.get("file"), entry.get("scope"), entry.get("source"), entry.get("rule"),
+             entry.get("inputs"), entry.get("override"), entry.get("validate")),
+            (".env", "root+sub", "derive", "knowledge_category", ["PROJECT_TOKEN"],
+             OVERRIDE_FLAG, "kebab_id"), entry)
+        readers = entry.get("readers", [])
+        for reader in ("modelb-axi init", "orchestration-common", "bootstrap", "shutdown"):
+            with self.subTest(reader=reader):
+                self.assertTrue(any(reader in r for r in readers),
+                                f"CR-MDB-088 §S1.1 names {reader!r} among the readers; "
+                                f"got {readers!r}")
+
+    def test_no_packaged_schema_key_carries_a_when(self):
+        """CR-MDB-088 §S1.4: the `when` mechanism stays, and no packaged key uses it."""
+        data = tomllib.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+        table = next(v for v in data.values() if isinstance(v, list))
+        self.assertEqual(sorted(e.get("name") for e in table if "when" in e), [])
 
     def test_it_derives_from_the_token_and_is_overridable_by_its_flag(self):
         entry = self._entry()
@@ -298,23 +416,48 @@ class KnowledgeCategoryRenderedTest(_ProjectCase):
                 self.assertEqual(parse_env_file(target / sub / ".env").get(KEY),
                                  DERIVED_CATEGORY, f"§S4: {sub}/.env carries its own")
 
-    def test_absent_unknown_or_unrecorded_lean_ctx_writes_no_key(self):
-        for verdict in ("absent", "unknown", None):
-            with self.subTest(lean_ctx=verdict):
-                self.write_install(self.verdicts(lean_ctx=verdict))
-                target = self.root / f"proj-{verdict}"
-                axi, _err = self.init_ok(target, repo_shape="monorepo:a",
-                                         knowledge_category="shared-kb")
-                for rel in (".env", "a/.env", ".env.local"):
-                    self.assertNotIn(KEY, self.read(target / rel), f"{rel}: no key")
-                self.assertNotIn(KEY, axi.get("registry") or {},
-                                 "a key for an absent tool is not resolved at all")
+    def test_every_lean_ctx_verdict_writes_the_key_into_the_root_and_sub_env(self):
+        # MIGRATED at CR-MDB-088 (§S1; was
+        # test_absent_unknown_or_unrecorded_lean_ctx_writes_no_key): the key is written on
+        # every verdict, the override applied, in the root and the sub `.env`; `.env.local`
+        # gets none.
+        for verdict in WRITTEN_VERDICTS:
+            for override in OVERRIDES:
+                with self.subTest(lean_ctx=verdict, knowledge_category=override):
+                    fields = self.install_for(verdict)
+                    target = self.root / f"proj-{verdict}-{override}"
+                    axi, _err = self.init_ok(target, repo_shape="monorepo:a",
+                                             knowledge_category=override, **fields)
+                    expected = override or DERIVED_CATEGORY
+                    for rel in (".env", "a/.env"):
+                        text = self.read(target / rel)
+                        self.assertEqual(
+                            [ln for ln in text.splitlines() if ln.startswith(f"{KEY}=")],
+                            [f"{KEY}={expected}"], f"{rel}: exactly one key line; {text!r}")
+                    self.assertNotIn(KEY, self.read(target / ".env.local"), ".env.local: no key")
+                    self.assertEqual((axi.get("registry") or {}).get(KEY), expected,
+                                     "the envelope's registry carries the value")
 
-    def test_a_pre_capabilities_install_toml_writes_no_key(self):
+    def test_a_pre_capabilities_install_toml_writes_the_key(self):
+        # MIGRATED at CR-MDB-088 (§S1; was test_a_pre_capabilities_install_toml_writes_no_key).
         self.write_install(None)
         target = self.root / "proj"
         self.init_ok(target)
-        self.assertNotIn(KEY, self.read(target / ".env"))
+        self.assertEqual(parse_env_file(target / ".env").get(KEY), DERIVED_CATEGORY)
+
+    def test_dry_run_reports_the_category_on_every_verdict_and_writes_nothing(self):
+        """CR-MDB-088 AC-S1: `--dry-run` reports the value and writes nothing, on every
+        verdict — no `install.toml` (the `harnesses="pi"` dev override) included."""
+        for verdict in EVERY_VERDICT:
+            for override in OVERRIDES:
+                with self.subTest(lean_ctx=verdict, knowledge_category=override):
+                    fields = self.install_for(verdict)
+                    target = self.root / f"dry-{verdict}-{override}"
+                    axi, _err = self.init_ok(target, repo_shape="monorepo:a", dry_run=True,
+                                             knowledge_category=override, **fields)
+                    self.assertEqual((axi.get("registry") or {}).get(KEY),
+                                     override or DERIVED_CATEGORY, axi)
+                    self.assertFalse(target.exists(), "--dry-run writes nothing")
 
     def test_dry_run_reports_the_category_and_writes_nothing(self):
         self.write_install(self.verdicts())
@@ -377,31 +520,39 @@ class KnowledgeCategoryValidationTest(_ProjectCase):
 
 
 class KnowledgeCategoryNotAppliedNoteTest(_ProjectCase):
-    """§S4: ``--knowledge-category`` given while lean-ctx is not present is
-    noted on stderr as not applied (finding F3)."""
+    """MIGRATED at CR-MDB-088 (§S1.2): ``--knowledge-category`` is always applied, so no
+    "not applied" note names it on any verdict (was: noted while lean-ctx is not present,
+    CR-MDB-045 §S4 finding F3). The note itself is held on a fixture key by
+    ``tests.test_init_tool_verdicts.ConditionalSchemaKeyTest``."""
 
     @staticmethod
     def _notes(err: str) -> list[str]:
         return [ln for ln in err.splitlines()
                 if OVERRIDE_FLAG in ln and "not applied" in ln]
 
-    def test_the_override_without_lean_ctx_present_is_noted_as_not_applied(self):
-        for verdict in ("absent", "unknown", None):
-            with self.subTest(lean_ctx=verdict):
-                self.write_install(self.verdicts(lean_ctx=verdict))
-                for dry_run in (False, True):
+    def test_the_override_is_applied_with_no_note_on_every_verdict(self):
+        # MIGRATED at CR-MDB-088 (§S1.2; was
+        # test_the_override_without_lean_ctx_present_is_noted_as_not_applied).
+        for verdict in EVERY_VERDICT:
+            # No install.toml: --dry-run only (a real run is refused before its first write).
+            for dry_run in ((True,) if verdict == NO_INSTALL else (False, True)):
+                with self.subTest(lean_ctx=verdict, dry_run=dry_run):
+                    fields = self.install_for(verdict)
                     target = self.root / f"proj-{verdict}-{dry_run}"
-                    _axi, err = self.init_ok(target, knowledge_category="shared-kb",
-                                             dry_run=dry_run)
-                    self.assertEqual(len(self._notes(err)), 1, f"stderr={err!r}")
+                    axi, err = self.init_ok(target, knowledge_category="shared-kb",
+                                            dry_run=dry_run, **fields)
+                    self.assertEqual(self._notes(err), [], f"stderr={err!r}")
+                    self.assertEqual((axi.get("registry") or {}).get(KEY), "shared-kb", axi)
 
-    def test_no_note_without_the_flag_or_with_lean_ctx_present(self):
-        self.write_install(self.verdicts(lean_ctx="absent"))
-        _axi, err = self.init_ok(self.root / "no-flag")
-        self.assertEqual(self._notes(err), [], err)
-        self.write_install(self.verdicts())
-        _axi, err = self.init_ok(self.root / "present", knowledge_category="shared-kb")
-        self.assertEqual(self._notes(err), [], err)
+    def test_no_note_without_the_flag_on_any_verdict(self):
+        # MIGRATED at CR-MDB-088 (§S1.2; was
+        # test_no_note_without_the_flag_or_with_lean_ctx_present): no note on any verdict.
+        for verdict in EVERY_VERDICT:
+            with self.subTest(lean_ctx=verdict):
+                fields = self.install_for(verdict)
+                _axi, err = self.init_ok(self.root / f"no-flag-{verdict}", dry_run=True,
+                                         **fields)
+                self.assertEqual(self._notes(err), [], err)
 
 
 class KnowledgeCategoryCliFlagTest(_ProjectCase):
@@ -425,6 +576,20 @@ class KnowledgeCategoryCliFlagTest(_ProjectCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(parse_env_file(target / ".env").get(KEY), "cli-kb")
+
+    def test_the_init_help_says_every_project_carries_the_key(self):
+        """CR-MDB-088 §S1.6 / AC-S1 "the texts": `modelb-axi init --help`'s
+        `--knowledge-category` text says every project carries the key, never "only when"."""
+        from modelb_axi import cli as _cli
+        parser = _cli._build_parser()
+        sub = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
+        action = next(a for a in sub.choices["init"]._actions
+                      if OVERRIDE_FLAG in a.option_strings)
+        text = " ".join((action.help or "").split())
+        self.assertIn(KEY, text, text)
+        self.assertNotRegex(text, r"(?i)\bonly when\b", f"no condition on the key; {text!r}")
+        self.assertRegex(text, r"(?i)\bevery\b.{0,40}\bproject",
+                         f"says every project carries the key; {text!r}")
 
 
 # ---------------------------------------------------------------------------
@@ -484,29 +649,41 @@ class LeanCtxPointerTest(_ProjectCase):
                 section = self._section(self.read(target / sub / "AGENTS.md"))
                 self.assertIn(own, section)
 
-    def test_the_bootstrap_instruction_says_restore_then_list(self):
-        # Finding F5 (§S4 "restore its archived facts, then list it").
+    def test_the_section_names_the_stores_verbs_scoped_restore_listing_and_rewrite_first(self):
+        # MIGRATED at CR-MDB-088 (§S2 bullets 3–5; was
+        # test_the_bootstrap_instruction_says_restore_then_list): the scoped restore repeated
+        # until it restores nothing, the listing, and the kept restored facts rewritten first.
         self.write_install(self.verdicts())
         target = self.root / "proj"
         self.init_ok(target)
         section = self._section(self.read(target / "AGENTS.md"))
-        lines = [ln.lower() for ln in section.splitlines() if "bootstrap" in ln.lower()]
-        self.assertTrue(
-            any(re.search(r"\brestor\w*\b.{0,60}\barchived\b.*\bthen\b.*\blists?\b", ln)
-                for ln in lines),
-            f"§S4: at bootstrap, restore the archived facts, then list; {lines!r}")
+        self.assertEqual(pointer_findings(section, DERIVED_CATEGORY), [], section)
 
-    def test_absent_or_unknown_lean_ctx_writes_no_section(self):
-        for verdict in ("absent", "unknown", None):
-            with self.subTest(lean_ctx=verdict):
-                self.write_install(self.verdicts(lean_ctx=verdict))
-                target = self.root / f"proj-{verdict}"
-                self.init_ok(target, repo_shape="monorepo:a")
-                for rel in ("AGENTS.md", "a/AGENTS.md"):
-                    text = self.read(target / rel)
-                    self.assertEqual(_lean_ctx_sections(text), [], f"{rel}: {text!r}")
-                    self.assertNotIn(KEY, text)
-                    self.assertNotIn(DERIVED_CATEGORY, text)
+    def test_the_renderer_names_the_stores_verbs_for_its_category(self):
+        """CR-MDB-088 §S2: ``scaffold._render_lean_ctx_section(category)``."""
+        section = scaffold._render_lean_ctx_section("kb-render")
+        self.assertEqual(len(_lean_ctx_sections(section)), 1, section)
+        self.assertEqual(pointer_findings(section, "kb-render"), [], section)
+
+    def test_every_lean_ctx_verdict_writes_one_section_root_and_sub(self):
+        # MIGRATED at CR-MDB-088 (§S1.2, §S2; was
+        # test_absent_or_unknown_lean_ctx_writes_no_section): one section for every verdict,
+        # root and sub, naming the category and the key and carrying §S2's bullets.
+        for verdict in WRITTEN_VERDICTS:
+            for override in OVERRIDES:
+                with self.subTest(lean_ctx=verdict, knowledge_category=override):
+                    fields = self.install_for(verdict)
+                    target = self.root / f"proj-{verdict}-{override}"
+                    self.init_ok(target, repo_shape="monorepo:a", knowledge_category=override,
+                                 **fields)
+                    expected = override or DERIVED_CATEGORY
+                    for rel in ("AGENTS.md", "a/AGENTS.md"):
+                        text = self.read(target / rel)
+                        found = _lean_ctx_sections(text)
+                        self.assertEqual(len(found), 1, f"{rel}: one lean-ctx section; {text!r}")
+                        self.assertIn(expected, found[0], rel)
+                        self.assertIn(KEY, found[0], rel)
+                        self.assertEqual(pointer_findings(found[0], expected), [], rel)
 
 
 # ---------------------------------------------------------------------------
@@ -988,6 +1165,98 @@ class AgentRenderFailureRefusedTest(_ProjectCase):
                 after = {p: p.read_bytes() for p in target.rglob("*")
                          if p.is_file() and ".git" not in p.parts}
                 self.assertEqual(after, before, "nothing is written")
+
+
+#: CR-MDB-088 §S2's bullets, as its spec words them, for the category ``kb-cat``: the
+#: detector's good case.
+GOOD_POINTER = """\
+## lean-ctx (for the orchestrator working this project)
+- Prefer lean-ctx's cached reads and compressed shell over the harness's built-in read and
+  shell tools.
+- Keep this project's execution knowledge in lean-ctx's knowledge store under the category
+  `kb-cat` (`KNOWLEDGE_CATEGORY` in `.env`), through the session's `ctx_knowledge` tool. Never
+  use the `lean-ctx knowledge` CLI: its project does not follow the working directory.
+- **Restore.** At bootstrap, Mainline or Solo restores the category's archived facts with
+  `ctx_knowledge` `action=restore`, `category=facts` (the store, not the category) and
+  `query=kb-cat`, and repeats it until it restores nothing (each restore returns at most 50
+  items). The query is a substring match on each archived fact's category, key and value,
+  through an archive shared between projects, so a scoped restore can still bring in another
+  project's facts under the same or a containing name; such a fact is removed at
+  reconciliation and reported. Never restore unscoped. A Track never restores.
+- **List.** List the category with `action=recall` and `category=kb-cat`. The answer says
+  `showing <n>/<total>`. When `<n>` is less than `<total>`, the listing is incomplete:
+  `action=export` writes the whole store to a file it names, and the rest is read from there;
+  reading it prompts the user. A Track only lists.
+- **Rewrite first.** The restored facts are those the listing (or the export) shows below 30%
+  confidence. Decide each fact's outcome first; then, before any other write, rewrite each
+  restored fact that is kept with `action=remember` under its key; only then make the
+  reconciliation's removals and other rewrites. A fact a rewrite archives again is restored
+  by its key, with `action=restore`, `category=facts` and `query="kb-cat <key>"`, and
+  rewritten at once. Every `remember` and `remove` archives each fact still below the store's
+  0.3 archive threshold, and `action=feedback` does not lift a fact over that threshold.
+"""
+
+
+class LeanCtxPointerDetectorTest(unittest.TestCase):
+    """CR-MDB-088 §S2: :func:`pointer_findings`, proved both ways on synthetic text."""
+
+    #: finding -> (text in GOOD_POINTER, its replacement): each mutation loses one thing.
+    MUTATIONS = {
+        "ctx_knowledge": ("ctx_knowledge", "knowledge tool"),
+        "scoped restore repeated until it restores nothing": (
+            "and repeats it until it restores nothing", "once"),
+        "substring scope and another project's facts removed": (
+            "such a fact is removed at\n  reconciliation and reported", "such a fact is kept"),
+        "restore by key": ('`query="kb-cat <key>"`', "`query=kb-cat`"),
+        "listing with action=recall": ("`action=recall` and `category=kb-cat`",
+                                       "`action=recall` and `query=kb-cat`"),
+        "showing": ("The answer says\n  `showing <n>/<total>`.", "The answer counts."),
+        "export, and reading its file prompts the user": (
+            "reading it prompts the user", "read it freely"),
+        "action=remember": ("with `action=remember` under its key", "under its key"),
+        "restored facts are those below 30% confidence": ("below 30%", "below half"),
+        "feedback does not lift a fact over the threshold": (
+            "`action=feedback` does not lift a fact over that threshold",
+            "`action=feedback` re-confirms it"),
+        "order: the kept restored facts rewritten before the other writes": (
+            "then, before any other write, rewrite each\n  restored fact that is kept with "
+            "`action=remember` under its key; only then make the\n  reconciliation's removals and "
+            "other rewrites.",
+            "then make the reconciliation's removals and other rewrites; only then, before any "
+            "other write, rewrite each restored fact that is kept with `action=remember`."),
+        "a Track never restores": ("A Track never restores.", ""),
+        "a Track only lists": ("A Track only lists.", ""),
+        "the CLI named other than to forbid it": (
+            "Never\n  use the `lean-ctx knowledge` CLI", "Use\n  the `lean-ctx knowledge` CLI"),
+    }
+
+    def test_the_good_pointer_has_no_finding(self):
+        self.assertEqual(pointer_findings(GOOD_POINTER, "kb-cat"), [])
+
+    def test_each_mutation_is_found(self):
+        for finding, (old, new) in self.MUTATIONS.items():
+            with self.subTest(finding=finding):
+                # `ctx_knowledge` is named twice (bullets 2 and 3): every naming goes.
+                expected = 2 if old == "ctx_knowledge" else 1
+                self.assertEqual(GOOD_POINTER.count(old), expected, f"mutation anchor {old!r}")
+                self.assertIn(finding, pointer_findings(GOOD_POINTER.replace(old, new), "kb-cat"))
+
+    def test_the_listing_before_the_restore_is_found(self):
+        bullets = GOOD_POINTER.split("\n- ")
+        swapped = "\n- ".join(bullets[:3] + [bullets[4], bullets[3]] + bullets[5:])
+        self.assertEqual(pointer_findings(swapped, "kb-cat"),
+                         ["order: restore before the listing"])
+
+    def test_todays_pointer_wording_is_found_wanting(self):
+        today = ("## lean-ctx (x)\n- At bootstrap, load that category, and only that category: "
+                 "restore its archived facts, then list it.\n")
+        self.assertIn("scoped restore repeated until it restores nothing",
+                      pointer_findings(today, "kb-cat"))
+
+    def test_another_categorys_query_is_not_this_ones(self):
+        other = GOOD_POINTER.replace("`query=kb-cat`", "`query=kb-cat-old`")
+        self.assertIn("scoped restore repeated until it restores nothing",
+                      pointer_findings(other, "kb-cat"))
 
 
 class ContractCheckersTest(unittest.TestCase):

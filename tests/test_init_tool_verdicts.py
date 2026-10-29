@@ -585,7 +585,11 @@ class ConditionalSchemaKeyTest(_InitSandboxCase):
 
     def schema(self, when: str) -> Path:
         """The packaged schema plus ``TOOL_CHANNEL``, a derived ``root+sub``
-        key carrying ``when = <when>`` (a TOML literal)."""
+        key carrying ``when = <when>`` (a TOML literal).
+
+        MIGRATED at CR-MDB-088 (§S1.4): the fixture key gains ``override =
+        "--tool-channel"``, the flag the not-applied note is held on now that no
+        packaged key carries ``when``."""
         path = self.root / "when-schema.toml"
         path.write_text(
             SCHEMA_PATH.read_text(encoding="utf-8")
@@ -598,6 +602,7 @@ class ConditionalSchemaKeyTest(_InitSandboxCase):
             'source = "derive"\n'
             'rule = "remove_whitespace"\n'
             'inputs = ["PROJECT_NAME"]\n'
+            'override = "--tool-channel"\n'
             'validate = "non_empty"\n'
             'readers = ["fixture"]\n'
             f"when = {when}\n",
@@ -662,6 +667,39 @@ class ConditionalSchemaKeyTest(_InitSandboxCase):
         text = (target / ".env").read_text(encoding="utf-8")
         self.assertNotIn("TOOL_CHANNEL", text, "nothing is set up for an unknown tool")
         self.assertRegex(err, RERUN_INSTALLER_RE)
+
+    def test_the_override_of_a_when_key_its_tool_leaves_out_is_noted_as_not_applied(self):
+        """CR-MDB-088 §S1.4 / AC-S1 "the `when` mechanism": ``--tool-channel`` given while
+        lean-ctx is not present prints exactly one not-applied note naming the flag and the
+        key, and the key is not written; with lean-ctx present it prints none and the override
+        is applied."""
+        def notes(err: str) -> list[str]:
+            return [ln for ln in err.splitlines()
+                    if "--tool-channel" in ln and "not applied" in ln]
+
+        for verdict, present in (("absent", False), ("unknown", False), ("missing", False),
+                                 ("detected", True), ("installed", True)):
+            with self.subTest(verdict=verdict):
+                verdicts = _complete_verdicts("detected")
+                if verdict == "missing":
+                    del verdicts["lean-ctx"]
+                else:
+                    verdicts["lean-ctx"] = verdict
+                self.write_install(verdicts)
+                target = self.root / f"chan-{verdict}"
+                rc, axi, err = self.run_init(target, schema=self.schema('"lean-ctx"'),
+                                             tool_channel="FixtureChan")
+                self.assertEqual((rc, axi.get("ok")), (0, True), f"stderr={err!r}")
+                found = notes(err)
+                if present:
+                    self.assertEqual(found, [], f"stderr={err!r}")
+                    self.assertEqual(parse_env_file(target / ".env").get("TOOL_CHANNEL"),
+                                     "FixtureChan", "the override is applied")
+                else:
+                    self.assertEqual(len(found), 1, f"exactly one note; stderr={err!r}")
+                    self.assertIn("TOOL_CHANNEL", found[0])
+                    self.assertNotIn("TOOL_CHANNEL",
+                                     (target / ".env").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":
