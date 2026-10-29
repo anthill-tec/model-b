@@ -230,6 +230,16 @@ def pointer_findings(section: str, category: str) -> list[str]:
         findings.append("a Track only lists")
     if any("lean-ctx knowledge" in u and not re.search(r"(?i)\bnever\b", u) for u in units):
         findings.append("the CLI named other than to forbid it")
+    # MIGRATED at CR-MDB-090 (§S5): the section gains one bullet naming the tool form — AXI
+    # commands run through `ctx_shell` with `raw=true`, a truncated run is read whole from the
+    # full-output file Pi's notice names, and lean-ctx's context ledger is machine-wide: its evict
+    # hints ignored, never evicted or reset.
+    if first(r"(?i)\baxi\b", r"\bctx_shell\b", r"\braw=true\b",
+             r"(?i)\btruncat|\bfull[- ]output\b") is None:
+        findings.append("AXI commands run through ctx_shell with raw=true")
+    if first(r"(?i)\bcontext ledger\b", r"\bmachine-wide\b", r"(?i)\bevict", r"(?i)\breset",
+             r"(?i)\bnever\b") is None:
+        findings.append("the context ledger is machine-wide: never evicted or reset")
     return findings
 
 
@@ -1176,10 +1186,16 @@ class AgentRenderFailureRefusedTest(_ProjectCase):
 #: CR-MDB-088 §S2's bullets, as its spec words them, for the category ``kb-cat``: the
 #: detector's good case. MIGRATED at CR-MDB-088 (§S2): both restore forms select their store
 #: with ``store=facts`` (amended at cycle 295's VERIFY); they named ``category=facts``.
+# MIGRATED at CR-MDB-090 (§S5): gains §S5's bullet after the cached-reads bullet — AXI commands
+# through `ctx_shell` with `raw=true`, the truncated run's full-output file, and the machine-wide
+# context ledger.
 GOOD_POINTER = """\
 ## lean-ctx (for the orchestrator working this project)
 - Prefer lean-ctx's cached reads and compressed shell over the harness's built-in read and
   shell tools.
+- Run AXI commands through `ctx_shell` with `raw=true`. When Pi truncates a run, read the
+  envelope whole from the full-output file its notice names. lean-ctx's context ledger is
+  machine-wide: ignore its evict hints, and never evict or reset it.
 - Keep this project's execution knowledge in lean-ctx's knowledge store under the category
   `kb-cat` (`KNOWLEDGE_CATEGORY` in `.env`), through the session's `ctx_knowledge` tool. Never
   use the `lean-ctx knowledge` CLI: its project does not follow the working directory.
@@ -1235,6 +1251,11 @@ class LeanCtxPointerDetectorTest(unittest.TestCase):
         "a Track only lists": ("A Track only lists.", ""),
         "the CLI named other than to forbid it": (
             "Never\n  use the `lean-ctx knowledge` CLI", "Use\n  the `lean-ctx knowledge` CLI"),
+        # MIGRATED at CR-MDB-090 (§S5): the two new findings, each lost by its one mutation.
+        "AXI commands run through ctx_shell with raw=true": (
+            "through `ctx_shell` with `raw=true`", "through `ctx_shell`"),
+        "the context ledger is machine-wide: never evicted or reset": (
+            "and never evict or reset it", "and evict or reset it when it fills"),
     }
 
     def test_the_good_pointer_has_no_finding(self):
@@ -1249,10 +1270,43 @@ class LeanCtxPointerDetectorTest(unittest.TestCase):
                 self.assertIn(finding, pointer_findings(GOOD_POINTER.replace(old, new), "kb-cat"))
 
     def test_the_listing_before_the_restore_is_found(self):
+        # MIGRATED at CR-MDB-090 (§S5): §S5's bullet is the second, so the restore and the
+        # listing are bullets 4 and 5 (were 3 and 4).
         bullets = GOOD_POINTER.split("\n- ")
-        swapped = "\n- ".join(bullets[:3] + [bullets[4], bullets[3]] + bullets[5:])
+        self.assertTrue(bullets[4].startswith("**Restore.**"), bullets[4])
+        self.assertTrue(bullets[5].startswith("**List.**"), bullets[5])
+        swapped = "\n- ".join(bullets[:4] + [bullets[5], bullets[4]] + bullets[6:])
         self.assertEqual(pointer_findings(swapped, "kb-cat"),
                          ["order: restore before the listing"])
+
+    def test_the_truncated_run_sentence_is_part_of_the_raw_finding(self):
+        """CR-MDB-090 §S5: the bullet also reads a truncated run whole from Pi's full-output
+        file; without that sentence the raw finding stands, and nothing else."""
+        sentence = (" When Pi truncates a run, read the\n  envelope whole from the full-output file its "
+                    "notice names.")
+        self.assertEqual(GOOD_POINTER.count(sentence), 1)
+        self.assertEqual(pointer_findings(GOOD_POINTER.replace(sentence, ""), "kb-cat"),
+                         ["AXI commands run through ctx_shell with raw=true"])
+
+    def test_the_ledger_rule_in_another_bullet_than_its_machine_wide_does_not_count(self):
+        """CR-MDB-090 §S5: the ledger rule is one bullet — split it and the finding stands."""
+        old = "lean-ctx's context ledger is\n  machine-wide: ignore its evict hints"
+        self.assertEqual(GOOD_POINTER.count(old), 1)
+        split = GOOD_POINTER.replace(old, "lean-ctx's context ledger is\n  machine-wide.\n- Ignore "
+                                          "its evict hints")
+        self.assertEqual(pointer_findings(split, "kb-cat"),
+                         ["the context ledger is machine-wide: never evicted or reset"])
+
+    def test_todays_section_without_the_tool_form_bullet_lacks_exactly_the_two_new_findings(self):
+        """CR-MDB-090 §S5: the section as ``init`` renders it today (no tool-form bullet)."""
+        bullet = ("- Run AXI commands through `ctx_shell` with `raw=true`. When Pi truncates a run, "
+                  "read the\n  envelope whole from the full-output file its notice names. "
+                  "lean-ctx's context ledger is\n  machine-wide: ignore its evict hints, and never "
+                  "evict or reset it.\n")
+        self.assertEqual(GOOD_POINTER.count(bullet), 1)
+        self.assertEqual(pointer_findings(GOOD_POINTER.replace(bullet, ""), "kb-cat"),
+                         ["AXI commands run through ctx_shell with raw=true",
+                          "the context ledger is machine-wide: never evicted or reset"])
 
     def test_todays_pointer_wording_is_found_wanting(self):
         today = ("## lean-ctx (x)\n- At bootstrap, load that category, and only that category: "
