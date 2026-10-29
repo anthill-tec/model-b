@@ -45,12 +45,16 @@ key is unconditional and the store is reconciled automatically.
 - §S6 — § "Close-out" gains an after-``cr-close`` bullet in "The rest of the close-out".
 - §S7 — MIGRATED at CR-MDB-088 (§S7): ``contracts/lean-ctx.md``'s section is titled "Knowledge
   store", with no CR reference. It records five verbs (export joins them), each with its
-  ``ctx_knowledge`` form: list is ``recall`` with ``category``; restore is ``category=facts`` and
-  ``query=<category>``, repeated until it restores nothing; restore by key is
-  ``query="<category> <key>"``; export is the fallback for an incomplete listing. ``init`` writes the
+  ``ctx_knowledge`` form: list is ``recall`` with ``category``, at most the listing limit, with
+  ``showing <n>/<total>``; restore is ``store=facts`` and ``query=<category>``, repeated until it
+  restores nothing; restore by key is ``store=facts`` and ``query="<category> <key>"``; export is
+  the fallback for an incomplete listing. MIGRATED at CR-MDB-088 (§S7, amended at cycle 295's
+  VERIFY): restore was ``category=facts``; no restore form names ``category=``, and the listing is
+  never "every fact in the category". ``init`` writes the
   key and the pointer whatever the verdict, and "Absent or unknown, neither is written" is gone.
   The five pitfalls stay; each new pitfall is one unit (``NEW_PITFALLS``), citing lean-ctx 3.11.4's
-  source. The project-scoped levers (no trust needed) carry CR-MDB-091's values (PRD D5,
+  source: each new pitfall's unit names a source path under ``rust/src/`` and a symbol (amended at
+  cycle 295's VERIFY). The project-scoped levers (no trust needed) carry CR-MDB-091's values (PRD D5,
   2026-10-29: ``memory.knowledge.max_facts`` 500, ``autonomy.auto_consolidate = false``), with
   what that does not stop, the project root they apply through (normally the git top level), and
   the user's own raise of the global ``recall_facts_limit``.
@@ -372,17 +376,27 @@ KNOWLEDGE_STORE_HEADING = "Knowledge store"
 #: A CR or a § reference in a heading ("(CR-MDB-045 §S7)").
 HEADING_CR_REFERENCE_RE = re.compile(r"\bCR-[A-Z]+-\d+|§S\d")
 #: §S7 "The verbs" — each verb's ``ctx_knowledge`` form, each in its own item.
+#: MIGRATED at CR-MDB-088 (§S7, amended at cycle 295's VERIFY): the restore forms select their
+#: store with ``store=facts`` (lean-ctx 3.11.4's restore reads ``store`` and ignores
+#: ``category``: ``CtxKnowledgeTool``, rust/src/tools/registered/ctx_knowledge.rs), and the
+#: listing names its limit; they named ``category=facts``, and the listing had no limit.
 CONTRACT_VERB_FORMS = {
-    "list a category is recall with category": (
-        r"\blist a category\b", r"\brecall\b.{0,30}\bcategory\b"),
-    "restore is category=facts and query=<category>, repeated until it restores nothing": (
-        r"\brestore\b", r"\bcategory=facts\b", r"query=<category>",
+    "list a category is recall with category, at most the listing limit, with showing <n>/<total>": (
+        r"\blist a category\b", r"\brecall\b.{0,30}\bcategory\b",
+        r"\bat most the listing limit\b", r"showing <n>/<total>"),
+    "restore is store=facts and query=<category>, repeated until it restores nothing": (
+        r"\brestore\b", r"(?<![\w-])store=facts\b.{0,30}query=<category>",
         r"\brepeated until it restores nothing\b"),
-    "restore by key is category=facts and query=\"<category> <key>\"": (
-        r"\brestore by key\b", r"\bcategory=facts\b", r'query=["“]<category> <key>["”]'),
+    "restore by key is store=facts and query=\"<category> <key>\"": (
+        r"\brestore by key\b", r"\brestore by key\b.{0,30}(?<![\w-])store=facts\b",
+        r'query=["“]<category> <key>["”]'),
     "export is the fallback for an incomplete listing": (
         r"\bexport\b", r"\bfallback\b.{0,30}\bincomplete listing\b"),
 }
+LIST_FORM = ("list a category is recall with category, at most the listing limit, with showing "
+             "<n>/<total>")
+RESTORE_FORM = "restore is store=facts and query=<category>, repeated until it restores nothing"
+RESTORE_BY_KEY_FORM = "restore by key is store=facts and query=\"<category> <key>\""
 #: §S7 "The new pitfalls" — each one unit (a list item with its nested items), in §S7's words.
 NEW_PITFALLS = {
     "the listing limit": (
@@ -398,8 +412,12 @@ NEW_PITFALLS = {
         r"\bcompounding\b",
         r"\bevery remember and remove runs the lifecycle\b",
         r"\ba restore runs none\b"),
+    # MIGRATED at CR-MDB-088 (§S7, amended at cycle 295's VERIFY): the restore selects its store
+    # with ``store`` and ignores a ``category`` argument; was "its category argument is the store".
     "restore: the store argument, cross-project reach, the 50-item cap, kept confidence": (
-        r"\bits category argument is the store\b",
+        r"\bselects its store with store\b",
+        r"\(default: all four\)",
+        r"\bignores a category argument\b",
         r"\bunscoped, it restores every store\b",
         r"\bother projects' archived facts from the shared legacy facts archive\b",
         r"\bat most 50 items, scoped or not\b",
@@ -451,6 +469,26 @@ NEW_PITFALLS = {
 }
 #: §S7 — the new pitfalls cite lean-ctx 3.11.4's source.
 CONTRACT_SOURCE_VERSION = (r"\blean-ctx 3\.11\.4\b", r"\bsource\b")
+#: CR-MDB-088 §S7 / AC-S7 (amended at cycle 295's VERIFY): each new pitfall's unit names a
+#: lean-ctx source path under ``rust/src/`` and a symbol, as two adjacent code spans (either
+#: order: ``(`restore_facts`, `rust/src/tools/ctx_knowledge/restore.rs`)``), or one span
+#: ``path::symbol``. Read on the RAW unit, because the symbol is a code span.
+_SOURCE_PATH = r"`rust/src/(?:[\w.-]+/)*[\w-]+\.rs"
+_SOURCE_SYMBOL = r"[A-Za-z_][A-Za-z0-9_]*(?:::[A-Za-z_][A-Za-z0-9_]*)*"
+_CITATION_SEPARATOR = r"[ \t\n,;:]*(?:\b(?:in|at|from)\b[ \t\n]*)?"
+SOURCE_CITATION_RE = re.compile(
+    rf"`{_SOURCE_SYMBOL}`{_CITATION_SEPARATOR}{_SOURCE_PATH}`"
+    rf"|{_SOURCE_PATH}`{_CITATION_SEPARATOR}`{_SOURCE_SYMBOL}`"
+    rf"|{_SOURCE_PATH}::{_SOURCE_SYMBOL}`")
+#: CR-MDB-088 §S7 / AC-S7 (amended at cycle 295's VERIFY): the wording the section must not carry
+#: — a restore form naming ``category=`` (lean-ctx's restore ignores it), the restore's
+#: ``category`` argument called the store, and the listing as "every fact in the category" (a
+#: listing shows at most the listing limit).
+RETIRED_VERB_WORDING = {
+    "a restore form names category=": (r"\brestore\b", r"(?<![\w-])category="),
+    "its category argument is the store": (r"\bits category argument is the store\b",),
+    "every fact in the category": (r"\bevery fact in the category\b",),
+}
 #: §S7 "The project-scoped levers" (an enumeration, read with its lead-in): no trust needed, and
 #: the values CR-MDB-091 sets (PRD D5, 2026-10-29).
 CONTRACT_LEVERS = (
@@ -518,10 +556,12 @@ def _blocks(text: str) -> list[list[str]]:
     return out
 
 
-def rule_units(text: str, lead_in: bool = False) -> list[str]:
+def rule_units(text: str, lead_in: bool = False, raw: bool = False) -> list[str]:
     """Every unit a rule may be read in, normalised: each list item with its nested items (and
     lazy continuation lines), and each paragraph before a list. With ``lead_in``, a paragraph
-    ending in ``:`` together with the list attached to it is one more unit."""
+    ending in ``:`` together with the list attached to it is one more unit. With ``raw``, the
+    same units in the same order, unnormalised (their code spans kept)."""
+    normalise = _keep if raw else _normalise
     units = []
     for block in _blocks(text):
         first_item = next((i for i, ln in enumerate(block) if _ITEM_RE.match(ln)), None)
@@ -544,6 +584,13 @@ def rule_units(text: str, lead_in: bool = False) -> list[str]:
         if lead_in and paragraph and paragraph[-1].rstrip().endswith(":"):
             units.append(normalise("\n".join(block)))
     return units
+
+
+def _keep(text: str) -> str:
+    return text
+
+
+_normalise = normalise
 
 
 def satisfying_units(text: str, rule: tuple, lead_in: bool = False) -> list[str]:
@@ -654,6 +701,25 @@ def knowledge_store_section(text: str) -> str:
 def retired_setup_findings(text: str) -> list[str]:
     """CR-MDB-088 §S7: each unit still saying "Absent or unknown, neither is written"."""
     return [u for u in rule_units(text) if re.search(CONTRACT_SETUP_RETIRED, u)]
+
+def pitfall_citation_findings(section: str) -> list[str]:
+    """CR-MDB-088 §S7 / AC-S7 (amended at cycle 295's VERIFY): the name of each new pitfall
+    (:data:`NEW_PITFALLS`) whose unit cites no lean-ctx source path under ``rust/src/`` with a
+    symbol (:data:`SOURCE_CITATION_RE`) — a pitfall with no unit at all is a finding too."""
+    pairs = list(zip(rule_units(section), rule_units(section, raw=True), strict=True))
+    out = []
+    for name, rule in NEW_PITFALLS.items():
+        units = [raw for norm, raw in pairs if all(re.search(p, norm) for p in rule)]
+        if not any(SOURCE_CITATION_RE.search(u) for u in units):
+            out.append(name)
+    return out
+
+def retired_verb_wording_findings(section: str) -> list[str]:
+    """CR-MDB-088 §S7 / AC-S7 (amended at cycle 295's VERIFY): the name of each
+    :data:`RETIRED_VERB_WORDING` entry some unit of ``section`` still carries."""
+    units = rule_units(section)
+    return [name for name, rule in RETIRED_VERB_WORDING.items()
+            if any(all(re.search(p, u) for p in rule) for u in units)]
 
 
 def _read(rel: str) -> str:
@@ -1025,6 +1091,20 @@ class LeanCtxContractKnowledgeTest(_RuleAssertions):
         self.assert_rule(_contract_knowledge_section(), CONTRACT_SOURCE_VERSION, CONTRACT_REL,
                          lead_in=True)
 
+    def test_each_new_pitfall_cites_a_lean_ctx_source_path_and_symbol(self):
+        """AC-S7 (amended at cycle 295's VERIFY): each new pitfall's unit names a lean-ctx source
+        path under ``rust/src/`` and a symbol, never the lead-in alone."""
+        found = pitfall_citation_findings(_contract_knowledge_section())
+        self.assertEqual(found, [], f"{CONTRACT_REL}: these new pitfalls cite no lean-ctx source "
+                                    f"path under rust/src/ with a symbol: {found!r}")
+
+    def test_no_restore_form_names_category_and_the_listing_names_its_limit(self):
+        """AC-S7 (amended at cycle 295's VERIFY): no restore form names ``category=``, the
+        restore's ``category`` argument is not called the store, and the listing verb never says
+        "every fact in the category"."""
+        found = retired_verb_wording_findings(_contract_knowledge_section())
+        self.assertEqual(found, [], f"{CONTRACT_REL}: retired wording still carried: {found!r}")
+
     def test_it_records_the_project_scoped_levers_and_the_values_cr_mdb_091_sets(self):
         self.assert_rule(_contract_knowledge_section(), CONTRACT_LEVERS, CONTRACT_REL,
                          lead_in=True)
@@ -1306,6 +1386,10 @@ GOOD_CLOSE_OUT = (
 # MIGRATED at CR-MDB-088 (§S7): GOOD_CONTRACT is §S7's section "Knowledge store" — retitled without the CR
 # reference, five verbs with their `ctx_knowledge` forms, the setup path whatever the verdict, the
 # five kept pitfalls, the new pitfalls in §S7's words, and the project-scoped levers.
+# MIGRATED at CR-MDB-088 (§S7, amended at cycle 295's VERIFY): the restore forms name `store=facts`
+# (they named `category=facts`), the restore pitfall says it selects its store with `store` and
+# ignores `category` (it said "Its `category` argument is the store"), the listing verb names its
+# limit, and each new pitfall cites a lean-ctx source path under `rust/src/` and a symbol.
 GOOD_CONTRACT = """\
 ## Knowledge store
 
@@ -1316,9 +1400,9 @@ category the project's `.env` names in `KNOWLEDGE_CATEGORY`.
 
 Model B relies on five knowledge verbs, each with its `ctx_knowledge` form:
 - remember a fact (`remember`);
-- list a category (`recall` + `category`);
-- restore (`restore`, `category=facts`, `query=<category>`, repeated until it restores nothing),
-  and restore by key (`restore`, `category=facts`, `query="<category> <key>"`);
+- list a category (`recall` + `category`): at most the listing limit, with `showing <n>/<total>`;
+- restore (`restore`, `store=facts`, `query=<category>`, repeated until it restores nothing),
+  and restore by key (`restore`, `store=facts`, `query="<category> <key>"`);
 - remove a fact (`remove`);
 - export (`export`), the fallback for an incomplete listing.
 
@@ -1340,35 +1424,44 @@ A monorepo's sub-projects derive the same category as the root when they share i
 The new pitfalls, each citing its lean-ctx 3.11.4 source path and symbol:
 - **The listing limit.** A listing shows at most `memory.knowledge.recall_facts_limit` facts (10).
   The key is global-only, not settable in a project's `.lean-ctx.toml`. The listing says
-  `showing <n>/<total>`, and only the listed facts are retrieved.
+  `showing <n>/<total>`, and only the listed facts are retrieved. Source: `handle_recall`,
+  `rust/src/tools/ctx_knowledge/remember.rs`.
 - **Decay.** A fact retrieved or confirmed within the last day does not decay. Every other fact
   decays on every lifecycle run, compounding, and every `remember` and `remove` runs the
-  lifecycle. A restore runs none.
-- **Restore.**
-  - Its `category` argument is the store.
+  lifecycle. A restore runs none. Source: `apply_confidence_decay`,
+  `rust/src/core/memory_lifecycle.rs`.
+- **Restore.** (`CtxKnowledgeTool`, `rust/src/tools/registered/ctx_knowledge.rs`)
+  - It selects its store with `store` (default: all four) and ignores a `category` argument.
   - Unscoped, it restores every store, and other projects' archived facts from the shared legacy
     facts archive.
   - It returns at most 50 items, scoped or not, so it is repeated until it restores nothing.
   - It keeps each fact's archived confidence.
   - The next write re-archives a fact below 0.3.
 - **The restore's scope is a substring.** `query` is a case-insensitive substring match over each
-  archived fact's category, key and value (`restore_facts`), through the archive root shared by
+  archived fact's category, key and value (`restore_facts`,
+  `rust/src/tools/ctx_knowledge/restore.rs`), through the archive root shared by
   every unprotected project. `query=<category>` therefore also restores another project's facts
   under the same category, a category whose name contains it, and any fact whose key or value
   mentions it. Model B removes such a fact at reconciliation and reports it.
-- **Removed facts come back.** `remove` deletes only the live fact (`remove_fact`), and the
+- **Removed facts come back.** `remove` deletes only the live fact (`remove_fact`,
+  `rust/src/core/knowledge/core.rs`), and the
   archive keeps its copy, so the next restore brings back a fact removed at reconciliation, until
   its archive file is pruned. Model B removes it again and reports it.
-- **The archive is bounded and shared.** It keeps 16 files (`DEFAULT_MAX_ARCHIVE_FILES`) in the
+- **The archive is bounded and shared.** It keeps 16 files (`DEFAULT_MAX_ARCHIVE_FILES`,
+  `rust/src/core/memory_archive.rs`) in the
   root shared by every unprotected project, and each archiving lifecycle run adds one, so other
   projects' activity can prune this project's archived facts. A restore is best-effort; the
   one-listing bound is the prevention.
 - **Re-confirmation.** A same-key rewrite re-confirms (the confidence goes to the midpoint).
-  `feedback` does not change confidence.
-- **Export.** It writes a JSON file of the whole store, and retrieves nothing.
+  `feedback` does not change confidence. Source: `handle_feedback`,
+  `rust/src/tools/ctx_knowledge/mod.rs`.
+- **Export.** It writes a JSON file of the whole store, and retrieves nothing. Source:
+  `handle_export`, `rust/src/tools/ctx_knowledge/mod.rs`.
 - **The cap.** The 200-fact cap is shared with automatic captures. `auto_capture` is global-only.
+  Source: `KnowledgePolicy`, `rust/src/core/memory_policy.rs`.
 - **Rehydration.** A category listing that finds no current fact rehydrates at most 3 archived
-  facts at ≥0.6, through `remember` (`rehydrate_from_archives`). So a listing can write: a
+  facts at ≥0.6, through `remember` (`rehydrate_from_archives`,
+  `rust/src/tools/ctx_knowledge/remember.rs`). So a listing can write: a
   Track that only lists makes no write of its own, but its listing may.
 
 ### Project-scoped levers
@@ -1598,16 +1691,23 @@ class ContractKnowledgeStoreDetectorTest(unittest.TestCase):
     def test_each_verb_form_bites_when_its_phrase_is_changed(self):
         forms = CONTRACT_VERB_FORMS
         mutations = {
-            "list form": (forms["list a category is recall with category"],
-                          "list a category (`recall` + `category`)", "list a category"),
-            "restore query": (
-                forms["restore is category=facts and query=<category>, repeated until it restores "
-                      "nothing"], "`query=<category>`, repeated", "repeated"),
-            "restore repeated": (
-                forms["restore is category=facts and query=<category>, repeated until it restores "
-                      "nothing"], ", repeated until it restores nothing),", "),"),
-            "restore by key": (forms["restore by key is category=facts and query=\"<category> <key>\""],
-                               '`query="<category> <key>"`', "`query=<key>`"),
+            # MIGRATED at CR-MDB-088 (§S7, amended at cycle 295's VERIFY): the forms' keys name
+            # `store=facts` and the listing limit; each new phrase bites too.
+            "list form": (forms[LIST_FORM], "list a category (`recall` + `category`)",
+                          "list a category"),
+            "list limit": (forms[LIST_FORM], ": at most the listing limit, with",
+                           ": every fact in the category, with"),
+            "list showing": (forms[LIST_FORM], "limit, with `showing <n>/<total>`;", "limit;"),
+            "restore query": (forms[RESTORE_FORM], "`query=<category>`, repeated", "repeated"),
+            "restore repeated": (forms[RESTORE_FORM], ", repeated until it restores nothing),", "),"),
+            "restore store": (forms[RESTORE_FORM],
+                              "- restore (`restore`, `store=facts`, `query=<category>`",
+                              "- restore (`restore`, `category=facts`, `query=<category>`"),
+            "restore by key": (forms[RESTORE_BY_KEY_FORM], '`query="<category> <key>"`',
+                               "`query=<key>`"),
+            "restore by key store": (forms[RESTORE_BY_KEY_FORM],
+                                     "(`restore`, `store=facts`, `query=\"<category> <key>\"`)",
+                                     "(`restore`, `category=facts`, `query=\"<category> <key>\"`)"),
             "export fallback": (forms["export is the fallback for an incomplete listing"],
                                 "the fallback for an incomplete listing", "a backup"),
         }
@@ -1622,7 +1722,10 @@ class ContractKnowledgeStoreDetectorTest(unittest.TestCase):
                           "a few facts"),
             "limit global": (p["the listing limit"], "The key is global-only",
                              "The key is per project"),
-            "limit showing": (p["the listing limit"], "`showing <n>/<total>`", "nothing"),
+            # MIGRATED at CR-MDB-088 (§S7): the listing verb names `showing <n>/<total>` too, so
+            # the anchor carries the pitfall's own words.
+            "limit showing": (p["the listing limit"], "The listing says\n  `showing <n>/<total>`",
+                              "The listing says nothing"),
             "limit retrieved": (p["the listing limit"], "only the listed facts are retrieved",
                                 "every fact is retrieved"),
             "decay every write": (p["decay on every write"],
@@ -1631,10 +1734,16 @@ class ContractKnowledgeStoreDetectorTest(unittest.TestCase):
             "decay compounding": (p["decay on every write"], ", compounding,", ","),
             "decay restore": (p["decay on every write"], "A restore runs none.",
                               "A restore runs it too."),
+            # MIGRATED at CR-MDB-088 (§S7, amended at cycle 295's VERIFY): was "Its `category`
+            # argument is the store."
             "restore store argument": (
                 p["restore: the store argument, cross-project reach, the 50-item cap, kept "
-                  "confidence"], "Its `category` argument is the store.",
-                "Its `category` argument is the category."),
+                  "confidence"],
+                "It selects its store with `store` (default: all four) and ignores a `category` "
+                "argument.", "It selects its store with `category`."),
+            "restore ignores category": (
+                p["restore: the store argument, cross-project reach, the 50-item cap, kept "
+                  "confidence"], "and ignores a `category` argument.", "and reads `category`."),
             "restore cross-project": (
                 p["restore: the store argument, cross-project reach, the 50-item cap, kept "
                   "confidence"], "other projects' archived facts from the shared legacy\n    facts archive",
@@ -1648,7 +1757,8 @@ class ContractKnowledgeStoreDetectorTest(unittest.TestCase):
                 "It resets each fact's confidence."),
             "substring": (p["the restore's scope is a substring"],
                           "case-insensitive substring match", "exact match"),
-            "substring symbol": (p["the restore's scope is a substring"], "(`restore_facts`)", ""),
+            # MIGRATED at CR-MDB-088 (§S7): the symbol now sits beside its source path.
+            "substring symbol": (p["the restore's scope is a substring"], "`restore_facts`,\n  ", ""),
             "substring other project": (p["the restore's scope is a substring"],
                                         "another project's facts\n  under the same category",
                                         "this project's facts"),
@@ -1664,8 +1774,9 @@ class ContractKnowledgeStoreDetectorTest(unittest.TestCase):
                               "Model B removes it again and reports it.", ""),
             "archive 16": (p["the archive keeps 16 shared files"], "It keeps 16 files",
                            "It keeps every file"),
+            # MIGRATED at CR-MDB-088 (§S7): the symbol now sits beside its source path.
             "archive symbol": (p["the archive keeps 16 shared files"],
-                               "(`DEFAULT_MAX_ARCHIVE_FILES`)", ""),
+                               "`DEFAULT_MAX_ARCHIVE_FILES`,\n  ", ""),
             "archive prune": (p["the archive keeps 16 shared files"],
                               "other\n  projects' activity can prune this project's archived facts",
                               "nothing\n  else touches them"),
@@ -1685,8 +1796,9 @@ class ContractKnowledgeStoreDetectorTest(unittest.TestCase):
             "auto_capture global": (
                 p["the cap is shared with automatic captures, auto_capture global-only"],
                 "`auto_capture` is global-only.", "`auto_capture` is per project."),
+            # MIGRATED at CR-MDB-088 (§S7): the symbol now sits beside its source path.
             "rehydrate symbol": (p["rehydration is a listing's write"],
-                                 "(`rehydrate_from_archives`)", ""),
+                                 "`rehydrate_from_archives`,\n  ", ""),
             "rehydrate at most 3": (p["rehydration is a listing's write"], "at most 3 archived",
                                     "every archived"),
             "listing writes": (p["rehydration is a listing's write"], "So a listing can write:",
@@ -1699,10 +1811,108 @@ class ContractKnowledgeStoreDetectorTest(unittest.TestCase):
             with self.subTest(mutation=name):
                 self._assert_bites(rule, old, new)
 
+    def test_the_citation_detector_passes_each_cited_pitfall_and_bites_on_a_missing_half(self):
+        """AC-S7 (amended at cycle 295's VERIFY): :func:`pitfall_citation_findings`, both ways —
+        each pitfall loses its finding only with both its path and its symbol."""
+        self.assertEqual(pitfall_citation_findings(knowledge_store_section(GOOD_CONTRACT)), [])
+        #: pitfall -> its citation in GOOD_CONTRACT (symbol, path), as written there.
+        cited = {
+            "the listing limit": ("`handle_recall`,\n  ", "`rust/src/tools/ctx_knowledge/remember.rs`."),
+            "decay on every write": ("`apply_confidence_decay`,\n  ", "`rust/src/core/memory_lifecycle.rs`."),
+            "restore: the store argument, cross-project reach, the 50-item cap, kept confidence": (
+                "`CtxKnowledgeTool`, ", "`rust/src/tools/registered/ctx_knowledge.rs`)"),
+            "the restore's scope is a substring": (
+                "`restore_facts`,\n  ", "`rust/src/tools/ctx_knowledge/restore.rs`)"),
+            "removed facts come back from the archive": (
+                "`remove_fact`,\n  ", "`rust/src/core/knowledge/core.rs`)"),
+            "the archive keeps 16 shared files": (
+                "`DEFAULT_MAX_ARCHIVE_FILES`,\n  ", "`rust/src/core/memory_archive.rs`)"),
+            "re-confirmation, and feedback does not change confidence": (
+                "`handle_feedback`,\n  ", "`rust/src/tools/ctx_knowledge/mod.rs`.\n- **Export"),
+            "export writes a file and retrieves nothing": (
+                "`handle_export`, ", "`rust/src/tools/ctx_knowledge/mod.rs`.\n- **The cap"),
+            "the cap is shared with automatic captures, auto_capture global-only": (
+                "`KnowledgePolicy`, ", "`rust/src/core/memory_policy.rs`."),
+            "rehydration is a listing's write": (
+                "`rehydrate_from_archives`,\n  ", "`rust/src/tools/ctx_knowledge/remember.rs`). So"),
+        }
+        self.assertEqual(set(cited), set(NEW_PITFALLS))
+        for name, (symbol, path) in cited.items():
+            citation = symbol + path
+            self.assertEqual(GOOD_CONTRACT.count(citation), 1, f"citation anchor {citation!r}")
+            # The pitfall's path moved out of rust/src/: a finding for that pitfall, and only it.
+            outside = citation.replace("`rust/src/", "`rust/tests/")
+            with self.subTest(pitfall=name, half="path outside rust/src/"):
+                self.assertEqual(pitfall_citation_findings(knowledge_store_section(
+                    GOOD_CONTRACT.replace(citation, outside))), [name])
+            # The path dropped, the symbol kept.
+            no_path = symbol.rstrip(",\n ") + path[path.index("`", 1) + 1:]
+            with self.subTest(pitfall=name, half="no path"):
+                self.assertIn(name, pitfall_citation_findings(knowledge_store_section(
+                    GOOD_CONTRACT.replace(citation, no_path))))
+            # The symbol dropped, the path kept.
+            with self.subTest(pitfall=name, half="no symbol"):
+                self.assertIn(name, pitfall_citation_findings(knowledge_store_section(
+                    GOOD_CONTRACT.replace(citation, path))))
+
+    def test_the_citation_shape_accepts_either_order_and_rejects_prose_or_a_config_key(self):
+        path = "`rust/src/core/memory_archive.rs`"
+        for good in (f"(`DEFAULT_MAX_ARCHIVE_FILES`, {path})", f"({path}, `DEFAULT_MAX_ARCHIVE_FILES`)",
+                     f"`prune_archives` in {path}", "`rust/src/core/memory_archive.rs::prune`",
+                     f"`crate::core::memory_archive::prune`,\n  {path}"):
+            with self.subTest(good=good):
+                self.assertIsNotNone(SOURCE_CITATION_RE.search(good))
+        for bad in (f"{path} and nothing else", "(`DEFAULT_MAX_ARCHIVE_FILES`)",
+                    f"`memory.knowledge.max_facts`, {path}", "`src/core/memory_archive.rs`, `prune`",
+                    "lean-ctx's source, `prune`", f"`prune`, the archive, {path}"):
+            with self.subTest(bad=bad):
+                self.assertIsNone(SOURCE_CITATION_RE.search(bad))
+
+    def test_a_pitfall_citing_its_source_only_in_the_lead_in_is_a_finding(self):
+        """The lead-in "each citing its lean-ctx 3.11.4 source path and symbol" alone cites
+        nothing: a pitfall whose own unit carries no citation is a finding."""
+        lead_in = ("The new pitfalls, each citing its lean-ctx 3.11.4 source path and symbol "
+                   "(`apply_confidence_decay`, `rust/src/core/memory_lifecycle.rs`):\n")
+        bare = GOOD_CONTRACT.replace(
+            "The new pitfalls, each citing its lean-ctx 3.11.4 source path and symbol:\n", lead_in
+        ).replace(" Source: `apply_confidence_decay`,\n  `rust/src/core/memory_lifecycle.rs`.", "")
+        self.assertNotEqual(bare, GOOD_CONTRACT)
+        self.assertIn(lead_in, bare)
+        self.assertEqual(pitfall_citation_findings(knowledge_store_section(bare)),
+                         ["decay on every write"])
+
+    def test_the_retired_verb_wording_detector_passes_the_good_section_and_bites_on_each(self):
+        """AC-S7 (amended at cycle 295's VERIFY): :func:`retired_verb_wording_findings`, both
+        ways, on §S7's wording and on the wording the contract carries today."""
+        self.assertEqual(retired_verb_wording_findings(knowledge_store_section(GOOD_CONTRACT)), [])
+        mutations = {
+            "a restore form names category=": (
+                "- restore (`restore`, `store=facts`, `query=<category>`",
+                "- restore (`restore`, `category=facts`, `query=<category>`"),
+            "its category argument is the store": (
+                "It selects its store with `store` (default: all four) and ignores a `category` "
+                "argument.", "Its `category` argument is the store."),
+            "every fact in the category": (
+                ": at most the listing limit, with `showing <n>/<total>`;",
+                " — every fact in the category (bootstrap's load);"),
+        }
+        for name, (old, new) in mutations.items():
+            with self.subTest(wording=name):
+                self.assertEqual(GOOD_CONTRACT.count(old), 1, old)
+                self.assertEqual(retired_verb_wording_findings(
+                    knowledge_store_section(GOOD_CONTRACT.replace(old, new))), [name])
+        # A listing's own `category=<name>` is not a restore form.
+        listing = "- list a category (`recall`, `category=kb-cat`).\n"
+        self.assertEqual(retired_verb_wording_findings(listing), [])
+        self.assertEqual(retired_verb_wording_findings(
+            "- restore by key (`restore`, `category=facts`, `query=\"kb <key>\"`);\n"),
+            ["a restore form names category="])
+
     def test_a_new_pitfall_split_across_two_bullets_is_not_one_unit(self):
-        old = ("through `remember` (`rehydrate_from_archives`). So a listing can write: a\n"
+        # MIGRATED at CR-MDB-088 (§S7): the anchor carries the citation's source path.
+        old = ("`rust/src/tools/ctx_knowledge/remember.rs`). So a listing can write: a\n"
                "  Track that only lists")
-        new = ("through `remember` (`rehydrate_from_archives`).\n- So a listing can write: a\n"
+        new = ("`rust/src/tools/ctx_knowledge/remember.rs`).\n- So a listing can write: a\n"
                "  Track that only lists")
         self._assert_bites(NEW_PITFALLS["rehydration is a listing's write"], old, new)
 

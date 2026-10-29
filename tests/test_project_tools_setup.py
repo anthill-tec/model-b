@@ -185,14 +185,20 @@ def pointer_findings(section: str, category: str) -> list[str]:
     findings = []
     if "ctx_knowledge" not in section:
         findings.append("ctx_knowledge")
-    restore = first(r"action=restore", r"category=facts", scoped_query,
+    # MIGRATED at CR-MDB-088 (§S2): the restore selects its store with `store=facts` (amended at
+    # cycle 295's VERIFY) — lean-ctx 3.11.4's restore reads `store` and ignores `category`
+    # (`CtxKnowledgeTool`, rust/src/tools/registered/ctx_knowledge.rs); was `category=facts`.
+    restore = first(r"action=restore", r"(?<![\w-])store=facts\b", scoped_query,
                     r"\brepeat\w*\b.{0,120}\buntil\b.{0,40}\brestores nothing\b")
     if restore is None:
         findings.append("scoped restore repeated until it restores nothing")
     if first(r"\bsubstring\b", r"\banother project", r"\bremov\w*") is None:
         findings.append("substring scope and another project's facts removed")
-    if first(r"action=restore", rf'query="{cat} <key>"') is None:
+    # MIGRATED at CR-MDB-088 (§S2 bullet 5): the restore by key names `store=facts` too.
+    if first(r"action=restore", r"(?<![\w-])store=facts\b", rf'query="{cat} <key>"') is None:
         findings.append("restore by key")
+    if any(re.search(r"(?<![\w-])category=facts\b", u) for u in units):
+        findings.append("category=facts named (a restore selects its store with store=facts)")
     listing = first(r"action=recall", rf"category={cat}(?![\w-])")
     if listing is None:
         findings.append("listing with action=recall")
@@ -1168,7 +1174,8 @@ class AgentRenderFailureRefusedTest(_ProjectCase):
 
 
 #: CR-MDB-088 §S2's bullets, as its spec words them, for the category ``kb-cat``: the
-#: detector's good case.
+#: detector's good case. MIGRATED at CR-MDB-088 (§S2): both restore forms select their store
+#: with ``store=facts`` (amended at cycle 295's VERIFY); they named ``category=facts``.
 GOOD_POINTER = """\
 ## lean-ctx (for the orchestrator working this project)
 - Prefer lean-ctx's cached reads and compressed shell over the harness's built-in read and
@@ -1177,7 +1184,7 @@ GOOD_POINTER = """\
   `kb-cat` (`KNOWLEDGE_CATEGORY` in `.env`), through the session's `ctx_knowledge` tool. Never
   use the `lean-ctx knowledge` CLI: its project does not follow the working directory.
 - **Restore.** At bootstrap, Mainline or Solo restores the category's archived facts with
-  `ctx_knowledge` `action=restore`, `category=facts` (the store, not the category) and
+  `ctx_knowledge` `action=restore`, `store=facts` and
   `query=kb-cat`, and repeats it until it restores nothing (each restore returns at most 50
   items). The query is a substring match on each archived fact's category, key and value,
   through an archive shared between projects, so a scoped restore can still bring in another
@@ -1191,7 +1198,7 @@ GOOD_POINTER = """\
   confidence. Decide each fact's outcome first; then, before any other write, rewrite each
   restored fact that is kept with `action=remember` under its key; only then make the
   reconciliation's removals and other rewrites. A fact a rewrite archives again is restored
-  by its key, with `action=restore`, `category=facts` and `query="kb-cat <key>"`, and
+  by its key, with `action=restore`, `store=facts` and `query="kb-cat <key>"`, and
   rewritten at once. Every `remember` and `remove` archives each fact still below the store's
   0.3 archive threshold, and `action=feedback` does not lift a fact over that threshold.
 """
@@ -1252,6 +1259,31 @@ class LeanCtxPointerDetectorTest(unittest.TestCase):
                  "restore its archived facts, then list it.\n")
         self.assertIn("scoped restore repeated until it restores nothing",
                       pointer_findings(today, "kb-cat"))
+
+    def test_a_restore_naming_category_facts_instead_of_store_facts_is_found(self):
+        """CR-MDB-088 §S2 (amended at cycle 295's VERIFY): lean-ctx's restore reads ``store``
+        and ignores ``category``, so each restore form naming ``category=facts`` is a finding."""
+        named = "category=facts named (a restore selects its store with store=facts)"
+        self.assertEqual(GOOD_POINTER.count("`store=facts`"), 2)
+        # The scoped restore (bullet 3) names `category=facts`.
+        scoped = GOOD_POINTER.replace("`store=facts`", "`category=facts`", 1)
+        found = pointer_findings(scoped, "kb-cat")
+        self.assertIn("scoped restore repeated until it restores nothing", found)
+        self.assertIn(named, found)
+        self.assertNotIn("restore by key", found)
+        # The restore by key (bullet 5) names `category=facts`.
+        head, _, tail = GOOD_POINTER.rpartition("`store=facts`")
+        found = pointer_findings(head + "`category=facts`" + tail, "kb-cat")
+        self.assertIn("restore by key", found)
+        self.assertIn(named, found)
+        self.assertNotIn("scoped restore repeated until it restores nothing", found)
+        # Both arguments named: the store is right, and `category=facts` is still a finding.
+        both = GOOD_POINTER.replace("`store=facts`", "`store=facts`, `category=facts`")
+        self.assertEqual(pointer_findings(both, "kb-cat"), [named])
+        # A look-alike argument is not the store.
+        lookalike = GOOD_POINTER.replace("`store=facts`", "`restore=facts`", 1)
+        self.assertIn("scoped restore repeated until it restores nothing",
+                      pointer_findings(lookalike, "kb-cat"))
 
     def test_another_categorys_query_is_not_this_ones(self):
         other = GOOD_POINTER.replace("`query=kb-cat`", "`query=kb-cat-old`")
