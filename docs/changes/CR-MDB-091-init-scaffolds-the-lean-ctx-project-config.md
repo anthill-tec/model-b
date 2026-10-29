@@ -21,8 +21,8 @@ and lean-ctx's own automatic captures compete with the project's facts for the 2
 1. **`init` writes `.lean-ctx.toml`** with non-sensitive keys only, under the ownership marker:
    - per-stack index excludes (`test-reports/`, `target/`, `node_modules/`, build directories);
    - `preserve_compact_formats = ["toon"]`;
-   - a raised knowledge-store fact cap, and whether automatic consolidation is off (CR-MDB-088's
-     ruling).
+   - a raised knowledge-store fact cap, and whether automatic consolidation is off (PRD D5, 2026-10-29:
+     a cap of 500, automatic consolidation off).
 2. **The Setup section** tells the user to run `lean-ctx index build`. It says `lean-ctx trust .` is
    needed only if they add sensitive keys.
 3. **Existing projects** get the file from `modelb-axi agents`, under the same ownership rules as the

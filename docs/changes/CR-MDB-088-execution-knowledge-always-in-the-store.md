@@ -1,6 +1,6 @@
 # CR-MDB-088 — Execution knowledge always lives in the knowledge store, reconciled automatically
 
-**Status:** PENDING — spec drafted 2026-10-29 from the gap analysis and the user's rulings (PRD D5, 2026-10-29); spec pre-review to follow.
+**Status:** PENDING — spec drafted 2026-10-29 from the gap analysis and the user's rulings (PRD D5, 2026-10-29); the spec pre-review folded in; awaiting approval.
 **Type:** feature (project schema, scaffold, skills, contract)
 **Priority:** P1 — release 1.0.0, wave 2, after CR-MDB-060.
 **Depends on:** CR-MDB-060 (COMPLETED; both edit bootstrap and shutdown). The board is authoritative: read
@@ -11,7 +11,11 @@
 - PRD D5, amendments of:
   - 2026-10-10: the knowledge store is the one home, and lean-ctx is required;
   - 2026-10-14: facts are reconciled automatically, never on request;
-  - 2026-10-28: the store starts empty, and `init` seeds no facts.
+  - 2026-10-28: the store starts empty, and `init` seeds no facts;
+  - 2026-10-29: the key is unconditional, the category is kept within one listing, a Mainline or Solo
+    bootstrap restores the category and re-confirms the kept restored facts before any other write, and
+    the project config's levers are a fact cap of 500 with automatic consolidation off. This CR
+    implements it.
 - PRD D10, 2026-09-27: tool pointers live in the per-project tier.
 - DN-multi-harness-deploy-model §D18: skills name capabilities.
 - CR-MDB-045 §S3, §S4, §S6, §S7.
@@ -38,10 +42,10 @@
 - **The store loses facts, measured in lean-ctx 3.11.4's source:**
   - **A listing is bounded.** A category listing returns at most `memory.knowledge.recall_facts_limit`
     facts (10, a global-only key). It says so (`showing <n>/<total>`), and it retrieves only those it shows.
-  - **Retrieval is the only decay protection.** A fact retrieved within the last day does not decay.
-    Every other fact decays, compounding, on every lifecycle run.
+  - **Only recent use protects from decay.** A fact retrieved or confirmed within the last day does not
+    decay. Every other fact decays, compounding, on every lifecycle run.
   - **Every write runs the lifecycle.** Each `remember` and each `remove` runs it, and the lifecycle
-    archives any fact below 0.3.
+    archives any fact below 0.3. A restore runs no lifecycle.
   - **A restore sets the fact up to be lost again.** It brings a fact back at its archived confidence
     (≈0.25 after a quality archive), and the next write archives it again.
   - **Re-confirmation.** A same-key rewrite re-confirms a fact (the confidence goes to the midpoint, ≥0.5).
@@ -49,7 +53,12 @@
   - **Restore has no category scope.** `ctx_knowledge`'s restore reads its `category` argument as the
     *store*, so today's "restore the category" answers `Unknown store`. Unscoped, it restores up to 50
     items from all four stores. Facts archive under a root shared by every unprotected project, so it can
-    also bring in another project's archived facts. Only a `query` substring scopes it to a category.
+    also bring in another project's archived facts. Only a `query` substring scopes it, and the substring
+    matches each archived fact's category, key and value, so a scoped restore still reaches another
+    project's facts under the same or a containing name. Each restore returns at most 50 items.
+  - **The archive keeps what is removed, and is bounded.** A `remove` deletes only the live fact, so the
+    next restore brings it back. The shared archive root keeps 16 files, each archiving lifecycle run adds
+    one, and other projects' runs can prune this project's archived facts.
   - **Export is a file, not a listing.** It writes the whole store to a JSON file under lean-ctx's data
     directory, and retrieves nothing.
   - **The cap is shared.** The 200-fact cap holds lean-ctx's automatic captures too (`auto_capture`,
@@ -62,7 +71,7 @@
 ### §S1 — The key is unconditional
 
 1. **The schema.** `project_schema.toml`'s `KNOWLEDGE_CATEGORY` loses `when = "lean-ctx"`. Its `readers`
-   gain the shutdown skill (it reconciles at shutdown), next to `modelb-axi init`, `orchestration-common`
+   gain the shutdown skill (it lists the category it names, to reconcile at shutdown: §S5), next to `modelb-axi init`, `orchestration-common`
    and the bootstrap skill. Its other fields are unchanged:
    - `file = ".env"`;
    - `scope = "root+sub"`;
@@ -77,14 +86,15 @@
 3. **The renderers.** `scaffold._render_agents_md` and `scaffold._render_sub_agents_md` take
    `knowledge_category: str` as a required argument, and render the lean-ctx section unconditionally.
    `_emit_plan` passes `registry["KNOWLEDGE_CATEGORY"]`. The docstrings that cite CR-MDB-045 §S4's
-   condition are updated.
-4. **The `when` mechanism stays** (ruled 2026-10-29, PRD D5): `_active_schema`, `_check_when`,
+   condition are updated, and so is `_overrides_not_applied`'s, whose example (`--knowledge-category`
+   while lean-ctx is not present) stops being true.
+4. **The `when` mechanism stays** (PRD D5, 2026-10-29): `_active_schema`, `_check_when`,
    `_overrides_not_applied`, the schema header's `when` doc, and `S1_FIELDS`' `when`. No packaged key
    carries `when` after this CR. The not-applied note keeps a test on `ConditionalSchemaKeyTest`'s fixture
    key, which gains an override flag (§S8).
 5. **Unchanged by the verdict.** The agents' lean-ctx form (CR-MDB-045 §S8) and the permission policy
    still follow the lean-ctx verdict. When lean-ctx is not present, the capability contract's `lean-ctx`
-   line still reports its state and remediation. `init` adds no new note (ruled 2026-10-29, PRD D5).
+   line still reports its state and remediation. `init` adds no new note (PRD D5, 2026-10-29).
 6. **The two texts that say "written only when".** Both say instead that every project carries the key:
    - `modelb_axi/cli.py`'s `--knowledge-category` help;
    - `skills-src/model-b/SKILL.md` §4.1's `KNOWLEDGE_CATEGORY` entry, which names the knowledge-store
@@ -103,14 +113,24 @@ DN §D18):
    `lean-ctx knowledge` CLI: its project does not follow the working directory. Only the "never" clause
    names the CLI.
 3. **Restore.** At bootstrap, Mainline or Solo restores the category's archived facts with `ctx_knowledge`
-   `action=restore`, `category=facts` (the store, not the category) and `query=<category>`. Never restore
-   unscoped: that restores every store, and other projects' archived facts.
+   `action=restore`, `category=facts` (the store, not the category) and `query=<category>`, and repeats
+   it until it restores nothing (each restore returns at most 50 items). The query is a substring match
+   on each archived fact's category, key and value, through an archive shared between projects, so a
+   scoped restore can still bring in another project's facts under the same or a containing name; such a
+   fact is removed at reconciliation and reported. Never restore unscoped: that restores every store, and
+   other projects' archived facts. A Track never restores.
 4. **List.** List the category with `action=recall` and `category=<category>`. The answer says
    `showing <n>/<total>`. When `<n>` is less than `<total>`, the listing is incomplete: `action=export`
-   writes the whole store to a file it names, and the rest is read from there. A Track only lists.
-5. **Rewrite first.** After a restore, before any other write, rewrite each restored fact that is kept with
-   `action=remember` under its key. Every `remember` and `remove` archives each fact still below the
-   store's 0.3 archive threshold, and `action=feedback` does not lift a fact over it.
+   writes the whole store to a file it names, and the rest is read from there. The file sits under
+   lean-ctx's data directory, outside the project permission policy's allowed reads, so reading it
+   prompts the user. A Track only lists.
+5. **Rewrite first.** The restored facts are those the listing (or the export) shows below 30%
+   confidence. Decide each fact's outcome first; then, before any other write, rewrite each restored fact
+   that is kept with `action=remember` under its key; only then make the reconciliation's removals and
+   other rewrites. A fact a rewrite archives again is restored by its key, with `action=restore`,
+   `category=facts` and `query="<category> <key>"`, and rewritten at once. Every `remember` and `remove`
+   archives each fact still below the store's 0.3 archive threshold (a restore runs no lifecycle), and
+   `action=feedback` does not lift a fact over that threshold.
 
 ### §S3 — `orchestration-common` § "Memory" (the rules)
 
@@ -128,6 +148,7 @@ DN §D18):
 - **A missing key or store is reported, never worked around.**
   - A project whose `.env` lacks `KNOWLEDGE_CATEGORY` takes the category from its `AGENTS.md` and reports
     that the key is missing from `.env`.
+  - A project with neither the key in `.env` nor the category in its `AGENTS.md`: ask the user once.
   - A session without the knowledge-store capability reports it, with the remediation the project's
     `AGENTS.md` capability contract names.
   - Execution knowledge never falls back to a file.
@@ -141,23 +162,38 @@ DN §D18):
   rewrites an overtaken fact under its key, removes one the repo or the board now tracks, and reports
   what changed. A fact is never only flagged for the user's approval. A Track raises the facts it finds
   overtaken to Mainline.
-- **One listing holds the category** (ruled 2026-10-29, PRD D5).
+- **One listing holds the category** (PRD D5, 2026-10-29).
   - The category is kept within what one listing of it shows. Every load lists it before the run's first
-    write, because a listed fact is the only kind the store keeps from decaying.
+    remember- or remove-class write (a restore runs no lifecycle), because a fact listed or confirmed
+    within the last day is the only kind the store keeps from decaying.
   - A listing names how many facts it shows of how many. One that shows fewer than all is reported, the
-    rest is read from the store's complete export, and the category is reconciled down to the limit.
-- **Restored facts are re-confirmed** (ruled 2026-10-29, PRD D5).
+    rest is read from the store's complete export, and the category is reconciled down to the limit by
+    Mainline or Solo; a Track reports it.
+- **Restored facts are re-confirmed** (PRD D5, 2026-10-29).
   - Why it is needed: a restore brings a fact back at the confidence it was archived with, often below the
-    store's archive threshold, and every write archives each fact below that threshold again.
-  - So, after a restore and before any other write, each restored fact the reconciliation keeps is
-    rewritten under its key.
+    store's archive threshold, and every remember- or remove-class write archives each fact below that
+    threshold again.
+  - The restored facts are those the listing (or the export) shows below 30% confidence.
+  - So, in order: decide each fact's outcome against the board and the repo; then, before any other
+    write, rewrite under its key each restored fact the reconciliation keeps; only then make the
+    reconciliation's other writes (removals, other rewrites).
   - When a rewrite leaves another restored fact archived again, that fact is restored by its key and
     rewritten at once.
   - Positive feedback does not re-confirm a fact.
+- **What a restore brings back.**
+  - The restore matches the category by name, through an archive shared between projects. A restored
+    fact that is not this project's is removed at reconciliation and reported.
+  - A restored fact the repo or the board already tracks is removed again and reported.
+  - A restore can miss facts the store has already pruned; the prevention is the one-listing bound.
 - **The store's limits.**
   - Its fact cap is shared with the store's automatic captures.
   - Decay compounds on every write.
   - A restore has no dry run.
+
+**`orchestration-mainline.md` § "Memory stewardship"** drops the file-memory era's "dated, in the
+correct bucket". It says instead that a Track raises the facts and learnings it finds to Mainline, which
+keeps them in the knowledge store under their keys (`orchestration-common` § "Memory"), so the store
+stays single-authored across parallel sessions. It names no lean-ctx tool.
 
 The GC, no-unilateral-write, "What goes there" and "Who writes" bullets are unchanged.
 
@@ -166,22 +202,30 @@ The GC, no-unilateral-write, "What goes there" and "Who writes" bullets are unch
 `skills-src/bootstrap/SKILL.md`:
 
 1. **Step 0.5's fallback paragraph** loses its `KNOWLEDGE_CATEGORY` exception ("has no fallback … skipped,
-   never asked about"). The key follows the general fallback: `AGENTS.md`'s lean-ctx section names the
-   category.
+   never asked about"). The key follows the general fallback: the project's `AGENTS.md` names the
+   category, else the user is asked once. The skill says "the project's `AGENTS.md`" and never names
+   lean-ctx: `SkillsNameTheKnowledgeStoreCapabilityTest`'s `LEAN_CTX_NAMED` matches the bare product
+   name in any unit about `KNOWLEDGE_CATEGORY`.
 2. **Step 0.6** keeps its `## Step 0.6 ` heading prefix, and becomes "Load the execution knowledge (BOTH
    roles)". It states:
    - **Mainline or Solo**, in order:
-     1. restore the category's archived facts, that category's only (never another store's or another
-        project's);
-     2. then list that category;
+     1. restore the category's archived facts, scoped to the category by name and repeated until a
+        restore brings back nothing. The scope is a substring match through an archive shared between
+        projects, so a restored fact that is not this project's is removed at reconciliation and
+        reported;
+     2. then list that category (a restore runs no lifecycle, so the listing still comes before the
+        run's first remember- or remove-class write);
      3. when the listing shows fewer facts than the category holds, report it and read the rest from the
         store's complete export;
-     4. reconcile every fact (§ "Memory"), and re-confirm each restored fact it keeps before any other
-        write;
-     5. report that the knowledge store is in use, how many facts it loaded, and what the reconciliation
+     4. decide each fact's outcome against the board and the repo (§ "Memory"). The restored facts are
+        those the listing (or the export) shows below 30% confidence;
+     5. then, before any other write, re-confirm each restored fact it keeps by rewriting it under its
+        key, restoring by its key and rewriting at once any fact a rewrite archives again;
+     6. only then make the reconciliation's other writes (removals, other rewrites);
+     7. report that the knowledge store is in use, how many facts it loaded, and what the reconciliation
         changed. Mainline and Solo report to the user.
-   - **A Track** lists the category only, and makes no write. It reports the count to Mainline in its
-     status, and raises the facts it finds overtaken.
+   - **A Track** never restores, lists the category only, and makes no write of its own. It reports the
+     count to Mainline in its status, and raises the facts it finds overtaken.
    - **Unchanged:** never a query recall to load, and never the automatic rooms.
    - **A missing key or knowledge-store capability** is reported (§ "Memory"), and bootstrap continues.
    - The step names no lean-ctx tool.
@@ -191,9 +235,10 @@ The GC, no-unilateral-write, "What goes there" and "Who writes" bullets are unch
 `skills-src/shutdown/SKILL.md`. No numbered step is added or renumbered (`FinalStepPlacesTest` pins
 Step 2A's 5, its emergency 4, and Step 2B's 5):
 
-1. **Step 2B, item 4 (Mainline or Solo, graceful).** Before the report, list the category and reconcile
+1. **Step 2B, item 4 (Mainline or Solo, graceful).** Before the report, list the category the project's
+   `.env` names in `KNOWLEDGE_CATEGORY` (the project's `AGENTS.md` names it otherwise), and reconcile
    each fact the run overtook (`orchestration-common` § "Memory"). The report to the user names what
-   changed.
+   changed. Naming the key is what makes shutdown one of its `readers` (§S1.1).
 2. **Step 2A, item 4 (a Track's ack).** The ack names the facts the Track found overtaken, raised to
    Mainline. A Track writes no fact.
 3. **Step 1B (emergency).** No reconciliation: the fast-abort skips it.
@@ -216,7 +261,8 @@ CR reference, and records the following.
 **The verbs** Model B relies on, each with its `ctx_knowledge` form:
 - remember;
 - list a category (`recall` + `category`);
-- restore (`restore`, `category=facts`, `query=<category>`);
+- restore (`restore`, `category=facts`, `query=<category>`, repeated until it restores nothing), and
+  restore by key (`restore`, `category=facts`, `query="<category> <key>"`);
 - remove;
 - export (the fallback for an incomplete listing).
 
@@ -234,29 +280,44 @@ the pointer **whatever the verdict**. The sentence "Absent or unknown, neither i
 - **The listing limit.** A listing shows at most `memory.knowledge.recall_facts_limit` facts (10). The key
   is global-only, not settable in a project's `.lean-ctx.toml`. The listing says `showing <n>/<total>`, and
   only the listed facts are retrieved.
-- **Decay.** A fact retrieved within the last day does not decay. Every other fact decays on every
-  lifecycle run, compounding, and every `remember` and `remove` runs the lifecycle.
+- **Decay.** A fact retrieved or confirmed within the last day does not decay. Every other fact decays on
+  every lifecycle run, compounding, and every `remember` and `remove` runs the lifecycle. A restore runs
+  none.
 - **Restore.**
   - Its `category` argument is the store.
   - Unscoped, it restores every store, and other projects' archived facts from the shared legacy facts
     archive.
+  - It returns at most 50 items, scoped or not, so it is repeated until it restores nothing.
   - It keeps each fact's archived confidence.
   - The next write re-archives a fact below 0.3.
+- **The restore's scope is a substring.** `query` is a case-insensitive substring match over each archived
+  fact's category, key and value (`restore_facts`), through the archive root shared by every unprotected
+  project. `query=<category>` therefore also restores another project's facts under the same category, a
+  category whose name contains it, and any fact whose key or value mentions it. Model B removes such a
+  fact at reconciliation and reports it.
+- **Removed facts come back.** `remove` deletes only the live fact (`remove_fact`), and the archive keeps
+  its copy, so the next restore brings back a fact removed at reconciliation, until its archive file is
+  pruned. Model B removes it again and reports it.
+- **The archive is bounded and shared.** It keeps 16 files (`DEFAULT_MAX_ARCHIVE_FILES`) in the root
+  shared by every unprotected project, and each archiving lifecycle run adds one, so other projects'
+  activity can prune this project's archived facts. A restore is best-effort; the one-listing bound is
+  the prevention.
 - **Re-confirmation.** A same-key rewrite re-confirms (the confidence goes to the midpoint). `feedback`
   does not change confidence.
 - **Export.** It writes a JSON file of the whole store, and retrieves nothing.
 - **The cap.** The 200-fact cap is shared with automatic captures. `auto_capture` is global-only.
 - **Rehydration.** A category listing that finds no current fact rehydrates at most 3 archived facts at
-  ≥0.6.
+  ≥0.6, through `remember` (`rehydrate_from_archives`). So a listing can write: a Track that only lists
+  makes no write of its own, but its listing may.
 
-**The project-scoped levers** (no trust needed), and which ones Model B sets through CR-MDB-091 (pending
-ruling, Q4):
+**The project-scoped levers** (no trust needed), and the values Model B sets through CR-MDB-091 (PRD D5,
+2026-10-29: a cap of 500, automatic consolidation off):
 - `memory.knowledge.max_facts` raised to 500;
 - `autonomy.auto_consolidate = false`.
 
 The section also records what `auto_consolidate = false` does not stop: consolidation on MCP shutdown and
 on compaction, and automatic captures. It records that the levers apply through the bridge process's
-resolved project root (the git top level, so a monorepo's root file), and that a user who wants a larger
+resolved project root (normally the git top level, so a monorepo's root file), and that a user who wants a larger
 category raises the global `recall_facts_limit` themselves.
 
 The rest of the contract is CR-MDB-092's.
@@ -304,9 +365,19 @@ gains `override = "--tool-channel"`, plus one test. Given `tool_channel` while l
   entries;
 - the module docstring.
 
-**Any other pin** the RED full-suite run finds reading an `init`-rendered `.env` or `AGENTS.md` (the shared
-fixture `tests/_helpers.write_install_toml` records no lean-ctx verdict, so every such run gains the key and
-the section). It is listed in the RED report and migrated the same way.
+**The other modules that run `init`.** The shared fixture `tests/_helpers.write_install_toml` records no
+lean-ctx verdict, so every `init` they run gains the key and the section. The spec pre-review found no
+further pin in them. In cycle 1, RED runs each of them through the client, beside the three modules above,
+and any pin that reads the new key or section is listed in the RED report and migrated the same way:
+- `test_scaffold`, `test_scaffold_changelog`, `test_project_setup_section`;
+- `test_init_sandesh_address_and_envrc`, `test_init_release_workflow`;
+- `test_project_permission_policy`, `test_project_trust`;
+- `test_release_targets`, `test_release_check`, `test_release_workflow_verb`;
+- `test_stack_skills`, `test_pi_agent_definitions`, `test_bootstrap_shutdown_registry`;
+- `test_worktree_flow`, `test_install_guide`.
+
+No full suite runs between cycles: a phase agent never runs one, and neither does the orchestrator. The
+full suite runs at VERIFY and at the pre-merge gate.
 
 ## Acceptance criteria
 
@@ -318,7 +389,8 @@ the section). It is listed in the RED report and migrated the same way.
 - [ ] **AC-S1, `init` on every verdict** (in-process `scaffold.run_init`, through `_InitSandboxCase`'s
       sandbox, with `HOME`, `MODELB_HOME` and `PI_CODING_AGENT_DIR` under a temp dir).
       - **The runs:** lean-ctx `detected`, `installed`, `absent`, `unknown` and unrecorded; an
-        `install.toml` without `[capabilities]`; and no `install.toml`. Each with
+        `install.toml` without `[capabilities]`; and no `install.toml`, with the `harnesses="pi"` dev
+        override (without `install.toml`, `resolve_harnesses` refuses otherwise). Each with
         `repo_shape="monorepo:a"` and no override, and again with `knowledge_category="shared-kb"`.
       - **The root `.env` and `a/.env`** each carry exactly one `KNOWLEDGE_CATEGORY=` line: the derived
         `<token>-workflow`, or `shared-kb`.
@@ -337,16 +409,22 @@ the section). It is listed in the RED report and migrated the same way.
         lean-ctx tool.
       - `scaffold._render_agents_md` and `scaffold._render_sub_agents_md` have no default for
         `knowledge_category`.
+      - **Gates (DN §D18):** `SkillsNameTheKnowledgeStoreCapabilityTest` and
+        `ModelBSkillsNameNoLeanCtxToolTest` pass over the changed `model-b` SKILL.md.
 - [ ] **AC-S2, the pointer** (the same sandboxed runs as AC-S1).
       - **Where:** the root `AGENTS.md` and `a/AGENTS.md` each carry exactly one section whose heading
         names lean-ctx, apart from the capability contract, on every verdict. It names the category,
         and `KNOWLEDGE_CATEGORY`, and still carries "read", "shell", "knowledge" and "bootstrap"
         (`test_the_section_carries_the_three_instructions`, unmigrated).
       - **What it carries:** `ctx_knowledge`; `action=restore` with `category=facts` and
-        `query=<category>`, in one line; `action=recall`; `showing`; `action=export`; `action=remember`;
-        and a line saying `feedback` does not lift a fact over the threshold.
-      - **Order:** restore comes before the listing.
-      - **Roles:** a line says a Track only lists.
+        `query=<category>`, in one line, repeated until it restores nothing; the substring scope and the
+        removal of another project's restored facts; the restore-by-key form `query="<category> <key>"`;
+        `action=recall`; `showing`; `action=export`, and that reading its file prompts the user;
+        `action=remember`; the restored facts as those below 30% confidence; and a line saying
+        `feedback` does not lift a fact over the threshold.
+      - **Order:** restore comes before the listing, and the rewrite of the kept restored facts comes
+        before the reconciliation's other writes.
+      - **Roles:** a line says a Track only lists, and never restores.
       - **The CLI:** every line naming `lean-ctx knowledge` also says "never".
 - [ ] **AC-S3, § "Memory"** (phrase-level, one unit per rule, through `rule_units`). Each detector is
       proved both ways on synthetic text.
@@ -355,62 +433,91 @@ the section). It is listed in the RED report and migrated the same way.
         id; the store starts empty.
       - **Missing key or store:** a missing `.env` key is taken from `AGENTS.md` and reported. A session
         without the knowledge-store capability is reported with the remediation the capability contract
-        names. There is never a file fallback.
+        names. Neither the key nor the category in `AGENTS.md`: the user is asked once. There is never a
+        file fallback.
       - **Reconciliation:** automatic, never on request. It names the three moments (bootstrap after the
         load; after every `cr-close`, the facts naming the closed CR; at shutdown, the facts the run
         overtook). It names the board and the repo; rewrite under its key; remove; report what changed;
         never only flagged. A Track's `cr-close` is reconciled by Mainline once it confirms it. A Track
         raises overtaken facts to Mainline.
-      - **One listing:** the category is kept within one listing. A listing names how many it shows of
-        how many. Fewer than all is reported, and the rest is read from the export.
-      - **Re-confirmation:** after a restore, before any other write, rewrite each restored fact kept.
-        A re-archived one is restored by its key and rewritten at once. Feedback does not re-confirm.
+      - **One listing:** the category is kept within one listing, listed before the first remember- or
+        remove-class write. A listing names how many it shows of how many. Fewer than all is reported,
+        the rest is read from the export, and Mainline or Solo reconciles the category down to the limit
+        while a Track reports it.
+      - **Re-confirmation:** the restored facts are those listed below 30% confidence. Each fact's
+        outcome is decided first; then, before any other write, each restored fact kept is rewritten;
+        only then come the reconciliation's other writes, enforced as order. A re-archived one is
+        restored by its key and rewritten at once. Feedback does not re-confirm.
+      - **What a restore brings back:** a restored fact that is not this project's is removed and
+        reported; a restored fact the repo or the board already tracks is removed again and reported; a
+        restore can miss pruned facts, and the one-listing bound is the prevention.
       - **The limits:** the cap is shared with automatic captures; decay compounds on every write;
         restore has no dry run.
       - **What stays:** the section still satisfies `MEMORY_WHAT`, `MEMORY_WHO`,
         `MEMORY_GC_STILL_APPLIES`, `MEMORY_GC_PRINCIPLE` and `MEMORY_NO_UNILATERAL`. No unit says nothing
         changes without the key, and no unit makes the store conditional on the key
         (`(where|when|if)…knowledge_category` as a condition).
+      - **Memory stewardship:** `orchestration-mainline.md` § "Memory stewardship" says a Track raises
+        what it finds to Mainline, which keeps it in the knowledge store under its key; it no longer says
+        "dated, in the correct bucket".
+      - **Gates (DN §D18):** `SkillsNameTheKnowledgeStoreCapabilityTest` and
+        `ModelBSkillsNameNoLeanCtxToolTest` pass, and `lean_ctx_tool_findings` over `orchestration-common.md`
+        and `orchestration-mainline.md` is empty.
 - [ ] **AC-S4, bootstrap.**
       - **The heading:** Step 0.6's heading starts `## Step 0.6 `, carries "BOTH roles", and has no
         "only where".
       - **Mainline or Solo:** an enumeration with its lead-in restores the category's archived facts
-        (scoped to that category), **then** lists the category, then reconciles, then re-confirms
-        restored facts before any other write, then reports the facts loaded and what changed.
-        Restore-then-list is enforced as order.
-      - **A Track:** a unit says a Track only lists, makes no write, and raises overtaken facts to
-        Mainline.
+        (scoped to that category by name, repeated until it restores nothing), **then** lists the
+        category, then decides each fact's outcome, **then** re-confirms the kept restored facts before
+        any other write, **then** makes the reconciliation's other writes, then reports the facts loaded
+        and what changed. Restore-then-list and re-confirm-before-the-other-writes are each enforced as
+        order. A unit says a restored fact that is not this project's is removed and reported.
+      - **A Track:** a unit says a Track never restores, only lists, makes no write of its own, and
+        raises overtaken facts to Mainline.
       - **Unchanged:** `BOOTSTRAP_NEVER_RECALL` and `BOOTSTRAP_NEVER_AUTOMATIC` still hold. A unit
         reports a missing key or capability.
-      - **Step 0.5:** it no longer says `KNOWLEDGE_CATEGORY` has no fallback.
-      - **Gates:** `lean_ctx_tool_findings` over the file is empty.
+      - **Step 0.5:** it no longer says `KNOWLEDGE_CATEGORY` has no fallback, and its unit about the key
+        names the project's `AGENTS.md`, never lean-ctx.
+      - **Detectors:** each new one (the order, the Track, the scope, the missing key) is proved both
+        ways on synthetic text.
+      - **Gates:** `lean_ctx_tool_findings` over the file is empty, and
+        `SkillsNameTheKnowledgeStoreCapabilityTest` and `ModelBSkillsNameNoLeanCtxToolTest` pass (DN
+        §D18).
 - [ ] **AC-S5, shutdown.**
-      - **Step 2B, item 4:** reconciles each fact the run overtook, and names what changed in the report.
+      - **Step 2B, item 4:** lists the category `.env` names in `KNOWLEDGE_CATEGORY`, reconciles each fact
+        the run overtook, and names what changed in the report.
       - **Step 2A, item 4:** the ack names the overtaken facts the Track raises to Mainline, and the Track
         writes no fact.
       - **Step 1B:** says the emergency skips the reconciliation.
+      - **Detectors:** each new one (Step 2B and Step 2A items 4, Step 1B) is proved both ways on
+        synthetic text.
       - **Unchanged:** `FinalStepPlacesTest` and every `test_orchestration_rules_from_crucible` shutdown
-        pin pass unmigrated. `lean_ctx_tool_findings` over the file is empty.
+        pin pass unmigrated.
+      - **Gates:** `lean_ctx_tool_findings` over the file is empty, and
+        `SkillsNameTheKnowledgeStoreCapabilityTest` and `ModelBSkillsNameNoLeanCtxToolTest` pass (DN
+        §D18).
 - [ ] **AC-S6, close-out.**
       - § "Close-out" has a bullet stating that after `cr-close` Mainline or Solo reconciles each fact
-        naming the closed CR.
+        naming the closed CR. Its detector is proved both ways on synthetic text.
       - `test_orchestration_common_close_out_states_the_eight_step_order` passes unmigrated: eight
         numbered steps, `CLOSE_OUT_ORDER`.
 - [ ] **AC-S7, the contract.**
-      - **The verbs:** they include export, and restore's `category=facts` and `query` form.
+      - **The verbs:** they include export, restore's `category=facts` and `query` form repeated until
+        it restores nothing, and the restore-by-key form `query="<category> <key>"`.
       - **The setup path:** says `init` writes the key and pointer whatever the verdict, and the sentence
         "Absent or unknown, neither is written" is gone.
       - **The pitfalls:** the five existing ones keep satisfying `PITFALLS`. Each new pitfall in §S7 is
         one unit, pinned by a detector and proved both ways on synthetic text: the listing limit (with
         `recall_facts_limit` and "global"); decay on every write; restore's store argument, cross-project
-        reach and kept confidence; feedback not re-confirming; export as a file; the shared cap with
-        global `auto_capture`; rehydration.
+        reach, the 50-item cap and kept confidence; the substring scope; removed facts coming back from
+        the archive; the archive's 16 shared files; feedback not re-confirming; export as a file; the
+        shared cap with global `auto_capture`; rehydration, and that it is a listing's write.
       - **The levers:** they name `memory.knowledge.max_facts` and `autonomy.auto_consolidate` as
-        project-scoped with no trust needed, and the values CR-MDB-091 sets.
-      - **No skill names a tool:** `SkillsNameTheKnowledgeStoreCapabilityTest` and
-        `ModelBSkillsNameNoLeanCtxToolTest` pass.
+        project-scoped with no trust needed, the values CR-MDB-091 sets (500, `false`), and the project
+        root as normally the git top level.
 - [ ] **Migrations (RED).** Every §S8 pin moves in its cycle, marked `# MIGRATED at CR-MDB-088 (§S…)`.
-      The RED report lists any further pin the full-suite run found.
+      In cycle 1, RED runs each module §S8 names as running `init` through the client, and its report
+      lists any further pin it found there.
 - [ ] **Runs.**
       - The suite is green through the client, with a real `HOME` and with an empty one; the empty `HOME`
         stays empty.
@@ -422,12 +529,12 @@ the section). It is listed in the RED report and migrated the same way.
 ## Non-goals
 
 - **The project's `.lean-ctx.toml`.** CR-MDB-091 writes it. This CR only records, in the contract, which
-  levers it sets and their values (Q4).
+  levers it sets and their values (PRD D5, 2026-10-29).
 - **The rest of the contract refresh, and upstream findings.** The version, the profile, the ledger, and
   findings (a) and (b) are CR-MDB-092's. CR-092's "category recall silently capped at 10" is inaccurate
   (the listing says `showing n/total`), which its gap analysis corrects.
 - **The agents' lean-ctx form and the permission policy.** Both still follow the lean-ctx verdict
-  (CR-MDB-045 §S8, CR-MDB-037). `init` refusing without lean-ctx is not done (Q5).
+  (CR-MDB-045 §S8, CR-MDB-037). `init` refusing without lean-ctx is not done (PRD D5, 2026-10-29).
 - **The install guide and `pi-package/README.md`.** `missing-capabilities` already says the dependent assets
   stay inert until the package is installed, and each project's capability contract names lean-ctx's state.
 - **Changing lean-ctx's global config** (`recall_facts_limit`, `auto_capture`). The user's call.
@@ -435,6 +542,8 @@ the section). It is listed in the RED report and migrated the same way.
   `modelb_axi/` writes the store.
 - **Existing projects without the key.** They take it from `AGENTS.md`, or add it by hand. `migrate` is
   CR-MDB-082.
+- **Existing projects' old `AGENTS.md` pointer** ("restore its archived facts, then list it"), which leads
+  to `Unknown store` or an unscoped restore. CR-MDB-082's `migrate` re-renders it.
 - **Correcting the research note `lean-ctx-for-model-b`.** It is a dated record; the corrections live in
   this CR's gap analysis.
 
@@ -443,12 +552,19 @@ the section). It is listed in the RED report and migrated the same way.
 No commit sits red, and every test that reads a changed text moves in the same cycle.
 
 1. **The key and the pointer** (§S1, §S2; §S8's `test_project_tools_setup`, `test_project_registry_schema`
-   and `test_init_tool_verdicts` pins, plus any further `init`-output pin the RED run finds). Red-green.
+   and `test_init_tool_verdicts` pins, plus any further pin RED finds in §S8's named list of modules
+   that run `init`, each run through the client). Red-green.
    - The schema, the scaffold, the help and the `model-b` SKILL.md registry entry move here, because the
      scaffold goldens read them.
+   - The DN §D18 gates run here over the changed `model-b` SKILL.md.
 2. **The rules** (§S3–§S6; §S8's `test_execution_knowledge_rules` memory, bootstrap and shutdown pins).
    Red-green.
-   - § "Memory", bootstrap, shutdown and § "Close-out" move together, because one module's detectors read
-     all four.
+   - § "Memory", `orchestration-mainline.md`'s § "Memory stewardship", bootstrap, shutdown and
+     § "Close-out" move together, because one module's detectors read them.
+   - The DN §D18 gates run here over the changed skill text, with `test_watcher_launch_supervision`
+     (`FinalStepPlacesTest`) and `test_orchestration_rules_from_crucible`.
 3. **The contract** (§S7; §S8's `GOOD_CONTRACT` and the contract pins). Red-green.
 4. **Verify.**
+
+Neither a phase agent nor the orchestrator runs the full suite between cycles; it runs at VERIFY and at
+the pre-merge gate.
