@@ -119,6 +119,12 @@ The `~/.claude` user space grew organically into 24 memory files, ~50 skills, 29
 
   **AMENDED 2026-10-14 (user ruling): facts are reconciled automatically, never on request.** At bootstrap (right after the category is loaded), after every `cr-close` (each fact naming the closed CR) and at shutdown (the facts the run overtook), the orchestrator checks every fact against the board and the repo. It rewrites an overtaken fact under its key, removes one the repo or the board now tracks, and reports what changed. A fact is never only flagged for the user's approval.
 
+  **AMENDED 2026-10-29 (user rulings, CR-MDB-088's gap analysis): the store keeps a project's facts.** Measured in lean-ctx 3.11.4's source (research note `lean-ctx-for-model-b` §S4).
+  - **`KNOWLEDGE_CATEGORY` is unconditional,** and `init` always writes it and the `AGENTS.md` lean-ctx section, even where the installation recorded lean-ctx absent or unknown: the capability contract's `lean-ctx` line already reports that state and its remediation, and `init` never re-probes (D10). The schema's `when = <tool>` mechanism stays, though no packaged key uses it (D10 still renders a tool's keys only when it is present).
+  - **The category is kept within one listing.** A listing returns at most lean-ctx's recall limit (10 by default) and only the facts it returns are protected from decay; an export protects none. Reconciliation keeps a project's category within one listing; a listing that shows fewer facts than its total is reported, and the rest is read from the export. Raising the machine-wide recall limit is the user's option, never a Model B step.
+  - **A Mainline or Solo bootstrap restores the category every time,** scoped to it (the facts store, queried by the category), and rewrites each kept restored fact under its key before any other write; a fact a rewrite archives again is restored by its key and rewritten at once. A Track never restores.
+  - **The project config's knowledge levers** (set by CR-MDB-091, no trust needed): a fact cap of 500 and automatic consolidation off.
+
 ### D6 — Generated per-stack agents
 - Role templates (`red/green/verify/fix`) + per-stack parameter files generate the arduino/bun/python/quarkus/rust agent set (20 files). SE principles are written once — in the templates.
   **AMENDED 2026-09-25 (CR-MDB-035, DN-multi-harness §D17, CR-MDB-025):** Model B ships the generated stack × role set only, rendered per project by `init`/`agents` (D10.8); the installer deploys none, and counts are not stated (§4 criterion 4).
