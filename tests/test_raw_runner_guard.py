@@ -709,6 +709,82 @@ GRAMMAR_NON_RUNNERS = (
     'git commit -m "fix `pytest`"',
 )
 
+#: CR-MDB-066 §S2.1 — the package managers' test script, a ``bun`` runner: ``npm test``/``tst``/
+#: ``t``, ``pnpm test``, ``yarn test``, and ``run``/``run-script`` before ``test`` or
+#: ``test:<name>`` for ``bun``, ``npm``, ``pnpm`` and ``yarn``. (``npm test``, ``bun run test``,
+#: ``npm run test`` and their ``test:<name>`` rows are already in ``RUNNER_FORMS`` and
+#: ``BUN_SCRIPT_FORMS``; a corpus entry appears once.)
+PACKAGE_MANAGER_FORMS = (
+    ("npm tst", "bun"),
+    ("npm t", "bun"),
+    ("npm t -- --watch", "bun"),
+    ("pnpm test", "bun"),
+    ("pnpm test --coverage", "bun"),
+    ("yarn test", "bun"),
+    ("yarn test --reporter=junit", "bun"),
+    ("npm run-script test", "bun"),
+    ("npm run-script test:unit", "bun"),
+    ("bun run-script test", "bun"),
+    ("pnpm run test", "bun"),
+    ("pnpm run test:unit", "bun"),
+    ("pnpm run-script test:e2e", "bun"),
+    ("yarn run test", "bun"),
+    ("yarn run test:integration", "bun"),
+    ("yarn run-script test", "bun"),
+)
+
+#: CR-MDB-066 §S2.2 — the workspace filter: between ``bun run`` and the script, any number of
+#: ``--filter <pattern>`` or ``--filter=<pattern>`` options, read in the words the shell passes
+#: (quotes removed).
+FILTER_FORMS = (
+    ("bun run --filter pkg test", "bun"),
+    ("bun run --filter '*' test", "bun"),
+    ("bun run --filter '*' test:unit", "bun"),
+    ("bun run --filter=api test", "bun"),
+    ('bun run --filter "@scope/*" test:e2e', "bun"),
+    ("bun run --filter a --filter=b test", "bun"),
+)
+
+#: CR-MDB-066 §S2.3 — Vitest: ``vitest`` bare or by path, with any arguments; and after
+#: ``bunx``, ``bun x`` or ``npx``, with ``--bun`` allowed after ``bunx`` or ``bun x``.
+VITEST_FORMS = (
+    ("vitest", "bun"),
+    ("vitest run", "bun"),
+    ("vitest --coverage", "bun"),
+    ("node_modules/.bin/vitest run", "bun"),
+    ("./node_modules/.bin/vitest", "bun"),
+    ("bunx vitest run", "bun"),
+    ("bunx vitest", "bun"),
+    ("bun x vitest", "bun"),
+    ("bunx --bun vitest run", "bun"),
+    ("bun x --bun vitest", "bun"),
+    ("npx vitest", "bun"),
+    ("npx vitest run --reporter=junit", "bun"),
+)
+
+#: CR-MDB-066 §S2 — never a runner: §S2's own list (its ``npm run testdata`` is already in
+#: ``NARROWED_BUN_SCRIPTS``), the non-goals' near misses (a ``--filter`` before ``test`` with no
+#: ``run``, ``pnpm exec vitest``, ``yarn vitest``, ``bun run vitest``), and a script whose name
+#: only starts with ``test`` after ``run-script`` / ``run``.
+BUN_NON_RUNNERS = (
+    "vitest.config.ts",
+    "@vitest/coverage-v8",
+    "bun add -d vitest",
+    "npm i vitest",
+    "bunx vitest-preview",
+    "pnpm install",
+    "yarn install",
+    "yarn add -D jest",
+    "bun run --filter pkg build",
+    "npm run-script build",
+    "npm run-script testdata",
+    "yarn run test-utils",
+    "bun --filter pkg test",
+    "pnpm exec vitest",
+    "yarn vitest",
+    "bun run vitest",
+)
+
 #: Long runs of interpreter options (CR-MDB-062 C5 F1): ``-W``/``-X`` take a value, attached or
 #: the next word, and the option forms share no string, so each run is read one way only and is
 #: judged well inside a hook's timeout — a run that names no runner as fast as one that does.
@@ -721,6 +797,10 @@ OPTION_RUNS = (
     ("env timeout 5 python3 " + "-Xa -W " * (OPTION_RUN_LENGTH // 2) + "-m pytes", None),
     ("python3 " + "-Wa " * OPTION_RUN_LENGTH + "-m pytest", "python"),
     ("python3 " + "-W error " * OPTION_RUN_LENGTH + "tests/test_x.py", "python"),
+    # CR-MDB-066 §S8.1 — a long ``--filter`` run (§S2.2) that names a runner, and one that
+    # names none (``testdata`` only starts like ``test``).
+    ("bun run " + "--filter a --filter=b " * (OPTION_RUN_LENGTH // 2) + "test:unit", "bun"),
+    ("bun run " + "--filter a --filter=b " * (OPTION_RUN_LENGTH // 2) + "testdata", None),
 )
 #: How long one judgement of an ``OPTION_RUNS`` command may take, in seconds; Pi kills a hook
 #: after 10, and a timed-out ``closed`` hook blocks.
@@ -919,13 +999,17 @@ class RunnerStackOnSampleTextTest(unittest.TestCase):
     def test_every_corpus_entry_is_labelled_with_one_of_the_stacks_and_appears_once(self):
         # MIGRATED at CR-MDB-066 (§S8.1): GRAMMAR_FORMS joins the labelled corpora and
         # GRAMMAR_NON_RUNNERS the plain ones.
+        # MIGRATED at CR-MDB-066 (§S8.1, §S2): PACKAGE_MANAGER_FORMS, FILTER_FORMS and
+        # VITEST_FORMS join the labelled corpora and BUN_NON_RUNNERS the plain ones.
         labelled = (RUNNER_FORMS + WRAPPED_FORMS + POSITION_FORMS + ATTACHED_M_FORMS
-                    + UV_RUN_FORMS + TEST_FILE_FORMS + BUN_SCRIPT_FORMS + GRAMMAR_FORMS)
+                    + UV_RUN_FORMS + TEST_FILE_FORMS + BUN_SCRIPT_FORMS + GRAMMAR_FORMS
+                    + PACKAGE_MANAGER_FORMS + FILTER_FORMS + VITEST_FORMS)
         self.assertEqual(sorted({stack for _form, stack in labelled}), sorted(STACKS))
         commands = ([form for form, _stack in labelled] + list(CLIENT_FORMS)
                     + list(NON_RUNNER_MENTIONS) + list(NARROWED_BUN_SCRIPTS)
                     + list(HEREDOC_BODIES) + list(QUOTED_LINES) + list(NON_TEST_SCRIPTS)
-                    + list(ARGUMENT_MENTIONS) + list(GRAMMAR_NON_RUNNERS))
+                    + list(ARGUMENT_MENTIONS) + list(GRAMMAR_NON_RUNNERS)
+                    + list(BUN_NON_RUNNERS))
         self.assertEqual(sorted(c for c in set(commands) if commands.count(c) > 1), [],
                          "a corpus entry appears more than once (the corpora are §S6's parity "
                          "source)")
@@ -1115,6 +1199,118 @@ class CommandGrammarOnSampleTextTest(unittest.TestCase):
                 self.assertIsNone(runner_at(command), f"for {command!r}")
                 self.assertEqual(runner_findings(f"Run {_in_code_span(command)} now."), [])
                 self.assertEqual(runner_findings(f"```bash\n{command}\n```"), [])
+
+
+#: CR-MDB-066 §S2's own examples, which its corpora must hold (a precondition: a corpus that
+#: dropped one would prove less than AC3 asks).
+_SECTION_S2_EXAMPLES = {
+    "PACKAGE_MANAGER_FORMS": ("npm tst", "npm t", "pnpm test", "yarn test", "npm run-script test",
+                              "pnpm run test:unit", "yarn run test"),
+    "FILTER_FORMS": ("bun run --filter pkg test", "bun run --filter '*' test",
+                     "bun run --filter '*' test:unit"),
+    "VITEST_FORMS": ("vitest", "node_modules/.bin/vitest run", "bunx vitest run", "bun x vitest",
+                     "bunx --bun vitest run", "npx vitest"),
+    "BUN_NON_RUNNERS": ("vitest.config.ts", "@vitest/coverage-v8", "bun add -d vitest",
+                        "npm i vitest", "bunx vitest-preview", "pnpm install", "yarn install",
+                        "yarn add -D jest", "bun run --filter pkg build", "npm run-script build",
+                        "bun --filter pkg test", "pnpm exec vitest", "yarn vitest",
+                        "bun run vitest"),
+}
+
+
+class BunFormsOnSampleTextTest(unittest.TestCase):
+    """CR-MDB-066 §S2 (AC3, the guard's half) — the package managers' test script, the
+    workspace filter and Vitest are ``bun`` runners in the guard's ``BUN_RUNNERS``; §S2's
+    never-runners and the non-goals' near misses are not. Proved on sample text both ways."""
+
+    def _wrong_stacks(self, corpus):
+        return [f"{command!r}: stack_of gives {stack_of(command)!r}, want {stack!r}"
+                for command, stack in corpus if stack_of(command) != stack]
+
+    def test_the_bun_corpora_hold_section_s2s_examples(self):
+        # Passes on arrival: a precondition on the corpora, not on the detector.
+        corpora = {"PACKAGE_MANAGER_FORMS": [c for c, _s in PACKAGE_MANAGER_FORMS],
+                   "FILTER_FORMS": [c for c, _s in FILTER_FORMS],
+                   "VITEST_FORMS": [c for c, _s in VITEST_FORMS],
+                   "BUN_NON_RUNNERS": list(BUN_NON_RUNNERS)}
+        missing = [f"{name}: {example!r}" for name, examples in _SECTION_S2_EXAMPLES.items()
+                   for example in examples if example not in corpora[name]]
+        self.assertEqual(missing, [])
+        labels = {s for c, s in PACKAGE_MANAGER_FORMS + FILTER_FORMS + VITEST_FORMS}
+        self.assertEqual(labels, {"bun"}, "CR-MDB-066 §S8.1: the three corpora are labelled bun")
+
+    def test_stack_of_names_bun_for_each_package_manager_test_script_form(self):
+        wrong = self._wrong_stacks(PACKAGE_MANAGER_FORMS)
+        self.assertEqual(wrong, [], "CR-MDB-066 §S2.1: the guard misses a package manager's "
+                         "test script:\n  " + "\n  ".join(wrong))
+
+    def test_stack_of_names_bun_for_each_bun_run_filter_form(self):
+        wrong = self._wrong_stacks(FILTER_FORMS)
+        self.assertEqual(wrong, [], "CR-MDB-066 §S2.2: the guard misses a --filter run:\n  "
+                         + "\n  ".join(wrong))
+
+    def test_stack_of_names_bun_for_each_vitest_form(self):
+        wrong = self._wrong_stacks(VITEST_FORMS)
+        self.assertEqual(wrong, [], "CR-MDB-066 §S2.3: the guard misses a Vitest run:\n  "
+                         + "\n  ".join(wrong))
+
+    def test_each_new_bun_form_is_a_bun_runners_row_and_no_other_groups(self):
+        # §S2: the forms live in the guard's BUN_RUNNERS, read in the words the shell passes.
+        groups = {stack: _detector(name) for stack, name in (
+            ("python", "PYTHON_RUNNERS"), ("bun", "BUN_RUNNERS"), ("cargo", "CARGO_RUNNERS"),
+            ("make", "MAKE_RUNNERS"))}
+        wrong = []
+        for command, _stack in PACKAGE_MANAGER_FORMS + FILTER_FORMS + VITEST_FORMS:
+            words = _normal(command)
+            matched = sorted(s for s, group in groups.items() if any(p.match(words) for p in group))
+            if matched != ["bun"]:
+                wrong.append(f"{command!r} (read as {words!r}): matched by {matched}")
+        self.assertEqual(wrong, [], "CR-MDB-066 §S2: want exactly BUN_RUNNERS:\n  "
+                         + "\n  ".join(wrong))
+
+    def test_each_new_bun_form_is_caught_in_a_code_span_and_on_a_fenced_line(self):
+        forms = _single_line(PACKAGE_MANAGER_FORMS + FILTER_FORMS + VITEST_FORMS)
+        self.assertEqual(len(forms), len(PACKAGE_MANAGER_FORMS + FILTER_FORMS + VITEST_FORMS))
+        for form in forms:
+            with self.subTest(form=form):
+                self.assertEqual(runner_findings(f"Run `{form}` from the project root."),
+                                 [(1, form)])
+                self.assertEqual(runner_findings(f"Iterate:\n\n```bash\n{form}\n```\n"),
+                                 [(4, form)])
+
+    def test_each_bun_non_runner_gives_no_stack_and_no_finding(self):
+        # A regression pin, passing on arrival: it fails against a §S2 that over-reaches — a
+        # ``vitest`` row without a word end (``vitest.config.ts``, ``vitest-preview``), a script
+        # row reading a non-test script or ``testdata``, a ``--filter`` row with no ``run``, or a
+        # Vitest row after ``pnpm exec``, ``yarn`` or ``bun run``.
+        for command in BUN_NON_RUNNERS:
+            with self.subTest(command=command):
+                self.assertIsNone(stack_of(command), f"for {command!r}")
+                self.assertIsNone(runner_at(command), f"for {command!r}")
+                self.assertEqual(runner_findings(f"Run `{command}` now."), [])
+                self.assertEqual(runner_findings(f"```bash\n{command}\n```"), [])
+
+    def test_the_bun_forms_after_a_command_position_name_bun(self):
+        # §S2: "matched at a command position after §S1's wrappers".
+        wrong = []
+        for command, _stack in PACKAGE_MANAGER_FORMS + FILTER_FORMS + VITEST_FORMS:
+            for placed in (f"cd web && {command}", f"if {command}; then :; fi",
+                           f"env CI=1 timeout 60 time -p {command}", f"echo hi\n{command}"):
+                if stack_of(placed) != "bun":
+                    wrong.append(f"{placed!r}: {stack_of(placed)!r}")
+        self.assertEqual(wrong, [], "CR-MDB-066 §S2: a placed form is missed:\n  "
+                         + "\n  ".join(wrong))
+
+    def test_the_module_docstring_states_the_new_bun_forms_and_cites_section_s2(self):
+        # CR-MDB-066 §S7.2 (AC9): the ``BUN_RUNNERS`` bullet states §S2's forms.
+        doc = sys.modules[__name__].__doc__ or ""
+        bullet = re.search(r"^- ``BUN_RUNNERS``:(.*?)(?=^- |\n\n)", doc, re.M | re.S)
+        self.assertIsNotNone(bullet, "the module docstring has no BUN_RUNNERS bullet")
+        text = bullet.group(1) if bullet else ""
+        missing = [word for word in ("pnpm", "yarn", "tst", "run-script", "--filter", "vitest")
+                   if word not in text]
+        self.assertEqual(missing, [], "CR-MDB-066 §S7.2: the BUN_RUNNERS bullet does not name")
+        self.assertIn("CR-MDB-066 §S2", doc)
 
 
 class GuardedSetTest(unittest.TestCase):

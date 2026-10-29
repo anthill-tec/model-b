@@ -56,6 +56,12 @@ What the module pins, for all four runner hooks — ``block-direct-python-test``
 - **Source identity (CR-MDB-066 AC10):** the four hooks' copies of the shared parser and walk
   (``SHARED_DEFINITIONS``, and every other name all four define but the per-stack four) are one
   source, compared by ``ast.unparse``.
+- **The bun forms (CR-MDB-066 §S2):** the package managers' test script (``npm test``/``tst``/
+  ``t``, ``pnpm test``, ``yarn test``, ``run``/``run-script`` before ``test[:<name>]``), the
+  ``bun run --filter`` workspace filter and Vitest (bare, by path, after ``bunx``/``bun x``/
+  ``npx``) are blocked by the bun hook alone, in a project holding any one bun marker, and
+  allowed outside one; the guard's ``PACKAGE_MANAGER_FORMS``, ``FILTER_FORMS``,
+  ``VITEST_FORMS`` and ``BUN_NON_RUNNERS`` join the parity corpus.
 
 The block REASON (§S4) is pinned in ``tests/test_client_path_anchoring.py``, beside the reason
 checks it extends. Each class is a per-hook binding of a mixin, so one more runner hook is one
@@ -80,8 +86,10 @@ from tests._helpers import HOOK_SCRIPTS_DIR, build_tree, run_hook
 from tests.test_raw_runner_guard import (
     ARGUMENT_MENTIONS,
     ATTACHED_M_FORMS,
+    BUN_NON_RUNNERS,
     BUN_SCRIPT_FORMS,
     CLIENT_FORMS,
+    FILTER_FORMS,
     GRAMMAR_FORMS,
     GRAMMAR_NON_RUNNERS,
     HEREDOC_BODIES,
@@ -90,11 +98,13 @@ from tests.test_raw_runner_guard import (
     NON_TEST_SCRIPTS,
     OPTION_RUN_BUDGET,
     OPTION_RUNS,
+    PACKAGE_MANAGER_FORMS,
     POSITION_FORMS,
     QUOTED_LINES,
     RUNNER_FORMS,
     TEST_FILE_FORMS,
     UV_RUN_FORMS,
+    VITEST_FORMS,
     WRAPPED_FORMS,
     stack_of,
 )
@@ -434,8 +444,10 @@ class MvnHookExtrasTest(_RunnerHookCase):
 # ----------------------------------------------------------------- §S1/§S2 forms ----
 
 #: The guard's corpora of single-line runner forms, each entry labelled with its stack (§S1).
+#: MIGRATED at CR-MDB-066 (§S8.2): gains PACKAGE_MANAGER_FORMS, FILTER_FORMS and VITEST_FORMS,
+#: the bun forms of §S2.
 _SINGLE_LINE_CORPORA = (RUNNER_FORMS, ATTACHED_M_FORMS, UV_RUN_FORMS, TEST_FILE_FORMS,
-                        BUN_SCRIPT_FORMS)
+                        BUN_SCRIPT_FORMS, PACKAGE_MANAGER_FORMS, FILTER_FORMS, VITEST_FORMS)
 #: The guard's corpora of forms already placed at a later position or under a wrapper.
 #: MIGRATED at CR-MDB-066 (§S8.2): gains GRAMMAR_FORMS, the shell grammar's positions.
 _PLACED_CORPORA = (WRAPPED_FORMS, POSITION_FORMS, GRAMMAR_FORMS)
@@ -505,7 +517,8 @@ NEVER_BLOCKED = {
         "git commit -m 'bun test passes; npm test too'",
         "cat > notes.md <<EOF\nnpm test\nnpx playwright test\nEOF",
         "python3 ~/.crucible/clients/bun-crucible.py check --agent a",
-    ),
+    # MIGRATED at CR-MDB-066 (§S8.2): gains BUN_NON_RUNNERS, §S2's never-runners.
+    ) + BUN_NON_RUNNERS,
 }
 
 
@@ -550,6 +563,68 @@ class PythonHookRunnerFormsTest(_StackRunnerForms, _RunnerHookCase):
 class BunHookRunnerFormsTest(_StackRunnerForms, _RunnerHookCase):
     HOOK = "bun"
     EXTRA_FORMS = BUN_HOOK_FORMS
+
+
+#: CR-MDB-066 §S2 — every new bun form: the package managers' test script, the workspace
+#: filter and Vitest.
+NEW_BUN_FORMS = tuple(command for corpus in (PACKAGE_MANAGER_FORMS, FILTER_FORMS, VITEST_FORMS)
+                      for command, _stack in corpus)
+
+
+class BunHookPackageManagerFilterAndVitestFormsTest(_RunnerHookCase):
+    """CR-MDB-066 §S2 (AC3, the hooks' half) — the bun hook blocks each new form in a project
+    holding any ONE of the four bun markers, as written and re-placed by ``FORM_PLACEMENTS``;
+    it allows each outside a bun project; it allows every ``BUN_NON_RUNNERS`` entry; and the
+    python, cargo and mvn hooks allow every new form, even in a project of their own stack."""
+
+    HOOK = "bun"
+
+    def test_blocks_each_new_form_in_a_project_holding_each_bun_marker_alone(self):
+        self.assertEqual(len(NEW_BUN_FORMS), len(set(NEW_BUN_FORMS)))
+        self.assertGreaterEqual(len(NEW_BUN_FORMS), 30, "precondition: the §S2 forms")
+        for marker in self.spec["markers"]:
+            with self.subTest(marker=marker):
+                project = build_tree(self.tmp / f"only-{marker}", [marker], git="dir")
+                self.assertVerdicts("block", NEW_BUN_FORMS, project, f"(only {marker})")
+
+    def test_blocks_each_new_form_re_placed_in_a_project_holding_each_bun_marker_alone(self):
+        commands = [p.format(form=f) for f in NEW_BUN_FORMS for p in FORM_PLACEMENTS]
+        for marker in self.spec["markers"]:
+            with self.subTest(marker=marker):
+                project = build_tree(self.tmp / f"placed-{marker}", [marker], git="dir")
+                self.assertVerdicts("block", commands, project, f"(re-placed, only {marker})")
+
+    def test_allows_each_new_form_in_a_project_with_only_pyproject_toml(self):
+        # Passes on arrival (no bun marker, so the hook allows today); it fails against a
+        # §S2 that blocks outside a bun project.
+        project = build_tree(self.tmp / "python-only", ["pyproject.toml"], git="dir")
+        commands = list(NEW_BUN_FORMS) + [p.format(form=f) for f in NEW_BUN_FORMS
+                                          for p in FORM_PLACEMENTS]
+        self.assertVerdicts("allow", commands, project, "(no bun marker: only pyproject.toml)")
+
+    def test_allows_every_bun_non_runner_in_a_bun_project(self):
+        # Passes on arrival: a regression pin against a §S2 that over-reaches.
+        self.assertVerdicts("allow", BUN_NON_RUNNERS, self.project(), "(§S2: never a runner)")
+
+    def test_the_python_cargo_and_mvn_hooks_allow_every_new_form(self):
+        # Passes on arrival: only the bun hook blocks the §S2 forms. Each hook runs in a
+        # project holding its own marker AND package.json, so an allow is never just "no marker".
+        for stack in ("python", "cargo", "mvn"):
+            spec = RUNNER_HOOKS[stack]
+            with self.subTest(hook=spec["script"]):
+                project = build_tree(self.tmp / f"{stack}-and-bun",
+                                     [spec["markers"][0], "package.json"], git="dir")
+                wrong = {c: v for c, v in _verdicts(spec["script"], NEW_BUN_FORMS, project).items()
+                         if v != "allow"}
+                self.assertEqual(wrong, {}, f"{spec['script']}: a §S2 bun form is not allowed")
+
+    def test_the_hook_docstring_states_the_new_forms_and_cites_section_s2(self):
+        # CR-MDB-066 §S7.2 (AC9): the bun hook's form list.
+        source = (HOOK_SCRIPTS_DIR / self.spec["script"]).read_text(encoding="utf-8")
+        doc = ast.get_docstring(ast.parse(source)) or ""
+        missing = [word for word in ("pnpm", "yarn", "tst", "run-script", "--filter", "vitest",
+                                     "CR-MDB-066 §S2") if word not in doc]
+        self.assertEqual(missing, [], "CR-MDB-066 §S7.2: the bun hook's docstring does not name")
 
 
 # ----------------------------------------------------------------- §S3 markers ------
@@ -1163,11 +1238,14 @@ def _parity_corpus():
     ``MODULE_FORMS`` and ``PARITY_FORMS`` — the arduino (``make``) entries left out."""
     # MIGRATED at CR-MDB-066 (§S8.2): GRAMMAR_FORMS joins the labelled corpora and
     # GRAMMAR_NON_RUNNERS the plain ones.
+    # MIGRATED at CR-MDB-066 (§S8.2, §S2): PACKAGE_MANAGER_FORMS, FILTER_FORMS and VITEST_FORMS
+    # join the labelled corpora and BUN_NON_RUNNERS the plain ones.
     labelled = (RUNNER_FORMS + WRAPPED_FORMS + POSITION_FORMS + ATTACHED_M_FORMS + UV_RUN_FORMS
-                + TEST_FILE_FORMS + BUN_SCRIPT_FORMS + GRAMMAR_FORMS + MODULE_FORMS
-                + PARITY_FORMS)
+                + TEST_FILE_FORMS + BUN_SCRIPT_FORMS + GRAMMAR_FORMS + PACKAGE_MANAGER_FORMS
+                + FILTER_FORMS + VITEST_FORMS + MODULE_FORMS + PARITY_FORMS)
     plain = (CLIENT_FORMS + NON_RUNNER_MENTIONS + NARROWED_BUN_SCRIPTS + HEREDOC_BODIES
-             + QUOTED_LINES + NON_TEST_SCRIPTS + ARGUMENT_MENTIONS + GRAMMAR_NON_RUNNERS)
+             + QUOTED_LINES + NON_TEST_SCRIPTS + ARGUMENT_MENTIONS + GRAMMAR_NON_RUNNERS
+             + BUN_NON_RUNNERS)
     commands = [command for command, stack in labelled if stack != "make"] + list(plain)
     return tuple(dict.fromkeys(commands))
 
@@ -1195,7 +1273,10 @@ class RunnerHookGuardParityTest(unittest.TestCase):
         for command in ("python3 -m unittest", "bun test", "cargo test", "mvn test", "(mvn test)",
                         CLIENT_FORMS[0], NON_RUNNER_MENTIONS[0], NARROWED_BUN_SCRIPTS[0],
                         HEREDOC_BODIES[0], NON_TEST_SCRIPTS[0], ARGUMENT_MENTIONS[0],
-                        GRAMMAR_FORMS[0][0], GRAMMAR_NON_RUNNERS[0]):
+                        GRAMMAR_FORMS[0][0], GRAMMAR_NON_RUNNERS[0],
+                        # MIGRATED at CR-MDB-066 (§S8.2): the §S2 bun corpora too.
+                        PACKAGE_MANAGER_FORMS[0][0], FILTER_FORMS[0][0], VITEST_FORMS[0][0],
+                        BUN_NON_RUNNERS[0]):
             self.assertIn(command, self.corpus)
         self.assertEqual([c for c in self.corpus if "make junit" in c], [])
         self.assertEqual(len(self.corpus), len(set(self.corpus)))
