@@ -1,6 +1,6 @@
 # CR-MDB-091 — `init` scaffolds the project's lean-ctx config
 
-**Status:** PENDING — spec drafted 2026-10-29 from the gap analysis and the user's rulings (PRD D5, 2026-10-29); spec pre-review to follow.
+**Status:** PENDING — spec drafted 2026-10-29 from the gap analysis and the user's rulings (PRD D5, 2026-10-29); the spec pre-review folded in; awaiting approval.
 **Type:** feature (`modelb_axi`: a new project file under marker ownership; `init`, `modelb-axi agents`;
 the scaffolded `AGENTS.md`; the contract and the install guide)
 **Priority:** P2.
@@ -13,7 +13,7 @@ DN-multi-harness-deploy-model §D17 (per-project rendering), §D24 and §D27 (`m
 re-renders a project's generated files for existing projects, under the same ownership rules);
 CR-MDB-025 §S6 and CR-MDB-068 §S2 (marker ownership, `agents.first_line_ownership`); research note
 `lean-ctx-for-model-b` §S4.5, §S5; `contracts/lean-ctx.md` § "Project-scoped levers"; gap analysis
-2026-10-29 (`/tmp/mdb091/gap-analysis.md`).
+2026-10-29 (`/tmp/mdb091/gap-analysis.md`); spec pre-review 2026-10-29 (`CR-MDB-091-SPEC-REVIEW`).
 
 ## Context
 
@@ -43,6 +43,9 @@ CR-MDB-025 §S6 and CR-MDB-068 §S2 (marker ownership, `agents.first_line_owners
   keys are merged when the raw text merely contains their name (`override_if_key_present!`,
   `merge.rs`): `response_shaping`, `compression_level`, `compression_aggressiveness`, `terse_agent`,
   `behavior_nudges`. A comment naming one resets that setting to its default for the project.
+- **Any project file resets one more setting.** `Config::merge_local` assigns `autonomy.silent_preload`
+  from the project file unconditionally, so a file that omits it (as this one does) sets it to its default
+  `true` over a user's global `false`. The file writes two keys only, but its effect reaches a third.
 - **lean-ctx never writes the file.** `lean-ctx trust` pins the file's content hash
   (`rust/src/core/workspace_trust.rs`), so any later edit, a re-render included, un-trusts it.
 - **Model B scaffolds none today,** so every project runs at the 200-fact cap with automatic
@@ -50,10 +53,10 @@ CR-MDB-025 §S6 and CR-MDB-068 §S2 (marker ownership, `agents.first_line_owners
 - **What the seed proposed and the analysis cut** (PRD D5, ruled 2026-10-29):
   - per-stack index excludes: `.gitignore` (honoured with or without `.git`) and lean-ctx's built-in
     skips already cover them; `[index] exclude` reaches neither `ctx_search` nor a daemon-built index
-    (gap analysis DRIFT-4, Q1);
+    (gap analysis DRIFT-4);
   - `preserve_compact_formats = ["toon"]`: the default, merged additively, and CR-MDB-090 runs AXI
-    commands raw (DRIFT-5, Q2);
-  - a `lean-ctx index build` Setup task: the index builds itself on the first read (DRIFT-6, Q3).
+    commands raw (DRIFT-5);
+  - a `lean-ctx index build` Setup task: the index builds itself on the first read (DRIFT-6).
 
 ## Scope
 
@@ -74,7 +77,8 @@ A new module, `modelb_axi/lean_ctx_config.py`, shaped like `modelb_axi/permissio
   auto_consolidate = false
   ```
 
-  No other key, and no other comment (PRD D5, ruled 2026-10-29). The render
+  No other key, and no other comment (PRD D5, ruled 2026-10-29). The body ends with exactly one `\n`,
+  which the marker's hash covers. The render
   takes no argument: it does not depend on the stacks, the harnesses, the lean-ctx verdict or `HOME`.
 - `ownership_state(text) -> str`: `agents.first_line_ownership(text, MARKER_PREFIX)`, looked up on
   `agents` at call time.
@@ -83,7 +87,10 @@ A new module, `modelb_axi/lean_ctx_config.py`, shaped like `modelb_axi/permissio
   `classify=ownership_state`; returns (and fills, when given) `report` with `written` / `unchanged` /
   `skipped` / `unmanaged`.
 
-The module docstring cites PRD D5 and this section. It imports no process-running module: Model B
+The module docstring cites PRD D5 and this section, and names a DN by its file
+(`DN-multi-harness-deploy-model §D17`), never a bare `DN §`, which `tests.test_installer_correctness` bites.
+The module uses no `.write_text(`: it writes only through `agents.place_owned`. It imports no
+process-running module: Model B
 never runs `lean-ctx trust`, `config set`, `index build` or `doctor --fix` (research note §S5.3).
 
 ### §S2 — `init` writes it
@@ -92,13 +99,14 @@ never runs `lean-ctx trust`, `config set`, `index build` or `doctor --fix` (rese
 - `_emit_plan` places it with `lean_ctx_config.place_project_config`, after the permission-policy
   block, outside the `"pi" in harnesses` gate. Its `skipped` and `unmanaged` paths join `ownership`, so
   they get `_ownership_warnings`' wording; its `written` paths join `emitted`.
-- It is written whatever the recorded lean-ctx verdict: present, absent, unknown or unrecorded **(pending
-  ruling Q4; recommended A)**. Without lean-ctx the file is inert.
+- It is written whatever the recorded lean-ctx verdict: present, absent, unknown or unrecorded (PRD D5,
+  ruled 2026-10-29). Without lean-ctx the file is inert.
 - The scaffold commit carries it, and the scaffolded `.gitignore` does not ignore it.
 
 ### §S3 — `modelb-axi agents` re-renders it
 
-- `scaffold.run_agents` places it after the permission policy, inside the same `OSError` handler, under
+- `scaffold.run_agents` places it after the permission policy and outside its `"pi" in harnesses` gate,
+  whatever the recorded lean-ctx verdict, inside the same `OSError` handler, under
   the same ownership rules: written when missing; rewritten when its marker is intact; skipped when
   hand-modified unless `--force-managed`; never written without a marker, even with `--force-managed`.
   It is reported in the envelope's `written`, `unchanged`, `skipped` or `unmanaged` list beside the agent
@@ -107,8 +115,6 @@ never runs `lean-ctx trust`, `config set`, `index build` or `doctor --fix` (rese
 - A validation refusal (exit 2) writes no config.
 - The `agents` subparser's help and description, and the verb's stderr progress line, name the "lean-ctx
   project config" and still name the "permission policy".
-- A later migration verb (CR-MDB-082) places it through the same `place_project_config`, as §D27 rules
-  for the policy.
 
 ### §S4 — The note in the scaffolded `AGENTS.md` (PRD D5, ruled 2026-10-29)
 
@@ -122,23 +128,30 @@ sub-project's, whatever the verdict. The bullet says, in one unit:
 - a hand-edited file is left alone by `modelb-axi agents` unless `--force-managed`, which replaces it
   and drops the added keys.
 
-The `## Setup` section is unchanged: no `lean-ctx index build` task, and no trust task.
+The bullet does not contain the substring `lean-ctx knowledge` (it says "the knowledge store", never
+"the lean-ctx knowledge store"): `pointer_findings` flags any unit naming it without "never", and that
+check stays green unmigrated.
 
-*(Option B instead: two unchecked `## Setup` tasks, `lean-ctx index build` and the trust note, before the
-`REPO_OWNER` check, and no lean-ctx-section bullet.)*
+The `## Setup` section is unchanged: no `lean-ctx index build` task, and no trust task.
 
 ### §S5 — The contract
 
 `contracts/lean-ctx.md` § "Project-scoped levers" keeps every sentence its pins read, and gains:
 
 - where the levers are set: `modelb-axi init` writes them to the project root's `.lean-ctx.toml` under
-  a first-line `#` ownership marker, and `modelb-axi agents` re-renders it for an existing project;
+  a first-line `#` ownership marker, and `modelb-axi agents` re-renders it for an existing project; the
+  file raises lean-ctx's default 200-fact cap to 500;
 - the substring hazard: lean-ctx merges `response_shaping`, `compression_level`,
   `compression_aggressiveness`, `terse_agent` and `behavior_nudges` when the file's text contains their
   name, so no comment in the file names one (`Config::merge_local`, `rust/src/core/config/merge.rs`);
 - a re-render changes the content hash `lean-ctx trust` pins, so a trusted file is untrusted again.
   An intact file carries no sensitive key, so nothing it sets is lost (`is_trusted_for`,
-  `rust/src/core/workspace_trust.rs`).
+  `rust/src/core/workspace_trust.rs`);
+- any project file sets `autonomy.silent_preload` (default `true`) over the global value, even one that
+  does not name it (`Config::merge_local`, `rust/src/core/config/merge.rs`).
+
+The pinned pitfall "The cap" ("The 200-fact cap is shared with automatic captures") stays as it is: 200 is
+lean-ctx's default, and the first new bullet links it to the project file's 500.
 
 The rest of the contract is CR-MDB-092's.
 
@@ -163,8 +176,7 @@ The sdist does not ship it (`[tool.hatch.build.targets.sdist] only-include`).
 
 - `AGENTS.md`'s two module counts move with the new test module (113 → 114 on today's tree; RED
   re-counts).
-- The orchestrator records the rulings this spec's open points receive under PRD D5's 2026-10-29
-  amendment, in the spec's docs commit, before RED.
+- The rulings are recorded under PRD D5's 2026-10-29 amendment (`f1d7258`).
 
 ## Acceptance criteria
 
@@ -180,21 +192,26 @@ real `~/.config/lean-ctx`, `~/.pi` or `~/.crucible`, and none runs `lean-ctx`.
         `{"memory": {"knowledge": {"max_facts": 500}}, "autonomy": {"auto_consolidate": False}}`.
       - Its first line is `MARKER_PREFIX` plus `agents.sha256_text` of everything after the first
         newline, and no other line starts with `#`.
+      - The text ends with exactly one `\n` (it ends `= false\n`, not `\n\n`).
       - `ownership_state(render_config())` is `intact`; with one body character changed it is
         `hand_modified`; with the marker line removed it is `unmanaged`.
       - Two calls return the same text, and a call under a changed `HOME` and `PATH`
         (`mock.patch.dict`) returns the same text.
 - [ ] **§S1, the substring hazard.** `override_hazards(text)` returns the names, among `response_shaping`,
       `compression_level`, `compression_aggressiveness`, `terse_agent` and `behavior_nudges`, that
-      `text` contains anywhere. `override_hazards(render_config())` is `[]`. The detector is proved
+      `text` contains anywhere. `override_hazards` is a helper of `tests/test_lean_ctx_project_config.py`;
+      the production module defines none. It is case-sensitive, as lean-ctx's `local_toml.contains` is,
+      and returns the names in the order listed. `override_hazards(render_config())` is `[]` (the marker
+      line included). The detector is proved
       both ways on synthetic text:
       - it bites each name in a comment line (`# compression_level stays global`) and as a table
         header (`[response_shaping]`);
-      - it spares `compression_enabled`, `[conversation]`, `compression` alone and
-        `# lean-ctx project config`.
+      - it spares `compression_enabled`, `[conversation]`, `compression` alone,
+        `# lean-ctx project config` and `Compression_Level` (case differs).
 - [ ] **§S1, no lean-ctx command.** An `ast` walk of `modelb_axi/lean_ctx_config.py` finds no import of
       `subprocess`, `os` or `shutil`. The check is proved both ways: it bites a synthetic module that
-      imports `subprocess`, and one that does `from os import system`.
+      imports `subprocess`, and one that does `from os import system`; it spares one that does only
+      `from pathlib import Path` and `from modelb_axi import agents`.
 - [ ] **§S2, `init`.** For each of `tests.test_project_setup_section.SHAPES` (solo and multi, standalone
       and monorepo):
       - exactly one `.lean-ctx.toml` exists under the target, at the root, equal to `render_config()`;
@@ -220,7 +237,9 @@ real `~/.config/lean-ctx`, `~/.pi` or `~/.crucible`, and none runs `lean-ctx`.
         only;
       - an unmarked config: byte-identical with and without `--force-managed`, `unmanaged` only, with
         the warning an unmanaged agent file gets;
-      - `--stacks python,rust`: an intact current config is byte-identical and `unchanged`.
+      - `--stacks python,rust`: an intact current config is byte-identical and `unchanged`;
+      - with lean-ctx recorded `absent` in the sandbox's `install.toml`, the verb writes the same
+        `render_config()` and lists `.lean-ctx.toml` in `written`.
 - [ ] **§S3, failure paths.**
       - With `.lean-ctx.toml` a directory, the verb exits 3 with `ok: false`. One warning names the
         error on that path, and `written` lists the agent files and the policy.
@@ -229,16 +248,20 @@ real `~/.config/lean-ctx`, `~/.pi` or `~/.crucible`, and none runs `lean-ctx`.
       starting `modelb-axi: agents`, each contain "lean-ctx project config" and "permission policy"
       (whitespace-normalised, case-insensitive). The checker is proved both ways: it bites text that
       names only one of the two phrases.
-- [ ] **§S4, the note** (PRD D5, ruled 2026-10-29) `project_config_note_findings(section)`
+- [ ] **§S4, the note** (PRD D5, ruled 2026-10-29). `project_config_note_findings(section)`
       is empty for the lean-ctx section of a scaffolded root `AGENTS.md` and of `a/AGENTS.md` (monorepo
       `a`), and for `scaffold._render_lean_ctx_section("kb-render")`. It needs one bullet unit that
       carries all four of these:
       - `.lean-ctx.toml` and `modelb-axi agents`;
-      - `lean-ctx trust` with a negation (`no`, `not`, `never`) within the unit;
-      - Pi's `/trust` named as a different decision;
+      - a sentence of the unit says `lean-ctx trust` is not needed for the file: a negation (`no`,
+        `not`, `never`) within 40 characters before `lean-ctx trust`, in the same sentence (for example
+        "needs no `lean-ctx trust`");
+      - a separate clause names Pi's `/trust` as a different decision;
       - `--force-managed`.
 
-      Each pin is proved by a cut that removes it alone. Splitting the four across two bullets bites.
+      Each pin is proved by a cut that removes it alone. Splitting the four across two bullets bites, and
+      so does a unit whose only negation sits in the `/trust` clause ("run `lean-ctx trust`, not Pi's
+      `/trust`"). The new bullet does not contain `lean-ctx knowledge`.
       These stay green unmigrated: `pointer_findings`, `_lean_ctx_sections` (one section),
       `setup_task_findings`, and the last-task-is-`REPO_OWNER` check in
       `tests/test_project_setup_section.py`. No unit of the `## Setup` section names
@@ -248,16 +271,19 @@ real `~/.config/lean-ctx`, `~/.pi` or `~/.crucible`, and none runs `lean-ctx`.
         `CONTRACT_LEVERS_ROOT` and `CONTRACT_LARGER_CATEGORY` checks, unmigrated;
       - new pins, one unit each: `.lean-ctx.toml` with `modelb-axi init`, a `#` marker and
         `modelb-axi agents`; the five substring-merged names with `Config::merge_local` and
-        `rust/src/core/config/merge.rs`; a re-render, the content hash and `lean-ctx trust`.
+        `rust/src/core/config/merge.rs`; a re-render, the content hash and `lean-ctx trust`;
+        `autonomy.silent_preload` with `true` and `Config::merge_local`.
 
       Each pin is proved both ways on synthetic text, one cut per pin.
 - [ ] **§S6, the guide.** The `project-trust` region carries one paragraph naming `.lean-ctx.toml`,
-      `modelb-axi agents`, `--force-managed`, and `lean-ctx trust` with a negation, and distinguishing
-      Pi's `/trust`. The gate is proved both ways, one cut per item. These stay green: every existing
+      `modelb-axi agents` and `--force-managed`, in which a sentence says `lean-ctx trust` is not needed
+      for the file (a negation, `no`, `not` or `never`, within 40 characters before `lean-ctx trust`, in
+      the same sentence) and a separate clause names Pi's `/trust` as a different decision. The gate is
+      proved both ways, one cut per item, plus a cut whose only negation sits in the `/trust` clause. These stay green: every existing
       `tests/test_install_guide.py` gate on the region, including the policy re-render paragraph
       (`CONFORMING_POLICY_RERENDER`); `generator/build.py --check`; `RegenerationCleanTest`
       (`tests/test_harness_neutral_skills.py`); and `PiPackageReadmeTest` (`tests/test_pi_package.py`).
-- [ ] **§S7, Model B's own config** (PRD D5, ruled 2026-10-29) `git ls-files -- .lean-ctx.toml` at the
+- [ ] **§S7, Model B's own config** (PRD D5, ruled 2026-10-29). `git ls-files -- .lean-ctx.toml` at the
       repository root prints `.lean-ctx.toml`. Its text equals `render_config()`, and
       `ownership_state` is `intact`.
 - [ ] **Migrations (RED).** These pins move with the change, each marked `# MIGRATED at CR-MDB-091 (§S…)`:
@@ -276,7 +302,9 @@ real `~/.config/lean-ctx`, `~/.pi` or `~/.crucible`, and none runs `lean-ctx`.
 - [ ] **Live check, before the merge.** In a Pi session in Model B's tree on the branch (after §S7), or
       in a sandbox project scaffolded on the branch, the orchestrator runs `ctx_knowledge` with
       `action=policy`. It reports `memory.knowledge.max_facts=500`. The observation goes into the merge
-      sign-off; no test pins lean-ctx's output.
+      sign-off; no test pins lean-ctx's output. `action=policy` shows only the knowledge policy, so the
+      orchestrator may also read the merged `autonomy.auto_consolidate` from lean-ctx in that project;
+      otherwise the second lever rests on the source reading in Context.
 - [ ] **Runs.**
       - The suite is green through the client, with a real `HOME` and with an empty one; the empty `HOME`
         stays empty.
@@ -286,13 +314,14 @@ real `~/.config/lean-ctx`, `~/.pi` or `~/.crucible`, and none runs `lean-ctx`.
 
 ## Non-goals
 
-- **Per-stack index excludes** (`[index] exclude`, `extra_ignore_patterns`) (PRD D5, ruled 2026-10-29) `.gitignore`, which lean-ctx honours in every walker with or without `.git`, and
+- **Per-stack index excludes** (`[index] exclude`, `extra_ignore_patterns`) (PRD D5, ruled 2026-10-29).
+  `.gitignore`, which lean-ctx honours in every walker with or without `.git`, and
   lean-ctx's built-in skips already do this work. `[index] exclude` reaches only the index builders, and
-  not one owned by the daemon. Stack build directories in the scaffolded `.gitignore` (option B) belong
+  not one owned by the daemon. Stack build directories in the scaffolded `.gitignore` belong
   with `migrate` (CR-MDB-055), which can reach existing projects.
-- **`preserve_compact_formats`** (PRD D5, ruled 2026-10-29) It is the default and is merged
+- **`preserve_compact_formats`** (PRD D5, ruled 2026-10-29). It is the default and is merged
   additively. CR-MDB-090 routes AXI output raw.
-- **`lean-ctx index build` in the Setup section** (PRD D5, ruled 2026-10-29) The index builds itself on the
+- **`lean-ctx index build` in the Setup section** (PRD D5, ruled 2026-10-29). The index builds itself on the
   first read (`ensure_all_background`, `rust/src/core/index_orchestrator.rs`).
 - **Any security-sensitive key:** `shell_allowlist_extra` for the Crucible clients, `write_allow_paths`
   for report dirs, and the rest of `strip_sensitive_overrides`. Each needs `lean-ctx trust`, which is the
@@ -301,7 +330,7 @@ real `~/.config/lean-ctx`, `~/.pi` or `~/.crucible`, and none runs `lean-ctx`.
   match that `cd … &&` defeats, it still truncates above 4000 tokens, and `raw=true` already covers the
   case.
 - **`autonomy.cognition_loop_enabled = false`** and every other unruled lever (`memory.lifecycle.*`,
-  `autonomy.consolidate_every_calls`) (PRD D5, ruled 2026-10-29) Each needs its own ruling.
+  `autonomy.consolidate_every_calls`) (PRD D5, ruled 2026-10-29). Each needs its own ruling.
 - **`recall_facts_limit` and `[memory.compaction]`.** Both are global-only.
 - **A sub-project `.lean-ctx.toml`.** Its processes resolve the repository's git top level.
 - **`.lean-ctx/` in the scaffolded `.gitignore`** (some lean-ctx features write project data there).
@@ -310,25 +339,37 @@ real `~/.config/lean-ctx`, `~/.pi` or `~/.crucible`, and none runs `lean-ctx`.
   The same run re-renders the config, so the skill is unchanged.
 - **Running `lean-ctx` from Model B:** `trust`, `config set`, `index build`, `doctor --fix`. Model B only
   tells the user.
+- **The migration verb's artifact list (CR-MDB-082), handed off.** CR-MDB-082's spec lists the agent
+  definitions and the permission policy, not this config. When CR-MDB-082 is next revised it adds the
+  config, placed through the same `place_project_config`, as §D27 rules for the policy; this CR edits
+  neither CR-MDB-082's spec nor its code.
 - **The `LEAN_CTX_KNOWLEDGE_MAX_FACTS` environment variable,** which beats the file. It is the user's.
 
 ## Cycle plan
 
-No commit sits red: each cycle commits after its GREEN, with its migrations. The full suite is not run
-between cycles. Each cycle runs only the modules it names, through the client.
+No commit sits red: each cycle commits after its GREEN, with its migrations, once `ruff check` exits 0.
+The full suite is not run between cycles. Each cycle runs only the modules it names, through the client.
+Every cycle that edits `modelb_axi/` runs the package-wide gates `tests.test_installer_correctness`,
+`tests.test_claude_era_retirement` and `tests.test_installer_stack_selection`.
 
 1. **The render and `init`** (§S1, §S2, §S8's module count). Red-green. Runs
    `tests.test_lean_ctx_project_config`, `tests.test_project_registry_schema`,
-   `tests.test_project_setup_section`, `tests.test_scaffold`, `tests.test_suite_hygiene` and
-   `tests.test_suite_hermeticity`.
+   `tests.test_project_setup_section`, `tests.test_scaffold`, `tests.test_suite_hygiene`,
+   `tests.test_suite_hermeticity`, the package-wide gates `tests.test_installer_correctness`,
+   `tests.test_claude_era_retirement` and `tests.test_installer_stack_selection`, and the modules that
+   read `init`'s emitted files: `tests.test_crucible_project_config`, `tests.test_scaffold_changelog`,
+   `tests.test_init_release_workflow`, `tests.test_init_sandesh_address_and_envrc` and
+   `tests.test_stack_skills`.
 2. **`modelb-axi agents`** (§S3). Red-green. Runs `tests.test_lean_ctx_project_config`,
    `tests.test_agents_verb_permission_policy`, `tests.test_pi_agent_definitions`,
-   `tests.test_stack_skills`, `tests.test_release_workflow_verb`, `tests.test_claude_era_retirement` and
+   `tests.test_stack_skills`, `tests.test_release_workflow_verb`, `tests.test_claude_era_retirement`,
+   `tests.test_installer_correctness`, `tests.test_installer_stack_selection` and
    `tests.test_project_tools_setup`.
 3. **The note, the contract, the guide and Model B's own config** (§S4, §S5, §S6, §S7). Red-green. Runs
    `tests.test_lean_ctx_project_config`, `tests.test_project_tools_setup`,
    `tests.test_project_setup_section`, `tests.test_project_registry_schema`,
-   `tests.test_execution_knowledge_rules`, `tests.test_install_guide`, `tests.test_pi_package` and
-   `tests.test_harness_neutral_skills`.
+   `tests.test_execution_knowledge_rules`, `tests.test_install_guide`, `tests.test_pi_package`,
+   `tests.test_harness_neutral_skills`, `tests.test_installer_correctness`,
+   `tests.test_claude_era_retirement` and `tests.test_installer_stack_selection`.
 4. **Verify.** The full suite without coverage, as VERIFY's branch check (DN §D26), then the
    orchestrator's pre-merge gate and the live check.
