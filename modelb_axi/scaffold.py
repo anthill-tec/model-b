@@ -950,6 +950,16 @@ def _render_lean_ctx_section(category: str) -> str:
         "truncates a run, read the envelope whole from the full-output file "
         "its notice names. lean-ctx's context ledger is machine-wide: ignore "
         "its evict hints, and never evict or reset it.\n"
+        # CR-MDB-092 §S7.2: the reach tools, the profile that serves them, and
+        # a sub-agent's tools coming only from its definition's `tools:`.
+        "- **Reach tools** for gap analysis, the spec pre-review and close-out: "
+        "`ctx_graph` (`action=impact`; `action=diff`, `since=<base>`), "
+        "`ctx_callgraph` (`action=callers`), `ctx_explore` and `ctx_compose`. "
+        "lean-ctx serves `ctx_graph` and `ctx_explore` only under its `standard` "
+        "or `power` tool profile (or a `tools_enabled` list naming them). A "
+        "sub-agent has only the tools its definition's `tools:` lists; a dispatch "
+        "type with none (`general-purpose`) gets Pi's built-ins and no `ctx_*` "
+        "tool.\n"
         "- Keep this project's execution knowledge in lean-ctx's knowledge "
         f"store under the category `{category}` (`KNOWLEDGE_CATEGORY` in `.env`), "
         "through the session's `ctx_knowledge` tool. Never use the "
