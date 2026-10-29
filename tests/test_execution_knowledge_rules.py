@@ -43,11 +43,22 @@ key is unconditional and the store is reconciled automatically.
   Step 2A item 4's ack names the overtaken facts raised to Mainline; Step 1B skips the
   reconciliation. Shutdown now reads ``KNOWLEDGE_CATEGORY``.
 - §S6 — § "Close-out" gains an after-``cr-close`` bullet in "The rest of the close-out".
+- §S7 — MIGRATED at CR-MDB-088 (§S7): ``contracts/lean-ctx.md``'s section is titled "Knowledge
+  store", with no CR reference. It records five verbs (export joins them), each with its
+  ``ctx_knowledge`` form: list is ``recall`` with ``category``; restore is ``category=facts`` and
+  ``query=<category>``, repeated until it restores nothing; restore by key is
+  ``query="<category> <key>"``; export is the fallback for an incomplete listing. ``init`` writes the
+  key and the pointer whatever the verdict, and "Absent or unknown, neither is written" is gone.
+  The five pitfalls stay; each new pitfall is one unit (``NEW_PITFALLS``), citing lean-ctx 3.11.4's
+  source. The project-scoped levers (no trust needed) carry CR-MDB-091's values (PRD D5,
+  2026-10-29: ``memory.knowledge.max_facts`` 500, ``autonomy.auto_consolidate = false``), with
+  what that does not stop, the project root they apply through (normally the git top level), and
+  the user's own raise of the global ``recall_facts_limit``.
 
 How a rule is read: phrase-level, inside ONE unit — a list item together with its nested items,
 or a paragraph. An enumeration may also be read as its lead-in paragraph (ending in ``:``)
-together with the list attached to it (``lead_in=True``): §S6's bootstrap step and §S7's verbs and
-setup path are enumerations. Units are normalised (backticks and ``*`` dropped, whitespace
+together with the list attached to it (``lead_in=True``): §S6's bootstrap step and §S7's verbs,
+setup path and levers are enumerations. Units are normalised (backticks and ``*`` dropped, whitespace
 collapsed, lower-cased). Every detector is proven on synthetic text in ``RuleDetectorTest``; no
 test pins a line number.
 
@@ -322,15 +333,21 @@ AFTER_CR_CLOSE = (
 #: §S6 — the lead-in of the list the bullet joins.
 REST_OF_CLOSE_OUT = "The rest of the close-out:"
 
-#: §S7 — the knowledge verbs.
-CONTRACT_VERBS = (r"\bremember\b", r"\blist\w*\b.{0,30}\bcategor", r"\brestore\b", r"\bremove\b")
-#: §S7 — the setup path: the installer's verdict, then init's key and pointer.
+#: §S7 — the knowledge verbs. MIGRATED at CR-MDB-088 (§S7): five verbs — export (the fallback
+#: for an incomplete listing) joins remember, list a category, restore and remove.
+CONTRACT_VERBS = (r"\bremember\b", r"\blist\w*\b.{0,30}\bcategor", r"\brestore\b", r"\bremove\b",
+                  r"\bexport\b")
+#: §S7 — the setup path: the installer's verdict, then init's key and pointer. MIGRATED at
+#: CR-MDB-088 (§S7): ``init`` writes them whatever the verdict.
 CONTRACT_SETUP = (
     r"\binstaller\b.*\binit\b",
     r"\bverdicts?\b",
     r"knowledge_category",
     r"\bpointer\b|\bagents\.md\b",
+    r"\bwhatever the verdict\b",
 )
+#: CR-MDB-088 §S7 — the setup sentence the rewrite removes (a finding wherever it is still found).
+CONTRACT_SETUP_RETIRED = r"\babsent or unknown, neither is written\b"
 #: §S7 — the five pitfalls, each in one unit.
 PITFALLS = {
     "a query recall is not a full listing": (
@@ -347,6 +364,122 @@ PITFALLS = {
 #: \u00a7S7 \u2014 a monorepo's sub-projects derive the root's category when they share its token.
 CONTRACT_SUB_PROJECT_CATEGORY = (
     r"\bsub-projects?\b", r"\bsame category\b", r"\broot\b", r"\btoken\b")
+
+# ------------------------------- CR-MDB-088 §S7 — the knowledge-store section ----
+
+#: §S7 — the section's title, retitled without the CR reference.
+KNOWLEDGE_STORE_HEADING = "Knowledge store"
+#: A CR or a § reference in a heading ("(CR-MDB-045 §S7)").
+HEADING_CR_REFERENCE_RE = re.compile(r"\bCR-[A-Z]+-\d+|§S\d")
+#: §S7 "The verbs" — each verb's ``ctx_knowledge`` form, each in its own item.
+CONTRACT_VERB_FORMS = {
+    "list a category is recall with category": (
+        r"\blist a category\b", r"\brecall\b.{0,30}\bcategory\b"),
+    "restore is category=facts and query=<category>, repeated until it restores nothing": (
+        r"\brestore\b", r"\bcategory=facts\b", r"query=<category>",
+        r"\brepeated until it restores nothing\b"),
+    "restore by key is category=facts and query=\"<category> <key>\"": (
+        r"\brestore by key\b", r"\bcategory=facts\b", r'query=["“]<category> <key>["”]'),
+    "export is the fallback for an incomplete listing": (
+        r"\bexport\b", r"\bfallback\b.{0,30}\bincomplete listing\b"),
+}
+#: §S7 "The new pitfalls" — each one unit (a list item with its nested items), in §S7's words.
+NEW_PITFALLS = {
+    "the listing limit": (
+        r"\blisting shows at most\b.{0,10}\bmemory\.knowledge\.recall_facts_limit\b",
+        r"\(10\)",
+        r"\bglobal-only\b",
+        r"\bnot settable\b.{0,30}\.lean-ctx\.toml\b",
+        r"showing <n>/<total>",
+        r"\bonly the listed facts are retrieved\b"),
+    "decay on every write": (
+        r"\bretrieved or confirmed within the last day does not decay\b",
+        r"\bevery other fact decays on every lifecycle run\b",
+        r"\bcompounding\b",
+        r"\bevery remember and remove runs the lifecycle\b",
+        r"\ba restore runs none\b"),
+    "restore: the store argument, cross-project reach, the 50-item cap, kept confidence": (
+        r"\bits category argument is the store\b",
+        r"\bunscoped, it restores every store\b",
+        r"\bother projects' archived facts from the shared legacy facts archive\b",
+        r"\bat most 50 items, scoped or not\b",
+        r"\brepeated until it restores nothing\b",
+        r"\bkeeps each fact's archived confidence\b",
+        r"\bnext write re-archives a fact below 0\.3\b"),
+    "the restore's scope is a substring": (
+        r"\bquery is a case-insensitive substring match\b",
+        r"\bcategory, key and value\b",
+        r"\brestore_facts\b",
+        r"\barchive root shared by every unprotected project\b",
+        r"\banother project's facts under the same category\b",
+        r"\ba category whose name contains it\b",
+        r"\bany fact whose key or value mentions it\b",
+        r"\bremoves such a fact at reconciliation and reports it\b"),
+    "removed facts come back from the archive": (
+        r"\bremove deletes only the live fact\b",
+        r"\bremove_fact\b",
+        r"\bthe archive keeps its copy\b",
+        r"\bnext restore brings back a fact removed at reconciliation\b",
+        r"\buntil its archive file is pruned\b",
+        r"\bremoves it again and reports it\b"),
+    "the archive keeps 16 shared files": (
+        r"\bkeeps 16 files\b",
+        r"\bdefault_max_archive_files\b",
+        r"\bshared by every unprotected project\b",
+        r"\beach archiving lifecycle run adds one\b",
+        r"\bother projects' activity can prune this project's archived facts\b",
+        r"\ba restore is best-effort\b",
+        r"\bthe one-listing bound is the prevention\b"),
+    "re-confirmation, and feedback does not change confidence": (
+        r"\bsame-key rewrite re-confirms\b",
+        r"\bconfidence goes to the midpoint\b",
+        r"\bfeedback does not change confidence\b"),
+    "export writes a file and retrieves nothing": (
+        r"\bexport\b",
+        r"\bwrites a json file of the whole store\b",
+        r"\bretrieves nothing\b"),
+    "the cap is shared with automatic captures, auto_capture global-only": (
+        r"\b200-fact cap is shared with automatic captures\b",
+        r"\bauto_capture is global-only\b"),
+    "rehydration is a listing's write": (
+        r"\bcategory listing that finds no current fact rehydrates at most 3 archived facts\b",
+        r"≥ ?0\.6",
+        r"\bthrough remember\b",
+        r"\brehydrate_from_archives\b",
+        r"\ba listing can write\b",
+        r"\btrack that only lists makes no write of its own, but its listing may\b"),
+}
+#: §S7 — the new pitfalls cite lean-ctx 3.11.4's source.
+CONTRACT_SOURCE_VERSION = (r"\blean-ctx 3\.11\.4\b", r"\bsource\b")
+#: §S7 "The project-scoped levers" (an enumeration, read with its lead-in): no trust needed, and
+#: the values CR-MDB-091 sets (PRD D5, 2026-10-29).
+CONTRACT_LEVERS = (
+    r"\bproject-scoped levers\b",
+    r"\bno trust needed\b",
+    r"\bcr-mdb-091\b",
+    r"\bprd d5\b",
+    r"\bmemory\.knowledge\.max_facts\b.{0,20}\b500\b",
+    r"\bautonomy\.auto_consolidate\s*=\s*false\b",
+)
+#: §S7 — what ``auto_consolidate = false`` does not stop.
+CONTRACT_NOT_STOPPED = (
+    r"\bauto_consolidate\s*=\s*false\b.{0,20}\bdoes not stop\b",
+    r"\bconsolidation on mcp shutdown\b",
+    r"\bcompaction\b",
+    r"\bautomatic captures\b",
+)
+#: §S7 — the levers apply through the bridge process's resolved project root.
+CONTRACT_LEVERS_ROOT = (
+    r"\blevers apply through\b.{0,30}\bbridge process's resolved project root\b",
+    r"\bnormally the git top level\b",
+    r"\bmonorepo's root\b",
+)
+#: §S7 — a larger category is the user's own raise of the global listing limit.
+CONTRACT_LARGER_CATEGORY = (
+    r"\buser who wants a larger category\b",
+    r"\braises the global recall_facts_limit\b",
+    r"\bthemselves\b",
+)
 
 #: A lean-ctx TOOL name: a ``ctx_*`` tool, the ``lean_ctx`` tool, an MCP-qualified name, or a
 #: ``lean-ctx <verb>`` CLI form. The product name and "the project's knowledge store" are not tools.
@@ -501,6 +634,27 @@ def shutdown_parts(text: str) -> dict:
 def _units_satisfying(units: list[str], rule: tuple) -> list[str]:
     return [u for u in units if all(re.search(p, u) for p in rule)]
 
+def knowledge_store_heading_findings(text: str) -> list[str]:
+    """CR-MDB-088 §S7: empty when exactly one heading starts with "Knowledge store" and it
+    carries no CR or § reference; else what is wrong."""
+    headings = [h for _, _, h in markdown_headings(text)
+                if h.startswith(KNOWLEDGE_STORE_HEADING)]
+    if len(headings) != 1:
+        return [f"{len(headings)} headings start with {KNOWLEDGE_STORE_HEADING!r}: {headings!r}"]
+    return [h for h in headings if HEADING_CR_REFERENCE_RE.search(h)]
+
+def knowledge_store_section(text: str) -> str:
+    """CR-MDB-088 §S7: the body of the section titled "Knowledge store" (its subsections
+    kept); an ``AssertionError`` when there is none, so no check passes on an empty body."""
+    body = section_starting(text, KNOWLEDGE_STORE_HEADING)
+    if body is None:
+        raise AssertionError(f"no heading starting {KNOWLEDGE_STORE_HEADING!r}")
+    return body
+
+def retired_setup_findings(text: str) -> list[str]:
+    """CR-MDB-088 §S7: each unit still saying "Absent or unknown, neither is written"."""
+    return [u for u in rule_units(text) if re.search(CONTRACT_SETUP_RETIRED, u)]
+
 
 def _read(rel: str) -> str:
     return read_text(REPO_ROOT / rel)
@@ -511,6 +665,10 @@ def _memory_section() -> str:
     if body is None:
         raise AssertionError(f"{COMMON_REL} has no '## {MEMORY_HEADING}' section")
     return body
+
+
+def _contract_knowledge_section() -> str:
+    return knowledge_store_section(_read(CONTRACT_REL))
 
 
 def _declared_keys() -> set[str]:
@@ -819,13 +977,33 @@ class CloseOutReconcilesAfterCrCloseTest(unittest.TestCase):
 
 class LeanCtxContractKnowledgeTest(_RuleAssertions):
     """§S7: ``contracts/lean-ctx.md`` records the knowledge verbs, the setup path and the five
-    pitfalls."""
+    pitfalls. MIGRATED at CR-MDB-088 (§S7): the section is retitled without its CR reference;
+    the verbs are five, each with its ``ctx_knowledge`` form; ``init`` writes the key and the
+    pointer whatever the verdict; the new pitfalls and the project-scoped levers are recorded."""
 
-    def test_it_records_the_four_knowledge_verbs_model_b_relies_on(self):
+    def test_the_section_is_titled_knowledge_store_without_a_cr_reference(self):
+        found = knowledge_store_heading_findings(_read(CONTRACT_REL))
+        self.assertEqual(found, [], f"{CONTRACT_REL}: §S7 retitles the section "
+                                    f"{KNOWLEDGE_STORE_HEADING!r}, with no CR reference")
+
+    def test_it_records_the_five_knowledge_verbs_model_b_relies_on(self):
+        # MIGRATED at CR-MDB-088 (§S7): was test_it_records_the_four_knowledge_verbs_model_b_relies_on
+        # — export joins the four.
         self.assert_rule(_read(CONTRACT_REL), CONTRACT_VERBS, CONTRACT_REL, lead_in=True)
 
+    def test_it_records_each_verbs_knowledge_tool_form(self):
+        text = _contract_knowledge_section()
+        for name, rule in CONTRACT_VERB_FORMS.items():
+            with self.subTest(verb=name):
+                self.assert_rule(text, rule, f"{CONTRACT_REL} (verb: {name})")
+
     def test_it_records_the_setup_path_installer_verdict_then_inits_key_and_pointer(self):
+        # MIGRATED at CR-MDB-088 (§S7): CONTRACT_SETUP now requires "whatever the verdict".
         self.assert_rule(_read(CONTRACT_REL), CONTRACT_SETUP, CONTRACT_REL, lead_in=True)
+
+    def test_the_absent_or_unknown_sentence_is_gone(self):
+        self.assertEqual(retired_setup_findings(_read(CONTRACT_REL)), [],
+                         f"{CONTRACT_REL}: §S7 removes \"Absent or unknown, neither is written\"")
 
     def test_it_records_each_of_the_five_pitfalls(self):
         text = _read(CONTRACT_REL)
@@ -836,6 +1014,29 @@ class LeanCtxContractKnowledgeTest(_RuleAssertions):
     def test_it_notes_that_sub_projects_sharing_the_token_derive_the_roots_category(self):
         # Finding F6 (\u00a7S7, amended at 06a4ca4).
         self.assert_rule(_read(CONTRACT_REL), CONTRACT_SUB_PROJECT_CATEGORY, CONTRACT_REL)
+
+    def test_it_records_each_new_pitfall_in_one_unit(self):
+        text = _contract_knowledge_section()
+        for name, rule in NEW_PITFALLS.items():
+            with self.subTest(pitfall=name):
+                self.assert_rule(text, rule, f"{CONTRACT_REL} (new pitfall: {name})")
+
+    def test_the_new_pitfalls_cite_lean_ctx_3_11_4_source(self):
+        self.assert_rule(_contract_knowledge_section(), CONTRACT_SOURCE_VERSION, CONTRACT_REL,
+                         lead_in=True)
+
+    def test_it_records_the_project_scoped_levers_and_the_values_cr_mdb_091_sets(self):
+        self.assert_rule(_contract_knowledge_section(), CONTRACT_LEVERS, CONTRACT_REL,
+                         lead_in=True)
+
+    def test_it_records_what_auto_consolidate_false_does_not_stop(self):
+        self.assert_rule(_contract_knowledge_section(), CONTRACT_NOT_STOPPED, CONTRACT_REL)
+
+    def test_it_records_the_levers_apply_through_the_project_root_normally_the_git_top_level(self):
+        self.assert_rule(_contract_knowledge_section(), CONTRACT_LEVERS_ROOT, CONTRACT_REL)
+
+    def test_it_records_a_larger_category_is_the_users_raise_of_the_global_listing_limit(self):
+        self.assert_rule(_contract_knowledge_section(), CONTRACT_LARGER_CATEGORY, CONTRACT_REL)
 
 
 # ---------------------------------------------------- \u00a7S6 \u2014 every skill ----
@@ -1102,21 +1303,33 @@ GOOD_CLOSE_OUT = (
     + AFTER_CR_CLOSE_BULLET
     + "- **A release-fix CR** follows steps 2–5 and 8.\n")
 
+# MIGRATED at CR-MDB-088 (§S7): GOOD_CONTRACT is §S7's section "Knowledge store" — retitled without the CR
+# reference, five verbs with their `ctx_knowledge` forms, the setup path whatever the verdict, the
+# five kept pitfalls, the new pitfalls in §S7's words, and the project-scoped levers.
 GOOD_CONTRACT = """\
-## Knowledge verbs Model B relies on
+## Knowledge store
 
-Model B relies on four verbs:
-- remember a fact;
-- list a category;
-- restore a category's archived facts;
-- remove a fact.
+Model B keeps a project's execution knowledge in lean-ctx's knowledge store, under the
+category the project's `.env` names in `KNOWLEDGE_CATEGORY`.
 
-## Setup
+### Knowledge verbs Model B relies on
+
+Model B relies on five knowledge verbs, each with its `ctx_knowledge` form:
+- remember a fact (`remember`);
+- list a category (`recall` + `category`);
+- restore (`restore`, `category=facts`, `query=<category>`, repeated until it restores nothing),
+  and restore by key (`restore`, `category=facts`, `query="<category> <key>"`);
+- remove a fact (`remove`);
+- export (`export`), the fallback for an incomplete listing.
+
+### Setup path
 
 The installer records the lean-ctx verdict; then `init` writes `KNOWLEDGE_CATEGORY` and the
-AGENTS.md pointer.
+AGENTS.md pointer whatever the verdict.
 
-## Pitfalls
+A monorepo's sub-projects derive the same category as the root when they share its token.
+
+### Pitfalls
 
 - A query recall is not a full listing.
 - Facts get archived silently; restoring the category brings them back.
@@ -1124,8 +1337,65 @@ AGENTS.md pointer.
 - The CLI's project does not follow the working directory.
 - The store holds lean-ctx's automatic captures (the `auto:*` and `code_health` rooms).
 
-A monorepo's sub-projects derive the same category as the root when they share its token.
+The new pitfalls, each citing its lean-ctx 3.11.4 source path and symbol:
+- **The listing limit.** A listing shows at most `memory.knowledge.recall_facts_limit` facts (10).
+  The key is global-only, not settable in a project's `.lean-ctx.toml`. The listing says
+  `showing <n>/<total>`, and only the listed facts are retrieved.
+- **Decay.** A fact retrieved or confirmed within the last day does not decay. Every other fact
+  decays on every lifecycle run, compounding, and every `remember` and `remove` runs the
+  lifecycle. A restore runs none.
+- **Restore.**
+  - Its `category` argument is the store.
+  - Unscoped, it restores every store, and other projects' archived facts from the shared legacy
+    facts archive.
+  - It returns at most 50 items, scoped or not, so it is repeated until it restores nothing.
+  - It keeps each fact's archived confidence.
+  - The next write re-archives a fact below 0.3.
+- **The restore's scope is a substring.** `query` is a case-insensitive substring match over each
+  archived fact's category, key and value (`restore_facts`), through the archive root shared by
+  every unprotected project. `query=<category>` therefore also restores another project's facts
+  under the same category, a category whose name contains it, and any fact whose key or value
+  mentions it. Model B removes such a fact at reconciliation and reports it.
+- **Removed facts come back.** `remove` deletes only the live fact (`remove_fact`), and the
+  archive keeps its copy, so the next restore brings back a fact removed at reconciliation, until
+  its archive file is pruned. Model B removes it again and reports it.
+- **The archive is bounded and shared.** It keeps 16 files (`DEFAULT_MAX_ARCHIVE_FILES`) in the
+  root shared by every unprotected project, and each archiving lifecycle run adds one, so other
+  projects' activity can prune this project's archived facts. A restore is best-effort; the
+  one-listing bound is the prevention.
+- **Re-confirmation.** A same-key rewrite re-confirms (the confidence goes to the midpoint).
+  `feedback` does not change confidence.
+- **Export.** It writes a JSON file of the whole store, and retrieves nothing.
+- **The cap.** The 200-fact cap is shared with automatic captures. `auto_capture` is global-only.
+- **Rehydration.** A category listing that finds no current fact rehydrates at most 3 archived
+  facts at ≥0.6, through `remember` (`rehydrate_from_archives`). So a listing can write: a
+  Track that only lists makes no write of its own, but its listing may.
+
+### Project-scoped levers
+
+**The project-scoped levers** (no trust needed), and the values Model B sets through CR-MDB-091
+(PRD D5, 2026-10-29: a cap of 500, automatic consolidation off):
+- `memory.knowledge.max_facts` raised to 500;
+- `autonomy.auto_consolidate = false`.
+
+`auto_consolidate = false` does not stop consolidation on MCP shutdown and on compaction, nor
+automatic captures.
+
+The levers apply through the bridge process's resolved project root (normally the git top
+level, so a monorepo's root file). A user who wants a larger category raises the global
+`recall_facts_limit` themselves.
+
+## Filed requests / gaps (operational findings)
+
+This paragraph is outside the section.
 """
+#: CR-MDB-088 §S7 — the section today: titled with its CR reference, and the retired setup
+#: sentence.
+TODAY_CONTRACT_HEADING_AND_SETUP = (
+    "## Knowledge store (CR-MDB-045 §S7)\n\n"
+    "### Setup path\n\n"
+    "- then `modelb-axi init` reads that verdict. With lean-ctx present it writes\n"
+    "  `KNOWLEDGE_CATEGORY` and the pointer. Absent or unknown, neither is written.\n")
 
 
 class RuleDetectorTest(unittest.TestCase):
@@ -1250,13 +1520,34 @@ class RuleDetectorTest(unittest.TestCase):
                 self.assertTrue(satisfying_units(GOOD_CONTRACT, rule),
                                 missing_report(GOOD_CONTRACT, rule))
         self.assertTrue(satisfying_units(GOOD_CONTRACT, CONTRACT_SUB_PROJECT_CATEGORY))
+        # MIGRATED at CR-MDB-088 (§S7): §S7's new rules hold on its wording, each in exactly one unit.
+        self.assertEqual(knowledge_store_heading_findings(GOOD_CONTRACT), [])
+        self.assertEqual(retired_setup_findings(GOOD_CONTRACT), [])
+        section = knowledge_store_section(GOOD_CONTRACT)
+        rules = {**{f"verb: {k}": (v, False) for k, v in CONTRACT_VERB_FORMS.items()},
+                 **{f"pitfall: {k}": (v, False) for k, v in NEW_PITFALLS.items()},
+                 "source version": (CONTRACT_SOURCE_VERSION, False),
+                 "levers": (CONTRACT_LEVERS, True), "not stopped": (CONTRACT_NOT_STOPPED, False),
+                 "levers root": (CONTRACT_LEVERS_ROOT, False),
+                 "larger category": (CONTRACT_LARGER_CATEGORY, False)}
+        for name, (rule, lead_in) in rules.items():
+            with self.subTest(rule=name):
+                self.assertEqual(len(satisfying_units(section, rule, lead_in)), 1,
+                                 missing_report(section, rule, lead_in))
 
     def test_each_contract_rule_bites_when_its_phrase_is_missing(self):
         mutations = {
-            "verbs": (CONTRACT_VERBS, True, "- remove a fact.\n", ""),
+            # MIGRATED at CR-MDB-088 (§S7): the verb items carry their `ctx_knowledge` forms, and
+            # dropping export bites too.
+            "verbs": (CONTRACT_VERBS, True, "- remove a fact (`remove`);\n", ""),
+            "export verb": (CONTRACT_VERBS, True,
+                            "- export (`export`), the fallback for an incomplete listing.\n", ""),
             "setup order": (CONTRACT_SETUP, True,
                             "The installer records the lean-ctx verdict; then `init` writes",
                             "`init` writes"),
+            # MIGRATED at CR-MDB-088 (§S7): the key and pointer are written whatever the verdict.
+            "whatever the verdict": (CONTRACT_SETUP, True, "pointer whatever the verdict.",
+                                     "pointer when lean-ctx is present."),
             "recall": (PITFALLS["a query recall is not a full listing"], False,
                        "is not a full listing", "is fast"),
             "archived": (PITFALLS["facts get archived silently"], False, "silently", "sometimes"),
@@ -1273,6 +1564,180 @@ class RuleDetectorTest(unittest.TestCase):
                 self.assertIn(old, GOOD_CONTRACT)
                 self.assertEqual(
                     satisfying_units(GOOD_CONTRACT.replace(old, new), rule, lead_in), [])
+
+
+class ContractKnowledgeStoreDetectorTest(unittest.TestCase):
+    """CR-MDB-088 §S7 / AC-S7: every new contract detector, proved both ways on synthetic text —
+    §S7's wording (``GOOD_CONTRACT``) passes, and each phrase changed fails."""
+
+    def _assert_bites(self, rule: tuple, old: str, new: str, lead_in: bool = False):
+        self.assertEqual(GOOD_CONTRACT.count(old), 1, f"{old!r} must occur once in GOOD_CONTRACT")
+        mutated = knowledge_store_section(GOOD_CONTRACT.replace(old, new))
+        self.assertEqual(satisfying_units(mutated, rule, lead_in), [])
+
+    def test_the_heading_detector_passes_the_retitled_section_and_bites_on_a_cr_reference(self):
+        self.assertEqual(knowledge_store_heading_findings(GOOD_CONTRACT), [])
+        self.assertEqual(knowledge_store_heading_findings(TODAY_CONTRACT_HEADING_AND_SETUP),
+                         ["Knowledge store (CR-MDB-045 §S7)"])
+        no_section = GOOD_CONTRACT.replace("## Knowledge store\n", "## Memory\n")
+        self.assertEqual(len(knowledge_store_heading_findings(no_section)), 1)
+        two = GOOD_CONTRACT + "\n## Knowledge store, again\n"
+        self.assertEqual(len(knowledge_store_heading_findings(two)), 1)
+
+    def test_the_section_reader_stops_at_the_next_section(self):
+        section = knowledge_store_section(GOOD_CONTRACT)
+        self.assertIn("auto_consolidate = false", section)
+        self.assertNotIn("outside the section", section)
+        self.assertNotIn("Filed requests", section)
+
+    def test_the_retired_setup_sentence_is_a_finding_and_the_new_setup_is_not(self):
+        self.assertEqual(len(retired_setup_findings(TODAY_CONTRACT_HEADING_AND_SETUP)), 1)
+        self.assertEqual(satisfying_units(TODAY_CONTRACT_HEADING_AND_SETUP, CONTRACT_SETUP), [])
+        self.assertEqual(retired_setup_findings(GOOD_CONTRACT), [])
+
+    def test_each_verb_form_bites_when_its_phrase_is_changed(self):
+        forms = CONTRACT_VERB_FORMS
+        mutations = {
+            "list form": (forms["list a category is recall with category"],
+                          "list a category (`recall` + `category`)", "list a category"),
+            "restore query": (
+                forms["restore is category=facts and query=<category>, repeated until it restores "
+                      "nothing"], "`query=<category>`, repeated", "repeated"),
+            "restore repeated": (
+                forms["restore is category=facts and query=<category>, repeated until it restores "
+                      "nothing"], ", repeated until it restores nothing),", "),"),
+            "restore by key": (forms["restore by key is category=facts and query=\"<category> <key>\""],
+                               '`query="<category> <key>"`', "`query=<key>`"),
+            "export fallback": (forms["export is the fallback for an incomplete listing"],
+                                "the fallback for an incomplete listing", "a backup"),
+        }
+        for name, (rule, old, new) in mutations.items():
+            with self.subTest(mutation=name):
+                self._assert_bites(rule, old, new)
+
+    def test_each_new_pitfall_bites_when_its_phrase_is_changed(self):
+        p = NEW_PITFALLS
+        mutations = {
+            "limit key": (p["the listing limit"], "`memory.knowledge.recall_facts_limit` facts",
+                          "a few facts"),
+            "limit global": (p["the listing limit"], "The key is global-only",
+                             "The key is per project"),
+            "limit showing": (p["the listing limit"], "`showing <n>/<total>`", "nothing"),
+            "limit retrieved": (p["the listing limit"], "only the listed facts are retrieved",
+                                "every fact is retrieved"),
+            "decay every write": (p["decay on every write"],
+                                  "every `remember` and `remove` runs the\n  lifecycle",
+                                  "only consolidation runs the\n  lifecycle"),
+            "decay compounding": (p["decay on every write"], ", compounding,", ","),
+            "decay restore": (p["decay on every write"], "A restore runs none.",
+                              "A restore runs it too."),
+            "restore store argument": (
+                p["restore: the store argument, cross-project reach, the 50-item cap, kept "
+                  "confidence"], "Its `category` argument is the store.",
+                "Its `category` argument is the category."),
+            "restore cross-project": (
+                p["restore: the store argument, cross-project reach, the 50-item cap, kept "
+                  "confidence"], "other projects' archived facts from the shared legacy\n    facts archive",
+                "nothing else"),
+            "restore 50 cap": (
+                p["restore: the store argument, cross-project reach, the 50-item cap, kept "
+                  "confidence"], "at most 50 items, scoped or not", "every item"),
+            "restore confidence": (
+                p["restore: the store argument, cross-project reach, the 50-item cap, kept "
+                  "confidence"], "It keeps each fact's archived confidence.",
+                "It resets each fact's confidence."),
+            "substring": (p["the restore's scope is a substring"],
+                          "case-insensitive substring match", "exact match"),
+            "substring symbol": (p["the restore's scope is a substring"], "(`restore_facts`)", ""),
+            "substring other project": (p["the restore's scope is a substring"],
+                                        "another project's facts\n  under the same category",
+                                        "this project's facts"),
+            "substring removed": (p["the restore's scope is a substring"],
+                                  "Model B removes such a fact at reconciliation and reports it.",
+                                  "Model B keeps such a fact."),
+            "removed live only": (p["removed facts come back from the archive"],
+                                  "`remove` deletes only the live fact", "`remove` deletes the fact"),
+            "removed come back": (p["removed facts come back from the archive"],
+                                  "the next restore brings back a fact removed at reconciliation",
+                                  "the next restore leaves it"),
+            "removed again": (p["removed facts come back from the archive"],
+                              "Model B removes it again and reports it.", ""),
+            "archive 16": (p["the archive keeps 16 shared files"], "It keeps 16 files",
+                           "It keeps every file"),
+            "archive symbol": (p["the archive keeps 16 shared files"],
+                               "(`DEFAULT_MAX_ARCHIVE_FILES`)", ""),
+            "archive prune": (p["the archive keeps 16 shared files"],
+                              "other\n  projects' activity can prune this project's archived facts",
+                              "nothing\n  else touches them"),
+            "archive prevention": (p["the archive keeps 16 shared files"],
+                                   "the\n  one-listing bound is the prevention", "nothing\n  prevents it"),
+            "midpoint": (p["re-confirmation, and feedback does not change confidence"],
+                         "the confidence goes to the midpoint", "the confidence is kept"),
+            "feedback": (p["re-confirmation, and feedback does not change confidence"],
+                         "`feedback` does not change confidence", "`feedback` re-confirms"),
+            "export file": (p["export writes a file and retrieves nothing"],
+                            "It writes a JSON file of the whole store", "It lists the store"),
+            "export retrieves": (p["export writes a file and retrieves nothing"],
+                                 "and retrieves nothing", "and retrieves every fact"),
+            "cap shared": (p["the cap is shared with automatic captures, auto_capture global-only"],
+                           "The 200-fact cap is shared with automatic captures.",
+                           "The 200-fact cap is the project's own."),
+            "auto_capture global": (
+                p["the cap is shared with automatic captures, auto_capture global-only"],
+                "`auto_capture` is global-only.", "`auto_capture` is per project."),
+            "rehydrate symbol": (p["rehydration is a listing's write"],
+                                 "(`rehydrate_from_archives`)", ""),
+            "rehydrate at most 3": (p["rehydration is a listing's write"], "at most 3 archived",
+                                    "every archived"),
+            "listing writes": (p["rehydration is a listing's write"], "So a listing can write:",
+                               "So a listing is read-only:"),
+            "track listing": (p["rehydration is a listing's write"],
+                              "makes no write of its own, but its listing may",
+                              "makes no write at all"),
+        }
+        for name, (rule, old, new) in mutations.items():
+            with self.subTest(mutation=name):
+                self._assert_bites(rule, old, new)
+
+    def test_a_new_pitfall_split_across_two_bullets_is_not_one_unit(self):
+        old = ("through `remember` (`rehydrate_from_archives`). So a listing can write: a\n"
+               "  Track that only lists")
+        new = ("through `remember` (`rehydrate_from_archives`).\n- So a listing can write: a\n"
+               "  Track that only lists")
+        self._assert_bites(NEW_PITFALLS["rehydration is a listing's write"], old, new)
+
+    def test_each_lever_rule_bites_when_its_phrase_is_changed(self):
+        mutations = {
+            "project-scoped": (CONTRACT_LEVERS, True, "**The project-scoped levers** (no trust needed)",
+                               "**The levers** (trust needed)"),
+            "cr-mdb-091": (CONTRACT_LEVERS, True, "sets through CR-MDB-091", "sets"),
+            "max_facts 500": (CONTRACT_LEVERS, True, "`memory.knowledge.max_facts` raised to 500;",
+                              "`memory.knowledge.max_facts` left at 200;"),
+            "auto_consolidate false": (CONTRACT_LEVERS, True, "- `autonomy.auto_consolidate = false`.",
+                                       "- `autonomy.auto_consolidate = true`."),
+            "not stopped": (CONTRACT_NOT_STOPPED, False, "`auto_consolidate = false` does not stop",
+                            "`auto_consolidate = false` stops"),
+            "mcp shutdown": (CONTRACT_NOT_STOPPED, False, "consolidation on MCP shutdown and on "
+                             "compaction", "nothing else"),
+            "project root": (CONTRACT_LEVERS_ROOT, False,
+                             "through the bridge process's resolved project root",
+                             "through the working directory"),
+            "git top level": (CONTRACT_LEVERS_ROOT, False, "normally the git top\nlevel",
+                              "the sub-project"),
+            "larger category": (CONTRACT_LARGER_CATEGORY, False, "raises the global\n"
+                                "`recall_facts_limit` themselves", "asks Model B"),
+        }
+        for name, (rule, lead_in, old, new) in mutations.items():
+            with self.subTest(mutation=name):
+                self._assert_bites(rule, old, new, lead_in)
+        detached = GOOD_CONTRACT.replace("automatic consolidation off):\n",
+                                         "automatic consolidation off):\n\n")
+        self.assertNotEqual(detached, GOOD_CONTRACT)
+        self.assertEqual(satisfying_units(detached, CONTRACT_LEVERS, lead_in=True), [])
+
+    def test_the_source_version_rule_bites_without_3_11_4(self):
+        self._assert_bites(CONTRACT_SOURCE_VERSION, "its lean-ctx 3.11.4 source path",
+                           "its source path")
 
 
 class ReconciliationDetectorTest(unittest.TestCase):
