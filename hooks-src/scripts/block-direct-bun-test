@@ -67,8 +67,9 @@ orchestrator's approval.
 It presumes no runner (CR-MDB-066 §S3): its first line names every form it
 blocks; a tier verb runs the `test:<tier>` script the project declares in
 `package.json`, by name, and the client refuses a tier the project declares no
-script for; `test` and `regression` run `bun test`, so a project whose runner is
-another (Vitest under Bun) runs its suites with the tier verbs.
+script for. `test` runs the project's declared test script (`crucible.testScript`),
+else `bun test`; `regression` runs `bun test`. A project whose runner is another
+runs its suites with the tier verbs (CR-MDB-079 §S6).
 """
 
 import json
@@ -134,7 +135,7 @@ manifest `~/.crucible/crucible-clients.json`; register first if you have not:
       python3 ~/.crucible/clients/bun-crucible.py bdd --agent <id>
   • Full regression with coverage (pre-merge gate):
       python3 ~/.crucible/clients/bun-crucible.py regression --coverage --agent <id>
-  `test` and `regression` run `bun test`; a project whose runner is another (Vitest under Bun) runs its suites with the tier verbs.
+  `test` runs the project's declared test script (`crucible.testScript`), else `bun test`; `regression` runs `bun test`. A project whose runner is another runs its suites with the tier verbs.
 
 Client gap: `test` takes no test-name filter, so a single test selected by name is not
 served by it — raise that with the orchestrator rather than working around it.

@@ -227,6 +227,18 @@ def retired_phrases(text: str, phrases: tuple[str, ...]) -> list[str]:
             if re.search(rf"(?<!\w){re.escape(phrase)}(?!\w)", plain, re.IGNORECASE)]
 
 
+# MIGRATED at CR-MDB-079 (§S8.2): from tests/test_orchestrator_references.py, unchanged; shared with
+# tests/test_stack_reference_material.py.
+def provenance_header(text: str) -> str:
+    """The leading ``#`` comment lines of a TOML file, joined."""
+    lines = []
+    for line in text.splitlines():
+        if not line.startswith("#"):
+            break
+        lines.append(line)
+    return "\n".join(lines)
+
+
 def parse_env_file(path: Path) -> dict:
     """Minimal ``KEY=VALUE`` parser for an emitted ``.env``/``.env.local``
     (values may be bare or double-quoted; blank lines and ``#``-comments are

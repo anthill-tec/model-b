@@ -94,6 +94,33 @@ checked as data (:data:`EXPECTED_DECLARATION`, :data:`STACK_SKILL_SOURCES`,
   :data:`JAVA_COMMIT_RULE_RELS` states the whole rule in one block (:data:`JAVA_WHOLE_COMMIT_RULE`).
 - ``SharedPhraseHelperTest`` — CR-MDB-093 §S4, amended at cycle 311's VERIFY: ``retired_phrases``
   is defined once, in ``tests/_helpers.py``, and the three modules using it import it from there.
+- ``StackGeneralityTermsTest`` / ``StackTreeGeneralityDetectorTest`` / ``StackGeneralityTreeTest``
+  — CR-MDB-079 §S5/AC3/AC4 (``docs/changes/CR-MDB-079-bun-stack-general-to-every-bun-project.md``,
+  DN-multi-harness-deploy-model §D25, amended 2026-10-30): no stack file names one project.
+  :func:`stack_generality_findings` over :data:`STACK_GENERALITY_TERMS` and
+  :func:`stack_tree_generality_findings` with :data:`STACK_GENERALITY_EXCEPTIONS` proved both ways
+  on synthetic text (each term alone, the near misses, the workflow's own vocabulary — Sandesh,
+  Crucible, lean-ctx, Pi and its extension API, the pi-* extensions — which no term matches), then
+  run over every ``generator/stacks/*.toml`` and the four bun renders; the exceptions bite on their
+  real files, data-driven, and each one's CR has a spec.
+- ``BunTomlRulesDetectorTest`` / ``BunTomlDetectorTest`` / ``BunTomlGeneralTest`` /
+  ``BunTomlInvocationCountTest`` — CR-MDB-079 §S1–§S3/§S7.2/AC1/AC2/AC7:
+  :func:`bun_toml_rule_findings` over :data:`BUN_TOML_RULES` and :func:`bun_toml_findings` proved
+  both ways on Appendix A's text (:data:`APPENDIX_A_BUN_TOML`), then run over the real
+  ``bun.toml``; ``bun.toml`` carries at least :data:`BUN_TOML_MIN_INVOCATIONS` parsed client
+  invocations (``test_client_path_anchoring``'s ``_parse_invocations``).
+- ``HeaderHelperHomeDetectorTest`` / ``HeaderHelperHomeTest`` — CR-MDB-079 §S8.2/AC8:
+  :func:`helper_home_findings` proved both ways on synthetic sources, then ``provenance_header`` is
+  defined once, in ``tests/_helpers.py``, and ``tests/test_orchestrator_references.py`` and this
+  module import it from there, neither defining it nor importing it from another test module.
+- ``BlankLineDetectorTest`` / ``BlankLineLayoutTest`` — CR-MDB-079 §S8.3/AC8:
+  :func:`blank_line_findings` proved both ways on synthetic text, then every top-level definition
+  of this module (decorators included, read from ``ast`` line numbers) follows exactly two blank
+  lines.
+- ``TierCommentDetectorTest`` / ``TierCommentTest`` — CR-MDB-079 §S8.1/AC8:
+  :func:`tier_comment_findings` proved both ways on synthetic text, then the real ``bun.toml``, the
+  spec's Appendix A and :data:`APPENDIX_A_BUN_TOML` carry one per-stack comment directly above
+  ``tier_guidance``, read from the real file.
 
 MIGRATED (CR-MDB-060 §S1.1): the templates the CR-MDB-085 and CR-MDB-086 classes read —
 ``rust-orchestration.md``, ``arduino-orchestration.md``, ``java-orchestration.md`` — are the stack
@@ -114,6 +141,7 @@ from modelb_axi import agents, stack_skills
 from tests import test_axi_envelope_read_whole as axi_gate
 from tests import test_board_holds_the_queue as board_gate
 from tests import test_cite_by_symbol as cite_gate
+from tests import test_client_path_anchoring as anchoring_gate
 from tests import test_deployed_script_invocation as deployed_gate
 from tests import test_gap_analysis_reach_and_pre_review as ordering_gate
 from tests import test_project_registry_schema as registry_gate
@@ -130,6 +158,7 @@ from tests._helpers import (
     retired_phrases,  # MIGRATED at CR-MDB-093 (§S4)
     split_frontmatter,
 )
+from tests._helpers import provenance_header as _header_comment
 from tests._helpers import rendered_definition as _rendered
 from tests.test_orchestration_acceptance_model import missing_rules, rule_blocks
 from tests.test_orchestrator_rule_triage import section_body
@@ -1704,7 +1733,6 @@ class AgentsMdNamesStackSkillSourcesTest(unittest.TestCase):
         )
 
 
-
 #: §S6.4 — a stated count of generated definitions: ``<n> files`` or ``<n> [generated] definitions``.
 _DEFINITION_COUNT = re.compile(r"(?<![\w.-])(\d+) (?:generated )?(?:files|definitions)\b")
 
@@ -2093,6 +2121,1064 @@ class SharedPhraseHelperTest(unittest.TestCase):
             {rel: ["tests._helpers"] for rel in PHRASE_HELPER_USERS},
             f"§S4: each module imports {PHRASE_HELPER} from tests._helpers",
         )
+
+
+# ------------------------------------------------------------------ CR-MDB-079 ----
+
+#: CR-MDB-079 §S5.1 — the four ways a term of :data:`STACK_GENERALITY_TERMS` is matched: a word
+#: (case-insensitive, between non-alphanumerics or the text's ends), a case word (the same,
+#: case-sensitive), a substring (case-sensitive) or a pattern (a regular expression).
+WORD = "word"
+CASE_WORD = "case word"
+SUBSTRING = "substring"
+PATTERN = "pattern"
+#: CR-MDB-079 §S5.1 — a word's boundary class: ``_`` is a boundary, so ``Sheetal`` matches in
+#: ``SHEETAL_PORT`` (unlike :func:`rewording_findings`'s ``(?<![A-Za-z0-9_])``).
+_WORD_BOUNDARY = "[A-Za-z0-9]"
+#: CR-MDB-079 §S5.1 — the Java project's names, taken from :data:`PROJECT_NAMES` (CR-MDB-086 §S4.1,
+#: read, not edited) as substrings; a name holding another (``org.fourpm`` holds ``fourpm``) is no
+#: second term, so no two terms overlap.
+_PROJECT_NAME_TERMS = tuple(
+    (SUBSTRING, name)
+    for name in PROJECT_NAMES
+    if not any(other != name and other in name for other in PROJECT_NAMES)
+)
+#: CR-MDB-079 §S5.1 — a named default package dir; a default stated for anything else, such as
+#: "(default `crucible.toml`)", is no match.
+DEFAULT_PACKAGE_DIR = r"package dir\W*\(default\s+`[^`]+`\)"
+#: CR-MDB-079 §S5.1 (DN-multi-harness-deploy-model §D25, amended 2026-10-30) — each stack's terms,
+#: ``"*"`` holding those every stack is checked against. The workflow's own vocabulary (Sandesh,
+#: Crucible, lean-ctx, Pi and its extension API, the pi-* extensions, ``process``, ``subagent``) is
+#: never a term, and no substring or pattern term matches inside it: only one project's own design is.
+STACK_GENERALITY_TERMS = {
+    "*": (
+        (WORD, "Sheetal"),
+        (WORD, "UuidV7Generator"),
+        (WORD, "ServerEvent"),
+        (WORD, "eventBus.emit"),
+        (WORD, "PE3"),
+        (SUBSTRING, "CR-SHE-"),
+        (SUBSTRING, "integrations/"),
+    )
+    + _PROJECT_NAME_TERMS,
+    "bun": (
+        (WORD, "typebox"),
+        (WORD, "StringEnum"),
+        (WORD, "Sandesh-core"),
+        (WORD, "thin TS shim"),
+        (WORD, "CLI-flag mapping"),
+        (WORD, "exact argv"),
+        (WORD, "jsdom"),
+        (WORD, "happy-dom"),
+        (WORD, "testing-library"),
+        (WORD, "Testing Library"),
+        (WORD, "msw"),
+        (WORD, "Wails"),
+        (WORD, "VanJS"),
+        (WORD, "TanStack"),
+        (WORD, "fake-indexeddb"),
+        (CASE_WORD, "React"),
+        (CASE_WORD, "DOM"),
+        (SUBSTRING, 'from "bun:test"'),
+        (SUBSTRING, "Bun's test runner"),
+        (PATTERN, DEFAULT_PACKAGE_DIR),
+    ),
+}
+#: CR-MDB-079 §S5.3 — each stack that may still carry a flagged term, with the CR that makes it
+#: general and removes its entry.
+STACK_GENERALITY_EXCEPTIONS = {"arduino": "CR-MDB-084", "quarkus": "CR-MDB-087"}
+
+BUN_TOML = STACKS_DIR / "bun.toml"
+BUN_TOML_REL = "generator/stacks/bun.toml"
+#: CR-MDB-079 §S2.2 — what the header comment and ``[description].red`` name.
+BUN_RUNNER_PHRASE = "the project's declared runner on the Bun runtime"
+#: CR-MDB-079 AC1 — (rule, key, anchor): each anchor appears in that key of ``bun.toml``; a dotted
+#: key is ``table.key``.
+BUN_TOML_RULES = (
+    ("§S1.1 declared test script", "mechanics", "`crucible.testScript`"),
+    ("§S1.1 the gap", "mechanics", "takes no test-name filter"),
+    ("§S1.2 the package dir", "mechanics", "`--package-dir <dir>`"),
+    ("§S1.2 the project's file", "mechanics", "the project's `crucible.toml`"),
+    ("§S1.3 typecheck", "mechanics", "`bun-crucible.py check`"),
+    ("§S1.4 declared tiers", "tier_guidance", "`test:<tier>`"),
+    ("§S1.4 passthrough", "tier_guidance", "-- <file>`"),
+    ("§S1.5 module", "tier_guidance", "workspace package"),
+    ("§S1.6 report path", "mechanics", "`crucible.reportPath.<target>`"),
+    ("§S1.7 sources", "mechanics", "`node_modules/<pkg>/`"),
+    ("§S1.8 generated files", "mechanics", "never hand-edited"),
+    ("§S1.9 strict", "gotchas.green", "`strict` TypeScript"),
+    ("§S1.9 count", "gotchas.red", "test COUNT increased"),
+    ("§S1.9 `.only`", "gotchas.red", "`.only`"),
+    ("§S2.1 runner-neutral", "mechanics", "the runner the project declares"),
+    ("§S3.1 bunfig", "mechanics", "reads `bunfig.toml` from the current directory only"),
+    ("§S3.1 runtime check", "gotchas.verify", "system Node"),
+    ("§S3.2 linking (VERIFY)", "gotchas.verify", "link time"),
+    ("§S3.2 linking (FIX)", "gotchas.fix", "link time"),
+)
+#: CR-MDB-079 AC7 — the parsed ``bun-crucible.py`` invocations ``bun.toml`` carries at least.
+BUN_TOML_MIN_INVOCATIONS = 8
+
+#: CR-MDB-079 Appendix A — the proposed ``bun.toml`` text, copied verbatim, with the keys it shows as
+#: unchanged (``display_name``, the three commands, ``crucible_reference``, ``[description].verify``
+#: and ``.fix``) carrying today's values; ``[roles.*]`` (unchanged, and read by no check here) is
+#: left out. The synthetic proofs of AC1–AC3 read it; it carries 9 parsed client invocations.
+APPENDIX_A_BUN_TOML = """\
+# Stack parameters — Bun/TypeScript (the project's declared runner on the Bun runtime, via bun-crucible.py)
+# Distilled from the pre-CR-MDB-008 agent originals (archive/wave3/agents/bun-*); generalised to every
+# Bun project by CR-MDB-079 (DN-multi-harness-deploy-model §D25).
+
+display_name = "Bun/TypeScript"
+test_command = "python3 ~/.crucible/clients/bun-crucible.py test --tests <path/to/feature.test.ts> --agent YOUR_AGENT_ID"
+register_command = "python3 ~/.crucible/clients/bun-crucible.py register --agent YOUR_AGENT_ID"
+unregister_command = "python3 ~/.crucible/clients/bun-crucible.py unregister --agent YOUR_AGENT_ID"
+crucible_reference = "~/.agents/skills/crucible/references/bun.md"
+
+mechanics = '''
+- **Framework/client:** the test runner the project declares, on the Bun runtime, driven through `bun-crucible.py` (`register` / `test` / `check` / the tier verbs / `unregister`). `bun-crucible.py test --tests <file>` runs the project's declared test script (`crucible.testScript` in `package.json`) on the given file(s), else Bun's own test runner; it wipes the stale JUnit report so only THIS run ingests, parses + ingests it, and prints `ingest: ok=True ... failed=N` — confirm it. `bun-crucible.py test` takes no test-name filter: a one-test run is a known client gap — target the file, and raise the gap with the orchestrator when one test must run alone.
+- **Run in the package dir of the Bun workspace,** not the repository root unless the root is the package. The dir is the project's: pass it on every run (`--package-dir <dir>`) or declare it in the project's `crucible.toml`. A wrong cwd gives "0 tests" or phantom missing-module errors. Read the package's `package.json`/`tsconfig.json`; the test files are the ones the declared runner collects.
+- **Bun reads `bunfig.toml` from the current directory only,** so a root `[run] bun = true` does not reach a script run in a package dir. Confirm the package's runs execute on Bun, not on a system Node (each package carries its own `bunfig.toml`, or the project's equivalent); a run on the wrong runtime proves nothing about Bun.
+- **A target run by a runner other than Bun's own** declares how it is told where to write its JUnit report — `crucible.reportPath.<target>` in `package.json`, as `env:<VAR>` — since the default appends Bun's own report flags. A target that writes no report is a starved run, never a pass.
+- **Imports:** import the test API from the runner the project declares — Bun's own runner, or another such as Vitest on the Bun runtime; match the imports sibling tests already use, and keep one runner's API per file. Import the code under test by its real relative path. If a test errors for a PATH/typing reason (not a missing SUT symbol), fix the import — that is not a real RED.
+- **Quick typecheck gate:** `bun-crucible.py check` (tsc) after each file change.
+- **Third-party API sources:** read the installed package under the package's `node_modules/<pkg>/` (its `.d.ts` types and its source), at the version `bun.lock` pins; confirm the declared range in `package.json`. Never assume a signature from memory.
+- **Generated files are never hand-edited** — whatever the project's build or code generator writes (its `package.json` scripts and `AGENTS.md` name them); regenerate them with the project's own command.
+'''
+
+# CR-MDB-017 §S6b — the per-stack half of the tier-guidance section. Bun has no
+# tier mechanism of its own, so the tier a run may claim is whatever the PROJECT
+# has declared in package.json — never what the agent selected by hand.
+tier_guidance = '''
+- **Bun has no native tier split — the PROJECT declares one.** A runner on Bun knows files and filters, not tiers; the boundary lives in the `package.json` scripts the project declares: `test:unit`, `test:module`, `test:integration`, `test:e2e`, `test:bdd`. Run a tier with the client's tier verb — `bun-crucible.py <tier> --agent YOUR_AGENT_ID` (e.g. `bun-crucible.py integration --agent YOUR_AGENT_ID`) runs the `test:<tier>` script the project declares, by name, and ingests it; what follows `--` reaches that script (`bun-crucible.py unit --agent YOUR_AGENT_ID -- <file>`). Name the script in your report so the next agent can reproduce exactly the same set.
+- **Never hand-pick a file list and call it a tier.** Passing `--tests a.test.ts b.test.ts` and ingesting the result as `integration` records a tier the project never defined: the next "same" run selects different files and the two are no longer comparable. A hand-picked list is a TARGETED run — report it as `unit`, and only when every file in it is genuinely dependency-free.
+- **A tier with no declared script cannot be honoured here.** With no `test:integration` in `package.json` this stack has no `integration` tier, and the client refuses it — report the tier you actually ran and raise the missing script as a finding. The same holds for `e2e` and `bdd`: Bun ships neither a driver nor a convention for either, so both are unavailable until the project declares one.
+- **In a Bun workspace a workspace package is the `module` unit:** a `module` run in a package dir (`--package-dir <package>`) runs that package's declared `test:module`; a workspace that declares no package boundaries has no `module` tier.
+- **`regression` means the whole declared suite**, coverage on, not "the tests I happened to touch". A subset rerun after a fix is not a `regression` run whatever its size — and the full sweep is the orchestrator's merge gate, not yours.
+'''
+
+[description]
+red = "RED phase agent — test specialist for Bun/TypeScript projects (the project's declared runner on the Bun runtime, through bun-crucible.py). Two modes. (1) Write NEW failing tests for a CR spec. (2) Fix BROKEN test compilation/imports so existing tests can run. Does NOT write production code."
+green = "GREEN phase agent — implements production TypeScript code to make failing Bun tests pass. Works step-by-step, one module at a time. Does NOT modify tests unless explicitly approved by the orchestrator. Used after RED tests are committed."
+verify = "VERIFY agent — reviews a Bun/TypeScript feature branch after implementation is complete. Read-only analysis of CR compliance, wiring completeness, test-coverage adequacy, boundary adherence, and code quality. Does NOT modify code."
+fix = "FIX agent — addresses specific findings from a VERIFY agent report in Bun/TypeScript projects. Fixes only what is listed and approved. Does NOT decide what to fix — the orchestrator tells it which findings to address."
+
+[gotchas]
+red = '''
+- A `TypeError`/missing-export/compile error from a not-yet-existing SUT symbol counts as RED (the client's run surfaces it in the JUnit XML).
+- **Verify the test COUNT increased.** N new tests but the total didn't move = silently skipped (wrong file glob, compile error). Never trust a 0-failure result without checking the count.
+- **No `.only`/`.skip`/`.todo` left on new tests** — they vacuously "pass".
+- **Assertion patterns** (the `expect` matchers Bun's own runner and Vitest share): POSITIVE with the exact value — `expect(result).toEqual(expected)`, never `toBeTruthy()`; NEGATIVE — what must NOT happen (`not.toHaveBeenCalled()`, an absent key); ERROR path — the exact error (`expect(() => f()).toThrow(...)`, `await expect(p).rejects.toThrow(...)`); MOCK — what the mock RECEIVED (`toHaveBeenCalledWith(...)` with the exact arguments).
+- **Mocks** come from the declared runner's own API, at the seam the unit crosses (a process call, the network, the clock, the filesystem) — never the unit under test itself; reset them between tests.
+- **Conventions:** `describe("<feature>")` + `test("<behaviour> <scenario>")`; async test bodies as `async () =>` (the runner awaits them).
+- **Prohibited:** a real network call or a real external process in a `unit` test — that run is `integration`, and its tier is the one the project declares.
+'''
+green = '''
+**TypeScript Code Quality Rules (NON-NEGOTIABLE):**
+1. **`strict` TypeScript.** No implicit `any`; type params + returns. No `// @ts-ignore`/`as any` to silence real errors — fix the type.
+2. **No swallowed errors.** Don't `catch {}` and drop it; surface the failure in the shape the tests assert, or rethrow.
+3. **No unused imports/vars** (TS `noUnusedLocals`); no leftover `console.log`.
+4. **Self-check before commit:** swallowed errors? `any` leaks? a value the spec does not state? unused imports? Fix first.
+
+**Implementation conventions:**
+- **Module organization:** imports (runtime builtins, then packages, then local) → exports → helpers.
+- **Async:** await every promise; pass an `AbortSignal` through where the API takes one; no floating promises.
+- **Boundaries:** keep to the module and package boundaries the project declares; a workspace package is reached through its declared entry, never by a path into its sources.
+- **Generated files:** regenerate them with the project's command; never edit one by hand.
+'''
+verify = '''
+- **Stack read-only tool lists:** ALLOWED — `bun-crucible.py test` / `check` (run-only; `check` is the `tsc --noEmit` typecheck), `eslint`/`biome` in CHECK mode. FORBIDDEN — a test runner invoked directly, `prettier -w`, `eslint --fix`, `biome ... --write`, or any writer.
+- **Wiring checks (stack flavour):** each export, handler or entry the CR lists is actually wired — exported from the package entry, registered where the project registers it, reachable from its caller; count them against the AC.
+- **Boundaries:** dependency changes confined to the packages the CR names (`bun.lock` changes only with a dependency change; a type-only package stays a devDependency; no stray runtime dependency); no hand edit to a generated file — regenerate it and compare.
+- **Runtime:** the runs executed on Bun, not on a system Node — Bun reads `bunfig.toml` from the current directory only, so check each package's runs, not the root's.
+- **Strict ESM linking:** Bun refuses at link time a named import the module does not export (other runtimes yield `undefined`). Such a failure is a real defect in the importing or the exporting module, never a runner quirk — report it as a finding.
+- **Quality checklist:** `strict`, no implicit `any`, no `@ts-ignore`/`as any` masking real errors, `tsc --noEmit` clean; no swallowed `catch {}`; camelCase funcs/vars, PascalCase types; no unused imports / stray `console.log`; every promise awaited, no floating promises.
+- **Test quality:** one behaviour per test; descriptive names; positive + bound + error + mock-received (exact arguments) assertions; test files named after the feature, never CR/cycle-named.
+'''
+fix = '''
+**Common Bun/TS fixes:**
+- **Swallowed error** (`catch {}`) → surface it in the shape the tests assert, or rethrow.
+- **`any`/`@ts-ignore` masking a real error** → fix the type.
+- **A named import the module does not export** (Bun fails it at link time) → export it or fix the import; it is a real defect, never a runner quirk — never stub it to `undefined`.
+- **Unused import/var** → remove (or `_`-prefix). Stray `console.log` → remove.
+- **Floating promise / missing `await`** → await it; pass an `AbortSignal` through where the API takes one.
+- **A hand-edited generated file** → regenerate it with the project's command.
+Fix only the listed findings; keep to the package boundaries the project declares.
+'''
+"""
+#: CR-MDB-079 Appendix A — its parsed client invocations, by source.
+APPENDIX_A_INVOCATIONS = {"toml": 3, "span": 6}
+
+_TOML_TABLE = re.compile(r"^\[[\w.]+\]\s*$", re.MULTILINE)
+
+
+def _term_found(kind: str, term: str, text: str) -> bool:
+    """Whether ``term``, matched as ``kind`` (§S5.1), is in ``text``. A word's spaces match any run
+    of whitespace."""
+    if kind == SUBSTRING:
+        return term in text
+    if kind == PATTERN:
+        return re.search(term, text) is not None
+    if kind not in (WORD, CASE_WORD):
+        raise ValueError(f"unknown term kind {kind!r}")
+    words = r"\s+".join(re.escape(part) for part in term.split())
+    flags = re.IGNORECASE if kind == WORD else 0
+    rx = rf"(?<!{_WORD_BOUNDARY}){words}(?!{_WORD_BOUNDARY})"
+    return re.search(rx, text, flags) is not None
+
+
+def stack_generality_findings(stack: str, text: str) -> list[str]:
+    """CR-MDB-079 §S5.2: one finding per term of ``"*"`` and of ``stack``'s own list (in
+    :data:`STACK_GENERALITY_TERMS`) found in ``text``, in list order, each naming the stack and the
+    term."""
+    own = () if stack == "*" else STACK_GENERALITY_TERMS.get(stack, ())
+    return [
+        f"{stack}: names the {kind} {term!r}"
+        for kind, term in STACK_GENERALITY_TERMS["*"] + own
+        if _term_found(kind, term, text)
+    ]
+
+
+def stack_tree_generality_findings(stacks: dict[str, str], exceptions: dict[str, str]) -> list[str]:
+    """CR-MDB-079 §S5.4: given each stack's text by name — each finding of a stack not in
+    ``exceptions``; a stale finding for an excepted stack that yields none; a stale finding for an
+    exception naming no stack file. Each stale finding names the CR that removes the entry."""
+    found = []
+    for stack, text in stacks.items():
+        findings = stack_generality_findings(stack, text)
+        if stack not in exceptions:
+            found += findings
+        elif not findings:
+            found.append(
+                f"{stack}.toml carries no flagged term: remove its exception ({exceptions[stack]})"
+            )
+    found += [
+        f"{stack}.toml is not a stack file: remove its exception ({cr})"
+        for stack, cr in exceptions.items()
+        if stack not in stacks
+    ]
+    return found
+
+
+def _toml_value(data: dict, key: str) -> str:
+    """The string at ``key`` (``name`` or ``table.name``) of the parsed TOML ``data``; "" when absent."""
+    value = data
+    for part in key.split("."):
+        value = value.get(part) if isinstance(value, dict) else None
+    return value if isinstance(value, str) else ""
+
+
+def _value_span(text: str, key: str) -> tuple[int, int]:
+    """``(start, end)`` of the string value of ``key`` (``name`` or ``table.name``) in the TOML
+    ``text``: a multi-line literal string's body, or a one-line basic string's."""
+    table, _, name = key.rpartition(".")
+    start = 0
+    if table:
+        header = re.search(rf"^\[{re.escape(table)}\]\s*$", text, re.MULTILINE)
+        if header is None:
+            raise KeyError(key)
+        start = header.end()
+    following = _TOML_TABLE.search(text, start)
+    end = following.start() if following else len(text)
+    value = re.compile(rf"^{re.escape(name)} = ('''|\")", re.MULTILINE).search(text, start, end)
+    if value is None:
+        raise KeyError(key)
+    if value.group(1) == "'''":
+        return value.end(), text.index("'''", value.end())
+    return value.end(), text.rindex('"', value.end(), text.index("\n", value.end()))
+
+
+def _edit_value(text: str, key: str, edit) -> str:
+    """``text`` with the value of ``key`` replaced by ``edit(value)``."""
+    start, end = _value_span(text, key)
+    return text[:start] + edit(text[start:end]) + text[end:]
+
+
+def _rule_finding(rule: str, key: str, anchor: str) -> str:
+    return f"{rule}: {key} does not carry {anchor!r}"
+
+
+def bun_toml_rule_findings(text: str) -> list[str]:
+    """CR-MDB-079 AC1: one finding per row of :data:`BUN_TOML_RULES` whose anchor is not in that
+    key of the TOML ``text``."""
+    data = tomllib.loads(text)
+    return [
+        _rule_finding(rule, key, anchor)
+        for rule, key, anchor in BUN_TOML_RULES
+        if anchor not in _toml_value(data, key)
+    ]
+
+
+#: CR-MDB-079 AC2 — :func:`bun_toml_findings`'s findings, one per check.
+BUN_PACKAGE_DIR_ENV_FINDING = "§S1.2: names BUN_CRUCIBLE_PACKAGE_DIR"
+BUN_REGRESSION_TIER_FINDING = "§S1.4: tier_guidance names test:regression"
+BUN_HEADER_RUNNER_FINDING = f"§S2.2: the header comment does not name {BUN_RUNNER_PHRASE!r}"
+BUN_RED_RUNNER_FINDING = f"§S2.2: [description].red does not name {BUN_RUNNER_PHRASE!r}"
+
+
+def bun_toml_findings(text: str) -> list[str]:
+    """CR-MDB-079 §S7.2/AC2's three checks, one finding each: the TOML ``text`` names no
+    ``BUN_CRUCIBLE_PACKAGE_DIR``; its ``tier_guidance`` no ``test:regression``; its header comment
+    and its ``[description].red`` each name :data:`BUN_RUNNER_PHRASE`."""
+    data = tomllib.loads(text)
+    found = []
+    if "BUN_CRUCIBLE_PACKAGE_DIR" in text:
+        found.append(BUN_PACKAGE_DIR_ENV_FINDING)
+    if "test:regression" in _toml_value(data, "tier_guidance"):
+        found.append(BUN_REGRESSION_TIER_FINDING)
+    if BUN_RUNNER_PHRASE not in _header_comment(text):
+        found.append(BUN_HEADER_RUNNER_FINDING)
+    if BUN_RUNNER_PHRASE not in _toml_value(data, "description.red"):
+        found.append(BUN_RED_RUNNER_FINDING)
+    return found
+
+
+def _real_stacks() -> dict[str, str]:
+    """Each ``generator/stacks/*.toml``'s text, by stack name."""
+    return {path.stem: read_text(path) for path in sorted(STACKS_DIR.glob("*.toml"))}
+
+
+def _neutral(sample: str) -> str:
+    return f"This line holds {sample} and nothing else.\n"
+
+
+#: CR-MDB-079 AC3 — the sample a pattern term is proved on; every other term is its own sample.
+PATTERN_SAMPLES = {DEFAULT_PACKAGE_DIR: "the package dir (default `pkg/`)"}
+#: CR-MDB-079 AC3 — the near misses: no term matches any of them.
+NEAR_MISSES = (
+    "reactive",
+    "react to",
+    "domain",
+    "api.exec",
+    "a sheet",
+    "server events",
+    "UUID.randomUUID()",
+    "Vitest on the Bun runtime",
+    "Bun's own test runner",
+    "the package dir (`--package-dir <dir>`)",
+    "`ctx_shell`",
+)
+#: CR-MDB-079 AC3 (§S5.1's closing paragraph) — the workflow's own vocabulary: no term matches it.
+WORKFLOW_VOCABULARY = (
+    "`sandesh`",
+    "`$SANDESH_PROJECT`",
+    "`$SANDESH_ADDRESS`",
+    "`sandesh-relay`",
+    "sandesh-pi",
+    "the Sandesh tools",
+    "`crucible`",
+    "`bun-crucible.py`",
+    "`python-crucible.py`",
+    "`crucible.toml`",
+    "the config file (default `crucible.toml`)",
+    "`crucible.testScript`",
+    "`crucible.reportPath.<target>`",
+    "`lean-ctx`",
+    "`ctx_read`",
+    "`ctx_shell`",
+    "pi-subagents",
+    "`subagent`",
+    "the `process` tool",
+    "pi-processes",
+    "pi-permission-system",
+    "pi-lens",
+    "web search",
+    "`@earendil-works/pi-coding-agent`",
+    "`pi.exec`",
+    "`registerTool`",
+    "`ExtensionAPI`",
+    "`AgentToolResult`",
+)
+
+
+def _sample(term: str) -> str:
+    """The sample ``term`` is proved on: :data:`PATTERN_SAMPLES`' for a pattern, else itself."""
+    return PATTERN_SAMPLES[term] if term in PATTERN_SAMPLES else term
+
+
+def _finding(stack: str, kind: str, term: str) -> str:
+    return f"{stack}: names the {kind} {term!r}"
+
+
+class StackGeneralityTermsTest(unittest.TestCase):
+    """CR-MDB-079 §S5.1/§S5.2/AC3 — :func:`stack_generality_findings` proved both ways on synthetic
+    text: each term alone, the near misses, the workflow's own vocabulary. Passes on arrival (the
+    guard is test code; its tree checks are :class:`StackGeneralityTreeTest`'s)."""
+
+    def test_the_terms_are_the_specs(self):
+        self.assertEqual(
+            [term for _kind, term in _PROJECT_NAME_TERMS],
+            ["fourpm", "store-utils", "4pm-Store-utils"],
+            "§S5.1: the Java project's names from PROJECT_NAMES, org.fourpm covered by fourpm",
+        )
+        self.assertEqual(
+            {kind for terms in STACK_GENERALITY_TERMS.values() for kind, _term in terms},
+            {WORD, CASE_WORD, SUBSTRING, PATTERN},
+        )
+        self.assertEqual(sorted(STACK_GENERALITY_TERMS), ["*", "bun"])
+        self.assertEqual((len(STACK_GENERALITY_TERMS["*"]), len(STACK_GENERALITY_TERMS["bun"])), (10, 20))
+
+    def test_every_term_alone_read_as_bun_yields_exactly_its_own_finding(self):
+        for kind, term in STACK_GENERALITY_TERMS["*"] + STACK_GENERALITY_TERMS["bun"]:
+            with self.subTest(term=term):
+                sample = _neutral(_sample(term))
+                self.assertEqual(stack_generality_findings("bun", sample), [_finding("bun", kind, term)])
+
+    def test_a_longer_form_of_a_term_yields_exactly_that_terms_finding(self):
+        for sample, kind, term in (
+            ("`integrations/pi/`", SUBSTRING, "integrations/"),
+            ("`sheetal-firmware/`", WORD, "Sheetal"),
+            ("`SHEETAL_PORT`", WORD, "Sheetal"),
+            ("`org.fourpm.store`", SUBSTRING, "fourpm"),
+        ):
+            with self.subTest(sample=sample):
+                self.assertEqual(
+                    stack_generality_findings("bun", _neutral(sample)), [_finding("bun", kind, term)]
+                )
+
+    def test_every_stack_term_read_as_python_yields_its_finding_and_a_bun_term_none(self):
+        for kind, term in STACK_GENERALITY_TERMS["*"]:
+            with self.subTest(term=term):
+                self.assertEqual(
+                    stack_generality_findings("python", _neutral(term)),
+                    [_finding("python", kind, term)],
+                )
+        for _kind, term in STACK_GENERALITY_TERMS["bun"]:
+            with self.subTest(bun_term=term):
+                sample = _neutral(_sample(term))
+                self.assertEqual(stack_generality_findings("python", sample), [])
+
+    def test_the_near_misses_yield_none_as_bun_and_as_python(self):
+        sample = _neutral(", ".join(NEAR_MISSES))
+        for stack in ("bun", "python"):
+            with self.subTest(stack=stack):
+                self.assertEqual(stack_generality_findings(stack, sample), [])
+
+    def test_the_workflow_vocabulary_yields_none_as_every_stack(self):
+        sample = _neutral(", ".join(WORKFLOW_VOCABULARY))
+        stacks = [stack for stack in STACK_GENERALITY_TERMS if stack != "*"] + ["python"]
+        for stack in stacks:
+            with self.subTest(stack=stack):
+                self.assertEqual(stack_generality_findings(stack, sample), [])
+        for term in WORKFLOW_VOCABULARY:
+            with self.subTest(vocabulary=term):
+                self.assertEqual(stack_generality_findings("bun", _neutral(term)), [])
+
+
+class StackTreeGeneralityDetectorTest(unittest.TestCase):
+    """CR-MDB-079 §S5.4/AC3 — :func:`stack_tree_generality_findings` proved both ways on synthetic
+    stacks. Passes on arrival."""
+
+    CLEAN = "mechanics = '''\n- Run the project's declared suite.\n'''\n"
+    FLAGGED = "mechanics = '''\n- Flash `sheetal-firmware/` first.\n'''\n"
+
+    def test_a_clean_stack_with_no_exceptions_yields_none(self):
+        self.assertEqual(stack_tree_generality_findings({"alpha": self.CLEAN}, {}), [])
+
+    def test_a_stack_carrying_a_term_not_excepted_yields_exactly_that_finding(self):
+        self.assertEqual(
+            stack_tree_generality_findings({"alpha": self.FLAGGED, "beta": self.CLEAN}, {}),
+            [_finding("alpha", WORD, "Sheetal")],
+        )
+
+    def test_an_excepted_stack_carrying_a_term_yields_none(self):
+        self.assertEqual(
+            stack_tree_generality_findings(
+                {"alpha": self.FLAGGED, "beta": self.CLEAN}, {"alpha": "CR-MDB-900"}
+            ),
+            [],
+        )
+
+    def test_a_clean_excepted_stack_yields_exactly_the_stale_finding_naming_its_cr(self):
+        self.assertEqual(
+            stack_tree_generality_findings({"alpha": self.CLEAN}, {"alpha": "CR-MDB-900"}),
+            ["alpha.toml carries no flagged term: remove its exception (CR-MDB-900)"],
+        )
+
+    def test_an_exception_naming_no_stack_yields_exactly_its_stale_finding(self):
+        self.assertEqual(
+            stack_tree_generality_findings({"alpha": self.CLEAN}, {"gamma": "CR-MDB-901"}),
+            ["gamma.toml is not a stack file: remove its exception (CR-MDB-901)"],
+        )
+
+
+class StackGeneralityTreeTest(unittest.TestCase):
+    """CR-MDB-079 §S5.3–§S5.5/AC4 — the guard over every ``generator/stacks/*.toml`` and the four
+    bun renders. ``test_no_stack_file_names_one_project`` fails on today's ``bun.toml`` (its
+    findings are the cycle's RED evidence); ``test_each_bun_render_names_no_project`` fails until
+    GREEN regenerates the renders. The rest pass on arrival: every stack file is read, the
+    exceptions bite on their real files (data-driven — no term is pinned to either file, so
+    CR-MDB-084 and CR-MDB-087 remove only their own entry), and each exception's CR has a spec."""
+
+    def setUp(self):
+        self.stacks = _real_stacks()
+
+    def test_every_stack_file_is_read_and_each_exception_names_one(self):
+        self.assertEqual(
+            [stack for stack in STACKS if stack not in self.stacks],
+            [],
+            "precondition: every generator/stacks/*.toml is read",
+        )
+        self.assertEqual(
+            [stack for stack in STACK_GENERALITY_EXCEPTIONS if stack not in self.stacks],
+            [],
+            "§S5.3: an exception names a stack file",
+        )
+
+    def test_no_stack_file_names_one_project(self):
+        self.assertEqual(
+            stack_tree_generality_findings(self.stacks, STACK_GENERALITY_EXCEPTIONS),
+            [],
+            "§S5/AC4: no stack file names one project (the excepted ones until their CR lands)",
+        )
+
+    def test_each_exception_bites_on_its_real_file(self):
+        for stack, cr in STACK_GENERALITY_EXCEPTIONS.items():
+            with self.subTest(stack=stack):
+                self.assertGreaterEqual(
+                    len(stack_generality_findings(stack, self.stacks.get(stack, ""))),
+                    1,
+                    f"§S5.4: {stack}.toml carries no flagged term — {cr} removes its exception",
+                )
+
+    def test_each_exceptions_cr_has_a_spec(self):
+        for stack, cr in STACK_GENERALITY_EXCEPTIONS.items():
+            with self.subTest(stack=stack):
+                self.assertEqual(
+                    len(list((REPO_ROOT / "docs" / "changes").glob(f"{cr}-*.md"))),
+                    1,
+                    f"AC4: {cr} has one spec under docs/changes/",
+                )
+
+    def test_each_bun_render_names_no_project(self):
+        renders = sorted(AGENTS_DIR.glob("bun-*-agent.md"))
+        self.assertEqual(
+            [path.name for path in renders],
+            [f"bun-{role}-agent.md" for role in sorted(ROLES)],
+            "precondition: the four bun renders",
+        )
+        self.assertEqual(
+            [
+                f"{path.name}: {hit}"
+                for path in renders
+                for hit in stack_generality_findings("bun", read_text(path))
+            ],
+            [],
+            "§S5.5/AC4: the bun renders name no project (after GREEN regenerates them)",
+        )
+
+
+class BunTomlRulesDetectorTest(unittest.TestCase):
+    """CR-MDB-079 AC1 — :func:`bun_toml_rule_findings` proved both ways on Appendix A's text: it
+    yields none; with every occurrence of one row's anchor removed from that row's key it yields
+    exactly that row's finding. Passes on arrival."""
+
+    def test_appendix_a_yields_no_finding(self):
+        self.assertEqual(bun_toml_rule_findings(APPENDIX_A_BUN_TOML), [])
+        self.assertEqual(len(BUN_TOML_RULES), 19, "AC1: one row per rule of the table")
+
+    def test_each_rows_anchor_removed_from_its_key_yields_exactly_its_finding(self):
+        data = tomllib.loads(APPENDIX_A_BUN_TOML)
+        for rule, key, anchor in BUN_TOML_RULES:
+            with self.subTest(rule=rule):
+                self.assertIn(anchor, _toml_value(data, key), "precondition: Appendix A carries it")
+                cut = _edit_value(APPENDIX_A_BUN_TOML, key, lambda v, a=anchor: v.replace(a, ""))
+                self.assertNotIn(anchor, _toml_value(tomllib.loads(cut), key))
+                self.assertEqual(bun_toml_rule_findings(cut), [_rule_finding(rule, key, anchor)])
+
+    def test_an_anchor_in_another_key_does_not_satisfy_its_row(self):
+        moved = _edit_value(
+            APPENDIX_A_BUN_TOML, "gotchas.fix", lambda v: v.replace("link time", "")
+        )
+        moved = _edit_value(moved, "mechanics", lambda v: v + "- Bun fails at link time.\n")
+        self.assertEqual(
+            bun_toml_rule_findings(moved),
+            [_rule_finding("§S3.2 linking (FIX)", "gotchas.fix", "link time")],
+        )
+
+
+class BunTomlDetectorTest(unittest.TestCase):
+    """CR-MDB-079 §S7.2/AC2 — :func:`bun_toml_findings` proved both ways on Appendix A's text: it
+    yields none; each of the four cuts yields exactly its finding. Passes on arrival."""
+
+    def test_appendix_a_yields_no_finding(self):
+        self.assertEqual(bun_toml_findings(APPENDIX_A_BUN_TOML), [])
+
+    def test_each_cut_yields_exactly_its_finding(self):
+        header = _header_comment(APPENDIX_A_BUN_TOML)
+        self.assertIn(BUN_RUNNER_PHRASE, header, "precondition: Appendix A's header names it")
+        cuts = (
+            (
+                "BUN_CRUCIBLE_PACKAGE_DIR added to mechanics",
+                _edit_value(
+                    APPENDIX_A_BUN_TOML,
+                    "mechanics",
+                    lambda v: v + "- Or set `$BUN_CRUCIBLE_PACKAGE_DIR`.\n",
+                ),
+                BUN_PACKAGE_DIR_ENV_FINDING,
+            ),
+            (
+                "test:regression added to tier_guidance",
+                _edit_value(
+                    APPENDIX_A_BUN_TOML,
+                    "tier_guidance",
+                    lambda v: v + "- Run `test:regression` for the sweep.\n",
+                ),
+                BUN_REGRESSION_TIER_FINDING,
+            ),
+            (
+                "the phrase removed from the header comment",
+                header.replace(BUN_RUNNER_PHRASE, "Bun")
+                + APPENDIX_A_BUN_TOML[len(header) :],
+                BUN_HEADER_RUNNER_FINDING,
+            ),
+            (
+                "the phrase removed from [description].red",
+                _edit_value(
+                    APPENDIX_A_BUN_TOML,
+                    "description.red",
+                    lambda v: v.replace(BUN_RUNNER_PHRASE, "Bun"),
+                ),
+                BUN_RED_RUNNER_FINDING,
+            ),
+        )
+        for label, text, finding in cuts:
+            with self.subTest(cut=label):
+                self.assertNotEqual(text, APPENDIX_A_BUN_TOML)
+                self.assertEqual(bun_toml_findings(text), [finding])
+
+
+class BunTomlGeneralTest(unittest.TestCase):
+    """CR-MDB-079 §S1–§S3/AC1/AC2 — the real ``bun.toml`` carries each rule of
+    :data:`BUN_TOML_RULES`, passes :func:`bun_toml_findings` and presumes no runner. All three fail
+    on today's ``bun.toml`` until GREEN rewrites it to Appendix A."""
+
+    def setUp(self):
+        self.text = read_text(BUN_TOML)
+
+    def test_the_real_bun_toml_carries_each_rule(self):
+        self.assertEqual(bun_toml_rule_findings(self.text), [], "AC1: §S1/§S2/§S3 content")
+
+    def test_the_real_bun_toml_passes_its_three_checks(self):
+        self.assertEqual(
+            bun_toml_findings(self.text),
+            [],
+            "AC2: no BUN_CRUCIBLE_PACKAGE_DIR, no test:regression tier, the header comment and "
+            "[description].red name the project's declared runner on the Bun runtime",
+        )
+
+    def test_the_real_bun_toml_presumes_no_runner(self):
+        runner_terms = ('from "bun:test"', "Bun's test runner")
+        self.assertEqual(
+            [
+                hit
+                for hit in stack_generality_findings("bun", self.text)
+                if any(repr(term) in hit for term in runner_terms)
+            ],
+            [],
+            "AC2: bun.toml carries neither from \"bun:test\" nor Bun's test runner",
+        )
+
+
+class BunTomlInvocationCountTest(unittest.TestCase):
+    """CR-MDB-079 AC7 — ``bun.toml`` carries at least :data:`BUN_TOML_MIN_INVOCATIONS` parsed
+    ``bun-crucible.py`` invocations, read through ``test_client_path_anchoring``'s
+    ``_parse_invocations``; Appendix A's text carries its stated 9. Passes on arrival."""
+
+    def test_bun_toml_carries_at_least_eight_parsed_invocations(self):
+        invocations = anchoring_gate._parse_invocations(BUN_TOML_REL, read_text(BUN_TOML))
+        self.assertEqual({inv["client"] for inv in invocations}, {"bun"})
+        self.assertGreaterEqual(len(invocations), BUN_TOML_MIN_INVOCATIONS, "AC7")
+
+    def test_appendix_a_carries_its_nine_parsed_invocations(self):
+        invocations = anchoring_gate._parse_invocations(BUN_TOML_REL, APPENDIX_A_BUN_TOML)
+        sources = {}
+        for inv in invocations:
+            sources[inv["source"]] = sources.get(inv["source"], 0) + 1
+        self.assertEqual(sources, APPENDIX_A_INVOCATIONS, "Appendix A: 3 toml, 6 span")
+
+
+# ----------------------------------------------------------- CR-MDB-079 §S8 ----
+
+#: CR-MDB-079 §S8.2 — the stack-file header helper, its one home and the two modules that use it
+#: (dotted module names, as an ``import`` statement names them).
+HEADER_HELPER = "provenance_header"
+HEADER_HELPER_HOME = "tests._helpers"
+HEADER_HELPER_USERS = ("tests.test_orchestrator_references", "tests.test_stack_reference_material")
+
+
+def _bound_from(tree: ast.AST, name: str) -> list[str]:
+    """The module each binding of ``name`` in ``tree`` comes from: a ``from <module> import name``
+    (a relative import read under ``tests``), and a ``<alias>.name`` attribute read off a module the
+    tree imports (``from tests import <module> as <alias>``, ``import tests.<module>``)."""
+    modules = {}
+    sources = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            base = f"tests.{node.module or ''}".rstrip(".") if node.level else node.module or ""
+            for alias in node.names:
+                if alias.name == name:
+                    sources.append(base)
+                modules[alias.asname or alias.name] = f"{base}.{alias.name}"
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                modules[alias.asname or alias.name] = alias.name
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute) and node.attr == name:
+            owner = ast.unparse(node.value)
+            if owner in modules:
+                sources.append(modules[owner])
+    return sources
+
+
+def helper_home_findings(
+    name: str, home: str, users: tuple[str, ...], sources: dict[str, str]
+) -> list[str]:
+    """CR-MDB-079 §S8.2: ``name`` is defined once, at module level, in ``home``; no other module of
+    ``sources`` (dotted module name to source text) defines it or binds it from any module but
+    ``home``; and each of ``users`` binds it from ``home``. One finding per break, ``home``'s first,
+    then each module's in name order."""
+    found = []
+    for module in [home] + sorted(m for m in sources if m != home):
+        tree = ast.parse(sources.get(module, ""))
+        defines = sum(
+            isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == name
+            for node in tree.body
+        )
+        if module == home:
+            if defines != 1:
+                found.append(f"{home}: defines {name} {defines} times, not once")
+            continue
+        bound = _bound_from(tree, name)
+        if defines:
+            found.append(f"{module}: defines {name}")
+        found += [f"{module}: imports {name} from {src}" for src in sorted(set(bound) - {home})]
+        if module in users and not defines and not bound:
+            found.append(f"{module}: does not import {name} from {home}")
+    return found
+
+
+def blank_line_findings(text: str) -> list[str]:
+    """CR-MDB-079 §S8.3: every top-level definition of ``text`` (a function or class, its first
+    decorator its first line, read from ``ast`` line numbers) is preceded by exactly two blank
+    lines — the two lines directly above it blank, the line above those not. A definition with
+    nothing but blank lines above it is not judged."""
+    lines = text.splitlines()
+    found = []
+    for node in ast.parse(text).body:
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            continue
+        first = min([node.lineno] + [decorator.lineno for decorator in node.decorator_list])
+        above = lines[: first - 1]
+        blanks = 0
+        while blanks < len(above) and not above[-1 - blanks].strip():
+            blanks += 1
+        if blanks < len(above) and blanks != 2:
+            found.append(f"line {first}: {node.name} is preceded by {blanks} blank lines, not 2")
+    return found
+
+
+#: CR-MDB-079 §S8.2 — a conforming tree: the helper defined once in its home, both users importing it
+#: from there (one under an alias), a module that never uses it, and a method of the same name.
+_HELPER_GOOD = {
+    "tests._helpers": "import re\n\n\ndef provenance_header(text: str) -> str:\n    return text\n",
+    "tests.test_orchestrator_references": (
+        "from tests._helpers import provenance_header\n\n\n"
+        "def check(text):\n    return provenance_header(text)\n"
+    ),
+    "tests.test_stack_reference_material": (
+        "from tests._helpers import provenance_header as _header_comment\n\n\n"
+        "class Case:\n    def provenance_header(self):\n        return _header_comment('# x')\n"
+    ),
+    "tests.test_other": "# provenance_header is named in a comment only\nNAME = 'provenance_header'\n",
+}
+_REFS = "tests.test_orchestrator_references"
+_MATERIAL = "tests.test_stack_reference_material"
+
+
+def _helper_findings(sources: dict[str, str]) -> list[str]:
+    return helper_home_findings(HEADER_HELPER, HEADER_HELPER_HOME, HEADER_HELPER_USERS, sources)
+
+
+class HeaderHelperHomeDetectorTest(unittest.TestCase):
+    """CR-MDB-079 §S8.2/AC8 — :func:`helper_home_findings` proved both ways on synthetic sources:
+    each break alone yields exactly its finding, the conforming tree none. Passes on arrival (the
+    detector is test code; the real tree's check is :class:`HeaderHelperHomeTest`'s)."""
+
+    def test_the_conforming_tree_yields_no_finding(self):
+        self.assertEqual(_helper_findings(_HELPER_GOOD), [])
+
+    def test_a_home_defining_it_zero_or_two_times_bites(self):
+        for body, times in (("import re\n", 0), (_HELPER_GOOD["tests._helpers"] * 2, 2)):
+            with self.subTest(times=times):
+                self.assertEqual(
+                    _helper_findings({**_HELPER_GOOD, "tests._helpers": body}),
+                    [f"tests._helpers: defines provenance_header {times} times, not once"],
+                )
+
+    def test_a_user_defining_it_bites(self):
+        local = "def provenance_header(text):\n    return text\n"
+        self.assertEqual(
+            _helper_findings({**_HELPER_GOOD, _REFS: local}), [f"{_REFS}: defines provenance_header"]
+        )
+
+    def test_a_module_that_is_no_user_defining_it_bites(self):
+        other = "import os\n\n\ndef provenance_header(text):\n    return text\n"
+        self.assertEqual(
+            _helper_findings({**_HELPER_GOOD, "tests.test_other": other}),
+            ["tests.test_other: defines provenance_header"],
+        )
+
+    def test_a_user_importing_it_from_another_test_module_bites(self):
+        for source in (
+            f"from {_REFS} import provenance_header as _header_comment\n",
+            "from tests import test_orchestrator_references as refs\n\n\n"
+            "def check(text):\n    return refs.provenance_header(text)\n",
+            "import tests.test_orchestrator_references\n\n\n"
+            "def check(text):\n    return tests.test_orchestrator_references.provenance_header(text)\n",
+            "from .test_orchestrator_references import provenance_header\n",
+        ):
+            with self.subTest(source=source):
+                self.assertEqual(
+                    _helper_findings({**_HELPER_GOOD, _MATERIAL: source}),
+                    [f"{_MATERIAL}: imports provenance_header from {_REFS}"],
+                )
+
+    def test_a_user_not_importing_it_bites(self):
+        self.assertEqual(
+            _helper_findings({**_HELPER_GOOD, _MATERIAL: "import re\n"}),
+            [f"{_MATERIAL}: does not import provenance_header from tests._helpers"],
+        )
+
+    def test_a_relative_import_from_the_home_passes(self):
+        relative = "from ._helpers import provenance_header\n"
+        self.assertEqual(_helper_findings({**_HELPER_GOOD, _MATERIAL: relative}), [])
+
+    def test_todays_shape_yields_its_three_findings(self):
+        todays = {
+            **_HELPER_GOOD,
+            "tests._helpers": "import re\n",
+            _REFS: "def provenance_header(text):\n    return text\n",
+            _MATERIAL: f"from {_REFS} import provenance_header as _header_comment\n",
+        }
+        self.assertEqual(
+            _helper_findings(todays),
+            [
+                "tests._helpers: defines provenance_header 0 times, not once",
+                f"{_REFS}: defines provenance_header",
+                f"{_MATERIAL}: imports provenance_header from {_REFS}",
+            ],
+        )
+
+
+class HeaderHelperHomeTest(unittest.TestCase):
+    """CR-MDB-079 §S8.2/AC8 — ``provenance_header`` is defined once, in ``tests/_helpers.py``; no
+    other module under ``tests/`` defines it or binds it from anywhere else, and
+    ``tests/test_orchestrator_references.py`` and ``tests/test_stack_reference_material.py`` import
+    it from there. Fails on today's tree until FIX moves the helper."""
+
+    def test_the_header_helper_lives_once_in_the_shared_helpers(self):
+        sources = {
+            f"tests.{path.stem}": read_text(path)
+            for path in sorted((REPO_ROOT / "tests").glob("*.py"))
+        }
+        self.assertEqual((set(HEADER_HELPER_USERS) | {HEADER_HELPER_HOME}) - set(sources), set())
+        self.assertEqual(_helper_findings(sources), [], "§S8.2: one shared helper, one home")
+
+
+#: CR-MDB-079 §S8.3 — a conforming module: a decorated class and plain functions at top level, each
+#: after two blank lines; methods one blank line apart; an assignment after a definition, unjudged.
+_LAYOUT_GOOD = '''\
+"""A module."""
+
+import functools
+
+
+def helper(text):
+    return text
+
+
+@functools.total_ordering
+class Case:
+    def __eq__(self, other):
+        return True
+
+    def __lt__(self, other):
+        return False
+
+
+NAME = helper("x")
+
+
+async def later():
+    return NAME
+'''
+
+
+class BlankLineDetectorTest(unittest.TestCase):
+    """CR-MDB-079 §S8.3/AC8 — :func:`blank_line_findings` proved both ways on synthetic text: each
+    break alone yields exactly its finding, the conforming module none. Passes on arrival (the
+    detector is test code; this module's own check is :class:`BlankLineLayoutTest`'s)."""
+
+    def _edited(self, old: str, new: str) -> str:
+        self.assertEqual(_LAYOUT_GOOD.count(old), 1, old)
+        return _LAYOUT_GOOD.replace(old, new)
+
+    def test_the_conforming_module_yields_no_finding(self):
+        self.assertEqual(blank_line_findings(_LAYOUT_GOOD), [])
+
+    def test_one_or_three_blank_lines_before_a_function_bite(self):
+        for blanks in (1, 3):
+            with self.subTest(blanks=blanks):
+                text = self._edited("import functools\n\n\n", "import functools\n" + "\n" * blanks)
+                self.assertEqual(
+                    blank_line_findings(text),
+                    [f"line {4 + blanks}: helper is preceded by {blanks} blank lines, not 2"],
+                )
+
+    def test_no_blank_line_before_an_async_function_bites(self):
+        text = self._edited('NAME = helper("x")\n\n\n', 'NAME = helper("x")\n')
+        self.assertEqual(
+            blank_line_findings(text), ["line 20: later is preceded by 0 blank lines, not 2"]
+        )
+
+    def test_the_decorator_is_the_definitions_first_line(self):
+        below = self._edited(
+            "\n\n\n@functools.total_ordering\n", "\n@functools.total_ordering\n\n\n"
+        )
+        self.assertEqual(
+            blank_line_findings(below),
+            ["line 8: Case is preceded by 0 blank lines, not 2"],
+            "two blank lines between the decorator and the class do not count",
+        )
+        one = self._edited("\n\n@functools.total_ordering", "\n@functools.total_ordering")
+        self.assertEqual(
+            blank_line_findings(one), ["line 9: Case is preceded by 1 blank lines, not 2"]
+        )
+
+    def test_methods_one_blank_line_apart_are_not_judged(self):
+        cramped = self._edited("        return True\n\n    def", "        return True\n    def")
+        self.assertEqual(blank_line_findings(cramped), [])
+
+    def test_todays_shape_yields_its_finding(self):
+        todays = (
+            "import re\n\n\ndef _sample(term):\n    return term\n\ndef _finding(stack, kind, term):\n"
+            "    return stack\n\n\nclass StackGeneralityTermsTest:\n    pass\n"
+        )
+        self.assertEqual(
+            blank_line_findings(todays), ["line 7: _finding is preceded by 1 blank lines, not 2"]
+        )
+
+
+class BlankLineLayoutTest(unittest.TestCase):
+    """CR-MDB-079 §S8.3/AC8 — every top-level definition of this module, read from its own source,
+    is preceded by exactly two blank lines. Fails on today's tree until FIX fixes the layout."""
+
+    def test_every_top_level_definition_here_follows_two_blank_lines(self):
+        self.assertEqual(blank_line_findings(read_text(Path(__file__))), [], "§S8.3: layout")
+
+
+#: CR-MDB-079 §S8.1/AC8 — the spec whose Appendix A shows ``bun.toml``'s text; where it shows the
+#: per-stack comment above ``tier_guidance``, its text is the authority.
+CR_079_SPEC = REPO_ROOT / "docs" / "changes" / "CR-MDB-079-bun-stack-general-to-every-bun-project.md"
+TIER_KEY = "tier_guidance"
+#: CR-MDB-079 AC8 — the opening of every stack file's per-stack comment, as AC8 quotes it.
+TIER_COMMENT_OPENING = "# CR-MDB-017 §S6b — "
+NO_TIER_COMMENT = f"no comment directly above {TIER_KEY}"
+TIER_COMMENT_DIFFERS = f"the comment above {TIER_KEY} is not bun.toml's"
+
+
+def comment_above(text: str, key: str) -> str:
+    """The run of ``#`` lines directly above the first ``<key> =`` line of ``text``, joined; ""
+    when a blank or other line sits between, or no such line exists."""
+    lines = text.splitlines()
+    for index, line in enumerate(lines):
+        if re.match(rf"{re.escape(key)}\s*=", line):
+            start = index
+            while start > 0 and lines[start - 1].startswith("#"):
+                start -= 1
+            return "\n".join(lines[start:index])
+    return ""
+
+
+def tier_comment_findings(text: str, expected: str) -> list[str]:
+    """CR-MDB-079 §S8.1/AC8: ``text`` carries ``expected`` (the real ``bun.toml``'s comment)
+    directly above its ``tier_guidance``, word for word. One finding at most."""
+    comment = comment_above(text, TIER_KEY)
+    if not comment:
+        return [NO_TIER_COMMENT]
+    return [] if comment == expected else [TIER_COMMENT_DIFFERS]
+
+
+def appendix_a_toml(spec: str) -> str:
+    """The ``toml`` block of ``spec``'s ``## Appendix A`` section ("" when none)."""
+    match = re.search(r"^```toml\n(.*?)^```", md_section(spec, "## Appendix A"), re.S | re.M)
+    return match.group(1) if match else ""
+
+
+#: CR-MDB-079 §S8.1 — a conforming sample: a two-line comment directly above ``tier_guidance``.
+_TIER_COMMENT = "# CR-MDB-017 §S6b — the per-stack half.\n# The tier a run claims is the project's."
+_TIER_GOOD = f"mechanics = '''\n- a\n'''\n\n{_TIER_COMMENT}\n{TIER_KEY} = '''\n- b\n'''\n"
+
+
+class TierCommentDetectorTest(unittest.TestCase):
+    """CR-MDB-079 §S8.1/AC8 — :func:`tier_comment_findings` proved both ways on synthetic text:
+    each break alone yields exactly one finding, the conforming sample none. Passes on arrival (the
+    detector is test code; the real files' checks are :class:`TierCommentTest`'s)."""
+
+    def _edited(self, old: str, new: str) -> str:
+        self.assertEqual(_TIER_GOOD.count(old), 1, old)
+        return _TIER_GOOD.replace(old, new)
+
+    def test_the_conforming_sample_yields_no_finding(self):
+        self.assertEqual(tier_comment_findings(_TIER_GOOD, _TIER_COMMENT), [])
+
+    def test_the_comment_removed_bites(self):
+        removed = self._edited(_TIER_COMMENT + "\n", "")
+        self.assertEqual(tier_comment_findings(removed, _TIER_COMMENT), [NO_TIER_COMMENT])
+
+    def test_the_comment_reworded_bites(self):
+        for old, new in (("per-stack half", "per-stack part"),
+                         ("# CR-MDB-017 §S6b — the per-stack half.\n", "")):
+            with self.subTest(old=old):
+                reworded = self._edited(old, new)
+                self.assertEqual(tier_comment_findings(reworded, _TIER_COMMENT),
+                                 [TIER_COMMENT_DIFFERS])
+
+    def test_the_comment_not_directly_above_the_key_bites(self):
+        for edited in (
+            self._edited(_TIER_COMMENT + "\n", _TIER_COMMENT + "\n\n"),
+            _TIER_COMMENT + "\n" + self._edited(_TIER_COMMENT + "\n", ""),
+        ):
+            with self.subTest(edited=edited):
+                self.assertEqual(tier_comment_findings(edited, _TIER_COMMENT), [NO_TIER_COMMENT])
+
+    def test_appendix_a_toml_is_read_from_the_specs_appendix_a(self):
+        spec = ("# CR\n\n## Scope\n\n```toml\nother = 1\n```\n\n## Appendix A — proposed text\n\n"
+                f"```toml\n{_TIER_GOOD}```\n")
+        self.assertEqual(appendix_a_toml(spec), _TIER_GOOD)
+        self.assertEqual(appendix_a_toml("# CR\n\n## Scope\n\n```toml\nother = 1\n```\n"), "")
+
+
+class TierCommentTest(unittest.TestCase):
+    """CR-MDB-079 §S8.1/AC8 — the real ``bun.toml`` carries the per-stack comment directly above
+    ``tier_guidance``; the spec's Appendix A shows it word for word, and so does
+    :data:`APPENDIX_A_BUN_TOML`. The real file's and the spec's halves pass on arrival; the
+    constant's fails until FIX adds the comment to it."""
+
+    def setUp(self):
+        self.expected = comment_above(read_text(BUN_TOML), TIER_KEY)
+
+    def test_the_real_bun_toml_carries_the_per_stack_comment(self):
+        self.assertTrue(self.expected.startswith(TIER_COMMENT_OPENING),
+                        f"AC8: bun.toml's comment above {TIER_KEY}: {self.expected!r}")
+
+    def test_the_specs_appendix_a_shows_bun_tomls_comment(self):
+        appendix = appendix_a_toml(read_text(CR_079_SPEC))
+        self.assertIn(f"\n{TIER_KEY} = ", appendix, "precondition: Appendix A shows tier_guidance")
+        self.assertEqual(tier_comment_findings(appendix, self.expected), [], "AC8: the spec's text")
+
+    def test_appendix_a_bun_toml_carries_bun_tomls_comment(self):
+        self.assertEqual(tier_comment_findings(APPENDIX_A_BUN_TOML, self.expected), [],
+                         "AC8: APPENDIX_A_BUN_TOML is Appendix A verbatim")
 
 
 if __name__ == "__main__":
