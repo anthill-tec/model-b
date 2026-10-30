@@ -144,6 +144,7 @@ The `~/.claude` user space grew organically into 24 memory files, ~50 skills, 29
   - **When it runs.** A spec gets a pre-review when at least one holds: the CR scores 8 points or more; it touches a contract, a hook or another project's surface; or its gap analysis needed a ruling from the user. Any other spec goes from the gap analysis to the user's approval. The re-scoping rule above stands for a CR that meets a trigger.
   - **What it looks for.** A short fixed checklist, not the gap analysis's dimensions again: an acceptance criterion no test can meet or check; a missing failure path or edge case; a gap in scope or design; a conflict with the PRD or a DN. Wording and naming are not findings, and nothing outside the checklist is folded in.
   - **The agent is unchanged:** the stack's VERIFY agent, in its spec pre-review mode.
+  - **Model B applies it to its own CRs at once** (user ruling, 2026-10-30), ahead of CR-MDB-096, which carries it into the skills and the VERIFY template for every project. Until that CR merges, the skills' text that every spec gets a pre-review does not bind Model B's own orchestrator.
 
 ### D7 — Crucible V2 client contract (AXI)
 - **Ownership (corrected 2026-07-20): ALL `*-crucible.py` client implementation is the CRUCIBLE project's responsibility.** Model B requests it (Sandesh thread #1322/#1325), tracks it as an external dependency, and documents/consumes what Crucible ships. Model B implements no client code.
