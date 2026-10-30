@@ -74,6 +74,8 @@ Stdlib only: unittest + subprocess + json + os + sys + shutil + stat + time +
 tempfile + tomllib + pathlib.
 """
 
+import ast
+import io
 import json
 import os
 import re
@@ -83,9 +85,12 @@ import subprocess
 import sys
 import tempfile
 import time
+import tokenize
 import tomllib
 import unittest
 from pathlib import Path
+
+from tests._helpers import GIT_ISOLATION_ENV
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 HOOKS_SRC_DIR = REPO_ROOT / "hooks-src"
@@ -388,6 +393,316 @@ class RemainingGuardScriptsSmokeTest(unittest.TestCase):
                     f"{name}: expected exit 0 (allow) on a benign payload; "
                     f"got {result.returncode}, stderr={result.stderr!r}",
                 )
+
+
+# ------------------------------------------- CR-MDB-066 §S5: the hardened payload prelude ----
+
+#: CR-MDB-066 §S5 — the three hooks that take the runner hooks' payload prelude.
+PRELUDE_HOOKS = (
+    "block-cr-completed-without-spec-update",
+    "block-write-outside-worktree",
+    "post-regression-disk-reminder",
+)
+#: The worktree hook's dispatch signal and escape hatch: a hook run never inherits either, so
+#: neither can allow a call before the payload is read (CR-MDB-066 AC6).
+_WORKTREE_ENV = ("WF_WORKTREE_ROOT", "ALLOW_WRITE_OUTSIDE_WORKTREE")
+#: The runner hooks' catch on the payload read (CR-MDB-066 §S5.1), as ``ast.unparse`` writes it.
+_PRELUDE_CATCH = "(ValueError, OSError, RecursionError)"
+#: The runner hooks' comment on that catch, whitespace-normalised across its comment lines.
+_PRELUDE_COMMENT = ("bad JSON or UTF-8, a number past the digit limit, nesting past the "
+                    "recursion limit")
+#: The CR hook's command that reaches ``cwd`` (CR-MDB-066 AC6).
+_COMPLETED_COMMIT = 'git commit -m "COMPLETED CR-X-1"'
+
+#: A hook whose ``main`` has the pre-change catch and then, untyped, calls ``.get`` on
+#: ``tool_input``, ``re.search`` on ``command`` and ``Path(cwd)`` (CR-MDB-066 AC6's proof).
+_PRE_CHANGE_SCRIPT = '''\
+import json
+import re
+import sys
+from pathlib import Path
+
+
+def main():
+    try:
+        payload = json.load(sys.stdin)
+    except (json.JSONDecodeError, OSError):
+        return 0  # unreadable payload -> fail open
+    if not isinstance(payload, dict):
+        return 0
+    tool_input = payload.get("tool_input") or {}
+    target = tool_input.get("command") or tool_input.get("path") or ""
+    if payload.get("tool_name") == "bash":
+        re.search(r"\\bgit\\s+commit\\b", target)
+    cwd = payload.get("cwd")
+    if cwd is not None:
+        Path(cwd)
+    return 0
+
+
+sys.exit(main())
+'''
+
+#: The same hook with CR-MDB-066 §S5.1's prelude: the proof that a correct hook passes.
+_HARDENED_SCRIPT = '''\
+import json
+import re
+import sys
+from pathlib import Path
+
+
+def main():
+    try:
+        payload = json.load(sys.stdin)
+    except (ValueError, OSError, RecursionError):
+        # unreadable payload (bad JSON or UTF-8, a number past the digit limit, nesting past
+        # the recursion limit) -> fail open
+        return 0
+    if not isinstance(payload, dict):
+        return 0
+    tool_input = payload.get("tool_input") or {}
+    if not isinstance(tool_input, dict):
+        return 0
+    target = tool_input.get("command") or tool_input.get("path") or ""
+    cwd = payload.get("cwd")
+    if not isinstance(target, str) or (cwd is not None and not isinstance(cwd, str)):
+        return 0
+    if payload.get("tool_name") == "bash":
+        re.search(r"\\bgit\\s+commit\\b", target)
+    if cwd is not None:
+        Path(cwd)
+    return 0
+
+
+sys.exit(main())
+'''
+
+
+def _hostile_payload_cases(hook, cwd):
+    """CR-MDB-066 AC6's cases for ``hook``, as ``(label, stdin bytes, extra env)``: the four
+    payloads of the runner hooks' ``_FailOpen.test_allows_a_hostile_payload_without_a_traceback``,
+    non-UTF-8 stdin, a truthy non-dict ``tool_input``, a non-string ``command`` (the two bash
+    hooks) and a non-string ``cwd`` reached by a command or path (the two block hooks)."""
+    depth = 100_000
+    cases = [
+        ("open array", ("[" * depth).encode(), {}),
+        ("closed array", ("[" * depth + "]" * depth).encode(), {}),
+        ("nested object", ('{"a":' * depth + "1" + "}" * depth).encode(), {}),
+        ("long number", ("1" * 5000).encode(), {}),
+        ("non-UTF-8 stdin", b"\xff\xfe{", {"PYTHONIOENCODING": "utf-8:strict"}),
+    ]
+    tool = "write" if hook == "block-write-outside-worktree" else "bash"
+
+    def payload(**fields):
+        return json.dumps({"tool_name": tool, **fields}).encode()
+
+    for value in (["x"], "x"):
+        cases.append((f"tool_input {value!r}", payload(tool_input=value, cwd=str(cwd)), {}))
+    if tool == "bash":
+        cases.append(("command 5", payload(tool_input={"command": 5}, cwd=str(cwd)), {}))
+    if hook == "block-cr-completed-without-spec-update":
+        cases.append(("cwd 5", payload(tool_input={"command": _COMPLETED_COMMIT}, cwd=5), {}))
+    elif hook == "block-write-outside-worktree":
+        cases.append(("cwd 5", payload(tool_input={"path": "x"}, cwd=5), {}))
+    return cases
+
+
+def _run_hook_bytes(script, data, env_extra=None, proc_cwd=None):
+    """Run ``script`` on the test's interpreter with the raw bytes ``data`` on stdin, the
+    worktree hook's ``_WORKTREE_ENV`` variables removed from its environment, git's configuration
+    isolated and ``env_extra`` set; stdout and stderr come back as bytes."""
+    env = {k: v for k, v in os.environ.items() if k not in _WORKTREE_ENV}
+    env.update(GIT_ISOLATION_ENV)
+    env.update(env_extra or {})
+    return subprocess.run([sys.executable, str(script)], input=data, capture_output=True,
+                          timeout=30, env=env, cwd=proc_cwd)
+
+
+def _hostile_payload_failures(script, cases, proc_cwd):
+    """``{label: [problem, …]}`` for every case on which ``script`` does not allow cleanly (exit
+    0, empty stdout, no ``Traceback`` on stderr); ``{}`` when it allows each one."""
+    failures = {}
+    for label, data, env in cases:
+        res = _run_hook_bytes(script, data, env, proc_cwd)
+        stdout = res.stdout.decode("utf-8", errors="replace")
+        stderr = res.stderr.decode("utf-8", errors="replace")
+        problems = []
+        if "Traceback" in stderr:
+            last = stderr.strip().splitlines()[-1] if stderr.strip() else ""
+            problems.append(f"a traceback ({last})")
+        if res.returncode != 0:
+            problems.append(f"exit {res.returncode}")
+        if stdout:
+            problems.append(f"stdout {stdout[:200]!r}")
+        if problems:
+            failures[label] = problems
+    return failures
+
+
+def _prelude_findings(source):
+    """Every way ``source`` misses CR-MDB-066 §S5.1's payload read, one finding per point; ``[]``
+    when it keeps it: its top-level ``main`` reads the payload with ``json.load`` in one ``try``
+    whose handler catches ``_PRELUDE_CATCH``, and its comments carry ``_PRELUDE_COMMENT``."""
+    tree = ast.parse(source)
+    mains = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "main"]
+    if not mains:
+        return ["no top-level main"]
+
+    def reads_payload(node):
+        return any(isinstance(c, ast.Call) and ast.unparse(c.func) == "json.load"
+                   for stmt in node.body for c in ast.walk(stmt))
+
+    reads = [t for t in ast.walk(mains[0]) if isinstance(t, ast.Try) and reads_payload(t)]
+    findings = []
+    if len(reads) != 1:
+        findings.append(f"main reads the payload in {len(reads)} try statements, not one")
+    else:
+        catches = [ast.unparse(h.type) for h in reads[0].handlers if h.type is not None]
+        if _PRELUDE_CATCH not in catches:
+            findings.append(f"the payload read catches {catches}, not {_PRELUDE_CATCH}")
+    comments = [tok.string.lstrip("#").strip()
+                for tok in tokenize.generate_tokens(io.StringIO(source).readline)
+                if tok.type == tokenize.COMMENT]
+    if _PRELUDE_COMMENT not in " ".join(" ".join(comments).split()):
+        findings.append("no runner-hook comment on the catch")
+    return findings
+
+
+class BlockHookHostilePayloadTest(unittest.TestCase):
+    """CR-MDB-066 §S5.1 (AC6) — the three §S5 hooks take the runner hooks' payload prelude: run as
+    a subprocess, each allows a hostile or type-confused payload (exit 0, empty stdout, no
+    ``Traceback``). The harness is proved both ways on two temp scripts: the pre-change catch
+    with untyped field reads raises on every case, the hardened prelude on none. §S7.3: each
+    hook's docstring names the prelude."""
+
+    maxDiff = None
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="modelb-hooks-hostile-")).resolve()
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+
+    def _synthetic(self, name, body):
+        path = self.tmp / name
+        path.write_text(body, encoding="utf-8")
+        return path
+
+    def test_each_section_s5_hook_allows_every_hostile_payload_without_a_traceback(self):
+        failures = {}
+        for hook in PRELUDE_HOOKS:
+            got = _hostile_payload_failures(SCRIPTS_DIR / hook,
+                                            _hostile_payload_cases(hook, self.tmp), self.tmp)
+            failures.update({f"{hook}: {label}": problems for label, problems in got.items()})
+        self.assertEqual(failures, {}, "CR-MDB-066 §S5.1: a hook raised or did not allow")
+
+    def test_the_harness_reports_a_traceback_for_every_case_on_the_pre_change_prelude(self):
+        # Proof the harness bites: the pre-change catch raises on every case of every hook.
+        script = self._synthetic("pre-change-hook", _PRE_CHANGE_SCRIPT)
+        for hook in PRELUDE_HOOKS:
+            cases = _hostile_payload_cases(hook, self.tmp)
+            with self.subTest(hook=hook):
+                got = _hostile_payload_failures(script, cases, self.tmp)
+                self.assertEqual(sorted(got), sorted(label for label, _, _ in cases))
+                untraced = [label for label, problems in got.items()
+                            if not any(p.startswith("a traceback") for p in problems)]
+                self.assertEqual(untraced, [], got)
+
+    def test_the_harness_reports_nothing_on_the_hardened_prelude(self):
+        # Proof a correct hook can pass: the hardened prelude allows every case of every hook.
+        script = self._synthetic("hardened-hook", _HARDENED_SCRIPT)
+        for hook in PRELUDE_HOOKS:
+            with self.subTest(hook=hook):
+                self.assertEqual(_hostile_payload_failures(
+                    script, _hostile_payload_cases(hook, self.tmp), self.tmp), {})
+
+    def test_the_case_list_is_exactly_the_specs_for_each_hook(self):
+        # CR-MDB-066 AC6: `command` 5 for the two bash hooks, `cwd` 5 for the two block hooks.
+        common = ["open array", "closed array", "nested object", "long number",
+                  "non-UTF-8 stdin", "tool_input ['x']", "tool_input 'x'"]
+        expected = {
+            "block-cr-completed-without-spec-update": common + ["command 5", "cwd 5"],
+            "block-write-outside-worktree": common + ["cwd 5"],
+            "post-regression-disk-reminder": common + ["command 5"],
+        }
+        got = {hook: [label for label, _, _ in _hostile_payload_cases(hook, self.tmp)]
+               for hook in PRELUDE_HOOKS}
+        self.assertEqual(got, expected)
+
+    def test_each_section_s5_hook_reads_the_payload_with_the_runner_hooks_catch_and_comment(self):
+        failures = {hook: _prelude_findings((SCRIPTS_DIR / hook).read_text(encoding="utf-8"))
+                    for hook in PRELUDE_HOOKS}
+        self.assertEqual({h: f for h, f in failures.items() if f}, {},
+                         "CR-MDB-066 §S5.1: the payload read is not the runner hooks'")
+
+    def test_the_prelude_detector_passes_a_runner_hook_and_the_hardened_prelude(self):
+        # Proof a correct source can pass: the runner hook the prelude comes from, and the
+        # hardened synthetic hook.
+        runner = (SCRIPTS_DIR / "block-direct-python-test").read_text(encoding="utf-8")
+        self.assertEqual(_prelude_findings(runner), [])
+        self.assertEqual(_prelude_findings(_HARDENED_SCRIPT), [])
+
+    def test_the_prelude_detector_reports_the_pre_change_catch_and_comment(self):
+        self.assertEqual(_prelude_findings(_PRE_CHANGE_SCRIPT), [
+            "the payload read catches ['(json.JSONDecodeError, OSError)'], not "
+            "(ValueError, OSError, RecursionError)",
+            "no runner-hook comment on the catch",
+        ])
+        self.assertEqual(_prelude_findings("def other():\n    pass\n"), ["no top-level main"])
+
+    def test_each_section_s5_hook_docstring_names_the_prelude_and_cites_the_section(self):
+        # CR-MDB-066 §S7.3 (AC9): each docstring cites CR-MDB-066 §S5 and names the prelude.
+        failures = []
+        for hook in PRELUDE_HOOKS:
+            doc = ast.get_docstring(ast.parse(
+                (SCRIPTS_DIR / hook).read_text(encoding="utf-8"))) or ""
+            flat = " ".join(doc.split())
+            if "CR-MDB-066 §S5" not in flat:
+                failures.append(f"{hook}: does not cite CR-MDB-066 §S5")
+            if "prelude" not in flat.lower():
+                failures.append(f"{hook}: does not name the payload prelude")
+        self.assertEqual(failures, [])
+
+
+class WorktreeHookCwdFallbackTest(unittest.TestCase):
+    """CR-MDB-066 §S5.1 — ``block-write-outside-worktree`` keeps its ``os.getcwd()`` fallback for
+    an absent ``cwd`` and allows on a present non-string one, run as a subprocess whose own
+    working directory is a real registered worktree ``<repo>/.worktrees/CR-X-1``, with the
+    dispatch signal and the escape hatch removed from its environment."""
+
+    OUTSIDE = "/etc/modelb-hooks-outside-fixture.txt"
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="modelb-hooks-cwd-")).resolve()
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        repo = self.tmp / "repo"
+        repo.mkdir()
+        env = {**os.environ, **GIT_ISOLATION_ENV}
+        for args in (("init", "-q", "-b", "main"),
+                     ("-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid",
+                      "commit", "-q", "--allow-empty", "-m", "init"),
+                     ("worktree", "add", "-q", "-b", "cr", ".worktrees/CR-X-1", "main")):
+            res = subprocess.run(["git", *args], cwd=repo, env=env, capture_output=True,
+                                 text=True, timeout=30)
+            self.assertEqual(res.returncode, 0, f"precondition: git {args[0]}: {res.stderr}")
+        self.worktree = (repo / ".worktrees" / "CR-X-1").resolve()
+
+    def _run(self, payload):
+        return _run_hook_bytes(SCRIPTS_DIR / "block-write-outside-worktree",
+                               json.dumps(payload).encode(), proc_cwd=self.worktree)
+
+    def test_an_absent_cwd_falls_back_to_the_process_cwd_and_blocks_a_write_outside(self):
+        # Passes on arrival: it pins the fallback §S5.1 keeps.
+        res = self._run({"tool_name": "write", "tool_input": {"path": self.OUTSIDE}})
+        self.assertNotIn(b"Traceback", res.stderr, res.stderr)
+        self.assertEqual(res.returncode, 2, res.stderr)
+        self.assertEqual(json.loads(res.stdout).get("decision"), "block")
+
+    def test_a_present_non_string_cwd_allows_and_never_falls_back(self):
+        for cwd in (5, ["x"], {"a": 1}):
+            with self.subTest(cwd=cwd):
+                res = self._run({"tool_name": "write", "tool_input": {"path": self.OUTSIDE},
+                                 "cwd": cwd})
+                self.assertNotIn(b"Traceback", res.stderr, res.stderr)
+                self.assertEqual((res.returncode, res.stdout), (0, b""), res.stderr)
 
 
 def _toon_encode(obj):

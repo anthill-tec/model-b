@@ -46,6 +46,7 @@ that is not (``ctx_read``, …) counts whole-word. Without that split the scan w
 import ast
 import functools
 import json
+import os
 import re
 import subprocess
 import sys
@@ -55,7 +56,7 @@ import unittest
 from pathlib import Path
 
 from modelb_axi.agents import PI_TOOL_NAMES, ROLE_DENIED_TOOLS
-from tests._helpers import ORCHESTRATION_REFERENCES, at_line, run_hook
+from tests._helpers import GIT_ISOLATION_ENV, ORCHESTRATION_REFERENCES, at_line, run_hook
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -625,6 +626,46 @@ _SYNTHETIC_BUN_REASON = "\n".join((
 ))
 
 
+#: CR-MDB-066 §S5.2 (AC7) — the hook whose CR-completion reason names the close-out.
+CR_COMPLETION_HOOK = "block-cr-completed-without-spec-update"
+#: CR-MDB-066 §S5.2 — what the CR-completion reason names: the model-b skill's close-out step.
+CR_COMPLETION_REASON_WORDS = ("orchestration-common.md", "Close-out", "**Status:**", "COMPLETED")
+#: CR-MDB-066 §S5.2 — the phrase the CR-completion reason drops.
+_TWO_FILES = re.compile(r"\bTWO\s+files\b", re.I)
+
+
+def cr_completion_reason_findings(reason):
+    """Every way ``reason`` breaks CR-MDB-066 §S5.2 (AC7), one finding per broken point; ``[]``
+    when it keeps it: one per ``STALE_REASON_REFERENCES`` match, one for "TWO files", and one per
+    word of ``CR_COMPLETION_REASON_WORDS`` it does not name (case-sensitive)."""
+    findings = [f"carries the stale reference {label}"
+                for label, rx in STALE_REASON_REFERENCES if rx.search(reason)]
+    if _TWO_FILES.search(reason):
+        findings.append('carries "TWO files"')
+    findings += [f"does not name {word}" for word in CR_COMPLETION_REASON_WORDS if word not in reason]
+    return findings
+
+
+#: The CR-completion reason before CR-MDB-066 (its "Per ORCHESTRATOR-RULES.md §5 …" sentence).
+_PRE_CHANGE_CR_COMPLETION_REASON = (
+    "⛔ BLOCKED: Commit message mentions COMPLETED for CR(s) [CR-X-1] but the staged diff does "
+    "not include the CR spec file(s) under docs/changes/. Per ORCHESTRATOR-RULES.md §5 (Closing "
+    "a CR — TWO files must be updated, always): flip the spec file `**Status:**` field to "
+    "COMPLETED before committing the closure, `git add` the spec, then retry. To bypass (rare — "
+    "pure docs-only commit not closing the CR): remove the COMPLETED keyword from the commit "
+    "message."
+)
+#: CR-MDB-066 §S5.2's proposed text, for CR-X-1.
+_SECTION_S5_CR_COMPLETION_REASON = (
+    "⛔ BLOCKED: the commit message says COMPLETED for CR(s) [CR-X-1] but the staged diff does not "
+    "include the CR spec file(s) under docs/changes/. The close-out's `**Status:**` flip (the "
+    "model-b skill's orchestration-common.md § Close-out, step 6) is a docs-only commit on the "
+    "feature branch before the merge: flip the spec's `**Status:**` field to COMPLETED, `git add` "
+    "the spec, then retry. To bypass (rare — a docs-only commit that does not close the CR): "
+    "remove the COMPLETED keyword from the commit message."
+)
+
+
 class ClientPathAnchoringS1Test(unittest.TestCase):
     """§S1 — every client reference names the installed client."""
 
@@ -931,6 +972,77 @@ class ClientPathAnchoringS1Test(unittest.TestCase):
             if re.search(r"crucible repo\s+`?clients/", doc):
                 failures.append(f"{name}: docstring still names the crucible repo clients/ dir")
         self.assertEqual(failures, [], "§S1 hook docstrings:\n  " + "\n  ".join(failures))
+
+    def _cr_completion_reason(self):
+        """The block reason the REAL CR-completion hook prints, run in a temp git repository
+        holding ``docs/changes/`` with a file outside it staged, on ``git commit -m "COMPLETED
+        CR-X-1"`` (CR-MDB-066 AC7)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            (repo / "docs" / "changes").mkdir(parents=True)
+            (repo / "notes.txt").write_text("fixture\n", encoding="utf-8")
+            env = {**os.environ, **GIT_ISOLATION_ENV}
+            for args in (("init", "-q"), ("add", "notes.txt")):
+                res = subprocess.run(["git", *args], cwd=repo, env=env, capture_output=True,
+                                     text=True, timeout=30)
+                self.assertEqual(res.returncode, 0, f"precondition: git {args[0]}: {res.stderr}")
+            res = run_hook(CR_COMPLETION_HOOK, {
+                "tool_name": "bash", "tool_input": {"command": 'git commit -m "COMPLETED CR-X-1"'},
+                "cwd": str(repo)})
+        self.assertNotIn("Traceback", res.stderr, res.stderr)
+        self.assertEqual(res.returncode, 2, f"the hook did not block: {res.stdout!r} {res.stderr!r}")
+        payload = json.loads(res.stdout)
+        self.assertEqual(payload.get("decision"), "block", res.stdout)
+        return payload["reason"]
+
+    def test_s1_cr_completion_hook_source_carries_no_stale_reference(self):
+        # CR-MDB-066 §S5.2 (AC7): the hook's source, not only its reason.
+        source = (HOOK_SCRIPTS / CR_COMPLETION_HOOK).read_text(encoding="utf-8")
+        hits = [label for label, rx in STALE_REASON_REFERENCES if rx.search(source)]
+        if _TWO_FILES.search(source):
+            hits.append("TWO files")
+        self.assertEqual(hits, [], f"CR-MDB-066 §S5.2: {CR_COMPLETION_HOOK}'s source")
+
+    def test_s1_cr_completion_hook_block_reason_names_the_close_out(self):
+        # CR-MDB-066 §S5.2 (AC7), read from a real run.
+        reason = self._cr_completion_reason()
+        self.assertIn("[CR-X-1]", reason)
+        self.assertEqual(cr_completion_reason_findings(reason), [],
+                         f"CR-MDB-066 §S5.2: the {CR_COMPLETION_HOOK} reason:\n{reason}")
+
+    def test_s1_cr_completion_reason_detector_passes_the_section_s5_text(self):
+        # Proof a correct reason can pass: §S5.2's proposed text has no finding.
+        self.assertEqual(cr_completion_reason_findings(_SECTION_S5_CR_COMPLETION_REASON), [])
+
+    def test_s1_cr_completion_reason_detector_reports_the_pre_change_reason(self):
+        # Proof the detector bites: the "Per ORCHESTRATOR-RULES.md §5 …" reason.
+        self.assertEqual(cr_completion_reason_findings(_PRE_CHANGE_CR_COMPLETION_REASON), [
+            "carries the stale reference ORCHESTRATOR-RULES.md",
+            'carries "TWO files"',
+            "does not name orchestration-common.md",
+            "does not name Close-out",
+        ])
+
+    def test_s1_cr_completion_reason_detector_reports_each_point_cut_alone(self):
+        good = _SECTION_S5_CR_COMPLETION_REASON
+        cuts = {
+            "a stale reference": (good + " See ORCHESTRATOR-RULES.md §5.",
+                                  ["carries the stale reference ORCHESTRATOR-RULES.md"]),
+            "an orchestration memory": (good + " See the orchestration memory.",
+                                        ["carries the stale reference an orchestration-memory path"]),
+            "TWO files": (good + " TWO files must be updated, always.", ['carries "TWO files"']),
+            "two files, lower case": (good + " Two  files change.", ['carries "TWO files"']),
+            "orchestration-common.md": (good.replace("orchestration-common.md", "the rules"),
+                                        ["does not name orchestration-common.md"]),
+            "Close-out": (good.replace("§ Close-out", "§ Closing"), ["does not name Close-out"]),
+            "**Status:**": (good.replace("`**Status:**`", "status"),
+                            ["does not name **Status:**"]),
+            "COMPLETED": (good.replace("COMPLETED", "DONE"), ["does not name COMPLETED"]),
+        }
+        for label, (text, expected) in cuts.items():
+            with self.subTest(cut=label):
+                self.assertNotEqual(text, good, f"precondition: the cut {label!r} changed nothing")
+                self.assertEqual(cr_completion_reason_findings(text), expected)
 
     def test_s1_java_orchestration_names_no_reviewer_skill(self):
         rel = ORCHESTRATION_REFERENCES["java"]  # MIGRATED (CR-MDB-060 §S1.1): was the java memory template
