@@ -2,8 +2,8 @@
 
 **Status:** PENDING — spec drafted 2026-10-30 from the gap analysis and the user's rulings
 (DN-multi-harness-deploy-model §D27, amended 2026-10-30, with the rulings of CR-MDB-095's gap analysis).
-Pre-review: due — it touches another project's surface (Pi's `trust.json`), and the gap analysis needed
-the user's rulings.
+Pre-review: ran — it touches another project's surface (Pi's `trust.json`), and the gap analysis needed
+the user's rulings; its findings F1–F11 folded in 2026-10-30.
 **Type:** feature (permission policy, requirements, project trust)
 **Priority:** P1 — release 1.0.0, wave 2 (board-authoritative: read `queue`).
 **Depends on:** nothing on the board.
@@ -89,36 +89,45 @@ modules.
 
 1. **A writer in `modelb_axi/project_trust.py`:** `trust_root(target, agent_dir, *, force_managed=False,
    dry_run=False) -> dict` returns `{"trust_write": <outcome>, "trust": <state>}` and, where it wrote
-   nothing for a reason, `"reason": <text>`. Outcomes, decided in this order:
-   - `refused` — `trust.json` cannot be read or parsed, is not a JSON object, or holds a value other than
-     `true`, `false` or `null` (`reason` names which); nothing is written;
-   - `unchanged` — Pi's resolution for the root (`resolve_trust`) is already `trusted`; nothing is
-     written;
-   - `left` — the root's own key holds `false` and `force_managed` is false; nothing is written;
-   - `planned` — `dry_run`; nothing is written and no lock is taken;
-   - `refused` — the lock stays held after the retries (`reason` says so); nothing is written;
-   - `written` — the root's key is set to `true`.
+   nothing for a reason, `"reason": <text>`. It never raises. Outcomes, decided in this order:
+   - `planned` — `dry_run`; nothing is read under a lock, nothing is written, no lock is taken;
+   - `refused` — the lock stays held after the retries; `reason` says so and, when the lock directory is
+     older than 10 s, that it looks left behind and that starting Pi in the project clears it (Pi reclaims
+     a lock older than 10 s);
+   - then, **under the lock**, from that one read:
+     - `refused` — `trust.json` cannot be read or parsed, is not a JSON object, or holds a value other
+       than `true`, `false` or `null` (`reason` names which);
+     - `unchanged` — Pi's resolution for the root (the closest entry in that read, else
+       `defaultProjectTrust`) is already `trusted`;
+     - `left` — the root's own key holds `false` and `force_managed` is false;
+     - `written` — the root's key is set to `true`;
+   - `refused` — any `OSError` on the way (the agent dir, the lock, the temporary file, `os.replace`),
+     `reason` naming it; a failed lock release is not an error (the outcome stands).
 
-   `trust` is `resolve_trust`'s state after the step.
+   Nothing is written in any outcome but `written`. `trust` is `resolve_trust`'s state after the step.
 2. **The key** is `str(Path(target).resolve())`, Pi's canonical form for a path whose links resolve.
 3. **The lock** is Pi's own: `os.mkdir(<agent-dir>/trust.json.lock)`, with 10 attempts 20 ms apart while
    it exists; released by `os.rmdir` in a `finally`. A lock directory Model B did not create is never
    removed. `<agent-dir>` is created when absent (as Pi's `mkdirSync(..., {recursive: true})`).
-4. **The write**, under the lock: re-read the file (absent → `{}`), validate it as in §S2.1, set the key,
-   and write the object with its keys sorted, `json.dumps(..., indent=2)` and a trailing newline, through a
-   temporary file in `<agent-dir>` and `os.replace` (the project's atomic-write convention; the content is
-   Pi's form). Every other entry, `null` values included, is kept as it was.
+4. **The write**, under the lock, from the read that decided the outcome (absent file → `{}`): set the
+   key, and write the object with its keys sorted, `json.dumps(..., indent=2, ensure_ascii=False)` and a
+   trailing newline (Pi's form, non-ASCII written as is), through a temporary file and `os.replace` — the
+   project's atomic-write convention. When `trust.json` is a symbolic link, the write goes to its resolved
+   target (the temporary file beside it), so the link stays a link, as Pi's write through the link leaves
+   it; an existing file keeps its mode. Every other entry, `null` values included, is kept as it was.
 5. **`init`** calls `trust_root(target, resolve_agent_dir(), force_managed=…, dry_run=…)` when Pi is
    among the run's harnesses, in place of the bare `resolve_trust` call: its envelope carries `trust` (as
    today, a state string) and `trust_write`. It no longer depends on the run having written under
-   `.pi/extensions/`.
+   `.pi/extensions/`. It runs after the files are emitted, so the target exists.
 6. **`modelb-axi agents`** does the same when Pi is among the installation's harnesses: its envelope gains
-   `trust` and `trust_write`.
+   `trust` and `trust_write`. An outcome of the trust step never changes either verb's exit code or `ok`.
+   (Pi is the roster's only harness, so in practice both always run the step.)
 7. **Warnings** (stderr and the envelope's `warnings[]`, as today):
    - `left`: the root has a saved `false` that Model B left; run `/trust` in Pi from the project root, or
      re-run with `--force-managed`;
    - `refused`: `trust.json` was not written, with the reason; run `/trust` in Pi from the project root;
-   - `UNTRUSTED_WARNING` keeps its text and is emitted when the final `trust` is `untrusted` or `ask`.
+   - `UNTRUSTED_WARNING` keeps its text and is emitted when the final `trust` is `untrusted` or `ask` and
+     neither warning above was — exactly one warning names `/trust` per run.
 8. **Never touched:** any other key; the user's `settings.json`; the installer (`modelb-axi --yes`) trusts
    nothing.
 
@@ -135,7 +144,12 @@ modules.
    `/trust` in Pi from the project root.
 3. **`project_trust.py`'s module docstring** and **`scaffold.py`'s comment** at the trust step describe
    the writer; "read-only" and "never edits trust.json" go.
-4. **The pi-lens tools** are named only through the requirement row; no skill or template text changes.
+4. **The hooks note** `hooks.compile_wiring` writes into every scaffolded `hooks/README.md` ("pi loads
+   .pi/extensions/*.ts only after the project-TRUST prompt …; regeneration re-triggers the trust
+   re-confirm step"): Pi loads them only in a trusted project, and `init` and `modelb-axi agents` record
+   the project root as trusted unless a saved `false` stands. The re-confirm clause goes (Pi 1.4.0 keys
+   trust by path, with no content hash).
+5. **The pi-lens tools** are named only through the requirement row; no skill or template text changes.
 
 ### §S4 — The gates this change moves (named migrations)
 
@@ -143,10 +157,23 @@ modules.
    read-only pi-lens tools; the ask-set gains the three write-capable ones; the declared rows include
    `code-intelligence`.
 2. `tests/test_harness_capability_contract.py`: the `code-intelligence` row's fields.
-3. `tests/test_project_trust.py`: MIGRATED "§S4: Model B never edits trust.json" to the writer's
-   outcomes; the resolver's tests stay.
-4. `tests/test_install_guide.py`, `tests/test_project_setup_section.py`,
-   `tests/test_project_tools_setup.py`: the §S3 texts.
+3. `tests/test_project_trust.py`:
+   - MIGRATED "§S4: Model B never edits trust.json" to the writer's outcomes;
+   - the resolver keeps unit tests calling `resolve_trust` directly;
+   - MIGRATED the `init`-driven cases whose outcome the writer changes:
+     `test_closest_ancestor_false_entry_is_untrusted_and_warns` and
+     `test_string_prefix_that_is_not_an_ancestor_does_not_decide` (now `written`, `trusted`, no warning),
+     `test_no_entry_and_no_setting_is_ask_and_warns` (now `written`, `trusted`),
+     `ProjectTrustFieldPresenceTest`'s dry run (now `trust` and `trust_write: planned`); the no-Pi half
+     stays retired (CR-MDB-031 §S1).
+4. `tests/test_stack_skills.py` `StackSkillsTrustSurfacesTest`: the root's own `false` → `left`, exactly
+   one `/trust` warning.
+5. `tests/test_ide_overlay_retirement.py`: its `_run_init` sandboxes `PI_CODING_AGENT_DIR` (it reads the
+   real agent dir today).
+6. `tests/test_project_tools_setup.py`: the `code-intelligence` row in the unrecorded-rows list and its
+   capability-contract line (as CR-MDB-089 did for its rows).
+7. `tests/test_install_guide.py`, `tests/test_project_setup_section.py`, `tests/test_hooks_compiler.py`:
+   the §S3 texts.
 
 No test module is added. No skip is added. No floor is lowered. Every test sandboxes
 `PI_CODING_AGENT_DIR`; none reads or writes the real `~/.pi/agent/trust.json`.
@@ -159,8 +186,11 @@ No test module is added. No skip is added. No floor is lowered. Every test sandb
       policy maps each of the three write-capable tools to nothing (they resolve to `"*": "ask"`);
       `bash` is still absent with lean-ctx present.
 - [ ] **AC2 — the row (§S1.2).** `requirement("code-intelligence")` has exactly the §S1.2 fields, its
-      `tools` the 13 names; the installer's pre-flight probes it as `pi-package` and, when absent, warns
-      with its remediation and never runs `pi install` for it (as `processes`).
+      `tools` the 13 names; the installer's pre-flight probes it as `pi-package`; when it is absent the
+      installer warns with its remediation, offers `pi install npm:pi-lens` interactively and runs it only
+      on an explicit yes, and never runs it under `--yes` (as `processes`). `init` against an
+      `install.toml` that records no verdict for it reports so, and the scaffolded capability contract
+      carries a `code-intelligence` line with its state and remediation.
 - [ ] **AC3 — the writer's outcomes (§S2.1–§S2.4)**, each in a sandboxed agent dir:
       - no `trust.json` → `written`; the file then holds exactly `{"<root>": true}` in Pi's form;
       - an ancestor's `false` (`{"<parent>": false}`) → `written`; the parent's entry stays;
@@ -170,19 +200,26 @@ No test module is added. No skip is added. No floor is lowered. Every test sandb
       - malformed JSON, a JSON array, a value `"yes"` → `refused`, byte-identical, `reason` naming the
         fault;
       - `<agent-dir>/trust.json.lock` present for the whole retry window → `refused`, byte-identical, the
-        lock directory still present afterwards;
+        lock directory still present afterwards; with the lock directory's mtime older than 10 s, the
+        `reason` says it looks left behind and that starting Pi clears it;
+      - an agent dir that does not exist → created, `written`;
+      - an agent dir that cannot be written (mode `0o500`) → `refused`, `reason` naming the error, no
+        exception, no lock left behind;
       - `dry_run` → `planned`, no file and no lock created;
       - a `null` entry and unrelated entries survive a `written` step unchanged;
       - a target reached through a symlink is keyed by its resolved path;
-      - after `written`, `resolve_trust` returns `trusted` and Pi's own `ProjectTrustStore.get` (Node,
-        through `pi`'s installed package, where `node` is on `PATH`) reads `true` for the root.
+      - a root whose path holds a non-ASCII character is written as is (no `\u` escape);
+      - a `trust.json` that is a symbolic link stays a link after `written`, and its target holds the entry;
+      - the written file is Pi's form: keys sorted, two-space indent, a trailing newline;
+      - after `written`, `resolve_trust` returns `trusted` for the root.
 - [ ] **AC4 — `init` and `agents` (§S2.5–§S2.7).** With Pi among the harnesses, each envelope carries
       `trust` and `trust_write`; `init --dry-run` reports `planned` and writes nothing; each warning of
-      §S2.7 is emitted exactly when its outcome occurs; without Pi among the harnesses neither field
-      appears and nothing is written.
+      §S2.7 is emitted exactly when its outcome occurs, and exactly one warning names `/trust` in a run
+      that emits any; a `refused` outcome leaves `ok` true and the exit code 0.
 - [ ] **AC5 — the texts (§S3).** The guide's region and its mirror state §S3.1 and no longer say
       "Model B never changes `trust.json`"; the mirror gate passes; the scaffolded capability-contract
-      line states §S3.2; the docstring and comment no longer say read-only.
+      line states §S3.2; the hooks note states §S3.4 with no re-confirm clause; the docstring and comment
+      no longer say read-only.
 - [ ] **AC6 — standing gates.** `ruff check` exits 0; no test module and no skip is added; every module
       the cycle plan names passes through the client; no test touches the real `~/.pi/agent`; VERIFY runs
       the full suite through the client with a real `HOME` and an empty one, and the empty `HOME` stays
@@ -197,6 +234,10 @@ No test module is added. No skip is added. No floor is lowered. Every test sandb
   worktree tool.
 - **The user's global policy and `settings.json`** are not written (CR-MDB-038 §S3, §D27).
 - **A stale-lock reclaim:** a lock Model B did not take is never removed.
+- **A test reading back through Pi's own `ProjectTrustStore`** (Node): it would need `node` and Pi's
+  package, absent on the clean runner, and so a new skip. The spec pre-review verified in a `/tmp` sandbox
+  that Pi 1.4.0 reads a Model B write, honours Model B's lock directory and keys a symlinked root as
+  `Path.resolve()` does; the tests pin Pi's form, key and lock in Python.
 - **`bash`** stays on ask.
 
 ## After merge
@@ -222,16 +263,18 @@ the cycle's report.
    - **Modules:** the docs gates, plus `tests.test_project_permission_policy`,
      `tests.test_harness_capability_contract`, `tests.test_modelb_pi_worktree_capability`,
      `tests.test_init_tool_verdicts`, `tests.test_installer_sandesh_requirements`,
-     `tests.test_agents_verb_permission_policy`.
+     `tests.test_agents_verb_permission_policy`, `tests.test_project_tools_setup`.
 2. **The trust writer** (§S2, §S4.3). Red-green.
    - **RED:** AC3, AC4. **GREEN:** `project_trust.py`, `scaffold.py` (`init`, `agents`).
+   - **RED** also makes §S4.3–§S4.5's migrations.
    - **Modules:** the docs gates, plus `tests.test_project_trust`, `tests.test_scaffold`,
-     `tests.test_agents_verb_permission_policy`, `tests.test_init_tool_verdicts`.
+     `tests.test_agents_verb_permission_policy`, `tests.test_init_tool_verdicts`,
+     `tests.test_stack_skills`, `tests.test_ide_overlay_retirement`.
 3. **The texts** (§S3, §S4.4). Red-green.
-   - **RED:** AC5. **GREEN:** the guide's region, its mirror, the scaffolded line, the docstring and the
-     comment.
+   - **RED:** AC5. **GREEN:** the guide's region, its mirror, the scaffolded line, the hooks note
+     (`modelb_axi/hooks.py`), the docstring and the comment.
    - **Modules:** the docs gates, plus `tests.test_install_guide`, `tests.test_project_setup_section`,
-     `tests.test_project_tools_setup`, `tests.test_pi_package`.
+     `tests.test_project_tools_setup`, `tests.test_pi_package`, `tests.test_hooks_compiler`.
 4. **Verify.** VERIFY runs the full suite once, without coverage, through the client, with a real `HOME`
    and an empty one, and reads every AC. The orchestrator then runs the pre-merge gate and records the
    `AGENTS.md` baselines at close-out.
