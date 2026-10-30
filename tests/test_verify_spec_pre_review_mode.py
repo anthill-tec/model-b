@@ -15,14 +15,21 @@ What is pinned (the patterns are the spec's own words; the rest of each sentence
   suffix is allowed), at First Actions' level, and it is the next section after First Actions
   (``pre_review_placement_findings``).
 - **Its rules** (``PRE_REVIEW_RULES``, each read in ONE bullet or paragraph of that section):
-  branch verification stays the default; the mode applies only when the brief declares it
+  its opening paragraph says the pre-review runs when the CR meets a trigger (``gap-analysis``
+  Rule 21; CR-MDB-096 §S3.1, read in that paragraph only); branch verification stays the default; the mode applies only when the brief declares it
   explicitly, never inferred from a missing cycle or from the agent id; it registers
   ``--role report`` with no ``--cycle`` under the id the brief gives; Crucible down or absent →
   proceeds unregistered and says so in its report; it reads the whole spec, its design reference
-  and the current code; it applies the ``gap-analysis`` skill's Dimensions 1–10 read-only, and the
-  skill's Step 0 and Rule 1 do not apply; no test suite, no ingest, no edit, no commit; a ``/tmp``
+  and the current code; it applies the ``gap-analysis`` skill's pre-review checklist (Rule 24),
+  read-only, cited by its installed path, and wording and naming are not findings (MIGRATED at
+  CR-MDB-096 §S4.2 from "applies Dimensions 1–10 read-only"); the skill's Step 0 and Rule 1 do
+  not apply, and its Dimensions 1–10 join them among what does not bind (CR-MDB-096 §S3.3); no
+  test suite, no ingest, no edit, no commit; a ``/tmp``
   sandbox only where reading cannot settle a case; findings F1…Fn, each naming the spec section or
-  AC it needs and whether it adds scope or corrects it; it unregisters when registered. The section
+  AC it needs and whether it adds scope or corrects it; each finding names its checklist item and
+  the output closes with a one-line verdict (CR-MDB-096 §S3.4); it unregisters when registered.
+  Every committed VERIFY render (``generator/agents/*-verify-agent.md`` and Model B's own
+  ``.pi/agents/python-verify-agent.md``) carries the same section (CR-MDB-096 AC4). The section
   cites the skill by its installed path, as the agent cites ``sub-agent-procedure.md``
   (``SKILL_CITATION``). The output-format rule is read in prose: a fenced template may accompany
   it, but fenced lines are not a bullet or paragraph.
@@ -60,6 +67,8 @@ from tests._helpers import split_frontmatter
 from tests.test_bootstrap_shutdown_registry import normalise
 from tests.test_gap_analysis_reach_and_pre_review import missing, units
 from tests.test_generator_role_contract import (
+    GENERATOR_DIR,
+    REPO_ROOT,
     STACKS_DIR,
     TEMPLATES_DIR,
     _role_names,
@@ -88,8 +97,18 @@ NO_INGEST = r"\bingests? nothing\b|\bno ingest\b|\bnever ingests?\b"
 NO_EDIT = r"\bedits? nothing\b|\bno edits?\b|\bnever edits?\b"
 NO_COMMIT = r"\bcommits? nothing\b|\bno commits?\b|\bnever commits?\b"
 
+#: CR-MDB-096 §S3.1 — read in the section's opening paragraph only (its first unit, not a list
+#: item): the pre-review runs when the CR meets a trigger (``gap-analysis`` Rule 21).
+OPENING_RULE = "opening paragraph: the pre-review runs when the CR meets a trigger (gap-analysis Rule 21)"
+
+#: The skill's installed path, as one unit's pattern (normalised: backticks dropped, lower-cased).
+SKILL_PATH = r"~/\.agents/skills/gap-analysis/skill\.md"
+
 #: §S3 — the rules of the "Spec pre-review mode" section, each in one unit.
 PRE_REVIEW_RULES = {
+    OPENING_RULE: (
+        r"\bpre-review\b", r"\bwhen (?:the cr meets a trigger|a trigger applies)\b",
+        r"\bgap-analysis\b", r"\brule 21\b"),
     "trigger: branch verification stays the default": (BRANCH, r"\bdefault\b"),
     "trigger: only when the brief declares it explicitly": (
         r"\bbrief\b", r"\bdeclar\w*\b", r"\bexplicit\w*\b"),
@@ -101,10 +120,18 @@ PRE_REVIEW_RULES = {
         r"\bcrucible\b", r"\bdown\b|\babsent\b", r"\bunregistered\b", r"\breport\b"),
     "reads the whole spec, its design reference and the current code": (
         r"\bwhole spec\b", r"\bdesign reference\b", r"\bcurrent code\b"),
-    "applies the gap-analysis skill's Dimensions 1–10 read-only": (
-        r"\bgap-analysis\b", TEN_DIMENSIONS, r"\bread-only\b"),
+    # MIGRATED at CR-MDB-096 §S4.2: was "applies the gap-analysis skill's Dimensions 1–10
+    # read-only"; the pre-review now applies the skill's checklist (Rule 24) instead (§S3.2).
+    "applies the gap-analysis skill's pre-review checklist (Rule 24) read-only, by its installed "
+    "path; wording and naming are not findings": (
+        r"\bgap-analysis\b", r"\bchecklist\b", r"\brule 24\b", SKILL_PATH, r"\bread-only\b",
+        r"\bwording and naming are not findings\b"),
     "the skill's Step 0 and Rule 1 do not apply": (
         r"\bstep 0\b", r"\brule 1\b", r"\b(?:do(?:es)? not|don't|never)\s+appl(?:y|ies)\b"),
+    # CR-MDB-096 §S3.3: the dimensions (the orchestrator's analysis) join Step 0 and Rule 1.
+    "what does not bind: the skill's Dimensions 1–10 join Step 0 and Rule 1": (
+        TEN_DIMENSIONS, r"\bstep 0\b", r"\brule 1\b",
+        r"\b(?:do(?:es)? not|don't|never)\s+(?:bind|appl(?:y|ies))\b"),
     "runs no test suite, ingests nothing, edits nothing, commits nothing": (
         NO_SUITE, NO_INGEST, NO_EDIT, NO_COMMIT),
     "a /tmp sandbox only where reading cannot settle a case": (
@@ -114,7 +141,23 @@ PRE_REVIEW_RULES = {
         r"\bscope\b", r"\bcorrects?\b"),
     "unregisters when registered": (
         r"\bunregisters?\b", r"\b(?:when|if)\b.{0,30}\bregistered\b"),
+    # CR-MDB-096 §S3.4: each finding names its checklist item; the one-line verdict stays.
+    "output: each finding F1…Fn names its checklist item, closing with a one-line verdict": (
+        r"\bf1\b", r"\bchecklist item\b", r"\bone-line verdict\b"),
 }
+
+#: The rules CR-MDB-096 §S3 adds or migrates — the ones today's (CR-MDB-046) wording fails.
+CHECKLIST_RULES = (
+    OPENING_RULE,
+    "applies the gap-analysis skill's pre-review checklist (Rule 24) read-only, by its installed "
+    "path; wording and naming are not findings",
+    "what does not bind: the skill's Dimensions 1–10 join Step 0 and Rule 1",
+    "output: each finding F1…Fn names its checklist item, closing with a one-line verdict",
+)
+
+#: AC4 — the committed VERIFY renders: one per stack under ``generator/agents/``, and Model B's own.
+GENERATOR_AGENTS_DIR = GENERATOR_DIR / "agents"
+PI_VERIFY_RENDER = REPO_ROOT / ".pi" / "agents" / "python-verify-agent.md"
 
 #: The skill, cited by its installed path as ``sub-agent-procedure.md`` is (normalised form).
 SKILL_CITATION = "~/.agents/skills/gap-analysis/skill.md"
@@ -214,8 +257,15 @@ def pre_review_rule_findings(body: str) -> list[str]:
     if len(found) != 1:
         return [f"expected exactly one 'Spec pre-review mode' section, found {len(found)}"]
     section = found[0]
-    problems = [f"{name} — {missing(section, rule)}" for name, rule in PRE_REVIEW_RULES.items()
-                if not any(all(re.search(p, u) for p in rule) for u in units(section))]
+    all_units = units(section)
+    # The opening paragraph: the section's first unit, when it is not a list item.
+    opening = [u for u in all_units[:1] if not re.match(r"(?:[-*+]|\d+[.)])\s", u)]
+    problems = []
+    for name, rule in PRE_REVIEW_RULES.items():
+        candidates = opening if name == OPENING_RULE else all_units
+        if not any(all(re.search(p, u) for p in rule) for u in candidates):
+            where = "\n\n".join(candidates) if name == OPENING_RULE else section
+            problems.append(f"{name} — {missing(where, rule)}")
     if SKILL_CITATION not in normalise(section):
         problems.append(f"the section does not cite the skill as {SKILL_CITATION}")
     return problems
@@ -349,6 +399,25 @@ class VerifyPreReviewSectionTest(_RenderedVerify):
             with self.subTest(stack=stack, form=form):
                 self.assertEqual(pre_review_rule_findings(body), [],
                                  f"{stack}-verify-agent ({form}) § Spec pre-review mode")
+
+    def test_every_committed_verify_render_carries_the_templates_pre_review_section(self):
+        """CR-MDB-096 AC4: every rendered VERIFY definition carries the same section — each
+        stack's ``generator/agents/<stack>-verify-agent.md`` and Model B's own
+        ``.pi/agents/python-verify-agent.md`` state every rule, and their section is the one the
+        template renders today (so a template edit left unrendered fails here)."""
+        stacks = _stack_names()
+        committed = sorted(GENERATOR_AGENTS_DIR.glob("*-verify-agent.md"))
+        self.assertEqual([p.name for p in committed], [f"{s}-verify-agent.md" for s in stacks])
+        for path in [*committed, PI_VERIFY_RENDER]:
+            stack = path.name.removesuffix("-verify-agent.md")
+            label = str(path.relative_to(REPO_ROOT))
+            with self.subTest(render=label):
+                _, body = split_frontmatter(path.read_text(encoding="utf-8"))
+                self.assertEqual(pre_review_rule_findings(body), [], label)
+                fresh = [pre_review_sections(_rendered_body(stack, "verify", lean))
+                         for _, lean in FORMS]
+                self.assertIn(pre_review_sections(body), fresh,
+                              f"{label}: its pre-review section is not the template's render")
 
     def test_the_report_registration_binds_no_cycle_and_follows_the_branch_mode_command(self):
         for stack, form, body, params in self.each_verify():
@@ -485,6 +554,36 @@ FIRST_ACTIONS_GOOD = f"""\
 PRE_REVIEW_GOOD = f"""\
 ## Spec pre-review mode
 
+A spec pre-review reviews a drafted spec before it is approved. It runs when the CR meets a
+trigger (`gap-analysis` Rule 21).
+
+- **Trigger.** Branch verification stays the default. This mode applies only when the brief
+  declares it explicitly; it is never inferred from a missing cycle or from the agent id.
+- **Registration.** Register `--role report` with no `--cycle`, under the id the brief gives:
+  ```bash
+  {REGISTER} --role report
+  ```
+- **Crucible down.** If Crucible is down or absent, proceed unregistered and say so in your report.
+- **What you read.** Read the whole spec, its design reference and the current code.
+- **How you review.** Apply the `gap-analysis` skill's pre-review checklist (Rule 24), read-only:
+  `~/.agents/skills/gap-analysis/SKILL.md`. Report only what the checklist lists; wording and
+  naming are not findings.
+- **What does not bind you.** The skill's Dimensions 1–10 (the orchestrator's analysis), its
+  Step 0 (running the suites) and its Rule 1 do not apply to you.
+- **What you do not do.** You run no test suite, ingest nothing, edit nothing and commit nothing.
+- **Sandbox.** You may run a `/tmp` sandbox where reading cannot settle a case.
+- **Output.** Findings F1…Fn, each naming its checklist item, the spec section or AC it needs,
+  and whether it adds scope or corrects it. Close with a one-line verdict.
+- **Last.** Unregister when registered.
+"""
+
+#: The CR-MDB-046 wording of the section (before CR-MDB-096 §S3): no trigger, the skill's
+#: Dimensions 1–10 applied, no checklist item in the output.
+PRE_REVIEW_046 = f"""\
+## Spec pre-review mode
+
+A spec pre-review reviews a drafted spec before it is approved.
+
 - **Trigger.** Branch verification stays the default. This mode applies only when the brief
   declares it explicitly; it is never inferred from a missing cycle or from the agent id.
 - **Registration.** Register `--role report` with no `--cycle`, under the id the brief gives:
@@ -494,12 +593,12 @@ PRE_REVIEW_GOOD = f"""\
 - **Crucible down.** If Crucible is down or absent, proceed unregistered and say so in your report.
 - **What you read.** Read the whole spec, its design reference and the current code.
 - **The skill.** Apply the `gap-analysis` skill's Dimensions 1–10 read-only:
-  `~/.agents/skills/gap-analysis/SKILL.md`. Its Step 0 (running the suites) and Rule 1 do not
-  apply to you.
+  `~/.agents/skills/gap-analysis/SKILL.md`.
+- **What does not bind you.** Its Step 0 (running the suites) and Rule 1 do not apply to you.
 - **What you do not do.** You run no test suite, ingest nothing, edit nothing and commit nothing.
 - **Sandbox.** You may run a `/tmp` sandbox where reading cannot settle a case.
 - **Output.** Findings F1…Fn, each naming the spec section or AC it needs, and whether it adds
-  scope or corrects it.
+  scope or corrects it; close with a one-line verdict.
 - **Last.** Unregister when registered.
 """
 
@@ -650,6 +749,9 @@ class PreReviewModeDetectorTest(unittest.TestCase):
 
     def test_each_pre_review_rule_bites_when_its_phrase_is_changed(self):
         mutations = {
+            OPENING_RULE: (
+                "It runs when the CR meets a\ntrigger (`gap-analysis` Rule 21).",
+                "It runs for every spec."),
             "trigger: branch verification stays the default": (
                 "Branch verification stays the default.", "Branch verification is one mode."),
             "trigger: only when the brief declares it explicitly": (
@@ -662,17 +764,19 @@ class PreReviewModeDetectorTest(unittest.TestCase):
                 "proceed unregistered", "stop"),
             "reads the whole spec, its design reference and the current code": (
                 "and the current code.", "and the brief."),
-            "applies the gap-analysis skill's Dimensions 1–10 read-only": (
-                "Dimensions 1–10", "Dimensions 1–7"),
+            # MIGRATED at CR-MDB-096 §S4.2 (was the Dimensions 1–10 rule).
+            CHECKLIST_RULES[1]: ("; wording and\n  naming are not findings", ""),
             "the skill's Step 0 and Rule 1 do not apply": (
-                "Rule 1 do not\n  apply to you", "Rule 1 apply\n  to you too"),
+                "Rule 1 do not apply to you", "Rule 1 apply to you too"),
+            CHECKLIST_RULES[2]: ("Dimensions 1–10", "Dimensions 1–7"),
             "runs no test suite, ingests nothing, edits nothing, commits nothing": (
                 "and commit nothing", "and commit your notes"),
             "a /tmp sandbox only where reading cannot settle a case": (
                 "where reading cannot settle a case", "whenever you like"),
             "findings F1…Fn, each naming the spec section or AC, and whether it adds or corrects scope": (
-                ", and whether it adds\n  scope or corrects it", ""),
+                ",\n  and whether it adds scope or corrects it", ""),
             "unregisters when registered": ("Unregister when registered.", "Unregister."),
+            CHECKLIST_RULES[3]: ("its checklist item, ", ""),
         }
         self.assertEqual(set(mutations), set(PRE_REVIEW_RULES))
         for name, (old, new) in mutations.items():
@@ -682,10 +786,44 @@ class PreReviewModeDetectorTest(unittest.TestCase):
                 self.assertTrue(problems[0].startswith(name), problems)
 
     def test_the_skill_citation_bites_when_the_installed_path_is_missing(self):
+        # MIGRATED at CR-MDB-096 §S4.2: the checklist rule now reads the path in its own unit,
+        # so dropping the section's only citation also fails that rule.
         problems = pre_review_rule_findings(
             self.swap(GOOD_BODY, "`~/.agents/skills/gap-analysis/SKILL.md`", "the skill"))
-        self.assertEqual(problems,
-                         [f"the section does not cite the skill as {SKILL_CITATION}"])
+        self.assertEqual(len(problems), 2, problems)
+        self.assertTrue(problems[0].startswith(CHECKLIST_RULES[1]), problems)
+        self.assertEqual(problems[1], f"the section does not cite the skill as {SKILL_CITATION}")
+
+    def test_the_checklist_rule_bites_on_each_of_its_parts(self):
+        for old, new in (("(Rule 24)", "(Rule 23)"),
+                         ("read-only:", "as you see fit:"),
+                         ("wording and\n  naming are not findings", "wording and\n  naming are findings too")):
+            with self.subTest(cut=old):
+                problems = pre_review_rule_findings(self.swap(GOOD_BODY, old, new))
+                self.assertEqual(len(problems), 1, problems)
+                self.assertTrue(problems[0].startswith(CHECKLIST_RULES[1]), problems)
+
+    def test_the_trigger_is_read_in_the_opening_paragraph_only(self):
+        sentence = "It runs when the CR meets a\ntrigger (`gap-analysis` Rule 21)."
+        moved = self.swap(self.swap(GOOD_BODY, sentence, ""),
+                          "- **Last.** Unregister when registered.\n",
+                          "- **Last.** Unregister when registered.\n- **When.** " + sentence + "\n")
+        problems = pre_review_rule_findings(moved)
+        self.assertEqual(len(problems), 1, problems)
+        self.assertTrue(problems[0].startswith(OPENING_RULE), problems)
+        # "when a trigger applies" is the other form of the conditional (AC3); it passes too.
+        applies = self.swap(GOOD_BODY, "when the CR meets a\ntrigger", "when a trigger applies")
+        self.assertEqual(pre_review_rule_findings(applies), [])
+
+    def test_the_cr_mdb_046_section_fails_exactly_the_checklist_rules(self):
+        body = FIRST_ACTIONS_GOOD + "\n" + PRE_REVIEW_046 + "\n" + REST_GOOD
+        self.assertEqual(pre_review_placement_findings(body), [])
+        self.assertEqual(report_command_findings(body, REGISTER), [])
+        problems = pre_review_rule_findings(body)
+        self.assertEqual(len(problems), len(CHECKLIST_RULES), problems)
+        for problem, name in zip(problems, CHECKLIST_RULES, strict=True):
+            with self.subTest(rule=name):
+                self.assertTrue(problem.startswith(name), problem)
 
     def test_a_rule_split_across_two_bullets_is_not_satisfied(self):
         split = self.swap(GOOD_BODY, "You run no test suite, ingest nothing, edit nothing and "
