@@ -10,7 +10,8 @@ You are performing a **pre-implementation analysis**. You do NOT write code. You
 ## When to Use
 
 - After the spec is drafted, before its pre-review: the ordering is this analysis → the spec
-  pre-review → approval → `plan-file` → the feature branch or worktree → RED
+  pre-review, when a trigger applies (Rule 21) → approval → `plan-file` → the feature branch or
+  worktree → RED
 - Before starting ANY CR implementation
 - When a CR predates recent codebase changes
 - Again whenever the spec is restructured or re-scoped (Rule 20)
@@ -236,7 +237,8 @@ Any path that could break one gets an AC.
 
 ### Verdicts:
 
-- **READY**: Spec is accurate, code matches PRD; proceed to the spec pre-review (Rules 21–22)
+- **READY**: Spec is accurate, code matches PRD; proceed to the spec pre-review when a trigger
+  applies (Rule 21), else to approval
 - **SPEC_UPDATE_NEEDED**: Spec has drift, update before implementation
 - **PREREQUISITE_NEEDED**: Code violates PRD in ways that must be fixed before this CR can work
 - **SPEC_TOO_EXPENSIVE**: Every criterion is accurate, but one or more demand machinery out of
@@ -246,8 +248,8 @@ Any path that could break one gets an AC.
 ## Rules
 
 1. **Never delegate this analysis to a sub-agent** — this is the orchestrator's responsibility.
-   The spec pre-review (Rules 21–22) does not change that: it is a separate review of the drafted
-   spec, not this analysis handed off.
+   The spec pre-review (Rules 21, 22, 24 and 25) does not change that: it is a separate review of
+   the drafted spec, not this analysis handed off.
 2. **Never trust memory or summaries** — read the actual source code and PRDs
 3. **Never assume enum values exist** — check the enum file
 4. **Never assume method signatures match** — check the source
@@ -306,10 +308,20 @@ Any path that could break one gets an AC.
     the user's. Record it as PROPOSED until the user rules; only mechanical facts are recorded as
     settled.
 20. **Re-scoping reruns both steps** — a spec that is restructured or re-scoped gets a fresh gap
-    analysis and a fresh pre-review. Findings against the old shape say nothing about the new one.
-21. **The pre-review comes after the analysis, before approval** — the orchestrator dispatches the
-    spec pre-review after its own analysis and before it locks and presents the spec. Its findings
-    are folded into the spec before locking.
+    analysis, which decides the triggers again, and a fresh pre-review when a trigger applies.
+    Findings against the old shape say nothing about the new one.
+21. **The triggers** — the orchestrator dispatches the spec pre-review after its own analysis and
+    before it locks and presents the spec, when at least one trigger applies:
+    - the CR scores 8 points or more (the re-score of Rule 23);
+    - it touches a contract, a hook or another project's surface:
+      - a *contract* is a file under the project's `contracts/` or an interface its
+        `AGENTS.md` names as a contract;
+      - a *hook* is a hook script, the hook schema or compiled hook wiring;
+      - *another project's surface* is a file, CLI, API or message format another project
+        consumes or provides;
+    - its gap analysis needed a ruling from the user.
+    Any other spec goes from the analysis to approval, with no pre-review. The findings a pre-review
+    reports are folded into the spec before locking.
 22. **Who and where:**
     - **Id:** `CR-<ACRONYM>-NNN-SPEC-REVIEW`, the acronym taken from the nearest registry.
     - **Reviewer:** the VERIFY agent of a stack in that registry's `PROJECT_STACKS`.
@@ -318,3 +330,16 @@ Any path that could break one gets an AC.
     re-sending its current title, release and wave. A CR the analysis finds above 13 is split before the
     pre-review. In multi mode a Track raises the re-score or split to Mainline, which runs
     `cr-plan` and files the split CRs.
+24. **The checklist** — a pre-review looks only for:
+    - an acceptance criterion no test can meet or check;
+    - a missing failure path or edge case;
+    - a gap in scope or design;
+    - a conflict with the PRD or a DN.
+    Wording and naming are not findings, and the orchestrator folds in nothing outside this list.
+25. **The record** — the spec's `**Status:**` line carries one of three forms:
+    `Pre-review: due — <trigger>` (decided, not yet run), `Pre-review: ran — <trigger>` or
+    `Pre-review: none — no trigger`. The orchestrator writes it when the analysis decides the
+    triggers, moves `due` to `ran` when it folds the findings, and repeats it when it presents the
+    spec for approval. A re-scoping (Rule 20) rewrites it. The close-out's `COMPLETED` flip keeps
+    it. In multi mode a Track reports its decision to Mainline with its re-score, and Mainline
+    records it on the spec.

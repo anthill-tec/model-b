@@ -16,17 +16,17 @@ Universal rules for ANY orchestrator, ANY project/stack. Verbose detail + failur
 - Roles differ at shutdown: a **Track** acks **Mainline** that it is safe to stop; **Mainline** (shut down by the USER) dispatches to the tracks and tears down LAST — only after every active track has acked / shows down. Full procedure → the `shutdown` skill.
 
 ## Two-phase workflow
-- **Design phase → `develop`.** Gap-analysis, then the spec pre-review; spec/PRD/DN edits and filing the CR on the board. No feature branch.
+- **Design phase → `develop`.** Gap-analysis, then the spec pre-review when a trigger applies; spec/PRD/DN edits and filing the CR on the board. No feature branch.
 - **Execution phase → feature branch.** RED+GREEN cycles, VERIFY, FIX, regression, merge.
 - `VERIFY` names the EXECUTION phase only — design-phase validation is **gap-analysis**. The VERIFY *agent* may run in the design phase in its spec pre-review mode, and that step is called the pre-review, never "verify".
 - **Design is BATCHED per wave** (PRD → CRs → filed on the board up front); **gap-analysis is NOT batched** — re-run per-CR immediately before THAT CR (the tree evolved; design→implementation is a closed loop).
 
 ## Gap-analysis discipline (gap-analysis FIRST, before any branch/RED)
 - **The orchestrator runs gap-analysis itself** (never delegate to a sub-agent), per-CR immediately before THAT CR's branch/RED.
-- **The spec pre-review is separate:** a dispatched review of the drafted spec, run after the orchestrator's own analysis and before the spec is locked and presented. It does not replace the analysis.
+- **The spec pre-review is separate:** a review of the drafted spec, dispatched when a trigger applies (`gap-analysis` Rule 21), run after the orchestrator's own analysis and before the spec is locked and presented. It does not replace the analysis.
 - **The dimensions and the verdicts live in the `gap-analysis` skill** — read it for the full check; they are not re-listed here.
-- **A pre-review is a workflow moment:** the orchestrator posts a `design-review` milestone once it has folded the pre-review's findings into the spec, as a completed gap analysis posts a `gap-analysis` one — never the `report` agent that ran the pre-review.
-- **Older projects:** a project scaffolded before the spec pre-review existed first upgrades Model B to a release carrying it — `modelb-axi agents` renders from the installed templates — then re-renders its agents with `modelb-axi agents` before its first pre-review. A definition left alone as hand-modified is reported to the user.
+- **A pre-review is a workflow moment:** when a pre-review ran, the orchestrator posts a `design-review` milestone once it has folded the pre-review's findings into the spec, as a completed gap analysis posts a `gap-analysis` one — never the `report` agent that ran the pre-review. A CR with no trigger has no pre-review and posts no `design-review` milestone.
+- **Older projects:** a project scaffolded before the spec pre-review existed, or whose agents were rendered before the pre-review's checklist, first upgrades Model B to a release carrying the checklist — `modelb-axi agents` renders from the installed templates — then re-renders its agents with `modelb-axi agents` before its next pre-review. A definition left alone as hand-modified is reported to the user.
 - **Urgency never skips gap-analysis or any other step**, even for a P0 hotfix — priority changes queue order, never the steps.
 - **Gap-analysis output ≠ spec.** Findings/rationale go to the user + commit message; the spec just BECOMES the corrected contract. No DRIFT-N tags, no "gap-analysis resolutions", no file:line breadcrumbs in the spec.
 
@@ -39,7 +39,7 @@ Universal rules for ANY orchestrator, ANY project/stack. Verbose detail + failur
   - The VERIFY cycle closes with its findings before the FIX cycle is added and activated.
   - The switch happens between agents, never under one: an agent bound to a closed cycle has its runs refused, so the VERIFY agent finishes and a fresh FIX agent registers against the FIX cycle.
   - A new contract VERIFY finds still goes AC → RED → FIX: the RED agent runs in the FIX cycle, alongside the FIX agent — never in the closed VERIFY cycle.
-- Setup ordering: gap-analysis → pre-review → approval → `plan-file` → THEN the branch / worktree.
+- Setup ordering: gap-analysis → pre-review (when a trigger applies) → approval → `plan-file` → THEN the branch / worktree.
 - Intra-cycle: once approved, flow RED→GREEN→next without pausing between phases; pause only on drift or escalation.
 - **One active cycle at a time per orchestrator**, even for disjoint code. A phase may be split across agents only under "Parallel agents in one tree"; parallel CRs still belong to separate Track orchestrators.
 - An interjecting CR waits until the running cycle is closed on its merit; never activate a cycle while another is active.

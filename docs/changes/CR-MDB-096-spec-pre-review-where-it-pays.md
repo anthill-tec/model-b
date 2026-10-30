@@ -1,6 +1,9 @@
 # CR-MDB-096 — The spec pre-review runs where it pays, and looks only for what would fail the CR
 
-**Status:** PENDING — spec drafted 2026-10-30 from the gap analysis and the user's rulings (PRD D6,
+**Status:** COMPLETED (gap analysis, spec and pre-review 2026-10-30; plan 252, cycles 324–327; VERIFY
+approved with three suggestions, fixed in the `VERIFY findings (§S5)` cycle by the user's ruling; pre-merge
+gate 4808 tests, 0 failed, 1 skip; empty `HOME` 4808/0/12; clean runner 4761/0/26; coverage 6144/6641,
+92.5%, unchanged). Spec drafted 2026-10-30 from the gap analysis and the user's rulings (PRD D6,
 amended 2026-10-30, with the rulings of CR-MDB-096's gap analysis). Pre-review: ran — the gap analysis
 needed the user's rulings; its findings F1–F9 folded in 2026-10-30.
 **Type:** feature (workflow rules, the VERIFY agent template)
@@ -45,8 +48,8 @@ Read at gap analysis (2026-10-30, by reading). The rule is stated in:
   Mainline, the setup ordering;
 - `skills-src/cr-authoring/SKILL.md`: the design phase; the front matter's `**Status:**`;
 - `skills-src/crucible/SKILL.md`: the VERIFY agent's pre-review duty;
-- `generator/templates/verify.md.tmpl` § Spec pre-review mode, rendered into the 20
-  `generator/agents/*-verify-agent.md` (by `generator/build.py`, which renders every role) and into
+- `generator/templates/verify.md.tmpl` § Spec pre-review mode, rendered into the 5
+  `generator/agents/*-verify-agent.md` (one per stack) (by `generator/build.py`, which renders every role) and into
   Model B's own `.pi/agents/python-verify-agent.md`.
 
 Unchanged by the rule, read and left alone: the pre-review's id, registration and main-tree routing
@@ -106,8 +109,8 @@ so each is one unit to the tests' `units` helper.
 
 ### §S2 — The orchestration references, `cr-authoring` and `crucible` follow it
 
-Each names the pre-review as conditional and points to `gap-analysis` Rule 21; none restates the
-triggers or the checklist.
+Each names the pre-review as conditional, and points to `gap-analysis` Rule 21 where its item below
+says so; none restates the triggers or the checklist (§S5.1).
 
 1. `skills-src/model-b/SKILL.md`, the role table's pre-review row: "one drafted spec, before approval,
    when a trigger applies (`gap-analysis` Rule 21)".
@@ -151,7 +154,7 @@ In `generator/templates/verify.md.tmpl` § Spec pre-review mode:
 5. Every other rule of the section stays: the trigger (only when the brief declares it), the `report`
    registration with no cycle, Crucible down, the whole spec read, no suite, no ingest, no edit, no
    commit, the `/tmp` sandbox, unregister last.
-6. **Renders:** `python3 generator/build.py build` regenerates the 20 `generator/agents/*-verify-agent.md`
+6. **Renders:** `python3 generator/build.py build` regenerates the 5 `generator/agents/*-verify-agent.md`
    (no other render changes); Model B's own `.pi/agents/python-verify-agent.md` is re-rendered from the
    tree and committed. The render runs `python3 -m modelb_axi agents` from the repository root with
    `MODELB_HOME` at a temp dir holding a copy of the real `$MODELB_HOME/install.toml` with its
@@ -186,6 +189,19 @@ In `generator/templates/verify.md.tmpl` § Spec pre-review mode:
 
 No test module is added. No skip is added. No floor is lowered.
 
+### §S5 — VERIFY findings (cycle 326; the user's ruling of 2026-10-30: a short fix cycle)
+
+1. **F1 — §S2's lead.** It said every reference points to Rule 21; the items of
+   `orchestration-mainline.md`, `orchestration-track.md` and `cr-authoring` (which points to Rule 25)
+   carry no Rule 21 pointer, and AC2 pins the items. The lead now says "where its item below says so".
+   Spec only.
+2. **F3 — AC3's accepted forms.** The guard accepts Rule 21's own wording, `when at least one trigger
+   applies`, beside the two forms AC3 named; AC3 now names all three. Spec only; the guard already does so.
+3. **F2 — the checklist rule's "report only".** The template's "How you review" says "Report only what the
+   checklist lists"; nothing pinned it. `PRE_REVIEW_RULES`' checklist rule also requires it, in the same
+   unit, proved both ways (a cut yields exactly that finding). The text is already there, so the pin passes
+   on arrival; no FIX phase follows.
+
 ## Acceptance criteria
 
 "Both ways" means a sample that must be caught is caught and a sample that must pass passes. Every check
@@ -214,8 +230,9 @@ reads text.
       `crucible`, and "another project's working tree" in `model-b/SKILL.md`.
 - [ ] **AC3 — the ordering guard (§S4.1).** In the files §S1–§S2 list, a unit in which the pre-review is
       a link of an arrow chain (`→` before or after `pre-review`), or the object of "dispatches the (spec)
-      pre-review" or "proceed to the (spec) pre-review", carries `when a trigger applies` or
-      `when the CR meets a trigger`, or it is a finding naming its file. Proved both ways: an ordering with
+      pre-review" or "proceed to the (spec) pre-review", carries `when a trigger applies`,
+      `when at least one trigger applies` (Rule 21's own form, §S1.5) or `when the CR meets a trigger`, or
+      it is a finding naming its file (§S5.2). Proved both ways: an ordering with
       the conditional passes; the same ordering without it yields exactly one finding; and these real
       units, left alone by this CR, pass: Rule 23 ("split before the pre-review"), the dispatch-description
       bullet ("Name the CR id in every dispatch description … except a spec pre-review"), the VERIFY-word
@@ -225,9 +242,9 @@ reads text.
       in its opening paragraph; the checklist rule (Rule 24, the skill's installed path, read-only, wording
       and naming not findings); Dimensions 1–10 among what does not bind; the output's checklist item.
       `PRE_REVIEW_RULES`' other rules and the placement, registration and branch-mode checks pass
-      unchanged. Every rendered VERIFY definition (the 20 in `generator/agents/` and Model B's
+      unchanged. Every rendered VERIFY definition (the 5 in `generator/agents/` and Model B's
       `.pi/agents/python-verify-agent.md`) carries the same section.
-- [ ] **AC5 — regeneration.** `python3 generator/build.py --check` is clean; the 20 VERIFY renders are
+- [ ] **AC5 — regeneration.** `python3 generator/build.py --check` is clean; the 5 VERIFY renders are
       the build's output and no other render changes; `.pi/agents/python-verify-agent.md` carries the
       generated header with its current hash.
 - [ ] **AC6 — the scenario matrix.** The text covers, each in a unit AC1 or AC2 pins: Mainline or Solo
@@ -239,6 +256,9 @@ reads text.
       the cycle plan names passes through the client; `tests.test_orchestration_rules_from_crucible`
       passes unchanged; VERIFY runs the full suite through the client with a real `HOME` and an empty
       one, and the empty `HOME` stays empty.
+- [ ] **AC8 — VERIFY findings (§S5).** §S2's lead and AC3 read as §S5.1–§S5.2 say; the checklist rule in
+      `PRE_REVIEW_RULES` requires "report only what the checklist lists" in its unit, the template and every
+      VERIFY render meet it, and a cut of that phrase yields exactly the checklist rule's finding.
 
 ## Non-goals
 
@@ -285,5 +305,11 @@ the cycle's report.
      `tests.test_agent_definition_rules`, `tests.test_project_tools_setup`,
      `tests.test_stack_reference_material`, `tests.test_worktree_layout_and_bundles`.
 3. **Verify.** VERIFY runs the full suite once, without coverage, through the client, with a real `HOME`
-   and an empty one, and reads every AC. The orchestrator then runs the pre-merge gate and records the
-   `AGENTS.md` baselines at close-out.
+   and an empty one, and reads every AC.
+4. **VERIFY findings (§S5, AC8).** Fix, appended after the VERIFY cycle closed with three suggestions.
+   - §S5.1–§S5.2 are the spec's own corrections, made by the orchestrator with §S5.
+   - **RED:** §S5.3's pin and its cut, in `tests/test_verify_spec_pre_review_mode.py`; it passes on arrival,
+     labelled so; no FIX phase.
+   - **Modules:** the docs gates, plus `tests.test_verify_spec_pre_review_mode`.
+   - The orchestrator then runs the pre-merge gate bound to this cycle and records the `AGENTS.md`
+     baselines at close-out.

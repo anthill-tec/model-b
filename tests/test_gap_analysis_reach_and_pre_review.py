@@ -37,6 +37,18 @@
   stack lines in ``tests.test_project_registry_schema``, the routing in
   ``tests.test_pi_worktree_isolation``.)
 
+CR-MDB-096 (§S1, §S2, §S4.1; PRD D6, amended 2026-10-30) — the pre-review runs where it pays:
+
+- §S1 — the ``gap-analysis`` skill states the rule once: § When to Use and ``READY`` carry the
+  conditional (Rule 21), Rule 1 points to Rules 21, 22, 24 and 25, Rule 20 decides the triggers
+  again, Rule 21 the three triggers and their definitions, Rule 24 the checklist, Rule 25 the
+  record on the ``**Status:**`` line; Rules 21, 24 and 25 are each one unit.
+- §S2 — the role table row, ``orchestration-common``/``-mainline``/``-track``, ``cr-authoring``
+  and ``crucible`` name the pre-review as conditional; none restates the triggers or the checklist
+  (the restatement detector, AC2).
+- §S4.1 — the migrated pins each require their conditional in the same unit; the ordering guard
+  (AC3) finds a pre-review linked into an ordering without it; ``OLD_ORDERING`` is kept.
+
 How a rule is read: phrase-level inside ONE unit — a list item with its nested items, or a
 paragraph (``rule_units`` from ``tests.test_execution_knowledge_rules``); a Markdown table row is a
 unit of its own. A dimension's enumeration (its file classes, its cases) is read across that
@@ -65,6 +77,14 @@ PROCEDURE_REL = "skills-src/model-b/references/sub-agent-procedure.md"
 AGENTS_REL = "AGENTS.md"
 
 GA = r"\bgap[- ]analysis\b"
+
+#: CR-MDB-096 §S4.1 — the conditional a migrated pin requires in its own unit. §S1.5's Rule 21
+#: lead is worded "when at least one trigger applies"; that form is the same conditional.
+TRIGGER_APPLIES = r"\bwhen (?:at least one|a) trigger applies\b"
+#: CR-MDB-096 AC3 — the conditionals the ordering guard accepts.
+GUARD_CONDITIONAL = TRIGGER_APPLIES + r"|\bwhen the cr meets a trigger\b"
+#: CR-MDB-096 §S2 — the pointer to the triggers' one home.
+RULE_21_POINTER = r"\bgap-analysis rule 21\b"
 
 # ------------------------------------------------------------- §S1 rules ----
 
@@ -133,19 +153,23 @@ TEN_RANGE = r"\b1\s*[–-]\s*10\b|\bten dimensions\b|\ball ten\b"
 TEN_NAMES = (r"\breach\b", r"\bscenario matrix\b|\bscenarios?\b", r"\binvariants\b")
 
 #: Rules — re-scoping reruns both steps (one unit).
+#: MIGRATED (CR-MDB-096 §S4.1): the fresh pre-review is conditional — `when a trigger applies`.
 RULE_RESCOPING = (
     r"\bre-?scop\w*\b",
     r"\b(?:fresh|re-?runs?|again)\b",
     GA,
     r"\bpre-review\b",
+    TRIGGER_APPLIES,
 )
 #: Rules — after the analysis, before approval; folded in before locking (one unit).
+#: MIGRATED (CR-MDB-096 §S4.1): dispatched when a trigger applies; "fold … before locking" kept.
 RULE_PRE_REVIEW_ORDER = (
     r"\bpre-review\b",
     r"\bdispatch\w*\b",
     r"\bafter\b.{0,40}\banalysis\b",
     r"\bbefore\b.{0,60}\b(?:locks?|locking|approval)\b",
     r"\bfold\w*\b.{0,40}\bbefore lock\w*\b",
+    TRIGGER_APPLIES,
 )
 #: Rules — who and where (one unit, nested items included).
 RULE_WHO_AND_WHERE = (
@@ -167,7 +191,8 @@ RULE_ONE_POINTER = (
 # ------------------------------------------------------------- §S2 rules ----
 
 #: Two-phase workflow — the design phase lists gap analysis, then the pre-review.
-TWO_PHASE_DESIGN = (r"\bdesign phase\b", GA + r".{0,80}\bpre-review\b")
+#: MIGRATED (CR-MDB-096 §S4.1): "then the spec pre-review when a trigger applies".
+TWO_PHASE_DESIGN = (r"\bdesign phase\b", GA + r".{0,80}\bpre-review\b", TRIGGER_APPLIES)
 #: Two-phase workflow — the VERIFY *agent* may run in the design phase, as the pre-review.
 TWO_PHASE_VERIFY_WORD = (
     r"\bverify agent\b",
@@ -178,8 +203,9 @@ TWO_PHASE_VERIFY_WORD = (
 #: Gap-analysis discipline — kept: the orchestrator runs the gap analysis itself.
 GA_DISCIPLINE_ITSELF = (r"\bthe orchestrator runs (?:the )?gap[- ]analysis itself\b",)
 #: Gap-analysis discipline — the pre-review is a separate, dispatched review of the drafted spec.
+#: MIGRATED (CR-MDB-096 §S4.1): dispatched when a trigger applies.
 GA_DISCIPLINE_SEPARATE = (
-    r"\bpre-review\b", r"\bseparate\b", r"\bdispatch\w*\b", r"\bdrafted spec\b")
+    r"\bpre-review\b", r"\bseparate\b", r"\bdispatch\w*\b", r"\bdrafted spec\b", TRIGGER_APPLIES)
 #: Gap-analysis discipline — points to the skill for the dimensions and the verdicts.
 GA_DISCIPLINE_POINTER = (r"gap-analysis skill\b", r"\bdimensions\b", r"\bverdicts\b")
 #: Gap-analysis discipline — none of these is listed in the section (raw text).
@@ -191,46 +217,67 @@ GA_DISCIPLINE_FORBIDDEN = {
     "SPEC_UPDATE_NEEDED": re.compile(r"SPEC_UPDATE_NEEDED"),
 }
 #: The ordered chain gap-analysis → pre-review → approval → plan-file → branch/worktree.
+#: MIGRATED (CR-MDB-096 §S4.1): the chain carries `when a trigger applies` in the same unit.
 ORDER_TO_PLAN_FILE = (
     GA + r".{0,30}\bpre-review\b.{0,40}\bapproval\b.{0,30}\bplan-file\b"
-    r".{0,40}\b(?:branch|worktree)\b")
+    r".{0,40}\b(?:branch|worktree)\b",
+    TRIGGER_APPLIES,
+)
 #: Cycle discipline — the setup ordering names the pre-review before approval.
-CYCLE_SETUP_ORDER = (r"\bsetup ordering\b", ORDER_TO_PLAN_FILE)
+CYCLE_SETUP_ORDER = (r"\bsetup ordering\b",) + ORDER_TO_PLAN_FILE
 #: A pre-review is a workflow moment: it posts a design-review milestone.
-DESIGN_REVIEW_MILESTONE = (r"\bpre-review\b", r"\bmilestone\b", r"\bdesign-review\b")
-#: Older projects re-render their agents before their first pre-review.
+#: MIGRATED (CR-MDB-096 §S4.1): posted `when a pre-review ran` — a CR with no trigger posts none.
+DESIGN_REVIEW_MILESTONE = (
+    r"\bpre-review\b", r"\bmilestone\b", r"\bdesign-review\b", r"\bwhen a pre-review ran\b")
+#: Older projects re-render their agents before their next pre-review.
+#: MIGRATED (CR-MDB-096 §S4.1): was `before (?:its|the) first pre-review`; now `before its next
+#: pre-review`, and the agents rendered before the pre-review's `checklist` are older too.
 RE_RENDER_OLDER = (
     r"\bscaffolded before\b",
     r"\bre-?render\w*\b",
     r"\bmodelb-axi agents\b",
-    r"\bbefore (?:its|the) first pre-review\b",
+    r"\bbefore its next pre-review\b",
+    r"\bchecklist\b",
     r"\bhand-modified\b",
     r"\breported to the user\b|\breports? (?:it )?to the user\b",
 )
 
 #: Mainline — design→execution gate: gap-analysis → pre-review → fold → lock → present →
 #: approval → plan.
+#: MIGRATED (CR-MDB-096 §S4.1): the pre-review link carries `when a trigger applies`.
 MAINLINE_GATE = (
     r"design\s*→\s*execution gate",
     GA + r".{0,30}\bpre-review\b.{0,40}\bfold\w*\b.{0,60}\block\w*\b.{0,40}\bpresent\b"
     r".{0,60}\bapproval\b.{0,60}\bplan\b",
+    TRIGGER_APPLIES,
 )
+#: CR-MDB-096 §S2.3 — the gate presents the spec with the pre-review record (one unit).
+MAINLINE_GATE_RECORD = (r"design\s*→\s*execution gate", r"\bpresent, with the pre-review record\b")
 
 #: Track — the setup ordering names the pre-review, then plan-file, then worktree-flow start.
+#: MIGRATED (CR-MDB-096 §S4.1): the pre-review link carries `when a trigger applies`.
 TRACK_SETUP_ORDER = (
     r"\bsetup ordering\b",
     GA + r".{0,30}\bpre-review\b.{0,60}\bapproval\b.{0,30}\bplan-file\b.{0,60}"
     r"\bworktree-flow start\b",
+    TRIGGER_APPLIES,
 )
 #: Track — the pre-review runs in the main tree, read-only.
 TRACK_MAIN_TREE = (r"\bpre-review\b", r"\bmain tree\b", r"\bread-only\b")
 #: Track — a Track raises its pre-review findings to Mainline, which folds them on develop.
+#: MIGRATED (CR-MDB-096 §S4.1): it raises its `trigger decision` too.
 TRACK_FINDINGS_TO_MAINLINE = (
     r"\bpre-review\b",
     r"\bfindings\b",
     r"\b(?:rais\w*|send\w*|report\w*)\b.{0,60}\bto mainline\b",
     r"\bfolds?\b.{0,60}\bdevelop\b",
+    r"\btrigger decision\b",
 )
+#: CR-MDB-096 §S2.4 — the design-phase steps: the gap analysis and, when a trigger applies, the
+#: spec pre-review, before the worktree exists (one unit).
+TRACK_DESIGN_STEPS = (
+    r"\bdesign[- ]phase steps\b", GA, r"\bpre-review\b", TRIGGER_APPLIES,
+    r"\bbefore the worktree exists\b")
 #: Track — the reconciled in-worktree bullet.
 TRACK_IN_WORKTREE_RECONCILED = (
     r"\bdesign[- ]phase\b",
@@ -348,11 +395,13 @@ COMMON_WHO_POSTS = (
 )
 #: orchestration-common — the re-render rule upgrades Model B first, since `modelb-axi agents`
 #: renders from the installed templates (one unit).
+#: MIGRATED (CR-MDB-096 §S4.1): `before its next pre-review` in place of `before (?:its|the)
+#: first pre-review`, and the release is the one carrying the checklist.
 COMMON_UPGRADE_FIRST = (
     r"\bupgrades?\b.{0,20}\bmodel b\b",
-    r"\brelease\b",
+    r"\brelease carrying the checklist\b",
     r"\bmodelb-axi agents\b.{0,40}\brenders? from the installed templates\b",
-    r"\bbefore (?:its|the) first pre-review\b",
+    r"\bbefore its next pre-review\b",
 )
 #: No shipped file states the old ordering: an approval, lock or branch straight after the analysis.
 OLD_ORDERING = re.compile(
@@ -361,6 +410,139 @@ OLD_ORDERING = re.compile(
 #: The shipped surfaces the old-ordering gate reads.
 # MIGRATED (CR-MDB-085 §S6.1): the stack skills' sources are an ordering surface too.
 ORDERING_SURFACES = ("skills-src", "generator/templates", "generator/stacks", "generator/skills")
+
+# ------------------------------- CR-MDB-096 §S1 — the triggers, checklist, record ----
+
+#: §S1.1 — § When to Use's ordering carries the conditional and points to Rule 21 (one unit).
+WHEN_TO_USE_CONDITIONAL = WHEN_TO_USE_ORDER + (TRIGGER_APPLIES, r"\brule 21\b")
+#: §S1.2 — READY: the pre-review when a trigger applies (Rule 21), else approval (one unit).
+READY_CONDITIONAL = (
+    r"\bpre-review\b", TRIGGER_APPLIES, r"\brule 21\b", r"\belse\b.{0,20}\bapproval\b")
+#: §S1.3 — Rule 1 points to Rules 21, 22, 24 and 25.
+RULE_ONE_POINTS_TO = (r"\brules 21, 22, 24 and 25\b",)
+#: §S1.4 / AC6 — Rule 20: a re-scoped spec's fresh gap analysis decides the triggers again.
+RULE_TWENTY_TRIGGERS_AGAIN = (r"\bre-?scop\w*\b", r"\bdecides? the triggers again\b")
+
+#: §S1 — every pin on the `gap-analysis` skill: ``(name, where, rule)``. ``where`` is
+#: ``when to use``, ``ready`` or ``rule <n>`` (the one unit that IS numbered rule <n>). One cut of a
+#: spec phrase yields exactly its own name (``GapAnalysisTriggerRuleDetectorTest``).
+GAP_PINS = (
+    ("when to use: the ordering carries the conditional", "when to use", WHEN_TO_USE_CONDITIONAL),
+    ("ready: the pre-review when a trigger applies, else approval", "ready", READY_CONDITIONAL),
+    ("rule 1: points to rules 21, 22, 24 and 25", "rule 1", RULE_ONE_POINTS_TO),
+    ("rule 20: a fresh pre-review when a trigger applies", "rule 20", RULE_RESCOPING),
+    ("rule 20: the triggers decided again", "rule 20", RULE_TWENTY_TRIGGERS_AGAIN),
+    ("rule 21: dispatched when a trigger applies, folded before locking", "rule 21",
+     RULE_PRE_REVIEW_ORDER),
+    ("rule 21: 8 points or more", "rule 21", (r"\b8 points or more\b",)),
+    ("rule 21: a contract, a hook or another project's surface", "rule 21",
+     (r"\ba contract, a hook or another project's surface\b",)),
+    ("rule 21: a ruling from the user", "rule 21", (r"\ba ruling from the user\b",)),
+    ("rule 21: a contract is a file under contracts/ or an interface agents.md names", "rule 21",
+     (r"\bcontract is a file under\b.{0,30}\bcontracts/",
+      r"\binterface\b.{0,20}\bagents\.md names as a contract\b")),
+    ("rule 21: a hook is a hook script, the hook schema or compiled hook wiring", "rule 21",
+     (r"\bhook is a hook script\b", r"\bthe hook schema\b", r"\bcompiled hook wiring\b")),
+    ("rule 21: a surface is a file, cli, api or message format another project consumes or "
+     "provides", "rule 21",
+     (r"\bsurface is a file, cli, api or message format\b",
+      r"\banother project consumes or provides\b")),
+    ("rule 21: any other spec goes from the analysis to approval", "rule 21",
+     (r"\bany other spec goes from the analysis to approval\b",)),
+    ("rule 24: a pre-review looks only for", "rule 24", (r"\bpre-review looks only for\b",)),
+    ("rule 24: no test can meet or check", "rule 24",
+     (r"\ban acceptance criterion no test can meet or check\b",)),
+    ("rule 24: a missing failure path or edge case", "rule 24",
+     (r"\ba missing failure path or edge case\b",)),
+    ("rule 24: a gap in scope or design", "rule 24", (r"\ba gap in scope or design\b",)),
+    ("rule 24: a conflict with the prd or a dn", "rule 24",
+     (r"\ba conflict with the prd or a dn\b",)),
+    ("rule 24: wording and naming are not findings", "rule 24",
+     (r"\bwording and naming are not findings\b",)),
+    ("rule 24: folds in nothing outside", "rule 24", (r"\bfolds in nothing outside\b",)),
+    ("rule 25: on the status line", "rule 25", (r"\bstatus: line\b",)),
+    ("rule 25: due — decided, not yet run", "rule 25",
+     (r"pre-review: due — <trigger>", r"\bdecided, not yet run\b")),
+    ("rule 25: ran — <trigger>", "rule 25", (r"pre-review: ran — <trigger>",)),
+    ("rule 25: none — no trigger", "rule 25", (r"pre-review: none — no trigger",)),
+    ("rule 25: written when the analysis decides the triggers", "rule 25",
+     (r"\bwrites? it when the analysis decides the triggers\b",)),
+    ("rule 25: due moves to ran at the fold", "rule 25",
+     (r"\bmoves? due to ran\b.{0,30}\bfold\w*\b",)),
+    ("rule 25: repeated at approval", "rule 25", (r"\brepeats? it\b.{0,60}\bapproval\b",)),
+    ("rule 25: a re-scoping rewrites it", "rule 25", (r"\bre-?scoping\b.{0,20}\brewrites? it\b",)),
+    ("rule 25: the completed flip keeps it", "rule 25", (r"\bcompleted flip keeps it\b",)),
+    ("rule 25: a track reports its decision to mainline, which records it", "rule 25",
+     (r"\btrack reports? its decision to mainline\b", r"\bmainline records? it\b")),
+)
+#: §S1 lead / AC1 — the rules that are each ONE block, with no blank line inside.
+ONE_BLOCK_RULES = (21, 24, 25)
+
+# ----------------------------- CR-MDB-096 §S2 — the references follow the one home ----
+
+#: §S2.1 — the role table's pre-review row (a table row is a unit of its own).
+ROLE_ROW_TRIGGER = (
+    r"^\| spec pre-review\b",
+    r"\bone drafted spec, before approval, when a trigger applies\b",
+    RULE_21_POINTER,
+)
+#: §S2.2 — the older-projects bullet: §S4.1's two migrated pins read as the one unit they are.
+OLDER_PROJECTS = tuple(dict.fromkeys(RE_RENDER_OLDER + COMMON_UPGRADE_FIRST))
+#: §S2.5 — `cr-authoring`'s front matter: `**Status:**` carries the pre-review record (Rule 25).
+CR_AUTHORING_STATUS_RECORD = (
+    r"\bfront matter\b", r"\bstatus:", r"\bpre-review record\b", r"\bgap-analysis rule 25\b")
+#: §S2.6 — `crucible`: the VERIFY agent's pre-review duty is when the CR meets a trigger.
+CRUCIBLE_DUTY_TRIGGER = (
+    r"\bspec pre-review\b", r"\bverify[- ]agent\b", r"\bwhen the cr meets a trigger\b",
+    RULE_21_POINTER)
+
+#: §S2 — every item, in its file: ``(name, rel, section prefix or None, rule)``.
+S2_PINS = (
+    ("model-b: the role row names the trigger", MODEL_B_REL, "## 2.", ROLE_ROW_TRIGGER),
+    ("common: the design phase", COMMON_REL, "## Two-phase workflow", TWO_PHASE_DESIGN),
+    ("common: the separate review", COMMON_REL, "## Gap-analysis discipline",
+     GA_DISCIPLINE_SEPARATE + (RULE_21_POINTER,)),
+    ("common: the design-review milestone", COMMON_REL, None, DESIGN_REVIEW_MILESTONE),
+    ("common: older projects", COMMON_REL, None, OLDER_PROJECTS),
+    ("common: the setup ordering", COMMON_REL, "## Cycle discipline", CYCLE_SETUP_ORDER),
+    ("mainline: the gate's conditional", MAINLINE_REL, None, MAINLINE_GATE),
+    ("mainline: the gate presents the record", MAINLINE_REL, None, MAINLINE_GATE_RECORD),
+    ("track: the design-phase steps", TRACK_REL, None, TRACK_DESIGN_STEPS),
+    ("track: the trigger decision and findings to mainline", TRACK_REL, None,
+     TRACK_FINDINGS_TO_MAINLINE),
+    ("track: the setup ordering", TRACK_REL, None, TRACK_SETUP_ORDER),
+    ("cr-authoring: the design phase", CR_AUTHORING_REL, "## Two-phase workflow",
+     TWO_PHASE_DESIGN),
+    ("cr-authoring: the status carries the record", CR_AUTHORING_REL, None,
+     CR_AUTHORING_STATUS_RECORD),
+    ("crucible: the verify duty's trigger", CRUCIBLE_REL, "## Who runs what",
+     CRUCIBLE_DUTY_TRIGGER),
+)
+#: The §S2 files: the restatement detector reads these.
+S2_FILES = (MODEL_B_REL, COMMON_REL, MAINLINE_REL, TRACK_REL, CR_AUTHORING_REL, CRUCIBLE_REL)
+#: The files §S1–§S2 list: the ordering guard reads these.
+GUARD_FILES = (GAP_REL,) + S2_FILES
+
+#: AC2 — Rule 21's trigger phrases and Rule 24's item phrases; a §S2 unit holding two or more
+#: of either set restates the rule.
+TRIGGER_PHRASES = (
+    r"\b8 points or more\b",
+    r"\ba contract, a hook or another project's surface\b",
+    r"\ba ruling from the user\b",
+)
+CHECKLIST_PHRASES = (
+    r"\bno test can meet or check\b",
+    r"\bmissing failure path or edge case\b",
+    r"\bgap in scope or design\b",
+    r"\bconflict with the prd or a dn\b",
+)
+#: AC3 — the pre-review as a link of an arrow chain (`→` right before it, or right after it
+#: or its parenthesis), or as the object of "dispatches / proceed to the (spec) pre-review".
+PRE_REVIEW_LINK = re.compile(
+    r"→\s*(?:the\s+)?(?:spec\s+)?pre-review\b"
+    r"|\bpre-review\b\s*(?:\([^)]*\)\s*)?→"
+    r"|\bdispatch(?:es)? the (?:spec )?pre-review\b"
+    r"|\bproceed to the (?:spec )?pre-review\b")
 
 
 # ------------------------------------------------------------------ reading ----
@@ -444,6 +626,99 @@ def _section(rel: str, prefix: str) -> str:
     if not text:
         raise AssertionError(f"{rel} has no section headed {prefix!r}")
     return text
+
+
+# ------------------------------------------------- CR-MDB-096 reading ----
+
+def numbered_rule_units(rules_body: str, number: int) -> list[str]:
+    """The unit(s) that ARE numbered rule ``number`` of a "Rules" section: the item with its
+    nested items and continuation lines, up to the first blank line."""
+    return [u for u in units(rules_body) if u.startswith(f"{number}. ")]
+
+
+def gap_candidates(text: str, where: str) -> list[str]:
+    """The units of the ``gap-analysis`` skill text ``text`` a :data:`GAP_PINS` entry reads."""
+    if where == "when to use":
+        return units(section_body(text, "When to Use") or "")
+    if where == "ready":
+        return [u for u in units(section_body(text, "Verdicts:") or "")
+                if re.match(READY_VERDICT, u)]
+    return numbered_rule_units(section_body(text, "Rules") or "", int(where.split()[1]))
+
+
+def gap_pin_findings(text: str) -> list[str]:
+    """The name of every :data:`GAP_PINS` entry no unit of ``text`` meets, in table order."""
+    return [name for name, where, rule in GAP_PINS
+            if not any(all(re.search(p, u) for p in rule) for u in gap_candidates(text, where))]
+
+
+def top_level_rule_numbers(rules_body: str) -> list[int]:
+    """The number of every unindented numbered item of a "Rules" section, in file order."""
+    return [int(m.group(1)) for m in re.finditer(r"(?m)^(\d+)\.\s", rules_body)]
+
+
+def rules_not_one_block(rules_body: str, numbers: tuple) -> list[str]:
+    """For each of ``numbers``: ``rule N: absent``, or ``rule N: a blank line inside`` when the
+    rule's text goes on (an indented line) after a blank line, so it is two units, not one."""
+    lines = rules_body.splitlines()
+    out = []
+    for n in numbers:
+        start = next((i for i, ln in enumerate(lines) if re.match(rf"^{n}\.\s", ln)), None)
+        if start is None:
+            out.append(f"rule {n}: absent")
+            continue
+        for j in range(start + 1, len(lines)):
+            if re.match(r"^\d+\.\s", lines[j]):
+                break
+            if lines[j].strip():
+                continue
+            following = next((ln for ln in lines[j + 1:] if ln.strip()), "")
+            if following[:1].isspace():
+                out.append(f"rule {n}: a blank line inside")
+            break
+    return out
+
+
+def s2_pin_findings(texts: dict) -> list[str]:
+    """The name of every :data:`S2_PINS` entry whose file (``texts[rel]``), or section of it,
+    has no unit meeting its rule, in table order."""
+    out = []
+    for name, rel, prefix, rule in S2_PINS:
+        text = texts.get(rel, "")
+        if prefix:
+            text = md_section(text, prefix)
+        if not satisfying(text, rule):
+            out.append(name)
+    return out
+
+
+def restates_the_rule(unit: str) -> bool:
+    """AC2: a unit holding two or more of Rule 21's trigger phrases, or two or more of Rule 24's
+    item phrases."""
+    return (sum(1 for p in TRIGGER_PHRASES if re.search(p, unit)) >= 2
+            or sum(1 for p in CHECKLIST_PHRASES if re.search(p, unit)) >= 2)
+
+
+def restatements(texts: dict) -> list[str]:
+    """``rel: unit`` for every unit of ``texts`` that restates the triggers or the checklist."""
+    return [f"{rel}: {u[:200]!r}" for rel, text in texts.items() for u in units(text)
+            if restates_the_rule(u)]
+
+
+def unconditional_link(unit: str) -> bool:
+    """AC3: the pre-review is a link of an arrow chain, or the object of "dispatches / proceed to
+    the (spec) pre-review", and the unit carries no conditional."""
+    return bool(PRE_REVIEW_LINK.search(unit)) and not re.search(GUARD_CONDITIONAL, unit)
+
+
+def unconditional_links(texts: dict) -> list[str]:
+    """``rel: unit`` for every unit of ``texts`` the ordering guard finds."""
+    return [f"{rel}: {u[:200]!r}" for rel, text in texts.items() for u in units(text)
+            if unconditional_link(u)]
+
+
+def _real(rels: tuple) -> dict:
+    return {rel: _read(rel) for rel in rels}
 
 
 class _RuleAssertions(unittest.TestCase):
@@ -598,7 +873,8 @@ class OrchestrationCommonPreReviewTest(_RuleAssertions):
     def test_a_pre_review_posts_a_design_review_milestone(self):
         self.assert_rule(_read(COMMON_REL), DESIGN_REVIEW_MILESTONE, COMMON_REL)
 
-    def test_an_older_project_re_renders_its_agents_before_its_first_pre_review(self):
+    def test_an_older_project_re_renders_its_agents_before_its_next_pre_review(self):
+        # MIGRATED (CR-MDB-096 §S4.1): was ..._before_its_first_pre_review.
         self.assert_rule(_read(COMMON_REL), RE_RENDER_OLDER, COMMON_REL)
 
 
@@ -723,9 +999,140 @@ class ReachOfTheChangedRulesTest(_RuleAssertions):
         self.assert_rule(_read(COMMON_REL), COMMON_UPGRADE_FIRST, COMMON_REL)
 
     def test_no_shipped_file_states_the_old_ordering(self):
+        # KEPT (CR-MDB-096 §S4.1): the no-trigger path is prose only, never an arrow chain.
         hits = [f"{rel}: {m.group(0)!r}" for rel, text in _ordering_surfaces()
                 for m in OLD_ORDERING.finditer(text)]
         self.assertEqual(hits, [], "a shipped file states the ordering without the pre-review")
+
+
+# ------------------- CR-MDB-096 §S1 — the triggers, the checklist and the record ----
+
+class GapAnalysisTriggerRulesTest(unittest.TestCase):
+    """CR-MDB-096 §S1 / AC1 / AC6: the `gap-analysis` skill states the rule once — § When to
+    Use and READY carry the conditional, Rule 1 points to Rules 21, 22, 24 and 25, Rule 20 decides
+    the triggers again, Rule 21 the triggers, Rule 24 the checklist, Rule 25 the record."""
+
+    def _lacking(self, prefix: str) -> list[str]:
+        return [n for n in gap_pin_findings(_read(GAP_REL)) if n.startswith(prefix)]
+
+    def test_when_to_use_gives_the_ordering_with_the_trigger_conditional(self):
+        self.assertEqual(self._lacking("when to use"), [], f"{GAP_REL} § When to Use")
+
+    def test_ready_proceeds_to_the_pre_review_when_a_trigger_applies_else_to_approval(self):
+        self.assertEqual(self._lacking("ready"), [], f"{GAP_REL} READY verdict")
+
+    def test_rule_one_points_to_rules_21_22_24_and_25(self):
+        self.assertEqual(self._lacking("rule 1:"), [], f"{GAP_REL} Rule 1")
+
+    def test_rule_20_decides_the_triggers_again_and_a_fresh_pre_review_when_a_trigger_applies(self):
+        self.assertEqual(self._lacking("rule 20:"), [], f"{GAP_REL} Rule 20")
+
+    def test_rule_21_states_the_three_triggers_their_definitions_and_the_no_trigger_path(self):
+        self.assertEqual(self._lacking("rule 21:"), [], f"{GAP_REL} Rule 21 (one unit)")
+
+    def test_rule_24_states_the_four_checklist_items_and_folds_nothing_outside_them(self):
+        self.assertEqual(self._lacking("rule 24:"), [], f"{GAP_REL} Rule 24 (one unit)")
+
+    def test_rule_25_states_the_three_record_forms_and_the_records_lifecycle(self):
+        self.assertEqual(self._lacking("rule 25:"), [], f"{GAP_REL} Rule 25 (one unit)")
+
+    def test_the_rules_keep_numbers_one_to_23_and_append_24_and_25(self):
+        body = section_body(_read(GAP_REL), "Rules") or ""
+        self.assertEqual(top_level_rule_numbers(body), list(range(1, 26)),
+                         f"{GAP_REL} § Rules: 1..25, each once, in order")
+
+    def test_rules_21_24_and_25_are_each_one_block_with_no_blank_line_inside(self):
+        body = section_body(_read(GAP_REL), "Rules") or ""
+        self.assertEqual(rules_not_one_block(body, ONE_BLOCK_RULES), [], f"{GAP_REL} § Rules")
+
+    def test_rules_22_and_23_are_unchanged(self):
+        # Regression pin (passes today): §S1.6 — Rule 22 who and where, Rule 23 the re-score
+        # and the split before the pre-review, each still under its number.
+        body = section_body(_read(GAP_REL), "Rules") or ""
+        twenty_two = numbered_rule_units(body, 22)
+        twenty_three = numbered_rule_units(body, 23)
+        self.assertEqual(len(twenty_two), 1, "exactly one Rule 22")
+        self.assertEqual(len(twenty_three), 1, "exactly one Rule 23")
+        self.assertTrue(all(re.search(p, twenty_two[0]) for p in RULE_WHO_AND_WHERE),
+                        missing(twenty_two[0], RULE_WHO_AND_WHERE))
+        self.assertRegex(twenty_three[0], r"^23\. re-score the cr\b")
+        self.assertRegex(twenty_three[0], r"\babove 13 is split before the pre-review\b")
+
+
+# ------------------------ CR-MDB-096 §S2 — the references follow the one home ----
+
+class ReferencesFollowTheTriggerRuleTest(unittest.TestCase):
+    """CR-MDB-096 §S2 / AC2 / AC6: each reference names the pre-review as conditional, in one
+    unit, and none restates the triggers or the checklist."""
+
+    def _lacking(self, prefix: str) -> list[str]:
+        return [n for n in s2_pin_findings(_real(S2_FILES)) if n.startswith(prefix)]
+
+    def test_model_b_role_row_reviews_one_drafted_spec_when_a_trigger_applies(self):
+        self.assertEqual(self._lacking("model-b:"), [], f"{MODEL_B_REL} § 2")
+
+    def test_orchestration_common_makes_every_pre_review_mention_conditional(self):
+        self.assertEqual(self._lacking("common:"), [], COMMON_REL)
+
+    def test_orchestration_mainline_gate_is_conditional_and_presents_the_record(self):
+        self.assertEqual(self._lacking("mainline:"), [], MAINLINE_REL)
+
+    def test_orchestration_track_steps_findings_and_ordering_are_conditional(self):
+        self.assertEqual(self._lacking("track:"), [], TRACK_REL)
+
+    def test_cr_authoring_design_phase_is_conditional_and_status_carries_the_record(self):
+        self.assertEqual(self._lacking("cr-authoring:"), [], CR_AUTHORING_REL)
+
+    def test_crucible_verify_duty_runs_when_the_cr_meets_a_trigger(self):
+        self.assertEqual(self._lacking("crucible:"), [], f"{CRUCIBLE_REL} § Who runs what")
+
+    def test_no_reference_restates_the_triggers_or_the_checklist(self):
+        # Guard (passes today): the references point to Rule 21; none lists its triggers or
+        # Rule 24's items.
+        self.assertEqual(restatements(_real(S2_FILES)), [],
+                         "a §S2 file restates gap-analysis Rule 21 or Rule 24")
+
+    def test_the_real_units_holding_one_phrase_alone_are_not_restatements(self):
+        # Must-pass samples (AC2; pass today): the scoring scale and another project's working
+        # tree each look like a phrase of the rule, and are not one.
+        samples = ((CR_AUTHORING_REL, r"\b1, 2, 3, 5, 8, 13\b"),
+                   (CRUCIBLE_REL, r"\b1, 2, 3, 5, 8, 13\b"),
+                   (MODEL_B_REL, r"\banother project's working tree\b"))
+        for rel, sample in samples:
+            with self.subTest(rel=rel, sample=sample):
+                found = [u for u in units(_read(rel)) if re.search(sample, u)]
+                self.assertEqual(len(found), 1, f"{rel}: exactly one unit holds {sample!r}")
+                self.assertFalse(restates_the_rule(found[0]), found[0])
+
+
+class PreReviewOrderingGuardTest(unittest.TestCase):
+    """CR-MDB-096 AC3: in the files §S1–§S2 list, a unit linking the pre-review into an
+    ordering, or dispatching / proceeding to it, carries the conditional."""
+
+    maxDiff = None
+
+    def test_every_pre_review_link_in_the_rule_files_carries_the_conditional(self):
+        self.assertEqual(unconditional_links(_real(GUARD_FILES)), [],
+                         "a unit orders the pre-review without `when a trigger applies`")
+
+    def test_the_real_units_this_cr_leaves_alone_pass_the_guard(self):
+        # Must-pass samples (AC3; pass today): Rule 23, the dispatch-description bullet, the
+        # VERIFY-word bullet and crucible's identity bullet.
+        rules = section_body(_read(GAP_REL), "Rules") or ""
+        samples = (
+            ("rule 23", numbered_rule_units(rules, 23), r"\bsplit before the pre-review\b"),
+            ("dispatch description", units(_read(COMMON_REL)),
+             r"\bname the cr id in every dispatch description\b.*\bexcept a spec pre-review\b"),
+            ("verify word", units(_read(COMMON_REL)),
+             r"\bmay run in the design phase in its spec pre-review mode\b"),
+            ("crucible identity", units(_section(CRUCIBLE_REL, "## Identity")),
+             r"\breviewing a drafted spec before approval\b"),
+        )
+        for name, candidates, phrase in samples:
+            with self.subTest(sample=name):
+                found = [u for u in candidates if re.search(phrase, u)]
+                self.assertEqual(len(found), 1, f"exactly one {name} unit")
+                self.assertFalse(unconditional_link(found[0]), found[0])
 
 
 def _ordering_surfaces() -> list[tuple[str, str]]:
@@ -800,9 +1207,10 @@ Any path that could break one gets an AC.
 1. **Never delegate this analysis to a sub-agent** — this is the orchestrator's responsibility.
    The pre-review is a separate review of the drafted spec.
 2. **Re-scoping reruns both steps.** A spec that is restructured or re-scoped gets a fresh gap
-   analysis and a fresh pre-review.
+   analysis and a fresh pre-review when a trigger applies.
 3. **The pre-review comes after the analysis, before approval.** The orchestrator dispatches it
-   after its own analysis and before it locks and presents the spec. The findings are folded in
+   after its own analysis and before it locks and presents the spec, when a trigger applies. The
+   findings are folded in
    before locking.
 4. **Who and where:**
    - **Id:** `CR-<ACRONYM>-NNN-SPEC-REVIEW`, the acronym taken from the nearest registry.
@@ -840,23 +1248,27 @@ retire/delete calls, and orphaned consumers.
 
 GOOD_COMMON = """\
 ## Two-phase workflow
-- **Design phase → `develop`.** Gap-analysis, then the spec pre-review; spec/PRD/DN/queue edits.
+- **Design phase → `develop`.** Gap-analysis, then the spec pre-review when a trigger applies;
+  spec/PRD/DN/queue edits.
 - **Execution phase → feature branch.** RED+GREEN cycles, VERIFY, FIX, regression, merge.
 - `VERIFY` names the execution phase only: the VERIFY agent may run in the design phase in its spec
   pre-review mode, and that step is called the pre-review, never "verify".
 
 ## Gap-analysis discipline (gap-analysis FIRST, before any branch/RED)
 - **The orchestrator runs the gap analysis itself** (never delegate to a sub-agent).
-- **The pre-review is a separate, dispatched review of the drafted spec**, after the analysis.
+- **The pre-review is a separate, dispatched review of the drafted spec**, after the analysis,
+  when a trigger applies.
 - **The dimensions and the verdicts live in the `gap-analysis` skill** — read it; they are not
   listed here.
-- **A pre-review is a workflow moment:** it posts a `design-review` milestone.
-- **Older projects:** a project scaffolded before the pre-review mode re-renders its agents with
-  `modelb-axi agents` before its first pre-review. A definition left alone as hand-modified is
+- **A pre-review is a workflow moment:** when a pre-review ran, it posts a `design-review`
+  milestone.
+- **Older projects:** a project scaffolded before the pre-review's checklist re-renders its agents
+  with `modelb-axi agents` before its next pre-review. A definition left alone as hand-modified is
   reported to the user.
 
 ## Cycle discipline
-- Setup ordering: gap-analysis → pre-review → approval → `plan-file` → THEN the branch / worktree.
+- Setup ordering: gap-analysis → pre-review (when a trigger applies) → approval → `plan-file` →
+  THEN the branch / worktree.
 """
 
 OLD_COMMON = """\
@@ -874,8 +1286,9 @@ OLD_COMMON = """\
 """
 
 GOOD_MAINLINE = """\
-- **Design→execution gate:** gap-analysis → pre-review → fold its findings → lock the spec →
-  present → WAIT for explicit approval → ONLY THEN cycle plan.
+- **Design→execution gate:** gap-analysis → pre-review when a trigger applies → fold its findings
+  → lock the spec → present, with the pre-review record → WAIT for explicit approval → ONLY THEN
+  cycle plan.
 """
 OLD_MAINLINE = """\
 - **Design→execution gate:** gap-analysis → lock the spec → present → WAIT for explicit approval → ONLY THEN cycle plan.
@@ -884,10 +1297,11 @@ OLD_MAINLINE = """\
 GOOD_TRACK = """\
 - **Design-phase steps (the gap analysis, the pre-review) happen before the worktree exists**, and
   everything from `worktree-flow start` on happens in it — RED / GREEN / VERIFY / builds.
-- Setup ordering: spec → gap-analysis → pre-review → present + get approval → `plan-file` → THEN
-  `worktree-flow start` + dispatch.
+- Setup ordering: spec → gap-analysis → pre-review (when a trigger applies) → present + get
+  approval → `plan-file` → THEN `worktree-flow start` + dispatch.
 - The pre-review runs in the main tree, read-only.
-- A Track raises its pre-review findings to Mainline, which folds them into the spec on develop.
+- A Track raises its trigger decision and its pre-review findings to Mainline, which folds them
+  into the spec on develop.
 """
 OLD_TRACK = """\
 - **100% of CR work is in-worktree** — investigation / §S1 / gap-analysis / spec-writing / RED / GREEN / VERIFY / builds.
@@ -1015,6 +1429,10 @@ class PreReviewRuleDetectorTest(unittest.TestCase):
     def test_each_rules_detector_bites_when_its_phrase_is_changed(self):
         mutations = {
             "rescope": (RULE_RESCOPING, " and a fresh pre-review", ""),
+            # MIGRATED (CR-MDB-096 §S4.1): each conditional bites too.
+            "rescope trigger": (RULE_RESCOPING, "pre-review when a trigger applies.", "pre-review."),
+            "order trigger": (RULE_PRE_REVIEW_ORDER, "the spec, when a trigger applies.",
+                              "the spec."),
             "fold": (RULE_PRE_REVIEW_ORDER, "folded in\n   before locking", "noted"),
             "id": (RULE_WHO_AND_WHERE, "-SPEC-REVIEW", "-REVIEW"),
             "nearest": (RULE_WHO_AND_WHERE, "the nearest registry", "the root registry"),
@@ -1075,7 +1493,16 @@ class PreReviewRuleDetectorTest(unittest.TestCase):
             "milestone": (DESIGN_REVIEW_MILESTONE, "`design-review`", "`stage-flip`"),
             "re-render": (RE_RENDER_OLDER, "`modelb-axi agents`", "hand"),
             "reported": (RE_RENDER_OLDER, "reported to the user", "kept"),
-            "order": (CYCLE_SETUP_ORDER, "pre-review → approval", "approval → pre-review"),
+            "order": (CYCLE_SETUP_ORDER, "pre-review (when a trigger applies) → approval",
+                      "approval → pre-review (when a trigger applies)"),
+            # MIGRATED (CR-MDB-096 §S4.1): each pin's conditional bites.
+            "design trigger": (TWO_PHASE_DESIGN, "pre-review when a trigger applies;",
+                               "pre-review;"),
+            "separate trigger": (GA_DISCIPLINE_SEPARATE, ",\n  when a trigger applies.", "."),
+            "milestone ran": (DESIGN_REVIEW_MILESTONE, "when a pre-review ran, ", ""),
+            "next": (RE_RENDER_OLDER, "before its next pre-review", "before its first pre-review"),
+            "checklist": (RE_RENDER_OLDER, "the pre-review's checklist", "the pre-review mode"),
+            "setup trigger": (CYCLE_SETUP_ORDER, " (when a trigger applies)", ""),
         }
         for name, (rule, old, new) in mutations.items():
             with self.subTest(mutation=name):
@@ -1087,6 +1514,9 @@ class PreReviewRuleDetectorTest(unittest.TestCase):
         self.assertEqual(satisfying(OLD_MAINLINE, MAINLINE_GATE), [])
         no_fold = GOOD_MAINLINE.replace(" → fold its findings", "")
         self.assertEqual(satisfying(no_fold, MAINLINE_GATE), [])
+        # MIGRATED (CR-MDB-096 §S4.1): the conditional bites.
+        no_trigger = GOOD_MAINLINE.replace(" when a trigger applies", "")
+        self.assertEqual(satisfying(no_trigger, MAINLINE_GATE), [])
         reordered = GOOD_MAINLINE.replace("gap-analysis → pre-review", "pre-review → gap-analysis")
         self.assertEqual(satisfying(reordered, MAINLINE_GATE), [])
 
@@ -1099,8 +1529,13 @@ class PreReviewRuleDetectorTest(unittest.TestCase):
         self.assertEqual(in_worktree_design_claims(GOOD_TRACK), [])
         self.assertEqual(len(in_worktree_design_claims(OLD_TRACK)), 1)
         self.assertEqual(
-            satisfying(GOOD_TRACK.replace("folds them into the spec on develop", "edits its spec"),
+            satisfying(GOOD_TRACK.replace("folds them\n  into the spec on develop", "edits its spec"),
                        TRACK_FINDINGS_TO_MAINLINE), [])
+        # MIGRATED (CR-MDB-096 §S4.1): the trigger decision and the conditional bite.
+        self.assertEqual(satisfying(GOOD_TRACK.replace("its trigger decision and ", ""),
+                                    TRACK_FINDINGS_TO_MAINLINE), [])
+        self.assertEqual(satisfying(GOOD_TRACK.replace(" (when a trigger applies)", ""),
+                                    TRACK_SETUP_ORDER), [])
 
     def test_the_role_description_detectors_both_ways(self):
         cases = (
@@ -1197,7 +1632,7 @@ OLD_GAP_REACH = """\
 GOOD_CR_AUTHORING = """\
 ## Two-phase workflow (universal) + where work commits
 - **Design phase \u2192 the integration branch (`develop`/`main`).** Gap analysis, then the spec
-  pre-review; spec authoring, queue/PRD/DN updates. No feature branch.
+  pre-review when a trigger applies; spec authoring, queue/PRD/DN updates. No feature branch.
 """
 OLD_CR_AUTHORING = """\
 ## Two-phase workflow (universal) + where work commits
@@ -1206,10 +1641,11 @@ OLD_CR_AUTHORING = """\
 GOOD_COMMON_REACH = """\
 - **A pre-review is a workflow moment:** the orchestrator posts a `design-review` milestone once it
   has folded the pre-review's findings into the spec \u2014 never the `report` agent.
-- **Older projects:** a project scaffolded before the spec pre-review existed first upgrades Model B
-  to a release carrying it \u2014 `modelb-axi agents` renders from the installed templates \u2014 then
-  re-renders its agents with `modelb-axi agents` before its first pre-review. A definition left
-  alone as hand-modified is reported to the user.
+- **Older projects:** a project scaffolded before the spec pre-review existed, or whose agents were
+  rendered before the pre-review's checklist, first upgrades Model B to a release carrying the
+  checklist — `modelb-axi agents` renders from the installed templates — then re-renders its
+  agents with `modelb-axi agents` before its next pre-review. A definition left alone as
+  hand-modified is reported to the user.
 """
 OLD_COMMON_REACH = """\
 - **A pre-review is a workflow moment:** it posts a `design-review` milestone, as a completed gap analysis posts a `gap-analysis` one.
@@ -1235,10 +1671,18 @@ class ReachDetectorTest(unittest.TestCase):
          "`--type design-review`", "a review"),
         ("cr-authoring", GOOD_CR_AUTHORING, OLD_CR_AUTHORING, TWO_PHASE_DESIGN,
          ", then the spec\n  pre-review", ""),
+        # MIGRATED (CR-MDB-096 §S4.1): the conditional bites.
+        ("cr-authoring trigger", GOOD_CR_AUTHORING, OLD_CR_AUTHORING, TWO_PHASE_DESIGN,
+         " when a trigger applies", ""),
         ("who posts", GOOD_COMMON_REACH, OLD_COMMON_REACH, COMMON_WHO_POSTS,
          " \u2014 never the `report` agent", ""),
         ("upgrade", GOOD_COMMON_REACH, OLD_COMMON_REACH, COMMON_UPGRADE_FIRST,
-         "first upgrades Model B\n  to a release carrying it \u2014 ", ""),
+         "first upgrades Model B to a release carrying the\n  checklist — ", ""),
+        # MIGRATED (CR-MDB-096 §S4.1): `next`, not `first`; the release carries the checklist.
+        ("upgrade next", GOOD_COMMON_REACH, OLD_COMMON_REACH, COMMON_UPGRADE_FIRST,
+         "before its next pre-review", "before its first pre-review"),
+        ("upgrade checklist", GOOD_COMMON_REACH, OLD_COMMON_REACH, COMMON_UPGRADE_FIRST,
+         "carrying the\n  checklist", "carrying it"),
     )
 
     def test_each_reach_detector_both_ways_and_bites_on_its_phrase(self):
@@ -1288,6 +1732,485 @@ class ReachDetectorTest(unittest.TestCase):
                     "proceed to the spec pre-review"):
             with self.subTest(new=new):
                 self.assertIsNone(OLD_ORDERING.search(new))
+
+
+# ------------------------------- CR-MDB-096 detectors, synthetic text ----
+
+#: The skill worded as CR-MDB-096 §S1 words it (abridged to the units the pins read).
+GOOD_GAP_096 = """\
+## When to Use
+
+- After the spec is drafted, before its pre-review: the ordering is this analysis → the spec
+  pre-review, when a trigger applies (Rule 21) → approval → `plan-file` → the feature branch or
+  worktree → RED
+- When a CR predates recent codebase changes
+
+### Verdicts:
+
+- **READY**: Spec is accurate, code matches PRD; proceed to the spec pre-review when a trigger
+  applies (Rule 21), else to approval
+- **BLOCKED**: Fundamental design issue, needs human decision
+
+## Rules
+
+1. **Never delegate this analysis to a sub-agent** — this is the orchestrator's responsibility.
+   The spec pre-review (Rules 21, 22, 24 and 25) does not change that: it is a separate review of
+   the drafted spec, not this analysis handed off.
+2. **Never trust memory or summaries** — read the actual source code and PRDs
+20. **Re-scoping reruns both steps** — a re-scoped spec gets a fresh gap analysis, which decides the
+    triggers again, and a fresh pre-review when a trigger applies.
+21. **The triggers** — the orchestrator dispatches the pre-review after its own analysis and before
+    it locks and presents the spec, when at least one trigger applies:
+    - the CR scores 8 points or more (the re-score of Rule 23);
+    - it touches a contract, a hook or another project's surface:
+      - a *contract* is a file under the project's `contracts/` or an interface its
+        `AGENTS.md` names as a contract;
+      - a *hook* is a hook script, the hook schema or compiled hook wiring;
+      - *another project's surface* is a file, CLI, API or message format another project
+        consumes or provides;
+    - its gap analysis needed a ruling from the user.
+    Any other spec goes from the analysis to approval. The findings a pre-review reports are folded
+    in before locking.
+22. **Who and where:**
+    - **Id:** `CR-<ACRONYM>-NNN-SPEC-REVIEW`, the acronym taken from the nearest registry.
+    - **Reviewer:** the VERIFY agent of a stack in that registry's `PROJECT_STACKS`.
+    - **Where it runs:** read-only in the main tree.
+23. **Re-score the CR** — a CR the analysis finds above 13 is split before the pre-review.
+24. **The checklist** — a pre-review looks only for:
+    - an acceptance criterion no test can meet or check;
+    - a missing failure path or edge case;
+    - a gap in scope or design;
+    - a conflict with the PRD or a DN.
+    Wording and naming are not findings, and the orchestrator folds in nothing outside this list.
+25. **The record** — the spec's `**Status:**` line carries one of three forms:
+    `Pre-review: due — <trigger>` (decided, not yet run), `Pre-review: ran — <trigger>` or
+    `Pre-review: none — no trigger`.
+    The orchestrator writes it when the analysis decides the triggers,
+    moves `due` to `ran` when it folds the findings,
+    and repeats it when it presents the spec for approval.
+    A re-scoping (Rule 20) rewrites it.
+    The close-out's `COMPLETED` flip keeps it.
+    In multi mode a Track reports its decision to Mainline with its re-score, and Mainline
+    records it on the spec.
+"""
+
+#: Today's (pre-CR-MDB-096) skill, abridged: no trigger, no checklist, no record.
+TODAYS_GAP_096 = """\
+## When to Use
+
+- After the spec is drafted, before its pre-review: the ordering is this analysis → the spec
+  pre-review → approval → `plan-file` → the feature branch or worktree → RED
+
+### Verdicts:
+
+- **READY**: Spec is accurate, code matches PRD; proceed to the spec pre-review (Rules 21–22)
+
+## Rules
+
+1. **Never delegate this analysis to a sub-agent** — this is the orchestrator's responsibility.
+   The spec pre-review (Rules 21–22) does not change that: it is a separate review of the drafted
+   spec, not this analysis handed off.
+20. **Re-scoping reruns both steps** — a spec that is restructured or re-scoped gets a fresh gap
+    analysis and a fresh pre-review. Findings against the old shape say nothing about the new one.
+21. **The pre-review comes after the analysis, before approval** — the orchestrator dispatches the
+    spec pre-review after its own analysis and before it locks and presents the spec. Its findings
+    are folded into the spec before locking.
+23. **Re-score the CR** — a CR the analysis finds above 13 is split before the pre-review.
+"""
+
+#: One cut per :data:`GAP_PINS` entry: ``name: (old, new)`` — each yields exactly its finding.
+GAP_CUTS = {
+    "when to use: the ordering carries the conditional":
+        (", when a trigger applies (Rule 21) →", " →"),
+    "ready: the pre-review when a trigger applies, else approval":
+        (" when a trigger\n  applies (Rule 21), else to approval", ""),
+    "rule 1: points to rules 21, 22, 24 and 25": ("Rules 21, 22, 24 and 25", "Rules 21–22"),
+    "rule 20: a fresh pre-review when a trigger applies":
+        ("a fresh pre-review when a trigger applies.", "a fresh pre-review."),
+    "rule 20: the triggers decided again": (", which decides the\n    triggers again,", ","),
+    "rule 21: dispatched when a trigger applies, folded before locking":
+        (", when at least one trigger applies:", ":"),
+    "rule 21: 8 points or more": ("8 points or more", "many points"),
+    "rule 21: a contract, a hook or another project's surface":
+        ("a contract, a hook or another project's surface:", "a protected file:"),
+    "rule 21: a ruling from the user": ("a ruling from the user", "more time"),
+    "rule 21: a contract is a file under contracts/ or an interface agents.md names":
+        ("      - a *contract* is a file under the project's `contracts/` or an interface its\n"
+         "        `AGENTS.md` names as a contract;\n", ""),
+    "rule 21: a hook is a hook script, the hook schema or compiled hook wiring":
+        ("      - a *hook* is a hook script, the hook schema or compiled hook wiring;\n", ""),
+    "rule 21: a surface is a file, cli, api or message format another project consumes or "
+    "provides":
+        ("      - *another project's surface* is a file, CLI, API or message format another project\n"
+         "        consumes or provides;\n", ""),
+    "rule 21: any other spec goes from the analysis to approval":
+        ("Any other spec goes from the analysis to approval. ", ""),
+    "rule 24: a pre-review looks only for": ("a pre-review looks only for:", "a pre-review looks for:"),
+    "rule 24: no test can meet or check":
+        ("    - an acceptance criterion no test can meet or check;\n", ""),
+    "rule 24: a missing failure path or edge case": ("    - a missing failure path or edge case;\n", ""),
+    "rule 24: a gap in scope or design": ("    - a gap in scope or design;\n", ""),
+    "rule 24: a conflict with the prd or a dn": ("    - a conflict with the PRD or a DN.\n", ""),
+    "rule 24: wording and naming are not findings":
+        ("Wording and naming are not findings, and the", "The"),
+    "rule 24: folds in nothing outside": ("folds in nothing outside this list", "folds in what it likes"),
+    "rule 25: on the status line": ("the spec's `**Status:**` line carries", "the spec carries"),
+    "rule 25: due — decided, not yet run":
+        ("`Pre-review: due — <trigger>` (decided, not yet run), ", ""),
+    "rule 25: ran — <trigger>": ("`Pre-review: ran — <trigger>` or\n    ", ""),
+    "rule 25: none — no trigger": (" or\n    `Pre-review: none — no trigger`", ""),
+    "rule 25: written when the analysis decides the triggers":
+        ("The orchestrator writes it when the analysis decides the triggers,\n    ", "The orchestrator "),
+    "rule 25: due moves to ran at the fold":
+        ("moves `due` to `ran` when it folds the findings,\n    and ", ""),
+    "rule 25: repeated at approval":
+        ("and repeats it when it presents the spec for approval.", "and stops."),
+    "rule 25: a re-scoping rewrites it": ("A re-scoping (Rule 20) rewrites it.\n    ", ""),
+    "rule 25: the completed flip keeps it": ("The close-out's `COMPLETED` flip keeps it.\n    ", ""),
+    "rule 25: a track reports its decision to mainline, which records it":
+        ("In multi mode a Track reports its decision to Mainline with its re-score, and Mainline\n"
+         "    records it on the spec.", ""),
+}
+
+
+class GapAnalysisTriggerRuleDetectorTest(unittest.TestCase):
+    """CR-MDB-096 AC1, proved on synthetic text: the spec-worded skill meets every pin, today's
+    wording misses every one, and one cut of a spec phrase yields exactly its own finding."""
+
+    def test_the_spec_worded_skill_meets_every_pin_and_passes_the_ordering_guard(self):
+        self.assertEqual(gap_pin_findings(GOOD_GAP_096), [])
+        rules = section_body(GOOD_GAP_096, "Rules") or ""
+        self.assertEqual(top_level_rule_numbers(rules), [1, 2, 20, 21, 22, 23, 24, 25])
+        self.assertEqual(rules_not_one_block(rules, ONE_BLOCK_RULES), [])
+        self.assertEqual(unconditional_links({GAP_REL: GOOD_GAP_096}), [])
+
+    def test_todays_skill_wording_misses_every_pin(self):
+        self.assertEqual(gap_pin_findings(TODAYS_GAP_096), [name for name, _, _ in GAP_PINS])
+        rules = section_body(TODAYS_GAP_096, "Rules") or ""
+        self.assertEqual(rules_not_one_block(rules, ONE_BLOCK_RULES),
+                         ["rule 24: absent", "rule 25: absent"])
+        self.assertEqual(len(unconditional_links({GAP_REL: TODAYS_GAP_096})), 3)
+
+    def test_every_pin_has_one_cut_and_each_cut_yields_exactly_its_finding(self):
+        self.assertEqual(sorted(GAP_CUTS), sorted(name for name, _, _ in GAP_PINS))
+        for name, (old, new) in GAP_CUTS.items():
+            with self.subTest(pin=name):
+                self.assertIn(old, GOOD_GAP_096)
+                self.assertEqual(gap_pin_findings(GOOD_GAP_096.replace(old, new)), [name])
+
+    def test_a_blank_line_inside_rule_21_splits_it_and_its_pins_bite(self):
+        split = GOOD_GAP_096.replace("\n    Any other spec goes", "\n\n    Any other spec goes")
+        rules = section_body(split, "Rules") or ""
+        self.assertEqual(rules_not_one_block(rules, ONE_BLOCK_RULES), ["rule 21: a blank line inside"])
+        self.assertEqual(gap_pin_findings(split),
+                         ["rule 21: dispatched when a trigger applies, folded before locking",
+                          "rule 21: any other spec goes from the analysis to approval"])
+
+    def test_a_blank_line_between_two_rules_is_no_finding_and_an_absent_rule_is(self):
+        body = "21. One rule,\n    one block.\n\n24. Another.\n\nA closing paragraph.\n"
+        self.assertEqual(rules_not_one_block(body, (21, 24)), [])
+        self.assertEqual(rules_not_one_block(body, (21, 25)), ["rule 25: absent"])
+
+    def test_the_conditional_accepts_rule_21s_lead_and_rejects_a_bare_trigger(self):
+        for good in ("when a trigger applies", "when at least one trigger applies"):
+            with self.subTest(good=good):
+                self.assertRegex(good, TRIGGER_APPLIES)
+        for bad in ("when it applies", "a trigger applies", "when triggers apply"):
+            with self.subTest(bad=bad):
+                self.assertNotRegex(bad, TRIGGER_APPLIES)
+
+
+#: The §S2 files worded as CR-MDB-096 §S2 words them (abridged to the units the pins read).
+GOOD_S2 = {
+    MODEL_B_REL: """\
+## 2. Role hierarchy + labels
+
+| Role | Scope | Authority |
+|---|---|---|
+| **Spec pre-review** (a VERIFY agent) | one drafted spec, before approval, when a trigger applies \
+(`gap-analysis` Rule 21) | a `report` actor on the board, outside any cycle |
+
+## 7. Operating rules (every role)
+
+- **Never read another project's working tree without the user's permission.**
+""",
+    COMMON_REL: """\
+## Two-phase workflow
+- **Design phase → `develop`.** Gap-analysis, then the spec pre-review when a trigger applies;
+  spec/PRD/DN edits. No feature branch.
+- `VERIFY` names the EXECUTION phase only. The VERIFY *agent* may run in the design phase in its
+  spec pre-review mode, and that step is called the pre-review, never "verify".
+
+## Gap-analysis discipline
+- **The orchestrator runs gap-analysis itself** (never delegate to a sub-agent).
+- **The spec pre-review is separate:** a review of the drafted spec, dispatched when a trigger
+  applies (`gap-analysis` Rule 21), run after the orchestrator's own analysis.
+- **A pre-review is a workflow moment:** when a pre-review ran, the orchestrator posts a
+  `design-review` milestone once it has folded the findings — never the `report` agent.
+- **Older projects:** a project scaffolded before the spec pre-review existed, or whose agents were
+  rendered before the pre-review's checklist, first upgrades Model B to a release carrying the
+  checklist — `modelb-axi agents` renders from the installed templates — then re-renders its
+  agents with `modelb-axi agents` before its next pre-review. A definition left alone as
+  hand-modified is reported to the user.
+
+## Cycle discipline
+- Setup ordering: gap-analysis → pre-review (when a trigger applies) → approval → `plan-file` →
+  THEN the branch / worktree.
+
+## Worktree isolation
+- Name the CR id in every dispatch description — except a spec pre-review, which runs in the
+  main tree.
+""",
+    MAINLINE_REL: """\
+- **Design→execution gate:** gap-analysis → pre-review when a trigger applies → fold its findings
+  → lock the spec → present, with the pre-review record → WAIT for explicit approval → ONLY THEN
+  cycle plan.
+""",
+    TRACK_REL: """\
+- **Design-phase steps — the gap analysis and, when a trigger applies, the spec pre-review —
+  happen before the worktree exists**; the pre-review runs in the main tree, read-only.
+- **Raise your decision and findings to Mainline** — a Track raises its trigger decision and its
+  pre-review findings to Mainline, which folds them into the spec on develop.
+- Setup ordering: spec → gap-analysis → pre-review (when a trigger applies) → present + get
+  approval → `plan-file` → THEN `worktree-flow start` + dispatch.
+""",
+    CR_AUTHORING_REL: """\
+## Two-phase workflow (universal) + where work commits
+- **Design phase → the integration branch.** Gap analysis, then the spec pre-review when a trigger
+  applies; spec authoring, filing on the board. No feature branch.
+
+## CR spec structure
+1. **Front matter** — `**Status:**` (it carries the pre-review record, `gap-analysis` Rule 25),
+   `**Type:**`, `**Priority:**`.
+
+## The CR queue
+- **Scoring:** the scale is 1, 2, 3, 5, 8, 13. 13 is the cap.
+""",
+    CRUCIBLE_REL: """\
+## Identity
+- Spec pre-review: `CR-<ACRONYM>-NNN-SPEC-REVIEW`. A VERIFY agent reviewing a drafted spec before
+  approval registers as `--role report` with no cycle.
+
+## Queue verbs
+- **Story points:** `cr-plan` takes a story-point score on the scale 1, 2, 3, 5, 8, 13.
+
+## Who runs what
+- **VERIFY agent** — registers + REVIEWS. Does NOT run the regression.
+  - Its spec pre-review (design phase, before `plan-file`) is a VERIFY-agent duty when the CR
+    meets a trigger (`gap-analysis` Rule 21), with no runs and no ingest.
+""",
+}
+
+#: One cut per :data:`S2_PINS` entry: ``name: (rel, old, new)`` — each yields exactly its finding.
+S2_CUTS = {
+    "model-b: the role row names the trigger":
+        (MODEL_B_REL, ", when a trigger applies (`gap-analysis` Rule 21)", ""),
+    "common: the design phase": (COMMON_REL, "pre-review when a trigger applies;", "pre-review;"),
+    "common: the separate review":
+        (COMMON_REL, ", dispatched when a trigger\n  applies (`gap-analysis` Rule 21)", ""),
+    "common: the design-review milestone": (COMMON_REL, "when a pre-review ran, ", ""),
+    "common: older projects":
+        (COMMON_REL, "before its next pre-review", "before its first pre-review"),
+    "common: the setup ordering":
+        (COMMON_REL, "pre-review (when a trigger applies) → approval", "pre-review → approval"),
+    "mainline: the gate's conditional":
+        (MAINLINE_REL, "pre-review when a trigger applies →", "pre-review →"),
+    "mainline: the gate presents the record":
+        (MAINLINE_REL, "present, with the pre-review record →", "present →"),
+    "track: the design-phase steps": (TRACK_REL, "and, when a trigger applies, the", "and the"),
+    "track: the trigger decision and findings to mainline":
+        (TRACK_REL, "its trigger decision and its", "its"),
+    "track: the setup ordering":
+        (TRACK_REL, "pre-review (when a trigger applies) → present", "pre-review → present"),
+    "cr-authoring: the design phase":
+        (CR_AUTHORING_REL, "pre-review when a trigger\n  applies;", "pre-review;"),
+    "cr-authoring: the status carries the record":
+        (CR_AUTHORING_REL, " (it carries the pre-review record, `gap-analysis` Rule 25)", ""),
+    "crucible: the verify duty's trigger":
+        (CRUCIBLE_REL, " when the CR\n    meets a trigger (`gap-analysis` Rule 21)", ""),
+}
+
+
+class ReferencesTriggerRuleDetectorTest(unittest.TestCase):
+    """CR-MDB-096 AC2, proved on synthetic text: the spec-worded references meet every pin and one
+    cut yields exactly its finding; the restatement detector both ways."""
+
+    def test_the_spec_worded_references_meet_every_pin_restate_nothing_and_pass_the_guard(self):
+        self.assertEqual(s2_pin_findings(GOOD_S2), [])
+        self.assertEqual(restatements(GOOD_S2), [])
+        self.assertEqual(unconditional_links(GOOD_S2), [])
+
+    def test_every_pin_has_one_cut_and_each_cut_yields_exactly_its_finding(self):
+        self.assertEqual(sorted(S2_CUTS), sorted(name for name, _, _, _ in S2_PINS))
+        for name, (rel, old, new) in S2_CUTS.items():
+            with self.subTest(pin=name):
+                self.assertIn(old, GOOD_S2[rel])
+                cut = dict(GOOD_S2, **{rel: GOOD_S2[rel].replace(old, new)})
+                self.assertEqual(s2_pin_findings(cut), [name])
+
+    def test_a_unit_holding_two_trigger_phrases_is_exactly_one_restatement(self):
+        text = ("- A pre-review runs when the CR scores 8 points or more or needed a ruling from the "
+                "user.\n- A CR of 8 points or more is re-scored.\n")
+        self.assertEqual(len(restatements({"x.md": text})), 1)
+        self.assertTrue(restatements({"x.md": text})[0].startswith("x.md: "))
+
+    def test_a_unit_holding_two_checklist_phrases_is_exactly_one_restatement(self):
+        text = ("- Report a gap in scope or design, or a conflict with the PRD or a DN.\n"
+                "- A missing failure path or edge case is a finding.\n")
+        self.assertEqual(len(restatements({"x.md": text})), 1)
+
+    def test_a_nested_list_restating_the_triggers_is_one_finding_on_its_parent(self):
+        text = ("- The pre-review runs when:\n  - the CR scores 8 points or more;\n"
+                "  - it touches a contract, a hook or another project's surface;\n"
+                "  - its gap analysis needed a ruling from the user.\n")
+        found = restatements({"x.md": text})
+        self.assertEqual(len(found), 1)
+        self.assertIn("the pre-review runs when:", found[0])
+
+    def test_one_phrase_alone_and_the_look_alikes_are_no_restatement(self):
+        for unit in ("- the CR scores 8 points or more (gap-analysis Rule 21).\n",
+                     "- The scale is 1, 2, 3, 5, 8, 13. 13 is the cap.\n",
+                     "- Never read another project's working tree without permission.\n",
+                     "- A missing failure path or edge case is a finding.\n"):
+            with self.subTest(unit=unit):
+                self.assertEqual(restatements({"x.md": unit}), [])
+
+
+class PreReviewOrderingGuardDetectorTest(unittest.TestCase):
+    """CR-MDB-096 AC3, proved on synthetic text: an ordering with the conditional passes, the same
+    ordering without it yields exactly one finding naming its file, and a mere mention passes."""
+
+    #: ``(name, unit with its conditional, the conditional to cut)``.
+    LINKS = (
+        ("arrow before", "- Setup ordering: gap-analysis → pre-review (when a trigger applies) → "
+         "approval → `plan-file` → THEN the branch.\n", " (when a trigger applies)"),
+        ("arrow before, bare", "- Gate: gap-analysis → pre-review when a trigger applies → fold its "
+         "findings → lock the spec.\n", " when a trigger applies"),
+        ("arrow after", "- The pre-review (when a trigger applies) → approval → `plan-file`.\n",
+         " (when a trigger applies)"),
+        ("dispatches", "21. The orchestrator dispatches the pre-review after its own analysis, when "
+         "at least one trigger applies.\n", ", when at least one trigger applies"),
+        ("dispatches the spec", "- It dispatches the spec pre-review when the CR meets a trigger.\n",
+         " when the CR meets a trigger"),
+        ("proceed to", "- **READY**: proceed to the spec pre-review when a trigger applies (Rule "
+         "21), else to approval\n", " when a trigger applies (Rule 21), else to approval"),
+    )
+    #: Units in which the pre-review is mentioned, not ordered.
+    MENTIONS = (
+        "23. **Re-score the CR** — a CR above 13 is split before the pre-review.\n",
+        "- Name the CR id in every dispatch description — except a spec pre-review, which runs in "
+        "the main tree.\n",
+        "- The VERIFY agent may run in the design phase in its spec pre-review mode.\n",
+        "- A VERIFY agent reviewing a drafted spec before approval registers as report.\n",
+        "- Design phase → `develop`. Gap-analysis, then the spec pre-review; spec edits.\n",
+    )
+
+    def test_an_ordering_with_its_conditional_passes(self):
+        text = "".join(unit for _, unit, _ in self.LINKS)
+        self.assertEqual(unconditional_links({"x.md": text}), [])
+
+    def test_the_same_ordering_without_its_conditional_yields_exactly_one_finding(self):
+        text = "".join(unit for _, unit, _ in self.LINKS)
+        for name, unit, conditional in self.LINKS:
+            with self.subTest(link=name):
+                self.assertIn(conditional, unit)
+                cut = text.replace(unit, unit.replace(conditional, ""))
+                found = unconditional_links({"x.md": cut})
+                self.assertEqual(len(found), 1, found)
+                self.assertTrue(found[0].startswith("x.md: "), found[0])
+
+    def test_a_mention_that_orders_nothing_passes(self):
+        for unit in self.MENTIONS:
+            with self.subTest(unit=unit):
+                self.assertEqual(unconditional_links({"x.md": unit}), [])
+
+    def test_todays_orderings_are_each_one_finding(self):
+        # Today's orderings name the pre-review as an unconditional link: one finding per file.
+        today = {COMMON_REL: "- Setup ordering: gap-analysis → pre-review → approval → `plan-file`.\n",
+                 MAINLINE_REL: "- **Design→execution gate:** gap-analysis → pre-review → fold its "
+                               "findings → lock the spec.\n",
+                 TRACK_REL: "- Setup ordering: spec → gap-analysis → pre-review → present + get "
+                            "approval.\n"}
+        self.assertEqual([f.split(":")[0] for f in unconditional_links(today)],
+                         [COMMON_REL, MAINLINE_REL, TRACK_REL])
+
+
+#: CR-MDB-096 §S4.1 — each migrated pin and the conditional it requires in the same unit:
+#: ``(name, rule, a unit meeting it, its conditional)``.
+MIGRATED_CONDITIONALS = (
+    ("ORDER_TO_PLAN_FILE", ORDER_TO_PLAN_FILE, "- gap-analysis → pre-review (when a trigger applies) → "
+     "approval → `plan-file` → THEN the branch / worktree.\n", "(when a trigger applies) "),
+    ("MAINLINE_GATE", MAINLINE_GATE, "- **Design→execution gate:** gap-analysis → pre-review when a "
+     "trigger applies → fold its findings → lock the spec → present → WAIT for explicit approval → "
+     "ONLY THEN cycle plan.\n", "when a trigger applies "),
+    ("TRACK_SETUP_ORDER", TRACK_SETUP_ORDER, "- Setup ordering: spec → gap-analysis → pre-review (when "
+     "a trigger applies) → present + get approval → `plan-file` → THEN `worktree-flow start` + "
+     "dispatch.\n", "(when a trigger applies) "),
+    ("TWO_PHASE_DESIGN", TWO_PHASE_DESIGN, "- **Design phase → `develop`.** Gap-analysis, then the "
+     "spec pre-review when a trigger applies; spec edits.\n", " when a trigger applies"),
+    ("RULE_PRE_REVIEW_ORDER", RULE_PRE_REVIEW_ORDER, "21. The orchestrator dispatches the "
+     "pre-review after its own analysis and before it locks and presents the spec, when at least "
+     "one trigger applies. The findings are folded in before locking.\n",
+     ", when at least one trigger applies"),
+    ("RULE_RESCOPING", RULE_RESCOPING, "20. **Re-scoping reruns both steps** — a re-scoped spec "
+     "gets a fresh gap analysis and a fresh pre-review when a trigger applies.\n",
+     " when a trigger applies"),
+    ("GA_DISCIPLINE_SEPARATE", GA_DISCIPLINE_SEPARATE, "- **The spec pre-review is separate:** a "
+     "review of the drafted spec, dispatched when a trigger applies (`gap-analysis` Rule 21).\n",
+     " when a trigger applies"),
+    ("DESIGN_REVIEW_MILESTONE", DESIGN_REVIEW_MILESTONE, "- **A pre-review is a workflow moment:** "
+     "when a pre-review ran, the orchestrator posts a `design-review` milestone.\n",
+     "when a pre-review ran, "),
+    ("RE_RENDER_OLDER next", RE_RENDER_OLDER, "- **Older projects:** a project scaffolded before "
+     "the spec pre-review existed, or whose agents were rendered before the pre-review's "
+     "checklist, re-renders its agents with `modelb-axi agents` before its next pre-review. A "
+     "definition left alone as hand-modified is reported to the user.\n",
+     "before its next pre-review"),
+    ("RE_RENDER_OLDER checklist", RE_RENDER_OLDER, "- **Older projects:** a project scaffolded "
+     "before the spec pre-review existed, or whose agents were rendered before the pre-review's "
+     "checklist, re-renders its agents with `modelb-axi agents` before its next pre-review. A "
+     "definition left alone as hand-modified is reported to the user.\n",
+     ", or whose agents were rendered before the pre-review's checklist"),
+    ("COMMON_UPGRADE_FIRST next", COMMON_UPGRADE_FIRST, "- **Older projects:** first upgrades "
+     "Model B to a release carrying the checklist — `modelb-axi agents` renders from the "
+     "installed templates — then re-renders before its next pre-review.\n",
+     "before its next pre-review"),
+    ("COMMON_UPGRADE_FIRST checklist", COMMON_UPGRADE_FIRST, "- **Older projects:** first upgrades "
+     "Model B to a release carrying the checklist — `modelb-axi agents` renders from the "
+     "installed templates — then re-renders before its next pre-review.\n",
+     "release carrying the checklist"),
+    ("TRACK_FINDINGS_TO_MAINLINE", TRACK_FINDINGS_TO_MAINLINE, "- A Track raises its trigger "
+     "decision and its pre-review findings to Mainline, which folds them into the spec on "
+     "develop.\n", "its trigger decision and "),
+)
+
+
+class MigratedPinConditionalTest(unittest.TestCase):
+    """CR-MDB-096 §S4.1: each migrated pin requires its conditional IN THE SAME UNIT — the
+    unit with it passes; cut, or moved to a bullet of its own, it does not."""
+
+    def test_each_migrated_pin_needs_its_conditional_in_the_same_unit(self):
+        for name, rule, unit, conditional in MIGRATED_CONDITIONALS:
+            with self.subTest(pin=name):
+                self.assertEqual(len(satisfying(unit, rule)), 1, missing(unit, rule))
+                self.assertIn(conditional, unit)
+                cut = unit.replace(conditional, "")
+                self.assertEqual(satisfying(cut, rule), [], "cut")
+                moved = cut + f"- {conditional.strip(' ,')}.\n"
+                self.assertEqual(satisfying(moved, rule), [], "moved to its own bullet")
+
+    def test_the_old_first_pre_review_wording_no_longer_meets_the_older_project_pins(self):
+        for rule in (RE_RENDER_OLDER, COMMON_UPGRADE_FIRST):
+            with self.subTest(rule=rule[0]):
+                unit = ("- **Older projects:** a project scaffolded before the pre-review's "
+                        "checklist first upgrades Model B to a release carrying the checklist — "
+                        "`modelb-axi agents` renders from the installed templates — then "
+                        "re-renders its agents with `modelb-axi agents` before its first "
+                        "pre-review. A definition left alone as hand-modified is reported to the "
+                        "user.\n")
+                self.assertEqual(satisfying(unit, rule), [])
+                self.assertEqual(
+                    len(satisfying(unit.replace("its first", "its next"), rule)), 1)
 
 
 if __name__ == "__main__":

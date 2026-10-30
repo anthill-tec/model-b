@@ -335,7 +335,7 @@ carries it to you.
 - **VERIFY agent** — registers + REVIEWS (ACs, wiring, coverage adequacy,
   quality). Does NOT run the regression.
   - Its spec pre-review (design phase, before `plan-file`) is also a VERIFY-agent
-    duty, with no runs and no ingest: it registers `report`, reads, reports
+    duty when the CR meets a trigger (`gap-analysis` Rule 21), with no runs and no ingest: it registers `report`, reads, reports
     findings, unregisters.
 - **ORCHESTRATOR** — runs the pre-merge gate itself: `regression` (with
   coverage) PLUS the e2e suite, under its OWN identity, in the plan's last cycle,
