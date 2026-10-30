@@ -36,13 +36,17 @@ def _find_project_root(cwd: str) -> Path | None:
 
 
 def _staged_paths(project_root: Path) -> list[str]:
+    """The staged paths, or none when git cannot run or its output does not decode:
+    a staged name that is not UTF-8 (under `core.quotepath=false`) raises
+    `UnicodeDecodeError`, a `ValueError`, and returns no paths so the hook allows
+    (CR-MDB-066 §S9)."""
     try:
         result = subprocess.run(
             ["git", "-C", str(project_root), "diff", "--cached", "--name-only"],
             capture_output=True, text=True, timeout=10,
         )
-    except (OSError, subprocess.TimeoutExpired):
-        return []  # not a git repo / git unavailable -> silent allow upstream
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        return []  # git unavailable / timed out / undecodable output -> silent allow upstream
     if result.returncode != 0:
         return []
     return [line for line in result.stdout.splitlines() if line]
