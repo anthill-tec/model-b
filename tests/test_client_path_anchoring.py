@@ -10,6 +10,8 @@ Class map:
 - ``ClientPathAnchoringS1Test`` — §S1 text anchors over the named files (report bundles, the
   ``crucible`` skill and its references, the memory templates, ``AGENTS.md``, the two
   ``block-direct-*`` hooks, ``java-orchestration.md``). Meaning-bearing anchors, not sentences.
+  It also pins the runner hooks' reasons (CR-MDB-062 §S4) and the bun reason's forms, tier line
+  and runner line (CR-MDB-066 §S3, ``bun_reason_findings``).
 - ``ClientPathAnchoringS2Test`` — §S2 the anchoring gate over the exact tree list, with its
   exemption list asserted exactly, plus detector fixtures.
 - ``ClientContractS3Test`` — §S3 every ``<stack>-crucible.py <verb> [--flags]`` invocation under
@@ -44,6 +46,7 @@ that is not (``ctx_read``, …) counts whole-word. Without that split the scan w
 import ast
 import functools
 import json
+import os
 import re
 import subprocess
 import sys
@@ -53,7 +56,7 @@ import unittest
 from pathlib import Path
 
 from modelb_axi.agents import PI_TOOL_NAMES, ROLE_DENIED_TOOLS
-from tests._helpers import ORCHESTRATION_REFERENCES, at_line, run_hook
+from tests._helpers import GIT_ISOLATION_ENV, ORCHESTRATION_REFERENCES, at_line, run_hook
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -563,6 +566,106 @@ def _reason_contract_failures(reason, contract):
     return failures
 
 
+#: CR-MDB-066 §S3 (AC4) — the words the bun reason's first line names: the forms it blocks.
+BUN_REASON_FIRST_LINE_WORDS = ("vitest", "pnpm", "yarn", "--filter")
+#: CR-MDB-066 §S3.3 — the words one line of the bun reason names: the tier line.
+BUN_REASON_TIER_LINE_WORDS = ("test:<tier>", "declares", "refuses")
+#: CR-MDB-066 §S3.4 — the words one line of the bun reason names: the runner line.
+BUN_REASON_RUNNER_LINE_WORDS = ("regression", "bun test", "Vitest", "tier verbs")
+#: CR-MDB-066 §S3.2 — the phrase the bun reason no longer carries.
+_SAME_BUN_TEST = re.compile(r"same\s+`?bun\s+test`?", re.I)
+
+
+def bun_reason_findings(reason):
+    """Every way ``reason`` breaks CR-MDB-066 §S3 (AC4), one finding per broken point; ``[]``
+    when it keeps it. Words match case-insensitively; a "line" is one physical line.
+
+    - its first line names each of ``BUN_REASON_FIRST_LINE_WORDS`` (one finding per word);
+    - it carries no "same `bun test`";
+    - one line names every word of ``BUN_REASON_TIER_LINE_WORDS``;
+    - one line names every word of ``BUN_REASON_RUNNER_LINE_WORDS``.
+    """
+    lines = [line.lower() for line in reason.splitlines()]
+    first = lines[0] if lines else ""
+    findings = [f"its first line does not name {word}" for word in BUN_REASON_FIRST_LINE_WORDS
+                if word.lower() not in first]
+    if _SAME_BUN_TEST.search(reason):
+        findings.append("it still says the client runs the same `bun test`")
+    for label, words in (("the tier line", BUN_REASON_TIER_LINE_WORDS),
+                         ("the runner line", BUN_REASON_RUNNER_LINE_WORDS)):
+        if not any(all(w.lower() in line for w in words) for line in lines):
+            findings.append(f"no one line names {', '.join(words)} ({label})")
+    return findings
+
+
+#: CR-MDB-066 §S3.4's line, as a §S3-shaped reason writes it (the cut proofs edit it alone).
+_SYNTHETIC_RUNNER_LINE = ("`test` and `regression` run `bun test`; a project whose runner is "
+                          "another (Vitest under Bun) runs its suites with the tier verbs.")
+#: A bun reason written to CR-MDB-066 §S3 and CR-MDB-062 §S4: both detectors pass it.
+_SYNTHETIC_BUN_REASON = "\n".join((
+    "⛔ BLOCKED: a direct bun test run (`bun test`, `bun run test[:<name>]` with a `--filter` "
+    "included, the `npm` / `pnpm` / `yarn` test-script forms, `playwright test`, `vitest`) is "
+    "not allowed in a bun project.",
+    "",
+    "Run it through Crucible's client instead — it runs the project's tests AND ingests the "
+    f"results under your agent id. The client is listed in Crucible's manifest "
+    f"`~/.crucible/{MANIFEST_NAME}`:",
+    f"  python3 {ANCHOR}bun-crucible.py test [--tests <file> ...] --agent <id>",
+    f"  python3 {ANCHOR}bun-crucible.py check --agent <id>",
+    "A tier verb runs the `test:<tier>` script the project declares in package.json, by name, "
+    "and the client refuses a tier the project declares no script for:",
+    *(f"  python3 {ANCHOR}bun-crucible.py {verb} --agent <id>"
+      for verb in ("unit", "module", "integration", "e2e", "bdd")),
+    f"  python3 {ANCHOR}bun-crucible.py regression --coverage --agent <id>",
+    _SYNTHETIC_RUNNER_LINE,
+    "",
+    "Client gap: `test` takes no test-name filter, so a single test selected by name is not "
+    "served by it.",
+    "",
+    "Escape hatch, used only with the orchestrator's approval: prefix ALLOW_RAW_BUN=1.",
+))
+
+
+#: CR-MDB-066 §S5.2 (AC7) — the hook whose CR-completion reason names the close-out.
+CR_COMPLETION_HOOK = "block-cr-completed-without-spec-update"
+#: CR-MDB-066 §S5.2 — what the CR-completion reason names: the model-b skill's close-out step.
+CR_COMPLETION_REASON_WORDS = ("orchestration-common.md", "Close-out", "**Status:**", "COMPLETED")
+#: CR-MDB-066 §S5.2 — the phrase the CR-completion reason drops.
+_TWO_FILES = re.compile(r"\bTWO\s+files\b", re.I)
+
+
+def cr_completion_reason_findings(reason):
+    """Every way ``reason`` breaks CR-MDB-066 §S5.2 (AC7), one finding per broken point; ``[]``
+    when it keeps it: one per ``STALE_REASON_REFERENCES`` match, one for "TWO files", and one per
+    word of ``CR_COMPLETION_REASON_WORDS`` it does not name (case-sensitive)."""
+    findings = [f"carries the stale reference {label}"
+                for label, rx in STALE_REASON_REFERENCES if rx.search(reason)]
+    if _TWO_FILES.search(reason):
+        findings.append('carries "TWO files"')
+    findings += [f"does not name {word}" for word in CR_COMPLETION_REASON_WORDS if word not in reason]
+    return findings
+
+
+#: The CR-completion reason before CR-MDB-066 (its "Per ORCHESTRATOR-RULES.md §5 …" sentence).
+_PRE_CHANGE_CR_COMPLETION_REASON = (
+    "⛔ BLOCKED: Commit message mentions COMPLETED for CR(s) [CR-X-1] but the staged diff does "
+    "not include the CR spec file(s) under docs/changes/. Per ORCHESTRATOR-RULES.md §5 (Closing "
+    "a CR — TWO files must be updated, always): flip the spec file `**Status:**` field to "
+    "COMPLETED before committing the closure, `git add` the spec, then retry. To bypass (rare — "
+    "pure docs-only commit not closing the CR): remove the COMPLETED keyword from the commit "
+    "message."
+)
+#: CR-MDB-066 §S5.2's proposed text, for CR-X-1.
+_SECTION_S5_CR_COMPLETION_REASON = (
+    "⛔ BLOCKED: the commit message says COMPLETED for CR(s) [CR-X-1] but the staged diff does not "
+    "include the CR spec file(s) under docs/changes/. The close-out's `**Status:**` flip (the "
+    "model-b skill's orchestration-common.md § Close-out, step 6) is a docs-only commit on the "
+    "feature branch before the merge: flip the spec's `**Status:**` field to COMPLETED, `git add` "
+    "the spec, then retry. To bypass (rare — a docs-only commit that does not close the CR): "
+    "remove the COMPLETED keyword from the commit message."
+)
+
+
 class ClientPathAnchoringS1Test(unittest.TestCase):
     """§S1 — every client reference names the installed client."""
 
@@ -750,6 +853,59 @@ class ClientPathAnchoringS1Test(unittest.TestCase):
         self.assertEqual(_reason_contract_failures(reason, RUNNER_HOOK_REASONS[name]), [],
                          f"CR-MDB-062 §S4: the {name} reason breaks its contract:\n{reason}")
 
+    def test_s1_bun_hook_block_reason_names_its_forms_the_tier_line_and_the_runner_line(self):
+        # CR-MDB-066 §S3 (AC4), read from a real run blocking `bun test` in a project with
+        # package.json: it keeps the CR-MDB-062 §S4 contract, and breaks none of §S3's points.
+        name = "block-direct-bun-test"
+        reason = self._runner_hook_reason(name)
+        self.assertEqual(_reason_contract_failures(reason, RUNNER_HOOK_REASONS[name]), [],
+                         f"CR-MDB-062 §S4: the {name} reason breaks its contract:\n{reason}")
+        self.assertEqual(bun_reason_findings(reason), [],
+                         f"CR-MDB-066 §S3: the {name} reason:\n{reason}")
+
+    def test_s1_bun_reason_detector_passes_a_section_s3_shaped_reason(self):
+        # Proof a correct reason can pass: one written to CR-MDB-066 §S3 keeps both detectors.
+        self.assertEqual(bun_reason_findings(_SYNTHETIC_BUN_REASON), [])
+        self.assertEqual(_reason_contract_failures(
+            _SYNTHETIC_BUN_REASON, RUNNER_HOOK_REASONS["block-direct-bun-test"]), [])
+
+    def test_s1_bun_reason_detector_reports_each_point_cut_alone(self):
+        good = _SYNTHETIC_BUN_REASON
+        runner_line = _SYNTHETIC_RUNNER_LINE
+        tier = "no one line names test:<tier>, declares, refuses (the tier line)"
+        runner = "no one line names regression, bun test, Vitest, tier verbs (the runner line)"
+        cuts = {
+            "vitest off the first line": (good.replace(", `vitest`)", ")", 1),
+                                          ["its first line does not name vitest"]),
+            "pnpm off the first line": (good.replace("`pnpm` / ", "", 1),
+                                        ["its first line does not name pnpm"]),
+            "yarn off the first line": (good.replace(" / `yarn`", "", 1),
+                                        ["its first line does not name yarn"]),
+            "--filter off the first line": (good.replace(" with a `--filter` included", "", 1),
+                                            ["its first line does not name --filter"]),
+            "the same bun test": (good.replace("it runs the project's tests AND",
+                                               "it runs the same `bun test` AND", 1),
+                                  ["it still says the client runs the same `bun test`"]),
+            "test:<tier> off the tier line": (good.replace("the `test:<tier>` script",
+                                                           "the tier's script", 1), [tier]),
+            "declares off the tier line": (good.replace("declares", "lists"), [tier]),
+            "refuses off the tier line": (good.replace("refuses", "rejects", 1), [tier]),
+            "regression off the runner line": (good.replace(runner_line, runner_line.replace(
+                "`test` and `regression` run", "`test` runs", 1), 1), [runner]),
+            "bun test off the runner line": (good.replace(runner_line, runner_line.replace(
+                "run `bun test`;", "run the default runner;", 1), 1), [runner]),
+            "Vitest off the runner line": (good.replace(runner_line, runner_line.replace(
+                "(Vitest under Bun)", "(Jest under Bun)", 1), 1), [runner]),
+            "tier verbs off the runner line": (good.replace(runner_line, runner_line.replace(
+                "with the tier verbs", "with `unit` and its siblings", 1), 1), [runner]),
+            "the runner line split over two lines": (good.replace(runner_line, runner_line.replace(
+                "; a project", ";\na project", 1), 1), [runner]),
+        }
+        for label, (text, expected) in cuts.items():
+            with self.subTest(cut=label):
+                self.assertNotEqual(text, good, f"precondition: the cut {label!r} changed nothing")
+                self.assertEqual(bun_reason_findings(text), expected)
+
     def test_s1_runner_hook_reason_contract_bites_on_a_missing_client_gap(self):
         for name in ("block-direct-python-test", "block-direct-bun-test"):
             contract = RUNNER_HOOK_REASONS[name]
@@ -816,6 +972,77 @@ class ClientPathAnchoringS1Test(unittest.TestCase):
             if re.search(r"crucible repo\s+`?clients/", doc):
                 failures.append(f"{name}: docstring still names the crucible repo clients/ dir")
         self.assertEqual(failures, [], "§S1 hook docstrings:\n  " + "\n  ".join(failures))
+
+    def _cr_completion_reason(self):
+        """The block reason the REAL CR-completion hook prints, run in a temp git repository
+        holding ``docs/changes/`` with a file outside it staged, on ``git commit -m "COMPLETED
+        CR-X-1"`` (CR-MDB-066 AC7)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            (repo / "docs" / "changes").mkdir(parents=True)
+            (repo / "notes.txt").write_text("fixture\n", encoding="utf-8")
+            env = {**os.environ, **GIT_ISOLATION_ENV}
+            for args in (("init", "-q"), ("add", "notes.txt")):
+                res = subprocess.run(["git", *args], cwd=repo, env=env, capture_output=True,
+                                     text=True, timeout=30)
+                self.assertEqual(res.returncode, 0, f"precondition: git {args[0]}: {res.stderr}")
+            res = run_hook(CR_COMPLETION_HOOK, {
+                "tool_name": "bash", "tool_input": {"command": 'git commit -m "COMPLETED CR-X-1"'},
+                "cwd": str(repo)})
+        self.assertNotIn("Traceback", res.stderr, res.stderr)
+        self.assertEqual(res.returncode, 2, f"the hook did not block: {res.stdout!r} {res.stderr!r}")
+        payload = json.loads(res.stdout)
+        self.assertEqual(payload.get("decision"), "block", res.stdout)
+        return payload["reason"]
+
+    def test_s1_cr_completion_hook_source_carries_no_stale_reference(self):
+        # CR-MDB-066 §S5.2 (AC7): the hook's source, not only its reason.
+        source = (HOOK_SCRIPTS / CR_COMPLETION_HOOK).read_text(encoding="utf-8")
+        hits = [label for label, rx in STALE_REASON_REFERENCES if rx.search(source)]
+        if _TWO_FILES.search(source):
+            hits.append("TWO files")
+        self.assertEqual(hits, [], f"CR-MDB-066 §S5.2: {CR_COMPLETION_HOOK}'s source")
+
+    def test_s1_cr_completion_hook_block_reason_names_the_close_out(self):
+        # CR-MDB-066 §S5.2 (AC7), read from a real run.
+        reason = self._cr_completion_reason()
+        self.assertIn("[CR-X-1]", reason)
+        self.assertEqual(cr_completion_reason_findings(reason), [],
+                         f"CR-MDB-066 §S5.2: the {CR_COMPLETION_HOOK} reason:\n{reason}")
+
+    def test_s1_cr_completion_reason_detector_passes_the_section_s5_text(self):
+        # Proof a correct reason can pass: §S5.2's proposed text has no finding.
+        self.assertEqual(cr_completion_reason_findings(_SECTION_S5_CR_COMPLETION_REASON), [])
+
+    def test_s1_cr_completion_reason_detector_reports_the_pre_change_reason(self):
+        # Proof the detector bites: the "Per ORCHESTRATOR-RULES.md §5 …" reason.
+        self.assertEqual(cr_completion_reason_findings(_PRE_CHANGE_CR_COMPLETION_REASON), [
+            "carries the stale reference ORCHESTRATOR-RULES.md",
+            'carries "TWO files"',
+            "does not name orchestration-common.md",
+            "does not name Close-out",
+        ])
+
+    def test_s1_cr_completion_reason_detector_reports_each_point_cut_alone(self):
+        good = _SECTION_S5_CR_COMPLETION_REASON
+        cuts = {
+            "a stale reference": (good + " See ORCHESTRATOR-RULES.md §5.",
+                                  ["carries the stale reference ORCHESTRATOR-RULES.md"]),
+            "an orchestration memory": (good + " See the orchestration memory.",
+                                        ["carries the stale reference an orchestration-memory path"]),
+            "TWO files": (good + " TWO files must be updated, always.", ['carries "TWO files"']),
+            "two files, lower case": (good + " Two  files change.", ['carries "TWO files"']),
+            "orchestration-common.md": (good.replace("orchestration-common.md", "the rules"),
+                                        ["does not name orchestration-common.md"]),
+            "Close-out": (good.replace("§ Close-out", "§ Closing"), ["does not name Close-out"]),
+            "**Status:**": (good.replace("`**Status:**`", "status"),
+                            ["does not name **Status:**"]),
+            "COMPLETED": (good.replace("COMPLETED", "DONE"), ["does not name COMPLETED"]),
+        }
+        for label, (text, expected) in cuts.items():
+            with self.subTest(cut=label):
+                self.assertNotEqual(text, good, f"precondition: the cut {label!r} changed nothing")
+                self.assertEqual(cr_completion_reason_findings(text), expected)
 
     def test_s1_java_orchestration_names_no_reviewer_skill(self):
         rel = ORCHESTRATION_REFERENCES["java"]  # MIGRATED (CR-MDB-060 §S1.1): was the java memory template

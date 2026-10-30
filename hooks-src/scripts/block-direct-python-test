@@ -21,16 +21,33 @@ no part of them. A runner word inside a quoted argument or a heredoc body is
 never a position. It reads shell as the raw-runner guard does
 (`tests/test_raw_runner_guard.py`).
 
+Command positions also follow the shell grammar (CR-MDB-066 §S1): the reserved
+words `!`, `{`, `if`, `then`, `else`, `elif`, `while`, `until` and `do`, each a
+whole word before whitespace, are stepped over like a wrapper, in any order with
+the others, and so are `command [-p]` (`command -v` / `-V` run nothing and stay
+allowed) and `time [-p]`. An unquoted backquote opens a command substitution:
+its text, up to the closing backquote, is one more position, and the enclosing
+command still runs to its own end; a backquote in quotes or a heredoc body
+opens nothing, and an unclosed one reads as an unclosed quote. An unquoted
+`$((…))` or `((…))` is skipped whole, up to the `))` that brings its depth back
+to zero: nothing in it is a position and no `<<` in it opens a heredoc.
+
 Where it applies (CR-MDB-062 §S3): a `pyproject.toml`, `setup.py`, `setup.cfg`
 or `requirements*.txt` in the payload's `cwd`, in a parent up to and including
 the git root (the nearest ancestor holding any `.git` entry), or in a directory
 at most 3 levels below that git root. The walk below follows no symlink, skips
 hidden directories, `node_modules`, `.venv`, `venv`, `target`, `dist` and
-`build`, skips a directory it cannot read, and stops at the first marker.
-Without a git root only the `cwd` and its parents count. An empty or missing
-`cwd`, an unreadable payload, a non-`bash` tool, a command that does not
-tokenise and any filesystem error allow: this is a deterrent, and an exception
-from a `closed` hook would block every shell call.
+`build`, and stops at the first marker. Each directory is listed once per run,
+with `os.scandir` (CR-MDB-066 §S4): that one listing serves both its markers and
+its child directories, the deepest directory's for its markers alone, and a
+listed marker counts only when `os.path.isfile` accepts it (a directory or a
+symlink loop named like one does not). A directory that can be searched but not
+listed is checked by name for its literal markers and its `.git` entry, and is
+not descended (a `requirements*.txt` in it is not found). Without a git root
+only the `cwd` and its parents count. An empty or missing `cwd`, an unreadable
+payload, a non-`bash` tool, a command that does not tokenise and any filesystem
+error allow: this is a deterrent, and an exception from a `closed` hook would
+block every shell call.
 
 The block reason (CR-MDB-062 §S4) names the client listed in Crucible's
 manifest `~/.crucible/crucible-clients.json` —
@@ -40,6 +57,7 @@ project), and the `ALLOW_RAW_PYTHON=1` escape hatch, used only with the
 orchestrator's approval.
 """
 
+import fnmatch
 import json
 import os
 import re
@@ -47,9 +65,9 @@ import shlex
 import sys
 from pathlib import Path
 
-#: The project markers of this hook's stack (CR-MDB-062 §S3); `requirements*.txt` is a glob.
+#: The project markers of this hook's stack (CR-MDB-062 §S3); `_has_marker` also matches
+#: `requirements*.txt`.
 MARKERS = ("pyproject.toml", "setup.py", "setup.cfg")
-MARKER_GLOBS = ("requirements*.txt",)
 #: How far below the git root the marker walk looks, and the directories it never enters.
 WALK_DEPTH = 3
 SKIPPED_DIRS = frozenset({"node_modules", ".venv", "venv", "target", "dist", "build"})
@@ -91,11 +109,13 @@ _ENV_OPTION = (r"(?:-[uC]\s*\S+|--(?:unset|chdir)(?:=\S+|\s+\S+)"
 _TIMEOUT_OPTION = (r"(?:-[ks]\s*\S+|--(?:kill-after|signal)(?:=\S+|\s+\S+)"
                    r"|-{1,2}[A-Za-z][\w-]*(?:=\S+)?)")
 #: A wrapper before a command: `VAR=value`, `env [options]`, `timeout [options] <n>`,
-#: `nice [-n N]`, `time`.
+#: `nice [-n N]`, `time [-p]`, `command [-p]` and the reserved words `!`, `{`, `if`,
+#: `then`, `else`, `elif`, `while`, `until`, `do` (CR-MDB-066 §S1).
 _WRAPPER = re.compile(
     r"(?:[A-Za-z_][A-Za-z0-9_]*=(?:\"[^\"]*\"|'[^']*'|\S*)|env(?:\s+" + _ENV_OPTION + r")*"
     r"|timeout(?:\s+" + _TIMEOUT_OPTION + r")*\s+\S+"
-    r"|nice(?:\s+(?:-n\s*\S+|--adjustment(?:=\S+|\s+\S+)|-\d+))?|time)(?:\s+|$)")
+    r"|nice(?:\s+(?:-n\s*\S+|--adjustment(?:=\S+|\s+\S+)|-\d+))?|time(?:\s+-p)?"
+    r"|command(?:\s+-p)?|[!{]|if|then|else|elif|while|until|do)(?:\s+|$)")
 
 REASON = """⛔ BLOCKED: a direct python test run (`python -m unittest` / `pytest` / `python -m xmlrunner` / `coverage run` / a test file run directly) is not allowed in a python project.
 
@@ -154,6 +174,19 @@ def _segments(text: str):
             quote = char
             index += 1
             continue
+        if char == "`":
+            close = index + 1
+            while close < len(text) and text[close] != "`":
+                close += 2 if text[close] == "\\" else 1
+            if close >= len(text):
+                quote = char  # an unclosed backquote reads as an unclosed quote
+                break
+            inner = _segments(text[index + 1:close])
+            if inner is None:
+                return None
+            segments.extend((index + 1 + begin, index + 1 + end) for begin, end in inner)
+            index = close + 1
+            continue
         if char == "#" and (index == 0 or text[index - 1] in " \t\n;&|("):
             newline = text.find("\n", index)
             index = len(text) if newline < 0 else newline
@@ -162,6 +195,12 @@ def _segments(text: str):
             segments.append((start, index))
             index = _skip_heredoc_bodies(text, index + 1, pending)
             start, pending = index, []
+            continue
+        if text.startswith("$((", index) or text.startswith("((", index):
+            index, depth = text.index("((", index) + 2, 2
+            while index < len(text) and depth:
+                depth += {"(": 1, ")": -1}.get(text[index], 0)
+                index += 1
             continue
         if text.startswith("<<<", index):
             index += 3  # a here-string, not a heredoc: it opens no body
@@ -181,7 +220,7 @@ def _segments(text: str):
     if quote:
         return None
     segments.append((start, len(text)))
-    return segments
+    return sorted(segments)
 
 
 def _commands(text: str):
@@ -240,47 +279,72 @@ def _is_python_test_invocation(command: str) -> bool:
     return any(_is_python_runner(segment) for segment in _commands(command))
 
 
-def _has_marker(directory: Path) -> bool:
-    if any((directory / marker).is_file() for marker in MARKERS):
-        return True
-    return any(path.is_file() for pattern in MARKER_GLOBS for path in directory.glob(pattern))
+def _has_marker(directory: str, listing) -> bool:
+    """A file named in `MARKERS`, or matching `requirements*.txt`, in `directory`: read from its
+    `listing`; by name, the literal `MARKERS` alone, when it cannot be listed (`listing` is
+    `None`). A file is what `os.path.isfile` accepts (CR-MDB-066 §S4)."""
+    if listing is None:
+        return any(os.path.isfile(os.path.join(directory, marker)) for marker in MARKERS)
+    return any((name in MARKERS or fnmatch.fnmatchcase(name, "requirements*.txt"))
+               and os.path.isfile(path) for name, path, _ in listing)
 
 
-def _marker_below(root: Path, depth: int) -> bool:
-    """A marker in a directory at most `depth` levels below `root`: no symlink followed, hidden
-    and `SKIPPED_DIRS` directories never entered, an unreadable directory skipped."""
-    if depth <= 0:
-        return False
-    try:
-        with os.scandir(root) as entries:
-            children = [Path(e.path) for e in entries
-                        if e.is_dir(follow_symlinks=False)
-                        and not e.name.startswith(".") and e.name not in SKIPPED_DIRS]
-    except OSError:
-        return False  # unreadable directory -> skipped
-    for child in sorted(children):
+def _listing(directory: str, memo: dict):
+    """`directory`'s entries as sorted `(name, path, is_dir)` tuples (`is_dir` follows no
+    symlink), listed once per run with `os.scandir` and kept in `memo`; `None` when it cannot
+    be listed (CR-MDB-066 §S4.1)."""
+    if directory not in memo:
         try:
-            if _has_marker(child):
-                return True
+            with os.scandir(directory) as entries:
+                memo[directory] = sorted((entry.name, entry.path,
+                                          entry.is_dir(follow_symlinks=False))
+                                         for entry in entries)
         except OSError:
+            memo[directory] = None  # cannot be listed -> checked by name, not descended
+    return memo[directory]
+
+
+def _has_git(directory: str, listing) -> bool:
+    """Any `.git` entry in `directory`: read from its `listing`, or by name when it cannot be
+    listed (CR-MDB-066 §S4.2)."""
+    if listing is None:
+        return os.path.lexists(os.path.join(directory, ".git"))
+    return any(name == ".git" for name, _, _ in listing)
+
+
+def _marker_below(root: str, depth: int, memo: dict) -> bool:
+    """A marker in a directory at most `depth` levels below `root`: no symlink followed, hidden
+    and `SKIPPED_DIRS` directories never entered, a directory that cannot be listed checked by
+    name and not descended; each directory listed once, the deepest only for its markers."""
+    listing = _listing(root, memo)
+    if depth <= 0 or listing is None:
+        return False
+    for name, path, is_dir in listing:
+        if not is_dir or name.startswith(".") or name in SKIPPED_DIRS:
             continue
-        if _marker_below(child, depth - 1):
+        if _has_marker(path, _listing(path, memo)):
+            return True
+        if _marker_below(path, depth - 1, memo):
             return True
     return False
 
 
 def _in_project(cwd: str) -> bool:
     """CR-MDB-062 §S3: a marker in `cwd`, in a parent up to and including the git root, or
-    at most `WALK_DEPTH` levels below that git root. No git root: `cwd` and its parents."""
+    at most `WALK_DEPTH` levels below that git root. No git root: `cwd` and its parents.
+    CR-MDB-066 §S4: one listing per directory per run, shared by the parents and the walk."""
     if not cwd:
         return False
+    memo: dict = {}
     try:
         directory = Path(cwd)
         for candidate in (directory, *directory.parents):
-            if _has_marker(candidate):
+            path = str(candidate)
+            listing = _listing(path, memo)
+            if _has_marker(path, listing):
                 return True
-            if os.path.lexists(candidate / ".git"):
-                return _marker_below(candidate, WALK_DEPTH)
+            if _has_git(path, listing):
+                return _marker_below(path, WALK_DEPTH, memo)
     except (OSError, ValueError):
         return False  # any filesystem error -> allow (a closed hook must never raise)
     return False

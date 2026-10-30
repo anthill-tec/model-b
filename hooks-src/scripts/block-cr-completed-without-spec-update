@@ -10,6 +10,11 @@ block-cr-completed-without-spec-update.sh baseline
 `{"decision":"block","reason":...}` on stdout), same gating (project must
 carry a `docs/changes/` dir in cwd or an ancestor; every failure mode is a
 silent allow). Self-contained, stdlib only (no jq). Project-agnostic.
+
+The payload prelude (CR-MDB-066 §S5): the runner hooks' read — it catches
+`(ValueError, OSError, RecursionError)` — then the payload must be a dict,
+`tool_input` a dict, `command` a string and `cwd` a string, or the hook
+allows. The block reason names the model-b skill's close-out step (§S5.2).
 """
 
 import json
@@ -31,13 +36,17 @@ def _find_project_root(cwd: str) -> Path | None:
 
 
 def _staged_paths(project_root: Path) -> list[str]:
+    """The staged paths, or none when git cannot run or its output does not decode:
+    a staged name that is not UTF-8 (under `core.quotepath=false`) raises
+    `UnicodeDecodeError`, a `ValueError`, and returns no paths so the hook allows
+    (CR-MDB-066 §S9)."""
     try:
         result = subprocess.run(
             ["git", "-C", str(project_root), "diff", "--cached", "--name-only"],
             capture_output=True, text=True, timeout=10,
         )
-    except (OSError, subprocess.TimeoutExpired):
-        return []  # not a git repo / git unavailable -> silent allow upstream
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        return []  # git unavailable / timed out / undecodable output -> silent allow upstream
     if result.returncode != 0:
         return []
     return [line for line in result.stdout.splitlines() if line]
@@ -46,13 +55,18 @@ def _staged_paths(project_root: Path) -> list[str]:
 def main() -> int:
     try:
         payload = json.load(sys.stdin)
-    except (json.JSONDecodeError, OSError):
-        return 0  # unreadable payload -> fail open (deterrent, not security boundary)
+    except (ValueError, OSError, RecursionError):
+        # unreadable payload (bad JSON or UTF-8, a number past the digit limit, nesting past
+        # the recursion limit) -> fail open (deterrent, not security boundary)
+        return 0
     if not isinstance(payload, dict) or payload.get("tool_name") != "bash":  # neutral shell class (schema.md)
         return 0
-    command = (payload.get("tool_input") or {}).get("command") or ""
+    tool_input = payload.get("tool_input") or {}
+    if not isinstance(tool_input, dict):
+        return 0
+    command = tool_input.get("command") or ""
     cwd = payload.get("cwd") or ""
-    if not command:
+    if not isinstance(command, str) or not isinstance(cwd, str) or not command:
         return 0
 
     # Only target git commit invocations (not `git commit-tree` etc.).
@@ -85,14 +99,14 @@ def main() -> int:
     if missing:
         crs = " ".join(missing)
         reason = (
-            f"⛔ BLOCKED: Commit message mentions COMPLETED for CR(s) [{crs}] "
+            f"⛔ BLOCKED: the commit message says COMPLETED for CR(s) [{crs}] "
             "but the staged diff does not include the CR spec file(s) under "
-            "docs/changes/. Per ORCHESTRATOR-RULES.md §5 (Closing a CR — TWO "
-            "files must be updated, always): flip the spec file `**Status:**` "
-            "field to COMPLETED before committing the closure, `git add` the "
-            "spec, then retry. To bypass (rare — pure docs-only commit not "
-            "closing the CR): remove the COMPLETED keyword from the commit "
-            "message."
+            "docs/changes/. The close-out's `**Status:**` flip (the model-b "
+            "skill's orchestration-common.md § Close-out, step 6) is a "
+            "docs-only commit on the feature branch before the merge: flip the "
+            "spec's `**Status:**` field to COMPLETED, `git add` the spec, then "
+            "retry. To bypass (rare — a docs-only commit that does not close "
+            "the CR): remove the COMPLETED keyword from the commit message."
         )
         print(json.dumps({"decision": "block", "reason": reason}))
         return 2

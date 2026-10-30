@@ -16,6 +16,8 @@ Stdlib only.
 
 import ast
 import hashlib
+import importlib.machinery
+import importlib.util
 import json
 import os
 import re
@@ -342,6 +344,29 @@ def run_hook(name: str, payload, *, cwd=None, timeout: int = 10) -> subprocess.C
         [sys.executable, str(HOOK_SCRIPTS_DIR / name)], input=data, capture_output=True,
         text=True, timeout=timeout, cwd=cwd,
     )
+
+
+def load_hook_module(name: str):
+    """Load the REAL hook script ``hooks-src/scripts/<name>`` in process, as a fresh module, through
+    ``importlib.machinery.SourceFileLoader`` (the file name has no ``.py``) with bytecode writing
+    off for the load and restored after it, so no ``__pycache__`` lands under
+    ``hooks-src/scripts/`` (CR-MDB-066 AC5). The module is not entered in ``sys.modules`` and its
+    ``__name__`` is not ``"__main__"``, so loading runs no ``main``; each call is a new module, so
+    no state a load leaves carries into the next."""
+    path = HOOK_SCRIPTS_DIR / name
+    loader = importlib.machinery.SourceFileLoader(f"modelb_hook_{name.replace('-', '_')}",
+                                                  str(path))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    if spec is None:
+        raise ImportError(f"could not build a module spec for {path}")
+    module = importlib.util.module_from_spec(spec)
+    saved = sys.dont_write_bytecode
+    sys.dont_write_bytecode = True
+    try:
+        loader.exec_module(module)
+    finally:
+        sys.dont_write_bytecode = saved
+    return module
 
 
 def build_tree(root, files=(), *, git=None) -> Path:

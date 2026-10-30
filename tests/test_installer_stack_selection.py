@@ -1264,38 +1264,108 @@ class Python3ProbePreflightTest(_StackSandboxCase):
                          f"caps={caps!r}")
 
 
+#: CR-MDB-066 §S6.3: the start of the warning a re-probe emits when the
+#: accepted ``python3`` installer exited 0 and the tool is still not found
+#: (the re-probe warning names no stack).
+PYTHON3_REPROBE_WARNING = (
+    f"`{PYTHON3_INSTALL_DISPLAY}` exited 0 but python3 is still not found"
+)
+
+
+def _python3_offer_prompt(*stacks: str) -> str:
+    """CR-MDB-066 §S6.2: the ``python3`` offer's exact prompt, naming every
+    covered stack — ``for stack <s>`` with one, ``for stacks <s1>, <s2>``
+    with more (``python3``'s probe declares no ``env_dirs``)."""
+    noun = "stack" if len(stacks) == 1 else "stacks"
+    return f"Run `{PYTHON3_INSTALL_DISPLAY}` to install python3 for {noun} {', '.join(stacks)}?"
+
+
 class Python3OfferRemediationTest(unittest.TestCase):
-    """§S1 AC through the real ``remediate_toolchains``: the ``python3``
-    offer is made at most once per run, whatever the number of stacks, and
-    an accepted one is re-probed for every stack it covers. ``run_on_terminal``
-    and ``shutil.which`` are stubbed: nothing is run, nothing is resolved on
-    the real PATH."""
+    """CR-MDB-063 §S1 and CR-MDB-066 §S6 (AC8) through the real
+    ``remediate_toolchains``: the ``python3`` offer is made at most once per
+    run, whatever the number of stacks; it names the tool and every stack it
+    covers (in selection order, each with a not-``detected`` ``python3``); an
+    accepted one is re-probed for every stack it covers, and a later covered
+    stack whose re-probe finds the tool gets no ``python3=absent`` warning;
+    a decline names every covered stack once. ``run_on_terminal`` and
+    ``shutil.which`` are stubbed: nothing is run, nothing is resolved on the
+    real PATH."""
 
     _UV = "/sandbox/bin/uv"
     _PYTHON3 = "/sandbox/bin/python3"
 
     @staticmethod
-    def _verdicts() -> dict:
-        return {
+    def _verdicts(stacks=("rust", "bun")) -> dict:
+        """Fresh verdict rows for ``stacks``, in that (selection) order."""
+        rows = {
             "rust": {"python3": "absent", "cargo": "detected", "cargo-nextest": "detected",
                      "cargo-llvm-cov": "detected"},
             "bun": {"python3": "absent", "bun": "detected", "node": "detected"},
+            "python": {"python3": "detected", "xmlrunner": "detected",
+                       "coverage": "detected"},
         }
+        return {stack: rows[stack] for stack in stacks}
 
-    def _remediate(self, answer: bool):
+    def _remediate(self, answer: bool | None, *, stacks=("rust", "bun"), found: bool = True,
+                   returncode: int = 0, uv: str | None = _UV):
+        """Run the real ``remediate_toolchains`` over ``stacks``. ``answer``
+        ``None`` is the ``--yes`` seam (no ``offer`` is passed; the recording
+        offer returned then holds no prompt); ``found`` is what the
+        re-probe's ``which("python3")`` sees; ``returncode`` is the stubbed
+        installer's exit; ``uv`` is the cached runner resolution."""
         from modelb_axi.toolchains import remediate_toolchains
-        verdicts, warnings, offer = self._verdicts(), [], _RecordingOffer(answer)
+        verdicts, warnings = self._verdicts(stacks), []
+        offer = _RecordingOffer(bool(answer))
         which_calls: list[str] = []
 
         def which(name, *args, **kwargs):
             which_calls.append(name)
-            return self._PYTHON3 if name == "python3" else None
+            return self._PYTHON3 if (name == "python3" and found) else None
 
-        with mock.patch("modelb_axi.toolchains.run_on_terminal", return_value=0) as run, \
+        with mock.patch("modelb_axi.toolchains.run_on_terminal",
+                        return_value=returncode) as run, \
                 mock.patch("modelb_axi.toolchains.shutil.which", side_effect=which):
-            remediate_toolchains(verdicts, {"uv": self._UV, "python3": None},
-                                 warnings.append, offer)
+            remediate_toolchains(verdicts, {"uv": uv, "python3": None},
+                                 warnings.append, None if answer is None else offer)
         return verdicts, warnings, offer, run, which_calls
+
+    @staticmethod
+    def _own(warnings: list[str], stack: str) -> list[str]:
+        """``stack``'s own ``python3=absent`` warnings."""
+        return [w for w in warnings if w.startswith(f"stack {stack}: python3=absent")]
+
+    @staticmethod
+    def _reprobes(warnings: list[str]) -> list[str]:
+        return [w for w in warnings if w.startswith(PYTHON3_REPROBE_WARNING)]
+
+    # -- AC8: one prompt naming every covered stack (§S6.1, §S6.2) ----------
+
+    def test_one_offer_names_the_installer_the_tool_and_every_covered_stack(self):
+        _, _, offer, _, _ = self._remediate(True)
+        self.assertEqual(offer.prompts, [_python3_offer_prompt("rust", "bun")],
+                         "§S6.2: one prompt naming the installer, python3, rust and bun")
+
+    def test_only_stacks_with_the_tool_not_detected_are_covered_in_selection_order(self):
+        verdicts, _, offer, run, which_calls = self._remediate(
+            True, stacks=("bun", "python", "rust"))
+        self.assertEqual(offer.prompts, [_python3_offer_prompt("bun", "rust")],
+                         "§S6.1: the covered stacks, in selection order, python (detected) not")
+        self.assertEqual(run.call_count, 1)
+        self.assertEqual(
+            (verdicts["bun"]["python3"], verdicts["python"]["python3"],
+             verdicts["rust"]["python3"]),
+            ("installed", "detected", "installed"))
+        self.assertEqual(which_calls.count("python3"), 2,
+                         f"only the covered stacks are re-probed; which={which_calls!r}")
+
+    def test_a_single_covered_stack_is_named_in_the_singular(self):
+        # Passes on arrival: today's prompt already names its one stack.
+        _, _, offer, _, _ = self._remediate(True, stacks=("rust",))
+        self.assertEqual(offer.prompts, [_python3_offer_prompt("rust")])
+        self.assertEqual(offer.prompts,
+                         [f"Run `{PYTHON3_INSTALL_DISPLAY}` to install python3 for stack rust?"])
+
+    # -- AC8: accept, found (§S6.3) ------------------------------------------
 
     def test_an_accepted_offer_runs_once_and_is_reprobed_for_every_stack(self):
         verdicts, warnings, offer, run, which_calls = self._remediate(True)
@@ -1308,11 +1378,59 @@ class Python3OfferRemediationTest(unittest.TestCase):
                          ("installed", "installed"), "re-probed for every stack it covers")
         self.assertEqual(which_calls.count("python3"), 2,
                          f"one re-probe per stack covered; which={which_calls!r}")
+        # MIGRATED at CR-MDB-066 (§S8.5): the "each stack its own warning" loop
+        # asserted `stack bun: python3=absent` after the accept. §S6.3: the first
+        # covered stack keeps the one warning that preceded the offer; a later
+        # covered stack whose re-probe finds the tool gets none.
+        own = self._own(warnings, "rust")
+        self.assertEqual(len(own), 1, f"rust's own warning precedes the offer; {warnings!r}")
+        self.assertIn(PYTHON3_REMEDIATION, own[0])
+        self.assertEqual([w for w in warnings if w.startswith("stack bun: python3=")], [],
+                         f"§S6.3: bun's re-probe found python3, so no bun warning; {warnings!r}")
+        self.assertEqual(self._reprobes(warnings), [],
+                         f"found: no re-probe warning; {warnings!r}")
+
+    def test_the_first_covered_stacks_warning_precedes_the_offer(self):
+        # Passes on arrival: §S6.5 keeps today's order.
+        warnings_at_offer: list[list[str]] = []
+        holder: dict = {}
+
+        def offer(prompt: str) -> bool:
+            warnings_at_offer.append(list(holder["warnings"]))
+            return True
+
+        from modelb_axi.toolchains import remediate_toolchains
+        verdicts, warnings = self._verdicts(), []
+        holder["warnings"] = warnings
+        with mock.patch("modelb_axi.toolchains.run_on_terminal", return_value=0), \
+                mock.patch("modelb_axi.toolchains.shutil.which",
+                           side_effect=lambda n, *a, **k: self._PYTHON3 if n == "python3" else None):
+            remediate_toolchains(verdicts, {"uv": self._UV, "python3": None},
+                                 warnings.append, offer)
+        self.assertEqual(len(warnings_at_offer), 1, f"one offer; {warnings_at_offer!r}")
+        before = warnings_at_offer[0]
+        self.assertEqual(len(before), 1, f"only rust's warning precedes the offer; {before!r}")
+        self.assertTrue(before[0].startswith("stack rust: python3=absent"), before[0])
+
+    # -- AC8: accept, not found (§S6.3) --------------------------------------
+
+    def test_an_accepted_run_the_reprobe_cannot_find_warns_once_per_stack(self):
+        # Passes on arrival: today each covered stack is re-probed and warns,
+        # and bun keeps its own warning; §S6.3 keeps both.
+        verdicts, warnings, _, run, _ = self._remediate(True, found=False)
+        self.assertEqual(run.call_count, 1)
+        self.assertEqual((verdicts["rust"]["python3"], verdicts["bun"]["python3"]),
+                         ("absent", "absent"))
+        reprobes = self._reprobes(warnings)
+        self.assertEqual(len(reprobes), 2, f"one re-probe warning per stack; {warnings!r}")
+        for line in reprobes:
+            self.assertNotIn("stack ", line, "the re-probe warning names no stack")
         for stack in ("rust", "bun"):
             with self.subTest(stack=stack):
-                own = [w for w in warnings if w.startswith(f"stack {stack}: python3=absent")]
-                self.assertEqual(len(own), 1, f"each stack its own warning; {warnings!r}")
-                self.assertIn(PYTHON3_REMEDIATION, own[0])
+                self.assertEqual(len(self._own(warnings, stack)), 1,
+                                 f"{stack} keeps its own warning; {warnings!r}")
+
+    # -- AC8: decline (§S6.4) ------------------------------------------------
 
     def test_a_declined_offer_is_made_once_and_runs_nothing(self):
         verdicts, warnings, offer, run, _ = self._remediate(False)
@@ -1323,6 +1441,56 @@ class Python3OfferRemediationTest(unittest.TestCase):
                          ("absent", "absent"))
         declined = [w for w in warnings if "declined" in w and PYTHON3_INSTALL_DISPLAY in w]
         self.assertEqual(len(declined), 1, f"the decline is recorded once; {warnings!r}")
+        # MIGRATED at CR-MDB-066 (§S8.5): the decline names both covered stacks
+        # (§S6.4), and each stack keeps its own `absent` warning.
+        self.assertEqual(
+            declined,
+            [f"declined `{PYTHON3_INSTALL_DISPLAY}` — python3 stays absent for stacks rust, bun"])
+        for stack in ("rust", "bun"):
+            with self.subTest(stack=stack):
+                self.assertEqual(len(self._own(warnings, stack)), 1,
+                                 f"{stack} keeps its own warning; {warnings!r}")
+
+    # -- §S6.5: unchanged ----------------------------------------------------
+
+    def test_yes_makes_no_offer_and_leaves_every_stack_its_own_warning(self):
+        # Passes on arrival: §S6.5 keeps today's --yes behaviour.
+        verdicts, warnings, offer, run, _ = self._remediate(None)
+        self.assertEqual(offer.prompts, [], "--yes: no offer")
+        run.assert_not_called()
+        self.assertEqual((verdicts["rust"]["python3"], verdicts["bun"]["python3"]),
+                         ("absent", "absent"))
+        self.assertEqual([w for w in warnings if "declined" in w], [], f"{warnings!r}")
+        for stack in ("rust", "bun"):
+            with self.subTest(stack=stack):
+                self.assertEqual(len(self._own(warnings, stack)), 1, f"{warnings!r}")
+
+    def test_an_unresolved_runner_makes_no_offer_and_leaves_every_stack_its_own_warning(self):
+        # Passes on arrival: §S6.5 keeps today's unresolved-runner behaviour.
+        verdicts, warnings, offer, run, _ = self._remediate(True, uv=None)
+        self.assertEqual(offer.prompts, [], "no runner on PATH: no offer")
+        run.assert_not_called()
+        self.assertEqual((verdicts["rust"]["python3"], verdicts["bun"]["python3"]),
+                         ("absent", "absent"))
+        for stack in ("rust", "bun"):
+            with self.subTest(stack=stack):
+                self.assertEqual(len(self._own(warnings, stack)), 1, f"{warnings!r}")
+
+    def test_a_failed_installer_records_absent_for_every_covered_stack(self):
+        # Passes on arrival: §S6.5 keeps today's failed-installer behaviour.
+        verdicts, warnings, offer, run, which_calls = self._remediate(True, returncode=1)
+        self.assertEqual(len(offer.prompts), 1)
+        self.assertEqual(run.call_count, 1, "one offer per installer per run: one run")
+        self.assertEqual((verdicts["rust"]["python3"], verdicts["bun"]["python3"]),
+                         ("absent", "absent"))
+        self.assertEqual(
+            [w for w in warnings if w.startswith(f"`{PYTHON3_INSTALL_DISPLAY}` failed")],
+            [f"`{PYTHON3_INSTALL_DISPLAY}` failed (exit=1); recording absent"])
+        self.assertEqual(self._reprobes(warnings), [], "a failed run is not re-probed")
+        self.assertEqual(which_calls.count("python3"), 0, f"which={which_calls!r}")
+        for stack in ("rust", "bun"):
+            with self.subTest(stack=stack):
+                self.assertEqual(len(self._own(warnings, stack)), 1, f"{warnings!r}")
 
 
 class Python3OfferOnAUvOnlyMachineTest(_StackSandboxCase):
@@ -1378,11 +1546,19 @@ class Python3OfferOnAUvOnlyMachineTest(_StackSandboxCase):
         offers = [c for c, _ in result.reads if PYTHON3_INSTALL_DISPLAY in last_line(c)]
         self.assertEqual(len(offers), 1, f"one offer for both stacks; reads={result.reads!r}")
         self.assertEqual(self._uv_installs(), ["python install --default 3.14"])
-        self.assert_installed(result)
+        axi = self.assert_installed(result)
         self._assert_detection_reported(result.stderr)
         caps = self.install_toml()["capabilities"]
         self.assertEqual((caps.get("rust.python3"), caps.get("bun.python3")),
                          ("installed", "installed"), f"caps={caps!r}")
+        # MIGRATED at CR-MDB-066 (§S8.5): the envelope's warnings. §S6.3: rust's
+        # warning preceded the offer; bun, re-probed and found, gets none.
+        warnings = axi.get("warnings", [])
+        self.assertEqual(
+            len([w for w in warnings if w.startswith("stack rust: python3=absent")]), 1,
+            f"{warnings!r}")
+        self.assertEqual([w for w in warnings if w.startswith("stack bun: python3=absent")], [],
+                         f"§S6.3: no bun absent warning after the accepted install; {warnings!r}")
 
     def test_a_declined_offer_runs_nothing_and_records_absent(self):
         result = self._run("n")

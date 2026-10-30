@@ -14,6 +14,14 @@ signal) OR (b) cwd sits inside a real `…/.worktrees/<cr>/` path
 confirmed against `git worktree list`. Same allows (inside the worktree
 root; scratch under /tmp or $TMPDIR) and the same
 ALLOW_WRITE_OUTSIDE_WORKTREE=1 escape hatch. Self-contained, stdlib only.
+
+The payload prelude (CR-MDB-066 §S5): the runner hooks' read — it catches
+`(ValueError, OSError, RecursionError)` — then the payload must be a dict,
+`tool_input` a dict and a present `cwd` a string, or the hook allows. An
+absent `cwd` keeps the `os.getcwd()` fallback; a present non-string one allows
+before any worktree derivation. `tool_name` must be a string before the
+`_GATED_TOOLS` lookup, so a list or dict one allows rather than raising
+`TypeError` in a `closed` hook (CR-MDB-066 §S9).
 """
 
 import json
@@ -112,17 +120,28 @@ ALLOW_WRITE_OUTSIDE_WORKTREE=1 exported — explicit + auditable, never silent."
 def main() -> int:
     try:
         payload = json.load(sys.stdin)
-    except (json.JSONDecodeError, OSError):
-        return 0  # unreadable payload -> fail open (deterrent, not security boundary)
-    if not isinstance(payload, dict) or payload.get("tool_name") not in _GATED_TOOLS:
+    except (ValueError, OSError, RecursionError):
+        # unreadable payload (bad JSON or UTF-8, a number past the digit limit, nesting past
+        # the recursion limit) -> fail open (deterrent, not security boundary)
         return 0
+    if not isinstance(payload, dict):
+        return 0
+    tool_name = payload.get("tool_name")
+    if not isinstance(tool_name, str) or tool_name not in _GATED_TOOLS:
+        return 0  # an unhashable tool_name would raise TypeError on the set lookup
 
     # Explicit, auditable opt-out wins before any work.
     if os.environ.get("ALLOW_WRITE_OUTSIDE_WORKTREE", "") in ("1", "true"):
         return 0
 
-    targets = _targets(payload.get("tool_input") or {})
-    cwd = payload.get("cwd") or os.getcwd()
+    tool_input = payload.get("tool_input") or {}
+    if not isinstance(tool_input, dict):
+        return 0
+    cwd = payload.get("cwd")
+    if cwd is not None and not isinstance(cwd, str):
+        return 0  # a present non-string cwd -> allow, never the process-cwd fallback
+    cwd = cwd or os.getcwd()
+    targets = _targets(tool_input)
     if not targets:
         return 0
 
