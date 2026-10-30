@@ -1,6 +1,9 @@
 # CR-MDB-079 — The bun stack is general to every Bun project
 
-**Status:** PENDING — spec drafted 2026-10-30 from the gap analysis and the user's rulings
+**Status:** COMPLETED (gap analysis, spec and pre-review 2026-10-30; plan 251, cycles 320–323; VERIFY
+approved with three suggestions, fixed in the `VERIFY findings (§S8)` cycle by the user's ruling; pre-merge
+gate 4766 tests, 0 failed, 1 skip; empty `HOME` 4766/0/12; clean runner 4719/0/26; coverage 6144/6641,
+92.5%, unchanged). Spec drafted from the gap analysis and the user's rulings
 (DN-multi-harness-deploy-model §D25, amended 2026-10-30); the spec pre-review's findings folded in
 2026-10-30 (S1–S8 and its suggestions), with the user's rulings of 2026-10-30 that the workflow's own tools
 (Sandesh, Crucible, lean-ctx) and the Pi extensions that provide its functionality are workflow vocabulary,
