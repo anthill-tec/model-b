@@ -28,7 +28,8 @@ Model B's design does the opposite today: CR-MDB-030 §S6 stopped ignoring `.pi/
 `.pi/extensions/` (the compiled hook shims) and `.pi/agents/` are tracked, and every `git worktree add`
 checks them out; the scaffold's `_render_gitignore` says so. Model B commits its own `.lean-ctx.toml`.
 
-**The user ruled (2026-10-30): ignore all of them, and redesign how worktrees get them.**
+**The user ruled (2026-10-30): in a project that consumes Model B, ignore all of them, and redesign how
+worktrees get them. Model B's own repo, which dogfoods the workflow, keeps committing its own.**
 
 ## Scope (seed)
 
@@ -44,8 +45,10 @@ checks them out; the scaffold's `_render_gitignore` says so. Model B commits its
    `.worktrees/<cr>` checkout gets the agents, the hook shims, the permission policy and
    `.lean-ctx.toml` — a copy at `start`, a link, or reading them from the main tree — and what keeps
    them fresh when `agents` re-renders.
-4. **Model B's own repo** follows the same rule, or the spec says why not (it tracks its `.pi/` and
-   `.lean-ctx.toml` today).
+4. **Model B's own repo is the exception** (user, 2026-10-30): it dogfoods its own workflow and keeps
+   committing its `.pi/` and `.lean-ctx.toml`. The rule is for the projects that consume Model B: in
+   those, every file Model B generates is gitignored. The spec states the exception and how the
+   rendering tells Model B's repo apart (or that it simply never writes Model B's own `.gitignore`).
 5. **Every surface that states the old rule** moves with it: `_render_gitignore`'s comment, CR-MDB-030
    §S6's record (a DN amendment, not a spec edit), the install guide, the worktree-layout contract and the
    skills that describe the worktree flow.
