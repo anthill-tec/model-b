@@ -260,6 +260,22 @@ In `tests/test_stack_reference_material.py`, beside `QUARKUS_TOML_FORBIDDEN` and
 No test module is added (`AGENTS.md`'s count is unchanged). No skip is added. No floor is lowered. No stack
 file other than `bun.toml` is edited.
 
+### §S8 — VERIFY findings (cycle 322; the user's ruling of 2026-10-30: a fix cycle for all three)
+
+1. **F1 — the tier-guidance comment is recorded, not dropped.** Every stack file carries the per-stack
+   comment `# CR-MDB-017 §S6b — the per-stack half of the tier-guidance section. …` above its
+   `tier_guidance`; `bun.toml` keeps its own, which is accurate for every Bun project. Appendix A shows it.
+   No code changes for F1.
+2. **F2 — one shared helper, one home.** `provenance_header` (the leading-comment header of a stack file)
+   moves from `tests/test_orchestrator_references.py` to `tests/_helpers.py`; both
+   `tests/test_orchestrator_references.py` and `tests/test_stack_reference_material.py` import it from
+   there, and neither defines it nor imports it from the other. Its behaviour and every assertion that uses
+   it are unchanged.
+3. **F3 — layout.** In `tests/test_stack_reference_material.py`, every top-level definition (function or
+   class, its decorators included) is preceded by exactly two blank lines, as the rest of the test tree is.
+4. **Who edits what.** RED pins §S8.2 and §S8.3 with failing tests; FIX moves the helper and fixes the
+   layout, the orchestrator approving those test-file edits explicitly (they change no assertion).
+
 ## Acceptance criteria
 
 "Both ways" means a sample that must be caught is caught and a sample that must pass passes. Every check
@@ -363,6 +379,15 @@ reads text; nothing runs a runner.
         passes through the client;
       - VERIFY runs the full suite through the client with a real `HOME` and an empty one, and the empty
         `HOME` stays empty.
+- [ ] **AC8 — VERIFY findings (§S8).**
+      - Appendix A shows the `# CR-MDB-017 §S6b …` comment above `tier_guidance`, and `bun.toml` matches it;
+      - `provenance_header` is defined once, in `tests/_helpers.py`; `tests/test_orchestrator_references.py`
+        and `tests/test_stack_reference_material.py` import it from there, and neither module defines it or
+        imports it from another test module; `tests.test_suite_hygiene`'s duplicate-helper gate passes;
+      - every top-level definition of `tests/test_stack_reference_material.py` is preceded by exactly two
+        blank lines, checked from the module's own source (`ast` line numbers, decorators included);
+      - each pin is proved both ways on synthetic text (a sample that breaks it yields exactly its finding;
+        a conforming sample yields none); `ruff check` exits 0; no module and no skip is added.
 
 ## Non-goals
 
@@ -468,13 +493,23 @@ the cycle's report.
 
    A "no" to (a) or (b) re-opens §S1.1/§S1.6 before the merge; the other answers go to the 0.4.0
    doc-sync CR. Sandesh is already told (#1502/#1503).
+5. **VERIFY findings (§S8, AC8).** Fix, appended after the VERIFY cycle closed with its three suggestions.
+   - **RED:** the pins of §S8.2 and §S8.3 and their both-ways proofs; they fail on today's tree.
+   - **FIX:** `provenance_header` moved to `tests/_helpers.py` with both imports updated, and the layout of
+     `tests/test_stack_reference_material.py` fixed — test-file edits the orchestrator approves, changing no
+     assertion. §S8.1 is the spec's own record (Appendix A), made by the orchestrator with §S8.
+   - **Modules:** the docs gates, plus `tests.test_stack_reference_material`,
+     `tests.test_orchestrator_references` and any module importing from `tests/_helpers.py` that the move
+     touches.
+   - The orchestrator then runs the pre-merge gate bound to this cycle.
 
 ## Appendix A — proposed `bun.toml` text
 
 Runner names appear in plain words (§D21); code spans hold only the client, flags, files and keys. The
 text carries 9 parsed client invocations (3 `toml`, 6 `span`). `[roles.*]`, `test_command`,
 `register_command`, `unregister_command`, `crucible_reference` and `display_name` are unchanged, and so are
-`[description].verify` and `[description].fix` (shown as "(unchanged)").
+`[description].verify` and `[description].fix` (shown as "(unchanged)"). The per-stack
+`# CR-MDB-017 §S6b …` comment above `tier_guidance` is kept, as every stack file carries its own (§S8.1).
 
 ```toml
 # Stack parameters — Bun/TypeScript (the project's declared runner on the Bun runtime, via bun-crucible.py)
@@ -492,6 +527,9 @@ mechanics = '''
 - **Generated files are never hand-edited** — whatever the project's build or code generator writes (its `package.json` scripts and `AGENTS.md` name them); regenerate them with the project's own command.
 '''
 
+# CR-MDB-017 §S6b — the per-stack half of the tier-guidance section. Bun has no
+# tier mechanism of its own, so the tier a run may claim is whatever the PROJECT
+# has declared in package.json — never what the agent selected by hand.
 tier_guidance = '''
 - **Bun has no native tier split — the PROJECT declares one.** A runner on Bun knows files and filters, not tiers; the boundary lives in the `package.json` scripts the project declares: `test:unit`, `test:module`, `test:integration`, `test:e2e`, `test:bdd`. Run a tier with the client's tier verb — `bun-crucible.py <tier> --agent YOUR_AGENT_ID` (e.g. `bun-crucible.py integration --agent YOUR_AGENT_ID`) runs the `test:<tier>` script the project declares, by name, and ingests it; what follows `--` reaches that script (`bun-crucible.py unit --agent YOUR_AGENT_ID -- <file>`). Name the script in your report so the next agent can reproduce exactly the same set.
 - **Never hand-pick a file list and call it a tier.** Passing `--tests a.test.ts b.test.ts` and ingesting the result as `integration` records a tier the project never defined: the next "same" run selects different files and the two are no longer comparable. A hand-picked list is a TARGETED run — report it as `unit`, and only when every file in it is genuinely dependency-free.
