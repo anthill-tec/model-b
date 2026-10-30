@@ -1139,6 +1139,15 @@ frontend consumes).
   terms out; `arduino.toml` and `quarkus.toml` are named exceptions until CR-MDB-084 and CR-MDB-087 make
   them general, and both move into release 1.0.0, wave 2, after CR-MDB-079. An exception whose text is
   already gone fails the guard, so the list cannot go stale.
+- **The workflow's own tools are its vocabulary, never a project's.** Sandesh (messaging) and Crucible
+  (test reporting and the board) are Model B's own tools, built to work with every kind of Model B
+  project; with lean-ctx and the Pi extensions Model B relies on (pi-permission-system, pi-subagents,
+  pi-lens, the process and web-search packages, sandesh-pi) they meet the workflow's context-management
+  and security requirements and provide the functionality Model B projects need — sub-agent dispatch and
+  worktree isolation, supervised background processes, the wake path, the permission policy. Their names, CLIs, environment variables and tools stay named in any stack,
+  skill or template that needs them, and the guard never flags them. What leaves `bun.toml` is one
+  project's architecture — the Sandesh Pi extension's own test design (the `pi.exec` and `registerTool`
+  mocks, the CLI-mapping table, TypeBox schemas, `integrations/pi/`) — and the guard flags those terms.
 - **The bun stack is runner-neutral and names the client's 0.4.0 surface:** `test` runs the project's
   declared `crucible.testScript`, else Bun's own runner; a Vitest target declares
   `crucible.reportPath.<target>`; a workspace package's `module` run is `--package-dir <package>` running
@@ -1227,3 +1236,17 @@ supervises long runs (full test suites, the pre-merge gate, builds), and `web_fe
   command.
 
 Implemented by CR-MDB-089.
+
+**AMENDED 2026-10-30 (user rulings; CR-MDB-095):**
+- **Every tool that provides the workflow's functionality is allowed by default** in the generated
+  per-project policy. Two gaps close: the `worktree` row's tools (`modelb_worktree_enter`,
+  `modelb_worktree_exit`, Model B's own Pi package) join the allowed rows, and pi-lens becomes a
+  recommended third-party requirement row (code intelligence) whose tools the policy allows. The installer
+  names its remediation and never installs it. `bash` stays on ask.
+- **Model B trusts the project root it renders into, on Pi.** `init` and `agents` record
+  `"<project root>": true` in Pi's `trust.json`: an atomic write that leaves every other entry as it is;
+  an existing `false` for that exact root is reported and left unless `--force-managed`. A closer
+  ancestor's `false` (the `/home/<user>` shape) is overridden by the root's own entry, as Pi resolves the
+  closest entry first. Worktrees under `.worktrees/` inherit it. This reverses CR-MDB-037 §S4's "Model B
+  never edits `trust.json`"; the read-only resolver and its warning stay for the cases Model B does not
+  write.
