@@ -1,7 +1,7 @@
 # CR-MDB-066 — Runner-hook follow-ups: shell grammar, package-manager and Vitest forms, hardened block hooks
 
-**Status:** PENDING — spec drafted 2026-10-30 from the gap analysis; the spec pre-review's findings
-(`CR-MDB-066-SPEC-REVIEW`, FIX_REQUIRED) folded in 2026-10-30
+**Status:** COMPLETED (gap analysis, spec and pre-review 2026-10-30; plan 250, cycles 313–319; VERIFY
+318 approved, its three findings fixed in cycle 319; gate 4713/0/1 of 4714, coverage 92.5%).
 **Type:** fix (hook scripts, the raw-runner guard, and the installer's shared offer)
 **Priority:** P3 — release 1.0.0, wave 2; last in the wave, after its P1 CRs.
 **Depends on:** CR-MDB-062 (merged `282eaa7`); CR-MDB-063 (merged; item 5). Board-authoritative: read
