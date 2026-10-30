@@ -90,7 +90,7 @@ import tomllib
 import unittest
 from pathlib import Path
 
-from tests._helpers import GIT_ISOLATION_ENV
+from tests._helpers import GIT_ISOLATION_ENV, git_repo, repo_git
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 HOOKS_SRC_DIR = REPO_ROOT / "hooks-src"
@@ -414,8 +414,11 @@ _PRELUDE_COMMENT = ("bad JSON or UTF-8, a number past the digit limit, nesting p
 #: The CR hook's command that reaches ``cwd`` (CR-MDB-066 AC6).
 _COMPLETED_COMMIT = 'git commit -m "COMPLETED CR-X-1"'
 
-#: A hook whose ``main`` has the pre-change catch and then, untyped, calls ``.get`` on
-#: ``tool_input``, ``re.search`` on ``command`` and ``Path(cwd)`` (CR-MDB-066 AC6's proof).
+#: A hook whose ``main`` has the pre-change catch and then, untyped, looks ``tool_name`` up in a
+#: set (as ``block-write-outside-worktree``'s ``_GATED_TOOLS`` lookup does before CR-MDB-066
+#: §S9.1, so an unhashable one raises), calls ``.get`` on ``tool_input``, ``re.search`` on
+#: ``command`` and ``Path(cwd)`` (CR-MDB-066 AC6's and AC12's proof).
+# MIGRATED at CR-MDB-066 (§S9): the pre-§S9 set lookup of ``tool_name``, unguarded.
 _PRE_CHANGE_SCRIPT = '''\
 import json
 import re
@@ -430,6 +433,8 @@ def main():
         return 0  # unreadable payload -> fail open
     if not isinstance(payload, dict):
         return 0
+    if payload.get("tool_name") not in {"bash", "write", "edit"}:
+        return 0
     tool_input = payload.get("tool_input") or {}
     target = tool_input.get("command") or tool_input.get("path") or ""
     if payload.get("tool_name") == "bash":
@@ -443,7 +448,9 @@ def main():
 sys.exit(main())
 '''
 
-#: The same hook with CR-MDB-066 §S5.1's prelude: the proof that a correct hook passes.
+#: The same hook with CR-MDB-066 §S5.1's prelude and §S9.1's ``tool_name`` check: the proof
+#: that a correct hook passes.
+# MIGRATED at CR-MDB-066 (§S9): ``tool_name`` is read as a string before the set lookup.
 _HARDENED_SCRIPT = '''\
 import json
 import re
@@ -459,6 +466,9 @@ def main():
         # the recursion limit) -> fail open
         return 0
     if not isinstance(payload, dict):
+        return 0
+    tool_name = payload.get("tool_name")
+    if not isinstance(tool_name, str) or tool_name not in {"bash", "write", "edit"}:
         return 0
     tool_input = payload.get("tool_input") or {}
     if not isinstance(tool_input, dict):
@@ -504,6 +514,11 @@ def _hostile_payload_cases(hook, cwd):
         cases.append(("cwd 5", payload(tool_input={"command": _COMPLETED_COMMIT}, cwd=5), {}))
     elif hook == "block-write-outside-worktree":
         cases.append(("cwd 5", payload(tool_input={"path": "x"}, cwd=5), {}))
+        # CR-MDB-066 §S9.1 (AC12): a non-string ``tool_name`` the ``_GATED_TOOLS`` set lookup
+        # cannot hash.
+        for name in (["write"], {"a": 1}):
+            cases.append((f"tool_name {name!r}",
+                          payload(tool_name=name, tool_input={"path": "x"}, cwd=str(cwd)), {}))
     return cases
 
 
@@ -618,9 +633,12 @@ class BlockHookHostilePayloadTest(unittest.TestCase):
         # CR-MDB-066 AC6: `command` 5 for the two bash hooks, `cwd` 5 for the two block hooks.
         common = ["open array", "closed array", "nested object", "long number",
                   "non-UTF-8 stdin", "tool_input ['x']", "tool_input 'x'"]
+        # MIGRATED at CR-MDB-066 (§S9): AC12's two non-string `tool_name` cases for the
+        # worktree hook.
         expected = {
             "block-cr-completed-without-spec-update": common + ["command 5", "cwd 5"],
-            "block-write-outside-worktree": common + ["cwd 5"],
+            "block-write-outside-worktree": common + ["cwd 5", "tool_name ['write']",
+                                                      "tool_name {'a': 1}"],
             "post-regression-disk-reminder": common + ["command 5"],
         }
         got = {hook: [label for label, _, _ in _hostile_payload_cases(hook, self.tmp)]
@@ -703,6 +721,113 @@ class WorktreeHookCwdFallbackTest(unittest.TestCase):
                                  "cwd": cwd})
                 self.assertNotIn(b"Traceback", res.stderr, res.stderr)
                 self.assertEqual((res.returncode, res.stdout), (0, b""), res.stderr)
+
+
+#: ``block-cr-completed-without-spec-update``'s ``_staged_paths`` before CR-MDB-066 §S9.2:
+#: ``text=True``, and a catch of ``OSError`` and ``TimeoutExpired`` only.
+_PRE_S9_STAGED_PATHS = '''\
+def _staged_paths(project_root: Path) -> list[str]:
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(project_root), "diff", "--cached", "--name-only"],
+            capture_output=True, text=True, timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    if result.returncode != 0:
+        return []
+    return [line for line in result.stdout.splitlines() if line]
+'''
+
+#: The same function with CR-MDB-066 §S9.2's catch: ``ValueError`` beside ``OSError`` and
+#: ``TimeoutExpired``, so an undecodable path returns no paths.
+_CATCHING_STAGED_PATHS = _PRE_S9_STAGED_PATHS.replace(
+    "except (OSError, subprocess.TimeoutExpired):",
+    "except (OSError, subprocess.TimeoutExpired, ValueError):")
+
+
+def _with_staged_paths(source, replacement):
+    """``source`` with its one top-level ``_staged_paths`` replaced by ``replacement``."""
+    tree = ast.parse(source)
+    nodes = [n for n in tree.body
+             if isinstance(n, ast.FunctionDef) and n.name == "_staged_paths"]
+    if len(nodes) != 1:
+        raise AssertionError(f"expected one top-level _staged_paths, found {len(nodes)}")
+    lines = source.splitlines(keepends=True)
+    return ("".join(lines[:nodes[0].lineno - 1]) + replacement
+            + "".join(lines[nodes[0].end_lineno:]))
+
+
+class CrCompletionHookNonUtf8StagedPathTest(unittest.TestCase):
+    """CR-MDB-066 §S9.2 (AC12) — ``block-cr-completed-without-spec-update`` run for real on a
+    ``COMPLETED`` commit in a temp git repository (git's configuration isolated,
+    ``core.quotepath=false``) whose index holds the CR's spec beside a file whose name is not
+    UTF-8: the hook allows with no traceback. The run is proved both ways on copies of the hook
+    in a temp dir: with the pre-§S9 ``_staged_paths`` it raises, with one that catches
+    ``ValueError`` it allows. Python's UTF-8 mode is set on each run, so git's output is decoded
+    as UTF-8 whatever the host's locale."""
+
+    HOOK = "block-cr-completed-without-spec-update"
+    LABEL = "a non-UTF-8 staged path"
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="modelb-hooks-staged-")).resolve()
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.repo = git_repo(self.tmp / "repo", {"README.md": "fixture\n"})
+        repo_git(self.repo, "config", "core.quotepath", "false")
+        spec = self.repo / "docs" / "changes" / "CR-X-1-fixture.md"
+        spec.parent.mkdir(parents=True)
+        spec.write_text("# CR-X-1\n\n**Status:** COMPLETED\n", encoding="utf-8")
+        try:
+            with open(os.path.join(os.fsencode(self.repo), b"\xff.txt"), "wb") as handle:
+                handle.write(b"fixture\n")
+        except OSError as exc:
+            self.skipTest(f"the filesystem refuses a non-UTF-8 file name: {exc}")
+        repo_git(self.repo, "add", "-A")
+        staged = subprocess.run(
+            ["git", "-C", str(self.repo), "diff", "--cached", "--name-only"],
+            capture_output=True, timeout=30, env={**os.environ, **GIT_ISOLATION_ENV})
+        self.assertEqual(sorted(staged.stdout.splitlines()),
+                         [b"docs/changes/CR-X-1-fixture.md", b"\xff.txt"],
+                         "precondition: git prints the staged name raw")
+        payload = {"tool_name": "bash", "tool_input": {"command": _COMPLETED_COMMIT},
+                   "cwd": str(self.repo)}
+        self.cases = [(self.LABEL, json.dumps(payload).encode(), {"PYTHONUTF8": "1"})]
+
+    def _copy(self, name, replacement):
+        source = (SCRIPTS_DIR / self.HOOK).read_text(encoding="utf-8")
+        path = self.tmp / name / self.HOOK
+        path.parent.mkdir()
+        path.write_text(_with_staged_paths(source, replacement), encoding="utf-8")
+        return path
+
+    def test_a_completed_commit_beside_a_non_utf8_staged_path_allows_without_a_traceback(self):
+        self.assertEqual(_hostile_payload_failures(SCRIPTS_DIR / self.HOOK, self.cases,
+                                                   self.repo), {},
+                         "CR-MDB-066 §S9.2: the hook raised or did not allow")
+
+    def test_the_run_raises_on_the_pre_section_s9_staged_paths(self):
+        # Proof the run bites: the pre-§S9 catch lets the decode error escape.
+        got = _hostile_payload_failures(self._copy("pre-s9", _PRE_S9_STAGED_PATHS),
+                                        self.cases, self.repo)
+        self.assertEqual(sorted(got), [self.LABEL])
+        traces = [p for p in got[self.LABEL] if p.startswith("a traceback")]
+        self.assertEqual(len(traces), 1, got)
+        self.assertIn("UnicodeDecodeError", traces[0])
+        self.assertIn("exit 1", got[self.LABEL])
+
+    def test_the_run_allows_on_a_staged_paths_that_catches_value_error(self):
+        # Proof a correct hook can pass: the same run, the catch widened to ValueError.
+        self.assertEqual(_hostile_payload_failures(
+            self._copy("catching", _CATCHING_STAGED_PATHS), self.cases, self.repo), {})
+
+    def test_the_copies_differ_from_each_other_only_in_the_catch(self):
+        pre = self._copy("pre", _PRE_S9_STAGED_PATHS).read_text(encoding="utf-8")
+        catching = self._copy("post", _CATCHING_STAGED_PATHS).read_text(encoding="utf-8")
+        self.assertEqual(pre.count("except (OSError, subprocess.TimeoutExpired):"), 1)
+        self.assertEqual(
+            catching.replace("subprocess.TimeoutExpired, ValueError)",
+                             "subprocess.TimeoutExpired)"), pre)
 
 
 def _toon_encode(obj):

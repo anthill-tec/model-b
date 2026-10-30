@@ -69,6 +69,10 @@ What the module pins, for all four runner hooks — ``block-direct-python-test``
   the real scripts: an execute-only directory still counts a literal marker it holds and is not
   descended; a read-only one hides the marker it holds; a marker-named symlink loop or
   directory is no marker. The verdicts are today's.
+- **The sanctioned divergence (CR-MDB-066 §S9.3):** ``UNCLOSED_BACKQUOTE_DIVERGENCE`` holds the
+  forms that end in an unclosed backquote after a runner (``echo hi; pytest`` and a backquote),
+  one per hooked stack: the guard names the form's stack and all four hooks allow it. Its own check is proved both ways, and the parity
+  checks skip exactly its forms.
 
 The block REASON (§S4) is pinned in ``tests/test_client_path_anchoring.py``, beside the reason
 checks it extends. Each class is a per-hook binding of a mixin, so one more runner hook is one
@@ -1566,17 +1570,69 @@ HOOK_ONLY_EXTRAS = {
 }
 
 
+#: CR-MDB-066 §S9.3 — the one sanctioned divergence between the guard and the hooks, each form
+#: with the stack the guard names. The guard reads an unclosed backquote's text up to the line's
+#: end, so it names the runner before it; the four hooks read an unclosed backquote as an unclosed
+#: quote (§S1.4) and allow, and bash refuses the line. One form per hooked stack.
+UNCLOSED_BACKQUOTE_DIVERGENCE = (
+    ("echo hi; pytest `", "python"),
+    ("echo hi; bun test `", "bun"),
+    ("echo hi; cargo test `", "cargo"),
+    ("echo hi; mvn test `", "mvn"),
+)
+
+
+def _unclosed_backquote_findings(forms, cwd):
+    """Every way ``forms`` (``(command, stack)`` pairs) is not the §S9.3 divergence, one finding
+    per point; ``[]`` when each form's stack is the one the guard's ``stack_of`` names (never
+    ``None``) and each of the four REAL hooks allows it in ``cwd`` — the corpus's own check."""
+    findings = [f"{command!r}: guard says {stack_of(command)!r}, labelled {stack!r}"
+                for command, stack in forms if stack is None or stack_of(command) != stack]
+    commands = tuple(command for command, _ in forms)
+    for hook, spec in RUNNER_HOOKS.items():
+        verdicts = _verdicts(spec["script"], commands, cwd)
+        findings += [f"{command!r}: {hook} hook {verdicts[command]}, not allow"
+                     for command in commands if verdicts[command] != "allow"]
+    return findings
+
+
+def _parity_checked(corpus):
+    """``corpus`` without the sanctioned divergence's forms: the commands §S6's parity checks
+    read (CR-MDB-066 §S9.3)."""
+    sanctioned = {command for command, _ in UNCLOSED_BACKQUOTE_DIVERGENCE}
+    return tuple(command for command in corpus if command not in sanctioned)
+
+
+def _assigned_parity_wrong(commands, verdicts):
+    """§S6's check on each of ``commands`` the guard assigns to a stack: that stack's hook
+    blocks it and every other hook allows it. One line per hook that disagrees."""
+    wrong = []
+    for command in commands:
+        stack = stack_of(command)
+        if stack is None:
+            continue
+        for hook, hook_verdicts in verdicts.items():
+            want = "block" if hook == stack else "allow"
+            if hook_verdicts[command] != want:
+                wrong.append(f"{command!r} (guard: {stack}): {hook} hook {hook_verdicts[command]}")
+    return wrong
+
+
 def _parity_corpus():
     """§S6's corpus, each command once: the guard's ``RUNNER_FORMS``, ``WRAPPED_FORMS``,
     ``CLIENT_FORMS`` and ``NON_RUNNER_MENTIONS``, its CR-MDB-062 and CR-MDB-066 corpora,
-    ``MODULE_FORMS`` and ``PARITY_FORMS`` — the arduino (``make``) entries left out."""
+    ``MODULE_FORMS``, ``PARITY_FORMS`` and ``UNCLOSED_BACKQUOTE_DIVERGENCE`` — the arduino
+    (``make``) entries left out."""
     # MIGRATED at CR-MDB-066 (§S8.2): GRAMMAR_FORMS joins the labelled corpora and
     # GRAMMAR_NON_RUNNERS the plain ones.
     # MIGRATED at CR-MDB-066 (§S8.2, §S2): PACKAGE_MANAGER_FORMS, FILTER_FORMS and VITEST_FORMS
     # join the labelled corpora and BUN_NON_RUNNERS the plain ones.
+    # MIGRATED at CR-MDB-066 (§S9): UNCLOSED_BACKQUOTE_DIVERGENCE joins the labelled corpora;
+    # the parity checks skip its forms (``_parity_checked``).
     labelled = (RUNNER_FORMS + WRAPPED_FORMS + POSITION_FORMS + ATTACHED_M_FORMS + UV_RUN_FORMS
                 + TEST_FILE_FORMS + BUN_SCRIPT_FORMS + GRAMMAR_FORMS + PACKAGE_MANAGER_FORMS
-                + FILTER_FORMS + VITEST_FORMS + MODULE_FORMS + PARITY_FORMS)
+                + FILTER_FORMS + VITEST_FORMS + MODULE_FORMS + PARITY_FORMS
+                + UNCLOSED_BACKQUOTE_DIVERGENCE)
     plain = (CLIENT_FORMS + NON_RUNNER_MENTIONS + NARROWED_BUN_SCRIPTS + HEREDOC_BODIES
              + QUOTED_LINES + NON_TEST_SCRIPTS + ARGUMENT_MENTIONS + GRAMMAR_NON_RUNNERS
              + BUN_NON_RUNNERS)
@@ -1594,6 +1650,7 @@ class RunnerHookGuardParityTest(unittest.TestCase):
         project = build_tree(cls.tmp / "all-stacks",
                              [spec["markers"][0] for spec in RUNNER_HOOKS.values()], git="dir")
         cls.corpus = _parity_corpus()
+        cls.checked = _parity_checked(cls.corpus)
         cls.extras = tuple(c for commands in HOOK_ONLY_EXTRAS.values() for c in commands)
         cls.verdicts = {stack: _verdicts(spec["script"], cls.corpus + cls.extras, project)
                         for stack, spec in RUNNER_HOOKS.items()}
@@ -1623,20 +1680,15 @@ class RunnerHookGuardParityTest(unittest.TestCase):
         self.assertEqual(wrong, [], "§S6: the guard's verdicts:\n  " + "\n  ".join(wrong))
 
     def test_each_command_the_guard_assigns_to_a_stack_is_blocked_by_that_stacks_hook_only(self):
-        wrong = []
-        for command in self.corpus:
-            stack = stack_of(command)
-            if stack is None:
-                continue
-            for hook, verdicts in self.verdicts.items():
-                want = "block" if hook == stack else "allow"
-                if verdicts[command] != want:
-                    wrong.append(f"{command!r} (guard: {stack}): {hook} hook {verdicts[command]}")
+        # MIGRATED at CR-MDB-066 (§S9): the check reads the corpus less the sanctioned
+        # divergence (``_parity_checked``).
+        wrong = _assigned_parity_wrong(self.checked, self.verdicts)
         self.assertEqual(wrong, [], "§S6 parity:\n  " + "\n  ".join(wrong))
 
     def test_each_command_the_guard_passes_is_allowed_by_all_four_hooks(self):
+        # MIGRATED at CR-MDB-066 (§S9): the corpus less the sanctioned divergence.
         wrong = [f"{command!r} (guard: None): {hook} hook {verdicts[command]}"
-                 for command in self.corpus if stack_of(command) is None
+                 for command in self.checked if stack_of(command) is None
                  for hook, verdicts in self.verdicts.items() if verdicts[command] != "allow"]
         self.assertEqual(wrong, [], "§S6 parity:\n  " + "\n  ".join(wrong))
 
@@ -1646,6 +1698,80 @@ class RunnerHookGuardParityTest(unittest.TestCase):
                  for hook, verdicts in self.verdicts.items()
                  if verdicts[command] != ("block" if hook == owner else "allow")]
         self.assertEqual(wrong, [], "§S5/§S6 extras:\n  " + "\n  ".join(wrong))
+
+    # CR-MDB-066 §S9.3 (AC12) — the unclosed backquote's divergence, pinned as deliberate.
+
+    def test_the_parity_checks_skip_exactly_the_unclosed_backquote_divergence(self):
+        forms = [command for command, _ in UNCLOSED_BACKQUOTE_DIVERGENCE]
+        self.assertEqual([c for c in forms if c not in self.corpus], [])
+        self.assertEqual(sorted(set(self.corpus) - set(self.checked)), sorted(forms))
+        self.assertEqual(len(self.corpus) - len(self.checked), len(forms))
+
+    def test_without_the_skip_the_parity_check_reports_each_divergence_form(self):
+        # Proof the skip is needed: the assigned-stack check, run on the whole corpus, reports
+        # every divergence form (its stack's hook allows it) and no other command.
+        wrong = _assigned_parity_wrong(self.corpus, self.verdicts)
+        reported = sorted({line.split(" (guard: ")[0] for line in wrong})
+        self.assertEqual(reported,
+                         sorted(repr(command) for command, _ in UNCLOSED_BACKQUOTE_DIVERGENCE))
+        self.assertEqual(len(wrong), len(UNCLOSED_BACKQUOTE_DIVERGENCE))
+
+
+class UnclosedBackquoteDivergenceTest(unittest.TestCase):
+    """CR-MDB-066 §S9.3 (AC12) — ``UNCLOSED_BACKQUOTE_DIVERGENCE``: on each form the guard's
+    ``stack_of`` names the form's stack while all four REAL hooks allow it, in a temp git project
+    carrying every stack's marker. The corpus's own check is proved both ways. Regression pins:
+    the verdicts hold today."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = Path(tempfile.mkdtemp(prefix="modelb-unclosed-backquote-", dir="/tmp"))
+        cls.project = build_tree(cls.tmp / "all-stacks",
+                                 [spec["markers"][0] for spec in RUNNER_HOOKS.values()],
+                                 git="dir")
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def test_the_corpus_holds_the_specs_form_and_one_form_per_hooked_stack(self):
+        commands = [command for command, _ in UNCLOSED_BACKQUOTE_DIVERGENCE]
+        self.assertIn("echo hi; pytest `", commands)
+        self.assertEqual(sorted({stack for _, stack in UNCLOSED_BACKQUOTE_DIVERGENCE}),
+                         sorted(RUNNER_HOOKS))
+        self.assertEqual(len(commands), len(set(commands)))
+        self.assertEqual([c for c in commands if "`" not in c], [])
+
+    def test_the_guard_names_each_forms_stack(self):
+        wrong = [f"{command!r}: guard says {stack_of(command)!r}, want {stack!r}"
+                 for command, stack in UNCLOSED_BACKQUOTE_DIVERGENCE
+                 if stack_of(command) != stack]
+        self.assertEqual(wrong, [])
+
+    def test_every_hook_allows_each_form(self):
+        commands = tuple(command for command, _ in UNCLOSED_BACKQUOTE_DIVERGENCE)
+        wrong = [f"{command!r}: {hook} hook {verdict}"
+                 for hook, spec in RUNNER_HOOKS.items()
+                 for command, verdict in _verdicts(spec["script"], commands,
+                                                   self.project).items()
+                 if verdict != "allow"]
+        self.assertEqual(wrong, [])
+
+    def test_the_corpus_passes_its_own_check(self):
+        self.assertEqual(_unclosed_backquote_findings(UNCLOSED_BACKQUOTE_DIVERGENCE,
+                                                      self.project), [])
+
+    def test_the_check_fails_a_form_on_which_the_guard_and_the_hooks_agree(self):
+        # Proof the check bites: a closed runner the guard names and the python hook blocks.
+        agreed = ("echo hi; pytest", "python")
+        findings = _unclosed_backquote_findings(UNCLOSED_BACKQUOTE_DIVERGENCE + (agreed,),
+                                                self.project)
+        self.assertEqual(findings, ["'echo hi; pytest': python hook block, not allow"])
+
+    def test_the_check_fails_a_form_the_guard_passes(self):
+        # Proof the check bites on the guard's side: a form the guard and the hooks both pass.
+        findings = _unclosed_backquote_findings((("echo pytest `", "python"),), self.project)
+        self.assertEqual(findings, ["'echo pytest `': guard says None, labelled 'python'"])
 
 
 if __name__ == "__main__":
