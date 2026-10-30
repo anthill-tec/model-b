@@ -168,9 +168,8 @@ In `tests/test_stack_reference_material.py`, beside `QUARKUS_TOML_FORBIDDEN` and
      `store-utils` and `4pm-Store-utils`.
    - **`"bun"`** — the Sandesh Pi extension's test design (none of these terms
      matches inside `sandesh`, `$SANDESH_…` or
-     `sandesh-relay`): words `pi.exec`, `registerTool`, `ExtensionAPI`, `AgentToolResult` (the shim's
-     test doubles; Pi's API is the harness's, so these are flagged only where its test design leaked),
-     `typebox`, `StringEnum`, `Sandesh-core`, `thin TS shim`, `CLI-flag mapping`,
+     `sandesh-relay`, nor inside any name of Pi's own extension API, which is workflow vocabulary too):
+     words `typebox`, `StringEnum`, `Sandesh-core`, `thin TS shim`, `CLI-flag mapping`,
      `exact argv`; and, from the gap analysis, words `jsdom`, `happy-dom`, `testing-library`,
      `Testing Library`, `msw`, `Wails`, `VanJS`, `TanStack`, `fake-indexeddb`; case words `React`, `DOM`;
      substrings `from "bun:test"` and `Bun's test runner`; the pattern for a named default package dir,
@@ -184,7 +183,8 @@ In `tests/test_stack_reference_material.py`, beside `QUARKUS_TOML_FORBIDDEN` and
    Crucible, lean-ctx, Pi itself (`@earendil-works/pi-coding-agent`), pi-subagents for sub-agent dispatch and worktree isolation, the `process` tool,
    sandesh-pi for the wake path, pi-permission-system, pi-lens and web search) are named in any stack: their
    names, CLIs, env vars and tools (`sandesh`, `SANDESH_PROJECT`, `crucible`, `*-crucible.py`,
-   `crucible.toml`, `crucible.testScript`, `lean-ctx`, `ctx_*`, `pi-*`, `process`, `subagent`). No term
+   `crucible.toml`, `crucible.testScript`, `lean-ctx`, `ctx_*`, `pi-*`, `process`, `subagent`, and Pi's own
+   extension API: `pi.exec`, `registerTool`, `ExtensionAPI`, `AgentToolResult`). No term
    is one of them, and no substring or pattern term matches inside one. The guard flags one project's own
    architecture only: the Sandesh Pi extension's test design, Sheetal's specifics, one Quarkus service's.
 2. **Per stack:** `stack_generality_findings(stack, text)` returns one finding per term of `"*"` and of
@@ -310,7 +310,8 @@ reads text; nothing runs a runner.
         `python-crucible.py`, `crucible.toml`,
         "(default `crucible.toml`)", `crucible.testScript`, `crucible.reportPath.<target>`, `lean-ctx`,
         `ctx_read`, `ctx_shell`, pi-subagents, `subagent`, the `process` tool, pi-processes,
-        pi-permission-system, pi-lens and web search yields none, as every stack in `STACK_GENERALITY_TERMS`
+        pi-permission-system, pi-lens, web search and Pi's own extension API (`@earendil-works/pi-coding-agent`,
+        `pi.exec`, `registerTool`, `ExtensionAPI`, `AgentToolResult`) yields none, as every stack in `STACK_GENERALITY_TERMS`
         and as stack `python`; so no term, substring or pattern of any list matches inside one of them;
       - **the tree:** `stack_tree_generality_findings` on a clean synthetic stack with no exceptions yields
         none; on a synthetic stack carrying one term, not excepted, yields exactly that finding; on a

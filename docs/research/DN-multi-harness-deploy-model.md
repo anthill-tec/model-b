@@ -1145,9 +1145,11 @@ frontend consumes).
   pi-lens, the process and web-search packages, sandesh-pi) they meet the workflow's context-management
   and security requirements and provide the functionality Model B projects need — sub-agent dispatch and
   worktree isolation, supervised background processes, the wake path, the permission policy. Their names, CLIs, environment variables and tools stay named in any stack,
-  skill or template that needs them, and the guard never flags them. What leaves `bun.toml` is one
-  project's architecture — the Sandesh Pi extension's own test design (the `pi.exec` and `registerTool`
-  mocks, the CLI-mapping table, TypeBox schemas, `integrations/pi/`) — and the guard flags those terms.
+  skill or template that needs them, and the guard never flags them — Pi itself and its extension API
+  (`pi.exec`, `registerTool`, `ExtensionAPI`) included. What leaves `bun.toml` is one project's
+  architecture — the Sandesh Pi extension's own test design — and the guard flags only the terms that are
+  that project's (the CLI-mapping table and exact-argv assertions, TypeBox schemas, Sandesh-core, a named
+  default package dir such as `integrations/pi/`).
 - **The bun stack is runner-neutral and names the client's 0.4.0 surface:** `test` runs the project's
   declared `crucible.testScript`, else Bun's own runner; a Vitest target declares
   `crucible.reportPath.<target>`; a workspace package's `module` run is `--package-dir <package>` running
