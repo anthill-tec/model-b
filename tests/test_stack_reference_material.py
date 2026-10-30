@@ -117,6 +117,10 @@ checked as data (:data:`EXPECTED_DECLARATION`, :data:`STACK_SKILL_SOURCES`,
   :func:`blank_line_findings` proved both ways on synthetic text, then every top-level definition
   of this module (decorators included, read from ``ast`` line numbers) follows exactly two blank
   lines.
+- ``TierCommentDetectorTest`` / ``TierCommentTest`` — CR-MDB-079 §S8.1/AC8:
+  :func:`tier_comment_findings` proved both ways on synthetic text, then the real ``bun.toml``, the
+  spec's Appendix A and :data:`APPENDIX_A_BUN_TOML` carry one per-stack comment directly above
+  ``tier_guidance``, read from the real file.
 
 MIGRATED (CR-MDB-060 §S1.1): the templates the CR-MDB-085 and CR-MDB-086 classes read —
 ``rust-orchestration.md``, ``arduino-orchestration.md``, ``java-orchestration.md`` — are the stack
@@ -3067,6 +3071,111 @@ class BlankLineLayoutTest(unittest.TestCase):
 
     def test_every_top_level_definition_here_follows_two_blank_lines(self):
         self.assertEqual(blank_line_findings(read_text(Path(__file__))), [], "§S8.3: layout")
+
+
+#: CR-MDB-079 §S8.1/AC8 — the spec whose Appendix A shows ``bun.toml``'s text; where it shows the
+#: per-stack comment above ``tier_guidance``, its text is the authority.
+CR_079_SPEC = REPO_ROOT / "docs" / "changes" / "CR-MDB-079-bun-stack-general-to-every-bun-project.md"
+TIER_KEY = "tier_guidance"
+#: CR-MDB-079 AC8 — the opening of every stack file's per-stack comment, as AC8 quotes it.
+TIER_COMMENT_OPENING = "# CR-MDB-017 §S6b — "
+NO_TIER_COMMENT = f"no comment directly above {TIER_KEY}"
+TIER_COMMENT_DIFFERS = f"the comment above {TIER_KEY} is not bun.toml's"
+
+
+def comment_above(text: str, key: str) -> str:
+    """The run of ``#`` lines directly above the first ``<key> =`` line of ``text``, joined; ""
+    when a blank or other line sits between, or no such line exists."""
+    lines = text.splitlines()
+    for index, line in enumerate(lines):
+        if re.match(rf"{re.escape(key)}\s*=", line):
+            start = index
+            while start > 0 and lines[start - 1].startswith("#"):
+                start -= 1
+            return "\n".join(lines[start:index])
+    return ""
+
+
+def tier_comment_findings(text: str, expected: str) -> list[str]:
+    """CR-MDB-079 §S8.1/AC8: ``text`` carries ``expected`` (the real ``bun.toml``'s comment)
+    directly above its ``tier_guidance``, word for word. One finding at most."""
+    comment = comment_above(text, TIER_KEY)
+    if not comment:
+        return [NO_TIER_COMMENT]
+    return [] if comment == expected else [TIER_COMMENT_DIFFERS]
+
+
+def appendix_a_toml(spec: str) -> str:
+    """The ``toml`` block of ``spec``'s ``## Appendix A`` section ("" when none)."""
+    match = re.search(r"^```toml\n(.*?)^```", md_section(spec, "## Appendix A"), re.S | re.M)
+    return match.group(1) if match else ""
+
+
+#: CR-MDB-079 §S8.1 — a conforming sample: a two-line comment directly above ``tier_guidance``.
+_TIER_COMMENT = "# CR-MDB-017 §S6b — the per-stack half.\n# The tier a run claims is the project's."
+_TIER_GOOD = f"mechanics = '''\n- a\n'''\n\n{_TIER_COMMENT}\n{TIER_KEY} = '''\n- b\n'''\n"
+
+
+class TierCommentDetectorTest(unittest.TestCase):
+    """CR-MDB-079 §S8.1/AC8 — :func:`tier_comment_findings` proved both ways on synthetic text:
+    each break alone yields exactly one finding, the conforming sample none. Passes on arrival (the
+    detector is test code; the real files' checks are :class:`TierCommentTest`'s)."""
+
+    def _edited(self, old: str, new: str) -> str:
+        self.assertEqual(_TIER_GOOD.count(old), 1, old)
+        return _TIER_GOOD.replace(old, new)
+
+    def test_the_conforming_sample_yields_no_finding(self):
+        self.assertEqual(tier_comment_findings(_TIER_GOOD, _TIER_COMMENT), [])
+
+    def test_the_comment_removed_bites(self):
+        removed = self._edited(_TIER_COMMENT + "\n", "")
+        self.assertEqual(tier_comment_findings(removed, _TIER_COMMENT), [NO_TIER_COMMENT])
+
+    def test_the_comment_reworded_bites(self):
+        for old, new in (("per-stack half", "per-stack part"),
+                         ("# CR-MDB-017 §S6b — the per-stack half.\n", "")):
+            with self.subTest(old=old):
+                reworded = self._edited(old, new)
+                self.assertEqual(tier_comment_findings(reworded, _TIER_COMMENT),
+                                 [TIER_COMMENT_DIFFERS])
+
+    def test_the_comment_not_directly_above_the_key_bites(self):
+        for edited in (
+            self._edited(_TIER_COMMENT + "\n", _TIER_COMMENT + "\n\n"),
+            _TIER_COMMENT + "\n" + self._edited(_TIER_COMMENT + "\n", ""),
+        ):
+            with self.subTest(edited=edited):
+                self.assertEqual(tier_comment_findings(edited, _TIER_COMMENT), [NO_TIER_COMMENT])
+
+    def test_appendix_a_toml_is_read_from_the_specs_appendix_a(self):
+        spec = ("# CR\n\n## Scope\n\n```toml\nother = 1\n```\n\n## Appendix A — proposed text\n\n"
+                f"```toml\n{_TIER_GOOD}```\n")
+        self.assertEqual(appendix_a_toml(spec), _TIER_GOOD)
+        self.assertEqual(appendix_a_toml("# CR\n\n## Scope\n\n```toml\nother = 1\n```\n"), "")
+
+
+class TierCommentTest(unittest.TestCase):
+    """CR-MDB-079 §S8.1/AC8 — the real ``bun.toml`` carries the per-stack comment directly above
+    ``tier_guidance``; the spec's Appendix A shows it word for word, and so does
+    :data:`APPENDIX_A_BUN_TOML`. The real file's and the spec's halves pass on arrival; the
+    constant's fails until FIX adds the comment to it."""
+
+    def setUp(self):
+        self.expected = comment_above(read_text(BUN_TOML), TIER_KEY)
+
+    def test_the_real_bun_toml_carries_the_per_stack_comment(self):
+        self.assertTrue(self.expected.startswith(TIER_COMMENT_OPENING),
+                        f"AC8: bun.toml's comment above {TIER_KEY}: {self.expected!r}")
+
+    def test_the_specs_appendix_a_shows_bun_tomls_comment(self):
+        appendix = appendix_a_toml(read_text(CR_079_SPEC))
+        self.assertIn(f"\n{TIER_KEY} = ", appendix, "precondition: Appendix A shows tier_guidance")
+        self.assertEqual(tier_comment_findings(appendix, self.expected), [], "AC8: the spec's text")
+
+    def test_appendix_a_bun_toml_carries_bun_tomls_comment(self):
+        self.assertEqual(tier_comment_findings(APPENDIX_A_BUN_TOML, self.expected), [],
+                         "AC8: APPENDIX_A_BUN_TOML is Appendix A verbatim")
 
 
 if __name__ == "__main__":
