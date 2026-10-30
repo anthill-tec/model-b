@@ -1,6 +1,9 @@
 # CR-MDB-096 — The spec pre-review runs where it pays, and looks only for what would fail the CR
 
-**Status:** PENDING — spec drafted 2026-10-30 from the gap analysis and the user's rulings (PRD D6,
+**Status:** COMPLETED (gap analysis, spec and pre-review 2026-10-30; plan 252, cycles 324–327; VERIFY
+approved with three suggestions, fixed in the `VERIFY findings (§S5)` cycle by the user's ruling; pre-merge
+gate 4808 tests, 0 failed, 1 skip; empty `HOME` 4808/0/12; clean runner 4761/0/26; coverage 6144/6641,
+92.5%, unchanged). Spec drafted 2026-10-30 from the gap analysis and the user's rulings (PRD D6,
 amended 2026-10-30, with the rulings of CR-MDB-096's gap analysis). Pre-review: ran — the gap analysis
 needed the user's rulings; its findings F1–F9 folded in 2026-10-30.
 **Type:** feature (workflow rules, the VERIFY agent template)
