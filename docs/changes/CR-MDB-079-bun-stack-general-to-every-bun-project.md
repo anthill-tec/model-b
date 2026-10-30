@@ -1,7 +1,10 @@
 # CR-MDB-079 — The bun stack is general to every Bun project
 
 **Status:** PENDING — spec drafted 2026-10-30 from the gap analysis and the user's rulings
-(DN-multi-harness-deploy-model §D25, amended 2026-10-30); spec pre-review to follow.
+(DN-multi-harness-deploy-model §D25, amended 2026-10-30); the spec pre-review's findings folded in
+2026-10-30 (S1–S8 and its suggestions), with the user's rulings of 2026-10-30 that the workflow's own tools
+(Sandesh, Crucible, lean-ctx) and the Pi extensions that provide its functionality are workflow vocabulary,
+named in any stack and never a term of the generality guard.
 **Type:** fix (generator stack content; a generality guard over every stack file; one hook reason line)
 **Priority:** P1 — release 1.0.0, wave 2; before CR-MDB-052. CR-MDB-084 and CR-MDB-087 follow it in the
 wave, each removing its own exception from §S5's guard.
@@ -9,19 +12,24 @@ wave, each removing its own exception from §S5's guard.
 **Labels:** generator, stacks, bun, hooks, generality
 **Points:** 8 (scored 5 at gap analysis; re-scored 8 when the generality guard widened from `bun.toml` to
 every `generator/stacks/*.toml`: two term tiers, an exception list with its stale rule and its own proofs,
-and five stack files read instead of one). No split: the guard's tree check fails on today's `bun.toml`,
-so it and the rewrite land in one cycle.
+and five stack files read instead of one; the spec pre-review found 8 right). No split: the guard's tree
+check fails on today's `bun.toml`, so it and the rewrite land in one cycle.
 **Design reference:** DN-multi-harness-deploy-model §D25 and its amendment of 2026-10-30 (user rulings at
 CR-MDB-079's gap analysis: no stack file names one project, with `arduino.toml` and `quarkus.toml` named
-exceptions; the bun stack runner-neutral on the client's 0.4.0 surface; the bun hook's interim line);
-§D21 and its 2026-10-30 amendment (runner names in plain words in guarded text; Model B never steers a
-client through the environment); §D26 (a client gap is stated in the stack file); CR-MDB-066 §S3 (the bun
-reason) and its non-goal handing this CR the `bun test` and Sandesh defaults; PRD D5, ruling of
-2026-10-29 (RED commits its failing tests); `docs/research/PROPOSAL-go-stack-and-bun-frontend-generality.md`
+exceptions; the bun stack runner-neutral on the client's 0.4.0 surface; the bun hook's interim line;
+the workflow's own tools and the Pi extensions that provide its functionality named in any stack and never
+flagged);
+§D21 (no client steered through the environment), its 2026-10-13 amendment (runner names in plain words
+in guarded text) and its 2026-10-30 amendment (the bun reason's tier-verb redirect); §D26 (a client gap is
+stated in the stack file); CR-MDB-066 §S3 (the bun reason) and its non-goal handing this CR
+the `bun test` and Sandesh defaults; PRD D5, ruling of 2026-10-29 (RED commits its failing tests); `docs/research/PROPOSAL-go-stack-and-bun-frontend-generality.md`
 §4/§4.1 (as ruled by §D25).
 **Merge precondition:** Sandesh's reply to #1502 — **MET** (Sandesh #1503, 2026-10-30: its bun and
 Pi-extension specifics are in its own `AGENTS.md`, Sandesh `develop` @ `93fe2f4`; CR-MDB-079 cleared to
 merge).
+**Merge precondition (Crucible):** Crucible's answers to the four questions of the cycle plan's step 4
+(before the merge). Appendix A states Crucible's 0.4.0 surface as Crucible described it; a "no" to (a)
+or (b) there re-opens §S1.1/§S1.6 before the merge.
 
 ## Context
 
@@ -36,13 +44,9 @@ same.
 
 Read at gap analysis (2026-10-30, by reading; no run):
 
-- **Sandesh's text had also drifted from its own live shim** (Sandesh #1503): every call carries a
-  `--format toon` prefix and resolves its binary from `$SANDESH_BIN`, then `sandesh` on `PATH`, then
-  `uvx --from sandesh-relay[migrate] sandesh`; a non-zero exit whose stdout is an AXI envelope is returned
-  as the result; `killed` is checked before `code`, with a 240 s timeout; one smoke suite deliberately runs
-  the real CLI. All of it is Sandesh's, held in Sandesh's `AGENTS.md`, and none of it enters Model B: the
-  drift notes leave with the rest. Sandesh now passes its package dir explicitly
-  (`--package-dir integrations/pi`).
+- **Sandesh reported that the old text had also drifted from its live shim** (#1503); the specifics are
+  Sandesh's, in its `AGENTS.md` @ `93fe2f4`, and none of them enters Model B. Sandesh now passes its
+  package dir explicitly.
 - **The stack presumes Bun's own runner:** "Bun's test runner" (header, `mechanics`, the RED description)
   and `bun:test` imports.
 - **The bun hook's runner line is half wrong** (Crucible #1500): CR-MDB-066 §S3.4 wrote "`test` and
@@ -51,20 +55,23 @@ Read at gap analysis (2026-10-30, by reading; no run):
 - **Two more stack files name one project.** `arduino.toml` names the Sheetal firmware (`Sheetal`,
   `sheetal-firmware` in its commands and layout, `CR-SHE-005` to `CR-SHE-009`); `quarkus.toml` names one
   service's architecture (`UuidV7Generator`, `ServerEvent`, `eventBus.emit`). CR-MDB-084 and CR-MDB-087
-  make them general; until then they are §S5's named exceptions (§D25, amended 2026-10-30).
-  `python.toml` names a `SANDESH_PROJECT`-style variable as a config-wiring example, and `rust.toml`'s
-  provenance comment cites a Sandesh message; neither carries Sandesh's architecture, so `sandesh` is a
-  bun term (§S5.2), not a term for every stack.
+  make them general; until then they are §S5's named exceptions.
+- **What leaves is one project's design:** the Sandesh Pi extension's own. The workflow's own tools and the
+  Pi extensions that provide its functionality stay named wherever the workflow needs them, in any stack
+  (DN-multi-harness-deploy-model §D25, amended 2026-10-30).
 - **The released client** (`~/.crucible/clients/bun-crucible.py`, 0.3.0, read in its source) and Crucible
-  0.4.0, which Model B 1.0.0 ships against, differ in five places. The shipped text states 0.4.0:
+  0.4.0, which Model B 1.0.0 ships against, differ in four places, and possibly a fifth (whether a `test`
+  run honours `crucible.reportPath.<target>`, asked of Crucible before the merge); the tier verbs are
+  unchanged as far as Crucible has stated. The shipped text states 0.4.0:
 
   | Surface | 0.3.0 (installed) | 0.4.0 (Crucible's statement) |
   |---|---|---|
   | `test` | always Bun's own runner (`cmd_test`) | `crucible.testScript`, else Bun's own runner (CR-CRU-194) |
-  | `test --tests <file>` | Bun's own runner on the file | the declared script on the file(s) (CR-CRU-194; how the files reach the script is asked of Crucible before the merge, After merge step 4 — the text holds either way) |
+  | `test --tests <file>` | Bun's own runner on the file | the declared script on the file(s) (CR-CRU-194; how the files reach the script is asked of Crucible before the merge, cycle plan step 4) |
   | package dir | `--package-dir` > `$BUN_CRUCIBLE_PACKAGE_DIR` > `<project>/integrations/pi` > root | `--package-dir` > `BUN_CRUCIBLE_PACKAGE_DIR` > the project `crucible.toml` > root |
   | `regression` | full Bun run, lcov with `--coverage` | changed by CR-CRU-222 (shape not yet stated) |
   | tier verbs | the declared `test:<tier>` by name; `--` passthrough; refused when undeclared; report path by `crucible.reportPath.<target>` | unchanged as stated |
+  | report path on a `test` run | `crucible.reportPath.<target>` read only for a declared tier target | not stated (asked of Crucible before the merge, cycle plan step 4) |
 
 - **Guarded text names runners in plain words** (§D21, 2026-10-13): `bun.toml` and `generator/agents/` are
   in the raw-runner guard's `GUARDED_ROOTS`, so a code span holding `bun test`, `vitest` or `bun run test`
@@ -83,7 +90,9 @@ empty `HOME`), and recorded here with its time.
 
 ### §S1 — What `bun.toml` carries (what holds for every Bun project)
 
-`generator/stacks/bun.toml` is rewritten to Appendix A. It carries:
+`generator/stacks/bun.toml` is rewritten to Appendix A. Its 0.4.0 statements (what `test` and
+`test --tests <file>` run, the report path, the gap, the package dir in `crucible.toml`) are Crucible's,
+confirmed with Crucible before the merge (cycle plan step 4). It carries:
 
 1. **The client** — its verbs (`register`, `test`, `check`, the tier verbs, `unregister`); that `test`
    runs the project's declared test script (`crucible.testScript` in `package.json`), else Bun's own runner
@@ -129,10 +138,13 @@ empty `HOME`), and recorded here with its time.
 
 ### §S4 — What leaves `bun.toml`
 
-1. **Sandesh's text:** the shim, `pi.exec`, `registerTool`, `ExtensionAPI`, `AgentToolResult`, TypeBox,
-   the mapping table, exact `sandesh` argv, Sandesh-core and PE3, the Pi API sources,
-   `$SANDESH_PROJECT`/`$SANDESH_ADDRESS`, `integrations/pi/`, and with it everything #1503 lists. It goes
-   into no memory template and no other Model B file; Sandesh holds it.
+1. **The Sandesh Pi extension's own design:** the thin TS shim, `pi.exec` mocks and `registerTool` spies,
+   `ExtensionAPI`, `AgentToolResult`, TypeBox and `StringEnum`, the tool-parameter to CLI-flag mapping
+   table and exact-argv assertions, Sandesh-core and PE3, `@earendil-works/pi-coding-agent` as test-API
+   guidance, `integrations/pi/` as a default dir, the shim's environment fallback, and with it everything
+   #1503 lists. It leaves as one project's design, not because it names Sandesh: the workflow's own tools
+   stay named wherever the workflow needs them (see the Context). It goes into no memory template and no
+   other shipped Model B file; Sandesh holds it.
 2. **Never enters:** framework, test-library or project-architecture text — React, a DOM environment
    (jsdom, happy-dom), Testing Library, MSW, Wails, VanJS, TanStack, `fake-indexeddb` — and Bun's
    process-wide module-mock leak, a fact about one runner (§D25, amended 2026-10-30).
@@ -143,20 +155,38 @@ In `tests/test_stack_reference_material.py`, beside `QUARKUS_TOML_FORBIDDEN` and
 (DN-multi-harness-deploy-model §D25, amended 2026-10-30):
 
 1. **The terms.** A term is matched in one of four ways: a *word* (case-insensitive, between
-   non-alphanumerics or the text's ends), a *case word* (the same, case-sensitive), a *substring*
+   non-alphanumerics or the text's ends; the boundary class is `[A-Za-z0-9]`, so `_` is a boundary and
+   `Sheetal` matches in `SHEETAL_PORT`, unlike the `(?<![A-Za-z0-9_])` of the precedent
+   `rewording_findings`), a *case word* (the same, case-sensitive), a *substring*
    (case-sensitive) or a *pattern* (a regular expression). `STACK_GENERALITY_TERMS` maps a stack to its
    terms, with `"*"` for the terms every stack is checked against:
    - **`"*"` (every stack)** — the project identifiers measured in today's stack files: words `Sheetal`
-     (it also covers `sheetal-firmware`), `UuidV7Generator`, `ServerEvent`, `eventBus.emit`, `pi.exec`,
-     `registerTool`, `ExtensionAPI`, `AgentToolResult`, `earendil`, `PE3`; substrings `CR-SHE-` and
-     `integrations/`.
-   - **`"bun"`** — from the gap analysis: words `sandesh` (it also covers `$SANDESH_…` and
-     `sandesh-relay`), `typebox`, `toon`, `uvx`, `jsdom`, `happy-dom`, `testing-library`,
+     (it also covers `sheetal-firmware`), `UuidV7Generator`, `ServerEvent`, `eventBus.emit`, `PE3`;
+     substrings `CR-SHE-` and
+     `integrations/`; and the Java project's names, taken from `PROJECT_NAMES` (CR-MDB-086 §S4.1, read, not
+     edited) as substrings: `fourpm` (it also covers `org.fourpm`, which is therefore not a second term),
+     `store-utils` and `4pm-Store-utils`.
+   - **`"bun"`** — the Sandesh Pi extension's test design (none of these terms
+     matches inside `sandesh`, `$SANDESH_…` or
+     `sandesh-relay`): words `pi.exec`, `registerTool`, `ExtensionAPI`, `AgentToolResult` (the shim's
+     test doubles; Pi's API is the harness's, so these are flagged only where its test design leaked),
+     `typebox`, `StringEnum`, `Sandesh-core`, `thin TS shim`, `CLI-flag mapping`,
+     `exact argv`; and, from the gap analysis, words `jsdom`, `happy-dom`, `testing-library`,
      `Testing Library`, `msw`, `Wails`, `VanJS`, `TanStack`, `fake-indexeddb`; case words `React`, `DOM`;
      substrings `from "bun:test"` and `Bun's test runner`; the pattern for a named default package dir,
-     `` \(default\s+`[^`]+`\) ``.
+     `` package dir\W*\(default\s+`[^`]+`\) `` (a default stated for anything but a package dir,
+     such as "(default `crucible.toml`)", is no match).
 
    No two terms of one stack's list overlap, so a sample holding one term yields one finding.
+
+   **The workflow's own vocabulary is never a term** (DN-multi-harness-deploy-model §D25, amended
+   2026-10-30). The workflow's own tools and the Pi extensions that provide its functionality (Sandesh,
+   Crucible, lean-ctx, Pi itself (`@earendil-works/pi-coding-agent`), pi-subagents for sub-agent dispatch and worktree isolation, the `process` tool,
+   sandesh-pi for the wake path, pi-permission-system, pi-lens and web search) are named in any stack: their
+   names, CLIs, env vars and tools (`sandesh`, `SANDESH_PROJECT`, `crucible`, `*-crucible.py`,
+   `crucible.toml`, `crucible.testScript`, `lean-ctx`, `ctx_*`, `pi-*`, `process`, `subagent`). No term
+   is one of them, and no substring or pattern term matches inside one. The guard flags one project's own
+   architecture only: the Sandesh Pi extension's test design, Sheetal's specifics, one Quarkus service's.
 2. **Per stack:** `stack_generality_findings(stack, text)` returns one finding per term of `"*"` and of
    `stack`'s own list found in `text`, in list order, each naming the stack and the term. It reads the whole
    file (the `ctx_*` tool intents in `[roles]` match no term).
@@ -183,8 +213,12 @@ In `tests/test_stack_reference_material.py`, beside `QUARKUS_TOML_FORBIDDEN` and
    (§D25, amended 2026-10-30):
    "`test` runs the project's declared test script (`crucible.testScript`), else `bun test`; `regression`
    runs `bun test`. A project whose runner is another runs its suites with the tier verbs."
-2. The docstring's last paragraph ("It presumes no runner (CR-MDB-066 §S3) …") ends with the same two
-   sentences, citing `CR-MDB-079 §S6`.
+2. The docstring's last paragraph becomes, word for word (wrapped as the docstring wraps):
+   "It presumes no runner (CR-MDB-066 §S3): its first line names every form it blocks; a tier verb runs
+   the `test:<tier>` script the project declares in `package.json`, by name, and the client refuses a tier
+   the project declares no script for. `test` runs the project's declared test script
+   (`crucible.testScript`), else `bun test`; `regression` runs `bun test`. A project whose runner is
+   another runs its suites with the tier verbs (CR-MDB-079 §S6)."
 3. Unchanged: the first line (it still names `vitest`, `pnpm`, `yarn`, `--filter`), the tier line, the
    CR-MDB-062 §S4 contract (manifest, client, verbs, the gap "a single test selected by name",
    `ALLOW_RAW_BUN=1` with the orchestrator's approval).
@@ -210,8 +244,10 @@ In `tests/test_stack_reference_material.py`, beside `QUARKUS_TOML_FORBIDDEN` and
      (`ast.get_docstring`) names `crucible.testScript` and carries no `_STALE_RUNNER_LINE` match.
 2. **`tests/test_stack_reference_material.py`** (§S1–§S5): NEW `STACK_GENERALITY_TERMS`,
    `STACK_GENERALITY_EXCEPTIONS`, `stack_generality_findings`, `stack_tree_generality_findings`,
-   `BUN_TOML_RULES` (rule, key, anchor) and their test classes. `QUARKUS_TOML_FORBIDDEN` and
-   `PROJECT_NAMES` are unchanged.
+   `BUN_TOML_RULES` (rule, key, anchor), `bun_toml_findings(text)` (AC2's three checks, one finding each)
+   and their test classes; one of them also holds AC7's count of `bun.toml`'s parsed invocations, read
+   through `test_client_path_anchoring`'s `_parse_invocations`. `QUARKUS_TOML_FORBIDDEN` and
+   `PROJECT_NAMES` are unchanged (`STACK_GENERALITY_TERMS` reads `PROJECT_NAMES`).
 3. **`generator/agents/bun-{red,green,verify,fix}-agent.md`:** regenerated with
    `python3 generator/build.py build --stacks bun`, never hand-edited.
 
@@ -248,21 +284,34 @@ reads text; nothing runs a runner.
       | §S3.2 linking (VERIFY) | `gotchas.verify` | `link time` |
       | §S3.2 linking (FIX) | `gotchas.fix` | `link time` |
 
-      Both ways: Appendix A's text yields no finding; that text with one anchor removed yields exactly that
-      row's finding, for each row.
+      Both ways: Appendix A's text yields no finding; that text with every occurrence of one row's anchor
+      removed from that row's key yields exactly that row's finding, for each row.
 - [ ] **AC2 — §S1.2/§S1.4/§S2 on the real file.** The real `bun.toml` names no `BUN_CRUCIBLE_PACKAGE_DIR`
       and its `tier_guidance` no `test:regression`; it carries neither `from "bun:test"` nor
       `Bun's test runner` (through `stack_generality_findings`, AC4); its `[description].red` and header
-      comment name "the project's declared runner on the Bun runtime".
+      comment name "the project's declared runner on the Bun runtime". Its other three checks run
+      through `bun_toml_findings` (§S7.2), proved both ways: Appendix A's text yields none; that text
+      with `BUN_CRUCIBLE_PACKAGE_DIR` added to `mechanics`, with `test:regression` added to
+      `tier_guidance`, with the phrase removed from the header comment, or with it removed from
+      `[description].red`, yields exactly that one finding.
 - [ ] **AC3 — the guard, proved both ways** (§S5), on synthetic text:
       - **each term alone:** every term of `"*"` and of `"bun"`, placed alone in a neutral sentence and read
-        as stack `bun`, yields exactly its own finding; the pattern's sample is `` (default `pkg/`) ``, and
-        `integrations/pi/` alone yields exactly the `integrations/` finding; each `"*"` term read as stack
+        as stack `bun`, yields exactly its own finding; the pattern's sample is
+        `` the package dir (default `pkg/`) ``, and `integrations/pi/` alone yields exactly the
+        `integrations/` finding; each `"*"` term read as stack
         `python` yields exactly its finding, and a `"bun"`-only term read as `python` yields none;
-      - **near misses:** a neutral sample holding "reactive", "react to", "domain", "cartoon", "api.exec",
+        `sheetal-firmware/` and `SHEETAL_PORT` each yield exactly the `Sheetal` finding;
+      - **near misses:** a neutral sample holding "reactive", "react to", "domain", "api.exec",
         "a sheet", "server events", "UUID.randomUUID()", "Vitest on the Bun runtime",
         "Bun's own test runner", "the package dir (`--package-dir <dir>`)" and `ctx_shell` yields none, as
         stack `bun` and as stack `python`;
+      - **the workflow's own vocabulary:** a sample holding `sandesh`, `$SANDESH_PROJECT`,
+        `$SANDESH_ADDRESS`, `sandesh-relay`, sandesh-pi, "the Sandesh tools", `crucible`, `bun-crucible.py`,
+        `python-crucible.py`, `crucible.toml`,
+        "(default `crucible.toml`)", `crucible.testScript`, `crucible.reportPath.<target>`, `lean-ctx`,
+        `ctx_read`, `ctx_shell`, pi-subagents, `subagent`, the `process` tool, pi-processes,
+        pi-permission-system, pi-lens and web search yields none, as every stack in `STACK_GENERALITY_TERMS`
+        and as stack `python`; so no term, substring or pattern of any list matches inside one of them;
       - **the tree:** `stack_tree_generality_findings` on a clean synthetic stack with no exceptions yields
         none; on a synthetic stack carrying one term, not excepted, yields exactly that finding; on a
         synthetic excepted stack carrying a term, yields none; on a clean synthetic excepted stack, yields
@@ -273,9 +322,9 @@ reads text; nothing runs a runner.
         them or yields their stale finding;
       - `stack_tree_generality_findings` over today's tree yields `bun.toml`'s findings (cycle 2's RED
         evidence); after GREEN it yields none;
-      - the exceptions bite: `stack_generality_findings("arduino", …)` on the real file includes the
-        `Sheetal` and `CR-SHE-` findings, and on `quarkus.toml` the `UuidV7Generator`, `ServerEvent` and
-        `eventBus.emit` findings;
+      - the exceptions bite, data-driven: each stack in `STACK_GENERALITY_EXCEPTIONS` yields at least one
+        `stack_generality_findings` on its real file (the stale rule's other half); no term is pinned to
+        either file, so CR-MDB-084 and CR-MDB-087 remove only their own entry;
       - each exception's CR has a spec under `docs/changes/` (`CR-MDB-084-*.md`, `CR-MDB-087-*.md`);
       - after GREEN, each of the four rendered `generator/agents/bun-*-agent.md` yields no
         `stack_generality_findings("bun", …)`.
@@ -296,9 +345,11 @@ reads text; nothing runs a runner.
       - `GuardedTreeHasNoRawRunnerTest` passes (runners named in plain words in `bun.toml` and the renders);
       - `ClientContractS3Test` passes on the installed client: every `bun-crucible.py` invocation in
         `bun.toml` uses only `--tests`, `--agent` and `--package-dir`; the `generator/stacks` floor (28) and
-        the per-source floors hold with no edit, and `bun.toml` carries at least 8 parsed invocations;
-      - `ReleasedClientPathS8Test`, `CRUCIBLE_REFERENCE_PINNED`, `EXPECTED_SKILLS` pass unchanged (the three
-        commands, `crucible_reference` and `[roles]` are untouched);
+        the per-source floors hold with no edit, and `bun.toml` carries at least 8 parsed invocations (the
+        count is held by a §S7.2 class in `tests/test_stack_reference_material.py`);
+      - `ReleasedClientPathS8Test`, `CRUCIBLE_REFERENCE_PINNED`, `CURRENT_SKILLS`
+        (`tests/test_pi_agent_definitions.py`) pass unchanged (the three commands, `crucible_reference`
+        and `[roles]` are untouched);
       - every `test_s6b_*` check in `tests/test_generator_role_contract.py` passes unchanged;
       - `RegistryKeysDeclaredGateTest` passes and `NOT_REGISTRY_KEYS` is unchanged;
       - `ruff check` exits 0; no test module and no skip is added; every module named in the cycle plan
@@ -310,8 +361,8 @@ reads text; nothing runs a runner.
 
 - **`arduino.toml`'s and `quarkus.toml`'s project text:** CR-MDB-084 and CR-MDB-087 (release 1.0.0, wave 2,
   after this CR); here they are §S5's named exceptions, and each CR removes its own.
-- **`python.toml`'s `SANDESH_PROJECT`-style example and `rust.toml`'s provenance comment:** neither carries
-  Sandesh's architecture; `sandesh` is a bun term (§S5.1). Neither file is edited.
+- **Flagging the workflow's own tools** (§S5.1, its closing paragraph) — Sandesh, Crucible, lean-ctx and the
+  Pi extensions that provide the workflow's functionality are named in any stack, and no term flags them.
 - **The templates' known-gap line** ("`bun-crucible.py test` takes no test-name filter"): still true;
   the 0.4.0 doc-sync CR re-checks it.
 - **The `regression` half of §S6.1:** the 0.4.0 doc-sync CR's, filed when Crucible 0.4.0's release notes
@@ -339,14 +390,12 @@ None of these steps is an acceptance criterion.
 3. **After the 1.0.0 release,** each project with `bun` in `PROJECT_STACKS` re-renders its bun agents with
    `modelb-axi agents`: Crucible (`bun,python`), and Sandesh if `bun` is in its stacks. A definition the
    project hand-modified is skipped and reported; `--force-managed` replaces it.
-4. **Before the merge (orchestrator step):** the orchestrator tells Crucible over Sandesh (seed item 7)
-   that the bun stack is general and what its re-rendered agents lose, and asks how 0.4.0's
-   `test --tests <file>` hands the files to `crucible.testScript`. The stack text ("on the given file(s)")
-   holds either way; the answer goes to the 0.4.0 doc-sync CR. Sandesh is already told (#1502/#1503).
-5. The 0.4.0 doc-sync CR, filed when Crucible 0.4.0's release notes arrive, carries the `regression` half
+4. The 0.4.0 doc-sync CR, filed when Crucible 0.4.0's release notes arrive, carries the `regression` half
    and re-checks the templates' gap line against 0.4.0's `--help`.
-6. CR-MDB-084 and CR-MDB-087 each remove their own `STACK_GENERALITY_EXCEPTIONS` entry when they land;
-   §S5.4's stale rule fails their gates until they do.
+5. CR-MDB-084 and CR-MDB-087 each remove their own `STACK_GENERALITY_EXCEPTIONS` entry when they land;
+   §S5.4's stale rule fails their gates until they do. AC4's real-file bite is data-driven, so no other check of
+   this CR names their terms. Each should add its own stack's terms to `STACK_GENERALITY_TERMS` as it removes
+   its exception: `arduino.toml`'s `docs/research/PRD-arduino-test-stack.md` path, for one, is in no list here.
 
 ## Cycle plan
 
@@ -378,23 +427,40 @@ the cycle's report.
      `tests.test_worktree_flow_surfaces`, `tests.test_orchestrator_references`, `tests.test_toon_codec`,
      `tests.test_python_floor`, `tests.test_package_publishing`, `tests.test_installer_correctness`,
      `tests.test_installer_stack_selection`, `tests.test_ambient_manifest_discovery`,
-     `tests.test_ambient_status_contract`.
+     `tests.test_ambient_status_contract`, `tests.test_scaffold` (it names `block-direct-bun-test`).
 2. **The general bun stack and the generality guard** (§S1–§S5, §S7.2–§S7.3). Red-green.
    - **RED:** `STACK_GENERALITY_TERMS`, `STACK_GENERALITY_EXCEPTIONS`, `stack_generality_findings`,
      `stack_tree_generality_findings` and their synthetic proofs (AC3); `BUN_TOML_RULES` and its bite
-     proof (AC1); the tree checks (AC2, AC4). The tree checks fail on today's `bun.toml`; the synthetic
-     proofs, the exceptions' bite on `arduino.toml` and `quarkus.toml`, and their CR-spec check pass on
+     proof (AC1); `bun_toml_findings` and its bite proof (AC2); the tree checks (AC2, AC4); the count of
+     `bun.toml`'s parsed invocations (AC7). The tree checks fail on today's `bun.toml`; the synthetic
+     proofs, the exceptions' data-driven bite, their CR-spec check and the invocation count pass on
      arrival and are labelled so.
    - **GREEN:** `bun.toml` per Appendix A; `python3 generator/build.py build --stacks bun`; the four
-     renders committed with it.
+     renders committed with it. `GuardedTreeHasNoRawRunnerTest` and `ClientContractS3Test` pass on the new
+     `bun.toml` and renders in this cycle.
    - **Modules:** the docs gates, plus the generator readers: `tests.test_stack_reference_material`,
      `tests.test_generator_role_contract`, `tests.test_agent_generator`, `tests.test_pi_agent_definitions`,
      `tests.test_agent_definition_rules`, `tests.test_project_tools_setup`,
      `tests.test_gap_analysis_reach_and_pre_review`, `tests.test_installer_assets`,
-     `tests.test_worktree_layout_and_bundles`.
+     `tests.test_worktree_layout_and_bundles`, `tests.test_client_run_rule`, `tests.test_skill_frontmatter`,
+     `tests.test_verify_spec_pre_review_mode`, `tests.test_crucible_skill`,
+     `tests.test_board_holds_the_queue`, `tests.test_client_verb_sweep`, `tests.test_rust_stack_generator`,
+     `tests.test_stack_skills`, `tests.test_orchestrator_rule_triage`; `tests.test_raw_runner_guard` and
+     `tests.test_client_path_anchoring` (docs gates) carry the two cross-stack readers above.
 3. **Verify.** VERIFY runs the full suite once, without coverage, through the client (§D26), with a real
    `HOME` and an empty one, and reads every AC. The orchestrator then runs the pre-merge gate and records
    the `AGENTS.md` baselines at close-out.
+4. **Before the merge (orchestrator, not a cycle; the Crucible merge precondition):** the orchestrator
+   tells Crucible over Sandesh (seed item 7) that the bun stack is general and what its re-rendered agents
+   lose, and asks Crucible:
+   - (a) how 0.4.0's `test --tests <file>` hands the files to `crucible.testScript`;
+   - (b) whether a `crucible.testScript` run honours `crucible.reportPath.<target>`, and under which
+     target name;
+   - (c) whether 0.4.0's `test` still takes no test-name filter;
+   - (d) that the project's `crucible.toml` declares the package dir.
+
+   A "no" to (a) or (b) re-opens §S1.1/§S1.6 before the merge; the other answers go to the 0.4.0
+   doc-sync CR. Sandesh is already told (#1502/#1503).
 
 ## Appendix A — proposed `bun.toml` text
 
