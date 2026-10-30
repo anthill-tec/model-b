@@ -45,8 +45,8 @@ Read at gap analysis (2026-10-30, by reading). The rule is stated in:
   Mainline, the setup ordering;
 - `skills-src/cr-authoring/SKILL.md`: the design phase; the front matter's `**Status:**`;
 - `skills-src/crucible/SKILL.md`: the VERIFY agent's pre-review duty;
-- `generator/templates/verify.md.tmpl` § Spec pre-review mode, rendered into the 20
-  `generator/agents/*-verify-agent.md` (by `generator/build.py`, which renders every role) and into
+- `generator/templates/verify.md.tmpl` § Spec pre-review mode, rendered into the 5
+  `generator/agents/*-verify-agent.md` (one per stack) (by `generator/build.py`, which renders every role) and into
   Model B's own `.pi/agents/python-verify-agent.md`.
 
 Unchanged by the rule, read and left alone: the pre-review's id, registration and main-tree routing
@@ -151,7 +151,7 @@ In `generator/templates/verify.md.tmpl` § Spec pre-review mode:
 5. Every other rule of the section stays: the trigger (only when the brief declares it), the `report`
    registration with no cycle, Crucible down, the whole spec read, no suite, no ingest, no edit, no
    commit, the `/tmp` sandbox, unregister last.
-6. **Renders:** `python3 generator/build.py build` regenerates the 20 `generator/agents/*-verify-agent.md`
+6. **Renders:** `python3 generator/build.py build` regenerates the 5 `generator/agents/*-verify-agent.md`
    (no other render changes); Model B's own `.pi/agents/python-verify-agent.md` is re-rendered from the
    tree and committed. The render runs `python3 -m modelb_axi agents` from the repository root with
    `MODELB_HOME` at a temp dir holding a copy of the real `$MODELB_HOME/install.toml` with its
@@ -225,9 +225,9 @@ reads text.
       in its opening paragraph; the checklist rule (Rule 24, the skill's installed path, read-only, wording
       and naming not findings); Dimensions 1–10 among what does not bind; the output's checklist item.
       `PRE_REVIEW_RULES`' other rules and the placement, registration and branch-mode checks pass
-      unchanged. Every rendered VERIFY definition (the 20 in `generator/agents/` and Model B's
+      unchanged. Every rendered VERIFY definition (the 5 in `generator/agents/` and Model B's
       `.pi/agents/python-verify-agent.md`) carries the same section.
-- [ ] **AC5 — regeneration.** `python3 generator/build.py --check` is clean; the 20 VERIFY renders are
+- [ ] **AC5 — regeneration.** `python3 generator/build.py --check` is clean; the 5 VERIFY renders are
       the build's output and no other render changes; `.pi/agents/python-verify-agent.md` carries the
       generated header with its current hash.
 - [ ] **AC6 — the scenario matrix.** The text covers, each in a unit AC1 or AC2 pins: Mainline or Solo
