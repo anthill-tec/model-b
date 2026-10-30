@@ -3,7 +3,8 @@
 **Status:** PENDING — **SEED, not the finished spec** (filed 2026-10-28 into release 1.1.0, wave 3).
 Gap analysis, the spec and its pre-review happen in order when this CR starts.
 **Type:** refactor (stack skill content, stack file)
-**Priority:** P2 — release 1.1.0, wave 3.
+**Priority:** P1 — release 1.0.0, wave 2, after CR-MDB-084 (moved from 1.1.0 by the user, 2026-10-30: CR-MDB-079's
+generality guard covers every stack file, with this stack a named exception until this CR removes it).
 **Depends on:** CR-MDB-086 (the Java stack skill); the board is authoritative: read `queue`, not this
 line.
 **Labels:** stacks, java, quarkus, generality
