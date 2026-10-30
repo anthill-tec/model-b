@@ -79,6 +79,7 @@ from tests._helpers import (
     ORCHESTRATION_TEMPLATE_MOVES,
     REPO_ROOT,
     md_section,
+    provenance_header,
     read_text,
     run_hook,
     split_frontmatter,
@@ -403,16 +404,6 @@ def companion_findings(bullet: str, skill: str) -> list[str]:
     if MEMORY_TEMPLATE.search(bullet):
         found.append("names a memory template")
     return found
-
-
-def provenance_header(text: str) -> str:
-    """The leading ``#`` comment lines of a TOML file, joined."""
-    lines = []
-    for line in text.splitlines():
-        if not line.startswith("#"):
-            break
-        lines.append(line)
-    return "\n".join(lines)
 
 
 def consuming_skills_findings(source: str) -> list[str]:

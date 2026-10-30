@@ -158,9 +158,9 @@ from tests._helpers import (
     retired_phrases,  # MIGRATED at CR-MDB-093 (§S4)
     split_frontmatter,
 )
+from tests._helpers import provenance_header as _header_comment
 from tests._helpers import rendered_definition as _rendered
 from tests.test_orchestration_acceptance_model import missing_rules, rule_blocks
-from tests.test_orchestrator_references import provenance_header as _header_comment
 from tests.test_orchestrator_rule_triage import section_body
 
 GENERATOR_DIR = REPO_ROOT / "generator"
@@ -1733,7 +1733,6 @@ class AgentsMdNamesStackSkillSourcesTest(unittest.TestCase):
         )
 
 
-
 #: §S6.4 — a stated count of generated definitions: ``<n> files`` or ``<n> [generated] definitions``.
 _DEFINITION_COUNT = re.compile(r"(?<![\w.-])(\d+) (?:generated )?(?:files|definitions)\b")
 
@@ -2245,6 +2244,9 @@ mechanics = '''
 - **Generated files are never hand-edited** — whatever the project's build or code generator writes (its `package.json` scripts and `AGENTS.md` name them); regenerate them with the project's own command.
 '''
 
+# CR-MDB-017 §S6b — the per-stack half of the tier-guidance section. Bun has no
+# tier mechanism of its own, so the tier a run may claim is whatever the PROJECT
+# has declared in package.json — never what the agent selected by hand.
 tier_guidance = '''
 - **Bun has no native tier split — the PROJECT declares one.** A runner on Bun knows files and filters, not tiers; the boundary lives in the `package.json` scripts the project declares: `test:unit`, `test:module`, `test:integration`, `test:e2e`, `test:bdd`. Run a tier with the client's tier verb — `bun-crucible.py <tier> --agent YOUR_AGENT_ID` (e.g. `bun-crucible.py integration --agent YOUR_AGENT_ID`) runs the `test:<tier>` script the project declares, by name, and ingests it; what follows `--` reaches that script (`bun-crucible.py unit --agent YOUR_AGENT_ID -- <file>`). Name the script in your report so the next agent can reproduce exactly the same set.
 - **Never hand-pick a file list and call it a tier.** Passing `--tests a.test.ts b.test.ts` and ingesting the result as `integration` records a tier the project never defined: the next "same" run selects different files and the two are no longer comparable. A hand-picked list is a TARGETED run — report it as `unit`, and only when every file in it is genuinely dependency-free.
@@ -2490,6 +2492,7 @@ WORKFLOW_VOCABULARY = (
 def _sample(term: str) -> str:
     """The sample ``term`` is proved on: :data:`PATTERN_SAMPLES`' for a pattern, else itself."""
     return PATTERN_SAMPLES[term] if term in PATTERN_SAMPLES else term
+
 
 def _finding(stack: str, kind: str, term: str) -> str:
     return f"{stack}: names the {kind} {term!r}"
