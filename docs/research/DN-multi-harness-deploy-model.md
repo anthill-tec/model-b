@@ -1134,6 +1134,24 @@ frontend consumes).
   (CR-MDB-080), beside the project type (CR-MDB-074) and `migrate` (CR-MDB-055), which App Lab's
   onboarding needs.
 
+**AMENDED 2026-10-30 (user rulings at CR-MDB-079's gap analysis):**
+- **No stack file names one project.** A guard over every `generator/stacks/*.toml` keeps project-specific
+  terms out; `arduino.toml` and `quarkus.toml` are named exceptions until CR-MDB-084 and CR-MDB-087 make
+  them general, and both move into release 1.0.0, wave 2, after CR-MDB-079. An exception whose text is
+  already gone fails the guard, so the list cannot go stale.
+- **The bun stack is runner-neutral and names the client's 0.4.0 surface:** `test` runs the project's
+  declared `crucible.testScript`, else Bun's own runner; a Vitest target declares
+  `crucible.reportPath.<target>`; a workspace package's `module` run is `--package-dir <package>` running
+  its declared `test:module`. The stack names `crucible.toml` for the package dir but not its key (the
+  key is Crucible's), and no environment variable (Model B never steers a client through the
+  environment, §D21). Bun's process-wide module-mock leak stays out: it belongs to one runner.
+- **The bun hook's reason** takes Crucible's interim line (#1500): "`test` runs the project's declared
+  test script (`crucible.testScript`), else `bun test`; `regression` runs `bun test`. A project whose
+  runner is another runs its suites with the tier verbs." The 0.4.0 doc-sync CR rewords the `regression`
+  half once CR-CRU-222 ships.
+
+Implemented by CR-MDB-079.
+
 ### D26 — Each role runs the tests its phase needs; only the gate measures coverage
 
 **User rulings 2026-10-28**, on wide test runs by phase agents in every project that adopts the
