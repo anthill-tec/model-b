@@ -46,7 +46,17 @@ keeps `bun test` for structural gates only.
    into no memory template.
 5. **The four bun agents are regenerated** (`generator/build.py build`), and a guard keeps
    project-specific terms out of the stack file.
-6. **Projects re-render** their bun agents with `modelb-axi agents` after the release. Sandesh and
+6. **The bun hook's block reason names what the client runs** (Crucible #1500, 2026-10-30; folded in by
+   the user's ruling). CR-MDB-066 §S3 wrote "`test` and `regression` run `bun test`", which is half wrong:
+   since CR-CRU-194, `test` runs the project's declared test script (`crucible.testScript` in
+   `package.json`) and falls back to `bun test`; only `regression` always runs `bun test` (CR-CRU-222, in
+   Crucible 0.4.0, changes that). The line in `hooks-src/scripts/block-direct-bun-test`'s `REASON` and
+   its docstring take Crucible's interim wording, "`test` runs the project's declared test script
+   (`crucible.testScript`), else `bun test`; `regression` runs `bun test`. A project whose runner is
+   another runs its suites with the tier verbs.", and `bun_reason_findings` pins it, proved both ways.
+   Where the bun stack names the client's runs, it names `crucible.testScript` too. When CR-CRU-222
+   merges, the 0.4.0 doc-sync CR rewords the `regression` half (DN-multi-harness-deploy-model §D21).
+7. **Projects re-render** their bun agents with `modelb-axi agents` after the release. Sandesh and
    Crucible are told before the merge, so Sandesh keeps its specifics in its own project first.
 
 ## To measure at gap analysis
