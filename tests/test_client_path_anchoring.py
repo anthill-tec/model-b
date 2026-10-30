@@ -11,7 +11,8 @@ Class map:
   ``crucible`` skill and its references, the memory templates, ``AGENTS.md``, the two
   ``block-direct-*`` hooks, ``java-orchestration.md``). Meaning-bearing anchors, not sentences.
   It also pins the runner hooks' reasons (CR-MDB-062 §S4) and the bun reason's forms, tier line
-  and runner line (CR-MDB-066 §S3, ``bun_reason_findings``).
+  and runner line (CR-MDB-066 §S3, ``bun_reason_findings``), the runner line as CR-MDB-079 §S6.1
+  words it, and the bun hook's docstring (CR-MDB-079 §S6.2, ``bun_docstring_findings``).
 - ``ClientPathAnchoringS2Test`` — §S2 the anchoring gate over the exact tree list, with its
   exemption list asserted exactly, plus detector fixtures.
 - ``ClientContractS3Test`` — §S3 every ``<stack>-crucible.py <verb> [--flags]`` invocation under
@@ -570,10 +571,20 @@ def _reason_contract_failures(reason, contract):
 BUN_REASON_FIRST_LINE_WORDS = ("vitest", "pnpm", "yarn", "--filter")
 #: CR-MDB-066 §S3.3 — the words one line of the bun reason names: the tier line.
 BUN_REASON_TIER_LINE_WORDS = ("test:<tier>", "declares", "refuses")
-#: CR-MDB-066 §S3.4 — the words one line of the bun reason names: the runner line.
-BUN_REASON_RUNNER_LINE_WORDS = ("regression", "bun test", "Vitest", "tier verbs")
+#: CR-MDB-079 §S6.1 (migrating CR-MDB-066 §S3.4) — the words one line of the bun reason names:
+#: the runner line. "Vitest" stays pinned through ``BUN_REASON_FIRST_LINE_WORDS`` (`vitest`).
+BUN_REASON_RUNNER_LINE_WORDS = ("`test` runs", "crucible.testScript", "else `bun test`",
+                                "`regression` runs `bun test`", "tier verbs")
 #: CR-MDB-066 §S3.2 — the phrase the bun reason no longer carries.
 _SAME_BUN_TEST = re.compile(r"same\s+`?bun\s+test`?", re.I)
+#: CR-MDB-079 §S7.1 — CR-MDB-066 §S3.4's runner line, which neither the bun reason nor the hook's
+#: docstring carries any longer (case-insensitive, whitespace-tolerant, so a wrapped one counts).
+_STALE_RUNNER_LINE = re.compile(r"`test`\s+and\s+`regression`\s+run\b", re.I)
+#: The finding a ``_STALE_RUNNER_LINE`` match yields, in the reason and in the docstring alike.
+_STALE_RUNNER_FINDING = "it still says `test` and `regression` run `bun test`"
+#: CR-MDB-066 §S3.4's runner line, word for word: the stale text the cut proofs append.
+_RETIRED_RUNNER_LINE = ("`test` and `regression` run `bun test`; a project whose runner is "
+                        "another (Vitest under Bun) runs its suites with the tier verbs.")
 
 
 def bun_reason_findings(reason):
@@ -582,8 +593,9 @@ def bun_reason_findings(reason):
 
     - its first line names each of ``BUN_REASON_FIRST_LINE_WORDS`` (one finding per word);
     - it carries no "same `bun test`";
+    - it carries no ``_STALE_RUNNER_LINE`` match (CR-MDB-079 §S7.1);
     - one line names every word of ``BUN_REASON_TIER_LINE_WORDS``;
-    - one line names every word of ``BUN_REASON_RUNNER_LINE_WORDS``.
+    - one line names every word of ``BUN_REASON_RUNNER_LINE_WORDS`` (CR-MDB-079 §S6.1).
     """
     lines = [line.lower() for line in reason.splitlines()]
     first = lines[0] if lines else ""
@@ -591,6 +603,8 @@ def bun_reason_findings(reason):
                 if word.lower() not in first]
     if _SAME_BUN_TEST.search(reason):
         findings.append("it still says the client runs the same `bun test`")
+    if _STALE_RUNNER_LINE.search(reason):
+        findings.append(_STALE_RUNNER_FINDING)
     for label, words in (("the tier line", BUN_REASON_TIER_LINE_WORDS),
                          ("the runner line", BUN_REASON_RUNNER_LINE_WORDS)):
         if not any(all(w.lower() in line for w in words) for line in lines):
@@ -598,10 +612,27 @@ def bun_reason_findings(reason):
     return findings
 
 
-#: CR-MDB-066 §S3.4's line, as a §S3-shaped reason writes it (the cut proofs edit it alone).
-_SYNTHETIC_RUNNER_LINE = ("`test` and `regression` run `bun test`; a project whose runner is "
-                          "another (Vitest under Bun) runs its suites with the tier verbs.")
-#: A bun reason written to CR-MDB-066 §S3 and CR-MDB-062 §S4: both detectors pass it.
+#: CR-MDB-079 §S6.1's line, word for word, as the reason writes it on one physical line (the cut
+#: proofs edit it alone).
+_SYNTHETIC_RUNNER_LINE = ("`test` runs the project's declared test script (`crucible.testScript`), "
+                          "else `bun test`; `regression` runs `bun test`. A project whose runner "
+                          "is another runs its suites with the tier verbs.")
+
+
+def bun_docstring_findings(doc):
+    """Every way the bun hook's docstring ``doc`` breaks CR-MDB-079 §S6.2, one finding per broken
+    point; ``[]`` when it keeps it: it names ``crucible.testScript``, and it carries no
+    ``_STALE_RUNNER_LINE`` match (wrapped over a line break or not)."""
+    findings = []
+    if "crucible.testScript" not in doc:
+        findings.append("it does not name `crucible.testScript`")
+    if _STALE_RUNNER_LINE.search(doc):
+        findings.append(_STALE_RUNNER_FINDING)
+    return findings
+
+
+#: A bun reason written to CR-MDB-066 §S3, CR-MDB-079 §S6.1 and CR-MDB-062 §S4: both detectors
+#: pass it.
 _SYNTHETIC_BUN_REASON = "\n".join((
     "⛔ BLOCKED: a direct bun test run (`bun test`, `bun run test[:<name>]` with a `--filter` "
     "included, the `npm` / `pnpm` / `yarn` test-script forms, `playwright test`, `vitest`) is "
@@ -861,10 +892,14 @@ class ClientPathAnchoringS1Test(unittest.TestCase):
         self.assertEqual(_reason_contract_failures(reason, RUNNER_HOOK_REASONS[name]), [],
                          f"CR-MDB-062 §S4: the {name} reason breaks its contract:\n{reason}")
         self.assertEqual(bun_reason_findings(reason), [],
-                         f"CR-MDB-066 §S3: the {name} reason:\n{reason}")
+                         f"CR-MDB-066 §S3, CR-MDB-079 §S6.1: the {name} reason:\n{reason}")
+        # CR-MDB-079 AC6: one physical line holds §S6.1's two sentences, word for word.
+        self.assertIn(_SYNTHETIC_RUNNER_LINE, [line.strip() for line in reason.splitlines()],
+                      f"CR-MDB-079 §S6.1: no one line of the {name} reason is §S6.1's line:\n{reason}")
 
     def test_s1_bun_reason_detector_passes_a_section_s3_shaped_reason(self):
-        # Proof a correct reason can pass: one written to CR-MDB-066 §S3 keeps both detectors.
+        # Proof a correct reason can pass: one written to CR-MDB-066 §S3 and CR-MDB-079 §S6.1
+        # keeps both detectors.
         self.assertEqual(bun_reason_findings(_SYNTHETIC_BUN_REASON), [])
         self.assertEqual(_reason_contract_failures(
             _SYNTHETIC_BUN_REASON, RUNNER_HOOK_REASONS["block-direct-bun-test"]), [])
@@ -873,7 +908,8 @@ class ClientPathAnchoringS1Test(unittest.TestCase):
         good = _SYNTHETIC_BUN_REASON
         runner_line = _SYNTHETIC_RUNNER_LINE
         tier = "no one line names test:<tier>, declares, refuses (the tier line)"
-        runner = "no one line names regression, bun test, Vitest, tier verbs (the runner line)"
+        runner = ("no one line names `test` runs, crucible.testScript, else `bun test`, "
+                  "`regression` runs `bun test`, tier verbs (the runner line)")
         cuts = {
             "vitest off the first line": (good.replace(", `vitest`)", ")", 1),
                                           ["its first line does not name vitest"]),
@@ -890,21 +926,70 @@ class ClientPathAnchoringS1Test(unittest.TestCase):
                                                            "the tier's script", 1), [tier]),
             "declares off the tier line": (good.replace("declares", "lists"), [tier]),
             "refuses off the tier line": (good.replace("refuses", "rejects", 1), [tier]),
-            "regression off the runner line": (good.replace(runner_line, runner_line.replace(
-                "`test` and `regression` run", "`test` runs", 1), 1), [runner]),
-            "bun test off the runner line": (good.replace(runner_line, runner_line.replace(
-                "run `bun test`;", "run the default runner;", 1), 1), [runner]),
-            "Vitest off the runner line": (good.replace(runner_line, runner_line.replace(
-                "(Vitest under Bun)", "(Jest under Bun)", 1), 1), [runner]),
+            # CR-MDB-079 §S7.1: the runner line's cuts, each of §S6.1's points alone.
+            # The stale-line cut appends CR-MDB-066 §S3.4's line to a conforming reason.
+            "`test` runs off the runner line": (good.replace(runner_line, runner_line.replace(
+                "`test` runs the project's", "`test` takes the project's", 1), 1), [runner]),
+            "crucible.testScript off the runner line": (good.replace(runner_line, runner_line.replace(
+                " (`crucible.testScript`)", "", 1), 1), [runner]),
+            "else bun test off the runner line": (good.replace(runner_line, runner_line.replace(
+                "else `bun test`;", "else Bun's own runner;", 1), 1), [runner]),
+            "the regression half off the runner line": (good.replace(runner_line, runner_line.replace(
+                "; `regression` runs `bun test`.", ".", 1), 1), [runner]),
             "tier verbs off the runner line": (good.replace(runner_line, runner_line.replace(
                 "with the tier verbs", "with `unit` and its siblings", 1), 1), [runner]),
             "the runner line split over two lines": (good.replace(runner_line, runner_line.replace(
-                "; a project", ";\na project", 1), 1), [runner]),
+                ". A project", ".\nA project", 1), 1), [runner]),
+            "the stale runner line appended": (
+                good + "\n" + _RETIRED_RUNNER_LINE,
+                ["it still says `test` and `regression` run `bun test`"]),
         }
         for label, (text, expected) in cuts.items():
             with self.subTest(cut=label):
                 self.assertNotEqual(text, good, f"precondition: the cut {label!r} changed nothing")
                 self.assertEqual(bun_reason_findings(text), expected)
+
+    def test_s1_bun_hook_docstring_names_the_declared_test_script_and_not_the_stale_line(self):
+        # CR-MDB-079 §S6.2 (AC6): the real docstring of block-direct-bun-test names
+        # `crucible.testScript` and carries no `_STALE_RUNNER_LINE` match.
+        name = "block-direct-bun-test"
+        doc = ast.get_docstring(ast.parse((HOOK_SCRIPTS / name).read_text(encoding="utf-8"))) or ""
+        self.assertTrue(doc, f"precondition: {name} has a module docstring")
+        self.assertEqual(bun_docstring_findings(doc), [],
+                         f"CR-MDB-079 §S6.2: the {name} docstring breaks it")
+
+    def test_s1_bun_docstring_detector_bites_on_the_retired_sentence_and_passes_the_new_one(self):
+        # CR-MDB-079 AC6, both ways: CR-MDB-066 §S3.4's sentence yields two findings (no
+        # `crucible.testScript`; the stale phrase), wrapped over a line break or not; §S6.1's
+        # text and §S6.2's paragraph, wrapped as the docstring wraps, yield none.
+        stale = "it still says `test` and `regression` run `bun test`"
+        unnamed = "it does not name `crucible.testScript`"
+        retired = ("script for; `test` and `regression` run `bun test`, so a project whose runner is\n"
+                   "another (Vitest under Bun) runs its suites with the tier verbs.")
+        wrapped = ("script for; `test` and\n`regression`  run `bun test`, so a project whose runner "
+                   "is another (Vitest under Bun) runs its suites with the tier verbs.")
+        new_paragraph = (
+            "It presumes no runner (CR-MDB-066 §S3): its first line names every form it\n"
+            "blocks; a tier verb runs the `test:<tier>` script the project declares in\n"
+            "`package.json`, by name, and the client refuses a tier the project declares no\n"
+            "script for. `test` runs the project's declared test script\n"
+            "(`crucible.testScript`), else `bun test`; `regression` runs `bun test`. A\n"
+            "project whose runner is another runs its suites with the tier verbs\n"
+            "(CR-MDB-079 §S6).")
+        samples = {
+            "CR-MDB-066 §S3.4's sentence": (retired, [unnamed, stale]),
+            "CR-MDB-066 §S3.4's sentence wrapped mid-phrase": (wrapped, [unnamed, stale]),
+            "CR-MDB-066 §S3.4's line in the reason's form": (_RETIRED_RUNNER_LINE, [unnamed, stale]),
+            "§S6.1's text": (_SYNTHETIC_RUNNER_LINE, []),
+            "§S6.2's paragraph, wrapped": (new_paragraph, []),
+            "§S6.2's paragraph with the stale line appended": (
+                new_paragraph + "\n" + retired, [stale]),
+            "§S6.2's paragraph without `crucible.testScript`": (
+                new_paragraph.replace("\n(`crucible.testScript`)", "", 1), [unnamed]),
+        }
+        for label, (text, expected) in samples.items():
+            with self.subTest(sample=label):
+                self.assertEqual(bun_docstring_findings(text), expected)
 
     def test_s1_runner_hook_reason_contract_bites_on_a_missing_client_gap(self):
         for name in ("block-direct-python-test", "block-direct-bun-test"):
