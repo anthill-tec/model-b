@@ -1,8 +1,8 @@
 # CR-MDB-096 — The spec pre-review runs where it pays, and looks only for what would fail the CR
 
 **Status:** PENDING — spec drafted 2026-10-30 from the gap analysis and the user's rulings (PRD D6,
-amended 2026-10-30, with the rulings of CR-MDB-096's gap analysis). Pre-review: due — the gap analysis
-needed the user's rulings.
+amended 2026-10-30, with the rulings of CR-MDB-096's gap analysis). Pre-review: ran — the gap analysis
+needed the user's rulings; its findings F1–F9 folded in 2026-10-30.
 **Type:** feature (workflow rules, the VERIFY agent template)
 **Priority:** P1 — release 1.0.0, wave 2, after CR-MDB-079 (board-authoritative: read `queue`).
 **Depends on:** nothing on the board.
@@ -67,6 +67,8 @@ flip, whose modules passed): 4766 tests, 4765 passed, 0 failed, 1 skip; 114 modu
 ### §S1 — The `gap-analysis` skill states the rule once
 
 In `skills-src/gap-analysis/SKILL.md`. Rule numbers 1–23 keep their numbers; two rules are appended.
+Each rule is one block, with no blank line inside it (its nested list and its closing sentences included),
+so each is one unit to the tests' `units` helper.
 
 1. **§ When to Use**, first bullet: the ordering is "this analysis → the spec pre-review, when a trigger
    applies (Rule 21) → approval → `plan-file` → the feature branch or worktree → RED".
@@ -84,9 +86,10 @@ In `skills-src/gap-analysis/SKILL.md`. Rule numbers 1–23 keep their numbers; t
      format another project consumes or provides;
    - its gap analysis needed a ruling from the user.
 
-   Any other spec goes from the analysis to approval. The findings a pre-review reports are folded in
-   before locking.
-6. **Rule 22** (who and where) is unchanged.
+   Any other spec goes from the analysis to approval — stated in prose, never as an arrow chain without
+   the pre-review. The findings a pre-review reports are folded in before locking.
+6. **Rule 22** (who and where) and **Rule 23** (re-score; a CR above 13 is split before the pre-review)
+   are unchanged. Rule 23 needs no conditional: a CR above 13 always meets the 8-point trigger.
 7. **Rule 24, the checklist (new):** a pre-review looks only for:
    - an acceptance criterion no test can meet or check;
    - a missing failure path or edge case;
@@ -94,10 +97,12 @@ In `skills-src/gap-analysis/SKILL.md`. Rule numbers 1–23 keep their numbers; t
    - a conflict with the PRD or a DN.
 
    Wording and naming are not findings, and the orchestrator folds in nothing outside this list.
-8. **Rule 25, the record (new):** the spec's `**Status:**` line says `Pre-review: ran — <trigger>` or
-   `Pre-review: none — no trigger`, and the orchestrator repeats it when it presents the spec for
-   approval. In multi mode a Track reports its decision to Mainline with its re-score, and Mainline
-   records it on the spec.
+8. **Rule 25, the record (new):** the spec's `**Status:**` line carries one of three forms:
+   `Pre-review: due — <trigger>` (decided, not yet run), `Pre-review: ran — <trigger>` or
+   `Pre-review: none — no trigger`. The orchestrator writes it when the analysis decides the triggers,
+   moves `due` to `ran` when it folds the findings, and repeats it when it presents the spec for approval.
+   A re-scoping (Rule 20) rewrites it. The close-out's `COMPLETED` flip keeps it. In multi mode a Track
+   reports its decision to Mainline with its re-score, and Mainline records it on the spec.
 
 ### §S2 — The orchestration references, `cr-authoring` and `crucible` follow it
 
@@ -112,8 +117,10 @@ triggers or the checklist.
    - § Gap-analysis discipline, the separate review: dispatched when a trigger applies (`gap-analysis`
      Rule 21);
    - the `design-review` milestone is posted when a pre-review ran;
-   - older projects: a project whose agents were rendered before the checklist re-renders them with
-     `modelb-axi agents` before its next pre-review (the bullet's existing re-render rule, widened);
+   - older projects: the bullet reads that a project scaffolded before the spec pre-review existed, or
+     whose agents were rendered before the pre-review's checklist, first upgrades Model B to a release
+     carrying the checklist, then re-renders its agents with `modelb-axi agents` before its next
+     pre-review; a definition left alone as hand-modified is reported to the user;
    - § Cycle discipline, the setup ordering: "gap-analysis → pre-review (when a trigger applies) →
      approval → `plan-file` → THEN the branch / worktree".
 3. `orchestration-mainline.md`, the design→execution gate: "gap-analysis → pre-review when a trigger
@@ -146,22 +153,31 @@ In `generator/templates/verify.md.tmpl` § Spec pre-review mode:
    commit, the `/tmp` sandbox, unregister last.
 6. **Renders:** `python3 generator/build.py build` regenerates the 20 `generator/agents/*-verify-agent.md`
    (no other render changes); Model B's own `.pi/agents/python-verify-agent.md` is re-rendered from the
-   tree (`python3 -m modelb_axi agents`, from the repository root, with `MODELB_HOME`, `XDG_DATA_HOME` and
-   `PI_CODING_AGENT_DIR` at temp dirs) and committed.
+   tree and committed. The render runs `python3 -m modelb_axi agents` from the repository root with
+   `MODELB_HOME` at a temp dir holding a copy of the real `$MODELB_HOME/install.toml` with its
+   `asset_root` line removed — so the tree's templates are read and the recorded `harnesses` and
+   `lean-ctx` verdict hold — and `XDG_DATA_HOME` and `PI_CODING_AGENT_DIR` at temp dirs. Only
+   `python-verify-agent.md` changes; the other managed files report unchanged.
 
 ### §S4 — The gates this change moves (named migrations)
 
 1. **`tests/test_gap_analysis_reach_and_pre_review.py`** (§S1, §S2):
-   - MIGRATED the ordering pins (`ORDER_TO_PLAN_FILE`, `MAINLINE_GATE`, `TRACK_SETUP_ORDER`,
-     `TWO_PHASE_DESIGN`) and `RULE_PRE_REVIEW_ORDER`, `RULE_RESCOPING`, `DESIGN_REVIEW_MILESTONE`,
-     `GA_DISCIPLINE_SEPARATE`, `TRACK_FINDINGS_TO_MAINLINE`, `RE_RENDER_OLDER`: each also requires the
-     conditional (`when a trigger applies`, or the rule's own trigger wording) in the same unit;
+   - MIGRATED, each requiring its conditional in the same unit:
+     - `ORDER_TO_PLAN_FILE`, `MAINLINE_GATE`, `TRACK_SETUP_ORDER`, `TWO_PHASE_DESIGN`,
+       `RULE_PRE_REVIEW_ORDER`, `RULE_RESCOPING`, `GA_DISCIPLINE_SEPARATE`: `when a trigger applies`
+       (`RULE_PRE_REVIEW_ORDER` also keeps "fold … before locking" in the same unit);
+     - `DESIGN_REVIEW_MILESTONE`: `when a pre-review ran`;
+     - `RE_RENDER_OLDER`: `before its next pre-review` and `checklist`;
+     - `COMMON_UPGRADE_FIRST` (the same bullet): `before its next pre-review` in place of
+       `before (?:its|the) first pre-review`, and the release carrying the checklist;
+     - `TRACK_FINDINGS_TO_MAINLINE`: `trigger decision`;
    - NEW pins for Rule 21's three triggers and three definitions, Rule 24's four items with "wording and
-     naming are not findings" and "folds in nothing outside", Rule 25's two record forms, the repeat at
-     approval and the Track's report to Mainline; the role table row, `cr-authoring`'s two items and
-     `crucible`'s duty;
-   - NEW a guard: no unit of the files §S1–§S2 list states the pre-review's ordering or dispatch without
-     the conditional.
+     naming are not findings" and "folds in nothing outside", Rule 25's three record forms, its writing,
+     `due` → `ran`, the repeat at approval, the rewrite on re-scoping, the `COMPLETED` flip keeping it and
+     the Track's report to Mainline; the role table row, `cr-authoring`'s two items and `crucible`'s duty;
+   - NEW the ordering guard (AC3) and the restatement detector (AC2);
+   - KEPT `OLD_ORDERING` (`test_no_shipped_file_states_the_old_ordering`): no shipped file states
+     `gap-analysis → approval|lock|present|plan-file`; the no-trigger path is prose only (§S1.5).
 2. **`tests/test_verify_spec_pre_review_mode.py`** (§S3): MIGRATED `PRE_REVIEW_RULES`' "applies the
    gap-analysis skill's Dimensions 1–10 read-only" to the checklist rule (Rule 24, the skill's path,
    read-only, wording and naming not findings); NEW rules for the opening paragraph's trigger, the
@@ -182,15 +198,29 @@ reads text.
       from the user), its three definitions (`contracts/`, an interface `AGENTS.md` names; a hook script,
       the hook schema, compiled hook wiring; a file, CLI, API or message format another project consumes
       or provides) and "any other spec goes from the analysis to approval"; Rule 24's four items,
-      "wording and naming are not findings" and "folds in nothing outside"; Rule 25's two record forms
-      (`Pre-review: ran — <trigger>`, `Pre-review: none — no trigger`), the repeat at approval and the
-      Track's report to Mainline. Rules 22 and 23 are unchanged. Each pin is proved both ways on
+      "wording and naming are not findings" and "folds in nothing outside"; Rule 25's three record forms
+      (`Pre-review: due — <trigger>`, `Pre-review: ran — <trigger>`, `Pre-review: none — no trigger`),
+      `due` → `ran` at the fold, the repeat at approval, the rewrite on re-scoping, the `COMPLETED` flip
+      keeping it and the Track's report to Mainline. Each of Rules 21, 24 and 25 is one unit (no blank line
+      inside it). Rules 22 and 23 are unchanged. Each pin is proved both ways on
       synthetic text (one cut → exactly its finding).
-- [ ] **AC2 — the references (§S2).** Each item of §S2 holds in its file, one unit each, proved both ways;
-      none of those files restates Rule 21's triggers or Rule 24's items.
-- [ ] **AC3 — the guard (§S4.1).** No unit of the files §S1–§S2 list states the pre-review's place in an
-      ordering, or its dispatch, without the conditional; proved both ways (an ordering with the
-      conditional passes; the same ordering without it yields exactly one finding naming its file).
+- [ ] **AC2 — the references (§S2).** Each item of §S2 holds in its file, one unit each, proved both ways.
+      None of the §S2 files restates the rule: the restatement detector reports a unit holding two or more
+      of Rule 21's trigger phrases (`8 points or more`; `a contract, a hook or another project's surface`;
+      `a ruling from the user`) or two or more of Rule 24's item phrases (`no test can meet or check`;
+      `missing failure path or edge case`; `gap in scope or design`; `conflict with the PRD or a DN`).
+      Proved both ways: a unit holding two trigger phrases yields exactly one finding; the real units
+      holding one phrase alone pass — the scoring scale `1, 2, 3, 5, 8, 13` in `cr-authoring` and
+      `crucible`, and "another project's working tree" in `model-b/SKILL.md`.
+- [ ] **AC3 — the ordering guard (§S4.1).** In the files §S1–§S2 list, a unit in which the pre-review is
+      a link of an arrow chain (`→` before or after `pre-review`), or the object of "dispatches the (spec)
+      pre-review" or "proceed to the (spec) pre-review", carries `when a trigger applies` or
+      `when the CR meets a trigger`, or it is a finding naming its file. Proved both ways: an ordering with
+      the conditional passes; the same ordering without it yields exactly one finding; and these real
+      units, left alone by this CR, pass: Rule 23 ("split before the pre-review"), the dispatch-description
+      bullet ("Name the CR id in every dispatch description … except a spec pre-review"), the VERIFY-word
+      bullet ("may run in the design phase in its spec pre-review mode") and `crucible`'s identity
+      bullet ("reviewing a drafted spec before approval").
 - [ ] **AC4 — the template (§S3).** The template's pre-review section states, one unit each: the trigger
       in its opening paragraph; the checklist rule (Rule 24, the skill's installed path, read-only, wording
       and naming not findings); Dimensions 1–10 among what does not bind; the output's checklist item.
@@ -203,7 +233,8 @@ reads text.
 - [ ] **AC6 — the scenario matrix.** The text covers, each in a unit AC1 or AC2 pins: Mainline or Solo
       records the decision on the spec; a Track reports it to Mainline, which records it; a CR with no
       trigger posts no `design-review` milestone; a re-scoped spec decides the triggers again; a project
-      whose agents predate the checklist re-renders them before its next pre-review.
+      whose agents predate the checklist re-renders them before its next pre-review; a pre-review decided but
+      not yet run is recorded `due`.
 - [ ] **AC7 — standing gates.** `ruff check` exits 0; no test module and no skip is added; every module
       the cycle plan names passes through the client; `tests.test_orchestration_rules_from_crucible`
       passes unchanged; VERIFY runs the full suite through the client with a real `HOME` and an empty
