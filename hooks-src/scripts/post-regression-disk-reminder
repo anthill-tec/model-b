@@ -9,6 +9,10 @@ baseline (CR-MDB-015 §S3): stdin contract on the neutral payload (CR-MDB-030 §
 rust-crucible commands only), same informational `{"reason": ...}` JSON on a
 match. ALWAYS exit 0 (informational, never blocks). Self-contained, stdlib
 only (no jq).
+
+The payload prelude (CR-MDB-066 §S5): the runner hooks' read — it catches
+`(ValueError, OSError, RecursionError)` — then the payload must be a dict,
+`tool_input` a dict and `command` a string, or the hook stays silent.
 """
 
 import json
@@ -36,12 +40,17 @@ def _disk_line() -> str:
 def main() -> int:
     try:
         payload = json.load(sys.stdin)
-    except (json.JSONDecodeError, OSError):
-        return 0  # unreadable payload -> silent no-op (informational hook)
+    except (ValueError, OSError, RecursionError):
+        # unreadable payload (bad JSON or UTF-8, a number past the digit limit, nesting past
+        # the recursion limit) -> silent no-op (informational hook)
+        return 0
     if not isinstance(payload, dict) or payload.get("tool_name") != "bash":  # neutral shell class (schema.md)
         return 0
-    command = (payload.get("tool_input") or {}).get("command") or ""
-    if not command:
+    tool_input = payload.get("tool_input") or {}
+    if not isinstance(tool_input, dict):
+        return 0
+    command = tool_input.get("command") or ""
+    if not isinstance(command, str) or not command:
         return 0
 
     if any(pattern.search(command) for pattern in _REGRESSION_PATTERNS):
