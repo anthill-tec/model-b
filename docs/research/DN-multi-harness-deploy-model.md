@@ -1252,3 +1252,20 @@ Implemented by CR-MDB-089.
   closest entry first. Worktrees under `.worktrees/` inherit it. This reverses CR-MDB-037 §S4's "Model B
   never edits `trust.json`"; the read-only resolver and its warning stay for the cases Model B does not
   write.
+
+**Ruled 2026-10-30 (user, at CR-MDB-095's gap analysis; Pi 1.4.0 and pi-lens 4.4.7 measured):**
+- **Only pi-lens's read-only tools are allowed.** Of its 13 Pi tools, three can write to the project:
+  `ast_grep_replace` (a structural rewrite), `lsp_navigation` (its rename) and `lens_diagnostic_mark` (an
+  inline ignore comment). The worktree write-boundary hook gates only the `write` and `edit` classes, so
+  an allowed pi-lens write would pass the boundary unchecked. Those three stay on ask; the other ten are
+  allowed (`symbol_search`, `module_report`, `project_report`, `read_symbol`, `read_enclosing`,
+  `effective_config`, `lens_diagnostics`, `ast_grep_search`, `ast_grep_outline`,
+  `pi_lens_activate_tools`).
+- **Model B writes trust only where Pi would not already trust the root.** When Pi's own resolution for
+  the root is already `trusted` (an ancestor's `true`, or `defaultProjectTrust` `always`), nothing is
+  written and the run reports it unchanged.
+- **The write fails safe.** It takes Pi's own lock (proper-lockfile's directory lock,
+  `<agent-dir>/trust.json.lock`) with a few short retries. When the lock stays held, or `trust.json`
+  cannot be parsed or holds a value other than `true`, `false` or `null`, Model B writes nothing, warns,
+  and names `/trust` as the remedy. It never removes a lock it did not take and never overwrites a file
+  it cannot read.
