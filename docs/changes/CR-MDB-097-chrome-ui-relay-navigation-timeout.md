@@ -6,10 +6,11 @@ CR starts.
 **Type:** fix + feature (a shipped skill)
 **Priority:** P2 — release 1.1.0, wave 3 (user 2026-10-30; board-authoritative: read `queue`).
 **Depends on:** nothing on the board. Its second half waits for chrome-devtools-axi to pass a navigation
-timeout through `newpage` (a third-party package; the user files that request upstream).
+timeout through `newpage` (a third-party package): kunchenguid/chrome-devtools-axi#193, filed 2026-10-30.
 **Labels:** skills, chrome-ui-relay, browser
 **Design reference:** CR-MDB-061 (the relay skill: `newpage` only, delta-checked, protected tabs);
-CR-MDB-076 (the bridge wait, never a retry); DN-multi-harness-deploy-model §D23; Crucible #1513.
+CR-MDB-076 (the bridge wait, never a retry); DN-multi-harness-deploy-model §D23; Crucible #1513;
+kunchenguid/chrome-devtools-axi#193.
 
 ## Context
 
@@ -52,7 +53,8 @@ relay never closes.
 
 ## To measure at gap analysis
 
-- Whether chrome-devtools-axi has shipped the timeout, its form and its default; the chrome-devtools-mcp
+- Whether chrome-devtools-axi has shipped the timeout (#193: a `--timeout <ms>` flag on `newpage` and `open`,
+  optionally an environment-variable default), its form and its default; the chrome-devtools-mcp
   version `npx` resolves then, and whether `new_page` still closes a timed-out tab.
 - The tests that pin the relay skill's text (CR-MDB-061's and CR-MDB-076's gates) and the step-4 wording.
 - CR-MDB-074 (the generated services skill, wave 3), which calls this skill: what it needs from the timeout.
