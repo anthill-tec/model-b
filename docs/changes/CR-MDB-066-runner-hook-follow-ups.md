@@ -225,6 +225,22 @@ exception).
 
 No test module is added: `AGENTS.md`'s module count is unchanged. No new skip.
 
+### §S9 — VERIFY's findings (cycle 318, approved by the user 2026-10-30)
+
+1. **A `tool_name` that is not a string allows** in `block-write-outside-worktree`. Today a list or dict
+   `tool_name` raises `TypeError` on the `_GATED_TOOLS` set lookup, and the hook is `closed`, so the raise
+   blocks the call — the class §S5.1 removes. The check reads `tool_name` as a string before the lookup.
+2. **A staged path git prints in bytes that are not UTF-8 allows** in
+   `block-cr-completed-without-spec-update`: `_staged_paths` catches `ValueError` (with `OSError` and
+   `TimeoutExpired`) and returns no paths, so the hook allows. Today `text=True` raises
+   `UnicodeDecodeError` under `core.quotepath=false`, in a `closed` hook.
+3. **The unclosed backquote's divergence is pinned as deliberate.** On `echo hi; pytest \`` the guard names
+   `python` (it reads up to the line's end) while the four hooks allow (they read an unclosed backquote as
+   an unclosed quote, §S1.4, and bash refuses the line). A named corpus, `UNCLOSED_BACKQUOTE_DIVERGENCE`,
+   holds the forms with both verdicts; the parity test reads it as the only sanctioned divergence.
+4. **Nested escaped backquotes are a non-goal** (`` echo `echo \`pytest\`` `` runs `pytest`; neither the guard
+   nor the hooks re-parse an escaped backquote inside a substitution).
+
 ## Acceptance criteria
 
 Every corpus check runs the guard's `stack_of` / `runner_findings` and the REAL hook scripts
@@ -344,6 +360,19 @@ check. "Both ways" means a sample that must be caught is caught and a sample tha
       - VERIFY runs the full suite through the client with a real `HOME` and an empty one, and the empty
         `HOME` stays empty.
 
+- [ ] **AC12 — §S9.**
+      - `BlockHookHostilePayloadTest`'s cases for `block-write-outside-worktree` gain `tool_name` `["write"]`
+        and `{"a": 1}`; each allows with no traceback, and the pre-change proof shows the pre-§S9 lookup
+        raising on both;
+      - a real run of `block-cr-completed-without-spec-update` in a temp git repo with
+        `core.quotepath=false`, a CR spec staged as `COMPLETED` beside a staged file whose name is not
+        UTF-8 (`b"\xff.txt"`), exits 0 with no traceback; the same run on the pre-§S9 `_staged_paths`
+        raises (proof both ways);
+      - `UNCLOSED_BACKQUOTE_DIVERGENCE` holds at least `echo hi; pytest \`` and one form per hooked stack;
+        the guard names each form's stack and every hook allows it; a form added to it that the guard and
+        the hooks agree on fails the corpus's own check, and the parity test skips exactly these forms;
+      - the non-goals name nested escaped backquotes.
+
 ## Non-goals
 
 - **Forms still outside the guard and the hooks:**
@@ -353,6 +382,8 @@ check. "Both ways" means a sample that must be caught is caught and a sample tha
   - an assignment or argument whose value is a substitution before the runner
     (``VAR=`mktemp -d` cargo test``, `VAR=$(mktemp -d) cargo test`) — an existing miss, as with `$(`
     today;
+  - an escaped backquote nested inside a backquote substitution (`` echo `echo \`pytest\`` ``): no
+    re-parse (§S9.4);
   - `command --` (`command -- pytest`): only `-p` is stepped over; the lookups `command -v` / `-V` (and
     `-pv`) already run nothing;
   - CR-MDB-062's remaining non-goals: `make test`, `mvn install`, `jest`, `python3 -m tests.test_x`,
@@ -450,3 +481,9 @@ the cycle's report.
      `tests.test_installer_sandesh_requirements`, `tests.test_sandesh_install`.
 6. **Verify.** VERIFY runs the full suite once, without coverage, through the client (§D26), and reads every
    AC. The orchestrator then runs the pre-merge gate and records the `AGENTS.md` baselines at close-out.
+7. **VERIFY's findings** (§S9; cycle 319, kind fix). Red-green.
+   - **RED:** the two `tool_name` cases and their pre-change proof; the non-UTF-8 staged-path run and its
+     proof; `UNCLOSED_BACKQUOTE_DIVERGENCE`, its own check and the parity test's reading of it.
+   - **FIX:** `block-write-outside-worktree`'s `tool_name` check; `_staged_paths`'s catch.
+   - **Modules:** the docs gates, the hook-script readers, the worktree hook's readers and the guard
+     importers.
