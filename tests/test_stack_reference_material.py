@@ -109,6 +109,14 @@ checked as data (:data:`EXPECTED_DECLARATION`, :data:`STACK_SKILL_SOURCES`,
   both ways on Appendix A's text (:data:`APPENDIX_A_BUN_TOML`), then run over the real
   ``bun.toml``; ``bun.toml`` carries at least :data:`BUN_TOML_MIN_INVOCATIONS` parsed client
   invocations (``test_client_path_anchoring``'s ``_parse_invocations``).
+- ``HeaderHelperHomeDetectorTest`` / ``HeaderHelperHomeTest`` — CR-MDB-079 §S8.2/AC8:
+  :func:`helper_home_findings` proved both ways on synthetic sources, then ``provenance_header`` is
+  defined once, in ``tests/_helpers.py``, and ``tests/test_orchestrator_references.py`` and this
+  module import it from there, neither defining it nor importing it from another test module.
+- ``BlankLineDetectorTest`` / ``BlankLineLayoutTest`` — CR-MDB-079 §S8.3/AC8:
+  :func:`blank_line_findings` proved both ways on synthetic text, then every top-level definition
+  of this module (decorators included, read from ``ast`` line numbers) follows exactly two blank
+  lines.
 
 MIGRATED (CR-MDB-060 §S1.1): the templates the CR-MDB-085 and CR-MDB-086 classes read —
 ``rust-orchestration.md``, ``arduino-orchestration.md``, ``java-orchestration.md`` — are the stack
@@ -2779,6 +2787,286 @@ class BunTomlInvocationCountTest(unittest.TestCase):
         for inv in invocations:
             sources[inv["source"]] = sources.get(inv["source"], 0) + 1
         self.assertEqual(sources, APPENDIX_A_INVOCATIONS, "Appendix A: 3 toml, 6 span")
+
+
+# ----------------------------------------------------------- CR-MDB-079 §S8 ----
+
+#: CR-MDB-079 §S8.2 — the stack-file header helper, its one home and the two modules that use it
+#: (dotted module names, as an ``import`` statement names them).
+HEADER_HELPER = "provenance_header"
+HEADER_HELPER_HOME = "tests._helpers"
+HEADER_HELPER_USERS = ("tests.test_orchestrator_references", "tests.test_stack_reference_material")
+
+
+def _bound_from(tree: ast.AST, name: str) -> list[str]:
+    """The module each binding of ``name`` in ``tree`` comes from: a ``from <module> import name``
+    (a relative import read under ``tests``), and a ``<alias>.name`` attribute read off a module the
+    tree imports (``from tests import <module> as <alias>``, ``import tests.<module>``)."""
+    modules = {}
+    sources = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            base = f"tests.{node.module or ''}".rstrip(".") if node.level else node.module or ""
+            for alias in node.names:
+                if alias.name == name:
+                    sources.append(base)
+                modules[alias.asname or alias.name] = f"{base}.{alias.name}"
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                modules[alias.asname or alias.name] = alias.name
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute) and node.attr == name:
+            owner = ast.unparse(node.value)
+            if owner in modules:
+                sources.append(modules[owner])
+    return sources
+
+
+def helper_home_findings(
+    name: str, home: str, users: tuple[str, ...], sources: dict[str, str]
+) -> list[str]:
+    """CR-MDB-079 §S8.2: ``name`` is defined once, at module level, in ``home``; no other module of
+    ``sources`` (dotted module name to source text) defines it or binds it from any module but
+    ``home``; and each of ``users`` binds it from ``home``. One finding per break, ``home``'s first,
+    then each module's in name order."""
+    found = []
+    for module in [home] + sorted(m for m in sources if m != home):
+        tree = ast.parse(sources.get(module, ""))
+        defines = sum(
+            isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == name
+            for node in tree.body
+        )
+        if module == home:
+            if defines != 1:
+                found.append(f"{home}: defines {name} {defines} times, not once")
+            continue
+        bound = _bound_from(tree, name)
+        if defines:
+            found.append(f"{module}: defines {name}")
+        found += [f"{module}: imports {name} from {src}" for src in sorted(set(bound) - {home})]
+        if module in users and not defines and not bound:
+            found.append(f"{module}: does not import {name} from {home}")
+    return found
+
+
+def blank_line_findings(text: str) -> list[str]:
+    """CR-MDB-079 §S8.3: every top-level definition of ``text`` (a function or class, its first
+    decorator its first line, read from ``ast`` line numbers) is preceded by exactly two blank
+    lines — the two lines directly above it blank, the line above those not. A definition with
+    nothing but blank lines above it is not judged."""
+    lines = text.splitlines()
+    found = []
+    for node in ast.parse(text).body:
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            continue
+        first = min([node.lineno] + [decorator.lineno for decorator in node.decorator_list])
+        above = lines[: first - 1]
+        blanks = 0
+        while blanks < len(above) and not above[-1 - blanks].strip():
+            blanks += 1
+        if blanks < len(above) and blanks != 2:
+            found.append(f"line {first}: {node.name} is preceded by {blanks} blank lines, not 2")
+    return found
+
+
+#: CR-MDB-079 §S8.2 — a conforming tree: the helper defined once in its home, both users importing it
+#: from there (one under an alias), a module that never uses it, and a method of the same name.
+_HELPER_GOOD = {
+    "tests._helpers": "import re\n\n\ndef provenance_header(text: str) -> str:\n    return text\n",
+    "tests.test_orchestrator_references": (
+        "from tests._helpers import provenance_header\n\n\n"
+        "def check(text):\n    return provenance_header(text)\n"
+    ),
+    "tests.test_stack_reference_material": (
+        "from tests._helpers import provenance_header as _header_comment\n\n\n"
+        "class Case:\n    def provenance_header(self):\n        return _header_comment('# x')\n"
+    ),
+    "tests.test_other": "# provenance_header is named in a comment only\nNAME = 'provenance_header'\n",
+}
+_REFS = "tests.test_orchestrator_references"
+_MATERIAL = "tests.test_stack_reference_material"
+
+
+def _helper_findings(sources: dict[str, str]) -> list[str]:
+    return helper_home_findings(HEADER_HELPER, HEADER_HELPER_HOME, HEADER_HELPER_USERS, sources)
+
+
+class HeaderHelperHomeDetectorTest(unittest.TestCase):
+    """CR-MDB-079 §S8.2/AC8 — :func:`helper_home_findings` proved both ways on synthetic sources:
+    each break alone yields exactly its finding, the conforming tree none. Passes on arrival (the
+    detector is test code; the real tree's check is :class:`HeaderHelperHomeTest`'s)."""
+
+    def test_the_conforming_tree_yields_no_finding(self):
+        self.assertEqual(_helper_findings(_HELPER_GOOD), [])
+
+    def test_a_home_defining_it_zero_or_two_times_bites(self):
+        for body, times in (("import re\n", 0), (_HELPER_GOOD["tests._helpers"] * 2, 2)):
+            with self.subTest(times=times):
+                self.assertEqual(
+                    _helper_findings({**_HELPER_GOOD, "tests._helpers": body}),
+                    [f"tests._helpers: defines provenance_header {times} times, not once"],
+                )
+
+    def test_a_user_defining_it_bites(self):
+        local = "def provenance_header(text):\n    return text\n"
+        self.assertEqual(
+            _helper_findings({**_HELPER_GOOD, _REFS: local}), [f"{_REFS}: defines provenance_header"]
+        )
+
+    def test_a_module_that_is_no_user_defining_it_bites(self):
+        other = "import os\n\n\ndef provenance_header(text):\n    return text\n"
+        self.assertEqual(
+            _helper_findings({**_HELPER_GOOD, "tests.test_other": other}),
+            ["tests.test_other: defines provenance_header"],
+        )
+
+    def test_a_user_importing_it_from_another_test_module_bites(self):
+        for source in (
+            f"from {_REFS} import provenance_header as _header_comment\n",
+            "from tests import test_orchestrator_references as refs\n\n\n"
+            "def check(text):\n    return refs.provenance_header(text)\n",
+            "import tests.test_orchestrator_references\n\n\n"
+            "def check(text):\n    return tests.test_orchestrator_references.provenance_header(text)\n",
+            "from .test_orchestrator_references import provenance_header\n",
+        ):
+            with self.subTest(source=source):
+                self.assertEqual(
+                    _helper_findings({**_HELPER_GOOD, _MATERIAL: source}),
+                    [f"{_MATERIAL}: imports provenance_header from {_REFS}"],
+                )
+
+    def test_a_user_not_importing_it_bites(self):
+        self.assertEqual(
+            _helper_findings({**_HELPER_GOOD, _MATERIAL: "import re\n"}),
+            [f"{_MATERIAL}: does not import provenance_header from tests._helpers"],
+        )
+
+    def test_a_relative_import_from_the_home_passes(self):
+        relative = "from ._helpers import provenance_header\n"
+        self.assertEqual(_helper_findings({**_HELPER_GOOD, _MATERIAL: relative}), [])
+
+    def test_todays_shape_yields_its_three_findings(self):
+        todays = {
+            **_HELPER_GOOD,
+            "tests._helpers": "import re\n",
+            _REFS: "def provenance_header(text):\n    return text\n",
+            _MATERIAL: f"from {_REFS} import provenance_header as _header_comment\n",
+        }
+        self.assertEqual(
+            _helper_findings(todays),
+            [
+                "tests._helpers: defines provenance_header 0 times, not once",
+                f"{_REFS}: defines provenance_header",
+                f"{_MATERIAL}: imports provenance_header from {_REFS}",
+            ],
+        )
+
+
+class HeaderHelperHomeTest(unittest.TestCase):
+    """CR-MDB-079 §S8.2/AC8 — ``provenance_header`` is defined once, in ``tests/_helpers.py``; no
+    other module under ``tests/`` defines it or binds it from anywhere else, and
+    ``tests/test_orchestrator_references.py`` and ``tests/test_stack_reference_material.py`` import
+    it from there. Fails on today's tree until FIX moves the helper."""
+
+    def test_the_header_helper_lives_once_in_the_shared_helpers(self):
+        sources = {
+            f"tests.{path.stem}": read_text(path)
+            for path in sorted((REPO_ROOT / "tests").glob("*.py"))
+        }
+        self.assertEqual((set(HEADER_HELPER_USERS) | {HEADER_HELPER_HOME}) - set(sources), set())
+        self.assertEqual(_helper_findings(sources), [], "§S8.2: one shared helper, one home")
+
+
+#: CR-MDB-079 §S8.3 — a conforming module: a decorated class and plain functions at top level, each
+#: after two blank lines; methods one blank line apart; an assignment after a definition, unjudged.
+_LAYOUT_GOOD = '''\
+"""A module."""
+
+import functools
+
+
+def helper(text):
+    return text
+
+
+@functools.total_ordering
+class Case:
+    def __eq__(self, other):
+        return True
+
+    def __lt__(self, other):
+        return False
+
+
+NAME = helper("x")
+
+
+async def later():
+    return NAME
+'''
+
+
+class BlankLineDetectorTest(unittest.TestCase):
+    """CR-MDB-079 §S8.3/AC8 — :func:`blank_line_findings` proved both ways on synthetic text: each
+    break alone yields exactly its finding, the conforming module none. Passes on arrival (the
+    detector is test code; this module's own check is :class:`BlankLineLayoutTest`'s)."""
+
+    def _edited(self, old: str, new: str) -> str:
+        self.assertEqual(_LAYOUT_GOOD.count(old), 1, old)
+        return _LAYOUT_GOOD.replace(old, new)
+
+    def test_the_conforming_module_yields_no_finding(self):
+        self.assertEqual(blank_line_findings(_LAYOUT_GOOD), [])
+
+    def test_one_or_three_blank_lines_before_a_function_bite(self):
+        for blanks in (1, 3):
+            with self.subTest(blanks=blanks):
+                text = self._edited("import functools\n\n\n", "import functools\n" + "\n" * blanks)
+                self.assertEqual(
+                    blank_line_findings(text),
+                    [f"line {4 + blanks}: helper is preceded by {blanks} blank lines, not 2"],
+                )
+
+    def test_no_blank_line_before_an_async_function_bites(self):
+        text = self._edited('NAME = helper("x")\n\n\n', 'NAME = helper("x")\n')
+        self.assertEqual(
+            blank_line_findings(text), ["line 20: later is preceded by 0 blank lines, not 2"]
+        )
+
+    def test_the_decorator_is_the_definitions_first_line(self):
+        below = self._edited(
+            "\n\n\n@functools.total_ordering\n", "\n@functools.total_ordering\n\n\n"
+        )
+        self.assertEqual(
+            blank_line_findings(below),
+            ["line 8: Case is preceded by 0 blank lines, not 2"],
+            "two blank lines between the decorator and the class do not count",
+        )
+        one = self._edited("\n\n@functools.total_ordering", "\n@functools.total_ordering")
+        self.assertEqual(
+            blank_line_findings(one), ["line 9: Case is preceded by 1 blank lines, not 2"]
+        )
+
+    def test_methods_one_blank_line_apart_are_not_judged(self):
+        cramped = self._edited("        return True\n\n    def", "        return True\n    def")
+        self.assertEqual(blank_line_findings(cramped), [])
+
+    def test_todays_shape_yields_its_finding(self):
+        todays = (
+            "import re\n\n\ndef _sample(term):\n    return term\n\ndef _finding(stack, kind, term):\n"
+            "    return stack\n\n\nclass StackGeneralityTermsTest:\n    pass\n"
+        )
+        self.assertEqual(
+            blank_line_findings(todays), ["line 7: _finding is preceded by 1 blank lines, not 2"]
+        )
+
+
+class BlankLineLayoutTest(unittest.TestCase):
+    """CR-MDB-079 §S8.3/AC8 — every top-level definition of this module, read from its own source,
+    is preceded by exactly two blank lines. Fails on today's tree until FIX fixes the layout."""
+
+    def test_every_top_level_definition_here_follows_two_blank_lines(self):
+        self.assertEqual(blank_line_findings(read_text(Path(__file__))), [], "§S8.3: layout")
 
 
 if __name__ == "__main__":
