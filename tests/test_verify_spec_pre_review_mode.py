@@ -21,7 +21,8 @@ What is pinned (the patterns are the spec's own words; the rest of each sentence
   ``--role report`` with no ``--cycle`` under the id the brief gives; Crucible down or absent →
   proceeds unregistered and says so in its report; it reads the whole spec, its design reference
   and the current code; it applies the ``gap-analysis`` skill's pre-review checklist (Rule 24),
-  read-only, cited by its installed path, and wording and naming are not findings (MIGRATED at
+  read-only, cited by its installed path, it reports only what the checklist lists (CR-MDB-096
+  §S5.3, AC8, in the same unit), and wording and naming are not findings (MIGRATED at
   CR-MDB-096 §S4.2 from "applies Dimensions 1–10 read-only"); the skill's Step 0 and Rule 1 do
   not apply, and its Dimensions 1–10 join them among what does not bind (CR-MDB-096 §S3.3); no
   test suite, no ingest, no edit, no commit; a ``/tmp``
@@ -104,6 +105,14 @@ OPENING_RULE = "opening paragraph: the pre-review runs when the CR meets a trigg
 #: The skill's installed path, as one unit's pattern (normalised: backticks dropped, lower-cased).
 SKILL_PATH = r"~/\.agents/skills/gap-analysis/skill\.md"
 
+#: CR-MDB-096 §S5.3 / AC8 — the checklist rule's "report only" phrase (normalised: lower-cased).
+REPORT_ONLY = r"\breport only what the checklist lists\b"
+
+#: §S3.2 and §S5.3 — the checklist rule, by its name (its findings start with it).
+CHECKLIST_RULE = (
+    "applies the gap-analysis skill's pre-review checklist (Rule 24) read-only, by its installed "
+    "path; reports only what the checklist lists; wording and naming are not findings")
+
 #: §S3 — the rules of the "Spec pre-review mode" section, each in one unit.
 PRE_REVIEW_RULES = {
     OPENING_RULE: (
@@ -122,10 +131,11 @@ PRE_REVIEW_RULES = {
         r"\bwhole spec\b", r"\bdesign reference\b", r"\bcurrent code\b"),
     # MIGRATED at CR-MDB-096 §S4.2: was "applies the gap-analysis skill's Dimensions 1–10
     # read-only"; the pre-review now applies the skill's checklist (Rule 24) instead (§S3.2).
-    "applies the gap-analysis skill's pre-review checklist (Rule 24) read-only, by its installed "
-    "path; wording and naming are not findings": (
+    # CR-MDB-096 §S5.3 (VERIFY's F2): the same unit also says to report only what the checklist
+    # lists (AC8).
+    CHECKLIST_RULE: (
         r"\bgap-analysis\b", r"\bchecklist\b", r"\brule 24\b", SKILL_PATH, r"\bread-only\b",
-        r"\bwording and naming are not findings\b"),
+        REPORT_ONLY, r"\bwording and naming are not findings\b"),
     "the skill's Step 0 and Rule 1 do not apply": (
         r"\bstep 0\b", r"\brule 1\b", r"\b(?:do(?:es)? not|don't|never)\s+appl(?:y|ies)\b"),
     # CR-MDB-096 §S3.3: the dimensions (the orchestrator's analysis) join Step 0 and Rule 1.
@@ -149,8 +159,7 @@ PRE_REVIEW_RULES = {
 #: The rules CR-MDB-096 §S3 adds or migrates — the ones today's (CR-MDB-046) wording fails.
 CHECKLIST_RULES = (
     OPENING_RULE,
-    "applies the gap-analysis skill's pre-review checklist (Rule 24) read-only, by its installed "
-    "path; wording and naming are not findings",
+    CHECKLIST_RULE,
     "what does not bind: the skill's Dimensions 1–10 join Step 0 and Rule 1",
     "output: each finding F1…Fn names its checklist item, closing with a one-line verdict",
 )
@@ -795,13 +804,23 @@ class PreReviewModeDetectorTest(unittest.TestCase):
         self.assertEqual(problems[1], f"the section does not cite the skill as {SKILL_CITATION}")
 
     def test_the_checklist_rule_bites_on_each_of_its_parts(self):
+        # The spec-worded section (§S3.2, §S5.3) passes: the rule's every part is in one unit.
+        self.assertEqual(pre_review_rule_findings(GOOD_BODY), [])
         for old, new in (("(Rule 24)", "(Rule 23)"),
                          ("read-only:", "as you see fit:"),
-                         ("wording and\n  naming are not findings", "wording and\n  naming are findings too")):
+                         ("wording and\n  naming are not findings", "wording and\n  naming are findings too"),
+                         # CR-MDB-096 §S5.3 / AC8: a cut of "report only what the checklist lists".
+                         ("Report only what the checklist lists; ", "")):
             with self.subTest(cut=old):
                 problems = pre_review_rule_findings(self.swap(GOOD_BODY, old, new))
                 self.assertEqual(len(problems), 1, problems)
-                self.assertTrue(problems[0].startswith(CHECKLIST_RULES[1]), problems)
+                self.assertTrue(problems[0].startswith(CHECKLIST_RULE), problems)
+        # The report-only cut's finding names exactly that phrase as lacking, nothing else.
+        cut = pre_review_rule_findings(
+            self.swap(GOOD_BODY, "Report only what the checklist lists; ", ""))
+        self.assertEqual(len(cut), 1, cut)
+        self.assertTrue(cut[0].startswith(f"{CHECKLIST_RULE} — closest unit "), cut)
+        self.assertTrue(cut[0].endswith(f"lacks {[REPORT_ONLY]!r}"), cut)
 
     def test_the_trigger_is_read_in_the_opening_paragraph_only(self):
         sentence = "It runs when the CR meets a\ntrigger (`gap-analysis` Rule 21)."
