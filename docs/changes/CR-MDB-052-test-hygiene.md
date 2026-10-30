@@ -82,3 +82,11 @@ main checkout is the integration tree) and `contracts/worktree-layout.md`
     (CR-CRU-217). Drop the branch and the row. Decide at gap analysis whether a run outside git keeps the
     shared `/tmp/nai-gate.lock` or runs unlocked, as Crucible's does after CR-CRU-217, and state it in the
     contract. The self-contained comparison in `tests/test_tooling_detachment.py` stays.
+16. **The project's `.env` is read with the harness's plain file read** (found 2026-10-30, user ruling
+    2026-10-30: folded into this CR). lean-ctx's default `coder` role refuses `ctx_read` on a secret-like
+    path, a `.env` file included ("[I/O BOUNDARY] Secret-like path detected"), while `/bootstrap` and
+    `/shutdown` tell the orchestrator to read the project's `.env` and the lean-ctx guidance prefers
+    `ctx_read` over the plain read. The shipped skills that read `.env` say it is read with the plain
+    file read (in Pi, `read`), and `contracts/lean-ctx.md` records the boundary, so lean-ctx's guard
+    stays on for real secret files. Gap analysis finds every shipped surface that tells an agent to read
+    `.env`, scaffolded and generated text included.
