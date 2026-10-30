@@ -22,13 +22,13 @@ reference this skill; they do not restate it.
 - Legacy `Architecture.md`/`Implementation.md` remain fine for system overview + phase tracking, but design rationale belongs in PRDs/DNs and implementation specs in CRs — don't duplicate.
 
 ## Two-phase workflow (universal) + where work commits
-- **Design phase → the integration branch (`develop`/`main`).** Gap analysis, then the spec pre-review; spec authoring, filing on the board, PRD/DN updates. No feature branch.
+- **Design phase → the integration branch (`develop`/`main`).** Gap analysis, then the spec pre-review when a trigger applies; spec authoring, filing on the board, PRD/DN updates. No feature branch.
 - **Execution phase → a feature branch.** RED+GREEN cycles, VERIFY, FIX, regression+merge.
 - **Where an edit commits:** free-standing spec/PRD/DN/memory edits → integration branch. Edits **caused by** an in-flight CR's RED/GREEN/VERIFY (PRD revisions surfaced by RED, new DNs, corrections of defects against the CR's own contracts) → the **feature branch**, landing atomically with the implementation. Test: if the edit makes no sense without the implementation it's tied to, it's on the feature branch.
 
 ## CR spec structure — DO NOT invent sections
 Standard order:
-1. **Front matter** — `**Status:**`, `**Type:**` (feature | maintenance | bugfix | docs — MUST mirror the schedule-DB `cr_type`), `**Priority:**`, `**Depends on:**`, `**Labels:**`, `**Phase:**`, optional `**Design reference:**`.
+1. **Front matter** — `**Status:**` (it carries the pre-review record, `gap-analysis` Rule 25), `**Type:**` (feature | maintenance | bugfix | docs — MUST mirror the schedule-DB `cr_type`), `**Priority:**`, `**Depends on:**`, `**Labels:**`, `**Phase:**`, optional `**Design reference:**`.
 2. `## Context` — background, current defects.
 3. `## Scope` with `### §S1`, `### §S2`, … — one sub-section per deliverable.
 4. `## Acceptance criteria` — a checklist per §S.
