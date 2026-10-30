@@ -145,6 +145,10 @@ The `~/.claude` user space grew organically into 24 memory files, ~50 skills, 29
   - **What it looks for.** A short fixed checklist, not the gap analysis's dimensions again: an acceptance criterion no test can meet or check; a missing failure path or edge case; a gap in scope or design; a conflict with the PRD or a DN. Wording and naming are not findings, and nothing outside the checklist is folded in.
   - **The agent is unchanged:** the stack's VERIFY agent, in its spec pre-review mode.
   - **Model B applies it to its own CRs at once** (user ruling, 2026-10-30), ahead of CR-MDB-096, which carries it into the skills and the VERIFY template for every project. Until that CR merges, the skills' text that every spec gets a pre-review does not bind Model B's own orchestrator.
+  - **Ruled 2026-10-30 (user, at CR-MDB-096's gap analysis):**
+    - **The checklist has one home,** the `gap-analysis` skill, as a rule beside the pre-review's other rules; the VERIFY template's pre-review mode cites it by path, as it cited the skill's dimensions, and the orchestrator folds only what it lists.
+    - **The surface trigger is defined by file kind,** checkable from the CR's own file list: a *contract* is a file under the project's `contracts/` or an interface its `AGENTS.md` names as a contract; a *hook* is a hook script, the hook schema or compiled hook wiring; *another project's surface* is a file, CLI, API or message format another project consumes or provides.
+    - **The decision is recorded on the spec's `**Status:**` line** — "pre-review: ran — <trigger>" or "pre-review: none — no trigger" — and repeated when the spec is presented for approval.
 
 ### D7 — Crucible V2 client contract (AXI)
 - **Ownership (corrected 2026-07-20): ALL `*-crucible.py` client implementation is the CRUCIBLE project's responsibility.** Model B requests it (Sandesh thread #1322/#1325), tracks it as an external dependency, and documents/consumes what Crucible ships. Model B implements no client code.
