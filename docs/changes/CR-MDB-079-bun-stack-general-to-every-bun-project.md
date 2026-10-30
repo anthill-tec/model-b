@@ -27,9 +27,9 @@ the `bun test` and Sandesh defaults; PRD D5, ruling of 2026-10-29 (RED commits i
 **Merge precondition:** Sandesh's reply to #1502 — **MET** (Sandesh #1503, 2026-10-30: its bun and
 Pi-extension specifics are in its own `AGENTS.md`, Sandesh `develop` @ `93fe2f4`; CR-MDB-079 cleared to
 merge).
-**Merge precondition (Crucible):** Crucible's answers to the four questions of the cycle plan's step 4
-(before the merge). Appendix A states Crucible's 0.4.0 surface as Crucible described it; a "no" to (a)
-or (b) there re-opens §S1.1/§S1.6 before the merge.
+**Merge precondition (Crucible):** **MET** — Crucible #1510 (2026-10-30, read from its develop client,
+`bun-crucible.py`) answered the four questions of the cycle plan's step 4: (a) and (b) yes, so §S1.1 and
+§S1.6 stand; (c) and (d) go to the 0.4.0 doc-sync CR (§S1's lead paragraph).
 
 ## Context
 
@@ -60,18 +60,17 @@ Read at gap analysis (2026-10-30, by reading; no run):
   Pi extensions that provide its functionality stay named wherever the workflow needs them, in any stack
   (DN-multi-harness-deploy-model §D25, amended 2026-10-30).
 - **The released client** (`~/.crucible/clients/bun-crucible.py`, 0.3.0, read in its source) and Crucible
-  0.4.0, which Model B 1.0.0 ships against, differ in four places, and possibly a fifth (whether a `test`
-  run honours `crucible.reportPath.<target>`, asked of Crucible before the merge); the tier verbs are
-  unchanged as far as Crucible has stated. The shipped text states 0.4.0:
+  0.4.0, which Model B 1.0.0 ships against, differ in five places (the fifth, the report path on a `test` run,
+  confirmed by Crucible #1510); the tier verbs are unchanged as far as Crucible has stated. The shipped text states 0.4.0:
 
   | Surface | 0.3.0 (installed) | 0.4.0 (Crucible's statement) |
   |---|---|---|
   | `test` | always Bun's own runner (`cmd_test`) | `crucible.testScript`, else Bun's own runner (CR-CRU-194) |
-  | `test --tests <file>` | Bun's own runner on the file | the declared script on the file(s) (CR-CRU-194; how the files reach the script is asked of Crucible before the merge, cycle plan step 4) |
+  | `test --tests <file>` | Bun's own runner on the file | the declared script on the file(s) (CR-CRU-194): appended after the client's report flags with no `--` by default, after a `--` when the script declares `env:<VAR>` (Crucible #1510) |
   | package dir | `--package-dir` > `$BUN_CRUCIBLE_PACKAGE_DIR` > `<project>/integrations/pi` > root | `--package-dir` > `BUN_CRUCIBLE_PACKAGE_DIR` > the project `crucible.toml` > root |
   | `regression` | full Bun run, lcov with `--coverage` | changed by CR-CRU-222 (shape not yet stated) |
   | tier verbs | the declared `test:<tier>` by name; `--` passthrough; refused when undeclared; report path by `crucible.reportPath.<target>` | unchanged as stated |
-  | report path on a `test` run | `crucible.reportPath.<target>` read only for a declared tier target | not stated (asked of Crucible before the merge, cycle plan step 4) |
+  | report path on a `test` run | `crucible.reportPath.<target>` read only for a declared tier target | `crucible.reportPath.<script>`, the target being `crucible.testScript`'s own name (Crucible #1510) |
 
 - **Guarded text names runners in plain words** (§D21, 2026-10-13): `bun.toml` and `generator/agents/` are
   in the raw-runner guard's `GUARDED_ROOTS`, so a code span holding `bun test`, `vitest` or `bun run test`
@@ -83,8 +82,12 @@ Read at gap analysis (2026-10-30, by reading; no run):
   The registry-key detector does not read `generator/stacks/` (`GATE_ROOTS`), and §S6's line names no
   key-shaped name, so `NOT_REGISTRY_KEYS` is unchanged.
 
-**Baseline:** to be measured by the orchestrator through the client before the branch cut (real `HOME` and
-empty `HOME`), and recorded here with its time.
+**Baseline:** measured by the orchestrator through the client before the branch cut, 2026-10-30
+06:33–06:42 UTC, develop `cd77a22`, `MODELB_HOME`/`XDG_DATA_HOME`/`PI_CODING_AGENT_DIR` at temp dirs:
+real `HOME` 4714 tests, 4713 passed, 0 failed, 1 skip (the pi-subagents service-key check, its package
+absent under the temp `PI_CODING_AGENT_DIR`); empty `HOME` 4714 tests, 4702 passed, 0 failed, 12 skips (the
+absent installed Crucible clients, `pi` and `sandesh`, as `AGENTS.md` lists), the temp `HOME` empty
+afterwards. 114 modules.
 
 ## Scope
 
@@ -92,7 +95,10 @@ empty `HOME`), and recorded here with its time.
 
 `generator/stacks/bun.toml` is rewritten to Appendix A. Its 0.4.0 statements (what `test` and
 `test --tests <file>` run, the report path, the gap, the package dir in `crucible.toml`) are Crucible's,
-confirmed with Crucible before the merge (cycle plan step 4). It carries:
+confirmed by Crucible #1510 (2026-10-30) — all but the gap: 0.4.0's `test` takes `--name`, which reaches a
+declared script as `-t <PATTERN>`. The shipped text keeps the gap, which is true of the installed client its
+contract check reads, and the 0.4.0 doc-sync CR drops it, with the package dir's `crucible.toml` key
+(Crucible #1510 (d)). It carries:
 
 1. **The client** — its verbs (`register`, `test`, `check`, the tier verbs, `unregister`); that `test`
    runs the project's declared test script (`crucible.testScript` in `package.json`), else Bun's own runner
