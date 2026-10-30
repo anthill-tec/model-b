@@ -14,14 +14,17 @@
   install continues. The installer is **offered** only through ``offer``
   (the CLI's explicit-yes seam, ``None`` under ``--yes``), at most once per
   run per installer — ``python3``'s ``uv python install --default`` once
-  for every stack it covers, each re-probed after it ran. A probe with no
+  for every stack it covers, its prompt naming them all, each re-probed
+  after it ran. Each tool gets its own warning, save one covered and
+  installed: a later covered stack whose re-probe finds the tool gets none
+  (CR-MDB-066 §S6). A probe with no
   ``install`` argv is never offered. A warning's effect clause follows the
   probe's kind: a ``module`` probe (``xmlrunner``, ``coverage``) is judged
   in the PATH ``python3``, so its warning says the PATH ``python3`` cannot
   run the stack's tests. The ``no_install`` reason (CR-MDB-063 §S2)
   decides the elevated note: ``elevated`` carries :data:`_ELEVATED_NOTE`;
   ``per-project`` carries none, and records that the route runs in each
-  project. Declining is recorded as a warning.
+  project. Declining is recorded as one warning naming every covered stack.
 
 Verdicts: ``detected`` / ``absent`` / ``unknown``, and ``installed`` when a
 provider installer the user confirmed exits 0 AND a re-probe of that one
@@ -189,10 +192,16 @@ def remediate_toolchains(
 ) -> None:
     """WARN for every tool not ``detected`` — each tool its OWN warning,
     naming its provider's installer, even when another tool shares that
-    installer; offer a non-elevated installer whose runner resolves, at
-    most once per installer. ``verdicts`` is updated in place: after a
-    confirmed installer exits 0, every tool it covers is re-probed
-    (``installed`` iff now found)."""
+    installer — save one covered and installed (CR-MDB-066 §S6): offer a
+    non-elevated installer whose runner resolves, at most once per
+    installer, its prompt naming every stack it covers (those, in
+    selection order, whose tool it installs is not ``detected``).
+    ``verdicts`` is updated in place: after a confirmed installer exits 0,
+    every stack it covers is re-probed (``installed`` iff now found), and
+    a later covered stack whose re-probe finds the tool gets no warning of
+    its own; one whose re-probe does not keeps it beside the re-probe's. A
+    decline is recorded once, naming every covered stack."""
+    covered = _covered_stacks(verdicts)
     offered: dict[tuple[str, ...], bool] = {}  # installer -> ran and exited 0
     for stack, row in verdicts.items():
         for probe in STACK_TOOLCHAINS[stack]:
@@ -207,31 +216,60 @@ def remediate_toolchains(
             # what cannot run the tests (CR-MDB-063 §S2).
             effect = (f"the PATH python3 cannot run {stack} tests" if probe["kind"] == "module"
                       else f"{stack} tests cannot run on this machine")
-            warn(
+            own = (
                 f"stack {stack}: {name}={row[name]} — {effect}; {probe['remediation']}"
                 + (_ELEVATED_NOTE if probe.get("no_install") == ELEVATED else "")
             )
-            if install is None or offer is None:
+            if install is not None and offer is not None and offered.get(install):
+                # Shared installer, already run this run and exited 0: re-probe
+                # this covered stack; its own warning stands only when the
+                # re-probe does not find the tool (CR-MDB-066 §S6).
+                display = install_display(install)
+                reprobe_warnings: list[str] = []
+                row[name] = _reprobe(probe, resolved, display, reprobe_warnings.append)
+                if row[name] != INSTALLED:
+                    warn(own)
+                for line in reprobe_warnings:
+                    warn(line)
+                continue
+            warn(own)
+            if install is None or offer is None or install in offered:
+                # No installer, ``--yes``, or a shared installer already
+                # offered (declined or failed): no second offer.
                 continue
             display = install_display(install)
-            if install in offered:
-                # Shared installer, already offered this run: no second
-                # offer; re-probe this tool too if it ran.
-                if offered[install]:
-                    row[name] = _reprobe(probe, resolved, display, warn)
-                continue
             runner = resolve(install[0], resolved)
             if runner is None:
                 continue
             with_env = "".join(
                 f" with {var}={raw}" for var, raw in (probe.get("env_dirs") or {}).items()
             )
-            if offer(f"Run `{display}`{with_env} to install {name} for stack {stack}?"):
+            stacks = covered.get(install, [stack])
+            for_stacks = f"{'stack' if len(stacks) == 1 else 'stacks'} {', '.join(stacks)}"
+            if offer(f"Run `{display}`{with_env} to install {name} for {for_stacks}?"):
                 # env dirs are created only once the user has said yes.
                 env_ok, env = _installer_env(probe, display, warn)
                 ran = env_ok and _run_installer([runner, *install[1:]], display, warn, env)
                 row[name] = _reprobe(probe, resolved, display, warn) if ran else ABSENT
             else:
                 ran = False
-                warn(f"declined `{display}` — {name} stays {row[name]} for stack {stack}")
+                warn(f"declined `{display}` — {name} stays {row[name]} for {for_stacks}")
             offered[install] = ran
+
+
+def _covered_stacks(
+    verdicts: dict[str, dict[str, str]],
+) -> dict[tuple[str, ...], list[str]]:
+    """``{installer argv: [stack, …]}``: the stacks each installer covers —
+    those, in ``verdicts`` (selection) order, whose tool it installs is not
+    ``detected`` (CR-MDB-066 §S6)."""
+    covered: dict[tuple[str, ...], list[str]] = {}
+    for stack, row in verdicts.items():
+        for probe in STACK_TOOLCHAINS[stack]:
+            install = probe["install"]
+            if install is None or row[probe["name"]] == DETECTED:
+                continue
+            stacks = covered.setdefault(install, [])
+            if stack not in stacks:
+                stacks.append(stack)
+    return covered
