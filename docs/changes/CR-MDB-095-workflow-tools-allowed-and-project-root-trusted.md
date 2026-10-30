@@ -63,4 +63,7 @@ loads none of its hooks or its permission policy.
   `.agents/skills`).
 - The tests that pin the allow-set (`workflow_tools`), the requirement rows, CR-MDB-037 §S4's read-only
   rule and its warning, and the installer's sandboxing (`PI_CODING_AGENT_DIR` in every test).
+- The rendered agent definitions' tool grants (`modelb_axi/agents.py` `PI_TOOL_NAMES`, the role
+  templates, CR-MDB-092's role tools): whether the worktree tools and the pi-lens tools a role needs are
+  granted to it, beside being allowed by the policy.
 - The re-score.

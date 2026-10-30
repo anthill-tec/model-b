@@ -388,7 +388,7 @@ None of these steps is an acceptance criterion.
 2. The orchestrator recompiles Model B's own wiring and commits it as a chore (§D21, first amendment), if
    the recompiled wiring differs.
 3. **After the 1.0.0 release,** each project with `bun` in `PROJECT_STACKS` re-renders its bun agents with
-   `modelb-axi agents`: Crucible (`bun,python`), and Sandesh if `bun` is in its stacks. A definition the
+   `modelb-axi agents`: Crucible (`bun,python`) and Sandesh (`bun,python`, restored 2026-10-30). A definition the
    project hand-modified is skipped and reported; `--force-managed` replaces it.
 4. The 0.4.0 doc-sync CR, filed when Crucible 0.4.0's release notes arrive, carries the `regression` half
    and re-checks the templates' gap line against 0.4.0's `--help`.
