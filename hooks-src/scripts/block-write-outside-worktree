@@ -19,7 +19,9 @@ The payload prelude (CR-MDB-066 §S5): the runner hooks' read — it catches
 `(ValueError, OSError, RecursionError)` — then the payload must be a dict,
 `tool_input` a dict and a present `cwd` a string, or the hook allows. An
 absent `cwd` keeps the `os.getcwd()` fallback; a present non-string one allows
-before any worktree derivation.
+before any worktree derivation. `tool_name` must be a string before the
+`_GATED_TOOLS` lookup, so a list or dict one allows rather than raising
+`TypeError` in a `closed` hook (CR-MDB-066 §S9).
 """
 
 import json
@@ -122,8 +124,11 @@ def main() -> int:
         # unreadable payload (bad JSON or UTF-8, a number past the digit limit, nesting past
         # the recursion limit) -> fail open (deterrent, not security boundary)
         return 0
-    if not isinstance(payload, dict) or payload.get("tool_name") not in _GATED_TOOLS:
+    if not isinstance(payload, dict):
         return 0
+    tool_name = payload.get("tool_name")
+    if not isinstance(tool_name, str) or tool_name not in _GATED_TOOLS:
+        return 0  # an unhashable tool_name would raise TypeError on the set lookup
 
     # Explicit, auditable opt-out wins before any work.
     if os.environ.get("ALLOW_WRITE_OUTSIDE_WORKTREE", "") in ("1", "true"):
