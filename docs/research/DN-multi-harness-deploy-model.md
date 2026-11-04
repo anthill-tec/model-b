@@ -1269,3 +1269,32 @@ Implemented by CR-MDB-089.
   cannot be parsed or holds a value other than `true`, `false` or `null`, Model B writes nothing, warns,
   and names `/trust` as the remedy. It never removes a lock it did not take and never overwrites a file
   it cannot read.
+
+### D28 — SoL-Pi is a Model B prerequisite, reached through its installed entry point
+
+**User rulings 2026-11-04.** SoL-Pi (Pi's context and tool-efficiency extensions; upstream NVlabs/SoL-Pi,
+the user's fork anthill-tec/SoL-Pi) manages a project's local configuration, `<project>/.pi/sol-pi.json`,
+through its own setup script. Pi loads that file only in a trusted project, so it builds on §D27's trust
+write. SoL-Pi is another project: it owns its installer, its checks and its configuration; Model B owns
+only the call.
+
+- **SoL-Pi is a prerequisite of every Model B project on Pi.** `init` and `modelb-axi agents` call
+  SoL-Pi's per-project setup for the target project; any later migration verb (CR-MDB-055, CR-MDB-082)
+  calls it through the same function.
+- **Model B reaches SoL-Pi as it reaches Crucible: through what SoL-Pi's installer puts on the machine,
+  never a checkout.** SoL-Pi ships an installed, versioned entry point with a light per-project mode
+  (`--install <project dir>`) that writes only the project's configuration: no dependency install, checks
+  or audit, no user-wide `pi install`, no backup file left in the project, and distinct exit codes for
+  written or unchanged, failed and cancelled. SoL-Pi's full setup stays a one-time step the user runs.
+  Model B probes the entry point as a requirement row whose remediation is SoL-Pi's install command, and
+  never installs it.
+- **Interactive when the user is.** A run without `--yes` passes the terminal through, so the user answers
+  SoL-Pi's own prompts. A `--yes` run calls it non-interactively, with SoL-Pi's defaults; Model B never
+  prompts on SoL-Pi's behalf.
+- **It fails safe.** When the entry point is absent or the call fails, `init` and `agents` warn, report the
+  step's outcome in their envelope, and keep their `ok` and exit code.
+- **Model B's own repository commits its `.pi/sol-pi.json`**, as it does the rest of its `.pi/`
+  (the dogfooding exception, CR-MDB-094).
+
+The entry point and its project mode are SoL-Pi's to build; Model B's CR waits for them. Pending:
+CR-MDB-098 (release 1.1.0).
