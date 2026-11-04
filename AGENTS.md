@@ -145,7 +145,7 @@ A brief that may run `modelb-axi` pins `--modelb-home` / `--target-root` and exp
 
 How to use each tool is in its own description; it is not repeated here.
 - **Config:** Pi reads `.pi/sol-pi.json` only in a trusted project; otherwise SoL-Pi uses `~/.pi/agent/sol-pi.json`. Its settings are changed by re-running SoL-Pi's own setup for the project, not by hand. This repository commits its copy, as it does the rest of `.pi/`.
-- **`then_run` is never a test runner:** tests still run only through the Crucible client (§ Testing & QA).
+- **`then_run` is worth using:** fusing an edit with its follow-up check saves a model turn. It follows the rules of any shell call: a test run in it goes through the Crucible client (§ Testing & QA), and an AXI command's output is redirected to a file under `/tmp` and read whole (§ Runtime/Tooling Preferences).
 
 ## Testing & QA
 
