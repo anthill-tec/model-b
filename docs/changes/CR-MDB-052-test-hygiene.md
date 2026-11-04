@@ -62,13 +62,11 @@ main checkout is the integration tree) and `contracts/worktree-layout.md`
     as the integration tree in a submodule and list no CR it does not have. A CR worktree under
     `.worktrees/<cr>` in a submodule is still listed, and `sync`, `finish` and `abort` still find it.
     Tested with a submodule fixture.
-13. **`worktree-flow.py start` copies the project's gitignored `crucible.toml`** (Crucible #1494, user
-    ruling 2026-10-29: folded into this CR). `start` copies the gitignored `.env` into a new worktree, but
-    not `crucible.toml`, whose `[client] url` names the board the project's clients post to (Crucible
-    0.3.0). Without it, a client in the worktree falls back to the default board and is refused with
-    `404 unknown project`. `start` copies `crucible.toml` from the main tree when it exists, never
-    committed, and reports it on its `env:` line; a project without one is unaffected. Tested in
-    `tests/test_worktree_flow.py`.
+13. **Dropped 2026-11-04 (user ruling): `worktree-flow.py start` copying the project's gitignored
+    `crucible.toml`.** Crucible, which asked for it (#1494), withdrew the need (#1519): it is a Solo project
+    and works on its feature branch in the main tree, never in a worktree. Only a project whose
+    `crucible.toml` names a board other than the installed default would need the copy; a Track's worktree
+    falls back to the installed default board, which is the one a project reports to.
 14. **Markdown lint findings in the shipped skills** (found 2026-10-29). pi-lens's markdownlint reports
     MD032 (lists not surrounded by blank lines) in `skills-src/model-b/references/sub-agent-procedure.md`,
     where § "Code quality" starts its list directly under the heading. The shipped skills and references
