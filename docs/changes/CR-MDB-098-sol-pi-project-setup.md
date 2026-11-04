@@ -56,6 +56,14 @@ Measured 2026-11-04 against the fork's checkout (anthill-tec/SoL-Pi `fc1cd09`, p
      existing projects get it through the migration verbs (CR-MDB-055). The expected text is dogfooded in
      Model B's own `AGENTS.md` § Workflow tools (2026-11-04).
 
+7. **The hooks see a `then_run` command (user 2026-11-04).** SoL-Pi's Action Fusion runs an `edit` or
+   `write`'s `then_run.command` by calling Pi's built-in `bash` tool from inside the tool, so no `bash` tool
+   call reaches the hooks. Model B's Pi hook shim maps `edit` and `write` to their file class, path only,
+   so the runner block never sees the command: `then_run` can run a test runner directly, past the
+   "tests only through the Crucible client" rule. The shim (`modelb_axi/hooks.py`'s Pi compilation) also
+   evaluates an `edit` or `write` call's `then_run.command` as a shell-class (`bash`) payload, so every
+   shell-class hook applies to it as to `ctx_shell`; a block blocks the whole call.
+
 ## To measure at gap analysis
 
 - SoL-Pi's shipped entry point: its install command and location, its version, the project mode's flags,
@@ -64,8 +72,9 @@ Measured 2026-11-04 against the fork's checkout (anthill-tec/SoL-Pi `fc1cd09`, p
 - How the call is tested hermetically (the entry point absent on the clean runner: a skip naming it, or a
   stub).
 - CR-MDB-055 and CR-MDB-082 (migration verbs) and CR-MDB-094 (gitignore): what each inherits.
-- Whether Model B's hooks (the runner block, the worktree write boundary) see a `then_run` command: it runs
-  inside `edit` or `write`, not as a `bash` or `ctx_shell` call.
+- The cases the `then_run` check (§7) must cover: the `edit` and `write` inputs as SoL-Pi's shipped version
+  shapes them, a call with no `then_run`, and the worktree write boundary (a shell command is not
+  path-checked; state what that leaves).
 - Whether pi-subagents' child sessions load the project's `AGENTS.md` (if not, the tool guidelines are what
   reaches them), and whether other rows (pi-lens, lean-ctx, Sandesh) take an `about` paragraph too.
 - The re-score.
