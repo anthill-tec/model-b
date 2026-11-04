@@ -32,10 +32,37 @@ Measured 2026-11-04 against the fork's checkout (anthill-tec/SoL-Pi `fc1cd09`, p
 - SoL-Pi registers `edit` and `write` (Pi's own, with a `then_run` shell command), `obs_recall` and
   `update_plan`.
 
+## SoL-Pi's contract (SoL-Pi #1534, 2026-11-04; CR-SLP-002 to 006, SoL-Pi 0.1.0, target 2026-11-09)
+
+SoL-Pi's answer to Model B's request (#1516); the gap analysis checks the released 0.1.0 against it.
+
+- **Install:** `bun add --global github:anthill-tec/SoL-Pi#<version>` (or `npm install --global …`, still
+  run under Bun); the command imports no Pi package. The Pi extension is a separate, once-per-user install:
+  `pi install git:github.com/anthill-tec/SoL-Pi@<version>`.
+- **Probe:** `sol-pi-setup` on `PATH` (Bun's global bin directory); `sol-pi-setup --version` (`-v`, `-V`)
+  prints the bare version and exits 0.
+- **`sol-pi-setup --install <project dir>`** writes at most `<dir>/.pi/sol-pi.json`, leaves no `.bak`, runs
+  no dependency install, tests, audit or `pi install`. An existing valid project file stays `unchanged`
+  unless value flags change it; with none, values come from the user-wide `sol-pi.json`, else its defaults
+  (all four features on; the reducer on Pi's default provider and model). Value flags: `--features
+  all|none|<list>`, `--reducer <provider>/<model>`, `--cache-ratio <n>`.
+- **Prompts are opt-in:** never by default (`--non-interactive` accepted, a no-op); `--interactive` prompts
+  only when stdin and stderr are terminals and `PI_NONINTERACTIVE` is unset or empty, else warns and runs
+  non-interactively. Model B passes `--interactive` on an interactive run (terminal passed through) and
+  `--non-interactive` under `--yes`.
+- **Exit codes:** 0 written or unchanged; 1 failed (invalid configuration, no provider or model, bad
+  directory, write error); 2 usage; 130 / 143 / 129 cancelled.
+- **Stdout:** one TOON document, root `axi` — verb, ok, `outcome` (written, unchanged, failed, usage,
+  cancelled), path, version, config, context, warnings, help, error; `--format json` prints the same object
+  as one JSON line.
+- **Pi 1.5.0** is in its tested set (CR-SLP-002); `edit` and `write` carry `then_run` guidance
+  (CR-SLP-003).
+
 ## Scope (seed)
 
-1. **A `sol-pi` requirement row:** the probe of SoL-Pi's installed entry point, its remediation (SoL-Pi's
-   install command); the installer never installs it.
+1. **A `sol-pi` requirement row:** the probe of `sol-pi-setup` (and whether the Pi extension is
+   registered, a second install), its remediation (SoL-Pi's two install commands); the installer never
+   installs either.
 2. **`init` and `agents` call SoL-Pi's per-project setup** for the target, after the trust step: the
    terminal passed through on an interactive run, non-interactive under `--yes`. The outcome is reported in
    the envelope (`sol_pi`); a failure or an absent entry point warns and keeps `ok` and the exit code.
@@ -66,8 +93,7 @@ Measured 2026-11-04 against the fork's checkout (anthill-tec/SoL-Pi `fc1cd09`, p
 
 ## To measure at gap analysis
 
-- SoL-Pi's shipped entry point: its install command and location, its version, the project mode's flags,
-  exit codes and output; whether it still writes a backup file or touches anything user-wide.
+- SoL-Pi 0.1.0 as released against § SoL-Pi's contract.
 - Pi's version then, and SoL-Pi's tested list.
 - How the call is tested hermetically (the entry point absent on the clean runner: a skip naming it, or a
   stub).

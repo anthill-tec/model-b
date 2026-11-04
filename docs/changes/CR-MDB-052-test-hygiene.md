@@ -94,3 +94,16 @@ main checkout is the integration tree) and `contracts/worktree-layout.md`
     value, its default included, against that rule before the first write, naming `--sandesh-project`;
     the default drops every character outside it. Gap analysis checks `SANDESH_ADDRESS`, which follows from
     it, and the schema entry's rule.
+18. **`init` overwrites a project's existing files** (SoL-Pi #1534, 2026-11-04). Scaffolding an existing
+    repository replaced its own `.gitignore` and `AGENTS.md`; only an existing `CHANGELOG.md` is protected
+    today. `init` refuses, before the first write, a target where any file it would emit already exists
+    and is not Model B's own (no generated marker), naming each such file and pointing at `migrate` as the
+    route for an existing project; `--dry-run` reports the same. Gap analysis decides the files a re-run
+    on a Model B project may still rewrite (CR-MDB-050 owns re-runs) and the flag, if any, that overrides.
+19. **The scaffolded release workflow triggers on `master`** (SoL-Pi #1534). A project whose production
+    branch is `main` never fires it. The workflow names the project's production branch: git-flow's
+    configured `gitflow.branch.master`, else the repository's default branch, else `master`; gap analysis
+    checks every rendered branch reference (`workflows-src/`, `modelb-axi release-workflow`, the release
+    rehearsal and the readiness checks of `release-check`).
+20. **The scaffolded `test-bun` step runs `bun test` without `--timeout 30000`** (SoL-Pi #1534), the limit
+    the bun client applies; the rendered step passes it, as the client does.
