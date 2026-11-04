@@ -90,3 +90,9 @@ main checkout is the integration tree) and `contracts/worktree-layout.md`
     file read (in Pi, `read`), and `contracts/lean-ctx.md` records the boundary, so lean-ctx's guard
     stays on for real secret files. Gap analysis finds every shipped surface that tells an agent to read
     `.env`, scaffolded and generated text included.
+17. **`init`'s default Sandesh project id is not one Sandesh accepts** (found 2026-11-04, scaffolding
+    SoL-Pi). `--sandesh-project` defaults to `--name` without whitespace, so `--name "SoL-Pi"` gives `SoL-Pi`,
+    and `sandesh setup` refuses it (a project id matches `[A-Za-z][A-Za-z0-9_]*`). `init` validates the
+    value, its default included, against that rule before the first write, naming `--sandesh-project`;
+    the default drops every character outside it. Gap analysis checks `SANDESH_ADDRESS`, which follows from
+    it, and the schema entry's rule.
