@@ -1,0 +1,1 @@
+{   "version": 1,   "actionFusion": true,   "observationPack": true,   "evidencePreservingReducer": true,   "evidencePreservingReducerProvider": "openrouter",   "evidencePreservingReducerModel": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",   "onlineContextCompact": true,   "cacheWriteReadRatio": 12.5 }
