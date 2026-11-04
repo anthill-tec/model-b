@@ -63,6 +63,10 @@ and shape flags, only for values the project does not record, and `init`'s `--dr
 `--yes`, `--force-managed` and `--modelb-home`; the project is the current directory, `--target DIR`
 overrides it, for `init`, `migrate` and `agents` alike (aligning all three is in this CR's scope).
 
+Also inherited: the test-tool step that declares the project's test tools to Crucible per modality
+(DN-multi-harness-deploy-model §D29, CR-MDB-099) runs in an adopted project too, detecting the tools and
+any older declarations there.
+
 Open design questions for the gap analysis: the managed block's marker for each file's syntax; the
 monorepo shape; how a project's existing release or CI workflow
 is brought to the template (reported only, replaced on confirmation, or adopted as hand-edited).

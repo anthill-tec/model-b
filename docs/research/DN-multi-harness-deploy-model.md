@@ -1298,3 +1298,29 @@ only the call.
 
 The entry point and its project mode are SoL-Pi's to build; Model B's CR waits for them. Pending:
 CR-MDB-098 (release 1.1.0).
+
+### D29 — Every project verb declares the project's test tools to Crucible, per modality
+
+**User rulings 2026-11-04 (a suggestion the user made to Crucible, relayed as Crucible #1528 and confirmed
+with the user).** From Crucible 0.4.0 the client reads a project's test declaration on every run: for a bun
+project, the `crucible.targets` table in `package.json`, keyed by script (a tier is a `test:<tier>`
+script), each entry naming its `framework` and its report form. Crucible names a codec by the test
+framework or format it parses, never by the stack (Crucible's ruling 2026-10-31), so a project's
+declaration follows the tool it runs for each modality.
+
+- **`init`, `modelb-axi agents` and `migrate` each run a test-tool step** for the project's stacks: for
+  each modality — unit, regression, BDD where the project needs it (mostly front-end projects, e.g.
+  playwright-bdd), coverage — the tool the project uses, written as the project's declaration
+  (`crucible.targets` on the bun stack). `init` writes it fresh; `migrate` detects the tools and the
+  declarations already there, older keys included, and proposes the table; `agents` brings an older
+  declaration up to the current shape when Crucible's requirements change.
+- **Interactive when the user is.** A run without `--yes` asks; a `--yes` run takes what it detects and the
+  defaults, and never prompts.
+- **Model B keeps the vocabulary.** The valid frameworks, report forms and fields per stack are held in
+  Model B's own code, updated when Crucible announces a change; Model B does not read them from the
+  client at run time.
+- **Stack by stack.** The bun stack first (Crucible 0.4.0, CR-CRU-225/226). Python, maven, rust and
+  arduino follow as Crucible's own CRs give them the same framework-named vocabulary; the step is built
+  so their entries can be added.
+
+Pending: CR-MDB-099 (release 1.0.0).
