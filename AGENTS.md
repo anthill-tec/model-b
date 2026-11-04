@@ -135,6 +135,18 @@ A brief that may run `modelb-axi` pins `--modelb-home` / `--target-root` and exp
 - Model B never mutates `~/.claude` directly — the `modelb-axi` installer is the only deployment channel (PRD §D9/§D10), and the repo-local authoring rule means no CR writes there at all. The user's own dotfile-manager discipline is out of scope for this file.
 - **Electronics stack is EXCLUDED** (anthill-forge dead) — never migrate, document, or generate it.
 
+## Workflow tools
+
+**SoL-Pi** (a Pi extension: upstream NVlabs/SoL-Pi, here the fork anthill-tec/SoL-Pi) is a prerequisite of every Model B project on Pi (DN-multi-harness-deploy-model §D28). It cuts repeated work in long sessions with four mechanisms, each switched on in `.pi/sol-pi.json`:
+- **Action Fusion:** `edit` and `write` are SoL-Pi's, and can run a follow-up check in the same call (`then_run`).
+- **ObservationPack:** a large repeated tool result becomes a handle, recalled exactly, page by page, with `obs_recall`.
+- **Evidence-Preserving Reducer:** a long diagnostic log becomes a compact receipt, written by the model `.pi/sol-pi.json` names and kept only when every quotation matches the archived source.
+- **Online Context Compact:** completing an `update_plan` step marks a point where Pi may compact the context.
+
+How to use each tool is in its own description; it is not repeated here.
+- **Config:** Pi reads `.pi/sol-pi.json` only in a trusted project; otherwise SoL-Pi uses `~/.pi/agent/sol-pi.json`. Its settings are changed by re-running SoL-Pi's own setup for the project, not by hand. This repository commits its copy, as it does the rest of `.pi/`.
+- **`then_run` is never a test runner:** tests still run only through the Crucible client (§ Testing & QA).
+
 ## Testing & QA
 
 Pure **`unittest`** — no pytest, no `conftest.py`, no fixtures/markers. 114 modules in `tests/` (`tests/test_*.py`), each file ending in `if __name__ == "__main__": unittest.main()`. Naming as practised: the wave-1/2 modules use `<Topic><Section>Test` classes (e.g. `ContractsS2Test`) with `test_s<n>_<assertion>` methods; later modules use `<Feature>Test` classes (e.g. `BlockDirectCargoTestScriptTest`) with descriptive method names. A helper more than one module needs lives once in `tests/_helpers.py` and is imported (CR-MDB-032 §S3 gates a module-level helper body defined in two modules).

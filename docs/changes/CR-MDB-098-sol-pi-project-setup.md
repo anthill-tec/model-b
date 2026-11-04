@@ -53,7 +53,8 @@ Measured 2026-11-04 against the fork's checkout (anthill-tec/SoL-Pi `fc1cd09`, p
      `then_run`, and how to change its settings — comes from the `sol-pi` requirement row (a new `about`
      field), rendered by `init` into a short "Workflow tools" section of the scaffolded `AGENTS.md`, never
      into the capability contract's state lines. Model B's own `AGENTS.md` gets it by hand in this CR;
-     existing projects get it through the migration verbs (CR-MDB-055).
+     existing projects get it through the migration verbs (CR-MDB-055). The expected text is dogfooded in
+     Model B's own `AGENTS.md` § Workflow tools (2026-11-04).
 
 ## To measure at gap analysis
 
@@ -63,6 +64,8 @@ Measured 2026-11-04 against the fork's checkout (anthill-tec/SoL-Pi `fc1cd09`, p
 - How the call is tested hermetically (the entry point absent on the clean runner: a skip naming it, or a
   stub).
 - CR-MDB-055 and CR-MDB-082 (migration verbs) and CR-MDB-094 (gitignore): what each inherits.
+- Whether Model B's hooks (the runner block, the worktree write boundary) see a `then_run` command: it runs
+  inside `edit` or `write`, not as a `bash` or `ctx_shell` call.
 - Whether pi-subagents' child sessions load the project's `AGENTS.md` (if not, the tool guidelines are what
   reaches them), and whether other rows (pi-lens, lean-ctx, Sandesh) take an `about` paragraph too.
 - The re-score.
