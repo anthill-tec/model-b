@@ -9,7 +9,7 @@ this CR starts.
 board, Crucible 0.4.0 released and installed in production (CR-CRU-225/226, the `crucible.targets`
 contract).
 **Labels:** scaffold, migrate, crucible, stacks, bun
-**Design reference:** DN-multi-harness-deploy-model §D29 (this CR's rulings); Crucible #1521, #1525, #1528;
+**Design reference:** DN-multi-harness-deploy-model §D29 (this CR's rulings); Crucible #1521, #1525, #1528, #1530;
 CR-MDB-055 (adoption inherits the step).
 
 ## Context
@@ -44,14 +44,17 @@ the older keys (the 0.4.0 doc-sync moves those).
    the table and asks.
 4. **`agents`** brings an older declaration up to the current shape.
 5. **The vocabulary lives in Model B** (user ruling): the valid frameworks, report forms and fields per
-   stack, in one place, updated when Crucible announces a change; other stacks added as Crucible's CRs
-   (CR-CRU-202, 203, 195, a python CR) land.
+   stack, in one place. Its source is the "Stack declaration changes" section of each Crucible release's
+   notes, which Crucible sends at the release (Crucible #1530): per stack, the frameworks, report forms,
+   fields, markers and refused keys that release changed. Other stacks are added as their CRs ship in a
+   release (CR-CRU-202, 203, 195, a python CR).
 6. **The project's own lines are kept:** the step changes only the declaration's keys, never the project's
    scripts or other `package.json` content without asking.
 
 ## To measure at gap analysis
 
-- 0.4.0's released contract against this seed (fields, the `test:` keying, the reporters' paths).
+- 0.4.0's "Stack declaration changes" section against this seed (fields, the `test:` keying, the
+  reporters' paths).
 - Where a project's existing test tools can be detected (scripts, dev dependencies, config files) and what
   a `--yes` default is when nothing is detected.
 - How the step writes `package.json` without disturbing its formatting, with the stdlib only.
