@@ -43,6 +43,17 @@ Measured 2026-11-04 against the fork's checkout (anthill-tec/SoL-Pi `fc1cd09`, p
    entries, with what `then_run` adds stated.
 4. **Model B's own repository** keeps committing its `.pi/sol-pi.json`.
 5. **Texts:** the install guide and its README mirror, the scaffolded capability contract.
+6. **What the project's agents are told about SoL-Pi (user 2026-11-04).** Two layers, each with one owner:
+   - **How to use each tool** stays in SoL-Pi's own tool registrations (`promptSnippet`,
+     `promptGuidelines`), which Pi puts into the system prompt of every session that has the tool; Model B
+     never copies it. (`obs_recall` and `update_plan` carry it today; `edit` and `write`'s `then_run` is in
+     the request to SoL-Pi.)
+   - **What SoL-Pi is and why it is in the project** — one short paragraph: what it does, that it is a
+     prerequisite, `.pi/sol-pi.json` read only in a trusted project, `edit` and `write` being SoL-Pi's with
+     `then_run`, and how to change its settings — comes from the `sol-pi` requirement row (a new `about`
+     field), rendered by `init` into a short "Workflow tools" section of the scaffolded `AGENTS.md`, never
+     into the capability contract's state lines. Model B's own `AGENTS.md` gets it by hand in this CR;
+     existing projects get it through the migration verbs (CR-MDB-055).
 
 ## To measure at gap analysis
 
@@ -52,4 +63,6 @@ Measured 2026-11-04 against the fork's checkout (anthill-tec/SoL-Pi `fc1cd09`, p
 - How the call is tested hermetically (the entry point absent on the clean runner: a skip naming it, or a
   stub).
 - CR-MDB-055 and CR-MDB-082 (migration verbs) and CR-MDB-094 (gitignore): what each inherits.
+- Whether pi-subagents' child sessions load the project's `AGENTS.md` (if not, the tool guidelines are what
+  reaches them), and whether other rows (pi-lens, lean-ctx, Sandesh) take an `about` paragraph too.
 - The re-score.
