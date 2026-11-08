@@ -1324,3 +1324,41 @@ declaration follows the tool it runs for each modality.
   so their entries can be added.
 
 Pending: CR-MDB-099 (release 1.0.0).
+
+### D30 — Context optimisation: lean-ctx and SoL-Pi are used together, and every rule set and brief says how
+
+**User rulings 2026-11-08** (Crucible #1536, sent at the user's direction, and the user's answers to it).
+lean-ctx cuts what each read or search costs; SoL-Pi cuts what the conversation carries. Crucible's
+orchestrator drifted during a gap analysis (2026-11-08): it read files with `sed -n` and `grep -n` through
+`ctx_shell`, grepped for callers by hand, skipped `ctx_compose`, and ran SoL-Pi with two coarse plan steps.
+Using one extension without the other leaves most of the saving unused.
+
+- **One practice, in every rule set Model B ships**, for a project whose harness loads both pi-lean-ctx and
+  SoL-Pi: the orchestration references (common, Mainline, Track; a Solo orchestrator follows Mainline), the
+  sub-agent brief template (`sub-agent-procedure.md`), the bootstrap skill, the generated agent definitions
+  and the scaffolded `AGENTS.md` (its "Workflow tools" section, §D28). The practice:
+  - **lean-ctx for every repo read and search.** Orient first (`ctx_compose`, `ctx_explore`), then
+    targeted reads (`ctx_read` ranges, map or signatures; `read_symbol`) and lookups (`ctx_search`,
+    `ctx_callgraph` for every caller); `ctx_shell` only for side effects (builds, tests, git, the Crucible
+    client, scratch proofs), never to read a file. A path lean-ctx refuses (`/tmp`) is read with the
+    harness's plain `read`.
+  - **The plan is the compaction schedule.** `update_plan` keeps one small step per milestone, each
+    completion carrying its evidence; a large output already in hand is recalled by id (`obs_recall`),
+    never produced again by re-running or re-reading.
+  - **Durable artefacts live in files:** sub-agent reports, gap analyses and briefs; the orchestrator reads
+    the summary and recalls the rest.
+- **The practice, never the usage.** The rules say which tool to use when, and how the plan is kept; how
+  each tool works stays in its own registration, which the harness puts in the system prompt (§D28,
+  CR-MDB-098 item 6). No Model B text restates a tool's modes or parameters.
+- **The rules live in the skills.** They are persisted in the repository's skills and loaded at bootstrap
+  Step 0.5. The knowledge store stays execution knowledge (§ Memory); no rule is kept there as a fact.
+- **Envelopes are narrowed, and still read whole.** A client call may narrow its envelope with `--fields`;
+  the narrowed envelope is written to a file and read whole from its last `axi:` line (CR-MDB-072), never
+  parsed or filtered by a script. An AXI command runs with `raw=true`: an envelope is a case where the
+  exact bytes matter.
+- **Each phase agent runs only the tests it touches** (§D26); every brief says so.
+- **Until SoL-Pi CR-SLP-006 is released,** no plan step is completed while a background sub-agent runs: a
+  plan update and a background dispatch go in separate turns. CR-MDB-098's gap analysis checks SoL-Pi
+  0.1.0 and drops the rule once the fix is in.
+
+Pending: CR-MDB-098 (release 1.1.0), which takes this in (user 2026-11-08).

@@ -1,13 +1,14 @@
 # CR-MDB-098 — SoL-Pi is set up for every project Model B renders into
 
 **Status:** PENDING — **SEED, not the finished spec** (filed 2026-11-04 by the user's rulings, DN §D28). Gap
-analysis, the spec and its pre-review happen in order when this CR starts.
+analysis, the spec and its pre-review happen in order when this CR starts. Crucible #1536 (the combined
+lean-ctx and SoL-Pi practice, DN §D30) folded in as item 8 by the user's ruling, 2026-11-08.
 **Type:** feature (installer requirement row, `init`, `agents`)
 **Priority:** P2 — release 1.1.0, wave 3 (user 2026-11-04; board-authoritative: read `queue`).
 **Depends on:** CR-MDB-095 (the trust write, without which Pi ignores a project's `.pi/sol-pi.json`) and
 SoL-Pi's installed entry point with its per-project mode (DN §D28) — SoL-Pi's work, not on Model B's board.
-**Labels:** installer, scaffold, pi, sol-pi
-**Design reference:** DN-multi-harness-deploy-model §D28 (this CR's rulings), §D27 (trust, requirement
+**Labels:** installer, scaffold, pi, sol-pi, lean-ctx, skills
+**Design reference:** DN-multi-harness-deploy-model §D28 and §D30 (this CR's rulings), §D27 (trust, requirement
 rows), §D24 (tools from requirement rows); CR-MDB-095; CR-MDB-094 (generated files and the dogfooding
 exception).
 
@@ -91,6 +92,19 @@ SoL-Pi's answer to Model B's request (#1516); the gap analysis checks the releas
    evaluates an `edit` or `write` call's `then_run.command` as a shell-class (`bash`) payload, so every
    shell-class hook applies to it as to `ctx_shell`; a block blocks the whole call.
 
+8. **The combined context-optimisation practice (Crucible #1536; user 2026-11-08, DN §D30).** Every rule
+   set Model B ships states how lean-ctx and SoL-Pi are used together, for a project whose harness loads
+   both: the orchestration references (common, Mainline, Track), the sub-agent brief template
+   (`sub-agent-procedure.md`), the bootstrap skill, the generated agent definitions (which carry the
+   lean-ctx read rules today and gain SoL-Pi's half) and the scaffolded `AGENTS.md`'s "Workflow tools"
+   section. Within §D30's bounds:
+   - the practice, never the usage (item 6 stands: no tool's modes or parameters are copied);
+   - the rules live in the skills, loaded at bootstrap Step 0.5; no rule fact in the knowledge store;
+   - an envelope may be narrowed with `--fields` and is still read whole (CR-MDB-072);
+   - every brief says the agent runs only the tests it touches (§D26);
+   - the separate-turns rule for `update_plan` and a background dispatch holds only until SoL-Pi
+     CR-SLP-006 is released.
+
 ## To measure at gap analysis
 
 - SoL-Pi 0.1.0 as released against § SoL-Pi's contract.
@@ -103,4 +117,9 @@ SoL-Pi's answer to Model B's request (#1516); the gap analysis checks the releas
   path-checked; state what that leaves).
 - Whether pi-subagents' child sessions load the project's `AGENTS.md` (if not, the tool guidelines are what
   reaches them), and whether other rows (pi-lens, lean-ctx, Sandesh) take an `about` paragraph too.
-- The re-score.
+- For item 8: every surface that already states a lean-ctx rule (the generated agent definitions, the
+  orchestration references, the scaffolded `AGENTS.md`, Model B's own `AGENTS.md` § Runtime/Tooling
+  Preferences) and every guard test that pins its wording; whether SoL-Pi 0.1.0 carries CR-SLP-006; how a
+  project whose harness loads only one of the two extensions is told (the rule set is conditional on
+  both).
+- The re-score (8 points before item 8; 13 after the fold, user 2026-11-08).
