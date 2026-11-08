@@ -1297,8 +1297,12 @@ installed with `uv tool install sol-pi-axi`) that writes only the project's conf
 - **Model B's own repository commits its `.pi/sol-pi.json`**, as it does the rest of its `.pi/`
   (the dogfooding exception, CR-MDB-094).
 
+- **SoL-Pi's status is a Model B skill** (user 2026-11-08, relayed as SoL-Pi #1556): SoL-Pi registers no
+  status command. A `sol-pi-status` skill reads SoL-Pi's installed surface (its home view) and reports to
+  the user; like every Model B surface it never installs or registers SoL-Pi.
+
 The entry point and its project mode are SoL-Pi's to build; Model B's CR waits for them. Pending:
-CR-MDB-098 (release 1.1.0).
+CR-MDB-098 (release 1.1.0) and CR-MDB-101, the status skill (release 1.1.0).
 
 ### D29 — Every project verb declares the project's test tools to Crucible, per modality
 

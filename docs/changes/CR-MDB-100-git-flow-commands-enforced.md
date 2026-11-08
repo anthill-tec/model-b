@@ -2,11 +2,11 @@
 
 **Status:** PENDING — **SEED, not the finished spec** (filed 2026-11-08 by the user's rulings, PRD D6 amendment
 of 2026-11-08). Gap analysis, the spec and its pre-review happen in order when this CR starts. Pre-review: due
-— it adds a hook.
-**Type:** feature (skills, a blocking hook)
+— it adds a hook and is 8 points.
+**Type:** feature (skills, a blocking hook, a registry key)
 **Priority:** P1 — release 1.0.0, wave 2 (user 2026-11-08; board-authoritative: read `queue`).
 **Depends on:** none (board-authoritative: read `queue`, not this line)
-**Labels:** skills, hooks, git-flow, solo
+**Labels:** skills, hooks, git-flow, solo, registry, scaffold
 **Design reference:** PRD D6 amendment of 2026-11-08; `hooks-src/schema.md` (security-class hooks declare
 `fail_direction`); the `block-direct-*-test` hooks (CR-MDB-062, CR-MDB-066) as the pattern.
 
@@ -55,6 +55,18 @@ for git.
    docs); `git branch -D` for a mis-cut hotfix becomes `git flow hotfix delete`; "merges develop in by
    hand" names the merge.
 6. **Model B's own repository** follows it: solo, main tree, git flow commands.
+7. **The orchestration mode is a registry key** (user 2026-11-08). Today `init` requires `--mode
+   solo|multi:<N>` (`scaffold._validate_mode`) and keeps it only as `ORCHESTRATOR_LABEL`'s prefix
+   (`_orchestrator_label`), the hooks `_hook_instances` compiles (multi adds `block-write-outside-worktree`
+   and `block-cr-completed-without-spec-update`) and the `AGENTS.md` line "(mode: solo)"; no skill reads any
+   of them, and `agents` does not recompute the hooks. The CR adds:
+   - an `ORCHESTRATION_MODE` row in `project_schema.toml` (`solo` or `multi:<N>`, `.env`), written by `init`
+     from `--mode`;
+   - the skills branch on it: bootstrap Step 0.5 loads the matching rules, and § Worktree isolation, the
+     Track reference and the shutdown skill apply only under `multi:<N>`;
+   - `modelb-axi agents` recomputes the mode-dependent hooks from the key;
+   - `migrate` writing it for an existing project is CR-MDB-082's (item 5 there); Model B's own `.env`
+     gets `ORCHESTRATION_MODE=solo` by hand once the key exists (a chore: the file is local).
 
 ## To measure at gap analysis
 
@@ -69,4 +81,8 @@ for git.
   check is met from the start.
 - Every surface that states a git rule (Dimension 8): the skills, the agent templates (dispatched agents
   never merge), the scaffolded `AGENTS.md`, and the tests that pin them.
-- The re-score (5 points filed).
+- For item 7: the schema row's place (`source = "ask"` with the flag, like the other `init` inputs, and
+  `ORCHESTRATOR_LABEL` derived from it), the stale-name and `NOT_REGISTRY_KEYS` gates, what `agents` does
+  when the key is absent (a pre-key project: keep the hooks as compiled and warn, naming `migrate`), and
+  whether `init` prompts for `--mode` on an interactive run.
+- The re-score (5 points filed; 8 with item 7, user 2026-11-08).

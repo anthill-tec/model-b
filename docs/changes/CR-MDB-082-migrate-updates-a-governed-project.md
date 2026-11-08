@@ -31,6 +31,10 @@ version last rendered it, so nobody can tell it is behind.
    names `migrate`.
 4. **The skills' older-project steps** that tell the orchestrator to run `agents` or edit by hand after
    an upgrade name `migrate`.
+5. **The orchestration mode** (user 2026-11-08, PRD D6 amendment; the key is CR-MDB-100's): a project with
+   no `ORCHESTRATION_MODE` gets one, inferred from its `ORCHESTRATOR_LABEL` prefix (`vidushi-` solo,
+   `Mainline-` multi) and its compiled hooks, confirmed with the user on an interactive run; under `--yes`
+   the inference is written and reported.
 
 ## To measure at gap analysis
 
