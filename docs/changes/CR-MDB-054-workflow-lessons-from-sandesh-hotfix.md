@@ -1,4 +1,4 @@
-# CR-MDB-054 — Workflow lessons from Sandesh's 0.4.1 hotfix run
+# CR-MDB-054 — Workflow lessons from other projects' runs (Sandesh's 0.4.1 hotfix run, Crucible)
 
 **Status:** PENDING — **SEED, not the finished spec** (filed 2026-10-03 into release 1.1.0, wave 3).
 Gap analysis, the design record, the spec and its pre-review happen in order when this CR starts.
@@ -7,7 +7,7 @@ Gap analysis, the design record, the spec and its pre-review happen in order whe
 **Depends on:** none (board-authoritative: read `queue`, not this line)
 **Labels:** skills, agents, crucible, release, conventions
 **Design reference:** Sandesh #1418 (Mainline - Sandesh, 2026-10-03; owner rulings and gate findings
-from the Sandesh 0.4.1 hotfix run); PRD D3 and D5; DN-multi-harness-deploy-model §D18
+from the Sandesh 0.4.1 hotfix run); Crucible #1538 (item 9, user 2026-11-08); PRD D3 and D5; DN-multi-harness-deploy-model §D18
 
 ## Context
 
@@ -17,7 +17,7 @@ Sandesh's project memory. Each item below is measured against Model B's own text
 analysis, and the ones that conflict with an existing Model B rule are brought to the user as rulings
 before the spec derives from them.
 
-## Scope (seed — the eight lessons)
+## Scope (seed — the nine lessons)
 
 1. **CI and release work is not entirely a chore** (user ruling 2026-10-10, superseding Sandesh's
    "chore, never a CR"). The no-mistakes gate is comprehensive, and fixes and changes may be made
@@ -57,3 +57,14 @@ before the spec derives from them.
    with a new `--target` updates the stored date. Candidate homes: `cr-authoring` (first filing
    proposes the release), the `crucible` skill's `release-propose` entry, `git-workflow` § Releases
    (a hotfix's proposal). Source: Sandesh #1470.
+9. **A question to the user is grounded in the spec, or not asked** (Crucible #1538, user-directed
+   2026-11-04; placed here by the user 2026-11-08). Before asking, the orchestrator checks whether the
+   user's existing rulings already answer it; if they do, it applies them and does not ask. A ruling
+   still needed is asked with: the spec section or AC quoted word for word, and what it leaves open;
+   what the code does today, by file and symbol; a concrete example in the project's real terms (its
+   manifest, stacks, scripts), never a hypothetical; and what each option changes in behaviour. Tests,
+   findings and rulings are described in the user's and the spec's words, each test as the behaviour it
+   pins, in one plain sentence. Candidate homes: `gap-analysis` beside Rule 19 (which says when to ask,
+   not how), `orchestration-common` (Mainline, Track, Solo), and the VERIFY and FIX sections where
+   findings come back to the user. Source: CR-CRU-226's VERIFY, where a ruling was asked with no spec
+   text that the user's standing rule already answered.
