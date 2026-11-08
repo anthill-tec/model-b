@@ -9,7 +9,8 @@ Gap analysis, the design record, the spec and its pre-review happen in order whe
 **Design reference:** Sandesh #1418 (Mainline - Sandesh, 2026-10-03; owner rulings and gate findings
 from the Sandesh 0.4.1 hotfix run); Crucible #1538 (item 9, user 2026-11-08); Crucible #1542 (items 10 and 11, PRD D6 amendment of
 2026-11-08); Crucible #1544 (item 12, PRD D6 amendment of 2026-11-08);
-Crucible #1548 (item 13, user-directed 2026-11-07); PRD D3 and D5; DN-multi-harness-deploy-model §D18
+Crucible #1548 (item 13, user-directed 2026-11-07);
+Crucible #1552 (item 14, user-directed 2026-11-08); PRD D3 and D5; DN-multi-harness-deploy-model §D18
 
 ## Context
 
@@ -19,7 +20,7 @@ Sandesh's project memory. Each item below is measured against Model B's own text
 analysis, and the ones that conflict with an existing Model B rule are brought to the user as rulings
 before the spec derives from them.
 
-## Scope (seed — the thirteen lessons)
+## Scope (seed — the fourteen lessons)
 
 1. **CI and release work is not entirely a chore** (user ruling 2026-10-10, superseding Sandesh's
    "chore, never a CR"). The no-mistakes gate is comprehensive, and fixes and changes may be made
@@ -137,3 +138,22 @@ before the spec derives from them.
     taken for the app's long task). *Measure:* which rules apply to a project with no UI (Model B's own
     CLI): rules 1–3 are conditional on a performance or UI criterion. *Re-score:* with item 13 the CR may
     pass 13 points; Rule 23 then splits it before the pre-review.
+14. **The gap analysis groups the ACs into behaviour units; the plan files one red-green cycle per unit**
+    (Crucible #1552, user-directed 2026-11-08). `orchestration-common.md` already says "One cycle per
+    coherent behaviour unit", but no gap-analysis step produces the units. The rule:
+    - a unit is one mechanism or path RED can pin and GREEN can make pass on its own; the units are
+      listed in dependency order, and every AC belongs to exactly one;
+    - each unit lists the existing tests its change breaks (item 11), so their re-seeding is filed with
+      it;
+    - the plan is filed from the grouping, one red-green cycle per unit, then VERIFY; a single cycle is
+      written as "one unit: <why>", never by default; a CR of 8 points or more with more than one unit is
+      never filed as one cycle (the pre-review's threshold);
+    - RED and GREEN briefs are scoped to their unit: RED writes only its tests, and GREEN runs the earlier
+      units' tests as its regression.
+    Candidate homes: `gap-analysis`, a step after Dimension 9 and before Rule 23's re-score, with a
+    "Cycle units" section in the output format; `orchestration-common.md` § Cycle discipline, at the
+    plan-filing step; the RED and GREEN templates. *Measure:* GREEN's regression against DN §D26 (each
+    role runs the tests its phase needs) and CR-MDB-083 (phase agents run only their tests): the earlier
+    units' tests are the CR's own, named in the brief. Source: Crucible CR-CRU-203 (13 points, 9 ACs, one
+    cycle: RED ran 34 minutes and about 944k tokens for 89 failing tests). *Split candidate:* items 9, 11,
+    13 and 14 are gap-analysis and design rules, and may form their own CR when Rule 23 splits this one.
