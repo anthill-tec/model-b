@@ -1316,12 +1316,31 @@ declaration follows the tool it runs for each modality.
   declaration up to the current shape when Crucible's requirements change.
 - **Interactive when the user is.** A run without `--yes` asks; a `--yes` run takes what it detects and the
   defaults, and never prompts.
-- **Model B keeps the vocabulary.** The valid frameworks, report forms and fields per stack are held in
+- ~~**Model B keeps the vocabulary.** The valid frameworks, report forms and fields per stack are held in
   Model B's own code, updated when Crucible announces a change; Model B does not read them from the
-  client at run time.
+  client at run time.~~ *Superseded 2026-11-08 (below).*
 - **Stack by stack.** The bun stack first (Crucible 0.4.0, CR-CRU-225/226). Python, maven, rust and
   arduino follow as Crucible's own CRs give them the same framework-named vocabulary; the step is built
   so their entries can be added.
+
+**AMENDED 2026-11-08 (user rulings of 2026-11-06, relayed as Crucible #1546, and the user's answers of
+2026-11-08): one shared definition, owned by Crucible.**
+
+- **Model B's scaffold and Crucible's installer write a project's Crucible declaration through one shared
+  definition,** so the two cannot drift: Model B's `init`, `migrate` and `agents` on one side, Crucible's
+  installer, pointed at a project, on the other.
+- **Crucible owns the schema; Model B reads it at run time.** Crucible's clients read the declaration, so
+  Crucible defines it. Its installer ships a machine-readable schema beside the clients, listed in
+  `~/.crucible/crucible-clients.json`, and Model B's writer reads that file when it runs. When the file
+  is absent, the step refuses with Crucible's install command as the remediation and keeps the verb's
+  `ok`, as other requirement steps do. Model B holds no copy of the vocabulary. The interface is recorded
+  in a Model B contract, `contracts/crucible-declaration.md`, as `crucible-envelope.md` records the
+  client's envelope.
+- **Every stack Crucible supports, as Crucible ships it.** The declaration is `package.json`
+  `crucible.targets` on bun and the project's `crucible.toml` `[targets.*]` tables on the other stacks.
+  CR-MDB-099 builds the writer and its first two stacks, bun and rust (both in Crucible 0.4.0, so a rust
+  project such as nai is upgraded through the scaffold, not by hand). Arduino, maven, python and go each
+  get a small CR, filed when their Crucible release notes arrive.
 
 Pending: CR-MDB-099 (release 1.0.0).
 
