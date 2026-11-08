@@ -10,7 +10,8 @@ Gap analysis, the design record, the spec and its pre-review happen in order whe
 from the Sandesh 0.4.1 hotfix run); Crucible #1538 (item 9, user 2026-11-08); Crucible #1542 (items 10 and 11, PRD D6 amendment of
 2026-11-08); Crucible #1544 (item 12, PRD D6 amendment of 2026-11-08);
 Crucible #1548 (item 13, user-directed 2026-11-07);
-Crucible #1552 (item 14, user-directed 2026-11-08); PRD D3 and D5; DN-multi-harness-deploy-model §D18
+Crucible #1552 (item 14, user-directed 2026-11-08);
+SoL-Pi #1562 (item 15, PRD D3 amendment of 2026-11-08); PRD D3 and D5; DN-multi-harness-deploy-model §D18
 
 ## Context
 
@@ -20,7 +21,7 @@ Sandesh's project memory. Each item below is measured against Model B's own text
 analysis, and the ones that conflict with an existing Model B rule are brought to the user as rulings
 before the spec derives from them.
 
-## Scope (seed — the fourteen lessons)
+## Scope (seed — the fifteen lessons)
 
 1. **CI and release work is not entirely a chore** (user ruling 2026-10-10, superseding Sandesh's
    "chore, never a CR"). The no-mistakes gate is comprehensive, and fixes and changes may be made
@@ -157,3 +158,14 @@ before the spec derives from them.
     units' tests are the CR's own, named in the brief. Source: Crucible CR-CRU-203 (13 points, 9 ACs, one
     cycle: RED ran 34 minutes and about 944k tokens for 89 failing tests). *Split candidate:* items 9, 11,
     13 and 14 are gap-analysis and design rules, and may form their own CR when Rule 23 splits this one.
+15. **What a cycle label is** (SoL-Pi #1562, user ruling 2026-11-08; PRD D3 amendment of 2026-11-08). A
+    short title naming what the cycle does for its CR, unique within it, with at most one section
+    reference (`<title> (§S<n>)`): no numbering, no kind word (the cycle's kind tells the board), no section
+    ranges or lists, no repeated detail. A backfill cycle is `red-green` with a plain title; `BACKFILL`
+    lives only in its agent id (`CR-<ACRONYM>-NNN-<cycle id>-BACKFILL`) and its mutation-kill evidence.
+    Text to change: the `model-b` skill §3 plan/cycle idiom and the `crucible` skill's `plan-file` and
+    `cycle-add` entries (`--cycle "<label>"` with no rule for a label); `orchestration-common.md` "label
+    that cycle BACKFILL" (becomes the agent id); `sub-agent-procedure.md`'s "a BACKFILL cycle's agent";
+    Model B's `AGENTS.md` "Cycle labels: `<label> (§S…)`" (narrowed to one reference) and its stage-flip
+    milestone label. *Measure:* the gates that pin CR-MDB-059 §S4's label form
+    (`test_orchestration_rules_from_crucible`) and CR-MDB-093's BACKFILL wording.
