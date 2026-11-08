@@ -22,7 +22,12 @@ SoL-Pi registers no status command. What it can read, from SoL-Pi 0.1.0's instal
 - `sol-pi-axi install`: registers or re-verifies; its `verify` key (CR-SLP-008) reports whether a running
   Pi loads SoL-Pi cleanly (`ok`, `exit`, `errors[{extensionPath, event, error}]`), starting Pi offline in
   RPC mode (about 0.25 s);
-- `sol-pi-axi setup <dir>`: the per-project file.
+- `sol-pi-axi setup <dir>`: the per-project file;
+- `sol-pi-axi verify` (CR-SLP-008, SoL-Pi #1558): the same load check, read-only — it registers nothing
+  and writes no SoL-Pi file (Pi itself may create `auth.json` and `models-store.json` in the agent
+  directory on its first start). Envelope `verb: verify`, the same `verify` key; exit 1 when SoL-Pi is not
+  registered, is filtered off, its package is missing, Pi cannot start it, or it raises an extension
+  error; another extension's handler error is a warning.
 
 ## Scope (seed)
 
@@ -30,16 +35,16 @@ SoL-Pi registers no status command. What it can read, from SoL-Pi 0.1.0's instal
    envelope whole, and reports to the user in plain words — the tool's version, whether the extension is
    registered and at which version, the project's and the user-wide configuration's state, the features on
    and the reducer — with SoL-Pi's own remediation for each fault.
-2. **Read-only by default.** A status never installs or registers (§D28): `sol-pi-axi install` writes the
-   user-wide registration, so the skill does not run it to check a load; it names it as the user's step,
-   or uses a read-only check if SoL-Pi offers one (asked of SoL-Pi with this filing).
+2. **Read-only.** A status never installs or registers (§D28): the skill checks the load with
+   `sol-pi-axi verify`, never `install`, and reports each `errors[]` entry; `sol-pi-axi install` is named as
+   the user's step only when SoL-Pi is not registered. The skill states that Pi may create `auth.json` and
+   `models-store.json` on its first start.
 3. **The project file:** an absent or invalid project configuration names `sol-pi-axi setup <dir>` (or
    `modelb-axi agents`, once CR-MDB-098 calls it) as the fix.
 
 ## To measure at gap analysis
 
-- SoL-Pi 0.1.0's released home view and `verify` against this seed, and whether a read-only load check
-  exists.
+- SoL-Pi 0.1.0's released home view and `verify` envelope against this seed.
 - The skill-bundle gates a new skill meets (frontmatter, the harness-neutral guard, the deploy roster,
   `archive/mapping.md`), and the stacks it renders for (every project on Pi).
 - The re-score (3 points filed).
