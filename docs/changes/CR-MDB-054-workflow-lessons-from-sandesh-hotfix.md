@@ -7,7 +7,8 @@ Gap analysis, the design record, the spec and its pre-review happen in order whe
 **Depends on:** none (board-authoritative: read `queue`, not this line)
 **Labels:** skills, agents, crucible, release, conventions
 **Design reference:** Sandesh #1418 (Mainline - Sandesh, 2026-10-03; owner rulings and gate findings
-from the Sandesh 0.4.1 hotfix run); Crucible #1538 (item 9, user 2026-11-08); PRD D3 and D5; DN-multi-harness-deploy-model §D18
+from the Sandesh 0.4.1 hotfix run); Crucible #1538 (item 9, user 2026-11-08); Crucible #1542 (items 10 and 11, PRD D6 amendment of
+2026-11-08); PRD D3 and D5; DN-multi-harness-deploy-model §D18
 
 ## Context
 
@@ -17,7 +18,7 @@ Sandesh's project memory. Each item below is measured against Model B's own text
 analysis, and the ones that conflict with an existing Model B rule are brought to the user as rulings
 before the spec derives from them.
 
-## Scope (seed — the nine lessons)
+## Scope (seed — the eleven lessons)
 
 1. **CI and release work is not entirely a chore** (user ruling 2026-10-10, superseding Sandesh's
    "chore, never a CR"). The no-mistakes gate is comprehensive, and fixes and changes may be made
@@ -68,3 +69,27 @@ before the spec derives from them.
    not how), `orchestration-common` (Mainline, Track, Solo), and the VERIFY and FIX sections where
    findings come back to the user. Source: CR-CRU-226's VERIFY, where a ruling was asked with no spec
    text that the user's standing rule already answered.
+10. **Execution decisions are the orchestrator's; it escalates only a change to the feature** (Crucible
+    #1542, user-directed 2026-11-04; PRD D6 amendment of 2026-11-08). Cycle order, re-seeding or deleting
+    a test, the disposition of an agent's findings and escalations (a test defect included), and how the
+    approved spec's words read are the orchestrator's to decide and record. The user sees beforehand only
+    a finding that demands a change to the behaviour the approved spec states, after the orchestrator
+    has checked the spec and the filed plan. **VERIFY's findings are included** (user, 2026-11-08). Text to
+    change: `orchestration-mainline.md` "Mainline disposes accuracy/scope itself; escalates ONLY …"
+    (narrowed: a disposition the spec and plan settle is never escalated, and a sub-agent's execution
+    escalation is Mainline's to rule on); its "Agent hedge phrases … never unilaterally decide a flagged
+    concern is fine" (reworded: STOP and examine the concern; surface it to the user only when it
+    demands a change to the feature; rule on everything else and record the ruling);
+    `orchestration-common.md` "A VERIFY finding the user approves for fixing is fixed in its own FIX
+    cycle" (reworded: the orchestrator decides which findings are fixed, reports the dispositions in the
+    merge sign-off). "Question economy" and the design-gap rule (the CR does not say how) stand; merge
+    sign-off stays the user's. *Measure:* every other surface that routes a finding to the user (the
+    VERIFY and FIX templates, `orchestration-track.md`, the `model-b` skill's sub-agent procedure).
+11. **A cycle re-seeds, inside itself, the existing tests its own change breaks** (Crucible #1542,
+    user-directed 2026-11-04; PRD D6 amendment of 2026-11-08). The plan is filed with each cycle's scope
+    including every existing test its change breaks by design: not an earlier cycle (already closed),
+    not a later one (a cycle ending red by design is a planning fault, and GREEN cannot tell its own
+    breakage from the planned breakage). Candidate homes: `orchestration-common.md` § Cycle discipline,
+    beside "One cycle per coherent behaviour unit" and at the setup-ordering step that files the plan;
+    `gap-analysis` (the analysis lists the tests each section breaks). Source: Crucible CR-CRU-229,
+    plan 232, where one section's tests were left red for a later cycle.
