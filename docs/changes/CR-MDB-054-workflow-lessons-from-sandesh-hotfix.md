@@ -8,7 +8,8 @@ Gap analysis, the design record, the spec and its pre-review happen in order whe
 **Labels:** skills, agents, crucible, release, conventions
 **Design reference:** Sandesh #1418 (Mainline - Sandesh, 2026-10-03; owner rulings and gate findings
 from the Sandesh 0.4.1 hotfix run); Crucible #1538 (item 9, user 2026-11-08); Crucible #1542 (items 10 and 11, PRD D6 amendment of
-2026-11-08); Crucible #1544 (item 12, PRD D6 amendment of 2026-11-08); PRD D3 and D5; DN-multi-harness-deploy-model §D18
+2026-11-08); Crucible #1544 (item 12, PRD D6 amendment of 2026-11-08);
+Crucible #1548 (item 13, user-directed 2026-11-07); PRD D3 and D5; DN-multi-harness-deploy-model §D18
 
 ## Context
 
@@ -18,7 +19,7 @@ Sandesh's project memory. Each item below is measured against Model B's own text
 analysis, and the ones that conflict with an existing Model B rule are brought to the user as rulings
 before the spec derives from them.
 
-## Scope (seed — the twelve lessons)
+## Scope (seed — the thirteen lessons)
 
 1. **CI and release work is not entirely a chore** (user ruling 2026-10-10, superseding Sandesh's
    "chore, never a CR"). The no-mistakes gate is comprehensive, and fixes and changes may be made
@@ -107,3 +108,32 @@ before the spec derives from them.
     doc conventions; the close-out's `Status` flip), `git-workflow` § Releases (the docs sync as a
     pre-release step). *Measure:* Model B's own commit types for design-time docs (`docs(changes)` today
     against `chore(docs)`), and any shipped spec whose `Status` line the board contradicts.
+13. **A design is mature before the spec is approved** (Crucible #1548, user-directed 2026-11-07: a
+    question about the feature after the design phase shows an immature design). Six rules for the gap
+    analysis and design phase, each set against what `gap-analysis` already says:
+    - **(1) A performance or UI criterion is proven before it is locked:** its bound is set only after a
+      candidate fix passed the criterion's own scenario as the AC states it (same data size, path, cold
+      and warm page), in a scratch copy; a figure measured otherwise is not evidence. *New;* beside
+      Step 0 (baseline) and Dimension 3's budget checks.
+    - **(2) Measurements are attributed before they are believed:** a slow figure is traced to its
+      source (a trace or CPU profile) before it drives a design or an AC; test-harness work on the
+      measured thread is excluded. *New;* beside Rule 10 (the protected path executes).
+    - **(3) Everything the change's surface loads is listed** (for a page: every stylesheet and script
+      in the HTML, plus what loads lazily). *New;* a Dimension 8-style reach list for runtime loads.
+    - **(4) Every caller, item kind and lifecycle path is enumerated:** all call sites (other views
+      sharing the code), every kind of item it draws, every lifecycle path (open, settle, abort, two at
+      once, empty), each in scope or a named non-goal. *Extends* Dimension 3's "check ALL callers",
+      Rule 15 and Dimension 9's scenario matrix, whose list gains item kinds and lifecycle paths.
+    - **(5) The pre-review is decided mechanically.** *Already met* by Rules 21 and 25 (CR-MDB-096): any
+      trigger, a user ruling included, means a pre-review before the spec is locked; `none` is written
+      only with no trigger. The CR adds only that a `none` written over a trigger is a gap-analysis miss.
+    - **(6) Every design choice reaches the user in one batch, before the spec is locked;** a question
+      about the feature after approval is a design-phase miss, recorded as one and added to the
+      checklist. *Extends* Rule 19 (forks are the user's) and Rule 17 (a mid-cycle spec change is a
+      gap-analysis miss). It sits with `orchestration-mainline.md`'s "Question economy" ("Prefer one
+      focused question over a battery"): one round, each question focused.
+    Source: Crucible CR-CRU-235 (a warm-page figure quoted for a cold-page AC; a runtime loaded from an
+    unread `index.html`; a skipped pre-review that later found nine gaps; a test harness's own script
+    taken for the app's long task). *Measure:* which rules apply to a project with no UI (Model B's own
+    CLI): rules 1–3 are conditional on a performance or UI criterion. *Re-score:* with item 13 the CR may
+    pass 13 points; Rule 23 then splits it before the pre-review.
