@@ -1341,6 +1341,14 @@ declaration follows the tool it runs for each modality.
   CR-MDB-099 builds the writer and its first two stacks, bun and rust (both in Crucible 0.4.0, so a rust
   project such as nai is upgraded through the scaffold, not by hand). Arduino, maven, python and go each
   get a small CR, filed when their Crucible release notes arrive.
+- **The file and the version rule (user rulings 2026-11-08, Crucible #1550).** Crucible's CR-CRU-238
+  (0.4.0, wave 8) ships `crucible-declaration.schema.json` beside the clients, listed in
+  `crucible-clients.json` with its path and version: a top-level `version`, and a `stacks` map giving
+  per stack where its declaration lives, how an entry's key is formed, each field with its allowed values
+  and default, the refused fields, and the reserved frameworks. Every schema change bumps `version`.
+  **A schema newer than Model B's writer never blocks a verb:** the writer writes the stacks and fields
+  it knows, warns naming the schema version it does not fully know, and never removes a field it does
+  not know.
 
 Pending: CR-MDB-099 (release 1.0.0).
 

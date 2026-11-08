@@ -9,9 +9,9 @@ this CR starts.
 **Depends on:** CR-MDB-082 (`migrate` for a governed project, which this step joins) on the board; off the
 board, Crucible 0.4.0 released and installed in production (CR-CRU-225/226, the `crucible.targets`
 contract; CR-CRU-202/233, rust's `[targets.*]`), and Crucible's installer shipping the shared declaration
-schema (DN §D29 amendment; Crucible's work, not on Model B's board).
+schema (DN §D29 amendment): Crucible's CR-CRU-238, 0.4.0 wave 8, after CR-CRU-237 (Crucible #1550).
 **Labels:** scaffold, migrate, crucible, stacks, bun, rust, contract
-**Design reference:** DN-multi-harness-deploy-model §D29 (this CR's rulings); Crucible #1521, #1525, #1528, #1530, #1546;
+**Design reference:** DN-multi-harness-deploy-model §D29 (this CR's rulings); Crucible #1521, #1525, #1528, #1530, #1546, #1550;
 CR-MDB-055 (adoption inherits the step).
 
 ## Context
@@ -49,7 +49,10 @@ the older keys (the 0.4.0 doc-sync moves those).
    vocabulary lives in Model B"; DN §D29 amendment). The writer reads the machine-readable schema
    Crucible's installer ships beside the clients (listed in `~/.crucible/crucible-clients.json`); when it
    is absent, the step refuses with Crucible's install command and keeps the verb's `ok`. Crucible's
-   installer writes through the same schema, so the two cannot drift. A new contract,
+   installer writes through the same schema, so the two cannot drift. The file is
+   `crucible-declaration.schema.json` beside the clients, JSON, listed in `crucible-clients.json` with its
+   path and version (#1550). A schema newer than the writer: write the known stacks and fields, warn
+   naming the version, never remove an unknown field; it never blocks `init`, `migrate` or `agents`. A new contract,
    `contracts/crucible-declaration.md`, records the interface (which triggers the pre-review). The "Stack
    declaration changes" section of each Crucible release's notes (#1530) still tells Model B what changed.
 5a. **Bun and rust in this CR** (user 2026-11-08): bun's `package.json` `crucible.targets` and rust's
@@ -68,8 +71,11 @@ the older keys (the 0.4.0 doc-sync moves those).
 - How the step writes `package.json` without disturbing its formatting, with the stdlib only.
 - CR-MDB-094 (generated files gitignored): the declaration is the project's own committed file, not a
   generated one.
-- The schema file Crucible's installer ships: its path, format (stdlib-readable: JSON or TOML) and version
-  field, and how Model B reports a schema newer than it can write.
+- The schema file as CR-CRU-238 ships it: its field names (sent with 0.4.0's "Stack declaration
+  changes" notes) against this seed.
+- For the later arduino CR (not this one): the key is the native test dir relative to the project dir
+  (the dir holding `.env` and `crucible.toml`), joined by `/` to the make target, e.g.
+  `[targets."tests/native/junit"]` in `sheetal-firmware/crucible.toml` (#1550).
 - How the step edits `crucible.toml` with the stdlib only (no TOML writer: `config.py`'s hand-rolled
   serializer, or a table-scoped text edit that keeps the `[client]`, `[gate]` and `[limits.*]` tables
   and the project's comments).
