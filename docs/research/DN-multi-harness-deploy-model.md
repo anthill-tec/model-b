@@ -1283,7 +1283,8 @@ only the call.
   calls it through the same function.
 - **Model B reaches SoL-Pi as it reaches Crucible: through what SoL-Pi's installer puts on the machine,
   never a checkout.** SoL-Pi ships an installed, versioned entry point with a light per-project mode
-  (`--install <project dir>`) that writes only the project's configuration: no dependency install, checks
+  (`--install <project dir>`; since SoL-Pi #1554, 2026-11-08, `sol-pi-axi setup <project dir>`, the tool
+installed with `uv tool install sol-pi-axi`) that writes only the project's configuration: no dependency install, checks
   or audit, no user-wide `pi install`, no backup file left in the project, and distinct exit codes for
   written or unchanged, failed and cancelled. SoL-Pi's full setup stays a one-time step the user runs.
   Model B probes the entry point as a requirement row whose remediation is SoL-Pi's install command, and

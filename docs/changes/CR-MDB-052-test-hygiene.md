@@ -107,3 +107,10 @@ main checkout is the integration tree) and `contracts/worktree-layout.md`
     rehearsal and the readiness checks of `release-check`).
 20. **The scaffolded `test-bun` step runs `bun test` without `--timeout 30000`** (SoL-Pi #1534), the limit
     the bun client applies; the rendered step passes it, as the client does.
+21. **The scaffolded `test-python` job runs the tests without installing the project** (SoL-Pi #1554,
+    2026-11-08). `workflows-src/release/test-python.yml` runs `python -m unittest discover -s tests -t .`
+    straight after `setup-uv`, so a package with runtime dependencies (SoL-Pi's `toon-format`) fails to
+    import on the clean runner. The job installs the project first (e.g. `uv pip install --system
+    '.[dev]'`; Crucible's `release.yml` uses `pip install '.[dev]'`); gap analysis decides the form for a
+    project with no `dev` extra, and checks Model B's own rendering (zero runtime dependencies, so it
+    passes today).

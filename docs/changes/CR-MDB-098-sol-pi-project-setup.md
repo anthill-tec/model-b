@@ -34,16 +34,22 @@ Measured 2026-11-04 against the fork's checkout (anthill-tec/SoL-Pi `fc1cd09`, p
 - SoL-Pi registers `edit` and `write` (Pi's own, with a `then_run` shell command), `obs_recall` and
   `update_plan`.
 
-## SoL-Pi's contract (SoL-Pi #1534, 2026-11-04; CR-SLP-002 to 006, SoL-Pi 0.1.0, target 2026-11-09)
+## SoL-Pi's contract (SoL-Pi #1534, 2026-11-04, corrected by #1554, 2026-11-08; CR-SLP-002 to 006, SoL-Pi 0.1.0, target 2026-11-09)
 
-SoL-Pi's answer to Model B's request (#1516); the gap analysis checks the released 0.1.0 against it.
+SoL-Pi's answer to Model B's request (#1516); the gap analysis checks the released 0.1.0 against it. #1554
+(the user's redesign of SoL-Pi's distribution, on Crucible's and Sandesh's pattern) replaced the install,
+the probe and the command names; the flags, envelope, exit codes and opt-in prompts are unchanged.
 
-- **Install:** `bun add --global github:anthill-tec/SoL-Pi#<version>` (or `npm install --global …`, still
-  run under Bun); the command imports no Pi package. The Pi extension is a separate, once-per-user install:
-  `pi install git:github.com/anthill-tec/SoL-Pi@<version>`.
-- **Probe:** `sol-pi-setup` on `PATH` (Bun's global bin directory); `sol-pi-setup --version` (`-v`, `-V`)
-  prints the bare version and exits 0.
-- **`sol-pi-setup --install <project dir>`** writes at most `<dir>/.pi/sol-pi.json`, leaves no `.bak`, runs
+- **Install (the user, once):** `uv tool install sol-pi-axi==<version>`, then `sol-pi-axi install`, which
+  registers the Pi extension user-wide as `npm:@anthill-tec/sol-pi@<same version>` (through `pi install`)
+  and writes the user-wide `sol-pi.json` (under `$PI_CODING_AGENT_DIR`, else `~/.pi/agent`) only when none
+  exists. The extension alone: `pi install npm:@anthill-tec/sol-pi@<version>`. The tool needs Python 3.14+
+  (uv fetches it), not Bun. `sol-pi-axi uninstall` removes the registration; `setup-sol-pi.fish` is retired.
+- **Probe:** `sol-pi-axi` on `PATH` (uv's tool bin directory); `sol-pi-axi --version` (`-v`, `-V`) prints the
+  bare version and exits 0. `sol-pi-axi` with no arguments prints its home view, whose `extension.state` is
+  `absent` or `registered` (with its `source`), warning when the registered version differs from the
+  tool's: Model B reads that, never Pi's settings.
+- **`sol-pi-axi setup <project dir>`** writes at most `<dir>/.pi/sol-pi.json`, leaves no `.bak`, runs
   no dependency install, tests, audit or `pi install`. An existing valid project file stays `unchanged`
   unless value flags change it; with none, values come from the user-wide `sol-pi.json`, else its defaults
   (all four features on; the reducer on Pi's default provider and model). Value flags: `--features
@@ -54,7 +60,7 @@ SoL-Pi's answer to Model B's request (#1516); the gap analysis checks the releas
   `--non-interactive` under `--yes`.
 - **Exit codes:** 0 written or unchanged; 1 failed (invalid configuration, no provider or model, bad
   directory, write error); 2 usage; 130 / 143 / 129 cancelled.
-- **Stdout:** one TOON document, root `axi` — verb, ok, `outcome` (written, unchanged, failed, usage,
+- **Stdout:** one TOON document, root `axi` — verb (`setup`), ok, `outcome` (written, unchanged, failed, usage,
   cancelled), path, version, config, context, warnings, help, error; `--format json` prints the same object
   as one JSON line.
 - **Pi 1.5.0** is in its tested set (CR-SLP-002); `edit` and `write` carry `then_run` guidance
@@ -62,9 +68,9 @@ SoL-Pi's answer to Model B's request (#1516); the gap analysis checks the releas
 
 ## Scope (seed)
 
-1. **A `sol-pi` requirement row:** the probe of `sol-pi-setup` (and whether the Pi extension is
-   registered, a second install), its remediation (SoL-Pi's two install commands); the installer never
-   installs either.
+1. **A `sol-pi` requirement row:** the probe of `sol-pi-axi` and, from its home view, whether the Pi
+   extension is registered; its remediation (`uv tool install sol-pi-axi==<version>`, then `sol-pi-axi
+   install`); the installer never installs either.
 2. **`init` and `agents` call SoL-Pi's per-project setup** for the target, after the trust step: the
    terminal passed through on an interactive run, non-interactive under `--yes`. The outcome is reported in
    the envelope (`sol_pi`); a failure or an absent entry point warns and keeps `ok` and the exit code.
