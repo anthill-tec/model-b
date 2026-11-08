@@ -156,6 +156,11 @@ The `~/.claude` user space grew organically into 24 memory files, ~50 skills, 29
   - **A cycle re-seeds, inside itself, every existing test its own change breaks by design.** The plan is filed that way: never into an earlier cycle (already closed) or a later one (a cycle that ends red by design is a planning fault, and GREEN cannot tell its own breakage from the planned breakage).
   - **Model B's orchestrator follows both at once;** CR-MDB-054 (items 10 and 11) carries them into the skills for every project.
 
+  **AMENDED 2026-11-08 (user rulings of 2026-11-05, through Crucible #1544): what a chore is.**
+  - **A chore is design-time work on the project's state or metadata,** never a change to what the code does or what a test pins. It needs no CR (no gap analysis, plan, cycles or VERIFY); the orchestrator does it itself, as a `chore(…)` commit on develop or locally when the artefact is untracked. Most documentation work is a chore; a chore never redesigns.
+  - **Release and packaging work is a CR unless the user marks it a chore.** The release procedure itself stays a boundary event (`git-workflow` § Releases), neither a CR nor a chore; the work a release needs (packaging, version and manifest changes, archive mappings, test hygiene) is a CR in its wave. This supersedes CR-MDB-054 item 1's "largely metadata and release scripts can be chores" (2026-10-10): the orchestrator no longer classifies release work as a chore by itself.
+  - **A lapsed close-out `Status` flip is repaired by a chore,** checked against the board.
+
 ### D7 — Crucible V2 client contract (AXI)
 - **Ownership (corrected 2026-07-20): ALL `*-crucible.py` client implementation is the CRUCIBLE project's responsibility.** Model B requests it (Sandesh thread #1322/#1325), tracks it as an external dependency, and documents/consumes what Crucible ships. Model B implements no client code.
 - The contract Model B tracks: `bun-crucible.py` is the reference implementation; its plan/cycle verbs (`plan-file`, `cycle-activate`, `cycle-done`, `cr-close`) are universal V2 API (live-verified: `/api/v2/plans` active); every client emits a TOON-AXI envelope on stdout (`{axi:{verb,ok,…,context,warnings[]}}`) with the human line on stderr, with no-cycle-id/no-wave guards, an `append-cycle` verb, and golden fixtures.

@@ -8,7 +8,7 @@ Gap analysis, the design record, the spec and its pre-review happen in order whe
 **Labels:** skills, agents, crucible, release, conventions
 **Design reference:** Sandesh #1418 (Mainline - Sandesh, 2026-10-03; owner rulings and gate findings
 from the Sandesh 0.4.1 hotfix run); Crucible #1538 (item 9, user 2026-11-08); Crucible #1542 (items 10 and 11, PRD D6 amendment of
-2026-11-08); PRD D3 and D5; DN-multi-harness-deploy-model §D18
+2026-11-08); Crucible #1544 (item 12, PRD D6 amendment of 2026-11-08); PRD D3 and D5; DN-multi-harness-deploy-model §D18
 
 ## Context
 
@@ -18,13 +18,14 @@ Sandesh's project memory. Each item below is measured against Model B's own text
 analysis, and the ones that conflict with an existing Model B rule are brought to the user as rulings
 before the spec derives from them.
 
-## Scope (seed — the eleven lessons)
+## Scope (seed — the twelve lessons)
 
 1. **CI and release work is not entirely a chore** (user ruling 2026-10-10, superseding Sandesh's
    "chore, never a CR"). The no-mistakes gate is comprehensive, and fixes and changes may be made
    within it. Beyond the gate, changes that are largely metadata and release scripts can be chores
    (`chore(ci|release): …`, no CR, cycle or RED/GREEN agent); larger release-process changes are CRs
-   (e.g. CR-MDB-058). Candidate homes: `cr-authoring` (CR vs task), `orchestration-common` (workflow
+   (e.g. CR-MDB-058). *Superseded in part by item 12 (user 2026-11-05): release and packaging work is a
+   CR unless the user marks it a chore.* Candidate homes: `cr-authoring` (CR vs task), `orchestration-common` (workflow
    gates), `git-workflow` § Releases.
 2. **Tests on release and CI configuration are added per recommendation and discussion with the
    user** (user ruling 2026-10-10) — neither forbidden nor a default. Pins that change every release
@@ -93,3 +94,16 @@ before the spec derives from them.
     beside "One cycle per coherent behaviour unit" and at the setup-ordering step that files the plan;
     `gap-analysis` (the analysis lists the tests each section breaks). Source: Crucible CR-CRU-229,
     plan 232, where one section's tests were left red for a later cycle.
+12. **What a chore is** (Crucible #1544, user rulings 2026-11-05; PRD D6 amendment of 2026-11-08). A
+    chore is design-time work on the project's state or metadata, never a change to what the code does
+    or what a test pins: no CR, plan, cycles or VERIFY; the orchestrator does it itself, as a `chore(…)`
+    commit on develop or locally for an untracked artefact. Most documentation work is a chore, and a
+    chore never redesigns. **Release and packaging work is a CR unless the user marks it a chore**; the
+    release procedure stays a boundary event. Use cases: reconciling spec `Status` lines with the board
+    (a lapsed close-out flip, one word per file, no AC box ticked); a pre-release docs sync the user marks
+    a chore; documenting what exists; spec wording that settles an ambiguity the code already resolves;
+    CHANGELOG and README upkeep. Candidate homes: `cr-authoring` (CR vs task, beside the
+    release-is-not-a-CR rule), `orchestration-common` (beside the two-phase workflow and the commit and
+    doc conventions; the close-out's `Status` flip), `git-workflow` § Releases (the docs sync as a
+    pre-release step). *Measure:* Model B's own commit types for design-time docs (`docs(changes)` today
+    against `chore(docs)`), and any shipped spec whose `Status` line the board contradicts.
