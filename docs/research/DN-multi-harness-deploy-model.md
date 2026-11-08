@@ -1342,8 +1342,9 @@ Using one extension without the other leaves most of the saving unused.
     `ctx_callgraph` for every caller); `ctx_shell` only for side effects (builds, tests, git, the Crucible
     client, scratch proofs), never to read a file. A path lean-ctx refuses (`/tmp`) is read with the
     harness's plain `read`.
-  - **The plan is the compaction schedule.** `update_plan` keeps one small step per milestone, each
-    completion carrying its evidence; a large output already in hand is recalled by id (`obs_recall`),
+  - **The plan is the compaction schedule, and it is mandatory** (Crucible #1540, user-directed
+    2026-11-04). The orchestrator keeps `update_plan` current at every milestone (each dispatch, agent
+    report, user ruling and commit), one small step per milestone, each completion carrying its evidence; a large output already in hand is recalled by id (`obs_recall`),
     never produced again by re-running or re-reading.
   - **Durable artefacts live in files:** sub-agent reports, gap analyses and briefs; the orchestrator reads
     the summary and recalls the rest.
@@ -1357,8 +1358,11 @@ Using one extension without the other leaves most of the saving unused.
   parsed or filtered by a script. An AXI command runs with `raw=true`: an envelope is a case where the
   exact bytes matter.
 - **Each phase agent runs only the tests it touches** (§D26); every brief says so.
-- **Until SoL-Pi CR-SLP-006 is released,** no plan step is completed while a background sub-agent runs: a
-  plan update and a background dispatch go in separate turns. CR-MDB-098's gap analysis checks SoL-Pi
+- **Until SoL-Pi CR-SLP-006 is released,** no plan step is completed while a background sub-agent runs or
+  is queued (Crucible #1540): progress may be updated and steps added, and steps are completed before the
+  dispatch or after the agent reports. A step completion is a SoL-Pi safe point; a compaction there aborts
+  the orchestrator's turn, which pi-subagents takes as the user's ESC and stops every background agent
+  (seen twice in Crucible, 2026-11-04). CR-MDB-098's gap analysis checks SoL-Pi
   0.1.0 and drops the rule once the fix is in.
 
 Pending: CR-MDB-098 (release 1.1.0), which takes this in (user 2026-11-08).

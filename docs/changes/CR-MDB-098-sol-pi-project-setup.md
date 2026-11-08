@@ -2,7 +2,8 @@
 
 **Status:** PENDING — **SEED, not the finished spec** (filed 2026-11-04 by the user's rulings, DN §D28). Gap
 analysis, the spec and its pre-review happen in order when this CR starts. Crucible #1536 (the combined
-lean-ctx and SoL-Pi practice, DN §D30) folded in as item 8 by the user's ruling, 2026-11-08.
+lean-ctx and SoL-Pi practice, DN §D30) folded in as item 8 by the user's ruling, 2026-11-08, with
+Crucible #1540 (its AGENTS.md side) under the same ruling.
 **Type:** feature (installer requirement row, `init`, `agents`)
 **Priority:** P2 — release 1.1.0, wave 3 (user 2026-11-04; board-authoritative: read `queue`).
 **Depends on:** CR-MDB-095 (the trust write, without which Pi ignores a project's `.pi/sol-pi.json`) and
@@ -103,7 +104,12 @@ SoL-Pi's answer to Model B's request (#1516); the gap analysis checks the releas
    - an envelope may be narrowed with `--fields` and is still read whole (CR-MDB-072);
    - every brief says the agent runs only the tests it touches (§D26);
    - the separate-turns rule for `update_plan` and a background dispatch holds only until SoL-Pi
-     CR-SLP-006 is released.
+     CR-SLP-006 is released;
+   - **the scaffolded `AGENTS.md` states it** (Crucible #1540): `update_plan` is mandatory, kept current at
+     every milestone (dispatch, agent report, user ruling, commit); and, while SoL-Pi is older than the
+     release carrying CR-SLP-006, no step is completed while a background sub-agent runs or is queued.
+     How `update_plan` is called (the whole plan each time, step ids kept, one step in progress) stays
+     in SoL-Pi's registration.
 
 ## To measure at gap analysis
 
@@ -119,7 +125,8 @@ SoL-Pi's answer to Model B's request (#1516); the gap analysis checks the releas
   reaches them), and whether other rows (pi-lens, lean-ctx, Sandesh) take an `about` paragraph too.
 - For item 8: every surface that already states a lean-ctx rule (the generated agent definitions, the
   orchestration references, the scaffolded `AGENTS.md`, Model B's own `AGENTS.md` § Runtime/Tooling
-  Preferences) and every guard test that pins its wording; whether SoL-Pi 0.1.0 carries CR-SLP-006; how a
+  Preferences) and every guard test that pins its wording; whether SoL-Pi 0.1.0 carries CR-SLP-006 (if
+  it does, and the row's probe requires 0.1.0, #1540's rule 2 never ships and only rule 1 is rendered); how a
   project whose harness loads only one of the two extensions is told (the rule set is conditional on
   both).
 - The re-score (8 points before item 8; 13 after the fold, user 2026-11-08).
