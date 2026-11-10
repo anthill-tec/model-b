@@ -5,8 +5,9 @@ P1 Extractor Fan Controller #1564). Gap analysis, the spec and its pre-review ha
 CR starts. Pre-review: due (13 points; another project's surface).
 **Type:** feature (a generated stack, an extra agent)
 **Priority:** P1 — release 1.0.0, wave 2 (user 2026-11-10; board-authoritative: read `queue`).
-**Depends on:** off the board, Crucible's electronics test client, released (P1 Fan's separate request to
-Crucible). The stack's tests run through it; this CR starts only once it ships (user 2026-11-10).
+**Depends on:** off the board, Crucible's electronics test client, released — Crucible release 0.4.0, wave 8,
+its CR numbers and the client's name to come (#1567, #1570). The stack's tests run through it; this CR
+starts only once it ships (user 2026-11-10).
 **Labels:** stacks, electronics, generator
 **Design reference:** PRD D7 (the electronics exclusion, lifted 2026-11-10) and D6 (generated per-stack
 agents); DN-multi-harness-deploy-model §D25 (a stack carries what holds for every project on that runner);
@@ -50,17 +51,23 @@ The toolchain P1 Fan reports (#1564):
    the shared template, where the designer's fix mode would otherwise sit). The stack holds what holds for
    every electronics project (§D25); one project's board, parts and paths stay in that project.
 2. **The production engineer ships with the stack as an extra agent,** which the orchestrator dispatches
-   after VERIFY. It is not a new Model B role and adds no lifecycle stage for other stacks.
+   after VERIFY. It is not a new Model B role and adds no lifecycle stage for other stacks. Its Build is a
+   plain dispatch with no cycle: the board records nothing for it, and its outputs are files in the
+   project (PRD D7, ruled 2026-11-10, #1569). The cycle plan is the fleet's own: one red-green cycle per
+   behaviour unit, then VERIFY and FIX.
 3. **Tests run through Crucible's electronics client** (CR-MDB-056 stands, no exception): the stack names
-   that client's verbs and levels as released.
-4. **What only electronics needs** (the toolchain, the levels, the 3.13 interpreter for Perfboard Studio,
+   that client's verbs and tiers as released, and its pass, fail or SKIP verdict per gate. A gate that
+   cannot run yet reports SKIP, never red; there is no known-red state (PRD D5, D7).
+4. **A `crucible-report-<name>` skill,** Model B's (#1336/#1337, `skills-src/CRUCIBLE-HANDOVER.md`),
+   named after the client Crucible names.
+5. **What only electronics needs** (the toolchain, the levels, the 3.13 interpreter for Perfboard Studio,
    the desktop launch mechanic) goes in the stack's text or a stack skill (CR-MDB-085), never in the role
    templates.
-5. **The guards move with it:** PRD D6's bespoke list and `tests/test_agent_generator.py`'s
+6. **The guards move with it:** PRD D6's bespoke list and `tests/test_agent_generator.py`'s
    `BESPOKE_AGENT_NAMES` (which still names the four electronics files), the stack-generality guard
    (CR-MDB-079), the stack roster wherever `init`, `agents` and the requirement rows enumerate stacks, and
    `tests/test_orchestrator_rule_triage.py`'s `stack:electronics` "unknown stack" case.
-6. **P1 Fan is told when it merges,** so it re-renders with `modelb-axi agents` and drops its local copies.
+7. **P1 Fan is told when it merges,** so it re-renders with `modelb-axi agents` and drops its local copies.
 
 ## To measure at gap analysis
 
