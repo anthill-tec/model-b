@@ -4,9 +4,9 @@
 P1 Extractor Fan Controller #1564). Gap analysis, the spec and its pre-review happen in order when this
 CR starts. Pre-review: due (13 points; another project's surface).
 **Type:** feature (a generated stack, an extra agent)
-**Priority:** P1 — release 1.1.0, wave 4 (user 2026-11-10: moved out of 1.0.0, wave 2, because its
+**Priority:** P1 — release 1.1.0, wave 3 (user 2026-11-10, wave 3 rather than a new wave: moved out of 1.0.0, wave 2, because its
 Crucible dependencies ship in Crucible 0.5.0 and 1.0.0 must not wait on them; board-authoritative: read `queue`).
-Every EDA agent, skill and piece of installation support goes into release 1.1.0, starting in wave 4, and
+Every EDA agent, skill and piece of installation support goes into release 1.1.0, wave 3, and
 none of it into 1.0.0 (user 2026-11-10). Gap analysis may split this CR into several in that release.
 **Depends on:** off the board, Crucible's electronics test client `eda-crucible.py` (#1571), released —
 Crucible release 0.5.0, wave 9: CR-CRU-242 (a pytest tier filed), CR-CRU-243 (the fleet installs, declares
