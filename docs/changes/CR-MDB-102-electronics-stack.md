@@ -6,7 +6,7 @@ CR starts. Pre-review: due (13 points; another project's surface).
 **Type:** feature (a generated stack, an extra agent)
 **Priority:** P1 — release 1.0.0, wave 2 (user 2026-11-10; board-authoritative: read `queue`).
 **Depends on:** off the board, Crucible's electronics test client, released — Crucible release 0.4.0, wave 8,
-its CR numbers and the client's name to come (#1567, #1570). The stack's tests run through it; this CR
+the client `eda-crucible.py` (#1571), its CR numbers to come (#1567, #1570). The stack's tests run through it; this CR
 starts only once it ships (user 2026-11-10).
 **Labels:** stacks, electronics, generator
 **Design reference:** PRD D7 (the electronics exclusion, lifted 2026-11-10) and D6 (generated per-stack
@@ -46,7 +46,7 @@ The toolchain P1 Fan reports (#1564):
 
 ## Scope (seed)
 
-1. **A sixth generated stack, `generator/stacks/electronics.toml`,** rendered through the four role
+1. **A sixth generated stack, `eda` (`generator/stacks/eda.toml`; the name ruled 2026-11-10, #1571),** rendered through the four role
    templates: RED (bench-test engineer), GREEN (board designer), VERIFY (quality engineer) and FIX (from
    the shared template, where the designer's fix mode would otherwise sit). The stack holds what holds for
    every electronics project (§D25); one project's board, parts and paths stay in that project.
@@ -58,15 +58,17 @@ The toolchain P1 Fan reports (#1564):
 3. **Tests run through Crucible's electronics client** (CR-MDB-056 stands, no exception): the stack names
    that client's verbs and tiers as released, and its pass, fail or SKIP verdict per gate. A gate that
    cannot run yet reports SKIP, never red; there is no known-red state (PRD D5, D7).
-4. **A `crucible-report-<name>` skill,** Model B's (#1336/#1337, `skills-src/CRUCIBLE-HANDOVER.md`),
-   named after the client Crucible names.
+4. **A `crucible-report-eda` skill,** Model B's (#1336/#1337, `skills-src/CRUCIBLE-HANDOVER.md`), for
+   `eda-crucible.py`: its tiers run pytest with JUnit output and SKIP native, and a declared PASS/FAIL
+   gate-script protocol follows in a later Crucible CR (#1571). The board gains no field for the LVS
+   verdict or the open, short, ERC and DRC counts: the gates assert them and a failure's message names them.
 5. **What only electronics needs** (the toolchain, the levels, the 3.13 interpreter for Perfboard Studio,
    the desktop launch mechanic) goes in the stack's text or a stack skill (CR-MDB-085), never in the role
    templates.
 6. **The guards move with it:** PRD D6's bespoke list and `tests/test_agent_generator.py`'s
    `BESPOKE_AGENT_NAMES` (which still names the four electronics files), the stack-generality guard
    (CR-MDB-079), the stack roster wherever `init`, `agents` and the requirement rows enumerate stacks, and
-   `tests/test_orchestrator_rule_triage.py`'s `stack:electronics` "unknown stack" case.
+   `tests/test_orchestrator_rule_triage.py`'s `stack:electronics` "unknown stack" case (the stack id is `eda`).
 7. **P1 Fan is told when it merges,** so it re-renders with `modelb-axi agents` and drops its local copies.
 
 ## To measure at gap analysis
