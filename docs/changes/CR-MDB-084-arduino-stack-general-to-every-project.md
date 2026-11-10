@@ -39,3 +39,14 @@ of that holds for another Arduino project.
    updated; an Arduino project takes the change with `modelb-axi agents`.
 5. **The project the text came from is told** before this CR merges, so it records its specifics in
    its own project first — asking the user who owns it and how to reach it.
+6. **The board and its toolchain come from the project** (P1 Extractor Fan Controller #1564, 2026-11-10):
+   the FQBN (`arduino:renesas_uno:minima` in the stack today) and the `arduino-cli` command arrive through
+   the project's registry or `crucible.toml`, as the client resolves them — P1 Fan keeps `ARDUINO_FQBN` and
+   `ARDUINO_CLI=arduino-cli` in its `.env`. P1 Fan is a second Arduino consumer (`--project-dir firmware`,
+   `esp32:esp32:esp32c3:CDCOnBoot=cdc`) and today overrides the directory, the FQBN and the test layout in
+   every brief. Which keys, and whether the client already resolves them, is measured at gap analysis.
+7. **An arduino release target in `stamp_version.py`** (#1564): `workflows-src/stamp_version.py` reads
+   pypi, npm, crates and maven version sources (CR-MDB-071) and has no arduino one. An Arduino project's
+   version source is one header line, `#define <NAME> "X.Y.Z"` (P1 Fan: `firmware/src/app/Version.h`,
+   `PFC_FW_VERSION`, CR-PFC-001); the target reads, checks and stamps it. How a project declares the file
+   and the macro is settled at gap analysis. P1 Fan needs it before its release gates.

@@ -133,7 +133,7 @@ A brief that may run `modelb-axi` pins `--modelb-home` / `--target-root` and exp
 - Confirm destructive operations; delegate super-user ops to the user.
 - Crucible: the **production** board only (`127.0.0.1:3849`), reached through the released client's API — never its database, never a dev instance.
 - Model B never mutates `~/.claude` directly — the `modelb-axi` installer is the only deployment channel (PRD §D9/§D10), and the repo-local authoring rule means no CR writes there at all. The user's own dotfile-manager discipline is out of scope for this file.
-- **Electronics stack is EXCLUDED** (anthill-forge dead) — never migrate, document, or generate it.
+- **Electronics returns as a generated stack through CR-MDB-102 only** (PRD D7, exclusion lifted 2026-11-10): until it merges, no electronics agent or skill is migrated, documented or generated outside that CR, and `hw-crucible.py`/anthill-forge stay retired.
 
 ## Workflow tools
 
