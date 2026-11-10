@@ -65,7 +65,12 @@ The toolchain P1 Fan reports (#1564):
 5. **The agent side of the EDA gates** (PRD D7, Model B's position 2026-11-10, #1573/#1574; open to P1
    until the three-way agreement): GREEN and FIX run Crucible's `crucible_gate.perfboard capture` after any
    layout change and commit the results beside the `.perf`; RED declares the target; VERIFY only re-runs the
-   ingest. For PCB design the agents use the Konnect KiCad MCP; the gates stay on `kicad-cli`.
+   ingest. Once a layout target is declared, missing results FAIL; SKIP is only for a gate that cannot run
+   yet. Project pytest gates may read the committed `.perf` and results, and may start the MCP on a `/tmp`
+   copy for mutation tests (agreed three ways, #1580/#1582/#1583). The Perfboard Studio MCP is a design
+   tool as well as the capture's source: the board designer places the layout through it and commits the
+   `.perf` (registered project-local, `.pi/mcp.json`). For PCB design the agents use the Konnect KiCad MCP;
+   the gates stay on `kicad-cli`.
 6. **What only electronics needs** (the toolchain, the levels, the 3.13 interpreter for Perfboard Studio,
    the desktop launch mechanic) goes in the stack's text or a stack skill (CR-MDB-085), never in the role
    templates.
