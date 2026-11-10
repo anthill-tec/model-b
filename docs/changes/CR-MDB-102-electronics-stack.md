@@ -6,6 +6,8 @@ CR starts. Pre-review: due (13 points; another project's surface).
 **Type:** feature (a generated stack, an extra agent)
 **Priority:** P1 — release 1.1.0, wave 4 (user 2026-11-10: moved out of 1.0.0, wave 2, because its
 Crucible dependencies ship in Crucible 0.5.0 and 1.0.0 must not wait on them; board-authoritative: read `queue`).
+Every EDA agent, skill and piece of installation support goes into release 1.1.0, starting in wave 4, and
+none of it into 1.0.0 (user 2026-11-10). Gap analysis may split this CR into several in that release.
 **Depends on:** off the board, Crucible's electronics test client `eda-crucible.py` (#1571), released —
 Crucible release 0.5.0, wave 9: CR-CRU-242 (a pytest tier filed), CR-CRU-243 (the fleet installs, declares
 and counts the client), CR-CRU-244 (gate scripts through `crucible-gate`) and CR-CRU-246 (the Perfboard
@@ -84,11 +86,16 @@ or a PCB (`kicad-cli` gates, Konnect for design); P1 is one project, not the sta
 6. **What only electronics needs** (the toolchain, the levels, the 3.13 interpreter for Perfboard Studio,
    the desktop launch mechanic) goes in the stack's text or a stack skill (CR-MDB-085), never in the role
    templates.
-7. **The guards move with it:** PRD D6's bespoke list and `tests/test_agent_generator.py`'s
+7. **Installation support for the stack** (user 2026-11-10, release 1.1.0): the installer deploys
+   `crucible-report-eda`; `modelb-axi init --stacks eda` and `modelb-axi agents` render the stack's agents,
+   its extra agent and its stack skill; and the stack's requirement rows name its toolchain (SKiDL, the
+   Perfboard Studio MCP on a Python 3.13 venv, ngspice, and `kicad-cli` and Konnect for a PCB project).
+   Whether Model B scaffolds the project-local MCP registration (`.pi/mcp.json`) is measured at gap analysis.
+8. **The guards move with it:** PRD D6's bespoke list and `tests/test_agent_generator.py`'s
    `BESPOKE_AGENT_NAMES` (which still names the four electronics files), the stack-generality guard
    (CR-MDB-079), the stack roster wherever `init`, `agents` and the requirement rows enumerate stacks, and
    `tests/test_orchestrator_rule_triage.py`'s `stack:electronics` "unknown stack" case (the stack id is `eda`).
-8. **P1 Fan is told when it merges,** so it re-renders with `modelb-axi agents` and drops its local copies.
+9. **P1 Fan is told when it merges,** so it re-renders with `modelb-axi agents` and drops its local copies.
 
 ## To measure at gap analysis
 
