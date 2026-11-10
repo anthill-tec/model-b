@@ -4,9 +4,12 @@
 P1 Extractor Fan Controller #1564). Gap analysis, the spec and its pre-review happen in order when this
 CR starts. Pre-review: due (13 points; another project's surface).
 **Type:** feature (a generated stack, an extra agent)
-**Priority:** P1 — release 1.0.0, wave 2 (user 2026-11-10; board-authoritative: read `queue`).
-**Depends on:** off the board, Crucible's electronics test client, released — Crucible release 0.4.0, wave 8,
-the client `eda-crucible.py` (#1571), its CR numbers to come (#1567, #1570). The stack's tests run through it; this CR
+**Priority:** P1 — release 1.1.0, wave 4 (user 2026-11-10: moved out of 1.0.0, wave 2, because its
+Crucible dependencies ship in Crucible 0.5.0 and 1.0.0 must not wait on them; board-authoritative: read `queue`).
+**Depends on:** off the board, Crucible's electronics test client `eda-crucible.py` (#1571), released —
+Crucible release 0.5.0, wave 9: CR-CRU-242 (a pytest tier filed), CR-CRU-243 (the fleet installs, declares
+and counts the client), CR-CRU-244 (gate scripts through `crucible-gate`) and CR-CRU-246 (the Perfboard
+capture and its gate) (#1589). The stack's tests run through it; this CR
 starts only once it ships (user 2026-11-10).
 **Labels:** stacks, electronics, generator
 **Design reference:** PRD D7 (the electronics exclusion, lifted 2026-11-10) and D6 (generated per-stack
