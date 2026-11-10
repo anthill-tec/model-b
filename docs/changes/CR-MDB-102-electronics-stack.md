@@ -44,6 +44,13 @@ The toolchain P1 Fan reports (#1564):
 - A desktop mechanic: on Hyprland with window swallowing, a GUI app is launched through
   `hyprctl dispatch 'hl.dsp.exec_cmd("<cmd>")'`, not from the agent shell.
 
+Updated 2026-11-10 (P1 #1586, after Crucible's consultation #1579/#1585): P1 now uses no KiCad at all. Its
+schematic comes from Perfboard Studio's own schematic sheet, `kicad-cli` and anthill-forge are dropped, and it
+lays the board out through the Perfboard Studio MCP with no layout script and no `BoardSession` code. Its
+project dir is `hardware/` (the declaration, a Python 3.13 `.venv`, and `.env` with the Crucible key), and its
+`net_check.py`/`board_check.py` adopt the `crucible-gate` helper. The stack still serves a project with KiCad
+or a PCB (`kicad-cli` gates, Konnect for design); P1 is one project, not the stack (§D25).
+
 ## Scope (seed)
 
 1. **A sixth generated stack, `eda` (`generator/stacks/eda.toml`; the name ruled 2026-11-10, #1571),** rendered through the four role
