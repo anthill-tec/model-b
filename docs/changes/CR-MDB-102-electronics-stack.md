@@ -62,14 +62,18 @@ The toolchain P1 Fan reports (#1564):
    `eda-crucible.py`: its tiers run pytest with JUnit output and SKIP native, and a declared PASS/FAIL
    gate-script protocol follows in a later Crucible CR (#1571). The board gains no field for the LVS
    verdict or the open, short, ERC and DRC counts: the gates assert them and a failure's message names them.
-5. **What only electronics needs** (the toolchain, the levels, the 3.13 interpreter for Perfboard Studio,
+5. **The agent side of the EDA gates** (PRD D7, Model B's position 2026-11-10, #1573/#1574; open to P1
+   until the three-way agreement): GREEN and FIX run Crucible's `crucible_gate.perfboard capture` after any
+   layout change and commit the results beside the `.perf`; RED declares the target; VERIFY only re-runs the
+   ingest. For PCB design the agents use the Konnect KiCad MCP; the gates stay on `kicad-cli`.
+6. **What only electronics needs** (the toolchain, the levels, the 3.13 interpreter for Perfboard Studio,
    the desktop launch mechanic) goes in the stack's text or a stack skill (CR-MDB-085), never in the role
    templates.
-6. **The guards move with it:** PRD D6's bespoke list and `tests/test_agent_generator.py`'s
+7. **The guards move with it:** PRD D6's bespoke list and `tests/test_agent_generator.py`'s
    `BESPOKE_AGENT_NAMES` (which still names the four electronics files), the stack-generality guard
    (CR-MDB-079), the stack roster wherever `init`, `agents` and the requirement rows enumerate stacks, and
    `tests/test_orchestrator_rule_triage.py`'s `stack:electronics` "unknown stack" case (the stack id is `eda`).
-7. **P1 Fan is told when it merges,** so it re-renders with `modelb-axi agents` and drops its local copies.
+8. **P1 Fan is told when it merges,** so it re-renders with `modelb-axi agents` and drops its local copies.
 
 ## To measure at gap analysis
 
