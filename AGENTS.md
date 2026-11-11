@@ -144,7 +144,7 @@ A brief that may run `modelb-axi` pins `--modelb-home` / `--target-root` and exp
 - **Online Context Compact:** completing an `update_plan` step marks a point where Pi may compact the context.
 
 How to use each tool is in its own description; it is not repeated here.
-- **Config:** Pi reads `.pi/sol-pi.json` only in a trusted project; otherwise SoL-Pi uses `~/.pi/agent/sol-pi.json`. Its settings are changed by re-running SoL-Pi's own setup for the project, not by hand. This repository commits its copy, as it does the rest of `.pi/`.
+- **Config:** Pi reads `.pi/sol-pi.json` only in a trusted project; otherwise SoL-Pi uses `~/.pi/agent/sol-pi.json`. Its settings are changed by re-running SoL-Pi's own setup for the project, not by hand. Like the rest of `.pi/` and `.lean-ctx.toml`, it is machine-specific: rendered here by `modelb-axi agents` and SoL-Pi's setup, and gitignored, never committed, in this repository as in every project (user 2026-11-11, superseding the dogfooding exception; DN-multi-harness-deploy-model §D28). This repository still tracks its copies until CR-MDB-094 has moved the tests that read them; a chore untracks them once that CR closes. Never commit a change to them meanwhile.
 - **`then_run` is worth using:** fusing an edit with its follow-up check saves a model turn. It follows the rules of any shell call: a test run in it goes through the Crucible client (§ Testing & QA), and an AXI command's output is redirected to a file under `/tmp` and read whole (§ Runtime/Tooling Preferences).
 
 ## Testing & QA

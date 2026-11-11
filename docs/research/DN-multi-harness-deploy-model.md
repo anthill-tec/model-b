@@ -1316,8 +1316,12 @@ installed with `uv tool install sol-pi-axi`) that writes only the project's conf
   prompts on SoL-Pi's behalf.
 - **It fails safe.** When the entry point is absent or the call fails, `init` and `agents` warn, report the
   step's outcome in their envelope, and keep their `ok` and exit code.
-- **Model B's own repository commits its `.pi/sol-pi.json`**, as it does the rest of its `.pi/`
-  (the dogfooding exception, CR-MDB-094).
+- **No repository commits its `.pi/sol-pi.json`, Model B's own included** (user 2026-11-11, superseding the
+  dogfooding exception of CR-MDB-094 and PRD D5's "Model B commits its own" `.lean-ctx.toml`): `.pi/` and
+  `.lean-ctx.toml` are machine-specific, rendered per project by Model B's scaffold (`init`, `agents`) and
+  SoL-Pi's setup once a release is installed, and gitignored. In Model B's repository, CR-MDB-094 first moves
+  the tests that read or pin the tracked copies; a chore then gitignores and untracks both, once that CR
+  closes.
 
 - **SoL-Pi's status is a Model B skill** (user 2026-11-08, relayed as SoL-Pi #1556): SoL-Pi registers no
   status command. A `sol-pi-status` skill reads SoL-Pi's installed surface (its home view) and reports to
