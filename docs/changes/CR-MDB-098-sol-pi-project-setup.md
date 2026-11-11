@@ -110,11 +110,12 @@ the probe and the command names; the flags, envelope, exit codes and opt-in prom
    - the rules live in the skills, loaded at bootstrap Step 0.5; no rule fact in the knowledge store;
    - an envelope may be narrowed with `--fields` and is still read whole (CR-MDB-072);
    - every brief says the agent runs only the tests it touches (§D26);
-   - the separate-turns rule for `update_plan` and a background dispatch holds only until SoL-Pi
-     CR-SLP-006 is released;
+   - the separate-turns rule for `update_plan` and a background dispatch holds until SoL-Pi 0.1.1 is
+     released (CR-SLP-006 shipped in 0.1.0, but its deferral is never armed on a normally started session,
+     so completing a step still stops running sub-agents: SoL-Pi #1608, 2026-11-11);
    - **the scaffolded `AGENTS.md` states it** (Crucible #1540): `update_plan` is mandatory, kept current at
-     every milestone (dispatch, agent report, user ruling, commit); and, while SoL-Pi is older than the
-     release carrying CR-SLP-006, no step is completed while a background sub-agent runs or is queued.
+     every milestone (dispatch, agent report, user ruling, commit); and, while SoL-Pi is older than 0.1.1
+     (the release that fixes CR-SLP-006's deferral, SoL-Pi #1608), no step is completed while a background sub-agent runs or is queued.
      How `update_plan` is called (the whole plan each time, step ids kept, one step in progress) stays
      in SoL-Pi's registration.
 
