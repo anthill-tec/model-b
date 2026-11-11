@@ -110,8 +110,8 @@ the probe and the command names; the flags, envelope, exit codes and opt-in prom
    - the rules live in the skills, loaded at bootstrap Step 0.5; no rule fact in the knowledge store;
    - an envelope may be narrowed with `--fields` and is still read whole (CR-MDB-072);
    - every brief says the agent runs only the tests it touches (§D26);
-   - the separate-turns rule for `update_plan` and a background dispatch holds until SoL-Pi 0.1.1 is
-     released (CR-SLP-006 shipped in 0.1.0, but its deferral is never armed on a normally started session,
+   - the separate-turns rule for `update_plan` and a background dispatch holds while the installed SoL-Pi is
+     older than 0.1.1 (released 2026-11-11, CR-SLP-011, #1609; CR-SLP-006 shipped in 0.1.0, but its deferral is never armed on a normally started session,
      so completing a step still stops running sub-agents: SoL-Pi #1608, 2026-11-11);
    - **the scaffolded `AGENTS.md` states it** (Crucible #1540): `update_plan` is mandatory, kept current at
      every milestone (dispatch, agent report, user ruling, commit); and, while SoL-Pi is older than 0.1.1
@@ -133,8 +133,9 @@ the probe and the command names; the flags, envelope, exit codes and opt-in prom
   reaches them), and whether other rows (pi-lens, lean-ctx, Sandesh) take an `about` paragraph too.
 - For item 8: every surface that already states a lean-ctx rule (the generated agent definitions, the
   orchestration references, the scaffolded `AGENTS.md`, Model B's own `AGENTS.md` § Runtime/Tooling
-  Preferences) and every guard test that pins its wording; whether SoL-Pi 0.1.0 carries CR-SLP-006 (if
-  it does, and the row's probe requires 0.1.0, #1540's rule 2 never ships and only rule 1 is rendered); how a
+  Preferences) and every guard test that pins its wording; SoL-Pi 0.1.1 carries the working
+  deferral (CR-SLP-011, #1609): if the row's probe requires 0.1.1, #1540's rule 2 never ships and only rule 1
+  is rendered; how a
   project whose harness loads only one of the two extensions is told (the rule set is conditional on
   both).
 - The re-score (8 points before item 8; 13 after the fold, user 2026-11-08).

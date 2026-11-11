@@ -65,4 +65,6 @@ SoL-Pi released 0.1.0 on 2026-11-11 under Model B's generated workflow and gate.
 - Which tests pin `skip = ["ci"]`, the gate rule's text and `test-python.yml`'s steps.
 - no-mistakes' step names on the installed version.
 - How other governed projects' suites need installing (an extra named `dev`, `test`, or none).
+- npm: SoL-Pi 0.1.1 (2026-11-11, #1609) was the first publish through a trusted publisher, and it worked with
+  the workflow as rendered, the publish step's `NODE_AUTH_TOKEN` then empty.
 - The re-score (8 points filed) and the behaviour units.

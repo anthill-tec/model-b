@@ -1416,11 +1416,12 @@ Using one extension without the other leaves most of the saving unused.
   parsed or filtered by a script. An AXI command runs with `raw=true`: an envelope is a case where the
   exact bytes matter.
 - **Each phase agent runs only the tests it touches** (§D26); every brief says so.
-- **Until SoL-Pi CR-SLP-006 is released,** no plan step is completed while a background sub-agent runs or
+- **Until the installed SoL-Pi is 0.1.1 or later,** no plan step is completed while a background sub-agent runs or
   is queued (Crucible #1540): progress may be updated and steps added, and steps are completed before the
   dispatch or after the agent reports. A step completion is a SoL-Pi safe point; a compaction there aborts
   the orchestrator's turn, which pi-subagents takes as the user's ESC and stops every background agent
-  (seen twice in Crucible, 2026-11-04). CR-MDB-098's gap analysis checks SoL-Pi
-  0.1.0 and drops the rule once the fix is in.
+  (seen twice in Crucible, 2026-11-04). CR-SLP-006 shipped in 0.1.0 without arming its deferral on a
+  normally started session (SoL-Pi #1608); 0.1.1 (CR-SLP-011, released 2026-11-11, #1609) fixes it.
+  CR-MDB-098's gap analysis drops the rule where the requirement row's probe requires 0.1.1.
 
 Pending: CR-MDB-098 (release 1.1.0), which takes this in (user 2026-11-08).
