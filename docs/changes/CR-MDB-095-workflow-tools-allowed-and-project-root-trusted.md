@@ -3,12 +3,14 @@
 **Status:** PENDING — spec drafted 2026-10-30 from the gap analysis and the user's rulings
 (DN-multi-harness-deploy-model §D27, amended 2026-10-30, with the rulings of CR-MDB-095's gap analysis).
 Pre-review: ran — it touches another project's surface (Pi's `trust.json`), and the gap analysis needed
-the user's rulings; its findings F1–F11 folded in 2026-10-30.
+the user's rulings; its findings F1–F11 folded in 2026-10-30. Widened 2026-11-11 by the user (SoL-Pi #1597,
+§D27's 2026-11-11 ruling): §S1.5–§S1.6, §S3.6 and AC7 added, re-scored 8 → 13; those additions are
+re-measured at the CR's start, and the pre-review is due for them.
 **Type:** feature (permission policy, requirements, project trust)
 **Priority:** P1 — release 1.0.0, wave 2 (board-authoritative: read `queue`).
 **Depends on:** nothing on the board.
 **Labels:** pi, permissions, trust, requirements
-**Points:** 8 (seeded 5; re-scored at gap analysis: a trust writer taking Pi's lock, `init`/`agents` wiring
+**Points:** 13 (seeded 5; re-scored 8 at gap analysis, 13 on 2026-11-11 for SoL-Pi #1597's additions; the 8: a trust writer taking Pi's lock, `init`/`agents` wiring
 and envelope fields, a requirement row, the policy, the install guide and its mirror, CR-MDB-037 §S4's
 read-only rule reversed with its tests).
 **Design reference:** DN-multi-harness-deploy-model §D27 and its amendment of 2026-10-30, with the rulings
@@ -84,6 +86,16 @@ modules.
    whichever row supplies them. The other ten are allowed.
 4. Every project gets the change through `init` and `modelb-axi agents`, which render the policy through
    `render_policy` (§D24, §D27).
+5. **`no_mistakes_output` is allowed** in the generated policy (SoL-Pi #1597; §D27, 2026-11-11), so a
+   tracked or trusted project policy carries it. no-mistakes' pipeline steps must end with that call and
+   have no UI to answer `ask`.
+6. **A verdict on the global policy, read-only.** Where no-mistakes is installed with agent `pi`, and the
+   user's global policy (`~/.pi/agent/extensions/pi-permission-system/config.json`, under
+   `PI_CODING_AGENT_DIR` when set) has a default that is not `allow` and no `no_mistakes_output` entry,
+   the installer's verdicts and `modelb-axi release-check` report it `missing`, with the one-line remedy
+   (`"no_mistakes_output": "allow"` in its `permission` block). Model B never writes that file (Non-goals).
+   Where the probe reads no-mistakes' agent, and which row carries the verdict, is measured at the CR's
+   start.
 
 ### §S2 — `init` and `agents` trust the project root on Pi
 
@@ -150,6 +162,10 @@ modules.
    the project root as trusted unless a saved `false` stands. The re-confirm clause goes (Pi 1.4.0 keys
    trust by path, with no content hash).
 5. **The pi-lens tools** are named only through the requirement row; no skill or template text changes.
+6. **The crucible skill's gate guidance** (`skills-src/crucible/SKILL.md`, at `gate-run`) names the
+   symptom: a run stuck in `review`, whose step log (`~/.no-mistakes/logs/<run>/review.log`) says "pi
+   missing output tool", is the refused `no_mistakes_output` call. The orchestrator aborts the run, applies
+   §S1.6's remedy and starts it again, rather than reattaching (SoL-Pi #1597).
 
 ### §S4 — The gates this change moves (named migrations)
 
@@ -225,6 +241,13 @@ No test module is added. No skip is added. No floor is lowered. Every test sandb
       the full suite through the client with a real `HOME` and an empty one, and the empty `HOME` stays
       empty.
 
+- [ ] **AC7 — no-mistakes' output tool (§S1.5, §S1.6, §S3.6).** The rendered policy allows
+      `no_mistakes_output`. In a sandboxed agent dir, a global policy with default `ask` and no
+      `no_mistakes_output` entry yields `missing` with the remedy when no-mistakes is present with agent
+      `pi`; a policy that allows it, or a default of `allow`, yields `present`; no-mistakes absent yields no
+      such verdict; the global file is byte-identical afterwards. The crucible skill's `gate-run` text names
+      the symptom and the remedy.
+
 ## Non-goals
 
 - **The three write-capable pi-lens tools** stay on ask; routing them into the worktree hook's `edit`
@@ -259,7 +282,8 @@ Each cycle runs, through the client, the modules it names plus the docs gates of
 the cycle's report.
 
 1. **The policy and the row** (§S1, §S4.1–§S4.2). Red-green.
-   - **RED:** AC1, AC2. **GREEN:** `requirements.py`, `permission_policy.py`.
+   - **RED:** AC1, AC2, AC7's policy and verdict. **GREEN:** `requirements.py`, `permission_policy.py`, and
+     the verdict's probe.
    - **Modules:** the docs gates, plus `tests.test_project_permission_policy`,
      `tests.test_harness_capability_contract`, `tests.test_modelb_pi_worktree_capability`,
      `tests.test_init_tool_verdicts`, `tests.test_installer_sandesh_requirements`,
@@ -271,8 +295,8 @@ the cycle's report.
      `tests.test_agents_verb_permission_policy`, `tests.test_init_tool_verdicts`,
      `tests.test_stack_skills`, `tests.test_ide_overlay_retirement`.
 3. **The texts** (§S3, §S4.4). Red-green.
-   - **RED:** AC5. **GREEN:** the guide's region, its mirror, the scaffolded line, the hooks note
-     (`modelb_axi/hooks.py`), the docstring and the comment.
+   - **RED:** AC5, AC7's skill text. **GREEN:** the guide's region, its mirror, the scaffolded line, the
+     hooks note (`modelb_axi/hooks.py`), the docstring, the comment, and the crucible skill's `gate-run` text.
    - **Modules:** the docs gates, plus `tests.test_install_guide`, `tests.test_project_setup_section`,
      `tests.test_project_tools_setup`, `tests.test_pi_package`, `tests.test_hooks_compiler`.
 4. **Verify.** VERIFY runs the full suite once, without coverage, through the client, with a real `HOME`

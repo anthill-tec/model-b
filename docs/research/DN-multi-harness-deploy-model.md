@@ -1270,6 +1270,17 @@ Implemented by CR-MDB-089.
   and names `/trust` as the remedy. It never removes a lock it did not take and never overwrites a file
   it cannot read.
 
+**Ruled 2026-11-11 (user, on SoL-Pi #1597, folded into CR-MDB-095):** no-mistakes' pipeline starts `pi` for
+each step in its own worktree (`~/.no-mistakes/worktrees/<repo>/<run>/`), and every step must end by
+calling `no_mistakes_output`. With no interactive UI, a policy whose default is `ask` refuses that call,
+and the gate loops without an outcome ("pi missing output tool" in the step log). That `pi` reads the
+user's **global** policy, not the project's. So the generated project policy allows `no_mistakes_output`,
+and Model B **reports, and does not write,** the global one: where no-mistakes is present with agent `pi`
+and the global policy's default is not `allow` and it lacks `no_mistakes_output`, the verdict is
+`missing`, with the one-line remedy (`"no_mistakes_output": "allow"` in its `permission` block) for the
+user to apply. The gate guidance names the symptom, so an orchestrator aborts and fixes rather than
+reattaching.
+
 ### D28 — SoL-Pi is a Model B prerequisite, reached through its installed entry point
 
 **User rulings 2026-11-04.** SoL-Pi (Pi's context and tool-efficiency extensions; upstream NVlabs/SoL-Pi,
