@@ -2,8 +2,9 @@
 
 **Status:** PENDING — **SEED, not the finished spec** (filed 2026-11-11 by the user's ruling, from the
 generator notes in SoL-Pi #1599). Gap analysis and the spec happen in order when this CR starts. Pre-review: none
-(5 points; no contract, hook or other project's surface).
-**Type:** defect (three defaults that failed a governed project's release)
+(no contract, hook or other project's surface). Widened 2026-11-11 by the user (SoL-Pi #1602, PRD D10's
+2026-11-11 ruling): item 5 added, re-scored 5 → 8.
+**Type:** defect (four defaults that failed a governed project's release)
 **Priority:** P1 — release 1.0.0, wave 2 (user 2026-11-11; board-authoritative: read `queue`).
 **Depends on:** none on the board.
 **Labels:** release-workflow, gate, release-check, scaffold
@@ -13,8 +14,8 @@ generator notes in SoL-Pi #1599). Gap analysis and the spec happen in order when
 
 ## Context
 
-SoL-Pi released 0.1.0 on 2026-11-11 under Model B's generated workflow and gate. Three defaults failed it
-(#1599); SoL-Pi worked round each by hand:
+SoL-Pi released 0.1.0 on 2026-11-11 under Model B's generated workflow and gate. Four defaults failed it
+(#1599, #1602); SoL-Pi worked round each by hand:
 
 1. **The rendered `test-python` job installs nothing.** `workflows-src/release/test-python.yml` sets up
    Python 3.14 and uv, then runs `python -m unittest discover -s tests -t .`. A project whose suite needs
@@ -27,6 +28,12 @@ SoL-Pi released 0.1.0 on 2026-11-11 under Model B's generated workflow and gate.
 3. **`modelb-axi release-check` reports every GitHub item `unknown`** when origin uses an SSH host alias
    (`git@github.com-<alias>:owner/repo.git`): `_origin_repository` matches `_GITHUB_ORIGIN` only, and answers
    "the origin remote is not on github.com; GitHub not read".
+4. **The npm setup order cannot be followed.** The rendered header says: `NPM_TOKEN` for the first publish,
+   "then add the npm trusted publisher and delete the token". npm's trusted publisher must complete its
+   first publish within 2 days of being created, so one added right after the first publish lapses; and one
+   created since 2026-09-03 allows only `npm stage publish` unless direct publishing is ticked, while the job
+   runs `npm publish`. SoL-Pi published with a token, revoked it, and holds the trusted publisher as a
+   pre-release step.
 
 ## Scope (seed)
 
@@ -40,12 +47,22 @@ SoL-Pi released 0.1.0 on 2026-11-11 under Model B's generated workflow and gate.
    github.com (for example through `ssh -G <alias>`'s `hostname`), and still reports `unknown` with the
    reason when it cannot.
 4. **The guards that pin the old text move with it** (the scaffold's `crucible.toml`, the gate rule in
-   `AGENTS.md`, the release workflow's rendered jobs).
-5. **SoL-Pi is told when it merges,** so it re-renders its workflow and drops its hand edits.
+   `AGENTS.md`, the release workflow's rendered jobs and header, the npm setup text).
+5. **The npm target's setup order** (SoL-Pi #1602; PRD D10, ruled 2026-11-11). The rendered header
+   (`workflows-src/release/setup-npm.yml`), `git-workflow`'s release-target table, `init`'s next steps
+   (`modelb_axi/scaffold.py`) and Model B's own release procedure
+   (`docs/research/release-automation-crucible-procedure.md`) give the order that works: `NPM_TOKEN` for the
+   very first publish, then revoke it and delete the secret; the trusted publisher added within the two days
+   before the next release's publish, with direct `npm publish` ticked (the job stays `npm publish`); then
+   npm's "require two-factor authentication and disallow tokens". `release-check`'s npm line names the
+   2-day window and the tick, and reports `NPM_TOKEN` as required only while the package is not yet on npm
+   (how it learns that, for example the registry's packument, is measured).
+6. **SoL-Pi is told when it merges,** so it re-renders its workflow and drops its hand edits. Its
+   `tests/release-workflow.test.ts` asserts the header's current npm wording and changes with the re-render.
 
 ## To measure at gap analysis
 
 - Which tests pin `skip = ["ci"]`, the gate rule's text and `test-python.yml`'s steps.
 - no-mistakes' step names on the installed version.
 - How other governed projects' suites need installing (an extra named `dev`, `test`, or none).
-- The re-score (5 points filed) and the behaviour units.
+- The re-score (8 points filed) and the behaviour units.

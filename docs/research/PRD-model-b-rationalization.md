@@ -240,6 +240,15 @@ The `model-b` repo is the permanent authoring workspace: `audits/`, `contracts/`
   - **`migrate`** brings a project that predates the generated setup (the Claude-era manual setup, or an older `init`) up to what `init` would produce, adding and never replacing: missing registry keys appended, `init`'s `AGENTS.md` sections added beside the hand-written text, `docs/memory/` seeded, agents/hooks/permission policy rendered under the ownership rules; what it cannot move (the Claude-era user-scope memory notes, README queue rows, Claude-era hook wiring) is listed for the user. It takes `init`'s identity and shape flags, only for values the project does not record, and `init`'s `--dry-run`.
   - **The project is the current directory; `--target DIR` overrides it** — for `init`, `migrate` and `agents` alike.
 
+**Ruled 2026-11-11 (user, on SoL-Pi #1602, folded into CR-MDB-104): the npm release target's setup order.** npm's
+trusted publisher exists only for a published package, must complete its first publish within 2 days of being
+created, and since 2026-09-03 allows only `npm stage publish` unless direct publishing is ticked. So the
+rendered workflow keeps a direct `npm publish`, and its setup text says: a token (`NPM_TOKEN`) for the very
+first publish; revoke it and delete the secret afterwards; add the trusted publisher within the two days
+before the next release's publish, with "publish directly with `npm publish`" ticked; then npm's "require
+two-factor authentication and disallow tokens" as the end state. `release-check` names the window and the tick,
+and reports `NPM_TOKEN` as required only while the package is not yet on npm.
+
 ### D11 — Capability contract and stack-scoped installation (2026-09-22, extends D10(c))
 
 D10(c) settled that the installer pre-flight checks dependant tooling and offers to install what
