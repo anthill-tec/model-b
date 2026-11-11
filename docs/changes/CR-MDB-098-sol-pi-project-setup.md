@@ -74,8 +74,8 @@ the probe and the command names; the flags, envelope, exit codes and opt-in prom
 2. **`init` and `agents` call SoL-Pi's per-project setup** for the target, after the trust step: the
    terminal passed through on an interactive run, non-interactive under `--yes`. The outcome is reported in
    the envelope (`sol_pi`); a failure or an absent entry point warns and keeps `ok` and the exit code.
-3. **The permission policy:** `obs_recall` and `update_plan` from the row; `edit` and `write` keep their
-   entries, with what `then_run` adds stated.
+3. **The permission policy:** `edit` and `write` keep their entries, with what `then_run` adds stated.
+   (`obs_recall` and `update_plan` moved to CR-MDB-105 by the user's ruling, 2026-11-11, §D27.)
 4. **Model B's own repository** keeps committing its `.pi/sol-pi.json`.
 5. **Texts:** the install guide and its README mirror, the scaffolded capability contract.
 6. **What the project's agents are told about SoL-Pi (user 2026-11-04).** Two layers, each with one owner:

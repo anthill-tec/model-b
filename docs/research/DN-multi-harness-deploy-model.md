@@ -1281,6 +1281,17 @@ and the global policy's default is not `allow` and it lacks `no_mistakes_output`
 user to apply. The gate guidance names the symptom, so an orchestrator aborts and fixes rather than
 reattaching.
 
+**Ruled 2026-11-11 (user, second ruling of the day; CR-MDB-105, placed right after CR-MDB-095):** the
+generated project policy also allows SoL-Pi's `update_plan` and `obs_recall` (moved from CR-MDB-098 so they
+land in 1.0.0), Pi's built-in `codemode` — each tool a script calls still checked against the policy, which
+the CR measures — and the tools of Pi's built-in MCP support: `tool_search`, `list_mcp_resources`,
+`list_mcp_resource_templates` and `read_mcp_resource`. A server's own tools (`mcp__<server>__<tool>`) stay
+on ask. The one exception is the eda stack (CR-MDB-102, release 1.1.0): an eda project's generated policy
+allows the tools of the MCP servers the stack registers in its `.pi/mcp.json` — Perfboard Studio, and
+Konnect KiCad for a PCB project — because laying the board out through them is the agents' work.
+pi-add-dir's and pi-studio's tools are not added. pi-mcp-extension is no longer used: it replaced Pi's
+built-in MCP support.
+
 ### D28 — SoL-Pi is a Model B prerequisite, reached through its installed entry point
 
 **User rulings 2026-11-04.** SoL-Pi (Pi's context and tool-efficiency extensions; upstream NVlabs/SoL-Pi,

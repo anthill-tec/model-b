@@ -96,6 +96,11 @@ or a PCB (`kicad-cli` gates, Konnect for design); P1 is one project, not the sta
    (CR-MDB-079), the stack roster wherever `init`, `agents` and the requirement rows enumerate stacks, and
    `tests/test_orchestrator_rule_triage.py`'s `stack:electronics` "unknown stack" case (the stack id is `eda`).
 9. **P1 Fan is told when it merges,** so it re-renders with `modelb-axi agents` and drops its local copies.
+10. **An eda project's policy allows its design MCP servers' tools** (user 2026-11-11, DN §D27): the
+    generated policy of a project with the `eda` stack allows `mcp__<server>__*` for the servers the stack
+    registers in `.pi/mcp.json` — Perfboard Studio, and Konnect KiCad for a PCB project. Every other server's
+    tools stay on ask (CR-MDB-105). The server names, and whether the policy can match a `mcp__<server>__*`
+    pattern or needs each tool named, are measured.
 
 ## To measure at gap analysis
 
