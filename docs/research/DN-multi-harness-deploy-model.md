@@ -1164,6 +1164,13 @@ frontend consumes).
 Implemented by CR-MDB-079.
 
 **AMENDED 2026-11-18 (user rulings, on the projects the arduino and quarkus stacks were written from):**
+- **Agent definitions and skills are stack- and tool-oriented, and name no project.** Every agent
+  definition, skill, stack file, template and generated file Model B ships speaks of a stack (its
+  runner, client, build and packaging) and of the workflow's tools (§D25's 2026-10-30 amendment), never
+  of a particular project. What one project needs is the job of that project's own orchestrator, within
+  that project's scope, once Model B has set it up or scaffolded it: its `AGENTS.md`, its registry and
+  configuration, its knowledge store. This holds for every CR, a stack Model B builds from another
+  project's material included (CR-MDB-102's electronics stack among them).
 - **Model B owns no part of a project a stack was written from.** The firmware project behind
   `arduino.toml` was a template for Arduino firmware development and for the electronics stack and
   workflow, used as guidance only; the Java project behind `java-stack` and `quarkus.toml` stands the same
