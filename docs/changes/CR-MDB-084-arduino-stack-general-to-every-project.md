@@ -8,7 +8,8 @@ generality guard covers every stack file, with this stack a named exception unti
 **Depends on:** none known; the board is authoritative: read `queue`, not this line.
 **Labels:** stacks, arduino, generator, generality
 **Design reference:** DN-multi-harness-deploy-model §D25 (a stack carries what holds for every
-project on that runner; one project's architecture lives in that project); CR-MDB-079 (the same
+project on that runner; one project's architecture lives in that project; amended 2026-11-18: Model B
+owns no part of the project a stack was written from, and nothing names it); CR-MDB-079 (the same
 correction for the bun stack).
 
 ## Context
@@ -29,16 +30,20 @@ of that holds for another Arduino project.
    project's own configuration (its registry or `crucible.toml`, as the client resolves them), never
    as a literal in the stack.
 2. **One project's facts leave the stack:** its CR ids, PRDs, libraries, constants, simulator and
-   name. Whatever they still teach goes to that project's own `AGENTS.md` or knowledge store, never
-   to a memory template, which `init` copies into every Arduino project.
+   name. They leave Model B and go nowhere: not into a memory template, which `init` copies into every
+   Arduino project, and not into that project (user ruling 2026-11-18, DN §D25: Model B owns no part
+   of it; it was a template for Arduino firmware and the electronics stack, used as guidance only).
 3. **The client's surface as installed:** the verbs and tiers the stack names match the installed
    `arduino-crucible.py`, including `regression` (whole native suite, optional coverage) and, from
    Crucible 0.4.0, `test`/`unit --tests` (CR-CRU-211) and the test-scope ladder (DN §D26,
    CR-MDB-083).
 4. **The generated arduino definitions are re-rendered**, and every guard naming the removed text is
    updated; an Arduino project takes the change with `modelb-axi agents`.
-5. **The project the text came from is told** before this CR merges, so it records its specifics in
-   its own project first — asking the user who owns it and how to reach it.
+5. **Nothing in Model B names the project the text came from** (user ruling 2026-11-18, DN §D25):
+   no agent, skill, stack file, template or generated definition names it or hardcodes its directory,
+   ids, documents or constants, and the stack-file guard flags its terms once the arduino exception is
+   removed. Every example the stack needs is generic. The project is not told; this CR has no
+   cross-project step.
 6. **The board and its toolchain come from the project** (P1 Extractor Fan Controller #1564, 2026-11-10):
    the FQBN (`arduino:renesas_uno:minima` in the stack today) and the `arduino-cli` command arrive through
    the project's registry or `crucible.toml`, as the client resolves them — P1 Fan keeps `ARDUINO_FQBN` and

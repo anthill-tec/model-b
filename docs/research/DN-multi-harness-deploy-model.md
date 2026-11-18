@@ -1163,6 +1163,18 @@ frontend consumes).
 
 Implemented by CR-MDB-079.
 
+**AMENDED 2026-11-18 (user rulings, on the projects the arduino and quarkus stacks were written from):**
+- **Model B owns no part of a project a stack was written from.** The firmware project behind
+  `arduino.toml` was a template for Arduino firmware development and for the electronics stack and
+  workflow, used as guidance only; the Java project behind `java-stack` and `quarkus.toml` stands the same
+  way.
+- **No agent, skill, stack file, template or generated definition names such a project or hardcodes
+  anything of it:** its name, directory, change-request ids, design documents, libraries, constants or
+  architecture. Its specifics leave Model B and go nowhere: they are not carried into that project's
+  `AGENTS.md` or knowledge store, and the project is not told. An example a stack needs is generic.
+- **The stack-file guard flags such a project's terms** once CR-MDB-084 and CR-MDB-087 have made those
+  stacks general; the same holds for the electronics stack (CR-MDB-102).
+
 ### D26 — Each role runs the tests its phase needs; only the gate measures coverage
 
 **User rulings 2026-10-28**, on wide test runs by phase agents in every project that adopts the

@@ -75,7 +75,8 @@ the older keys (the 0.4.0 doc-sync moves those).
   changes" notes) against this seed.
 - For the later arduino CR (not this one): the key is the native test dir relative to the project dir
   (the dir holding `.env` and `crucible.toml`), joined by `/` to the make target, e.g.
-  `[targets."tests/native/junit"]` in `sheetal-firmware/crucible.toml` (#1550).
+  `[targets."tests/native/junit"]` in an Arduino project's `crucible.toml` (#1550; no project is named,
+  DN §D25 amended 2026-11-18).
 - How the step edits `crucible.toml` with the stdlib only (no TOML writer: `config.py`'s hand-rolled
   serializer, or a table-scoped text edit that keeps the `[client]`, `[gate]` and `[limits.*]` tables
   and the project's comments).
