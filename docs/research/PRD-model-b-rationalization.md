@@ -171,6 +171,11 @@ The `~/.claude` user space grew organically into 24 memory files, ~50 skills, 29
   - **The orchestration mode is a registry key** (user 2026-11-08). `init` already requires `--mode solo|multi:<N>` but keeps it only as `ORCHESTRATOR_LABEL`'s prefix, the hooks it compiles and a line of `AGENTS.md` prose, and no skill reads any of them. An `ORCHESTRATION_MODE` key in the project's `.env` records it: `init` writes it from `--mode`, the skills branch on it (solo: git flow in the main tree; multi: `worktree-flow`), `agents` keeps the mode-dependent hooks in step with it, and `migrate` (CR-MDB-082) writes it for a project that lacks it, inferred from the label and confirmed with the user.
   - **Model B's orchestrator follows it at once:** Model B is solo, so its CRs run in the main tree from now on. CR-MDB-100 carries it into the skills, the registry and the hook.
 
+  **AMENDED 2026-11-20 (user ruling, on Crucible #1619's item C13): a refactor of existing tests runs as a refactor cycle, without RED.**
+  - **What it covers:** a cycle that only moves, demotes or consolidates existing tests, adding no behaviour and no new failing test. It runs as a refactor cycle with no RED phase; the suite stays green at every commit.
+  - **It is an exception the user grants:** the orchestrator asks for it before `plan-file`, naming the cycle and why it adds no behaviour. Without that grant, RED comes before GREEN as before.
+  - **Carried by** the CR that takes Crucible 0.4.0's agent and orchestrator rules (#1619) into the templates and `orchestration-common`, filed when 0.4.0's release notes arrive.
+
 ### D7 — Crucible V2 client contract (AXI)
 - **Ownership (corrected 2026-07-20): ALL `*-crucible.py` client implementation is the CRUCIBLE project's responsibility.** Model B requests it (Sandesh thread #1322/#1325), tracks it as an external dependency, and documents/consumes what Crucible ships. Model B implements no client code.
 - The contract Model B tracks: `bun-crucible.py` is the reference implementation; its plan/cycle verbs (`plan-file`, `cycle-activate`, `cycle-done`, `cr-close`) are universal V2 API (live-verified: `/api/v2/plans` active); every client emits a TOON-AXI envelope on stdout (`{axi:{verb,ok,…,context,warnings[]}}`) with the human line on stderr, with no-cycle-id/no-wave guards, an `append-cycle` verb, and golden fixtures.
