@@ -5,8 +5,8 @@ Gap analysis, the spec and its pre-review happen in order when this CR starts.
 **Type:** workflow (generated agent definitions, stack files, skills, orchestration rules)
 **Priority:** P1 — release 1.0.0, wave 2, after Crucible 0.4.0 is installed: written once against the
 0.4.0 clients' verbs.
-**Depends on:** the Crucible 0.4.0 doc-sync CR, once filed; the board is authoritative: read `queue`,
-not this line.
+**Depends on:** CR-MDB-108 (the Crucible 0.4.0 doc-sync CR, filed 2026-11-21); the board is authoritative:
+read `queue`, not this line.
 **Labels:** agents, generator, stacks, skills, crucible, test-scope
 **Design reference:** `skills-src/model-b/references/sub-agent-procedure.md` § TDD (step 6: the full
 suite is the orchestrator's); `skills-src/crucible/SKILL.md` § Who runs what; PRD D3 (the canonical
@@ -66,3 +66,7 @@ with no coverage. Each `pre-merge-gate` still measures coverage. The final flag 
 5. **The generated definitions are re-rendered** (`generator/build.py build`), this repository's
    `.pi/agents` matches them, and every guard over the changed text is updated; adopting projects
    take the change with `modelb-axi agents`.
+6. **Every run names its cycle** (Crucible #1619 A2, shipped in 0.4.0; the user's mapping of 2026-11-20):
+   a run by an agent while its cycle is active passes `--cycle <id>`, and the client refuses an
+   unattributed one. The ladder's every rung, the templates and the stack files' run commands carry
+   `--cycle`, and every sub-agent brief names the cycle id.
