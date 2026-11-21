@@ -32,6 +32,14 @@ client reads on every run (#1521, corrected by #1528):
 For a vitest project (#1525): key the entry `test:<tier>`, use the stream form, and add
 `${CRUCIBLE_REPORTERS}/vitest-crucible.ts` to `vitest.config.ts` when `CRUCIBLE_REPORTERS` is set.
 
+**The latest statement wins** (user, 2026-11-21; PRD D6): where Crucible's 0.4.0 release notes (#1622,
+"Stack declaration changes") differ from #1521–#1550, the notes are the valid requirement. Already known:
+the schema shipped at version 3, which exempts the `"test": true` entry from the gate's key rule and has
+`test`, `regression` and the gate read it; rust's entry is `framework = "nextest"` with
+`stream = { codec = "nextest", path = "stdout" }`, and a tier profile needs no `junit` table; the arduino
+(`CRUCIBLE_STREAM`), maven (`[targets.<tier>]`, `surefire-console`), python (`[python] runner`) and go
+(`[go] module_dir`) declarations shipped in the same release.
+
 Model B writes no `crucible.*` key into a project today; only the bun stack file and its agent renders cite
 the older keys (the 0.4.0 doc-sync moves those).
 

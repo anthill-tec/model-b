@@ -33,7 +33,8 @@ new CR, filed at the release notes.
    - B9 demoting a live-board test (the fake answers in the server's own shapes; the server half pinned first);
    - B10 bun route tests reach a board in process; a socket only where the test needs one.
 2. **Orchestrator rules** — `orchestration-common`, and the bootstrap and shutdown skills where they apply:
-   - C11 one sub-agent at a time, never idle beside a background process;
+   - C11 one sub-agent at a time, never idle beside a background process; "Parallel agents in one tree"
+     stays, as the exception the user grants explicitly (user, 2026-11-21; PRD D6);
    - C12 scratch never holds copies of test files inside the repository tree;
    - C13 the refactor cycle without RED, on the user's grant before `plan-file` (PRD D6, 2026-11-20);
    - C14 a census-style placement measures modules alone too;
@@ -46,6 +47,10 @@ new CR, filed at the release notes.
 - **B8 and Model B's own suite** (user, 2026-11-20: decided at this CR's gap analysis): whether "no tests that
   test the tests" binds Model B's own structural gates (for example `tests/test_suite_hygiene.py`'s
   duplicate-helper scan, CR-MDB-032 §S3) or only the agents Model B renders for projects.
+- **B6 and Model B's own suite** (user, 2026-11-21: decided with B8): whether "a test never reads operator
+  state" binds the reads `AGENTS.md` allows Model B's suite (Crucible's installed clients under
+  `~/.crucible/clients/`, CR-MDB-032; pi-subagents' installed source under `~/.pi/agent`, CR-MDB-039), each
+  skipping when absent, or only the agents Model B renders for projects. The affected tests are listed first.
 
 ## Non-goals
 

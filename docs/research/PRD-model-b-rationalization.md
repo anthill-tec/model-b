@@ -176,6 +176,10 @@ The `~/.claude` user space grew organically into 24 memory files, ~50 skills, 29
   - **It is an exception the user grants:** the orchestrator asks for it before `plan-file`, naming the cycle and why it adds no behaviour. Without that grant, RED comes before GREEN as before.
   - **Carried by** the CR that takes Crucible 0.4.0's agent and orchestrator rules (#1619) into the templates and `orchestration-common`, filed when 0.4.0's release notes arrive.
 
+  **AMENDED 2026-11-21 (user rulings, reconciling the requests other projects filed): the latest request stands, and one sub-agent at a time is the default.**
+  - **A changed requirement is read in time order.** When a project's request changes what an earlier one asked (its own or another project's), the latest is the valid requirement and the earlier one is superseded where they differ. A spec or rule written from the earlier one is brought to the latest at its CR's gap analysis.
+  - **One sub-agent at a time** (Crucible #1619 C11) is the default. "Parallel agents in one tree" (CR-MDB-044, 2026-09-27) stays only as the exception the user grants explicitly. CR-MDB-109 carries it.
+
 ### D7 — Crucible V2 client contract (AXI)
 - **Ownership (corrected 2026-07-20): ALL `*-crucible.py` client implementation is the CRUCIBLE project's responsibility.** Model B requests it (Sandesh thread #1322/#1325), tracks it as an external dependency, and documents/consumes what Crucible ships. Model B implements no client code.
 - The contract Model B tracks: `bun-crucible.py` is the reference implementation; its plan/cycle verbs (`plan-file`, `cycle-activate`, `cycle-done`, `cr-close`) are universal V2 API (live-verified: `/api/v2/plans` active); every client emits a TOON-AXI envelope on stdout (`{axi:{verb,ok,…,context,warnings[]}}`) with the human line on stderr, with no-cycle-id/no-wave guards, an `append-cycle` verb, and golden fixtures.
